@@ -6,7 +6,11 @@ import {
   ensureActiveModule
 } from './state.js';
 import { computeBestOverviewLayout } from './layout.js';
-import { animateZoomTransition } from './zoom.js';
+import {
+  zoomToModuleFromOverview,
+  zoomOutToOverview,
+  getIsZoomAnimating
+} from './zoom.js';
 import { mountInitialPane, swipeToPane } from './swipe.js';
 import {
   getUiElements,
@@ -17,7 +21,7 @@ import {
   updateControls,
   getFocusedCardElement,
   getOverviewCardElement,
-  setViewVisibilityForAnimation
+  ensureLayerVisibleForMeasure
 } from './render.js';
 
 const ui = getUiElements();
@@ -32,6 +36,10 @@ const appState = {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function makeModuleId() {
@@ -80,7 +88,7 @@ function updateModule(moduleId, patch) {
   stateManager.scheduleSave(appState.session);
 
   if (appState.mode === 'overview') {
-    refreshOverview();
+    refreshOverview({ enableSortable: true });
   }
 }
 
@@ -106,7 +114,7 @@ function getFocusedPaneForModule(module) {
   });
 }
 
-async function renderFocused({ useSwipe = true, direction = 'forward' } = {}) {
+async function renderFocused({ useSwipe = true, direction = 'forward', revealMode = true } = {}) {
   ensureActiveModule(appState.session);
 
   if (!hasModules()) {
@@ -130,12 +138,14 @@ async function renderFocused({ useSwipe = true, direction = 'forward' } = {}) {
     mountInitialPane(ui.swipeStage, pane);
   }
 
-  appState.mode = 'focused';
-  setMode(ui, 'focused');
-  updateUiChrome();
+  if (revealMode) {
+    appState.mode = 'focused';
+    setMode(ui, 'focused');
+    updateUiChrome();
+  }
 }
 
-function refreshOverview() {
+function refreshOverview({ enableSortable = appState.mode === 'overview' } = {}) {
   const modules = getModulesInOrder();
 
   const width = ui.overviewViewport.clientWidth;
@@ -153,12 +163,12 @@ function refreshOverview() {
     layout,
     viewportWidth: width,
     viewportHeight: height,
-    onCardClick: async (moduleId) => {
-      await zoomIntoModuleFromOverview(moduleId);
+    onCardClick: async (moduleId, cardEl) => {
+      await zoomIntoModuleFromOverview(moduleId, cardEl);
     }
   });
 
-  if (appState.mode === 'overview') {
+  if (enableSortable) {
     initSortable();
   }
 }
@@ -177,7 +187,7 @@ function initSortable() {
     return;
   }
 
-  if (appState.session.modules.length < 2) {
+  if (appState.session.modules.length < 2 || appState.mode !== 'overview') {
     return;
   }
 
@@ -197,100 +207,107 @@ function initSortable() {
         stateManager.scheduleSave(appState.session);
       }
 
-      refreshOverview();
+      refreshOverview({ enableSortable: true });
     }
   });
 }
 
-async function zoomOutToOverview() {
-  if (appState.transitionLock || appState.mode === 'overview' || !hasModules()) {
+async function zoomIntoModuleFromOverview(moduleId, sourceCardEl) {
+  if (
+    appState.transitionLock ||
+    appState.mode !== 'overview' ||
+    !moduleId ||
+    !sourceCardEl ||
+    getIsZoomAnimating()
+  ) {
+    return;
+  }
+
+  const targetModule = getModuleById(appState.session, moduleId);
+  if (!targetModule) {
     return;
   }
 
   appState.transitionLock = true;
+  destroySortable();
+  appState.session.activeModuleId = moduleId;
 
-  refreshOverview();
-
-  const focusedCard = getFocusedCardElement(ui);
-  const overviewCard = getOverviewCardElement(ui, appState.session.activeModuleId)
-    || ui.overviewGrid.querySelector('.overview-card');
-
-  setViewVisibilityForAnimation(ui, { showFocused: true, showOverview: true });
-
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-
-  await animateZoomTransition({
-    fromCard: focusedCard,
-    toCard: overviewCard,
-    fromView: ui.focusedView,
-    toView: ui.overviewView
+  const completed = await zoomToModuleFromOverview(moduleId, sourceCardEl, {
+    overviewLayer: ui.overviewLayer,
+    focusLayer: ui.focusLayer,
+    animLayer: ui.animLayer,
+    prepareFocusTarget: async () => {
+      await renderFocused({ useSwipe: false, revealMode: false });
+      ensureLayerVisibleForMeasure(ui.focusLayer);
+      ui.focusLayer.style.visibility = 'hidden';
+      ui.focusLayer.style.opacity = '0';
+      await nextFrame();
+      return getFocusedCardElement(ui);
+    }
   });
 
-  appState.mode = 'overview';
-  setMode(ui, 'overview');
-  updateUiChrome();
-  initSortable();
+  if (completed) {
+    appState.mode = 'focused';
+    setMode(ui, 'focused');
+    updateUiChrome();
+    stateManager.scheduleSave(appState.session);
+  }
 
   appState.transitionLock = false;
 }
 
-async function zoomIntoModuleFromOverview(moduleId) {
-  if (appState.transitionLock || appState.mode !== 'overview') {
+async function zoomOutToOverviewMode() {
+  if (appState.transitionLock || appState.mode === 'overview' || !hasModules() || getIsZoomAnimating()) {
     return;
   }
 
   appState.transitionLock = true;
   destroySortable();
 
-  appState.session.activeModuleId = moduleId;
+  const moduleId = appState.session.activeModuleId;
 
-  const targetModule = getModuleById(appState.session, moduleId);
-  if (!targetModule) {
-    appState.transitionLock = false;
-    return;
-  }
-
-  const nextPane = getFocusedPaneForModule(targetModule);
-  mountInitialPane(ui.swipeStage, nextPane);
-
-  const overviewCard = getOverviewCardElement(ui, moduleId)
-    || ui.overviewGrid.querySelector('.overview-card');
-  const focusedCard = getFocusedCardElement(ui);
-
-  setViewVisibilityForAnimation(ui, { showFocused: true, showOverview: true });
-
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-
-  await animateZoomTransition({
-    fromCard: overviewCard,
-    toCard: focusedCard,
-    fromView: ui.overviewView,
-    toView: ui.focusedView
+  const completed = await zoomOutToOverview({
+    moduleId,
+    overviewLayer: ui.overviewLayer,
+    focusLayer: ui.focusLayer,
+    animLayer: ui.animLayer,
+    getFocusSource: () => getFocusedCardElement(ui),
+    prepareOverviewTarget: async (activeModuleId) => {
+      ensureLayerVisibleForMeasure(ui.overviewLayer);
+      refreshOverview({ enableSortable: false });
+      await nextFrame();
+      return getOverviewCardElement(ui, activeModuleId)
+        || ui.overviewGrid.querySelector('.overview-card');
+    }
   });
 
-  appState.mode = 'focused';
-  setMode(ui, 'focused');
-  updateUiChrome();
-  stateManager.scheduleSave(appState.session);
+  if (completed) {
+    appState.mode = 'overview';
+    setMode(ui, 'overview');
+    updateUiChrome();
+    initSortable();
+  }
 
   appState.transitionLock = false;
 }
 
 async function toggleOverview() {
-  if (!hasModules() || appState.transitionLock) {
+  if (!hasModules() || appState.transitionLock || getIsZoomAnimating()) {
     return;
   }
 
   if (appState.mode === 'overview') {
-    await zoomIntoModuleFromOverview(appState.session.activeModuleId);
+    const sourceCardEl = getOverviewCardElement(ui, appState.session.activeModuleId)
+      || ui.overviewGrid.querySelector('.overview-card');
+    await zoomIntoModuleFromOverview(appState.session.activeModuleId, sourceCardEl);
     return;
   }
 
-  await zoomOutToOverview();
+  await zoomOutToOverviewMode();
 }
 
 async function createNewModule() {
-  if (appState.transitionLock) {
+  if (appState.transitionLock || getIsZoomAnimating()) {
     return;
   }
 
@@ -302,8 +319,11 @@ async function createNewModule() {
   stateManager.scheduleSave(appState.session);
 
   if (appState.mode === 'overview') {
-    refreshOverview();
-    await zoomIntoModuleFromOverview(module.id);
+    refreshOverview({ enableSortable: false });
+    await nextFrame();
+    const sourceCardEl = getOverviewCardElement(ui, module.id)
+      || ui.overviewGrid.querySelector(`.overview-card[data-module-id="${module.id}"]`);
+    await zoomIntoModuleFromOverview(module.id, sourceCardEl);
     return;
   }
 
@@ -312,12 +332,13 @@ async function createNewModule() {
 
   await renderFocused({
     useSwipe: true,
-    direction: 'forward'
+    direction: 'forward',
+    revealMode: true
   });
 }
 
 async function focusPreviousModule() {
-  if (appState.transitionLock || appState.mode !== 'focused') {
+  if (appState.transitionLock || appState.mode !== 'focused' || getIsZoomAnimating()) {
     return;
   }
 
@@ -331,7 +352,8 @@ async function focusPreviousModule() {
 
   await renderFocused({
     useSwipe: true,
-    direction: 'backward'
+    direction: 'backward',
+    revealMode: true
   });
 }
 
@@ -365,7 +387,7 @@ function bindEvents() {
 
   window.addEventListener('resize', () => {
     if (appState.mode === 'overview') {
-      refreshOverview();
+      refreshOverview({ enableSortable: true });
     }
   });
 
@@ -410,7 +432,9 @@ function bindEvents() {
 
     if (key === 'Escape' && appState.mode === 'overview' && hasModules()) {
       event.preventDefault();
-      await zoomIntoModuleFromOverview(appState.session.activeModuleId);
+      const sourceCardEl = getOverviewCardElement(ui, appState.session.activeModuleId)
+        || ui.overviewGrid.querySelector('.overview-card');
+      await zoomIntoModuleFromOverview(appState.session.activeModuleId, sourceCardEl);
     }
   });
 
@@ -427,7 +451,7 @@ async function init() {
   renderGreeting(ui, appState.session.clientName);
 
   if (appState.mode === 'focused') {
-    await renderFocused({ useSwipe: false });
+    await renderFocused({ useSwipe: false, revealMode: true });
   } else {
     setMode(ui, 'greeting');
     updateUiChrome();

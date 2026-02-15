@@ -1,170 +1,305 @@
-const DEFAULT_DURATION = 430;
-const DEFAULT_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
-
+const ZOOM_DURATION_MS = 420;
+const ZOOM_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const reduceMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-function isReducedMotion() {
-  return reduceMotionQuery.matches;
+let isAnimating = false;
+
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-function waitForAnimation(animation) {
-  if (!animation || !animation.finished) {
-    return Promise.resolve();
-  }
+function waitForTransitionEnd(element, propertyName, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
 
-  return animation.finished.catch(() => undefined);
-}
-
-function makeGhost(sourceElement) {
-  const rect = sourceElement.getBoundingClientRect();
-  const ghost = sourceElement.cloneNode(true);
-
-  ghost.removeAttribute('id');
-  ghost.classList.add('zoom-ghost');
-  ghost.style.position = 'fixed';
-  ghost.style.left = `${rect.left}px`;
-  ghost.style.top = `${rect.top}px`;
-  ghost.style.width = `${rect.width}px`;
-  ghost.style.height = `${rect.height}px`;
-  ghost.style.margin = '0';
-  ghost.style.transformOrigin = 'top left';
-  ghost.style.pointerEvents = 'none';
-  ghost.style.zIndex = '70';
-
-  document.body.appendChild(ghost);
-
-  return {
-    ghost,
-    rect
-  };
-}
-
-async function crossFade(fromView, toView, duration) {
-  toView.style.opacity = '0';
-  toView.style.visibility = 'visible';
-
-  const fadeOut = fromView.animate(
-    [
-      { opacity: 1 },
-      { opacity: 0 }
-    ],
-    {
-      duration,
-      easing: 'ease',
-      fill: 'forwards'
-    }
-  );
-
-  const fadeIn = toView.animate(
-    [
-      { opacity: 0 },
-      { opacity: 1 }
-    ],
-    {
-      duration,
-      easing: 'ease',
-      fill: 'forwards'
-    }
-  );
-
-  await Promise.all([waitForAnimation(fadeOut), waitForAnimation(fadeIn)]);
-
-  fromView.style.opacity = '';
-  toView.style.opacity = '';
-}
-
-export async function animateZoomTransition({
-  fromCard,
-  toCard,
-  fromView,
-  toView,
-  duration = DEFAULT_DURATION,
-  easing = DEFAULT_EASING
-}) {
-  if (!fromCard || !toCard || !fromView || !toView) {
-    return;
-  }
-
-  toView.style.visibility = 'visible';
-
-  if (isReducedMotion()) {
-    await crossFade(fromView, toView, 180);
-    return;
-  }
-
-  const { ghost, rect: fromRect } = makeGhost(fromCard);
-  const toRect = toCard.getBoundingClientRect();
-
-  const deltaX = toRect.left - fromRect.left;
-  const deltaY = toRect.top - fromRect.top;
-  const scaleX = Math.max(0.01, toRect.width / fromRect.width);
-  const scaleY = Math.max(0.01, toRect.height / fromRect.height);
-
-  fromCard.style.visibility = 'hidden';
-  toCard.style.visibility = 'hidden';
-
-  toView.style.opacity = '0';
-  toView.style.filter = 'blur(1px)';
-
-  // Force style flush before starting animations.
-  void toView.offsetWidth;
-
-  const ghostAnimation = ghost.animate(
-    [
-      { transform: 'translate(0px, 0px) scale(1, 1)', opacity: 1 },
-      {
-        transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`,
-        opacity: 0.98
+    function finish() {
+      if (done) {
+        return;
       }
-    ],
-    {
-      duration,
-      easing,
-      fill: 'forwards'
+      done = true;
+      element.removeEventListener('transitionend', onEnd);
+      clearTimeout(timeoutId);
+      resolve();
     }
-  );
 
-  const incomingAnimation = toView.animate(
-    [
-      { opacity: 0, filter: 'blur(1px)' },
-      { opacity: 1, filter: 'blur(0px)' }
-    ],
-    {
-      duration,
-      easing,
-      fill: 'forwards'
+    function onEnd(event) {
+      if (event.target !== element) {
+        return;
+      }
+
+      if (!propertyName || event.propertyName === propertyName) {
+        finish();
+      }
     }
-  );
 
-  const outgoingAnimation = fromView.animate(
-    [
-      { opacity: 1 },
-      { opacity: 0.45 }
-    ],
-    {
-      duration,
-      easing,
-      fill: 'forwards'
-    }
-  );
-
-  await Promise.all([
-    waitForAnimation(ghostAnimation),
-    waitForAnimation(incomingAnimation),
-    waitForAnimation(outgoingAnimation)
-  ]);
-
-  fromCard.style.visibility = '';
-  toCard.style.visibility = '';
-
-  toView.style.opacity = '';
-  toView.style.filter = '';
-  fromView.style.opacity = '';
-
-  ghost.remove();
+    const timeoutId = window.setTimeout(finish, timeoutMs + 80);
+    element.addEventListener('transitionend', onEnd);
+  });
 }
 
-export function reduceMotionListener(callback) {
-  reduceMotionQuery.addEventListener('change', callback);
-  return () => reduceMotionQuery.removeEventListener('change', callback);
+function createGhostElement(sourceEl, sourceRect, animLayer) {
+  const ghostEl = sourceEl.cloneNode(true);
+  ghostEl.classList.add('zoom-ghost');
+  ghostEl.removeAttribute('id');
+  ghostEl.style.position = 'fixed';
+  ghostEl.style.top = `${sourceRect.top}px`;
+  ghostEl.style.left = `${sourceRect.left}px`;
+  ghostEl.style.width = `${sourceRect.width}px`;
+  ghostEl.style.height = `${sourceRect.height}px`;
+  ghostEl.style.margin = '0';
+  ghostEl.style.pointerEvents = 'none';
+  ghostEl.style.transformOrigin = 'top left';
+  ghostEl.style.transform = 'translate3d(0px, 0px, 0px) scale(1, 1)';
+  ghostEl.style.opacity = '1';
+  ghostEl.style.zIndex = '120';
+
+  animLayer.innerHTML = '';
+  animLayer.appendChild(ghostEl);
+
+  return ghostEl;
+}
+
+function resetLayerStyles(layer) {
+  layer.style.opacity = '';
+  layer.style.visibility = '';
+  layer.style.filter = '';
+  layer.style.pointerEvents = '';
+  layer.style.transition = '';
+}
+
+function markLayerVisible(layer) {
+  layer.classList.remove('is-hidden');
+  layer.setAttribute('aria-hidden', 'false');
+}
+
+function markLayerHidden(layer) {
+  layer.classList.add('is-hidden');
+  layer.setAttribute('aria-hidden', 'true');
+}
+
+function setLayerOrder({ overviewLayer, focusLayer, top }) {
+  overviewLayer.classList.remove('layer-active');
+  focusLayer.classList.remove('layer-active');
+
+  if (top === 'overview') {
+    overviewLayer.classList.add('layer-active');
+  } else {
+    focusLayer.classList.add('layer-active');
+  }
+}
+
+function cleanupGhost(ghostEl, sourceEl, animLayer) {
+  if (sourceEl) {
+    sourceEl.style.opacity = '';
+  }
+
+  if (ghostEl && ghostEl.parentNode) {
+    ghostEl.remove();
+  }
+
+  animLayer.innerHTML = '';
+}
+
+async function quickCrossfadeToFocus({ overviewLayer, focusLayer }) {
+  markLayerVisible(focusLayer);
+  markLayerVisible(overviewLayer);
+  setLayerOrder({ overviewLayer, focusLayer, top: 'focus' });
+
+  focusLayer.style.visibility = 'visible';
+  focusLayer.style.opacity = '1';
+  overviewLayer.style.opacity = '0';
+  overviewLayer.style.pointerEvents = 'none';
+
+  await waitForTransitionEnd(overviewLayer, 'opacity', 180);
+
+  markLayerHidden(overviewLayer);
+  resetLayerStyles(overviewLayer);
+  resetLayerStyles(focusLayer);
+}
+
+async function quickCrossfadeToOverview({ overviewLayer, focusLayer }) {
+  markLayerVisible(overviewLayer);
+  markLayerVisible(focusLayer);
+  setLayerOrder({ overviewLayer, focusLayer, top: 'overview' });
+
+  overviewLayer.style.opacity = '1';
+  overviewLayer.style.pointerEvents = 'none';
+  focusLayer.style.opacity = '0';
+
+  await waitForTransitionEnd(focusLayer, 'opacity', 180);
+
+  markLayerHidden(focusLayer);
+  resetLayerStyles(overviewLayer);
+  resetLayerStyles(focusLayer);
+  overviewLayer.style.pointerEvents = 'auto';
+}
+
+export function getIsZoomAnimating() {
+  return isAnimating;
+}
+
+export async function zoomToModuleFromOverview(moduleId, sourceCardEl, {
+  overviewLayer,
+  focusLayer,
+  animLayer,
+  prepareFocusTarget
+}) {
+  if (isAnimating || !moduleId || !sourceCardEl) {
+    return false;
+  }
+
+  isAnimating = true;
+  let ghostEl = null;
+
+  try {
+    const sourceRect = sourceCardEl.getBoundingClientRect();
+
+    const targetEl = await prepareFocusTarget(moduleId);
+    if (!targetEl) {
+      return false;
+    }
+
+    markLayerVisible(focusLayer);
+    markLayerVisible(overviewLayer);
+    setLayerOrder({ overviewLayer, focusLayer, top: 'overview' });
+
+    focusLayer.style.visibility = 'hidden';
+    focusLayer.style.opacity = '0';
+    focusLayer.style.pointerEvents = 'none';
+
+    const targetRect = targetEl.getBoundingClientRect();
+
+    await nextFrame();
+
+    ghostEl = createGhostElement(sourceCardEl, sourceRect, animLayer);
+
+    sourceCardEl.style.opacity = '0';
+
+    overviewLayer.classList.add('is-transitioning-out');
+    overviewLayer.style.pointerEvents = 'none';
+
+    if (reduceMotionQuery.matches) {
+      await quickCrossfadeToFocus({ overviewLayer, focusLayer });
+      cleanupGhost(ghostEl, sourceCardEl, animLayer);
+      return true;
+    }
+
+    const dx = targetRect.left - sourceRect.left;
+    const dy = targetRect.top - sourceRect.top;
+    const sx = Math.max(0.01, targetRect.width / sourceRect.width);
+    const sy = Math.max(0.01, targetRect.height / sourceRect.height);
+
+    await nextFrame();
+
+    ghostEl.style.transition = `transform ${ZOOM_DURATION_MS}ms ${ZOOM_EASING}, opacity 220ms ease`;
+    ghostEl.style.transform = `translate3d(${dx}px, ${dy}px, 0px) scale(${sx}, ${sy})`;
+
+    await waitForTransitionEnd(ghostEl, 'transform', ZOOM_DURATION_MS);
+
+    // Tear down overview completely to avoid lingering background after zoom-in.
+    markLayerHidden(overviewLayer);
+    overviewLayer.classList.remove('is-transitioning-out', 'is-transitioning-in');
+    resetLayerStyles(overviewLayer);
+
+    markLayerVisible(focusLayer);
+    setLayerOrder({ overviewLayer, focusLayer, top: 'focus' });
+    focusLayer.style.visibility = 'visible';
+    focusLayer.style.opacity = '1';
+    focusLayer.style.pointerEvents = 'auto';
+
+    cleanupGhost(ghostEl, sourceCardEl, animLayer);
+
+    return true;
+  } finally {
+    isAnimating = false;
+  }
+}
+
+export async function zoomOutToOverview({
+  moduleId,
+  overviewLayer,
+  focusLayer,
+  animLayer,
+  getFocusSource,
+  prepareOverviewTarget
+}) {
+  if (isAnimating || !moduleId) {
+    return false;
+  }
+
+  isAnimating = true;
+  let ghostEl = null;
+  let sourceEl = null;
+
+  try {
+    markLayerVisible(overviewLayer);
+    setLayerOrder({ overviewLayer, focusLayer, top: 'overview' });
+
+    overviewLayer.classList.remove('is-transitioning-out');
+    overviewLayer.classList.add('is-transitioning-in');
+    overviewLayer.style.opacity = '0';
+    overviewLayer.style.filter = 'blur(6px)';
+    overviewLayer.style.pointerEvents = 'none';
+
+    const targetEl = await prepareOverviewTarget(moduleId);
+    sourceEl = getFocusSource();
+
+    if (!targetEl || !sourceEl) {
+      return false;
+    }
+
+    markLayerVisible(focusLayer);
+
+    const sourceRect = sourceEl.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+
+    await nextFrame();
+
+    ghostEl = createGhostElement(sourceEl, sourceRect, animLayer);
+
+    sourceEl.style.opacity = '0';
+
+    // Hide focus immediately so only ghost + incoming overview are visible.
+    focusLayer.classList.add('is-transitioning-out');
+    focusLayer.style.opacity = '0';
+    focusLayer.style.pointerEvents = 'none';
+
+    if (reduceMotionQuery.matches) {
+      await quickCrossfadeToOverview({ overviewLayer, focusLayer });
+      cleanupGhost(ghostEl, sourceEl, animLayer);
+      return true;
+    }
+
+    const dx = targetRect.left - sourceRect.left;
+    const dy = targetRect.top - sourceRect.top;
+    const sx = Math.max(0.01, targetRect.width / sourceRect.width);
+    const sy = Math.max(0.01, targetRect.height / sourceRect.height);
+
+    await nextFrame();
+
+    ghostEl.style.transition = `transform ${ZOOM_DURATION_MS}ms ${ZOOM_EASING}, opacity 220ms ease`;
+    ghostEl.style.transform = `translate3d(${dx}px, ${dy}px, 0px) scale(${sx}, ${sy})`;
+
+    overviewLayer.style.opacity = '1';
+    overviewLayer.style.filter = 'blur(0px)';
+
+    await waitForTransitionEnd(ghostEl, 'transform', ZOOM_DURATION_MS);
+
+    markLayerVisible(overviewLayer);
+    setLayerOrder({ overviewLayer, focusLayer, top: 'overview' });
+    overviewLayer.classList.remove('is-transitioning-in', 'is-transitioning-out');
+    overviewLayer.style.pointerEvents = 'auto';
+    overviewLayer.style.opacity = '1';
+    overviewLayer.style.filter = '';
+
+    markLayerHidden(focusLayer);
+    focusLayer.classList.remove('is-transitioning-out', 'is-transitioning-in');
+    resetLayerStyles(focusLayer);
+
+    cleanupGhost(ghostEl, sourceEl, animLayer);
+
+    return true;
+  } finally {
+    isAnimating = false;
+  }
 }

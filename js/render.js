@@ -20,14 +20,33 @@ function makeOverviewSnippet(notes) {
   return clean.length > 120 ? `${clean.slice(0, 117)}...` : clean;
 }
 
+function showLayer(layer) {
+  if (!layer) {
+    return;
+  }
+
+  layer.classList.remove('is-hidden');
+  layer.setAttribute('aria-hidden', 'false');
+}
+
+function hideLayer(layer) {
+  if (!layer) {
+    return;
+  }
+
+  layer.classList.add('is-hidden');
+  layer.setAttribute('aria-hidden', 'true');
+}
+
 export function getUiElements() {
   return {
     app: document.getElementById('app'),
+    animLayer: document.getElementById('animLayer'),
     clientNameInput: document.getElementById('clientNameInput'),
     greetingHeadline: document.getElementById('greetingHeadline'),
-    greetingView: document.getElementById('greetingView'),
-    focusedView: document.getElementById('focusedView'),
-    overviewView: document.getElementById('overviewView'),
+    greetingLayer: document.getElementById('greetingLayer'),
+    focusLayer: document.getElementById('focusLayer'),
+    overviewLayer: document.getElementById('overviewLayer'),
     swipeStage: document.getElementById('swipeStage'),
     overviewViewport: document.getElementById('overviewViewport'),
     overviewZoomWrap: document.getElementById('overviewZoomWrap'),
@@ -52,6 +71,7 @@ export function buildFocusedPane({ module, moduleNumber, onTitleInput, onNotesIn
   pane.className = 'focused-pane swipe-pane-content';
 
   const card = document.createElement('article');
+  card.id = 'focusCard';
   card.className = 'module-card focused-module-card';
   card.dataset.moduleId = module.id;
 
@@ -137,9 +157,41 @@ export function renderOverview({
 }
 
 export function setMode(ui, mode) {
-  ui.greetingView.classList.toggle('is-visible', mode === 'greeting');
-  ui.focusedView.classList.toggle('is-visible', mode === 'focused');
-  ui.overviewView.classList.toggle('is-visible', mode === 'overview');
+  const greeting = ui.greetingLayer;
+  const focus = ui.focusLayer;
+  const overview = ui.overviewLayer;
+
+  focus.classList.remove('is-transitioning-in', 'is-transitioning-out');
+  overview.classList.remove('is-transitioning-in', 'is-transitioning-out');
+  focus.style.opacity = '';
+  focus.style.visibility = '';
+  focus.style.pointerEvents = '';
+  overview.style.opacity = '';
+  overview.style.filter = '';
+  overview.style.pointerEvents = '';
+
+  focus.classList.remove('layer-active');
+  overview.classList.remove('layer-active');
+
+  if (mode === 'greeting') {
+    showLayer(greeting);
+    hideLayer(focus);
+    hideLayer(overview);
+    return;
+  }
+
+  hideLayer(greeting);
+
+  if (mode === 'overview') {
+    hideLayer(focus);
+    showLayer(overview);
+    overview.classList.add('layer-active');
+    return;
+  }
+
+  showLayer(focus);
+  hideLayer(overview);
+  focus.classList.add('layer-active');
 }
 
 export function updateControls(ui, { mode, moduleCount, hasPrevious }) {
@@ -156,14 +208,14 @@ export function updateControls(ui, { mode, moduleCount, hasPrevious }) {
 }
 
 export function getFocusedCardElement(ui) {
-  return ui.swipeStage.querySelector('.focused-module-card');
+  return ui.swipeStage.querySelector('#focusCard') || ui.swipeStage.querySelector('.focused-module-card');
 }
 
 export function getOverviewCardElement(ui, moduleId) {
   return ui.overviewGrid.querySelector(`.overview-card[data-module-id="${moduleId}"]`);
 }
 
-export function setViewVisibilityForAnimation(ui, { showFocused = false, showOverview = false }) {
-  ui.focusedView.classList.toggle('is-visible', showFocused);
-  ui.overviewView.classList.toggle('is-visible', showOverview);
+export function ensureLayerVisibleForMeasure(layer) {
+  layer.classList.remove('is-hidden');
+  layer.setAttribute('aria-hidden', 'false');
 }

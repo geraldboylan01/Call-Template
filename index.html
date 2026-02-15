@@ -28,11 +28,11 @@
       </header>
 
       <main class="main-viewport" aria-live="polite">
-        <section id="greetingView" class="view greeting-view is-visible">
+        <section id="greetingLayer" class="layer greeting-view">
           <h1 id="greetingHeadline" class="greeting-headline">Hello Client!</h1>
         </section>
 
-        <section id="focusedView" class="view focused-view" aria-label="Focused module view">
+        <section id="focusLayer" class="layer focused-view is-hidden" aria-label="Focused module view" aria-hidden="true">
           <div id="swipeStage" class="swipe-stage"></div>
           <button
             id="navPrevBtn"
@@ -54,13 +54,14 @@
           </button>
         </section>
 
-        <section id="overviewView" class="view overview-view" aria-label="Overview map">
+        <section id="overviewLayer" class="layer overview-view is-hidden" aria-label="Overview map" aria-hidden="true">
           <div id="overviewViewport" class="overview-viewport">
             <div id="overviewZoomWrap" class="overview-zoom-wrap">
               <div id="overviewGrid" class="overview-grid"></div>
             </div>
           </div>
         </section>
+        <div id="animLayer" class="anim-layer" aria-hidden="true"></div>
       </main>
     </div>
 
