@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Call Template Canvas</title>
+    <link rel="stylesheet" href="./styles/base.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar" aria-label="Session controls">
+        <div class="topbar-left">
+          <input
+            id="clientNameInput"
+            class="topbar-input"
+            type="text"
+            value="Client"
+            aria-label="Client name"
+            placeholder="Client name"
+          />
+        </div>
+        <div class="topbar-right">
+          <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
+          <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
+          <button id="resetBtn" class="ui-button" type="button">Reset</button>
+        </div>
+      </header>
+
+      <main class="main-viewport" aria-live="polite">
+        <section id="greetingView" class="view greeting-view is-visible">
+          <h1 id="greetingHeadline" class="greeting-headline">Hello Client!</h1>
+        </section>
+
+        <section id="focusedView" class="view focused-view" aria-label="Focused module view">
+          <div id="swipeStage" class="swipe-stage"></div>
+          <button
+            id="navPrevBtn"
+            class="nav-arrow left"
+            type="button"
+            aria-label="Previous module"
+            title="Previous module"
+          >
+            &#8592;
+          </button>
+          <button
+            id="navNextBtn"
+            class="nav-arrow right"
+            type="button"
+            aria-label="New module"
+            title="New module"
+          >
+            &#8594;
+          </button>
+        </section>
+
+        <section id="overviewView" class="view overview-view" aria-label="Overview map">
+          <div id="overviewViewport" class="overview-viewport">
+            <div id="overviewZoomWrap" class="overview-zoom-wrap">
+              <div id="overviewGrid" class="overview-grid"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
