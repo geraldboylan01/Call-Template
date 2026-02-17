@@ -11,13 +11,60 @@ function formatLocalTime(isoString) {
   }
 }
 
-function makeOverviewSnippet(notes) {
-  if (!notes || !notes.trim()) {
-    return 'No notes yet.';
+function htmlToPlainText(html) {
+  if (!html || typeof html !== 'string') {
+    return '';
   }
 
-  const clean = notes.replace(/\s+/g, ' ').trim();
-  return clean.length > 120 ? `${clean.slice(0, 117)}...` : clean;
+  const temp = document.createElement('template');
+  temp.innerHTML = html;
+  return (temp.content.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function sanitizeSummaryHtml(rawHtml) {
+  if (!rawHtml || typeof rawHtml !== 'string') {
+    return '';
+  }
+
+  const template = document.createElement('template');
+  template.innerHTML = rawHtml;
+
+  template.content
+    .querySelectorAll('script, style, iframe, object, embed, link, meta, form, button, input, textarea')
+    .forEach((element) => element.remove());
+
+  template.content.querySelectorAll('*').forEach((element) => {
+    [...element.attributes].forEach((attribute) => {
+      const attrName = attribute.name.toLowerCase();
+      const attrValue = attribute.value;
+
+      if (attrName.startsWith('on')) {
+        element.removeAttribute(attribute.name);
+        return;
+      }
+
+      if ((attrName === 'href' || attrName === 'src') && /^\s*javascript:/i.test(attrValue)) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+
+  return template.innerHTML;
+}
+
+function makeOverviewSnippet(module) {
+  const notes = module.notes || '';
+  if (notes.trim()) {
+    const cleanNotes = notes.replace(/\s+/g, ' ').trim();
+    return cleanNotes.length > 120 ? `${cleanNotes.slice(0, 117)}...` : cleanNotes;
+  }
+
+  const summary = htmlToPlainText(module.generated?.summaryHtml || '');
+  if (summary) {
+    return summary.length > 120 ? `${summary.slice(0, 117)}...` : summary;
+  }
+
+  return 'No notes yet.';
 }
 
 function showLayer(layer) {
@@ -38,10 +85,598 @@ function hideLayer(layer) {
   layer.setAttribute('aria-hidden', 'true');
 }
 
+function buildTableCard(cardTitle, tableData) {
+  const card = document.createElement('section');
+  card.className = 'generated-card generated-table-card';
+
+  const heading = document.createElement('h3');
+  heading.className = 'generated-card-title';
+  heading.textContent = cardTitle;
+
+  card.appendChild(heading);
+
+  const columns = Array.isArray(tableData?.columns) ? tableData.columns : [];
+  const rows = Array.isArray(tableData?.rows) ? tableData.rows : [];
+
+  if (columns.length === 0 || rows.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = `No ${cardTitle.toLowerCase()} provided.`;
+    card.appendChild(empty);
+    return card;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'generated-table-wrap';
+
+  const table = document.createElement('table');
+  table.className = 'generated-table';
+
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+
+  columns.forEach((column) => {
+    const th = document.createElement('th');
+    th.textContent = String(column ?? '');
+    headerRow.appendChild(th);
+  });
+
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    const safeRow = Array.isArray(row) ? row : [];
+
+    columns.forEach((_column, index) => {
+      const td = document.createElement('td');
+      td.textContent = String(safeRow[index] ?? '');
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  card.appendChild(wrap);
+
+  return card;
+}
+
+function formatBucketedAmount(value) {
+  if (!Number.isFinite(value)) {
+    return '';
+  }
+
+  if (Number.isInteger(value)) {
+    return value.toLocaleString();
+  }
+
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function hasOutputsBucketed(outputsBucketed) {
+  return Boolean(
+    outputsBucketed &&
+    typeof outputsBucketed === 'object' &&
+    !Array.isArray(outputsBucketed) &&
+    Array.isArray(outputsBucketed.sections) &&
+    outputsBucketed.sections.length > 0
+  );
+}
+
+function isOutputsBucketedPresent(outputsBucketed) {
+  return Boolean(
+    outputsBucketed &&
+    typeof outputsBucketed === 'object' &&
+    !Array.isArray(outputsBucketed)
+  );
+}
+
+function normalizeSectionToken(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function findOutputsBucketedSection(sections, targetKey) {
+  const targetToken = normalizeSectionToken(targetKey);
+  return sections.find((section) => (
+    normalizeSectionToken(section?.key) === targetToken
+    || normalizeSectionToken(section?.title) === targetToken
+  )) || null;
+}
+
+function sanitizeSectionRows(rows) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows
+    .filter((row) => Array.isArray(row) && row.length >= 2)
+    .map((row) => [String(row[0] ?? ''), Number(row[1])])
+    .filter((row) => Number.isFinite(row[1]));
+}
+
+function buildOutputsBucketedMiniTablesContent(outputsBucketed) {
+  const wrap = document.createElement('div');
+  wrap.className = 'pbs-bucket-tables';
+
+  const currencySymbol = typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
+    ? outputsBucketed.currencySymbol
+    : '€';
+
+  outputsBucketed.sections.forEach((section, sectionIndex) => {
+    const sectionWrap = document.createElement('article');
+    sectionWrap.className = 'pbs-bucket-section';
+
+    const columns = Array.isArray(section.columns) && section.columns.length === 2
+      ? section.columns
+      : ['Asset', `Amount (${currencySymbol})`];
+    const rows = sanitizeSectionRows(section.rows);
+    const key = typeof section.key === 'string' ? section.key.toLowerCase() : '';
+    const title = typeof section.title === 'string' && section.title.trim()
+      ? section.title
+      : `Section ${sectionIndex + 1}`;
+    const subtotalLabel = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
+      ? section.subtotalLabel
+      : 'Subtotal';
+    const hasSubtotal = Number.isFinite(Number(section.subtotalValue));
+    const isSummary = key === 'summary' || title.trim().toLowerCase() === 'summary';
+
+    const table = document.createElement('table');
+    table.className = 'generated-table pbs-bucket-table';
+
+    const thead = document.createElement('thead');
+
+    const titleRow = document.createElement('tr');
+    titleRow.className = 'pbs-bucket-title-row';
+    const titleCell = document.createElement('th');
+    titleCell.colSpan = 2;
+    titleCell.textContent = title;
+    titleRow.appendChild(titleCell);
+    thead.appendChild(titleRow);
+
+    const headerRow = document.createElement('tr');
+    columns.forEach((column, columnIndex) => {
+      const th = document.createElement('th');
+      th.textContent = String(column ?? '');
+      if (columnIndex === 1) {
+        th.classList.add('pbs-amount-col');
+      }
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((row) => {
+      const tr = document.createElement('tr');
+      const label = row[0];
+      const amount = row[1];
+
+      const labelCell = document.createElement('td');
+      labelCell.textContent = label;
+      tr.appendChild(labelCell);
+
+      const amountCell = document.createElement('td');
+      amountCell.className = 'pbs-amount-col';
+      amountCell.textContent = formatBucketedAmount(amount);
+      tr.appendChild(amountCell);
+
+      if (isSummary && normalizeSectionToken(label) === 'networth') {
+        tr.classList.add('pbs-net-worth-row');
+      }
+
+      tbody.appendChild(tr);
+    });
+
+    if (hasSubtotal) {
+      const subtotalRow = document.createElement('tr');
+      subtotalRow.className = 'pbs-subtotal-row';
+
+      const subtotalLabelCell = document.createElement('td');
+      subtotalLabelCell.textContent = subtotalLabel;
+      subtotalRow.appendChild(subtotalLabelCell);
+
+      const subtotalValueCell = document.createElement('td');
+      subtotalValueCell.className = 'pbs-amount-col';
+      subtotalValueCell.textContent = formatBucketedAmount(Number(section.subtotalValue));
+      subtotalRow.appendChild(subtotalValueCell);
+
+      tbody.appendChild(subtotalRow);
+    }
+
+    table.appendChild(tbody);
+    sectionWrap.appendChild(table);
+
+    if (typeof section.notes === 'string' && section.notes.trim()) {
+      const note = document.createElement('p');
+      note.className = 'pbs-bucket-note';
+      note.textContent = section.notes;
+      sectionWrap.appendChild(note);
+    }
+
+    wrap.appendChild(sectionWrap);
+  });
+
+  return wrap;
+}
+
+function buildOutputsBucketedDetailCard(section, {
+  defaultTitle,
+  defaultColumns,
+  highlightNetWorth = false
+} = {}) {
+  const card = document.createElement('section');
+  card.className = 'pbs-stacked-card';
+
+  const title = typeof section.title === 'string' && section.title.trim()
+    ? section.title
+    : defaultTitle;
+  const columns = Array.isArray(section.columns) && section.columns.length === 2
+    ? section.columns
+    : defaultColumns;
+  const rows = sanitizeSectionRows(section.rows);
+  const subtotalLabel = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
+    ? section.subtotalLabel
+    : 'Subtotal';
+  const hasSubtotal = Number.isFinite(Number(section.subtotalValue));
+
+  const heading = document.createElement('h4');
+  heading.className = 'generated-card-title pbs-stacked-title';
+  heading.textContent = title;
+  card.appendChild(heading);
+
+  const table = document.createElement('table');
+  table.className = 'generated-table pbs-bucket-table pbs-detail-table';
+
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  columns.forEach((column, index) => {
+    const th = document.createElement('th');
+    th.textContent = String(column ?? '');
+    if (index === 1) {
+      th.classList.add('pbs-amount-col');
+    }
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    const label = row[0];
+
+    const labelCell = document.createElement('td');
+    labelCell.textContent = label;
+    tr.appendChild(labelCell);
+
+    const amountCell = document.createElement('td');
+    amountCell.className = 'pbs-amount-col';
+    amountCell.textContent = formatBucketedAmount(row[1]);
+    tr.appendChild(amountCell);
+
+    if (highlightNetWorth && normalizeSectionToken(label) === 'networth') {
+      tr.classList.add('pbs-net-worth-row');
+    }
+
+    tbody.appendChild(tr);
+  });
+
+  if (hasSubtotal) {
+    const subtotalRow = document.createElement('tr');
+    subtotalRow.className = 'pbs-subtotal-row';
+
+    const subtotalLabelCell = document.createElement('td');
+    subtotalLabelCell.textContent = subtotalLabel;
+    subtotalRow.appendChild(subtotalLabelCell);
+
+    const subtotalValueCell = document.createElement('td');
+    subtotalValueCell.className = 'pbs-amount-col';
+    subtotalValueCell.textContent = formatBucketedAmount(Number(section.subtotalValue));
+    subtotalRow.appendChild(subtotalValueCell);
+
+    tbody.appendChild(subtotalRow);
+  }
+
+  table.appendChild(tbody);
+  card.appendChild(table);
+
+  return card;
+}
+
+function buildOutputsBucketedMatrixContent(outputsBucketed) {
+  const sections = outputsBucketed.sections;
+  const assetSectionKeys = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
+  const assetSections = assetSectionKeys.map((key) => findOutputsBucketedSection(sections, key));
+
+  if (assetSections.some((section) => !section)) {
+    return null;
+  }
+
+  const outputStack = document.createElement('div');
+  outputStack.className = 'pbs-outputs-stack';
+
+  const matrixPanel = document.createElement('section');
+  matrixPanel.className = 'pbs-matrix-panel';
+
+  const matrixWrap = document.createElement('div');
+  matrixWrap.className = 'pbs-matrix-wrap';
+
+  const matrixTable = document.createElement('table');
+  matrixTable.className = 'generated-table pbs-matrix';
+
+  const rowsByBucket = assetSections.map((section) => sanitizeSectionRows(section.rows));
+  const rowCount = Math.max(0, ...rowsByBucket.map((rows) => rows.length));
+
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  headRow.className = 'pbs-matrix-head';
+  assetSections.forEach((section, index) => {
+    const th = document.createElement('th');
+    th.textContent = typeof section.title === 'string' && section.title.trim()
+      ? section.title
+      : assetSectionKeys[index].charAt(0).toUpperCase() + assetSectionKeys[index].slice(1);
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  matrixTable.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    const tr = document.createElement('tr');
+
+    rowsByBucket.forEach((bucketRows) => {
+      const cell = document.createElement('td');
+      cell.className = 'pbs-cell';
+
+      const item = bucketRows[rowIndex];
+      if (item) {
+        const name = document.createElement('div');
+        name.className = 'pbs-cell-name';
+        name.textContent = item[0];
+
+        const amount = document.createElement('div');
+        amount.className = 'pbs-cell-amt';
+        amount.textContent = formatBucketedAmount(item[1]);
+
+        cell.appendChild(name);
+        cell.appendChild(amount);
+      } else {
+        cell.classList.add('pbs-cell-empty');
+      }
+
+      tr.appendChild(cell);
+    });
+
+    tbody.appendChild(tr);
+  }
+  matrixTable.appendChild(tbody);
+
+  const tfoot = document.createElement('tfoot');
+  const subtotalRow = document.createElement('tr');
+  subtotalRow.className = 'pbs-subtotal-row';
+  assetSections.forEach((section) => {
+    const subtotalCell = document.createElement('td');
+    const subtotalLabel = document.createElement('div');
+    subtotalLabel.className = 'pbs-subtotal-label';
+    subtotalLabel.textContent = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
+      ? section.subtotalLabel
+      : 'Subtotal';
+
+    const subtotalAmount = document.createElement('div');
+    subtotalAmount.className = 'pbs-cell-amt pbs-subtotal-amt';
+    subtotalAmount.textContent = formatBucketedAmount(Number(section.subtotalValue));
+
+    subtotalCell.appendChild(subtotalLabel);
+    subtotalCell.appendChild(subtotalAmount);
+    subtotalRow.appendChild(subtotalCell);
+  });
+  tfoot.appendChild(subtotalRow);
+  matrixTable.appendChild(tfoot);
+
+  matrixWrap.appendChild(matrixTable);
+  matrixPanel.appendChild(matrixWrap);
+  outputStack.appendChild(matrixPanel);
+
+  const currencySymbol = typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
+    ? outputsBucketed.currencySymbol
+    : '€';
+
+  const liabilitiesSection = findOutputsBucketedSection(sections, 'liabilities');
+  if (liabilitiesSection) {
+    outputStack.appendChild(buildOutputsBucketedDetailCard(liabilitiesSection, {
+      defaultTitle: 'Liabilities',
+      defaultColumns: ['Liability', `Amount (${currencySymbol})`]
+    }));
+  }
+
+  const summarySection = findOutputsBucketedSection(sections, 'summary');
+  if (summarySection) {
+    outputStack.appendChild(buildOutputsBucketedDetailCard(summarySection, {
+      defaultTitle: 'Summary',
+      defaultColumns: ['Metric', `Amount (${currencySymbol})`],
+      highlightNetWorth: true
+    }));
+  }
+
+  return outputStack;
+}
+
+function buildOutputsBucketedCard(outputsBucketed) {
+  const card = document.createElement('section');
+  card.className = 'generated-card generated-table-card generated-outputs-bucketed-card';
+
+  const heading = document.createElement('h3');
+  heading.className = 'generated-card-title';
+  heading.textContent = 'Outputs';
+  card.appendChild(heading);
+
+  if (!hasOutputsBucketed(outputsBucketed)) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'No outputs provided.';
+    card.appendChild(empty);
+    return card;
+  }
+
+  const matrixContent = buildOutputsBucketedMatrixContent(outputsBucketed);
+  if (matrixContent) {
+    card.appendChild(matrixContent);
+    return card;
+  }
+
+  card.appendChild(buildOutputsBucketedMiniTablesContent(outputsBucketed));
+  return card;
+}
+
+function buildSummaryCard(summaryHtml) {
+  const card = document.createElement('section');
+  card.className = 'generated-card generated-summary-card';
+
+  const heading = document.createElement('h3');
+  heading.className = 'generated-card-title';
+  heading.textContent = 'Summary';
+
+  card.appendChild(heading);
+
+  const content = document.createElement('div');
+  content.className = 'generated-summary-content';
+
+  const safeHtml = sanitizeSummaryHtml(summaryHtml || '');
+
+  if (!safeHtml) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'No generated summary yet.';
+    content.appendChild(empty);
+  } else {
+    content.innerHTML = safeHtml;
+  }
+
+  card.appendChild(content);
+
+  return card;
+}
+
+function buildChartsCard(charts) {
+  const card = document.createElement('section');
+  card.className = 'generated-card generated-charts-card';
+
+  const heading = document.createElement('h3');
+  heading.className = 'generated-card-title';
+  heading.textContent = 'Charts';
+
+  card.appendChild(heading);
+
+  const list = document.createElement('div');
+  list.className = 'generated-charts-list';
+
+  if (!Array.isArray(charts) || charts.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'No charts generated yet.';
+    list.appendChild(empty);
+  } else {
+    charts.forEach((chart, index) => {
+      const chartBlock = document.createElement('article');
+      chartBlock.className = 'generated-chart-block';
+      chartBlock.dataset.chartIndex = String(index);
+
+      const chartTop = document.createElement('div');
+      chartTop.className = 'generated-chart-top';
+
+      const title = document.createElement('h4');
+      title.className = 'generated-chart-title';
+      title.textContent = chart.title || `Chart ${index + 1}`;
+
+      const downloadButton = document.createElement('button');
+      downloadButton.type = 'button';
+      downloadButton.className = 'chart-download-btn';
+      downloadButton.textContent = 'CSV';
+      downloadButton.title = 'Download CSV';
+      downloadButton.setAttribute('aria-label', `Download CSV for ${title.textContent}`);
+      downloadButton.setAttribute('data-chart-download', 'true');
+
+      chartTop.appendChild(title);
+      chartTop.appendChild(downloadButton);
+
+      const canvasWrap = document.createElement('div');
+      canvasWrap.className = 'generated-chart-canvas-wrap';
+
+      const canvas = document.createElement('canvas');
+      canvas.className = 'generated-chart-canvas';
+      canvas.height = 220;
+
+      canvasWrap.appendChild(canvas);
+      chartBlock.appendChild(chartTop);
+      chartBlock.appendChild(canvasWrap);
+
+      list.appendChild(chartBlock);
+    });
+  }
+
+  card.appendChild(list);
+
+  return card;
+}
+
+function buildGeneratedSection(module) {
+  const generated = module.generated || {
+    summaryHtml: '',
+    assumptions: { columns: [], rows: [] },
+    outputs: { columns: [], rows: [] },
+    outputsBucketed: null,
+    charts: []
+  };
+
+  const section = document.createElement('section');
+  section.className = 'generated-section';
+
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = 'Generated Content';
+
+  const grid = document.createElement('div');
+  grid.className = 'generated-grid';
+
+  grid.appendChild(buildSummaryCard(generated.summaryHtml));
+  grid.appendChild(buildTableCard('Assumptions', generated.assumptions));
+  if (isOutputsBucketedPresent(generated.outputsBucketed)) {
+    grid.appendChild(buildOutputsBucketedCard(generated.outputsBucketed));
+  } else {
+    grid.appendChild(buildTableCard('Outputs', generated.outputs));
+  }
+  grid.appendChild(buildChartsCard(generated.charts));
+
+  section.appendChild(heading);
+  section.appendChild(grid);
+
+  return section;
+}
+
 export function getUiElements() {
   return {
     app: document.getElementById('app'),
     animLayer: document.getElementById('animLayer'),
+    toastHost: document.getElementById('toastHost'),
+    loadSessionInput: document.getElementById('loadSessionInput'),
+    devPanel: document.getElementById('devPanel'),
+    devPayloadInput: document.getElementById('devPayloadInput'),
+    devExampleSelect: document.getElementById('devExampleSelect'),
+    devApplyBtn: document.getElementById('devApplyBtn'),
+    devCreateApplyBtn: document.getElementById('devCreateApplyBtn'),
+    devLoadExampleBtn: document.getElementById('devLoadExampleBtn'),
+    devClearBtn: document.getElementById('devClearBtn'),
+    devCloseBtn: document.getElementById('devCloseBtn'),
     clientNameInput: document.getElementById('clientNameInput'),
     greetingHeadline: document.getElementById('greetingHeadline'),
     greetingLayer: document.getElementById('greetingLayer'),
@@ -51,6 +686,11 @@ export function getUiElements() {
     overviewViewport: document.getElementById('overviewViewport'),
     overviewZoomWrap: document.getElementById('overviewZoomWrap'),
     overviewGrid: document.getElementById('overviewGrid'),
+    playbookSelect: document.getElementById('playbookSelect'),
+    newCallButton: document.getElementById('newCallBtn'),
+    saveSessionButton: document.getElementById('saveSessionBtn'),
+    loadSessionButton: document.getElementById('loadSessionBtn'),
+    sessionStatus: document.getElementById('sessionStatus'),
     zoomButton: document.getElementById('zoomToggleBtn'),
     newModuleButton: document.getElementById('newModuleBtn'),
     resetButton: document.getElementById('resetBtn'),
@@ -102,6 +742,7 @@ export function buildFocusedPane({ module, moduleNumber, onTitleInput, onNotesIn
   card.appendChild(meta);
   card.appendChild(titleInput);
   card.appendChild(notesInput);
+  card.appendChild(buildGeneratedSection(module));
   pane.appendChild(card);
 
   return pane;
@@ -138,7 +779,7 @@ export function renderOverview({
 
     const snippet = document.createElement('p');
     snippet.className = 'overview-snippet';
-    snippet.textContent = makeOverviewSnippet(module.notes);
+    snippet.textContent = makeOverviewSnippet(module);
 
     card.appendChild(label);
     card.appendChild(title);
@@ -205,6 +846,15 @@ export function updateControls(ui, { mode, moduleCount, hasPrevious }) {
   ui.prevArrowButton.classList.toggle('is-hidden', mode !== 'focused');
   ui.nextArrowButton.classList.toggle('is-hidden', mode !== 'focused');
   ui.prevArrowButton.disabled = !hasPrevious;
+}
+
+export function updateSessionStatus(ui, isDirty) {
+  if (!ui.sessionStatus) {
+    return;
+  }
+
+  ui.sessionStatus.textContent = isDirty ? 'Unsaved changes' : 'Saved locally';
+  ui.sessionStatus.classList.toggle('is-dirty', Boolean(isDirty));
 }
 
 export function getFocusedCardElement(ui) {

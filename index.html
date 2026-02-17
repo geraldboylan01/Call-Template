@@ -21,9 +21,16 @@
           />
         </div>
         <div class="topbar-right">
+          <select id="playbookSelect" class="topbar-playbook-select" aria-label="Playbooks">
+            <option value="">Playbooks</option>
+          </select>
+          <button id="newCallBtn" class="ui-button" type="button">New Call</button>
+          <button id="saveSessionBtn" class="ui-button" type="button">Save Session</button>
+          <button id="loadSessionBtn" class="ui-button" type="button">Load Session</button>
           <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
           <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
           <button id="resetBtn" class="ui-button" type="button">Reset</button>
+          <span id="sessionStatus" class="session-status">Saved locally</span>
         </div>
       </header>
 
@@ -61,10 +68,39 @@
             </div>
           </div>
         </section>
+
+        <aside id="devPanel" class="dev-panel is-hidden" aria-hidden="true">
+          <div class="dev-panel-header">
+            <h2 class="dev-panel-title">Dev / Codex Payload Tester</h2>
+            <button id="devCloseBtn" class="ui-button dev-close-btn" type="button">Close</button>
+          </div>
+          <div class="dev-panel-body">
+            <label class="dev-label" for="devExampleSelect">Example payloads</label>
+            <select id="devExampleSelect" class="dev-select"></select>
+            <button id="devLoadExampleBtn" class="ui-button" type="button">Load Example Payload</button>
+
+            <label class="dev-label" for="devPayloadInput">Payload JSON</label>
+            <textarea
+              id="devPayloadInput"
+              class="dev-textarea"
+              spellcheck="false"
+              placeholder="{&quot;title&quot;:&quot;Updated module title&quot;,&quot;generated&quot;:{...}}"
+            ></textarea>
+          </div>
+          <div class="dev-panel-actions">
+            <button id="devApplyBtn" class="ui-button" type="button">Apply to Active Module</button>
+            <button id="devCreateApplyBtn" class="ui-button" type="button">Create New Module + Apply</button>
+            <button id="devClearBtn" class="ui-button" type="button">Clear</button>
+          </div>
+        </aside>
+
         <div id="animLayer" class="anim-layer" aria-hidden="true"></div>
+        <div id="toastHost" class="toast-host" aria-live="polite"></div>
       </main>
     </div>
+    <input id="loadSessionInput" type="file" accept=".json,application/json" class="file-input-hidden" />
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script type="module" src="./js/app.js"></script>
   </body>
