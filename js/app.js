@@ -828,10 +828,13 @@ function setPensionShowMaxForModule(moduleId, value) {
     return;
   }
 
-  appState.pensionShowMaxByModuleId.set(moduleId, Boolean(value));
+  const nextValue = Boolean(value);
+  appState.pensionShowMaxByModuleId.set(moduleId, nextValue);
 
   if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
-    void hydrateChartsWhenStable({ reason: 'pension-toggle' });
+    if (typeof window.__setPensionShowMaxForModule === 'function') {
+      window.__setPensionShowMaxForModule(moduleId, nextValue);
+    }
   }
 }
 

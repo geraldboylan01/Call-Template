@@ -676,6 +676,148 @@ function isPensionSustainabilityChart(chartData) {
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.sustainabilityMax);
 }
 
+function isRequiredReferenceLabel(label) {
+  const normalized = normalizeLabel(label).toLowerCase();
+  return normalized === normalizeLabel(PENSION_DATASET_LABELS.requiredReference).toLowerCase()
+    || normalized.includes('required-balance reference')
+    || normalized.includes('required pot path');
+}
+
+function isCurrentScenarioLabel(label) {
+  const normalized = normalizeLabel(label).toLowerCase();
+  return normalized.includes('(current)')
+    || normalized.includes('current contribution path')
+    || normalized.includes('current start pot');
+}
+
+function isMaxScenarioLabel(label) {
+  const normalized = normalizeLabel(label).toLowerCase();
+  return normalized.includes('(max)')
+    || normalized.includes('max personal contribution path')
+    || normalized.includes('max start pot');
+}
+
+function hasSustainabilityLabels(datasets) {
+  if (!Array.isArray(datasets)) {
+    return false;
+  }
+
+  return datasets.some((dataset) => {
+    const label = normalizeLabel(dataset?.label);
+    return isRequiredReferenceLabel(label)
+      || label === PENSION_DATASET_LABELS.sustainabilityCurrent
+      || label === PENSION_DATASET_LABELS.sustainabilityMax
+      || label === 'Balance with target income (current start pot)'
+      || label === 'Balance with target income (max start pot)';
+  });
+}
+
+function ensureAtLeastOneVisibleBarDataset(datasets, showMax) {
+  if (!Array.isArray(datasets) || datasets.length === 0) {
+    return;
+  }
+
+  const barDatasets = datasets.filter((dataset) => dataset?.type === 'bar' || dataset?.yAxisID === 'y1');
+  if (barDatasets.length === 0) {
+    return;
+  }
+
+  const hasVisibleBar = barDatasets.some((dataset) => dataset.hidden !== true);
+  if (hasVisibleBar) {
+    return;
+  }
+
+  const token = showMax ? '(max)' : '(current)';
+  const preferred = barDatasets.find((dataset) => normalizeLabel(dataset.label).toLowerCase().includes(token))
+    || barDatasets[0];
+
+  if (preferred) {
+    preferred.hidden = false;
+  }
+}
+
+function applySustainabilityLegendFilter(chart, showMax) {
+  if (!chart?.options?.plugins?.legend?.labels) {
+    return;
+  }
+
+  chart.options.plugins.legend.labels.filter = (legendItem, legendData) => {
+    const dataset = legendData?.datasets?.[legendItem.datasetIndex];
+    if (!dataset) {
+      return true;
+    }
+
+    const label = normalizeLabel(dataset.label);
+    if (label === PENSION_DATASET_LABELS.sustainabilityCurrent || label === 'Balance with target income (current start pot)') {
+      return !showMax;
+    }
+    if (label === PENSION_DATASET_LABELS.sustainabilityMax || label === 'Balance with target income (max start pot)') {
+      return showMax;
+    }
+    return true;
+  };
+}
+
+function applyPensionShowMaxToChart(chart, showMax) {
+  if (!chart?.data || !Array.isArray(chart.data.datasets)) {
+    return false;
+  }
+
+  let changed = false;
+  chart.data.datasets.forEach((dataset) => {
+    const label = normalizeLabel(dataset?.label);
+    let nextHidden = null;
+
+    if (isRequiredReferenceLabel(label)) {
+      nextHidden = false;
+    } else if (isMaxScenarioLabel(label)) {
+      nextHidden = !showMax;
+    } else if (isCurrentScenarioLabel(label)) {
+      nextHidden = showMax;
+    }
+
+    if (nextHidden !== null && dataset.hidden !== nextHidden) {
+      dataset.hidden = nextHidden;
+      changed = true;
+    }
+  });
+
+  ensureAtLeastOneVisibleBarDataset(chart.data.datasets, showMax);
+
+  if (hasSustainabilityLabels(chart.data.datasets)) {
+    applySustainabilityLegendFilter(chart, showMax);
+    changed = true;
+  }
+
+  return changed;
+}
+
+function setPensionShowMaxForModuleCharts(moduleId, showMax) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return 0;
+  }
+
+  let updated = 0;
+  for (const entry of chartRegistry.values()) {
+    if (!entry || entry.moduleId !== moduleId || !entry.chart) {
+      continue;
+    }
+
+    const changed = applyPensionShowMaxToChart(entry.chart, showMax);
+    if (changed) {
+      entry.chart.update('none');
+      if (entry.mode === 'overlay') {
+        scheduleOverlayPositionUpdate();
+      }
+      updated += 1;
+    }
+  }
+
+  return updated;
+}
+
+window.__setPensionShowMaxForModule = (moduleId, showMax) => setPensionShowMaxForModuleCharts(moduleId, Boolean(showMax));
+
 function applyLineColorOverrides(datasetStyle) {
   const label = normalizeLabel(datasetStyle.label);
   const map = {
@@ -1335,6 +1477,8 @@ export function renderChartsForPane(paneElement, module, { clientName, moduleTit
       chart,
       canvas: renderCanvas,
       sourceCanvas,
+      moduleId: module?.id || '',
+      chartIndex,
       mode: chartMode,
       overlayWrapper,
       blockEl: block,
