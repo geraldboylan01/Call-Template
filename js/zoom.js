@@ -4,6 +4,12 @@ const reduceMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 let isAnimating = false;
 
+function reflowChartsAfterTransition() {
+  if (typeof window.__callcanvasReflowCharts === 'function') {
+    window.__callcanvasReflowCharts();
+  }
+}
+
 function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
@@ -181,6 +187,7 @@ export async function zoomToModuleFromOverview(moduleId, sourceCardEl, {
     if (reduceMotionQuery.matches) {
       await quickCrossfadeToFocus({ overviewLayer, focusLayer });
       cleanupGhost(ghostEl, sourceCardEl, animLayer);
+      reflowChartsAfterTransition();
       return true;
     }
 
@@ -208,6 +215,7 @@ export async function zoomToModuleFromOverview(moduleId, sourceCardEl, {
     focusLayer.style.pointerEvents = 'auto';
 
     cleanupGhost(ghostEl, sourceCardEl, animLayer);
+    reflowChartsAfterTransition();
 
     return true;
   } finally {
@@ -267,6 +275,7 @@ export async function zoomOutToOverview({
     if (reduceMotionQuery.matches) {
       await quickCrossfadeToOverview({ overviewLayer, focusLayer });
       cleanupGhost(ghostEl, sourceEl, animLayer);
+      reflowChartsAfterTransition();
       return true;
     }
 
@@ -297,6 +306,7 @@ export async function zoomOutToOverview({
     resetLayerStyles(focusLayer);
 
     cleanupGhost(ghostEl, sourceEl, animLayer);
+    reflowChartsAfterTransition();
 
     return true;
   } finally {

@@ -44,7 +44,9 @@ const appState = {
   mode: 'greeting',
   sortable: null,
   transitionLock: false,
-  devPanelOpen: false
+  devPanelOpen: false,
+  pensionShowMaxByModuleId: new Map(),
+  chartHydrationRunId: 0
 };
 
 const EXAMPLE_PAYLOADS = [
@@ -413,6 +415,7 @@ async function replaceSession(nextSession, options = {}) {
 
   appState.transitionLock = false;
   appState.session = nextSession;
+  appState.pensionShowMaxByModuleId = new Map();
 
   ensureActiveModule(appState.session);
   stateManager.saveNow(appState.session);
@@ -688,6 +691,150 @@ function hydrateChartsForActivePane() {
   });
 }
 
+function summarizeHydrationSnapshot(snapshot) {
+  const paneRect = snapshot?.paneRect
+    ? {
+      width: Number(snapshot.paneRect.width.toFixed(2)),
+      height: Number(snapshot.paneRect.height.toFixed(2))
+    }
+    : null;
+
+  return {
+    zoomAnimating: Boolean(snapshot?.zoomAnimating),
+    paneConnected: Boolean(snapshot?.pane?.isConnected),
+    paneVisible: Boolean(snapshot?.paneVisible),
+    paneOpacityVisible: Boolean(snapshot?.paneOpacityVisible),
+    paneRect,
+    paneOpacity: snapshot?.paneOpacity ?? null,
+    paneTransform: snapshot?.paneTransform ?? null,
+    stageTransform: snapshot?.stageTransform ?? null,
+    focusTransform: snapshot?.focusTransform ?? null
+  };
+}
+
+function getActivePaneHydrationSnapshot() {
+  const zoomAnimating = getIsZoomAnimating();
+  const pane = ui.swipeStage?.querySelector('.swipe-pane.active') || null;
+
+  if (!pane) {
+    return {
+      zoomAnimating,
+      pane,
+      paneRect: null,
+      paneVisible: false,
+      paneOpacityVisible: false,
+      paneOpacity: null,
+      paneTransform: null,
+      stageTransform: null,
+      focusTransform: null,
+      isStable: false
+    };
+  }
+
+  const paneStyle = window.getComputedStyle(pane);
+  const stageStyle = ui.swipeStage ? window.getComputedStyle(ui.swipeStage) : null;
+  const focusStyle = ui.focusLayer ? window.getComputedStyle(ui.focusLayer) : null;
+  const paneRect = pane.getBoundingClientRect();
+  const paneVisible = pane.isConnected
+    && pane.offsetWidth > 0
+    && pane.offsetHeight > 0
+    && paneRect.width > 0
+    && paneRect.height > 0;
+  const opacityNumber = Number.parseFloat(paneStyle.opacity);
+  const paneOpacityVisible = paneStyle.opacity !== '0'
+    && (!Number.isFinite(opacityNumber) || opacityNumber > 0);
+  const paneTransform = paneStyle.transform || 'none';
+  const stageTransform = stageStyle?.transform || 'none';
+  const focusTransform = focusStyle?.transform || 'none';
+  const isStable = !zoomAnimating
+    && paneVisible
+    && paneOpacityVisible
+    && paneTransform === 'none'
+    && stageTransform === 'none'
+    && focusTransform === 'none';
+
+  return {
+    zoomAnimating,
+    pane,
+    paneRect,
+    paneVisible,
+    paneOpacityVisible,
+    paneOpacity: paneStyle.opacity,
+    paneTransform,
+    stageTransform,
+    focusTransform,
+    isStable
+  };
+}
+
+async function hydrateChartsWhenStable({ reason = 'unknown' } = {}) {
+  const runId = ++appState.chartHydrationRunId;
+  const maxFrames = 60;
+
+  await nextFrame();
+  await nextFrame();
+
+  for (let attempt = 1; attempt <= maxFrames; attempt += 1) {
+    if (runId !== appState.chartHydrationRunId) {
+      return false;
+    }
+
+    const snapshot = getActivePaneHydrationSnapshot();
+
+    if (attempt === 1) {
+      console.info('[CallCanvas][Charts] hydration wait start', {
+        reason,
+        ...summarizeHydrationSnapshot(snapshot)
+      });
+    }
+
+    if (snapshot.isStable) {
+      hydrateChartsForActivePane();
+      console.info('[CallCanvas][Charts] hydration wait complete', {
+        reason,
+        attempts: attempt,
+        ...summarizeHydrationSnapshot(snapshot)
+      });
+      return true;
+    }
+
+    await nextFrame();
+  }
+
+  if (runId !== appState.chartHydrationRunId) {
+    return false;
+  }
+
+  const finalSnapshot = getActivePaneHydrationSnapshot();
+  console.warn('[CallCanvas][Charts] hydration wait capped; hydrating anyway', {
+    reason,
+    attempts: maxFrames,
+    ...summarizeHydrationSnapshot(finalSnapshot)
+  });
+  hydrateChartsForActivePane();
+  return false;
+}
+
+function getPensionShowMaxForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return false;
+  }
+
+  return appState.pensionShowMaxByModuleId.get(moduleId) ?? false;
+}
+
+function setPensionShowMaxForModule(moduleId, value) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  appState.pensionShowMaxByModuleId.set(moduleId, Boolean(value));
+
+  if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
+    void hydrateChartsWhenStable({ reason: 'pension-toggle' });
+  }
+}
+
 function updateModule(moduleId, patch) {
   const module = getModuleById(appState.session, moduleId);
   if (!module) {
@@ -728,7 +875,12 @@ function getFocusedPaneForModule(module) {
   });
 }
 
-async function renderFocused({ useSwipe = true, direction = 'forward', revealMode = true } = {}) {
+async function renderFocused({
+  useSwipe = true,
+  direction = 'forward',
+  revealMode = true,
+  deferCharts = false
+} = {}) {
   ensureActiveModule(appState.session);
 
   if (!hasModules()) {
@@ -753,12 +905,15 @@ async function renderFocused({ useSwipe = true, direction = 'forward', revealMod
     mountInitialPane(ui.swipeStage, pane);
   }
 
-  hydrateChartsForActivePane();
-
   if (revealMode) {
     appState.mode = 'focused';
     setMode(ui, 'focused');
     updateUiChrome();
+  }
+
+  if (!deferCharts) {
+    const reason = useSwipe ? 'swipe-to-pane' : (revealMode ? 'renderFocused-visible' : 'renderFocused');
+    await hydrateChartsWhenStable({ reason });
   }
 }
 
@@ -854,7 +1009,7 @@ async function zoomIntoModuleFromOverview(moduleId, sourceCardEl) {
     focusLayer: ui.focusLayer,
     animLayer: ui.animLayer,
     prepareFocusTarget: async () => {
-      await renderFocused({ useSwipe: false, revealMode: false });
+      await renderFocused({ useSwipe: false, revealMode: false, deferCharts: true });
       ensureLayerVisibleForMeasure(ui.focusLayer);
       ui.focusLayer.style.visibility = 'hidden';
       ui.focusLayer.style.opacity = '0';
@@ -867,6 +1022,7 @@ async function zoomIntoModuleFromOverview(moduleId, sourceCardEl) {
     appState.mode = 'focused';
     setMode(ui, 'focused');
     updateUiChrome();
+    await hydrateChartsWhenStable({ reason: 'zoom-into-completed' });
     stateManager.scheduleSave(appState.session);
   }
 
@@ -1036,6 +1192,10 @@ async function applyModuleUpdateInternal(payload, options = {}) {
 
     if ('pensionInputs' in normalizedPayload.generated && module.generated.pensionInputs) {
       const projection = computePensionProjection(module.generated.pensionInputs);
+      const currentScenario = projection.debug?.currentScenario || {
+        contribEurSeries: [],
+        growthEurSeries: []
+      };
 
       module.generated.assumptions = projection.assumptionsTable;
       module.generated.outputs = projection.outputsTable;
@@ -1060,6 +1220,12 @@ async function applyModuleUpdateInternal(payload, options = {}) {
         heldConstantBeyond2029: projection.debug.sftHeldConstantBeyond2029,
         breaches: projection.debug.sftBreaches
       });
+      console.info('[pension] chart1 dataset labels', projection.charts[0].datasets.map((dataset) => dataset.label));
+      console.info(
+        '[pension] contrib sample',
+        currentScenario.contribEurSeries.slice(0, 3),
+        currentScenario.growthEurSeries.slice(0, 3)
+      );
 
       if (Array.isArray(projection.debug.maxSeriesMonotonicIssues) && projection.debug.maxSeriesMonotonicIssues.length > 0) {
         console.warn('[CallCanvas] max personal series is not monotonic non-decreasing', {
@@ -1385,6 +1551,10 @@ async function init() {
   window.applyModuleUpdate = async (payload) => {
     return applyModuleUpdateInternal(payload, {});
   };
+  window.__setPensionShowMax = (moduleId, value) => {
+    setPensionShowMaxForModule(moduleId, value);
+  };
+  window.__getPensionShowMaxForModule = (moduleId) => getPensionShowMaxForModule(moduleId);
 
   if (appState.mode === 'focused') {
     await renderFocused({ useSwipe: false, revealMode: true });

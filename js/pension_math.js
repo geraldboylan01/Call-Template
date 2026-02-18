@@ -60,6 +60,14 @@ function clampToZero(value) {
   return value > 0 ? value : 0;
 }
 
+function floorSeriesToZero(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values.map((value) => (Math.abs(value) < 1e-6 ? 0 : clampToZero(value)));
+}
+
 function ageBandPct(age) {
   if (age < 30) {
     return 0.15;
@@ -180,22 +188,58 @@ function buildAgeRange(startAge, endAge) {
 function simulateAccumulation(inputs, personalContributionFn) {
   const labels = [inputs.currentAge];
   const balances = [inputs.currentPot];
+  const personalEurSeries = [];
+  const employerEurSeries = [];
+  const contribEurSeries = [];
+  const growthEurSeries = [];
   let balance = inputs.currentPot;
 
   for (let age = inputs.currentAge; age < inputs.retirementAge; age += 1) {
+    const startBalance = balance;
     const salaryAtAge = inputs.currentSalary * Math.pow(1 + inputs.wageGrowthRate, age - inputs.currentAge);
-    const personal = personalContributionFn(age, salaryAtAge);
-    const employer = inputs.employerPct * salaryAtAge;
+    const personalEurRaw = personalContributionFn(age, salaryAtAge);
+    const personalEur = Number.isFinite(personalEurRaw) ? personalEurRaw : 0;
+    const employerEurRaw = inputs.employerPct * salaryAtAge;
+    const employerEur = Number.isFinite(employerEurRaw) ? employerEurRaw : 0;
+    const contribEur = personalEur + employerEur;
+    const preGrowth = startBalance + contribEur;
+    const endBalance = preGrowth * (1 + inputs.growthRate);
+    const growthEurRaw = endBalance - preGrowth;
+    const growthEur = Number.isFinite(growthEurRaw) ? growthEurRaw : 0;
 
-    balance = (balance + personal + employer) * (1 + inputs.growthRate);
+    balance = Number.isFinite(endBalance) ? endBalance : preGrowth;
+    personalEurSeries.push(personalEur);
+    employerEurSeries.push(employerEur);
+    contribEurSeries.push(contribEur);
+    growthEurSeries.push(growthEur);
 
     labels.push(age + 1);
     balances.push(balance);
   }
 
+  while (personalEurSeries.length < labels.length) {
+    personalEurSeries.push(0);
+  }
+
+  while (employerEurSeries.length < labels.length) {
+    employerEurSeries.push(0);
+  }
+
+  while (contribEurSeries.length < labels.length) {
+    contribEurSeries.push(0);
+  }
+
+  while (growthEurSeries.length < labels.length) {
+    growthEurSeries.push(0);
+  }
+
   return {
     labels,
     balances,
+    personalEurSeries,
+    employerEurSeries,
+    contribEurSeries,
+    growthEurSeries,
     retirementPot: balances[balances.length - 1]
   };
 }
@@ -365,19 +409,19 @@ export function computePensionProjection(rawInputs) {
     (_age, salaryAtAge) => inputs.personalPct * salaryAtAge
   );
 
-  const maxPersonalScenario = simulateAccumulation(
+  const maxScenario = simulateAccumulation(
     inputs,
     (age, salaryAtAge) => ageBandPct(age) * Math.min(salaryAtAge, 115000)
   );
 
   const monotonicIssues = [];
-  for (let index = 1; index < maxPersonalScenario.balances.length; index += 1) {
-    const previous = maxPersonalScenario.balances[index - 1];
-    const current = maxPersonalScenario.balances[index];
+  for (let index = 1; index < maxScenario.balances.length; index += 1) {
+    const previous = maxScenario.balances[index - 1];
+    const current = maxScenario.balances[index];
 
     if (previous > 0 && current < previous * 0.99) {
       monotonicIssues.push({
-        age: maxPersonalScenario.labels[index],
+        age: maxScenario.labels[index],
         previous,
         current,
         dropPct: ((previous - current) / previous) * 100
@@ -386,25 +430,26 @@ export function computePensionProjection(rawInputs) {
   }
 
   const requiredPot = computeRequiredPotAtRetirement(inputs);
-  const retirementSimulationProjected = simulateRetirementBalances(inputs, currentScenario.retirementPot);
+  const retirementSimulationProjectedCurrent = simulateRetirementBalances(inputs, currentScenario.retirementPot);
+  const retirementSimulationProjectedMax = simulateRetirementBalances(inputs, maxScenario.retirementPot);
   const retirementSimulationRequired = simulateRetirementBalances(inputs, requiredPot);
   const minDrawdownSimulation = simulateMinimumDrawdown(inputs, currentScenario.retirementPot);
-  const projectedBalanceSeriesForChart = retirementSimulationProjected.balances;
-  const requiredBalanceSeriesForChart = retirementSimulationRequired.balances
-    .map((value) => (Math.abs(value) < 1e-6 ? 0 : clampToZero(value)));
+  const sustainabilityCurrentFloored = floorSeriesToZero(retirementSimulationProjectedCurrent.balances);
+  const sustainabilityMaxFloored = floorSeriesToZero(retirementSimulationProjectedMax.balances);
+  const requiredReferenceFloored = floorSeriesToZero(retirementSimulationRequired.balances);
 
-  const depletionAgeProjected = retirementSimulationProjected.labels[
-    retirementSimulationProjected.balances.findIndex((value) => value === 0)
+  const depletionAgeProjected = retirementSimulationProjectedCurrent.labels[
+    sustainabilityCurrentFloored.findIndex((value) => value === 0)
   ] ?? null;
   const depletionAgeRequired = retirementSimulationRequired.labels[
-    requiredBalanceSeriesForChart.findIndex((value) => value === 0)
+    requiredReferenceFloored.findIndex((value) => value === 0)
   ] ?? null;
 
   const retirementYear = inputs.currentYear + (inputs.retirementAge - inputs.currentAge);
   const sftMeta = computeSft(retirementYear);
 
   const projectedPotCurrent = currentScenario.retirementPot;
-  const projectedPotMaxPersonal = maxPersonalScenario.retirementPot;
+  const projectedPotMaxPersonal = maxScenario.retirementPot;
   const sftBreaches = computeSftBreaches({
     projectedPotCurrent,
     projectedPotMaxPersonal,
@@ -471,16 +516,40 @@ export function computePensionProjection(rawInputs) {
   const charts = [
     {
       title: 'Pension Pot at Retirement (Before Withdrawals)',
-      type: 'line',
+      type: 'bar',
       labels: currentScenario.labels,
       datasets: [
         {
-          label: 'Current contribution path',
+          label: 'Pot (current)',
           data: currentScenario.balances
         },
         {
-          label: 'Max personal contribution path',
-          data: maxPersonalScenario.balances
+          label: 'Pot (max)',
+          data: maxScenario.balances
+        },
+        {
+          label: 'Personal (current)',
+          data: currentScenario.personalEurSeries
+        },
+        {
+          label: 'Employer (current)',
+          data: currentScenario.employerEurSeries
+        },
+        {
+          label: 'Growth (current)',
+          data: currentScenario.growthEurSeries
+        },
+        {
+          label: 'Personal (max)',
+          data: maxScenario.personalEurSeries
+        },
+        {
+          label: 'Employer (max)',
+          data: maxScenario.employerEurSeries
+        },
+        {
+          label: 'Growth (max)',
+          data: maxScenario.growthEurSeries
         }
       ]
     }
@@ -506,15 +575,19 @@ export function computePensionProjection(rawInputs) {
     charts.push({
       title: 'Retirement Sustainability (Target Income)',
       type: 'line',
-      labels: retirementSimulationProjected.labels,
+      labels: retirementSimulationProjectedCurrent.labels,
       datasets: [
         {
-          label: 'Balance with target income (starts from projected pot)',
-          data: projectedBalanceSeriesForChart
+          label: 'Balance (current)',
+          data: sustainabilityCurrentFloored
         },
         {
-          label: 'Required-balance reference (starts from required pot)',
-          data: requiredBalanceSeriesForChart,
+          label: 'Balance (max)',
+          data: sustainabilityMaxFloored
+        },
+        {
+          label: 'Required pot path',
+          data: requiredReferenceFloored,
           borderColor: '#B48CFF',
           backgroundColor: 'rgba(180, 140, 255, 0.20)',
           pointBackgroundColor: '#B48CFF',
@@ -523,6 +596,25 @@ export function computePensionProjection(rawInputs) {
       ]
     });
   }
+
+  charts.forEach((chart) => {
+    const labelsCount = Array.isArray(chart?.labels) ? chart.labels.length : 0;
+    if (!Array.isArray(chart?.datasets)) {
+      return;
+    }
+
+    chart.datasets.forEach((dataset) => {
+      const dataCount = Array.isArray(dataset?.data) ? dataset.data.length : 0;
+      if (dataCount !== labelsCount) {
+        console.warn('[Pension] dataset length mismatch', {
+          chart: chart.title,
+          label: dataset?.label || '',
+          labels: labelsCount,
+          data: dataCount
+        });
+      }
+    });
+  });
 
   return {
     assumptionsTable,
@@ -539,10 +631,17 @@ export function computePensionProjection(rawInputs) {
       sftHeldConstantBeyond2029: sftMeta.heldConstantBeyond2029,
       sftBreaches,
       sftSentence,
+      currentScenario: {
+        personalEurSeries: currentScenario.personalEurSeries,
+        employerEurSeries: currentScenario.employerEurSeries,
+        contribEurSeries: currentScenario.contribEurSeries,
+        growthEurSeries: currentScenario.growthEurSeries
+      },
       depletionAgeProjected,
       depletionAgeRequired,
       maxSeriesMonotonicIssues: monotonicIssues,
-      retirementEndingBalanceFromProjected: retirementSimulationProjected.endingBalanceAfterHorizon,
+      retirementEndingBalanceFromProjected: retirementSimulationProjectedCurrent.endingBalanceAfterHorizon,
+      retirementEndingBalanceFromProjectedMax: retirementSimulationProjectedMax.endingBalanceAfterHorizon,
       retirementEndingBalanceFromRequired: retirementSimulationRequired.endingBalanceAfterHorizon
     }
   };

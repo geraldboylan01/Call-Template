@@ -2,6 +2,12 @@ const SWIPE_DURATION_MS = 400;
 const SWIPE_EASING = 'cubic-bezier(0.2, 0.84, 0.28, 1)';
 const reduceMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+function reflowChartsAfterTransition() {
+  if (typeof window.__callcanvasReflowCharts === 'function') {
+    window.__callcanvasReflowCharts();
+  }
+}
+
 function waitForTransitionEnd(element, timeoutMs) {
   return new Promise((resolve) => {
     let done = false;
@@ -41,6 +47,7 @@ export async function swipeToPane(stageElement, nextPaneElement, direction = 'fo
   if (!currentPane) {
     if (reduceMotionQuery.matches) {
       mountInitialPane(stageElement, nextPaneElement);
+      reflowChartsAfterTransition();
       return;
     }
 
@@ -59,11 +66,13 @@ export async function swipeToPane(stageElement, nextPaneElement, direction = 'fo
     await waitForTransitionEnd(nextPaneElement, SWIPE_DURATION_MS);
 
     nextPaneElement.style.transition = '';
+    reflowChartsAfterTransition();
     return;
   }
 
   if (reduceMotionQuery.matches) {
     mountInitialPane(stageElement, nextPaneElement);
+    reflowChartsAfterTransition();
     return;
   }
 
@@ -98,6 +107,7 @@ export async function swipeToPane(stageElement, nextPaneElement, direction = 'fo
   nextPaneElement.style.transition = '';
   nextPaneElement.style.transform = 'translateX(0)';
   nextPaneElement.style.opacity = '1';
+  reflowChartsAfterTransition();
 }
 
 export function getSwipeTiming() {

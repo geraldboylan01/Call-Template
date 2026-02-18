@@ -67,6 +67,15 @@ function makeOverviewSnippet(module) {
   return 'No notes yet.';
 }
 
+function isPensionModule(module) {
+  if (module?.generated?.pensionInputs) {
+    return true;
+  }
+
+  const title = typeof module?.title === 'string' ? module.title.toLowerCase() : '';
+  return title.includes('pension');
+}
+
 function showLayer(layer) {
   if (!layer) {
     return;
@@ -567,7 +576,7 @@ function buildSummaryCard(summaryHtml) {
   return card;
 }
 
-function buildChartsCard(charts) {
+function buildChartsCard(module, charts) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-charts-card';
 
@@ -576,6 +585,39 @@ function buildChartsCard(charts) {
   heading.textContent = 'Charts';
 
   card.appendChild(heading);
+
+  if (isPensionModule(module)) {
+    const showMax = typeof window.__getPensionShowMaxForModule === 'function'
+      ? Boolean(window.__getPensionShowMaxForModule(module.id))
+      : false;
+
+    const toggle = document.createElement('label');
+    toggle.className = 'pension-toggle';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'pension-toggle-input';
+    checkbox.checked = showMax;
+
+    const switchTrack = document.createElement('span');
+    switchTrack.className = 'pension-toggle-switch';
+    switchTrack.setAttribute('aria-hidden', 'true');
+
+    const text = document.createElement('span');
+    text.className = 'pension-toggle-text';
+    text.textContent = 'Show max personal contributions';
+
+    checkbox.addEventListener('change', (event) => {
+      if (typeof window.__setPensionShowMax === 'function') {
+        window.__setPensionShowMax(module.id, Boolean(event.target.checked));
+      }
+    });
+
+    toggle.appendChild(checkbox);
+    toggle.appendChild(switchTrack);
+    toggle.appendChild(text);
+    card.appendChild(toggle);
+  }
 
   const list = document.createElement('div');
   list.className = 'generated-charts-list';
@@ -655,7 +697,7 @@ function buildGeneratedSection(module) {
   } else {
     grid.appendChild(buildTableCard('Outputs', generated.outputs));
   }
-  grid.appendChild(buildChartsCard(generated.charts));
+  grid.appendChild(buildChartsCard(module, generated.charts));
 
   section.appendChild(heading);
   section.appendChild(grid);
