@@ -68,12 +68,7 @@ function makeOverviewSnippet(module) {
 }
 
 function isPensionModule(module) {
-  if (module?.generated?.pensionInputs) {
-    return true;
-  }
-
-  const title = typeof module?.title === 'string' ? module.title.toLowerCase() : '';
-  return title.includes('pension');
+  return Boolean(module?.generated?.pensionInputs);
 }
 
 function showLayer(layer) {
@@ -676,6 +671,7 @@ function buildGeneratedSection(module) {
     summaryHtml: '',
     assumptions: { columns: [], rows: [] },
     outputs: { columns: [], rows: [] },
+    tables: [],
     outputsBucketed: null,
     charts: []
   };
@@ -696,6 +692,14 @@ function buildGeneratedSection(module) {
     grid.appendChild(buildOutputsBucketedCard(generated.outputsBucketed));
   } else {
     grid.appendChild(buildTableCard('Outputs', generated.outputs));
+  }
+  if (Array.isArray(generated.tables) && generated.tables.length > 0) {
+    generated.tables.forEach((table, tableIndex) => {
+      const title = typeof table?.title === 'string' && table.title.trim()
+        ? table.title
+        : `Table ${tableIndex + 1}`;
+      grid.appendChild(buildTableCard(title, table));
+    });
   }
   grid.appendChild(buildChartsCard(module, generated.charts));
 

@@ -93,6 +93,21 @@ function normalizeCharts(charts) {
     }));
 }
 
+function normalizeGeneratedTables(tables) {
+  if (!Array.isArray(tables)) {
+    return [];
+  }
+
+  return tables
+    .filter((table) => table && typeof table === 'object' && !Array.isArray(table))
+    .map((table, index) => ({
+      title: typeof table.title === 'string' && table.title.trim()
+        ? table.title
+        : `Table ${index + 1}`,
+      ...normalizeTable(table)
+    }));
+}
+
 function normalizeOutputsBucketed(outputsBucketed) {
   if (!outputsBucketed || typeof outputsBucketed !== 'object' || Array.isArray(outputsBucketed)) {
     return null;
@@ -193,6 +208,7 @@ export function createEmptyGenerated() {
       columns: [],
       rows: []
     },
+    tables: [],
     pensionInputs: null,
     outputsBucketed: null,
     charts: []
@@ -208,6 +224,7 @@ export function normalizeGenerated(generated) {
     summaryHtml: typeof generated.summaryHtml === 'string' ? generated.summaryHtml : '',
     assumptions: normalizeTable(generated.assumptions),
     outputs: normalizeTable(generated.outputs),
+    tables: normalizeGeneratedTables(generated.tables),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
     outputsBucketed: normalizeOutputsBucketed(generated.outputsBucketed),
     charts: normalizeCharts(generated.charts)

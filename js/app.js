@@ -129,6 +129,38 @@ const EXAMPLE_PAYLOADS = [
         ]
       }
     }
+  },
+  {
+    id: 'outputsbucketed-auto-repair',
+    label: 'OutputsBucketed Auto-Repair',
+    payload: {
+      title: 'OutputsBucketed Repair Demo',
+      generated: {
+        summaryHtml: '<p>This payload intentionally includes outputsBucketed issues for auto-repair.</p>',
+        outputsBucketed: {
+          sections: [
+            {
+              key: 'liquidity',
+              title: 'Liquidity',
+              columns: ['Asset', 'Amount (€)'],
+              rows: [
+                ['Cash', 12000],
+                ['Savings', 4500]
+              ]
+            },
+            {
+              key: 'cashflow',
+              title: 'Cashflow by Year',
+              columns: ['Year', 'Income', 'Expenses', 'Net'],
+              rows: [
+                ['2026', 120000, 80000, 40000],
+                ['2027', 128000, 85000, 43000]
+              ]
+            }
+          ]
+        }
+      }
+    }
   }
 ];
 
@@ -320,6 +352,7 @@ function loadSelectedExampleIntoEditor() {
   }
 
   ui.devPayloadInput.value = JSON.stringify(selected.payload, null, 2);
+  renderDevPayloadWarnings([]);
 }
 
 function normalizeEditorJsonInput(rawInput) {
@@ -327,6 +360,194 @@ function normalizeEditorJsonInput(rawInput) {
     .trim()
     .replace(/\u201C|\u201D/g, '"')
     .replace(/\u2018|\u2019/g, '\'');
+}
+
+function ensureDevPayloadWarningHost() {
+  if (!ui.devPanel) {
+    return null;
+  }
+
+  let host = ui.devPanel.querySelector('[data-dev-payload-warnings]');
+  if (host) {
+    return host;
+  }
+
+  host = document.createElement('div');
+  host.setAttribute('data-dev-payload-warnings', 'true');
+  Object.assign(host.style, {
+    display: 'none',
+    margin: '10px 16px 0',
+    padding: '10px 12px',
+    border: '1px solid rgba(255, 209, 102, 0.45)',
+    background: 'rgba(54, 36, 7, 0.45)',
+    borderRadius: '10px',
+    color: '#ffe5a8',
+    fontSize: '12px',
+    lineHeight: '1.4'
+  });
+
+  const actions = ui.devPanel.querySelector('.dev-panel-actions');
+  if (actions && actions.parentElement) {
+    actions.parentElement.insertBefore(host, actions);
+  } else {
+    ui.devPanel.appendChild(host);
+  }
+
+  return host;
+}
+
+function renderDevPayloadWarnings(warnings) {
+  const host = ensureDevPayloadWarningHost();
+  if (!host) {
+    return;
+  }
+
+  host.innerHTML = '';
+  if (!Array.isArray(warnings) || warnings.length === 0) {
+    host.style.display = 'none';
+    return;
+  }
+
+  host.style.display = 'block';
+
+  const title = document.createElement('div');
+  title.textContent = 'Auto-repairs applied:';
+  title.style.fontWeight = '700';
+  title.style.marginBottom = '6px';
+  host.appendChild(title);
+
+  const list = document.createElement('ul');
+  list.style.margin = '0';
+  list.style.padding = '0 0 0 16px';
+
+  warnings.forEach((warning) => {
+    const item = document.createElement('li');
+    item.textContent = warning;
+    list.appendChild(item);
+  });
+
+  host.appendChild(list);
+}
+
+function toGenericTableRows(rows) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows.map((row) => {
+    if (!Array.isArray(row)) {
+      return [];
+    }
+
+    return row.map((value) => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      return String(value ?? '');
+    });
+  });
+}
+
+function normalizeDevPanelPayload(payload) {
+  const warnings = [];
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { payload, warnings };
+  }
+
+  const generated = payload.generated;
+  if (!generated || typeof generated !== 'object' || Array.isArray(generated)) {
+    return { payload, warnings };
+  }
+
+  const outputsBucketed = generated.outputsBucketed;
+  if (!outputsBucketed || typeof outputsBucketed !== 'object' || Array.isArray(outputsBucketed)) {
+    return { payload, warnings };
+  }
+
+  if (typeof outputsBucketed.currencySymbol !== 'string' || !outputsBucketed.currencySymbol.trim()) {
+    outputsBucketed.currencySymbol = '€';
+    warnings.push('Filled missing generated.outputsBucketed.currencySymbol with "€".');
+  }
+
+  if (!Array.isArray(outputsBucketed.sections)) {
+    outputsBucketed.sections = [];
+    warnings.push('Filled missing generated.outputsBucketed.sections with an empty array.');
+  }
+
+  if (!Array.isArray(generated.tables)) {
+    generated.tables = [];
+  }
+
+  const nextSections = [];
+
+  outputsBucketed.sections.forEach((rawSection, sectionIndex) => {
+    if (!rawSection || typeof rawSection !== 'object' || Array.isArray(rawSection)) {
+      warnings.push(`Dropped outputsBucketed section at index ${sectionIndex} because it is not a valid object.`);
+      return;
+    }
+
+    const section = { ...rawSection };
+    const fallbackTitle = typeof section.key === 'string' && section.key.trim()
+      ? section.key.trim()
+      : `Section ${sectionIndex + 1}`;
+    const sectionTitle = typeof section.title === 'string' && section.title.trim()
+      ? section.title.trim()
+      : fallbackTitle;
+    section.title = sectionTitle;
+
+    const columns = Array.isArray(section.columns)
+      ? section.columns.map((column) => String(column ?? ''))
+      : [];
+
+    if (columns.length !== 2) {
+      const migratedTable = {
+        title: sectionTitle,
+        columns: columns.length > 0 ? columns : ['Item', 'Value'],
+        rows: toGenericTableRows(section.rows)
+      };
+      generated.tables.push(migratedTable);
+      warnings.push(`Moved outputsBucketed section '${sectionTitle}' into generated.tables because outputsBucketed only supports 2-column sections.`);
+      return;
+    }
+
+    section.columns = columns;
+
+    if (!Array.isArray(section.rows)) {
+      section.rows = [];
+      warnings.push(`Filled missing rows for outputsBucketed section '${sectionTitle}' with an empty array.`);
+    }
+
+    section.rows = section.rows
+      .filter((row) => Array.isArray(row) && row.length >= 2)
+      .map((row) => {
+        const label = String(row[0] ?? '');
+        const numericValue = Number(row[1]);
+        if (!Number.isFinite(numericValue)) {
+          warnings.push(`Normalized non-numeric value to 0 in outputsBucketed section '${sectionTitle}'.`);
+          return [label, 0];
+        }
+        return [label, numericValue];
+      });
+
+    if (!('subtotalValue' in section)) {
+      section.subtotalValue = 0;
+      warnings.push(`Filled missing subtotalValue = 0 for outputsBucketed section '${sectionTitle}'.`);
+    } else if (typeof section.subtotalValue !== 'number' || !Number.isFinite(section.subtotalValue)) {
+      const parsedSubtotal = Number(section.subtotalValue);
+      section.subtotalValue = Number.isFinite(parsedSubtotal) ? parsedSubtotal : 0;
+      warnings.push(`Normalized invalid subtotalValue to 0 for outputsBucketed section '${sectionTitle}'.`);
+    }
+
+    nextSections.push(section);
+  });
+
+  outputsBucketed.sections = nextSections;
+
+  return {
+    payload,
+    warnings
+  };
 }
 
 const AUTO_SFT_SPAN_PATTERN = /<span\b[^>]*\bdata-auto=(["'])sft\1[^>]*>[\s\S]*?<\/span>/gi;
@@ -477,7 +698,7 @@ function validateOutputsBucketedPayload(outputsBucketed, label = 'generated.outp
     }
 
     if (!Array.isArray(section.columns) || section.columns.length !== 2) {
-      throw new Error(`${label}.sections[${sectionIndex}].columns must be an array of exactly 2 strings.`);
+      throw new Error(`${label}.sections[${sectionIndex}].columns: outputsBucketed sections only support 2 columns. For multi-column tables, use generated.tables[].`);
     }
 
     const columns = section.columns.map((column, columnIndex) => {
@@ -515,7 +736,7 @@ function validateOutputsBucketedPayload(outputsBucketed, label = 'generated.outp
     const hasSubtotal = 'subtotalValue' in section;
 
     if (!isSummary && !hasSubtotal) {
-      throw new Error(`${label}.sections[${sectionIndex}].subtotalValue is required for non-summary sections.`);
+      throw new Error(`${label}.sections[${sectionIndex}].subtotalValue is required; dev panel now auto-fills missing subtotalValue = 0.`);
     }
 
     let subtotalValue = null;
@@ -549,6 +770,27 @@ function validateOutputsBucketedPayload(outputsBucketed, label = 'generated.outp
       : '€',
     sections
   };
+}
+
+function validateGeneratedTablesPayload(tables, label = 'generated.tables') {
+  if (!Array.isArray(tables)) {
+    throw new Error(`${label} must be an array of table objects.`);
+  }
+
+  return tables.map((table, tableIndex) => {
+    if (!table || typeof table !== 'object' || Array.isArray(table)) {
+      throw new Error(`${label}[${tableIndex}] must be an object.`);
+    }
+
+    const validated = validateTablePayload(table, `${label}[${tableIndex}]`);
+    return {
+      title: typeof table.title === 'string' && table.title.trim()
+        ? table.title.trim()
+        : `Table ${tableIndex + 1}`,
+      columns: validated.columns,
+      rows: validated.rows
+    };
+  });
 }
 
 function validateChartsPayload(charts) {
@@ -656,6 +898,10 @@ function normalizePayload(payload) {
 
     if ('outputsBucketed' in payload.generated) {
       generatedPatch.outputsBucketed = validateOutputsBucketedPayload(payload.generated.outputsBucketed);
+    }
+
+    if ('tables' in payload.generated) {
+      generatedPatch.tables = validateGeneratedTablesPayload(payload.generated.tables);
     }
 
     if ('charts' in payload.generated) {
@@ -820,11 +1066,22 @@ function getPensionShowMaxForModule(moduleId) {
     return false;
   }
 
+  const module = getModuleById(appState.session, moduleId);
+  if (!module?.generated?.pensionInputs) {
+    return false;
+  }
+
   return appState.pensionShowMaxByModuleId.get(moduleId) ?? false;
 }
 
 function setPensionShowMaxForModule(moduleId, value) {
   if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  if (!module?.generated?.pensionInputs) {
+    appState.pensionShowMaxByModuleId.delete(moduleId);
     return;
   }
 
@@ -1156,6 +1413,10 @@ function mergeGeneratedPatch(module, generatedPatch) {
     }
   }
 
+  if ('tables' in generatedPatch) {
+    module.generated.tables = generatedPatch.tables;
+  }
+
   if ('charts' in generatedPatch) {
     module.generated.charts = generatedPatch.charts.map((chart, index) => ({
       ...chart,
@@ -1288,13 +1549,22 @@ async function applyPayloadFromEditor({ createNewModuleFirst }) {
     ui.devPayloadInput.value = normalizedInput;
     parsed = JSON.parse(normalizedInput || '{}');
   } catch (_error) {
+    renderDevPayloadWarnings([]);
     showToast('Invalid JSON (check quotes)', 'error');
     return;
   }
 
+  const { payload: repairedPayload, warnings } = normalizeDevPanelPayload(parsed);
+  renderDevPayloadWarnings(warnings);
+  if (warnings.length > 0) {
+    console.warn('[CallCanvas][DevPayload] auto-repairs applied', warnings);
+  }
+
   try {
-    await applyModuleUpdateInternal(parsed, { createNewModule: createNewModuleFirst });
-    showToast('Payload applied successfully.');
+    await applyModuleUpdateInternal(repairedPayload, { createNewModule: createNewModuleFirst });
+    showToast(warnings.length > 0
+      ? `Payload applied with ${warnings.length} auto-repair${warnings.length === 1 ? '' : 's'}.`
+      : 'Payload applied successfully.');
   } catch (error) {
     showToast(error.message || 'Failed to apply payload.', 'error');
   }
@@ -1447,6 +1717,7 @@ function bindEvents() {
       if (ui.devPayloadInput) {
         ui.devPayloadInput.value = '';
       }
+      renderDevPayloadWarnings([]);
     });
   }
 
@@ -1552,7 +1823,11 @@ async function init() {
   updateSessionStatus(ui, stateManager.isDirty());
 
   window.applyModuleUpdate = async (payload) => {
-    return applyModuleUpdateInternal(payload, {});
+    const { payload: repairedPayload, warnings } = normalizeDevPanelPayload(payload);
+    if (warnings.length > 0) {
+      console.warn('[CallCanvas][applyModuleUpdate] auto-repairs applied', warnings);
+    }
+    return applyModuleUpdateInternal(repairedPayload, {});
   };
   window.__setPensionShowMax = (moduleId, value) => {
     setPensionShowMaxForModule(moduleId, value);
