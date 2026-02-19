@@ -437,6 +437,11 @@ export function computePensionProjection(rawInputs) {
   const sustainabilityCurrentFloored = floorSeriesToZero(retirementSimulationProjectedCurrent.balances);
   const sustainabilityMaxFloored = floorSeriesToZero(retirementSimulationProjectedMax.balances);
   const requiredReferenceFloored = floorSeriesToZero(retirementSimulationRequired.balances);
+  const sustainabilityLabels = retirementSimulationProjectedCurrent.labels;
+  const withdrawalsSeries = sustainabilityLabels.map((_label, index) => {
+    const rawValue = retirementSimulationProjectedCurrent.withdrawals?.[index];
+    return clampToZero(Number.isFinite(rawValue) ? rawValue : 0);
+  });
 
   const depletionAgeProjected = retirementSimulationProjectedCurrent.labels[
     sustainabilityCurrentFloored.findIndex((value) => value === 0)
@@ -575,7 +580,7 @@ export function computePensionProjection(rawInputs) {
     charts.push({
       title: 'Retirement Sustainability (Target Income)',
       type: 'line',
-      labels: retirementSimulationProjectedCurrent.labels,
+      labels: sustainabilityLabels,
       datasets: [
         {
           label: 'Balance (current)',
@@ -592,6 +597,10 @@ export function computePensionProjection(rawInputs) {
           backgroundColor: 'rgba(180, 140, 255, 0.20)',
           pointBackgroundColor: '#B48CFF',
           pointBorderColor: '#B48CFF'
+        },
+        {
+          label: 'Withdrawals',
+          data: withdrawalsSeries
         }
       ]
     });

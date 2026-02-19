@@ -13,7 +13,8 @@ const PENSION_DATASET_LABELS = {
   growthMax: 'Growth (max)',
   sustainabilityCurrent: 'Balance (current)',
   sustainabilityMax: 'Balance (max)',
-  requiredReference: 'Required pot path'
+  requiredReference: 'Required pot path',
+  withdrawals: 'Withdrawals'
 };
 const EURO_FORMATTER = new Intl.NumberFormat('en-IE', {
   style: 'currency',
@@ -673,7 +674,8 @@ function isPensionSustainabilityChart(chartData) {
   return title.includes('retirement sustainability')
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.requiredReference)
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.sustainabilityCurrent)
-    || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.sustainabilityMax);
+    || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.sustainabilityMax)
+    || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.withdrawals);
 }
 
 function isRequiredReferenceLabel(label) {
@@ -707,6 +709,7 @@ function hasSustainabilityLabels(datasets) {
     return isRequiredReferenceLabel(label)
       || label === PENSION_DATASET_LABELS.sustainabilityCurrent
       || label === PENSION_DATASET_LABELS.sustainabilityMax
+      || label === PENSION_DATASET_LABELS.withdrawals
       || label === 'Balance with target income (current start pot)'
       || label === 'Balance with target income (max start pot)';
   });
@@ -748,6 +751,9 @@ function applySustainabilityLegendFilter(chart, showMax) {
     }
 
     const label = normalizeLabel(dataset.label);
+    if (label === PENSION_DATASET_LABELS.withdrawals) {
+      return false;
+    }
     if (label === PENSION_DATASET_LABELS.sustainabilityCurrent || label === 'Balance with target income (current start pot)') {
       return !showMax;
     }
@@ -904,6 +910,21 @@ function buildPensionAccumulationDataset(dataset, index, showMax) {
 
 function buildPensionSustainabilityDataset(dataset, index, showMax) {
   const label = normalizeLabel(dataset?.label);
+  if (label === PENSION_DATASET_LABELS.withdrawals) {
+    const barBase = buildDatasetStyle(dataset, index, 'bar');
+    const color = '#6FE6D8';
+    return {
+      ...barBase,
+      type: 'bar',
+      yAxisID: 'y1',
+      order: 1,
+      borderColor: color,
+      backgroundColor: hexToRgba(color, 0.5),
+      borderWidth: 1,
+      hidden: false
+    };
+  }
+
   const base = applyLineColorOverrides(buildDatasetStyle(dataset, index, 'line'));
 
   if (label === PENSION_DATASET_LABELS.requiredReference) {
@@ -1027,6 +1048,16 @@ function computeAccumulationAxisMaxes(chartData) {
     potMax,
     cashflowMax
   };
+}
+
+function computeSustainabilityWithdrawalMax(chartData) {
+  const labelsLength = Array.isArray(chartData?.labels) ? chartData.labels.length : 0;
+  if (labelsLength === 0) {
+    return 0;
+  }
+
+  const withdrawalsValues = getRawDatasetValues(chartData, PENSION_DATASET_LABELS.withdrawals, labelsLength);
+  return maxArrayValue(withdrawalsValues);
 }
 
 function buildChartConfig(chartData, { module } = {}) {
@@ -1195,6 +1226,22 @@ function buildChartConfig(chartData, { module } = {}) {
   }
 
   if (isSustainability) {
+    const withdrawalsMax = computeSustainabilityWithdrawalMax(chartData);
+    config.options.scales.y1 = {
+      beginAtZero: true,
+      position: 'right',
+      suggestedMax: withdrawalsMax > 0 ? withdrawalsMax * 1.10 : 1,
+      ticks: {
+        color: '#d3e8ff',
+        callback: (value) => formatEuroTick(value)
+      },
+      grid: {
+        drawOnChartArea: false,
+        color: 'rgba(140, 175, 220, 0.16)',
+        drawBorder: false
+      }
+    };
+
     config.options.plugins.legend.labels.filter = (legendItem, legendData) => {
       const dataset = legendData?.datasets?.[legendItem.datasetIndex];
       if (!dataset) {
@@ -1202,6 +1249,9 @@ function buildChartConfig(chartData, { module } = {}) {
       }
 
       const label = normalizeLabel(dataset.label);
+      if (label === PENSION_DATASET_LABELS.withdrawals) {
+        return false;
+      }
       if (label === PENSION_DATASET_LABELS.sustainabilityCurrent) {
         return !showMax;
       }
@@ -1210,6 +1260,42 @@ function buildChartConfig(chartData, { module } = {}) {
       }
       return true;
     };
+
+    const subtitleText = 'Bars (right axis): withdrawals per year';
+    const subtitlePluginAvailable = Boolean(
+      window.Chart?.defaults?.plugins
+      && Object.prototype.hasOwnProperty.call(window.Chart.defaults.plugins, 'subtitle')
+    );
+
+    if (subtitlePluginAvailable) {
+      config.options.plugins.subtitle = {
+        display: true,
+        text: subtitleText,
+        color: '#cfe6ff',
+        font: {
+          size: 12,
+          weight: '500'
+        },
+        padding: {
+          top: 6,
+          bottom: 10
+        }
+      };
+    } else {
+      config.options.plugins.title = {
+        display: true,
+        text: `${chartData.title || 'Chart'} — ${subtitleText}`,
+        color: '#cfe6ff',
+        font: {
+          size: 12,
+          weight: '500'
+        },
+        padding: {
+          top: 6,
+          bottom: 10
+        }
+      };
+    }
   }
 
   if (isAccumulation || isSustainability) {
