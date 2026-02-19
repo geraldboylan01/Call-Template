@@ -185,6 +185,12 @@ function buildAgeRange(startAge, endAge) {
   return labels;
 }
 
+function targetIncomeNominalAtAge(inputs, age) {
+  const yearsFromToday = Math.max(0, age - inputs.currentAge);
+  const nominal = inputs.targetIncomeToday * Math.pow(1 + inputs.inflationRate, yearsFromToday);
+  return Number.isFinite(nominal) ? nominal : 0;
+}
+
 function simulateAccumulation(inputs, personalContributionFn) {
   const labels = [inputs.currentAge];
   const balances = [inputs.currentPot];
@@ -248,7 +254,7 @@ function computeRequiredPotAtRetirement(inputs) {
   let requiredBalance = 0;
 
   for (let age = inputs.horizonEndAge - 1; age >= inputs.retirementAge; age -= 1) {
-    const withdrawalAtAge = inputs.targetIncomeToday * Math.pow(1 + inputs.inflationRate, age - inputs.retirementAge);
+    const withdrawalAtAge = targetIncomeNominalAtAge(inputs, age);
     requiredBalance = withdrawalAtAge + (requiredBalance / (1 + inputs.growthRate));
   }
 
@@ -266,7 +272,7 @@ function simulateRetirementBalances(inputs, startBalance) {
     balances.push(currentBalance);
 
     const withdrawalAtAge = age <= (inputs.horizonEndAge - 1)
-      ? inputs.targetIncomeToday * Math.pow(1 + inputs.inflationRate, age - inputs.retirementAge)
+      ? targetIncomeNominalAtAge(inputs, age)
       : 0;
     withdrawals.push(withdrawalAtAge);
 
@@ -297,7 +303,7 @@ function simulateMinimumDrawdown(inputs, startBalance) {
     const currentBalance = clampToZero(balance);
     const drawdownRate = age < 70 ? 0.04 : 0.05;
     const minimumDrawdown = drawdownRate * currentBalance;
-    const targetIncome = inputs.targetIncomeToday * Math.pow(1 + inputs.inflationRate, age - inputs.retirementAge);
+    const targetIncome = targetIncomeNominalAtAge(inputs, age);
 
     minDrawdowns.push(minimumDrawdown);
     targets.push(targetIncome);
@@ -463,7 +469,20 @@ export function computePensionProjection(rawInputs) {
   });
   const sftSentence = buildSftSummarySentence(sftBreaches, sftMeta);
 
-  const targetIncomeNominalAtRetirement = inputs.targetIncomeToday;
+  const targetIncomeNominalAtRetirement = targetIncomeNominalAtAge(inputs, inputs.retirementAge);
+  const expectedFactor = Math.pow(1 + inputs.inflationRate, inputs.retirementAge - inputs.currentAge);
+  const expectedNominal = inputs.targetIncomeToday * expectedFactor;
+  const nominalDiff = Math.abs(targetIncomeNominalAtRetirement - expectedNominal);
+  const nominalTolerance = 1e-6 * Math.max(1, Math.abs(expectedNominal));
+  if (Number.isFinite(expectedNominal) && nominalDiff > nominalTolerance) {
+    console.warn('[Pension] target income nominal-at-retirement consistency mismatch', {
+      currentAge: inputs.currentAge,
+      retirementAge: inputs.retirementAge,
+      inflationRate: inputs.inflationRate,
+      nominalAtRetirement: targetIncomeNominalAtRetirement,
+      expectedNominal
+    });
+  }
   const modeLabel = inputs.minDrawdownMode ? 'Minimum drawdowns' : 'Target withdrawals';
 
   const assumptionsTable = {
