@@ -25,7 +25,7 @@
             <option value="">Playbooks</option>
           </select>
           <button id="newCallBtn" class="ui-button" type="button">New Call</button>
-          <button id="saveSessionBtn" class="ui-button" type="button">Save Session</button>
+          <button id="publishSessionBtn" class="ui-button" type="button">Publish to client</button>
           <button id="loadSessionBtn" class="ui-button" type="button">Load Session</button>
           <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
           <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
@@ -100,8 +100,36 @@
     </div>
     <input id="loadSessionInput" type="file" accept=".json,application/json" class="file-input-hidden" />
 
+    <div id="publishModal" class="publish-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="publishModalTitle">
+      <div class="publish-modal-card">
+        <div class="publish-modal-header">
+          <h2 id="publishModalTitle" class="publish-modal-title">Client access</h2>
+          <button id="publishCloseBtn" class="ui-button publish-close-btn" type="button">Close</button>
+        </div>
+        <p class="publish-modal-subtitle">Generate a secure link and PIN for client viewing.</p>
+        <p id="publishError" class="publish-error" aria-live="polite"></p>
+        <div class="publish-modal-actions">
+          <button id="publishGenerateBtn" class="ui-button" type="button">Generate QR + PIN</button>
+        </div>
+        <div id="publishResult" class="publish-result is-hidden">
+          <div id="publishQrHost" class="publish-qr"></div>
+          <div class="publish-pin-wrap">
+            <div class="publish-pin-label">PIN</div>
+            <div id="publishPinValue" class="publish-pin-value">------</div>
+          </div>
+          <input id="publishLinkValue" class="publish-link-value" type="text" readonly />
+          <div class="publish-modal-actions">
+            <button id="publishCopyPinBtn" class="ui-button" type="button">Copy PIN</button>
+            <button id="publishCopyLinkBtn" class="ui-button" type="button">Copy Link</button>
+            <button id="publishRevokeBtn" class="ui-button" type="button">Revoke access</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script src="./js/vendor/qrcode.min.js"></script>
     <script type="module" src="./js/app.js"></script>
   </body>
 </html>

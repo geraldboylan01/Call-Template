@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Client Session Viewer</title>
+    <link rel="stylesheet" href="./styles/base.css" />
+  </head>
+  <body>
+    <div id="sessionUnlockLayer" class="session-unlock-layer" role="dialog" aria-modal="true" aria-labelledby="sessionUnlockTitle">
+      <div class="session-unlock-card">
+        <h1 id="sessionUnlockTitle">Client session</h1>
+        <p class="session-unlock-hint">Enter your 6-digit PIN to unlock this call canvas.</p>
+        <input
+          id="sessionPinInput"
+          class="session-unlock-input"
+          type="password"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="6"
+          placeholder="000000"
+          aria-label="PIN"
+        />
+        <div class="session-unlock-actions">
+          <button id="sessionUnlockBtn" class="ui-button" type="button">Unlock</button>
+        </div>
+        <p id="sessionUnlockError" class="session-unlock-error" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <div id="app">
+      <header class="topbar" aria-label="Session controls">
+        <div class="topbar-left">
+          <input
+            id="clientNameInput"
+            class="topbar-input"
+            type="text"
+            value="Client"
+            aria-label="Client name"
+            placeholder="Client name"
+          />
+        </div>
+        <div class="topbar-right">
+          <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
+          <span id="sessionStatus" class="session-status">Read only</span>
+        </div>
+      </header>
+
+      <main class="main-viewport" aria-live="polite">
+        <section id="greetingLayer" class="layer greeting-view">
+          <h1 id="greetingHeadline" class="greeting-headline">Client Session</h1>
+        </section>
+
+        <section id="focusLayer" class="layer focused-view is-hidden" aria-label="Focused module view" aria-hidden="true">
+          <div id="swipeStage" class="swipe-stage"></div>
+          <button
+            id="navPrevBtn"
+            class="nav-arrow left"
+            type="button"
+            aria-label="Previous module"
+            title="Previous module"
+          >
+            &#8592;
+          </button>
+          <button
+            id="navNextBtn"
+            class="nav-arrow right"
+            type="button"
+            aria-label="Next module"
+            title="Next module"
+          >
+            &#8594;
+          </button>
+        </section>
+
+        <section id="overviewLayer" class="layer overview-view is-hidden" aria-label="Overview map" aria-hidden="true">
+          <div id="overviewViewport" class="overview-viewport">
+            <div id="overviewZoomWrap" class="overview-zoom-wrap">
+              <div id="overviewGrid" class="overview-grid"></div>
+            </div>
+          </div>
+        </section>
+
+        <div id="animLayer" class="anim-layer" aria-hidden="true"></div>
+        <div id="toastHost" class="toast-host" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script src="./js/vendor/qrcode.min.js"></script>
+    <script type="module" src="./js/session_viewer.js"></script>
+  </body>
+</html>

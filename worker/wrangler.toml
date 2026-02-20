@@ -1,0 +1,12 @@
+name = "call-canvas-session-worker"
+main = "src/index.js"
+compatibility_date = "2026-02-20"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "SESSIONS_BUCKET"
+bucket_name = "call-canvas-sessions"
+preview_bucket_name = "call-canvas-sessions-preview"
+
+[vars]
+ALLOWED_ORIGINS = "http://127.0.0.1:5500,http://localhost:5500"

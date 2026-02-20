@@ -31,22 +31,58 @@ import {
   ensureLayerVisibleForMeasure
 } from './render.js';
 import { normalizePensionInputs, computePensionProjection } from './pension_math.js';
+import { encryptSessionJson } from './crypto_session.js';
 
 const ui = getUiElements();
+const runtimeConfig = {
+  readOnly: false,
+  allowDevPanel: true,
+  allowPublish: true,
+  showPensionToggle: true,
+  persistLocalSession: true
+};
+
+const WORKER_BASE_URL = (() => {
+  const override = typeof window.__WORKER_BASE_URL === 'string'
+    ? window.__WORKER_BASE_URL.trim()
+    : '';
+  const fallback = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
+    ? 'http://127.0.0.1:8787'
+    : 'https://your-worker-domain.workers.dev';
+  const raw = override || fallback;
+  return raw.replace(/\/+$/, '');
+})();
+
+const PUBLIC_BASE_URL = (() => {
+  const override = typeof window.__PUBLIC_BASE_URL === 'string'
+    ? window.__PUBLIC_BASE_URL.trim()
+    : '';
+  const raw = override || window.location.origin;
+  return raw.replace(/\/+$/, '');
+})();
+
 const stateManager = createStateManager(300, {
   onDirtyChange: (isDirty) => {
+    if (runtimeConfig.readOnly) {
+      if (ui.sessionStatus) {
+        ui.sessionStatus.textContent = 'Read only';
+        ui.sessionStatus.classList.remove('is-dirty');
+      }
+      return;
+    }
     updateSessionStatus(ui, isDirty);
   }
 });
 
 const appState = {
-  session: loadSession(),
+  session: newSession('Client'),
   mode: 'greeting',
   sortable: null,
   transitionLock: false,
   devPanelOpen: false,
   pensionShowMaxByModuleId: new Map(),
-  chartHydrationRunId: 0
+  chartHydrationRunId: 0,
+  publishedAccess: null
 };
 
 const EXAMPLE_PAYLOADS = [
@@ -265,6 +301,11 @@ function hasModules() {
   return appState.session.modules.length > 0;
 }
 
+function hasNextModule() {
+  const activeIndex = getActiveIndex();
+  return activeIndex >= 0 && activeIndex < appState.session.order.length - 1;
+}
+
 function normalizeClientName(value) {
   return value.trim();
 }
@@ -291,6 +332,38 @@ function showToast(message, type = 'success') {
   window.setTimeout(() => {
     toast.remove();
   }, 2600);
+}
+
+function saveSessionNow() {
+  if (!runtimeConfig.persistLocalSession) {
+    return;
+  }
+
+  stateManager.saveNow(appState.session);
+}
+
+function scheduleSessionSave() {
+  if (!runtimeConfig.persistLocalSession) {
+    return;
+  }
+
+  stateManager.scheduleSave(appState.session);
+}
+
+function markSessionDirty() {
+  if (!runtimeConfig.persistLocalSession) {
+    return;
+  }
+
+  stateManager.markDirty();
+}
+
+function markSessionClean() {
+  if (!runtimeConfig.persistLocalSession) {
+    return;
+  }
+
+  stateManager.markClean();
 }
 
 function setDevPanelOpen(open) {
@@ -598,34 +671,267 @@ function isPersonalBalanceSheetModule(module) {
   return title.includes('personal balance sheet');
 }
 
-function sanitizeFilenameToken(input, fallback) {
-  const raw = String(input || fallback || '').trim();
-  const cleaned = raw.replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
-  return cleaned || fallback;
+function generate6DigitPin() {
+  if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+    throw new Error('Secure random generation is unavailable in this browser.');
+  }
+
+  const values = new Uint32Array(1);
+  window.crypto.getRandomValues(values);
+  return String(values[0] % 1000000).padStart(6, '0');
 }
 
-function getSessionDownloadFilename(session) {
-  const clientToken = sanitizeFilenameToken(session.clientName, 'Client');
-  const now = new Date();
-  const yyyy = String(now.getFullYear());
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const hh = String(now.getHours()).padStart(2, '0');
-  const min = String(now.getMinutes()).padStart(2, '0');
-
-  return `CallCanvas_${clientToken}_${yyyy}-${mm}-${dd}_${hh}${min}.json`;
+function normalizePublishSessionId(rawValue) {
+  const value = String(rawValue ?? '').trim();
+  if (!value) {
+    throw new Error('Publish response was missing a session id.');
+  }
+  return value;
 }
 
-function downloadJsonFile(filename, text) {
-  const blob = new Blob([text], { type: 'application/json;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+async function copyToClipboard(value) {
+  const text = String(value ?? '');
+  if (!text) {
+    return false;
+  }
+
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  return copied;
+}
+
+function setPublishError(message) {
+  if (!ui.publishError) {
+    return;
+  }
+
+  ui.publishError.textContent = String(message || '');
+  ui.publishError.classList.toggle('is-visible', Boolean(message));
+}
+
+function resetPublishResult() {
+  appState.publishedAccess = null;
+
+  if (ui.publishResult) {
+    ui.publishResult.classList.add('is-hidden');
+  }
+  if (ui.publishQrHost) {
+    ui.publishQrHost.innerHTML = '';
+  }
+  if (ui.publishPinValue) {
+    ui.publishPinValue.textContent = '------';
+  }
+  if (ui.publishLinkValue) {
+    ui.publishLinkValue.value = '';
+  }
+}
+
+function setPublishModalOpen(open) {
+  if (!ui.publishModal) {
+    return;
+  }
+
+  ui.publishModal.classList.toggle('is-hidden', !open);
+  ui.publishModal.setAttribute('aria-hidden', open ? 'false' : 'true');
+}
+
+function renderQrCode(link) {
+  if (!ui.publishQrHost) {
+    return;
+  }
+
+  ui.publishQrHost.innerHTML = '';
+  if (!window.QRCode) {
+    ui.publishQrHost.textContent = 'QR library not available.';
+    return;
+  }
+
+  new window.QRCode(ui.publishQrHost, {
+    text: link,
+    width: 192,
+    height: 192
+  });
+}
+
+async function publishCurrentSession() {
+  const plaintext = exportSession(appState.session);
+  const pin = generate6DigitPin();
+  const encryptedPayload = await encryptSessionJson(pin, plaintext);
+  const response = await fetch(`${WORKER_BASE_URL}/api/publish`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(encryptedPayload)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Publish failed (${response.status}).`);
+  }
+
+  const payload = await response.json();
+  const sessionId = normalizePublishSessionId(payload?.sessionId);
+  const link = `${PUBLIC_BASE_URL}/session.html?id=${encodeURIComponent(sessionId)}`;
+
+  return {
+    sessionId,
+    pin,
+    link
+  };
+}
+
+async function revokePublishedSession(sessionId) {
+  const response = await fetch(`${WORKER_BASE_URL}/api/revoke/${encodeURIComponent(sessionId)}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to revoke (${response.status}).`);
+  }
+}
+
+function applyRuntimeChrome() {
+  if (runtimeConfig.readOnly) {
+    document.body.classList.add('read-only-session');
+    if (ui.clientNameInput) {
+      ui.clientNameInput.readOnly = true;
+      ui.clientNameInput.setAttribute('aria-readonly', 'true');
+    }
+    [ui.playbookSelect, ui.newCallButton, ui.loadSessionButton, ui.newModuleButton, ui.resetButton].forEach((element) => {
+      if (!element) {
+        return;
+      }
+      element.classList.add('is-hidden');
+      element.setAttribute('aria-hidden', 'true');
+    });
+  } else {
+    document.body.classList.remove('read-only-session');
+  }
+
+  if (!runtimeConfig.allowPublish && ui.publishSessionButton) {
+    ui.publishSessionButton.classList.add('is-hidden');
+  }
+
+  if (!runtimeConfig.allowPublish && ui.publishModal) {
+    ui.publishModal.classList.add('is-hidden');
+    ui.publishModal.setAttribute('aria-hidden', 'true');
+  }
+
+  if (!runtimeConfig.allowDevPanel && ui.devPanel) {
+    setDevPanelOpen(false);
+    ui.devPanel.classList.add('is-hidden');
+    ui.devPanel.setAttribute('aria-hidden', 'true');
+  }
+
+  if (runtimeConfig.readOnly && ui.sessionStatus) {
+    ui.sessionStatus.textContent = 'Read only';
+    ui.sessionStatus.classList.remove('is-dirty');
+  }
+}
+
+function renderPublishedAccess(access) {
+  if (!access) {
+    return;
+  }
+
+  if (ui.publishResult) {
+    ui.publishResult.classList.remove('is-hidden');
+  }
+
+  if (ui.publishPinValue) {
+    ui.publishPinValue.textContent = access.pin;
+  }
+
+  if (ui.publishLinkValue) {
+    ui.publishLinkValue.value = access.link;
+  }
+
+  renderQrCode(access.link);
+}
+
+async function handlePublishGenerate() {
+  if (runtimeConfig.readOnly || !runtimeConfig.allowPublish) {
+    return;
+  }
+
+  setPublishError('');
+
+  if (ui.publishGenerateButton) {
+    ui.publishGenerateButton.disabled = true;
+  }
+
+  try {
+    const access = await publishCurrentSession();
+    appState.publishedAccess = access;
+    renderPublishedAccess(access);
+  } catch (error) {
+    setPublishError(error?.message || 'Failed to publish this session.');
+  } finally {
+    if (ui.publishGenerateButton) {
+      ui.publishGenerateButton.disabled = false;
+    }
+  }
+}
+
+async function handleCopyPublishedPin() {
+  if (!appState.publishedAccess?.pin) {
+    return;
+  }
+
+  try {
+    await copyToClipboard(appState.publishedAccess.pin);
+    showToast('PIN copied.');
+  } catch (_error) {
+    showToast('Could not copy PIN.', 'error');
+  }
+}
+
+async function handleCopyPublishedLink() {
+  if (!appState.publishedAccess?.link) {
+    return;
+  }
+
+  try {
+    await copyToClipboard(appState.publishedAccess.link);
+    showToast('Link copied.');
+  } catch (_error) {
+    showToast('Could not copy link.', 'error');
+  }
+}
+
+async function handleRevokePublishedAccess() {
+  const sessionId = appState.publishedAccess?.sessionId;
+  if (!sessionId) {
+    return;
+  }
+
+  const confirmed = window.confirm('Revoke this client link now?');
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await revokePublishedSession(sessionId);
+    showToast('Client access revoked.');
+    resetPublishResult();
+  } catch (error) {
+    setPublishError(error?.message || 'Revoke failed.');
+  }
 }
 
 async function replaceSession(nextSession, options = {}) {
@@ -639,10 +945,10 @@ async function replaceSession(nextSession, options = {}) {
   appState.pensionShowMaxByModuleId = new Map();
 
   ensureActiveModule(appState.session);
-  stateManager.saveNow(appState.session);
+  saveSessionNow();
 
   if (markClean) {
-    stateManager.markClean();
+    markSessionClean();
   }
 
   renderGreeting(ui, appState.session.clientName);
@@ -1075,6 +1381,10 @@ function getPensionShowMaxForModule(moduleId) {
 }
 
 function setPensionShowMaxForModule(moduleId, value) {
+  if (runtimeConfig.readOnly || !runtimeConfig.showPensionToggle) {
+    return;
+  }
+
   if (typeof moduleId !== 'string' || !moduleId) {
     return;
   }
@@ -1096,6 +1406,10 @@ function setPensionShowMaxForModule(moduleId, value) {
 }
 
 function updateModule(moduleId, patch) {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
   const module = getModuleById(appState.session, moduleId);
   if (!module) {
     return;
@@ -1104,7 +1418,7 @@ function updateModule(moduleId, patch) {
   ensureGenerated(module);
   Object.assign(module, patch);
   module.updatedAt = nowIso();
-  stateManager.scheduleSave(appState.session);
+  scheduleSessionSave();
 
   if (appState.mode === 'overview') {
     refreshOverview({ enableSortable: true });
@@ -1116,7 +1430,9 @@ function updateUiChrome() {
   updateControls(ui, {
     mode: appState.mode,
     moduleCount: appState.session.modules.length,
-    hasPrevious: activeIndex > 0
+    hasPrevious: activeIndex > 0,
+    hasNext: hasNextModule(),
+    readOnly: runtimeConfig.readOnly
   });
 
   renderGreeting(ui, appState.session.clientName);
@@ -1131,7 +1447,9 @@ function getFocusedPaneForModule(module) {
     module,
     moduleNumber,
     onTitleInput: (moduleId, value) => updateModule(moduleId, { title: value }),
-    onNotesInput: (moduleId, value) => updateModule(moduleId, { notes: value })
+    onNotesInput: (moduleId, value) => updateModule(moduleId, { notes: value }),
+    readOnly: runtimeConfig.readOnly,
+    showPensionToggle: runtimeConfig.showPensionToggle
   });
 }
 
@@ -1215,6 +1533,10 @@ function destroySortable() {
 function initSortable() {
   destroySortable();
 
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
   if (typeof window.Sortable === 'undefined') {
     return;
   }
@@ -1236,7 +1558,7 @@ function initSortable() {
       if (nextOrder.length === appState.session.order.length) {
         appState.session.order = nextOrder;
         ensureActiveModule(appState.session);
-        stateManager.scheduleSave(appState.session);
+        scheduleSessionSave();
       }
 
       refreshOverview({ enableSortable: true });
@@ -1283,7 +1605,7 @@ async function zoomIntoModuleFromOverview(moduleId, sourceCardEl) {
     setMode(ui, 'focused');
     updateUiChrome();
     await hydrateChartsWhenStable({ reason: 'zoom-into-completed' });
-    stateManager.scheduleSave(appState.session);
+    scheduleSessionSave();
   }
 
   appState.transitionLock = false;
@@ -1341,7 +1663,7 @@ async function toggleOverview() {
 }
 
 async function createNewModule() {
-  if (appState.transitionLock || getIsZoomAnimating()) {
+  if (runtimeConfig.readOnly || appState.transitionLock || getIsZoomAnimating()) {
     return null;
   }
 
@@ -1350,7 +1672,7 @@ async function createNewModule() {
   appState.session.order.push(module.id);
   appState.session.activeModuleId = module.id;
 
-  stateManager.scheduleSave(appState.session);
+  scheduleSessionSave();
 
   if (appState.mode === 'overview') {
     refreshOverview({ enableSortable: false });
@@ -1426,6 +1748,10 @@ function mergeGeneratedPatch(module, generatedPatch) {
 }
 
 async function applyModuleUpdateInternal(payload, options = {}) {
+  if (runtimeConfig.readOnly) {
+    throw new Error('This session is read only.');
+  }
+
   const normalizedPayload = normalizePayload(payload);
 
   let targetModuleId = options.targetModuleId || normalizedPayload.moduleId || appState.session.activeModuleId;
@@ -1509,8 +1835,8 @@ async function applyModuleUpdateInternal(payload, options = {}) {
     refreshOverview({ enableSortable: true });
   }
 
-  stateManager.markDirty();
-  stateManager.saveNow(appState.session);
+  markSessionDirty();
+  saveSessionNow();
 
   const activeModule = getModuleById(appState.session, appState.session.activeModuleId);
   if (activeModule?.generated) {
@@ -1581,7 +1907,7 @@ async function focusPreviousModule() {
   }
 
   appState.session.activeModuleId = appState.session.order[activeIndex - 1];
-  stateManager.scheduleSave(appState.session);
+  scheduleSessionSave();
 
   await renderFocused({
     useSwipe: true,
@@ -1590,20 +1916,31 @@ async function focusPreviousModule() {
   });
 }
 
-async function handleSaveSession() {
-  try {
-    stateManager.saveNow(appState.session);
-    const json = exportSession(appState.session);
-    const filename = getSessionDownloadFilename(appState.session);
-    downloadJsonFile(filename, json);
-    stateManager.markClean();
-    showToast('Session saved.');
-  } catch (_error) {
-    showToast('Failed to save session.', 'error');
+async function focusNextModule() {
+  if (appState.transitionLock || appState.mode !== 'focused' || getIsZoomAnimating()) {
+    return;
   }
+
+  const activeIndex = getActiveIndex();
+  if (activeIndex < 0 || activeIndex >= appState.session.order.length - 1) {
+    return;
+  }
+
+  appState.session.activeModuleId = appState.session.order[activeIndex + 1];
+  scheduleSessionSave();
+
+  await renderFocused({
+    useSwipe: true,
+    direction: 'forward',
+    revealMode: true
+  });
 }
 
 async function handleLoadSessionFromFile(file) {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
   if (!file) {
     return;
   }
@@ -1619,7 +1956,11 @@ async function handleLoadSessionFromFile(file) {
 }
 
 async function handleNewCall() {
-  const confirmed = window.confirm('Start a new call? Unsaved changes will be lost unless you save.');
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const confirmed = window.confirm('Start a new call? Unsaved changes will be lost.');
   if (!confirmed) {
     return;
   }
@@ -1630,25 +1971,71 @@ async function handleNewCall() {
 }
 
 function bindEvents() {
-  ui.clientNameInput.addEventListener('input', (event) => {
-    appState.session.clientName = normalizeClientName(event.target.value);
-    renderGreeting(ui, appState.session.clientName);
-    stateManager.scheduleSave(appState.session);
-  });
+  if (ui.clientNameInput && !runtimeConfig.readOnly) {
+    ui.clientNameInput.addEventListener('input', (event) => {
+      appState.session.clientName = normalizeClientName(event.target.value);
+      renderGreeting(ui, appState.session.clientName);
+      scheduleSessionSave();
+    });
+  }
 
-  if (ui.newCallButton) {
+  if (!runtimeConfig.readOnly && ui.newCallButton) {
     ui.newCallButton.addEventListener('click', async () => {
       await handleNewCall();
     });
   }
 
-  if (ui.saveSessionButton) {
-    ui.saveSessionButton.addEventListener('click', async () => {
-      await handleSaveSession();
+  if (!runtimeConfig.readOnly && runtimeConfig.allowPublish && ui.publishSessionButton) {
+    ui.publishSessionButton.addEventListener('click', () => {
+      setPublishError('');
+      if (appState.publishedAccess) {
+        renderPublishedAccess(appState.publishedAccess);
+      } else {
+        resetPublishResult();
+      }
+      setPublishModalOpen(true);
     });
   }
 
-  if (ui.loadSessionButton) {
+  if (ui.publishCloseButton) {
+    ui.publishCloseButton.addEventListener('click', () => {
+      setPublishModalOpen(false);
+    });
+  }
+
+  if (ui.publishModal) {
+    ui.publishModal.addEventListener('click', (event) => {
+      if (event.target === ui.publishModal) {
+        setPublishModalOpen(false);
+      }
+    });
+  }
+
+  if (ui.publishGenerateButton) {
+    ui.publishGenerateButton.addEventListener('click', async () => {
+      await handlePublishGenerate();
+    });
+  }
+
+  if (ui.publishCopyPinButton) {
+    ui.publishCopyPinButton.addEventListener('click', async () => {
+      await handleCopyPublishedPin();
+    });
+  }
+
+  if (ui.publishCopyLinkButton) {
+    ui.publishCopyLinkButton.addEventListener('click', async () => {
+      await handleCopyPublishedLink();
+    });
+  }
+
+  if (ui.publishRevokeButton) {
+    ui.publishRevokeButton.addEventListener('click', async () => {
+      await handleRevokePublishedAccess();
+    });
+  }
+
+  if (!runtimeConfig.readOnly && ui.loadSessionButton) {
     ui.loadSessionButton.addEventListener('click', () => {
       if (ui.loadSessionInput) {
         ui.loadSessionInput.value = '';
@@ -1666,7 +2053,7 @@ function bindEvents() {
     });
   }
 
-  if (ui.playbookSelect) {
+  if (!runtimeConfig.readOnly && ui.playbookSelect) {
     ui.playbookSelect.addEventListener('change', async (event) => {
       const playbookId = event.target.value;
       if (!playbookId) {
@@ -1684,35 +2071,49 @@ function bindEvents() {
     });
   }
 
-  ui.newModuleButton.addEventListener('click', async () => {
-    await createNewModule();
-  });
+  if (!runtimeConfig.readOnly && ui.newModuleButton) {
+    ui.newModuleButton.addEventListener('click', async () => {
+      await createNewModule();
+    });
+  }
 
-  ui.nextArrowButton.addEventListener('click', async () => {
-    await createNewModule();
-  });
+  if (ui.nextArrowButton) {
+    ui.nextArrowButton.addEventListener('click', async () => {
+      if (runtimeConfig.readOnly) {
+        await focusNextModule();
+      } else {
+        await createNewModule();
+      }
+    });
+  }
 
-  ui.prevArrowButton.addEventListener('click', async () => {
-    await focusPreviousModule();
-  });
+  if (ui.prevArrowButton) {
+    ui.prevArrowButton.addEventListener('click', async () => {
+      await focusPreviousModule();
+    });
+  }
 
-  ui.zoomButton.addEventListener('click', async () => {
-    await toggleOverview();
-  });
+  if (ui.zoomButton) {
+    ui.zoomButton.addEventListener('click', async () => {
+      await toggleOverview();
+    });
+  }
 
-  ui.resetButton.addEventListener('click', () => {
-    destroyAllCharts();
-    stateManager.reset();
-    window.location.reload();
-  });
+  if (!runtimeConfig.readOnly && ui.resetButton) {
+    ui.resetButton.addEventListener('click', () => {
+      destroyAllCharts();
+      stateManager.reset();
+      window.location.reload();
+    });
+  }
 
-  if (ui.devLoadExampleBtn) {
+  if (runtimeConfig.allowDevPanel && ui.devLoadExampleBtn) {
     ui.devLoadExampleBtn.addEventListener('click', () => {
       loadSelectedExampleIntoEditor();
     });
   }
 
-  if (ui.devClearBtn) {
+  if (runtimeConfig.allowDevPanel && ui.devClearBtn) {
     ui.devClearBtn.addEventListener('click', () => {
       if (ui.devPayloadInput) {
         ui.devPayloadInput.value = '';
@@ -1721,19 +2122,19 @@ function bindEvents() {
     });
   }
 
-  if (ui.devApplyBtn) {
+  if (runtimeConfig.allowDevPanel && ui.devApplyBtn) {
     ui.devApplyBtn.addEventListener('click', async () => {
       await applyPayloadFromEditor({ createNewModuleFirst: false });
     });
   }
 
-  if (ui.devCreateApplyBtn) {
+  if (runtimeConfig.allowDevPanel && ui.devCreateApplyBtn) {
     ui.devCreateApplyBtn.addEventListener('click', async () => {
       await applyPayloadFromEditor({ createNewModuleFirst: true });
     });
   }
 
-  if (ui.devCloseBtn) {
+  if (runtimeConfig.allowDevPanel && ui.devCloseBtn) {
     ui.devCloseBtn.addEventListener('click', () => {
       setDevPanelOpen(false);
     });
@@ -1757,7 +2158,7 @@ function bindEvents() {
     const key = event.key;
     const lower = key.toLowerCase();
 
-    if (!typing && lower === 'd') {
+    if (!typing && runtimeConfig.allowDevPanel && lower === 'd') {
       event.preventDefault();
       setDevPanelOpen(!appState.devPanelOpen);
       return;
@@ -1768,6 +2169,9 @@ function bindEvents() {
     }
 
     if (lower === 'n') {
+      if (runtimeConfig.readOnly) {
+        return;
+      }
       event.preventDefault();
       await createNewModule();
       return;
@@ -1781,7 +2185,11 @@ function bindEvents() {
 
     if (key === 'ArrowRight') {
       event.preventDefault();
-      await createNewModule();
+      if (runtimeConfig.readOnly) {
+        await focusNextModule();
+      } else {
+        await createNewModule();
+      }
       return;
     }
 
@@ -1791,7 +2199,13 @@ function bindEvents() {
       return;
     }
 
-    if (key === 'Escape' && appState.devPanelOpen) {
+    if (key === 'Escape' && ui.publishModal && !ui.publishModal.classList.contains('is-hidden')) {
+      event.preventDefault();
+      setPublishModalOpen(false);
+      return;
+    }
+
+    if (runtimeConfig.allowDevPanel && key === 'Escape' && appState.devPanelOpen) {
       event.preventDefault();
       setDevPanelOpen(false);
       return;
@@ -1806,40 +2220,84 @@ function bindEvents() {
   });
 
   window.addEventListener('beforeunload', () => {
-    stateManager.saveNow(appState.session);
+    saveSessionNow();
   });
 }
 
-async function init() {
-  ensureActiveModule(appState.session);
-  appState.mode = hasModules() ? 'focused' : 'greeting';
-
-  bindEvents();
-  populatePlaybooks();
-  populateDevExamples();
-  loadSelectedExampleIntoEditor();
-
-  renderGreeting(ui, appState.session.clientName);
-  updateSessionStatus(ui, stateManager.isDirty());
-
-  window.applyModuleUpdate = async (payload) => {
-    const { payload: repairedPayload, warnings } = normalizeDevPanelPayload(payload);
-    if (warnings.length > 0) {
-      console.warn('[CallCanvas][applyModuleUpdate] auto-repairs applied', warnings);
-    }
-    return applyModuleUpdateInternal(repairedPayload, {});
-  };
-  window.__setPensionShowMax = (moduleId, value) => {
-    setPensionShowMaxForModule(moduleId, value);
-  };
-  window.__getPensionShowMaxForModule = (moduleId) => getPensionShowMaxForModule(moduleId);
-
-  if (appState.mode === 'focused') {
-    await renderFocused({ useSwipe: false, revealMode: true });
-  } else {
-    setMode(ui, 'greeting');
-    updateUiChrome();
-  }
+function applyRuntimeOptions(options = {}) {
+  runtimeConfig.readOnly = Boolean(options.readOnly);
+  runtimeConfig.allowDevPanel = !runtimeConfig.readOnly && options.allowDevPanel !== false;
+  runtimeConfig.allowPublish = !runtimeConfig.readOnly && options.allowPublish !== false;
+  runtimeConfig.showPensionToggle = !runtimeConfig.readOnly && options.showPensionToggle !== false;
+  runtimeConfig.persistLocalSession = !runtimeConfig.readOnly && options.persistLocalSession !== false;
 }
 
-void init();
+let initPromise = null;
+
+export async function initApp(options = {}) {
+  if (initPromise) {
+    return initPromise;
+  }
+
+  initPromise = (async () => {
+    applyRuntimeOptions(options);
+
+    if ('initialSession' in options && options.initialSession != null) {
+      appState.session = importSession(options.initialSession);
+    } else {
+      appState.session = loadSession();
+    }
+
+    ensureActiveModule(appState.session);
+    appState.mode = hasModules() ? 'focused' : 'greeting';
+
+    applyRuntimeChrome();
+    resetPublishResult();
+    bindEvents();
+    populatePlaybooks();
+
+    if (runtimeConfig.allowDevPanel) {
+      populateDevExamples();
+      loadSelectedExampleIntoEditor();
+    } else {
+      renderDevPayloadWarnings([]);
+    }
+
+    renderGreeting(ui, appState.session.clientName);
+    if (runtimeConfig.readOnly && ui.sessionStatus) {
+      ui.sessionStatus.textContent = 'Read only';
+      ui.sessionStatus.classList.remove('is-dirty');
+    } else {
+      updateSessionStatus(ui, stateManager.isDirty());
+    }
+
+    window.applyModuleUpdate = async (payload) => {
+      if (runtimeConfig.readOnly) {
+        throw new Error('This session is read only.');
+      }
+
+      const { payload: repairedPayload, warnings } = normalizeDevPanelPayload(payload);
+      if (warnings.length > 0) {
+        console.warn('[CallCanvas][applyModuleUpdate] auto-repairs applied', warnings);
+      }
+      return applyModuleUpdateInternal(repairedPayload, {});
+    };
+    window.__setPensionShowMax = (moduleId, value) => {
+      setPensionShowMaxForModule(moduleId, value);
+    };
+    window.__getPensionShowMaxForModule = (moduleId) => getPensionShowMaxForModule(moduleId);
+
+    if (appState.mode === 'focused') {
+      await renderFocused({ useSwipe: false, revealMode: true });
+    } else {
+      setMode(ui, 'greeting');
+      updateUiChrome();
+    }
+  })();
+
+  return initPromise;
+}
+
+if (window.__CALL_CANVAS_AUTO_INIT__ !== false) {
+  void initApp();
+}

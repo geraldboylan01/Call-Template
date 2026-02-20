@@ -571,7 +571,7 @@ function buildSummaryCard(summaryHtml) {
   return card;
 }
 
-function buildChartsCard(module, charts) {
+function buildChartsCard(module, charts, { showPensionToggle = true, readOnly = false } = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-charts-card';
 
@@ -581,7 +581,7 @@ function buildChartsCard(module, charts) {
 
   card.appendChild(heading);
 
-  if (isPensionModule(module)) {
+  if (showPensionToggle && isPensionModule(module)) {
     const showMax = typeof window.__getPensionShowMaxForModule === 'function'
       ? Boolean(window.__getPensionShowMaxForModule(module.id))
       : false;
@@ -602,11 +602,16 @@ function buildChartsCard(module, charts) {
     text.className = 'pension-toggle-text';
     text.textContent = 'Show max personal contributions';
 
-    checkbox.addEventListener('change', (event) => {
-      if (typeof window.__setPensionShowMax === 'function') {
-        window.__setPensionShowMax(module.id, Boolean(event.target.checked));
-      }
-    });
+    if (!readOnly) {
+      checkbox.addEventListener('change', (event) => {
+        if (typeof window.__setPensionShowMax === 'function') {
+          window.__setPensionShowMax(module.id, Boolean(event.target.checked));
+        }
+      });
+    } else {
+      checkbox.disabled = true;
+      toggle.style.opacity = '0.75';
+    }
 
     toggle.appendChild(checkbox);
     toggle.appendChild(switchTrack);
@@ -666,7 +671,7 @@ function buildChartsCard(module, charts) {
   return card;
 }
 
-function buildGeneratedSection(module) {
+function buildGeneratedSection(module, { showPensionToggle = true, readOnly = false } = {}) {
   const generated = module.generated || {
     summaryHtml: '',
     assumptions: { columns: [], rows: [] },
@@ -701,7 +706,7 @@ function buildGeneratedSection(module) {
       grid.appendChild(buildTableCard(title, table));
     });
   }
-  grid.appendChild(buildChartsCard(module, generated.charts));
+  grid.appendChild(buildChartsCard(module, generated.charts, { showPensionToggle, readOnly }));
 
   section.appendChild(heading);
   section.appendChild(grid);
@@ -733,8 +738,19 @@ export function getUiElements() {
     overviewZoomWrap: document.getElementById('overviewZoomWrap'),
     overviewGrid: document.getElementById('overviewGrid'),
     playbookSelect: document.getElementById('playbookSelect'),
+    publishSessionButton: document.getElementById('publishSessionBtn'),
+    publishModal: document.getElementById('publishModal'),
+    publishCloseButton: document.getElementById('publishCloseBtn'),
+    publishGenerateButton: document.getElementById('publishGenerateBtn'),
+    publishCopyPinButton: document.getElementById('publishCopyPinBtn'),
+    publishCopyLinkButton: document.getElementById('publishCopyLinkBtn'),
+    publishRevokeButton: document.getElementById('publishRevokeBtn'),
+    publishError: document.getElementById('publishError'),
+    publishQrHost: document.getElementById('publishQrHost'),
+    publishPinValue: document.getElementById('publishPinValue'),
+    publishLinkValue: document.getElementById('publishLinkValue'),
+    publishResult: document.getElementById('publishResult'),
     newCallButton: document.getElementById('newCallBtn'),
-    saveSessionButton: document.getElementById('saveSessionBtn'),
     loadSessionButton: document.getElementById('loadSessionBtn'),
     sessionStatus: document.getElementById('sessionStatus'),
     zoomButton: document.getElementById('zoomToggleBtn'),
@@ -746,13 +762,23 @@ export function getUiElements() {
 }
 
 export function renderGreeting(ui, clientName) {
-  ui.greetingHeadline.textContent = `Hello ${clientName || 'Client'}!`;
-  if (ui.clientNameInput.value !== (clientName || '')) {
+  if (ui.greetingHeadline) {
+    ui.greetingHeadline.textContent = `Hello ${clientName || 'Client'}!`;
+  }
+
+  if (ui.clientNameInput && ui.clientNameInput.value !== (clientName || '')) {
     ui.clientNameInput.value = clientName || '';
   }
 }
 
-export function buildFocusedPane({ module, moduleNumber, onTitleInput, onNotesInput }) {
+export function buildFocusedPane({
+  module,
+  moduleNumber,
+  onTitleInput,
+  onNotesInput,
+  readOnly = false,
+  showPensionToggle = true
+}) {
   const pane = document.createElement('div');
   pane.className = 'focused-pane swipe-pane-content';
 
@@ -771,24 +797,28 @@ export function buildFocusedPane({ module, moduleNumber, onTitleInput, onNotesIn
   titleInput.placeholder = 'Untitled Module';
   titleInput.value = module.title || '';
   titleInput.autocomplete = 'off';
+  titleInput.readOnly = readOnly;
 
   const notesInput = document.createElement('textarea');
   notesInput.className = 'module-notes-input';
   notesInput.placeholder = 'Type notes for this module...';
   notesInput.value = module.notes || '';
+  notesInput.readOnly = readOnly;
 
-  titleInput.addEventListener('input', (event) => {
-    onTitleInput(module.id, event.target.value);
-  });
+  if (!readOnly) {
+    titleInput.addEventListener('input', (event) => {
+      onTitleInput(module.id, event.target.value);
+    });
 
-  notesInput.addEventListener('input', (event) => {
-    onNotesInput(module.id, event.target.value);
-  });
+    notesInput.addEventListener('input', (event) => {
+      onNotesInput(module.id, event.target.value);
+    });
+  }
 
   card.appendChild(meta);
   card.appendChild(titleInput);
   card.appendChild(notesInput);
-  card.appendChild(buildGeneratedSection(module));
+  card.appendChild(buildGeneratedSection(module, { showPensionToggle, readOnly }));
   pane.appendChild(card);
 
   return pane;
@@ -881,17 +911,35 @@ export function setMode(ui, mode) {
   focus.classList.add('layer-active');
 }
 
-export function updateControls(ui, { mode, moduleCount, hasPrevious }) {
+export function updateControls(ui, {
+  mode,
+  moduleCount,
+  hasPrevious,
+  hasNext = false,
+  readOnly = false
+}) {
   const hasModules = moduleCount > 0;
 
-  ui.zoomButton.disabled = !hasModules;
-  ui.zoomButton.textContent = mode === 'overview' ? 'Zoom In' : 'Zoom Out';
+  if (ui.zoomButton) {
+    ui.zoomButton.disabled = !hasModules;
+    ui.zoomButton.textContent = mode === 'overview' ? 'Zoom In' : 'Zoom Out';
+  }
 
-  ui.newModuleButton.disabled = false;
+  if (ui.newModuleButton) {
+    ui.newModuleButton.disabled = readOnly;
+  }
 
-  ui.prevArrowButton.classList.toggle('is-hidden', mode !== 'focused');
-  ui.nextArrowButton.classList.toggle('is-hidden', mode !== 'focused');
-  ui.prevArrowButton.disabled = !hasPrevious;
+  if (ui.prevArrowButton) {
+    ui.prevArrowButton.classList.toggle('is-hidden', mode !== 'focused');
+    ui.prevArrowButton.disabled = !hasPrevious;
+  }
+
+  if (ui.nextArrowButton) {
+    ui.nextArrowButton.classList.toggle('is-hidden', mode !== 'focused');
+    ui.nextArrowButton.disabled = readOnly ? !hasNext : false;
+    ui.nextArrowButton.title = readOnly ? 'Next module' : 'New module';
+    ui.nextArrowButton.setAttribute('aria-label', readOnly ? 'Next module' : 'New module');
+  }
 }
 
 export function updateSessionStatus(ui, isDirty) {
