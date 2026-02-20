@@ -82,6 +82,9 @@ const stateManager = createStateManager(300, {
   }
 });
 
+const ASSUMPTIONS_RECOMPUTE_DEBOUNCE_MS = 200;
+const ASSUMPTIONS_UPDATED_FEEDBACK_MS = 800;
+
 const appState = {
   session: newSession('Client'),
   mode: 'greeting',
@@ -89,6 +92,8 @@ const appState = {
   transitionLock: false,
   devPanelOpen: false,
   pensionShowMaxByModuleId: new Map(),
+  assumptionsEditorStateByModuleId: new Map(),
+  lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
   publishedAccess: null
 };
@@ -171,6 +176,51 @@ const EXAMPLE_PAYLOADS = [
             ]
           }
         ]
+      }
+    }
+  },
+  {
+    id: 'pension-editable-inputs',
+    label: 'Pension Inputs (Editable)',
+    payload: {
+      title: 'Pension Projection (Editable Inputs)',
+      generated: {
+        summaryHtml: '<p>This pension module uses JS projection inputs and supports editable assumptions.</p>',
+        pensionInputs: {
+          currentAge: 42,
+          retirementAge: 67,
+          currentSalary: 85000,
+          currentPot: 180000,
+          personalPct: 0.08,
+          employerPct: 0.06,
+          growthRate: 0.05,
+          inflationRate: 0.02,
+          wageGrowthRate: 0.025,
+          horizonEndAge: 92,
+          targetIncomeToday: 42000,
+          currentYear: 2026,
+          minDrawdownMode: false
+        }
+      }
+    }
+  },
+  {
+    id: 'mortgage-editable-inputs',
+    label: 'Mortgage Inputs (Editable)',
+    payload: {
+      title: 'Mortgage Projection (Editable Inputs)',
+      generated: {
+        summaryHtml: '<p>This mortgage module uses JS projection inputs and supports editable assumptions.</p>',
+        mortgageInputs: {
+          currentBalance: 320000,
+          annualInterestRate: 0.0425,
+          startDateIso: '2026-01-01',
+          remainingTermYears: 27,
+          repaymentType: 'repayment',
+          fixedPaymentAmount: null,
+          oneOffOverpayment: 0,
+          annualOverpayment: 3000
+        }
       }
     }
   },
@@ -324,6 +374,599 @@ function ensureGenerated(module) {
   }
 
   module.generated = normalizeGenerated(module.generated);
+}
+
+function getAssumptionsEditorState(moduleId) {
+  if (!appState.assumptionsEditorStateByModuleId.has(moduleId)) {
+    appState.assumptionsEditorStateByModuleId.set(moduleId, {
+      phase: 'idle',
+      errors: {},
+      draftValues: {},
+      pendingNormalizedInputs: null,
+      calculator: null,
+      revision: 0,
+      debounceTimerId: 0,
+      phaseTimerId: 0
+    });
+  }
+
+  return appState.assumptionsEditorStateByModuleId.get(moduleId);
+}
+
+function clearAssumptionsEditorTimers(state) {
+  if (!state) {
+    return;
+  }
+
+  if (state.debounceTimerId) {
+    window.clearTimeout(state.debounceTimerId);
+    state.debounceTimerId = 0;
+  }
+
+  if (state.phaseTimerId) {
+    window.clearTimeout(state.phaseTimerId);
+    state.phaseTimerId = 0;
+  }
+}
+
+function resetAssumptionsEditorState(moduleId) {
+  const state = appState.assumptionsEditorStateByModuleId.get(moduleId);
+  if (!state) {
+    return;
+  }
+
+  clearAssumptionsEditorTimers(state);
+  state.phase = 'idle';
+  state.errors = {};
+  state.draftValues = {};
+  state.pendingNormalizedInputs = null;
+  state.calculator = null;
+  state.revision = 0;
+}
+
+function clearAllAssumptionsEditorState() {
+  appState.assumptionsEditorStateByModuleId.forEach((state) => {
+    clearAssumptionsEditorTimers(state);
+  });
+  appState.assumptionsEditorStateByModuleId.clear();
+}
+
+function getAssumptionsEditorRenderStatus(moduleId) {
+  const state = appState.assumptionsEditorStateByModuleId.get(moduleId);
+  if (!state) {
+    return {
+      phase: 'idle',
+      errors: {},
+      draftValues: {}
+    };
+  }
+
+  return {
+    phase: state.phase,
+    errors: { ...state.errors },
+    draftValues: { ...state.draftValues }
+  };
+}
+
+function findActiveAssumptionsEditor(moduleId) {
+  if (!ui.swipeStage || typeof moduleId !== 'string' || !moduleId) {
+    return null;
+  }
+
+  const card = ui.swipeStage.querySelector(`.focused-module-card[data-module-id="${moduleId}"]`);
+  if (!card) {
+    return null;
+  }
+
+  return card.querySelector(`[data-assumption-editor="${moduleId}"]`);
+}
+
+function applyAssumptionsEditorStateToDom(moduleId) {
+  const state = getAssumptionsEditorState(moduleId);
+  const editor = findActiveAssumptionsEditor(moduleId);
+  if (!editor) {
+    return;
+  }
+
+  const statusEl = editor.querySelector('[data-assumption-status]');
+  if (statusEl) {
+    const text = state.phase === 'updating'
+      ? 'Updating...'
+      : (state.phase === 'updated' ? 'Updated' : '');
+    statusEl.textContent = text;
+    statusEl.classList.remove('is-updating', 'is-updated', 'is-idle');
+    statusEl.classList.add(
+      state.phase === 'updating'
+        ? 'is-updating'
+        : (state.phase === 'updated' ? 'is-updated' : 'is-idle')
+    );
+  }
+
+  const errorEls = editor.querySelectorAll('[data-assumption-error-for]');
+  errorEls.forEach((element) => {
+    const key = element.getAttribute('data-assumption-error-for');
+    const errorText = key ? state.errors[key] : '';
+    element.textContent = errorText ? String(errorText) : '';
+  });
+
+  const fieldEls = editor.querySelectorAll('[data-assumption-field]');
+  fieldEls.forEach((element) => {
+    const fieldKey = element.getAttribute('data-assumption-field');
+    const hasError = Boolean(fieldKey && state.errors[fieldKey]);
+    element.classList.toggle('is-invalid', hasError);
+
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      element.setAttribute('aria-invalid', hasError ? 'true' : 'false');
+    }
+  });
+}
+
+function setAssumptionsEditorPhase(moduleId, phase) {
+  const state = getAssumptionsEditorState(moduleId);
+
+  if (state.phaseTimerId) {
+    window.clearTimeout(state.phaseTimerId);
+    state.phaseTimerId = 0;
+  }
+
+  state.phase = phase;
+  applyAssumptionsEditorStateToDom(moduleId);
+
+  if (phase === 'updated') {
+    state.phaseTimerId = window.setTimeout(() => {
+      const liveState = getAssumptionsEditorState(moduleId);
+      if (liveState.phase === 'updated') {
+        liveState.phase = 'idle';
+        applyAssumptionsEditorStateToDom(moduleId);
+      }
+      liveState.phaseTimerId = 0;
+    }, ASSUMPTIONS_UPDATED_FEEDBACK_MS);
+  }
+}
+
+function hasOwnKey(object, key) {
+  return Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
+}
+
+function getDraftOrFallbackValue(draftValues, fallbackValues, key) {
+  if (hasOwnKey(draftValues, key)) {
+    return draftValues[key];
+  }
+
+  return fallbackValues ? fallbackValues[key] : undefined;
+}
+
+function normalizeNumericInputText(rawValue) {
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    return String(rawValue);
+  }
+
+  return String(rawValue ?? '')
+    .trim()
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\s,]+/g, '')
+    .replace(/[€$£]/g, '');
+}
+
+function parseIsoDateToMonthDate(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return new Date(Date.UTC(year, month - 1, 1));
+}
+
+function deriveRemainingTermYearsFromMortgageInputs(mortgageInputs) {
+  if (Number.isFinite(mortgageInputs?.remainingTermYears) && mortgageInputs.remainingTermYears > 0) {
+    return mortgageInputs.remainingTermYears;
+  }
+
+  const startMonthDate = parseIsoDateToMonthDate(mortgageInputs?.startDateIso);
+  const endMonthDate = parseIsoDateToMonthDate(mortgageInputs?.endDateIso);
+  if (!startMonthDate || !endMonthDate) {
+    return null;
+  }
+
+  const deltaMonths = ((endMonthDate.getUTCFullYear() - startMonthDate.getUTCFullYear()) * 12)
+    + (endMonthDate.getUTCMonth() - startMonthDate.getUTCMonth());
+  const monthCount = deltaMonths + 1;
+  if (!Number.isInteger(monthCount) || monthCount <= 0) {
+    return null;
+  }
+
+  return monthCount / 12;
+}
+
+function parseLooseNumber(rawValue, { label, required = true } = {}) {
+  const cleaned = normalizeNumericInputText(rawValue);
+  if (!cleaned) {
+    if (required) {
+      return { error: `${label} is required.` };
+    }
+    return { value: null };
+  }
+
+  const numeric = Number(cleaned);
+  if (!Number.isFinite(numeric)) {
+    return { error: `${label} must be a valid number.` };
+  }
+
+  return { value: numeric };
+}
+
+function parseRateInput(rawValue, { label }) {
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    return { value: rawValue };
+  }
+
+  const original = String(rawValue ?? '').trim();
+  const cleaned = normalizeNumericInputText(original).replace(/%/g, '');
+  if (!cleaned) {
+    return { error: `${label} is required.` };
+  }
+
+  const numeric = Number(cleaned);
+  if (!Number.isFinite(numeric)) {
+    return { error: `${label} must be a valid rate.` };
+  }
+
+  const hasPercentSymbol = original.includes('%');
+  const decimal = hasPercentSymbol || Math.abs(numeric) > 1
+    ? (numeric / 100)
+    : numeric;
+
+  return { value: decimal };
+}
+
+function parseIntegerInput(rawValue, { label }) {
+  const parsed = parseLooseNumber(rawValue, { label });
+  if (parsed.error) {
+    return parsed;
+  }
+
+  if (!Number.isInteger(parsed.value)) {
+    return { error: `${label} must be a whole number.` };
+  }
+
+  return { value: parsed.value };
+}
+
+function parsePositiveNumberInput(rawValue, { label }) {
+  const parsed = parseLooseNumber(rawValue, { label });
+  if (parsed.error) {
+    return parsed;
+  }
+
+  if (!(parsed.value > 0)) {
+    return { error: `${label} must be greater than 0.` };
+  }
+
+  return parsed;
+}
+
+function parseNonNegativeNumberInput(rawValue, { label }) {
+  const parsed = parseLooseNumber(rawValue, { label });
+  if (parsed.error) {
+    return parsed;
+  }
+
+  if (parsed.value < 0) {
+    return { error: `${label} must be greater than or equal to 0.` };
+  }
+
+  return parsed;
+}
+
+function mapPensionNormalizationErrorToField(message) {
+  if (message.includes('.growthRate')) {
+    return 'growthRate';
+  }
+  if (message.includes('.wageGrowthRate')) {
+    return 'wageGrowthRate';
+  }
+  if (message.includes('.inflationRate')) {
+    return 'inflationRate';
+  }
+  if (message.includes('.retirementAge')) {
+    return 'retirementAge';
+  }
+  if (message.includes('.personalPct')) {
+    return 'personalPct';
+  }
+  if (message.includes('.employerPct')) {
+    return 'employerPct';
+  }
+  if (message.includes('.horizonEndAge')) {
+    return 'horizonEndAge';
+  }
+  return null;
+}
+
+function mapMortgageNormalizationErrorToField(message) {
+  if (message.includes('.currentBalance')) {
+    return 'currentBalance';
+  }
+  if (message.includes('.annualInterestRate')) {
+    return 'annualInterestRate';
+  }
+  if (message.includes('.remainingTermYears') || message.includes('.endDateIso')) {
+    return 'remainingTermYears';
+  }
+  if (message.includes('.oneOffOverpayment')) {
+    return 'oneOffOverpayment';
+  }
+  if (message.includes('.annualOverpayment')) {
+    return 'annualOverpayment';
+  }
+  if (message.includes('.fixedPaymentAmount')) {
+    return 'fixedPaymentAmount';
+  }
+  return null;
+}
+
+function validateEditablePensionInputs(module, draftValues) {
+  const baseInputs = module?.generated?.pensionInputs;
+  if (!baseInputs) {
+    return {
+      errors: { growthRate: 'Pension inputs are unavailable for this module.' },
+      normalizedInputs: null
+    };
+  }
+
+  const candidate = { ...baseInputs };
+  const errors = {};
+
+  const assign = (field, parser) => {
+    const parsed = parser(getDraftOrFallbackValue(draftValues, baseInputs, field));
+    if (parsed.error) {
+      errors[field] = parsed.error;
+      return;
+    }
+
+    candidate[field] = parsed.value;
+  };
+
+  assign('growthRate', (value) => parseRateInput(value, { label: 'Growth rate' }));
+  assign('wageGrowthRate', (value) => parseRateInput(value, { label: 'Wage growth rate' }));
+  assign('inflationRate', (value) => parseRateInput(value, { label: 'Inflation rate' }));
+  assign('retirementAge', (value) => parseIntegerInput(value, { label: 'Retirement age' }));
+  assign('personalPct', (value) => parseRateInput(value, { label: 'Personal contribution rate' }));
+  assign('employerPct', (value) => parseRateInput(value, { label: 'Employer contribution rate' }));
+
+  if (hasOwnKey(baseInputs, 'horizonEndAge') || hasOwnKey(draftValues, 'horizonEndAge')) {
+    assign('horizonEndAge', (value) => parseIntegerInput(value, { label: 'Horizon end age' }));
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      errors,
+      normalizedInputs: null
+    };
+  }
+
+  try {
+    const normalizedInputs = normalizePensionInputs(candidate);
+    return {
+      errors: {},
+      normalizedInputs
+    };
+  } catch (error) {
+    const message = error?.message || 'Invalid pension assumptions.';
+    const field = mapPensionNormalizationErrorToField(message);
+    if (field) {
+      errors[field] = message;
+    } else {
+      errors.growthRate = message;
+    }
+
+    return {
+      errors,
+      normalizedInputs: null
+    };
+  }
+}
+
+function validateEditableMortgageInputs(module, draftValues) {
+  const baseInputs = module?.generated?.mortgageInputs;
+  if (!baseInputs) {
+    return {
+      errors: { currentBalance: 'Mortgage inputs are unavailable for this module.' },
+      normalizedInputs: null
+    };
+  }
+
+  const candidate = { ...baseInputs };
+  const fallbackInputs = {
+    ...baseInputs,
+    remainingTermYears: deriveRemainingTermYearsFromMortgageInputs(baseInputs)
+  };
+  const errors = {};
+
+  const assign = (field, parser) => {
+    const parsed = parser(getDraftOrFallbackValue(draftValues, fallbackInputs, field));
+    if (parsed.error) {
+      errors[field] = parsed.error;
+      return;
+    }
+
+    candidate[field] = parsed.value;
+  };
+
+  assign('currentBalance', (value) => parsePositiveNumberInput(value, { label: 'Current balance' }));
+  assign('annualInterestRate', (value) => parseRateInput(value, { label: 'Annual interest rate' }));
+  assign('remainingTermYears', (value) => parsePositiveNumberInput(value, { label: 'Remaining term (years)' }));
+  assign('oneOffOverpayment', (value) => parseNonNegativeNumberInput(value, { label: 'One-off overpayment' }));
+  assign('annualOverpayment', (value) => parseNonNegativeNumberInput(value, { label: 'Annual overpayment' }));
+
+  const defaultMode = Number.isFinite(baseInputs.fixedPaymentAmount) && baseInputs.fixedPaymentAmount > 0
+    ? 'fixed'
+    : 'calculated';
+  const paymentModeRaw = getDraftOrFallbackValue(draftValues, { fixedPaymentMode: defaultMode }, 'fixedPaymentMode');
+  const paymentMode = String(paymentModeRaw || defaultMode).trim().toLowerCase();
+  if (paymentMode !== 'calculated' && paymentMode !== 'fixed') {
+    errors.fixedPaymentMode = 'Choose calculated or fixed monthly payment.';
+  }
+
+  if (paymentMode === 'fixed') {
+    const fixedPaymentParsed = parsePositiveNumberInput(
+      getDraftOrFallbackValue(draftValues, baseInputs, 'fixedPaymentAmount'),
+      { label: 'Fixed monthly payment' }
+    );
+
+    if (fixedPaymentParsed.error) {
+      errors.fixedPaymentAmount = fixedPaymentParsed.error;
+    } else {
+      candidate.fixedPaymentAmount = fixedPaymentParsed.value;
+    }
+  } else {
+    candidate.fixedPaymentAmount = null;
+  }
+
+  candidate.endDateIso = null;
+  candidate.repaymentType = 'repayment';
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      errors,
+      normalizedInputs: null
+    };
+  }
+
+  try {
+    const normalizedInputs = normalizeMortgageInputs(candidate);
+    return {
+      errors: {},
+      normalizedInputs
+    };
+  } catch (error) {
+    const message = error?.message || 'Invalid mortgage assumptions.';
+    const field = mapMortgageNormalizationErrorToField(message);
+    if (field) {
+      errors[field] = message;
+    } else {
+      errors.currentBalance = message;
+    }
+
+    return {
+      errors,
+      normalizedInputs: null
+    };
+  }
+}
+
+function shouldRefreshMortgageSummary(summaryHtml) {
+  const text = String(summaryHtml || '');
+  if (!text.trim()) {
+    return true;
+  }
+
+  return /[\d€%]/.test(text);
+}
+
+function applyPensionProjectionToModule(module, { updateSummary = true } = {}) {
+  const projection = computePensionProjection(module.generated.pensionInputs);
+  const currentScenario = projection.debug?.currentScenario || {
+    contribEurSeries: [],
+    growthEurSeries: []
+  };
+
+  module.generated.assumptions = projection.assumptionsTable;
+  module.generated.outputs = projection.outputsTable;
+  module.generated.outputsBucketed = null;
+  module.generated.charts = projection.charts.map((chart, index) => ({
+    ...chart,
+    id: chart.id || makeChartId(module.id, chart.title, index)
+  }));
+
+  if (updateSummary) {
+    module.generated.summaryHtml = injectAutoSftSummarySentence(
+      module.generated.summaryHtml,
+      projection.debug.sftSentence
+    );
+  }
+
+  console.info('[CallCanvas] pension projection computed', {
+    inputs: projection.debug.inputs,
+    projectedPotCurrent: projection.debug.projectedPotCurrent,
+    projectedPotMaxPersonal: projection.debug.projectedPotMaxPersonal,
+    requiredPot: projection.debug.requiredPot,
+    retirementYear: projection.debug.retirementYear,
+    sftValue: projection.debug.sftValue,
+    sftYearUsed: projection.debug.sftYearUsed,
+    heldConstantBeyond2029: projection.debug.sftHeldConstantBeyond2029,
+    breaches: projection.debug.sftBreaches
+  });
+  console.info('[pension] chart1 dataset labels', projection.charts[0].datasets.map((dataset) => dataset.label));
+  console.info(
+    '[pension] contrib sample',
+    currentScenario.contribEurSeries.slice(0, 3),
+    currentScenario.growthEurSeries.slice(0, 3)
+  );
+
+  if (Array.isArray(projection.debug.maxSeriesMonotonicIssues) && projection.debug.maxSeriesMonotonicIssues.length > 0) {
+    console.warn('[CallCanvas] max personal series is not monotonic non-decreasing', {
+      issues: projection.debug.maxSeriesMonotonicIssues
+    });
+  }
+
+  appState.lastValidProjectionByModuleId.set(module.id, {
+    calculator: 'pension',
+    inputs: { ...module.generated.pensionInputs },
+    debug: projection.debug
+  });
+
+  return projection;
+}
+
+function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) {
+  const projection = computeMortgageProjection(module.generated.mortgageInputs);
+
+  module.generated.assumptions = projection.assumptionsTable;
+  module.generated.outputs = projection.outputsTable;
+  module.generated.outputsBucketed = null;
+  module.generated.charts = projection.charts.map((chart, index) => ({
+    ...chart,
+    id: chart.id || makeChartId(module.id, chart.title, index)
+  }));
+
+  if (updateSummary) {
+    module.generated.summaryHtml = projection.summaryHtml;
+  }
+
+  console.info('[CallCanvas] mortgage projection computed', {
+    inputs: module.generated.mortgageInputs,
+    monthsPlanned: projection.debug?.monthsPlanned,
+    monthsSimulated: projection.debug?.monthsSimulated,
+    monthlyPayment: projection.debug?.paymentUsedMonthly,
+    payoffYear: projection.debug?.payoffYear,
+    totalInterestLifetime: projection.debug?.totalInterestLifetime,
+    totalPaidLifetime: projection.debug?.totalPaidLifetime
+  });
+
+  appState.lastValidProjectionByModuleId.set(module.id, {
+    calculator: 'mortgage',
+    inputs: { ...module.generated.mortgageInputs },
+    debug: projection.debug
+  });
+
+  return projection;
 }
 
 function showToast(message, type = 'success') {
@@ -948,6 +1591,8 @@ async function replaceSession(nextSession, options = {}) {
   appState.transitionLock = false;
   appState.session = nextSession;
   appState.pensionShowMaxByModuleId = new Map();
+  clearAllAssumptionsEditorState();
+  appState.lastValidProjectionByModuleId = new Map();
 
   ensureActiveModule(appState.session);
   saveSessionNow();
@@ -1438,6 +2083,156 @@ function updateModule(moduleId, patch) {
   }
 }
 
+async function recomputeEditableAssumptions({
+  moduleId,
+  calculator,
+  revision,
+  normalizedInputs
+}) {
+  const state = getAssumptionsEditorState(moduleId);
+  if (state.revision !== revision) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    return;
+  }
+
+  ensureGenerated(module);
+
+  try {
+    if (calculator === 'pension') {
+      module.generated.pensionInputs = normalizedInputs;
+      module.generated.mortgageInputs = null;
+      applyPensionProjectionToModule(module, { updateSummary: true });
+    } else if (calculator === 'mortgage') {
+      module.generated.mortgageInputs = normalizedInputs;
+      module.generated.pensionInputs = null;
+      const shouldUpdateSummary = shouldRefreshMortgageSummary(module.generated.summaryHtml);
+      applyMortgageProjectionToModule(module, { updateSummary: shouldUpdateSummary });
+    } else {
+      return;
+    }
+  } catch (error) {
+    const message = error?.message || 'Could not update assumptions.';
+    const field = calculator === 'mortgage'
+      ? mapMortgageNormalizationErrorToField(message)
+      : mapPensionNormalizationErrorToField(message);
+    state.errors = {
+      ...(state.errors || {}),
+      [field || (calculator === 'mortgage' ? 'currentBalance' : 'growthRate')]: message
+    };
+    state.pendingNormalizedInputs = null;
+    state.phase = 'idle';
+    applyAssumptionsEditorStateToDom(moduleId);
+    return;
+  }
+
+  if (state.revision !== revision) {
+    return;
+  }
+
+  module.updatedAt = nowIso();
+  state.pendingNormalizedInputs = null;
+  state.draftValues = {};
+  state.errors = {};
+  state.calculator = calculator;
+  setAssumptionsEditorPhase(moduleId, 'updated');
+
+  if (appState.mode === 'focused' && appState.session.activeModuleId === module.id) {
+    await renderFocused({ useSwipe: false, revealMode: true });
+  } else if (appState.mode === 'overview') {
+    refreshOverview({ enableSortable: true });
+  }
+
+  markSessionDirty();
+  saveSessionNow();
+}
+
+function queueEditableAssumptionsRecompute({ moduleId, calculator, normalizedInputs }) {
+  const state = getAssumptionsEditorState(moduleId);
+  state.calculator = calculator;
+  state.pendingNormalizedInputs = normalizedInputs;
+  state.errors = {};
+  if (state.phaseTimerId) {
+    window.clearTimeout(state.phaseTimerId);
+    state.phaseTimerId = 0;
+  }
+  state.phase = 'updating';
+  state.revision += 1;
+
+  if (state.debounceTimerId) {
+    window.clearTimeout(state.debounceTimerId);
+    state.debounceTimerId = 0;
+  }
+
+  const revision = state.revision;
+  state.debounceTimerId = window.setTimeout(() => {
+    const liveState = getAssumptionsEditorState(moduleId);
+    liveState.debounceTimerId = 0;
+    void recomputeEditableAssumptions({
+      moduleId,
+      calculator,
+      revision,
+      normalizedInputs
+    });
+  }, ASSUMPTIONS_RECOMPUTE_DEBOUNCE_MS);
+
+  applyAssumptionsEditorStateToDom(moduleId);
+}
+
+function handleAssumptionsEditorPatch({ moduleId, calculator, field, value }) {
+  if (runtimeConfig.readOnly || !moduleId || !calculator || !field) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    return;
+  }
+
+  ensureGenerated(module);
+  const state = getAssumptionsEditorState(moduleId);
+  state.draftValues = {
+    ...state.draftValues,
+    [field]: value
+  };
+
+  let validation;
+  if (calculator === 'pension') {
+    validation = validateEditablePensionInputs(module, state.draftValues);
+  } else if (calculator === 'mortgage') {
+    validation = validateEditableMortgageInputs(module, state.draftValues);
+  } else {
+    return;
+  }
+
+  state.errors = validation.errors || {};
+  state.pendingNormalizedInputs = validation.normalizedInputs;
+  state.calculator = calculator;
+
+  if (Object.keys(state.errors).length > 0 || !validation.normalizedInputs) {
+    if (state.debounceTimerId) {
+      window.clearTimeout(state.debounceTimerId);
+      state.debounceTimerId = 0;
+    }
+    if (state.phaseTimerId) {
+      window.clearTimeout(state.phaseTimerId);
+      state.phaseTimerId = 0;
+    }
+    state.phase = 'idle';
+    applyAssumptionsEditorStateToDom(moduleId);
+    return;
+  }
+
+  queueEditableAssumptionsRecompute({
+    moduleId,
+    calculator,
+    normalizedInputs: validation.normalizedInputs
+  });
+}
+
 function updateUiChrome() {
   const activeIndex = getActiveIndex();
   updateControls(ui, {
@@ -1455,12 +2250,15 @@ function getFocusedPaneForModule(module) {
   const moduleNumber = Math.max(1, appState.session.order.indexOf(module.id) + 1);
 
   ensureGenerated(module);
+  const assumptionsEditorStatus = getAssumptionsEditorRenderStatus(module.id);
 
   return buildFocusedPane({
     module,
     moduleNumber,
     onTitleInput: (moduleId, value) => updateModule(moduleId, { title: value }),
     onNotesInput: (moduleId, value) => updateModule(moduleId, { notes: value }),
+    onPatchInputs: (patch) => handleAssumptionsEditorPatch(patch),
+    assumptionsEditorStatus,
     readOnly: runtimeConfig.readOnly,
     showPensionToggle: runtimeConfig.showPensionToggle
   });
@@ -1807,68 +2605,11 @@ async function applyModuleUpdateInternal(payload, options = {}) {
     const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
 
     if (hasMortgageInputsPatch && module.generated.mortgageInputs) {
-      const projection = computeMortgageProjection(module.generated.mortgageInputs);
-
-      module.generated.assumptions = projection.assumptionsTable;
-      module.generated.outputs = projection.outputsTable;
-      module.generated.outputsBucketed = null;
-      module.generated.charts = projection.charts.map((chart, index) => ({
-        ...chart,
-        id: chart.id || makeChartId(module.id, chart.title, index)
-      }));
-      module.generated.summaryHtml = projection.summaryHtml;
-
-      console.info('[CallCanvas] mortgage projection computed', {
-        inputs: module.generated.mortgageInputs,
-        monthsPlanned: projection.debug?.monthsPlanned,
-        monthsSimulated: projection.debug?.monthsSimulated,
-        monthlyPayment: projection.debug?.paymentUsedMonthly,
-        payoffYear: projection.debug?.payoffYear,
-        totalInterestLifetime: projection.debug?.totalInterestLifetime,
-        totalPaidLifetime: projection.debug?.totalPaidLifetime
-      });
+      applyMortgageProjectionToModule(module, { updateSummary: true });
+      resetAssumptionsEditorState(module.id);
     } else if (hasPensionInputsPatch && module.generated.pensionInputs) {
-      const projection = computePensionProjection(module.generated.pensionInputs);
-      const currentScenario = projection.debug?.currentScenario || {
-        contribEurSeries: [],
-        growthEurSeries: []
-      };
-
-      module.generated.assumptions = projection.assumptionsTable;
-      module.generated.outputs = projection.outputsTable;
-      module.generated.outputsBucketed = null;
-      module.generated.charts = projection.charts.map((chart, index) => ({
-        ...chart,
-        id: chart.id || makeChartId(module.id, chart.title, index)
-      }));
-      module.generated.summaryHtml = injectAutoSftSummarySentence(
-        module.generated.summaryHtml,
-        projection.debug.sftSentence
-      );
-
-      console.info('[CallCanvas] pension projection computed', {
-        inputs: projection.debug.inputs,
-        projectedPotCurrent: projection.debug.projectedPotCurrent,
-        projectedPotMaxPersonal: projection.debug.projectedPotMaxPersonal,
-        requiredPot: projection.debug.requiredPot,
-        retirementYear: projection.debug.retirementYear,
-        sftValue: projection.debug.sftValue,
-        sftYearUsed: projection.debug.sftYearUsed,
-        heldConstantBeyond2029: projection.debug.sftHeldConstantBeyond2029,
-        breaches: projection.debug.sftBreaches
-      });
-      console.info('[pension] chart1 dataset labels', projection.charts[0].datasets.map((dataset) => dataset.label));
-      console.info(
-        '[pension] contrib sample',
-        currentScenario.contribEurSeries.slice(0, 3),
-        currentScenario.growthEurSeries.slice(0, 3)
-      );
-
-      if (Array.isArray(projection.debug.maxSeriesMonotonicIssues) && projection.debug.maxSeriesMonotonicIssues.length > 0) {
-        console.warn('[CallCanvas] max personal series is not monotonic non-decreasing', {
-          issues: projection.debug.maxSeriesMonotonicIssues
-        });
-      }
+      applyPensionProjectionToModule(module, { updateSummary: true });
+      resetAssumptionsEditorState(module.id);
     }
   }
 
