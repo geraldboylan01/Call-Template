@@ -63,7 +63,7 @@ const PUBLIC_BASE_URL = (() => {
   const override = typeof window.__PUBLIC_BASE_URL === 'string'
     ? window.__PUBLIC_BASE_URL.trim()
     : '';
-  const raw = override || window.location.origin;
+  const raw = override || new URL('./', window.location.href).toString();
   return raw.replace(/\/+$/, '');
 })();
 
@@ -687,6 +687,23 @@ function generate6DigitPin() {
   return String(values[0] % 1000000).padStart(6, '0');
 }
 
+function getPublishPinFromInput() {
+  if (!ui.publishPinInput) {
+    return generate6DigitPin();
+  }
+
+  const normalized = String(ui.publishPinInput.value ?? '').replace(/\s+/g, '').trim();
+  if (!normalized) {
+    return generate6DigitPin();
+  }
+
+  if (/^\d{6}$/.test(normalized)) {
+    return normalized;
+  }
+
+  throw new Error('PIN must be exactly 6 digits.');
+}
+
 function normalizePublishSessionId(rawValue) {
   const value = String(rawValue ?? '').trim();
   if (!value) {
@@ -733,14 +750,14 @@ function resetPublishResult() {
   if (ui.publishResult) {
     ui.publishResult.classList.add('is-hidden');
   }
-  if (ui.publishQrHost) {
-    ui.publishQrHost.innerHTML = '';
-  }
   if (ui.publishPinValue) {
     ui.publishPinValue.textContent = '------';
   }
   if (ui.publishLinkValue) {
     ui.publishLinkValue.value = '';
+  }
+  if (ui.publishPinInput) {
+    ui.publishPinInput.value = '';
   }
 }
 
@@ -753,27 +770,9 @@ function setPublishModalOpen(open) {
   ui.publishModal.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
 
-function renderQrCode(link) {
-  if (!ui.publishQrHost) {
-    return;
-  }
-
-  ui.publishQrHost.innerHTML = '';
-  if (!window.QRCode) {
-    ui.publishQrHost.textContent = 'QR library not available.';
-    return;
-  }
-
-  new window.QRCode(ui.publishQrHost, {
-    text: link,
-    width: 192,
-    height: 192
-  });
-}
-
 async function publishCurrentSession() {
   const plaintext = exportSession(appState.session);
-  const pin = generate6DigitPin();
+  const pin = getPublishPinFromInput();
   const encryptedPayload = await encryptSessionJson(pin, plaintext);
   const response = await fetch(`${WORKER_BASE_URL}/api/publish`, {
     method: 'POST',
@@ -866,8 +865,6 @@ function renderPublishedAccess(access) {
   if (ui.publishLinkValue) {
     ui.publishLinkValue.value = access.link;
   }
-
-  renderQrCode(access.link);
 }
 
 async function handlePublishGenerate() {
@@ -1994,11 +1991,7 @@ function bindEvents() {
   if (!runtimeConfig.readOnly && runtimeConfig.allowPublish && ui.publishSessionButton) {
     ui.publishSessionButton.addEventListener('click', () => {
       setPublishError('');
-      if (appState.publishedAccess) {
-        renderPublishedAccess(appState.publishedAccess);
-      } else {
-        resetPublishResult();
-      }
+      resetPublishResult();
       setPublishModalOpen(true);
     });
   }
