@@ -197,6 +197,44 @@ function normalizePensionInputs(pensionInputs) {
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
+function normalizeMortgageInputs(mortgageInputs) {
+  if (!mortgageInputs || typeof mortgageInputs !== 'object' || Array.isArray(mortgageInputs)) {
+    return null;
+  }
+
+  const normalized = {};
+  [
+    'currentBalance',
+    'annualInterestRate',
+    'remainingTermYears',
+    'fixedPaymentAmount',
+    'oneOffOverpayment',
+    'annualOverpayment'
+  ].forEach((key) => {
+    if (typeof mortgageInputs[key] === 'number' && Number.isFinite(mortgageInputs[key])) {
+      normalized[key] = mortgageInputs[key];
+    }
+  });
+
+  if (typeof mortgageInputs.startDateIso === 'string' && mortgageInputs.startDateIso.trim()) {
+    normalized.startDateIso = mortgageInputs.startDateIso.trim();
+  }
+
+  if (typeof mortgageInputs.endDateIso === 'string' && mortgageInputs.endDateIso.trim()) {
+    normalized.endDateIso = mortgageInputs.endDateIso.trim();
+  }
+
+  if (mortgageInputs.fixedPaymentAmount === null) {
+    normalized.fixedPaymentAmount = null;
+  }
+
+  if (typeof mortgageInputs.repaymentType === 'string' && mortgageInputs.repaymentType.trim()) {
+    normalized.repaymentType = mortgageInputs.repaymentType.trim();
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 export function createEmptyGenerated() {
   return {
     summaryHtml: '',
@@ -210,6 +248,7 @@ export function createEmptyGenerated() {
     },
     tables: [],
     pensionInputs: null,
+    mortgageInputs: null,
     outputsBucketed: null,
     charts: []
   };
@@ -226,6 +265,7 @@ export function normalizeGenerated(generated) {
     outputs: normalizeTable(generated.outputs),
     tables: normalizeGeneratedTables(generated.tables),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
+    mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs),
     outputsBucketed: normalizeOutputsBucketed(generated.outputsBucketed),
     charts: normalizeCharts(generated.charts)
   };

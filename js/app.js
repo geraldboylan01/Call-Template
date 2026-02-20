@@ -31,6 +31,8 @@ import {
   ensureLayerVisibleForMeasure
 } from './render.js';
 import { normalizePensionInputs, computePensionProjection } from './pension_math.js';
+import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_math.js';
+import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { encryptSessionJson } from './crypto_session.js';
 
 const ui = getUiElements();
@@ -1160,6 +1162,10 @@ function validatePensionInputsPayload(pensionInputs) {
   return normalizePensionInputs(pensionInputs);
 }
 
+function validateMortgageInputsPayload(mortgageInputs) {
+  return normalizeMortgageInputs(mortgageInputs);
+}
+
 function normalizePayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Payload must be a JSON object.');
@@ -1219,6 +1225,10 @@ function normalizePayload(payload) {
 
     if ('pensionInputs' in payload.generated) {
       generatedPatch.pensionInputs = validatePensionInputsPayload(payload.generated.pensionInputs);
+    }
+
+    if ('mortgageInputs' in payload.generated) {
+      generatedPatch.mortgageInputs = validateMortgageInputsPayload(payload.generated.mortgageInputs);
     }
 
     normalized.generated = generatedPatch;
@@ -1725,6 +1735,16 @@ function mergeGeneratedPatch(module, generatedPatch) {
 
   if ('pensionInputs' in generatedPatch) {
     module.generated.pensionInputs = generatedPatch.pensionInputs;
+    if (generatedPatch.pensionInputs) {
+      module.generated.mortgageInputs = null;
+    }
+  }
+
+  if ('mortgageInputs' in generatedPatch) {
+    module.generated.mortgageInputs = generatedPatch.mortgageInputs;
+    if (generatedPatch.mortgageInputs) {
+      module.generated.pensionInputs = null;
+    }
   }
 
   if ('outputsBucketed' in generatedPatch) {
@@ -1783,7 +1803,31 @@ async function applyModuleUpdateInternal(payload, options = {}) {
   if (normalizedPayload.generated) {
     mergeGeneratedPatch(module, normalizedPayload.generated);
 
-    if ('pensionInputs' in normalizedPayload.generated && module.generated.pensionInputs) {
+    const hasPensionInputsPatch = 'pensionInputs' in normalizedPayload.generated;
+    const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
+
+    if (hasMortgageInputsPatch && module.generated.mortgageInputs) {
+      const projection = computeMortgageProjection(module.generated.mortgageInputs);
+
+      module.generated.assumptions = projection.assumptionsTable;
+      module.generated.outputs = projection.outputsTable;
+      module.generated.outputsBucketed = null;
+      module.generated.charts = projection.charts.map((chart, index) => ({
+        ...chart,
+        id: chart.id || makeChartId(module.id, chart.title, index)
+      }));
+      module.generated.summaryHtml = projection.summaryHtml;
+
+      console.info('[CallCanvas] mortgage projection computed', {
+        inputs: module.generated.mortgageInputs,
+        monthsPlanned: projection.debug?.monthsPlanned,
+        monthsSimulated: projection.debug?.monthsSimulated,
+        monthlyPayment: projection.debug?.paymentUsedMonthly,
+        payoffYear: projection.debug?.payoffYear,
+        totalInterestLifetime: projection.debug?.totalInterestLifetime,
+        totalPaidLifetime: projection.debug?.totalPaidLifetime
+      });
+    } else if (hasPensionInputsPatch && module.generated.pensionInputs) {
       const projection = computePensionProjection(module.generated.pensionInputs);
       const currentScenario = projection.debug?.currentScenario || {
         contribEurSeries: [],
@@ -2287,12 +2331,13 @@ export async function initApp(options = {}) {
       if (warnings.length > 0) {
         console.warn('[CallCanvas][applyModuleUpdate] auto-repairs applied', warnings);
       }
-      return applyModuleUpdateInternal(repairedPayload, {});
-    };
-    window.__setPensionShowMax = (moduleId, value) => {
-      setPensionShowMaxForModule(moduleId, value);
-    };
-    window.__getPensionShowMaxForModule = (moduleId) => getPensionShowMaxForModule(moduleId);
+    return applyModuleUpdateInternal(repairedPayload, {});
+  };
+  window.__setPensionShowMax = (moduleId, value) => {
+    setPensionShowMaxForModule(moduleId, value);
+  };
+  window.__getPensionShowMaxForModule = (moduleId) => getPensionShowMaxForModule(moduleId);
+  window.__runMortgageMathTests = () => runMortgageMathTests();
 
     if (appState.mode === 'focused') {
       await renderFocused({ useSwipe: false, revealMode: true });

@@ -16,6 +16,11 @@ const PENSION_DATASET_LABELS = {
   requiredReference: 'Required pot path',
   withdrawals: 'Withdrawals'
 };
+const MORTGAGE_DATASET_LABELS = {
+  balance: 'Remaining balance',
+  principal: 'Principal repaid (annual)',
+  interest: 'Interest paid (annual)'
+};
 const EURO_FORMATTER = new Intl.NumberFormat('en-IE', {
   style: 'currency',
   currency: 'EUR',
@@ -561,9 +566,58 @@ function csvEscape(value) {
   return text;
 }
 
-function chartToCsv(chartData) {
+function round2(value) {
+  return Math.round((clampNumber(value) + Number.EPSILON) * 100) / 100;
+}
+
+function isMortgageMixedChart(chartData) {
+  const chartId = normalizeLabel(chartData?.id).toLowerCase();
+  return chartId.startsWith('mortgage-mixed')
+    || chartData?.meta?.kind === 'mortgageMixed';
+}
+
+function chartToCsv(chartData, _module) {
   const datasets = Array.isArray(chartData.datasets) ? chartData.datasets : [];
   const labels = Array.isArray(chartData.labels) ? chartData.labels : [];
+
+  if (isMortgageMixedChart(chartData)) {
+    const labelsLength = labels.length;
+    const getValues = (label) => {
+      const dataset = datasets.find((entry) => normalizeLabel(entry?.label) === label);
+      const values = Array.isArray(dataset?.data) ? dataset.data.map((value) => clampNumber(value)) : [];
+      while (values.length < labelsLength) {
+        values.push(0);
+      }
+      return values.slice(0, labelsLength);
+    };
+
+    const balanceEndValues = getValues(MORTGAGE_DATASET_LABELS.balance);
+    const principalValues = getValues(MORTGAGE_DATASET_LABELS.principal);
+    const interestValues = getValues(MORTGAGE_DATASET_LABELS.interest);
+
+    const header = ['Year', 'BalanceStart', 'PrincipalPaid', 'InterestPaid', 'TotalPaid', 'BalanceEnd'];
+    const lines = [header.map(csvEscape).join(',')];
+
+    labels.forEach((label, index) => {
+      const principalRounded = round2(principalValues[index]);
+      const interestRounded = round2(interestValues[index]);
+      const balanceEndRounded = round2(balanceEndValues[index]);
+      const balanceStartRounded = round2(balanceEndRounded + principalRounded);
+      const totalPaidRounded = round2(principalRounded + interestRounded);
+
+      const row = [
+        String(label ?? ''),
+        balanceStartRounded.toFixed(2),
+        principalRounded.toFixed(2),
+        interestRounded.toFixed(2),
+        totalPaidRounded.toFixed(2),
+        balanceEndRounded.toFixed(2)
+      ];
+      lines.push(row.map(csvEscape).join(','));
+    });
+
+    return `${lines.join('\n')}\n`;
+  }
 
   const header = ['Label', ...datasets.map((dataset) => dataset.label || '')];
   const lines = [header.map(csvEscape).join(',')];
@@ -1060,8 +1114,47 @@ function computeSustainabilityWithdrawalMax(chartData) {
   return maxArrayValue(withdrawalsValues);
 }
 
+function buildMortgageMixedDataset(dataset, index) {
+  const label = normalizeLabel(dataset?.label);
+
+  if (label === MORTGAGE_DATASET_LABELS.balance) {
+    const line = buildDatasetStyle(dataset, index, 'line');
+    const color = '#2ea3ff';
+    return {
+      ...line,
+      type: 'line',
+      yAxisID: 'y',
+      order: 0,
+      borderColor: color,
+      pointBackgroundColor: color,
+      pointBorderColor: color,
+      backgroundColor: hexToRgba(color, 0.2),
+      borderWidth: 2.2
+    };
+  }
+
+  if (label === MORTGAGE_DATASET_LABELS.principal || label === MORTGAGE_DATASET_LABELS.interest) {
+    const bar = buildDatasetStyle(dataset, index, 'bar');
+    const color = label === MORTGAGE_DATASET_LABELS.principal ? '#7bffbf' : '#ffd166';
+    return {
+      ...bar,
+      type: 'bar',
+      yAxisID: 'y1',
+      stack: 'mortgage-repayments',
+      order: 1,
+      borderColor: color,
+      backgroundColor: hexToRgba(color, 0.52)
+    };
+  }
+
+  return buildDatasetStyle(dataset, index, 'bar');
+}
+
 function buildChartConfig(chartData, { module } = {}) {
-  const chartType = chartData.type === 'bar' ? 'bar' : 'line';
+  const isMortgageMixed = isMortgageMixedChart(chartData);
+  const chartType = isMortgageMixed
+    ? 'bar'
+    : (chartData.type === 'bar' ? 'bar' : 'line');
   const labels = Array.isArray(chartData.labels) ? chartData.labels.map((value) => String(value)) : [];
   const pensionModule = isPensionModule(module);
   const accumulationByTitleOrLabels = isPensionAccumulationChart(chartData);
@@ -1073,6 +1166,10 @@ function buildChartConfig(chartData, { module } = {}) {
   const isSustainability = isPensionChart && sustainabilityByTitleOrLabels;
   const datasets = Array.isArray(chartData.datasets)
     ? chartData.datasets.map((dataset, index) => {
+      if (isMortgageMixed) {
+        return buildMortgageMixedDataset(dataset, index);
+      }
+
       if (isAccumulation) {
         return buildPensionAccumulationDataset(dataset, index, showMax);
       }
@@ -1297,6 +1394,44 @@ function buildChartConfig(chartData, { module } = {}) {
         }
       };
     }
+  }
+
+  if (isMortgageMixed) {
+    config.options.scales.x.stacked = true;
+    config.options.scales.y = {
+      beginAtZero: true,
+      ticks: {
+        color: '#d3e8ff',
+        callback: (value) => formatEuroTick(value)
+      },
+      grid: {
+        color: 'rgba(140, 175, 220, 0.16)',
+        drawBorder: false
+      }
+    };
+    config.options.scales.y1 = {
+      beginAtZero: true,
+      stacked: true,
+      position: 'right',
+      ticks: {
+        color: '#d3e8ff',
+        callback: (value) => formatEuroTick(value)
+      },
+      grid: {
+        drawOnChartArea: false,
+        color: 'rgba(140, 175, 220, 0.16)',
+        drawBorder: false
+      }
+    };
+    config.options.plugins.tooltip.callbacks = {
+      label: (context) => {
+        const label = context?.dataset?.label || 'Series';
+        const value = typeof context?.parsed?.y === 'number'
+          ? context.parsed.y
+          : context?.raw;
+        return `${label}: ${formatEuro(value)}`;
+      }
+    };
   }
 
   if (isAccumulation || isSustainability) {
@@ -1608,7 +1743,7 @@ export function renderChartsForPane(paneElement, module, { clientName, moduleTit
     const downloadButton = block.querySelector('[data-chart-download]');
     if (downloadButton) {
       downloadButton.onclick = () => {
-        const csv = chartToCsv(chartData);
+        const csv = chartToCsv(chartData, module);
         const filename = buildFilename(clientName, moduleTitle, chartData.title || `Chart-${chartIndex + 1}`);
         downloadTextFile(filename, csv);
       };
