@@ -7,11 +7,15 @@ const WORKER_BASE_URL = (() => {
   const override = typeof window.__WORKER_BASE_URL === 'string'
     ? window.__WORKER_BASE_URL.trim()
     : '';
-  const fallback = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-    ? 'http://127.0.0.1:8787'
-    : 'https://your-worker-domain.workers.dev';
-  const raw = override || fallback;
-  return raw.replace(/\/+$/, '');
+  if (override) {
+    return override.replace(/\/+$/, '');
+  }
+
+  if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') {
+    return 'http://127.0.0.1:8787';
+  }
+
+  return '';
 })();
 
 const unlockLayer = document.getElementById('sessionUnlockLayer');
@@ -115,6 +119,13 @@ if (pinInput) {
 
 if (!getSessionIdFromUrl()) {
   setError('Missing session id in the URL.');
+  if (unlockButton) {
+    unlockButton.disabled = true;
+  }
+}
+
+if (!WORKER_BASE_URL) {
+  setError('Viewer is not configured with a worker URL.');
   if (unlockButton) {
     unlockButton.disabled = true;
   }

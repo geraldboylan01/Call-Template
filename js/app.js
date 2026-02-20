@@ -42,15 +42,21 @@ const runtimeConfig = {
   persistLocalSession: true
 };
 
+const IS_LOCAL_DEV_HOST = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
 const WORKER_BASE_URL = (() => {
   const override = typeof window.__WORKER_BASE_URL === 'string'
     ? window.__WORKER_BASE_URL.trim()
     : '';
-  const fallback = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-    ? 'http://127.0.0.1:8787'
-    : 'https://your-worker-domain.workers.dev';
-  const raw = override || fallback;
-  return raw.replace(/\/+$/, '');
+
+  if (override) {
+    return override.replace(/\/+$/, '');
+  }
+
+  if (IS_LOCAL_DEV_HOST) {
+    return 'http://127.0.0.1:8787';
+  }
+
+  return '';
 })();
 
 const PUBLIC_BASE_URL = (() => {
@@ -2241,6 +2247,11 @@ export async function initApp(options = {}) {
 
   initPromise = (async () => {
     applyRuntimeOptions(options);
+    const workerMissing = !WORKER_BASE_URL;
+
+    if (!runtimeConfig.readOnly && runtimeConfig.allowPublish && workerMissing) {
+      runtimeConfig.allowPublish = false;
+    }
 
     if ('initialSession' in options && options.initialSession != null) {
       appState.session = importSession(options.initialSession);
@@ -2264,6 +2275,9 @@ export async function initApp(options = {}) {
     }
 
     renderGreeting(ui, appState.session.clientName);
+    if (!runtimeConfig.readOnly && workerMissing) {
+      showToast('Publishing is disabled: worker URL is not configured for this environment.', 'error');
+    }
     if (runtimeConfig.readOnly && ui.sessionStatus) {
       ui.sessionStatus.textContent = 'Read only';
       ui.sessionStatus.classList.remove('is-dirty');
