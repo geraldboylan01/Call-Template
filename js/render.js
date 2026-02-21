@@ -263,12 +263,14 @@ function buildInlineAssumptionInputCell({
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
+        event.stopPropagation();
         event.target.blur();
         return;
       }
 
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         event.target.dataset.skipCommit = '1';
         onPatchInputs({
           type: 'cancel-edit',

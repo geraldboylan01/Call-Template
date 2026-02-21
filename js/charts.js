@@ -1752,3 +1752,111 @@ export function renderChartsForPane(paneElement, module, { clientName, moduleTit
 
   cleanupDetachedCharts();
 }
+
+function cloneDatasetForUpdate(dataset) {
+  if (!dataset || typeof dataset !== 'object') {
+    return { data: [] };
+  }
+
+  return {
+    ...dataset,
+    data: Array.isArray(dataset.data) ? [...dataset.data] : []
+  };
+}
+
+function applyChartConfigToExistingChart(entry, chartData, module) {
+  if (!entry?.chart || !chartData) {
+    return false;
+  }
+
+  const chart = entry.chart;
+  const nextConfig = buildChartConfig(chartData, { module });
+  chart.config.type = nextConfig.type;
+  chart.data.labels = Array.isArray(nextConfig.data?.labels)
+    ? [...nextConfig.data.labels]
+    : [];
+  chart.data.datasets = Array.isArray(nextConfig.data?.datasets)
+    ? nextConfig.data.datasets.map((dataset) => cloneDatasetForUpdate(dataset))
+    : [];
+  chart.options = nextConfig.options || {};
+
+  if (isPensionModule(module)) {
+    const showMax = getPensionShowMax(module.id);
+    applyPensionShowMaxToChart(chart, showMax);
+  }
+
+  chart.update('none');
+  if (entry.mode === 'overlay') {
+    scheduleOverlayPositionUpdate();
+  }
+  maybeWarnDprMismatch(chart.canvas);
+  return true;
+}
+
+export function updateChartsForPane(paneElement, module, { clientName, moduleTitle } = {}) {
+  cleanupDetachedCharts();
+
+  if (!paneElement || !module?.generated?.charts || typeof window.Chart === 'undefined') {
+    return;
+  }
+
+  const blocks = [...paneElement.querySelectorAll('[data-chart-index]')];
+  if (blocks.length === 0) {
+    return;
+  }
+
+  let fallbackToFullRender = false;
+  blocks.forEach((block) => {
+    const chartIndex = Number(block.dataset.chartIndex);
+    if (!Number.isFinite(chartIndex)) {
+      return;
+    }
+
+    const chartData = module.generated.charts[chartIndex];
+    if (!chartData) {
+      fallbackToFullRender = true;
+      return;
+    }
+
+    const titleEl = block.querySelector('.generated-chart-title');
+    if (titleEl) {
+      titleEl.textContent = chartData.title || `Chart ${chartIndex + 1}`;
+    }
+
+    const downloadButton = block.querySelector('[data-chart-download]');
+    if (downloadButton) {
+      const titleText = chartData.title || `Chart ${chartIndex + 1}`;
+      downloadButton.setAttribute('aria-label', `Download CSV for ${titleText}`);
+      downloadButton.onclick = () => {
+        const csv = chartToCsv(chartData, module);
+        const filename = buildFilename(clientName, moduleTitle, titleText);
+        downloadTextFile(filename, csv);
+      };
+    }
+
+    const sourceCanvas = block.querySelector('canvas');
+    if (!sourceCanvas) {
+      fallbackToFullRender = true;
+      return;
+    }
+
+    const chartKey = sourceCanvas.dataset.chartKey;
+    const entry = chartKey ? chartRegistry.get(chartKey) : null;
+    if (!entry || entry.sourceCanvas !== sourceCanvas) {
+      fallbackToFullRender = true;
+      return;
+    }
+
+    entry.moduleId = module?.id || '';
+    entry.chartIndex = chartIndex;
+
+    const updated = applyChartConfigToExistingChart(entry, chartData, module);
+    if (!updated) {
+      fallbackToFullRender = true;
+    }
+  });
+
+  if (fallbackToFullRender) {
+    renderChartsForPane(paneElement, module, { clientName, moduleTitle });
+  }
+}

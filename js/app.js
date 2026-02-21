@@ -185,12 +185,12 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
-    id: 'pension-editable-inputs',
-    label: 'Pension Inputs (Editable)',
+    id: 'pension-inline-assumptions-demo',
+    label: 'Pension Inline Assumptions Demo',
     payload: {
-      title: 'Pension Projection (Editable Inputs)',
+      title: 'Pension Projection (Inline Assumptions Demo)',
       generated: {
-        summaryHtml: '<p>This pension module uses JS projection inputs and supports editable assumptions.</p>',
+        summaryHtml: '<p>Use the Assumptions pencil to edit pension inputs inline.</p>',
         pensionInputs: {
           currentAge: 42,
           retirementAge: 67,
@@ -210,17 +210,17 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
-    id: 'mortgage-editable-inputs',
-    label: 'Mortgage Inputs (Editable)',
+    id: 'mortgage-inline-assumptions-demo',
+    label: 'Mortgage Inline Assumptions Demo',
     payload: {
-      title: 'Mortgage Projection (Editable Inputs)',
+      title: 'Mortgage Projection (Inline Assumptions Demo)',
       generated: {
-        summaryHtml: '<p>This mortgage module uses JS projection inputs and supports editable assumptions.</p>',
+        summaryHtml: '<p>Use the Assumptions pencil to edit mortgage inputs inline.</p>',
         mortgageInputs: {
           currentBalance: 320000,
           annualInterestRate: 0.0425,
           startDateIso: '2026-01-01',
-          remainingTermYears: 27,
+          endDateIso: '2052-12-01',
           repaymentType: 'repayment',
           fixedPaymentAmount: null,
           oneOffOverpayment: 0,
@@ -384,13 +384,10 @@ function ensureGenerated(module) {
 function getAssumptionsEditorState(moduleId) {
   if (!appState.assumptionsEditorStateByModuleId.has(moduleId)) {
     appState.assumptionsEditorStateByModuleId.set(moduleId, {
+      isEditing: false,
       phase: 'idle',
       errors: {},
       draftValues: {},
-      pendingNormalizedInputs: null,
-      calculator: null,
-      revision: 0,
-      debounceTimerId: 0,
       phaseTimerId: 0
     });
   }
@@ -401,11 +398,6 @@ function getAssumptionsEditorState(moduleId) {
 function clearAssumptionsEditorTimers(state) {
   if (!state) {
     return;
-  }
-
-  if (state.debounceTimerId) {
-    window.clearTimeout(state.debounceTimerId);
-    state.debounceTimerId = 0;
   }
 
   if (state.phaseTimerId) {
@@ -421,12 +413,10 @@ function resetAssumptionsEditorState(moduleId) {
   }
 
   clearAssumptionsEditorTimers(state);
+  state.isEditing = false;
   state.phase = 'idle';
   state.errors = {};
   state.draftValues = {};
-  state.pendingNormalizedInputs = null;
-  state.calculator = null;
-  state.revision = 0;
 }
 
 function clearAllAssumptionsEditorState() {
@@ -440,6 +430,7 @@ function getAssumptionsEditorRenderStatus(moduleId) {
   const state = appState.assumptionsEditorStateByModuleId.get(moduleId);
   if (!state) {
     return {
+      isEditing: false,
       phase: 'idle',
       errors: {},
       draftValues: {}
@@ -447,62 +438,74 @@ function getAssumptionsEditorRenderStatus(moduleId) {
   }
 
   return {
+    isEditing: Boolean(state.isEditing),
     phase: state.phase,
     errors: { ...state.errors },
     draftValues: { ...state.draftValues }
   };
 }
 
-function findActiveAssumptionsEditor(moduleId) {
+function getActiveFocusedModuleCard(moduleId) {
   if (!ui.swipeStage || typeof moduleId !== 'string' || !moduleId) {
     return null;
   }
 
-  const card = ui.swipeStage.querySelector(`.focused-module-card[data-module-id="${moduleId}"]`);
-  if (!card) {
-    return null;
-  }
-
-  return card.querySelector(`[data-assumption-editor="${moduleId}"]`);
+  return ui.swipeStage.querySelector(`.focused-module-card[data-module-id="${moduleId}"]`);
 }
 
-function applyAssumptionsEditorStateToDom(moduleId) {
-  const state = getAssumptionsEditorState(moduleId);
-  const editor = findActiveAssumptionsEditor(moduleId);
-  if (!editor) {
+function patchFocusedModuleGeneratedContent(moduleId, {
+  patchSummary = true,
+  patchAssumptions = true,
+  patchOutputs = true,
+  updateCharts = true
+} = {}) {
+  if (appState.mode !== 'focused' || appState.session.activeModuleId !== moduleId) {
     return;
   }
 
-  const statusEl = editor.querySelector('[data-assumption-status]');
-  if (statusEl) {
-    const text = state.phase === 'updating'
-      ? 'Updating...'
-      : (state.phase === 'updated' ? 'Updated' : '');
-    statusEl.textContent = text;
-    statusEl.classList.remove('is-updating', 'is-updated', 'is-idle');
-    statusEl.classList.add(
-      state.phase === 'updating'
-        ? 'is-updating'
-        : (state.phase === 'updated' ? 'is-updated' : 'is-idle')
-    );
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    return;
   }
 
-  const errorEls = editor.querySelectorAll('[data-assumption-error-for]');
-  errorEls.forEach((element) => {
-    const key = element.getAttribute('data-assumption-error-for');
-    const errorText = key ? state.errors[key] : '';
-    element.textContent = errorText ? String(errorText) : '';
+  const focusedCard = getActiveFocusedModuleCard(moduleId);
+  if (!focusedCard) {
+    return;
+  }
+
+  patchFocusedGeneratedCards({
+    focusedCard,
+    module,
+    onPatchInputs: (action) => handleAssumptionsEditorPatch(action),
+    assumptionsEditorStatus: getAssumptionsEditorRenderStatus(moduleId),
+    readOnly: runtimeConfig.readOnly,
+    patchSummary,
+    patchAssumptions,
+    patchOutputs
   });
 
-  const fieldEls = editor.querySelectorAll('[data-assumption-field]');
-  fieldEls.forEach((element) => {
-    const fieldKey = element.getAttribute('data-assumption-field');
-    const hasError = Boolean(fieldKey && state.errors[fieldKey]);
-    element.classList.toggle('is-invalid', hasError);
+  if (!updateCharts) {
+    return;
+  }
 
-    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-      element.setAttribute('aria-invalid', hasError ? 'true' : 'false');
-    }
+  const activePane = focusedCard.closest('.swipe-pane')
+    || ui.swipeStage.querySelector('.swipe-pane.active');
+  if (!activePane) {
+    return;
+  }
+
+  updateChartsForPane(activePane, module, {
+    clientName: appState.session.clientName || 'Client',
+    moduleTitle: module.title?.trim() || 'Untitled Module'
+  });
+}
+
+function refreshInlineAssumptionsCard(moduleId) {
+  patchFocusedModuleGeneratedContent(moduleId, {
+    patchSummary: false,
+    patchAssumptions: true,
+    patchOutputs: false,
+    updateCharts: false
   });
 }
 
@@ -515,30 +518,18 @@ function setAssumptionsEditorPhase(moduleId, phase) {
   }
 
   state.phase = phase;
-  applyAssumptionsEditorStateToDom(moduleId);
+  refreshInlineAssumptionsCard(moduleId);
 
   if (phase === 'updated') {
     state.phaseTimerId = window.setTimeout(() => {
       const liveState = getAssumptionsEditorState(moduleId);
       if (liveState.phase === 'updated') {
         liveState.phase = 'idle';
-        applyAssumptionsEditorStateToDom(moduleId);
+        refreshInlineAssumptionsCard(moduleId);
       }
       liveState.phaseTimerId = 0;
     }, ASSUMPTIONS_UPDATED_FEEDBACK_MS);
   }
-}
-
-function hasOwnKey(object, key) {
-  return Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
-}
-
-function getDraftOrFallbackValue(draftValues, fallbackValues, key) {
-  if (hasOwnKey(draftValues, key)) {
-    return draftValues[key];
-  }
-
-  return fallbackValues ? fallbackValues[key] : undefined;
 }
 
 function normalizeNumericInputText(rawValue) {
@@ -680,6 +671,9 @@ function parseNonNegativeNumberInput(rawValue, { label }) {
 }
 
 function mapPensionNormalizationErrorToField(message) {
+  if (message.includes('.currentAge')) {
+    return 'currentAge';
+  }
   if (message.includes('.growthRate')) {
     return 'growthRate';
   }
@@ -692,11 +686,20 @@ function mapPensionNormalizationErrorToField(message) {
   if (message.includes('.retirementAge')) {
     return 'retirementAge';
   }
+  if (message.includes('.currentSalary')) {
+    return 'currentSalary';
+  }
+  if (message.includes('.currentPot')) {
+    return 'currentPot';
+  }
   if (message.includes('.personalPct')) {
     return 'personalPct';
   }
   if (message.includes('.employerPct')) {
     return 'employerPct';
+  }
+  if (message.includes('.targetIncomeToday')) {
+    return 'targetIncomeToday';
   }
   if (message.includes('.horizonEndAge')) {
     return 'horizonEndAge';
@@ -712,7 +715,7 @@ function mapMortgageNormalizationErrorToField(message) {
     return 'annualInterestRate';
   }
   if (message.includes('.remainingTermYears') || message.includes('.endDateIso')) {
-    return 'remainingTermYears';
+    return 'termMonths';
   }
   if (message.includes('.oneOffOverpayment')) {
     return 'oneOffOverpayment';
@@ -726,156 +729,6 @@ function mapMortgageNormalizationErrorToField(message) {
   return null;
 }
 
-function validateEditablePensionInputs(module, draftValues) {
-  const baseInputs = module?.generated?.pensionInputs;
-  if (!baseInputs) {
-    return {
-      errors: { growthRate: 'Pension inputs are unavailable for this module.' },
-      normalizedInputs: null
-    };
-  }
-
-  const candidate = { ...baseInputs };
-  const errors = {};
-
-  const assign = (field, parser) => {
-    const parsed = parser(getDraftOrFallbackValue(draftValues, baseInputs, field));
-    if (parsed.error) {
-      errors[field] = parsed.error;
-      return;
-    }
-
-    candidate[field] = parsed.value;
-  };
-
-  assign('growthRate', (value) => parseRateInput(value, { label: 'Growth rate' }));
-  assign('wageGrowthRate', (value) => parseRateInput(value, { label: 'Wage growth rate' }));
-  assign('inflationRate', (value) => parseRateInput(value, { label: 'Inflation rate' }));
-  assign('retirementAge', (value) => parseIntegerInput(value, { label: 'Retirement age' }));
-  assign('personalPct', (value) => parseRateInput(value, { label: 'Personal contribution rate' }));
-  assign('employerPct', (value) => parseRateInput(value, { label: 'Employer contribution rate' }));
-
-  if (hasOwnKey(baseInputs, 'horizonEndAge') || hasOwnKey(draftValues, 'horizonEndAge')) {
-    assign('horizonEndAge', (value) => parseIntegerInput(value, { label: 'Horizon end age' }));
-  }
-
-  if (Object.keys(errors).length > 0) {
-    return {
-      errors,
-      normalizedInputs: null
-    };
-  }
-
-  try {
-    const normalizedInputs = normalizePensionInputs(candidate);
-    return {
-      errors: {},
-      normalizedInputs
-    };
-  } catch (error) {
-    const message = error?.message || 'Invalid pension assumptions.';
-    const field = mapPensionNormalizationErrorToField(message);
-    if (field) {
-      errors[field] = message;
-    } else {
-      errors.growthRate = message;
-    }
-
-    return {
-      errors,
-      normalizedInputs: null
-    };
-  }
-}
-
-function validateEditableMortgageInputs(module, draftValues) {
-  const baseInputs = module?.generated?.mortgageInputs;
-  if (!baseInputs) {
-    return {
-      errors: { currentBalance: 'Mortgage inputs are unavailable for this module.' },
-      normalizedInputs: null
-    };
-  }
-
-  const candidate = { ...baseInputs };
-  const fallbackInputs = {
-    ...baseInputs,
-    remainingTermYears: deriveRemainingTermYearsFromMortgageInputs(baseInputs)
-  };
-  const errors = {};
-
-  const assign = (field, parser) => {
-    const parsed = parser(getDraftOrFallbackValue(draftValues, fallbackInputs, field));
-    if (parsed.error) {
-      errors[field] = parsed.error;
-      return;
-    }
-
-    candidate[field] = parsed.value;
-  };
-
-  assign('currentBalance', (value) => parsePositiveNumberInput(value, { label: 'Current balance' }));
-  assign('annualInterestRate', (value) => parseRateInput(value, { label: 'Annual interest rate' }));
-  assign('remainingTermYears', (value) => parsePositiveNumberInput(value, { label: 'Remaining term (years)' }));
-  assign('oneOffOverpayment', (value) => parseNonNegativeNumberInput(value, { label: 'One-off overpayment' }));
-  assign('annualOverpayment', (value) => parseNonNegativeNumberInput(value, { label: 'Annual overpayment' }));
-
-  const defaultMode = Number.isFinite(baseInputs.fixedPaymentAmount) && baseInputs.fixedPaymentAmount > 0
-    ? 'fixed'
-    : 'calculated';
-  const paymentModeRaw = getDraftOrFallbackValue(draftValues, { fixedPaymentMode: defaultMode }, 'fixedPaymentMode');
-  const paymentMode = String(paymentModeRaw || defaultMode).trim().toLowerCase();
-  if (paymentMode !== 'calculated' && paymentMode !== 'fixed') {
-    errors.fixedPaymentMode = 'Choose calculated or fixed monthly payment.';
-  }
-
-  if (paymentMode === 'fixed') {
-    const fixedPaymentParsed = parsePositiveNumberInput(
-      getDraftOrFallbackValue(draftValues, baseInputs, 'fixedPaymentAmount'),
-      { label: 'Fixed monthly payment' }
-    );
-
-    if (fixedPaymentParsed.error) {
-      errors.fixedPaymentAmount = fixedPaymentParsed.error;
-    } else {
-      candidate.fixedPaymentAmount = fixedPaymentParsed.value;
-    }
-  } else {
-    candidate.fixedPaymentAmount = null;
-  }
-
-  candidate.endDateIso = null;
-  candidate.repaymentType = 'repayment';
-
-  if (Object.keys(errors).length > 0) {
-    return {
-      errors,
-      normalizedInputs: null
-    };
-  }
-
-  try {
-    const normalizedInputs = normalizeMortgageInputs(candidate);
-    return {
-      errors: {},
-      normalizedInputs
-    };
-  } catch (error) {
-    const message = error?.message || 'Invalid mortgage assumptions.';
-    const field = mapMortgageNormalizationErrorToField(message);
-    if (field) {
-      errors[field] = message;
-    } else {
-      errors.currentBalance = message;
-    }
-
-    return {
-      errors,
-      normalizedInputs: null
-    };
-  }
-}
-
 function shouldRefreshMortgageSummary(summaryHtml) {
   const text = String(summaryHtml || '');
   if (!text.trim()) {
@@ -883,6 +736,281 @@ function shouldRefreshMortgageSummary(summaryHtml) {
   }
 
   return /[\d€%]/.test(text);
+}
+
+function hasOwnPropertyValue(object, key) {
+  return Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
+}
+
+function parseTermMonthsInput(rawValue, { label }) {
+  const normalized = String(rawValue ?? '')
+    .toLowerCase()
+    .replace(/months?/g, '')
+    .trim();
+  const parsed = parseIntegerInput(normalized, { label });
+  if (parsed.error) {
+    return parsed;
+  }
+
+  if (parsed.value <= 0) {
+    return { error: `${label} must be greater than 0.` };
+  }
+
+  return parsed;
+}
+
+function parsePensionFieldInput(field, rawValue) {
+  switch (field) {
+    case 'currentAge':
+      return parseIntegerInput(rawValue, { label: 'Current age' });
+    case 'retirementAge':
+      return parseIntegerInput(rawValue, { label: 'Retirement age' });
+    case 'currentSalary':
+      return parseNonNegativeNumberInput(rawValue, { label: 'Current salary' });
+    case 'currentPot':
+      return parseNonNegativeNumberInput(rawValue, { label: 'Current pension value' });
+    case 'personalPct':
+      return parseRateInput(rawValue, { label: 'Personal contribution' });
+    case 'employerPct':
+      return parseRateInput(rawValue, { label: 'Employer contribution' });
+    case 'growthRate':
+      return parseRateInput(rawValue, { label: 'Growth rate' });
+    case 'wageGrowthRate':
+      return parseRateInput(rawValue, { label: 'Wage growth' });
+    case 'inflationRate':
+      return parseRateInput(rawValue, { label: 'Inflation' });
+    case 'targetIncomeToday':
+      return parseNonNegativeNumberInput(rawValue, { label: 'Target retirement income' });
+    default:
+      return { error: 'Unsupported pension assumption field.' };
+  }
+}
+
+function parseMortgageFieldInput(field, rawValue) {
+  switch (field) {
+    case 'currentBalance':
+      return parsePositiveNumberInput(rawValue, { label: 'Current balance' });
+    case 'annualInterestRate':
+      return parseRateInput(rawValue, { label: 'Annual interest rate' });
+    case 'termMonths':
+      return parseTermMonthsInput(rawValue, { label: 'Mortgage term (months)' });
+    case 'oneOffOverpayment':
+      return parseNonNegativeNumberInput(rawValue, { label: 'One-off overpayment' });
+    case 'annualOverpayment':
+      return parseNonNegativeNumberInput(rawValue, { label: 'Annual overpayment' });
+    case 'fixedPaymentAmount':
+      return parsePositiveNumberInput(rawValue, { label: 'Fixed monthly payment' });
+    default:
+      return { error: 'Unsupported mortgage assumption field.' };
+  }
+}
+
+function clearAssumptionsFieldErrors(state, fields) {
+  const nextErrors = { ...(state.errors || {}) };
+  fields.forEach((field) => {
+    delete nextErrors[field];
+  });
+  state.errors = nextErrors;
+}
+
+function setAssumptionsFieldError(state, field, message) {
+  state.errors = {
+    ...(state.errors || {}),
+    [field]: message
+  };
+}
+
+function clearAssumptionsDraftFields(state, fields) {
+  const nextDraft = { ...(state.draftValues || {}) };
+  fields.forEach((field) => {
+    delete nextDraft[field];
+  });
+  state.draftValues = nextDraft;
+}
+
+function applyUpdatedProjectionToModule({
+  module,
+  calculator,
+  normalizedInputs
+}) {
+  if (calculator === 'pension') {
+    module.generated.pensionInputs = normalizedInputs;
+    module.generated.mortgageInputs = null;
+    applyPensionProjectionToModule(module, { updateSummary: true });
+    return;
+  }
+
+  if (calculator === 'mortgage') {
+    module.generated.mortgageInputs = normalizedInputs;
+    module.generated.pensionInputs = null;
+    const shouldUpdateSummary = shouldRefreshMortgageSummary(module.generated.summaryHtml);
+    applyMortgageProjectionToModule(module, { updateSummary: shouldUpdateSummary });
+  }
+}
+
+function commitPensionAssumptionField({
+  module,
+  state,
+  field,
+  rawValue
+}) {
+  const baseInputs = module?.generated?.pensionInputs;
+  if (!baseInputs) {
+    return {
+      ok: false,
+      field,
+      message: 'Pension inputs are unavailable for this module.'
+    };
+  }
+
+  const candidate = { ...baseInputs };
+  const parsed = parsePensionFieldInput(field, rawValue);
+  if (parsed.error) {
+    return {
+      ok: false,
+      field,
+      message: parsed.error
+    };
+  }
+  candidate[field] = parsed.value;
+
+  let normalizedInputs;
+  try {
+    normalizedInputs = normalizePensionInputs(candidate);
+  } catch (error) {
+    const message = error?.message || 'Invalid pension assumptions.';
+    const mappedField = mapPensionNormalizationErrorToField(message) || field;
+    return {
+      ok: false,
+      field: mappedField,
+      message
+    };
+  }
+
+  applyUpdatedProjectionToModule({
+    module,
+    calculator: 'pension',
+    normalizedInputs
+  });
+  clearAssumptionsDraftFields(state, [field]);
+  return {
+    ok: true
+  };
+}
+
+function getMortgagePaymentModeForCommit({ state, baseInputs, modeOverride = null }) {
+  if (modeOverride === 'fixed' || modeOverride === 'calculated') {
+    return modeOverride;
+  }
+
+  const draftMode = String(state?.draftValues?.fixedPaymentMode || '').trim().toLowerCase();
+  if (draftMode === 'fixed' || draftMode === 'calculated') {
+    return draftMode;
+  }
+
+  return Number.isFinite(baseInputs?.fixedPaymentAmount) && baseInputs.fixedPaymentAmount > 0
+    ? 'fixed'
+    : 'calculated';
+}
+
+function commitMortgageAssumptionField({
+  module,
+  state,
+  field,
+  rawValue,
+  modeOverride = null
+}) {
+  const baseInputs = module?.generated?.mortgageInputs;
+  if (!baseInputs) {
+    return {
+      ok: false,
+      field: field || 'currentBalance',
+      message: 'Mortgage inputs are unavailable for this module.'
+    };
+  }
+
+  const candidate = { ...baseInputs, repaymentType: 'repayment' };
+  let nextMode = getMortgagePaymentModeForCommit({
+    state,
+    baseInputs,
+    modeOverride
+  });
+
+  if (field && field !== 'fixedPaymentMode') {
+    const parsed = parseMortgageFieldInput(field, rawValue);
+    if (parsed.error) {
+      return {
+        ok: false,
+        field,
+        message: parsed.error
+      };
+    }
+
+    if (field === 'termMonths') {
+      const termYears = Number((parsed.value / 12).toFixed(2));
+      candidate.remainingTermYears = termYears;
+      candidate.endDateIso = null;
+    } else {
+      candidate[field] = parsed.value;
+    }
+  }
+
+  if (field === 'fixedPaymentMode') {
+    nextMode = modeOverride === 'fixed' ? 'fixed' : 'calculated';
+  }
+
+  if (nextMode === 'fixed') {
+    const fixedRawValue = field === 'fixedPaymentAmount'
+      ? rawValue
+      : (
+        hasOwnPropertyValue(state?.draftValues, 'fixedPaymentAmount')
+          ? state.draftValues.fixedPaymentAmount
+          : baseInputs.fixedPaymentAmount
+      );
+    const fixedParsed = parsePositiveNumberInput(fixedRawValue, { label: 'Fixed monthly payment' });
+    if (fixedParsed.error) {
+      return {
+        ok: false,
+        field: 'fixedPaymentAmount',
+        message: fixedParsed.error
+      };
+    }
+    candidate.fixedPaymentAmount = fixedParsed.value;
+  } else {
+    candidate.fixedPaymentAmount = null;
+  }
+
+  if (!Number.isFinite(candidate.remainingTermYears) && !candidate.endDateIso) {
+    candidate.remainingTermYears = deriveRemainingTermYearsFromMortgageInputs(baseInputs);
+  }
+
+  let normalizedInputs;
+  try {
+    normalizedInputs = normalizeMortgageInputs(candidate);
+  } catch (error) {
+    const message = error?.message || 'Invalid mortgage assumptions.';
+    const mappedField = mapMortgageNormalizationErrorToField(message) || field || 'currentBalance';
+    return {
+      ok: false,
+      field: mappedField,
+      message
+    };
+  }
+
+  applyUpdatedProjectionToModule({
+    module,
+    calculator: 'mortgage',
+    normalizedInputs
+  });
+  const clearedFields = [
+    field,
+    'fixedPaymentMode',
+    nextMode === 'fixed' ? 'fixedPaymentAmount' : null
+  ].filter(Boolean);
+  clearAssumptionsDraftFields(state, clearedFields);
+  return {
+    ok: true
+  };
 }
 
 function applyPensionProjectionToModule(module, { updateSummary = true } = {}) {
@@ -2088,14 +2216,47 @@ function updateModule(moduleId, patch) {
   }
 }
 
-async function recomputeEditableAssumptions({
+function toggleAssumptionsEditMode(moduleId) {
+  const state = getAssumptionsEditorState(moduleId);
+  const nextEditing = !Boolean(state.isEditing);
+  state.isEditing = nextEditing;
+  state.phase = 'idle';
+  state.errors = {};
+  state.draftValues = {};
+  clearAssumptionsEditorTimers(state);
+  refreshInlineAssumptionsCard(moduleId);
+}
+
+function cancelAssumptionsInlineDraft(moduleId) {
+  const state = getAssumptionsEditorState(moduleId);
+  state.phase = 'idle';
+  state.errors = {};
+  state.draftValues = {};
+  clearAssumptionsEditorTimers(state);
+  refreshInlineAssumptionsCard(moduleId);
+}
+
+function setAssumptionDraftValue(moduleId, field, value) {
+  if (!field) {
+    return;
+  }
+
+  const state = getAssumptionsEditorState(moduleId);
+  state.draftValues = {
+    ...(state.draftValues || {}),
+    [field]: value
+  };
+  clearAssumptionsFieldErrors(state, [field]);
+}
+
+async function commitInlineAssumption({
   moduleId,
   calculator,
-  revision,
-  normalizedInputs
+  field = null,
+  value,
+  modeOverride = null
 }) {
-  const state = getAssumptionsEditorState(moduleId);
-  if (state.revision !== revision) {
+  if (runtimeConfig.readOnly || !moduleId || !calculator) {
     return;
   }
 
@@ -2105,49 +2266,62 @@ async function recomputeEditableAssumptions({
   }
 
   ensureGenerated(module);
-
-  try {
-    if (calculator === 'pension') {
-      module.generated.pensionInputs = normalizedInputs;
-      module.generated.mortgageInputs = null;
-      applyPensionProjectionToModule(module, { updateSummary: true });
-    } else if (calculator === 'mortgage') {
-      module.generated.mortgageInputs = normalizedInputs;
-      module.generated.pensionInputs = null;
-      const shouldUpdateSummary = shouldRefreshMortgageSummary(module.generated.summaryHtml);
-      applyMortgageProjectionToModule(module, { updateSummary: shouldUpdateSummary });
-    } else {
-      return;
-    }
-  } catch (error) {
-    const message = error?.message || 'Could not update assumptions.';
-    const field = calculator === 'mortgage'
-      ? mapMortgageNormalizationErrorToField(message)
-      : mapPensionNormalizationErrorToField(message);
-    state.errors = {
-      ...(state.errors || {}),
-      [field || (calculator === 'mortgage' ? 'currentBalance' : 'growthRate')]: message
+  const state = getAssumptionsEditorState(moduleId);
+  if (field && typeof value !== 'undefined') {
+    state.draftValues = {
+      ...(state.draftValues || {}),
+      [field]: value
     };
-    state.pendingNormalizedInputs = null;
-    state.phase = 'idle';
-    applyAssumptionsEditorStateToDom(moduleId);
+  }
+
+  clearAssumptionsFieldErrors(state, [field, 'fixedPaymentMode', 'fixedPaymentAmount'].filter(Boolean));
+  setAssumptionsEditorPhase(moduleId, 'updating');
+
+  let result;
+  if (calculator === 'pension') {
+    const rawValue = hasOwnPropertyValue(state.draftValues, field) ? state.draftValues[field] : value;
+    result = commitPensionAssumptionField({
+      module,
+      state,
+      field,
+      rawValue
+    });
+  } else if (calculator === 'mortgage') {
+    const rawValue = field && hasOwnPropertyValue(state.draftValues, field) ? state.draftValues[field] : value;
+    result = commitMortgageAssumptionField({
+      module,
+      state,
+      field,
+      rawValue,
+      modeOverride
+    });
+  } else {
     return;
   }
 
-  if (state.revision !== revision) {
+  if (!result?.ok) {
+    const errorField = result?.field || (calculator === 'mortgage' ? 'currentBalance' : 'growthRate');
+    setAssumptionsFieldError(state, errorField, result?.message || 'Could not update assumptions.');
+    setAssumptionsEditorPhase(moduleId, 'idle');
     return;
   }
 
-  module.updatedAt = nowIso();
-  state.pendingNormalizedInputs = null;
-  state.draftValues = {};
+  if (modeOverride === 'fixed' || modeOverride === 'calculated') {
+    clearAssumptionsDraftFields(state, ['fixedPaymentMode']);
+  }
+
   state.errors = {};
-  state.calculator = calculator;
+  module.updatedAt = nowIso();
   setAssumptionsEditorPhase(moduleId, 'updated');
 
-  if (appState.mode === 'focused' && appState.session.activeModuleId === module.id) {
-    await renderFocused({ useSwipe: false, revealMode: true });
-  } else if (appState.mode === 'overview') {
+  patchFocusedModuleGeneratedContent(moduleId, {
+    patchSummary: true,
+    patchAssumptions: true,
+    patchOutputs: true,
+    updateCharts: true
+  });
+
+  if (appState.mode === 'overview') {
     refreshOverview({ enableSortable: true });
   }
 
@@ -2155,87 +2329,62 @@ async function recomputeEditableAssumptions({
   saveSessionNow();
 }
 
-function queueEditableAssumptionsRecompute({ moduleId, calculator, normalizedInputs }) {
-  const state = getAssumptionsEditorState(moduleId);
-  state.calculator = calculator;
-  state.pendingNormalizedInputs = normalizedInputs;
-  state.errors = {};
-  if (state.phaseTimerId) {
-    window.clearTimeout(state.phaseTimerId);
-    state.phaseTimerId = 0;
-  }
-  state.phase = 'updating';
-  state.revision += 1;
-
-  if (state.debounceTimerId) {
-    window.clearTimeout(state.debounceTimerId);
-    state.debounceTimerId = 0;
-  }
-
-  const revision = state.revision;
-  state.debounceTimerId = window.setTimeout(() => {
-    const liveState = getAssumptionsEditorState(moduleId);
-    liveState.debounceTimerId = 0;
-    void recomputeEditableAssumptions({
-      moduleId,
-      calculator,
-      revision,
-      normalizedInputs
-    });
-  }, ASSUMPTIONS_RECOMPUTE_DEBOUNCE_MS);
-
-  applyAssumptionsEditorStateToDom(moduleId);
-}
-
-function handleAssumptionsEditorPatch({ moduleId, calculator, field, value }) {
-  if (runtimeConfig.readOnly || !moduleId || !calculator || !field) {
+function handleAssumptionsEditorPatch(action) {
+  if (!action || typeof action !== 'object') {
     return;
   }
 
-  const module = getModuleById(appState.session, moduleId);
-  if (!module) {
-    return;
-  }
-
-  ensureGenerated(module);
-  const state = getAssumptionsEditorState(moduleId);
-  state.draftValues = {
-    ...state.draftValues,
-    [field]: value
-  };
-
-  let validation;
-  if (calculator === 'pension') {
-    validation = validateEditablePensionInputs(module, state.draftValues);
-  } else if (calculator === 'mortgage') {
-    validation = validateEditableMortgageInputs(module, state.draftValues);
-  } else {
-    return;
-  }
-
-  state.errors = validation.errors || {};
-  state.pendingNormalizedInputs = validation.normalizedInputs;
-  state.calculator = calculator;
-
-  if (Object.keys(state.errors).length > 0 || !validation.normalizedInputs) {
-    if (state.debounceTimerId) {
-      window.clearTimeout(state.debounceTimerId);
-      state.debounceTimerId = 0;
-    }
-    if (state.phaseTimerId) {
-      window.clearTimeout(state.phaseTimerId);
-      state.phaseTimerId = 0;
-    }
-    state.phase = 'idle';
-    applyAssumptionsEditorStateToDom(moduleId);
-    return;
-  }
-
-  queueEditableAssumptionsRecompute({
+  const {
+    type,
     moduleId,
     calculator,
-    normalizedInputs: validation.normalizedInputs
-  });
+    field,
+    value,
+    mode
+  } = action;
+
+  if (runtimeConfig.readOnly || !moduleId) {
+    return;
+  }
+
+  switch (type) {
+    case 'toggle-edit-mode':
+      toggleAssumptionsEditMode(moduleId);
+      return;
+    case 'cancel-edit':
+      cancelAssumptionsInlineDraft(moduleId);
+      return;
+    case 'draft-change':
+      if (!field) {
+        return;
+      }
+      setAssumptionDraftValue(moduleId, field, value);
+      return;
+    case 'set-payment-mode': {
+      const normalizedMode = mode === 'fixed' ? 'fixed' : 'calculated';
+      setAssumptionDraftValue(moduleId, 'fixedPaymentMode', normalizedMode);
+      void commitInlineAssumption({
+        moduleId,
+        calculator,
+        field: 'fixedPaymentMode',
+        modeOverride: normalizedMode
+      });
+      return;
+    }
+    case 'commit-field':
+      if (!field || !calculator) {
+        return;
+      }
+      void commitInlineAssumption({
+        moduleId,
+        calculator,
+        field,
+        value
+      });
+      return;
+    default:
+      return;
+  }
 }
 
 function updateUiChrome() {

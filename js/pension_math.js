@@ -490,12 +490,16 @@ export function computePensionProjection(rawInputs) {
     rows: [
       ['Current age', String(inputs.currentAge)],
       ['Retirement age', String(inputs.retirementAge)],
+      ['Current salary', toEuroText(inputs.currentSalary)],
+      ['Current pension value', toEuroText(inputs.currentPot)],
+      ['Personal contribution', toPercentText(inputs.personalPct)],
+      ['Employer contribution', toPercentText(inputs.employerPct)],
       ['Growth rate', toPercentText(inputs.growthRate)],
       ['Wage growth', toPercentText(inputs.wageGrowthRate)],
       ['Inflation', toPercentText(inputs.inflationRate)],
-      ['Salary used for cap', toEuroText(Math.min(inputs.currentSalary, 115000))],
-      ['Current personal % and employer %', `${toPercentText(inputs.personalPct)} / ${toPercentText(inputs.employerPct)}`],
-      ['Max personal age-band % at current age', `${toPercentText(ageBandPct(inputs.currentAge))} (steps with age)`],
+      ['Target retirement income', toEuroText(inputs.targetIncomeToday)],
+      ['Salary cap used', toEuroText(Math.min(inputs.currentSalary, 115000))],
+      ['Max personal age band %', `${toPercentText(ageBandPct(inputs.currentAge))} (steps with age)`],
       ['Mode', modeLabel],
       ['Horizon end age', String(inputs.horizonEndAge)]
     ]
