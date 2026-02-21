@@ -97,10 +97,12 @@ const appState = {
   sortable: null,
   transitionLock: false,
   devPanelOpen: false,
+  overviewMultiSelectArmed: false,
   overviewSelection: [],
   compare: null,
   compareScrollCleanup: null,
   undoAction: null,
+  lastDeletedBatch: null,
   pensionShowMaxByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
@@ -459,6 +461,16 @@ function getSelectedPair() {
   }
 
   return [selected[0], selected[1]];
+}
+
+function isMultiSelectModifier(event) {
+  return Boolean(event && (event.metaKey || event.ctrlKey));
+}
+
+function setOverviewMultiSelectArmed(armed) {
+  appState.overviewMultiSelectArmed = Boolean(armed);
+  const shouldShowArmedCursor = appState.mode === 'overview' && appState.overviewMultiSelectArmed;
+  document.body.classList.toggle('multi-select-armed', shouldShowArmedCursor);
 }
 
 function normalizeClientName(value) {
@@ -1248,30 +1260,6 @@ function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) 
   return projection;
 }
 
-function cloneSessionSnapshot(session) {
-  try {
-    return JSON.parse(JSON.stringify(session));
-  } catch (_error) {
-    return JSON.parse(exportSession(session));
-  }
-}
-
-function captureUndoSnapshot() {
-  return {
-    session: cloneSessionSnapshot(appState.session),
-    mode: appState.mode,
-    compare: appState.compare
-      ? {
-        leftId: appState.compare.leftId,
-        rightId: appState.compare.rightId,
-        syncScroll: appState.compare.syncScroll !== false
-      }
-      : null,
-    overviewSelection: [...appState.overviewSelection],
-    pensionShowMaxEntries: [...appState.pensionShowMaxByModuleId.entries()]
-  };
-}
-
 function clearCompareScrollSyncCleanup() {
   if (typeof appState.compareScrollCleanup === 'function') {
     appState.compareScrollCleanup();
@@ -1284,6 +1272,7 @@ function clearUndoActionState() {
   if (ui.toastHost) {
     ui.toastHost.classList.remove('has-interactive-toast');
   }
+  appState.lastDeletedBatch = null;
   if (!undo) {
     return;
   }
@@ -1301,40 +1290,87 @@ function clearUndoActionState() {
   appState.undoAction = null;
 }
 
-async function restoreUndoSnapshot(snapshot) {
-  if (!snapshot || typeof snapshot !== 'object') {
+function cloneSerializable(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function buildDeleteUndoSnapshot(selectedIds, orderBefore, activeModuleIdBeforeDelete) {
+  const modulesById = new Map(appState.session.modules.map((module, index) => [module.id, {
+    moduleIndex: index,
+    module
+  }]));
+  const orderIndexById = new Map(orderBefore.map((moduleId, index) => [moduleId, index]));
+  const selectedSet = new Set(selectedIds);
+
+  const entries = selectedIds
+    .map((moduleId) => {
+      const moduleEntry = modulesById.get(moduleId);
+      const orderIndex = orderIndexById.get(moduleId);
+      if (!moduleEntry || !Number.isInteger(orderIndex)) {
+        return null;
+      }
+
+      return {
+        moduleId,
+        moduleIndex: moduleEntry.moduleIndex,
+        orderIndex,
+        module: cloneSerializable(moduleEntry.module)
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    selectedIds: [...selectedIds],
+    entries,
+    deletedActiveModuleId: selectedSet.has(activeModuleIdBeforeDelete) ? activeModuleIdBeforeDelete : null,
+    selectionBeforeDelete: [...appState.overviewSelection]
+  };
+}
+
+async function restoreDeletedBatch(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.entries) || snapshot.entries.length === 0) {
     return;
   }
 
-  destroySortable();
-  destroyAllCharts();
-  clearCompareScrollSyncCleanup();
+  const existingModuleIds = new Set(appState.session.modules.map((module) => module.id));
+  const entriesByModuleIndex = [...snapshot.entries]
+    .sort((a, b) => a.moduleIndex - b.moduleIndex);
 
-  appState.transitionLock = false;
-  appState.session = importSession(JSON.stringify(snapshot.session));
-  appState.compare = snapshot.compare
-    ? {
-      leftId: snapshot.compare.leftId,
-      rightId: snapshot.compare.rightId,
-      syncScroll: snapshot.compare.syncScroll !== false
+  entriesByModuleIndex.forEach((entry) => {
+    if (!entry?.moduleId || existingModuleIds.has(entry.moduleId)) {
+      return;
     }
-    : null;
-  appState.overviewSelection = Array.isArray(snapshot.overviewSelection)
-    ? snapshot.overviewSelection.filter((moduleId) => typeof moduleId === 'string' && moduleId)
+    const insertionIndex = Math.max(0, Math.min(appState.session.modules.length, entry.moduleIndex));
+    appState.session.modules.splice(insertionIndex, 0, cloneSerializable(entry.module));
+    existingModuleIds.add(entry.moduleId);
+  });
+
+  const orderEntries = [...snapshot.entries].sort((a, b) => a.orderIndex - b.orderIndex);
+  const orderSet = new Set(appState.session.order);
+  orderEntries.forEach((entry) => {
+    if (!entry?.moduleId || orderSet.has(entry.moduleId)) {
+      return;
+    }
+    const insertionIndex = Math.max(0, Math.min(appState.session.order.length, entry.orderIndex));
+    appState.session.order.splice(insertionIndex, 0, entry.moduleId);
+    orderSet.add(entry.moduleId);
+  });
+
+  const validModuleIds = new Set(appState.session.modules.map((module) => module.id));
+  appState.session.order = appState.session.order.filter((moduleId, index, source) => (
+    validModuleIds.has(moduleId) && source.indexOf(moduleId) === index
+  ));
+
+  if (snapshot.deletedActiveModuleId && validModuleIds.has(snapshot.deletedActiveModuleId)) {
+    appState.session.activeModuleId = snapshot.deletedActiveModuleId;
+  } else if (!validModuleIds.has(appState.session.activeModuleId)) {
+    ensureActiveModule(appState.session);
+  }
+
+  appState.overviewSelection = Array.isArray(snapshot.selectionBeforeDelete)
+    ? snapshot.selectionBeforeDelete.filter((moduleId) => validModuleIds.has(moduleId))
     : [];
-  appState.pensionShowMaxByModuleId = new Map(
-    Array.isArray(snapshot.pensionShowMaxEntries) ? snapshot.pensionShowMaxEntries : []
-  );
-
-  ensureActiveModule(appState.session);
   pruneOverviewSelection();
-  ui.swipeStage.classList.remove('is-compare');
-
-  const hasComparePair = Boolean(
-    appState.compare
-    && getModuleById(appState.session, appState.compare.leftId)
-    && getModuleById(appState.session, appState.compare.rightId)
-  );
 
   if (!hasModules()) {
     appState.mode = 'greeting';
@@ -1344,27 +1380,24 @@ async function restoreUndoSnapshot(snapshot) {
     return;
   }
 
-  if (snapshot.mode === 'compare' && hasComparePair) {
-    appState.mode = 'compare';
-    await renderCompareView();
+  if (appState.mode === 'focused') {
+    await renderFocused({ useSwipe: false, revealMode: true });
     return;
   }
 
-  if (snapshot.mode === 'overview') {
-    appState.mode = 'overview';
-    setMode(ui, 'overview');
-    refreshOverview({ enableSortable: true });
-    updateUiChrome();
+  if (appState.mode === 'compare') {
+    await exitCompareView({ preserveSelection: true });
     return;
   }
 
-  appState.mode = 'focused';
-  appState.compare = null;
-  await renderFocused({ useSwipe: false, revealMode: true });
+  appState.mode = 'overview';
+  setMode(ui, 'overview');
+  refreshOverview({ enableSortable: true });
+  updateUiChrome();
 }
 
-function startUndoSnackbar({
-  message,
+function startDeleteUndoSnackbar({
+  deletedCount,
   snapshot
 }) {
   if (!ui.toastHost || !snapshot) {
@@ -1374,46 +1407,38 @@ function startUndoSnackbar({
   clearUndoActionState();
   ui.toastHost.classList.add('has-interactive-toast');
 
+  const createdAt = Date.now();
+  const expiresAt = createdAt + (OVERVIEW_UNDO_SECONDS * 1000);
+  appState.lastDeletedBatch = {
+    timestamp: createdAt,
+    expiresAt,
+    snapshot
+  };
+
   const toast = document.createElement('div');
   toast.className = 'toast toast-undo';
 
   const messageEl = document.createElement('span');
   messageEl.className = 'toast-undo-message';
-  messageEl.textContent = message;
-
-  const controls = document.createElement('div');
-  controls.className = 'toast-undo-controls';
+  messageEl.textContent = `${deletedCount} module${deletedCount === 1 ? '' : 's'} deleted`;
+  toast.appendChild(messageEl);
 
   const undoButton = document.createElement('button');
   undoButton.type = 'button';
   undoButton.className = 'toast-undo-btn';
-
-  const countdownEl = document.createElement('span');
-  countdownEl.className = 'toast-undo-countdown';
-
-  controls.appendChild(undoButton);
-  controls.appendChild(countdownEl);
-  toast.appendChild(messageEl);
-  toast.appendChild(controls);
+  toast.appendChild(undoButton);
   ui.toastHost.appendChild(toast);
 
   const undoState = {
-    snapshot,
     toastEl: toast,
     undoButtonEl: undoButton,
-    countdownEl,
     remainingSeconds: OVERVIEW_UNDO_SECONDS,
     intervalId: 0,
     timeoutId: 0
   };
 
   const renderCountdown = () => {
-    undoButton.textContent = `Undo (${undoState.remainingSeconds})`;
-    countdownEl.textContent = `${undoState.remainingSeconds}s`;
-  };
-
-  const expireUndo = () => {
-    clearUndoActionState();
+    undoButton.textContent = `Undo · ${undoState.remainingSeconds}s`;
   };
 
   undoButton.addEventListener('click', async () => {
@@ -1421,14 +1446,20 @@ function startUndoSnackbar({
       return;
     }
 
+    const batch = appState.lastDeletedBatch;
+    if (!batch || Date.now() > batch.expiresAt) {
+      clearUndoActionState();
+      return;
+    }
+
     undoButton.disabled = true;
     try {
-      await restoreUndoSnapshot(undoState.snapshot);
+      await restoreDeletedBatch(batch.snapshot);
       markSessionDirty();
       saveSessionNow();
     } catch (error) {
-      console.error('[CallCanvas] failed to restore undo snapshot', error);
-      showToast('Could not restore the previous state.', 'error');
+      console.error('[CallCanvas] failed to restore deleted modules batch', error);
+      showToast('Could not restore deleted modules.', 'error');
     } finally {
       clearUndoActionState();
     }
@@ -1439,13 +1470,12 @@ function startUndoSnackbar({
     if (appState.undoAction !== undoState) {
       return;
     }
-
     undoState.remainingSeconds = Math.max(0, undoState.remainingSeconds - 1);
     renderCountdown();
   }, 1000);
   undoState.timeoutId = window.setTimeout(() => {
     if (appState.undoAction === undoState) {
-      expireUndo();
+      clearUndoActionState();
     }
   }, OVERVIEW_UNDO_SECONDS * 1000);
 
@@ -2766,6 +2796,8 @@ function updateUiChrome() {
   });
 
   document.body.classList.toggle('compare-mode', appState.mode === 'compare');
+  document.body.classList.toggle('overview-has-selection', appState.mode === 'overview' && appState.overviewSelection.length > 0);
+  setOverviewMultiSelectArmed(appState.overviewMultiSelectArmed);
   renderGreeting(ui, appState.session.clientName);
 }
 
@@ -2812,7 +2844,10 @@ function bindCompareScrollSync(leftScrollable, rightScrollable) {
   }
 
   let syncLock = false;
-  const sync = (source, target) => {
+  let syncRafId = 0;
+  let pending = null;
+
+  const syncNow = (source, target) => {
     if (!appState.compare?.syncScroll || syncLock) {
       return;
     }
@@ -2823,8 +2858,24 @@ function bindCompareScrollSync(leftScrollable, rightScrollable) {
     syncLock = false;
   };
 
-  const onLeftScroll = () => sync(leftScrollable, rightScrollable);
-  const onRightScroll = () => sync(rightScrollable, leftScrollable);
+  const scheduleSync = (source, target) => {
+    pending = { source, target };
+    if (syncRafId) {
+      return;
+    }
+    syncRafId = window.requestAnimationFrame(() => {
+      syncRafId = 0;
+      if (!pending) {
+        return;
+      }
+      const next = pending;
+      pending = null;
+      syncNow(next.source, next.target);
+    });
+  };
+
+  const onLeftScroll = () => scheduleSync(leftScrollable, rightScrollable);
+  const onRightScroll = () => scheduleSync(rightScrollable, leftScrollable);
 
   leftScrollable.addEventListener('scroll', onLeftScroll, { passive: true });
   rightScrollable.addEventListener('scroll', onRightScroll, { passive: true });
@@ -2835,6 +2886,10 @@ function bindCompareScrollSync(leftScrollable, rightScrollable) {
   }
 
   return () => {
+    if (syncRafId) {
+      window.cancelAnimationFrame(syncRafId);
+      syncRafId = 0;
+    }
     leftScrollable.removeEventListener('scroll', onLeftScroll);
     rightScrollable.removeEventListener('scroll', onRightScroll);
   };
@@ -2865,7 +2920,7 @@ async function renderCompareView() {
 
   const compareLabel = document.createElement('div');
   compareLabel.className = 'compare-label';
-  compareLabel.textContent = `${leftTitle} vs ${rightTitle}`;
+  compareLabel.textContent = 'Compare (2)';
   controls.appendChild(compareLabel);
 
   const buttons = document.createElement('div');
@@ -2874,16 +2929,17 @@ async function renderCompareView() {
   const exitButton = document.createElement('button');
   exitButton.type = 'button';
   exitButton.className = 'ui-button compare-control-btn';
-  exitButton.textContent = 'Exit compare';
+  exitButton.textContent = 'Exit';
   exitButton.addEventListener('click', async () => {
     await exitCompareView({ preserveSelection: true });
   });
-  buttons.appendChild(exitButton);
 
   const swapButton = document.createElement('button');
   swapButton.type = 'button';
   swapButton.className = 'ui-button compare-control-btn';
-  swapButton.textContent = 'Swap';
+  swapButton.textContent = '⇄';
+  swapButton.title = 'Swap sides';
+  swapButton.setAttribute('aria-label', 'Swap sides');
   swapButton.addEventListener('click', async () => {
     if (!appState.compare) {
       return;
@@ -2893,7 +2949,6 @@ async function renderCompareView() {
     appState.compare.rightId = previousLeftId;
     await renderCompareView();
   });
-  buttons.appendChild(swapButton);
 
   const syncButton = document.createElement('button');
   syncButton.type = 'button';
@@ -2907,6 +2962,8 @@ async function renderCompareView() {
     await renderCompareView();
   });
   buttons.appendChild(syncButton);
+  buttons.appendChild(swapButton);
+  buttons.appendChild(exitButton);
 
   controls.appendChild(buttons);
   root.appendChild(controls);
@@ -3081,15 +3138,83 @@ function restoreSessionModeAfterDeletion() {
   updateUiChrome();
 }
 
-function deleteSelectedModulesWithUndo() {
+function showBulkDeleteConfirmModal(count) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'delete-confirm-backdrop';
+
+    const card = document.createElement('div');
+    card.className = 'delete-confirm-card';
+
+    const title = document.createElement('h3');
+    title.className = 'delete-confirm-title';
+    title.textContent = `Delete ${count} modules?`;
+
+    const actions = document.createElement('div');
+    actions.className = 'delete-confirm-actions';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'ui-button delete-confirm-btn';
+    cancelButton.textContent = 'Cancel';
+
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.className = 'ui-button delete-confirm-btn is-destructive';
+    confirmButton.textContent = 'Delete';
+
+    const cleanup = () => {
+      window.removeEventListener('keydown', onKeyDown);
+      backdrop.remove();
+    };
+
+    const onResolve = (result) => {
+      cleanup();
+      resolve(result);
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onResolve(false);
+      }
+    };
+
+    cancelButton.addEventListener('click', () => onResolve(false));
+    confirmButton.addEventListener('click', () => onResolve(true));
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) {
+        onResolve(false);
+      }
+    });
+    window.addEventListener('keydown', onKeyDown);
+
+    actions.appendChild(cancelButton);
+    actions.appendChild(confirmButton);
+    card.appendChild(title);
+    card.appendChild(actions);
+    backdrop.appendChild(card);
+    document.body.appendChild(backdrop);
+  });
+}
+
+async function deleteSelectedModulesWithUndo() {
   const selectedIds = pruneOverviewSelection();
   if (selectedIds.length === 0) {
     return;
   }
 
-  const snapshot = captureUndoSnapshot();
+  if (selectedIds.length >= 5) {
+    const confirmed = await showBulkDeleteConfirmModal(selectedIds.length);
+    if (!confirmed) {
+      return;
+    }
+  }
+
   const selectedSet = new Set(selectedIds);
   const orderBefore = [...appState.session.order];
+  const activeBeforeDelete = appState.session.activeModuleId;
+  const snapshot = buildDeleteUndoSnapshot(selectedIds, orderBefore, activeBeforeDelete);
   const earliestDeletedIndex = orderBefore.findIndex((moduleId) => selectedSet.has(moduleId));
 
   appState.session.modules = appState.session.modules.filter((module) => !selectedSet.has(module.id));
@@ -3118,41 +3243,30 @@ function deleteSelectedModulesWithUndo() {
   markSessionDirty();
   saveSessionNow();
 
-  const label = `${selectedIds.length} module${selectedIds.length === 1 ? '' : 's'} deleted`;
-  startUndoSnackbar({
-    message: label,
+  startDeleteUndoSnackbar({
+    deletedCount: selectedIds.length,
     snapshot
   });
 }
 
-function clearSelectionWithUndo() {
+function deselectAllInOverview() {
   const selectedIds = pruneOverviewSelection();
   if (selectedIds.length === 0) {
     return;
   }
 
-  const snapshot = captureUndoSnapshot();
   clearSelection();
   refreshOverview({ enableSortable: true });
-  startUndoSnackbar({
-    message: 'Selection cleared',
-    snapshot
-  });
 }
 
-function keepMostRecentTwoWithUndo() {
+function keepLastTwoSelected() {
   const selectedIds = pruneOverviewSelection();
   if (selectedIds.length <= 2) {
     return;
   }
 
-  const snapshot = captureUndoSnapshot();
   keepMostRecentTwoSelected();
   refreshOverview({ enableSortable: true });
-  startUndoSnackbar({
-    message: 'Kept most recent 2 selections',
-    snapshot
-  });
 }
 
 async function handleOverviewSelectionAction(action) {
@@ -3161,20 +3275,20 @@ async function handleOverviewSelectionAction(action) {
   }
 
   switch (action) {
-    case 'clear-selection':
-      clearSelectionWithUndo();
+    case 'deselect-all':
+      deselectAllInOverview();
       return;
     case 'delete-selected':
       if (runtimeConfig.readOnly) {
         return;
       }
-      deleteSelectedModulesWithUndo();
+      await deleteSelectedModulesWithUndo();
       return;
     case 'compare-selected':
       await runCompareFromSelection();
       return;
-    case 'keep-most-recent-two':
-      keepMostRecentTwoWithUndo();
+    case 'keep-last-two':
+      keepLastTwoSelected();
       return;
     default:
       return;
@@ -3203,7 +3317,7 @@ function refreshOverview({ enableSortable = appState.mode === 'overview' } = {})
     viewportHeight: height,
     selectedModuleIds: appState.overviewSelection,
     onCardClick: async (moduleId, cardEl, event) => {
-      const multiSelect = Boolean(event?.metaKey || event?.ctrlKey);
+      const multiSelect = isMultiSelectModifier(event);
       if (multiSelect) {
         event.preventDefault();
         toggleSelected(moduleId);
@@ -3216,6 +3330,7 @@ function refreshOverview({ enableSortable = appState.mode === 'overview' } = {})
       await handleOverviewSelectionAction(action);
     }
   });
+  document.body.classList.toggle('overview-has-selection', appState.mode === 'overview' && appState.overviewSelection.length > 0);
   restoreOverviewScrollPosition(scrollPosition);
 
   if (enableSortable) {
@@ -3241,7 +3356,7 @@ function initSortable() {
     return;
   }
 
-  if (appState.session.modules.length < 2 || appState.mode !== 'overview') {
+  if (appState.session.modules.length < 2 || appState.mode !== 'overview' || appState.overviewSelection.length > 0) {
     return;
   }
 
@@ -3840,6 +3955,8 @@ function bindEvents() {
   });
 
   window.addEventListener('keydown', async (event) => {
+    setOverviewMultiSelectArmed(isMultiSelectModifier(event));
+
     const target = event.target;
     const typing = target instanceof HTMLElement && (
       target.tagName === 'INPUT' ||
@@ -3849,6 +3966,14 @@ function bindEvents() {
 
     const key = event.key;
     const lower = key.toLowerCase();
+    const hasDeleteConfirmOpen = Boolean(document.querySelector('.delete-confirm-backdrop'));
+
+    if (hasDeleteConfirmOpen) {
+      if (key === 'Escape') {
+        event.preventDefault();
+      }
+      return;
+    }
 
     if (!typing && runtimeConfig.allowDevPanel && appState.mode !== 'compare' && lower === 'd') {
       event.preventDefault();
@@ -3929,9 +4054,17 @@ function bindEvents() {
     if (key === 'Escape' && appState.mode === 'overview') {
       if (appState.overviewSelection.length > 0) {
         event.preventDefault();
-        clearSelectionWithUndo();
+        deselectAllInOverview();
       }
     }
+  });
+
+  window.addEventListener('keyup', (event) => {
+    setOverviewMultiSelectArmed(isMultiSelectModifier(event));
+  });
+
+  window.addEventListener('blur', () => {
+    setOverviewMultiSelectArmed(false);
   });
 
   window.addEventListener('beforeunload', () => {

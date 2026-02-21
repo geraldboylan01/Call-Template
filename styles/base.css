@@ -997,31 +997,68 @@ textarea {
 
 .overview-selection-host {
   position: absolute;
-  top: 10px;
-  left: 14px;
-  right: 14px;
-  z-index: 12;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  padding: 0 14px;
   pointer-events: none;
 }
 
 .overview-selection-bar {
-  border-radius: 12px;
-  border: 1px solid rgba(126, 173, 227, 0.46);
-  background: rgba(7, 17, 33, 0.92);
-  box-shadow: 0 10px 24px rgba(2, 8, 18, 0.52);
+  width: min(920px, calc(100vw - 28px));
+  border-radius: 16px;
+  border: 1px solid rgba(126, 173, 227, 0.4);
+  background: rgba(7, 17, 33, 0.82);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 24px rgba(2, 8, 18, 0.45);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 11px 13px;
   pointer-events: auto;
+  animation: overview-selection-bar-in 140ms ease;
 }
 
-.overview-selection-count {
+@keyframes overview-selection-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.overview-selection-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.overview-selection-label {
   color: #e8f4ff;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   font-weight: 650;
   white-space: nowrap;
+}
+
+.overview-selection-pill {
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(153, 207, 255, 0.7);
+  background: rgba(24, 78, 126, 0.86);
+  color: #eff8ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.77rem;
+  font-weight: 700;
 }
 
 .overview-selection-actions {
@@ -1057,16 +1094,13 @@ textarea {
   color: #bed6f1;
   font-size: 0.76rem;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .overview-viewport {
   position: absolute;
   inset: 0;
   overflow: auto;
-}
-
-.overview-view.has-selection-bar .overview-viewport {
-  padding-top: 62px;
 }
 
 .overview-zoom-wrap {
@@ -1109,8 +1143,8 @@ textarea {
 }
 
 .overview-card.is-selected {
-  border-color: #7dccff;
-  box-shadow: 0 0 0 1px rgba(125, 204, 255, 0.8), 0 0 22px rgba(125, 204, 255, 0.3), 0 12px 24px rgba(1, 7, 18, 0.74);
+  border-color: rgba(123, 184, 235, 0.9);
+  box-shadow: 0 0 0 1.5px rgba(130, 196, 250, 0.72), 0 12px 24px rgba(1, 7, 18, 0.62);
 }
 
 .overview-selection-badge {
@@ -1128,6 +1162,23 @@ textarea {
   justify-content: center;
   font-size: 0.77rem;
   font-weight: 700;
+  box-shadow: 0 6px 14px rgba(2, 8, 18, 0.44);
+  animation: overview-badge-in 120ms ease;
+}
+
+@keyframes overview-badge-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+body.multi-select-armed .overview-card {
+  cursor: copy;
 }
 
 .overview-meta {
@@ -1267,6 +1318,10 @@ textarea {
   pointer-events: auto;
 }
 
+body.overview-has-selection .toast-host {
+  bottom: 96px;
+}
+
 .toast {
   max-width: min(420px, calc(100vw - 28px));
   border-radius: 10px;
@@ -1294,12 +1349,6 @@ textarea {
   color: #eaf4ff;
 }
 
-.toast-undo-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .toast-undo-btn {
   height: 28px;
   border-radius: 8px;
@@ -1320,12 +1369,43 @@ textarea {
   cursor: default;
 }
 
-.toast-undo-countdown {
-  color: #b7cde9;
-  font-size: 0.74rem;
-  min-width: 2.2em;
-  text-align: right;
+.delete-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3, 8, 16, 0.68);
 }
+
+.delete-confirm-card {
+  width: min(420px, calc(100vw - 32px));
+  border-radius: 14px;
+  border: 1px solid rgba(108, 162, 221, 0.34);
+  background: linear-gradient(180deg, rgba(8, 18, 35, 0.98), rgba(7, 14, 28, 0.98));
+  box-shadow: 0 22px 48px rgba(1, 9, 20, 0.8);
+  padding: 14px;
+}
+
+.delete-confirm-title {
+  margin: 0;
+  font-size: 0.96rem;
+  color: #eaf4ff;
+}
+
+.delete-confirm-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.delete-confirm-btn.is-destructive {
+  border-color: rgba(255, 132, 151, 0.6);
+  color: #ffdce2;
+}
+
 
 .compare-root {
   width: 100%;
@@ -1639,18 +1719,23 @@ textarea {
   }
 
   .overview-selection-host {
-    left: 8px;
-    right: 8px;
+    bottom: 10px;
+    padding: 0 8px;
   }
 
   .overview-selection-bar {
     align-items: flex-start;
     flex-direction: column;
+    width: min(100vw - 16px, 920px);
   }
 
   .overview-selection-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .overview-selection-helper {
+    width: 100%;
   }
 
   .compare-controls {

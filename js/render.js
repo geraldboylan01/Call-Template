@@ -1537,7 +1537,7 @@ export function renderOverview({
     actionHost = document.createElement('div');
     actionHost.className = 'overview-selection-host';
     actionHost.dataset.overviewSelectionHost = 'true';
-    ui.overviewLayer.insertBefore(actionHost, ui.overviewViewport);
+    ui.overviewLayer.appendChild(actionHost);
   }
   actionHost.innerHTML = '';
   ui.overviewLayer.classList.toggle('has-selection-bar', selectedSet.size > 0);
@@ -1546,64 +1546,81 @@ export function renderOverview({
     const bar = document.createElement('div');
     bar.className = 'overview-selection-bar';
 
-    const countText = document.createElement('div');
-    countText.className = 'overview-selection-count';
-    countText.textContent = `${selectedSet.size} selected`;
-    bar.appendChild(countText);
+    const meta = document.createElement('div');
+    meta.className = 'overview-selection-meta';
+
+    const label = document.createElement('span');
+    label.className = 'overview-selection-label';
+    label.textContent = 'Selected';
+    meta.appendChild(label);
+
+    const countPill = document.createElement('span');
+    countPill.className = 'overview-selection-pill';
+    countPill.textContent = String(selectedSet.size);
+    meta.appendChild(countPill);
+
+    bar.appendChild(meta);
 
     const actions = document.createElement('div');
     actions.className = 'overview-selection-actions';
 
-    const clearButton = document.createElement('button');
-    clearButton.type = 'button';
-    clearButton.className = 'ui-button overview-selection-btn';
-    clearButton.textContent = 'Clear selection';
-    clearButton.addEventListener('click', () => {
+    const compareButton = document.createElement('button');
+    compareButton.type = 'button';
+    compareButton.className = 'ui-button overview-selection-btn is-primary';
+    compareButton.textContent = 'Compare';
+    const canCompare = selectedSet.size === 2;
+    compareButton.disabled = !canCompare;
+    compareButton.addEventListener('click', () => {
+      if (!canCompare) {
+        return;
+      }
       if (typeof onSelectionAction === 'function') {
-        onSelectionAction('clear-selection');
+        onSelectionAction('compare-selected');
       }
     });
-    actions.appendChild(clearButton);
+    actions.appendChild(compareButton);
+
+    if (!canCompare) {
+      const helper = document.createElement('span');
+      helper.className = 'overview-selection-helper';
+      helper.textContent = 'Select exactly 2 to compare';
+      actions.appendChild(helper);
+    }
+
+    if (selectedSet.size > 2) {
+      const keepRecentButton = document.createElement('button');
+      keepRecentButton.type = 'button';
+      keepRecentButton.className = 'ui-button overview-selection-btn';
+      keepRecentButton.textContent = 'Keep last 2';
+      keepRecentButton.addEventListener('click', () => {
+        if (typeof onSelectionAction === 'function') {
+          onSelectionAction('keep-last-two');
+        }
+      });
+      actions.appendChild(keepRecentButton);
+    }
+
+    const deselectButton = document.createElement('button');
+    deselectButton.type = 'button';
+    deselectButton.className = 'ui-button overview-selection-btn';
+    deselectButton.textContent = 'Deselect all';
+    deselectButton.addEventListener('click', () => {
+      if (typeof onSelectionAction === 'function') {
+        onSelectionAction('deselect-all');
+      }
+    });
+    actions.appendChild(deselectButton);
 
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
     deleteButton.className = 'ui-button overview-selection-btn is-destructive';
-    deleteButton.textContent = 'Delete selected';
+    deleteButton.textContent = 'Delete';
     deleteButton.addEventListener('click', () => {
       if (typeof onSelectionAction === 'function') {
         onSelectionAction('delete-selected');
       }
     });
     actions.appendChild(deleteButton);
-
-    if (selectedSet.size === 2) {
-      const compareButton = document.createElement('button');
-      compareButton.type = 'button';
-      compareButton.className = 'ui-button overview-selection-btn is-primary';
-      compareButton.textContent = 'Compare';
-      compareButton.addEventListener('click', () => {
-        if (typeof onSelectionAction === 'function') {
-          onSelectionAction('compare-selected');
-        }
-      });
-      actions.appendChild(compareButton);
-    } else if (selectedSet.size > 2) {
-      const helper = document.createElement('span');
-      helper.className = 'overview-selection-helper';
-      helper.textContent = 'Select 2 to compare';
-      actions.appendChild(helper);
-
-      const keepRecentButton = document.createElement('button');
-      keepRecentButton.type = 'button';
-      keepRecentButton.className = 'ui-button overview-selection-btn';
-      keepRecentButton.textContent = 'Keep most recent 2';
-      keepRecentButton.addEventListener('click', () => {
-        if (typeof onSelectionAction === 'function') {
-          onSelectionAction('keep-most-recent-two');
-        }
-      });
-      actions.appendChild(keepRecentButton);
-    }
 
     bar.appendChild(actions);
     actionHost.appendChild(bar);
