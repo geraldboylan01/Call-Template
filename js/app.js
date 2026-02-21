@@ -230,6 +230,27 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'loan-inline-assumptions-demo',
+    label: 'Loan Inputs Demo',
+    payload: {
+      title: 'Loan Projection (Inline Assumptions Demo)',
+      generated: {
+        summaryHtml: '<p>Use the Assumptions pencil to edit loan inputs inline.</p>',
+        loanInputs: {
+          loanKind: 'loan',
+          currentBalance: 320000,
+          annualInterestRate: 0.0425,
+          startDateIso: '2026-01-01',
+          endDateIso: '2052-12-01',
+          repaymentType: 'repayment',
+          fixedPaymentAmount: null,
+          oneOffOverpayment: 0,
+          annualOverpayment: 3000
+        }
+      }
+    }
+  },
+  {
     id: 'outputsbucketed-auto-repair',
     label: 'OutputsBucketed Auto-Repair',
     payload: {
@@ -590,6 +611,33 @@ function deriveRemainingTermYearsFromMortgageInputs(mortgageInputs) {
   return monthCount / 12;
 }
 
+function getLoanEngineInputs(module) {
+  return module?.generated?.loanInputs || module?.generated?.mortgageInputs || null;
+}
+
+function getLoanEngineSource(module) {
+  if (module?.generated?.loanInputs) {
+    return 'loanInputs';
+  }
+  if (module?.generated?.mortgageInputs) {
+    return 'mortgageInputs';
+  }
+  return 'mortgageInputs';
+}
+
+function setLoanEngineInputs(module, normalizedInputs, { source = null } = {}) {
+  const targetSource = source || getLoanEngineSource(module);
+  if (targetSource === 'loanInputs') {
+    module.generated.loanInputs = normalizedInputs;
+    module.generated.mortgageInputs = null;
+    return 'loanInputs';
+  }
+
+  module.generated.mortgageInputs = normalizedInputs;
+  module.generated.loanInputs = null;
+  return 'mortgageInputs';
+}
+
 function parseLooseNumber(rawValue, { label, required = true } = {}) {
   const cleaned = normalizeNumericInputText(rawValue);
   if (!cleaned) {
@@ -793,7 +841,7 @@ function parseMortgageFieldInput(field, rawValue) {
     case 'annualInterestRate':
       return parseRateInput(rawValue, { label: 'Annual interest rate' });
     case 'termMonths':
-      return parseTermMonthsInput(rawValue, { label: 'Mortgage term (months)' });
+      return parseTermMonthsInput(rawValue, { label: 'Term (months)' });
     case 'oneOffOverpayment':
       return parseNonNegativeNumberInput(rawValue, { label: 'One-off overpayment' });
     case 'annualOverpayment':
@@ -836,12 +884,17 @@ function applyUpdatedProjectionToModule({
   if (calculator === 'pension') {
     module.generated.pensionInputs = normalizedInputs;
     module.generated.mortgageInputs = null;
+    module.generated.loanInputs = null;
     applyPensionProjectionToModule(module, { updateSummary: true });
     return;
   }
 
   if (calculator === 'mortgage') {
-    module.generated.mortgageInputs = normalizedInputs;
+    const existingSource = getLoanEngineSource(module);
+    const targetSource = existingSource === 'loanInputs' || normalizedInputs?.loanKind === 'loan'
+      ? 'loanInputs'
+      : 'mortgageInputs';
+    setLoanEngineInputs(module, normalizedInputs, { source: targetSource });
     module.generated.pensionInputs = null;
     const shouldUpdateSummary = shouldRefreshMortgageSummary(module.generated.summaryHtml);
     applyMortgageProjectionToModule(module, { updateSummary: shouldUpdateSummary });
@@ -920,12 +973,12 @@ function commitMortgageAssumptionField({
   rawValue,
   modeOverride = null
 }) {
-  const baseInputs = module?.generated?.mortgageInputs;
+  const baseInputs = getLoanEngineInputs(module);
   if (!baseInputs) {
     return {
       ok: false,
       field: field || 'currentBalance',
-      message: 'Mortgage inputs are unavailable for this module.'
+      message: 'Loan inputs are unavailable for this module.'
     };
   }
 
@@ -986,7 +1039,8 @@ function commitMortgageAssumptionField({
 
   let normalizedInputs;
   try {
-    normalizedInputs = normalizeMortgageInputs(candidate);
+    const defaultLoanKind = baseInputs.loanKind === 'loan' ? 'loan' : 'mortgage';
+    normalizedInputs = normalizeMortgageInputs(candidate, { defaultLoanKind });
   } catch (error) {
     const message = error?.message || 'Invalid mortgage assumptions.';
     const mappedField = mapMortgageNormalizationErrorToField(message) || field || 'currentBalance';
@@ -1069,7 +1123,14 @@ function applyPensionProjectionToModule(module, { updateSummary = true } = {}) {
 }
 
 function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) {
-  const projection = computeMortgageProjection(module.generated.mortgageInputs);
+  const loanEngineInputs = getLoanEngineInputs(module);
+  if (!loanEngineInputs) {
+    throw new Error('Loan inputs are unavailable for this module.');
+  }
+  const defaultLoanKind = loanEngineInputs.loanKind === 'loan' ? 'loan' : 'mortgage';
+  const normalizedInputs = normalizeMortgageInputs(loanEngineInputs, { defaultLoanKind });
+  const source = setLoanEngineInputs(module, normalizedInputs, { source: getLoanEngineSource(module) });
+  const projection = computeMortgageProjection(normalizedInputs, { defaultLoanKind });
 
   module.generated.assumptions = projection.assumptionsTable;
   module.generated.outputs = projection.outputsTable;
@@ -1084,7 +1145,8 @@ function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) 
   }
 
   console.info('[CallCanvas] mortgage projection computed', {
-    inputs: module.generated.mortgageInputs,
+    loanSource: source,
+    inputs: normalizedInputs,
     monthsPlanned: projection.debug?.monthsPlanned,
     monthsSimulated: projection.debug?.monthsSimulated,
     monthlyPayment: projection.debug?.paymentUsedMonthly,
@@ -1095,7 +1157,7 @@ function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) 
 
   appState.lastValidProjectionByModuleId.set(module.id, {
     calculator: 'mortgage',
-    inputs: { ...module.generated.mortgageInputs },
+    inputs: { ...normalizedInputs },
     debug: projection.debug
   });
 
@@ -1941,7 +2003,11 @@ function validatePensionInputsPayload(pensionInputs) {
 }
 
 function validateMortgageInputsPayload(mortgageInputs) {
-  return normalizeMortgageInputs(mortgageInputs);
+  return normalizeMortgageInputs(mortgageInputs, { defaultLoanKind: 'mortgage' });
+}
+
+function validateLoanInputsPayload(loanInputs) {
+  return normalizeMortgageInputs(loanInputs, { defaultLoanKind: 'loan' });
 }
 
 function normalizePayload(payload) {
@@ -2007,6 +2073,10 @@ function normalizePayload(payload) {
 
     if ('mortgageInputs' in payload.generated) {
       generatedPatch.mortgageInputs = validateMortgageInputsPayload(payload.generated.mortgageInputs);
+    }
+
+    if ('loanInputs' in payload.generated) {
+      generatedPatch.loanInputs = validateLoanInputsPayload(payload.generated.loanInputs);
     }
 
     normalized.generated = generatedPatch;
@@ -2689,6 +2759,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
     module.generated.pensionInputs = generatedPatch.pensionInputs;
     if (generatedPatch.pensionInputs) {
       module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
     }
   }
 
@@ -2696,6 +2767,15 @@ function mergeGeneratedPatch(module, generatedPatch) {
     module.generated.mortgageInputs = generatedPatch.mortgageInputs;
     if (generatedPatch.mortgageInputs) {
       module.generated.pensionInputs = null;
+      module.generated.loanInputs = null;
+    }
+  }
+
+  if ('loanInputs' in generatedPatch) {
+    module.generated.loanInputs = generatedPatch.loanInputs;
+    if (generatedPatch.loanInputs) {
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
     }
   }
 
@@ -2757,8 +2837,12 @@ async function applyModuleUpdateInternal(payload, options = {}) {
 
     const hasPensionInputsPatch = 'pensionInputs' in normalizedPayload.generated;
     const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
+    const hasLoanInputsPatch = 'loanInputs' in normalizedPayload.generated;
 
-    if (hasMortgageInputsPatch && module.generated.mortgageInputs) {
+    if (hasLoanInputsPatch && module.generated.loanInputs) {
+      applyMortgageProjectionToModule(module, { updateSummary: true });
+      resetAssumptionsEditorState(module.id);
+    } else if (hasMortgageInputsPatch && module.generated.mortgageInputs) {
       applyMortgageProjectionToModule(module, { updateSummary: true });
       resetAssumptionsEditorState(module.id);
     } else if (hasPensionInputsPatch && module.generated.pensionInputs) {

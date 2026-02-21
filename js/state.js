@@ -197,7 +197,7 @@ function normalizePensionInputs(pensionInputs) {
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
-function normalizeMortgageInputs(mortgageInputs) {
+function normalizeMortgageInputs(mortgageInputs, { defaultLoanKind = 'mortgage' } = {}) {
   if (!mortgageInputs || typeof mortgageInputs !== 'object' || Array.isArray(mortgageInputs)) {
     return null;
   }
@@ -232,6 +232,16 @@ function normalizeMortgageInputs(mortgageInputs) {
     normalized.repaymentType = mortgageInputs.repaymentType.trim();
   }
 
+  const loanKindRaw = typeof mortgageInputs.loanKind === 'string'
+    ? mortgageInputs.loanKind.trim().toLowerCase()
+    : '';
+  if (loanKindRaw === 'mortgage' || loanKindRaw === 'loan') {
+    normalized.loanKind = loanKindRaw;
+  } else {
+    const fallbackLoanKind = String(defaultLoanKind || 'mortgage').trim().toLowerCase();
+    normalized.loanKind = fallbackLoanKind === 'loan' ? 'loan' : 'mortgage';
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
@@ -249,6 +259,7 @@ export function createEmptyGenerated() {
     tables: [],
     pensionInputs: null,
     mortgageInputs: null,
+    loanInputs: null,
     outputsBucketed: null,
     charts: []
   };
@@ -265,7 +276,8 @@ export function normalizeGenerated(generated) {
     outputs: normalizeTable(generated.outputs),
     tables: normalizeGeneratedTables(generated.tables),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
-    mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs),
+    mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs, { defaultLoanKind: 'mortgage' }),
+    loanInputs: normalizeMortgageInputs(generated.loanInputs, { defaultLoanKind: 'loan' }),
     outputsBucketed: normalizeOutputsBucketed(generated.outputsBucketed),
     charts: normalizeCharts(generated.charts)
   };

@@ -93,7 +93,33 @@ function formatPercent(decimal) {
   return `${(decimal * 100).toFixed(2)}%`;
 }
 
-export function normalizeMortgageInputs(raw) {
+function normalizeLoanKind(rawLoanKind, defaultLoanKind = 'mortgage') {
+  const fallback = String(defaultLoanKind || 'mortgage').trim().toLowerCase() || 'mortgage';
+  if (fallback !== 'mortgage' && fallback !== 'loan') {
+    throw new Error('defaultLoanKind must be "mortgage" or "loan".');
+  }
+
+  if (typeof rawLoanKind === 'undefined' || rawLoanKind === null || String(rawLoanKind).trim() === '') {
+    return fallback;
+  }
+
+  const normalized = String(rawLoanKind).trim().toLowerCase();
+  if (normalized !== 'mortgage' && normalized !== 'loan') {
+    throw new Error('generated.loanInputs.loanKind must be "mortgage" or "loan" when provided.');
+  }
+
+  return normalized;
+}
+
+function getLoanWording(loanKind) {
+  const normalized = loanKind === 'loan' ? 'loan' : 'mortgage';
+  return {
+    noun: normalized,
+    titleCase: normalized === 'loan' ? 'Loan' : 'Mortgage'
+  };
+}
+
+export function normalizeMortgageInputs(raw, { defaultLoanKind = 'mortgage' } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('generated.mortgageInputs must be an object.');
   }
@@ -162,7 +188,10 @@ export function normalizeMortgageInputs(raw) {
     throw new Error('generated.mortgageInputs.annualOverpayment must be greater than or equal to 0.');
   }
 
+  const loanKind = normalizeLoanKind(raw.loanKind, defaultLoanKind);
+
   return {
+    loanKind,
     currentBalance,
     annualInterestRate,
     startDateIso: formatIsoDateUtc(startDate),
@@ -272,8 +301,8 @@ function aggregateAnnualSchedule(monthlySchedule) {
   });
 }
 
-export function computeAmortizationMonthlySchedule(rawInputs) {
-  const inputs = normalizeMortgageInputs(rawInputs);
+export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
+  const inputs = normalizeMortgageInputs(rawInputs, options);
   const term = resolveTermMonths(inputs);
   const monthlyRate = inputs.annualInterestRate / 12;
 
@@ -355,9 +384,15 @@ export function computeAmortizationMonthlySchedule(rawInputs) {
   };
 }
 
-export function computeMortgageProjection(rawInputs) {
-  const projection = computeAmortizationMonthlySchedule(rawInputs);
+export function computeMortgageProjection(rawInputs, options = {}) {
+  const projection = computeAmortizationMonthlySchedule(rawInputs, options);
   const annualSchedule = projection.annualSchedule;
+  const wording = getLoanWording(projection.inputs.loanKind);
+  const currentBalanceLabel = wording.noun === 'loan' ? 'Current loan balance' : 'Current balance';
+  const termLabel = `${wording.titleCase} term`;
+  const termEndLabel = wording.noun === 'loan'
+    ? 'Remaining loan balance at term end'
+    : 'Remaining balance at term end';
 
   const fallbackYear = parseIsoDateStrict(projection.inputs.startDateIso, 'startDateIso').getUTCFullYear();
   const labels = annualSchedule.length > 0
@@ -377,11 +412,11 @@ export function computeMortgageProjection(rawInputs) {
   const assumptionsTable = {
     columns: ['Assumption', 'Value', 'Notes'],
     rows: [
-      ['Current balance', formatEuro(projection.inputs.currentBalance), 'Balance before any overpayment'],
+      [currentBalanceLabel, formatEuro(projection.inputs.currentBalance), 'Balance before any overpayment'],
       ['One-off overpayment', formatEuro(projection.inputs.oneOffOverpayment), 'Applied immediately at start'],
       ['Opening balance used', formatEuro(projection.openingBalance), 'Starting balance for amortisation maths'],
       ['Annual interest rate', formatPercent(projection.inputs.annualInterestRate), 'Monthly compounding used internally'],
-      ['Mortgage term', `${projection.termMonthsPlanned} months`, `${projection.startMonthIso} to ${projection.endMonthIso}`],
+      [termLabel, `${projection.termMonthsPlanned} months`, `${projection.startMonthIso} to ${projection.endMonthIso}`],
       ['Repayment type', projection.inputs.repaymentType, 'V1 supports amortising repayment only'],
       ['Annual overpayment', formatEuro(projection.inputs.annualOverpayment), 'Applied at each calendar year-end'],
       ['Monthly payment source', projection.inputs.fixedPaymentAmount === null ? 'Calculated' : 'Fixed input', 'Payment frequency fixed to monthly']
@@ -396,14 +431,14 @@ export function computeMortgageProjection(rawInputs) {
       ['Payoff year', payoffLabel, projection.payoffYear ? 'Based on modelled schedule' : 'Balance remains after final modelled month'],
       ['Total interest (lifetime)', formatEuro(projection.totalInterestLifetime), `${projection.monthsSimulated} simulated months`],
       ['Total paid (lifetime)', formatEuro(projection.totalPaidLifetime), 'Principal + interest + annual overpayments'],
-      ['Remaining balance at term end', formatEuro(projection.balanceRemaining), projection.balanceRemaining > 0 ? 'Outstanding after modelled term' : 'Mortgage fully repaid']
+      [termEndLabel, formatEuro(projection.balanceRemaining), projection.balanceRemaining > 0 ? 'Outstanding after modelled term' : `${wording.titleCase} fully repaid`]
     ]
   };
 
   const charts = [
     {
       id: 'mortgage-mixed-annual',
-      title: 'Mortgage Balance and Annual Repayment Split',
+      title: `${wording.titleCase} Balance and Annual Repayment Split`,
       type: 'bar',
       labels,
       datasets: [
@@ -424,11 +459,11 @@ export function computeMortgageProjection(rawInputs) {
   ];
 
   const summarySentences = [
-    `Monthly repayments are modelled from an opening balance of ${formatEuro(projection.openingBalance)} at ${formatPercent(projection.inputs.annualInterestRate)} interest.`,
+    `Monthly repayments are modelled from an opening ${wording.noun} balance of ${formatEuro(projection.openingBalance)} at ${formatPercent(projection.inputs.annualInterestRate)} interest.`,
     `The payment used is ${formatEuro(projection.monthlyPaymentUsed)} per month, with annual overpayments of ${formatEuro(projection.inputs.annualOverpayment)} applied at each year-end.`,
     projection.payoffYear
-      ? `On this path the mortgage is projected to be fully repaid in ${projection.payoffYear}.`
-      : `On this path the mortgage is not fully repaid by ${projection.endMonthIso}, leaving ${formatEuro(projection.balanceRemaining)} outstanding.`,
+      ? `On this path the ${wording.noun} is projected to be fully repaid in ${projection.payoffYear}.`
+      : `On this path the ${wording.noun} is not fully repaid by ${projection.endMonthIso}, leaving ${formatEuro(projection.balanceRemaining)} outstanding.`,
     `Total lifetime interest is ${formatEuro(projection.totalInterestLifetime)} and total paid is ${formatEuro(projection.totalPaidLifetime)}.`
   ];
 

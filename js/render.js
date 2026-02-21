@@ -71,8 +71,12 @@ function isPensionModule(module) {
   return Boolean(module?.generated?.pensionInputs);
 }
 
+function getLoanEngineInputs(module) {
+  return module?.generated?.loanInputs || module?.generated?.mortgageInputs || null;
+}
+
 function isMortgageModule(module) {
-  return Boolean(module?.generated?.mortgageInputs);
+  return Boolean(getLoanEngineInputs(module));
 }
 
 function formatNumberForInput(value, maxDecimals = 4) {
@@ -463,10 +467,25 @@ function createEditableAssumptionCell({
   }
 
   if (isMortgageModule(module)) {
-    const mortgageInputs = module.generated.mortgageInputs;
+    const mortgageInputs = getLoanEngineInputs(module);
+    if (!mortgageInputs) {
+      return null;
+    }
     const termMonths = deriveRemainingTermMonths(mortgageInputs);
     const mortgageFieldMap = {
       currentbalance: {
+        field: 'currentBalance',
+        value: draftValues.currentBalance ?? formatNumberForInput(mortgageInputs.currentBalance, 2),
+        placeholder: '320000',
+        inputMode: 'decimal'
+      },
+      currentmortgagebalance: {
+        field: 'currentBalance',
+        value: draftValues.currentBalance ?? formatNumberForInput(mortgageInputs.currentBalance, 2),
+        placeholder: '320000',
+        inputMode: 'decimal'
+      },
+      currentloanbalance: {
         field: 'currentBalance',
         value: draftValues.currentBalance ?? formatNumberForInput(mortgageInputs.currentBalance, 2),
         placeholder: '320000',
@@ -479,6 +498,12 @@ function createEditableAssumptionCell({
         inputMode: 'decimal'
       },
       mortgageterm: {
+        field: 'termMonths',
+        value: draftValues.termMonths ?? formatNumberForInput(termMonths, 0),
+        placeholder: '324',
+        inputMode: 'numeric'
+      },
+      loanterm: {
         field: 'termMonths',
         value: draftValues.termMonths ?? formatNumberForInput(termMonths, 0),
         placeholder: '324',
