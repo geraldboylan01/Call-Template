@@ -230,6 +230,11 @@ textarea {
   border-radius: 28px;
 }
 
+.swipe-stage.is-compare {
+  width: min(1420px, calc(100vw - 52px));
+  height: min(760px, calc(100vh - var(--topbar-height) - 36px));
+}
+
 .swipe-pane {
   position: absolute;
   inset: 0;
@@ -990,10 +995,78 @@ textarea {
   overflow: hidden;
 }
 
+.overview-selection-host {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  right: 14px;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.overview-selection-bar {
+  border-radius: 12px;
+  border: 1px solid rgba(126, 173, 227, 0.46);
+  background: rgba(7, 17, 33, 0.92);
+  box-shadow: 0 10px 24px rgba(2, 8, 18, 0.52);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  pointer-events: auto;
+}
+
+.overview-selection-count {
+  color: #e8f4ff;
+  font-size: 0.86rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.overview-selection-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.overview-selection-btn {
+  height: 30px;
+  font-size: 0.78rem;
+  padding: 0 10px;
+}
+
+.overview-selection-btn.is-primary {
+  border-color: rgba(46, 163, 255, 0.9);
+  background: rgba(30, 84, 134, 0.86);
+}
+
+.overview-selection-btn.is-destructive {
+  border-color: rgba(255, 132, 151, 0.6);
+  color: #ffdce2;
+}
+
+.overview-selection-btn.is-destructive:hover:not(:disabled) {
+  border-color: rgba(255, 132, 151, 0.82);
+  background: rgba(84, 23, 38, 0.9);
+}
+
+.overview-selection-helper {
+  color: #bed6f1;
+  font-size: 0.76rem;
+  letter-spacing: 0.01em;
+}
+
 .overview-viewport {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  overflow: auto;
+}
+
+.overview-view.has-selection-bar .overview-viewport {
+  padding-top: 62px;
 }
 
 .overview-zoom-wrap {
@@ -1013,6 +1086,7 @@ textarea {
 }
 
 .overview-card {
+  position: relative;
   width: var(--overview-card-width, 260px);
   height: var(--overview-card-height, 176px);
   padding: 14px;
@@ -1032,6 +1106,28 @@ textarea {
 
 .overview-card.is-active {
   border-color: #8fd0ff;
+}
+
+.overview-card.is-selected {
+  border-color: #7dccff;
+  box-shadow: 0 0 0 1px rgba(125, 204, 255, 0.8), 0 0 22px rgba(125, 204, 255, 0.3), 0 12px 24px rgba(1, 7, 18, 0.74);
+}
+
+.overview-selection-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(164, 218, 255, 0.9);
+  background: rgba(20, 75, 122, 0.92);
+  color: #eff8ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.77rem;
+  font-weight: 700;
 }
 
 .overview-meta {
@@ -1167,6 +1263,10 @@ textarea {
   pointer-events: none;
 }
 
+.toast-host.has-interactive-toast {
+  pointer-events: auto;
+}
+
 .toast {
   max-width: min(420px, calc(100vw - 28px));
   border-radius: 10px;
@@ -1180,6 +1280,118 @@ textarea {
 
 .toast.error {
   border-color: rgba(255, 122, 141, 0.55);
+}
+
+.toast-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.toast-undo-message {
+  color: #eaf4ff;
+}
+
+.toast-undo-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toast-undo-btn {
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(126, 173, 227, 0.52);
+  background: rgba(11, 30, 56, 0.86);
+  color: #dceeff;
+  font-size: 0.75rem;
+  padding: 0 9px;
+  cursor: pointer;
+}
+
+.toast-undo-btn:hover:not(:disabled) {
+  border-color: rgba(46, 163, 255, 0.82);
+}
+
+.toast-undo-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.toast-undo-countdown {
+  color: #b7cde9;
+  font-size: 0.74rem;
+  min-width: 2.2em;
+  text-align: right;
+}
+
+.compare-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.compare-controls {
+  border-radius: 12px;
+  border: 1px solid rgba(126, 173, 227, 0.42);
+  background: rgba(7, 16, 31, 0.86);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.compare-label {
+  color: #e1f0ff;
+  font-size: 0.84rem;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-control-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.compare-control-btn {
+  height: 30px;
+  font-size: 0.77rem;
+  padding: 0 10px;
+}
+
+.compare-panes {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.compare-pane {
+  min-width: 0;
+  min-height: 0;
+}
+
+.compare-pane .focused-pane {
+  height: 100%;
+  padding: 0;
+}
+
+.compare-pane .focused-module-card {
+  width: 100%;
+  height: 100%;
+  padding: 14px;
 }
 
 .publish-modal {
@@ -1399,6 +1611,11 @@ textarea {
     height: min(100vh - var(--topbar-height) - 42px, 620px);
   }
 
+  .swipe-stage.is-compare {
+    width: min(100vw - 24px, 1000px);
+    height: min(100vh - var(--topbar-height) - 24px, 760px);
+  }
+
   .focused-module-card {
     width: min(100vw - 44px, 760px);
     height: min(100vh - var(--topbar-height) - 62px, 620px);
@@ -1419,6 +1636,36 @@ textarea {
 
   .generated-charts-card {
     grid-column: auto;
+  }
+
+  .overview-selection-host {
+    left: 8px;
+    right: 8px;
+  }
+
+  .overview-selection-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .overview-selection-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .compare-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .compare-control-buttons {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .compare-panes {
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(0, 1fr);
   }
 
   .nav-arrow.left {

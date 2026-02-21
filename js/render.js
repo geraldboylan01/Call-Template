@@ -1454,13 +1454,16 @@ export function buildFocusedPane({
   onPatchInputs = null,
   assumptionsEditorStatus = null,
   readOnly = false,
-  showPensionToggle = true
+  showPensionToggle = true,
+  cardId = 'focusCard'
 }) {
   const pane = document.createElement('div');
   pane.className = 'focused-pane swipe-pane-content';
 
   const card = document.createElement('article');
-  card.id = 'focusCard';
+  if (typeof cardId === 'string' && cardId.trim()) {
+    card.id = cardId.trim();
+  }
   card.className = 'module-card focused-module-card';
   card.dataset.moduleId = module.id;
 
@@ -1513,8 +1516,99 @@ export function renderOverview({
   layout,
   viewportWidth,
   viewportHeight,
-  onCardClick
+  selectedModuleIds = [],
+  onCardClick,
+  onSelectionAction = null
 }) {
+  const selectedSet = new Set(
+    Array.isArray(selectedModuleIds)
+      ? selectedModuleIds.filter((value) => typeof value === 'string' && value)
+      : []
+  );
+  const selectedOrderById = new Map();
+  (Array.isArray(selectedModuleIds) ? selectedModuleIds : []).forEach((moduleId, index) => {
+    if (!selectedOrderById.has(moduleId)) {
+      selectedOrderById.set(moduleId, index + 1);
+    }
+  });
+
+  let actionHost = ui.overviewLayer.querySelector('[data-overview-selection-host]');
+  if (!actionHost) {
+    actionHost = document.createElement('div');
+    actionHost.className = 'overview-selection-host';
+    actionHost.dataset.overviewSelectionHost = 'true';
+    ui.overviewLayer.insertBefore(actionHost, ui.overviewViewport);
+  }
+  actionHost.innerHTML = '';
+  ui.overviewLayer.classList.toggle('has-selection-bar', selectedSet.size > 0);
+
+  if (selectedSet.size > 0) {
+    const bar = document.createElement('div');
+    bar.className = 'overview-selection-bar';
+
+    const countText = document.createElement('div');
+    countText.className = 'overview-selection-count';
+    countText.textContent = `${selectedSet.size} selected`;
+    bar.appendChild(countText);
+
+    const actions = document.createElement('div');
+    actions.className = 'overview-selection-actions';
+
+    const clearButton = document.createElement('button');
+    clearButton.type = 'button';
+    clearButton.className = 'ui-button overview-selection-btn';
+    clearButton.textContent = 'Clear selection';
+    clearButton.addEventListener('click', () => {
+      if (typeof onSelectionAction === 'function') {
+        onSelectionAction('clear-selection');
+      }
+    });
+    actions.appendChild(clearButton);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'ui-button overview-selection-btn is-destructive';
+    deleteButton.textContent = 'Delete selected';
+    deleteButton.addEventListener('click', () => {
+      if (typeof onSelectionAction === 'function') {
+        onSelectionAction('delete-selected');
+      }
+    });
+    actions.appendChild(deleteButton);
+
+    if (selectedSet.size === 2) {
+      const compareButton = document.createElement('button');
+      compareButton.type = 'button';
+      compareButton.className = 'ui-button overview-selection-btn is-primary';
+      compareButton.textContent = 'Compare';
+      compareButton.addEventListener('click', () => {
+        if (typeof onSelectionAction === 'function') {
+          onSelectionAction('compare-selected');
+        }
+      });
+      actions.appendChild(compareButton);
+    } else if (selectedSet.size > 2) {
+      const helper = document.createElement('span');
+      helper.className = 'overview-selection-helper';
+      helper.textContent = 'Select 2 to compare';
+      actions.appendChild(helper);
+
+      const keepRecentButton = document.createElement('button');
+      keepRecentButton.type = 'button';
+      keepRecentButton.className = 'ui-button overview-selection-btn';
+      keepRecentButton.textContent = 'Keep most recent 2';
+      keepRecentButton.addEventListener('click', () => {
+        if (typeof onSelectionAction === 'function') {
+          onSelectionAction('keep-most-recent-two');
+        }
+      });
+      actions.appendChild(keepRecentButton);
+    }
+
+    bar.appendChild(actions);
+    actionHost.appendChild(bar);
+  }
+
   ui.overviewGrid.innerHTML = '';
 
   modules.forEach((module, index) => {
@@ -1526,6 +1620,15 @@ export function renderOverview({
     }
 
     card.dataset.moduleId = module.id;
+
+    if (selectedSet.has(module.id)) {
+      card.classList.add('is-selected');
+      const badge = document.createElement('span');
+      badge.className = 'overview-selection-badge';
+      badge.textContent = String(selectedOrderById.get(module.id) || 1);
+      badge.setAttribute('aria-label', `Selection order ${badge.textContent}`);
+      card.appendChild(badge);
+    }
 
     const label = document.createElement('div');
     label.className = 'overview-meta';
@@ -1547,7 +1650,7 @@ export function renderOverview({
     card.style.gridColumnStart = String(position.columnStart);
     card.style.gridRowStart = String(position.rowStart);
 
-    card.addEventListener('click', () => onCardClick(module.id, card));
+    card.addEventListener('click', (event) => onCardClick(module.id, card, event));
 
     ui.overviewGrid.appendChild(card);
   });
@@ -1608,7 +1711,7 @@ export function updateControls(ui, {
   }
 
   if (ui.newModuleButton) {
-    ui.newModuleButton.disabled = readOnly;
+    ui.newModuleButton.disabled = readOnly || mode === 'compare';
   }
 
   if (ui.prevArrowButton) {

@@ -511,12 +511,13 @@ window.__callcanvasReflowCharts = () => {
   scheduleOverlayPositionUpdate();
 };
 
-function nextChartKey() {
+function nextChartKey(prefix = 'chart') {
+  const cleanPrefix = sanitizeFileToken(prefix, 'chart');
   if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-    return `chart-${window.crypto.randomUUID()}`;
+    return `${cleanPrefix}-${window.crypto.randomUUID()}`;
   }
 
-  return `chart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${cleanPrefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function clampNumber(value) {
@@ -1513,12 +1514,18 @@ export function destroyAllCharts() {
   maybeTearDownOverlayInfrastructure();
 }
 
-export function renderChartsForPane(paneElement, module, { clientName, moduleTitle } = {}) {
+export function renderChartsForPane(paneElement, module, { clientName, moduleTitle, paneKey = 'pane' } = {}) {
   cleanupDetachedCharts();
 
   if (!paneElement || !module?.generated?.charts || typeof window.Chart === 'undefined') {
     return;
   }
+
+  const paneToken = sanitizeFileToken(
+    paneKey || paneElement.dataset.chartPaneKey || paneElement.dataset.comparePane || paneElement.dataset.moduleId || 'pane',
+    'pane'
+  );
+  paneElement.dataset.chartPaneKey = paneToken;
 
   const blocks = [...paneElement.querySelectorAll('[data-chart-index]')];
 
@@ -1537,6 +1544,9 @@ export function renderChartsForPane(paneElement, module, { clientName, moduleTit
     if (!sourceCanvas) {
       return;
     }
+
+    const moduleToken = sanitizeFileToken(module?.id || 'module', 'module');
+    sourceCanvas.id = `${paneToken}-canvas-${moduleToken}-${chartIndex}`;
 
     const existingKey = sourceCanvas.dataset.chartKey;
     if (existingKey) {
@@ -1636,10 +1646,11 @@ export function renderChartsForPane(paneElement, module, { clientName, moduleTit
     });
     const pointerDiagnosticsCleanup = attachPointerDiagnostics(chart, chart.canvas, chartData);
 
-    const chartKey = nextChartKey();
+    const chartKey = nextChartKey(`${paneToken}-chart`);
     sourceCanvas.dataset.chartKey = chartKey;
     if (renderCanvas !== sourceCanvas) {
       renderCanvas.dataset.chartKey = chartKey;
+      renderCanvas.id = `${sourceCanvas.id}-overlay`;
     }
     const scheduleReflow = (phase = 'reflow') => {
       const current = chartRegistry.get(chartKey);
@@ -1793,7 +1804,7 @@ function applyChartConfigToExistingChart(entry, chartData, module) {
   return true;
 }
 
-export function updateChartsForPane(paneElement, module, { clientName, moduleTitle } = {}) {
+export function updateChartsForPane(paneElement, module, { clientName, moduleTitle, paneKey = null } = {}) {
   cleanupDetachedCharts();
 
   if (!paneElement || !module?.generated?.charts || typeof window.Chart === 'undefined') {
@@ -1857,6 +1868,10 @@ export function updateChartsForPane(paneElement, module, { clientName, moduleTit
   });
 
   if (fallbackToFullRender) {
-    renderChartsForPane(paneElement, module, { clientName, moduleTitle });
+    renderChartsForPane(paneElement, module, {
+      clientName,
+      moduleTitle,
+      paneKey: paneKey || paneElement?.dataset?.chartPaneKey || paneElement?.dataset?.comparePane || paneElement?.dataset?.moduleId || 'pane'
+    });
   }
 }

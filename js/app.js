@@ -89,6 +89,7 @@ const stateManager = createStateManager(300, {
 });
 
 const ASSUMPTIONS_UPDATED_FEEDBACK_MS = 800;
+const OVERVIEW_UNDO_SECONDS = 15;
 
 const appState = {
   session: newSession('Client'),
@@ -96,6 +97,10 @@ const appState = {
   sortable: null,
   transitionLock: false,
   devPanelOpen: false,
+  overviewSelection: [],
+  compare: null,
+  compareScrollCleanup: null,
+  undoAction: null,
   pensionShowMaxByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
@@ -390,6 +395,72 @@ function hasNextModule() {
   return activeIndex >= 0 && activeIndex < appState.session.order.length - 1;
 }
 
+function getModuleIdSet(session = appState.session) {
+  return new Set(Array.isArray(session?.order) ? session.order : []);
+}
+
+function pruneOverviewSelection() {
+  const validIds = getModuleIdSet();
+  const nextSelection = appState.overviewSelection.filter((moduleId) => validIds.has(moduleId));
+  appState.overviewSelection = [...new Set(nextSelection)];
+
+  const nextPensionMap = new Map();
+  appState.pensionShowMaxByModuleId.forEach((value, moduleId) => {
+    if (validIds.has(moduleId)) {
+      nextPensionMap.set(moduleId, value);
+    }
+  });
+  appState.pensionShowMaxByModuleId = nextPensionMap;
+
+  return appState.overviewSelection;
+}
+
+function isSelected(moduleId) {
+  return typeof moduleId === 'string' && appState.overviewSelection.includes(moduleId);
+}
+
+function toggleSelected(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return appState.overviewSelection;
+  }
+
+  const validIds = getModuleIdSet();
+  if (!validIds.has(moduleId)) {
+    return appState.overviewSelection;
+  }
+
+  if (isSelected(moduleId)) {
+    appState.overviewSelection = appState.overviewSelection.filter((id) => id !== moduleId);
+  } else {
+    appState.overviewSelection = [...appState.overviewSelection, moduleId];
+  }
+
+  return appState.overviewSelection;
+}
+
+function clearSelection() {
+  appState.overviewSelection = [];
+  return appState.overviewSelection;
+}
+
+function keepMostRecentTwoSelected() {
+  if (appState.overviewSelection.length <= 2) {
+    return appState.overviewSelection;
+  }
+
+  appState.overviewSelection = appState.overviewSelection.slice(-2);
+  return appState.overviewSelection;
+}
+
+function getSelectedPair() {
+  const selected = pruneOverviewSelection();
+  if (selected.length !== 2) {
+    return null;
+  }
+
+  return [selected[0], selected[1]];
+}
+
 function normalizeClientName(value) {
   return value.trim();
 }
@@ -517,7 +588,8 @@ function patchFocusedModuleGeneratedContent(moduleId, {
 
   updateChartsForPane(activePane, module, {
     clientName: appState.session.clientName || 'Client',
-    moduleTitle: module.title?.trim() || 'Untitled Module'
+    moduleTitle: module.title?.trim() || 'Untitled Module',
+    paneKey: 'focused-active'
   });
 }
 
@@ -1176,6 +1248,210 @@ function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) 
   return projection;
 }
 
+function cloneSessionSnapshot(session) {
+  try {
+    return JSON.parse(JSON.stringify(session));
+  } catch (_error) {
+    return JSON.parse(exportSession(session));
+  }
+}
+
+function captureUndoSnapshot() {
+  return {
+    session: cloneSessionSnapshot(appState.session),
+    mode: appState.mode,
+    compare: appState.compare
+      ? {
+        leftId: appState.compare.leftId,
+        rightId: appState.compare.rightId,
+        syncScroll: appState.compare.syncScroll !== false
+      }
+      : null,
+    overviewSelection: [...appState.overviewSelection],
+    pensionShowMaxEntries: [...appState.pensionShowMaxByModuleId.entries()]
+  };
+}
+
+function clearCompareScrollSyncCleanup() {
+  if (typeof appState.compareScrollCleanup === 'function') {
+    appState.compareScrollCleanup();
+  }
+  appState.compareScrollCleanup = null;
+}
+
+function clearUndoActionState() {
+  const undo = appState.undoAction;
+  if (ui.toastHost) {
+    ui.toastHost.classList.remove('has-interactive-toast');
+  }
+  if (!undo) {
+    return;
+  }
+
+  if (undo.intervalId) {
+    window.clearInterval(undo.intervalId);
+  }
+  if (undo.timeoutId) {
+    window.clearTimeout(undo.timeoutId);
+  }
+  if (undo.toastEl?.isConnected) {
+    undo.toastEl.remove();
+  }
+
+  appState.undoAction = null;
+}
+
+async function restoreUndoSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return;
+  }
+
+  destroySortable();
+  destroyAllCharts();
+  clearCompareScrollSyncCleanup();
+
+  appState.transitionLock = false;
+  appState.session = importSession(JSON.stringify(snapshot.session));
+  appState.compare = snapshot.compare
+    ? {
+      leftId: snapshot.compare.leftId,
+      rightId: snapshot.compare.rightId,
+      syncScroll: snapshot.compare.syncScroll !== false
+    }
+    : null;
+  appState.overviewSelection = Array.isArray(snapshot.overviewSelection)
+    ? snapshot.overviewSelection.filter((moduleId) => typeof moduleId === 'string' && moduleId)
+    : [];
+  appState.pensionShowMaxByModuleId = new Map(
+    Array.isArray(snapshot.pensionShowMaxEntries) ? snapshot.pensionShowMaxEntries : []
+  );
+
+  ensureActiveModule(appState.session);
+  pruneOverviewSelection();
+  ui.swipeStage.classList.remove('is-compare');
+
+  const hasComparePair = Boolean(
+    appState.compare
+    && getModuleById(appState.session, appState.compare.leftId)
+    && getModuleById(appState.session, appState.compare.rightId)
+  );
+
+  if (!hasModules()) {
+    appState.mode = 'greeting';
+    ui.swipeStage.innerHTML = '';
+    setMode(ui, 'greeting');
+    updateUiChrome();
+    return;
+  }
+
+  if (snapshot.mode === 'compare' && hasComparePair) {
+    appState.mode = 'compare';
+    await renderCompareView();
+    return;
+  }
+
+  if (snapshot.mode === 'overview') {
+    appState.mode = 'overview';
+    setMode(ui, 'overview');
+    refreshOverview({ enableSortable: true });
+    updateUiChrome();
+    return;
+  }
+
+  appState.mode = 'focused';
+  appState.compare = null;
+  await renderFocused({ useSwipe: false, revealMode: true });
+}
+
+function startUndoSnackbar({
+  message,
+  snapshot
+}) {
+  if (!ui.toastHost || !snapshot) {
+    return;
+  }
+
+  clearUndoActionState();
+  ui.toastHost.classList.add('has-interactive-toast');
+
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-undo';
+
+  const messageEl = document.createElement('span');
+  messageEl.className = 'toast-undo-message';
+  messageEl.textContent = message;
+
+  const controls = document.createElement('div');
+  controls.className = 'toast-undo-controls';
+
+  const undoButton = document.createElement('button');
+  undoButton.type = 'button';
+  undoButton.className = 'toast-undo-btn';
+
+  const countdownEl = document.createElement('span');
+  countdownEl.className = 'toast-undo-countdown';
+
+  controls.appendChild(undoButton);
+  controls.appendChild(countdownEl);
+  toast.appendChild(messageEl);
+  toast.appendChild(controls);
+  ui.toastHost.appendChild(toast);
+
+  const undoState = {
+    snapshot,
+    toastEl: toast,
+    undoButtonEl: undoButton,
+    countdownEl,
+    remainingSeconds: OVERVIEW_UNDO_SECONDS,
+    intervalId: 0,
+    timeoutId: 0
+  };
+
+  const renderCountdown = () => {
+    undoButton.textContent = `Undo (${undoState.remainingSeconds})`;
+    countdownEl.textContent = `${undoState.remainingSeconds}s`;
+  };
+
+  const expireUndo = () => {
+    clearUndoActionState();
+  };
+
+  undoButton.addEventListener('click', async () => {
+    if (appState.undoAction !== undoState) {
+      return;
+    }
+
+    undoButton.disabled = true;
+    try {
+      await restoreUndoSnapshot(undoState.snapshot);
+      markSessionDirty();
+      saveSessionNow();
+    } catch (error) {
+      console.error('[CallCanvas] failed to restore undo snapshot', error);
+      showToast('Could not restore the previous state.', 'error');
+    } finally {
+      clearUndoActionState();
+    }
+  });
+
+  renderCountdown();
+  undoState.intervalId = window.setInterval(() => {
+    if (appState.undoAction !== undoState) {
+      return;
+    }
+
+    undoState.remainingSeconds = Math.max(0, undoState.remainingSeconds - 1);
+    renderCountdown();
+  }, 1000);
+  undoState.timeoutId = window.setTimeout(() => {
+    if (appState.undoAction === undoState) {
+      expireUndo();
+    }
+  }, OVERVIEW_UNDO_SECONDS * 1000);
+
+  appState.undoAction = undoState;
+}
+
 function showToast(message, type = 'success') {
   if (!ui.toastHost) {
     return;
@@ -1225,6 +1501,10 @@ function markSessionClean() {
 }
 
 function setDevPanelOpen(open) {
+  if (appState.mode === 'compare' && open) {
+    open = false;
+  }
+
   appState.devPanelOpen = open;
 
   if (!ui.devPanel) {
@@ -1794,9 +2074,14 @@ async function replaceSession(nextSession, options = {}) {
 
   destroySortable();
   destroyAllCharts();
+  clearUndoActionState();
+  clearCompareScrollSyncCleanup();
 
   appState.transitionLock = false;
   appState.session = nextSession;
+  appState.compare = null;
+  appState.overviewSelection = [];
+  ui.swipeStage.classList.remove('is-compare');
   appState.pensionShowMaxByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
@@ -2112,7 +2397,8 @@ function hydrateChartsForActivePane() {
 
   renderChartsForPane(activePane, activeModule, {
     clientName: appState.session.clientName || 'Client',
-    moduleTitle: activeModule.title?.trim() || 'Untitled Module'
+    moduleTitle: activeModule.title?.trim() || 'Untitled Module',
+    paneKey: 'focused-active'
   });
 }
 
@@ -2479,10 +2765,15 @@ function updateUiChrome() {
     readOnly: runtimeConfig.readOnly
   });
 
+  document.body.classList.toggle('compare-mode', appState.mode === 'compare');
   renderGreeting(ui, appState.session.clientName);
 }
 
-function getFocusedPaneForModule(module) {
+function getFocusedPaneForModule(module, {
+  readOnly = runtimeConfig.readOnly,
+  showPensionToggle = runtimeConfig.showPensionToggle,
+  cardId = 'focusCard'
+} = {}) {
   const moduleNumber = Math.max(1, appState.session.order.indexOf(module.id) + 1);
 
   ensureGenerated(module);
@@ -2495,9 +2786,203 @@ function getFocusedPaneForModule(module) {
     onNotesInput: (moduleId, value) => updateModule(moduleId, { notes: value }),
     onPatchInputs: (patch) => handleAssumptionsEditorPatch(patch),
     assumptionsEditorStatus,
-    readOnly: runtimeConfig.readOnly,
-    showPensionToggle: runtimeConfig.showPensionToggle
+    readOnly,
+    showPensionToggle,
+    cardId
   });
+}
+
+function getComparePairModules() {
+  if (!appState.compare) {
+    return null;
+  }
+
+  const left = getModuleById(appState.session, appState.compare.leftId);
+  const right = getModuleById(appState.session, appState.compare.rightId);
+  if (!left || !right) {
+    return null;
+  }
+
+  return [left, right];
+}
+
+function bindCompareScrollSync(leftScrollable, rightScrollable) {
+  if (!leftScrollable || !rightScrollable) {
+    return () => {};
+  }
+
+  let syncLock = false;
+  const sync = (source, target) => {
+    if (!appState.compare?.syncScroll || syncLock) {
+      return;
+    }
+
+    syncLock = true;
+    target.scrollTop = source.scrollTop;
+    target.scrollLeft = source.scrollLeft;
+    syncLock = false;
+  };
+
+  const onLeftScroll = () => sync(leftScrollable, rightScrollable);
+  const onRightScroll = () => sync(rightScrollable, leftScrollable);
+
+  leftScrollable.addEventListener('scroll', onLeftScroll, { passive: true });
+  rightScrollable.addEventListener('scroll', onRightScroll, { passive: true });
+
+  if (appState.compare?.syncScroll) {
+    rightScrollable.scrollTop = leftScrollable.scrollTop;
+    rightScrollable.scrollLeft = leftScrollable.scrollLeft;
+  }
+
+  return () => {
+    leftScrollable.removeEventListener('scroll', onLeftScroll);
+    rightScrollable.removeEventListener('scroll', onRightScroll);
+  };
+}
+
+async function renderCompareView() {
+  const pair = getComparePairModules();
+  if (!pair) {
+    await exitCompareView({ preserveSelection: true });
+    return false;
+  }
+
+  const [leftModule, rightModule] = pair;
+  destroySortable();
+  destroyAllCharts();
+  clearCompareScrollSyncCleanup();
+  setDevPanelOpen(false);
+
+  const root = document.createElement('section');
+  root.className = 'compare-root';
+  root.dataset.compareRoot = 'true';
+
+  const controls = document.createElement('header');
+  controls.className = 'compare-controls';
+
+  const leftTitle = leftModule.title?.trim() || 'Untitled Module';
+  const rightTitle = rightModule.title?.trim() || 'Untitled Module';
+
+  const compareLabel = document.createElement('div');
+  compareLabel.className = 'compare-label';
+  compareLabel.textContent = `${leftTitle} vs ${rightTitle}`;
+  controls.appendChild(compareLabel);
+
+  const buttons = document.createElement('div');
+  buttons.className = 'compare-control-buttons';
+
+  const exitButton = document.createElement('button');
+  exitButton.type = 'button';
+  exitButton.className = 'ui-button compare-control-btn';
+  exitButton.textContent = 'Exit compare';
+  exitButton.addEventListener('click', async () => {
+    await exitCompareView({ preserveSelection: true });
+  });
+  buttons.appendChild(exitButton);
+
+  const swapButton = document.createElement('button');
+  swapButton.type = 'button';
+  swapButton.className = 'ui-button compare-control-btn';
+  swapButton.textContent = 'Swap';
+  swapButton.addEventListener('click', async () => {
+    if (!appState.compare) {
+      return;
+    }
+    const previousLeftId = appState.compare.leftId;
+    appState.compare.leftId = appState.compare.rightId;
+    appState.compare.rightId = previousLeftId;
+    await renderCompareView();
+  });
+  buttons.appendChild(swapButton);
+
+  const syncButton = document.createElement('button');
+  syncButton.type = 'button';
+  syncButton.className = 'ui-button compare-control-btn';
+  syncButton.textContent = `Sync scroll: ${appState.compare?.syncScroll === false ? 'Off' : 'On'}`;
+  syncButton.addEventListener('click', async () => {
+    if (!appState.compare) {
+      return;
+    }
+    appState.compare.syncScroll = appState.compare.syncScroll === false;
+    await renderCompareView();
+  });
+  buttons.appendChild(syncButton);
+
+  controls.appendChild(buttons);
+  root.appendChild(controls);
+
+  const panes = document.createElement('div');
+  panes.className = 'compare-panes';
+
+  const buildComparePane = (module, sideKey) => {
+    const paneShell = document.createElement('article');
+    paneShell.className = `compare-pane compare-pane-${sideKey}`;
+    paneShell.dataset.comparePane = sideKey;
+
+    const paneContent = getFocusedPaneForModule(module, {
+      readOnly: true,
+      showPensionToggle: false,
+      cardId: ''
+    });
+    paneShell.appendChild(paneContent);
+
+    return paneShell;
+  };
+
+  const leftPane = buildComparePane(leftModule, 'left');
+  const rightPane = buildComparePane(rightModule, 'right');
+  panes.appendChild(leftPane);
+  panes.appendChild(rightPane);
+  root.appendChild(panes);
+
+  ui.swipeStage.innerHTML = '';
+  ui.swipeStage.classList.add('is-compare');
+  ui.swipeStage.appendChild(root);
+
+  const leftScrollable = leftPane.querySelector('.focused-module-card');
+  const rightScrollable = rightPane.querySelector('.focused-module-card');
+  appState.compareScrollCleanup = bindCompareScrollSync(leftScrollable, rightScrollable);
+
+  appState.mode = 'compare';
+  setMode(ui, 'focused');
+  updateUiChrome();
+
+  renderChartsForPane(leftPane, leftModule, {
+    clientName: appState.session.clientName || 'Client',
+    moduleTitle: leftTitle,
+    paneKey: 'compare-left'
+  });
+  renderChartsForPane(rightPane, rightModule, {
+    clientName: appState.session.clientName || 'Client',
+    moduleTitle: rightTitle,
+    paneKey: 'compare-right'
+  });
+
+  return true;
+}
+
+async function exitCompareView({ preserveSelection = true } = {}) {
+  clearCompareScrollSyncCleanup();
+  destroyAllCharts();
+  appState.compare = null;
+  ui.swipeStage.classList.remove('is-compare');
+
+  if (!preserveSelection) {
+    clearSelection();
+  }
+
+  if (!hasModules()) {
+    appState.mode = 'greeting';
+    ui.swipeStage.innerHTML = '';
+    setMode(ui, 'greeting');
+    updateUiChrome();
+    return;
+  }
+
+  appState.mode = 'overview';
+  setMode(ui, 'overview');
+  refreshOverview({ enableSortable: true });
+  updateUiChrome();
 }
 
 async function renderFocused({
@@ -2506,6 +2991,9 @@ async function renderFocused({
   revealMode = true,
   deferCharts = false
 } = {}) {
+  clearCompareScrollSyncCleanup();
+  appState.compare = null;
+  ui.swipeStage.classList.remove('is-compare');
   ensureActiveModule(appState.session);
 
   if (!hasModules()) {
@@ -2542,8 +3030,161 @@ async function renderFocused({
   }
 }
 
+function getOverviewScrollPosition() {
+  return {
+    top: ui.overviewViewport?.scrollTop || 0,
+    left: ui.overviewViewport?.scrollLeft || 0
+  };
+}
+
+function restoreOverviewScrollPosition(position) {
+  if (!ui.overviewViewport || !position) {
+    return;
+  }
+
+  ui.overviewViewport.scrollTop = Number(position.top) || 0;
+  ui.overviewViewport.scrollLeft = Number(position.left) || 0;
+}
+
+async function runCompareFromSelection() {
+  const pair = getSelectedPair();
+  if (!pair) {
+    showToast('Select exactly 2 modules to compare.', 'error');
+    return;
+  }
+
+  appState.compare = {
+    leftId: pair[0],
+    rightId: pair[1],
+    syncScroll: true
+  };
+  await renderCompareView();
+}
+
+function restoreSessionModeAfterDeletion() {
+  if (!hasModules()) {
+    appState.mode = 'greeting';
+    ui.swipeStage.innerHTML = '';
+    destroyAllCharts();
+    clearCompareScrollSyncCleanup();
+    setMode(ui, 'greeting');
+    updateUiChrome();
+    return;
+  }
+
+  appState.mode = 'overview';
+  appState.compare = null;
+  clearCompareScrollSyncCleanup();
+  ui.swipeStage.classList.remove('is-compare');
+  setMode(ui, 'overview');
+  refreshOverview({ enableSortable: true });
+  updateUiChrome();
+}
+
+function deleteSelectedModulesWithUndo() {
+  const selectedIds = pruneOverviewSelection();
+  if (selectedIds.length === 0) {
+    return;
+  }
+
+  const snapshot = captureUndoSnapshot();
+  const selectedSet = new Set(selectedIds);
+  const orderBefore = [...appState.session.order];
+  const earliestDeletedIndex = orderBefore.findIndex((moduleId) => selectedSet.has(moduleId));
+
+  appState.session.modules = appState.session.modules.filter((module) => !selectedSet.has(module.id));
+  appState.session.order = appState.session.order.filter((moduleId) => !selectedSet.has(moduleId));
+
+  const activeDeleted = selectedSet.has(appState.session.activeModuleId);
+  if (appState.session.order.length === 0) {
+    appState.session.activeModuleId = null;
+  } else if (activeDeleted) {
+    let fallbackId = null;
+    for (let index = earliestDeletedIndex - 1; index >= 0; index -= 1) {
+      const candidate = orderBefore[index];
+      if (!selectedSet.has(candidate) && appState.session.order.includes(candidate)) {
+        fallbackId = candidate;
+        break;
+      }
+    }
+
+    appState.session.activeModuleId = fallbackId || appState.session.order[0];
+  } else {
+    ensureActiveModule(appState.session);
+  }
+
+  clearSelection();
+  restoreSessionModeAfterDeletion();
+  markSessionDirty();
+  saveSessionNow();
+
+  const label = `${selectedIds.length} module${selectedIds.length === 1 ? '' : 's'} deleted`;
+  startUndoSnackbar({
+    message: label,
+    snapshot
+  });
+}
+
+function clearSelectionWithUndo() {
+  const selectedIds = pruneOverviewSelection();
+  if (selectedIds.length === 0) {
+    return;
+  }
+
+  const snapshot = captureUndoSnapshot();
+  clearSelection();
+  refreshOverview({ enableSortable: true });
+  startUndoSnackbar({
+    message: 'Selection cleared',
+    snapshot
+  });
+}
+
+function keepMostRecentTwoWithUndo() {
+  const selectedIds = pruneOverviewSelection();
+  if (selectedIds.length <= 2) {
+    return;
+  }
+
+  const snapshot = captureUndoSnapshot();
+  keepMostRecentTwoSelected();
+  refreshOverview({ enableSortable: true });
+  startUndoSnackbar({
+    message: 'Kept most recent 2 selections',
+    snapshot
+  });
+}
+
+async function handleOverviewSelectionAction(action) {
+  if (appState.mode !== 'overview') {
+    return;
+  }
+
+  switch (action) {
+    case 'clear-selection':
+      clearSelectionWithUndo();
+      return;
+    case 'delete-selected':
+      if (runtimeConfig.readOnly) {
+        return;
+      }
+      deleteSelectedModulesWithUndo();
+      return;
+    case 'compare-selected':
+      await runCompareFromSelection();
+      return;
+    case 'keep-most-recent-two':
+      keepMostRecentTwoWithUndo();
+      return;
+    default:
+      return;
+  }
+}
+
 function refreshOverview({ enableSortable = appState.mode === 'overview' } = {}) {
+  pruneOverviewSelection();
   const modules = getModulesInOrder();
+  const scrollPosition = getOverviewScrollPosition();
 
   const width = ui.overviewViewport.clientWidth;
   const height = ui.overviewViewport.clientHeight;
@@ -2560,10 +3201,22 @@ function refreshOverview({ enableSortable = appState.mode === 'overview' } = {})
     layout,
     viewportWidth: width,
     viewportHeight: height,
-    onCardClick: async (moduleId, cardEl) => {
+    selectedModuleIds: appState.overviewSelection,
+    onCardClick: async (moduleId, cardEl, event) => {
+      const multiSelect = Boolean(event?.metaKey || event?.ctrlKey);
+      if (multiSelect) {
+        event.preventDefault();
+        toggleSelected(moduleId);
+        refreshOverview({ enableSortable: true });
+        return;
+      }
       await zoomIntoModuleFromOverview(moduleId, cardEl);
+    },
+    onSelectionAction: async (action) => {
+      await handleOverviewSelectionAction(action);
     }
   });
+  restoreOverviewScrollPosition(scrollPosition);
 
   if (enableSortable) {
     initSortable();
@@ -2659,7 +3312,7 @@ async function zoomIntoModuleFromOverview(moduleId, sourceCardEl) {
 }
 
 async function zoomOutToOverviewMode() {
-  if (appState.transitionLock || appState.mode === 'overview' || !hasModules() || getIsZoomAnimating()) {
+  if (appState.transitionLock || appState.mode === 'overview' || appState.mode === 'compare' || !hasModules() || getIsZoomAnimating()) {
     return;
   }
 
@@ -2696,6 +3349,11 @@ async function zoomOutToOverviewMode() {
 
 async function toggleOverview() {
   if (!hasModules() || appState.transitionLock || getIsZoomAnimating()) {
+    return;
+  }
+
+  if (appState.mode === 'compare') {
+    await exitCompareView({ preserveSelection: true });
     return;
   }
 
@@ -3192,7 +3850,7 @@ function bindEvents() {
     const key = event.key;
     const lower = key.toLowerCase();
 
-    if (!typing && runtimeConfig.allowDevPanel && lower === 'd') {
+    if (!typing && runtimeConfig.allowDevPanel && appState.mode !== 'compare' && lower === 'd') {
       event.preventDefault();
       setDevPanelOpen(!appState.devPanelOpen);
       return;
@@ -3203,6 +3861,9 @@ function bindEvents() {
     }
 
     if (lower === 'n') {
+      if (appState.mode === 'compare') {
+        return;
+      }
       if (runtimeConfig.readOnly) {
         return;
       }
@@ -3218,6 +3879,9 @@ function bindEvents() {
     }
 
     if (key === 'ArrowRight') {
+      if (appState.mode === 'compare') {
+        return;
+      }
       event.preventDefault();
       if (runtimeConfig.readOnly) {
         await focusNextModule();
@@ -3228,6 +3892,9 @@ function bindEvents() {
     }
 
     if (key === 'ArrowLeft') {
+      if (appState.mode === 'compare') {
+        return;
+      }
       event.preventDefault();
       await focusPreviousModule();
       return;
@@ -3245,11 +3912,25 @@ function bindEvents() {
       return;
     }
 
-    if (key === 'Escape' && appState.mode === 'overview' && hasModules()) {
+    if (key === 'Escape' && appState.mode === 'compare') {
       event.preventDefault();
-      const sourceCardEl = getOverviewCardElement(ui, appState.session.activeModuleId)
-        || ui.overviewGrid.querySelector('.overview-card');
-      await zoomIntoModuleFromOverview(appState.session.activeModuleId, sourceCardEl);
+      await exitCompareView({ preserveSelection: true });
+      return;
+    }
+
+    if (key === 'Enter' && appState.mode === 'overview') {
+      if (getSelectedPair()) {
+        event.preventDefault();
+        await runCompareFromSelection();
+      }
+      return;
+    }
+
+    if (key === 'Escape' && appState.mode === 'overview') {
+      if (appState.overviewSelection.length > 0) {
+        event.preventDefault();
+        clearSelectionWithUndo();
+      }
     }
   });
 
