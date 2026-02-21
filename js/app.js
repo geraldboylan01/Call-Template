@@ -625,6 +625,16 @@ function getLoanEngineSource(module) {
   return 'mortgageInputs';
 }
 
+function getDefaultLoanKindForSource(source, loanEngineInputs = null) {
+  if (loanEngineInputs?.loanKind === 'loan') {
+    return 'loan';
+  }
+  if (loanEngineInputs?.loanKind === 'mortgage') {
+    return 'mortgage';
+  }
+  return source === 'loanInputs' ? 'loan' : 'mortgage';
+}
+
 function setLoanEngineInputs(module, normalizedInputs, { source = null } = {}) {
   const targetSource = source || getLoanEngineSource(module);
   if (targetSource === 'loanInputs') {
@@ -1039,7 +1049,8 @@ function commitMortgageAssumptionField({
 
   let normalizedInputs;
   try {
-    const defaultLoanKind = baseInputs.loanKind === 'loan' ? 'loan' : 'mortgage';
+    const source = getLoanEngineSource(module);
+    const defaultLoanKind = getDefaultLoanKindForSource(source, baseInputs);
     normalizedInputs = normalizeMortgageInputs(candidate, { defaultLoanKind });
   } catch (error) {
     const message = error?.message || 'Invalid mortgage assumptions.';
@@ -1127,9 +1138,10 @@ function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) 
   if (!loanEngineInputs) {
     throw new Error('Loan inputs are unavailable for this module.');
   }
-  const defaultLoanKind = loanEngineInputs.loanKind === 'loan' ? 'loan' : 'mortgage';
+  const source = getLoanEngineSource(module);
+  const defaultLoanKind = getDefaultLoanKindForSource(source, loanEngineInputs);
   const normalizedInputs = normalizeMortgageInputs(loanEngineInputs, { defaultLoanKind });
-  const source = setLoanEngineInputs(module, normalizedInputs, { source: getLoanEngineSource(module) });
+  const resolvedSource = setLoanEngineInputs(module, normalizedInputs, { source });
   const projection = computeMortgageProjection(normalizedInputs, { defaultLoanKind });
 
   module.generated.assumptions = projection.assumptionsTable;
@@ -1145,7 +1157,7 @@ function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) 
   }
 
   console.info('[CallCanvas] mortgage projection computed', {
-    loanSource: source,
+    loanSource: resolvedSource,
     inputs: normalizedInputs,
     monthsPlanned: projection.debug?.monthsPlanned,
     monthsSimulated: projection.debug?.monthsSimulated,
