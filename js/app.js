@@ -17,11 +17,17 @@ import {
   getIsZoomAnimating
 } from './zoom.js';
 import { mountInitialPane, swipeToPane } from './swipe.js';
-import { renderChartsForPane, cleanupDetachedCharts, destroyAllCharts } from './charts.js';
+import {
+  renderChartsForPane,
+  updateChartsForPane,
+  cleanupDetachedCharts,
+  destroyAllCharts
+} from './charts.js';
 import {
   getUiElements,
   renderGreeting,
   buildFocusedPane,
+  patchFocusedGeneratedCards,
   renderOverview,
   setMode,
   updateControls,
@@ -82,7 +88,6 @@ const stateManager = createStateManager(300, {
   }
 });
 
-const ASSUMPTIONS_RECOMPUTE_DEBOUNCE_MS = 200;
 const ASSUMPTIONS_UPDATED_FEEDBACK_MS = 800;
 
 const appState = {
