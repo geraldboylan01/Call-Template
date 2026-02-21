@@ -164,415 +164,485 @@ function getEditorStatusClass(status) {
   return 'is-idle';
 }
 
-function buildAssumptionField({
+function normalizeAssumptionLabelToken(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function isInlineAssumptionsEditableModule(module) {
+  return isPensionModule(module) || isMortgageModule(module);
+}
+
+function deriveRemainingTermMonths(mortgageInputs) {
+  const years = deriveRemainingTermYears(mortgageInputs);
+  if (!Number.isFinite(years) || years <= 0) {
+    return null;
+  }
+
+  return Math.max(1, Math.round(years * 12));
+}
+
+function getDefaultMortgagePaymentMode(mortgageInputs) {
+  return Number.isFinite(mortgageInputs?.fixedPaymentAmount) && mortgageInputs.fixedPaymentAmount > 0
+    ? 'fixed'
+    : 'calculated';
+}
+
+function buildGeneratedCardHeader(titleText) {
+  const header = document.createElement('div');
+  header.className = 'generated-card-header';
+
+  const heading = document.createElement('h3');
+  heading.className = 'generated-card-title';
+  heading.textContent = titleText;
+  header.appendChild(heading);
+
+  const actions = document.createElement('div');
+  actions.className = 'generated-card-header-actions';
+  header.appendChild(actions);
+
+  return {
+    header,
+    actions
+  };
+}
+
+function buildInlineAssumptionInputCell({
   module,
   calculator,
-  fieldKey,
-  label,
-  placeholder,
+  field,
   value,
-  error,
+  placeholder,
+  inputMode,
   onPatchInputs,
-  readOnly = false,
-  inputMode = 'text'
+  error,
+  readOnly = false
 }) {
-  const field = document.createElement('div');
-  field.className = 'assumptions-editor-field';
-
-  const labelEl = document.createElement('label');
-  labelEl.className = 'assumptions-editor-label';
-  labelEl.textContent = label;
-  labelEl.setAttribute('for', `${calculator}-${module.id}-${fieldKey}`);
+  const wrap = document.createElement('div');
+  wrap.className = 'assumptions-inline-editor';
 
   const input = document.createElement('input');
   input.type = 'text';
-  input.id = `${calculator}-${module.id}-${fieldKey}`;
-  input.className = 'assumptions-editor-input';
-  input.inputMode = inputMode;
+  input.className = 'assumptions-inline-input';
   input.placeholder = placeholder;
+  input.inputMode = inputMode;
   input.value = String(value ?? '');
-  input.dataset.assumptionField = fieldKey;
-  input.dataset.assumptionCalculator = calculator;
-  input.readOnly = readOnly;
   input.disabled = readOnly;
-  input.classList.toggle('is-invalid', Boolean(error));
+  input.readOnly = readOnly;
   input.setAttribute('aria-invalid', error ? 'true' : 'false');
+  input.classList.toggle('is-invalid', Boolean(error));
+  input.dataset.assumptionField = field;
 
   if (!readOnly && typeof onPatchInputs === 'function') {
     input.addEventListener('input', (event) => {
       onPatchInputs({
+        type: 'draft-change',
         moduleId: module.id,
         calculator,
-        field: fieldKey,
+        field,
         value: event.target.value
       });
     });
-  }
 
-  const errorEl = document.createElement('div');
-  errorEl.className = 'assumptions-editor-error';
-  errorEl.dataset.assumptionErrorFor = fieldKey;
-  errorEl.textContent = error ? String(error) : '';
-
-  field.appendChild(labelEl);
-  field.appendChild(input);
-  field.appendChild(errorEl);
-
-  return {
-    field,
-    input,
-    errorEl
-  };
-}
-
-function buildEditorGroup(title) {
-  const section = document.createElement('section');
-  section.className = 'assumptions-editor-group';
-
-  const heading = document.createElement('h4');
-  heading.className = 'assumptions-editor-subheading';
-  heading.textContent = title;
-  section.appendChild(heading);
-
-  const grid = document.createElement('div');
-  grid.className = 'assumptions-editor-grid';
-  section.appendChild(grid);
-
-  return {
-    section,
-    grid
-  };
-}
-
-function buildAssumptionsEditorCard({ module, status }) {
-  const card = document.createElement('section');
-  card.className = 'generated-card assumptions-editor-card';
-  card.dataset.assumptionEditor = module.id;
-
-  const header = document.createElement('div');
-  header.className = 'assumptions-editor-header';
-
-  const heading = document.createElement('h3');
-  heading.className = 'generated-card-title';
-  heading.textContent = 'Edit assumptions';
-
-  const statusEl = document.createElement('span');
-  statusEl.className = `assumptions-editor-status ${getEditorStatusClass(status)}`;
-  statusEl.dataset.assumptionStatus = 'true';
-  statusEl.textContent = getEditorStatusText(status);
-
-  header.appendChild(heading);
-  header.appendChild(statusEl);
-
-  const helper = document.createElement('p');
-  helper.className = 'assumptions-editor-helper';
-  helper.textContent = 'Type to update projections instantly. Values are saved in this session.';
-
-  card.appendChild(header);
-  card.appendChild(helper);
-
-  return card;
-}
-
-export function renderPensionAssumptionsEditor({
-  module,
-  onPatchInputs,
-  status = {},
-  readOnly = false
-}) {
-  const pensionInputs = module?.generated?.pensionInputs;
-  if (!pensionInputs) {
-    return null;
-  }
-
-  const draftValues = status?.draftValues && typeof status.draftValues === 'object' ? status.draftValues : {};
-  const errors = status?.errors && typeof status.errors === 'object' ? status.errors : {};
-  const card = buildAssumptionsEditorCard({ module, status });
-
-  const returnsGroup = buildEditorGroup('Returns & inflation');
-  returnsGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'pension',
-    fieldKey: 'growthRate',
-    label: 'Growth rate',
-    placeholder: '5% or 0.05',
-    value: draftValues.growthRate ?? formatRateForInput(pensionInputs.growthRate),
-    error: errors.growthRate,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-  returnsGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'pension',
-    fieldKey: 'wageGrowthRate',
-    label: 'Wage growth rate',
-    placeholder: '3% or 0.03',
-    value: draftValues.wageGrowthRate ?? formatRateForInput(pensionInputs.wageGrowthRate),
-    error: errors.wageGrowthRate,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-  returnsGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'pension',
-    fieldKey: 'inflationRate',
-    label: 'Inflation rate',
-    placeholder: '2% or 0.02',
-    value: draftValues.inflationRate ?? formatRateForInput(pensionInputs.inflationRate),
-    error: errors.inflationRate,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-
-  const retirementGroup = buildEditorGroup('Retirement');
-  retirementGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'pension',
-    fieldKey: 'retirementAge',
-    label: 'Retirement age',
-    placeholder: '67',
-    value: draftValues.retirementAge ?? formatNumberForInput(pensionInputs.retirementAge, 0),
-    error: errors.retirementAge,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'numeric'
-  }).field);
-
-  if (Object.prototype.hasOwnProperty.call(pensionInputs, 'horizonEndAge')) {
-    retirementGroup.grid.appendChild(buildAssumptionField({
-      module,
-      calculator: 'pension',
-      fieldKey: 'horizonEndAge',
-      label: 'Horizon end age',
-      placeholder: '90',
-      value: draftValues.horizonEndAge ?? formatNumberForInput(pensionInputs.horizonEndAge, 0),
-      error: errors.horizonEndAge,
-      onPatchInputs,
-      readOnly,
-      inputMode: 'numeric'
-    }).field);
-  }
-
-  const contributionsGroup = buildEditorGroup('Contributions');
-  contributionsGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'pension',
-    fieldKey: 'personalPct',
-    label: 'Personal contribution rate',
-    placeholder: '8% or 0.08',
-    value: draftValues.personalPct ?? formatRateForInput(pensionInputs.personalPct),
-    error: errors.personalPct,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-  contributionsGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'pension',
-    fieldKey: 'employerPct',
-    label: 'Employer contribution rate',
-    placeholder: '6% or 0.06',
-    value: draftValues.employerPct ?? formatRateForInput(pensionInputs.employerPct),
-    error: errors.employerPct,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-
-  card.appendChild(returnsGroup.section);
-  card.appendChild(retirementGroup.section);
-  card.appendChild(contributionsGroup.section);
-
-  return card;
-}
-
-export function renderMortgageAssumptionsEditor({
-  module,
-  onPatchInputs,
-  status = {},
-  readOnly = false
-}) {
-  const mortgageInputs = module?.generated?.mortgageInputs;
-  if (!mortgageInputs) {
-    return null;
-  }
-
-  const draftValues = status?.draftValues && typeof status.draftValues === 'object' ? status.draftValues : {};
-  const errors = status?.errors && typeof status.errors === 'object' ? status.errors : {};
-  const card = buildAssumptionsEditorCard({ module, status });
-  const inferredTermYears = deriveRemainingTermYears(mortgageInputs);
-  const defaultPaymentMode = Number.isFinite(mortgageInputs.fixedPaymentAmount) && mortgageInputs.fixedPaymentAmount > 0
-    ? 'fixed'
-    : 'calculated';
-  const paymentMode = draftValues.fixedPaymentMode === 'fixed' || draftValues.fixedPaymentMode === 'calculated'
-    ? draftValues.fixedPaymentMode
-    : defaultPaymentMode;
-  const usingFixedPayment = paymentMode === 'fixed';
-
-  const loanGroup = buildEditorGroup('Loan & rate');
-  loanGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'mortgage',
-    fieldKey: 'currentBalance',
-    label: 'Current balance',
-    placeholder: '€300,000 or 300000',
-    value: draftValues.currentBalance ?? formatNumberForInput(mortgageInputs.currentBalance, 2),
-    error: errors.currentBalance,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-  loanGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'mortgage',
-    fieldKey: 'annualInterestRate',
-    label: 'Annual interest rate',
-    placeholder: '4.25% or 0.0425',
-    value: draftValues.annualInterestRate ?? formatRateForInput(mortgageInputs.annualInterestRate),
-    error: errors.annualInterestRate,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-
-  const termGroup = buildEditorGroup('Term');
-  termGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'mortgage',
-    fieldKey: 'remainingTermYears',
-    label: 'Remaining term (years)',
-    placeholder: '25',
-    value: draftValues.remainingTermYears ?? formatNumberForInput(inferredTermYears, 2),
-    error: errors.remainingTermYears,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-
-  const overpaymentGroup = buildEditorGroup('Overpayments');
-  overpaymentGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'mortgage',
-    fieldKey: 'oneOffOverpayment',
-    label: 'One-off overpayment',
-    placeholder: '10000',
-    value: draftValues.oneOffOverpayment ?? formatNumberForInput(mortgageInputs.oneOffOverpayment, 2),
-    error: errors.oneOffOverpayment,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-  overpaymentGroup.grid.appendChild(buildAssumptionField({
-    module,
-    calculator: 'mortgage',
-    fieldKey: 'annualOverpayment',
-    label: 'Annual overpayment',
-    placeholder: '3000',
-    value: draftValues.annualOverpayment ?? formatNumberForInput(mortgageInputs.annualOverpayment, 2),
-    error: errors.annualOverpayment,
-    onPatchInputs,
-    readOnly,
-    inputMode: 'decimal'
-  }).field);
-
-  const monthlyPaymentGroup = buildEditorGroup('Monthly payment');
-  const modeField = document.createElement('div');
-  modeField.className = 'assumptions-editor-field assumptions-editor-payment-mode';
-
-  const modeLabel = document.createElement('label');
-  modeLabel.className = 'assumptions-editor-label';
-  modeLabel.textContent = 'Payment mode';
-  modeField.appendChild(modeLabel);
-
-  const radioRow = document.createElement('div');
-  radioRow.className = 'assumptions-editor-radio-row';
-  radioRow.dataset.assumptionField = 'fixedPaymentMode';
-
-  const radioName = `mortgage-payment-mode-${module.id}`;
-
-  const calculatedLabel = document.createElement('label');
-  calculatedLabel.className = 'assumptions-editor-radio-label';
-  const calculatedInput = document.createElement('input');
-  calculatedInput.type = 'radio';
-  calculatedInput.name = radioName;
-  calculatedInput.value = 'calculated';
-  calculatedInput.checked = paymentMode === 'calculated';
-  calculatedInput.disabled = readOnly;
-  calculatedInput.readOnly = readOnly;
-  calculatedLabel.appendChild(calculatedInput);
-  calculatedLabel.append(' Monthly payment: Calculated');
-
-  const fixedLabel = document.createElement('label');
-  fixedLabel.className = 'assumptions-editor-radio-label';
-  const fixedInput = document.createElement('input');
-  fixedInput.type = 'radio';
-  fixedInput.name = radioName;
-  fixedInput.value = 'fixed';
-  fixedInput.checked = paymentMode === 'fixed';
-  fixedInput.disabled = readOnly;
-  fixedInput.readOnly = readOnly;
-  fixedLabel.appendChild(fixedInput);
-  fixedLabel.append(' Monthly payment: Fixed');
-
-  const syncFixedModeState = () => {
-    const currentMode = fixedInput.checked ? 'fixed' : 'calculated';
-    const fixedPaymentInput = modeField.querySelector('[data-assumption-field="fixedPaymentAmount"]');
-    if (fixedPaymentInput) {
-      fixedPaymentInput.disabled = readOnly || currentMode !== 'fixed';
-      fixedPaymentInput.classList.toggle('is-disabled', currentMode !== 'fixed');
-    }
-  };
-
-  if (!readOnly && typeof onPatchInputs === 'function') {
-    [calculatedInput, fixedInput].forEach((radio) => {
-      radio.addEventListener('change', () => {
-        syncFixedModeState();
-        onPatchInputs({
-          moduleId: module.id,
-          calculator: 'mortgage',
-          field: 'fixedPaymentMode',
-          value: fixedInput.checked ? 'fixed' : 'calculated'
-        });
+    input.addEventListener('blur', (event) => {
+      if (event.target.dataset.skipCommit === '1') {
+        event.target.dataset.skipCommit = '0';
+        return;
+      }
+      onPatchInputs({
+        type: 'commit-field',
+        moduleId: module.id,
+        calculator,
+        field,
+        value: event.target.value
       });
+    });
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        event.target.blur();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.target.dataset.skipCommit = '1';
+        onPatchInputs({
+          type: 'cancel-edit',
+          moduleId: module.id,
+          calculator
+        });
+        event.target.blur();
+      }
     });
   }
 
-  radioRow.appendChild(calculatedLabel);
-  radioRow.appendChild(fixedLabel);
-  modeField.appendChild(radioRow);
+  const helper = document.createElement('div');
+  helper.className = 'assumptions-inline-field-helper';
+  helper.textContent = 'Enter to apply';
+
+  const errorEl = document.createElement('div');
+  errorEl.className = 'assumptions-inline-error';
+  errorEl.textContent = error ? String(error) : '';
+
+  wrap.appendChild(input);
+  wrap.appendChild(helper);
+  wrap.appendChild(errorEl);
+
+  return wrap;
+}
+
+function buildMortgagePaymentModeEditorCell({
+  module,
+  status,
+  mortgageInputs,
+  onPatchInputs,
+  readOnly = false
+}) {
+  const errors = status?.errors && typeof status.errors === 'object' ? status.errors : {};
+  const draftValues = status?.draftValues && typeof status.draftValues === 'object' ? status.draftValues : {};
+  const defaultMode = getDefaultMortgagePaymentMode(mortgageInputs);
+  const draftMode = String(draftValues.fixedPaymentMode || '').trim().toLowerCase();
+  const mode = draftMode === 'fixed' || draftMode === 'calculated'
+    ? draftMode
+    : defaultMode;
+  const showFixedInput = mode === 'fixed';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'assumptions-inline-mode-cell';
+
+  const toggle = document.createElement('div');
+  toggle.className = 'assumptions-inline-mode-toggle';
+  toggle.classList.toggle('is-invalid', Boolean(errors.fixedPaymentMode));
+
+  const makeModeButton = (targetMode, label) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'assumptions-inline-mode-btn';
+    button.textContent = label;
+    button.dataset.mode = targetMode;
+    button.classList.toggle('is-active', mode === targetMode);
+    button.disabled = readOnly;
+    if (!readOnly && typeof onPatchInputs === 'function') {
+      button.addEventListener('click', () => {
+        onPatchInputs({
+          type: 'set-payment-mode',
+          moduleId: module.id,
+          calculator: 'mortgage',
+          mode: targetMode
+        });
+      });
+    }
+    return button;
+  };
+
+  toggle.appendChild(makeModeButton('calculated', 'Calculated'));
+  toggle.appendChild(makeModeButton('fixed', 'Fixed'));
+  wrap.appendChild(toggle);
 
   const modeError = document.createElement('div');
-  modeError.className = 'assumptions-editor-error';
-  modeError.dataset.assumptionErrorFor = 'fixedPaymentMode';
+  modeError.className = 'assumptions-inline-error';
   modeError.textContent = errors.fixedPaymentMode ? String(errors.fixedPaymentMode) : '';
-  modeField.appendChild(modeError);
+  wrap.appendChild(modeError);
 
-  const fixedPaymentField = buildAssumptionField({
-    module,
-    calculator: 'mortgage',
-    fieldKey: 'fixedPaymentAmount',
-    label: 'Fixed monthly payment',
-    placeholder: '1500',
-    value: draftValues.fixedPaymentAmount ?? formatNumberForInput(mortgageInputs.fixedPaymentAmount, 2),
-    error: errors.fixedPaymentAmount,
-    onPatchInputs,
-    readOnly: readOnly || !usingFixedPayment,
-    inputMode: 'decimal'
+  if (showFixedInput) {
+    const fixedInputValue = draftValues.fixedPaymentAmount ?? formatNumberForInput(mortgageInputs.fixedPaymentAmount, 2);
+    wrap.appendChild(buildInlineAssumptionInputCell({
+      module,
+      calculator: 'mortgage',
+      field: 'fixedPaymentAmount',
+      value: fixedInputValue,
+      placeholder: '1500',
+      inputMode: 'decimal',
+      onPatchInputs,
+      error: errors.fixedPaymentAmount,
+      readOnly
+    }));
+  }
+
+  return wrap;
+}
+
+function createEditableAssumptionCell({
+  module,
+  rowLabel,
+  status,
+  onPatchInputs,
+  readOnly = false
+}) {
+  const labelToken = normalizeAssumptionLabelToken(rowLabel);
+  const draftValues = status?.draftValues && typeof status.draftValues === 'object' ? status.draftValues : {};
+  const errors = status?.errors && typeof status.errors === 'object' ? status.errors : {};
+
+  if (isPensionModule(module)) {
+    const pensionInputs = module.generated.pensionInputs;
+    const pensionFieldMap = {
+      currentage: {
+        field: 'currentAge',
+        value: draftValues.currentAge ?? formatNumberForInput(pensionInputs.currentAge, 0),
+        placeholder: '42',
+        inputMode: 'numeric'
+      },
+      retirementage: {
+        field: 'retirementAge',
+        value: draftValues.retirementAge ?? formatNumberForInput(pensionInputs.retirementAge, 0),
+        placeholder: '67',
+        inputMode: 'numeric'
+      },
+      currentsalary: {
+        field: 'currentSalary',
+        value: draftValues.currentSalary ?? formatNumberForInput(pensionInputs.currentSalary, 2),
+        placeholder: '85000',
+        inputMode: 'decimal'
+      },
+      currentpensionvalue: {
+        field: 'currentPot',
+        value: draftValues.currentPot ?? formatNumberForInput(pensionInputs.currentPot, 2),
+        placeholder: '180000',
+        inputMode: 'decimal'
+      },
+      personalcontribution: {
+        field: 'personalPct',
+        value: draftValues.personalPct ?? formatRateForInput(pensionInputs.personalPct),
+        placeholder: '8%',
+        inputMode: 'decimal'
+      },
+      employercontribution: {
+        field: 'employerPct',
+        value: draftValues.employerPct ?? formatRateForInput(pensionInputs.employerPct),
+        placeholder: '6%',
+        inputMode: 'decimal'
+      },
+      growthrate: {
+        field: 'growthRate',
+        value: draftValues.growthRate ?? formatRateForInput(pensionInputs.growthRate),
+        placeholder: '5%',
+        inputMode: 'decimal'
+      },
+      wagegrowth: {
+        field: 'wageGrowthRate',
+        value: draftValues.wageGrowthRate ?? formatRateForInput(pensionInputs.wageGrowthRate),
+        placeholder: '2.5%',
+        inputMode: 'decimal'
+      },
+      inflation: {
+        field: 'inflationRate',
+        value: draftValues.inflationRate ?? formatRateForInput(pensionInputs.inflationRate),
+        placeholder: '2%',
+        inputMode: 'decimal'
+      },
+      targetretirementincome: {
+        field: 'targetIncomeToday',
+        value: draftValues.targetIncomeToday ?? formatNumberForInput(pensionInputs.targetIncomeToday, 2),
+        placeholder: '42000',
+        inputMode: 'decimal'
+      }
+    };
+
+    const descriptor = pensionFieldMap[labelToken];
+    if (!descriptor) {
+      return null;
+    }
+
+    return buildInlineAssumptionInputCell({
+      module,
+      calculator: 'pension',
+      field: descriptor.field,
+      value: descriptor.value,
+      placeholder: descriptor.placeholder,
+      inputMode: descriptor.inputMode,
+      onPatchInputs,
+      error: errors[descriptor.field],
+      readOnly
+    });
+  }
+
+  if (isMortgageModule(module)) {
+    const mortgageInputs = module.generated.mortgageInputs;
+    const termMonths = deriveRemainingTermMonths(mortgageInputs);
+    const mortgageFieldMap = {
+      currentbalance: {
+        field: 'currentBalance',
+        value: draftValues.currentBalance ?? formatNumberForInput(mortgageInputs.currentBalance, 2),
+        placeholder: '320000',
+        inputMode: 'decimal'
+      },
+      annualinterestrate: {
+        field: 'annualInterestRate',
+        value: draftValues.annualInterestRate ?? formatRateForInput(mortgageInputs.annualInterestRate),
+        placeholder: '4.2%',
+        inputMode: 'decimal'
+      },
+      mortgageterm: {
+        field: 'termMonths',
+        value: draftValues.termMonths ?? formatNumberForInput(termMonths, 0),
+        placeholder: '324',
+        inputMode: 'numeric'
+      },
+      oneoffoverpayment: {
+        field: 'oneOffOverpayment',
+        value: draftValues.oneOffOverpayment ?? formatNumberForInput(mortgageInputs.oneOffOverpayment, 2),
+        placeholder: '10000',
+        inputMode: 'decimal'
+      },
+      annualoverpayment: {
+        field: 'annualOverpayment',
+        value: draftValues.annualOverpayment ?? formatNumberForInput(mortgageInputs.annualOverpayment, 2),
+        placeholder: '3000',
+        inputMode: 'decimal'
+      }
+    };
+
+    if (labelToken === 'monthlypaymentsource') {
+      return buildMortgagePaymentModeEditorCell({
+        module,
+        status,
+        mortgageInputs,
+        onPatchInputs,
+        readOnly
+      });
+    }
+
+    const descriptor = mortgageFieldMap[labelToken];
+    if (!descriptor) {
+      return null;
+    }
+
+    return buildInlineAssumptionInputCell({
+      module,
+      calculator: 'mortgage',
+      field: descriptor.field,
+      value: descriptor.value,
+      placeholder: descriptor.placeholder,
+      inputMode: descriptor.inputMode,
+      onPatchInputs,
+      error: errors[descriptor.field],
+      readOnly
+    });
+  }
+
+  return null;
+}
+
+function buildAssumptionsTableCard(module, {
+  onPatchInputs = null,
+  status = null,
+  readOnly = false
+} = {}) {
+  const generated = module.generated || { assumptions: { columns: [], rows: [] } };
+  const assumptions = generated.assumptions || { columns: [], rows: [] };
+
+  const card = document.createElement('section');
+  card.className = 'generated-card generated-table-card';
+  card.dataset.generatedCard = 'assumptions';
+
+  const { header, actions } = buildGeneratedCardHeader('Assumptions');
+  const hasInlineEditor = !readOnly
+    && typeof onPatchInputs === 'function'
+    && isInlineAssumptionsEditableModule(module);
+  const editMode = Boolean(status?.isEditing);
+
+  if (hasInlineEditor) {
+    const statusEl = document.createElement('span');
+    statusEl.className = `assumptions-inline-status ${getEditorStatusClass(status)}`;
+    statusEl.dataset.assumptionStatus = 'true';
+    statusEl.textContent = getEditorStatusText(status);
+    actions.appendChild(statusEl);
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'assumptions-inline-edit-btn';
+    editButton.title = editMode ? 'Done editing assumptions' : 'Edit assumptions';
+    editButton.setAttribute('aria-label', editButton.title);
+    editButton.setAttribute('aria-pressed', editMode ? 'true' : 'false');
+    editButton.innerHTML = (
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+      + '<path d="M3 17.25V21h3.75l11-11.03-3.75-3.75L3 17.25Zm17.71-10.04a1.004 1.004 0 0 0 0-1.42l-2.5-2.5a1.004 1.004 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 2-1.66Z"></path>'
+      + '</svg>'
+    );
+    editButton.addEventListener('click', () => {
+      onPatchInputs({
+        type: 'toggle-edit-mode',
+        moduleId: module.id,
+        calculator: isPensionModule(module) ? 'pension' : 'mortgage'
+      });
+    });
+    actions.appendChild(editButton);
+  }
+
+  card.appendChild(header);
+
+  const columns = Array.isArray(assumptions.columns) ? assumptions.columns : [];
+  const rows = Array.isArray(assumptions.rows) ? assumptions.rows : [];
+
+  if (columns.length === 0 || rows.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'No assumptions provided.';
+    card.appendChild(empty);
+    return card;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'generated-table-wrap';
+
+  const table = document.createElement('table');
+  table.className = 'generated-table';
+
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  columns.forEach((column) => {
+    const th = document.createElement('th');
+    th.textContent = String(column ?? '');
+    headerRow.appendChild(th);
   });
-  fixedPaymentField.field.classList.add('assumptions-editor-fixed-payment');
-  fixedPaymentField.field.classList.toggle('is-disabled', !usingFixedPayment);
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
 
-  modeField.appendChild(fixedPaymentField.field);
-  monthlyPaymentGroup.grid.appendChild(modeField);
-  syncFixedModeState();
+  const tbody = document.createElement('tbody');
+  tbody.dataset.assumptionsTableBody = module.id;
+  const valueColumnIndex = columns.findIndex((column) => String(column).trim().toLowerCase() === 'value');
 
-  card.appendChild(loanGroup.section);
-  card.appendChild(termGroup.section);
-  card.appendChild(overpaymentGroup.section);
-  card.appendChild(monthlyPaymentGroup.section);
+  rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    const safeRow = Array.isArray(row) ? row : [];
+    const rowLabel = String(safeRow[0] ?? '');
+
+    columns.forEach((_column, index) => {
+      const td = document.createElement('td');
+      const cellText = String(safeRow[index] ?? '');
+
+      if (editMode && hasInlineEditor && index === valueColumnIndex) {
+        const editorCell = createEditableAssumptionCell({
+          module,
+          rowLabel,
+          status,
+          onPatchInputs,
+          readOnly
+        });
+
+        if (editorCell) {
+          td.classList.add('assumptions-inline-cell', 'is-editable');
+          td.appendChild(editorCell);
+        } else {
+          td.textContent = cellText;
+        }
+      } else {
+        td.textContent = cellText;
+      }
+
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  card.appendChild(wrap);
 
   return card;
 }
@@ -595,15 +665,15 @@ function hideLayer(layer) {
   layer.setAttribute('aria-hidden', 'true');
 }
 
-function buildTableCard(cardTitle, tableData) {
+function buildTableCard(cardTitle, tableData, { dataGeneratedCard = '' } = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-table-card';
+  if (dataGeneratedCard) {
+    card.dataset.generatedCard = dataGeneratedCard;
+  }
 
-  const heading = document.createElement('h3');
-  heading.className = 'generated-card-title';
-  heading.textContent = cardTitle;
-
-  card.appendChild(heading);
+  const { header } = buildGeneratedCardHeader(cardTitle);
+  card.appendChild(header);
 
   const columns = Array.isArray(tableData?.columns) ? tableData.columns : [];
   const rows = Array.isArray(tableData?.rows) ? tableData.rows : [];
@@ -1024,11 +1094,10 @@ function buildOutputsBucketedMatrixContent(outputsBucketed) {
 function buildOutputsBucketedCard(outputsBucketed) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-table-card generated-outputs-bucketed-card';
+  card.dataset.generatedCard = 'outputs-bucketed';
 
-  const heading = document.createElement('h3');
-  heading.className = 'generated-card-title';
-  heading.textContent = 'Outputs';
-  card.appendChild(heading);
+  const { header } = buildGeneratedCardHeader('Outputs');
+  card.appendChild(header);
 
   if (!hasOutputsBucketed(outputsBucketed)) {
     const empty = document.createElement('p');
@@ -1051,12 +1120,10 @@ function buildOutputsBucketedCard(outputsBucketed) {
 function buildSummaryCard(summaryHtml) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-summary-card';
+  card.dataset.generatedCard = 'summary';
 
-  const heading = document.createElement('h3');
-  heading.className = 'generated-card-title';
-  heading.textContent = 'Summary';
-
-  card.appendChild(heading);
+  const { header } = buildGeneratedCardHeader('Summary');
+  card.appendChild(header);
 
   const content = document.createElement('div');
   content.className = 'generated-summary-content';
@@ -1080,12 +1147,10 @@ function buildSummaryCard(summaryHtml) {
 function buildChartsCard(module, charts, { showPensionToggle = true, readOnly = false } = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-charts-card';
+  card.dataset.generatedCard = 'charts';
 
-  const heading = document.createElement('h3');
-  heading.className = 'generated-card-title';
-  heading.textContent = 'Charts';
-
-  card.appendChild(heading);
+  const { header } = buildGeneratedCardHeader('Charts');
+  card.appendChild(header);
 
   if (showPensionToggle && isPensionModule(module)) {
     const showMax = typeof window.__getPensionShowMaxForModule === 'function'
@@ -1203,33 +1268,15 @@ function buildGeneratedSection(module, {
   grid.className = 'generated-grid';
 
   grid.appendChild(buildSummaryCard(generated.summaryHtml));
-  if (!readOnly && typeof onPatchInputs === 'function' && isPensionModule(module)) {
-    const pensionEditor = renderPensionAssumptionsEditor({
-      module,
-      onPatchInputs,
-      status: assumptionsEditorStatus,
-      readOnly
-    });
-    if (pensionEditor) {
-      grid.appendChild(pensionEditor);
-    }
-  }
-  if (!readOnly && typeof onPatchInputs === 'function' && !isPensionModule(module) && isMortgageModule(module)) {
-    const mortgageEditor = renderMortgageAssumptionsEditor({
-      module,
-      onPatchInputs,
-      status: assumptionsEditorStatus,
-      readOnly
-    });
-    if (mortgageEditor) {
-      grid.appendChild(mortgageEditor);
-    }
-  }
-  grid.appendChild(buildTableCard('Assumptions', generated.assumptions));
+  grid.appendChild(buildAssumptionsTableCard(module, {
+    onPatchInputs,
+    status: assumptionsEditorStatus,
+    readOnly
+  }));
   if (isOutputsBucketedPresent(generated.outputsBucketed)) {
     grid.appendChild(buildOutputsBucketedCard(generated.outputsBucketed));
   } else {
-    grid.appendChild(buildTableCard('Outputs', generated.outputs));
+    grid.appendChild(buildTableCard('Outputs', generated.outputs, { dataGeneratedCard: 'outputs' }));
   }
   if (Array.isArray(generated.tables) && generated.tables.length > 0) {
     generated.tables.forEach((table, tableIndex) => {
@@ -1245,6 +1292,73 @@ function buildGeneratedSection(module, {
   section.appendChild(grid);
 
   return section;
+}
+
+function replaceGeneratedCard({
+  grid,
+  selector,
+  replacement
+}) {
+  const existing = grid.querySelector(selector);
+  if (existing) {
+    existing.replaceWith(replacement);
+    return;
+  }
+
+  grid.appendChild(replacement);
+}
+
+export function patchFocusedGeneratedCards({
+  focusedCard,
+  module,
+  onPatchInputs = null,
+  assumptionsEditorStatus = null,
+  readOnly = false,
+  patchSummary = true,
+  patchAssumptions = true,
+  patchOutputs = true
+}) {
+  if (!focusedCard || !module) {
+    return;
+  }
+
+  const generatedSection = focusedCard.querySelector('.generated-section');
+  const grid = generatedSection?.querySelector('.generated-grid');
+  if (!generatedSection || !grid) {
+    return;
+  }
+
+  if (patchSummary) {
+    replaceGeneratedCard({
+      grid,
+      selector: '[data-generated-card="summary"]',
+      replacement: buildSummaryCard(module.generated?.summaryHtml || '')
+    });
+  }
+
+  if (patchAssumptions) {
+    replaceGeneratedCard({
+      grid,
+      selector: '[data-generated-card="assumptions"]',
+      replacement: buildAssumptionsTableCard(module, {
+        onPatchInputs,
+        status: assumptionsEditorStatus,
+        readOnly
+      })
+    });
+  }
+
+  if (patchOutputs) {
+    const generated = module.generated || {};
+    const outputCard = isOutputsBucketedPresent(generated.outputsBucketed)
+      ? buildOutputsBucketedCard(generated.outputsBucketed)
+      : buildTableCard('Outputs', generated.outputs, { dataGeneratedCard: 'outputs' });
+    replaceGeneratedCard({
+      grid,
+      selector: '[data-generated-card="outputs"], [data-generated-card="outputs-bucketed"]',
+      replacement: outputCard
+    });
+  }
 }
 
 export function getUiElements() {
