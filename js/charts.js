@@ -761,12 +761,14 @@ function hasSustainabilityLabels(datasets) {
 
   return datasets.some((dataset) => {
     const label = normalizeLabel(dataset?.label);
+    const normalized = label.toLowerCase();
     return isRequiredReferenceLabel(label)
       || label === PENSION_DATASET_LABELS.sustainabilityCurrent
       || label === PENSION_DATASET_LABELS.sustainabilityMax
       || label === PENSION_DATASET_LABELS.withdrawals
       || label === 'Balance with target income (current start pot)'
-      || label === 'Balance with target income (max start pot)';
+      || label === 'Balance with target income (max start pot)'
+      || normalized.startsWith('affordable income (');
   });
 }
 
@@ -809,10 +811,18 @@ function applySustainabilityLegendFilter(chart, showMax) {
     if (label === PENSION_DATASET_LABELS.withdrawals) {
       return false;
     }
-    if (label === PENSION_DATASET_LABELS.sustainabilityCurrent || label === 'Balance with target income (current start pot)') {
+    if (
+      label === PENSION_DATASET_LABELS.sustainabilityCurrent
+      || label === 'Balance with target income (current start pot)'
+      || isCurrentScenarioLabel(label)
+    ) {
       return !showMax;
     }
-    if (label === PENSION_DATASET_LABELS.sustainabilityMax || label === 'Balance with target income (max start pot)') {
+    if (
+      label === PENSION_DATASET_LABELS.sustainabilityMax
+      || label === 'Balance with target income (max start pot)'
+      || isMaxScenarioLabel(label)
+    ) {
       return showMax;
     }
     return true;
@@ -1012,11 +1022,16 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
     };
   }
 
+  const hiddenByScenario = isMaxScenarioLabel(label)
+    ? !showMax
+    : (isCurrentScenarioLabel(label) ? showMax : false);
+
   return {
     ...base,
     type: 'line',
     yAxisID: 'y',
-    order: 0
+    order: 0,
+    hidden: hiddenByScenario
   };
 }
 
@@ -1351,10 +1366,10 @@ function buildChartConfig(chartData, { module } = {}) {
       if (label === PENSION_DATASET_LABELS.withdrawals) {
         return false;
       }
-      if (label === PENSION_DATASET_LABELS.sustainabilityCurrent) {
+      if (label === PENSION_DATASET_LABELS.sustainabilityCurrent || isCurrentScenarioLabel(label)) {
         return !showMax;
       }
-      if (label === PENSION_DATASET_LABELS.sustainabilityMax) {
+      if (label === PENSION_DATASET_LABELS.sustainabilityMax || isMaxScenarioLabel(label)) {
         return showMax;
       }
       return true;

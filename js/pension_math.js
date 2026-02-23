@@ -472,6 +472,42 @@ function buildAffordableDrawdownSeries(inputs, startBalance, incomeToday, horizo
   };
 }
 
+function buildAffordableIncomeResult(inputs, retirementPot, endAge, fullLabels) {
+  const goalSeek = goalSeekAffordableIncomeToday(inputs, retirementPot, endAge);
+  const drawdown = buildAffordableDrawdownSeries(
+    inputs,
+    retirementPot,
+    goalSeek.incomeTodayBest,
+    endAge
+  );
+  const flooredBalances = floorSeriesToZero(drawdown.balances);
+  const paddedBalances = [...flooredBalances];
+
+  while (paddedBalances.length < fullLabels.length) {
+    paddedBalances.push(null);
+  }
+  if (paddedBalances.length > fullLabels.length) {
+    paddedBalances.length = fullLabels.length;
+  }
+
+  const goalSeekInputs = {
+    ...inputs,
+    targetIncomeToday: goalSeek.incomeTodayBest,
+    horizonEndAge: endAge
+  };
+  const incomeNominalAtRetirement = targetIncomeNominalAtAge(goalSeekInputs, inputs.retirementAge);
+
+  return {
+    endAge,
+    incomeToday: goalSeek.incomeTodayBest,
+    incomeNominalAtRetirement,
+    requiredPotAtRetirement: goalSeek.requiredPotAtRetirementBest,
+    gap: goalSeek.gap,
+    endingBalanceAfterHorizon: drawdown.endingBalanceAfterHorizon,
+    balancesPadded: paddedBalances
+  };
+}
+
 export function normalizePensionInputs(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('generated.pensionInputs must be an object.');
@@ -603,7 +639,8 @@ export function computePensionProjection(rawInputs) {
     : floorSeriesToZero(retirementSimulationRequired.balances);
   let sustainabilityLabels = baseSustainabilityLabels;
   let affordableChartDatasets = [];
-  let affordableDebugRows = [];
+  let affordableCurrentResults = [];
+  let affordableMaxResults = [];
 
   const depletionAgeProjected = retirementSimulationProjectedCurrent.labels[
     sustainabilityCurrentFloored.findIndex((value) => value === 0)
@@ -617,45 +654,23 @@ export function computePensionProjection(rawInputs) {
     const maxAffordableEndAge = affordableEndAges[affordableEndAges.length - 1];
     sustainabilityLabels = buildAgeRange(inputs.retirementAge, maxAffordableEndAge);
 
-    affordableEndAges.forEach((endAge) => {
-      const goalSeek = goalSeekAffordableIncomeToday(inputs, currentScenario.retirementPot, endAge);
-      const drawdown = buildAffordableDrawdownSeries(
-        inputs,
-        currentScenario.retirementPot,
-        goalSeek.incomeTodayBest,
-        endAge
-      );
+    affordableCurrentResults = affordableEndAges.map((endAge) => (
+      buildAffordableIncomeResult(inputs, currentScenario.retirementPot, endAge, sustainabilityLabels)
+    ));
+    affordableMaxResults = affordableEndAges.map((endAge) => (
+      buildAffordableIncomeResult(inputs, maxScenario.retirementPot, endAge, sustainabilityLabels)
+    ));
 
-      const flooredBalances = floorSeriesToZero(drawdown.balances);
-      const padded = [...flooredBalances];
-      while (padded.length < sustainabilityLabels.length) {
-        padded.push(null);
-      }
-      if (padded.length > sustainabilityLabels.length) {
-        padded.length = sustainabilityLabels.length;
-      }
-
-      const goalSeekInputs = {
-        ...inputs,
-        targetIncomeToday: goalSeek.incomeTodayBest,
-        horizonEndAge: endAge
-      };
-      const incomeNominalAtRetirement = targetIncomeNominalAtAge(goalSeekInputs, inputs.retirementAge);
-
-      affordableChartDatasets.push({
-        label: `Affordable income (deplete by age ${endAge})`,
-        data: padded
-      });
-
-      affordableDebugRows.push({
-        endAge,
-        incomeToday: goalSeek.incomeTodayBest,
-        incomeNominalAtRetirement,
-        requiredPotAtRetirement: goalSeek.requiredPotAtRetirementBest,
-        gap: goalSeek.gap,
-        endingBalanceAfterHorizon: drawdown.endingBalanceAfterHorizon
-      });
-    });
+    affordableChartDatasets = [
+      ...affordableCurrentResults.map((entry) => ({
+        label: `Affordable income (current) - deplete by age ${entry.endAge}`,
+        data: entry.balancesPadded
+      })),
+      ...affordableMaxResults.map((entry) => ({
+        label: `Affordable income (max) - deplete by age ${entry.endAge}`,
+        data: entry.balancesPadded
+      }))
+    ];
   }
 
   const retirementYear = inputs.currentYear + (inputs.retirementAge - inputs.currentAge);
@@ -725,10 +740,16 @@ export function computePensionProjection(rawInputs) {
   ];
 
   if (isAffordableMode && !inputs.minDrawdownMode) {
-    affordableDebugRows.forEach((entry) => {
+    affordableCurrentResults.forEach((entry) => {
       outputsRows.push([
-        `Affordable income (today's money) to age ${entry.endAge}`,
-        toEuroText(entry.incomeToday)
+        `Affordable income (current, deplete by ${entry.endAge})`,
+        `${toEuroText(entry.incomeToday)} p.a.`
+      ]);
+    });
+    affordableMaxResults.forEach((entry) => {
+      outputsRows.push([
+        `Affordable income (max, deplete by ${entry.endAge})`,
+        `${toEuroText(entry.incomeToday)} p.a.`
       ]);
     });
   } else {
@@ -911,8 +932,15 @@ export function computePensionProjection(rawInputs) {
       retirementEndingBalanceFromRequired: retirementSimulationRequired?.endingBalanceAfterHorizon ?? null,
       affordableIncome: isAffordableMode
         ? {
-          endAges: [...inputs.affordableEndAges],
-          results: affordableDebugRows.map((entry) => ({
+          current: affordableCurrentResults.map((entry) => ({
+            endAge: entry.endAge,
+            incomeToday: entry.incomeToday,
+            incomeNominalAtRetirement: entry.incomeNominalAtRetirement,
+            requiredPotAtRetirement: entry.requiredPotAtRetirement,
+            gap: entry.gap,
+            endingBalanceAfterHorizon: entry.endingBalanceAfterHorizon
+          })),
+          max: affordableMaxResults.map((entry) => ({
             endAge: entry.endAge,
             incomeToday: entry.incomeToday,
             incomeNominalAtRetirement: entry.incomeNominalAtRetirement,

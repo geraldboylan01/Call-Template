@@ -2609,9 +2609,25 @@ function setPensionShowMaxForModule(moduleId, value) {
   }
 
   const nextValue = Boolean(value);
+  const currentValue = appState.pensionShowMaxByModuleId.get(moduleId) ?? false;
+  if (currentValue === nextValue) {
+    return;
+  }
   appState.pensionShowMaxByModuleId.set(moduleId, nextValue);
 
   if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
+    const pensionInputs = module.generated.pensionInputs;
+    const isAffordableMode = pensionInputs?.incomeMode === 'affordable' && pensionInputs?.minDrawdownMode !== true;
+
+    if (isAffordableMode) {
+      patchFocusedModuleGeneratedContent(moduleId, {
+        patchSummary: false,
+        patchAssumptions: false,
+        patchOutputs: true,
+        updateCharts: false
+      });
+    }
+
     if (typeof window.__setPensionShowMaxForModule === 'function') {
       window.__setPensionShowMaxForModule(moduleId, nextValue);
     }

@@ -71,6 +71,49 @@ function isPensionModule(module) {
   return Boolean(module?.generated?.pensionInputs);
 }
 
+function isAffordablePensionMode(module) {
+  const inputs = module?.generated?.pensionInputs;
+  return Boolean(inputs && inputs.incomeMode === 'affordable' && inputs.minDrawdownMode !== true);
+}
+
+function getPensionShowMaxForModule(moduleId) {
+  if (typeof window.__getPensionShowMaxForModule !== 'function') {
+    return false;
+  }
+
+  return Boolean(window.__getPensionShowMaxForModule(moduleId));
+}
+
+function filterOutputsRowsForPensionToggle(module, tableData) {
+  if (!isAffordablePensionMode(module)) {
+    return tableData;
+  }
+
+  const columns = Array.isArray(tableData?.columns) ? [...tableData.columns] : [];
+  const rows = Array.isArray(tableData?.rows) ? tableData.rows : [];
+  if (columns.length === 0 || rows.length === 0) {
+    return tableData;
+  }
+
+  const showMax = getPensionShowMaxForModule(module?.id);
+  const filteredRows = rows.filter((row) => {
+    const label = String(Array.isArray(row) ? row[0] ?? '' : '').trim().toLowerCase();
+    const isCurrentAffordable = label.startsWith('affordable income (current');
+    const isMaxAffordable = label.startsWith('affordable income (max');
+
+    if (!isCurrentAffordable && !isMaxAffordable) {
+      return true;
+    }
+
+    return showMax ? isMaxAffordable : isCurrentAffordable;
+  });
+
+  return {
+    columns,
+    rows: filteredRows
+  };
+}
+
 function getLoanEngineInputs(module) {
   return module?.generated?.loanInputs || module?.generated?.mortgageInputs || null;
 }
@@ -1303,7 +1346,8 @@ function buildGeneratedSection(module, {
   if (isOutputsBucketedPresent(generated.outputsBucketed)) {
     grid.appendChild(buildOutputsBucketedCard(generated.outputsBucketed));
   } else {
-    grid.appendChild(buildTableCard('Outputs', generated.outputs, { dataGeneratedCard: 'outputs' }));
+    const outputsForDisplay = filterOutputsRowsForPensionToggle(module, generated.outputs);
+    grid.appendChild(buildTableCard('Outputs', outputsForDisplay, { dataGeneratedCard: 'outputs' }));
   }
   if (Array.isArray(generated.tables) && generated.tables.length > 0) {
     generated.tables.forEach((table, tableIndex) => {
@@ -1379,7 +1423,11 @@ export function patchFocusedGeneratedCards({
     const generated = module.generated || {};
     const outputCard = isOutputsBucketedPresent(generated.outputsBucketed)
       ? buildOutputsBucketedCard(generated.outputsBucketed)
-      : buildTableCard('Outputs', generated.outputs, { dataGeneratedCard: 'outputs' });
+      : buildTableCard(
+        'Outputs',
+        filterOutputsRowsForPensionToggle(module, generated.outputs),
+        { dataGeneratedCard: 'outputs' }
+      );
     replaceGeneratedCard({
       grid,
       selector: '[data-generated-card="outputs"], [data-generated-card="outputs-bucketed"]',
