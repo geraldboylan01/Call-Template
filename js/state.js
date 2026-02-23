@@ -194,6 +194,24 @@ function normalizePensionInputs(pensionInputs) {
     normalized.minDrawdownMode = pensionInputs.minDrawdownMode;
   }
 
+  const incomeMode = typeof pensionInputs.incomeMode === 'string'
+    ? pensionInputs.incomeMode.trim().toLowerCase()
+    : '';
+  if (incomeMode === 'target' || incomeMode === 'affordable') {
+    normalized.incomeMode = incomeMode;
+  }
+
+  if (Array.isArray(pensionInputs.affordableEndAges)) {
+    const dedupedSorted = [...new Set(
+      pensionInputs.affordableEndAges
+        .filter((value) => typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value))
+    )].sort((left, right) => left - right);
+
+    if (dedupedSorted.length > 0) {
+      normalized.affordableEndAges = dedupedSorted;
+    }
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 

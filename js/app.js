@@ -217,6 +217,30 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'pension-affordable-income-demo',
+    label: 'Pension Affordable Income Demo',
+    payload: {
+      title: 'Pension Projection (Affordable Income Mode Demo)',
+      generated: {
+        summaryHtml: '<p>Affordable income mode goal-seeks sustainable retirement income across multiple end ages.</p>',
+        pensionInputs: {
+          currentAge: 43,
+          retirementAge: 67,
+          currentSalary: 90000,
+          currentPot: 210000,
+          personalPct: 0.09,
+          employerPct: 0.06,
+          growthRate: 0.05,
+          inflationRate: 0.02,
+          wageGrowthRate: 0.025,
+          incomeMode: 'affordable',
+          affordableEndAges: [85, 90, 95, 100],
+          currentYear: 2026
+        }
+      }
+    }
+  },
+  {
     id: 'mortgage-inline-assumptions-demo',
     label: 'Mortgage Inline Assumptions Demo',
     payload: {
