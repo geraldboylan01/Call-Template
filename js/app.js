@@ -1455,9 +1455,12 @@ function applyPensionProjectionToModule(module, { updateSummary = true } = {}) {
   }));
 
   if (updateSummary) {
-    module.generated.summaryHtml = injectAutoSftSummarySentence(
+    module.generated.summaryHtml = injectAutoPensionSummarySentences(
       module.generated.summaryHtml,
-      projection.debug.sftSentence
+      {
+        sftSentence: projection.debug.sftSentence,
+        personalCapSentence: projection.debug.currentPersonalCapSentence
+      }
     );
   }
 
@@ -2069,6 +2072,7 @@ function normalizeDevPanelPayload(payload) {
 }
 
 const AUTO_SFT_SPAN_PATTERN = /<span\b[^>]*\bdata-auto=(["'])sft\1[^>]*>[\s\S]*?<\/span>/gi;
+const AUTO_PERSONAL_CAP_SPAN_PATTERN = /<span\b[^>]*\bdata-auto=(["'])personal-cap\1[^>]*>[\s\S]*?<\/span>/gi;
 
 function escapeHtmlText(value) {
   return String(value ?? '')
@@ -2082,29 +2086,41 @@ function escapeHtmlText(value) {
 function removeAutoSftSummarySpan(summaryHtml) {
   return String(summaryHtml ?? '')
     .replace(AUTO_SFT_SPAN_PATTERN, '')
+    .replace(AUTO_PERSONAL_CAP_SPAN_PATTERN, '')
     .replace(/\s+<\/p>/gi, '</p>')
     .trim();
 }
 
-function injectAutoSftSummarySentence(summaryHtml, sftSentence) {
+function injectAutoSummarySentence(summaryHtml, sentence, autoKey) {
   const cleaned = removeAutoSftSummarySpan(summaryHtml);
-  if (!sftSentence) {
+  if (!sentence) {
     return cleaned;
   }
 
-  const sftSpan = `<span data-auto=\"sft\">${escapeHtmlText(sftSentence)}</span>`;
+  const safeAutoKey = String(autoKey ?? '').trim() || 'note';
+  const autoSpan = `<span data-auto=\"${escapeHtmlText(safeAutoKey)}\">${escapeHtmlText(sentence)}</span>`;
 
   if (!cleaned) {
-    return `<p>${sftSpan}</p>`;
+    return `<p>${autoSpan}</p>`;
   }
 
   const firstParagraphCloseMatch = /<\/p>/i.exec(cleaned);
   if (!firstParagraphCloseMatch || typeof firstParagraphCloseMatch.index !== 'number') {
-    return `${cleaned}<p>${sftSpan}</p>`;
+    return `${cleaned}<p>${autoSpan}</p>`;
   }
 
   const closeTagIndex = firstParagraphCloseMatch.index;
-  return `${cleaned.slice(0, closeTagIndex)} ${sftSpan}${cleaned.slice(closeTagIndex)}`;
+  return `${cleaned.slice(0, closeTagIndex)} ${autoSpan}${cleaned.slice(closeTagIndex)}`;
+}
+
+function injectAutoPensionSummarySentences(summaryHtml, {
+  sftSentence = '',
+  personalCapSentence = ''
+} = {}) {
+  let next = removeAutoSftSummarySpan(summaryHtml);
+  next = injectAutoSummarySentence(next, sftSentence, 'sft');
+  next = injectAutoSummarySentence(next, personalCapSentence, 'personal-cap');
+  return next;
 }
 
 function getPlaybookById(playbookId) {

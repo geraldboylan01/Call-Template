@@ -139,6 +139,10 @@ function ageBandPct(age) {
   return 0.40;
 }
 
+function maxRelievablePersonalContribution(age, salaryAtAge) {
+  return ageBandPct(age) * Math.min(salaryAtAge, 115000);
+}
+
 export function computeSft(retirementYear) {
   if (retirementYear <= 2026) {
     return {
@@ -596,14 +600,29 @@ export function computePensionProjection(rawInputs) {
   const inputs = normalizePensionInputs(rawInputs);
   const isAffordableMode = inputs.incomeMode === 'affordable' && !inputs.minDrawdownMode;
 
+  const currentContributionCapStats = {
+    wasCapped: false,
+    firstCappedAge: null,
+    maxRelievableAtFirstCap: null
+  };
+
   const currentScenario = simulateAccumulation(
     inputs,
-    (_age, salaryAtAge) => inputs.personalPct * salaryAtAge
+    (age, salaryAtAge) => {
+      const desired = inputs.personalPct * salaryAtAge;
+      const cap = maxRelievablePersonalContribution(age, salaryAtAge);
+      if (desired > cap && !currentContributionCapStats.wasCapped) {
+        currentContributionCapStats.wasCapped = true;
+        currentContributionCapStats.firstCappedAge = age;
+        currentContributionCapStats.maxRelievableAtFirstCap = cap;
+      }
+      return Math.min(desired, cap);
+    }
   );
 
   const maxScenario = simulateAccumulation(
     inputs,
-    (age, salaryAtAge) => ageBandPct(age) * Math.min(salaryAtAge, 115000)
+    (age, salaryAtAge) => maxRelievablePersonalContribution(age, salaryAtAge)
   );
 
   const monotonicIssues = [];
@@ -708,6 +727,12 @@ export function computePensionProjection(rawInputs) {
     });
   }
   const modeLabel = inputs.minDrawdownMode ? 'Minimum drawdowns' : 'Target withdrawals';
+  const currentPersonalWasCapped = currentContributionCapStats.wasCapped;
+  const firstCappedAge = currentContributionCapStats.firstCappedAge;
+  const maxRelievableAtFirstCap = currentContributionCapStats.maxRelievableAtFirstCap;
+  const currentPersonalCapSentence = currentPersonalWasCapped && Number.isInteger(firstCappedAge)
+    ? `Your current personal contribution rate reaches the Irish max tax-relievable limit from age ${firstCappedAge}, so personal contributions are capped from that point.`
+    : '';
 
   const assumptionsTable = {
     columns: ['Assumption', 'Value'],
@@ -724,8 +749,14 @@ export function computePensionProjection(rawInputs) {
       isAffordableMode
         ? ['Affordable income mode', 'Goal-seek (see outputs)']
         : ['Target retirement income', toEuroText(inputs.targetIncomeToday)],
-      ['Salary cap used', toEuroText(Math.min(inputs.currentSalary, 115000))],
+      ['Earnings cap for max-relief maths', toEuroText(Math.min(inputs.currentSalary, 115000))],
       ['Max personal age band %', `${toPercentText(ageBandPct(inputs.currentAge))} (steps with age)`],
+      ...(currentPersonalWasCapped && Number.isInteger(firstCappedAge)
+        ? [[
+          'Current personal contributions capped?',
+          `Yes (from age ${firstCappedAge})`
+        ]]
+        : []),
       ['Mode', modeLabel],
       [
         'Horizon end age',
@@ -918,6 +949,10 @@ export function computePensionProjection(rawInputs) {
       sftHeldConstantBeyond2029: sftMeta.heldConstantBeyond2029,
       sftBreaches,
       sftSentence,
+      currentPersonalWasCapped,
+      firstCappedAge,
+      maxRelievableAtFirstCap,
+      currentPersonalCapSentence,
       currentScenario: {
         personalEurSeries: currentScenario.personalEurSeries,
         employerEurSeries: currentScenario.employerEurSeries,
