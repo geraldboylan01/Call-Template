@@ -1340,21 +1340,24 @@ function buildChartConfig(chartData, { module } = {}) {
   }
 
   if (isSustainability) {
-    const withdrawalsMax = computeSustainabilityWithdrawalMax(chartData);
-    config.options.scales.y1 = {
-      beginAtZero: true,
-      position: 'right',
-      suggestedMax: withdrawalsMax > 0 ? withdrawalsMax * 1.10 : 1,
-      ticks: {
-        color: '#d3e8ff',
-        callback: (value) => formatEuroTick(value)
-      },
-      grid: {
-        drawOnChartArea: false,
-        color: 'rgba(140, 175, 220, 0.16)',
-        drawBorder: false
-      }
-    };
+    const hasRightAxisDataset = datasets.some((dataset) => dataset?.yAxisID === 'y1');
+    if (hasRightAxisDataset) {
+      const withdrawalsMax = computeSustainabilityWithdrawalMax(chartData);
+      config.options.scales.y1 = {
+        beginAtZero: true,
+        position: 'right',
+        suggestedMax: withdrawalsMax > 0 ? withdrawalsMax * 1.10 : 1,
+        ticks: {
+          color: '#d3e8ff',
+          callback: (value) => formatEuroTick(value)
+        },
+        grid: {
+          drawOnChartArea: false,
+          color: 'rgba(140, 175, 220, 0.16)',
+          drawBorder: false
+        }
+      };
+    }
 
     config.options.plugins.legend.labels.filter = (legendItem, legendData) => {
       const dataset = legendData?.datasets?.[legendItem.datasetIndex];
@@ -1375,40 +1378,42 @@ function buildChartConfig(chartData, { module } = {}) {
       return true;
     };
 
-    const subtitleText = 'Bars (right axis): withdrawals per year';
-    const subtitlePluginAvailable = Boolean(
-      window.Chart?.defaults?.plugins
-      && Object.prototype.hasOwnProperty.call(window.Chart.defaults.plugins, 'subtitle')
-    );
+    if (hasRightAxisDataset) {
+      const subtitleText = 'Bars (right axis): withdrawals per year';
+      const subtitlePluginAvailable = Boolean(
+        window.Chart?.defaults?.plugins
+        && Object.prototype.hasOwnProperty.call(window.Chart.defaults.plugins, 'subtitle')
+      );
 
-    if (subtitlePluginAvailable) {
-      config.options.plugins.subtitle = {
-        display: true,
-        text: subtitleText,
-        color: '#cfe6ff',
-        font: {
-          size: 12,
-          weight: '500'
-        },
-        padding: {
-          top: 6,
-          bottom: 10
-        }
-      };
-    } else {
-      config.options.plugins.title = {
-        display: true,
-        text: `${chartData.title || 'Chart'} — ${subtitleText}`,
-        color: '#cfe6ff',
-        font: {
-          size: 12,
-          weight: '500'
-        },
-        padding: {
-          top: 6,
-          bottom: 10
-        }
-      };
+      if (subtitlePluginAvailable) {
+        config.options.plugins.subtitle = {
+          display: true,
+          text: subtitleText,
+          color: '#cfe6ff',
+          font: {
+            size: 12,
+            weight: '500'
+          },
+          padding: {
+            top: 6,
+            bottom: 10
+          }
+        };
+      } else {
+        config.options.plugins.title = {
+          display: true,
+          text: `${chartData.title || 'Chart'} — ${subtitleText}`,
+          color: '#cfe6ff',
+          font: {
+            size: 12,
+            weight: '500'
+          },
+          padding: {
+            top: 6,
+            bottom: 10
+          }
+        };
+      }
     }
   }
 
@@ -1460,6 +1465,12 @@ function buildChartConfig(chartData, { module } = {}) {
         return `${label}: ${formatEuro(value)}`;
       }
     };
+  }
+
+  const usesRightAxis = Array.isArray(config.data?.datasets)
+    && config.data.datasets.some((dataset) => dataset?.yAxisID === 'y1');
+  if (!usesRightAxis && config.options?.scales?.y1) {
+    delete config.options.scales.y1;
   }
 
   return config;

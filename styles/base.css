@@ -693,6 +693,21 @@ textarea {
   color: #d2e2f6;
 }
 
+.generated-table td.cc-cell-hoverable {
+  cursor: pointer;
+  transition: background-color 150ms ease, box-shadow 150ms ease, font-weight 150ms ease;
+}
+
+.generated-table td.cc-cell-hoverable:hover {
+  background: rgba(46, 163, 255, 0.09);
+}
+
+.generated-table td.cc-cell-selected {
+  background: rgba(46, 163, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(126, 196, 255, 0.56), inset 0 -1px 0 rgba(147, 206, 255, 0.2);
+  font-weight: 600;
+}
+
 .generated-outputs-bucketed-card {
   grid-column: 1 / -1;
 }

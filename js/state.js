@@ -301,6 +301,63 @@ export function normalizeGenerated(generated) {
   };
 }
 
+function createDefaultTableHighlightState() {
+  return {
+    selected: [],
+    anchor: null
+  };
+}
+
+function normalizeTableHighlightAnchor(anchor) {
+  if (!anchor || typeof anchor !== 'object' || Array.isArray(anchor)) {
+    return null;
+  }
+
+  const key = typeof anchor.key === 'string' ? anchor.key.trim() : '';
+  const rowIndex = Number(anchor.rowIndex);
+  const colIndex = Number(anchor.colIndex);
+  if (!key || !Number.isInteger(rowIndex) || !Number.isInteger(colIndex)) {
+    return null;
+  }
+
+  return {
+    key,
+    rowIndex,
+    colIndex
+  };
+}
+
+function normalizeTableHighlightState(state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    return createDefaultTableHighlightState();
+  }
+
+  const selected = Array.isArray(state.selected)
+    ? [...new Set(state.selected
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean))]
+    : [];
+
+  return {
+    selected,
+    anchor: normalizeTableHighlightAnchor(state.anchor)
+  };
+}
+
+function normalizeModuleUi(ui) {
+  const tableHighlights = ui && typeof ui === 'object' && !Array.isArray(ui)
+    && ui.tableHighlights && typeof ui.tableHighlights === 'object' && !Array.isArray(ui.tableHighlights)
+    ? ui.tableHighlights
+    : {};
+
+  return {
+    tableHighlights: {
+      assumptions: normalizeTableHighlightState(tableHighlights.assumptions),
+      outputs: normalizeTableHighlightState(tableHighlights.outputs)
+    }
+  };
+}
+
 function normalizeModules(modules) {
   if (!Array.isArray(modules)) {
     return [];
@@ -314,7 +371,8 @@ function normalizeModules(modules) {
       updatedAt: item.updatedAt || item.createdAt || nowIso(),
       title: typeof item.title === 'string' ? item.title : '',
       notes: typeof item.notes === 'string' ? item.notes : '',
-      generated: normalizeGenerated(item.generated)
+      generated: normalizeGenerated(item.generated),
+      ui: normalizeModuleUi(item.ui)
     }));
 }
 

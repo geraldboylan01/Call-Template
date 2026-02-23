@@ -90,6 +90,7 @@ const stateManager = createStateManager(300, {
 
 const ASSUMPTIONS_UPDATED_FEEDBACK_MS = 800;
 const OVERVIEW_UNDO_SECONDS = 15;
+const TABLE_HIGHLIGHT_KINDS = Object.freeze(['assumptions', 'outputs']);
 
 const appState = {
   session: newSession('Client'),
@@ -400,7 +401,19 @@ function createBlankModule() {
     updatedAt: timestamp,
     title: '',
     notes: '',
-    generated: createEmptyGenerated()
+    generated: createEmptyGenerated(),
+    ui: {
+      tableHighlights: {
+        assumptions: {
+          selected: [],
+          anchor: null
+        },
+        outputs: {
+          selected: [],
+          anchor: null
+        }
+      }
+    }
   };
 }
 
@@ -507,6 +520,246 @@ function ensureGenerated(module) {
   }
 
   module.generated = normalizeGenerated(module.generated);
+  ensureModuleUi(module);
+}
+
+function createEmptyTableHighlightState() {
+  return {
+    selected: [],
+    anchor: null
+  };
+}
+
+function normalizeTableHighlightAnchor(anchor) {
+  if (!anchor || typeof anchor !== 'object' || Array.isArray(anchor)) {
+    return null;
+  }
+
+  const key = typeof anchor.key === 'string' ? anchor.key.trim() : '';
+  const rowIndex = Number(anchor.rowIndex);
+  const colIndex = Number(anchor.colIndex);
+  if (!key || !Number.isInteger(rowIndex) || !Number.isInteger(colIndex)) {
+    return null;
+  }
+
+  return {
+    key,
+    rowIndex,
+    colIndex
+  };
+}
+
+function ensureModuleUi(module) {
+  if (!module || typeof module !== 'object') {
+    return null;
+  }
+
+  if (!module.ui || typeof module.ui !== 'object' || Array.isArray(module.ui)) {
+    module.ui = {};
+  }
+
+  if (!module.ui.tableHighlights || typeof module.ui.tableHighlights !== 'object' || Array.isArray(module.ui.tableHighlights)) {
+    module.ui.tableHighlights = {};
+  }
+
+  TABLE_HIGHLIGHT_KINDS.forEach((tableKind) => {
+    const current = module.ui.tableHighlights[tableKind];
+    if (!current || typeof current !== 'object' || Array.isArray(current)) {
+      module.ui.tableHighlights[tableKind] = createEmptyTableHighlightState();
+      return;
+    }
+
+    const selected = Array.isArray(current.selected)
+      ? [...new Set(current.selected
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter(Boolean))]
+      : [];
+    module.ui.tableHighlights[tableKind] = {
+      selected,
+      anchor: normalizeTableHighlightAnchor(current.anchor)
+    };
+  });
+
+  return module.ui;
+}
+
+function getModuleTableHighlightState(module, tableKind) {
+  if (!TABLE_HIGHLIGHT_KINDS.includes(tableKind)) {
+    return null;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (!uiState) {
+    return null;
+  }
+
+  return uiState.tableHighlights[tableKind];
+}
+
+function getTableHighlightCells(moduleId, tableKind) {
+  if (!ui.swipeStage || !moduleId || !TABLE_HIGHLIGHT_KINDS.includes(tableKind)) {
+    return [];
+  }
+
+  const allCells = [...ui.swipeStage.querySelectorAll(`td[data-table-kind="${tableKind}"][data-cell-key]`)];
+  return allCells.filter((cell) => cell.dataset.moduleId === moduleId);
+}
+
+function updateTableHighlightDom(moduleId, tableKind) {
+  const module = getModuleById(appState.session, moduleId);
+  const tableState = module ? getModuleTableHighlightState(module, tableKind) : null;
+  const selected = new Set(Array.isArray(tableState?.selected) ? tableState.selected : []);
+  const cells = getTableHighlightCells(moduleId, tableKind);
+  cells.forEach((cell) => {
+    cell.classList.toggle('cc-cell-selected', selected.has(cell.dataset.cellKey || ''));
+  });
+}
+
+function updateModuleHighlightDom(moduleId) {
+  TABLE_HIGHLIGHT_KINDS.forEach((tableKind) => {
+    updateTableHighlightDom(moduleId, tableKind);
+  });
+}
+
+function getColumnRangeCellKeys(moduleId, tableKind, colIndex, rowStart, rowEnd) {
+  if (!Number.isInteger(colIndex) || !Number.isInteger(rowStart) || !Number.isInteger(rowEnd)) {
+    return [];
+  }
+
+  const minRow = Math.min(rowStart, rowEnd);
+  const maxRow = Math.max(rowStart, rowEnd);
+  const cells = getTableHighlightCells(moduleId, tableKind)
+    .filter((cell) => Number(cell.dataset.colIndex) === colIndex)
+    .map((cell) => ({
+      rowIndex: Number(cell.dataset.rowIndex),
+      key: cell.dataset.cellKey || ''
+    }))
+    .filter((entry) => Number.isInteger(entry.rowIndex) && entry.key);
+
+  const rowToKey = new Map();
+  cells.forEach((entry) => {
+    if (!rowToKey.has(entry.rowIndex)) {
+      rowToKey.set(entry.rowIndex, entry.key);
+    }
+  });
+
+  return [...rowToKey.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .filter(([rowIndex]) => rowIndex >= minRow && rowIndex <= maxRow)
+    .map(([, key]) => key);
+}
+
+function handleTableCellHighlightClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  if (target.closest('input, textarea, select, button, a, [contenteditable="true"]')) {
+    return;
+  }
+
+  const cell = target.closest('td[data-cell-key][data-table-kind][data-module-id]');
+  if (!(cell instanceof HTMLTableCellElement)) {
+    return;
+  }
+
+  const moduleId = String(cell.dataset.moduleId || '').trim();
+  const tableKind = String(cell.dataset.tableKind || '').trim();
+  const cellKey = String(cell.dataset.cellKey || '').trim();
+  const rowIndex = Number(cell.dataset.rowIndex);
+  const colIndex = Number(cell.dataset.colIndex);
+  if (!moduleId || !cellKey || !TABLE_HIGHLIGHT_KINDS.includes(tableKind)) {
+    return;
+  }
+  if (!Number.isInteger(rowIndex) || !Number.isInteger(colIndex)) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    return;
+  }
+
+  const tableState = getModuleTableHighlightState(module, tableKind);
+  if (!tableState) {
+    return;
+  }
+
+  const isMulti = isMultiSelectModifier(event);
+  const isShift = Boolean(event.shiftKey);
+  let nextSelected = new Set(Array.isArray(tableState.selected) ? tableState.selected : []);
+  let nextAnchor = {
+    key: cellKey,
+    rowIndex,
+    colIndex
+  };
+
+  if (isShift) {
+    const anchor = normalizeTableHighlightAnchor(tableState.anchor);
+    if (anchor && anchor.colIndex === colIndex) {
+      const rangeKeys = getColumnRangeCellKeys(moduleId, tableKind, colIndex, anchor.rowIndex, rowIndex);
+      const effectiveRange = rangeKeys.length > 0 ? rangeKeys : [cellKey];
+      if (isMulti) {
+        effectiveRange.forEach((key) => {
+          nextSelected.add(key);
+        });
+      } else {
+        nextSelected = new Set(effectiveRange);
+      }
+    } else {
+      nextSelected = new Set([cellKey]);
+    }
+  } else if (isMulti) {
+    if (nextSelected.has(cellKey)) {
+      nextSelected.delete(cellKey);
+    } else {
+      nextSelected.add(cellKey);
+    }
+  } else {
+    nextSelected = new Set([cellKey]);
+  }
+
+  tableState.selected = [...nextSelected];
+  tableState.anchor = nextAnchor;
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+  updateTableHighlightDom(moduleId, tableKind);
+  event.preventDefault();
+}
+
+function clearModuleTableHighlights(moduleId) {
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    return false;
+  }
+
+  let changed = false;
+  TABLE_HIGHLIGHT_KINDS.forEach((tableKind) => {
+    const tableState = getModuleTableHighlightState(module, tableKind);
+    if (!tableState) {
+      return;
+    }
+
+    const hadSelected = Array.isArray(tableState.selected) && tableState.selected.length > 0;
+    const hadAnchor = Boolean(normalizeTableHighlightAnchor(tableState.anchor));
+    if (!hadSelected && !hadAnchor) {
+      return;
+    }
+
+    tableState.selected = [];
+    tableState.anchor = null;
+    changed = true;
+  });
+
+  if (!changed) {
+    return false;
+  }
+
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+  updateModuleHighlightDom(moduleId);
+  return true;
 }
 
 function getAssumptionsEditorState(moduleId) {
@@ -3994,6 +4247,12 @@ function bindEvents() {
     }
   });
 
+  if (ui.swipeStage) {
+    ui.swipeStage.addEventListener('click', (event) => {
+      handleTableCellHighlightClick(event);
+    });
+  }
+
   window.addEventListener('keydown', async (event) => {
     setOverviewMultiSelectArmed(isMultiSelectModifier(event));
 
@@ -4081,6 +4340,14 @@ function bindEvents() {
       event.preventDefault();
       await exitCompareView({ preserveSelection: true });
       return;
+    }
+
+    if (key === 'Escape' && appState.mode === 'focused' && !typing) {
+      const cleared = clearModuleTableHighlights(appState.session.activeModuleId);
+      if (cleared) {
+        event.preventDefault();
+        return;
+      }
     }
 
     if (key === 'Enter' && appState.mode === 'overview') {

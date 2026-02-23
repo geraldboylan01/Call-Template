@@ -114,6 +114,83 @@ function filterOutputsRowsForPensionToggle(module, tableData) {
   };
 }
 
+function normalizeCellKeyToken(value, fallback) {
+  const normalized = String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  return normalized || fallback;
+}
+
+function getTableHighlightState(module, tableKind) {
+  if (!module?.ui || typeof module.ui !== 'object' || Array.isArray(module.ui)) {
+    return null;
+  }
+
+  const tableHighlights = module.ui.tableHighlights;
+  if (!tableHighlights || typeof tableHighlights !== 'object' || Array.isArray(tableHighlights)) {
+    return null;
+  }
+
+  const tableState = tableHighlights[tableKind];
+  if (!tableState || typeof tableState !== 'object' || Array.isArray(tableState)) {
+    return null;
+  }
+
+  return tableState;
+}
+
+function getHighlightedCellKeySet(module, tableKind) {
+  const tableState = getTableHighlightState(module, tableKind);
+  if (!tableState || !Array.isArray(tableState.selected)) {
+    return new Set();
+  }
+
+  return new Set(tableState.selected.filter((value) => typeof value === 'string' && value));
+}
+
+function buildTableCellKey(tableKind, {
+  rowLabel,
+  rowIndex,
+  colLabel,
+  colIndex
+}) {
+  const safeTableKind = tableKind === 'assumptions' || tableKind === 'outputs'
+    ? tableKind
+    : 'table';
+  const safeRowLabel = normalizeCellKeyToken(rowLabel, `row-${rowIndex}`);
+  const safeColLabel = normalizeCellKeyToken(colLabel, `col-${colIndex}`);
+  return `${safeTableKind}|${safeRowLabel}|${safeColLabel}`;
+}
+
+function decorateSelectableTableCell(td, {
+  module,
+  tableKind,
+  rowLabel,
+  rowIndex,
+  colLabel,
+  colIndex,
+  selectedSet
+}) {
+  if (!module?.id || (tableKind !== 'assumptions' && tableKind !== 'outputs')) {
+    return;
+  }
+
+  const key = buildTableCellKey(tableKind, {
+    rowLabel,
+    rowIndex,
+    colLabel,
+    colIndex
+  });
+
+  td.dataset.moduleId = module.id;
+  td.dataset.tableKind = tableKind;
+  td.dataset.rowIndex = String(rowIndex);
+  td.dataset.colIndex = String(colIndex);
+  td.dataset.cellKey = key;
+  td.classList.add('cc-cell-hoverable');
+  td.classList.toggle('cc-cell-selected', selectedSet.has(key));
+}
+
 function getLoanEngineInputs(module) {
   return module?.generated?.loanInputs || module?.generated?.mortgageInputs || null;
 }
@@ -675,11 +752,13 @@ function buildAssumptionsTableCard(module, {
   const tbody = document.createElement('tbody');
   tbody.dataset.assumptionsTableBody = module.id;
   const valueColumnIndex = columns.findIndex((column) => String(column).trim().toLowerCase() === 'value');
+  const selectedSet = getHighlightedCellKeySet(module, 'assumptions');
 
-  rows.forEach((row) => {
+  rows.forEach((row, rowIndex) => {
     const tr = document.createElement('tr');
     const safeRow = Array.isArray(row) ? row : [];
     const rowLabel = String(safeRow[0] ?? '');
+    const stableRowLabel = normalizeCellKeyToken(rowLabel, `row-${rowIndex}`);
 
     columns.forEach((_column, index) => {
       const td = document.createElement('td');
@@ -703,6 +782,16 @@ function buildAssumptionsTableCard(module, {
       } else {
         td.textContent = cellText;
       }
+
+      decorateSelectableTableCell(td, {
+        module,
+        tableKind: 'assumptions',
+        rowLabel: stableRowLabel,
+        rowIndex,
+        colLabel: columns[index],
+        colIndex: index,
+        selectedSet
+      });
 
       tr.appendChild(td);
     });
@@ -735,7 +824,11 @@ function hideLayer(layer) {
   layer.setAttribute('aria-hidden', 'true');
 }
 
-function buildTableCard(cardTitle, tableData, { dataGeneratedCard = '' } = {}) {
+function buildTableCard(cardTitle, tableData, {
+  dataGeneratedCard = '',
+  module = null,
+  tableKind = ''
+} = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-table-card';
   if (dataGeneratedCard) {
@@ -747,6 +840,8 @@ function buildTableCard(cardTitle, tableData, { dataGeneratedCard = '' } = {}) {
 
   const columns = Array.isArray(tableData?.columns) ? tableData.columns : [];
   const rows = Array.isArray(tableData?.rows) ? tableData.rows : [];
+  const tableHighlightEnabled = (tableKind === 'assumptions' || tableKind === 'outputs') && Boolean(module?.id);
+  const selectedSet = tableHighlightEnabled ? getHighlightedCellKeySet(module, tableKind) : new Set();
 
   if (columns.length === 0 || rows.length === 0) {
     const empty = document.createElement('p');
@@ -775,13 +870,26 @@ function buildTableCard(cardTitle, tableData, { dataGeneratedCard = '' } = {}) {
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  rows.forEach((row) => {
+  rows.forEach((row, rowIndex) => {
     const tr = document.createElement('tr');
     const safeRow = Array.isArray(row) ? row : [];
+    const stableRowLabel = normalizeCellKeyToken(safeRow[0], `row-${rowIndex}`);
 
-    columns.forEach((_column, index) => {
+    columns.forEach((column, index) => {
       const td = document.createElement('td');
       td.textContent = String(safeRow[index] ?? '');
+
+      if (tableHighlightEnabled) {
+        decorateSelectableTableCell(td, {
+          module,
+          tableKind,
+          rowLabel: stableRowLabel,
+          rowIndex,
+          colLabel: column,
+          colIndex: index,
+          selectedSet
+        });
+      }
       tr.appendChild(td);
     });
 
@@ -1347,7 +1455,11 @@ function buildGeneratedSection(module, {
     grid.appendChild(buildOutputsBucketedCard(generated.outputsBucketed));
   } else {
     const outputsForDisplay = filterOutputsRowsForPensionToggle(module, generated.outputs);
-    grid.appendChild(buildTableCard('Outputs', outputsForDisplay, { dataGeneratedCard: 'outputs' }));
+    grid.appendChild(buildTableCard('Outputs', outputsForDisplay, {
+      dataGeneratedCard: 'outputs',
+      module,
+      tableKind: 'outputs'
+    }));
   }
   if (Array.isArray(generated.tables) && generated.tables.length > 0) {
     generated.tables.forEach((table, tableIndex) => {
@@ -1426,7 +1538,11 @@ export function patchFocusedGeneratedCards({
       : buildTableCard(
         'Outputs',
         filterOutputsRowsForPensionToggle(module, generated.outputs),
-        { dataGeneratedCard: 'outputs' }
+        {
+          dataGeneratedCard: 'outputs',
+          module,
+          tableKind: 'outputs'
+        }
       );
     replaceGeneratedCard({
       grid,
