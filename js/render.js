@@ -1,4 +1,5 @@
 import { computeGridPosition, applyOverviewLayout } from './layout.js';
+import { renderSvgDiagram, serializeSvg } from './education_svg.js';
 
 function formatLocalTime(isoString) {
   try {
@@ -197,6 +198,117 @@ function getLoanEngineInputs(module) {
 
 function isMortgageModule(module) {
   return Boolean(getLoanEngineInputs(module));
+}
+
+function isEducationModule(module) {
+  const education = module?.generated?.education;
+  if (education && typeof education === 'object' && !Array.isArray(education)) {
+    return true;
+  }
+
+  const topic = module?.generated?.education?.topic;
+  return typeof topic === 'string' && topic.trim().length > 0;
+}
+
+function sanitizeFileToken(value, fallback) {
+  const normalized = String(value ?? '')
+    .trim()
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+  return normalized || fallback;
+}
+
+function sanitizeEducationChart(chart, index = 0) {
+  if (!chart || typeof chart !== 'object' || Array.isArray(chart)) {
+    return null;
+  }
+
+  const labels = Array.isArray(chart.labels)
+    ? chart.labels.map((label) => String(label ?? ''))
+    : [];
+  const datasets = Array.isArray(chart.datasets)
+    ? chart.datasets
+      .filter((dataset) => dataset && typeof dataset === 'object' && !Array.isArray(dataset))
+      .map((dataset, datasetIndex) => ({
+        label: typeof dataset.label === 'string' && dataset.label.trim()
+          ? dataset.label
+          : `Series ${datasetIndex + 1}`,
+        data: Array.isArray(dataset.data)
+          ? dataset.data.map((value) => {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+          })
+          : []
+      }))
+    : [];
+
+  if (datasets.length === 0) {
+    return null;
+  }
+
+  return {
+    id: typeof chart.id === 'string' && chart.id.trim()
+      ? chart.id
+      : `education-chart-${index + 1}`,
+    title: typeof chart.title === 'string' && chart.title.trim()
+      ? chart.title
+      : `Chart ${index + 1}`,
+    type: chart.type === 'bar' ? 'bar' : 'line',
+    labels,
+    datasets
+  };
+}
+
+function getEducationVisuals(module) {
+  const visuals = module?.generated?.education?.visuals;
+  return Array.isArray(visuals) ? visuals : [];
+}
+
+export function getEducationChartVisuals(module) {
+  const visuals = getEducationVisuals(module);
+  const charts = [];
+
+  visuals.forEach((visual) => {
+    if (!visual || typeof visual !== 'object' || Array.isArray(visual)) {
+      return;
+    }
+
+    const type = String(visual.type || '').trim().toLowerCase();
+    if (type !== 'chart') {
+      return;
+    }
+
+    const normalizedChart = sanitizeEducationChart(visual.chart, charts.length);
+    if (normalizedChart) {
+      charts.push(normalizedChart);
+    }
+  });
+
+  return charts;
+}
+
+export function getChartHydrationModule(module) {
+  if (!module || typeof module !== 'object') {
+    return module;
+  }
+
+  if (!isEducationModule(module)) {
+    return module;
+  }
+
+  const charts = getEducationChartVisuals(module);
+  if (charts.length === 0) {
+    return module;
+  }
+
+  return {
+    ...module,
+    generated: {
+      ...(module.generated || {}),
+      charts
+    }
+  };
 }
 
 function formatNumberForInput(value, maxDecimals = 4) {
@@ -1420,6 +1532,409 @@ function buildChartsCard(module, charts, { showPensionToggle = true, readOnly = 
   return card;
 }
 
+function downloadSvgVisual(svgElement, filenameBase = 'diagram') {
+  try {
+    const serialized = serializeSvg(svgElement);
+    const blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${sanitizeFileToken(filenameBase, 'diagram')}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (_error) {
+    window.alert('Could not download SVG from this visual.');
+  }
+}
+
+function copySvgVisual(svgElement, statusElement = null) {
+  if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+    if (statusElement) {
+      statusElement.textContent = 'Clipboard unavailable';
+    }
+    return;
+  }
+
+  let serialized = '';
+  try {
+    serialized = serializeSvg(svgElement);
+  } catch (_error) {
+    if (statusElement) {
+      statusElement.textContent = 'Could not serialize SVG';
+    }
+    return;
+  }
+
+  navigator.clipboard.writeText(serialized).then(() => {
+    if (!statusElement) {
+      return;
+    }
+    statusElement.textContent = 'Copied';
+    window.setTimeout(() => {
+      if (statusElement.textContent === 'Copied') {
+        statusElement.textContent = '';
+      }
+    }, 1200);
+  }).catch(() => {
+    if (statusElement) {
+      statusElement.textContent = 'Copy failed';
+    }
+  });
+}
+
+function buildEducationTopicCard(module, education) {
+  const card = document.createElement('section');
+  card.className = 'generated-card education-topic-card';
+
+  const { header } = buildGeneratedCardHeader('Topic');
+  card.appendChild(header);
+
+  const topic = typeof education?.topic === 'string' && education.topic.trim()
+    ? education.topic.trim()
+    : (module?.title || 'Education');
+  const audience = typeof education?.audience === 'string' && education.audience.trim()
+    ? education.audience.trim()
+    : '';
+
+  const topicLine = document.createElement('p');
+  topicLine.className = 'education-topic-line';
+  topicLine.textContent = topic;
+  card.appendChild(topicLine);
+
+  if (audience) {
+    const audienceLine = document.createElement('p');
+    audienceLine.className = 'education-audience-line';
+    audienceLine.textContent = `Audience: ${audience}`;
+    card.appendChild(audienceLine);
+  }
+
+  return card;
+}
+
+function buildEducationSectionsCard(education) {
+  const card = document.createElement('section');
+  card.className = 'generated-card education-sections-card';
+
+  const { header } = buildGeneratedCardHeader('Sections');
+  card.appendChild(header);
+
+  const sections = Array.isArray(education?.sections) ? education.sections : [];
+  if (sections.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'No sections provided.';
+    card.appendChild(empty);
+    return card;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'education-sections-list';
+
+  sections.forEach((section, index) => {
+    const details = document.createElement('details');
+    details.className = 'education-section-block';
+    details.open = index === 0;
+
+    const summary = document.createElement('summary');
+    summary.className = 'education-section-summary';
+    summary.textContent = section?.title || `Section ${index + 1}`;
+    details.appendChild(summary);
+
+    const bodyWrap = document.createElement('div');
+    bodyWrap.className = 'education-section-body';
+
+    const safeBodyHtml = sanitizeSummaryHtml(section?.bodyHtml || '');
+    if (safeBodyHtml) {
+      const bodyContent = document.createElement('div');
+      bodyContent.className = 'education-section-body-content';
+      bodyContent.innerHTML = safeBodyHtml;
+      bodyWrap.appendChild(bodyContent);
+    }
+
+    const bullets = Array.isArray(section?.bullets)
+      ? section.bullets.filter((bullet) => typeof bullet === 'string' && bullet.trim())
+      : [];
+    if (bullets.length > 0) {
+      const ul = document.createElement('ul');
+      ul.className = 'education-section-bullets';
+      bullets.forEach((bullet) => {
+        const li = document.createElement('li');
+        li.textContent = bullet;
+        ul.appendChild(li);
+      });
+      bodyWrap.appendChild(ul);
+    }
+
+    if (!safeBodyHtml && bullets.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'generated-empty';
+      empty.textContent = 'No section details provided.';
+      bodyWrap.appendChild(empty);
+    }
+
+    details.appendChild(bodyWrap);
+    list.appendChild(details);
+  });
+
+  card.appendChild(list);
+  return card;
+}
+
+function buildEducationChartVisualCard(visual, chart, chartIndex) {
+  const card = document.createElement('article');
+  card.className = 'education-visual-card education-chart-card generated-chart-block';
+  card.dataset.chartIndex = String(chartIndex);
+
+  const chartTop = document.createElement('div');
+  chartTop.className = 'generated-chart-top';
+
+  const title = document.createElement('h4');
+  title.className = 'generated-chart-title';
+  title.textContent = chart.title || visual?.title || `Chart ${chartIndex + 1}`;
+  chartTop.appendChild(title);
+
+  const downloadButton = document.createElement('button');
+  downloadButton.type = 'button';
+  downloadButton.className = 'chart-download-btn';
+  downloadButton.textContent = 'CSV';
+  downloadButton.title = 'Download CSV';
+  downloadButton.setAttribute('aria-label', `Download CSV for ${title.textContent}`);
+  downloadButton.setAttribute('data-chart-download', 'true');
+  chartTop.appendChild(downloadButton);
+
+  card.appendChild(chartTop);
+
+  if (typeof visual?.subtitle === 'string' && visual.subtitle.trim()) {
+    const subtitle = document.createElement('p');
+    subtitle.className = 'education-visual-subtitle';
+    subtitle.textContent = visual.subtitle.trim();
+    card.appendChild(subtitle);
+  }
+
+  const canvasWrap = document.createElement('div');
+  canvasWrap.className = 'generated-chart-canvas-wrap';
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'generated-chart-canvas';
+  canvas.height = 220;
+  canvasWrap.appendChild(canvas);
+
+  card.appendChild(canvasWrap);
+  return card;
+}
+
+function buildEducationSvgVisualCard(module, visual, visualIndex) {
+  const titleText = typeof visual?.title === 'string' && visual.title.trim()
+    ? visual.title.trim()
+    : `Diagram ${visualIndex + 1}`;
+
+  const card = document.createElement('article');
+  card.className = 'education-visual-card education-svg-card';
+  card.dataset.svgTheme = 'dark';
+
+  const top = document.createElement('div');
+  top.className = 'education-visual-top';
+
+  const title = document.createElement('h4');
+  title.className = 'generated-chart-title';
+  title.textContent = titleText;
+  top.appendChild(title);
+
+  const actions = document.createElement('div');
+  actions.className = 'education-visual-actions';
+
+  const downloadButton = document.createElement('button');
+  downloadButton.type = 'button';
+  downloadButton.className = 'chart-download-btn';
+  downloadButton.textContent = 'Download SVG';
+  downloadButton.disabled = true;
+  actions.appendChild(downloadButton);
+
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.className = 'chart-download-btn';
+  copyButton.textContent = 'Copy SVG';
+  copyButton.disabled = true;
+  actions.appendChild(copyButton);
+
+  const copyStatus = document.createElement('span');
+  copyStatus.className = 'education-copy-status';
+  copyStatus.setAttribute('aria-live', 'polite');
+  actions.appendChild(copyStatus);
+
+  top.appendChild(actions);
+  card.appendChild(top);
+
+  if (typeof visual?.subtitle === 'string' && visual.subtitle.trim()) {
+    const subtitle = document.createElement('p');
+    subtitle.className = 'education-visual-subtitle';
+    subtitle.textContent = visual.subtitle.trim();
+    card.appendChild(subtitle);
+  }
+
+  const svgHost = document.createElement('div');
+  svgHost.className = 'education-svg-host';
+  card.appendChild(svgHost);
+
+  try {
+    const svg = renderSvgDiagram(visual?.svgSpec || {});
+    if (!(svg instanceof SVGElement)) {
+      throw new Error('Diagram renderer returned an invalid SVG element.');
+    }
+
+    const svgTheme = String(svg.getAttribute('data-theme') || visual?.svgSpec?.theme || 'dark')
+      .trim()
+      .toLowerCase() === 'light'
+      ? 'light'
+      : 'dark';
+    card.dataset.svgTheme = svgTheme;
+    svgHost.appendChild(svg);
+
+    const baseName = `${module?.title || module?.id || 'module'}-${titleText}`;
+    downloadButton.disabled = false;
+    downloadButton.addEventListener('click', () => {
+      downloadSvgVisual(svg, baseName);
+    });
+
+    copyButton.disabled = false;
+    copyButton.addEventListener('click', () => {
+      copySvgVisual(svg, copyStatus);
+    });
+  } catch (error) {
+    const inlineError = document.createElement('p');
+    inlineError.className = 'education-visual-error';
+    inlineError.textContent = `Could not render SVG visual: ${error?.message || 'Invalid svgSpec.'}`;
+    svgHost.appendChild(inlineError);
+  }
+
+  return card;
+}
+
+function buildEducationVisualsCard(module, education) {
+  const card = document.createElement('section');
+  card.className = 'generated-card education-visuals-card generated-charts-card';
+  card.dataset.generatedCard = 'education-visuals';
+
+  const { header } = buildGeneratedCardHeader('Visuals');
+  card.appendChild(header);
+
+  const visuals = Array.isArray(education?.visuals) ? education.visuals : [];
+  if (visuals.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'No visuals generated yet.';
+    card.appendChild(empty);
+    return card;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'education-visuals-list generated-charts-list';
+
+  let chartIndex = 0;
+  visuals.forEach((visual, visualIndex) => {
+    const type = String(visual?.type || '').trim().toLowerCase();
+    if (type === 'chart') {
+      const chart = sanitizeEducationChart(visual?.chart, chartIndex);
+      if (!chart) {
+        const errorCard = document.createElement('article');
+        errorCard.className = 'education-visual-card education-visual-error-card';
+        const error = document.createElement('p');
+        error.className = 'education-visual-error';
+        error.textContent = 'Could not render chart visual: invalid chart schema.';
+        errorCard.appendChild(error);
+        list.appendChild(errorCard);
+        return;
+      }
+
+      list.appendChild(buildEducationChartVisualCard(visual, chart, chartIndex));
+      chartIndex += 1;
+      return;
+    }
+
+    if (type === 'svg') {
+      list.appendChild(buildEducationSvgVisualCard(module, visual, visualIndex));
+      return;
+    }
+
+    const unsupported = document.createElement('article');
+    unsupported.className = 'education-visual-card education-visual-error-card';
+    const error = document.createElement('p');
+    error.className = 'education-visual-error';
+    error.textContent = `Unsupported visual type \"${type || 'unknown'}\".`;
+    unsupported.appendChild(error);
+    list.appendChild(unsupported);
+  });
+
+  card.appendChild(list);
+  return card;
+}
+
+function buildEducationReferencesCard(education) {
+  const references = Array.isArray(education?.references) ? education.references : [];
+  if (references.length === 0) {
+    return null;
+  }
+
+  const card = document.createElement('section');
+  card.className = 'generated-card education-references-card';
+
+  const { header } = buildGeneratedCardHeader('References');
+  card.appendChild(header);
+
+  const list = document.createElement('ul');
+  list.className = 'education-references-list';
+
+  references.forEach((reference, index) => {
+    const item = document.createElement('li');
+    item.className = 'education-reference-item';
+
+    const label = typeof reference?.label === 'string' && reference.label.trim()
+      ? reference.label.trim()
+      : `Reference ${index + 1}`;
+    const kind = typeof reference?.kind === 'string' && reference.kind.trim()
+      ? ` (${reference.kind.trim()})`
+      : '';
+    const note = typeof reference?.note === 'string' && reference.note.trim()
+      ? ` - ${reference.note.trim()}`
+      : '';
+    item.textContent = `${label}${kind}${note}`;
+    list.appendChild(item);
+  });
+
+  card.appendChild(list);
+  return card;
+}
+
+function renderEducationModule(module) {
+  const education = module?.generated?.education || {};
+
+  const section = document.createElement('section');
+  section.className = 'generated-section education-generated-section';
+
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = 'Education';
+
+  const grid = document.createElement('div');
+  grid.className = 'generated-grid education-generated-grid';
+
+  grid.appendChild(buildEducationTopicCard(module, education));
+  grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || ''));
+  grid.appendChild(buildEducationSectionsCard(education));
+  grid.appendChild(buildEducationVisualsCard(module, education));
+
+  const referencesCard = buildEducationReferencesCard(education);
+  if (referencesCard) {
+    grid.appendChild(referencesCard);
+  }
+
+  section.appendChild(heading);
+  section.appendChild(grid);
+  return section;
+}
+
 function buildGeneratedSection(module, {
   showPensionToggle = true,
   readOnly = false,
@@ -1432,8 +1947,13 @@ function buildGeneratedSection(module, {
     outputs: { columns: [], rows: [] },
     tables: [],
     outputsBucketed: null,
+    education: null,
     charts: []
   };
+
+  if (isEducationModule(module)) {
+    return renderEducationModule(module);
+  }
 
   const section = document.createElement('section');
   section.className = 'generated-section';
@@ -1502,6 +2022,10 @@ export function patchFocusedGeneratedCards({
   patchOutputs = true
 }) {
   if (!focusedCard || !module) {
+    return;
+  }
+
+  if (isEducationModule(module)) {
     return;
   }
 

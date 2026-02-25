@@ -28,6 +28,7 @@ import {
   renderGreeting,
   buildFocusedPane,
   patchFocusedGeneratedCards,
+  getChartHydrationModule,
   renderOverview,
   setMode,
   updateControls,
@@ -189,6 +190,250 @@ const EXAMPLE_PAYLOADS = [
             ]
           }
         ]
+      }
+    }
+  },
+  {
+    id: 'education-htb-flowchart-demo',
+    label: 'Education: HTB Flowchart Demo',
+    payload: {
+      title: 'Education - Help to Buy',
+      generated: {
+        summaryHtml: '<p>Use this education module to explain the Help to Buy path from eligibility checks to claim submission.</p>',
+        education: {
+          topic: 'Help to Buy (Ireland)',
+          audience: 'First-time buyers',
+          sections: [
+            {
+              id: 'what-it-is',
+              title: 'What It Is',
+              bodyHtml: '<p>Help to Buy can provide a tax refund contribution toward a qualifying new-build purchase.</p>',
+              bullets: [
+                'Eligibility depends on buyer and property criteria.',
+                'Refund limits can change over time.',
+                'Use current Revenue guidance before applying.'
+              ]
+            },
+            {
+              id: 'how-to-apply',
+              title: 'How To Apply',
+              bodyHtml: '<p>The process usually starts with eligibility checks, then proceeds through mortgage and builder milestones.</p>',
+              bullets: [
+                'Collect identity and tax-compliance documents.',
+                'Confirm your loan and property meet current thresholds.',
+                'Submit in sequence to avoid rework.'
+              ]
+            }
+          ],
+          visuals: [
+            {
+              type: 'svg',
+              title: 'Help to Buy Flow',
+              subtitle: 'Eligibility through claim',
+              svgSpec: {
+                kind: 'flowchart',
+                theme: 'dark',
+                layout: {
+                  direction: 'TB',
+                  nodeWidth: 216,
+                  nodeHeight: 72,
+                  gapX: 48,
+                  gapY: 34,
+                  connector: 'elbow'
+                },
+                nodes: [
+                  { id: 'check', label: 'Check eligibility' },
+                  { id: 'prepare', label: 'Prepare supporting docs' },
+                  { id: 'mortgage', label: 'Mortgage approval in principle' },
+                  { id: 'contract', label: 'Sign contract with builder' },
+                  { id: 'submit', label: 'Submit HTB claim details' },
+                  { id: 'confirm', label: 'Claim confirmed for drawdown' }
+                ],
+                edges: [
+                  { from: 'check', to: 'prepare' },
+                  { from: 'prepare', to: 'mortgage' },
+                  { from: 'mortgage', to: 'contract' },
+                  { from: 'contract', to: 'submit' },
+                  { from: 'submit', to: 'confirm' }
+                ]
+              }
+            },
+            {
+              type: 'chart',
+              chart: {
+                title: 'HTB Example Size and Cap',
+                type: 'bar',
+                labels: ['Property price', 'Illustrative max rebate'],
+                datasets: [
+                  { label: 'EUR', data: [500000, 30000] }
+                ]
+              }
+            }
+          ],
+          references: [
+            {
+              label: 'Revenue - Help to Buy',
+              kind: 'official',
+              note: 'Verify current limits before client recommendations.'
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    id: 'education-trusts-timeline-demo',
+    label: 'Education: Trusts Timeline Demo',
+    payload: {
+      title: 'Education - Trusts Timeline',
+      generated: {
+        summaryHtml: '<p>This module gives a timeline view for a simple trust setup and review cycle.</p>',
+        education: {
+          topic: 'How a Trust Is Set Up and Managed',
+          sections: [
+            {
+              id: 'timeline-overview',
+              title: 'Timeline Overview',
+              bodyHtml: '<p>Trust planning usually moves from intent, to setup, to funded operation, then ongoing review.</p>',
+              bullets: [
+                'Legal and tax advice should be coordinated early.',
+                'Trustee responsibilities continue after setup.'
+              ]
+            }
+          ],
+          visuals: [
+            {
+              type: 'svg',
+              title: 'Trust Lifecycle Timeline',
+              subtitle: 'Chronological view across roles',
+              svgSpec: {
+                kind: 'timeline',
+                theme: 'dark',
+                layout: {
+                  eventGap: 210,
+                  laneGap: 130,
+                  nodeWidth: 180,
+                  nodeHeight: 84
+                },
+                lanes: [
+                  { id: 'settlor', title: 'Settlor' },
+                  { id: 'trustee', title: 'Trustee' },
+                  { id: 'beneficiary', title: 'Beneficiary' }
+                ],
+                events: [
+                  {
+                    id: 'intent',
+                    label: 'Define trust objective',
+                    lane: 'settlor',
+                    when: 'Week 1',
+                    order: 1
+                  },
+                  {
+                    id: 'deed',
+                    label: 'Execute trust deed',
+                    lane: 'settlor',
+                    when: 'Week 2',
+                    order: 2
+                  },
+                  {
+                    id: 'fund',
+                    label: 'Transfer assets into trust',
+                    lane: 'trustee',
+                    when: 'Week 3',
+                    order: 3
+                  },
+                  {
+                    id: 'admin',
+                    label: 'Admin and compliance setup',
+                    lane: 'trustee',
+                    when: 'Week 4',
+                    order: 4
+                  },
+                  {
+                    id: 'review',
+                    label: 'Annual beneficiary review',
+                    lane: 'beneficiary',
+                    when: 'Yearly',
+                    order: 5
+                  }
+                ]
+              }
+            }
+          ],
+          references: [
+            {
+              label: 'Citizens Information - Trusts',
+              kind: 'official',
+              note: 'Use legal counsel for trust deed drafting.'
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    id: 'education-first-home-decision-demo',
+    label: 'Education: First Home Decision Demo',
+    payload: {
+      title: 'Education - First Home Decision Tree',
+      generated: {
+        summaryHtml: '<p>A decision tree can help first-home buyers evaluate readiness before offering on a property.</p>',
+        education: {
+          topic: 'First Home Purchase Decision Tree',
+          audience: 'First-time buyers',
+          sections: [
+            {
+              id: 'decision-logic',
+              title: 'Decision Logic',
+              bodyHtml: '<p>Progress through each branch in order to reduce avoidable delays or financing surprises.</p>',
+              bullets: [
+                'Branch outcomes should be evidence-based.',
+                'Use lender and solicitor feedback before proceeding.'
+              ]
+            }
+          ],
+          visuals: [
+            {
+              type: 'svg',
+              title: 'First Home Decision Tree',
+              subtitle: 'Go / hold checkpoints',
+              svgSpec: {
+                kind: 'decisionTree',
+                theme: 'dark',
+                layout: {
+                  direction: 'TB',
+                  nodeWidth: 210,
+                  nodeHeight: 74,
+                  gapX: 56,
+                  gapY: 36,
+                  connector: 'elbow'
+                },
+                nodes: [
+                  { id: 'start', label: 'Deposit target met?' },
+                  { id: 'credit', label: 'Credit profile acceptable?' },
+                  { id: 'income', label: 'Income supports repayments?' },
+                  { id: 'go', label: 'Proceed to property search' },
+                  { id: 'wait', label: 'Pause and improve readiness' }
+                ],
+                edges: [
+                  { from: 'start', to: 'credit', label: 'Yes' },
+                  { from: 'start', to: 'wait', label: 'No' },
+                  { from: 'credit', to: 'income', label: 'Yes' },
+                  { from: 'credit', to: 'wait', label: 'No' },
+                  { from: 'income', to: 'go', label: 'Yes' },
+                  { from: 'income', to: 'wait', label: 'No' }
+                ]
+              }
+            }
+          ],
+          references: [
+            {
+              label: 'Central Bank mortgage rules',
+              kind: 'official',
+              note: 'Confirm latest lending limits and exceptions.'
+            }
+          ]
+        }
       }
     }
   },
@@ -875,7 +1120,8 @@ function patchFocusedModuleGeneratedContent(moduleId, {
     return;
   }
 
-  updateChartsForPane(activePane, module, {
+  const chartModule = getChartHydrationModule(module);
+  updateChartsForPane(activePane, chartModule, {
     clientName: appState.session.clientName || 'Client',
     moduleTitle: module.title?.trim() || 'Untitled Module',
     paneKey: 'focused-active'
@@ -2618,6 +2864,184 @@ function validateChartsPayload(charts) {
   });
 }
 
+function cloneEducationSpecValue(value, depth = 0) {
+  if (depth > 24) {
+    return null;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value === 'string' || typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => cloneEducationSpecValue(entry, depth + 1))
+      .filter((entry) => typeof entry !== 'undefined');
+  }
+
+  if (value && typeof value === 'object') {
+    const clone = {};
+    Object.entries(value).forEach(([key, childValue]) => {
+      const normalized = cloneEducationSpecValue(childValue, depth + 1);
+      if (typeof normalized !== 'undefined') {
+        clone[key] = normalized;
+      }
+    });
+    return clone;
+  }
+
+  return undefined;
+}
+
+function validateEducationPayload(education) {
+  if (education === null) {
+    return null;
+  }
+
+  if (!education || typeof education !== 'object' || Array.isArray(education)) {
+    throw new Error('generated.education must be an object.');
+  }
+
+  const normalized = {
+    topic: typeof education.topic === 'string' ? education.topic : '',
+    sections: [],
+    visuals: [],
+    references: []
+  };
+
+  if ('audience' in education) {
+    if (typeof education.audience !== 'string') {
+      throw new Error('generated.education.audience must be a string when provided.');
+    }
+    if (education.audience.trim()) {
+      normalized.audience = education.audience.trim();
+    }
+  }
+
+  if ('sections' in education) {
+    if (!Array.isArray(education.sections)) {
+      throw new Error('generated.education.sections must be an array when provided.');
+    }
+
+    normalized.sections = education.sections.map((section, sectionIndex) => {
+      if (!section || typeof section !== 'object' || Array.isArray(section)) {
+        throw new Error(`generated.education.sections[${sectionIndex}] must be an object.`);
+      }
+
+      const bullets = Array.isArray(section.bullets)
+        ? section.bullets.map((bullet, bulletIndex) => {
+          if (typeof bullet !== 'string') {
+            throw new Error(`generated.education.sections[${sectionIndex}].bullets[${bulletIndex}] must be a string.`);
+          }
+          return bullet;
+        })
+        : [];
+
+      if ('bodyHtml' in section && typeof section.bodyHtml !== 'string') {
+        throw new Error(`generated.education.sections[${sectionIndex}].bodyHtml must be a string when provided.`);
+      }
+
+      return {
+        id: typeof section.id === 'string' && section.id.trim()
+          ? section.id.trim()
+          : `section-${sectionIndex + 1}`,
+        title: typeof section.title === 'string' && section.title.trim()
+          ? section.title.trim()
+          : `Section ${sectionIndex + 1}`,
+        bodyHtml: typeof section.bodyHtml === 'string' ? section.bodyHtml : '',
+        bullets
+      };
+    });
+  }
+
+  if ('visuals' in education) {
+    if (!Array.isArray(education.visuals)) {
+      throw new Error('generated.education.visuals must be an array when provided.');
+    }
+
+    normalized.visuals = education.visuals.map((visual, visualIndex) => {
+      if (!visual || typeof visual !== 'object' || Array.isArray(visual)) {
+        throw new Error(`generated.education.visuals[${visualIndex}] must be an object.`);
+      }
+
+      const type = String(visual.type || '').trim().toLowerCase();
+      const title = typeof visual.title === 'string' ? visual.title : '';
+      const subtitle = typeof visual.subtitle === 'string' ? visual.subtitle : '';
+
+      if (type === 'svg') {
+        if (!visual.svgSpec || typeof visual.svgSpec !== 'object' || Array.isArray(visual.svgSpec)) {
+          throw new Error(`generated.education.visuals[${visualIndex}].svgSpec must be an object for type \"svg\".`);
+        }
+
+        return {
+          type: 'svg',
+          title,
+          subtitle,
+          svgSpec: cloneEducationSpecValue(visual.svgSpec) || {}
+        };
+      }
+
+      if (type === 'chart') {
+        if (!visual.chart || typeof visual.chart !== 'object' || Array.isArray(visual.chart)) {
+          throw new Error(`generated.education.visuals[${visualIndex}].chart must be an object for type \"chart\".`);
+        }
+
+        const chart = validateChartsPayload([visual.chart])[0];
+        return {
+          type: 'chart',
+          title,
+          subtitle,
+          chart
+        };
+      }
+
+      throw new Error(`generated.education.visuals[${visualIndex}].type must be \"svg\" or \"chart\".`);
+    });
+  }
+
+  if ('references' in education) {
+    if (!Array.isArray(education.references)) {
+      throw new Error('generated.education.references must be an array when provided.');
+    }
+
+    normalized.references = education.references.map((reference, referenceIndex) => {
+      if (!reference || typeof reference !== 'object' || Array.isArray(reference)) {
+        throw new Error(`generated.education.references[${referenceIndex}] must be an object.`);
+      }
+
+      if ('label' in reference && typeof reference.label !== 'string') {
+        throw new Error(`generated.education.references[${referenceIndex}].label must be a string when provided.`);
+      }
+
+      if ('kind' in reference && typeof reference.kind !== 'string') {
+        throw new Error(`generated.education.references[${referenceIndex}].kind must be a string when provided.`);
+      }
+
+      if ('note' in reference && typeof reference.note !== 'string') {
+        throw new Error(`generated.education.references[${referenceIndex}].note must be a string when provided.`);
+      }
+
+      return {
+        label: typeof reference.label === 'string' && reference.label.trim()
+          ? reference.label.trim()
+          : `Reference ${referenceIndex + 1}`,
+        kind: typeof reference.kind === 'string' ? reference.kind.trim() : '',
+        note: typeof reference.note === 'string' ? reference.note : ''
+      };
+    });
+  }
+
+  return normalized;
+}
+
 function validatePensionInputsPayload(pensionInputs) {
   return normalizePensionInputs(pensionInputs);
 }
@@ -2699,6 +3123,10 @@ function normalizePayload(payload) {
       generatedPatch.loanInputs = validateLoanInputsPayload(payload.generated.loanInputs);
     }
 
+    if ('education' in payload.generated) {
+      generatedPatch.education = validateEducationPayload(payload.generated.education);
+    }
+
     normalized.generated = generatedPatch;
   }
 
@@ -2718,7 +3146,8 @@ function hydrateChartsForActivePane() {
     return;
   }
 
-  renderChartsForPane(activePane, activeModule, {
+  const chartModule = getChartHydrationModule(activeModule);
+  renderChartsForPane(activePane, chartModule, {
     clientName: appState.session.clientName || 'Client',
     moduleTitle: activeModule.title?.trim() || 'Untitled Module',
     paneKey: 'focused-active'
@@ -3313,12 +3742,12 @@ async function renderCompareView() {
   setMode(ui, 'focused');
   updateUiChrome();
 
-  renderChartsForPane(leftPane, leftModule, {
+  renderChartsForPane(leftPane, getChartHydrationModule(leftModule), {
     clientName: appState.session.clientName || 'Client',
     moduleTitle: leftTitle,
     paneKey: 'compare-left'
   });
-  renderChartsForPane(rightPane, rightModule, {
+  renderChartsForPane(rightPane, getChartHydrationModule(rightModule), {
     clientName: appState.session.clientName || 'Client',
     moduleTitle: rightTitle,
     paneKey: 'compare-right'
@@ -3854,6 +4283,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
     if (generatedPatch.pensionInputs) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
+      module.generated.education = null;
     }
   }
 
@@ -3862,6 +4292,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
     if (generatedPatch.mortgageInputs) {
       module.generated.pensionInputs = null;
       module.generated.loanInputs = null;
+      module.generated.education = null;
     }
   }
 
@@ -3870,6 +4301,16 @@ function mergeGeneratedPatch(module, generatedPatch) {
     if (generatedPatch.loanInputs) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
+      module.generated.education = null;
+    }
+  }
+
+  if ('education' in generatedPatch) {
+    module.generated.education = generatedPatch.education;
+    if (generatedPatch.education) {
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
     }
   }
 
