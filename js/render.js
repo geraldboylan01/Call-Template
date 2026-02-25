@@ -2426,9 +2426,10 @@ export function updateControls(ui, {
 
   if (ui.nextArrowButton) {
     ui.nextArrowButton.classList.toggle('is-hidden', mode !== 'focused');
-    ui.nextArrowButton.disabled = readOnly ? !hasNext : false;
-    ui.nextArrowButton.title = readOnly ? 'Next module' : 'New module';
-    ui.nextArrowButton.setAttribute('aria-label', readOnly ? 'Next module' : 'New module');
+    ui.nextArrowButton.disabled = readOnly ? !hasNext : !hasModules;
+    const nextLabel = (readOnly || hasNext) ? 'Next module' : 'Create new module';
+    ui.nextArrowButton.title = nextLabel;
+    ui.nextArrowButton.setAttribute('aria-label', nextLabel);
   }
 }
 

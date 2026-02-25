@@ -227,12 +227,20 @@ textarea {
 .focused-view {
   display: grid;
   place-items: center;
+  padding: 8px 0 12px;
+  overflow: hidden;
+}
+
+body.focus-mode:not(.compare-mode) #focusLayer {
+  overflow: hidden;
 }
 
 .swipe-stage {
   position: relative;
-  width: min(900px, calc(100vw - 120px));
-  height: min(640px, calc(100vh - var(--topbar-height) - 70px));
+  width: min(1600px, 96vw);
+  max-width: calc(100vw - 8px);
+  height: calc(100vh - var(--topbar-height) - 24px);
+  max-height: calc(100vh - var(--topbar-height) - 24px);
   overflow: hidden;
   border-radius: 28px;
 }
@@ -254,8 +262,8 @@ textarea {
   width: 100%;
   height: 100%;
   display: grid;
-  place-items: center;
-  padding: 16px;
+  place-items: stretch;
+  padding: 12px;
 }
 
 .module-card {
@@ -267,13 +275,15 @@ textarea {
 }
 
 .focused-module-card {
-  width: min(780px, calc(100vw - 160px));
-  height: min(560px, calc(100vh - var(--topbar-height) - 120px));
+  width: 100%;
+  height: 100%;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .module-meta {
@@ -2011,8 +2021,11 @@ body.overview-has-selection .toast-host {
   }
 
   .swipe-stage {
-    width: min(100vw - 36px, 760px);
-    height: min(100vh - var(--topbar-height) - 42px, 620px);
+    width: min(100vw - 12px, 1600px);
+    max-width: calc(100vw - 12px);
+    height: calc(100vh - var(--topbar-height) - 14px);
+    max-height: calc(100vh - var(--topbar-height) - 14px);
+    border-radius: 22px;
   }
 
   .swipe-stage.is-compare {
@@ -2021,8 +2034,8 @@ body.overview-has-selection .toast-host {
   }
 
   .focused-module-card {
-    width: min(100vw - 44px, 760px);
-    height: min(100vh - var(--topbar-height) - 62px, 620px);
+    width: 100%;
+    height: 100%;
     padding: 16px;
   }
 

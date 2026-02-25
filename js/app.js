@@ -3634,9 +3634,18 @@ function updateUiChrome() {
   });
 
   document.body.classList.toggle('compare-mode', appState.mode === 'compare');
+  document.body.classList.toggle('focus-mode', appState.mode === 'focused');
   document.body.classList.toggle('overview-has-selection', appState.mode === 'overview' && appState.overviewSelection.length > 0);
   setOverviewMultiSelectArmed(appState.overviewMultiSelectArmed);
   renderGreeting(ui, appState.session.clientName);
+
+  if (appState.mode === 'focused' && typeof window.__callcanvasReflowCharts === 'function') {
+    window.requestAnimationFrame(() => {
+      if (appState.mode === 'focused') {
+        window.__callcanvasReflowCharts();
+      }
+    });
+  }
 }
 
 function getFocusedPaneForModule(module, {
@@ -4597,6 +4606,25 @@ async function focusNextModule() {
   });
 }
 
+async function focusNextModuleOrCreate() {
+  if (runtimeConfig.readOnly) {
+    await focusNextModule();
+    return;
+  }
+
+  if (appState.mode !== 'focused') {
+    await createNewModule();
+    return;
+  }
+
+  if (hasNextModule()) {
+    await focusNextModule();
+    return;
+  }
+
+  await createNewModule();
+}
+
 async function handleLoadSessionFromFile(file) {
   if (runtimeConfig.readOnly) {
     return;
@@ -4736,11 +4764,7 @@ function bindEvents() {
 
   if (ui.nextArrowButton) {
     ui.nextArrowButton.addEventListener('click', async () => {
-      if (runtimeConfig.readOnly) {
-        await focusNextModule();
-      } else {
-        await createNewModule();
-      }
+      await focusNextModuleOrCreate();
     });
   }
 
@@ -4864,10 +4888,12 @@ function bindEvents() {
         return;
       }
       event.preventDefault();
-      if (runtimeConfig.readOnly) {
-        await focusNextModule();
+      if (appState.mode === 'focused') {
+        await focusNextModuleOrCreate();
       } else {
-        await createNewModule();
+        if (!runtimeConfig.readOnly) {
+          await createNewModule();
+        }
       }
       return;
     }
