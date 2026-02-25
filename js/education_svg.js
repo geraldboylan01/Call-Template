@@ -962,86 +962,166 @@ function renderProcessMap(spec) {
   return svg;
 }
 
-function normalizeComparisonColumns(spec, cells) {
-  const columns = [];
-  const seen = new Set();
+function normalizeComparisonToken(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
 
-  if (Array.isArray(spec.columns)) {
-    spec.columns.forEach((column, index) => {
-      if (typeof column === 'string') {
-        const name = toNonEmptyString(column);
-        if (!name || seen.has(name)) {
-          return;
-        }
-        seen.add(name);
-        columns.push({ id: name, title: name });
-        return;
-      }
-
-      if (isPlainObject(column)) {
-        const id = toNonEmptyString(column.id, `column-${index + 1}`);
-        if (!id || seen.has(id)) {
-          return;
-        }
-        seen.add(id);
-        columns.push({ id, title: toNonEmptyString(column.title, id) });
-      }
-    });
+function pushUniqueAxisItem(items, seenTokens, rawId, rawTitle = rawId) {
+  const id = toNonEmptyString(rawId);
+  const title = toNonEmptyString(rawTitle, id);
+  if (!id) {
+    return;
   }
 
-  cells.forEach((cell) => {
-    if (!seen.has(cell.column)) {
-      seen.add(cell.column);
-      columns.push({ id: cell.column, title: cell.column });
+  const idToken = normalizeComparisonToken(id);
+  const titleToken = normalizeComparisonToken(title);
+  if (!idToken || seenTokens.has(idToken) || (titleToken && seenTokens.has(titleToken))) {
+    return;
+  }
+
+  seenTokens.add(idToken);
+  if (titleToken) {
+    seenTokens.add(titleToken);
+  }
+  items.push({ id, title });
+}
+
+function normalizeExplicitComparisonColumns(spec) {
+  if (!Array.isArray(spec.columns)) {
+    return [];
+  }
+
+  const columns = [];
+  const seenTokens = new Set();
+
+  spec.columns.forEach((column, index) => {
+    if (typeof column === 'string') {
+      const name = toNonEmptyString(column);
+      if (!name) {
+        return;
+      }
+      pushUniqueAxisItem(columns, seenTokens, name, name);
+      return;
+    }
+
+    if (isPlainObject(column)) {
+      const id = toNonEmptyString(column.id, `column-${index + 1}`);
+      const title = toNonEmptyString(column.title, id);
+      pushUniqueAxisItem(columns, seenTokens, id, title);
     }
   });
 
   return columns;
 }
 
-function normalizeComparisonGroups(spec, cells) {
-  const groups = [];
-  const seen = new Set();
-
+function normalizeExplicitComparisonRows(spec) {
   const source = Array.isArray(spec.groups)
     ? spec.groups
     : (Array.isArray(spec.rows) ? spec.rows : []);
 
+  const rows = [];
+  const seenTokens = new Set();
+
   source.forEach((group, index) => {
     if (typeof group === 'string') {
       const name = toNonEmptyString(group);
-      if (!name || seen.has(name)) {
+      if (!name) {
         return;
       }
-      seen.add(name);
-      groups.push({ id: name, title: name });
+      pushUniqueAxisItem(rows, seenTokens, name, name);
       return;
     }
 
     if (isPlainObject(group)) {
       const id = toNonEmptyString(group.id, `group-${index + 1}`);
-      if (!id || seen.has(id)) {
-        return;
-      }
-      seen.add(id);
-      groups.push({ id, title: toNonEmptyString(group.title, id) });
+      const title = toNonEmptyString(group.title, id);
+      pushUniqueAxisItem(rows, seenTokens, id, title);
+    }
+  });
+
+  return rows;
+}
+
+function normalizeComparisonColumns(spec, cells, { preferred = [] } = {}) {
+  const columns = normalizeExplicitComparisonColumns(spec);
+  const seenTokens = new Set();
+
+  columns.forEach((column) => {
+    const idToken = normalizeComparisonToken(column.id);
+    const titleToken = normalizeComparisonToken(column.title);
+    if (idToken) {
+      seenTokens.add(idToken);
+    }
+    if (titleToken) {
+      seenTokens.add(titleToken);
+    }
+  });
+
+  preferred.forEach((column, index) => {
+    if (typeof column === 'string') {
+      pushUniqueAxisItem(columns, seenTokens, column, column);
+      return;
+    }
+
+    if (isPlainObject(column)) {
+      const id = toNonEmptyString(column.id, `column-pref-${index + 1}`);
+      const title = toNonEmptyString(column.title || column.label, id);
+      pushUniqueAxisItem(columns, seenTokens, id, title);
     }
   });
 
   cells.forEach((cell) => {
-    if (!seen.has(cell.group)) {
-      seen.add(cell.group);
-      groups.push({ id: cell.group, title: cell.group });
+    pushUniqueAxisItem(columns, seenTokens, cell.column, cell.column);
+  });
+
+  return columns;
+}
+
+function normalizeComparisonGroups(spec, cells, { preferred = [] } = {}) {
+  const groups = normalizeExplicitComparisonRows(spec);
+  const seenTokens = new Set();
+
+  groups.forEach((group) => {
+    const idToken = normalizeComparisonToken(group.id);
+    const titleToken = normalizeComparisonToken(group.title);
+    if (idToken) {
+      seenTokens.add(idToken);
     }
+    if (titleToken) {
+      seenTokens.add(titleToken);
+    }
+  });
+
+  preferred.forEach((group, index) => {
+    if (typeof group === 'string') {
+      pushUniqueAxisItem(groups, seenTokens, group, group);
+      return;
+    }
+
+    if (isPlainObject(group)) {
+      const id = toNonEmptyString(group.id, `row-pref-${index + 1}`);
+      const title = toNonEmptyString(group.title || group.label, id);
+      pushUniqueAxisItem(groups, seenTokens, id, title);
+    }
+  });
+
+  cells.forEach((cell) => {
+    pushUniqueAxisItem(groups, seenTokens, cell.row, cell.row);
   });
 
   return groups;
 }
 
-function normalizeComparisonCells(spec) {
-  const source = Array.isArray(spec.cells)
-    ? spec.cells
-    : (Array.isArray(spec.nodes) ? spec.nodes : []);
+function normalizeComparisonCellsFromCollection(source, {
+  allowRowAlias = true,
+  labelPrefix = 'Cell'
+} = {}) {
+  if (!Array.isArray(source)) {
+    return [];
+  }
 
   return source
     .map((cell, index) => {
@@ -1049,54 +1129,427 @@ function normalizeComparisonCells(spec) {
         return null;
       }
 
-      const group = toNonEmptyString(cell.group || cell.row);
+      const row = allowRowAlias
+        ? toNonEmptyString(cell.row || cell.group)
+        : toNonEmptyString(cell.row);
       const column = toNonEmptyString(cell.column || cell.col);
-      if (!group || !column) {
+      if (!row || !column) {
         return null;
       }
 
-      const label = toNonEmptyString(cell.label, `Cell ${index + 1}`);
+      const label = toNonEmptyString(cell.label, `${labelPrefix} ${index + 1}`);
       const body = toNonEmptyString(cell.body || cell.description || cell.note);
 
       return {
-        group,
+        row,
         column,
         label,
-        body
+        body,
+        _order: index
       };
     })
     .filter(Boolean);
 }
 
-function renderComparisonGrid(spec) {
-  const cells = normalizeComparisonCells(spec);
+function buildAxisTokenMap(axisItems) {
+  const tokenMap = new Map();
+  axisItems.forEach((axisItem) => {
+    const idToken = normalizeComparisonToken(axisItem?.id);
+    const titleToken = normalizeComparisonToken(axisItem?.title);
+    if (idToken && !tokenMap.has(idToken)) {
+      tokenMap.set(idToken, axisItem.id);
+    }
+    if (titleToken && !tokenMap.has(titleToken)) {
+      tokenMap.set(titleToken, axisItem.id);
+    }
+  });
+  return tokenMap;
+}
+
+function remapComparisonCellsToAxis(cells, { groups, columns }) {
+  const rowMap = buildAxisTokenMap(groups);
+  const columnMap = buildAxisTokenMap(columns);
+
+  return cells.map((cell) => {
+    const rowToken = normalizeComparisonToken(cell.row);
+    const columnToken = normalizeComparisonToken(cell.column);
+    return {
+      ...cell,
+      row: rowMap.get(rowToken) || cell.row,
+      column: columnMap.get(columnToken) || cell.column
+    };
+  });
+}
+
+function dedupeComparisonCells(cells) {
+  const byKey = new Map();
+  cells.forEach((cell) => {
+    const rowToken = normalizeComparisonToken(cell.row);
+    const columnToken = normalizeComparisonToken(cell.column);
+    if (!rowToken || !columnToken) {
+      return;
+    }
+
+    const key = `${rowToken}::${columnToken}`;
+    if (!byKey.has(key)) {
+      byKey.set(key, cell);
+      return;
+    }
+
+    const previous = byKey.get(key);
+    if (!previous.body && cell.body) {
+      byKey.set(key, cell);
+    }
+  });
+
+  return [...byKey.values()].sort((left, right) => (left._order || 0) - (right._order || 0));
+}
+
+function normalizeComparisonGraphNodes(spec) {
+  const rawNodes = Array.isArray(spec.nodes) ? spec.nodes : [];
+  if (rawNodes.length === 0) {
+    throw new Error('comparisonGrid graph mode requires nodes[].');
+  }
+
+  const idSet = new Set();
+  const nodes = rawNodes
+    .map((rawNode, index) => {
+      if (!isPlainObject(rawNode)) {
+        return null;
+      }
+
+      const baseId = toNonEmptyString(rawNode.id, `node-${index + 1}`);
+      let id = baseId;
+      let suffix = 2;
+      while (idSet.has(id)) {
+        id = `${baseId}-${suffix}`;
+        suffix += 1;
+      }
+      idSet.add(id);
+
+      return {
+        id,
+        label: toNonEmptyString(rawNode.label, id),
+        row: toNonEmptyString(rawNode.row),
+        group: toNonEmptyString(rawNode.group),
+        column: toNonEmptyString(rawNode.column || rawNode.col),
+        note: toNonEmptyString(rawNode.note || rawNode.body || rawNode.description),
+        _order: index
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    nodes,
+    nodeById: new Map(nodes.map((node) => [node.id, node]))
+  };
+}
+
+function normalizeComparisonGraphEdges(rawEdges, nodeById) {
+  if (!Array.isArray(rawEdges)) {
+    return [];
+  }
+
+  return rawEdges
+    .map((edge, index) => {
+      if (!isPlainObject(edge)) {
+        return null;
+      }
+
+      const from = toNonEmptyString(edge.from);
+      const to = toNonEmptyString(edge.to);
+      if (!from || !to || !nodeById.has(from) || !nodeById.has(to)) {
+        return null;
+      }
+
+      return {
+        from,
+        to,
+        _order: index
+      };
+    })
+    .filter(Boolean);
+}
+
+function resolveGraphCellColumnLabel(cellNode, columnHeaders) {
+  const rawValue = toNonEmptyString(cellNode.column || cellNode.group);
+  if (!rawValue) {
+    return '';
+  }
+
+  const rawToken = normalizeComparisonToken(rawValue);
+  for (const header of columnHeaders) {
+    if (normalizeComparisonToken(header.id) === rawToken || normalizeComparisonToken(header.label) === rawToken) {
+      return header.label;
+    }
+  }
+
+  return rawValue;
+}
+
+function normalizeComparisonCellsFromGraph(spec) {
+  const { nodes, nodeById } = normalizeComparisonGraphNodes(spec);
+  const edges = normalizeComparisonGraphEdges(spec.edges, nodeById);
+
+  const hasLegacyCellNodes = normalizeComparisonCellsFromCollection(nodes, {
+    allowRowAlias: true,
+    labelPrefix: 'Cell'
+  }).length > 0;
+
+  const rowHeaderIds = new Set();
+  nodes.forEach((node) => {
+    if (node.id.toLowerCase().startsWith('row-')) {
+      rowHeaderIds.add(node.id);
+    }
+  });
+
+  edges.forEach((edge) => {
+    const sourceNode = nodeById.get(edge.from);
+    if (!sourceNode) {
+      return;
+    }
+    if (!sourceNode.group && !sourceNode.column) {
+      rowHeaderIds.add(sourceNode.id);
+    }
+  });
+
+  const rowHeaders = nodes
+    .filter((node) => rowHeaderIds.has(node.id))
+    .sort((left, right) => left._order - right._order)
+    .map((node) => ({
+      id: node.id,
+      label: node.label
+    }));
+
+  if (rowHeaders.length === 0) {
+    if (edges.length === 0 && hasLegacyCellNodes) {
+      return {
+        mode: 'legacy-nodes',
+        rowHeaders: [],
+        columnHeaders: [],
+        cells: normalizeComparisonCellsFromCollection(nodes, {
+          allowRowAlias: true,
+          labelPrefix: 'Cell'
+        })
+      };
+    }
+    throw new Error('comparisonGrid graph mode needs at least one row header node (for example ids starting with "row-").');
+  }
+
+  const rowEdgeTargets = new Set();
+  edges.forEach((edge) => {
+    if (rowHeaderIds.has(edge.from)) {
+      rowEdgeTargets.add(edge.to);
+    }
+  });
+
+  const columnHeaders = nodes
+    .filter((node) => {
+      const isCellNode = Boolean(node.group || node.column);
+      if (isCellNode) {
+        return false;
+      }
+
+      if (node.id.toLowerCase().startsWith('col-')) {
+        return true;
+      }
+
+      if (rowHeaderIds.has(node.id)) {
+        return false;
+      }
+
+      if (rowEdgeTargets.has(node.id)) {
+        return false;
+      }
+
+      return Boolean(node.label);
+    })
+    .sort((left, right) => left._order - right._order)
+    .map((node) => ({
+      id: node.id,
+      label: node.label
+    }));
+
+  const cellNodes = nodes.filter((node) => Boolean(node.group || node.column));
+  const cellNodeById = new Map(cellNodes.map((node) => [node.id, node]));
+
+  const inferredColumnLabels = new Set();
+  columnHeaders.forEach((header) => {
+    const label = toNonEmptyString(header.label);
+    if (label) {
+      inferredColumnLabels.add(label);
+    }
+  });
+  cellNodes.forEach((node) => {
+    const label = resolveGraphCellColumnLabel(node, columnHeaders);
+    if (label) {
+      inferredColumnLabels.add(label);
+    }
+  });
+
+  if (columnHeaders.length === 0 && inferredColumnLabels.size === 0) {
+    throw new Error('comparisonGrid graph mode needs at least one column header or cell group/column label.');
+  }
+
+  const rowHeaderById = new Map(rowHeaders.map((rowHeader) => [rowHeader.id, rowHeader]));
+  const edgeCells = edges
+    .map((edge) => {
+      const rowHeader = rowHeaderById.get(edge.from);
+      const cellNode = cellNodeById.get(edge.to);
+      if (!rowHeader || !cellNode) {
+        return null;
+      }
+
+      const columnLabel = resolveGraphCellColumnLabel(cellNode, columnHeaders);
+      if (!columnLabel) {
+        return null;
+      }
+
+      return {
+        row: rowHeader.label,
+        column: columnLabel,
+        label: toNonEmptyString(cellNode.label, `Cell ${edge._order + 1}`),
+        body: toNonEmptyString(cellNode.note),
+        _order: edge._order
+      };
+    })
+    .filter(Boolean);
+
+  if (edges.length > 0 && edgeCells.length === 0) {
+    throw new Error('comparisonGrid graph mode could not map any row-to-cell edges.');
+  }
+
+  let cells = edgeCells;
+  if (edges.length === 0) {
+    cells = cellNodes
+      .map((cellNode, index) => {
+        const columnLabel = resolveGraphCellColumnLabel(cellNode, columnHeaders);
+        if (!columnLabel) {
+          return null;
+        }
+
+        const rowHeader = rowHeaders[index % rowHeaders.length];
+        return {
+          row: rowHeader.label,
+          column: columnLabel,
+          label: toNonEmptyString(cellNode.label, `Cell ${index + 1}`),
+          body: toNonEmptyString(cellNode.note),
+          _order: index
+        };
+      })
+      .filter(Boolean);
+  }
+
   if (cells.length === 0) {
-    throw new Error('comparisonGrid requires cells[] or nodes[] with group/column and label.');
+    throw new Error('comparisonGrid graph mode did not produce any cells to render.');
   }
 
-  const columns = normalizeComparisonColumns(spec, cells);
-  const groups = normalizeComparisonGroups(spec, cells);
+  return {
+    mode: 'graph',
+    rowHeaders,
+    columnHeaders,
+    cells
+  };
+}
 
-  if (columns.length === 0 || groups.length === 0) {
-    throw new Error('comparisonGrid requires at least one row group and one column.');
+function normalizeComparisonGridData(spec) {
+  const hasCellsArray = Array.isArray(spec.cells) && spec.cells.length > 0;
+  if (hasCellsArray) {
+    const cells = normalizeComparisonCellsFromCollection(spec.cells, {
+      allowRowAlias: true,
+      labelPrefix: 'Cell'
+    });
+    if (cells.length === 0) {
+      throw new Error('comparisonGrid cells[] entries must include row/group, column, and label.');
+    }
+
+    const columns = normalizeComparisonColumns(spec, cells);
+    const groups = normalizeComparisonGroups(spec, cells);
+    if (columns.length === 0 || groups.length === 0) {
+      throw new Error('comparisonGrid requires at least one row group and one column.');
+    }
+
+    const remapped = dedupeComparisonCells(remapComparisonCellsToAxis(cells, { groups, columns }));
+    return {
+      mode: 'cells',
+      columns,
+      groups,
+      cells: remapped
+    };
   }
+
+  if (Array.isArray(spec.nodes) && spec.nodes.length > 0) {
+    const graphData = normalizeComparisonCellsFromGraph(spec);
+    const preferredColumns = graphData.columnHeaders.map((header) => ({
+      id: header.label,
+      title: header.label
+    }));
+    const preferredRows = graphData.rowHeaders.map((rowHeader) => ({
+      id: rowHeader.label,
+      title: rowHeader.label
+    }));
+
+    const columns = normalizeComparisonColumns(spec, graphData.cells, { preferred: preferredColumns });
+    const groups = normalizeComparisonGroups(spec, graphData.cells, { preferred: preferredRows });
+    if (columns.length === 0 || groups.length === 0) {
+      throw new Error('comparisonGrid requires at least one row group and one column.');
+    }
+
+    const remapped = dedupeComparisonCells(remapComparisonCellsToAxis(graphData.cells, { groups, columns }));
+    if (remapped.length === 0) {
+      throw new Error('comparisonGrid did not produce any cells after normalization.');
+    }
+
+    return {
+      mode: graphData.mode,
+      columns,
+      groups,
+      cells: remapped
+    };
+  }
+
+  throw new Error('comparisonGrid requires cells[] or nodes[] with mappable row/column data.');
+}
+
+function renderComparisonGrid(spec) {
+  const normalized = normalizeComparisonGridData(spec);
+  const {
+    cells,
+    columns,
+    groups
+  } = normalized;
 
   const cellByKey = new Map();
   cells.forEach((cell) => {
-    cellByKey.set(`${cell.group}::${cell.column}`, cell);
+    const rowToken = normalizeComparisonToken(cell.row);
+    const columnToken = normalizeComparisonToken(cell.column);
+    if (!rowToken || !columnToken) {
+      return;
+    }
+    cellByKey.set(`${rowToken}::${columnToken}`, cell);
   });
 
   const layout = isPlainObject(spec.layout) ? spec.layout : {};
   const paddingX = toFiniteNumber(layout.paddingX, 20, { min: 6, max: 220 });
   const paddingY = toFiniteNumber(layout.paddingY, 20, { min: 6, max: 220 });
-  const rowHeaderWidth = toFiniteNumber(layout.rowHeaderWidth, 180, { min: 100, max: 460 });
-  const headerHeight = toFiniteNumber(layout.headerHeight, 48, { min: 24, max: 220 });
-  const cellWidth = toFiniteNumber(layout.cellWidth, 200, { min: 110, max: 460 });
-  const cellHeight = toFiniteNumber(layout.cellHeight, 110, { min: 68, max: 360 });
+  const gapX = toFiniteNumber(layout.gapX, 8, { min: 0, max: 120 });
+  const gapY = toFiniteNumber(layout.gapY, 8, { min: 0, max: 120 });
+  const cellWidth = toFiniteNumber(
+    layout.cellWidth,
+    toFiniteNumber(layout.nodeWidth, 200, { min: 110, max: 460 }),
+    { min: 110, max: 460 }
+  );
+  const cellHeight = toFiniteNumber(
+    layout.cellHeight,
+    toFiniteNumber(layout.nodeHeight, 110, { min: 68, max: 360 }),
+    { min: 68, max: 360 }
+  );
+  const rowHeaderWidth = toFiniteNumber(layout.rowHeaderWidth, Math.max(140, cellWidth * 0.85), { min: 100, max: 500 });
+  const headerHeight = toFiniteNumber(layout.headerHeight, Math.max(44, Math.round(cellHeight * 0.42)), { min: 24, max: 240 });
   const theme = normalizeTheme(spec.theme);
 
-  const width = paddingX * 2 + rowHeaderWidth + columns.length * cellWidth;
-  const height = paddingY * 2 + headerHeight + groups.length * cellHeight;
+  const width = paddingX * 2 + rowHeaderWidth + (columns.length * cellWidth) + Math.max(0, columns.length - 1) * gapX;
+  const height = paddingY * 2 + headerHeight + (groups.length * cellHeight) + Math.max(0, groups.length - 1) * gapY;
 
   const svg = createRootSvg({
     width,
@@ -1117,7 +1570,7 @@ function renderComparisonGrid(spec) {
   }));
 
   columns.forEach((column, columnIndex) => {
-    const x = paddingX + rowHeaderWidth + columnIndex * cellWidth;
+    const x = paddingX + rowHeaderWidth + columnIndex * (cellWidth + gapX);
 
     gridLayer.appendChild(createSvgElement('rect', {
       x,
@@ -1139,7 +1592,7 @@ function renderComparisonGrid(spec) {
   });
 
   groups.forEach((group, groupIndex) => {
-    const y = paddingY + headerHeight + groupIndex * cellHeight;
+    const y = paddingY + headerHeight + groupIndex * (cellHeight + gapY);
 
     gridLayer.appendChild(createSvgElement('rect', {
       x: paddingX,
@@ -1160,8 +1613,8 @@ function renderComparisonGrid(spec) {
     });
 
     columns.forEach((column, columnIndex) => {
-      const cellX = paddingX + rowHeaderWidth + columnIndex * cellWidth;
-      const key = `${group.id}::${column.id}`;
+      const cellX = paddingX + rowHeaderWidth + columnIndex * (cellWidth + gapX);
+      const key = `${normalizeComparisonToken(group.id)}::${normalizeComparisonToken(column.id)}`;
       const cell = cellByKey.get(key);
 
       gridLayer.appendChild(createSvgElement('rect', {
@@ -1211,6 +1664,25 @@ function renderComparisonGrid(spec) {
   });
 
   return svg;
+}
+
+export function debugNormalizeComparisonGrid(svgSpec) {
+  if (!isPlainObject(svgSpec) || toNonEmptyString(svgSpec.kind) !== 'comparisonGrid') {
+    throw new Error('debugNormalizeComparisonGrid expects svgSpec.kind = "comparisonGrid".');
+  }
+
+  const normalized = normalizeComparisonGridData(svgSpec);
+  return {
+    mode: normalized.mode,
+    columns: normalized.columns.map((column) => ({ ...column })),
+    groups: normalized.groups.map((group) => ({ ...group })),
+    cells: normalized.cells.map((cell) => ({
+      row: cell.row,
+      column: cell.column,
+      label: cell.label,
+      body: cell.body
+    }))
+  };
 }
 
 export function renderSvgDiagram(svgSpec) {

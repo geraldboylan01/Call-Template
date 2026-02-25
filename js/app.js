@@ -41,6 +41,7 @@ import { normalizePensionInputs, computePensionProjection } from './pension_math
 import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_math.js';
 import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { encryptSessionJson } from './crypto_session.js';
+import { debugNormalizeComparisonGrid } from './education_svg.js';
 
 const ui = getUiElements();
 const runtimeConfig = {
@@ -438,6 +439,77 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'education-diversification-comparisonGrid-demo',
+    label: 'Education: Diversification Comparison Grid (Graph Mode)',
+    payload: {
+      title: 'Education - Diversification Comparison Grid',
+      generated: {
+        summaryHtml: '<p>This demo uses graph-style nodes and edges for comparisonGrid. The renderer should normalize it into a table layout.</p>',
+        education: {
+          topic: 'Diversification by Risk Profile',
+          audience: 'Retail investor education',
+          sections: [
+            {
+              id: 'why-diversify',
+              title: 'Why Diversify',
+              bodyHtml: '<p>Different risk profiles can favor different mixes of asset classes and wrappers.</p>',
+              bullets: [
+                'Avoid concentration risk in a single asset class.',
+                'Use profile-specific allocations as a starting point.',
+                'Review suitability with regulated advice before implementation.'
+              ]
+            }
+          ],
+          visuals: [
+            {
+              type: 'svg',
+              title: 'Diversification Comparison Grid',
+              subtitle: 'Graph-mode nodes and edges',
+              svgSpec: {
+                kind: 'comparisonGrid',
+                theme: 'dark',
+                layout: {
+                  nodeWidth: 210,
+                  nodeHeight: 116,
+                  gapX: 10,
+                  gapY: 10
+                },
+                nodes: [
+                  { id: 'col-a', label: 'Core equities', note: 'Global diversified equity funds.' },
+                  { id: 'col-b', label: 'Stabilizers', note: 'Bonds, short-duration credit, cash.' },
+                  { id: 'col-c', label: 'Alternatives', note: 'Property, infrastructure, diversifiers.' },
+                  { id: 'row-1', label: 'Balanced profile' },
+                  { id: 'row-2', label: 'Growth profile' },
+                  { id: 'a-r', group: 'col-a', label: '50%', note: 'Broad developed + emerging equities.' },
+                  { id: 'b-r', group: 'col-b', label: '35%', note: 'High-quality bonds and cash buffers.' },
+                  { id: 'c-r', group: 'col-c', label: '15%', note: 'Low-correlation alternatives.' },
+                  { id: 'a-s', group: 'col-a', label: '70%', note: 'Higher equity weight for long horizon.' },
+                  { id: 'b-s', group: 'col-b', label: '20%', note: 'Smaller defensive allocation.' },
+                  { id: 'c-s', group: 'col-c', label: '10%', note: 'Targeted diversifiers.' }
+                ],
+                edges: [
+                  { from: 'row-1', to: 'a-r' },
+                  { from: 'row-1', to: 'b-r' },
+                  { from: 'row-1', to: 'c-r' },
+                  { from: 'row-2', to: 'a-s' },
+                  { from: 'row-2', to: 'b-s' },
+                  { from: 'row-2', to: 'c-s' }
+                ]
+              }
+            }
+          ],
+          references: [
+            {
+              label: 'Investor education materials',
+              kind: 'guidance',
+              note: 'Educational ranges only; not a personalized recommendation.'
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
     id: 'pension-inline-assumptions-demo',
     label: 'Pension Inline Assumptions Demo',
     payload: {
@@ -560,6 +632,34 @@ const EXAMPLE_PAYLOADS = [
     }
   }
 ];
+
+function runDevEducationSvgAssertions() {
+  if (!IS_LOCAL_DEV_HOST) {
+    return;
+  }
+
+  const comparisonDemo = EXAMPLE_PAYLOADS.find((example) => example.id === 'education-diversification-comparisonGrid-demo');
+  const svgSpec = comparisonDemo?.payload?.generated?.education?.visuals?.find((visual) => visual?.type === 'svg')?.svgSpec;
+  if (!svgSpec) {
+    return;
+  }
+
+  try {
+    const normalized = debugNormalizeComparisonGrid(svgSpec);
+    const hasCells = Array.isArray(normalized?.cells) && normalized.cells.length > 0;
+    console.assert(hasCells, '[CallCanvas][DevAssert] comparisonGrid graph demo should normalize into non-empty cells.', normalized);
+    if (hasCells) {
+      console.info('[CallCanvas][DevAssert] comparisonGrid graph demo normalized', {
+        mode: normalized.mode,
+        rows: normalized.groups.length,
+        columns: normalized.columns.length,
+        cells: normalized.cells.length
+      });
+    }
+  } catch (error) {
+    console.error('[CallCanvas][DevAssert] comparisonGrid graph demo normalization failed', error);
+  }
+}
 
 const PLAYBOOKS = [
   {
@@ -4876,6 +4976,7 @@ export async function initApp(options = {}) {
     if (runtimeConfig.allowDevPanel) {
       populateDevExamples();
       loadSelectedExampleIntoEditor();
+      runDevEducationSvgAssertions();
     } else {
       renderDevPayloadWarnings([]);
     }
