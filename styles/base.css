@@ -212,7 +212,15 @@ textarea {
 .greeting-view {
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 28px 24px 34px;
+}
+
+.greeting-hero {
+  width: min(980px, 92vw);
+  display: grid;
+  justify-items: center;
+  gap: clamp(22px, 3.4vh, 38px);
+  text-align: center;
 }
 
 .greeting-headline {
@@ -222,6 +230,123 @@ textarea {
   font-weight: 800;
   letter-spacing: -0.04em;
   text-align: center;
+}
+
+.greeting-logo-shell {
+  position: relative;
+  margin: 0;
+  width: min(560px, 70vw, 58vh);
+  padding: clamp(16px, 2.2vw, 24px);
+  border-radius: 34px;
+  border: 1px solid rgba(140, 186, 237, 0.24);
+  background: radial-gradient(88% 88% at 50% 12%, rgba(67, 128, 194, 0.16), transparent 74%),
+    linear-gradient(160deg, rgba(11, 20, 38, 0.72), rgba(7, 14, 28, 0.86));
+  box-shadow: 0 30px 70px rgba(2, 8, 20, 0.65), inset 0 0 0 1px rgba(114, 167, 228, 0.2);
+  overflow: hidden;
+  transform-origin: center;
+}
+
+.greeting-logo-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.38));
+}
+
+.greeting-view.is-entering .greeting-headline {
+  animation: greeting-headline-in 420ms ease-out both;
+}
+
+.greeting-view.is-entering .greeting-logo-shell {
+  animation: greeting-logo-in 760ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+
+.greeting-view.is-entering .greeting-logo-shell::after {
+  content: '';
+  position: absolute;
+  inset: -10%;
+  background: linear-gradient(112deg, transparent 40%, rgba(192, 226, 255, 0.28) 50%, transparent 60%);
+  transform: translateX(-130%);
+  animation: greeting-logo-sheen 1150ms ease-out 280ms both;
+  pointer-events: none;
+}
+
+@keyframes greeting-headline-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes greeting-logo-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+    filter: saturate(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: saturate(1);
+  }
+}
+
+@keyframes greeting-logo-sheen {
+  from {
+    transform: translateX(-130%);
+    opacity: 0;
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(130%);
+    opacity: 0;
+  }
+}
+
+/* Small persistent brand mark for non-greeting modes. */
+.app-brand-badge {
+  position: absolute;
+  top: clamp(10px, 1.8vh, 18px);
+  right: clamp(10px, 1.6vw, 18px);
+  z-index: 16;
+  width: clamp(44px, 3.2vw, 56px);
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  border: 1px solid rgba(142, 188, 236, 0.26);
+  background: linear-gradient(165deg, rgba(15, 29, 52, 0.78), rgba(7, 16, 30, 0.86));
+  box-shadow: 0 14px 30px rgba(3, 10, 22, 0.45), inset 0 0 0 1px rgba(103, 158, 220, 0.2);
+  padding: clamp(6px, 0.5vw, 8px);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+body.non-greeting-mode .app-brand-badge {
+  opacity: 0.93;
+  transform: translateY(0) scale(1);
+}
+
+body.compare-mode .app-brand-badge {
+  opacity: 0.82;
+}
+
+.app-brand-badge-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.38));
 }
 
 .focused-view {

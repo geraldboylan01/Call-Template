@@ -2382,11 +2382,19 @@ export function setMode(ui, mode) {
 
   if (mode === 'greeting') {
     showLayer(greeting);
+    if (greeting) {
+      greeting.classList.remove('is-entering');
+      void greeting.offsetWidth;
+      greeting.classList.add('is-entering');
+    }
     hideLayer(focus);
     hideLayer(overview);
     return;
   }
 
+  if (greeting) {
+    greeting.classList.remove('is-entering');
+  }
   hideLayer(greeting);
 
   if (mode === 'overview') {

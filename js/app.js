@@ -3635,6 +3635,7 @@ function updateUiChrome() {
 
   document.body.classList.toggle('compare-mode', appState.mode === 'compare');
   document.body.classList.toggle('focus-mode', appState.mode === 'focused');
+  document.body.classList.toggle('non-greeting-mode', appState.mode !== 'greeting');
   document.body.classList.toggle('overview-has-selection', appState.mode === 'overview' && appState.overviewSelection.length > 0);
   setOverviewMultiSelectArmed(appState.overviewMultiSelectArmed);
   renderGreeting(ui, appState.session.clientName);

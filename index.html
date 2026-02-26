@@ -37,7 +37,19 @@
 
       <main class="main-viewport" aria-live="polite">
         <section id="greetingLayer" class="layer greeting-view">
-          <h1 id="greetingHeadline" class="greeting-headline">Hello Client!</h1>
+          <div class="greeting-hero">
+            <h1 id="greetingHeadline" class="greeting-headline">Hello Client!</h1>
+            <figure class="greeting-logo-shell">
+              <img
+                class="greeting-logo-image"
+                src="./Planeir_logo_transparent.png"
+                alt="Planeir logo"
+                width="2000"
+                height="2000"
+                decoding="async"
+              />
+            </figure>
+          </div>
         </section>
 
         <section id="focusLayer" class="layer focused-view is-hidden" aria-label="Focused module view" aria-hidden="true">
@@ -69,6 +81,17 @@
             </div>
           </div>
         </section>
+
+        <div class="app-brand-badge" aria-hidden="true">
+          <img
+            class="app-brand-badge-image"
+            src="./Planeir_logo_transparent.png"
+            alt=""
+            width="2000"
+            height="2000"
+            decoding="async"
+          />
+        </div>
 
         <aside id="devPanel" class="dev-panel is-hidden" aria-hidden="true">
           <div class="dev-panel-header">
