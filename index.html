@@ -31,9 +31,47 @@
           <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
           <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
           <button id="resetBtn" class="ui-button" type="button">Reset</button>
-          <span id="sessionStatus" class="session-status">Saved locally</span>
+          <div class="mobile-topbar-meta">
+            <span id="sessionStatus" class="session-status">Saved locally</span>
+            <button
+              id="mobileHeaderMoreBtn"
+              class="ui-button mobile-header-more-btn"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="mobileOverflowPanel"
+              aria-expanded="false"
+            >
+              More
+            </button>
+          </div>
         </div>
       </header>
+
+      <nav id="mobileActionBar" class="mobile-action-bar" aria-label="Primary actions">
+        <button id="mobileActionNewCallBtn" class="ui-button mobile-action-btn" type="button">
+          <span class="mobile-action-icon" aria-hidden="true">+</span>
+          <span class="mobile-action-label">Call</span>
+        </button>
+        <button id="mobileActionNewModuleBtn" class="ui-button mobile-action-btn" type="button">
+          <span class="mobile-action-icon" aria-hidden="true">+</span>
+          <span class="mobile-action-label">Module</span>
+        </button>
+        <button id="mobileActionZoomBtn" class="ui-button mobile-action-btn" type="button">
+          <span class="mobile-action-icon" aria-hidden="true">[]</span>
+          <span id="mobileActionZoomLabel" class="mobile-action-label">Modules</span>
+        </button>
+        <button
+          id="mobileActionMoreBtn"
+          class="ui-button mobile-action-btn"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="mobileOverflowPanel"
+          aria-expanded="false"
+        >
+          <span class="mobile-action-icon" aria-hidden="true">...</span>
+          <span class="mobile-action-label">More</span>
+        </button>
+      </nav>
 
       <main class="main-viewport" aria-live="polite">
         <section id="greetingLayer" class="layer greeting-view">
@@ -121,6 +159,31 @@
         <div id="animLayer" class="anim-layer" aria-hidden="true"></div>
         <div id="toastHost" class="toast-host" aria-live="polite"></div>
       </main>
+
+      <div id="mobileOverflowSheet" class="mobile-overflow-sheet" aria-hidden="true">
+        <div id="mobileOverflowBackdrop" class="mobile-overflow-backdrop"></div>
+        <div
+          id="mobileOverflowPanel"
+          class="mobile-overflow-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mobileOverflowTitle"
+        >
+          <div class="mobile-overflow-grabber" aria-hidden="true"></div>
+          <div class="mobile-overflow-header">
+            <h2 id="mobileOverflowTitle" class="mobile-overflow-title">More actions</h2>
+          </div>
+          <div class="mobile-overflow-content">
+            <label id="mobilePlaybookLabel" class="mobile-overflow-label" for="mobilePlaybookSelect">Playbooks</label>
+            <select id="mobilePlaybookSelect" class="topbar-playbook-select mobile-playbook-select" aria-label="Playbooks">
+              <option value="">Playbooks</option>
+            </select>
+            <button id="mobileOverflowPublishBtn" class="ui-button mobile-overflow-btn" type="button">Publish to client</button>
+            <button id="mobileOverflowLoadBtn" class="ui-button mobile-overflow-btn" type="button">Load Session</button>
+            <button id="mobileOverflowResetBtn" class="ui-button mobile-overflow-btn" type="button">Reset</button>
+          </div>
+        </div>
+      </div>
     </div>
     <input id="loadSessionInput" type="file" accept=".json,application/json" class="file-input-hidden" />
 

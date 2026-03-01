@@ -93,6 +93,8 @@ const stateManager = createStateManager(300, {
 const ASSUMPTIONS_UPDATED_FEEDBACK_MS = 800;
 const OVERVIEW_UNDO_SECONDS = 15;
 const TABLE_HIGHLIGHT_KINDS = Object.freeze(['assumptions', 'outputs']);
+const MOBILE_LAYOUT_MEDIA_QUERY = '(max-width: 720px)';
+const MOBILE_SHEET_SWIPE_CLOSE_THRESHOLD = 72;
 
 const appState = {
   session: newSession('Client'),
@@ -112,6 +114,10 @@ const appState = {
   chartHydrationRunId: 0,
   publishedAccess: null
 };
+
+let mobileSheetRestoreFocusTarget = null;
+let mobileSheetTouchStartY = null;
+let mobileSheetTouchDeltaY = 0;
 
 const EXAMPLE_PAYLOADS = [
   {
@@ -2186,6 +2192,228 @@ function populateDevExamples() {
   });
 }
 
+function isMobileLayoutActive() {
+  return window.matchMedia(MOBILE_LAYOUT_MEDIA_QUERY).matches;
+}
+
+function isMobileOverflowOpen() {
+  return document.body.classList.contains('mobile-overflow-open');
+}
+
+function setMobileMoreButtonsExpanded(expanded) {
+  [ui.mobileHeaderMoreButton, ui.mobileActionMoreButton].forEach((button) => {
+    if (button) {
+      button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+  });
+}
+
+function getFirstMobileOverflowAction() {
+  if (!ui.mobileOverflowPanel) {
+    return null;
+  }
+
+  return ui.mobileOverflowPanel.querySelector('select:not(:disabled):not(.is-hidden), button:not(:disabled):not(.is-hidden)');
+}
+
+function resetMobileOverflowSwipeStyles() {
+  if (ui.mobileOverflowPanel) {
+    ui.mobileOverflowPanel.style.transition = '';
+    ui.mobileOverflowPanel.style.transform = '';
+  }
+  if (ui.mobileOverflowBackdrop) {
+    ui.mobileOverflowBackdrop.style.opacity = '';
+  }
+  mobileSheetTouchStartY = null;
+  mobileSheetTouchDeltaY = 0;
+}
+
+function syncMobilePlaybookOptions() {
+  if (!ui.playbookSelect || !ui.mobilePlaybookSelect) {
+    return;
+  }
+
+  const sourceOptions = Array.from(ui.playbookSelect.options);
+  const needsSync = sourceOptions.length !== ui.mobilePlaybookSelect.options.length || sourceOptions.some((option, index) => {
+    const targetOption = ui.mobilePlaybookSelect.options[index];
+    return !targetOption || targetOption.value !== option.value || targetOption.textContent !== option.textContent;
+  });
+
+  if (needsSync) {
+    ui.mobilePlaybookSelect.innerHTML = '';
+    sourceOptions.forEach((option) => {
+      ui.mobilePlaybookSelect.appendChild(option.cloneNode(true));
+    });
+  }
+
+  ui.mobilePlaybookSelect.value = '';
+}
+
+function syncMobileActionState() {
+  const syncButton = (mobileButton, desktopButton) => {
+    if (!mobileButton) {
+      return false;
+    }
+
+    const unavailable = !desktopButton || desktopButton.classList.contains('is-hidden');
+    mobileButton.classList.toggle('is-hidden', unavailable);
+    mobileButton.disabled = unavailable || Boolean(desktopButton?.disabled);
+    return !unavailable;
+  };
+
+  syncButton(ui.mobileActionNewCallButton, ui.newCallButton);
+  syncButton(ui.mobileActionNewModuleButton, ui.newModuleButton);
+  syncButton(ui.mobileActionZoomButton, ui.zoomButton);
+  syncButton(ui.mobileOverflowPublishButton, ui.publishSessionButton);
+  syncButton(ui.mobileOverflowLoadButton, ui.loadSessionButton);
+  syncButton(ui.mobileOverflowResetButton, ui.resetButton);
+
+  if (ui.mobileActionZoomLabel && ui.zoomButton) {
+    const zoomText = (ui.zoomButton.textContent || '').trim();
+    const compactLabel = zoomText === 'Zoom In' ? 'Zoom In' : 'Modules';
+    ui.mobileActionZoomLabel.textContent = compactLabel;
+    if (ui.mobileActionZoomButton) {
+      ui.mobileActionZoomButton.title = zoomText || compactLabel;
+      ui.mobileActionZoomButton.setAttribute('aria-label', zoomText || compactLabel);
+    }
+  }
+
+  const playbooksUnavailable = !ui.mobilePlaybookSelect || !ui.playbookSelect || ui.playbookSelect.classList.contains('is-hidden');
+  if (ui.mobilePlaybookLabel) {
+    ui.mobilePlaybookLabel.classList.toggle('is-hidden', playbooksUnavailable);
+  }
+  if (ui.mobilePlaybookSelect) {
+    ui.mobilePlaybookSelect.classList.toggle('is-hidden', playbooksUnavailable);
+    ui.mobilePlaybookSelect.disabled = playbooksUnavailable || ui.mobilePlaybookSelect.options.length <= 1 || Boolean(ui.playbookSelect?.disabled);
+    ui.mobilePlaybookSelect.value = '';
+  }
+
+  const hasOverflowAction = Boolean(
+    (ui.mobilePlaybookSelect && !ui.mobilePlaybookSelect.classList.contains('is-hidden') && !ui.mobilePlaybookSelect.disabled)
+    || (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
+    || (ui.mobileOverflowLoadButton && !ui.mobileOverflowLoadButton.classList.contains('is-hidden'))
+    || (ui.mobileOverflowResetButton && !ui.mobileOverflowResetButton.classList.contains('is-hidden'))
+  );
+
+  [ui.mobileHeaderMoreButton, ui.mobileActionMoreButton].forEach((button) => {
+    if (!button) {
+      return;
+    }
+    button.classList.toggle('is-hidden', !hasOverflowAction);
+    button.disabled = !hasOverflowAction;
+  });
+
+  if (!hasOverflowAction) {
+    closeMobileOverflowSheet({ restoreFocus: false });
+  }
+}
+
+function openMobileOverflowSheet(triggerButton = null) {
+  if (!ui.mobileOverflowSheet || !isMobileLayoutActive() || isMobileOverflowOpen()) {
+    return;
+  }
+
+  syncMobilePlaybookOptions();
+  syncMobileActionState();
+  mobileSheetRestoreFocusTarget = triggerButton || document.activeElement;
+  resetMobileOverflowSwipeStyles();
+  ui.mobileOverflowSheet.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('mobile-overflow-open');
+  setMobileMoreButtonsExpanded(true);
+
+  window.requestAnimationFrame(() => {
+    const firstAction = getFirstMobileOverflowAction();
+    if (firstAction) {
+      firstAction.focus();
+    }
+  });
+}
+
+function closeMobileOverflowSheet({ restoreFocus = true } = {}) {
+  if (!ui.mobileOverflowSheet || !isMobileOverflowOpen()) {
+    return;
+  }
+
+  document.body.classList.remove('mobile-overflow-open');
+  ui.mobileOverflowSheet.setAttribute('aria-hidden', 'true');
+  setMobileMoreButtonsExpanded(false);
+  resetMobileOverflowSwipeStyles();
+
+  const focusTarget = mobileSheetRestoreFocusTarget && mobileSheetRestoreFocusTarget instanceof HTMLElement && mobileSheetRestoreFocusTarget.isConnected
+    ? mobileSheetRestoreFocusTarget
+    : (ui.mobileHeaderMoreButton || ui.mobileActionMoreButton || null);
+
+  mobileSheetRestoreFocusTarget = null;
+
+  if (restoreFocus && focusTarget) {
+    window.requestAnimationFrame(() => {
+      focusTarget.focus();
+    });
+  }
+}
+
+function toggleMobileOverflowSheet(triggerButton = null) {
+  if (isMobileOverflowOpen()) {
+    closeMobileOverflowSheet();
+  } else {
+    openMobileOverflowSheet(triggerButton);
+  }
+}
+
+function triggerDesktopAction(desktopButton, { closeOverflow = false } = {}) {
+  if (!desktopButton || desktopButton.disabled || desktopButton.classList.contains('is-hidden')) {
+    return;
+  }
+
+  desktopButton.click();
+
+  if (closeOverflow) {
+    closeMobileOverflowSheet({ restoreFocus: false });
+  }
+}
+
+function handleMobileOverflowTouchStart(event) {
+  if (!isMobileOverflowOpen() || event.touches.length !== 1) {
+    return;
+  }
+
+  mobileSheetTouchStartY = event.touches[0].clientY;
+  mobileSheetTouchDeltaY = 0;
+  if (ui.mobileOverflowPanel) {
+    ui.mobileOverflowPanel.style.transition = 'none';
+  }
+}
+
+function handleMobileOverflowTouchMove(event) {
+  if (!isMobileOverflowOpen() || mobileSheetTouchStartY == null || event.touches.length !== 1 || !ui.mobileOverflowPanel) {
+    return;
+  }
+
+  const delta = event.touches[0].clientY - mobileSheetTouchStartY;
+  if (delta <= 0) {
+    return;
+  }
+
+  mobileSheetTouchDeltaY = delta;
+  ui.mobileOverflowPanel.style.transform = `translateY(${delta}px)`;
+  if (ui.mobileOverflowBackdrop) {
+    const opacity = Math.max(0, 1 - (delta / 220));
+    ui.mobileOverflowBackdrop.style.opacity = String(opacity);
+  }
+}
+
+function handleMobileOverflowTouchEnd() {
+  if (mobileSheetTouchStartY == null) {
+    return;
+  }
+
+  const shouldClose = mobileSheetTouchDeltaY > MOBILE_SHEET_SWIPE_CLOSE_THRESHOLD;
+  resetMobileOverflowSwipeStyles();
+  if (shouldClose) {
+    closeMobileOverflowSheet({ restoreFocus: false });
+  }
+}
+
 function populatePlaybooks() {
   if (!ui.playbookSelect) {
     return;
@@ -2206,6 +2434,7 @@ function populatePlaybooks() {
   });
 
   ui.playbookSelect.value = '';
+  syncMobilePlaybookOptions();
 }
 
 function loadSelectedExampleIntoEditor() {
@@ -2647,6 +2876,12 @@ function applyRuntimeChrome() {
   if (runtimeConfig.readOnly && ui.sessionStatus) {
     ui.sessionStatus.textContent = 'Read only';
     ui.sessionStatus.classList.remove('is-dirty');
+  }
+
+  syncMobilePlaybookOptions();
+  syncMobileActionState();
+  if (!isMobileLayoutActive()) {
+    closeMobileOverflowSheet({ restoreFocus: false });
   }
 }
 
@@ -3639,6 +3874,7 @@ function updateUiChrome() {
   document.body.classList.toggle('overview-has-selection', appState.mode === 'overview' && appState.overviewSelection.length > 0);
   setOverviewMultiSelectArmed(appState.overviewMultiSelectArmed);
   renderGreeting(ui, appState.session.clientName);
+  syncMobileActionState();
 
   if (appState.mode === 'focused' && typeof window.__callcanvasReflowCharts === 'function') {
     window.requestAnimationFrame(() => {
@@ -4789,6 +5025,81 @@ function bindEvents() {
     });
   }
 
+  if (ui.mobileActionNewCallButton) {
+    ui.mobileActionNewCallButton.addEventListener('click', () => {
+      triggerDesktopAction(ui.newCallButton);
+    });
+  }
+
+  if (ui.mobileActionNewModuleButton) {
+    ui.mobileActionNewModuleButton.addEventListener('click', () => {
+      triggerDesktopAction(ui.newModuleButton);
+    });
+  }
+
+  if (ui.mobileActionZoomButton) {
+    ui.mobileActionZoomButton.addEventListener('click', () => {
+      triggerDesktopAction(ui.zoomButton);
+    });
+  }
+
+  if (ui.mobileOverflowPublishButton) {
+    ui.mobileOverflowPublishButton.addEventListener('click', () => {
+      triggerDesktopAction(ui.publishSessionButton, { closeOverflow: true });
+    });
+  }
+
+  if (ui.mobileOverflowLoadButton) {
+    ui.mobileOverflowLoadButton.addEventListener('click', () => {
+      triggerDesktopAction(ui.loadSessionButton, { closeOverflow: true });
+    });
+  }
+
+  if (ui.mobileOverflowResetButton) {
+    ui.mobileOverflowResetButton.addEventListener('click', () => {
+      triggerDesktopAction(ui.resetButton, { closeOverflow: true });
+    });
+  }
+
+  if (ui.mobilePlaybookSelect && ui.playbookSelect) {
+    ui.mobilePlaybookSelect.addEventListener('change', () => {
+      const selectedPlaybookId = ui.mobilePlaybookSelect.value;
+      if (!selectedPlaybookId) {
+        return;
+      }
+      if (ui.playbookSelect.classList.contains('is-hidden') || ui.playbookSelect.disabled) {
+        ui.mobilePlaybookSelect.value = '';
+        return;
+      }
+      ui.playbookSelect.value = selectedPlaybookId;
+      ui.playbookSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      ui.mobilePlaybookSelect.value = '';
+      closeMobileOverflowSheet({ restoreFocus: false });
+    });
+  }
+
+  [ui.mobileHeaderMoreButton, ui.mobileActionMoreButton].forEach((button) => {
+    if (!button) {
+      return;
+    }
+    button.addEventListener('click', () => {
+      toggleMobileOverflowSheet(button);
+    });
+  });
+
+  if (ui.mobileOverflowBackdrop) {
+    ui.mobileOverflowBackdrop.addEventListener('click', () => {
+      closeMobileOverflowSheet();
+    });
+  }
+
+  if (ui.mobileOverflowPanel) {
+    ui.mobileOverflowPanel.addEventListener('touchstart', handleMobileOverflowTouchStart, { passive: true });
+    ui.mobileOverflowPanel.addEventListener('touchmove', handleMobileOverflowTouchMove, { passive: true });
+    ui.mobileOverflowPanel.addEventListener('touchend', handleMobileOverflowTouchEnd, { passive: true });
+    ui.mobileOverflowPanel.addEventListener('touchcancel', handleMobileOverflowTouchEnd, { passive: true });
+  }
+
   if (runtimeConfig.allowDevPanel && ui.devLoadExampleBtn) {
     ui.devLoadExampleBtn.addEventListener('click', () => {
       loadSelectedExampleIntoEditor();
@@ -4827,6 +5138,10 @@ function bindEvents() {
     if (appState.mode === 'overview') {
       refreshOverview({ enableSortable: true });
     }
+    if (!isMobileLayoutActive()) {
+      closeMobileOverflowSheet({ restoreFocus: false });
+    }
+    syncMobileActionState();
   });
 
   if (ui.swipeStage) {
@@ -4848,6 +5163,12 @@ function bindEvents() {
     const key = event.key;
     const lower = key.toLowerCase();
     const hasDeleteConfirmOpen = Boolean(document.querySelector('.delete-confirm-backdrop'));
+
+    if (key === 'Escape' && isMobileOverflowOpen()) {
+      event.preventDefault();
+      closeMobileOverflowSheet();
+      return;
+    }
 
     if (hasDeleteConfirmOpen) {
       if (key === 'Escape') {
@@ -4957,6 +5278,9 @@ function bindEvents() {
   window.addEventListener('blur', () => {
     setOverviewMultiSelectArmed(false);
   });
+
+  syncMobilePlaybookOptions();
+  syncMobileActionState();
 
   window.addEventListener('beforeunload', () => {
     saveSessionNow();
