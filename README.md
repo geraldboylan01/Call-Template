@@ -11,8 +11,9 @@ Single-page, no-backend web app for live client calls with a Prezi-style focused
 
 1. Push this repo to GitHub.
 2. In repository settings, open **Pages**.
-3. Set source to your main branch root (`/`) and save.
-4. Your site will publish at the provided Pages URL.
+3. Set **Source** to **GitHub Actions**.
+4. Push to `main` to trigger `.github/workflows/deploy-pages.yml`.
+5. Your site will publish at the provided Pages URL.
 
 ## How To Use
 
