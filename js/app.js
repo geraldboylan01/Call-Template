@@ -95,8 +95,8 @@ const OVERVIEW_UNDO_SECONDS = 15;
 const TABLE_HIGHLIGHT_KINDS = Object.freeze(['assumptions', 'outputs']);
 const MOBILE_LAYOUT_MEDIA_QUERY = '(max-width: 720px)';
 const MOBILE_SHEET_SWIPE_CLOSE_THRESHOLD = 72;
-const HERO_ANIMATION_CLASS = 'hero-animate';
-const REDUCED_MOTION_MEDIA_QUERY = '(prefers-reduced-motion: reduce)';
+const LOGO_REVEAL_ANIMATION_CLASS = 'is-animating';
+const LOGO_REVEAL_STATIC_CLASS = 'is-static';
 
 const appState = {
   session: newSession('Client'),
@@ -116,8 +116,8 @@ const appState = {
   chartHydrationRunId: 0,
   publishedAccess: null,
   ui: {
-    hasPlayedHeroAnim: true,
-    heroAnimSessionId: null
+    hasPlayedGreetingLogoAnim: true,
+    greetingLogoAnimSessionId: null
   }
 };
 
@@ -791,68 +791,65 @@ function hasNextModule() {
   return activeIndex >= 0 && activeIndex < appState.session.order.length - 1;
 }
 
-function resetHeroAnimationClass() {
+function getGreetingLogoRevealElement() {
   if (!ui.greetingLayer) {
+    return null;
+  }
+
+  return ui.greetingLayer.querySelector('.logo-reveal');
+}
+
+function resetGreetingLogoAnimationClass() {
+  const logoReveal = getGreetingLogoRevealElement();
+  if (!logoReveal) {
     return;
   }
 
-  ui.greetingLayer.classList.remove(HERO_ANIMATION_CLASS);
-  const logoWrap = ui.greetingLayer.querySelector('.heroLogoWrap');
-  if (logoWrap) {
-    logoWrap.dataset.animated = 'false';
-  }
+  logoReveal.classList.remove(LOGO_REVEAL_ANIMATION_CLASS);
+  logoReveal.classList.remove(LOGO_REVEAL_STATIC_CLASS);
 }
 
-function configureHeroAnimationForSession(sessionId, {
+function configureGreetingLogoAnimationForSession(sessionId, {
   shouldAnimate = false
 } = {}) {
-  appState.ui.heroAnimSessionId = typeof sessionId === 'string' && sessionId ? sessionId : null;
-  appState.ui.hasPlayedHeroAnim = !shouldAnimate;
-  resetHeroAnimationClass();
+  appState.ui.greetingLogoAnimSessionId = typeof sessionId === 'string' && sessionId ? sessionId : null;
+  appState.ui.hasPlayedGreetingLogoAnim = !shouldAnimate;
+  resetGreetingLogoAnimationClass();
+
+  if (!shouldAnimate) {
+    const logoReveal = getGreetingLogoRevealElement();
+    if (logoReveal) {
+      logoReveal.classList.add(LOGO_REVEAL_STATIC_CLASS);
+    }
+  }
 }
 
-function playHeroAnimationIfPending() {
-  if (appState.mode !== 'greeting' || appState.ui.hasPlayedHeroAnim) {
-    return;
-  }
-
-  if (!ui.greetingLayer) {
-    appState.ui.hasPlayedHeroAnim = true;
+function playGreetingLogoAnimationIfPending() {
+  if (appState.mode !== 'greeting' || appState.ui.hasPlayedGreetingLogoAnim) {
     return;
   }
 
   const sessionId = appState.session?.sessionId;
-  if (!sessionId || appState.ui.heroAnimSessionId !== sessionId) {
-    appState.ui.hasPlayedHeroAnim = true;
+  if (!sessionId || appState.ui.greetingLogoAnimSessionId !== sessionId) {
+    appState.ui.hasPlayedGreetingLogoAnim = true;
     return;
   }
 
-  appState.ui.hasPlayedHeroAnim = true;
-  const logoWrap = ui.greetingLayer.querySelector('.heroLogoWrap');
-  if (logoWrap) {
-    logoWrap.dataset.animated = 'false';
-  }
-
-  if (window.matchMedia && window.matchMedia(REDUCED_MOTION_MEDIA_QUERY).matches) {
-    if (logoWrap) {
-      logoWrap.dataset.animated = 'true';
-    }
-    ui.greetingLayer.classList.remove(HERO_ANIMATION_CLASS);
+  const logoReveal = getGreetingLogoRevealElement();
+  appState.ui.hasPlayedGreetingLogoAnim = true;
+  if (!logoReveal) {
     return;
   }
 
-  ui.greetingLayer.classList.remove(HERO_ANIMATION_CLASS);
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (appState.mode !== 'greeting' || appState.session?.sessionId !== sessionId) {
-        return;
-      }
-      ui.greetingLayer.classList.add(HERO_ANIMATION_CLASS);
-      if (logoWrap) {
-        logoWrap.dataset.animated = 'true';
-      }
-    });
-  });
+  logoReveal.classList.remove(LOGO_REVEAL_STATIC_CLASS);
+  logoReveal.classList.remove(LOGO_REVEAL_ANIMATION_CLASS);
+  void logoReveal.offsetWidth;
+
+  if (appState.mode !== 'greeting' || appState.session?.sessionId !== sessionId) {
+    return;
+  }
+
+  logoReveal.classList.add(LOGO_REVEAL_ANIMATION_CLASS);
 }
 
 function getModuleIdSet(session = appState.session) {
@@ -3044,7 +3041,7 @@ async function handleRevokePublishedAccess() {
 }
 
 async function replaceSession(nextSession, options = {}) {
-  const { markClean = true, playHeroAnim = false } = options;
+  const { markClean = true, playLogoAnim = false } = options;
 
   destroySortable();
   destroyAllCharts();
@@ -3067,8 +3064,8 @@ async function replaceSession(nextSession, options = {}) {
     markSessionClean();
   }
 
-  configureHeroAnimationForSession(appState.session.sessionId, {
-    shouldAnimate: Boolean(playHeroAnim && appState.session.modules.length === 0)
+  configureGreetingLogoAnimationForSession(appState.session.sessionId, {
+    shouldAnimate: Boolean(playLogoAnim && appState.session.modules.length === 0)
   });
 
   renderGreeting(ui, appState.session.clientName);
@@ -3079,7 +3076,7 @@ async function replaceSession(nextSession, options = {}) {
   } else {
     appState.mode = 'greeting';
     setMode(ui, 'greeting');
-    playHeroAnimationIfPending();
+    playGreetingLogoAnimationIfPending();
     updateUiChrome();
   }
 
@@ -4967,7 +4964,7 @@ async function handleNewCall() {
   }
 
   const fresh = newSession('Client');
-  await replaceSession(fresh, { markClean: true, playHeroAnim: true });
+  await replaceSession(fresh, { markClean: true, playLogoAnim: true });
   showToast('New call started.');
 }
 
@@ -5393,7 +5390,7 @@ export async function initApp(options = {}) {
 
     ensureActiveModule(appState.session);
     appState.mode = hasModules() ? 'focused' : 'greeting';
-    configureHeroAnimationForSession(appState.session.sessionId, {
+    configureGreetingLogoAnimationForSession(appState.session.sessionId, {
       shouldAnimate: appState.mode === 'greeting'
     });
 
@@ -5442,7 +5439,7 @@ export async function initApp(options = {}) {
       await renderFocused({ useSwipe: false, revealMode: true });
     } else {
       setMode(ui, 'greeting');
-      playHeroAnimationIfPending();
+      playGreetingLogoAnimationIfPending();
       updateUiChrome();
     }
   })();

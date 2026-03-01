@@ -20,11 +20,10 @@
   --topbar-height: 62px;
   --mobile-action-bar-height: 0px;
   --mobile-action-bar-safe: 0px;
-  --hero-anim-in-ms: 650ms;
-  --hero-sweep-ms: 900ms;
-  --hero-bloom-ms: 8s;
-  --hero-bloom-opacity-min: 0.05;
-  --hero-bloom-opacity-max: 0.12;
+  --logo-reveal-ms: 650ms;
+  --logo-settle-ms: 520ms;
+  --logo-settle-delay: 80ms;
+  --logo-reduced-ms: 180ms;
 }
 
 * {
@@ -234,39 +233,12 @@ textarea {
   padding: 28px 24px 34px;
 }
 
-.heroRoot {
-  position: relative;
-  isolation: isolate;
-}
-
-.heroRoot::before {
-  content: '';
-  position: absolute;
-  inset: 18% 12% 20%;
-  z-index: 0;
-  pointer-events: none;
-  opacity: var(--hero-bloom-opacity-min);
-  transform: translate3d(-1%, 1%, 0) scale(0.98);
-  filter: blur(24px);
-  background:
-    radial-gradient(
-      58% 64% at 38% 52%,
-      rgba(128, 190, 255, 0.42) 0%,
-      rgba(75, 130, 214, 0.18) 45%,
-      rgba(11, 24, 49, 0) 78%
-    );
-  will-change: transform, opacity;
-  animation: heroBloom var(--hero-bloom-ms) ease-in-out infinite alternate;
-}
-
 .greeting-hero {
   width: min(980px, 92vw);
   display: grid;
   justify-items: center;
   gap: clamp(22px, 3.4vh, 38px);
   text-align: center;
-  position: relative;
-  z-index: 1;
 }
 
 .greeting-headline {
@@ -283,112 +255,168 @@ textarea {
   width: min(620px, 74vw, 60vh);
 }
 
-.heroLogoWrap {
+.logo-reveal {
   position: relative;
-  z-index: 1;
   display: inline-block;
   width: 100%;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.heroLogoWrap::after {
-  content: '';
-  position: absolute;
-  inset: -8% -30%;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0;
-  transform: translate3d(-140%, 0, 0) skewX(-20deg);
-  background: linear-gradient(
-    110deg,
-    rgba(255, 255, 255, 0) 36%,
-    rgba(255, 255, 255, 0.52) 49%,
-    rgba(255, 255, 255, 0.12) 58%,
-    rgba(255, 255, 255, 0) 72%
-  );
-  mix-blend-mode: screen;
+  isolation: isolate;
 }
 
 .greeting-logo-image {
   display: block;
   width: 100%;
   height: auto;
-  opacity: 0.96;
   filter: drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45));
 }
 
-.heroLogoImg {
-  position: relative;
-  z-index: 1;
-  transform: translateY(0) scale(1);
-  will-change: transform, opacity, filter;
+.logo-img {
+  opacity: 0;
+  transform: translateY(8px) scale(0.99);
+  filter: blur(10px) drop-shadow(0 16px 32px rgba(1, 8, 20, 0.34));
+  clip-path: inset(0 100% 0 0);
+  -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0) 44%, #000 52%, #000 100%);
+  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0) 44%, #000 52%, #000 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 200% 100%;
+  mask-size: 200% 100%;
+  -webkit-mask-position: 0% 0;
+  mask-position: 0% 0;
 }
 
-.heroRoot.hero-animate .heroLogoImg {
-  animation: heroLogoIn var(--hero-anim-in-ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+.logo-reveal.is-animating .logo-img {
+  animation:
+    logoRevealWipe var(--logo-reveal-ms) cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    logoMicroSettle var(--logo-settle-ms) cubic-bezier(0.22, 1, 0.36, 1) var(--logo-settle-delay) forwards;
+  will-change: transform, opacity, filter, -webkit-mask-position, mask-position, clip-path;
 }
 
-.heroRoot.hero-animate .heroLogoWrap::after {
-  animation: heroSweep var(--hero-sweep-ms) cubic-bezier(0.22, 1, 0.36, 1) 250ms 1 both;
+.logo-reveal.is-static .logo-img {
+  opacity: 1;
+  transform: none;
+  filter: blur(0) drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45));
+  clip-path: inset(0 0 0 0);
+  -webkit-mask-image: none;
+  mask-image: none;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-position: 0 0;
+  mask-position: 0 0;
 }
 
-@supports not (mix-blend-mode: screen) {
-  .heroLogoWrap::after {
-    mix-blend-mode: normal;
-    background: linear-gradient(
-      110deg,
-      rgba(255, 255, 255, 0) 36%,
-      rgba(255, 255, 255, 0.22) 49%,
-      rgba(255, 255, 255, 0.06) 58%,
-      rgba(255, 255, 255, 0) 72%
-    );
+@keyframes logoRevealWipe {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0) 44%, #000 52%, #000 100%);
+    mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0) 44%, #000 52%, #000 100%);
+    -webkit-mask-size: 200% 100%;
+    mask-size: 200% 100%;
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
+  }
+
+  92% {
+    clip-path: inset(0 0 0 0);
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+
+  100% {
+    clip-path: inset(0 0 0 0);
+    -webkit-mask-image: none;
+    mask-image: none;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
   }
 }
 
-@keyframes heroLogoIn {
+@keyframes logoMicroSettle {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.985);
-    filter: drop-shadow(0 14px 30px rgba(1, 8, 20, 0.38)) blur(6px);
+    transform: translateY(8px) scale(0.99);
+    filter: blur(10px) drop-shadow(0 16px 32px rgba(1, 8, 20, 0.34));
   }
 
   to {
-    opacity: 0.96;
-    transform: translateY(0) scale(1);
-    filter: drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45)) blur(0);
+    opacity: 1;
+    transform: none;
+    filter: blur(0) drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45));
   }
 }
 
-@keyframes heroSweep {
+@supports not ((-webkit-mask-image: linear-gradient(90deg, #000, #000)) or (mask-image: linear-gradient(90deg, #000, #000))) {
+  .logo-img {
+    -webkit-mask-image: none;
+    mask-image: none;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+    clip-path: inset(0 100% 0 0);
+  }
+
+  .logo-reveal::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(-112%);
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.3) 48%,
+      rgba(255, 255, 255, 0) 100%
+    );
+  }
+
+  .logo-reveal.is-animating::after {
+    animation: logoRevealEdge var(--logo-reveal-ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .logo-reveal.is-animating .logo-img {
+    animation:
+      logoRevealClip var(--logo-reveal-ms) cubic-bezier(0.22, 1, 0.36, 1) forwards,
+      logoMicroSettle var(--logo-settle-ms) cubic-bezier(0.22, 1, 0.36, 1) var(--logo-settle-delay) forwards;
+    will-change: transform, opacity, filter, clip-path;
+  }
+}
+
+@keyframes logoRevealClip {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes logoRevealEdge {
   0% {
     opacity: 0;
-    transform: translate3d(-140%, 0, 0) skewX(-20deg);
+    transform: translateX(-112%);
   }
 
   18% {
-    opacity: 0.45;
-  }
-
-  62% {
-    opacity: 0.4;
+    opacity: 0.5;
   }
 
   100% {
     opacity: 0;
-    transform: translate3d(165%, 0, 0) skewX(-20deg);
+    transform: translateX(112%);
   }
 }
 
-@keyframes heroBloom {
-  0% {
-    opacity: var(--hero-bloom-opacity-min);
-    transform: translate3d(-2%, 1%, 0) scale(0.96);
+@keyframes logoReducedFadeIn {
+  from {
+    opacity: 0;
   }
 
-  100% {
-    opacity: var(--hero-bloom-opacity-max);
-    transform: translate3d(2%, -2%, 0) scale(1.06);
+  to {
+    opacity: 1;
   }
 }
 
@@ -2519,25 +2547,28 @@ body.overview-has-selection .toast-host {
     scroll-behavior: auto !important;
   }
 
-  .heroRoot::before,
-  .heroRoot.hero-animate .heroLogoImg,
-  .heroRoot.hero-animate .heroLogoWrap::after {
+  .logo-reveal::after {
+    animation: none !important;
+    opacity: 0 !important;
+    transform: none !important;
+  }
+
+  .logo-reveal .logo-img {
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    clip-path: inset(0 0 0 0) !important;
+    transform: none !important;
+    filter: drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45)) !important;
+    opacity: 0;
+  }
+
+  .logo-reveal.is-static .logo-img {
+    opacity: 1 !important;
     animation: none !important;
   }
 
-  .heroRoot::before {
-    opacity: var(--hero-bloom-opacity-min) !important;
-    transform: none !important;
-  }
-
-  .heroLogoImg {
-    opacity: 0.96 !important;
-    transform: none !important;
-    filter: drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45)) !important;
-  }
-
-  .heroLogoWrap::after {
-    opacity: 0 !important;
-    transform: none !important;
+  .logo-reveal.is-animating .logo-img {
+    animation: logoReducedFadeIn var(--logo-reduced-ms) ease-out forwards !important;
+    will-change: opacity;
   }
 }
