@@ -20,6 +20,11 @@
   --topbar-height: 62px;
   --mobile-action-bar-height: 0px;
   --mobile-action-bar-safe: 0px;
+  --hero-anim-in-ms: 650ms;
+  --hero-sweep-ms: 900ms;
+  --hero-bloom-ms: 8s;
+  --hero-bloom-opacity-min: 0.05;
+  --hero-bloom-opacity-max: 0.12;
 }
 
 * {
@@ -229,12 +234,39 @@ textarea {
   padding: 28px 24px 34px;
 }
 
+.heroRoot {
+  position: relative;
+  isolation: isolate;
+}
+
+.heroRoot::before {
+  content: '';
+  position: absolute;
+  inset: 18% 12% 20%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--hero-bloom-opacity-min);
+  transform: translate3d(-1%, 1%, 0) scale(0.98);
+  filter: blur(24px);
+  background:
+    radial-gradient(
+      58% 64% at 38% 52%,
+      rgba(128, 190, 255, 0.42) 0%,
+      rgba(75, 130, 214, 0.18) 45%,
+      rgba(11, 24, 49, 0) 78%
+    );
+  will-change: transform, opacity;
+  animation: heroBloom var(--hero-bloom-ms) ease-in-out infinite alternate;
+}
+
 .greeting-hero {
   width: min(980px, 92vw);
   display: grid;
   justify-items: center;
   gap: clamp(22px, 3.4vh, 38px);
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 .greeting-headline {
@@ -251,6 +283,33 @@ textarea {
   width: min(620px, 74vw, 60vh);
 }
 
+.heroLogoWrap {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  width: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.heroLogoWrap::after {
+  content: '';
+  position: absolute;
+  inset: -8% -30%;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(-140%, 0, 0) skewX(-20deg);
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0) 36%,
+    rgba(255, 255, 255, 0.52) 49%,
+    rgba(255, 255, 255, 0.12) 58%,
+    rgba(255, 255, 255, 0) 72%
+  );
+  mix-blend-mode: screen;
+}
+
 .greeting-logo-image {
   display: block;
   width: 100%;
@@ -259,37 +318,77 @@ textarea {
   filter: drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45));
 }
 
-.greeting-view.is-entering .greeting-headline {
-  animation: greeting-headline-in 420ms ease-out both;
+.heroLogoImg {
+  position: relative;
+  z-index: 1;
+  transform: translateY(0) scale(1);
+  will-change: transform, opacity, filter;
 }
 
-.greeting-view.is-entering .greeting-logo-image {
-  animation: greeting-logo-in 760ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+.heroRoot.hero-animate .heroLogoImg {
+  animation: heroLogoIn var(--hero-anim-in-ms) cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes greeting-headline-in {
+.heroRoot.hero-animate .heroLogoWrap::after {
+  animation: heroSweep var(--hero-sweep-ms) cubic-bezier(0.22, 1, 0.36, 1) 250ms 1 both;
+}
+
+@supports not (mix-blend-mode: screen) {
+  .heroLogoWrap::after {
+    mix-blend-mode: normal;
+    background: linear-gradient(
+      110deg,
+      rgba(255, 255, 255, 0) 36%,
+      rgba(255, 255, 255, 0.22) 49%,
+      rgba(255, 255, 255, 0.06) 58%,
+      rgba(255, 255, 255, 0) 72%
+    );
+  }
+}
+
+@keyframes heroLogoIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes greeting-logo-in {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.985);
-    filter: drop-shadow(0 12px 30px rgba(1, 8, 20, 0.38)) blur(2px);
+    transform: translateY(10px) scale(0.985);
+    filter: drop-shadow(0 14px 30px rgba(1, 8, 20, 0.38)) blur(6px);
   }
 
   to {
     opacity: 0.96;
     transform: translateY(0) scale(1);
     filter: drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45)) blur(0);
+  }
+}
+
+@keyframes heroSweep {
+  0% {
+    opacity: 0;
+    transform: translate3d(-140%, 0, 0) skewX(-20deg);
+  }
+
+  18% {
+    opacity: 0.45;
+  }
+
+  62% {
+    opacity: 0.4;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(165%, 0, 0) skewX(-20deg);
+  }
+}
+
+@keyframes heroBloom {
+  0% {
+    opacity: var(--hero-bloom-opacity-min);
+    transform: translate3d(-2%, 1%, 0) scale(0.96);
+  }
+
+  100% {
+    opacity: var(--hero-bloom-opacity-max);
+    transform: translate3d(2%, -2%, 0) scale(1.06);
   }
 }
 
@@ -2418,5 +2517,27 @@ body.overview-has-selection .toast-host {
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .heroRoot::before,
+  .heroRoot.hero-animate .heroLogoImg,
+  .heroRoot.hero-animate .heroLogoWrap::after {
+    animation: none !important;
+  }
+
+  .heroRoot::before {
+    opacity: var(--hero-bloom-opacity-min) !important;
+    transform: none !important;
+  }
+
+  .heroLogoImg {
+    opacity: 0.96 !important;
+    transform: none !important;
+    filter: drop-shadow(0 22px 45px rgba(1, 8, 20, 0.45)) !important;
+  }
+
+  .heroLogoWrap::after {
+    opacity: 0 !important;
+    transform: none !important;
   }
 }
