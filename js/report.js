@@ -59,6 +59,26 @@ function firstArray(...values) {
   return values.find((value) => Array.isArray(value)) || [];
 }
 
+function normalizeStringList(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .map((value) => {
+      if (typeof value === 'string') {
+        return value.trim();
+      }
+
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
+      }
+
+      return '';
+    })
+    .filter(Boolean);
+}
+
 function normalizeDataset(dataset, datasetIndex) {
   const label = toTrimmedString(dataset?.label) || `Series ${datasetIndex + 1}`;
   const data = Array.isArray(dataset?.data)
@@ -273,30 +293,29 @@ function normalizeBlockBase(block, index) {
 
 function normalizeCalloutBlock(block, index) {
   const base = normalizeBlockBase(block, index);
-  const content = typeof block?.markdown === 'string'
+  const markdown = typeof block?.markdown === 'string'
     ? block.markdown
     : (typeof block?.body === 'string'
       ? block.body
       : (typeof block?.content === 'string'
         ? block.content
         : (typeof block?.text === 'string' ? block.text : '')));
+  const bodyHtml = typeof block?.bodyHtml === 'string'
+    ? block.bodyHtml
+    : (typeof block?.html === 'string' ? block.html : '');
+  const bullets = normalizeStringList(block?.bullets);
   const tone = toTrimmedString(block?.tone)
     || toTrimmedString(block?.variant)
     || toTrimmedString(block?.kind)
     || 'info';
 
-  if (!base.title && !content.trim()) {
-    return {
-      ...base,
-      errorMessage: 'Callout block requires a title or body.'
-    };
-  }
-
   return {
     ...base,
     type: 'callout',
     tone,
-    markdown: content
+    markdown,
+    bodyHtml,
+    bullets
   };
 }
 

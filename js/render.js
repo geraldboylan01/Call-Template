@@ -2228,13 +2228,44 @@ function renderReportCalloutBlock(block) {
     subtitle: block?.subtitle || ''
   });
 
-  if (typeof block?.markdown === 'string' && block.markdown.trim()) {
-    const content = document.createElement('div');
-    content.className = 'report-markdown-content';
-    content.appendChild(renderMarkdownFragment(block.markdown));
-    card.appendChild(content);
+  const content = document.createElement('div');
+  content.className = 'report-callout-content';
+
+  const safeBodyHtml = sanitizeSummaryHtml(block?.bodyHtml || '');
+  if (safeBodyHtml && htmlToPlainText(safeBodyHtml)) {
+    const body = document.createElement('div');
+    body.className = 'report-markdown-content report-callout-body';
+    body.innerHTML = safeBodyHtml;
+    content.appendChild(body);
+  } else if (typeof block?.markdown === 'string' && block.markdown.trim()) {
+    const markdown = document.createElement('div');
+    markdown.className = 'report-markdown-content report-callout-body';
+    markdown.appendChild(renderMarkdownFragment(block.markdown));
+    content.appendChild(markdown);
   }
 
+  const bullets = Array.isArray(block?.bullets)
+    ? block.bullets.filter((bullet) => typeof bullet === 'string' && bullet.trim())
+    : [];
+  if (bullets.length > 0) {
+    const list = document.createElement('ul');
+    list.className = 'report-callout-bullets';
+    bullets.forEach((bullet) => {
+      const item = document.createElement('li');
+      item.textContent = bullet;
+      list.appendChild(item);
+    });
+    content.appendChild(list);
+  }
+
+  if (content.childElementCount === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'No callout details provided.';
+    content.appendChild(empty);
+  }
+
+  card.appendChild(content);
   return card;
 }
 
