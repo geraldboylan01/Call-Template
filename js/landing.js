@@ -26,8 +26,8 @@ const leadFields = {
   phone: document.getElementById('leadPhone'),
   stage: document.getElementById('leadStage'),
   reason: document.getElementById('leadReason'),
-  understandsEarlyAccess: document.getElementById('leadUnderstandsEarlyAccess'),
-  openToRecording: document.getElementById('leadOpenToRecording')
+  understandsRecordedCall: document.getElementById('leadUnderstandsRecordedCall'),
+  understandsEducationalContent: document.getElementById('leadUnderstandsEducationalContent')
 };
 
 function setNavOpen(open) {
@@ -125,8 +125,8 @@ function normalizeLeadPayload() {
     phone: String(leadFields.phone?.value || '').trim(),
     stage: String(leadFields.stage?.value || '').trim(),
     reason: String(leadFields.reason?.value || '').trim(),
-    understandsEarlyAccess: Boolean(leadFields.understandsEarlyAccess?.checked),
-    openToRecording: Boolean(leadFields.openToRecording?.checked)
+    understandsRecordedCall: Boolean(leadFields.understandsRecordedCall?.checked),
+    understandsEducationalContent: Boolean(leadFields.understandsEducationalContent?.checked)
   };
 }
 
@@ -164,17 +164,17 @@ function validateLeadPayload(payload) {
     });
   }
 
-  if (!payload.understandsEarlyAccess) {
+  if (!payload.understandsRecordedCall) {
     errors.push({
-      field: leadFields.understandsEarlyAccess,
-      message: 'Confirm that you understand this is a free early-access call.'
+      field: leadFields.understandsRecordedCall,
+      message: 'Confirm that you understand this is a free recorded call.'
     });
   }
 
-  if (!payload.openToRecording) {
+  if (!payload.understandsEducationalContent) {
     errors.push({
-      field: leadFields.openToRecording,
-      message: 'Confirm that you are open to the session being recorded for this early-access call.'
+      field: leadFields.understandsEducationalContent,
+      message: 'Confirm that you understand the recording may be used as educational content online.'
     });
   }
 
@@ -251,7 +251,7 @@ function bindLeadForm() {
     } finally {
       if (leadSubmitButton) {
         leadSubmitButton.disabled = false;
-        leadSubmitButton.textContent = 'Request a call';
+        leadSubmitButton.textContent = 'Request a free call';
       }
     }
   });

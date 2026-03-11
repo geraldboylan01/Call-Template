@@ -145,8 +145,12 @@ function validateLeadPayload(payload) {
   const phone = normalizeLeadValue(payload.phone);
   const stage = normalizeLeadValue(payload.stage);
   const reason = normalizeLeadValue(payload.reason);
-  const understandsEarlyAccess = normalizeLeadConsent(payload.understandsEarlyAccess);
-  const openToRecording = normalizeLeadConsent(payload.openToRecording);
+  const understandsRecordedCall = normalizeLeadConsent(
+    payload.understandsRecordedCall ?? payload.understandsEarlyAccess
+  );
+  const understandsEducationalContent = normalizeLeadConsent(
+    payload.understandsEducationalContent ?? payload.openToRecording
+  );
 
   if (!fullName) {
     throw new Error('Full name is required.');
@@ -184,12 +188,12 @@ function validateLeadPayload(payload) {
     throw new Error('Help request is too long.');
   }
 
-  if (!understandsEarlyAccess) {
-    throw new Error('Early-access acknowledgement is required.');
+  if (!understandsRecordedCall) {
+    throw new Error('Recorded-call acknowledgement is required.');
   }
 
-  if (!openToRecording) {
-    throw new Error('Recording consent is required for this early-access call.');
+  if (!understandsEducationalContent) {
+    throw new Error('Educational-content consent is required for this free call.');
   }
 
   return {
@@ -198,8 +202,8 @@ function validateLeadPayload(payload) {
     phone,
     reason,
     stage,
-    understandsEarlyAccess,
-    openToRecording,
+    understandsRecordedCall,
+    understandsEducationalContent,
     source: 'landing-page'
   };
 }

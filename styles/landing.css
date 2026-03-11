@@ -555,6 +555,25 @@ main {
   background: rgba(7, 13, 24, 0.88);
 }
 
+.mock-window-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.mock-window-badge {
+  padding: 0.38rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(143, 208, 255, 0.16);
+  background: rgba(12, 25, 43, 0.82);
+  color: #dceafa;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .mock-window-dots {
   display: inline-flex;
   gap: 0.4rem;
@@ -576,6 +595,45 @@ main {
   display: grid;
   gap: 1rem;
   padding: 1rem;
+}
+
+.hero-mock-body {
+  align-items: start;
+}
+
+.mock-question-panel {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: var(--landing-radius-md);
+  background: rgba(7, 13, 24, 0.58);
+  border: 1px solid rgba(128, 168, 214, 0.12);
+}
+
+.mock-question-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.mock-question-chip {
+  padding: 0.82rem 0.9rem;
+  border-radius: 1rem;
+  color: var(--landing-soft);
+  line-height: 1.45;
+  background: rgba(10, 19, 34, 0.86);
+  border: 1px solid rgba(128, 168, 214, 0.08);
+}
+
+.mock-question-chip.is-active {
+  color: #eaf4ff;
+  border-color: rgba(143, 208, 255, 0.2);
+  background: linear-gradient(180deg, rgba(26, 55, 88, 0.86), rgba(11, 21, 37, 0.92));
+}
+
+.mock-question-note {
+  margin: 0;
+  color: var(--landing-muted);
+  line-height: 1.65;
 }
 
 .mock-module-list {
@@ -618,6 +676,11 @@ main {
   gap: 1rem;
 }
 
+.mock-focus-panel {
+  display: grid;
+  gap: 1rem;
+}
+
 .mock-metric-row {
   display: grid;
   gap: 0.85rem;
@@ -648,7 +711,9 @@ main {
 }
 
 .mock-summary-card,
-.mock-chart-card {
+.mock-chart-card,
+.mock-decision-card,
+.mock-insight {
   padding: 1.15rem;
   border-radius: var(--landing-radius-md);
   border: 1px solid rgba(128, 168, 214, 0.12);
@@ -667,12 +732,50 @@ main {
   line-height: 1.65;
 }
 
-.mock-summary-card ul {
-  margin: 0.9rem 0 0;
-  padding-left: 1.2rem;
-  color: #dbe9f8;
+.mock-decision-grid,
+.mock-insight-row {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.85rem;
+}
+
+.mock-decision-card {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.mock-decision-card span,
+.mock-insight span {
+  color: var(--landing-accent);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mock-decision-card strong,
+.mock-insight strong {
+  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+}
+
+.mock-decision-card small {
+  color: var(--landing-muted);
+  line-height: 1.55;
+}
+
+.mock-decision-card.is-primary {
+  border-color: rgba(143, 208, 255, 0.26);
+  background: linear-gradient(180deg, rgba(20, 44, 72, 0.9), rgba(9, 17, 31, 0.96));
+}
+
+.mock-insight {
+  display: grid;
+  gap: 0.32rem;
+  min-height: 100%;
+}
+
+.mock-insight strong {
+  color: #e7f2ff;
 }
 
 .mock-chart-card {
@@ -986,6 +1089,12 @@ main {
   background: rgba(41, 16, 26, 0.34);
 }
 
+.consent-note {
+  margin: -0.1rem 0 0;
+  color: var(--landing-muted);
+  line-height: 1.65;
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;
@@ -1150,6 +1259,11 @@ main {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .mock-decision-grid,
+  .mock-insight-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1204,41 +1318,20 @@ main {
     padding-top: 3.5rem;
   }
 
-  .hero-visual {
-    min-height: 45rem;
+  .hero-mock-body {
+    grid-template-columns: minmax(220px, 0.38fr) minmax(0, 0.62fr);
   }
 
-  .mock-window {
-    position: absolute;
-    inset: 0 1rem 2.5rem 0;
+  .mock-decision-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .mock-window-body {
-    grid-template-columns: minmax(220px, 0.28fr) minmax(0, 0.72fr);
-    height: 100%;
-  }
-
-  .mock-metric-row {
+  .mock-insight-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .mock-stage-grid {
-    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-  }
-
-  .floating-card {
-    position: absolute;
-    width: min(260px, 42%);
-  }
-
-  .floating-card-top {
-    top: -0.6rem;
-    right: -0.8rem;
-  }
-
-  .floating-card-bottom {
-    right: -1.4rem;
-    bottom: 0;
+  .mock-window {
+    position: relative;
   }
 
   .feature-grid {
