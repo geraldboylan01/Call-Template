@@ -42,6 +42,7 @@ import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_m
 import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { encryptSessionJson } from './crypto_session.js';
 import { debugNormalizeComparisonGrid } from './education_svg.js';
+import { validateReportPayload } from './report.js';
 
 const ui = getUiElements();
 const runtimeConfig = {
@@ -517,6 +518,192 @@ const EXAMPLE_PAYLOADS = [
               note: 'Educational ranges only; not a personalized recommendation.'
             }
           ]
+        }
+      }
+    }
+  },
+  {
+    id: 'report-research-demo',
+    label: 'Report: Research Blocks Demo',
+    payload: {
+      title: 'Report - Income Research',
+      generated: {
+        report: {
+          title: 'Income progression and affordability',
+          rawMarkdown: '# Income progression\\n\\nThis report uses block rendering.',
+          blocks: [
+            {
+              type: 'callout',
+              title: 'Executive takeaway',
+              tone: 'info',
+              markdown: 'Income accelerates through the late 20s and 30s, but housing cost pressure also rises in the same window.'
+            },
+            {
+              type: 'kpiRow',
+              title: 'Headline KPIs',
+              items: [
+                { label: 'Peak growth window', value: '25 to 39', detail: 'Largest step-up in mean earnings' },
+                { label: 'Age 30 to 39 income', value: 'EUR 53,269', detail: 'Illustrative annual average' },
+                { label: 'Affordability pressure', value: 'High', detail: 'Rent and deposit drag grow with age' }
+              ]
+            },
+            {
+              type: 'markdown',
+              title: 'Context',
+              markdown: '## Labour market context\\n\\nEarly-career earnings remain compressed. By the late 20s, promotion velocity and full-time participation tend to lift averages.\\n\\n- Entry level cohorts stay most exposed to volatility\\n- Household formation raises outgoings during the same period'
+            },
+            {
+              type: 'chart',
+              chart: {
+                title: 'Average annual income by age group',
+                type: 'bar',
+                labels: ['15 to 24', '25 to 29', '30 to 39'],
+                datasets: [
+                  { label: 'Mean annual income', data: [21453, 39997, 53269] }
+                ]
+              }
+            },
+            {
+              type: 'table',
+              title: 'Illustrative housing cost pressure',
+              table: {
+                columns: ['Age group', 'Average income', 'Illustrative rent burden'],
+                rows: [
+                  ['15 to 24', 'EUR 21,453', '41%'],
+                  ['25 to 29', 'EUR 39,997', '34%'],
+                  ['30 to 39', 'EUR 53,269', '31%']
+                ]
+              }
+            },
+            {
+              type: 'chart',
+              chart: {
+                title: 'Illustrative savings rate by age group',
+                type: 'line',
+                labels: ['15 to 24', '25 to 29', '30 to 39'],
+                datasets: [
+                  { label: 'Savings rate', data: [6, 11, 15] }
+                ]
+              }
+            },
+            {
+              type: 'svg',
+              title: 'Income ladder',
+              subtitle: 'Career progression concept',
+              svgSpec: {
+                kind: 'flowchart',
+                theme: 'dark',
+                layout: {
+                  direction: 'TB',
+                  nodeWidth: 200,
+                  nodeHeight: 66,
+                  gapX: 36,
+                  gapY: 28,
+                  connector: 'elbow'
+                },
+                nodes: [
+                  { id: 'entry', label: 'Entry role' },
+                  { id: 'specialist', label: 'Specialist growth' },
+                  { id: 'manager', label: 'Manager track' }
+                ],
+                edges: [
+                  { from: 'entry', to: 'specialist' },
+                  { from: 'specialist', to: 'manager' }
+                ]
+              }
+            },
+            {
+              type: 'timeline',
+              title: 'Household formation timeline',
+              timeline: {
+                theme: 'dark',
+                lanes: [
+                  { id: 'career', title: 'Career' },
+                  { id: 'housing', title: 'Housing' }
+                ],
+                events: [
+                  { id: 'first-role', lane: 'career', label: 'First full-time role', when: 'Ages 21-24', order: 1 },
+                  { id: 'promotion', lane: 'career', label: 'Promotion cycle', when: 'Ages 25-29', order: 2 },
+                  { id: 'rent', lane: 'housing', label: 'Independent renting', when: 'Ages 24-30', order: 3 },
+                  { id: 'deposit', lane: 'housing', label: 'Deposit accumulation', when: 'Ages 28-35', order: 4 }
+                ]
+              }
+            },
+            {
+              type: 'checklist',
+              title: 'Advisor checklist',
+              items: [
+                { label: 'Pressure-test rent and savings assumptions', checked: true },
+                { label: 'Segment advice by age cohort', checked: true },
+                { label: 'Validate current income dataset before publishing', checked: false, note: 'Replace demo values with live source data' }
+              ]
+            },
+            {
+              type: 'sourceList',
+              title: 'Sources',
+              items: [
+                {
+                  label: 'CSO earnings reference',
+                  kind: 'official',
+                  url: 'https://www.cso.ie/',
+                  note: 'Use the latest published earnings tables for production outputs.'
+                },
+                {
+                  label: 'Internal affordability model',
+                  kind: 'internal',
+                  note: 'Scenario assumptions for housing cost burden.'
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    id: 'report-malformed-demo',
+    label: 'Report: Malformed Blocks Demo',
+    payload: {
+      title: 'Report - Malformed Blocks',
+      generated: {
+        report: {
+          title: 'Malformed block handling',
+          blocks: [
+            {
+              type: 'markdown',
+              markdown: 'This block should render even when later blocks fail.'
+            },
+            {
+              type: 'chart',
+              chart: {
+                title: 'Broken chart',
+                type: 'bar',
+                labels: ['A', 'B', 'C']
+              }
+            },
+            {
+              type: 'svg',
+              title: 'Broken svg',
+              svgSpec: {
+                kind: 'flowchart',
+                nodes: []
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    id: 'report-raw-markdown-fallback-demo',
+    label: 'Report: Raw Markdown Fallback',
+    payload: {
+      title: 'Report - Raw Markdown Fallback',
+      generated: {
+        report: {
+          title: 'Raw markdown fallback',
+          rawMarkdown: '# Fallback content\\n\\nNo structured blocks were supplied, so the module should render this markdown instead.\\n\\n- Bullet one\\n- Bullet two',
+          blocks: []
         }
       }
     }
@@ -3534,6 +3721,10 @@ function normalizePayload(payload) {
       generatedPatch.education = validateEducationPayload(payload.generated.education);
     }
 
+    if ('report' in payload.generated) {
+      generatedPatch.report = validateReportPayload(payload.generated.report);
+    }
+
     normalized.generated = generatedPatch;
   }
 
@@ -4702,6 +4893,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.education = null;
+      module.generated.report = null;
     }
   }
 
@@ -4711,6 +4903,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.loanInputs = null;
       module.generated.education = null;
+      module.generated.report = null;
     }
   }
 
@@ -4720,6 +4913,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.education = null;
+      module.generated.report = null;
     }
   }
 
@@ -4729,6 +4923,17 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
+      module.generated.report = null;
+    }
+  }
+
+  if ('report' in generatedPatch) {
+    module.generated.report = generatedPatch.report;
+    if (generatedPatch.report) {
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
+      module.generated.education = null;
     }
   }
 

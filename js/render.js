@@ -1,5 +1,6 @@
 import { computeGridPosition, applyOverviewLayout } from './layout.js';
 import { renderSvgDiagram, serializeSvg } from './education_svg.js';
+import { getReportChartBlocks, isReportModule } from './report.js';
 
 function formatLocalTime(isoString) {
   try {
@@ -51,6 +52,242 @@ function sanitizeSummaryHtml(rawHtml) {
   });
 
   return template.innerHTML;
+}
+
+function sanitizeExternalUrl(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    return '';
+  }
+
+  try {
+    const url = new URL(rawUrl, window.location.href);
+    const protocol = url.protocol.toLowerCase();
+    if (protocol !== 'http:' && protocol !== 'https:' && protocol !== 'mailto:' && protocol !== 'tel:') {
+      return '';
+    }
+    return url.href;
+  } catch (_error) {
+    return '';
+  }
+}
+
+function findNextInlineMarkdownToken(text, startIndex) {
+  const patterns = [
+    { type: 'link', regex: /\[([^\]]+)\]\(([^)]+)\)/g },
+    { type: 'code', regex: /`([^`]+)`/g },
+    { type: 'strong', regex: /\*\*([^*]+)\*\*/g },
+    { type: 'emphasis', regex: /\*([^*]+)\*/g },
+    { type: 'emphasis', regex: /_([^_]+)_/g }
+  ];
+
+  let bestMatch = null;
+  patterns.forEach((pattern) => {
+    pattern.regex.lastIndex = startIndex;
+    const match = pattern.regex.exec(text);
+    if (!match) {
+      return;
+    }
+
+    if (!bestMatch || match.index < bestMatch.match.index) {
+      bestMatch = { pattern, match };
+    }
+  });
+
+  return bestMatch;
+}
+
+function renderInlineMarkdown(text) {
+  const fragment = document.createDocumentFragment();
+  const input = String(text ?? '');
+  let cursor = 0;
+
+  while (cursor < input.length) {
+    const nextToken = findNextInlineMarkdownToken(input, cursor);
+    if (!nextToken) {
+      fragment.appendChild(document.createTextNode(input.slice(cursor)));
+      break;
+    }
+
+    const { pattern, match } = nextToken;
+    if (match.index > cursor) {
+      fragment.appendChild(document.createTextNode(input.slice(cursor, match.index)));
+    }
+
+    if (pattern.type === 'link') {
+      const label = match[1];
+      const safeHref = sanitizeExternalUrl(match[2]);
+      if (safeHref) {
+        const anchor = document.createElement('a');
+        anchor.href = safeHref;
+        anchor.target = '_blank';
+        anchor.rel = 'noreferrer noopener';
+        anchor.appendChild(renderInlineMarkdown(label));
+        fragment.appendChild(anchor);
+      } else {
+        fragment.appendChild(document.createTextNode(match[0]));
+      }
+    } else if (pattern.type === 'code') {
+      const code = document.createElement('code');
+      code.textContent = match[1];
+      fragment.appendChild(code);
+    } else if (pattern.type === 'strong') {
+      const strong = document.createElement('strong');
+      strong.appendChild(renderInlineMarkdown(match[1]));
+      fragment.appendChild(strong);
+    } else if (pattern.type === 'emphasis') {
+      const emphasis = document.createElement('em');
+      emphasis.appendChild(renderInlineMarkdown(match[1]));
+      fragment.appendChild(emphasis);
+    } else {
+      fragment.appendChild(document.createTextNode(match[0]));
+    }
+
+    cursor = match.index + match[0].length;
+  }
+
+  return fragment;
+}
+
+function renderMarkdownFragment(markdown) {
+  const fragment = document.createDocumentFragment();
+  const lines = String(markdown ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const paragraphLines = [];
+  const quoteLines = [];
+  let listEl = null;
+  let listType = '';
+  let inCodeFence = false;
+  let codeLines = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) {
+      return;
+    }
+
+    const paragraph = document.createElement('p');
+    paragraph.appendChild(renderInlineMarkdown(paragraphLines.join(' ')));
+    fragment.appendChild(paragraph);
+    paragraphLines.length = 0;
+  };
+
+  const flushQuote = () => {
+    if (quoteLines.length === 0) {
+      return;
+    }
+
+    const blockquote = document.createElement('blockquote');
+    const paragraph = document.createElement('p');
+    paragraph.appendChild(renderInlineMarkdown(quoteLines.join(' ')));
+    blockquote.appendChild(paragraph);
+    fragment.appendChild(blockquote);
+    quoteLines.length = 0;
+  };
+
+  const flushList = () => {
+    if (!listEl) {
+      return;
+    }
+
+    fragment.appendChild(listEl);
+    listEl = null;
+    listType = '';
+  };
+
+  const flushCode = () => {
+    if (codeLines.length === 0) {
+      return;
+    }
+
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = codeLines.join('\n');
+    pre.appendChild(code);
+    fragment.appendChild(pre);
+    codeLines = [];
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('```')) {
+      flushParagraph();
+      flushQuote();
+      flushList();
+      if (inCodeFence) {
+        flushCode();
+        inCodeFence = false;
+      } else {
+        inCodeFence = true;
+        codeLines = [];
+      }
+      return;
+    }
+
+    if (inCodeFence) {
+      codeLines.push(line);
+      return;
+    }
+
+    if (!trimmed) {
+      flushParagraph();
+      flushQuote();
+      flushList();
+      return;
+    }
+
+    const headingMatch = /^(#{1,6})\s+(.*)$/.exec(trimmed);
+    if (headingMatch) {
+      flushParagraph();
+      flushQuote();
+      flushList();
+
+      const headingLevel = Math.min(6, headingMatch[1].length);
+      const heading = document.createElement(`h${headingLevel}`);
+      heading.appendChild(renderInlineMarkdown(headingMatch[2]));
+      fragment.appendChild(heading);
+      return;
+    }
+
+    const quoteMatch = /^>\s?(.*)$/.exec(trimmed);
+    if (quoteMatch) {
+      flushParagraph();
+      flushList();
+      quoteLines.push(quoteMatch[1]);
+      return;
+    }
+
+    const unorderedMatch = /^[-*+]\s+(.*)$/.exec(trimmed);
+    const orderedMatch = /^\d+\.\s+(.*)$/.exec(trimmed);
+    if (unorderedMatch || orderedMatch) {
+      flushParagraph();
+      flushQuote();
+
+      const nextListType = unorderedMatch ? 'ul' : 'ol';
+      if (!listEl || listType !== nextListType) {
+        flushList();
+        listEl = document.createElement(nextListType);
+        listType = nextListType;
+      }
+
+      const item = document.createElement('li');
+      item.appendChild(renderInlineMarkdown(unorderedMatch ? unorderedMatch[1] : orderedMatch[1]));
+      listEl.appendChild(item);
+      return;
+    }
+
+    flushList();
+    flushQuote();
+    paragraphLines.push(trimmed);
+  });
+
+  if (inCodeFence) {
+    flushCode();
+  }
+
+  flushParagraph();
+  flushQuote();
+  flushList();
+
+  return fragment;
 }
 
 function makeOverviewSnippet(module) {
@@ -291,6 +528,16 @@ export function getEducationChartVisuals(module) {
 export function getChartHydrationModule(module) {
   if (!module || typeof module !== 'object') {
     return module;
+  }
+
+  if (isReportModule(module)) {
+    return {
+      ...module,
+      generated: {
+        ...(module.generated || {}),
+        charts: getReportChartBlocks(module).map((entry) => entry.chart)
+      }
+    };
   }
 
   if (!isEducationModule(module)) {
@@ -1490,40 +1737,11 @@ function buildChartsCard(module, charts, { showPensionToggle = true, readOnly = 
     list.appendChild(empty);
   } else {
     charts.forEach((chart, index) => {
-      const chartBlock = document.createElement('article');
-      chartBlock.className = 'generated-chart-block';
-      chartBlock.dataset.chartIndex = String(index);
-
-      const chartTop = document.createElement('div');
-      chartTop.className = 'generated-chart-top';
-
-      const title = document.createElement('h4');
-      title.className = 'generated-chart-title';
-      title.textContent = chart.title || `Chart ${index + 1}`;
-
-      const downloadButton = document.createElement('button');
-      downloadButton.type = 'button';
-      downloadButton.className = 'chart-download-btn';
-      downloadButton.textContent = 'CSV';
-      downloadButton.title = 'Download CSV';
-      downloadButton.setAttribute('aria-label', `Download CSV for ${title.textContent}`);
-      downloadButton.setAttribute('data-chart-download', 'true');
-
-      chartTop.appendChild(title);
-      chartTop.appendChild(downloadButton);
-
-      const canvasWrap = document.createElement('div');
-      canvasWrap.className = 'generated-chart-canvas-wrap';
-
-      const canvas = document.createElement('canvas');
-      canvas.className = 'generated-chart-canvas';
-      canvas.height = 220;
-
-      canvasWrap.appendChild(canvas);
-      chartBlock.appendChild(chartTop);
-      chartBlock.appendChild(canvasWrap);
-
-      list.appendChild(chartBlock);
+      list.appendChild(buildChartMountCard({
+        title: chart.title || `Chart ${index + 1}`,
+        chartIndex: index,
+        className: 'generated-chart-block'
+      }));
     });
   }
 
@@ -1682,35 +1900,40 @@ function buildEducationSectionsCard(education) {
   return card;
 }
 
-function buildEducationChartVisualCard(visual, chart, chartIndex) {
+function buildChartMountCard({
+  title,
+  subtitle = '',
+  chartIndex = 0,
+  className = 'generated-chart-block'
+} = {}) {
   const card = document.createElement('article');
-  card.className = 'education-visual-card education-chart-card generated-chart-block';
+  card.className = className;
   card.dataset.chartIndex = String(chartIndex);
 
   const chartTop = document.createElement('div');
   chartTop.className = 'generated-chart-top';
 
-  const title = document.createElement('h4');
-  title.className = 'generated-chart-title';
-  title.textContent = chart.title || visual?.title || `Chart ${chartIndex + 1}`;
-  chartTop.appendChild(title);
+  const titleEl = document.createElement('h4');
+  titleEl.className = 'generated-chart-title';
+  titleEl.textContent = title || `Chart ${chartIndex + 1}`;
+  chartTop.appendChild(titleEl);
 
   const downloadButton = document.createElement('button');
   downloadButton.type = 'button';
   downloadButton.className = 'chart-download-btn';
   downloadButton.textContent = 'CSV';
   downloadButton.title = 'Download CSV';
-  downloadButton.setAttribute('aria-label', `Download CSV for ${title.textContent}`);
+  downloadButton.setAttribute('aria-label', `Download CSV for ${titleEl.textContent}`);
   downloadButton.setAttribute('data-chart-download', 'true');
   chartTop.appendChild(downloadButton);
 
   card.appendChild(chartTop);
 
-  if (typeof visual?.subtitle === 'string' && visual.subtitle.trim()) {
-    const subtitle = document.createElement('p');
-    subtitle.className = 'education-visual-subtitle';
-    subtitle.textContent = visual.subtitle.trim();
-    card.appendChild(subtitle);
+  if (typeof subtitle === 'string' && subtitle.trim()) {
+    const subtitleEl = document.createElement('p');
+    subtitleEl.className = 'education-visual-subtitle';
+    subtitleEl.textContent = subtitle.trim();
+    card.appendChild(subtitleEl);
   }
 
   const canvasWrap = document.createElement('div');
@@ -1725,13 +1948,25 @@ function buildEducationChartVisualCard(visual, chart, chartIndex) {
   return card;
 }
 
-function buildEducationSvgVisualCard(module, visual, visualIndex) {
+function buildEducationChartVisualCard(visual, chart, chartIndex) {
+  return buildChartMountCard({
+    title: chart.title || visual?.title || `Chart ${chartIndex + 1}`,
+    subtitle: typeof visual?.subtitle === 'string' ? visual.subtitle : '',
+    chartIndex,
+    className: 'education-visual-card education-chart-card generated-chart-block'
+  });
+}
+
+function buildSvgVisualCard(module, visual, visualIndex, {
+  className = 'education-visual-card education-svg-card',
+  errorPrefix = 'Could not render SVG visual'
+} = {}) {
   const titleText = typeof visual?.title === 'string' && visual.title.trim()
     ? visual.title.trim()
     : `Diagram ${visualIndex + 1}`;
 
   const card = document.createElement('article');
-  card.className = 'education-visual-card education-svg-card';
+  card.className = className;
   card.dataset.svgTheme = 'dark';
 
   const top = document.createElement('div');
@@ -1805,11 +2040,18 @@ function buildEducationSvgVisualCard(module, visual, visualIndex) {
   } catch (error) {
     const inlineError = document.createElement('p');
     inlineError.className = 'education-visual-error';
-    inlineError.textContent = `Could not render SVG visual: ${error?.message || 'Invalid svgSpec.'}`;
+    inlineError.textContent = `${errorPrefix}: ${error?.message || 'Invalid svgSpec.'}`;
     svgHost.appendChild(inlineError);
   }
 
   return card;
+}
+
+function buildEducationSvgVisualCard(module, visual, visualIndex) {
+  return buildSvgVisualCard(module, visual, visualIndex, {
+    className: 'education-visual-card education-svg-card',
+    errorPrefix: 'Could not render SVG visual'
+  });
 }
 
 function buildEducationVisualsCard(module, education) {
@@ -1907,6 +2149,399 @@ function buildEducationReferencesCard(education) {
   return card;
 }
 
+function buildReportBlockShell(block, className) {
+  const card = document.createElement('article');
+  card.className = className;
+  card.dataset.reportBlockType = String(block?.type || 'unknown');
+  if (typeof block?.id === 'string' && block.id.trim()) {
+    card.dataset.reportBlockId = block.id.trim();
+  }
+
+  return card;
+}
+
+function appendReportBlockHeader(card, {
+  title = '',
+  subtitle = ''
+} = {}) {
+  if (!(title && title.trim()) && !(subtitle && subtitle.trim())) {
+    return;
+  }
+
+  const header = document.createElement('div');
+  header.className = 'report-block-header';
+
+  if (title && title.trim()) {
+    const heading = document.createElement('h3');
+    heading.className = 'report-block-title';
+    heading.textContent = title.trim();
+    header.appendChild(heading);
+  }
+
+  if (subtitle && subtitle.trim()) {
+    const subtitleEl = document.createElement('p');
+    subtitleEl.className = 'report-block-subtitle';
+    subtitleEl.textContent = subtitle.trim();
+    header.appendChild(subtitleEl);
+  }
+
+  card.appendChild(header);
+}
+
+function buildReportBlockErrorCard(block, message) {
+  const card = buildReportBlockShell(block, 'report-block report-error-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || `${String(block?.type || 'block').replace(/([A-Z])/g, ' $1').trim() || 'Block'} error`
+  });
+
+  const error = document.createElement('p');
+  error.className = 'report-inline-error';
+  error.textContent = message || 'This block could not be rendered.';
+  card.appendChild(error);
+  return card;
+}
+
+function buildReportMarkdownBlockCard(block, markdown) {
+  const card = buildReportBlockShell(block, 'report-block report-markdown-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || '',
+    subtitle: block?.subtitle || ''
+  });
+
+  const content = document.createElement('div');
+  content.className = 'report-markdown-content';
+  content.appendChild(renderMarkdownFragment(markdown));
+  card.appendChild(content);
+  return card;
+}
+
+function renderReportCalloutBlock(block) {
+  const tone = String(block?.tone || 'info')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    || 'info';
+  const card = buildReportBlockShell(block, 'report-block report-callout-block');
+  card.dataset.reportTone = tone;
+  appendReportBlockHeader(card, {
+    title: block?.title || '',
+    subtitle: block?.subtitle || ''
+  });
+
+  if (typeof block?.markdown === 'string' && block.markdown.trim()) {
+    const content = document.createElement('div');
+    content.className = 'report-markdown-content';
+    content.appendChild(renderMarkdownFragment(block.markdown));
+    card.appendChild(content);
+  }
+
+  return card;
+}
+
+function renderReportMarkdownBlock(block) {
+  return buildReportMarkdownBlockCard(block, block?.markdown || '');
+}
+
+function renderReportTableBlock(block) {
+  const card = buildTableCard(block?.title || 'Table', block?.table || {});
+  card.classList.add('report-block', 'report-table-block');
+  card.dataset.reportBlockType = 'table';
+  if (typeof block?.id === 'string' && block.id.trim()) {
+    card.dataset.reportBlockId = block.id.trim();
+  }
+
+  if (typeof block?.subtitle === 'string' && block.subtitle.trim()) {
+    const subtitle = document.createElement('p');
+    subtitle.className = 'report-block-subtitle';
+    subtitle.textContent = block.subtitle.trim();
+    const header = card.querySelector('.generated-card-header');
+    if (header) {
+      header.insertAdjacentElement('afterend', subtitle);
+    }
+  }
+
+  return card;
+}
+
+function renderReportChartBlock(block, chartIndex) {
+  const card = buildChartMountCard({
+    title: block?.title || block?.chart?.title || `Chart ${chartIndex + 1}`,
+    subtitle: typeof block?.subtitle === 'string' ? block.subtitle : '',
+    chartIndex,
+    className: 'report-block report-chart-block generated-chart-block'
+  });
+
+  if (typeof block?.id === 'string' && block.id.trim()) {
+    card.dataset.reportBlockId = block.id.trim();
+  }
+
+  return card;
+}
+
+function renderReportSvgBlock(module, block, blockIndex) {
+  const card = buildSvgVisualCard(module, {
+    title: block?.title || '',
+    subtitle: block?.subtitle || '',
+    svgSpec: block?.svgSpec || {}
+  }, blockIndex, {
+    className: 'report-block report-svg-block education-visual-card education-svg-card',
+    errorPrefix: 'Could not render report SVG block'
+  });
+
+  card.dataset.reportBlockType = 'svg';
+  if (typeof block?.id === 'string' && block.id.trim()) {
+    card.dataset.reportBlockId = block.id.trim();
+  }
+
+  return card;
+}
+
+function renderReportTimelineBlock(module, block, blockIndex) {
+  const title = block?.title || `Timeline ${blockIndex + 1}`;
+  const card = buildSvgVisualCard(module, {
+    title,
+    subtitle: block?.subtitle || '',
+    svgSpec: block?.svgSpec || {}
+  }, blockIndex, {
+    className: 'report-block report-timeline-block education-visual-card education-svg-card',
+    errorPrefix: 'Could not render report timeline block'
+  });
+
+  card.dataset.reportBlockType = 'timeline';
+  if (typeof block?.id === 'string' && block.id.trim()) {
+    card.dataset.reportBlockId = block.id.trim();
+  }
+
+  return card;
+}
+
+function renderReportChecklistBlock(block) {
+  const card = buildReportBlockShell(block, 'report-block report-checklist-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || 'Checklist',
+    subtitle: block?.subtitle || ''
+  });
+
+  const list = document.createElement('ul');
+  list.className = 'report-checklist-list';
+
+  (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
+    const entry = document.createElement('li');
+    entry.className = 'report-checklist-item';
+    entry.dataset.checked = item?.checked ? 'true' : 'false';
+
+    const marker = document.createElement('span');
+    marker.className = 'report-checklist-marker';
+    marker.setAttribute('aria-hidden', 'true');
+    marker.textContent = item?.checked ? '✓' : '•';
+    entry.appendChild(marker);
+
+    const body = document.createElement('div');
+    body.className = 'report-checklist-body';
+
+    const label = document.createElement('div');
+    label.className = 'report-checklist-label';
+    label.textContent = item?.label || 'Checklist item';
+    body.appendChild(label);
+
+    if (typeof item?.note === 'string' && item.note.trim()) {
+      const note = document.createElement('div');
+      note.className = 'report-checklist-note';
+      note.textContent = item.note.trim();
+      body.appendChild(note);
+    }
+
+    entry.appendChild(body);
+    list.appendChild(entry);
+  });
+
+  card.appendChild(list);
+  return card;
+}
+
+function renderReportSourceListBlock(block) {
+  const card = buildReportBlockShell(block, 'report-block report-source-list-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || 'Sources',
+    subtitle: block?.subtitle || ''
+  });
+
+  const list = document.createElement('ol');
+  list.className = 'report-source-list';
+
+  (Array.isArray(block?.items) ? block.items : []).forEach((item, index) => {
+    const entry = document.createElement('li');
+    entry.className = 'report-source-item';
+
+    const safeHref = sanitizeExternalUrl(item?.url);
+    const label = typeof item?.label === 'string' && item.label.trim()
+      ? item.label.trim()
+      : `Source ${index + 1}`;
+
+    const titleLine = document.createElement(safeHref ? 'a' : 'span');
+    titleLine.className = 'report-source-label';
+    titleLine.textContent = label;
+    if (safeHref) {
+      titleLine.href = safeHref;
+      titleLine.target = '_blank';
+      titleLine.rel = 'noreferrer noopener';
+    }
+    entry.appendChild(titleLine);
+
+    if (typeof item?.kind === 'string' && item.kind.trim()) {
+      const kind = document.createElement('span');
+      kind.className = 'report-source-kind';
+      kind.textContent = item.kind.trim();
+      entry.appendChild(kind);
+    }
+
+    if (typeof item?.note === 'string' && item.note.trim()) {
+      const note = document.createElement('p');
+      note.className = 'report-source-note';
+      note.textContent = item.note.trim();
+      entry.appendChild(note);
+    }
+
+    list.appendChild(entry);
+  });
+
+  card.appendChild(list);
+  return card;
+}
+
+function renderReportKpiRowBlock(block) {
+  const card = buildReportBlockShell(block, 'report-block report-kpi-row-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || '',
+    subtitle: block?.subtitle || ''
+  });
+
+  const row = document.createElement('div');
+  row.className = 'report-kpi-row';
+
+  (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
+    const metric = document.createElement('article');
+    metric.className = 'report-kpi-item';
+    if (typeof item?.tone === 'string' && item.tone.trim()) {
+      metric.dataset.tone = item.tone.trim().toLowerCase();
+    }
+
+    const label = document.createElement('div');
+    label.className = 'report-kpi-label';
+    label.textContent = item?.label || 'Metric';
+    metric.appendChild(label);
+
+    const value = document.createElement('div');
+    value.className = 'report-kpi-value';
+    value.textContent = item?.value || '--';
+    metric.appendChild(value);
+
+    if (typeof item?.detail === 'string' && item.detail.trim()) {
+      const detail = document.createElement('div');
+      detail.className = 'report-kpi-detail';
+      detail.textContent = item.detail.trim();
+      metric.appendChild(detail);
+    }
+
+    row.appendChild(metric);
+  });
+
+  card.appendChild(row);
+  return card;
+}
+
+function renderReportBlock(module, block, context) {
+  if (block?.errorMessage) {
+    return buildReportBlockErrorCard(block, block.errorMessage);
+  }
+
+  try {
+    switch (block?.type) {
+      case 'callout':
+        return renderReportCalloutBlock(block);
+      case 'markdown':
+        return renderReportMarkdownBlock(block);
+      case 'table':
+        return renderReportTableBlock(block);
+      case 'chart': {
+        const chartIndex = context.chartIndexByBlockId.get(block.id);
+        if (!Number.isFinite(chartIndex)) {
+          return buildReportBlockErrorCard(block, 'Could not resolve chart hydration index for this report block.');
+        }
+        return renderReportChartBlock(block, chartIndex);
+      }
+      case 'svg':
+        return renderReportSvgBlock(module, block, context.blockIndex);
+      case 'timeline':
+        return renderReportTimelineBlock(module, block, context.blockIndex);
+      case 'checklist':
+        return renderReportChecklistBlock(block);
+      case 'sourceList':
+        return renderReportSourceListBlock(block);
+      case 'kpiRow':
+        return renderReportKpiRowBlock(block);
+      default:
+        return buildReportBlockErrorCard(block, `Unsupported report block type \"${block?.type || 'unknown'}\".`);
+    }
+  } catch (error) {
+    return buildReportBlockErrorCard(block, error?.message || 'This block could not be rendered.');
+  }
+}
+
+function renderReportModule(module) {
+  const report = module?.generated?.report || {};
+  const section = document.createElement('section');
+  section.className = 'generated-section report-generated-section';
+
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = typeof report?.title === 'string' && report.title.trim()
+    ? report.title.trim()
+    : 'Report';
+  section.appendChild(heading);
+
+  const content = document.createElement('div');
+  content.className = 'report-generated-flow';
+
+  const blocks = Array.isArray(report?.blocks) ? report.blocks : [];
+  const reportChartBlocks = getReportChartBlocks(report);
+  const chartIndexByBlockId = new Map(
+    reportChartBlocks.map((entry, index) => [entry.blockId, index])
+  );
+
+  if (blocks.length === 0) {
+    if (typeof report?.rawMarkdown === 'string' && report.rawMarkdown.trim()) {
+      content.appendChild(buildReportMarkdownBlockCard({
+        id: 'report-raw-markdown-fallback',
+        type: 'markdown',
+        title: '',
+        subtitle: ''
+      }, report.rawMarkdown));
+    } else {
+      const empty = document.createElement('section');
+      empty.className = 'generated-card report-empty-card';
+      const text = document.createElement('p');
+      text.className = 'generated-empty';
+      text.textContent = 'No report blocks generated yet.';
+      empty.appendChild(text);
+      content.appendChild(empty);
+    }
+
+    section.appendChild(content);
+    return section;
+  }
+
+  blocks.forEach((block, blockIndex) => {
+    content.appendChild(renderReportBlock(module, block, {
+      blockIndex,
+      chartIndexByBlockId
+    }));
+  });
+
+  section.appendChild(content);
+  return section;
+}
+
 function renderEducationModule(module) {
   const education = module?.generated?.education || {};
 
@@ -1948,8 +2583,13 @@ function buildGeneratedSection(module, {
     tables: [],
     outputsBucketed: null,
     education: null,
+    report: null,
     charts: []
   };
+
+  if (isReportModule(module)) {
+    return renderReportModule(module);
+  }
 
   if (isEducationModule(module)) {
     return renderEducationModule(module);
@@ -2025,11 +2665,20 @@ export function patchFocusedGeneratedCards({
     return;
   }
 
-  if (isEducationModule(module)) {
+  const generatedSection = focusedCard.querySelector('.generated-section');
+  if (isReportModule(module) || isEducationModule(module)) {
+    if (!generatedSection) {
+      return;
+    }
+
+    generatedSection.replaceWith(buildGeneratedSection(module, {
+      onPatchInputs,
+      assumptionsEditorStatus,
+      readOnly
+    }));
     return;
   }
 
-  const generatedSection = focusedCard.querySelector('.generated-section');
   const grid = generatedSection?.querySelector('.generated-grid');
   if (!generatedSection || !grid) {
     return;

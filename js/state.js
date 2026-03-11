@@ -1,3 +1,5 @@
+import { normalizeReport } from './report.js';
+
 const STORAGE_KEY = 'call_canvas_session_current';
 const LEGACY_STORAGE_KEY = 'call-template-session-v1';
 const SESSION_VERSION = 1;
@@ -414,6 +416,7 @@ export function createEmptyGenerated() {
     mortgageInputs: null,
     loanInputs: null,
     education: null,
+    report: null,
     outputsBucketed: null,
     charts: []
   };
@@ -433,11 +436,17 @@ export function normalizeGenerated(generated) {
     mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs, { defaultLoanKind: 'mortgage' }),
     loanInputs: normalizeMortgageInputs(generated.loanInputs, { defaultLoanKind: 'loan' }),
     education: normalizeEducation(generated.education),
+    report: normalizeReport(generated.report),
     outputsBucketed: normalizeOutputsBucketed(generated.outputsBucketed),
     charts: normalizeCharts(generated.charts)
   };
 
-  if (normalized.pensionInputs || normalized.mortgageInputs || normalized.loanInputs) {
+  if (normalized.report) {
+    normalized.pensionInputs = null;
+    normalized.mortgageInputs = null;
+    normalized.loanInputs = null;
+    normalized.education = null;
+  } else if (normalized.pensionInputs || normalized.mortgageInputs || normalized.loanInputs) {
     normalized.education = null;
   }
 
