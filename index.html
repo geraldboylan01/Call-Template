@@ -4,237 +4,390 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <base href="./" />
-    <title>Planeir</title>
+    <meta
+      name="description"
+      content="Planeir helps advisors and clients understand mortgages, pensions, wealth building, and financial decisions through visual planning."
+    />
+    <title>Plane&iacute;r | Visual Financial Planning</title>
     <link rel="icon" type="image/png" href="./favicon.png" />
-    <link rel="stylesheet" href="./styles/base.css" />
+    <link rel="stylesheet" href="./styles/landing.css" />
   </head>
   <body>
-    <div id="app">
-      <header class="topbar" aria-label="Session controls">
-        <div class="topbar-left">
-          <input
-            id="clientNameInput"
-            class="topbar-input"
-            type="text"
-            value="Client"
-            aria-label="Client name"
-            placeholder="Client name"
-          />
-        </div>
-        <div class="topbar-right">
-          <select id="playbookSelect" class="topbar-playbook-select" aria-label="Playbooks">
-            <option value="">Playbooks</option>
-          </select>
-          <button id="newCallBtn" class="ui-button" type="button">New Call</button>
-          <button id="publishSessionBtn" class="ui-button" type="button">Publish to client</button>
-          <button id="loadSessionBtn" class="ui-button" type="button">Load Session</button>
-          <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
-          <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
-          <button id="resetBtn" class="ui-button" type="button">Reset</button>
-          <div class="mobile-topbar-meta">
-            <span id="sessionStatus" class="session-status">Saved locally</span>
-            <button
-              id="mobileHeaderMoreBtn"
-              class="ui-button mobile-header-more-btn"
-              type="button"
-              aria-haspopup="dialog"
-              aria-controls="mobileOverflowPanel"
-              aria-expanded="false"
-            >
-              More
-            </button>
-          </div>
-        </div>
-      </header>
+    <div class="landing-shell">
+      <div class="landing-ambient landing-ambient-one" aria-hidden="true"></div>
+      <div class="landing-ambient landing-ambient-two" aria-hidden="true"></div>
+      <div class="landing-grid" aria-hidden="true"></div>
 
-      <nav id="mobileActionBar" class="mobile-action-bar" aria-label="Primary actions">
-        <button id="mobileActionNewCallBtn" class="ui-button mobile-action-btn" type="button">
-          <span class="mobile-action-icon" aria-hidden="true">+</span>
-          <span class="mobile-action-label">Call</span>
-        </button>
-        <button id="mobileActionNewModuleBtn" class="ui-button mobile-action-btn" type="button">
-          <span class="mobile-action-icon" aria-hidden="true">+</span>
-          <span class="mobile-action-label">Module</span>
-        </button>
-        <button id="mobileActionZoomBtn" class="ui-button mobile-action-btn" type="button">
-          <span class="mobile-action-icon" aria-hidden="true">[]</span>
-          <span id="mobileActionZoomLabel" class="mobile-action-label">Modules</span>
-        </button>
-        <button
-          id="mobileActionMoreBtn"
-          class="ui-button mobile-action-btn"
-          type="button"
-          aria-haspopup="dialog"
-          aria-controls="mobileOverflowPanel"
-          aria-expanded="false"
-        >
-          <span class="mobile-action-icon" aria-hidden="true">...</span>
-          <span class="mobile-action-label">More</span>
-        </button>
-      </nav>
-
-      <main class="main-viewport" aria-live="polite">
-        <section id="greetingLayer" class="layer greeting-view">
-          <div class="greeting-hero">
-            <h1 id="greetingHeadline" class="greeting-headline">Hello Client!</h1>
-            <figure class="greeting-logo-shell">
-              <div class="logo-reveal">
-                <img
-                  class="greeting-logo-image logo-img"
-                  src="./Planeir_logo_transparent.png"
-                  alt="Planeir logo"
-                  width="2000"
-                  height="2000"
-                  decoding="async"
-                />
-              </div>
-            </figure>
-          </div>
-        </section>
-
-        <section id="focusLayer" class="layer focused-view is-hidden" aria-label="Focused module view" aria-hidden="true">
-          <div id="swipeStage" class="swipe-stage"></div>
-          <button
-            id="navPrevBtn"
-            class="nav-arrow left"
-            type="button"
-            aria-label="Previous module"
-            title="Previous module"
-          >
-            &#8592;
-          </button>
-          <button
-            id="navNextBtn"
-            class="nav-arrow right"
-            type="button"
-            aria-label="New module"
-            title="New module"
-          >
-            &#8594;
-          </button>
-        </section>
-
-        <section id="overviewLayer" class="layer overview-view is-hidden" aria-label="Overview map" aria-hidden="true">
-          <div id="overviewViewport" class="overview-viewport">
-            <div id="overviewZoomWrap" class="overview-zoom-wrap">
-              <div id="overviewGrid" class="overview-grid"></div>
-            </div>
-          </div>
-        </section>
-
-        <div class="app-brand-badge" aria-hidden="true">
+      <header class="site-header">
+        <a class="site-brand" href="./" aria-label="Planeir home">
           <img
-            class="app-brand-badge-image"
+            class="site-brand-mark"
             src="./Planeir_logo_transparent.png"
-            alt=""
+            alt="Planeir logo"
             width="2000"
             height="2000"
             decoding="async"
           />
-        </div>
+          <span class="site-brand-wordmark">Plane&iacute;r</span>
+        </a>
 
-        <aside id="devPanel" class="dev-panel is-hidden" aria-hidden="true">
-          <div class="dev-panel-header">
-            <h2 class="dev-panel-title">Dev / Codex Payload Tester</h2>
-            <button id="devCloseBtn" class="ui-button dev-close-btn" type="button">Close</button>
-          </div>
-          <div class="dev-panel-body">
-            <label class="dev-label" for="devExampleSelect">Example payloads</label>
-            <select id="devExampleSelect" class="dev-select"></select>
-            <button id="devLoadExampleBtn" class="ui-button" type="button">Load Example Payload</button>
+        <button
+          id="mobileNavToggle"
+          class="nav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="siteNav"
+        >
+          Menu
+        </button>
 
-            <label class="dev-label" for="devPayloadInput">Payload JSON</label>
-            <textarea
-              id="devPayloadInput"
-              class="dev-textarea"
-              spellcheck="false"
-              placeholder="{&quot;title&quot;:&quot;Updated module title&quot;,&quot;generated&quot;:{...}}"
-            ></textarea>
-          </div>
-          <div class="dev-panel-actions">
-            <button id="devApplyBtn" class="ui-button" type="button">Apply to Active Module</button>
-            <button id="devCreateApplyBtn" class="ui-button" type="button">Create New Module + Apply</button>
-            <button id="devClearBtn" class="ui-button" type="button">Clear</button>
-          </div>
-        </aside>
+        <nav id="siteNav" class="site-nav" aria-label="Primary">
+          <a href="#showcase">How it works</a>
+          <a href="#use-cases">What we help with</a>
+          <a href="#request-call">Request a call</a>
+          <a class="site-nav-app" href="./app/">Open app</a>
+        </nav>
+      </header>
 
-        <div id="animLayer" class="anim-layer" aria-hidden="true"></div>
-        <div id="toastHost" class="toast-host" aria-live="polite"></div>
+      <main>
+        <section class="hero-section">
+          <div class="hero-copy" data-reveal>
+            <p class="section-eyebrow">Visual financial planning for real decisions</p>
+            <h1 class="hero-title">Understand your financial future more clearly.</h1>
+            <p class="hero-subtitle">
+              Planeir turns planning conversations into visual scenarios, calm comparisons, and
+              follow-up reports that clients can actually follow.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="#request-call">Request a call</a>
+              <a class="button button-secondary" href="./app/">Open app</a>
+            </div>
+            <div class="hero-points">
+              <div class="hero-point">Designed for live advisor conversations</div>
+              <div class="hero-point">Clear report outputs and client-friendly summaries</div>
+              <div class="hero-point">Built for mortgages, pensions, wealth, and retirement planning</div>
+            </div>
+          </div>
+
+          <div class="hero-visual-wrap" data-reveal data-reveal-delay="120">
+            <div class="hero-visual">
+              <div class="mock-window">
+                <div class="mock-window-top">
+                  <div class="mock-window-dots" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <div class="mock-window-label">Planeir workspace</div>
+                </div>
+
+                <div class="mock-window-body">
+                  <aside class="mock-module-list" aria-hidden="true">
+                    <div class="mock-module-list-title">Modules</div>
+                    <div class="mock-module-chip is-active">Scenario compare</div>
+                    <div class="mock-module-chip">Retirement income</div>
+                    <div class="mock-module-chip">Mortgage path</div>
+                    <div class="mock-module-chip">Executive report</div>
+                  </aside>
+
+                  <div class="mock-stage">
+                    <div class="mock-metric-row" aria-hidden="true">
+                      <article class="mock-metric">
+                        <span>Projected home deposit</span>
+                        <strong>EUR 82k</strong>
+                        <small>Base plan, year 3</small>
+                      </article>
+                      <article class="mock-metric">
+                        <span>Retirement runway</span>
+                        <strong>31 years</strong>
+                        <small>Illustrative planning view</small>
+                      </article>
+                      <article class="mock-metric">
+                        <span>Decision confidence</span>
+                        <strong>High clarity</strong>
+                        <small>Scenario trade-offs visible</small>
+                      </article>
+                    </div>
+
+                    <div class="mock-stage-grid">
+                      <article class="mock-summary-card">
+                        <div class="mock-card-tag">Executive summary</div>
+                        <h2>Client-ready notes without the clutter</h2>
+                        <p>
+                          Build a clearer conversation in-session, then hand over a clean summary
+                          with the next steps already mapped out.
+                        </p>
+                        <ul>
+                          <li>Compare paths side by side</li>
+                          <li>Explain trade-offs visually</li>
+                          <li>Share a secure follow-up link</li>
+                        </ul>
+                      </article>
+
+                      <article class="mock-chart-card" aria-hidden="true">
+                        <div class="mock-chart-title">Scenario shape</div>
+                        <div class="mock-chart-lines">
+                          <span class="line-one"></span>
+                          <span class="line-two"></span>
+                          <span class="line-three"></span>
+                        </div>
+                        <div class="mock-chart-axis">
+                          <span>Now</span>
+                          <span>3y</span>
+                          <span>7y</span>
+                          <span>12y</span>
+                        </div>
+                      </article>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <article class="floating-card floating-card-top" data-reveal data-reveal-delay="240">
+                <span class="floating-card-label">Client access</span>
+                <strong>Secure link + PIN</strong>
+                <p>Publish a read-only session after the meeting.</p>
+              </article>
+
+              <article class="floating-card floating-card-bottom" data-reveal data-reveal-delay="320">
+                <span class="floating-card-label">Financial education</span>
+                <strong>Explainers with context</strong>
+                <p>Turn complex topics into guided visuals and premium report blocks.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="content-section" id="why-planeir">
+          <div class="section-heading" data-reveal>
+            <p class="section-eyebrow">Why Planeir</p>
+            <h2>Calmer conversations. Clearer decisions.</h2>
+            <p>
+              The product is built to make advice easier to explain and easier to trust,
+              without turning planning into a spreadsheet-only exercise.
+            </p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card" data-reveal>
+              <span class="feature-index">01</span>
+              <h3>Visual clarity</h3>
+              <p>Bring projections, assumptions, and trade-offs into one calm workspace.</p>
+            </article>
+            <article class="feature-card" data-reveal data-reveal-delay="80">
+              <span class="feature-index">02</span>
+              <h3>Better comparisons</h3>
+              <p>Show the difference between scenarios in a way clients can follow quickly.</p>
+            </article>
+            <article class="feature-card" data-reveal data-reveal-delay="160">
+              <span class="feature-index">03</span>
+              <h3>More confident decisions</h3>
+              <p>Move from discussion to recommendation with a cleaner record of the reasoning.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section" id="use-cases">
+          <div class="section-heading" data-reveal>
+            <p class="section-eyebrow">What we help with</p>
+            <h2>Built for planning work that needs structure and trust.</h2>
+          </div>
+
+          <div class="use-case-grid">
+            <article class="use-case-card" data-reveal>
+              <h3>Pensions</h3>
+              <p>Model contributions, outcomes, and retirement timing with clearer assumptions.</p>
+            </article>
+            <article class="use-case-card" data-reveal data-reveal-delay="60">
+              <h3>Mortgages</h3>
+              <p>Compare affordability, deposits, repayment paths, and key decision branches.</p>
+            </article>
+            <article class="use-case-card" data-reveal data-reveal-delay="120">
+              <h3>Wealth building</h3>
+              <p>Show different saving and investing routes without losing the narrative.</p>
+            </article>
+            <article class="use-case-card" data-reveal data-reveal-delay="180">
+              <h3>Retirement income</h3>
+              <p>Make withdrawal plans, timing choices, and income expectations easier to explain.</p>
+            </article>
+            <article class="use-case-card" data-reveal data-reveal-delay="240">
+              <h3>Financial education</h3>
+              <p>Use visuals and explainers to simplify technical topics during client meetings.</p>
+            </article>
+            <article class="use-case-card" data-reveal data-reveal-delay="300">
+              <h3>Decision support</h3>
+              <p>Turn complex client choices into a clearer next step and a usable follow-up record.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section showcase-section" id="showcase">
+          <div class="section-heading" data-reveal>
+            <p class="section-eyebrow">Product showcase</p>
+            <h2>A planning platform that looks as clear as the advice should feel.</h2>
+            <p>
+              Planeir can compare scenarios, generate reports, and explain financial topics visually
+              in a single product flow.
+            </p>
+          </div>
+
+          <div class="showcase-grid">
+            <article class="showcase-card showcase-card-large" data-reveal>
+              <div class="showcase-copy">
+                <span class="showcase-tag">Scenario compare</span>
+                <h3>Place choices beside each other, not in separate documents.</h3>
+                <p>
+                  Surface the real trade-offs between timelines, affordability, contribution levels,
+                  and expected outcomes.
+                </p>
+              </div>
+              <div class="showcase-compare-visual" aria-hidden="true">
+                <div class="showcase-compare-column">
+                  <h4>Base path</h4>
+                  <strong>Deposit target in 36 months</strong>
+                  <span>Steady contributions</span>
+                </div>
+                <div class="showcase-compare-column is-highlighted">
+                  <h4>Accelerated path</h4>
+                  <strong>Deposit target in 24 months</strong>
+                  <span>Higher contribution rate</span>
+                </div>
+                <div class="showcase-compare-column">
+                  <h4>Defensive path</h4>
+                  <strong>Longer runway, more flexibility</strong>
+                  <span>Lower monthly strain</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="showcase-card" data-reveal data-reveal-delay="80">
+              <div class="showcase-copy">
+                <span class="showcase-tag">Report generation</span>
+                <h3>Premium summaries after the call.</h3>
+                <p>Turn the meeting into a structured output with clean blocks, notes, and context.</p>
+              </div>
+              <div class="showcase-report-visual" aria-hidden="true">
+                <div class="report-line is-strong"></div>
+                <div class="report-line"></div>
+                <div class="report-bullet"></div>
+                <div class="report-bullet"></div>
+                <div class="report-bullet short"></div>
+              </div>
+            </article>
+
+            <article class="showcase-card" data-reveal data-reveal-delay="160">
+              <div class="showcase-copy">
+                <span class="showcase-tag">Visual education</span>
+                <h3>Explain complex topics more calmly.</h3>
+                <p>
+                  Use timelines, flows, and decision support visuals to make unfamiliar topics easier
+                  to understand in the moment.
+                </p>
+              </div>
+              <div class="showcase-flow-visual" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section request-section" id="request-call">
+          <div class="request-grid">
+            <div class="request-copy" data-reveal>
+              <p class="section-eyebrow">Request a call</p>
+              <h2>Start with a straightforward conversation.</h2>
+              <p>
+                If you would like to see how Planeir could support a planning conversation,
+                send a short note and Gerry will follow up.
+              </p>
+              <div class="request-note-card">
+                <strong>What happens next</strong>
+                <p>
+                  We will review your request, reach out by email, and arrange a call based on the
+                  topic and timing that suits you.
+                </p>
+              </div>
+            </div>
+
+            <form id="leadForm" class="lead-form" novalidate data-reveal data-reveal-delay="120">
+              <div class="form-grid">
+                <label class="field">
+                  <span>Full name</span>
+                  <input id="leadFullName" name="fullName" type="text" autocomplete="name" required />
+                </label>
+
+                <label class="field">
+                  <span>Email</span>
+                  <input id="leadEmail" name="email" type="email" autocomplete="email" required />
+                </label>
+
+                <label class="field">
+                  <span>Phone number <em>(optional)</em></span>
+                  <input id="leadPhone" name="phone" type="tel" autocomplete="tel" />
+                </label>
+
+                <label class="field">
+                  <span>Planning stage <em>(optional)</em></span>
+                  <select id="leadStage" name="stage">
+                    <option value="">Select a stage</option>
+                    <option value="buying-a-home">Buying a home</option>
+                    <option value="building-wealth">Building wealth</option>
+                    <option value="retirement-planning">Retirement planning</option>
+                    <option value="financial-education">Financial education</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+              </div>
+
+              <label class="field field-full">
+                <span>What would you like help with?</span>
+                <textarea
+                  id="leadReason"
+                  name="reason"
+                  rows="5"
+                  required
+                  placeholder="A short outline is enough. Please do not include highly sensitive financial information at this stage."
+                ></textarea>
+              </label>
+
+              <p id="privacy-note" class="form-privacy">
+                Please do not include highly sensitive financial information at this stage.
+              </p>
+
+              <div id="leadFormStatus" class="form-status" aria-live="polite"></div>
+
+              <button id="leadSubmitButton" class="button button-primary button-submit" type="submit">
+                Request a call
+              </button>
+            </form>
+          </div>
+        </section>
       </main>
 
-      <div id="mobileOverflowSheet" class="mobile-overflow-sheet" aria-hidden="true">
-        <div id="mobileOverflowBackdrop" class="mobile-overflow-backdrop"></div>
-        <div
-          id="mobileOverflowPanel"
-          class="mobile-overflow-panel"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="mobileOverflowTitle"
-        >
-          <div class="mobile-overflow-grabber" aria-hidden="true"></div>
-          <div class="mobile-overflow-header">
-            <h2 id="mobileOverflowTitle" class="mobile-overflow-title">More actions</h2>
-          </div>
-          <div class="mobile-overflow-content">
-            <label id="mobilePlaybookLabel" class="mobile-overflow-label" for="mobilePlaybookSelect">Playbooks</label>
-            <select id="mobilePlaybookSelect" class="topbar-playbook-select mobile-playbook-select" aria-label="Playbooks">
-              <option value="">Playbooks</option>
-            </select>
-            <button id="mobileOverflowPublishBtn" class="ui-button mobile-overflow-btn" type="button">Publish to client</button>
-            <button id="mobileOverflowLoadBtn" class="ui-button mobile-overflow-btn" type="button">Load Session</button>
-            <button id="mobileOverflowResetBtn" class="ui-button mobile-overflow-btn" type="button">Reset</button>
-          </div>
+      <footer class="site-footer">
+        <div>
+          <div class="site-footer-brand">Plane&iacute;r</div>
+          <p class="site-footer-copy">Visual financial planning for clearer client decisions.</p>
         </div>
-      </div>
-    </div>
-    <input id="loadSessionInput" type="file" accept=".json,application/json" class="file-input-hidden" />
+        <div class="site-footer-links">
+          <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>
+          <a href="#privacy-note">Privacy notice</a>
+          <a href="./app/">Open app</a>
+        </div>
+      </footer>
 
-    <div id="publishModal" class="publish-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="publishModalTitle">
-      <div class="publish-modal-card">
-        <div class="publish-modal-header">
-          <h2 id="publishModalTitle" class="publish-modal-title">Client access</h2>
-          <button id="publishCloseBtn" class="ui-button publish-close-btn" type="button">Close</button>
-        </div>
-        <p class="publish-modal-subtitle">Generate a secure link and PIN for client viewing.</p>
-        <p id="publishError" class="publish-error" aria-live="polite"></p>
-        <div class="publish-pin-input-wrap">
-          <label for="publishPinInput" class="publish-pin-input-label">PIN (6 digits)</label>
-          <input
-            id="publishPinInput"
-            class="publish-pin-input"
-            type="text"
-            inputmode="numeric"
-            maxlength="6"
-            placeholder="e.g. 123456"
-            aria-describedby="publishPinHelp"
-          />
-          <p id="publishPinHelp" class="publish-pin-help">Leave blank to auto-generate.</p>
-        </div>
-        <div class="publish-modal-actions">
-          <button id="publishGenerateBtn" class="ui-button" type="button">Generate Link + PIN</button>
-        </div>
-        <div id="publishResult" class="publish-result is-hidden">
-          <div class="publish-pin-wrap">
-            <div class="publish-pin-label">PIN</div>
-            <div id="publishPinValue" class="publish-pin-value">------</div>
-          </div>
-          <input id="publishLinkValue" class="publish-link-value" type="text" readonly />
-          <div class="publish-modal-actions">
-            <button id="publishCopyPinBtn" class="ui-button" type="button">Copy PIN</button>
-            <button id="publishCopyLinkBtn" class="ui-button" type="button">Copy Link</button>
-            <button id="publishRevokeBtn" class="ui-button" type="button">Revoke access</button>
-          </div>
-        </div>
+      <div class="mobile-cta-bar">
+        <a class="button button-primary" href="#request-call">Request a call</a>
+        <a class="button button-secondary" href="./app/">Open app</a>
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script>
       window.__WORKER_BASE_URL = "https://call-canvas-session-worker.geraldboylan.workers.dev";
-      window.__PUBLIC_BASE_URL = new URL('./', window.location.href).toString().replace(/\/$/, '');
     </script>
-    <script type="module" src="./js/app.js"></script>
+    <script type="module" src="./js/landing.js"></script>
   </body>
 </html>

@@ -3,98 +3,84 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <base href="./" />
-    <title>Client Session Viewer</title>
+    <meta name="robots" content="noindex" />
+    <title>Redirecting to Planeir session viewer</title>
     <link rel="icon" type="image/png" href="./favicon.png" />
-    <link rel="stylesheet" href="./styles/base.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Manrope", "Segoe UI", sans-serif;
+        background: #09101d;
+        color: #f4f8ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background:
+          radial-gradient(900px 640px at 20% 0%, rgba(63, 120, 198, 0.22), transparent 55%),
+          radial-gradient(700px 500px at 100% 100%, rgba(23, 92, 172, 0.18), transparent 55%),
+          linear-gradient(160deg, #05080f 0%, #0b1426 100%);
+      }
+
+      .redirect-card {
+        width: min(520px, 100%);
+        padding: 28px;
+        border-radius: 24px;
+        border: 1px solid rgba(126, 170, 221, 0.24);
+        background: rgba(9, 18, 34, 0.84);
+        box-shadow: 0 24px 56px rgba(1, 6, 16, 0.42);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(1.8rem, 5vw, 2.4rem);
+        letter-spacing: -0.04em;
+      }
+
+      p {
+        margin: 0;
+        color: #c8dbf2;
+        line-height: 1.7;
+      }
+
+      a {
+        color: #8fd0ff;
+      }
+    </style>
   </head>
   <body>
-    <div id="sessionUnlockLayer" class="session-unlock-layer" role="dialog" aria-modal="true" aria-labelledby="sessionUnlockTitle">
-      <div class="session-unlock-card">
-        <h1 id="sessionUnlockTitle">Client session</h1>
-        <p class="session-unlock-hint">Enter your 6-digit PIN to unlock this call canvas.</p>
-        <input
-          id="sessionPinInput"
-          class="session-unlock-input"
-          type="password"
-          inputmode="numeric"
-          autocomplete="one-time-code"
-          maxlength="6"
-          placeholder="000000"
-          aria-label="PIN"
-        />
-        <div class="session-unlock-actions">
-          <button id="sessionUnlockBtn" class="ui-button" type="button">Unlock</button>
-        </div>
-        <p id="sessionUnlockError" class="session-unlock-error" aria-live="polite"></p>
-      </div>
-    </div>
-
-    <div id="app">
-      <header class="topbar" aria-label="Session controls">
-        <div class="topbar-left">
-          <input
-            id="clientNameInput"
-            class="topbar-input"
-            type="text"
-            value="Client"
-            aria-label="Client name"
-            placeholder="Client name"
-          />
-        </div>
-        <div class="topbar-right">
-          <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
-          <span id="sessionStatus" class="session-status">Read only</span>
-        </div>
-      </header>
-
-      <main class="main-viewport" aria-live="polite">
-        <section id="greetingLayer" class="layer greeting-view">
-          <h1 id="greetingHeadline" class="greeting-headline">Client Session</h1>
-        </section>
-
-        <section id="focusLayer" class="layer focused-view is-hidden" aria-label="Focused module view" aria-hidden="true">
-          <div id="swipeStage" class="swipe-stage"></div>
-          <button
-            id="navPrevBtn"
-            class="nav-arrow left"
-            type="button"
-            aria-label="Previous module"
-            title="Previous module"
-          >
-            &#8592;
-          </button>
-          <button
-            id="navNextBtn"
-            class="nav-arrow right"
-            type="button"
-            aria-label="Next module"
-            title="Next module"
-          >
-            &#8594;
-          </button>
-        </section>
-
-        <section id="overviewLayer" class="layer overview-view is-hidden" aria-label="Overview map" aria-hidden="true">
-          <div id="overviewViewport" class="overview-viewport">
-            <div id="overviewZoomWrap" class="overview-zoom-wrap">
-              <div id="overviewGrid" class="overview-grid"></div>
-            </div>
-          </div>
-        </section>
-
-        <div id="animLayer" class="anim-layer" aria-hidden="true"></div>
-        <div id="toastHost" class="toast-host" aria-live="polite"></div>
-      </main>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <main class="redirect-card">
+      <h1>Opening client session</h1>
+      <p>
+        Redirecting to the current Planeir client session viewer.
+        If nothing happens, <a id="redirectLink" href="./app/session.html">open it here</a>.
+      </p>
+    </main>
     <script>
-      window.__WORKER_BASE_URL = "https://call-canvas-session-worker.geraldboylan.workers.dev";
-      window.__PUBLIC_BASE_URL = new URL('./', window.location.href).toString().replace(/\/$/, '');
+      (function redirectToCurrentSessionViewer() {
+        const target = new URL('./app/session.html', window.location.href);
+        target.search = window.location.search;
+        target.hash = window.location.hash;
+
+        const fallbackLink = document.getElementById('redirectLink');
+        if (fallbackLink) {
+          fallbackLink.href = target.toString();
+        }
+
+        window.location.replace(target.toString());
+      })();
     </script>
-    <script type="module" src="./js/session_viewer.js"></script>
   </body>
 </html>

@@ -80,6 +80,31 @@ textarea {
   gap: 10px;
 }
 
+.app-home-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 160, 200, 0.22);
+  background: rgba(8, 16, 30, 0.6);
+  color: #dfeeff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: border-color 180ms ease, background 180ms ease, color 180ms ease;
+}
+
+.app-home-link:hover,
+.app-home-link:focus-visible {
+  border-color: rgba(143, 208, 255, 0.46);
+  background: rgba(11, 25, 46, 0.86);
+  color: #ffffff;
+  outline: none;
+}
+
 .mobile-topbar-meta {
   display: inline-flex;
   align-items: center;
@@ -2670,6 +2695,10 @@ body.overview-has-selection .toast-host {
   .topbar-left {
     flex: 1;
     min-width: 0;
+  }
+
+  .app-home-link {
+    display: none;
   }
 
   .topbar-input {

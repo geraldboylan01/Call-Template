@@ -1,11 +1,24 @@
 const PAYLOAD_VERSION = 1;
 const SESSION_KEY_PREFIX = 'sessions/';
 const SESSION_KEY_SUFFIX = '.json';
+const LEAD_KEY_PREFIX = 'leads/';
 const MAX_CT_B64_LENGTH = 2_800_000;
 const MAX_IV_B64_LENGTH = 64;
 const MAX_SALT_B64_LENGTH = 128;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 80;
+const MAX_LEAD_NAME_LENGTH = 120;
+const MAX_LEAD_EMAIL_LENGTH = 160;
+const MAX_LEAD_PHONE_LENGTH = 40;
+const MAX_LEAD_REASON_LENGTH = 2_000;
+
+const ALLOWED_LEAD_STAGES = new Set([
+  'buying-a-home',
+  'building-wealth',
+  'retirement-planning',
+  'financial-education',
+  'other'
+]);
 
 const requestBuckets = new Map();
 
@@ -68,6 +81,10 @@ function parseJsonBody(request) {
   return request.json();
 }
 
+function normalizeLeadValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function isSafeSessionId(rawId) {
   return typeof rawId === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(rawId);
 }
@@ -102,6 +119,63 @@ function validatePublishPayload(payload) {
     saltB64: payload.saltB64,
     ivB64: payload.ivB64,
     ctB64: payload.ctB64
+  };
+}
+
+function validateLeadPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  const fullName = normalizeLeadValue(payload.fullName);
+  const email = normalizeLeadValue(payload.email).toLowerCase();
+  const phone = normalizeLeadValue(payload.phone);
+  const stage = normalizeLeadValue(payload.stage);
+  const reason = normalizeLeadValue(payload.reason);
+
+  if (!fullName) {
+    throw new Error('Full name is required.');
+  }
+
+  if (fullName.length > MAX_LEAD_NAME_LENGTH) {
+    throw new Error('Full name is too long.');
+  }
+
+  if (!email) {
+    throw new Error('Email is required.');
+  }
+
+  if (email.length > MAX_LEAD_EMAIL_LENGTH) {
+    throw new Error('Email is too long.');
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Email address is invalid.');
+  }
+
+  if (phone.length > MAX_LEAD_PHONE_LENGTH) {
+    throw new Error('Phone number is too long.');
+  }
+
+  if (stage && !ALLOWED_LEAD_STAGES.has(stage)) {
+    throw new Error('Planning stage is invalid.');
+  }
+
+  if (!reason) {
+    throw new Error('Help request is required.');
+  }
+
+  if (reason.length > MAX_LEAD_REASON_LENGTH) {
+    throw new Error('Help request is too long.');
+  }
+
+  return {
+    fullName,
+    email,
+    phone,
+    reason,
+    stage,
+    source: 'landing-page'
   };
 }
 
@@ -164,6 +238,44 @@ async function handlePublish(request, env, origin) {
   return jsonResponse({ sessionId }, 200, origin);
 }
 
+async function handleLeadSubmit(request, env, origin) {
+  const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin);
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin);
+  }
+
+  let validated;
+  try {
+    validated = validateLeadPayload(body);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin);
+  }
+
+  const leadId = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  const datePath = createdAt.slice(0, 10);
+  const objectKey = `${LEAD_KEY_PREFIX}${datePath}/${createdAt.replace(/[:.]/g, '-')}-${leadId}.json`;
+
+  await env.SESSIONS_BUCKET.put(objectKey, JSON.stringify({
+    id: leadId,
+    createdAt,
+    ...validated
+  }), {
+    httpMetadata: {
+      contentType: 'application/json'
+    }
+  });
+
+  return jsonResponse({ ok: true, leadId }, 201, origin);
+}
+
 async function handleGetSession(request, env, origin, sessionId) {
   const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
   if (!checkRateLimit(clientIp)) {
@@ -210,6 +322,10 @@ export default {
           ...corsHeaders(origin)
         }
       });
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/leads') {
+      return handleLeadSubmit(request, env, origin);
     }
 
     if (request.method === 'POST' && url.pathname === '/api/publish') {

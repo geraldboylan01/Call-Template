@@ -16,8 +16,8 @@ const ASSET_EXTENSIONS = new Set([
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const HTML_FILES = ['index.html', 'session.html'];
-const COPY_ENTRIES = ['styles', 'js', 'favicon.png', 'Planeir_logo_transparent.png'];
+const HTML_FILES = ['index.html', 'session.html', 'app/index.html', 'app/session.html'];
+const COPY_ENTRIES = ['styles', 'js', 'favicon.png', 'Planeir_logo_transparent.png', 'CNAME'];
 const VERSION = (process.env.ASSET_VERSION || Date.now().toString()).slice(0, 16);
 
 const ASSET_TAG_PATTERN = /((?:href|src)=["'])(?!https?:\/\/|\/\/|data:|mailto:|#)([^"'?#]+)(["'])/gi;
@@ -52,6 +52,7 @@ async function build() {
     const inputPath = path.join(ROOT_DIR, htmlFile);
     const outputPath = path.join(DIST_DIR, htmlFile);
     const html = await readFile(inputPath, 'utf8');
+    await mkdir(path.dirname(outputPath), { recursive: true });
     await writeFile(outputPath, addVersionToAssetUrls(html), 'utf8');
   }
 
