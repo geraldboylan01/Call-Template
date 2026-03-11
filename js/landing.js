@@ -25,7 +25,9 @@ const leadFields = {
   email: document.getElementById('leadEmail'),
   phone: document.getElementById('leadPhone'),
   stage: document.getElementById('leadStage'),
-  reason: document.getElementById('leadReason')
+  reason: document.getElementById('leadReason'),
+  understandsEarlyAccess: document.getElementById('leadUnderstandsEarlyAccess'),
+  openToRecording: document.getElementById('leadOpenToRecording')
 };
 
 function setNavOpen(open) {
@@ -100,6 +102,10 @@ function setFieldValidity(field, isValid) {
   }
 
   field.setAttribute('aria-invalid', isValid ? 'false' : 'true');
+  const consentCheck = field.closest('.consent-check');
+  if (consentCheck) {
+    consentCheck.classList.toggle('is-invalid', !isValid);
+  }
 }
 
 function setFormStatus(kind, message) {
@@ -118,7 +124,9 @@ function normalizeLeadPayload() {
     email: String(leadFields.email?.value || '').trim(),
     phone: String(leadFields.phone?.value || '').trim(),
     stage: String(leadFields.stage?.value || '').trim(),
-    reason: String(leadFields.reason?.value || '').trim()
+    reason: String(leadFields.reason?.value || '').trim(),
+    understandsEarlyAccess: Boolean(leadFields.understandsEarlyAccess?.checked),
+    openToRecording: Boolean(leadFields.openToRecording?.checked)
   };
 }
 
@@ -153,6 +161,20 @@ function validateLeadPayload(payload) {
     errors.push({
       field: leadFields.reason,
       message: 'Add a little more context so we can route your request properly.'
+    });
+  }
+
+  if (!payload.understandsEarlyAccess) {
+    errors.push({
+      field: leadFields.understandsEarlyAccess,
+      message: 'Confirm that you understand this is a free early-access call.'
+    });
+  }
+
+  if (!payload.openToRecording) {
+    errors.push({
+      field: leadFields.openToRecording,
+      message: 'Confirm that you are open to the session being recorded for this early-access call.'
     });
   }
 

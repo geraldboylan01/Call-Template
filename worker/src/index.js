@@ -85,6 +85,19 @@ function normalizeLeadValue(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeLeadConsent(value) {
+  if (value === true) {
+    return true;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === 'yes' || normalized === 'on';
+  }
+
+  return false;
+}
+
 function isSafeSessionId(rawId) {
   return typeof rawId === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(rawId);
 }
@@ -132,6 +145,8 @@ function validateLeadPayload(payload) {
   const phone = normalizeLeadValue(payload.phone);
   const stage = normalizeLeadValue(payload.stage);
   const reason = normalizeLeadValue(payload.reason);
+  const understandsEarlyAccess = normalizeLeadConsent(payload.understandsEarlyAccess);
+  const openToRecording = normalizeLeadConsent(payload.openToRecording);
 
   if (!fullName) {
     throw new Error('Full name is required.');
@@ -169,12 +184,22 @@ function validateLeadPayload(payload) {
     throw new Error('Help request is too long.');
   }
 
+  if (!understandsEarlyAccess) {
+    throw new Error('Early-access acknowledgement is required.');
+  }
+
+  if (!openToRecording) {
+    throw new Error('Recording consent is required for this early-access call.');
+  }
+
   return {
     fullName,
     email,
     phone,
     reason,
     stage,
+    understandsEarlyAccess,
+    openToRecording,
     source: 'landing-page'
   };
 }
