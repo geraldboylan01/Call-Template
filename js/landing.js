@@ -118,6 +118,29 @@ function setFormStatus(kind, message) {
   leadFormStatus.classList.toggle('is-error', kind === 'error');
 }
 
+function getFriendlyLeadSubmitError(error) {
+  const message = typeof error?.message === 'string'
+    ? error.message.trim()
+    : '';
+
+  if (!message) {
+    return 'Could not submit your request right now. Please try again shortly.';
+  }
+
+  if (
+    error instanceof TypeError
+    || /failed to fetch|networkerror|load failed|network request failed/i.test(message)
+  ) {
+    return 'We could not send your request right now. Please try again in a moment.';
+  }
+
+  if (/not configured/i.test(message)) {
+    return 'Request booking is not available right now. Please try again shortly.';
+  }
+
+  return message;
+}
+
 function normalizeLeadPayload() {
   return {
     fullName: String(leadFields.fullName?.value || '').trim(),
@@ -240,6 +263,7 @@ function bindLeadForm() {
       leadSubmitButton.disabled = true;
       leadSubmitButton.textContent = 'Sending...';
     }
+    leadForm.setAttribute('aria-busy', 'true');
 
     try {
       await submitLead(payload);
@@ -247,12 +271,13 @@ function bindLeadForm() {
       resetFieldValidity();
       setFormStatus('success', 'Thanks \u2014 your request has been received. We\'ll be in touch shortly.');
     } catch (error) {
-      setFormStatus('error', error?.message || 'Could not submit your request right now. Please try again shortly.');
+      setFormStatus('error', getFriendlyLeadSubmitError(error));
     } finally {
       if (leadSubmitButton) {
         leadSubmitButton.disabled = false;
         leadSubmitButton.textContent = 'Request a free call';
       }
+      leadForm.removeAttribute('aria-busy');
     }
   });
 }

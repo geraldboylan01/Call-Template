@@ -11,6 +11,13 @@ const MAX_LEAD_NAME_LENGTH = 120;
 const MAX_LEAD_EMAIL_LENGTH = 160;
 const MAX_LEAD_PHONE_LENGTH = 40;
 const MAX_LEAD_REASON_LENGTH = 2_000;
+const PREFLIGHT_MAX_AGE_SECONDS = 86_400;
+const DEFAULT_ALLOWED_REQUEST_HEADERS = 'Content-Type';
+const DEFAULT_ALLOWED_ORIGINS = new Set([
+  'https://planeir.ie',
+  'https://www.planeir.ie',
+  'https://geraldboylan01.github.io'
+]);
 
 const ALLOWED_LEAD_STAGES = new Set([
   'buying-a-home',
@@ -24,7 +31,52 @@ const requestBuckets = new Map();
 
 function getAllowedOrigins(env) {
   const raw = String(env.ALLOWED_ORIGINS || '');
-  return new Set(raw.split(',').map((value) => value.trim()).filter(Boolean));
+  const configuredOrigins = raw.split(',').map((value) => value.trim()).filter(Boolean);
+  return new Set([
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...configuredOrigins
+  ]);
+}
+
+function normalizePathname(pathname) {
+  if (pathname.length <= 1) {
+    return pathname;
+  }
+
+  return pathname.replace(/\/+$/, '');
+}
+
+function getRouteConfig(pathname) {
+  if (pathname === '/api/leads') {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/publish') {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/session\/[^/]+$/.test(pathname)) {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/revoke\/[^/]+$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  return null;
+}
+
+function getAllowedRequestHeaders(request) {
+  const requestedHeaders = request.headers.get('Access-Control-Request-Headers');
+  return requestedHeaders || DEFAULT_ALLOWED_REQUEST_HEADERS;
 }
 
 function getCorsOrigin(request, env) {
@@ -53,11 +105,12 @@ function getCorsOrigin(request, env) {
   return false;
 }
 
-function corsHeaders(origin) {
+function corsHeaders(origin, methods, requestHeaders) {
   const headers = {
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    Vary: 'Origin'
+    'Access-Control-Allow-Methods': methods || 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': requestHeaders || DEFAULT_ALLOWED_REQUEST_HEADERS,
+    'Access-Control-Max-Age': String(PREFLIGHT_MAX_AGE_SECONDS),
+    Vary: requestHeaders ? 'Origin, Access-Control-Request-Headers' : 'Origin'
   };
 
   if (origin) {
@@ -67,12 +120,21 @@ function corsHeaders(origin) {
   return headers;
 }
 
-function jsonResponse(data, status, origin) {
+function jsonResponse(data, status, origin, methods, requestHeaders) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders(origin)
+      ...corsHeaders(origin, methods, requestHeaders)
+    }
+  });
+}
+
+function optionsResponse(request, origin, methods) {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      ...corsHeaders(origin, methods, getAllowedRequestHeaders(request))
     }
   });
 }
@@ -245,46 +307,54 @@ async function handlePublish(request, env, origin) {
   try {
     body = await parseJsonBody(request);
   } catch (_error) {
-    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin);
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
   }
 
   let validated;
   try {
     validated = validatePublishPayload(body);
   } catch (error) {
-    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin);
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'POST,OPTIONS');
   }
 
   const sessionId = crypto.randomUUID();
   const objectKey = getSessionKey(sessionId);
 
-  await env.SESSIONS_BUCKET.put(objectKey, JSON.stringify(validated), {
-    httpMetadata: {
-      contentType: 'application/json'
-    }
-  });
+  try {
+    await env.SESSIONS_BUCKET.put(objectKey, JSON.stringify(validated), {
+      httpMetadata: {
+        contentType: 'application/json'
+      }
+    });
+  } catch (error) {
+    console.error('Failed to store published session', {
+      sessionId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'Could not publish this session right now.' }, 500, origin, 'POST,OPTIONS');
+  }
 
-  return jsonResponse({ sessionId }, 200, origin);
+  return jsonResponse({ sessionId }, 200, origin, 'POST,OPTIONS');
 }
 
 async function handleLeadSubmit(request, env, origin) {
   const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
   if (!checkRateLimit(clientIp)) {
-    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin);
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
   }
 
   let body;
   try {
     body = await parseJsonBody(request);
   } catch (_error) {
-    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin);
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
   }
 
   let validated;
   try {
     validated = validateLeadPayload(body);
   } catch (error) {
-    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin);
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'POST,OPTIONS');
   }
 
   const leadId = crypto.randomUUID();
@@ -292,30 +362,38 @@ async function handleLeadSubmit(request, env, origin) {
   const datePath = createdAt.slice(0, 10);
   const objectKey = `${LEAD_KEY_PREFIX}${datePath}/${createdAt.replace(/[:.]/g, '-')}-${leadId}.json`;
 
-  await env.SESSIONS_BUCKET.put(objectKey, JSON.stringify({
-    id: leadId,
-    createdAt,
-    ...validated
-  }), {
-    httpMetadata: {
-      contentType: 'application/json'
-    }
-  });
+  try {
+    await env.SESSIONS_BUCKET.put(objectKey, JSON.stringify({
+      id: leadId,
+      createdAt,
+      ...validated
+    }), {
+      httpMetadata: {
+        contentType: 'application/json'
+      }
+    });
+  } catch (error) {
+    console.error('Failed to store lead submission', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'Could not save your request right now. Please try again shortly.' }, 500, origin, 'POST,OPTIONS');
+  }
 
-  return jsonResponse({ ok: true, leadId }, 201, origin);
+  return jsonResponse({ ok: true, leadId }, 201, origin, 'POST,OPTIONS');
 }
 
 async function handleGetSession(request, env, origin, sessionId) {
   const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
   if (!checkRateLimit(clientIp)) {
-    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin);
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'GET,OPTIONS');
   }
 
   const objectKey = getSessionKey(sessionId);
   const object = await env.SESSIONS_BUCKET.get(objectKey);
 
   if (!object) {
-    return jsonResponse({ error: 'Session not found.' }, 404, origin);
+    return jsonResponse({ error: 'Session not found.' }, 404, origin, 'GET,OPTIONS');
   }
 
   const payload = await object.text();
@@ -324,7 +402,7 @@ async function handleGetSession(request, env, origin, sessionId) {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders(origin)
+      ...corsHeaders(origin, 'GET,OPTIONS')
     }
   });
 }
@@ -332,55 +410,57 @@ async function handleGetSession(request, env, origin, sessionId) {
 async function handleRevoke(env, origin, sessionId) {
   const objectKey = getSessionKey(sessionId);
   await env.SESSIONS_BUCKET.delete(objectKey);
-  return jsonResponse({ ok: true }, 200, origin);
+  return jsonResponse({ ok: true }, 200, origin, 'POST,OPTIONS');
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const pathname = normalizePathname(url.pathname);
+    const routeConfig = getRouteConfig(pathname);
     const origin = getCorsOrigin(request, env);
+    const requestHeaders = getAllowedRequestHeaders(request);
 
     if (origin === false) {
-      return jsonResponse({ error: 'Origin not allowed.' }, 403, null);
+      return jsonResponse({ error: 'Origin not allowed.' }, 403, null, routeConfig?.methods, requestHeaders);
     }
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          ...corsHeaders(origin)
-        }
-      });
+      if (!routeConfig) {
+        return jsonResponse({ error: 'Not found.' }, 404, origin, 'OPTIONS', requestHeaders);
+      }
+
+      return optionsResponse(request, origin, routeConfig.methods);
     }
 
-    if (request.method === 'POST' && url.pathname === '/api/leads') {
+    if (request.method === 'POST' && pathname === '/api/leads') {
       return handleLeadSubmit(request, env, origin);
     }
 
-    if (request.method === 'POST' && url.pathname === '/api/publish') {
+    if (request.method === 'POST' && pathname === '/api/publish') {
       return handlePublish(request, env, origin);
     }
 
-    const getMatch = /^\/api\/session\/([^/]+)$/.exec(url.pathname);
+    const getMatch = /^\/api\/session\/([^/]+)$/.exec(pathname);
     if (request.method === 'GET' && getMatch) {
       const sessionId = getMatch[1];
       if (!isSafeSessionId(sessionId)) {
-        return jsonResponse({ error: 'Invalid session id.' }, 400, origin);
+        return jsonResponse({ error: 'Invalid session id.' }, 400, origin, 'GET,OPTIONS');
       }
 
       return handleGetSession(request, env, origin, sessionId);
     }
 
-    const revokeMatch = /^\/api\/revoke\/([^/]+)$/.exec(url.pathname);
+    const revokeMatch = /^\/api\/revoke\/([^/]+)$/.exec(pathname);
     if (request.method === 'POST' && revokeMatch) {
       const sessionId = revokeMatch[1];
       if (!isSafeSessionId(sessionId)) {
-        return jsonResponse({ error: 'Invalid session id.' }, 400, origin);
+        return jsonResponse({ error: 'Invalid session id.' }, 400, origin, 'POST,OPTIONS');
       }
 
       return handleRevoke(env, origin, sessionId);
     }
 
-    return jsonResponse({ error: 'Not found.' }, 404, origin);
+    return jsonResponse({ error: 'Not found.' }, 404, origin, routeConfig?.methods, requestHeaders);
   }
 };
