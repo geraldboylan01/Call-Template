@@ -19,14 +19,28 @@ Worker:
 
 1. From `worker/`, run the Cloudflare Worker locally with Wrangler.
 2. The static site will use `http://127.0.0.1:8787` automatically on `localhost` / `127.0.0.1`.
+3. Apply the D1 migrations before testing lead capture:
+
+```bash
+cd worker
+npx wrangler d1 migrations apply planeir-leads --local
+```
 
 ## Lead Capture
 
 The landing page form posts to the existing Cloudflare Worker:
 
 - Endpoint: `POST /api/leads`
-- Storage: the existing `SESSIONS_BUCKET` R2 bucket under the `leads/` prefix
-- Stored fields: `createdAt`, `fullName`, `email`, `phone`, `reason`, `stage`, `source`
+- Storage: the `LEADS_DB` D1 binding, table `leads`
+- Stored columns: `created_at`, `full_name`, `email`, `phone`, `help_reason`, `stage`, `consent_free_call`, `consent_recording`, `source`
+- Migration file: `worker/migrations/0001_create_leads.sql`
+
+Apply the remote migration with:
+
+```bash
+cd worker
+npx wrangler d1 migrations apply planeir-leads --remote
+```
 
 ## Published Client Sessions
 

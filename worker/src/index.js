@@ -1,7 +1,6 @@
 const PAYLOAD_VERSION = 1;
 const SESSION_KEY_PREFIX = 'sessions/';
 const SESSION_KEY_SUFFIX = '.json';
-const LEAD_KEY_PREFIX = 'leads/';
 const MAX_CT_B64_LENGTH = 2_800_000;
 const MAX_IV_B64_LENGTH = 64;
 const MAX_SALT_B64_LENGTH = 128;
@@ -158,6 +157,11 @@ function normalizeLeadConsent(value) {
   }
 
   return false;
+}
+
+function normalizeOptionalLeadValue(value) {
+  const normalized = normalizeLeadValue(value);
+  return normalized ? normalized : null;
 }
 
 function isSafeSessionId(rawId) {
@@ -343,6 +347,11 @@ async function handleLeadSubmit(request, env, origin) {
     return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
   }
 
+  if (!env.LEADS_DB) {
+    console.error('LEADS_DB binding is missing for lead submission');
+    return jsonResponse({ error: 'Lead capture is not configured right now.' }, 500, origin, 'POST,OPTIONS');
+  }
+
   let body;
   try {
     body = await parseJsonBody(request);
@@ -357,30 +366,49 @@ async function handleLeadSubmit(request, env, origin) {
     return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'POST,OPTIONS');
   }
 
-  const leadId = crypto.randomUUID();
   const createdAt = new Date().toISOString();
-  const datePath = createdAt.slice(0, 10);
-  const objectKey = `${LEAD_KEY_PREFIX}${datePath}/${createdAt.replace(/[:.]/g, '-')}-${leadId}.json`;
+  const phone = normalizeOptionalLeadValue(validated.phone);
+  const stage = normalizeOptionalLeadValue(validated.stage);
 
   try {
-    await env.SESSIONS_BUCKET.put(objectKey, JSON.stringify({
-      id: leadId,
+    const result = await env.LEADS_DB.prepare(`
+      INSERT INTO leads (
+        created_at,
+        full_name,
+        email,
+        phone,
+        help_reason,
+        stage,
+        consent_free_call,
+        consent_recording,
+        source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
       createdAt,
-      ...validated
-    }), {
-      httpMetadata: {
-        contentType: 'application/json'
-      }
-    });
+      validated.fullName,
+      validated.email,
+      phone,
+      validated.reason,
+      stage,
+      validated.understandsRecordedCall ? 1 : 0,
+      validated.understandsEducationalContent ? 1 : 0,
+      validated.source
+    ).run();
+
+    if (!result.success) {
+      throw new Error('Lead insert did not succeed.');
+    }
+
+    return jsonResponse({
+      ok: true,
+      leadId: result.meta?.last_row_id ?? null
+    }, 201, origin, 'POST,OPTIONS');
   } catch (error) {
     console.error('Failed to store lead submission', {
-      leadId,
       error: error instanceof Error ? error.message : String(error)
     });
     return jsonResponse({ error: 'Could not save your request right now. Please try again shortly.' }, 500, origin, 'POST,OPTIONS');
   }
-
-  return jsonResponse({ ok: true, leadId }, 201, origin, 'POST,OPTIONS');
 }
 
 async function handleGetSession(request, env, origin, sessionId) {
