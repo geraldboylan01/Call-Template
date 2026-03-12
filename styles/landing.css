@@ -519,12 +519,16 @@ main {
 
 .hero-visual-wrap {
   min-width: 0;
+  display: flex;
+  justify-content: center;
 }
 
 .hero-visual {
   position: relative;
   display: grid;
   gap: 1rem;
+  width: min(100%, 44rem);
+  margin-inline: auto;
 }
 
 .mock-window,
@@ -1311,17 +1315,6 @@ main {
     margin-left: 0.35rem;
   }
 
-  .hero-section {
-    grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
-    align-items: center;
-    gap: 3rem;
-    padding-top: 3.5rem;
-  }
-
-  .hero-mock-body {
-    grid-template-columns: minmax(220px, 0.38fr) minmax(0, 0.62fr);
-  }
-
   .mock-decision-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1372,6 +1365,39 @@ main {
 
   .mobile-cta-bar {
     display: none;
+  }
+}
+
+@media (min-width: 1100px) {
+  .hero-section {
+    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+    align-items: start;
+    gap: clamp(3rem, 4vw, 4.5rem);
+    padding-top: 3.5rem;
+  }
+
+  .hero-visual-wrap {
+    justify-content: flex-end;
+    align-self: start;
+  }
+
+  .hero-visual {
+    width: min(100%, 46rem);
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  .mock-window-top {
+    padding: 1.1rem 1.3rem;
+  }
+
+  .mock-window-body {
+    padding: 1.25rem;
+  }
+
+  .hero-mock-body {
+    grid-template-columns: minmax(200px, 0.34fr) minmax(0, 0.66fr);
+    gap: 1.15rem;
   }
 }
 
