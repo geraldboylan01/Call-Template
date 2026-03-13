@@ -277,7 +277,7 @@ textarea {
 
 .greeting-logo-shell {
   margin: 0;
-  width: min(620px, 74vw, 60vh);
+  width: min(760px, 82vw);
 }
 
 .logo-reveal {
@@ -451,7 +451,7 @@ textarea {
   top: clamp(8px, 1.4vh, 14px);
   left: 50%;
   z-index: 16;
-  width: clamp(86px, 12vw, 148px);
+  width: clamp(110px, 15vw, 196px);
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, -6px);
