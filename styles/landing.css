@@ -141,8 +141,8 @@ body.nav-open {
 .site-brand-logo-wrap {
   position: relative;
   display: block;
-  width: 9.4rem;
-  height: 2.74rem;
+  width: 9.35rem;
+  height: 2.7rem;
   overflow: hidden;
 }
 
@@ -1340,8 +1340,8 @@ main {
   }
 
   .site-brand-logo-wrap {
-    width: 10.45rem;
-    height: 3.04rem;
+    width: 10.4rem;
+    height: 3rem;
   }
 
   .site-brand-logo {
