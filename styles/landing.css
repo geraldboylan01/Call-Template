@@ -1424,7 +1424,15 @@ main {
 }
 
 .lead-success-harp-face-light {
-  object-fit: contain;
+  background: #f3f8ff;
+  -webkit-mask-image: url("../assets/brand/planeir-harp-light.svg");
+  mask-image: url("../assets/brand/planeir-harp-light.svg");
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
   transform: rotateY(180deg);
 }
 
