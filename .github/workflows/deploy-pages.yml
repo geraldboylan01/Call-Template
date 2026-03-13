@@ -54,3 +54,12 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Checkout repo for smoke check
+        uses: actions/checkout@v4
+
+      - name: Verify live Pages HTML uses versioned assets
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: bash ./scripts/check-pages-versioned-assets.sh

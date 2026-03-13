@@ -70,15 +70,25 @@ The build step:
 - emits the root compatibility redirect at `dist/session.html`
 - copies `CNAME` into `dist/`
 
+GitHub Pages must publish from `GitHub Actions`, not from the branch root or `/docs`.
+The workflow in [`.github/workflows/deploy-pages.yml`](/Users/geraldboylan/Documents/GitHub/Call-Template/.github/workflows/deploy-pages.yml)
+deploys only `dist/`, and production should therefore serve HTML that includes `?v=<commit-sha>` on local CSS, JS, and image assets.
+
+If the live site is serving unversioned asset URLs, Pages is publishing the wrong source and browsers can mix fresh HTML with stale CSS/JS caches.
+
+The deploy workflow now includes a smoke check that fetches `/` and `/app/` from the live origin and fails unless the deployed HTML contains the expected versioned asset URLs for the current commit.
+
 ## File Structure
 
 - `index.html` public landing page
 - `app/index.html` advisor app
 - `app/session.html` client viewer
 - `session.html` compatibility redirect for older links
+- `dist/` the only GitHub Pages deploy artifact
 - `styles/landing.css` landing page styling
 - `styles/base.css` advisor app styling
 - `js/landing.js` landing page interactions and lead form submission
 - `js/app.js` advisor app logic
 - `js/session_viewer.js` client viewer logic
+- `scripts/check-pages-versioned-assets.sh` post-deploy verification for the live Pages site
 - `worker/src/index.js` Worker API for sessions and leads
