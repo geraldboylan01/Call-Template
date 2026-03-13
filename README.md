@@ -34,6 +34,39 @@ The landing page form posts to the existing Cloudflare Worker:
 - Storage: the `LEADS_DB` D1 binding, table `leads`
 - Stored columns: `created_at`, `full_name`, `email`, `phone`, `help_reason`, `stage`, `call_outcome`, `consent_free_call`, `consent_recording`, `source`
 - Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`
+- Email notifications: Resend API is called from the Worker after a successful D1 insert
+
+### Lead Email Configuration
+
+The Worker sends a non-blocking internal notification email after a lead is stored successfully. An optional submitter confirmation email can also be enabled.
+
+Recommended configuration:
+
+- Secret: `RESEND_API_KEY`
+- Variable or secret: `LEAD_EMAIL_FROM`
+- Variable or secret: `LEAD_NOTIFICATION_TO`
+- Optional variable or secret: `LEAD_REPLY_TO`
+- Optional variable or secret: `LEAD_CONFIRMATION_EMAIL_ENABLED`
+
+Example setup:
+
+```bash
+cd worker
+wrangler secret put RESEND_API_KEY
+wrangler secret put LEAD_EMAIL_FROM
+wrangler secret put LEAD_NOTIFICATION_TO
+wrangler secret put LEAD_REPLY_TO
+```
+
+For the optional confirmation email toggle, set `LEAD_CONFIRMATION_EMAIL_ENABLED=true` in the Cloudflare dashboard or in local Wrangler development variables.
+
+Notes:
+
+- `LEAD_EMAIL_FROM` must be a sender address verified with Resend, for example `Planeir <hello@yourdomain.com>`.
+- `LEAD_NOTIFICATION_TO` can be Gerry's email address or a comma-separated list of internal recipients.
+- The internal notification uses the submitter's email as `Reply-To`, so Gerry can reply directly.
+- `LEAD_REPLY_TO` is only used on the optional confirmation email.
+- If email delivery fails or email is not configured, the lead is still stored and the API still returns success.
 
 Apply the remote migration with:
 
@@ -77,6 +110,16 @@ deploys only `dist/`, and production should therefore serve HTML that includes `
 If the live site is serving unversioned asset URLs, Pages is publishing the wrong source and browsers can mix fresh HTML with stale CSS/JS caches.
 
 The deploy workflow now includes a smoke check that fetches `/` and `/app/` from the live origin and fails unless the deployed HTML contains the expected versioned asset URLs for the current commit.
+
+## Testing Lead Notifications
+
+1. Configure the email variables above in the Worker environment.
+2. Run the Worker locally from `worker/`.
+3. Submit the landing-page form against the local Worker.
+4. Confirm the lead row was inserted into D1.
+5. Confirm Gerry receives the internal notification email.
+6. If `LEAD_CONFIRMATION_EMAIL_ENABLED=true`, confirm the submitter receives the acknowledgement email.
+7. To test failure handling, temporarily remove `RESEND_API_KEY` or use an invalid key, submit again, and confirm the API still returns success while the Worker logs the email failure.
 
 ## File Structure
 

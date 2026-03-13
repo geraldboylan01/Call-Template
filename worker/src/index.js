@@ -12,11 +12,14 @@ const MAX_LEAD_PHONE_LENGTH = 40;
 const MAX_LEAD_REASON_LENGTH = 2_000;
 const PREFLIGHT_MAX_AGE_SECONDS = 86_400;
 const DEFAULT_ALLOWED_REQUEST_HEADERS = 'Content-Type';
+const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
+const LEAD_SOURCE_LABEL = 'Planeir landing page';
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   'https://planeir.ie',
   'https://www.planeir.ie',
   'https://geraldboylan01.github.io'
 ]);
+const TRUEISH_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
 
 const ALLOWED_LEAD_STAGES = new Set([
   'buying-a-home',
@@ -34,6 +37,21 @@ const ALLOWED_CALL_OUTCOMES = new Set([
   'sense-check-on-a-plan',
   'other'
 ]);
+const LEAD_STAGE_LABELS = {
+  'buying-a-home': 'Buying a home',
+  'building-wealth': 'Building wealth',
+  'retirement-planning': 'Retirement planning',
+  'financial-education': 'Financial education',
+  other: 'Other'
+};
+const CALL_OUTCOME_LABELS = {
+  'clearer-understanding': 'Clearer understanding',
+  reassurance: 'Reassurance',
+  'decision-support': 'Decision support',
+  'comparing-options': 'Comparing options',
+  'sense-check-on-a-plan': 'Sense-check on a plan',
+  other: 'Other'
+};
 
 const requestBuckets = new Map();
 
@@ -171,6 +189,250 @@ function normalizeLeadConsent(value) {
 function normalizeOptionalLeadValue(value) {
   const normalized = normalizeLeadValue(value);
   return normalized ? normalized : null;
+}
+
+function normalizeEnvValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isTruthyEnvValue(value) {
+  if (value === true) {
+    return true;
+  }
+
+  const normalized = normalizeEnvValue(value).toLowerCase();
+  return TRUEISH_ENV_VALUES.has(normalized);
+}
+
+function splitEmailList(value) {
+  return normalizeEnvValue(value).split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatOptionalText(value) {
+  const normalized = normalizeLeadValue(value);
+  return normalized || 'Not provided';
+}
+
+function formatLeadSelection(value, labels) {
+  const normalized = normalizeLeadValue(value);
+  if (!normalized) {
+    return 'Not provided';
+  }
+
+  return labels[normalized] || normalized;
+}
+
+function formatLeadConsent(value) {
+  return value ? 'Yes' : 'No';
+}
+
+function buildLeadSummaryRows(lead, leadId) {
+  return [
+    ['Lead ID', leadId ? String(leadId) : 'Not available'],
+    ['Full name', formatOptionalText(lead.fullName)],
+    ['Email', formatOptionalText(lead.email)],
+    ['Phone', formatOptionalText(lead.phone)],
+    ['Planning stage', formatLeadSelection(lead.stage, LEAD_STAGE_LABELS)],
+    ['Requested outcome', formatLeadSelection(lead.callOutcome, CALL_OUTCOME_LABELS)],
+    ['Understands this is a free recorded call', formatLeadConsent(lead.understandsRecordedCall)],
+    ['Understands recording may be used as educational content', formatLeadConsent(lead.understandsEducationalContent)],
+    ['Submitted at', formatOptionalText(lead.createdAt)],
+    ['Source', LEAD_SOURCE_LABEL]
+  ];
+}
+
+function buildLeadNotificationText(lead, leadId) {
+  const summary = buildLeadSummaryRows(lead, leadId)
+    .map(([label, value]) => `${label}: ${value}`)
+    .join('\n');
+
+  return [
+    'New Planeir request-a-call submission',
+    '',
+    summary,
+    '',
+    'Main question / concern:',
+    formatOptionalText(lead.reason)
+  ].join('\n');
+}
+
+function buildLeadNotificationHtml(lead, leadId) {
+  const rows = buildLeadSummaryRows(lead, leadId)
+    .map(([label, value]) => `
+      <tr>
+        <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">${escapeHtml(label)}</td>
+        <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(value)}</td>
+      </tr>
+    `)
+    .join('');
+
+  const reasonHtml = escapeHtml(formatOptionalText(lead.reason)).replace(/\n/g, '<br />');
+
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px 24px 12px;background:#0f2233;color:#ffffff;">
+        <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.8;">Planeir lead notification</p>
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">New request-a-call submission</h1>
+      </div>
+      <div style="padding:24px;">
+        <p style="margin:0 0 20px;font-size:15px;line-height:1.6;">
+          A new lead was submitted through the Planeir landing page.
+        </p>
+        <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;">
+          ${rows}
+        </table>
+        <h2 style="margin:24px 0 12px;font-size:18px;line-height:1.3;">Main question / concern</h2>
+        <div style="padding:16px;border:1px solid #d9e2ea;border-radius:12px;background:#f7fafc;font-size:14px;line-height:1.7;">
+          ${reasonHtml}
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function buildLeadConfirmationText(lead) {
+  return [
+    `Hi ${lead.fullName},`,
+    '',
+    'Thanks for getting in touch with Planeir.',
+    'Gerry has received your request for a free call and will review it shortly.',
+    'If the request looks like a good fit for the format, you will hear back.',
+    '',
+    'Best,',
+    'Planeir'
+  ].join('\n');
+}
+
+function buildLeadConfirmationHtml(lead) {
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px;background:#0f2233;color:#ffffff;">
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">Thanks for getting in touch</h1>
+      </div>
+      <div style="padding:24px;font-size:15px;line-height:1.7;">
+        <p style="margin:0 0 16px;">Hi ${escapeHtml(lead.fullName)},</p>
+        <p style="margin:0 0 16px;">
+          Gerry has received your request for a free call and will review it shortly.
+        </p>
+        <p style="margin:0 0 16px;">
+          If the request looks like a good fit for the format, you will hear back.
+        </p>
+        <p style="margin:0;">Best,<br />Planeir</p>
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function getLeadEmailConfig(env) {
+  const apiKey = normalizeEnvValue(env.RESEND_API_KEY);
+  const from = normalizeEnvValue(env.LEAD_EMAIL_FROM);
+  const notificationRecipients = splitEmailList(env.LEAD_NOTIFICATION_TO);
+  const replyTo = splitEmailList(env.LEAD_REPLY_TO)[0] || '';
+  const confirmationEnabled = isTruthyEnvValue(env.LEAD_CONFIRMATION_EMAIL_ENABLED);
+
+  return {
+    apiKey,
+    from,
+    notificationRecipients,
+    replyTo,
+    confirmationEnabled
+  };
+}
+
+function buildEmailIdempotencyKey(leadId, createdAt, kind) {
+  const base = String(leadId || createdAt || kind).replace(/[^a-zA-Z0-9_-]/g, '-');
+  return `lead-${base}-${kind}`;
+}
+
+async function sendEmailWithResend(config, payload, idempotencyKey) {
+  const response = await fetch(RESEND_EMAILS_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const responseText = await response.text();
+  let data = null;
+  try {
+    data = responseText ? JSON.parse(responseText) : null;
+  } catch (_error) {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || `Resend request failed with status ${response.status}.`);
+  }
+
+  return data;
+}
+
+async function sendLeadEmails(env, lead, leadId) {
+  const config = getLeadEmailConfig(env);
+
+  if (!config.apiKey || !config.from) {
+    console.warn('Lead email sending skipped because provider credentials are not configured.');
+    return;
+  }
+
+  if (config.notificationRecipients.length > 0) {
+    try {
+      await sendEmailWithResend(config, {
+        from: config.from,
+        to: config.notificationRecipients,
+        subject: `New Planeir call request: ${lead.fullName}`,
+        html: buildLeadNotificationHtml(lead, leadId),
+        text: buildLeadNotificationText(lead, leadId),
+        reply_to: lead.email
+      }, buildEmailIdempotencyKey(leadId, lead.createdAt, 'internal'));
+    } catch (error) {
+      console.error('Lead internal notification email failed', {
+        leadId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  } else {
+    console.warn('Lead notification email skipped because LEAD_NOTIFICATION_TO is not configured.');
+  }
+
+  if (!config.confirmationEnabled) {
+    return;
+  }
+
+  try {
+    await sendEmailWithResend(config, {
+      from: config.from,
+      to: [lead.email],
+      subject: 'We received your Planeir call request',
+      html: buildLeadConfirmationHtml(lead),
+      text: buildLeadConfirmationText(lead),
+      reply_to: config.replyTo || undefined
+    }, buildEmailIdempotencyKey(leadId, lead.createdAt, 'confirmation'));
+  } catch (error) {
+    console.error('Lead confirmation email failed', {
+      leadId,
+      email: lead.email,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 }
 
 function isSafeSessionId(rawId) {
@@ -356,7 +618,7 @@ async function handlePublish(request, env, origin) {
   return jsonResponse({ sessionId }, 200, origin, 'POST,OPTIONS');
 }
 
-async function handleLeadSubmit(request, env, origin) {
+async function handleLeadSubmit(request, env, origin, ctx) {
   const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
   if (!checkRateLimit(clientIp)) {
     return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
@@ -417,9 +679,30 @@ async function handleLeadSubmit(request, env, origin) {
       throw new Error('Lead insert did not succeed.');
     }
 
+    const leadId = result.meta?.last_row_id ?? null;
+    const emailLead = {
+      ...validated,
+      phone,
+      stage,
+      callOutcome,
+      createdAt
+    };
+    const emailTask = sendLeadEmails(env, emailLead, leadId).catch((error) => {
+      console.error('Lead email notification failed', {
+        leadId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+
+    if (ctx && typeof ctx.waitUntil === 'function') {
+      ctx.waitUntil(emailTask);
+    } else {
+      await emailTask;
+    }
+
     return jsonResponse({
       ok: true,
-      leadId: result.meta?.last_row_id ?? null
+      leadId
     }, 201, origin, 'POST,OPTIONS');
   } catch (error) {
     console.error('Failed to store lead submission', {
@@ -460,7 +743,7 @@ async function handleRevoke(env, origin, sessionId) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const pathname = normalizePathname(url.pathname);
     const routeConfig = getRouteConfig(pathname);
@@ -480,7 +763,7 @@ export default {
     }
 
     if (request.method === 'POST' && pathname === '/api/leads') {
-      return handleLeadSubmit(request, env, origin);
+      return handleLeadSubmit(request, env, origin, ctx);
     }
 
     if (request.method === 'POST' && pathname === '/api/publish') {
