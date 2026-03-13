@@ -96,8 +96,6 @@ const OVERVIEW_UNDO_SECONDS = 15;
 const TABLE_HIGHLIGHT_KINDS = Object.freeze(['assumptions', 'outputs']);
 const MOBILE_LAYOUT_MEDIA_QUERY = '(max-width: 720px)';
 const MOBILE_SHEET_SWIPE_CLOSE_THRESHOLD = 72;
-const LOGO_REVEAL_ANIMATION_CLASS = 'is-animating';
-const LOGO_REVEAL_STATIC_CLASS = 'is-static';
 
 const appState = {
   session: newSession('Client'),
@@ -115,11 +113,7 @@ const appState = {
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
-  publishedAccess: null,
-  ui: {
-    hasPlayedGreetingLogoAnim: true,
-    greetingLogoAnimSessionId: null
-  }
+  publishedAccess: null
 };
 
 let mobileSheetRestoreFocusTarget = null;
@@ -976,67 +970,6 @@ function hasModules() {
 function hasNextModule() {
   const activeIndex = getActiveIndex();
   return activeIndex >= 0 && activeIndex < appState.session.order.length - 1;
-}
-
-function getGreetingLogoRevealElement() {
-  if (!ui.greetingLayer) {
-    return null;
-  }
-
-  return ui.greetingLayer.querySelector('.logo-reveal');
-}
-
-function resetGreetingLogoAnimationClass() {
-  const logoReveal = getGreetingLogoRevealElement();
-  if (!logoReveal) {
-    return;
-  }
-
-  logoReveal.classList.remove(LOGO_REVEAL_ANIMATION_CLASS);
-  logoReveal.classList.remove(LOGO_REVEAL_STATIC_CLASS);
-}
-
-function configureGreetingLogoAnimationForSession(sessionId, {
-  shouldAnimate = false
-} = {}) {
-  appState.ui.greetingLogoAnimSessionId = typeof sessionId === 'string' && sessionId ? sessionId : null;
-  appState.ui.hasPlayedGreetingLogoAnim = !shouldAnimate;
-  resetGreetingLogoAnimationClass();
-
-  if (!shouldAnimate) {
-    const logoReveal = getGreetingLogoRevealElement();
-    if (logoReveal) {
-      logoReveal.classList.add(LOGO_REVEAL_STATIC_CLASS);
-    }
-  }
-}
-
-function playGreetingLogoAnimationIfPending() {
-  if (appState.mode !== 'greeting' || appState.ui.hasPlayedGreetingLogoAnim) {
-    return;
-  }
-
-  const sessionId = appState.session?.sessionId;
-  if (!sessionId || appState.ui.greetingLogoAnimSessionId !== sessionId) {
-    appState.ui.hasPlayedGreetingLogoAnim = true;
-    return;
-  }
-
-  const logoReveal = getGreetingLogoRevealElement();
-  appState.ui.hasPlayedGreetingLogoAnim = true;
-  if (!logoReveal) {
-    return;
-  }
-
-  logoReveal.classList.remove(LOGO_REVEAL_STATIC_CLASS);
-  logoReveal.classList.remove(LOGO_REVEAL_ANIMATION_CLASS);
-  void logoReveal.offsetWidth;
-
-  if (appState.mode !== 'greeting' || appState.session?.sessionId !== sessionId) {
-    return;
-  }
-
-  logoReveal.classList.add(LOGO_REVEAL_ANIMATION_CLASS);
 }
 
 function getModuleIdSet(session = appState.session) {
@@ -3228,7 +3161,7 @@ async function handleRevokePublishedAccess() {
 }
 
 async function replaceSession(nextSession, options = {}) {
-  const { markClean = true, playLogoAnim = false } = options;
+  const { markClean = true } = options;
 
   destroySortable();
   destroyAllCharts();
@@ -3251,10 +3184,6 @@ async function replaceSession(nextSession, options = {}) {
     markSessionClean();
   }
 
-  configureGreetingLogoAnimationForSession(appState.session.sessionId, {
-    shouldAnimate: Boolean(playLogoAnim && appState.session.modules.length === 0)
-  });
-
   renderGreeting(ui, appState.session.clientName);
 
   if (appState.session.modules.length > 0) {
@@ -3263,7 +3192,6 @@ async function replaceSession(nextSession, options = {}) {
   } else {
     appState.mode = 'greeting';
     setMode(ui, 'greeting');
-    playGreetingLogoAnimationIfPending();
     updateUiChrome();
   }
 
@@ -5169,7 +5097,7 @@ async function handleNewCall() {
   }
 
   const fresh = newSession('Client');
-  await replaceSession(fresh, { markClean: true, playLogoAnim: true });
+  await replaceSession(fresh, { markClean: true });
   showToast('New call started.');
 }
 
@@ -5595,9 +5523,6 @@ export async function initApp(options = {}) {
 
     ensureActiveModule(appState.session);
     appState.mode = hasModules() ? 'focused' : 'greeting';
-    configureGreetingLogoAnimationForSession(appState.session.sessionId, {
-      shouldAnimate: appState.mode === 'greeting'
-    });
 
     applyRuntimeChrome();
     resetPublishResult();
@@ -5644,7 +5569,6 @@ export async function initApp(options = {}) {
       await renderFocused({ useSwipe: false, revealMode: true });
     } else {
       setMode(ui, 'greeting');
-      playGreetingLogoAnimationIfPending();
       updateUiChrome();
     }
   })();
