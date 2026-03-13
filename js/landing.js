@@ -35,6 +35,7 @@ const leadSuccessLockTargets = [
 const LEAD_SUCCESS_MESSAGE = 'Thanks — your request has been received. Gerry will be in touch shortly.';
 const LEAD_SUCCESS_CLASSES = ['is-measuring', 'is-active', 'is-entering', 'is-settling', 'is-showing-copy', 'is-exiting', 'is-reduced-motion'];
 const LEAD_SUCCESS_WORDMARK_RATIO = 1330 / 384;
+const LEAD_SUCCESS_HOLD_MS = 10000;
 
 let leadSuccessRunId = 0;
 
@@ -403,6 +404,7 @@ function resetLeadSuccessOverlayState() {
   leadSuccessOverlay.style.removeProperty('--lead-success-dy');
   leadSuccessOverlay.style.removeProperty('--lead-success-sx');
   leadSuccessOverlay.style.removeProperty('--lead-success-sy');
+  leadSuccessOverlay.style.removeProperty('--lead-success-hold-ms');
   setLeadSuccessInteractionLock(false);
 }
 
@@ -471,6 +473,7 @@ async function playLeadSuccessTakeover() {
   leadSuccessOverlay.classList.toggle('is-reduced-motion', prefersReducedMotion);
   leadSuccessOverlay.classList.add('is-measuring');
   leadSuccessOverlay.setAttribute('aria-hidden', 'false');
+  leadSuccessOverlay.style.setProperty('--lead-success-hold-ms', `${LEAD_SUCCESS_HOLD_MS}ms`);
 
   await waitForNextFrame();
 
@@ -510,7 +513,7 @@ async function playLeadSuccessTakeover() {
   }
 
   leadSuccessOverlay.classList.add('is-showing-copy');
-  await delay(prefersReducedMotion ? 900 : 760);
+  await delay(LEAD_SUCCESS_HOLD_MS);
 
   if (runId !== leadSuccessRunId) {
     return;
