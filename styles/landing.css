@@ -129,16 +129,18 @@ body.nav-open {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 5rem;
-  height: 4.8rem;
+  width: 7.6rem;
+  height: 4.5rem;
+  overflow: hidden;
   min-width: 0;
 }
 
 .site-brand-mark {
-  width: 4rem;
-  height: 4rem;
+  width: 9.4rem;
+  height: 9.4rem;
+  max-width: none;
   object-fit: contain;
-  filter: drop-shadow(0 8px 16px rgba(5, 10, 18, 0.28));
+  object-position: center 62%;
 }
 
 .nav-toggle {
@@ -1289,13 +1291,14 @@ main {
   }
 
   .site-brand {
-    width: 5.6rem;
-    height: 5.2rem;
+    width: 8.8rem;
+    height: 4.95rem;
   }
 
   .site-brand-mark {
-    width: 4.5rem;
-    height: 4.5rem;
+    width: 10.8rem;
+    height: 10.8rem;
+    object-position: center 62%;
   }
 
   .site-nav,
