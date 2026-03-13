@@ -20,14 +20,16 @@
 
       <header class="site-header">
         <a class="site-brand" href="./" aria-label="Planeir home">
-          <img
-            class="site-brand-mark"
-            src="./Planeir_logo_transparent.png"
-            alt="Planeir logo"
-            width="2000"
-            height="2000"
-            decoding="async"
-          />
+          <span class="site-brand-logo-wrap" aria-hidden="true">
+            <img
+              class="site-brand-logo"
+              src="./Planeir_logo_transparent.png"
+              alt="Planeir logo"
+              width="2000"
+              height="2000"
+              decoding="async"
+            />
+          </span>
         </a>
 
         <button
@@ -76,7 +78,7 @@
 
           <div class="hero-visual-wrap" data-reveal data-reveal-delay="120">
             <div class="hero-visual">
-              <div class="mock-window">
+              <div class="mock-window hero-visual-frame">
                 <div class="mock-window-top">
                   <div class="mock-window-dots" aria-hidden="true">
                     <span></span>
@@ -89,7 +91,7 @@
                   </div>
                 </div>
 
-                <div class="mock-window-body hero-mock-body">
+                <div class="mock-window-body hero-mock-body hero-visual-body">
                   <aside class="mock-question-panel" aria-hidden="true">
                     <div class="mock-module-list-title">What you may be working through</div>
                     <div class="mock-question-list">
