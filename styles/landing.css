@@ -134,8 +134,8 @@ body.nav-open {
 .site-brand-logo-wrap {
   position: relative;
   display: block;
-  width: 6.25rem;
-  height: 2.85rem;
+  width: 7.9rem;
+  height: 3.55rem;
   overflow: hidden;
 }
 
@@ -143,11 +143,11 @@ body.nav-open {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 8rem;
+  width: 10.25rem;
   height: auto;
   max-width: none;
   object-fit: contain;
-  transform: translate(-50%, -44%);
+  transform: translate(-50%, -42%);
 }
 
 .nav-toggle {
@@ -528,13 +528,14 @@ main {
   min-width: 0;
   display: flex;
   justify-content: center;
+  width: 100%;
 }
 
 .hero-visual {
   position: relative;
   display: grid;
   gap: 1rem;
-  width: min(100%, 45rem);
+  width: min(100%, 48rem);
   margin-inline: auto;
 }
 
@@ -1306,13 +1307,13 @@ main {
   }
 
   .site-brand-logo-wrap {
-    width: 7rem;
-    height: 3.1rem;
+    width: 8.8rem;
+    height: 3.9rem;
   }
 
   .site-brand-logo {
-    width: 8.9rem;
-    transform: translate(-50%, -44%);
+    width: 11.35rem;
+    transform: translate(-50%, -42%);
   }
 
   .site-nav,
@@ -1395,9 +1396,10 @@ main {
 
 @media (min-width: 1240px) {
   .hero-section {
-    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+    width: min(calc(100% - 1.5rem), 1280px);
+    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
     align-items: start;
-    gap: clamp(3.25rem, 4.5vw, 5rem);
+    gap: clamp(2.75rem, 4vw, 4.5rem);
     padding-top: 3.5rem;
   }
 
@@ -1407,7 +1409,7 @@ main {
   }
 
   .hero-visual {
-    width: min(100%, 47rem);
+    width: min(100%, 52rem);
     margin-left: auto;
     margin-right: 0;
   }
