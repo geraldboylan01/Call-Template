@@ -15,6 +15,7 @@
   --landing-radius-md: 20px;
   --landing-radius-sm: 14px;
   --landing-max-width: 1200px;
+  --header-offset: 104px;
 }
 
 * {
@@ -23,6 +24,7 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: var(--header-offset);
 }
 
 body {
@@ -34,6 +36,11 @@ body {
     radial-gradient(1200px 700px at 16% 0%, rgba(54, 112, 194, 0.24), transparent 56%),
     radial-gradient(920px 680px at 100% 12%, rgba(16, 78, 155, 0.18), transparent 54%),
     linear-gradient(180deg, #050910 0%, #07101d 38%, #07111f 100%);
+}
+
+section[id],
+#privacy-note {
+  scroll-margin-top: var(--header-offset);
 }
 
 img {

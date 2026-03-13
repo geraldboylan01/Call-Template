@@ -16,6 +16,7 @@ const WORKER_BASE_URL = (() => {
 
 const navToggle = document.getElementById('mobileNavToggle');
 const siteNav = document.getElementById('siteNav');
+const siteHeader = document.querySelector('.site-header');
 const leadForm = document.getElementById('leadForm');
 const leadFormStatus = document.getElementById('leadFormStatus');
 const leadSubmitButton = document.getElementById('leadSubmitButton');
@@ -40,7 +41,26 @@ function setNavOpen(open) {
   document.body.classList.toggle('nav-open', open);
 }
 
+function updateHeaderOffset() {
+  if (!siteHeader) {
+    return;
+  }
+
+  const headerHeight = Math.ceil(siteHeader.getBoundingClientRect().height);
+  const visualGap = window.innerWidth >= 900 ? 18 : 14;
+  document.documentElement.style.setProperty('--header-offset', `${headerHeight + visualGap}px`);
+}
+
 function bindNavigation() {
+  updateHeaderOffset();
+
+  if (siteHeader && 'ResizeObserver' in window) {
+    const observer = new ResizeObserver(() => {
+      updateHeaderOffset();
+    });
+    observer.observe(siteHeader);
+  }
+
   if (navToggle && siteNav) {
     navToggle.addEventListener('click', () => {
       const isOpen = navToggle.getAttribute('aria-expanded') === 'true';
@@ -55,9 +75,14 @@ function bindNavigation() {
   }
 
   window.addEventListener('resize', () => {
+    updateHeaderOffset();
     if (window.innerWidth >= 900) {
       setNavOpen(false);
     }
+  });
+
+  window.addEventListener('load', () => {
+    updateHeaderOffset();
   });
 }
 
