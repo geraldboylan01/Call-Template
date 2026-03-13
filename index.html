@@ -212,24 +212,27 @@
               <p>
                 You can start with the question that is on your mind, whether it is retirement,
                 housing, long-term security, or a decision you have been carrying around for a while.
+                You do not need to explain everything perfectly, but a little background makes the
+                conversation much more useful from the start.
               </p>
               <p>
                 From there, the advisor can use AI-powered visuals and live analysis to bring
-                structure to what feels messy, so the conversation becomes more grounded and the next
-                step becomes easier to see.
+                structure to what feels messy. A bit of context about what is worrying you, why now,
+                and any broad constraints helps Gerry understand the shape of the decision sooner, so
+                the conversation becomes more grounded and the next step becomes easier to see.
               </p>
             </div>
 
             <div class="conversation-panel" data-reveal data-reveal-delay="120">
               <article class="conversation-card">
                 <span class="conversation-card-step">01</span>
-                <strong>Start with what is worrying you.</strong>
-                <p>A short description is enough to begin.</p>
+                <strong>Start with what is worrying you most.</strong>
+                <p>You do not need perfect wording, but a little background helps Gerry see the real question.</p>
               </article>
               <article class="conversation-card">
                 <span class="conversation-card-step">02</span>
-                <strong>Watch the question become more structured.</strong>
-                <p>Visuals and live analysis make the conversation easier to follow.</p>
+                <strong>Give the conversation something real to work with.</strong>
+                <p>Timing, trade-offs, and broad figures or constraints can make the options easier to explore.</p>
               </article>
               <article class="conversation-card">
                 <span class="conversation-card-step">03</span>
@@ -416,21 +419,30 @@
           <div class="request-grid">
             <div class="request-copy" data-reveal>
               <p class="section-eyebrow">Request a free call</p>
-              <h2>Tell Gerry what you want clarity on.</h2>
+              <h2>Tell Gerry what is going on and what you want help with.</h2>
               <p>
-                A short note is enough. You do not need to explain everything perfectly in order to
-                start the conversation.
+                You do not need to explain everything perfectly, but more context helps. The clearer
+                the situation is, the easier it is to judge whether a free call is likely to be useful.
               </p>
               <div class="request-note-card">
-                <strong>Before you submit</strong>
+                <strong>How Gerry reviews requests</strong>
                 <p>
-                  These are free recorded calls. They may be used as educational content online, and
-                  you can keep your camera off or use a first name or different name if you prefer.
+                  Gerry reads each request personally. Sharing the decision you are facing, what is
+                  worrying you, why now, and any broad constraints helps him understand whether he can
+                  genuinely help and whether the topic is right for this free recorded format.
                 </p>
               </div>
             </div>
 
             <form id="leadForm" class="lead-form" novalidate data-reveal data-reveal-delay="120">
+              <div class="form-review-note">
+                <strong>A little more detail makes the call easier to assess.</strong>
+                <p>
+                  Not every request will be right for this format, so a clearer picture helps Gerry
+                  decide whether the conversation is a good fit before arranging a call.
+                </p>
+              </div>
+
               <div class="form-grid">
                 <label class="field">
                   <span>Full name</span>
@@ -458,16 +470,34 @@
                     <option value="other">Other</option>
                   </select>
                 </label>
+
+                <label class="field">
+                  <span>What outcome are you hoping for from the call? <em>(optional)</em></span>
+                  <select id="leadCallOutcome" name="callOutcome">
+                    <option value="">Select an outcome</option>
+                    <option value="clearer-understanding">Clearer understanding</option>
+                    <option value="reassurance">Reassurance</option>
+                    <option value="decision-support">Decision support</option>
+                    <option value="comparing-options">Comparing options</option>
+                    <option value="sense-check-on-a-plan">Sense-check on a plan</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
               </div>
 
               <label class="field field-full">
-                <span>What would you like help with?</span>
+                <span>What is the main financial question or concern you want to talk through?</span>
+                <small class="field-help">
+                  Helpful context can include the decision you are facing, what is worrying you, why
+                  now, any broad figures or constraints that matter, and what you hope to feel clearer
+                  on by the end of the call.
+                </small>
                 <textarea
                   id="leadReason"
                   name="reason"
                   rows="5"
                   required
-                  placeholder="A short outline is enough. Please do not include highly sensitive financial information at this stage."
+                  placeholder="For example: I am deciding whether to buy in the next 12 months, I am worried about affordability and monthly pressure, and I would like help comparing the options without going into highly sensitive detail yet."
                 ></textarea>
               </label>
 
@@ -497,7 +527,8 @@
               </p>
 
               <p id="privacy-note" class="form-privacy">
-                Please do not include highly sensitive financial information at this stage.
+                Broad figures are welcome if they help explain the situation, but please do not include
+                highly sensitive personal financial information at this stage.
               </p>
 
               <div id="leadFormStatus" class="form-status" aria-live="polite"></div>

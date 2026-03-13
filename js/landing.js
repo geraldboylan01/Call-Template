@@ -26,6 +26,7 @@ const leadFields = {
   email: document.getElementById('leadEmail'),
   phone: document.getElementById('leadPhone'),
   stage: document.getElementById('leadStage'),
+  callOutcome: document.getElementById('leadCallOutcome'),
   reason: document.getElementById('leadReason'),
   understandsRecordedCall: document.getElementById('leadUnderstandsRecordedCall'),
   understandsEducationalContent: document.getElementById('leadUnderstandsEducationalContent')
@@ -257,6 +258,7 @@ function normalizeLeadPayload() {
     email: String(leadFields.email?.value || '').trim(),
     phone: String(leadFields.phone?.value || '').trim(),
     stage: String(leadFields.stage?.value || '').trim(),
+    callOutcome: String(leadFields.callOutcome?.value || '').trim(),
     reason: String(leadFields.reason?.value || '').trim(),
     understandsRecordedCall: Boolean(leadFields.understandsRecordedCall?.checked),
     understandsEducationalContent: Boolean(leadFields.understandsEducationalContent?.checked)
@@ -288,12 +290,12 @@ function validateLeadPayload(payload) {
   if (!payload.reason) {
     errors.push({
       field: leadFields.reason,
-      message: 'Add a short note about what you would like help with.'
+      message: 'Add some context about the question, concern, or decision you want to talk through.'
     });
   } else if (payload.reason.length < 10) {
     errors.push({
       field: leadFields.reason,
-      message: 'Add a little more context so we can route your request properly.'
+      message: 'Add a little more context so Gerry can understand the situation and whether the call is a good fit.'
     });
   }
 

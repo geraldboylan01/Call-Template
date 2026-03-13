@@ -32,8 +32,8 @@ The landing page form posts to the existing Cloudflare Worker:
 
 - Endpoint: `POST /api/leads`
 - Storage: the `LEADS_DB` D1 binding, table `leads`
-- Stored columns: `created_at`, `full_name`, `email`, `phone`, `help_reason`, `stage`, `consent_free_call`, `consent_recording`, `source`
-- Migration file: `worker/migrations/0001_create_leads.sql`
+- Stored columns: `created_at`, `full_name`, `email`, `phone`, `help_reason`, `stage`, `call_outcome`, `consent_free_call`, `consent_recording`, `source`
+- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`
 
 Apply the remote migration with:
 

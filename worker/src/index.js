@@ -26,6 +26,15 @@ const ALLOWED_LEAD_STAGES = new Set([
   'other'
 ]);
 
+const ALLOWED_CALL_OUTCOMES = new Set([
+  'clearer-understanding',
+  'reassurance',
+  'decision-support',
+  'comparing-options',
+  'sense-check-on-a-plan',
+  'other'
+]);
+
 const requestBuckets = new Map();
 
 function getAllowedOrigins(env) {
@@ -210,6 +219,7 @@ function validateLeadPayload(payload) {
   const email = normalizeLeadValue(payload.email).toLowerCase();
   const phone = normalizeLeadValue(payload.phone);
   const stage = normalizeLeadValue(payload.stage);
+  const callOutcome = normalizeLeadValue(payload.callOutcome);
   const reason = normalizeLeadValue(payload.reason);
   const understandsRecordedCall = normalizeLeadConsent(
     payload.understandsRecordedCall ?? payload.understandsEarlyAccess
@@ -246,6 +256,10 @@ function validateLeadPayload(payload) {
     throw new Error('Planning stage is invalid.');
   }
 
+  if (callOutcome && !ALLOWED_CALL_OUTCOMES.has(callOutcome)) {
+    throw new Error('Requested call outcome is invalid.');
+  }
+
   if (!reason) {
     throw new Error('Help request is required.');
   }
@@ -268,6 +282,7 @@ function validateLeadPayload(payload) {
     phone,
     reason,
     stage,
+    callOutcome,
     understandsRecordedCall,
     understandsEducationalContent,
     source: 'landing-page'
@@ -369,6 +384,7 @@ async function handleLeadSubmit(request, env, origin) {
   const createdAt = new Date().toISOString();
   const phone = normalizeOptionalLeadValue(validated.phone);
   const stage = normalizeOptionalLeadValue(validated.stage);
+  const callOutcome = normalizeOptionalLeadValue(validated.callOutcome);
 
   try {
     const result = await env.LEADS_DB.prepare(`
@@ -379,10 +395,11 @@ async function handleLeadSubmit(request, env, origin) {
         phone,
         help_reason,
         stage,
+        call_outcome,
         consent_free_call,
         consent_recording,
         source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       createdAt,
       validated.fullName,
@@ -390,6 +407,7 @@ async function handleLeadSubmit(request, env, origin) {
       phone,
       validated.reason,
       stage,
+      callOutcome,
       validated.understandsRecordedCall ? 1 : 0,
       validated.understandsEducationalContent ? 1 : 0,
       validated.source

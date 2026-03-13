@@ -1088,6 +1088,25 @@ main {
   padding: 1.35rem;
 }
 
+.form-review-note {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem 1.05rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(143, 208, 255, 0.18);
+  background: rgba(10, 19, 35, 0.68);
+}
+
+.form-review-note strong {
+  letter-spacing: -0.02em;
+}
+
+.form-review-note p {
+  margin: 0;
+  color: var(--landing-muted);
+  line-height: 1.7;
+}
+
 .consent-grid {
   display: grid;
   gap: 0.85rem;
@@ -1140,6 +1159,14 @@ main {
 .field em {
   color: var(--landing-soft);
   font-style: normal;
+}
+
+.field-help {
+  display: block;
+  margin-top: -0.15rem;
+  color: var(--landing-soft);
+  font-size: 0.84rem;
+  line-height: 1.6;
 }
 
 .field input,
