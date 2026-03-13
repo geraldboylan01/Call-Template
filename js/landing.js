@@ -41,18 +41,85 @@ function setNavOpen(open) {
   document.body.classList.toggle('nav-open', open);
 }
 
-function updateHeaderOffset() {
+function getPreferredScrollBehavior() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+}
+
+function getHeaderOffsetValue() {
   if (!siteHeader) {
-    return;
+    return 0;
   }
 
   const headerHeight = Math.ceil(siteHeader.getBoundingClientRect().height);
   const visualGap = window.innerWidth >= 900 ? 18 : 14;
-  document.documentElement.style.setProperty('--header-offset', `${headerHeight + visualGap}px`);
+  return headerHeight + visualGap;
+}
+
+function updateHeaderOffset() {
+  const headerOffset = getHeaderOffsetValue();
+  if (headerOffset <= 0) {
+    return;
+  }
+
+  document.documentElement.style.setProperty('--header-offset', `${headerOffset}px`);
+}
+
+function getHashTarget(hash) {
+  const id = decodeURIComponent(String(hash || '').replace(/^#/, '').trim());
+  if (!id) {
+    return null;
+  }
+
+  return document.getElementById(id);
+}
+
+function scrollToHash(hash, { behavior = getPreferredScrollBehavior() } = {}) {
+  const target = getHashTarget(hash);
+  if (!target) {
+    return false;
+  }
+
+  updateHeaderOffset();
+  const top = target.getBoundingClientRect().top + window.scrollY - getHeaderOffsetValue();
+  window.scrollTo({
+    top: Math.max(0, top),
+    behavior
+  });
+  return true;
+}
+
+function bindHashNavigation() {
+  document.querySelectorAll('a[href]').forEach((link) => {
+    const destination = new URL(link.href, window.location.href);
+    const isSamePageHashLink = destination.origin === window.location.origin
+      && destination.pathname === window.location.pathname
+      && destination.hash;
+
+    if (!isSamePageHashLink || !getHashTarget(destination.hash)) {
+      return;
+    }
+
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      setNavOpen(false);
+
+      window.requestAnimationFrame(() => {
+        scrollToHash(destination.hash);
+
+        if (window.location.hash === destination.hash) {
+          history.replaceState(null, '', destination.hash);
+          return;
+        }
+
+        history.pushState(null, '', destination.hash);
+      });
+    });
+  });
 }
 
 function bindNavigation() {
   updateHeaderOffset();
+  bindHashNavigation();
 
   if (siteHeader && 'ResizeObserver' in window) {
     const observer = new ResizeObserver(() => {
@@ -83,6 +150,24 @@ function bindNavigation() {
 
   window.addEventListener('load', () => {
     updateHeaderOffset();
+
+    if (window.location.hash) {
+      window.requestAnimationFrame(() => {
+        scrollToHash(window.location.hash, { behavior: 'auto' });
+      });
+    }
+  });
+
+  window.addEventListener('hashchange', () => {
+    scrollToHash(window.location.hash, { behavior: 'auto' });
+  });
+
+  window.addEventListener('popstate', () => {
+    if (!window.location.hash) {
+      return;
+    }
+
+    scrollToHash(window.location.hash, { behavior: 'auto' });
   });
 }
 
