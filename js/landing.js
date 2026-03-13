@@ -20,6 +20,23 @@ const siteHeader = document.querySelector('.site-header');
 const leadForm = document.getElementById('leadForm');
 const leadFormStatus = document.getElementById('leadFormStatus');
 const leadSubmitButton = document.getElementById('leadSubmitButton');
+const leadSuccessOverlay = document.getElementById('leadSuccessOverlay');
+const leadSuccessGhost = document.getElementById('leadSuccessGhost');
+const leadSuccessTarget = document.getElementById('leadSuccessTarget');
+const leadSuccessMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+const leadSuccessOrigin = document.querySelector('.site-brand-logo-wrap');
+const leadSuccessLockTargets = [
+  siteHeader,
+  document.querySelector('main'),
+  document.querySelector('.site-footer'),
+  document.querySelector('.mobile-cta-bar')
+].filter(Boolean);
+
+const LEAD_SUCCESS_MESSAGE = 'Thanks — your request has been received. Gerry will be in touch shortly.';
+const LEAD_SUCCESS_CLASSES = ['is-measuring', 'is-active', 'is-entering', 'is-settling', 'is-showing-copy', 'is-exiting', 'is-reduced-motion'];
+const LEAD_SUCCESS_WORDMARK_RATIO = 1330 / 384;
+
+let leadSuccessRunId = 0;
 
 const leadFields = {
   fullName: document.getElementById('leadFullName'),
@@ -349,6 +366,170 @@ function resetFieldValidity() {
   });
 }
 
+function waitForNextFrame() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function setLeadSuccessInteractionLock(isLocked) {
+  document.body.classList.toggle('is-lead-success-active', isLocked);
+
+  leadSuccessLockTargets.forEach((node) => {
+    if ('inert' in node) {
+      node.inert = isLocked;
+    }
+  });
+}
+
+function resetLeadSuccessOverlayState() {
+  if (!leadSuccessOverlay) {
+    return;
+  }
+
+  leadSuccessOverlay.classList.remove(...LEAD_SUCCESS_CLASSES);
+  leadSuccessOverlay.setAttribute('aria-hidden', 'true');
+  leadSuccessOverlay.style.removeProperty('--lead-success-origin-left');
+  leadSuccessOverlay.style.removeProperty('--lead-success-origin-top');
+  leadSuccessOverlay.style.removeProperty('--lead-success-origin-width');
+  leadSuccessOverlay.style.removeProperty('--lead-success-origin-height');
+  leadSuccessOverlay.style.removeProperty('--lead-success-dx');
+  leadSuccessOverlay.style.removeProperty('--lead-success-dy');
+  leadSuccessOverlay.style.removeProperty('--lead-success-sx');
+  leadSuccessOverlay.style.removeProperty('--lead-success-sy');
+  setLeadSuccessInteractionLock(false);
+}
+
+function getLeadSuccessOriginFallbackRect() {
+  const width = Math.min(164, window.innerWidth * 0.42);
+  const height = width / LEAD_SUCCESS_WORDMARK_RATIO;
+
+  return {
+    left: 24,
+    top: 20,
+    width,
+    height
+  };
+}
+
+function getLeadSuccessTargetFallbackRect() {
+  const width = Math.min(window.innerWidth * 0.82, 780);
+  const height = width / LEAD_SUCCESS_WORDMARK_RATIO;
+
+  return {
+    left: (window.innerWidth - width) / 2,
+    top: Math.max(42, (window.innerHeight - height) / 2 - 48),
+    width,
+    height
+  };
+}
+
+function getValidRect(element, fallbackRect) {
+  if (!element) {
+    return fallbackRect;
+  }
+
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return fallbackRect;
+  }
+
+  return rect;
+}
+
+function configureLeadSuccessGhostRect(originRect, targetRect) {
+  if (!leadSuccessOverlay) {
+    return;
+  }
+
+  leadSuccessOverlay.style.setProperty('--lead-success-origin-left', `${originRect.left}px`);
+  leadSuccessOverlay.style.setProperty('--lead-success-origin-top', `${originRect.top}px`);
+  leadSuccessOverlay.style.setProperty('--lead-success-origin-width', `${originRect.width}px`);
+  leadSuccessOverlay.style.setProperty('--lead-success-origin-height', `${originRect.height}px`);
+  leadSuccessOverlay.style.setProperty('--lead-success-dx', `${targetRect.left - originRect.left}px`);
+  leadSuccessOverlay.style.setProperty('--lead-success-dy', `${targetRect.top - originRect.top}px`);
+  leadSuccessOverlay.style.setProperty('--lead-success-sx', `${targetRect.width / originRect.width}`);
+  leadSuccessOverlay.style.setProperty('--lead-success-sy', `${targetRect.height / originRect.height}`);
+}
+
+async function playLeadSuccessTakeover() {
+  if (!leadSuccessOverlay || !leadSuccessGhost || !leadSuccessTarget) {
+    return;
+  }
+
+  const runId = ++leadSuccessRunId;
+  const shouldRestoreFocus = Boolean(leadForm?.contains(document.activeElement));
+  const prefersReducedMotion = leadSuccessMotionQuery.matches;
+
+  resetLeadSuccessOverlayState();
+  leadSuccessOverlay.classList.toggle('is-reduced-motion', prefersReducedMotion);
+  leadSuccessOverlay.classList.add('is-measuring');
+  leadSuccessOverlay.setAttribute('aria-hidden', 'false');
+
+  await waitForNextFrame();
+
+  if (runId !== leadSuccessRunId) {
+    return;
+  }
+
+  const originRect = getValidRect(leadSuccessOrigin, getLeadSuccessOriginFallbackRect());
+  const targetRect = getValidRect(leadSuccessTarget, getLeadSuccessTargetFallbackRect());
+  configureLeadSuccessGhostRect(originRect, targetRect);
+
+  leadSuccessOverlay.classList.remove('is-measuring');
+  setLeadSuccessInteractionLock(true);
+  leadSuccessOverlay.classList.add('is-active');
+
+  await waitForNextFrame();
+
+  if (runId !== leadSuccessRunId) {
+    return;
+  }
+
+  if (prefersReducedMotion) {
+    leadSuccessOverlay.classList.add('is-settling');
+    await delay(220);
+  } else {
+    leadSuccessOverlay.classList.add('is-entering');
+    await delay(980);
+    if (runId !== leadSuccessRunId) {
+      return;
+    }
+    leadSuccessOverlay.classList.add('is-settling');
+    await delay(560);
+  }
+
+  if (runId !== leadSuccessRunId) {
+    return;
+  }
+
+  leadSuccessOverlay.classList.add('is-showing-copy');
+  await delay(prefersReducedMotion ? 900 : 760);
+
+  if (runId !== leadSuccessRunId) {
+    return;
+  }
+
+  leadSuccessOverlay.classList.add('is-exiting');
+  await delay(prefersReducedMotion ? 260 : 420);
+
+  if (runId !== leadSuccessRunId) {
+    return;
+  }
+
+  resetLeadSuccessOverlayState();
+
+  if (shouldRestoreFocus && leadFormStatus) {
+    leadFormStatus.focus({ preventScroll: true });
+  }
+}
+
 function bindLeadForm() {
   if (!leadForm) {
     return;
@@ -381,7 +562,8 @@ function bindLeadForm() {
       await submitLead(payload);
       leadForm.reset();
       resetFieldValidity();
-      setFormStatus('success', 'Thanks \u2014 your request has been received. We\'ll be in touch shortly.');
+      setFormStatus('success', LEAD_SUCCESS_MESSAGE);
+      await playLeadSuccessTakeover();
     } catch (error) {
       setFormStatus('error', getFriendlyLeadSubmitError(error));
     } finally {

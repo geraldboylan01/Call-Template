@@ -531,7 +531,7 @@
                 highly sensitive personal financial information at this stage.
               </p>
 
-              <div id="leadFormStatus" class="form-status" aria-live="polite"></div>
+              <div id="leadFormStatus" class="form-status" aria-live="polite" tabindex="-1"></div>
 
               <button id="leadSubmitButton" class="button button-primary button-submit" type="submit">
                 Request a free call
@@ -556,6 +556,49 @@
       <div class="mobile-cta-bar">
         <a class="button button-primary" href="#request-call">Request a free call</a>
         <a class="button button-secondary" href="#during-call">See how it works</a>
+      </div>
+
+      <div id="leadSuccessOverlay" class="lead-success-overlay" aria-hidden="true">
+        <div id="leadSuccessGhost" class="lead-success-ghost" aria-hidden="true">
+          <img
+            class="lead-success-ghost-logo"
+            src="./assets/brand/planeir-wordmark-light.svg"
+            alt=""
+            width="1330"
+            height="384"
+            decoding="async"
+          />
+        </div>
+
+        <div class="lead-success-stage">
+          <div id="leadSuccessTarget" class="lead-success-lockup" aria-hidden="true">
+            <div class="lead-success-wordmark-shell">
+              <img
+                class="lead-success-stage-logo"
+                src="./assets/brand/planeir-wordmark-light.svg"
+                alt=""
+                width="1330"
+                height="384"
+                decoding="async"
+              />
+              <span class="lead-success-harp-eraser"></span>
+              <img
+                id="leadSuccessHarp"
+                class="lead-success-harp"
+                src="./assets/brand/planeir-harp-light.svg"
+                alt=""
+                width="140"
+                height="136"
+                decoding="async"
+              />
+            </div>
+          </div>
+
+          <div id="leadSuccessCopy" class="lead-success-copy" role="status" aria-live="polite">
+            <h2 class="lead-success-title">Congratulations</h2>
+            <p class="lead-success-body">You have taken the first step towards getting on top of your finances.</p>
+          </div>
+        </div>
       </div>
     </div>
 
