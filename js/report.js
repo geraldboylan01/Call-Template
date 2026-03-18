@@ -434,6 +434,9 @@ function normalizeTimelineBlock(block, index) {
   if (!toTrimmedString(svgSpec.kind)) {
     svgSpec.kind = 'timeline';
   }
+  if (!toTrimmedString(svgSpec.title) && base.title) {
+    svgSpec.title = base.title;
+  }
 
   return {
     ...base,

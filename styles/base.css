@@ -1226,6 +1226,27 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   font-family: 'Manrope', 'Segoe UI', sans-serif;
 }
 
+.education-svg .edu-timeline-date {
+  fill: var(--education-svg-accent);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+}
+
+.education-svg .edu-timeline-title {
+  fill: var(--education-svg-text);
+  font-size: 13px;
+  font-weight: 680;
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+}
+
+.education-svg .edu-timeline-body {
+  fill: var(--education-svg-muted);
+  font-size: 11.5px;
+  font-weight: 520;
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+}
+
 .education-svg .edu-edge {
   fill: none;
   stroke: var(--education-svg-edge);

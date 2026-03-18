@@ -1,6 +1,7 @@
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
 const SUPPORTED_KINDS = new Set(['flowchart', 'timeline', 'decisionTree', 'processMap', 'comparisonGrid']);
+const DEFAULT_TIMELINE_LANE_ID = '__timeline_default__';
 
 let markerSequence = 0;
 
@@ -145,6 +146,38 @@ function appendMultilineText(parent, {
   }
 
   parent.appendChild(textNode);
+}
+
+function appendTextBlock(parent, {
+  text,
+  x,
+  y,
+  maxChars = 22,
+  maxLines = 3,
+  lineHeight = 16,
+  className,
+  anchor = 'start'
+}) {
+  const lines = wrapText(text, maxChars, maxLines);
+  const textNode = createSvgElement('text', {
+    x,
+    y,
+    class: className || null,
+    'text-anchor': anchor,
+    'dominant-baseline': 'hanging'
+  });
+
+  lines.forEach((line, index) => {
+    const tspan = createSvgElement('tspan', {
+      x,
+      dy: index === 0 ? '0' : String(lineHeight)
+    });
+    tspan.textContent = line;
+    textNode.appendChild(tspan);
+  });
+
+  parent.appendChild(textNode);
+  return lines;
 }
 
 function createRootSvg({ width, height, theme, title = '' }) {
@@ -576,11 +609,30 @@ function normalizeTimelineEvents(spec) {
       throw new Error(`timeline.events[${index}] must be an object.`);
     }
 
-    const label = toNonEmptyString(event.label, `Event ${index + 1}`);
-    const lane = toNonEmptyString(event.lane, 'timeline');
-    const when = toNonEmptyString(event.when || event.date);
+    const title = toNonEmptyString(event.title)
+      || toNonEmptyString(event.label)
+      || toNonEmptyString(event.name);
+
+    if (!title) {
+      throw new Error(`timeline.events[${index}] requires a title or label.`);
+    }
+
+    const body = toNonEmptyString(event.body)
+      || toNonEmptyString(event.description)
+      || toNonEmptyString(event.detail)
+      || toNonEmptyString(event.summary)
+      || toNonEmptyString(event.note);
+    const dateLabel = toNonEmptyString(event.dateLabel)
+      || toNonEmptyString(event.when)
+      || toNonEmptyString(event.date);
+    const lane = toNonEmptyString(event.lane, DEFAULT_TIMELINE_LANE_ID);
     const orderValue = Number(event.order);
-    const parsedDate = Date.parse(when);
+    const parsedDate = Date.parse(dateLabel);
+    const contentMode = toNonEmptyString(event.title)
+      || toNonEmptyString(event.dateLabel)
+      || body
+      ? 'detail'
+      : 'legacy';
 
     let order = index;
     if (Number.isFinite(orderValue)) {
@@ -591,9 +643,13 @@ function normalizeTimelineEvents(spec) {
 
     return {
       id: toNonEmptyString(event.id, `event-${index + 1}`),
-      label,
+      label: title,
+      title,
+      body,
       lane,
-      when,
+      when: dateLabel,
+      dateLabel,
+      contentMode,
       order,
       _order: index
     };
@@ -628,7 +684,10 @@ function normalizeLanes(rawLanes, events) {
       }
 
       seen.add(id);
-      lanes.push({ id, title });
+      lanes.push({
+        id,
+        title: title || (id === DEFAULT_TIMELINE_LANE_ID ? '' : id)
+      });
     });
   }
 
@@ -637,13 +696,13 @@ function normalizeLanes(rawLanes, events) {
       seen.add(event.lane);
       lanes.push({
         id: event.lane,
-        title: event.lane
+        title: event.lane === DEFAULT_TIMELINE_LANE_ID ? '' : event.lane
       });
     }
   });
 
   if (lanes.length === 0) {
-    lanes.push({ id: 'timeline', title: 'Timeline' });
+    lanes.push({ id: DEFAULT_TIMELINE_LANE_ID, title: '' });
   }
 
   return lanes;
@@ -655,11 +714,75 @@ function renderTimeline(spec) {
   const laneIndexById = new Map(lanes.map((lane, index) => [lane.id, index]));
 
   const layout = isPlainObject(spec.layout) ? spec.layout : {};
-  const laneGap = toFiniteNumber(layout.laneGap, 140, { min: 90, max: 320 });
-  const eventGap = toFiniteNumber(layout.eventGap, 220, { min: 120, max: 420 });
-  const cardWidth = toFiniteNumber(layout.nodeWidth, 180, { min: 110, max: 280 });
-  const cardHeight = toFiniteNumber(layout.nodeHeight, 90, { min: 60, max: 220 });
-  const marginLeft = toFiniteNumber(layout.marginLeft, 132, { min: 90, max: 280 });
+  const detailMode = events.some((event) => event.contentMode === 'detail');
+  const cardWidth = toFiniteNumber(layout.nodeWidth, detailMode ? 248 : 180, { min: 110, max: 320 });
+  const titleMaxChars = Math.max(12, Math.round((cardWidth - 32) / 8.4));
+  const bodyMaxChars = Math.max(16, Math.round((cardWidth - 32) / 8.8));
+  const titleLineHeight = 16;
+  const bodyLineHeight = 14;
+  const bodyTopGap = 10;
+  const cardPaddingX = 16;
+  const cardPaddingTop = 16;
+  const cardPaddingBottom = 16;
+
+  const eventMetrics = events.map((event) => {
+    if (event.contentMode !== 'detail') {
+      return {
+        titleLines: wrapText(event.title, Math.max(12, Math.round(cardWidth / 8.2)), 4),
+        bodyLines: [],
+        dateLines: [],
+        minimumCardHeight: 90
+      };
+    }
+
+    const dateLines = event.dateLabel
+      ? wrapText(event.dateLabel, Math.max(12, Math.round((cardWidth - (cardPaddingX * 2)) / 7.8)), 2)
+      : [];
+    const titleLines = wrapText(event.title, titleMaxChars, event.body ? 3 : 4);
+    const bodyLines = event.body ? wrapText(event.body, bodyMaxChars, 5) : [];
+
+    let minimumCardHeight = cardPaddingTop + cardPaddingBottom;
+    if (dateLines.length) {
+      minimumCardHeight += dateLines.length * 13;
+    }
+    if (titleLines.length) {
+      minimumCardHeight += (dateLines.length ? 8 : 0) + (titleLines.length * titleLineHeight);
+    }
+    if (bodyLines.length) {
+      minimumCardHeight += bodyTopGap + (bodyLines.length * bodyLineHeight);
+    }
+
+    return {
+      titleLines,
+      bodyLines,
+      dateLines,
+      minimumCardHeight: Math.max(96, minimumCardHeight)
+    };
+  });
+
+  const minimumCardHeight = Math.max(...eventMetrics.map((event) => event.minimumCardHeight));
+  const cardHeight = Math.max(
+    toFiniteNumber(layout.nodeHeight, minimumCardHeight, { min: 60, max: 260 }),
+    minimumCardHeight
+  );
+  const laneGap = Math.max(
+    toFiniteNumber(layout.laneGap, detailMode ? 190 : 140, { min: 90, max: 360 }),
+    cardHeight + 52
+  );
+  const eventGap = Math.max(
+    toFiniteNumber(layout.eventGap, detailMode ? 268 : 220, { min: 120, max: 460 }),
+    cardWidth + 28
+  );
+  const visibleLaneTitles = lanes
+    .map((lane) => lane.title)
+    .filter(Boolean);
+  const autoMarginLeft = visibleLaneTitles.length > 0
+    ? Math.min(
+      240,
+      Math.max(98, (Math.max(...visibleLaneTitles.map((title) => title.length)) * 7) + 28)
+    )
+    : 52;
+  const marginLeft = toFiniteNumber(layout.marginLeft, autoMarginLeft, { min: 40, max: 280 });
   const marginTop = toFiniteNumber(layout.marginTop, 42, { min: 16, max: 140 });
   const marginRight = toFiniteNumber(layout.marginRight, 48, { min: 16, max: 180 });
   const marginBottom = toFiniteNumber(layout.marginBottom, 36, { min: 16, max: 180 });
@@ -667,7 +790,7 @@ function renderTimeline(spec) {
 
   const eventSpan = Math.max(cardWidth, (events.length - 1) * eventGap + cardWidth);
   const width = marginLeft + eventSpan + marginRight;
-  const height = marginTop + lanes.length * laneGap + cardHeight + marginBottom;
+  const height = marginTop + ((lanes.length - 1) * laneGap) + 44 + cardHeight + marginBottom;
 
   const svg = createRootSvg({
     width,
@@ -684,15 +807,17 @@ function renderTimeline(spec) {
   lanes.forEach((lane, index) => {
     const lineY = marginTop + index * laneGap + 24;
 
-    const laneLabel = createSvgElement('text', {
-      x: marginLeft - 12,
-      y: lineY,
-      class: 'edu-lane-label',
-      'text-anchor': 'end',
-      'dominant-baseline': 'middle'
-    });
-    laneLabel.textContent = lane.title;
-    laneLayer.appendChild(laneLabel);
+    if (lane.title) {
+      const laneLabel = createSvgElement('text', {
+        x: marginLeft - 12,
+        y: lineY,
+        class: 'edu-lane-label',
+        'text-anchor': 'end',
+        'dominant-baseline': 'middle'
+      });
+      laneLabel.textContent = lane.title;
+      laneLayer.appendChild(laneLabel);
+    }
 
     laneLayer.appendChild(createSvgElement('line', {
       x1: marginLeft,
@@ -704,6 +829,7 @@ function renderTimeline(spec) {
   });
 
   events.forEach((event, index) => {
+    const metric = eventMetrics[index];
     const laneIndex = laneIndexById.has(event.lane) ? laneIndexById.get(event.lane) : 0;
     const lineY = marginTop + laneIndex * laneGap + 24;
     const x = marginLeft + index * eventGap;
@@ -736,7 +862,7 @@ function renderTimeline(spec) {
       class: 'edu-node'
     }));
 
-    if (event.when) {
+    if (event.contentMode === 'legacy' && event.when) {
       const whenLabel = createSvgElement('text', {
         x,
         y: lineY - 12,
@@ -746,6 +872,48 @@ function renderTimeline(spec) {
       });
       whenLabel.textContent = event.when;
       eventLayer.appendChild(whenLabel);
+    }
+
+    if (event.contentMode === 'detail') {
+      let contentY = cardY + cardPaddingTop;
+
+      if (metric.dateLines.length > 0) {
+        appendTextBlock(eventLayer, {
+          text: event.dateLabel,
+          x: cardX + cardPaddingX,
+          y: contentY,
+          className: 'edu-timeline-date',
+          maxChars: Math.max(12, Math.round((cardWidth - (cardPaddingX * 2)) / 7.8)),
+          maxLines: 2,
+          lineHeight: 13
+        });
+        contentY += (metric.dateLines.length * 13) + 8;
+      }
+
+      appendTextBlock(eventLayer, {
+        text: event.title,
+        x: cardX + cardPaddingX,
+        y: contentY,
+        className: 'edu-timeline-title',
+        maxChars: titleMaxChars,
+        maxLines: event.body ? 3 : 4,
+        lineHeight: titleLineHeight
+      });
+      contentY += metric.titleLines.length * titleLineHeight;
+
+      if (metric.bodyLines.length > 0) {
+        appendTextBlock(eventLayer, {
+          text: event.body,
+          x: cardX + cardPaddingX,
+          y: contentY + bodyTopGap,
+          className: 'edu-timeline-body',
+          maxChars: bodyMaxChars,
+          maxLines: 5,
+          lineHeight: bodyLineHeight
+        });
+      }
+
+      return;
     }
 
     appendMultilineText(eventLayer, {
