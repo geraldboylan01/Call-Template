@@ -71,6 +71,326 @@ function sanitizeExternalUrl(rawUrl) {
   }
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toTrimmedString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function getTimelineSourceEvents(svgSpec) {
+  if (Array.isArray(svgSpec?.events)) {
+    return svgSpec.events;
+  }
+
+  return Array.isArray(svgSpec?.nodes) ? svgSpec.nodes : [];
+}
+
+function hasExplicitTimelineLanes(svgSpec) {
+  if (!Array.isArray(svgSpec?.lanes)) {
+    return false;
+  }
+
+  return svgSpec.lanes.some((lane) => {
+    if (typeof lane === 'string') {
+      return lane.trim();
+    }
+
+    if (isPlainObject(lane)) {
+      return toTrimmedString(lane.id) || toTrimmedString(lane.title);
+    }
+
+    return false;
+  });
+}
+
+function normalizeReportTimelineContent(svgSpec) {
+  if (!isPlainObject(svgSpec) || toTrimmedString(svgSpec.kind).toLowerCase() !== 'timeline') {
+    return {
+      renderMode: 'svg',
+      events: [],
+      errorMessage: ''
+    };
+  }
+
+  const hasEventArray = Array.isArray(svgSpec.events) || Array.isArray(svgSpec.nodes);
+  if (!hasEventArray) {
+    return {
+      renderMode: 'svg',
+      events: [],
+      errorMessage: ''
+    };
+  }
+
+  const rawEvents = getTimelineSourceEvents(svgSpec);
+  const laneIds = new Set(
+    rawEvents
+      .map((event) => (isPlainObject(event) ? toTrimmedString(event.lane) : ''))
+      .filter(Boolean)
+  );
+
+  if (hasExplicitTimelineLanes(svgSpec) || laneIds.size > 1) {
+    return {
+      renderMode: 'svg',
+      events: [],
+      errorMessage: ''
+    };
+  }
+
+  if (rawEvents.length === 0) {
+    return {
+      renderMode: 'html',
+      events: [],
+      errorMessage: 'Timeline block requires a non-empty events array.'
+    };
+  }
+
+  const events = [];
+  for (let index = 0; index < rawEvents.length; index += 1) {
+    const event = rawEvents[index];
+    if (!isPlainObject(event)) {
+      return {
+        renderMode: 'html',
+        events: [],
+        errorMessage: `timeline.events[${index}] must be an object.`
+      };
+    }
+
+    const title = toTrimmedString(event.title)
+      || toTrimmedString(event.label)
+      || toTrimmedString(event.name);
+    if (!title) {
+      return {
+        renderMode: 'html',
+        events: [],
+        errorMessage: `timeline.events[${index}] requires a title or label.`
+      };
+    }
+
+    const body = toTrimmedString(event.body)
+      || toTrimmedString(event.description)
+      || toTrimmedString(event.detail)
+      || toTrimmedString(event.summary)
+      || toTrimmedString(event.note);
+    const dateLabel = toTrimmedString(event.dateLabel)
+      || toTrimmedString(event.when)
+      || toTrimmedString(event.date);
+    const orderValue = Number(event.order);
+    const parsedDate = Date.parse(dateLabel);
+
+    let sortOrder = index;
+    if (Number.isFinite(orderValue)) {
+      sortOrder = orderValue;
+    } else if (Number.isFinite(parsedDate)) {
+      sortOrder = parsedDate;
+    }
+
+    events.push({
+      id: toTrimmedString(event.id) || `timeline-event-${index + 1}`,
+      title,
+      body,
+      dateLabel,
+      sortOrder,
+      _index: index
+    });
+  }
+
+  events.sort((left, right) => {
+    if (left.sortOrder !== right.sortOrder) {
+      return left.sortOrder - right.sortOrder;
+    }
+
+    return left._index - right._index;
+  });
+
+  return {
+    renderMode: 'html',
+    events,
+    errorMessage: ''
+  };
+}
+
+function computeReportTimelineLayout(events, availableWidth) {
+  const safeEvents = Array.isArray(events) ? events : [];
+  const eventCount = safeEvents.length;
+  const count = Math.max(eventCount, 1);
+  const averageTitleLength = eventCount > 0
+    ? safeEvents.reduce((sum, event) => sum + event.title.length, 0) / eventCount
+    : 0;
+  const averageBodyLength = eventCount > 0
+    ? safeEvents.reduce((sum, event) => sum + event.body.length, 0) / eventCount
+    : 0;
+  const longestBodyLength = eventCount > 0
+    ? Math.max(...safeEvents.map((event) => event.body.length))
+    : 0;
+  const longestDateLength = eventCount > 0
+    ? Math.max(...safeEvents.map((event) => event.dateLabel.length))
+    : 0;
+  const longestTitleLength = eventCount > 0
+    ? Math.max(...safeEvents.map((event) => event.title.length))
+    : 0;
+  const gap = eventCount <= 3 ? 24 : (eventCount === 4 ? 20 : 16);
+  const trackInset = eventCount <= 4 ? 18 : 14;
+  const density = eventCount <= 3 ? 'spacious' : (eventCount >= 6 ? 'compact' : 'balanced');
+  const padding = eventCount <= 3 ? 18 : (eventCount >= 6 ? 15 : 16);
+  const minimumCardWidth = Math.max(
+    220,
+    Math.min(
+      eventCount <= 4 ? 360 : 300,
+      214
+        + (eventCount <= 4 ? 18 : 0)
+        + (averageTitleLength > 34 ? 12 : 0)
+        + (longestTitleLength > 54 ? 16 : 0)
+        + (averageBodyLength > 85 ? 18 : 0)
+        + (averageBodyLength > 130 ? 18 : 0)
+        + (longestBodyLength > 180 ? 18 : 0)
+        + (longestDateLength > 18 ? 10 : 0)
+    )
+  );
+  const measuredWidth = Number.isFinite(availableWidth) && availableWidth > 0
+    ? availableWidth
+    : 0;
+  const usableWidth = Math.max(0, measuredWidth - (trackInset * 2));
+  const slotWidth = eventCount > 0
+    ? (usableWidth - (Math.max(0, count - 1) * gap)) / count
+    : usableWidth;
+  const shouldPreferVertical = eventCount >= 6 && (averageBodyLength > 65 || longestBodyLength > 120);
+  const mode = eventCount === 1
+    ? 'vertical'
+    : ((!shouldPreferVertical && slotWidth >= minimumCardWidth) ? 'horizontal' : 'vertical');
+
+  return {
+    mode,
+    density,
+    gap,
+    padding,
+    trackInset,
+    minimumCardWidth,
+    slotWidth
+  };
+}
+
+function applyReportTimelineLayout(shell, events) {
+  const measuredWidth = Math.max(
+    shell?.clientWidth || 0,
+    typeof shell?.getBoundingClientRect === 'function'
+      ? Math.round(shell.getBoundingClientRect().width)
+      : 0,
+    typeof window !== 'undefined'
+      ? Math.max(0, Math.round(window.innerWidth * 0.72))
+      : 0
+  );
+  const layout = computeReportTimelineLayout(events, measuredWidth);
+  shell.dataset.layout = layout.mode;
+  shell.dataset.density = layout.density;
+  shell.style.setProperty('--report-timeline-event-count', String(Math.max(events.length, 1)));
+  shell.style.setProperty('--report-timeline-gap', `${layout.gap}px`);
+  shell.style.setProperty('--report-timeline-card-padding', `${layout.padding}px`);
+  shell.style.setProperty('--report-timeline-track-inset', `${layout.trackInset}px`);
+}
+
+function observeReportTimelineLayout(shell, events) {
+  const updateLayout = () => {
+    if (!shell.isConnected) {
+      return;
+    }
+
+    applyReportTimelineLayout(shell, events);
+  };
+
+  requestAnimationFrame(updateLayout);
+
+  if (typeof ResizeObserver === 'undefined') {
+    return;
+  }
+
+  const observer = new ResizeObserver(() => {
+    if (!shell.isConnected) {
+      observer.disconnect();
+      return;
+    }
+
+    updateLayout();
+  });
+
+  observer.observe(shell);
+}
+
+function buildReportTimelineEvent(event) {
+  const item = document.createElement('article');
+  item.className = 'report-timeline-event';
+  item.dataset.timelineEventId = event.id;
+
+  const card = document.createElement('div');
+  card.className = 'report-timeline-event-card';
+
+  if (event.dateLabel) {
+    const date = document.createElement('p');
+    date.className = 'report-timeline-date';
+    date.textContent = event.dateLabel;
+    card.appendChild(date);
+  }
+
+  const title = document.createElement('h4');
+  title.className = 'report-timeline-event-title';
+  title.textContent = event.title;
+  card.appendChild(title);
+
+  if (event.body) {
+    const body = document.createElement('p');
+    body.className = 'report-timeline-event-body';
+    body.textContent = event.body;
+    card.appendChild(body);
+  }
+
+  item.appendChild(card);
+  return item;
+}
+
+function buildReportTimelineContentBlock(block, timeline) {
+  const card = buildReportBlockShell(block, 'report-block report-timeline-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || 'Timeline',
+    subtitle: block?.subtitle || ''
+  });
+
+  if (timeline.errorMessage) {
+    const error = document.createElement('p');
+    error.className = 'report-inline-error';
+    error.textContent = timeline.errorMessage;
+    card.appendChild(error);
+    return card;
+  }
+
+  const shell = document.createElement('div');
+  shell.className = 'report-timeline-shell';
+  shell.dataset.layout = 'horizontal';
+  shell.dataset.density = 'balanced';
+
+  const items = document.createElement('div');
+  items.className = 'report-timeline-items';
+  timeline.events.forEach((event) => {
+    items.appendChild(buildReportTimelineEvent(event));
+  });
+
+  shell.appendChild(items);
+  applyReportTimelineLayout(shell, timeline.events);
+  card.appendChild(shell);
+  observeReportTimelineLayout(shell, timeline.events);
+  return card;
+}
+
+export function debugResolveReportTimelineLayout(svgSpec, availableWidth) {
+  const timeline = normalizeReportTimelineContent(svgSpec);
+  return {
+    renderMode: timeline.renderMode,
+    errorMessage: timeline.errorMessage,
+    eventCount: timeline.events.length,
+    ...computeReportTimelineLayout(timeline.events, availableWidth)
+  };
+}
+
 function findNextInlineMarkdownToken(text, startIndex) {
   const patterns = [
     { type: 'link', regex: /\[([^\]]+)\]\(([^)]+)\)/g },
@@ -2328,6 +2648,11 @@ function renderReportSvgBlock(module, block, blockIndex) {
 }
 
 function renderReportTimelineBlock(module, block, blockIndex) {
+  const timeline = normalizeReportTimelineContent(block?.svgSpec || {});
+  if (timeline.renderMode === 'html') {
+    return buildReportTimelineContentBlock(block, timeline);
+  }
+
   const title = block?.title || `Timeline ${blockIndex + 1}`;
   const card = buildSvgVisualCard(module, {
     title,
