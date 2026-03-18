@@ -54,6 +54,10 @@ assert_contains() {
 
 landing_html="$(fetch_html "$LANDING_URL")"
 app_html="$(fetch_html "$APP_URL")"
+app_js="$(fetch_html "${SITE_ORIGIN}/js/app.js?v=${EXPECTED_VERSION}")"
+render_js="$(fetch_html "${SITE_ORIGIN}/js/render.js?v=${EXPECTED_VERSION}")"
+session_viewer_js="$(fetch_html "${SITE_ORIGIN}/js/session_viewer.js?v=${EXPECTED_VERSION}")"
+landing_css="$(fetch_html "${SITE_ORIGIN}/styles/landing.css?v=${EXPECTED_VERSION}")"
 
 assert_contains "$landing_html" "./styles/landing.css?v=${EXPECTED_VERSION}" "landing stylesheet"
 assert_contains "$landing_html" "./js/landing.js?v=${EXPECTED_VERSION}" "landing script"
@@ -62,5 +66,12 @@ assert_contains "$landing_html" "./assets/brand/planeir-wordmark-light.svg?v=${E
 assert_contains "$app_html" "../styles/base.css?v=${EXPECTED_VERSION}" "app stylesheet"
 assert_contains "$app_html" "../js/app.js?v=${EXPECTED_VERSION}" "app script"
 assert_contains "$app_html" "../assets/brand/planeir-wordmark-light.svg?v=${EXPECTED_VERSION}" "app wordmark"
+
+assert_contains "$app_js" "./state.js?v=${EXPECTED_VERSION}" "app -> state module import"
+assert_contains "$app_js" "./render.js?v=${EXPECTED_VERSION}" "app -> render module import"
+assert_contains "$render_js" "./education_svg.js?v=${EXPECTED_VERSION}" "render -> education svg module import"
+assert_contains "$render_js" "./report.js?v=${EXPECTED_VERSION}" "render -> report module import"
+assert_contains "$session_viewer_js" "./app.js?v=${EXPECTED_VERSION}" "session viewer dynamic import"
+assert_contains "$landing_css" "../assets/brand/planeir-harp-light.svg?v=${EXPECTED_VERSION}" "landing CSS brand asset"
 
 echo "Verified versioned Pages asset URLs for ${SITE_ORIGIN} (${EXPECTED_VERSION})"
