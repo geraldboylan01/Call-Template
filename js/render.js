@@ -2,6 +2,9 @@ import { computeGridPosition, applyOverviewLayout } from './layout.js';
 import { renderSvgDiagram, serializeSvg } from './education_svg.js';
 import { getReportChartBlocks, isReportModule } from './report.js';
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
+
 function formatLocalTime(isoString) {
   try {
     return new Date(isoString).toLocaleTimeString([], {
@@ -623,6 +626,1077 @@ function makeOverviewSnippet(module) {
   }
 
   return 'No notes yet.';
+}
+
+function normalizeOverviewText(value) {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateOverviewText(value, maxLength = 80) {
+  const text = normalizeOverviewText(value);
+  if (!text) {
+    return '';
+  }
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function uniqueOverviewItems(items, maxItems = 3, maxLength = 88) {
+  const seen = new Set();
+  const unique = [];
+
+  items.forEach((item) => {
+    const normalized = normalizeOverviewText(item);
+    if (!normalized) {
+      return;
+    }
+
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    unique.push(truncateOverviewText(normalized, maxLength));
+  });
+
+  return unique.slice(0, maxItems);
+}
+
+function splitOverviewSentences(text) {
+  return normalizeOverviewText(text)
+    .split(/(?:[.!?]\s+|[•·]\s+|\n+)/)
+    .map((line) => normalizeOverviewText(line))
+    .filter(Boolean);
+}
+
+function stripMarkdownSyntax(text) {
+  return String(text ?? '')
+    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '');
+}
+
+function extractMarkdownPreviewLines(markdown, maxItems = 3) {
+  if (typeof markdown !== 'string' || !markdown.trim()) {
+    return [];
+  }
+
+  const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
+  const listLines = [];
+  const paragraphLines = [];
+  let inCodeFence = false;
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('```')) {
+      inCodeFence = !inCodeFence;
+      return;
+    }
+
+    if (inCodeFence || !trimmed) {
+      return;
+    }
+
+    const listMatch = /^[-*+]\s+(.*)$/.exec(trimmed) || /^\d+\.\s+(.*)$/.exec(trimmed);
+    if (listMatch) {
+      listLines.push(listMatch[1]);
+      return;
+    }
+
+    paragraphLines.push(trimmed);
+  });
+
+  if (listLines.length > 0) {
+    return uniqueOverviewItems(listLines.map((line) => stripMarkdownSyntax(line)), maxItems);
+  }
+
+  return uniqueOverviewItems(
+    splitOverviewSentences(stripMarkdownSyntax(paragraphLines.join(' '))),
+    maxItems
+  );
+}
+
+function extractHtmlPreviewLines(rawHtml, maxItems = 3) {
+  const safeHtml = sanitizeSummaryHtml(rawHtml || '');
+  if (!safeHtml) {
+    return [];
+  }
+
+  const template = document.createElement('template');
+  template.innerHTML = safeHtml;
+
+  const listLines = [...template.content.querySelectorAll('li')]
+    .map((item) => item.textContent || '');
+  if (listLines.length > 0) {
+    return uniqueOverviewItems(listLines, maxItems);
+  }
+
+  const blocks = [...template.content.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote')]
+    .map((element) => element.textContent || '');
+  if (blocks.length > 0) {
+    return uniqueOverviewItems(
+      blocks.flatMap((line) => splitOverviewSentences(line)),
+      maxItems
+    );
+  }
+
+  return uniqueOverviewItems(
+    splitOverviewSentences(template.content.textContent || ''),
+    maxItems
+  );
+}
+
+function createOverviewSvgElement(tagName, attributes = {}) {
+  const element = document.createElementNS(SVG_NS, tagName);
+  Object.entries(attributes).forEach(([key, value]) => {
+    element.setAttribute(key, String(value));
+  });
+  return element;
+}
+
+function buildOverviewLinePath(points) {
+  return points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x} ${point.y}`).join(' ');
+}
+
+function formatOverviewMetricValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value.toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2
+    });
+  }
+
+  return truncateOverviewText(value, 18);
+}
+
+function pluralizeOverview(count, singular, plural = `${singular}s`) {
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.round(count)) : 0;
+  const label = safeCount === 1 ? singular : plural;
+  return `${safeCount} ${label}`;
+}
+
+function getOverviewTableValueIndex(columns, row) {
+  let fallbackIndex = -1;
+  for (let index = row.length - 1; index >= 1; index -= 1) {
+    const value = normalizeOverviewText(row[index]);
+    if (!value) {
+      continue;
+    }
+
+    if (fallbackIndex === -1) {
+      fallbackIndex = index;
+    }
+
+    const columnToken = normalizeSectionToken(columns[index]);
+    const isDescriptorColumn = columnToken.includes('note')
+      || columnToken.includes('detail')
+      || columnToken.includes('description')
+      || columnToken.includes('context')
+      || columnToken.includes('comment');
+
+    if (!isDescriptorColumn) {
+      return index;
+    }
+  }
+
+  return fallbackIndex;
+}
+
+function extractTablePreviewItems(tableData, maxItems = 4) {
+  const columns = Array.isArray(tableData?.columns) ? tableData.columns : [];
+  const rows = Array.isArray(tableData?.rows) ? tableData.rows : [];
+  if (columns.length < 2 || rows.length === 0) {
+    return [];
+  }
+
+  const items = [];
+  rows.forEach((row, rowIndex) => {
+    if (items.length >= maxItems) {
+      return;
+    }
+
+    const safeRow = Array.isArray(row) ? row : [];
+    const label = normalizeOverviewText(safeRow[0]) || `Metric ${rowIndex + 1}`;
+    const valueIndex = getOverviewTableValueIndex(columns, safeRow);
+    if (valueIndex === -1) {
+      return;
+    }
+
+    const value = safeRow[valueIndex];
+    const detailCellIndex = columns.findIndex((column, columnIndex) => (
+      columnIndex > 0
+      && columnIndex !== valueIndex
+      && normalizeOverviewText(safeRow[columnIndex])
+      && (
+        normalizeSectionToken(column).includes('note')
+        || normalizeSectionToken(column).includes('detail')
+        || normalizeSectionToken(column).includes('description')
+      )
+    ));
+
+    const detail = detailCellIndex > -1
+      ? normalizeOverviewText(safeRow[detailCellIndex])
+      : normalizeOverviewText(columns[valueIndex]);
+
+    items.push({
+      label: truncateOverviewText(label, 30),
+      value: formatOverviewMetricValue(value),
+      detail: truncateOverviewText(detail, 20),
+      tone: ''
+    });
+  });
+
+  return items;
+}
+
+function formatOverviewBucketedValue(outputsBucketed, value) {
+  const currencySymbol = typeof outputsBucketed?.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
+    ? outputsBucketed.currencySymbol.trim()
+    : '€';
+  return `${currencySymbol}${formatBucketedAmount(Number(value))}`;
+}
+
+function extractOutputsBucketedPreviewItems(outputsBucketed, maxItems = 4) {
+  if (!hasOutputsBucketed(outputsBucketed)) {
+    return [];
+  }
+
+  const items = [];
+  const sections = outputsBucketed.sections;
+  const summarySection = findOutputsBucketedSection(sections, 'summary');
+
+  if (summarySection) {
+    sanitizeSectionRows(summarySection.rows).forEach((row) => {
+      if (items.length >= maxItems) {
+        return;
+      }
+
+      items.push({
+        label: truncateOverviewText(row[0], 30),
+        value: formatOverviewBucketedValue(outputsBucketed, row[1]),
+        detail: 'Summary',
+        tone: normalizeSectionToken(row[0]) === 'networth' ? 'positive' : ''
+      });
+    });
+  }
+
+  if (items.length === 0) {
+    sections.forEach((section, index) => {
+      if (items.length >= maxItems) {
+        return;
+      }
+
+      if (Number.isFinite(Number(section?.subtotalValue))) {
+        items.push({
+          label: truncateOverviewText(section?.title || `Section ${index + 1}`, 30),
+          value: formatOverviewBucketedValue(outputsBucketed, Number(section.subtotalValue)),
+          detail: truncateOverviewText(section?.subtotalLabel || 'Subtotal', 18),
+          tone: ''
+        });
+      }
+    });
+  }
+
+  if (items.length === 0) {
+    sections.forEach((section, index) => {
+      if (items.length >= maxItems) {
+        return;
+      }
+
+      const firstRow = sanitizeSectionRows(section?.rows)[0];
+      if (!firstRow) {
+        return;
+      }
+
+      items.push({
+        label: truncateOverviewText(firstRow[0], 30),
+        value: formatOverviewBucketedValue(outputsBucketed, firstRow[1]),
+        detail: truncateOverviewText(section?.title || `Section ${index + 1}`, 18),
+        tone: ''
+      });
+    });
+  }
+
+  return items.slice(0, maxItems);
+}
+
+function extractReportKpiPreviewItems(report, maxItems = 4) {
+  const blocks = Array.isArray(report?.blocks) ? report.blocks : [];
+  const items = [];
+
+  for (const block of blocks) {
+    if (block?.type !== 'kpiRow' || block?.errorMessage || !Array.isArray(block?.items)) {
+      continue;
+    }
+
+    for (const item of block.items) {
+      if (items.length >= maxItems) {
+        return items;
+      }
+
+      items.push({
+        label: truncateOverviewText(item?.label || 'KPI', 28),
+        value: truncateOverviewText(item?.value || '--', 18),
+        detail: truncateOverviewText(item?.detail || '', 18),
+        tone: typeof item?.tone === 'string' ? item.tone.trim().toLowerCase() : ''
+      });
+    }
+  }
+
+  return items;
+}
+
+function collectOverviewKpiItems(module, maxItems = 4) {
+  if (isReportModule(module)) {
+    const report = module?.generated?.report || {};
+    const reportKpis = extractReportKpiPreviewItems(report, maxItems);
+    if (reportKpis.length > 0) {
+      return reportKpis;
+    }
+
+    const reportTableBlock = (Array.isArray(report?.blocks) ? report.blocks : [])
+      .find((block) => block?.type === 'table' && !block?.errorMessage && block?.table);
+    if (reportTableBlock) {
+      return extractTablePreviewItems(reportTableBlock.table, maxItems);
+    }
+
+    return [];
+  }
+
+  if (hasOutputsBucketed(module?.generated?.outputsBucketed)) {
+    const bucketedItems = extractOutputsBucketedPreviewItems(module.generated.outputsBucketed, maxItems);
+    if (bucketedItems.length > 0) {
+      return bucketedItems;
+    }
+  }
+
+  const outputsTable = filterOutputsRowsForPensionToggle(module, module?.generated?.outputs || {});
+  const outputItems = extractTablePreviewItems(outputsTable, maxItems);
+  if (outputItems.length > 0) {
+    return outputItems;
+  }
+
+  return extractTablePreviewItems(module?.generated?.assumptions || {}, maxItems);
+}
+
+function collectReportInsightLines(report, maxItems = 3) {
+  const lines = [];
+  const blocks = Array.isArray(report?.blocks) ? report.blocks : [];
+
+  for (const block of blocks) {
+    if (lines.length >= maxItems * 2) {
+      break;
+    }
+
+    if (block?.errorMessage) {
+      continue;
+    }
+
+    if (block?.type === 'callout') {
+      lines.push(...uniqueOverviewItems(Array.isArray(block?.bullets) ? block.bullets : [], maxItems));
+      lines.push(...extractHtmlPreviewLines(block?.bodyHtml || '', maxItems));
+      lines.push(...extractMarkdownPreviewLines(block?.markdown || '', maxItems));
+      continue;
+    }
+
+    if (block?.type === 'markdown') {
+      lines.push(...extractMarkdownPreviewLines(block?.markdown || '', maxItems));
+      continue;
+    }
+
+    if (block?.type === 'checklist') {
+      lines.push(...uniqueOverviewItems(
+        (Array.isArray(block?.items) ? block.items : []).map((item) => item?.label || ''),
+        maxItems
+      ));
+      continue;
+    }
+
+    if (block?.type === 'timeline') {
+      const timeline = normalizeReportTimelineContent(block?.svgSpec || {});
+      if (timeline.events.length > 0) {
+        lines.push(...uniqueOverviewItems(
+          timeline.events.map((event) => event?.title || ''),
+          maxItems
+        ));
+      }
+    }
+  }
+
+  if (lines.length === 0 && typeof report?.rawMarkdown === 'string') {
+    lines.push(...extractMarkdownPreviewLines(report.rawMarkdown, maxItems));
+  }
+
+  return uniqueOverviewItems(lines, maxItems);
+}
+
+function collectEducationInsightLines(module, maxItems = 3) {
+  const lines = [];
+  const education = module?.generated?.education || {};
+  const sections = Array.isArray(education?.sections) ? education.sections : [];
+
+  sections.forEach((section) => {
+    lines.push(...uniqueOverviewItems(Array.isArray(section?.bullets) ? section.bullets : [], maxItems));
+    lines.push(...extractHtmlPreviewLines(section?.bodyHtml || '', maxItems));
+  });
+
+  lines.push(...extractHtmlPreviewLines(module?.generated?.summaryHtml || '', maxItems));
+  return uniqueOverviewItems(lines, maxItems);
+}
+
+function collectOverviewInsightLines(module, maxItems = 3) {
+  const lines = [];
+
+  if (isReportModule(module)) {
+    lines.push(...collectReportInsightLines(module.generated.report, maxItems));
+  } else if (isEducationModule(module)) {
+    lines.push(...collectEducationInsightLines(module, maxItems));
+  } else {
+    lines.push(...extractHtmlPreviewLines(module?.generated?.summaryHtml || '', maxItems));
+  }
+
+  lines.push(...extractHtmlPreviewLines(module?.generated?.summaryHtml || '', maxItems));
+
+  const noteLines = splitOverviewSentences(module?.notes || '');
+  if (noteLines.length > 0) {
+    lines.push(...noteLines);
+  }
+
+  if (lines.length === 0) {
+    lines.push(makeOverviewSnippet(module));
+  }
+
+  return uniqueOverviewItems(lines, maxItems);
+}
+
+function getOverviewSvgPreviewKind(svgSpec) {
+  return toTrimmedString(svgSpec?.kind).toLowerCase() === 'timeline' ? 'timeline' : 'svg';
+}
+
+function collectOverviewVisualCandidates(module) {
+  const candidates = [];
+
+  if (isReportModule(module)) {
+    const blocks = Array.isArray(module?.generated?.report?.blocks) ? module.generated.report.blocks : [];
+    blocks.forEach((block, index) => {
+      if (block?.errorMessage) {
+        return;
+      }
+
+      if (block?.type === 'chart') {
+        const chart = sanitizeEducationChart(block?.chart, index);
+        if (chart) {
+          candidates.push({
+            kind: 'chart',
+            title: block?.title || chart.title,
+            chart
+          });
+        }
+        return;
+      }
+
+      if (block?.type === 'svg' || block?.type === 'timeline') {
+        const kind = block?.type === 'timeline' ? 'timeline' : getOverviewSvgPreviewKind(block?.svgSpec || {});
+        candidates.push({
+          kind,
+          title: block?.title || (kind === 'timeline' ? `Timeline ${index + 1}` : `Diagram ${index + 1}`),
+          svgSpec: block?.svgSpec || {}
+        });
+      }
+    });
+
+    return candidates;
+  }
+
+  if (isEducationModule(module)) {
+    getEducationVisuals(module).forEach((visual, visualIndex) => {
+      const type = String(visual?.type || '').trim().toLowerCase();
+      if (type === 'chart') {
+        const chart = sanitizeEducationChart(visual?.chart, visualIndex);
+        if (chart) {
+          candidates.push({
+            kind: 'chart',
+            title: visual?.title || chart.title,
+            chart
+          });
+        }
+        return;
+      }
+
+      if (type === 'svg') {
+        const kind = getOverviewSvgPreviewKind(visual?.svgSpec || {});
+        candidates.push({
+          kind,
+          title: visual?.title || (kind === 'timeline' ? `Timeline ${visualIndex + 1}` : `Diagram ${visualIndex + 1}`),
+          svgSpec: visual?.svgSpec || {}
+        });
+      }
+    });
+
+    return candidates;
+  }
+
+  (Array.isArray(module?.generated?.charts) ? module.generated.charts : []).forEach((chartData, chartIndex) => {
+    const chart = sanitizeEducationChart(chartData, chartIndex);
+    if (!chart) {
+      return;
+    }
+
+    candidates.push({
+      kind: 'chart',
+      title: chart.title,
+      chart
+    });
+  });
+
+  return candidates;
+}
+
+function collectOverviewSignalCounts(module) {
+  const counts = {
+    charts: 0,
+    diagrams: 0,
+    timelines: 0,
+    visuals: 0,
+    kpis: 0,
+    sections: 0,
+    references: 0,
+    blocks: 0,
+    tables: 0,
+    outputs: 0
+  };
+
+  if (isReportModule(module)) {
+    const blocks = Array.isArray(module?.generated?.report?.blocks) ? module.generated.report.blocks : [];
+    counts.blocks = blocks.length;
+
+    blocks.forEach((block) => {
+      if (block?.errorMessage) {
+        return;
+      }
+
+      if (block?.type === 'chart') {
+        counts.charts += 1;
+        return;
+      }
+
+      if (block?.type === 'timeline') {
+        counts.timelines += 1;
+        return;
+      }
+
+      if (block?.type === 'svg') {
+        counts[getOverviewSvgPreviewKind(block?.svgSpec || {}) === 'timeline' ? 'timelines' : 'diagrams'] += 1;
+        return;
+      }
+
+      if (block?.type === 'kpiRow') {
+        counts.kpis += Array.isArray(block?.items) ? block.items.length : 0;
+        return;
+      }
+
+      if (block?.type === 'table') {
+        counts.tables += 1;
+      }
+    });
+
+    counts.visuals = counts.charts + counts.diagrams + counts.timelines;
+    return counts;
+  }
+
+  if (isEducationModule(module)) {
+    const education = module?.generated?.education || {};
+    counts.sections = Array.isArray(education?.sections) ? education.sections.length : 0;
+    counts.references = Array.isArray(education?.references) ? education.references.length : 0;
+
+    getEducationVisuals(module).forEach((visual) => {
+      const type = String(visual?.type || '').trim().toLowerCase();
+      if (type === 'chart') {
+        counts.charts += 1;
+        return;
+      }
+
+      if (type === 'svg') {
+        counts[getOverviewSvgPreviewKind(visual?.svgSpec || {}) === 'timeline' ? 'timelines' : 'diagrams'] += 1;
+      }
+    });
+
+    counts.visuals = counts.charts + counts.diagrams + counts.timelines;
+    return counts;
+  }
+
+  counts.charts = Array.isArray(module?.generated?.charts) ? module.generated.charts.length : 0;
+  counts.visuals = counts.charts;
+  counts.tables = Array.isArray(module?.generated?.tables) ? module.generated.tables.length : 0;
+
+  if (hasOutputsBucketed(module?.generated?.outputsBucketed)) {
+    counts.outputs = Array.isArray(module.generated.outputsBucketed.sections)
+      ? module.generated.outputsBucketed.sections.length
+      : 0;
+  } else {
+    const outputsTable = filterOutputsRowsForPensionToggle(module, module?.generated?.outputs || {});
+    counts.outputs = Array.isArray(outputsTable?.rows) ? outputsTable.rows.length : 0;
+  }
+
+  return counts;
+}
+
+function inferOverviewModuleKind(module) {
+  if (isEducationModule(module)) {
+    return {
+      label: 'Education',
+      token: 'education'
+    };
+  }
+
+  if (isReportModule(module)) {
+    return {
+      label: 'Report',
+      token: 'report'
+    };
+  }
+
+  if (isPensionModule(module)) {
+    return {
+      label: 'Pension',
+      token: 'pension'
+    };
+  }
+
+  if (module?.generated?.loanInputs?.loanKind === 'loan' || module?.generated?.loanInputs) {
+    return {
+      label: 'Loan',
+      token: 'loan'
+    };
+  }
+
+  if (module?.generated?.mortgageInputs) {
+    return {
+      label: 'Mortgage',
+      token: 'mortgage'
+    };
+  }
+
+  if (hasOutputsBucketed(module?.generated?.outputsBucketed)) {
+    return {
+      label: 'Balance Sheet',
+      token: 'balance-sheet'
+    };
+  }
+
+  if (Array.isArray(module?.generated?.charts) && module.generated.charts.length > 0) {
+    return {
+      label: 'Analysis',
+      token: 'analysis'
+    };
+  }
+
+  return {
+    label: 'Module',
+    token: 'generic'
+  };
+}
+
+function buildOverviewMetaItems(module, signalCounts) {
+  const items = [];
+  const moduleKind = inferOverviewModuleKind(module);
+
+  if (moduleKind.token === 'education') {
+    const audience = toTrimmedString(module?.generated?.education?.audience);
+    if (audience) {
+      items.push(audience);
+    }
+    if (signalCounts.visuals > 0) {
+      items.push(pluralizeOverview(signalCounts.visuals, 'visual'));
+    }
+    if (signalCounts.sections > 0) {
+      items.push(pluralizeOverview(signalCounts.sections, 'section'));
+    }
+    if (signalCounts.references > 0) {
+      items.push(pluralizeOverview(signalCounts.references, 'reference'));
+    }
+    return uniqueOverviewItems(items, 3, 24);
+  }
+
+  if (moduleKind.token === 'report') {
+    if (signalCounts.charts > 0) {
+      items.push(pluralizeOverview(signalCounts.charts, 'chart'));
+    }
+    if (signalCounts.timelines > 0) {
+      items.push(pluralizeOverview(signalCounts.timelines, 'timeline'));
+    }
+    if (signalCounts.diagrams > 0) {
+      items.push(pluralizeOverview(signalCounts.diagrams, 'diagram'));
+    }
+    if (signalCounts.kpis > 0) {
+      items.push(pluralizeOverview(signalCounts.kpis, 'KPI', 'KPIs'));
+    }
+    if (signalCounts.blocks > 0) {
+      items.push(pluralizeOverview(signalCounts.blocks, 'block'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'pension') {
+    items.push(isAffordablePensionMode(module) ? 'Affordable mode' : 'Target mode');
+    if (signalCounts.charts > 0) {
+      items.push(pluralizeOverview(signalCounts.charts, 'chart'));
+    }
+    if (signalCounts.outputs > 0) {
+      items.push(pluralizeOverview(signalCounts.outputs, 'output'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'mortgage' || moduleKind.token === 'loan') {
+    const loanInputs = getLoanEngineInputs(module);
+    if (loanInputs?.repaymentType === 'interestOnly') {
+      items.push('Interest only');
+    } else if (loanInputs?.repaymentType === 'repayment') {
+      items.push('Repayment');
+    }
+
+    const termYears = deriveRemainingTermYears(loanInputs);
+    if (Number.isFinite(termYears) && termYears > 0) {
+      items.push(`${Math.round(termYears)}y term`);
+    }
+
+    if (signalCounts.outputs > 0) {
+      items.push(pluralizeOverview(signalCounts.outputs, 'output'));
+    }
+    if (signalCounts.charts > 0) {
+      items.push(pluralizeOverview(signalCounts.charts, 'chart'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (signalCounts.charts > 0) {
+    items.push(pluralizeOverview(signalCounts.charts, 'chart'));
+  }
+  if (signalCounts.outputs > 0) {
+    items.push(pluralizeOverview(signalCounts.outputs, 'output'));
+  }
+  if (signalCounts.tables > 0) {
+    items.push(pluralizeOverview(signalCounts.tables, 'table'));
+  }
+
+  return uniqueOverviewItems(items, 3, 22);
+}
+
+function buildOverviewPreviewDescriptor(module) {
+  const moduleKind = inferOverviewModuleKind(module);
+  const signalCounts = collectOverviewSignalCounts(module);
+  const visualCandidates = collectOverviewVisualCandidates(module);
+  const kpiItems = collectOverviewKpiItems(module, 4);
+  const insightLines = collectOverviewInsightLines(module, 3);
+  const preview = visualCandidates[0] || null;
+  const moduleTitle = normalizeOverviewText(module?.title || 'Untitled Module');
+
+  if (preview) {
+    const previewLabel = normalizeOverviewText(preview.title).toLowerCase() === moduleTitle.toLowerCase()
+      ? (preview.kind === 'chart'
+        ? 'Chart preview'
+        : (preview.kind === 'timeline' ? 'Timeline preview' : 'Diagram preview'))
+      : truncateOverviewText(preview.title, 48);
+
+    return {
+      moduleKind,
+      signalCounts,
+      previewKind: preview.kind,
+      previewLabel,
+      visualPreview: preview,
+      metaItems: buildOverviewMetaItems(module, signalCounts)
+    };
+  }
+
+  if (kpiItems.length > 0) {
+    return {
+      moduleKind,
+      signalCounts,
+      previewKind: 'kpi',
+      previewLabel: 'Key outputs',
+      kpiItems,
+      metaItems: buildOverviewMetaItems(module, signalCounts)
+    };
+  }
+
+  return {
+    moduleKind,
+    signalCounts,
+    previewKind: 'insight',
+    previewLabel: 'Key takeaways',
+    insightLines: insightLines.length > 0 ? insightLines : [makeOverviewSnippet(module)],
+    metaItems: buildOverviewMetaItems(module, signalCounts)
+  };
+}
+
+function buildOverviewChartPreview(chart) {
+  const width = 272;
+  const height = 96;
+  const insetX = 10;
+  const insetY = 10;
+  const labels = Array.isArray(chart?.labels) ? chart.labels : [];
+  const datasets = Array.isArray(chart?.datasets) ? chart.datasets : [];
+  const safeDatasets = datasets
+    .map((dataset, datasetIndex) => ({
+      ...dataset,
+      data: Array.isArray(dataset?.data)
+        ? dataset.data.map((value) => {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : 0;
+        })
+        : [],
+      color: OVERVIEW_CHART_COLORS[datasetIndex % OVERVIEW_CHART_COLORS.length]
+    }))
+    .filter((dataset) => dataset.data.length > 0)
+    .slice(0, chart?.type === 'bar' ? 2 : 3);
+
+  if (safeDatasets.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'overview-preview-empty';
+    empty.textContent = 'No chart data';
+    return empty;
+  }
+
+  const allValues = safeDatasets.flatMap((dataset) => dataset.data);
+  const minValue = Math.min(...allValues, 0);
+  const maxValue = Math.max(...allValues, 0);
+  const span = Math.max(maxValue - minValue, 1);
+  const plotWidth = width - (insetX * 2);
+  const plotHeight = height - (insetY * 2);
+  const svg = createOverviewSvgElement('svg', {
+    class: 'overview-preview-chart-svg',
+    viewBox: `0 0 ${width} ${height}`,
+    preserveAspectRatio: 'none',
+    'aria-hidden': 'true'
+  });
+
+  const baselineY = insetY + plotHeight - (((0 - minValue) / span) * plotHeight);
+  const baseline = createOverviewSvgElement('line', {
+    x1: insetX,
+    y1: baselineY,
+    x2: width - insetX,
+    y2: baselineY,
+    class: 'overview-preview-chart-baseline'
+  });
+  svg.appendChild(baseline);
+
+  if (chart?.type === 'bar') {
+    const labelCount = Math.max(labels.length, ...safeDatasets.map((dataset) => dataset.data.length));
+    const slotWidth = plotWidth / Math.max(labelCount, 1);
+    const gap = 2;
+    const barGroupWidth = slotWidth * 0.72;
+    const barWidth = Math.max(5, (barGroupWidth - (gap * Math.max(0, safeDatasets.length - 1))) / safeDatasets.length);
+
+    safeDatasets.forEach((dataset, datasetIndex) => {
+      dataset.data.forEach((value, pointIndex) => {
+        const x = insetX + (slotWidth * pointIndex) + ((slotWidth - barGroupWidth) / 2) + datasetIndex * (barWidth + gap);
+        const y = insetY + plotHeight - (((value - minValue) / span) * plotHeight);
+        const barY = value >= 0 ? y : baselineY;
+        const barHeight = Math.max(2, Math.abs(baselineY - y));
+
+        const rect = createOverviewSvgElement('rect', {
+          x,
+          y: Math.min(barY, height - insetY - 2),
+          width: barWidth,
+          height: Math.min(barHeight, plotHeight),
+          rx: 3,
+          fill: dataset.color,
+          opacity: datasetIndex === 0 ? '0.92' : '0.66'
+        });
+        svg.appendChild(rect);
+      });
+    });
+  } else {
+    safeDatasets.forEach((dataset, datasetIndex) => {
+      const pointCount = Math.max(dataset.data.length, 1);
+      const stepX = pointCount > 1 ? plotWidth / (pointCount - 1) : 0;
+      const points = dataset.data.map((value, pointIndex) => ({
+        x: insetX + (pointIndex * stepX),
+        y: insetY + plotHeight - (((value - minValue) / span) * plotHeight)
+      }));
+
+      if (datasetIndex === 0 && points.length > 1) {
+        const area = createOverviewSvgElement('path', {
+          d: `${buildOverviewLinePath(points)} L ${points[points.length - 1].x} ${height - insetY} L ${points[0].x} ${height - insetY} Z`,
+          class: 'overview-preview-chart-area',
+          fill: dataset.color,
+          opacity: '0.18'
+        });
+        svg.appendChild(area);
+      }
+
+      const path = createOverviewSvgElement('path', {
+        d: buildOverviewLinePath(points),
+        class: 'overview-preview-chart-line',
+        fill: 'none',
+        stroke: dataset.color,
+        'stroke-width': datasetIndex === 0 ? 3 : 2,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        opacity: datasetIndex === 0 ? '1' : '0.74'
+      });
+      svg.appendChild(path);
+
+      const lastPoint = points[points.length - 1];
+      if (lastPoint) {
+        const dot = createOverviewSvgElement('circle', {
+          cx: lastPoint.x,
+          cy: lastPoint.y,
+          r: datasetIndex === 0 ? 3.3 : 2.4,
+          fill: dataset.color
+        });
+        svg.appendChild(dot);
+      }
+    });
+  }
+
+  return svg;
+}
+
+function buildOverviewSvgPreview(preview) {
+  const host = document.createElement('div');
+  host.className = 'overview-preview-svg-host';
+
+  try {
+    const svg = renderSvgDiagram(preview?.svgSpec || {});
+    if (!(svg instanceof SVGElement)) {
+      throw new Error('Invalid SVG');
+    }
+
+    const svgTheme = String(svg.getAttribute('data-theme') || preview?.svgSpec?.theme || 'dark')
+      .trim()
+      .toLowerCase() === 'light'
+      ? 'light'
+      : 'dark';
+
+    host.dataset.svgTheme = svgTheme;
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    host.appendChild(svg);
+  } catch (_error) {
+    const empty = document.createElement('div');
+    empty.className = 'overview-preview-empty';
+    empty.textContent = preview?.kind === 'timeline' ? 'Timeline preview unavailable' : 'Diagram preview unavailable';
+    host.appendChild(empty);
+  }
+
+  return host;
+}
+
+function buildOverviewKpiPreview(items) {
+  const grid = document.createElement('div');
+  grid.className = 'overview-kpi-grid';
+
+  items.slice(0, 4).forEach((item) => {
+    const metric = document.createElement('article');
+    metric.className = 'overview-kpi-item';
+    if (typeof item?.tone === 'string' && item.tone.trim()) {
+      metric.dataset.tone = item.tone.trim().toLowerCase();
+    }
+
+    const label = document.createElement('div');
+    label.className = 'overview-kpi-label';
+    label.textContent = item?.label || 'Metric';
+    metric.appendChild(label);
+
+    const value = document.createElement('div');
+    value.className = 'overview-kpi-value';
+    value.textContent = item?.value || '--';
+    metric.appendChild(value);
+
+    if (item?.detail) {
+      const detail = document.createElement('div');
+      detail.className = 'overview-kpi-detail';
+      detail.textContent = item.detail;
+      metric.appendChild(detail);
+    }
+
+    grid.appendChild(metric);
+  });
+
+  return grid;
+}
+
+function buildOverviewInsightPreview(lines) {
+  const list = document.createElement('ul');
+  list.className = 'overview-insight-list';
+
+  lines.slice(0, 3).forEach((line) => {
+    const item = document.createElement('li');
+    item.className = 'overview-insight-item';
+    item.textContent = line;
+    list.appendChild(item);
+  });
+
+  return list;
+}
+
+function buildOverviewPreviewSurface(descriptor) {
+  const surface = document.createElement('div');
+  surface.className = 'overview-preview';
+  surface.dataset.previewKind = descriptor.previewKind;
+
+  if (descriptor?.previewLabel) {
+    const label = document.createElement('div');
+    label.className = 'overview-preview-label';
+    label.textContent = descriptor.previewLabel;
+    surface.appendChild(label);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'overview-preview-body';
+
+  if (descriptor.previewKind === 'chart') {
+    body.classList.add('is-chart');
+    body.appendChild(buildOverviewChartPreview(descriptor.visualPreview?.chart || {}));
+  } else if (descriptor.previewKind === 'svg' || descriptor.previewKind === 'timeline') {
+    body.classList.add('is-svg');
+    body.appendChild(buildOverviewSvgPreview(descriptor.visualPreview || {}));
+  } else if (descriptor.previewKind === 'kpi') {
+    body.classList.add('is-kpi');
+    body.appendChild(buildOverviewKpiPreview(descriptor.kpiItems || []));
+  } else {
+    body.classList.add('is-insight');
+    body.appendChild(buildOverviewInsightPreview(descriptor.insightLines || []));
+  }
+
+  surface.appendChild(body);
+  return surface;
+}
+
+function buildOverviewMetaStrip(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null;
+  }
+
+  const strip = document.createElement('div');
+  strip.className = 'overview-meta-strip';
+
+  items.forEach((item) => {
+    const chip = document.createElement('span');
+    chip.className = 'overview-meta-chip';
+    chip.textContent = item;
+    strip.appendChild(chip);
+  });
+
+  return strip;
 }
 
 function isPensionModule(module) {
@@ -3337,9 +4411,12 @@ export function renderOverview({
   ui.overviewGrid.innerHTML = '';
 
   modules.forEach((module, index) => {
+    const overviewDescriptor = buildOverviewPreviewDescriptor(module);
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'module-card overview-card';
+    card.dataset.moduleKind = overviewDescriptor.moduleKind.token;
+    card.dataset.previewKind = overviewDescriptor.previewKind;
     if (module.id === activeModuleId) {
       card.classList.add('is-active');
     }
@@ -3355,21 +4432,37 @@ export function renderOverview({
       card.appendChild(badge);
     }
 
+    const createdLabel = formatLocalTime(module.createdAt);
+
+    const header = document.createElement('div');
+    header.className = 'overview-card-header';
+
+    const chipRow = document.createElement('div');
+    chipRow.className = 'overview-chip-row';
+
+    const typeChip = document.createElement('span');
+    typeChip.className = 'overview-type-chip';
+    typeChip.textContent = overviewDescriptor.moduleKind.label;
+    chipRow.appendChild(typeChip);
+
     const label = document.createElement('div');
     label.className = 'overview-meta';
-    label.textContent = `#${index + 1} • ${formatLocalTime(module.createdAt)}`;
+    label.textContent = `#${index + 1}${createdLabel ? ` • ${createdLabel}` : ''}`;
+    chipRow.appendChild(label);
+    header.appendChild(chipRow);
 
     const title = document.createElement('h3');
     title.className = 'overview-title';
     title.textContent = module.title?.trim() ? module.title : 'Untitled Module';
 
-    const snippet = document.createElement('p');
-    snippet.className = 'overview-snippet';
-    snippet.textContent = makeOverviewSnippet(module);
+    header.appendChild(title);
+    card.appendChild(header);
+    card.appendChild(buildOverviewPreviewSurface(overviewDescriptor));
 
-    card.appendChild(label);
-    card.appendChild(title);
-    card.appendChild(snippet);
+    const metaStrip = buildOverviewMetaStrip(overviewDescriptor.metaItems);
+    if (metaStrip) {
+      card.appendChild(metaStrip);
+    }
 
     const position = computeGridPosition(index, modules.length, layout.cols);
     card.style.gridColumnStart = String(position.columnStart);
