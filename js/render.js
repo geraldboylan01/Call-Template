@@ -4,6 +4,27 @@ import { getReportChartBlocks, isReportModule } from './report.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
+const OVERVIEW_CHART_PREVIEW_MODE = {
+  width: 272,
+  height: 96,
+  line: {
+    insetX: 10,
+    insetTop: 10,
+    insetBottom: 10,
+    maxDatasets: 2,
+    maxPoints: 24,
+    rangePaddingRatio: 0.14
+  },
+  bar: {
+    insetX: 10,
+    insetTop: 10,
+    insetBottom: 8,
+    maxDatasets: 1,
+    maxPoints: 10,
+    rangePaddingRatio: 0.06,
+    minBarWidth: 6
+  }
+};
 
 function formatLocalTime(isoString) {
   try {
@@ -772,6 +793,297 @@ function buildOverviewLinePath(points) {
   return points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x} ${point.y}`).join(' ');
 }
 
+function clampOverviewNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function buildOverviewSampleIndices(length, maxPoints) {
+  const safeLength = Math.max(0, Math.floor(length));
+  const safeMaxPoints = Math.max(1, Math.floor(maxPoints));
+  if (safeLength <= safeMaxPoints) {
+    return Array.from({ length: safeLength }, (_value, index) => index);
+  }
+
+  const indexSet = new Set();
+  for (let sampleIndex = 0; sampleIndex < safeMaxPoints; sampleIndex += 1) {
+    const ratio = safeMaxPoints === 1 ? 0 : sampleIndex / (safeMaxPoints - 1);
+    indexSet.add(Math.round(ratio * (safeLength - 1)));
+  }
+
+  return [...indexSet].sort((left, right) => left - right);
+}
+
+function scoreOverviewPreviewDataset(values) {
+  const safeValues = Array.isArray(values) ? values : [];
+  if (safeValues.length === 0) {
+    return -1;
+  }
+
+  const minimum = Math.min(...safeValues);
+  const maximum = Math.max(...safeValues);
+  const absoluteMax = Math.max(...safeValues.map((value) => Math.abs(value)), 0);
+  const nonZeroCount = safeValues.filter((value) => Math.abs(value) > Number.EPSILON).length;
+
+  return ((maximum - minimum) * 3) + absoluteMax + nonZeroCount;
+}
+
+function selectOverviewPreviewDatasets(chart) {
+  const chartType = chart?.type === 'bar' ? 'bar' : 'line';
+  const mode = OVERVIEW_CHART_PREVIEW_MODE[chartType];
+  const sourceLabels = Array.isArray(chart?.labels) ? chart.labels.map((label) => String(label ?? '')) : [];
+  const sourceDatasets = Array.isArray(chart?.datasets) ? chart.datasets : [];
+  const pointCount = Math.max(
+    sourceLabels.length,
+    ...sourceDatasets.map((dataset) => (Array.isArray(dataset?.data) ? dataset.data.length : 0)),
+    0
+  );
+
+  if (pointCount === 0) {
+    return {
+      chartType,
+      labels: [],
+      datasets: []
+    };
+  }
+
+  const sampleIndices = buildOverviewSampleIndices(pointCount, mode.maxPoints);
+  const candidateDatasets = sourceDatasets
+    .map((dataset, datasetIndex) => {
+      const values = Array.from({ length: pointCount }, (_value, valueIndex) => (
+        clampOverviewNumber(Array.isArray(dataset?.data) ? dataset.data[valueIndex] : 0, 0)
+      ));
+
+      return {
+        datasetIndex,
+        label: typeof dataset?.label === 'string' ? dataset.label.trim() : '',
+        score: scoreOverviewPreviewDataset(values),
+        values
+      };
+    })
+    .filter((dataset) => dataset.values.length > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return left.datasetIndex - right.datasetIndex;
+    })
+    .slice(0, mode.maxDatasets)
+    .sort((left, right) => left.datasetIndex - right.datasetIndex)
+    .map((dataset, previewIndex) => ({
+      ...dataset,
+      color: OVERVIEW_CHART_COLORS[previewIndex % OVERVIEW_CHART_COLORS.length],
+      values: sampleIndices.map((sampleIndex) => dataset.values[sampleIndex] ?? 0)
+    }));
+
+  return {
+    chartType,
+    labels: sampleIndices.map((sampleIndex) => sourceLabels[sampleIndex] ?? ''),
+    datasets: candidateDatasets
+  };
+}
+
+function computeOverviewValueRange(values, {
+  includeZero = false,
+  paddingRatio = 0.1
+} = {}) {
+  const safeValues = Array.isArray(values)
+    ? values.filter((value) => Number.isFinite(value))
+    : [];
+
+  if (safeValues.length === 0) {
+    return {
+      minValue: 0,
+      maxValue: 1
+    };
+  }
+
+  let minValue = Math.min(...safeValues);
+  let maxValue = Math.max(...safeValues);
+
+  if (includeZero) {
+    minValue = Math.min(minValue, 0);
+    maxValue = Math.max(maxValue, 0);
+  }
+
+  const span = maxValue - minValue;
+  if (span < Number.EPSILON) {
+    const base = Math.max(Math.abs(maxValue), 1);
+    const pad = base * 0.18;
+    return {
+      minValue: minValue - pad,
+      maxValue: maxValue + pad
+    };
+  }
+
+  const pad = span * Math.max(0, paddingRatio);
+  return {
+    minValue: minValue - pad,
+    maxValue: maxValue + pad
+  };
+}
+
+function mapOverviewValueToY(value, minValue, maxValue, plotTop, plotBottom) {
+  const span = Math.max(maxValue - minValue, Number.EPSILON);
+  return plotBottom - (((value - minValue) / span) * (plotBottom - plotTop));
+}
+
+function appendOverviewChartGuide(svg, y, {
+  width,
+  insetX
+} = {}) {
+  const guide = createOverviewSvgElement('line', {
+    x1: insetX,
+    y1: y,
+    x2: width - insetX,
+    y2: y,
+    class: 'overview-preview-chart-baseline'
+  });
+  guide.setAttribute('opacity', '0.34');
+  svg.appendChild(guide);
+}
+
+function buildOverviewChartSvgShell() {
+  return createOverviewSvgElement('svg', {
+    class: 'overview-preview-chart-svg',
+    viewBox: `0 0 ${OVERVIEW_CHART_PREVIEW_MODE.width} ${OVERVIEW_CHART_PREVIEW_MODE.height}`,
+    preserveAspectRatio: 'xMidYMid meet',
+    'aria-hidden': 'true'
+  });
+}
+
+function buildOverviewLineChartPreview(previewData) {
+  const mode = OVERVIEW_CHART_PREVIEW_MODE.line;
+  const svg = buildOverviewChartSvgShell();
+  const plotLeft = mode.insetX;
+  const plotRight = OVERVIEW_CHART_PREVIEW_MODE.width - mode.insetX;
+  const plotTop = mode.insetTop;
+  const plotBottom = OVERVIEW_CHART_PREVIEW_MODE.height - mode.insetBottom;
+  const values = previewData.datasets.flatMap((dataset) => dataset.values);
+  const { minValue, maxValue } = computeOverviewValueRange(values, {
+    includeZero: false,
+    paddingRatio: mode.rangePaddingRatio
+  });
+  const crossesZero = minValue < 0 && maxValue > 0;
+
+  if (crossesZero) {
+    appendOverviewChartGuide(svg, mapOverviewValueToY(0, minValue, maxValue, plotTop, plotBottom), {
+      width: OVERVIEW_CHART_PREVIEW_MODE.width,
+      insetX: mode.insetX
+    });
+  }
+
+  previewData.datasets.forEach((dataset, datasetIndex) => {
+    const pointCount = Math.max(dataset.values.length, 1);
+    const stepX = pointCount > 1 ? (plotRight - plotLeft) / (pointCount - 1) : 0;
+    const singlePointX = (plotLeft + plotRight) / 2;
+    const points = dataset.values.map((value, pointIndex) => ({
+      x: pointCount > 1 ? plotLeft + (pointIndex * stepX) : singlePointX,
+      y: mapOverviewValueToY(value, minValue, maxValue, plotTop, plotBottom)
+    }));
+
+    if (datasetIndex === 0 && points.length > 1) {
+      const area = createOverviewSvgElement('path', {
+        d: `${buildOverviewLinePath(points)} L ${points[points.length - 1].x} ${plotBottom} L ${points[0].x} ${plotBottom} Z`,
+        class: 'overview-preview-chart-area',
+        fill: dataset.color,
+        opacity: '0.14'
+      });
+      svg.appendChild(area);
+    }
+
+    if (points.length > 1) {
+      const path = createOverviewSvgElement('path', {
+        d: buildOverviewLinePath(points),
+        class: 'overview-preview-chart-line',
+        fill: 'none',
+        stroke: dataset.color,
+        'stroke-width': datasetIndex === 0 ? 3.1 : 1.9,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        opacity: datasetIndex === 0 ? '1' : '0.54'
+      });
+      svg.appendChild(path);
+    }
+
+    const lastPoint = points[points.length - 1];
+    if (lastPoint) {
+      const dot = createOverviewSvgElement('circle', {
+        cx: lastPoint.x,
+        cy: lastPoint.y,
+        r: datasetIndex === 0 ? 3.2 : 2.2,
+        fill: dataset.color
+      });
+      dot.setAttribute('opacity', datasetIndex === 0 ? '1' : '0.72');
+      svg.appendChild(dot);
+    }
+  });
+
+  return svg;
+}
+
+function buildOverviewBarChartPreview(previewData) {
+  const mode = OVERVIEW_CHART_PREVIEW_MODE.bar;
+  const primaryDataset = previewData.datasets[0];
+  const svg = buildOverviewChartSvgShell();
+  if (!primaryDataset) {
+    return svg;
+  }
+
+  const plotLeft = mode.insetX;
+  const plotRight = OVERVIEW_CHART_PREVIEW_MODE.width - mode.insetX;
+  const plotTop = mode.insetTop;
+  const plotBottom = OVERVIEW_CHART_PREVIEW_MODE.height - mode.insetBottom;
+  const values = primaryDataset.values;
+  const { minValue, maxValue } = computeOverviewValueRange(values, {
+    includeZero: true,
+    paddingRatio: mode.rangePaddingRatio
+  });
+  const rawMinimum = Math.min(...values);
+  const rawMaximum = Math.max(...values);
+  const hasMixedSigns = rawMinimum < 0 && rawMaximum > 0;
+  const baselineY = rawMaximum <= 0
+    ? plotTop
+    : (rawMinimum >= 0
+      ? plotBottom
+      : mapOverviewValueToY(0, minValue, maxValue, plotTop, plotBottom));
+
+  if (hasMixedSigns) {
+    appendOverviewChartGuide(svg, baselineY, {
+      width: OVERVIEW_CHART_PREVIEW_MODE.width,
+      insetX: mode.insetX
+    });
+  }
+
+  const slotWidth = (plotRight - plotLeft) / Math.max(values.length, 1);
+  const barWidth = Math.max(
+    mode.minBarWidth,
+    Math.min(slotWidth * 0.72, 18)
+  );
+  const emphasisIndex = values.reduce((bestIndex, value, index, source) => (
+    Math.abs(value) > Math.abs(source[bestIndex] ?? 0) ? index : bestIndex
+  ), 0);
+
+  values.forEach((value, pointIndex) => {
+    const barCenterX = plotLeft + (slotWidth * pointIndex) + (slotWidth / 2);
+    const valueY = mapOverviewValueToY(value, minValue, maxValue, plotTop, plotBottom);
+    const topY = Math.max(plotTop, Math.min(valueY, baselineY));
+    const bottomY = Math.min(plotBottom, Math.max(valueY, baselineY));
+    const rect = createOverviewSvgElement('rect', {
+      x: barCenterX - (barWidth / 2),
+      y: topY,
+      width: barWidth,
+      height: Math.max(3, bottomY - topY),
+      rx: 3,
+      fill: primaryDataset.color
+    });
+    rect.setAttribute('opacity', pointIndex === emphasisIndex ? '0.96' : '0.76');
+    svg.appendChild(rect);
+  });
+
+  return svg;
+}
+
 function formatOverviewMetricValue(value) {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value.toLocaleString(undefined, {
@@ -1445,127 +1757,18 @@ function buildOverviewPreviewDescriptor(module) {
 }
 
 function buildOverviewChartPreview(chart) {
-  const width = 272;
-  const height = 96;
-  const insetX = 10;
-  const insetY = 10;
-  const labels = Array.isArray(chart?.labels) ? chart.labels : [];
-  const datasets = Array.isArray(chart?.datasets) ? chart.datasets : [];
-  const safeDatasets = datasets
-    .map((dataset, datasetIndex) => ({
-      ...dataset,
-      data: Array.isArray(dataset?.data)
-        ? dataset.data.map((value) => {
-          const parsed = Number(value);
-          return Number.isFinite(parsed) ? parsed : 0;
-        })
-        : [],
-      color: OVERVIEW_CHART_COLORS[datasetIndex % OVERVIEW_CHART_COLORS.length]
-    }))
-    .filter((dataset) => dataset.data.length > 0)
-    .slice(0, chart?.type === 'bar' ? 2 : 3);
+  const previewData = selectOverviewPreviewDatasets(chart);
 
-  if (safeDatasets.length === 0) {
+  if (previewData.datasets.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'overview-preview-empty';
     empty.textContent = 'No chart data';
     return empty;
   }
 
-  const allValues = safeDatasets.flatMap((dataset) => dataset.data);
-  const minValue = Math.min(...allValues, 0);
-  const maxValue = Math.max(...allValues, 0);
-  const span = Math.max(maxValue - minValue, 1);
-  const plotWidth = width - (insetX * 2);
-  const plotHeight = height - (insetY * 2);
-  const svg = createOverviewSvgElement('svg', {
-    class: 'overview-preview-chart-svg',
-    viewBox: `0 0 ${width} ${height}`,
-    preserveAspectRatio: 'none',
-    'aria-hidden': 'true'
-  });
-
-  const baselineY = insetY + plotHeight - (((0 - minValue) / span) * plotHeight);
-  const baseline = createOverviewSvgElement('line', {
-    x1: insetX,
-    y1: baselineY,
-    x2: width - insetX,
-    y2: baselineY,
-    class: 'overview-preview-chart-baseline'
-  });
-  svg.appendChild(baseline);
-
-  if (chart?.type === 'bar') {
-    const labelCount = Math.max(labels.length, ...safeDatasets.map((dataset) => dataset.data.length));
-    const slotWidth = plotWidth / Math.max(labelCount, 1);
-    const gap = 2;
-    const barGroupWidth = slotWidth * 0.72;
-    const barWidth = Math.max(5, (barGroupWidth - (gap * Math.max(0, safeDatasets.length - 1))) / safeDatasets.length);
-
-    safeDatasets.forEach((dataset, datasetIndex) => {
-      dataset.data.forEach((value, pointIndex) => {
-        const x = insetX + (slotWidth * pointIndex) + ((slotWidth - barGroupWidth) / 2) + datasetIndex * (barWidth + gap);
-        const y = insetY + plotHeight - (((value - minValue) / span) * plotHeight);
-        const barY = value >= 0 ? y : baselineY;
-        const barHeight = Math.max(2, Math.abs(baselineY - y));
-
-        const rect = createOverviewSvgElement('rect', {
-          x,
-          y: Math.min(barY, height - insetY - 2),
-          width: barWidth,
-          height: Math.min(barHeight, plotHeight),
-          rx: 3,
-          fill: dataset.color,
-          opacity: datasetIndex === 0 ? '0.92' : '0.66'
-        });
-        svg.appendChild(rect);
-      });
-    });
-  } else {
-    safeDatasets.forEach((dataset, datasetIndex) => {
-      const pointCount = Math.max(dataset.data.length, 1);
-      const stepX = pointCount > 1 ? plotWidth / (pointCount - 1) : 0;
-      const points = dataset.data.map((value, pointIndex) => ({
-        x: insetX + (pointIndex * stepX),
-        y: insetY + plotHeight - (((value - minValue) / span) * plotHeight)
-      }));
-
-      if (datasetIndex === 0 && points.length > 1) {
-        const area = createOverviewSvgElement('path', {
-          d: `${buildOverviewLinePath(points)} L ${points[points.length - 1].x} ${height - insetY} L ${points[0].x} ${height - insetY} Z`,
-          class: 'overview-preview-chart-area',
-          fill: dataset.color,
-          opacity: '0.18'
-        });
-        svg.appendChild(area);
-      }
-
-      const path = createOverviewSvgElement('path', {
-        d: buildOverviewLinePath(points),
-        class: 'overview-preview-chart-line',
-        fill: 'none',
-        stroke: dataset.color,
-        'stroke-width': datasetIndex === 0 ? 3 : 2,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round',
-        opacity: datasetIndex === 0 ? '1' : '0.74'
-      });
-      svg.appendChild(path);
-
-      const lastPoint = points[points.length - 1];
-      if (lastPoint) {
-        const dot = createOverviewSvgElement('circle', {
-          cx: lastPoint.x,
-          cy: lastPoint.y,
-          r: datasetIndex === 0 ? 3.3 : 2.4,
-          fill: dataset.color
-        });
-        svg.appendChild(dot);
-      }
-    });
-  }
-
-  return svg;
+  return previewData.chartType === 'bar'
+    ? buildOverviewBarChartPreview(previewData)
+    : buildOverviewLineChartPreview(previewData);
 }
 
 function buildOverviewSvgPreview(preview) {

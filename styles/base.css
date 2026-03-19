@@ -2293,10 +2293,17 @@ body.multi-select-armed .overview-card {
   align-items: stretch;
 }
 
+.overview-preview-body.is-chart {
+  align-items: center;
+  justify-content: center;
+  padding-top: 2px;
+}
+
 .overview-preview-chart-svg {
   width: 100%;
   height: 100%;
   display: block;
+  overflow: visible;
 }
 
 .overview-preview-chart-baseline {
