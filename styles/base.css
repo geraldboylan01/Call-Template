@@ -138,7 +138,7 @@ textarea {
 
 .topbar-input {
   flex: 1 1 auto;
-  width: min(200px, 38vw);
+  width: min(240px, 40vw);
   min-width: 0;
   height: 34px;
   border-radius: 10px;
@@ -148,22 +148,7 @@ textarea {
   padding: 0 11px;
 }
 
-.topbar-playbook-select {
-  width: min(220px, 34vw);
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid rgba(127, 160, 200, 0.32);
-  background: rgba(7, 16, 31, 0.68);
-  color: #f0f7ff;
-  padding: 0 10px;
-}
-
 .topbar-input:focus-visible {
-  outline: 2px solid rgba(46, 163, 255, 0.55);
-  outline-offset: 1px;
-}
-
-.topbar-playbook-select:focus-visible {
   outline: 2px solid rgba(46, 163, 255, 0.55);
   outline-offset: 1px;
 }
@@ -3040,11 +3025,7 @@ body.overview-has-selection .toast-host {
   }
 
   .topbar-input {
-    width: min(150px, 36vw);
-  }
-
-  .topbar-playbook-select {
-    width: min(180px, 32vw);
+    width: min(180px, 38vw);
   }
 
   .session-status {
@@ -3361,12 +3342,6 @@ body.overview-has-selection .toast-host {
     gap: 10px;
   }
 
-  .mobile-overflow-label {
-    font-size: 0.76rem;
-    color: #afc8e5;
-  }
-
-  .mobile-playbook-select,
   .mobile-overflow-btn {
     width: 100%;
     height: 42px;

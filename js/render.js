@@ -2918,7 +2918,24 @@ function sanitizeSectionRows(rows) {
     .filter((row) => Number.isFinite(row[1]));
 }
 
+function hasPersonalBalanceSheetBucketShape(outputsBucketed) {
+  if (!hasOutputsBucketed(outputsBucketed)) {
+    return false;
+  }
+
+  return ['lifestyle', 'liquidity', 'longevity', 'legacy']
+    .every((key) => Boolean(findOutputsBucketedSection(outputsBucketed.sections, key)));
+}
+
 function isPersonalBalanceSheetModule(module) {
+  if (module?.generated?.personalBalanceSheetInputs) {
+    return true;
+  }
+
+  if (hasPersonalBalanceSheetBucketShape(module?.generated?.outputsBucketed)) {
+    return true;
+  }
+
   const title = typeof module?.title === 'string' ? module.title.toLowerCase() : '';
   return title.includes('personal balance sheet');
 }
@@ -4516,9 +4533,6 @@ export function getUiElements() {
     overviewViewport: document.getElementById('overviewViewport'),
     overviewZoomWrap: document.getElementById('overviewZoomWrap'),
     overviewGrid: document.getElementById('overviewGrid'),
-    playbookSelect: document.getElementById('playbookSelect'),
-    mobilePlaybookSelect: document.getElementById('mobilePlaybookSelect'),
-    mobilePlaybookLabel: document.getElementById('mobilePlaybookLabel'),
     mobileHeaderMoreButton: document.getElementById('mobileHeaderMoreBtn'),
     mobileActionBar: document.getElementById('mobileActionBar'),
     mobileActionNewCallButton: document.getElementById('mobileActionNewCallBtn'),

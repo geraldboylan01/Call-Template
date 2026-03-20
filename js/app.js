@@ -855,58 +855,6 @@ function runDevEducationSvgAssertions() {
   }
 }
 
-const PLAYBOOKS = [
-  {
-    id: 'personal_balance_sheet',
-    name: 'Personal Balance Sheet',
-    payload: {
-      title: 'Personal Balance Sheet',
-      generated: {
-        summaryHtml: '<p>We grouped your assets into four buckets &mdash; Lifestyle, Liquidity, Longevity and Legacy &mdash; to separate essential lifestyle assets from liquid reserves, long-term retirement assets, and higher-risk/illiquid holdings. Below we summarise totals by bucket, total liabilities, and estimated net worth.</p>',
-        assumptions: {
-          columns: ['Bucket', 'Purpose', 'Examples'],
-          rows: [
-            ['Lifestyle', 'Assets you use to live on; not relied on for investment returns', 'Home, holiday home'],
-            ['Liquidity', 'Highly liquid, low-risk reserves', 'Cash, savings, money market funds'],
-            ['Longevity', 'Diversified long-term return assets for goals/retirement', 'Pensions, diversified portfolios, multi-asset funds'],
-            ['Legacy', 'Concentrated/illiquid/high-vol assets for long horizon / generational wealth', 'Single stocks, crypto, structured products, art/watches, private business']
-          ]
-        },
-        outputs: {
-          columns: ['Metric', 'Amount (€)', 'Notes'],
-          rows: [
-            ['Total gross assets', '', ''],
-            ['Total liabilities', '', ''],
-            ['Net worth', '', 'Net worth = assets − liabilities'],
-            ['Lifestyle total', '', ''],
-            ['Liquidity total', '', ''],
-            ['Longevity total', '', ''],
-            ['Legacy total', '', '']
-          ]
-        },
-        charts: [
-          {
-            title: 'Assets by bucket (€)',
-            type: 'bar',
-            labels: ['Lifestyle', 'Liquidity', 'Longevity', 'Legacy'],
-            datasets: [
-              { label: '€', data: [0, 0, 0, 0] }
-            ]
-          },
-          {
-            title: 'Gross assets vs liabilities vs net worth (€)',
-            type: 'bar',
-            labels: ['Gross assets', 'Liabilities', 'Net worth'],
-            datasets: [
-              { label: '€', data: [0, 0, 0] }
-            ]
-          }
-        ]
-      }
-    }
-  }
-];
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -2416,27 +2364,6 @@ function resetMobileOverflowSwipeStyles() {
   mobileSheetTouchDeltaY = 0;
 }
 
-function syncMobilePlaybookOptions() {
-  if (!ui.playbookSelect || !ui.mobilePlaybookSelect) {
-    return;
-  }
-
-  const sourceOptions = Array.from(ui.playbookSelect.options);
-  const needsSync = sourceOptions.length !== ui.mobilePlaybookSelect.options.length || sourceOptions.some((option, index) => {
-    const targetOption = ui.mobilePlaybookSelect.options[index];
-    return !targetOption || targetOption.value !== option.value || targetOption.textContent !== option.textContent;
-  });
-
-  if (needsSync) {
-    ui.mobilePlaybookSelect.innerHTML = '';
-    sourceOptions.forEach((option) => {
-      ui.mobilePlaybookSelect.appendChild(option.cloneNode(true));
-    });
-  }
-
-  ui.mobilePlaybookSelect.value = '';
-}
-
 function syncMobileActionState() {
   const syncButton = (mobileButton, desktopButton) => {
     if (!mobileButton) {
@@ -2466,19 +2393,8 @@ function syncMobileActionState() {
     }
   }
 
-  const playbooksUnavailable = !ui.mobilePlaybookSelect || !ui.playbookSelect || ui.playbookSelect.classList.contains('is-hidden');
-  if (ui.mobilePlaybookLabel) {
-    ui.mobilePlaybookLabel.classList.toggle('is-hidden', playbooksUnavailable);
-  }
-  if (ui.mobilePlaybookSelect) {
-    ui.mobilePlaybookSelect.classList.toggle('is-hidden', playbooksUnavailable);
-    ui.mobilePlaybookSelect.disabled = playbooksUnavailable || ui.mobilePlaybookSelect.options.length <= 1 || Boolean(ui.playbookSelect?.disabled);
-    ui.mobilePlaybookSelect.value = '';
-  }
-
   const hasOverflowAction = Boolean(
-    (ui.mobilePlaybookSelect && !ui.mobilePlaybookSelect.classList.contains('is-hidden') && !ui.mobilePlaybookSelect.disabled)
-    || (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
+    (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowLoadButton && !ui.mobileOverflowLoadButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowResetButton && !ui.mobileOverflowResetButton.classList.contains('is-hidden'))
   );
@@ -2501,7 +2417,6 @@ function openMobileOverflowSheet(triggerButton = null) {
     return;
   }
 
-  syncMobilePlaybookOptions();
   syncMobileActionState();
   mobileSheetRestoreFocusTarget = triggerButton || document.activeElement;
   resetMobileOverflowSwipeStyles();
@@ -2600,29 +2515,6 @@ function handleMobileOverflowTouchEnd() {
   if (shouldClose) {
     closeMobileOverflowSheet({ restoreFocus: false });
   }
-}
-
-function populatePlaybooks() {
-  if (!ui.playbookSelect) {
-    return;
-  }
-
-  ui.playbookSelect.innerHTML = '';
-
-  const placeholderOption = document.createElement('option');
-  placeholderOption.value = '';
-  placeholderOption.textContent = 'Playbooks';
-  ui.playbookSelect.appendChild(placeholderOption);
-
-  PLAYBOOKS.forEach((playbook) => {
-    const option = document.createElement('option');
-    option.value = playbook.id;
-    option.textContent = playbook.name;
-    ui.playbookSelect.appendChild(option);
-  });
-
-  ui.playbookSelect.value = '';
-  syncMobilePlaybookOptions();
 }
 
 function loadSelectedExampleIntoEditor() {
@@ -2886,11 +2778,24 @@ function injectAutoPensionSummarySentences(summaryHtml, {
   return next;
 }
 
-function getPlaybookById(playbookId) {
-  return PLAYBOOKS.find((playbook) => playbook.id === playbookId) || null;
-}
-
 function isPersonalBalanceSheetModule(module) {
+  const generated = module?.generated;
+  if (generated?.personalBalanceSheetInputs) {
+    return true;
+  }
+
+  const sections = Array.isArray(generated?.outputsBucketed?.sections)
+    ? generated.outputsBucketed.sections
+    : [];
+  const sectionTokens = new Set(
+    sections.map((section) => String(section?.key || section?.title || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''))
+  );
+  const hasPbsBucketShape = ['lifestyle', 'liquidity', 'longevity', 'legacy']
+    .every((token) => sectionTokens.has(token));
+  if (hasPbsBucketShape) {
+    return true;
+  }
+
   const title = typeof module?.title === 'string' ? module.title.toLowerCase() : '';
   return title.includes('personal balance sheet');
 }
@@ -3035,7 +2940,7 @@ function applyRuntimeChrome() {
       ui.clientNameInput.readOnly = true;
       ui.clientNameInput.setAttribute('aria-readonly', 'true');
     }
-    [ui.playbookSelect, ui.newCallButton, ui.loadSessionButton, ui.newModuleButton, ui.resetButton].forEach((element) => {
+    [ui.newCallButton, ui.loadSessionButton, ui.newModuleButton, ui.resetButton].forEach((element) => {
       if (!element) {
         return;
       }
@@ -4799,16 +4704,6 @@ async function createNewModule() {
   return module.id;
 }
 
-async function createModuleFromPlaybook(playbookId) {
-  const playbook = getPlaybookById(playbookId);
-  if (!playbook) {
-    throw new Error(`Playbook not found: ${playbookId}`);
-  }
-
-  await applyModuleUpdateInternal(playbook.payload, { createNewModule: true });
-  return playbook;
-}
-
 function mergeGeneratedPatch(module, generatedPatch) {
   ensureGenerated(module);
 
@@ -5193,24 +5088,6 @@ function bindEvents() {
     });
   }
 
-  if (!runtimeConfig.readOnly && ui.playbookSelect) {
-    ui.playbookSelect.addEventListener('change', async (event) => {
-      const playbookId = event.target.value;
-      if (!playbookId) {
-        return;
-      }
-
-      try {
-        const playbook = await createModuleFromPlaybook(playbookId);
-        showToast(`${playbook.name} module created.`);
-      } catch (error) {
-        showToast(error.message || 'Failed to apply playbook.', 'error');
-      } finally {
-        event.target.value = '';
-      }
-    });
-  }
-
   if (!runtimeConfig.readOnly && ui.newModuleButton) {
     ui.newModuleButton.addEventListener('click', async () => {
       await createNewModule();
@@ -5276,23 +5153,6 @@ function bindEvents() {
   if (ui.mobileOverflowResetButton) {
     ui.mobileOverflowResetButton.addEventListener('click', () => {
       triggerDesktopAction(ui.resetButton, { closeOverflow: true });
-    });
-  }
-
-  if (ui.mobilePlaybookSelect && ui.playbookSelect) {
-    ui.mobilePlaybookSelect.addEventListener('change', () => {
-      const selectedPlaybookId = ui.mobilePlaybookSelect.value;
-      if (!selectedPlaybookId) {
-        return;
-      }
-      if (ui.playbookSelect.classList.contains('is-hidden') || ui.playbookSelect.disabled) {
-        ui.mobilePlaybookSelect.value = '';
-        return;
-      }
-      ui.playbookSelect.value = selectedPlaybookId;
-      ui.playbookSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      ui.mobilePlaybookSelect.value = '';
-      closeMobileOverflowSheet({ restoreFocus: false });
     });
   }
 
@@ -5540,7 +5400,6 @@ export async function initApp(options = {}) {
     applyRuntimeChrome();
     resetPublishResult();
     bindEvents();
-    populatePlaybooks();
 
     if (runtimeConfig.allowDevPanel) {
       populateDevExamples();
