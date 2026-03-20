@@ -300,21 +300,25 @@ function normalizeOutputsBucketed(outputsBucketed) {
   };
 }
 
-export function normalizePersonalBalanceSheetInputs(personalBalanceSheetInputs) {
-  if (!personalBalanceSheetInputs || typeof personalBalanceSheetInputs !== 'object' || Array.isArray(personalBalanceSheetInputs)) {
+export function normalizePbsInputs(pbsInputs) {
+  if (!pbsInputs || typeof pbsInputs !== 'object' || Array.isArray(pbsInputs)) {
     return null;
   }
 
   const normalized = {};
 
   if (
-    typeof personalBalanceSheetInputs.annualExpenditure === 'number'
-    && Number.isFinite(personalBalanceSheetInputs.annualExpenditure)
+    typeof pbsInputs.annualExpenditure === 'number'
+    && Number.isFinite(pbsInputs.annualExpenditure)
   ) {
-    normalized.annualExpenditure = personalBalanceSheetInputs.annualExpenditure;
+    normalized.annualExpenditure = pbsInputs.annualExpenditure;
   }
 
   return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+export function normalizePersonalBalanceSheetInputs(personalBalanceSheetInputs) {
+  return normalizePbsInputs(personalBalanceSheetInputs);
 }
 
 function normalizePensionInputs(pensionInputs) {
@@ -429,7 +433,7 @@ export function createEmptyGenerated() {
       rows: []
     },
     tables: [],
-    personalBalanceSheetInputs: null,
+    pbsInputs: null,
     pensionInputs: null,
     mortgageInputs: null,
     loanInputs: null,
@@ -450,7 +454,7 @@ export function normalizeGenerated(generated) {
     assumptions: normalizeTable(generated.assumptions),
     outputs: normalizeTable(generated.outputs),
     tables: normalizeGeneratedTables(generated.tables),
-    personalBalanceSheetInputs: normalizePersonalBalanceSheetInputs(generated.personalBalanceSheetInputs),
+    pbsInputs: normalizePbsInputs(generated.pbsInputs || generated.personalBalanceSheetInputs),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
     mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs, { defaultLoanKind: 'mortgage' }),
     loanInputs: normalizeMortgageInputs(generated.loanInputs, { defaultLoanKind: 'loan' }),

@@ -6,7 +6,7 @@ import {
   ensureActiveModule,
   createEmptyGenerated,
   normalizeGenerated,
-  normalizePersonalBalanceSheetInputs,
+  normalizePbsInputs,
   exportSession,
   importSession,
   newSession
@@ -2780,7 +2780,7 @@ function injectAutoPensionSummarySentences(summaryHtml, {
 
 function isPersonalBalanceSheetModule(module) {
   const generated = module?.generated;
-  if (generated?.personalBalanceSheetInputs) {
+  if (generated?.pbsInputs) {
     return true;
   }
 
@@ -3481,8 +3481,8 @@ function validateLoanInputsPayload(loanInputs) {
   return normalizeMortgageInputs(loanInputs, { defaultLoanKind: 'loan' });
 }
 
-function validatePersonalBalanceSheetInputsPayload(personalBalanceSheetInputs) {
-  return normalizePersonalBalanceSheetInputs(personalBalanceSheetInputs);
+function validatePbsInputsPayload(pbsInputs) {
+  return normalizePbsInputs(pbsInputs);
 }
 
 function normalizePayload(payload) {
@@ -3538,8 +3538,12 @@ function normalizePayload(payload) {
       generatedPatch.tables = validateGeneratedTablesPayload(payload.generated.tables);
     }
 
-    if ('personalBalanceSheetInputs' in payload.generated) {
-      generatedPatch.personalBalanceSheetInputs = validatePersonalBalanceSheetInputsPayload(payload.generated.personalBalanceSheetInputs);
+    if ('pbsInputs' in payload.generated) {
+      generatedPatch.pbsInputs = validatePbsInputsPayload(payload.generated.pbsInputs);
+    }
+
+    if ('personalBalanceSheetInputs' in payload.generated && !('pbsInputs' in payload.generated)) {
+      generatedPatch.pbsInputs = validatePbsInputsPayload(payload.generated.personalBalanceSheetInputs);
     }
 
     if ('charts' in payload.generated) {
@@ -4783,8 +4787,8 @@ function mergeGeneratedPatch(module, generatedPatch) {
     module.generated.tables = generatedPatch.tables;
   }
 
-  if ('personalBalanceSheetInputs' in generatedPatch) {
-    module.generated.personalBalanceSheetInputs = generatedPatch.personalBalanceSheetInputs;
+  if ('pbsInputs' in generatedPatch) {
+    module.generated.pbsInputs = generatedPatch.pbsInputs;
   }
 
   if ('charts' in generatedPatch) {

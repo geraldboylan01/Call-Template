@@ -2907,6 +2907,13 @@ function findOutputsBucketedSection(sections, targetKey) {
   )) || null;
 }
 
+function findOutputsBucketedSectionByKey(sections, targetKey) {
+  const targetToken = normalizeSectionToken(targetKey);
+  return (Array.isArray(sections) ? sections : []).find((section) => (
+    normalizeSectionToken(section?.key) === targetToken
+  )) || null;
+}
+
 function sanitizeSectionRows(rows) {
   if (!Array.isArray(rows)) {
     return [];
@@ -2924,11 +2931,14 @@ function hasPersonalBalanceSheetBucketShape(outputsBucketed) {
   }
 
   return ['lifestyle', 'liquidity', 'longevity', 'legacy']
-    .every((key) => Boolean(findOutputsBucketedSection(outputsBucketed.sections, key)));
+    .every((key) => Boolean(
+      findOutputsBucketedSectionByKey(outputsBucketed.sections, key)
+      || findOutputsBucketedSection(outputsBucketed.sections, key)
+    ));
 }
 
 function isPersonalBalanceSheetModule(module) {
-  if (module?.generated?.personalBalanceSheetInputs) {
+  if (module?.generated?.pbsInputs) {
     return true;
   }
 
@@ -3026,12 +3036,13 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
     return enhancements;
   }
 
-  const annualExpenditure = getPositiveFiniteNumber(module?.generated?.personalBalanceSheetInputs?.annualExpenditure);
+  const annualExpenditure = getPositiveFiniteNumber(module?.generated?.pbsInputs?.annualExpenditure);
   if (annualExpenditure === null) {
     return enhancements;
   }
 
-  const liquiditySection = findOutputsBucketedSection(outputsBucketed.sections, 'liquidity');
+  const liquiditySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'liquidity')
+    || findOutputsBucketedSection(outputsBucketed.sections, 'liquidity');
   if (!liquiditySection) {
     return enhancements;
   }
@@ -4365,7 +4376,7 @@ function buildGeneratedSection(module, {
     assumptions: { columns: [], rows: [] },
     outputs: { columns: [], rows: [] },
     tables: [],
-    personalBalanceSheetInputs: null,
+    pbsInputs: null,
     outputsBucketed: null,
     education: null,
     report: null,
