@@ -300,6 +300,23 @@ function normalizeOutputsBucketed(outputsBucketed) {
   };
 }
 
+export function normalizePersonalBalanceSheetInputs(personalBalanceSheetInputs) {
+  if (!personalBalanceSheetInputs || typeof personalBalanceSheetInputs !== 'object' || Array.isArray(personalBalanceSheetInputs)) {
+    return null;
+  }
+
+  const normalized = {};
+
+  if (
+    typeof personalBalanceSheetInputs.annualExpenditure === 'number'
+    && Number.isFinite(personalBalanceSheetInputs.annualExpenditure)
+  ) {
+    normalized.annualExpenditure = personalBalanceSheetInputs.annualExpenditure;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 function normalizePensionInputs(pensionInputs) {
   if (!pensionInputs || typeof pensionInputs !== 'object' || Array.isArray(pensionInputs)) {
     return null;
@@ -412,6 +429,7 @@ export function createEmptyGenerated() {
       rows: []
     },
     tables: [],
+    personalBalanceSheetInputs: null,
     pensionInputs: null,
     mortgageInputs: null,
     loanInputs: null,
@@ -432,6 +450,7 @@ export function normalizeGenerated(generated) {
     assumptions: normalizeTable(generated.assumptions),
     outputs: normalizeTable(generated.outputs),
     tables: normalizeGeneratedTables(generated.tables),
+    personalBalanceSheetInputs: normalizePersonalBalanceSheetInputs(generated.personalBalanceSheetInputs),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
     mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs, { defaultLoanKind: 'mortgage' }),
     loanInputs: normalizeMortgageInputs(generated.loanInputs, { defaultLoanKind: 'loan' }),

@@ -816,6 +816,61 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   text-transform: uppercase;
 }
 
+.pbs-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pbs-section-heading-text {
+  min-width: 0;
+}
+
+.pbs-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 160, 207, 0.26);
+  background: rgba(6, 16, 31, 0.44);
+  color: #e8f4ff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.pbs-health-badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.pbs-health-badge[data-tone="positive"] {
+  border-color: rgba(123, 255, 191, 0.36);
+  background: rgba(23, 66, 47, 0.52);
+  color: #bdfbdd;
+}
+
+.pbs-health-badge[data-tone="warning"] {
+  border-color: rgba(255, 209, 102, 0.38);
+  background: rgba(79, 56, 15, 0.5);
+  color: #ffe3a0;
+}
+
+.pbs-health-badge[data-tone="negative"] {
+  border-color: rgba(255, 159, 179, 0.38);
+  background: rgba(82, 22, 39, 0.5);
+  color: #ffc6d1;
+}
+
 .pbs-bucket-table thead tr:nth-child(2) th {
   background: rgba(44, 83, 128, 0.3);
 }
@@ -828,6 +883,33 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 .pbs-subtotal-row td {
   font-weight: 700;
   border-top: 1px solid rgba(125, 160, 207, 0.44);
+}
+
+.pbs-bucket-section[data-health-tone="positive"] .pbs-bucket-table {
+  border-color: rgba(123, 255, 191, 0.28);
+}
+
+.pbs-bucket-section[data-health-tone="warning"] .pbs-bucket-table {
+  border-color: rgba(255, 209, 102, 0.28);
+}
+
+.pbs-bucket-section[data-health-tone="negative"] .pbs-bucket-table {
+  border-color: rgba(255, 159, 179, 0.28);
+}
+
+.pbs-bucket-table .pbs-subtotal-row[data-health-tone="positive"] td,
+.pbs-matrix .pbs-subtotal-row td[data-health-tone="positive"] {
+  background: rgba(30, 79, 57, 0.24);
+}
+
+.pbs-bucket-table .pbs-subtotal-row[data-health-tone="warning"] td,
+.pbs-matrix .pbs-subtotal-row td[data-health-tone="warning"] {
+  background: rgba(90, 67, 20, 0.22);
+}
+
+.pbs-bucket-table .pbs-subtotal-row[data-health-tone="negative"] td,
+.pbs-matrix .pbs-subtotal-row td[data-health-tone="negative"] {
+  background: rgba(96, 28, 46, 0.22);
 }
 
 .pbs-net-worth-row td {
@@ -872,6 +954,18 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+
+.pbs-matrix-head th[data-health-tone="positive"] {
+  background: linear-gradient(90deg, rgba(46, 163, 255, 0.24), rgba(123, 255, 191, 0.18));
+}
+
+.pbs-matrix-head th[data-health-tone="warning"] {
+  background: linear-gradient(90deg, rgba(46, 163, 255, 0.24), rgba(255, 209, 102, 0.18));
+}
+
+.pbs-matrix-head th[data-health-tone="negative"] {
+  background: linear-gradient(90deg, rgba(46, 163, 255, 0.24), rgba(255, 159, 179, 0.18));
 }
 
 .pbs-cell {

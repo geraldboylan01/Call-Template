@@ -6,6 +6,7 @@ import {
   ensureActiveModule,
   createEmptyGenerated,
   normalizeGenerated,
+  normalizePersonalBalanceSheetInputs,
   exportSession,
   importSession,
   newSession
@@ -3576,6 +3577,10 @@ function validateLoanInputsPayload(loanInputs) {
   return normalizeMortgageInputs(loanInputs, { defaultLoanKind: 'loan' });
 }
 
+function validatePersonalBalanceSheetInputsPayload(personalBalanceSheetInputs) {
+  return normalizePersonalBalanceSheetInputs(personalBalanceSheetInputs);
+}
+
 function normalizePayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Payload must be a JSON object.');
@@ -3627,6 +3632,10 @@ function normalizePayload(payload) {
 
     if ('tables' in payload.generated) {
       generatedPatch.tables = validateGeneratedTablesPayload(payload.generated.tables);
+    }
+
+    if ('personalBalanceSheetInputs' in payload.generated) {
+      generatedPatch.personalBalanceSheetInputs = validatePersonalBalanceSheetInputsPayload(payload.generated.personalBalanceSheetInputs);
     }
 
     if ('charts' in payload.generated) {
@@ -4878,6 +4887,10 @@ function mergeGeneratedPatch(module, generatedPatch) {
 
   if ('tables' in generatedPatch) {
     module.generated.tables = generatedPatch.tables;
+  }
+
+  if ('personalBalanceSheetInputs' in generatedPatch) {
+    module.generated.personalBalanceSheetInputs = generatedPatch.personalBalanceSheetInputs;
   }
 
   if ('charts' in generatedPatch) {

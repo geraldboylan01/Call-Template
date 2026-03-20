@@ -2918,7 +2918,120 @@ function sanitizeSectionRows(rows) {
     .filter((row) => Number.isFinite(row[1]));
 }
 
-function buildOutputsBucketedMiniTablesContent(outputsBucketed) {
+function isPersonalBalanceSheetModule(module) {
+  const title = typeof module?.title === 'string' ? module.title.toLowerCase() : '';
+  return title.includes('personal balance sheet');
+}
+
+function getPositiveFiniteNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
+}
+
+function getOutputsBucketedSubtotal(section) {
+  const subtotalValue = Number(section?.subtotalValue);
+  if (Number.isFinite(subtotalValue)) {
+    return subtotalValue;
+  }
+
+  return sanitizeSectionRows(section?.rows)
+    .reduce((sum, row) => sum + row[1], 0);
+}
+
+function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
+  warningThreshold = 3,
+  healthyThreshold = 6
+} = {}) {
+  const normalizedAnnualExpenditure = getPositiveFiniteNumber(annualExpenditure);
+  const normalizedReserveValue = Number(reserveValue);
+  if (normalizedAnnualExpenditure === null || !Number.isFinite(normalizedReserveValue)) {
+    return null;
+  }
+
+  const monthlyExpenditure = normalizedAnnualExpenditure / 12;
+  if (!Number.isFinite(monthlyExpenditure) || monthlyExpenditure <= 0) {
+    return null;
+  }
+
+  const months = normalizedReserveValue / monthlyExpenditure;
+  let tone = 'negative';
+  if (months >= healthyThreshold) {
+    tone = 'positive';
+  } else if (months >= warningThreshold) {
+    tone = 'warning';
+  }
+
+  return {
+    annualExpenditure: normalizedAnnualExpenditure,
+    monthlyExpenditure,
+    months,
+    reserveValue: normalizedReserveValue,
+    tone
+  };
+}
+
+function formatReserveMonths(value) {
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  });
+}
+
+function buildOutputsBucketedHealthBadge(health) {
+  const badge = document.createElement('span');
+  badge.className = 'pbs-health-badge';
+  badge.dataset.tone = health.tone;
+  badge.textContent = `${formatReserveMonths(health.months)} mo buffer`;
+  badge.setAttribute('aria-label', `Liquidity buffer ${formatReserveMonths(health.months)} months`);
+  return badge;
+}
+
+function buildOutputsBucketedSectionHeading(title, health) {
+  if (!health) {
+    return document.createTextNode(title);
+  }
+
+  const heading = document.createElement('div');
+  heading.className = 'pbs-section-heading';
+
+  const titleText = document.createElement('span');
+  titleText.className = 'pbs-section-heading-text';
+  titleText.textContent = title;
+  heading.appendChild(titleText);
+
+  heading.appendChild(buildOutputsBucketedHealthBadge(health));
+  return heading;
+}
+
+function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
+  const enhancements = {};
+  if (!isPersonalBalanceSheetModule(module) || !hasOutputsBucketed(outputsBucketed)) {
+    return enhancements;
+  }
+
+  const annualExpenditure = getPositiveFiniteNumber(module?.generated?.personalBalanceSheetInputs?.annualExpenditure);
+  if (annualExpenditure === null) {
+    return enhancements;
+  }
+
+  const liquiditySection = findOutputsBucketedSection(outputsBucketed.sections, 'liquidity');
+  if (!liquiditySection) {
+    return enhancements;
+  }
+
+  const health = computeReserveMonthsAssessment(
+    getOutputsBucketedSubtotal(liquiditySection),
+    annualExpenditure
+  );
+
+  if (health) {
+    enhancements.liquidity = { health };
+  }
+
+  return enhancements;
+}
+
+function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'pbs-bucket-tables';
 
@@ -2935,6 +3048,8 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed) {
       : ['Asset', `Amount (${currencySymbol})`];
     const rows = sanitizeSectionRows(section.rows);
     const key = typeof section.key === 'string' ? section.key.toLowerCase() : '';
+    const sectionToken = normalizeSectionToken(key || section.title || '');
+    const health = sectionEnhancements[sectionToken]?.health || null;
     const title = typeof section.title === 'string' && section.title.trim()
       ? section.title
       : `Section ${sectionIndex + 1}`;
@@ -2947,13 +3062,17 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed) {
     const table = document.createElement('table');
     table.className = 'generated-table pbs-bucket-table';
 
+    if (health) {
+      sectionWrap.dataset.healthTone = health.tone;
+    }
+
     const thead = document.createElement('thead');
 
     const titleRow = document.createElement('tr');
     titleRow.className = 'pbs-bucket-title-row';
     const titleCell = document.createElement('th');
     titleCell.colSpan = 2;
-    titleCell.textContent = title;
+    titleCell.appendChild(buildOutputsBucketedSectionHeading(title, health));
     titleRow.appendChild(titleCell);
     thead.appendChild(titleRow);
 
@@ -2994,6 +3113,9 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed) {
     if (hasSubtotal) {
       const subtotalRow = document.createElement('tr');
       subtotalRow.className = 'pbs-subtotal-row';
+      if (health) {
+        subtotalRow.dataset.healthTone = health.tone;
+      }
 
       const subtotalLabelCell = document.createElement('td');
       subtotalLabelCell.textContent = subtotalLabel;
@@ -3107,7 +3229,7 @@ function buildOutputsBucketedDetailCard(section, {
   return card;
 }
 
-function buildOutputsBucketedMatrixContent(outputsBucketed) {
+function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements = {}) {
   const sections = outputsBucketed.sections;
   const assetSectionKeys = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
   const assetSections = assetSectionKeys.map((key) => findOutputsBucketedSection(sections, key));
@@ -3136,9 +3258,15 @@ function buildOutputsBucketedMatrixContent(outputsBucketed) {
   headRow.className = 'pbs-matrix-head';
   assetSections.forEach((section, index) => {
     const th = document.createElement('th');
-    th.textContent = typeof section.title === 'string' && section.title.trim()
+    const sectionToken = normalizeSectionToken(section?.key || section?.title || assetSectionKeys[index]);
+    const health = sectionEnhancements[sectionToken]?.health || null;
+    const title = typeof section.title === 'string' && section.title.trim()
       ? section.title
       : assetSectionKeys[index].charAt(0).toUpperCase() + assetSectionKeys[index].slice(1);
+    if (health) {
+      th.dataset.healthTone = health.tone;
+    }
+    th.appendChild(buildOutputsBucketedSectionHeading(title, health));
     headRow.appendChild(th);
   });
   thead.appendChild(headRow);
@@ -3179,7 +3307,12 @@ function buildOutputsBucketedMatrixContent(outputsBucketed) {
   const subtotalRow = document.createElement('tr');
   subtotalRow.className = 'pbs-subtotal-row';
   assetSections.forEach((section) => {
+    const sectionToken = normalizeSectionToken(section?.key || section?.title || '');
+    const health = sectionEnhancements[sectionToken]?.health || null;
     const subtotalCell = document.createElement('td');
+    if (health) {
+      subtotalCell.dataset.healthTone = health.tone;
+    }
     const subtotalLabel = document.createElement('div');
     subtotalLabel.className = 'pbs-subtotal-label';
     subtotalLabel.textContent = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
@@ -3225,7 +3358,7 @@ function buildOutputsBucketedMatrixContent(outputsBucketed) {
   return outputStack;
 }
 
-function buildOutputsBucketedCard(outputsBucketed) {
+function buildOutputsBucketedCard(module, outputsBucketed) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-table-card generated-outputs-bucketed-card';
   card.dataset.generatedCard = 'outputs-bucketed';
@@ -3241,13 +3374,14 @@ function buildOutputsBucketedCard(outputsBucketed) {
     return card;
   }
 
-  const matrixContent = buildOutputsBucketedMatrixContent(outputsBucketed);
+  const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, outputsBucketed);
+  const matrixContent = buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements);
   if (matrixContent) {
     card.appendChild(matrixContent);
     return card;
   }
 
-  card.appendChild(buildOutputsBucketedMiniTablesContent(outputsBucketed));
+  card.appendChild(buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements));
   return card;
 }
 
@@ -4214,6 +4348,7 @@ function buildGeneratedSection(module, {
     assumptions: { columns: [], rows: [] },
     outputs: { columns: [], rows: [] },
     tables: [],
+    personalBalanceSheetInputs: null,
     outputsBucketed: null,
     education: null,
     report: null,
@@ -4245,7 +4380,7 @@ function buildGeneratedSection(module, {
     readOnly
   }));
   if (isOutputsBucketedPresent(generated.outputsBucketed)) {
-    grid.appendChild(buildOutputsBucketedCard(generated.outputsBucketed));
+    grid.appendChild(buildOutputsBucketedCard(module, generated.outputsBucketed));
   } else {
     const outputsForDisplay = filterOutputsRowsForPensionToggle(module, generated.outputs);
     grid.appendChild(buildTableCard('Outputs', outputsForDisplay, {
@@ -4340,7 +4475,7 @@ export function patchFocusedGeneratedCards({
   if (patchOutputs) {
     const generated = module.generated || {};
     const outputCard = isOutputsBucketedPresent(generated.outputsBucketed)
-      ? buildOutputsBucketedCard(generated.outputsBucketed)
+      ? buildOutputsBucketedCard(module, generated.outputsBucketed)
       : buildTableCard(
         'Outputs',
         filterOutputsRowsForPensionToggle(module, generated.outputs),
