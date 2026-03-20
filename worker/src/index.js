@@ -395,7 +395,7 @@ async function sendLeadEmails(env, lead, leadId) {
 
   if (config.notificationRecipients.length > 0) {
     try {
-      await sendEmailWithResend(config, {
+      const notificationResult = await sendEmailWithResend(config, {
         from: config.from,
         to: config.notificationRecipients,
         subject: `New Planeir call request: ${lead.fullName}`,
@@ -403,6 +403,11 @@ async function sendLeadEmails(env, lead, leadId) {
         text: buildLeadNotificationText(lead, leadId),
         reply_to: lead.email
       }, buildEmailIdempotencyKey(leadId, lead.createdAt, 'internal'));
+      console.log('Lead internal notification email accepted', {
+        leadId,
+        resendEmailId: notificationResult?.id || null,
+        recipients: config.notificationRecipients
+      });
     } catch (error) {
       console.error('Lead internal notification email failed', {
         leadId,
@@ -418,7 +423,7 @@ async function sendLeadEmails(env, lead, leadId) {
   }
 
   try {
-    await sendEmailWithResend(config, {
+    const confirmationResult = await sendEmailWithResend(config, {
       from: config.from,
       to: [lead.email],
       subject: 'We received your Planeir call request',
@@ -426,6 +431,11 @@ async function sendLeadEmails(env, lead, leadId) {
       text: buildLeadConfirmationText(lead),
       reply_to: config.replyTo || undefined
     }, buildEmailIdempotencyKey(leadId, lead.createdAt, 'confirmation'));
+    console.log('Lead confirmation email accepted', {
+      leadId,
+      email: lead.email,
+      resendEmailId: confirmationResult?.id || null
+    });
   } catch (error) {
     console.error('Lead confirmation email failed', {
       leadId,
