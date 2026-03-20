@@ -2971,7 +2971,6 @@ function applyRuntimeChrome() {
     ui.sessionStatus.classList.remove('is-dirty');
   }
 
-  syncMobilePlaybookOptions();
   syncMobileActionState();
   if (!isMobileLayoutActive()) {
     closeMobileOverflowSheet({ restoreFocus: false });
@@ -5357,7 +5356,6 @@ function bindEvents() {
     setOverviewMultiSelectArmed(false);
   });
 
-  syncMobilePlaybookOptions();
   syncMobileActionState();
 
   window.addEventListener('beforeunload', () => {
