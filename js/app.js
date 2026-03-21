@@ -7,8 +7,9 @@ import {
   createEmptyGenerated,
   normalizeGenerated,
   normalizePbsInputs,
-  exportSession,
+  exportPublishedSession,
   importSession,
+  importPublishedSession,
   newSession
 } from './state.js';
 import { computeBestOverviewLayout } from './layout.js';
@@ -41,7 +42,11 @@ import {
 import { normalizePensionInputs, computePensionProjection } from './pension_math.js';
 import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_math.js';
 import { runMortgageMathTests } from './tests_mortgage_math.js';
-import { encryptSessionJson } from './crypto_session.js';
+import {
+  buildPublishedCapabilityToken,
+  decryptPublishedSessionV2ForAdvisor,
+  encryptPublishedSessionV2
+} from './crypto_session.js';
 import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
 
@@ -69,14 +74,6 @@ const WORKER_BASE_URL = (() => {
   }
 
   return '';
-})();
-
-const PUBLIC_BASE_URL = (() => {
-  const override = typeof window.__PUBLIC_BASE_URL === 'string'
-    ? window.__PUBLIC_BASE_URL.trim()
-    : '';
-  const raw = override || new URL('./', window.location.href).toString();
-  return raw.replace(/\/+$/, '');
 })();
 
 const stateManager = createStateManager(300, {
@@ -2810,7 +2807,31 @@ function generate6DigitPin() {
   return String(values[0] % 1000000).padStart(6, '0');
 }
 
+function isPublishPinEnabled() {
+  return Boolean(ui.publishPinToggle?.checked);
+}
+
+function syncPublishPinControls() {
+  const enabled = isPublishPinEnabled();
+  if (ui.publishPinGroup) {
+    ui.publishPinGroup.classList.toggle('is-hidden', !enabled);
+    ui.publishPinGroup.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+  }
+
+  if (ui.publishPinInput) {
+    ui.publishPinInput.disabled = !enabled;
+  }
+
+  if (!enabled && ui.publishPinInput) {
+    ui.publishPinInput.value = '';
+  }
+}
+
 function getPublishPinFromInput() {
+  if (!isPublishPinEnabled()) {
+    return '';
+  }
+
   if (!ui.publishPinInput) {
     return generate6DigitPin();
   }
@@ -2830,7 +2851,7 @@ function getPublishPinFromInput() {
 function normalizePublishSessionId(rawValue) {
   const value = String(rawValue ?? '').trim();
   if (!value) {
-    throw new Error('Publish response was missing a session id.');
+    throw new Error('Publish response was missing a published session id.');
   }
   return value;
 }
@@ -2867,11 +2888,146 @@ function setPublishError(message) {
   ui.publishError.classList.toggle('is-visible', Boolean(message));
 }
 
-function resetPublishResult() {
-  appState.publishedAccess = null;
+function getUrlHashParam(hashValue, key) {
+  const raw = String(hashValue ?? '').replace(/^#/, '');
+  if (!raw) {
+    return '';
+  }
+
+  const params = new URLSearchParams(raw);
+  return params.get(key)?.trim() || '';
+}
+
+function getLocationPublishedId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('pub')?.trim() || '';
+}
+
+function getLocationAdvisorSecret() {
+  return getUrlHashParam(window.location.hash, 'ak');
+}
+
+function getLinkHashParam(link, key) {
+  if (typeof link !== 'string' || !link) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(link);
+    return getUrlHashParam(parsed.hash, key);
+  } catch (_error) {
+    return '';
+  }
+}
+
+function buildClientSessionLink(publishedId, clientSecretB64u) {
+  const url = new URL('../session.html', window.location.href);
+  url.searchParams.set('pub', publishedId);
+  url.hash = new URLSearchParams({ ck: clientSecretB64u }).toString();
+  return url.toString();
+}
+
+function buildAdvisorSessionLink(publishedId, advisorSecretB64u) {
+  const url = new URL('./index.html', window.location.href);
+  url.searchParams.set('pub', publishedId);
+  url.hash = new URLSearchParams({ ak: advisorSecretB64u }).toString();
+  return url.toString();
+}
+
+function formatPublishedExpiry(expiresAt) {
+  if (!expiresAt) {
+    return 'Not published yet';
+  }
+
+  const parsed = new Date(expiresAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(expiresAt);
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(parsed);
+}
+
+function getPublishedClientLink(access) {
+  return access?.clientLink || access?.link || '';
+}
+
+function getPublishedAdvisorLink(access) {
+  return access?.advisorLink || '';
+}
+
+function clearPublishedQrCode() {
+  if (!ui.publishQrCode) {
+    return;
+  }
+
+  ui.publishQrCode.innerHTML = '';
+}
+
+function renderPublishedQrCode(link) {
+  clearPublishedQrCode();
+  if (!ui.publishQrCode || typeof window.QRCode !== 'function' || !link) {
+    return;
+  }
+
+  // The QR only encodes the client link, never the advisor link or PIN.
+  new window.QRCode(ui.publishQrCode, {
+    text: link,
+    width: 148,
+    height: 148,
+    colorDark: '#0f2233',
+    colorLight: '#ffffff'
+  });
+}
+
+function buildPublishedEmailCopy(access) {
+  const clientName = appState.session?.clientName?.trim() || 'there';
+  const clientLink = getPublishedClientLink(access);
+  if (!clientLink) {
+    return '';
+  }
+
+  const lines = [
+    `Hi ${clientName},`,
+    '',
+    'Thanks again for taking the call today.',
+    'You can revisit your Planeir session here:',
+    clientLink,
+    '',
+    `This secure link expires on ${formatPublishedExpiry(access?.expiresAt)}.`
+  ];
+
+  if (access?.pin) {
+    lines.push(`Use this 6-digit PIN to open it: ${access.pin}`);
+  }
+
+  lines.push(
+    '',
+    'You can also scan the attached QR code to open the same secure link on mobile.',
+    '',
+    'Best,',
+    'Gerry'
+  );
+
+  return lines.join('\n');
+}
+
+function resetPublishResult(options = {}) {
+  const { clearAccess = true, clearInputs = true } = options;
+  if (clearAccess) {
+    appState.publishedAccess = null;
+  }
 
   if (ui.publishResult) {
     ui.publishResult.classList.add('is-hidden');
+  }
+  if (ui.publishPinWrap) {
+    ui.publishPinWrap.classList.add('is-hidden');
+  }
+  if (ui.publishCopyPinButton) {
+    ui.publishCopyPinButton.classList.add('is-hidden');
   }
   if (ui.publishPinValue) {
     ui.publishPinValue.textContent = '------';
@@ -2879,9 +3035,21 @@ function resetPublishResult() {
   if (ui.publishLinkValue) {
     ui.publishLinkValue.value = '';
   }
-  if (ui.publishPinInput) {
+  if (ui.publishAdvisorLinkValue) {
+    ui.publishAdvisorLinkValue.value = '';
+  }
+  if (ui.publishExpiryValue) {
+    ui.publishExpiryValue.textContent = 'Not published yet';
+  }
+  clearPublishedQrCode();
+
+  if (clearInputs && ui.publishPinInput) {
     ui.publishPinInput.value = '';
   }
+  if (clearInputs && ui.publishPinToggle) {
+    ui.publishPinToggle.checked = false;
+  }
+  syncPublishPinControls();
 }
 
 function setPublishModalOpen(open) {
@@ -2893,16 +3061,67 @@ function setPublishModalOpen(open) {
   ui.publishModal.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
 
+async function fetchPublishedAdvisorBundle(publishedId, advisorSecretB64u) {
+  const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
+  const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/advisor`, {
+    headers: {
+      'X-Published-Capability': capability
+    }
+  });
+
+  if (response.status === 404) {
+    throw new Error('This advisor link is unavailable or incomplete.');
+  }
+
+  if (response.status === 410) {
+    throw new Error('This advisor link has expired or has been revoked.');
+  }
+
+  if (!response.ok) {
+    throw new Error(`Unable to reopen published session (${response.status}).`);
+  }
+
+  return response.json();
+}
+
+async function maybeLoadPublishedSessionFromLocation() {
+  const publishedId = getLocationPublishedId();
+  if (!publishedId) {
+    return null;
+  }
+
+  const advisorSecretB64u = getLocationAdvisorSecret();
+  if (!advisorSecretB64u) {
+    return {
+      error: 'This advisor link is incomplete.'
+    };
+  }
+
+  const bundle = await fetchPublishedAdvisorBundle(publishedId, advisorSecretB64u);
+  const decrypted = await decryptPublishedSessionV2ForAdvisor(advisorSecretB64u, bundle);
+  return {
+    session: importPublishedSession(decrypted.plaintext),
+    access: {
+      version: 2,
+      publishedId,
+      clientLink: buildClientSessionLink(publishedId, decrypted.clientSecretB64u),
+      advisorLink: buildAdvisorSessionLink(publishedId, advisorSecretB64u),
+      pin: decrypted.clientPin || '',
+      expiresAt: bundle.expiresAt
+    }
+  };
+}
+
 async function publishCurrentSession() {
-  const plaintext = exportSession(appState.session);
+  const plaintext = exportPublishedSession(appState.session);
   const pin = getPublishPinFromInput();
-  const encryptedPayload = await encryptSessionJson(pin, plaintext);
-  const response = await fetch(`${WORKER_BASE_URL}/api/publish`, {
+  const encryptedPayload = await encryptPublishedSessionV2(plaintext, { pin });
+  const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(encryptedPayload)
+    body: JSON.stringify(encryptedPayload.requestBody)
   });
 
   if (!response.ok) {
@@ -2910,17 +3129,49 @@ async function publishCurrentSession() {
   }
 
   const payload = await response.json();
-  const sessionId = normalizePublishSessionId(payload?.sessionId);
-  const link = `${PUBLIC_BASE_URL}/session.html?id=${encodeURIComponent(sessionId)}`;
+  const publishedId = normalizePublishSessionId(payload?.publishedId);
+  const clientLink = buildClientSessionLink(publishedId, encryptedPayload.clientSecretB64u);
+  const advisorLink = buildAdvisorSessionLink(publishedId, encryptedPayload.advisorSecretB64u);
 
   return {
-    sessionId,
-    pin,
-    link
+    version: 2,
+    publishedId,
+    pin: encryptedPayload.clientPin,
+    clientLink,
+    advisorLink,
+    expiresAt: payload?.expiresAt || ''
   };
 }
 
-async function revokePublishedSession(sessionId) {
+async function revokePublishedSession(access) {
+  if (!access) {
+    throw new Error('No published access to revoke.');
+  }
+
+  if (access.version === 2) {
+    const publishedId = String(access.publishedId || '').trim();
+    const advisorSecretB64u = getLinkHashParam(access.advisorLink, 'ak');
+    if (!publishedId || !advisorSecretB64u) {
+      throw new Error('Advisor link is unavailable for revoke.');
+    }
+
+    const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
+    const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/revoke`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Published-Capability': capability
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to revoke (${response.status}).`);
+    }
+
+    return;
+  }
+
+  const sessionId = String(access.sessionId || '').trim();
   const response = await fetch(`${WORKER_BASE_URL}/api/revoke/${encodeURIComponent(sessionId)}`, {
     method: 'POST',
     headers: {
@@ -2986,13 +3237,37 @@ function renderPublishedAccess(access) {
     ui.publishResult.classList.remove('is-hidden');
   }
 
+  if (ui.publishPinToggle) {
+    ui.publishPinToggle.checked = Boolean(access.pin);
+  }
+  syncPublishPinControls();
+  if (ui.publishPinInput) {
+    ui.publishPinInput.value = access.pin || '';
+  }
+
   if (ui.publishPinValue) {
-    ui.publishPinValue.textContent = access.pin;
+    ui.publishPinValue.textContent = access.pin || '------';
+  }
+  if (ui.publishPinWrap) {
+    ui.publishPinWrap.classList.toggle('is-hidden', !access.pin);
+  }
+  if (ui.publishCopyPinButton) {
+    ui.publishCopyPinButton.classList.toggle('is-hidden', !access.pin);
   }
 
   if (ui.publishLinkValue) {
-    ui.publishLinkValue.value = access.link;
+    ui.publishLinkValue.value = getPublishedClientLink(access);
   }
+
+  if (ui.publishAdvisorLinkValue) {
+    ui.publishAdvisorLinkValue.value = getPublishedAdvisorLink(access);
+  }
+
+  if (ui.publishExpiryValue) {
+    ui.publishExpiryValue.textContent = formatPublishedExpiry(access.expiresAt);
+  }
+
+  renderPublishedQrCode(getPublishedClientLink(access));
 }
 
 async function handlePublishGenerate() {
@@ -3033,21 +3308,49 @@ async function handleCopyPublishedPin() {
 }
 
 async function handleCopyPublishedLink() {
-  if (!appState.publishedAccess?.link) {
+  const clientLink = getPublishedClientLink(appState.publishedAccess);
+  if (!clientLink) {
     return;
   }
 
   try {
-    await copyToClipboard(appState.publishedAccess.link);
-    showToast('Link copied.');
+    await copyToClipboard(clientLink);
+    showToast('Client link copied.');
   } catch (_error) {
-    showToast('Could not copy link.', 'error');
+    showToast('Could not copy client link.', 'error');
+  }
+}
+
+async function handleCopyPublishedAdvisorLink() {
+  const advisorLink = getPublishedAdvisorLink(appState.publishedAccess);
+  if (!advisorLink) {
+    return;
+  }
+
+  try {
+    await copyToClipboard(advisorLink);
+    showToast('Advisor link copied.');
+  } catch (_error) {
+    showToast('Could not copy advisor link.', 'error');
+  }
+}
+
+async function handleCopyPublishedEmailCopy() {
+  const emailCopy = buildPublishedEmailCopy(appState.publishedAccess);
+  if (!emailCopy) {
+    return;
+  }
+
+  try {
+    await copyToClipboard(emailCopy);
+    showToast('Email copy copied.');
+  } catch (_error) {
+    showToast('Could not copy email copy.', 'error');
   }
 }
 
 async function handleRevokePublishedAccess() {
-  const sessionId = appState.publishedAccess?.sessionId;
-  if (!sessionId) {
+  if (!appState.publishedAccess) {
     return;
   }
 
@@ -3057,7 +3360,7 @@ async function handleRevokePublishedAccess() {
   }
 
   try {
-    await revokePublishedSession(sessionId);
+    await revokePublishedSession(appState.publishedAccess);
     showToast('Client access revoked.');
     resetPublishResult();
   } catch (error) {
@@ -5030,7 +5333,11 @@ function bindEvents() {
   if (!runtimeConfig.readOnly && runtimeConfig.allowPublish && ui.publishSessionButton) {
     ui.publishSessionButton.addEventListener('click', () => {
       setPublishError('');
-      resetPublishResult();
+      if (appState.publishedAccess) {
+        renderPublishedAccess(appState.publishedAccess);
+      } else {
+        resetPublishResult({ clearAccess: false });
+      }
       setPublishModalOpen(true);
     });
   }
@@ -5055,6 +5362,12 @@ function bindEvents() {
     });
   }
 
+  if (ui.publishPinToggle) {
+    ui.publishPinToggle.addEventListener('change', () => {
+      syncPublishPinControls();
+    });
+  }
+
   if (ui.publishCopyPinButton) {
     ui.publishCopyPinButton.addEventListener('click', async () => {
       await handleCopyPublishedPin();
@@ -5064,6 +5377,18 @@ function bindEvents() {
   if (ui.publishCopyLinkButton) {
     ui.publishCopyLinkButton.addEventListener('click', async () => {
       await handleCopyPublishedLink();
+    });
+  }
+
+  if (ui.publishCopyAdvisorLinkButton) {
+    ui.publishCopyAdvisorLinkButton.addEventListener('click', async () => {
+      await handleCopyPublishedAdvisorLink();
+    });
+  }
+
+  if (ui.publishCopyEmailButton) {
+    ui.publishCopyEmailButton.addEventListener('click', async () => {
+      await handleCopyPublishedEmailCopy();
     });
   }
 
@@ -5385,6 +5710,8 @@ export async function initApp(options = {}) {
   initPromise = (async () => {
     applyRuntimeOptions(options);
     const workerMissing = !WORKER_BASE_URL;
+    let startupPublishedAccess = null;
+    let startupNotice = '';
 
     if (!runtimeConfig.readOnly && runtimeConfig.allowPublish && workerMissing) {
       runtimeConfig.allowPublish = false;
@@ -5392,16 +5719,42 @@ export async function initApp(options = {}) {
 
     if ('initialSession' in options && options.initialSession != null) {
       appState.session = importSession(options.initialSession);
+      appState.publishedAccess = null;
     } else {
-      appState.session = loadSession();
+      appState.publishedAccess = null;
+
+      if (!runtimeConfig.readOnly && !workerMissing) {
+        try {
+          const publishedBootstrap = await maybeLoadPublishedSessionFromLocation();
+          if (publishedBootstrap?.session) {
+            appState.session = publishedBootstrap.session;
+            startupPublishedAccess = publishedBootstrap.access;
+            startupNotice = 'Opened published snapshot.';
+          } else {
+            appState.session = loadSession();
+            if (publishedBootstrap?.error) {
+              startupNotice = publishedBootstrap.error;
+            }
+          }
+        } catch (error) {
+          appState.session = loadSession();
+          startupNotice = error?.message || 'Could not reopen published session.';
+        }
+      } else {
+        appState.session = loadSession();
+      }
     }
 
     ensureActiveModule(appState.session);
     appState.mode = hasModules() ? 'focused' : 'greeting';
+    appState.publishedAccess = startupPublishedAccess;
 
     applyRuntimeChrome();
-    resetPublishResult();
+    resetPublishResult({ clearAccess: false });
     bindEvents();
+    if (appState.publishedAccess) {
+      renderPublishedAccess(appState.publishedAccess);
+    }
 
     if (runtimeConfig.allowDevPanel) {
       populateDevExamples();
@@ -5412,8 +5765,12 @@ export async function initApp(options = {}) {
     }
 
     renderGreeting(ui, appState.session.clientName);
+    syncPublishPinControls();
     if (!runtimeConfig.readOnly && workerMissing) {
       showToast('Publishing is disabled: worker URL is not configured for this environment.', 'error');
+    }
+    if (startupNotice) {
+      showToast(startupNotice, startupPublishedAccess ? 'success' : 'error');
     }
     if (runtimeConfig.readOnly && ui.sessionStatus) {
       ui.sessionStatus.textContent = 'Read only';

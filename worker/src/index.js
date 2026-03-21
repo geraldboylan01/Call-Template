@@ -1,11 +1,18 @@
 const PAYLOAD_VERSION = 1;
 const SESSION_KEY_PREFIX = 'sessions/';
 const SESSION_KEY_SUFFIX = '.json';
+const PUBLISHED_PAYLOAD_VERSION = 2;
+const PUBLISHED_SESSION_KEY_PREFIX = 'published/v2/';
+const PUBLISHED_SESSION_KIND = 'published-session';
 const MAX_CT_B64_LENGTH = 2_800_000;
 const MAX_IV_B64_LENGTH = 64;
 const MAX_SALT_B64_LENGTH = 128;
+const MAX_WRAP_CT_B64U_LENGTH = 12_000;
+const MAX_AUTH_HASH_B64U_LENGTH = 128;
+const MAX_CAPABILITY_TOKEN_B64U_LENGTH = 128;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 80;
+const PUBLISHED_DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_LEAD_NAME_LENGTH = 120;
 const MAX_LEAD_EMAIL_LENGTH = 160;
 const MAX_LEAD_PHONE_LENGTH = 40;
@@ -85,13 +92,31 @@ function getRouteConfig(pathname) {
     };
   }
 
+  if (pathname === '/api/published-sessions') {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
   if (/^\/api\/session\/[^/]+$/.test(pathname)) {
     return {
       methods: 'GET,OPTIONS'
     };
   }
 
+  if (/^\/api\/published-sessions\/[^/]+\/(?:client|advisor)$/.test(pathname)) {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
   if (/^\/api\/revoke\/[^/]+$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/published-sessions\/[^/]+\/revoke$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
     };
@@ -119,9 +144,8 @@ function getCorsOrigin(request, env) {
   try {
     const parsed = new URL(origin);
     const isLocalDev = parsed.protocol === 'http:' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
-    const isGithubPages = parsed.protocol === 'https:' && parsed.hostname.endsWith('.github.io');
 
-    if (isLocalDev || isGithubPages) {
+    if (isLocalDev) {
       return origin;
     }
   } catch (_error) {
@@ -146,12 +170,29 @@ function corsHeaders(origin, methods, requestHeaders) {
   return headers;
 }
 
-function jsonResponse(data, status, origin, methods, requestHeaders) {
+function noStoreHeaders() {
+  return {
+    'Cache-Control': 'no-store, max-age=0',
+    Pragma: 'no-cache',
+    Expires: '0'
+  };
+}
+
+function securityHeaders(extraHeaders = {}) {
+  return {
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    ...extraHeaders
+  };
+}
+
+function jsonResponse(data, status, origin, methods, requestHeaders, extraHeaders) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders(origin, methods, requestHeaders)
+      ...corsHeaders(origin, methods, requestHeaders),
+      ...securityHeaders(extraHeaders)
     }
   });
 }
@@ -453,6 +494,100 @@ function getSessionKey(sessionId) {
   return `${SESSION_KEY_PREFIX}${sessionId}${SESSION_KEY_SUFFIX}`;
 }
 
+function getPublishedSessionKey(publishedId) {
+  return `${PUBLISHED_SESSION_KEY_PREFIX}${publishedId}${SESSION_KEY_SUFFIX}`;
+}
+
+function isBase64UrlValue(value, maxLength) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= maxLength
+    && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+function toBase64Url(bytes) {
+  let binary = '';
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < view.length; index += chunkSize) {
+    const chunk = view.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function fromBase64Url(base64Url) {
+  if (!isBase64UrlValue(base64Url, MAX_CAPABILITY_TOKEN_B64U_LENGTH)) {
+    throw new Error('Capability is malformed.');
+  }
+
+  const normalized = base64Url
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+async function sha256Base64Url(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return toBase64Url(new Uint8Array(digest));
+}
+
+function validateEncryptedEnvelope(payload, options = {}) {
+  const {
+    allowBase64 = false,
+    maxCiphertextLength = MAX_CT_B64_LENGTH,
+    ivField = allowBase64 ? 'ivB64' : 'ivB64u',
+    ctField = allowBase64 ? 'ctB64' : 'ctB64u'
+  } = options;
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Encrypted payload is missing.');
+  }
+
+  const algorithm = allowBase64 ? 'AES-GCM-256' : payload.alg;
+  if (!allowBase64 && algorithm !== 'AES-GCM-256') {
+    throw new Error('Encrypted payload algorithm is invalid.');
+  }
+
+  const ivValue = payload[ivField];
+  const ctValue = payload[ctField];
+  const isValidEncodedValue = allowBase64
+    ? (value, maxLength) => typeof value === 'string' && value.length > 0 && value.length <= maxLength
+    : isBase64UrlValue;
+
+  if (!isValidEncodedValue(ivValue, MAX_IV_B64_LENGTH)) {
+    throw new Error(`Invalid ${ivField}.`);
+  }
+
+  if (!isValidEncodedValue(ctValue, maxCiphertextLength)) {
+    throw new Error(`Invalid ${ctField}.`);
+  }
+
+  return allowBase64
+    ? {
+      ivB64: ivValue,
+      ctB64: ctValue
+    }
+    : {
+      alg: 'AES-GCM-256',
+      ivB64u: ivValue,
+      ctB64u: ctValue
+    };
+}
+
 function validatePublishPayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Payload must be a JSON object.');
@@ -479,6 +614,95 @@ function validatePublishPayload(payload) {
     saltB64: payload.saltB64,
     ivB64: payload.ivB64,
     ctB64: payload.ctB64
+  };
+}
+
+function validatePublishedSessionPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  if (Number(payload.v) !== PUBLISHED_PAYLOAD_VERSION) {
+    throw new Error('Unsupported payload version.');
+  }
+
+  if (!payload.clientAccess || typeof payload.clientAccess !== 'object' || Array.isArray(payload.clientAccess)) {
+    throw new Error('Client access bundle is required.');
+  }
+
+  if (!payload.advisorAccess || typeof payload.advisorAccess !== 'object' || Array.isArray(payload.advisorAccess)) {
+    throw new Error('Advisor access bundle is required.');
+  }
+
+  if (!isBase64UrlValue(payload.clientAccess.authHashB64u, MAX_AUTH_HASH_B64U_LENGTH)) {
+    throw new Error('Client access auth hash is invalid.');
+  }
+
+  if (!isBase64UrlValue(payload.advisorAccess.authHashB64u, MAX_AUTH_HASH_B64U_LENGTH)) {
+    throw new Error('Advisor access auth hash is invalid.');
+  }
+
+  if (typeof payload.clientAccess.pinRequired !== 'boolean') {
+    throw new Error('Client access pinRequired must be a boolean.');
+  }
+
+  return {
+    v: PUBLISHED_PAYLOAD_VERSION,
+    payload: validateEncryptedEnvelope(payload.payload, {
+      allowBase64: false,
+      maxCiphertextLength: MAX_CT_B64_LENGTH
+    }),
+    clientAccess: {
+      authHashB64u: payload.clientAccess.authHashB64u,
+      pinRequired: payload.clientAccess.pinRequired,
+      wrap: validateEncryptedEnvelope(payload.clientAccess.wrap, {
+        allowBase64: false,
+        maxCiphertextLength: MAX_WRAP_CT_B64U_LENGTH
+      })
+    },
+    advisorAccess: {
+      authHashB64u: payload.advisorAccess.authHashB64u,
+      wrap: validateEncryptedEnvelope(payload.advisorAccess.wrap, {
+        allowBase64: false,
+        maxCiphertextLength: MAX_WRAP_CT_B64U_LENGTH
+      })
+    }
+  };
+}
+
+function validateStoredPublishedManifest(payload) {
+  const validated = validatePublishedSessionPayload(payload);
+
+  if (payload.kind !== PUBLISHED_SESSION_KIND) {
+    throw new Error('Published session manifest kind is invalid.');
+  }
+
+  if (!isSafeSessionId(payload.publishedId)) {
+    throw new Error('Published session manifest id is invalid.');
+  }
+
+  if (typeof payload.createdAt !== 'string' || Number.isNaN(Date.parse(payload.createdAt))) {
+    throw new Error('Published session createdAt is invalid.');
+  }
+
+  if (typeof payload.expiresAt !== 'string' || Number.isNaN(Date.parse(payload.expiresAt))) {
+    throw new Error('Published session expiresAt is invalid.');
+  }
+
+  const revokedAt = typeof payload.revokedAt === 'string' && payload.revokedAt
+    ? payload.revokedAt
+    : null;
+  if (revokedAt && Number.isNaN(Date.parse(revokedAt))) {
+    throw new Error('Published session revokedAt is invalid.');
+  }
+
+  return {
+    ...validated,
+    kind: PUBLISHED_SESSION_KIND,
+    publishedId: payload.publishedId,
+    createdAt: payload.createdAt,
+    expiresAt: payload.expiresAt,
+    revokedAt
   };
 }
 
@@ -628,6 +852,79 @@ async function handlePublish(request, env, origin) {
   return jsonResponse({ sessionId }, 200, origin, 'POST,OPTIONS');
 }
 
+function buildPublishedManifest(validatedPayload, publishedId) {
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + PUBLISHED_DEFAULT_TTL_MS).toISOString();
+
+  return {
+    v: PUBLISHED_PAYLOAD_VERSION,
+    kind: PUBLISHED_SESSION_KIND,
+    publishedId,
+    createdAt,
+    expiresAt,
+    revokedAt: null,
+    payload: validatedPayload.payload,
+    clientAccess: validatedPayload.clientAccess,
+    advisorAccess: validatedPayload.advisorAccess
+  };
+}
+
+async function persistPublishedManifest(env, manifest) {
+  const objectKey = getPublishedSessionKey(manifest.publishedId);
+  await env.SESSIONS_BUCKET.put(objectKey, JSON.stringify(manifest), {
+    httpMetadata: {
+      contentType: 'application/json'
+    }
+  });
+}
+
+async function loadPublishedManifest(env, publishedId) {
+  const objectKey = getPublishedSessionKey(publishedId);
+  const object = await env.SESSIONS_BUCKET.get(objectKey);
+  if (!object) {
+    return null;
+  }
+
+  const text = await object.text();
+  return validateStoredPublishedManifest(JSON.parse(text));
+}
+
+async function handleCreatePublishedSession(request, env, origin) {
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  let validated;
+  try {
+    validated = validatePublishedSessionPayload(body);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  const publishedId = crypto.randomUUID();
+  const manifest = buildPublishedManifest(validated, publishedId);
+
+  try {
+    await persistPublishedManifest(env, manifest);
+  } catch (error) {
+    console.error('Failed to store v2 published session', {
+      publishedId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'Could not publish this session right now.' }, 500, origin, 'POST,OPTIONS');
+  }
+
+  return jsonResponse({
+    ok: true,
+    publishedId,
+    createdAt: manifest.createdAt,
+    expiresAt: manifest.expiresAt
+  }, 201, origin, 'POST,OPTIONS', null, noStoreHeaders());
+}
+
 async function handleLeadSubmit(request, env, origin, ctx) {
   const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
   if (!checkRateLimit(clientIp)) {
@@ -741,7 +1038,8 @@ async function handleGetSession(request, env, origin, sessionId) {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders(origin, 'GET,OPTIONS')
+      ...corsHeaders(origin, 'GET,OPTIONS'),
+      ...securityHeaders(noStoreHeaders())
     }
   });
 }
@@ -750,6 +1048,128 @@ async function handleRevoke(env, origin, sessionId) {
   const objectKey = getSessionKey(sessionId);
   await env.SESSIONS_BUCKET.delete(objectKey);
   return jsonResponse({ ok: true }, 200, origin, 'POST,OPTIONS');
+}
+
+async function verifyPublishedCapability(request, manifest, role) {
+  const rawCapability = request.headers.get('X-Published-Capability');
+  if (!rawCapability) {
+    return false;
+  }
+
+  const accessKey = role === 'advisor' ? 'advisorAccess' : 'clientAccess';
+  const expectedHash = manifest?.[accessKey]?.authHashB64u;
+  if (!expectedHash) {
+    return false;
+  }
+
+  try {
+    const capabilityBytes = fromBase64Url(rawCapability.trim());
+    const actualHash = await sha256Base64Url(capabilityBytes);
+    return actualHash === expectedHash;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function isPublishedManifestExpired(manifest) {
+  return Date.parse(manifest.expiresAt) <= Date.now();
+}
+
+function buildPublishedSessionResponse(manifest, role) {
+  const access = role === 'advisor' ? manifest.advisorAccess : manifest.clientAccess;
+  const response = {
+    v: PUBLISHED_PAYLOAD_VERSION,
+    role,
+    publishedId: manifest.publishedId,
+    createdAt: manifest.createdAt,
+    expiresAt: manifest.expiresAt,
+    payload: manifest.payload,
+    wrap: access.wrap
+  };
+
+  if (role === 'client') {
+    response.pinRequired = manifest.clientAccess.pinRequired;
+  }
+
+  return response;
+}
+
+async function handleGetPublishedSession(request, env, origin, publishedId, role) {
+  const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'GET,OPTIONS');
+  }
+
+  let manifest;
+  try {
+    manifest = await loadPublishedManifest(env, publishedId);
+  } catch (error) {
+    console.error('Failed to read published session manifest', {
+      publishedId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'Could not load this session right now.' }, 500, origin, 'GET,OPTIONS');
+  }
+
+  if (!manifest) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  const authorized = await verifyPublishedCapability(request, manifest, role);
+  if (!authorized) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (manifest.revokedAt || isPublishedManifestExpired(manifest)) {
+    return jsonResponse({ error: 'This secure session is no longer available.' }, 410, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  return jsonResponse(
+    buildPublishedSessionResponse(manifest, role),
+    200,
+    origin,
+    'GET,OPTIONS',
+    null,
+    noStoreHeaders()
+  );
+}
+
+async function handleRevokePublishedSession(request, env, origin, publishedId) {
+  let manifest;
+  try {
+    manifest = await loadPublishedManifest(env, publishedId);
+  } catch (error) {
+    console.error('Failed to read published session for revoke', {
+      publishedId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'Could not revoke this session right now.' }, 500, origin, 'POST,OPTIONS');
+  }
+
+  if (!manifest) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  const authorized = await verifyPublishedCapability(request, manifest, 'advisor');
+  if (!authorized) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (!manifest.revokedAt) {
+    manifest.revokedAt = new Date().toISOString();
+
+    try {
+      await persistPublishedManifest(env, manifest);
+    } catch (error) {
+      console.error('Failed to persist published revoke', {
+        publishedId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return jsonResponse({ error: 'Could not revoke this session right now.' }, 500, origin, 'POST,OPTIONS');
+    }
+  }
+
+  return jsonResponse({ ok: true }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
 }
 
 export default {
@@ -780,6 +1200,10 @@ export default {
       return handlePublish(request, env, origin);
     }
 
+    if (request.method === 'POST' && pathname === '/api/published-sessions') {
+      return handleCreatePublishedSession(request, env, origin);
+    }
+
     const getMatch = /^\/api\/session\/([^/]+)$/.exec(pathname);
     if (request.method === 'GET' && getMatch) {
       const sessionId = getMatch[1];
@@ -790,6 +1214,17 @@ export default {
       return handleGetSession(request, env, origin, sessionId);
     }
 
+    const getPublishedMatch = /^\/api\/published-sessions\/([^/]+)\/(client|advisor)$/.exec(pathname);
+    if (request.method === 'GET' && getPublishedMatch) {
+      const publishedId = getPublishedMatch[1];
+      const role = getPublishedMatch[2];
+      if (!isSafeSessionId(publishedId)) {
+        return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handleGetPublishedSession(request, env, origin, publishedId, role);
+    }
+
     const revokeMatch = /^\/api\/revoke\/([^/]+)$/.exec(pathname);
     if (request.method === 'POST' && revokeMatch) {
       const sessionId = revokeMatch[1];
@@ -798,6 +1233,16 @@ export default {
       }
 
       return handleRevoke(env, origin, sessionId);
+    }
+
+    const revokePublishedMatch = /^\/api\/published-sessions\/([^/]+)\/revoke$/.exec(pathname);
+    if (request.method === 'POST' && revokePublishedMatch) {
+      const publishedId = revokePublishedMatch[1];
+      if (!isSafeSessionId(publishedId)) {
+        return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handleRevokePublishedSession(request, env, origin, publishedId);
     }
 
     return jsonResponse({ error: 'Not found.' }, 404, origin, routeConfig?.methods, requestHeaders);

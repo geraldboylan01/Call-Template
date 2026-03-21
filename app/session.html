@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
     <meta
       name="description"
       content="Planeir client session viewer for secure read-only planning conversations."
@@ -16,17 +17,19 @@
     <div id="sessionUnlockLayer" class="session-unlock-layer" role="dialog" aria-modal="true" aria-labelledby="sessionUnlockTitle">
       <div class="session-unlock-card">
         <h1 id="sessionUnlockTitle">Client session</h1>
-        <p class="session-unlock-hint">Enter your 6-digit PIN to unlock this call canvas.</p>
-        <input
-          id="sessionPinInput"
-          class="session-unlock-input"
-          type="password"
-          inputmode="numeric"
-          autocomplete="one-time-code"
-          maxlength="6"
-          placeholder="000000"
-          aria-label="PIN"
-        />
+        <p id="sessionUnlockHint" class="session-unlock-hint">Checking your secure link.</p>
+        <div id="sessionPinGroup" class="is-hidden" aria-hidden="true">
+          <input
+            id="sessionPinInput"
+            class="session-unlock-input"
+            type="password"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+            placeholder="000000"
+            aria-label="PIN"
+          />
+        </div>
         <div class="session-unlock-actions">
           <button id="sessionUnlockBtn" class="ui-button" type="button">Unlock</button>
         </div>

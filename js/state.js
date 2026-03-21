@@ -640,6 +640,10 @@ export function exportSession(session) {
   return JSON.stringify(normalized, null, 2);
 }
 
+export function exportPublishedSession(session) {
+  return exportSession(session);
+}
+
 export function importSession(input) {
   let parsed = input;
 
@@ -668,6 +672,10 @@ export function importSession(input) {
   }
 
   return normalizeSession(parsed);
+}
+
+export function importPublishedSession(input) {
+  return importSession(input);
 }
 
 export function createStateManager(delayMs = 300, options = {}) {
