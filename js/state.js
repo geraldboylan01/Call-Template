@@ -314,6 +314,13 @@ export function normalizePbsInputs(pbsInputs) {
     normalized.annualExpenditure = pbsInputs.annualExpenditure;
   }
 
+  if (
+    typeof pbsInputs.currentAge === 'number'
+    && Number.isFinite(pbsInputs.currentAge)
+  ) {
+    normalized.currentAge = pbsInputs.currentAge;
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 

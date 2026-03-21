@@ -809,8 +809,23 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   flex-wrap: wrap;
 }
 
+.pbs-section-heading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
 .pbs-section-heading-text {
   min-width: 0;
+}
+
+.pbs-section-support-text {
+  color: rgba(216, 234, 255, 0.72);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 
 .pbs-health-badge {
@@ -901,6 +916,84 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   font-weight: 800;
   color: #f6fbff;
   background: rgba(46, 163, 255, 0.14);
+}
+
+.pbs-net-worth-context-row td {
+  padding: 0;
+  border-top: 0;
+  background: rgba(9, 19, 35, 0.88);
+}
+
+.pbs-net-worth-context {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px 12px;
+  background: linear-gradient(180deg, rgba(18, 37, 64, 0.42), rgba(8, 18, 35, 0.14));
+}
+
+.pbs-net-worth-context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pbs-net-worth-context-kicker {
+  color: #e4f1ff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.pbs-net-worth-context-source {
+  color: #8fa9c6;
+  font-size: 0.68rem;
+}
+
+.pbs-net-worth-context-benchmarks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pbs-net-worth-benchmark {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid rgba(125, 160, 207, 0.2);
+  border-radius: 10px;
+  background: rgba(5, 14, 28, 0.46);
+}
+
+.pbs-net-worth-benchmark-label {
+  color: #97b4d4;
+  font-size: 0.68rem;
+}
+
+.pbs-net-worth-benchmark-value {
+  color: #f0f7ff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pbs-net-worth-context-primary,
+.pbs-net-worth-context-secondary {
+  margin: 0;
+  line-height: 1.42;
+}
+
+.pbs-net-worth-context-primary {
+  color: #e9f4ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.pbs-net-worth-context-secondary {
+  color: #abc5e2;
+  font-size: 0.76rem;
 }
 
 .pbs-bucket-note {
@@ -3060,6 +3153,10 @@ body.overview-has-selection .toast-host {
   }
 
   .pbs-bucket-tables {
+    grid-template-columns: 1fr;
+  }
+
+  .pbs-net-worth-context-benchmarks {
     grid-template-columns: 1fr;
   }
 

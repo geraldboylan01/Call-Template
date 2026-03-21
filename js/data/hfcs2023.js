@@ -1,0 +1,25 @@
+// Keep in sync with ./hfcs2023.json. This wrapper avoids relying on JSON module support.
+export const HFCS_NET_WORTH_DATA = Object.freeze({
+  hfcs2023: Object.freeze({
+    ageBandMedianNetWorth: Object.freeze({
+      under35: 23400,
+      '35to44': 143900,
+      '45to54': 273200,
+      '55to64': 380300,
+      '65plus': 404200
+    }),
+    nationalNetWorthDeciles: Object.freeze({
+      d1Upper: 2439,
+      d2Upper: 17266,
+      d3Upper: 82238,
+      d4Upper: 178759,
+      d5Upper: 256876,
+      d6Upper: 337886,
+      d7Upper: 446550,
+      d8Upper: 616126,
+      d9Upper: 1024032
+    }),
+    nationalMedianNetWorth: 256876,
+    sourceLabel: 'CSO HFCS 2023'
+  })
+});

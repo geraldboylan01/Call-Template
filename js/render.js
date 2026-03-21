@@ -1,6 +1,7 @@
 import { computeGridPosition, applyOverviewLayout } from './layout.js';
 import { renderSvgDiagram, serializeSvg } from './education_svg.js';
 import { getReportChartBlocks, isReportModule } from './report.js';
+import { HFCS_NET_WORTH_DATA } from './data/hfcs2023.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -25,6 +26,49 @@ const OVERVIEW_CHART_PREVIEW_MODE = {
     minBarWidth: 6
   }
 };
+const HFCS_AGE_BAND_META = Object.freeze([
+  {
+    key: 'under35',
+    maxAgeExclusive: 35,
+    benchmarkLabel: 'Age under 35 median',
+    householdLabel: 'households under 35'
+  },
+  {
+    key: '35to44',
+    maxAgeExclusive: 45,
+    benchmarkLabel: 'Age 35-44 median',
+    householdLabel: 'households aged 35-44'
+  },
+  {
+    key: '45to54',
+    maxAgeExclusive: 55,
+    benchmarkLabel: 'Age 45-54 median',
+    householdLabel: 'households aged 45-54'
+  },
+  {
+    key: '55to64',
+    maxAgeExclusive: 65,
+    benchmarkLabel: 'Age 55-64 median',
+    householdLabel: 'households aged 55-64'
+  },
+  {
+    key: '65plus',
+    maxAgeExclusive: Infinity,
+    benchmarkLabel: 'Age 65+ median',
+    householdLabel: 'households aged 65+'
+  }
+]);
+const HFCS_DECILE_BANDS = Object.freeze([
+  { upperKey: 'd1Upper', lowerBoundPercent: 0, upperBoundPercent: 10 },
+  { upperKey: 'd2Upper', lowerBoundPercent: 10, upperBoundPercent: 20 },
+  { upperKey: 'd3Upper', lowerBoundPercent: 20, upperBoundPercent: 30 },
+  { upperKey: 'd4Upper', lowerBoundPercent: 30, upperBoundPercent: 40 },
+  { upperKey: 'd5Upper', lowerBoundPercent: 40, upperBoundPercent: 50 },
+  { upperKey: 'd6Upper', lowerBoundPercent: 50, upperBoundPercent: 60 },
+  { upperKey: 'd7Upper', lowerBoundPercent: 60, upperBoundPercent: 70 },
+  { upperKey: 'd8Upper', lowerBoundPercent: 70, upperBoundPercent: 80 },
+  { upperKey: 'd9Upper', lowerBoundPercent: 80, upperBoundPercent: 90 }
+]);
 
 function formatLocalTime(isoString) {
   try {
@@ -2955,6 +2999,20 @@ function getPositiveFiniteNumber(value) {
   return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
 }
 
+function getFiniteNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function formatBucketedCurrency(value, currencySymbol = '€') {
+  const numericValue = getFiniteNumber(value);
+  if (numericValue === null) {
+    return '';
+  }
+
+  return `${numericValue < 0 ? '-' : ''}${currencySymbol}${formatBucketedAmount(Math.abs(numericValue))}`;
+}
+
 function getOutputsBucketedSubtotal(section) {
   const subtotalValue = Number(section?.subtotalValue);
   if (Number.isFinite(subtotalValue)) {
@@ -2992,6 +3050,8 @@ function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
     annualExpenditure: normalizedAnnualExpenditure,
     monthlyExpenditure,
     months,
+    label: `${formatReserveMonths(months)} mo buffer`,
+    ariaLabel: `Liquidity buffer ${formatReserveMonths(months)} months`,
     reserveValue: normalizedReserveValue,
     tone
   };
@@ -3004,29 +3064,197 @@ function formatReserveMonths(value) {
   });
 }
 
-function buildOutputsBucketedHealthBadge(health) {
+function formatReserveMultiple(value) {
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  });
+}
+
+function computeLongevityPressureAssessment(reserveValue, annualExpenditure, currentAge) {
+  const normalizedAnnualExpenditure = getPositiveFiniteNumber(annualExpenditure);
+  const normalizedCurrentAge = getPositiveFiniteNumber(currentAge);
+  const normalizedReserveValue = getFiniteNumber(reserveValue);
+  if (
+    normalizedAnnualExpenditure === null
+    || normalizedCurrentAge === null
+    || normalizedReserveValue === null
+  ) {
+    return null;
+  }
+
+  const reserveMultiple = normalizedReserveValue / normalizedAnnualExpenditure;
+  if (!Number.isFinite(reserveMultiple)) {
+    return null;
+  }
+
+  let warningThreshold = 4;
+  let healthyThreshold = 8;
+  if (normalizedCurrentAge < 40) {
+    warningThreshold = 2;
+    healthyThreshold = 5;
+  } else if (normalizedCurrentAge >= 55) {
+    warningThreshold = 6;
+    healthyThreshold = 12;
+  }
+
+  let tone = 'negative';
+  let label = 'Higher pressure';
+  if (reserveMultiple >= healthyThreshold) {
+    tone = 'positive';
+    label = 'Lower pressure';
+  } else if (reserveMultiple >= warningThreshold) {
+    tone = 'warning';
+    label = 'Moderate pressure';
+  }
+
+  const multipleText = formatReserveMultiple(reserveMultiple);
+  return {
+    annualExpenditure: normalizedAnnualExpenditure,
+    currentAge: normalizedCurrentAge,
+    label,
+    ariaLabel: `Longevity pressure ${label.toLowerCase()}, longevity assets ${multipleText} times annual spending`,
+    reserveMultiple,
+    reserveValue: normalizedReserveValue,
+    supportText: `${multipleText}x annual spending`,
+    tone
+  };
+}
+
+function getHfcsNetWorthDataset() {
+  const dataset = HFCS_NET_WORTH_DATA?.hfcs2023;
+  if (!isPlainObject(dataset)) {
+    return null;
+  }
+
+  return dataset;
+}
+
+function getHfcsAgeBandMeta(currentAge) {
+  const normalizedCurrentAge = getPositiveFiniteNumber(currentAge);
+  if (normalizedCurrentAge === null) {
+    return null;
+  }
+
+  return HFCS_AGE_BAND_META.find((band) => normalizedCurrentAge < band.maxAgeExclusive) || null;
+}
+
+function getOutputsBucketedRowValue(section, targetLabel) {
+  const targetToken = normalizeSectionToken(targetLabel);
+  const row = sanitizeSectionRows(section?.rows)
+    .find(([label]) => normalizeSectionToken(label) === targetToken);
+  return row ? row[1] : null;
+}
+
+function buildHfcsAgeBandDifferenceText(netWorth, ageBandMedian, householdLabel, currencySymbol) {
+  const difference = netWorth - ageBandMedian;
+  if (difference > 0) {
+    return `${formatBucketedCurrency(difference, currencySymbol)} above the median for ${householdLabel}`;
+  }
+
+  if (difference < 0) {
+    return `${formatBucketedCurrency(Math.abs(difference), currencySymbol)} below the median for ${householdLabel}`;
+  }
+
+  return `In line with the median for ${householdLabel}`;
+}
+
+function buildHfcsWealthPositionText(netWorth, nationalMedianNetWorth, nationalNetWorthDeciles) {
+  if (!isPlainObject(nationalNetWorthDeciles)) {
+    return '';
+  }
+
+  if (netWorth === nationalMedianNetWorth) {
+    return 'Around the national median for Irish households';
+  }
+
+  const matchingBand = HFCS_DECILE_BANDS.find((band) => {
+    const upperBound = getFiniteNumber(nationalNetWorthDeciles[band.upperKey]);
+    return upperBound !== null && netWorth <= upperBound;
+  });
+
+  if (!matchingBand) {
+    return 'Richer than roughly 90% of Irish households';
+  }
+
+  if (matchingBand.lowerBoundPercent === 0) {
+    return 'In the lower national wealth band (roughly bottom 10% of Irish households)';
+  }
+
+  return `Richer than roughly ${matchingBand.lowerBoundPercent}% of Irish households`;
+}
+
+function computeNetWorthContext(netWorth, currentAge, currencySymbol = '€') {
+  const dataset = getHfcsNetWorthDataset();
+  const normalizedNetWorth = getFiniteNumber(netWorth);
+  const ageBand = getHfcsAgeBandMeta(currentAge);
+  if (!dataset || normalizedNetWorth === null || !ageBand) {
+    return null;
+  }
+
+  const ageBandMedian = getFiniteNumber(dataset.ageBandMedianNetWorth?.[ageBand.key]);
+  const nationalMedianNetWorth = getFiniteNumber(dataset.nationalMedianNetWorth);
+  if (ageBandMedian === null || nationalMedianNetWorth === null) {
+    return null;
+  }
+
+  return {
+    ageBandDifferenceText: buildHfcsAgeBandDifferenceText(
+      normalizedNetWorth,
+      ageBandMedian,
+      ageBand.householdLabel,
+      currencySymbol
+    ),
+    ageBandMedianLabel: ageBand.benchmarkLabel,
+    ageBandMedianText: formatBucketedCurrency(ageBandMedian, currencySymbol),
+    nationalMedianText: formatBucketedCurrency(nationalMedianNetWorth, currencySymbol),
+    sourceLabel: typeof dataset.sourceLabel === 'string' && dataset.sourceLabel.trim()
+      ? dataset.sourceLabel.trim()
+      : 'CSO HFCS 2023',
+    wealthPositionText: buildHfcsWealthPositionText(
+      normalizedNetWorth,
+      nationalMedianNetWorth,
+      dataset.nationalNetWorthDeciles
+    )
+  };
+}
+
+function buildOutputsBucketedHealthBadge(indicator) {
   const badge = document.createElement('span');
   badge.className = 'pbs-health-badge';
-  badge.dataset.tone = health.tone;
-  badge.textContent = `${formatReserveMonths(health.months)} mo buffer`;
-  badge.setAttribute('aria-label', `Liquidity buffer ${formatReserveMonths(health.months)} months`);
+  badge.dataset.tone = indicator.tone;
+  badge.textContent = indicator.label;
+  if (indicator.ariaLabel) {
+    badge.setAttribute('aria-label', indicator.ariaLabel);
+  }
   return badge;
 }
 
-function buildOutputsBucketedSectionHeading(title, health) {
-  if (!health) {
+function buildOutputsBucketedSectionHeading(title, indicator) {
+  if (!indicator) {
     return document.createTextNode(title);
   }
 
   const heading = document.createElement('div');
   heading.className = 'pbs-section-heading';
 
+  const headingCopy = document.createElement('div');
+  headingCopy.className = 'pbs-section-heading-copy';
+
   const titleText = document.createElement('span');
   titleText.className = 'pbs-section-heading-text';
   titleText.textContent = title;
-  heading.appendChild(titleText);
+  headingCopy.appendChild(titleText);
 
-  heading.appendChild(buildOutputsBucketedHealthBadge(health));
+  if (indicator.supportText) {
+    const supportText = document.createElement('span');
+    supportText.className = 'pbs-section-support-text';
+    supportText.textContent = indicator.supportText;
+    headingCopy.appendChild(supportText);
+  }
+
+  heading.appendChild(headingCopy);
+  heading.appendChild(buildOutputsBucketedHealthBadge(indicator));
   return heading;
 }
 
@@ -3037,26 +3265,127 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
   }
 
   const annualExpenditure = getPositiveFiniteNumber(module?.generated?.pbsInputs?.annualExpenditure);
-  if (annualExpenditure === null) {
-    return enhancements;
+  const currentAge = getPositiveFiniteNumber(module?.generated?.pbsInputs?.currentAge);
+
+  if (annualExpenditure !== null) {
+    const liquiditySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'liquidity')
+      || findOutputsBucketedSection(outputsBucketed.sections, 'liquidity');
+    if (liquiditySection) {
+      const indicator = computeReserveMonthsAssessment(
+        getOutputsBucketedSubtotal(liquiditySection),
+        annualExpenditure
+      );
+
+      if (indicator) {
+        enhancements.liquidity = { indicator };
+      }
+    }
+
+    if (currentAge !== null) {
+      const longevitySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'longevity')
+        || findOutputsBucketedSection(outputsBucketed.sections, 'longevity');
+      if (longevitySection) {
+        const indicator = computeLongevityPressureAssessment(
+          getOutputsBucketedSubtotal(longevitySection),
+          annualExpenditure,
+          currentAge
+        );
+
+        if (indicator) {
+          enhancements.longevity = { indicator };
+        }
+      }
+    }
   }
 
-  const liquiditySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'liquidity')
-    || findOutputsBucketedSection(outputsBucketed.sections, 'liquidity');
-  if (!liquiditySection) {
-    return enhancements;
-  }
+  if (currentAge !== null) {
+    const summarySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'summary')
+      || findOutputsBucketedSection(outputsBucketed.sections, 'summary');
+    const netWorth = getOutputsBucketedRowValue(summarySection, 'net worth');
+    const netWorthContext = computeNetWorthContext(
+      netWorth,
+      currentAge,
+      typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
+        ? outputsBucketed.currencySymbol.trim()
+        : '€'
+    );
 
-  const health = computeReserveMonthsAssessment(
-    getOutputsBucketedSubtotal(liquiditySection),
-    annualExpenditure
-  );
-
-  if (health) {
-    enhancements.liquidity = { health };
+    if (netWorthContext) {
+      enhancements.summary = {
+        ...(enhancements.summary || {}),
+        netWorthContext
+      };
+    }
   }
 
   return enhancements;
+}
+
+function buildOutputsBucketedNetWorthContext(context) {
+  const wrap = document.createElement('div');
+  wrap.className = 'pbs-net-worth-context';
+
+  const header = document.createElement('div');
+  header.className = 'pbs-net-worth-context-header';
+
+  const kicker = document.createElement('span');
+  kicker.className = 'pbs-net-worth-context-kicker';
+  kicker.textContent = 'Irish households';
+  header.appendChild(kicker);
+
+  const source = document.createElement('span');
+  source.className = 'pbs-net-worth-context-source';
+  source.textContent = context.sourceLabel;
+  header.appendChild(source);
+  wrap.appendChild(header);
+
+  const benchmarks = document.createElement('div');
+  benchmarks.className = 'pbs-net-worth-context-benchmarks';
+
+  [
+    ['National median', context.nationalMedianText],
+    [context.ageBandMedianLabel, context.ageBandMedianText]
+  ].forEach(([label, value]) => {
+    const benchmark = document.createElement('div');
+    benchmark.className = 'pbs-net-worth-benchmark';
+
+    const benchmarkLabel = document.createElement('span');
+    benchmarkLabel.className = 'pbs-net-worth-benchmark-label';
+    benchmarkLabel.textContent = label;
+    benchmark.appendChild(benchmarkLabel);
+
+    const benchmarkValue = document.createElement('span');
+    benchmarkValue.className = 'pbs-net-worth-benchmark-value';
+    benchmarkValue.textContent = value;
+    benchmark.appendChild(benchmarkValue);
+
+    benchmarks.appendChild(benchmark);
+  });
+  wrap.appendChild(benchmarks);
+
+  const primary = document.createElement('p');
+  primary.className = 'pbs-net-worth-context-primary';
+  primary.textContent = context.ageBandDifferenceText;
+  wrap.appendChild(primary);
+
+  const secondary = document.createElement('p');
+  secondary.className = 'pbs-net-worth-context-secondary';
+  secondary.textContent = context.wealthPositionText;
+  wrap.appendChild(secondary);
+
+  return wrap;
+}
+
+function buildOutputsBucketedNetWorthContextRow(context) {
+  const row = document.createElement('tr');
+  row.className = 'pbs-net-worth-context-row';
+
+  const cell = document.createElement('td');
+  cell.colSpan = 2;
+  cell.appendChild(buildOutputsBucketedNetWorthContext(context));
+  row.appendChild(cell);
+
+  return row;
 }
 
 function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements = {}) {
@@ -3077,7 +3406,8 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     const rows = sanitizeSectionRows(section.rows);
     const key = typeof section.key === 'string' ? section.key.toLowerCase() : '';
     const sectionToken = normalizeSectionToken(key || section.title || '');
-    const health = sectionEnhancements[sectionToken]?.health || null;
+    const sectionEnhancement = sectionEnhancements[sectionToken] || {};
+    const indicator = sectionEnhancement.indicator || null;
     const title = typeof section.title === 'string' && section.title.trim()
       ? section.title
       : `Section ${sectionIndex + 1}`;
@@ -3090,8 +3420,8 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     const table = document.createElement('table');
     table.className = 'generated-table pbs-bucket-table';
 
-    if (health) {
-      sectionWrap.dataset.healthTone = health.tone;
+    if (indicator) {
+      sectionWrap.dataset.healthTone = indicator.tone;
     }
 
     const thead = document.createElement('thead');
@@ -3100,7 +3430,7 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     titleRow.className = 'pbs-bucket-title-row';
     const titleCell = document.createElement('th');
     titleCell.colSpan = 2;
-    titleCell.appendChild(buildOutputsBucketedSectionHeading(title, health));
+    titleCell.appendChild(buildOutputsBucketedSectionHeading(title, indicator));
     titleRow.appendChild(titleCell);
     thead.appendChild(titleRow);
 
@@ -3117,6 +3447,7 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
+    let hasRenderedNetWorthContext = false;
     rows.forEach((row) => {
       const tr = document.createElement('tr');
       const label = row[0];
@@ -3131,18 +3462,24 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
       amountCell.textContent = formatBucketedAmount(amount);
       tr.appendChild(amountCell);
 
-      if (isSummary && normalizeSectionToken(label) === 'networth') {
+      const isNetWorthRow = isSummary && normalizeSectionToken(label) === 'networth';
+      if (isNetWorthRow) {
         tr.classList.add('pbs-net-worth-row');
       }
 
       tbody.appendChild(tr);
+
+      if (isNetWorthRow && sectionEnhancement.netWorthContext && !hasRenderedNetWorthContext) {
+        tbody.appendChild(buildOutputsBucketedNetWorthContextRow(sectionEnhancement.netWorthContext));
+        hasRenderedNetWorthContext = true;
+      }
     });
 
     if (hasSubtotal) {
       const subtotalRow = document.createElement('tr');
       subtotalRow.className = 'pbs-subtotal-row';
-      if (health) {
-        subtotalRow.dataset.healthTone = health.tone;
+      if (indicator) {
+        subtotalRow.dataset.healthTone = indicator.tone;
       }
 
       const subtotalLabelCell = document.createElement('td');
@@ -3176,7 +3513,8 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
 function buildOutputsBucketedDetailCard(section, {
   defaultTitle,
   defaultColumns,
-  highlightNetWorth = false
+  highlightNetWorth = false,
+  netWorthContext = null
 } = {}) {
   const card = document.createElement('section');
   card.className = 'pbs-stacked-card';
@@ -3215,6 +3553,7 @@ function buildOutputsBucketedDetailCard(section, {
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
+  let hasRenderedNetWorthContext = false;
   rows.forEach((row) => {
     const tr = document.createElement('tr');
     const label = row[0];
@@ -3228,11 +3567,17 @@ function buildOutputsBucketedDetailCard(section, {
     amountCell.textContent = formatBucketedAmount(row[1]);
     tr.appendChild(amountCell);
 
-    if (highlightNetWorth && normalizeSectionToken(label) === 'networth') {
+    const isNetWorthRow = highlightNetWorth && normalizeSectionToken(label) === 'networth';
+    if (isNetWorthRow) {
       tr.classList.add('pbs-net-worth-row');
     }
 
     tbody.appendChild(tr);
+
+    if (isNetWorthRow && netWorthContext && !hasRenderedNetWorthContext) {
+      tbody.appendChild(buildOutputsBucketedNetWorthContextRow(netWorthContext));
+      hasRenderedNetWorthContext = true;
+    }
   });
 
   if (hasSubtotal) {
@@ -3287,14 +3632,14 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
   assetSections.forEach((section, index) => {
     const th = document.createElement('th');
     const sectionToken = normalizeSectionToken(section?.key || section?.title || assetSectionKeys[index]);
-    const health = sectionEnhancements[sectionToken]?.health || null;
+    const indicator = sectionEnhancements[sectionToken]?.indicator || null;
     const title = typeof section.title === 'string' && section.title.trim()
       ? section.title
       : assetSectionKeys[index].charAt(0).toUpperCase() + assetSectionKeys[index].slice(1);
-    if (health) {
-      th.dataset.healthTone = health.tone;
+    if (indicator) {
+      th.dataset.healthTone = indicator.tone;
     }
-    th.appendChild(buildOutputsBucketedSectionHeading(title, health));
+    th.appendChild(buildOutputsBucketedSectionHeading(title, indicator));
     headRow.appendChild(th);
   });
   thead.appendChild(headRow);
@@ -3336,10 +3681,10 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
   subtotalRow.className = 'pbs-subtotal-row';
   assetSections.forEach((section) => {
     const sectionToken = normalizeSectionToken(section?.key || section?.title || '');
-    const health = sectionEnhancements[sectionToken]?.health || null;
+    const indicator = sectionEnhancements[sectionToken]?.indicator || null;
     const subtotalCell = document.createElement('td');
-    if (health) {
-      subtotalCell.dataset.healthTone = health.tone;
+    if (indicator) {
+      subtotalCell.dataset.healthTone = indicator.tone;
     }
     const subtotalLabel = document.createElement('div');
     subtotalLabel.className = 'pbs-subtotal-label';
@@ -3376,10 +3721,12 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
 
   const summarySection = findOutputsBucketedSection(sections, 'summary');
   if (summarySection) {
+    const summaryToken = normalizeSectionToken(summarySection?.key || summarySection?.title || 'summary');
     outputStack.appendChild(buildOutputsBucketedDetailCard(summarySection, {
       defaultTitle: 'Summary',
       defaultColumns: ['Metric', `Amount (${currencySymbol})`],
-      highlightNetWorth: true
+      highlightNetWorth: true,
+      netWorthContext: sectionEnhancements[summaryToken]?.netWorthContext || null
     }));
   }
 
