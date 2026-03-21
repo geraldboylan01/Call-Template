@@ -641,7 +641,16 @@ export function exportSession(session) {
 }
 
 export function exportPublishedSession(session) {
-  return exportSession(session);
+  const normalized = normalizeSession(session);
+  normalized.updatedAt = nowIso();
+  normalized.modules = normalized.modules.map((module) => ({
+    id: module.id,
+    createdAt: module.createdAt,
+    updatedAt: module.updatedAt,
+    title: module.title,
+    generated: module.generated
+  }));
+  return JSON.stringify(normalized, null, 2);
 }
 
 export function importSession(input) {

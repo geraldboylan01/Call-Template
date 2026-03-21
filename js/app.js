@@ -7,6 +7,7 @@ import {
   createEmptyGenerated,
   normalizeGenerated,
   normalizePbsInputs,
+  exportSession,
   exportPublishedSession,
   importSession,
   importPublishedSession,
@@ -45,7 +46,7 @@ import { runMortgageMathTests } from './tests_mortgage_math.js';
 import {
   buildPublishedCapabilityToken,
   decryptPublishedSessionV2ForAdvisor,
-  encryptPublishedSessionV2
+  encryptPublishedSessionV3
 } from './crypto_session.js';
 import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
@@ -2950,12 +2951,54 @@ function formatPublishedExpiry(expiresAt) {
   }).format(parsed);
 }
 
+function inferExpiryDays(expiresAt) {
+  const parsed = new Date(expiresAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return 30;
+  }
+
+  const diffDays = Math.max(1, Math.round((parsed.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+  if (diffDays <= 10) {
+    return 7;
+  }
+  if (diffDays >= 60) {
+    return 90;
+  }
+  return 30;
+}
+
 function getPublishedClientLink(access) {
   return access?.clientLink || access?.link || '';
 }
 
 function getPublishedAdvisorLink(access) {
   return access?.advisorLink || '';
+}
+
+function getPublishClientEmailFromInput(options = {}) {
+  const { required = false } = options;
+  const normalized = String(ui.publishClientEmailInput?.value || '').trim().toLowerCase();
+  if (!normalized) {
+    if (required) {
+      throw new Error('Enter the client email address first.');
+    }
+    return '';
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error('Enter a valid client email address.');
+  }
+
+  return normalized;
+}
+
+function getPublishExpiryDaysFromInput() {
+  const value = Number(ui.publishExpirySelect?.value || 30);
+  return [7, 30, 90].includes(value) ? value : 30;
+}
+
+function isPublishPinIncludedInEmail() {
+  return Boolean(ui.publishIncludePinEmailToggle?.checked);
 }
 
 function clearPublishedQrCode() {
@@ -2982,6 +3025,58 @@ function renderPublishedQrCode(link) {
   });
 }
 
+function getPublishedQrImageDataUrl() {
+  if (!ui.publishQrCode) {
+    return '';
+  }
+
+  const image = ui.publishQrCode.querySelector('img');
+  if (image && typeof image.src === 'string' && image.src.startsWith('data:image/png;base64,')) {
+    return image.src;
+  }
+
+  const canvas = ui.publishQrCode.querySelector('canvas');
+  if (canvas && typeof canvas.toDataURL === 'function') {
+    try {
+      return canvas.toDataURL('image/png');
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  return '';
+}
+
+function formatPublishedEmailStatus(access) {
+  if (!access) {
+    return 'No final email has been sent yet.';
+  }
+
+  if (access.lastEmailSentAt) {
+    const destination = access.clientEmail ? ` to ${access.clientEmail}` : '';
+    return `Final email sent${destination} on ${formatPublishedExpiry(access.lastEmailSentAt)}.`;
+  }
+
+  if (access.clientEmail) {
+    return `Ready to email ${access.clientEmail}.`;
+  }
+
+  return 'No final email has been sent yet.';
+}
+
+function updatePublishActionState(access = appState.publishedAccess) {
+  if (ui.publishSendEmailButton) {
+    const supported = Boolean(access && Number(access.version) >= 3);
+    const hasEmail = Boolean(String(ui.publishClientEmailInput?.value || '').trim());
+    ui.publishSendEmailButton.disabled = !supported || !hasEmail;
+    ui.publishSendEmailButton.textContent = access?.emailSendCount > 0 ? 'Resend Final Email' : 'Send Final Email';
+  }
+
+  if (ui.publishUpdateExpiryButton) {
+    ui.publishUpdateExpiryButton.disabled = !access || Number(access.version) < 3;
+  }
+}
+
 function buildPublishedEmailCopy(access) {
   const clientName = appState.session?.clientName?.trim() || 'there';
   const clientLink = getPublishedClientLink(access);
@@ -3000,7 +3095,11 @@ function buildPublishedEmailCopy(access) {
   ];
 
   if (access?.pin) {
-    lines.push(`Use this 6-digit PIN to open it: ${access.pin}`);
+    if (isPublishPinIncludedInEmail()) {
+      lines.push(`Use this 6-digit PIN to open it: ${access.pin}`);
+    } else {
+      lines.push('I will share the 6-digit access code separately.');
+    }
   }
 
   lines.push(
@@ -3041,15 +3140,29 @@ function resetPublishResult(options = {}) {
   if (ui.publishExpiryValue) {
     ui.publishExpiryValue.textContent = 'Not published yet';
   }
+  if (ui.publishEmailStatus) {
+    ui.publishEmailStatus.textContent = 'No final email has been sent yet.';
+  }
   clearPublishedQrCode();
 
+  if (clearInputs && ui.publishClientEmailInput) {
+    ui.publishClientEmailInput.value = '';
+  }
+  if (clearInputs && ui.publishExpirySelect) {
+    ui.publishExpirySelect.value = '30';
+  }
   if (clearInputs && ui.publishPinInput) {
     ui.publishPinInput.value = '';
   }
   if (clearInputs && ui.publishPinToggle) {
     ui.publishPinToggle.checked = false;
   }
+  if (clearInputs && ui.publishIncludePinEmailToggle) {
+    ui.publishIncludePinEmailToggle.checked = false;
+    ui.publishIncludePinEmailToggle.disabled = false;
+  }
   syncPublishPinControls();
+  updatePublishActionState(clearAccess ? null : appState.publishedAccess);
 }
 
 function setPublishModalOpen(open) {
@@ -3102,20 +3215,39 @@ async function maybeLoadPublishedSessionFromLocation() {
   return {
     session: importPublishedSession(decrypted.plaintext),
     access: {
-      version: 2,
+      version: Number(bundle?.v) || 2,
       publishedId,
       clientLink: buildClientSessionLink(publishedId, decrypted.clientSecretB64u),
       advisorLink: buildAdvisorSessionLink(publishedId, advisorSecretB64u),
       pin: decrypted.clientPin || '',
-      expiresAt: bundle.expiresAt
+      expiresAt: bundle.expiresAt,
+      expiryDays: inferExpiryDays(bundle.expiresAt),
+      clientEmail: bundle?.meta?.clientEmail || '',
+      emailSendCount: Number(bundle?.meta?.emailSendCount || 0),
+      lastEmailSentAt: bundle?.meta?.lastEmailSentAt || null,
+      status: bundle?.status || 'active'
     }
   };
 }
 
+function shouldOpenLocalDraftAfterPublishedError(message) {
+  return window.confirm(`${message}\n\nOpen the local draft saved in this browser instead?`);
+}
+
 async function publishCurrentSession() {
-  const plaintext = exportPublishedSession(appState.session);
+  const clientPlaintext = exportPublishedSession(appState.session);
+  const advisorPlaintext = exportSession(appState.session);
   const pin = getPublishPinFromInput();
-  const encryptedPayload = await encryptPublishedSessionV2(plaintext, { pin });
+  const clientEmail = getPublishClientEmailFromInput();
+  const expiresInDays = getPublishExpiryDaysFromInput();
+  const encryptedPayload = await encryptPublishedSessionV3({
+    clientSessionJson: clientPlaintext,
+    advisorSessionJson: advisorPlaintext,
+    pin,
+    clientName: appState.session?.clientName || 'Client',
+    clientEmail,
+    expiresInDays
+  });
   const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions`, {
     method: 'POST',
     headers: {
@@ -3134,12 +3266,17 @@ async function publishCurrentSession() {
   const advisorLink = buildAdvisorSessionLink(publishedId, encryptedPayload.advisorSecretB64u);
 
   return {
-    version: 2,
+    version: 3,
     publishedId,
     pin: encryptedPayload.clientPin,
     clientLink,
     advisorLink,
-    expiresAt: payload?.expiresAt || ''
+    expiresAt: payload?.expiresAt || '',
+    expiryDays: expiresInDays,
+    clientEmail: payload?.clientEmail || clientEmail,
+    emailSendCount: Number(payload?.emailSendCount || 0),
+    lastEmailSentAt: payload?.lastEmailSentAt || null,
+    status: payload?.status || 'active'
   };
 }
 
@@ -3148,7 +3285,7 @@ async function revokePublishedSession(access) {
     throw new Error('No published access to revoke.');
   }
 
-  if (access.version === 2) {
+  if (access.publishedId) {
     const publishedId = String(access.publishedId || '').trim();
     const advisorSecretB64u = getLinkHashParam(access.advisorLink, 'ak');
     if (!publishedId || !advisorSecretB64u) {
@@ -3241,6 +3378,12 @@ function renderPublishedAccess(access) {
     ui.publishPinToggle.checked = Boolean(access.pin);
   }
   syncPublishPinControls();
+  if (ui.publishClientEmailInput) {
+    ui.publishClientEmailInput.value = access.clientEmail || '';
+  }
+  if (ui.publishExpirySelect) {
+    ui.publishExpirySelect.value = String(access.expiryDays || inferExpiryDays(access.expiresAt));
+  }
   if (ui.publishPinInput) {
     ui.publishPinInput.value = access.pin || '';
   }
@@ -3254,6 +3397,12 @@ function renderPublishedAccess(access) {
   if (ui.publishCopyPinButton) {
     ui.publishCopyPinButton.classList.toggle('is-hidden', !access.pin);
   }
+  if (ui.publishIncludePinEmailToggle) {
+    ui.publishIncludePinEmailToggle.disabled = !access.pin;
+    if (!access.pin) {
+      ui.publishIncludePinEmailToggle.checked = false;
+    }
+  }
 
   if (ui.publishLinkValue) {
     ui.publishLinkValue.value = getPublishedClientLink(access);
@@ -3266,8 +3415,12 @@ function renderPublishedAccess(access) {
   if (ui.publishExpiryValue) {
     ui.publishExpiryValue.textContent = formatPublishedExpiry(access.expiresAt);
   }
+  if (ui.publishEmailStatus) {
+    ui.publishEmailStatus.textContent = formatPublishedEmailStatus(access);
+  }
 
   renderPublishedQrCode(getPublishedClientLink(access));
+  updatePublishActionState(access);
 }
 
 async function handlePublishGenerate() {
@@ -3346,6 +3499,129 @@ async function handleCopyPublishedEmailCopy() {
     showToast('Email copy copied.');
   } catch (_error) {
     showToast('Could not copy email copy.', 'error');
+  }
+}
+
+async function sendPublishedSessionEmail(access) {
+  if (!access || Number(access.version) < 3) {
+    throw new Error('Email sending is only available for newly published sessions.');
+  }
+
+  const publishedId = String(access.publishedId || '').trim();
+  const advisorSecretB64u = getLinkHashParam(access.advisorLink, 'ak');
+  if (!publishedId || !advisorSecretB64u) {
+    throw new Error('Advisor link is unavailable for email sending.');
+  }
+
+  const clientEmail = getPublishClientEmailFromInput({ required: true });
+  const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
+  const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/send-email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Published-Capability': capability
+    },
+    body: JSON.stringify({
+      clientEmail,
+      clientName: appState.session?.clientName || 'Client',
+      clientLink: getPublishedClientLink(access),
+      pin: access.pin || '',
+      includePinInEmail: isPublishPinIncludedInEmail(),
+      qrImageDataUrl: getPublishedQrImageDataUrl()
+    })
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Failed to send final email (${response.status}).`);
+  }
+
+  return response.json();
+}
+
+async function updatePublishedSessionExpiry(access) {
+  if (!access || Number(access.version) < 3) {
+    throw new Error('Expiry updates are only available for newly published sessions.');
+  }
+
+  const publishedId = String(access.publishedId || '').trim();
+  const advisorSecretB64u = getLinkHashParam(access.advisorLink, 'ak');
+  if (!publishedId || !advisorSecretB64u) {
+    throw new Error('Advisor link is unavailable for expiry changes.');
+  }
+
+  const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
+  const expiresInDays = getPublishExpiryDaysFromInput();
+  const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/extend`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Published-Capability': capability
+    },
+    body: JSON.stringify({
+      expiresInDays
+    })
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Failed to update expiry (${response.status}).`);
+  }
+
+  return response.json();
+}
+
+async function handleSendPublishedEmail() {
+  if (!appState.publishedAccess) {
+    return;
+  }
+
+  setPublishError('');
+  if (ui.publishSendEmailButton) {
+    ui.publishSendEmailButton.disabled = true;
+  }
+
+  try {
+    const payload = await sendPublishedSessionEmail(appState.publishedAccess);
+    appState.publishedAccess = {
+      ...appState.publishedAccess,
+      clientEmail: payload.clientEmail || getPublishClientEmailFromInput(),
+      lastEmailSentAt: payload.lastEmailSentAt || appState.publishedAccess.lastEmailSentAt,
+      emailSendCount: Number(payload.emailSendCount || appState.publishedAccess.emailSendCount || 0)
+    };
+    renderPublishedAccess(appState.publishedAccess);
+    showToast('Final email sent.');
+  } catch (error) {
+    setPublishError(error?.message || 'Could not send the final email.');
+  } finally {
+    updatePublishActionState();
+  }
+}
+
+async function handleUpdatePublishedExpiry() {
+  if (!appState.publishedAccess) {
+    return;
+  }
+
+  setPublishError('');
+  if (ui.publishUpdateExpiryButton) {
+    ui.publishUpdateExpiryButton.disabled = true;
+  }
+
+  try {
+    const payload = await updatePublishedSessionExpiry(appState.publishedAccess);
+    appState.publishedAccess = {
+      ...appState.publishedAccess,
+      expiresAt: payload.expiresAt || appState.publishedAccess.expiresAt,
+      expiryDays: getPublishExpiryDaysFromInput(),
+      status: payload.status || appState.publishedAccess.status
+    };
+    renderPublishedAccess(appState.publishedAccess);
+    showToast('Expiry updated.');
+  } catch (error) {
+    setPublishError(error?.message || 'Could not update the expiry.');
+  } finally {
+    updatePublishActionState();
   }
 }
 
@@ -5392,9 +5668,35 @@ function bindEvents() {
     });
   }
 
+  if (ui.publishSendEmailButton) {
+    ui.publishSendEmailButton.addEventListener('click', async () => {
+      await handleSendPublishedEmail();
+    });
+  }
+
+  if (ui.publishUpdateExpiryButton) {
+    ui.publishUpdateExpiryButton.addEventListener('click', async () => {
+      await handleUpdatePublishedExpiry();
+    });
+  }
+
   if (ui.publishRevokeButton) {
     ui.publishRevokeButton.addEventListener('click', async () => {
       await handleRevokePublishedAccess();
+    });
+  }
+
+  if (ui.publishClientEmailInput) {
+    ui.publishClientEmailInput.addEventListener('input', () => {
+      if (!appState.publishedAccess) {
+        updatePublishActionState();
+        return;
+      }
+      appState.publishedAccess.clientEmail = String(ui.publishClientEmailInput.value || '').trim().toLowerCase();
+      if (ui.publishEmailStatus) {
+        ui.publishEmailStatus.textContent = formatPublishedEmailStatus(appState.publishedAccess);
+      }
+      updatePublishActionState();
     });
   }
 
@@ -5731,14 +6033,20 @@ export async function initApp(options = {}) {
             startupPublishedAccess = publishedBootstrap.access;
             startupNotice = 'Opened published snapshot.';
           } else {
-            appState.session = loadSession();
             if (publishedBootstrap?.error) {
               startupNotice = publishedBootstrap.error;
+              appState.session = shouldOpenLocalDraftAfterPublishedError(publishedBootstrap.error)
+                ? loadSession()
+                : newSession('Client');
+            } else {
+              appState.session = loadSession();
             }
           }
         } catch (error) {
-          appState.session = loadSession();
           startupNotice = error?.message || 'Could not reopen published session.';
+          appState.session = shouldOpenLocalDraftAfterPublishedError(startupNotice)
+            ? loadSession()
+            : newSession('Client');
         }
       } else {
         appState.session = loadSession();

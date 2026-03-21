@@ -4,6 +4,7 @@ const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
 const PAYLOAD_VERSION = 1;
 const PUBLISHED_PAYLOAD_VERSION = 2;
+const PUBLISHED_SPLIT_PAYLOAD_VERSION = 3;
 const PUBLISHED_KEY_LENGTH = 32;
 const HKDF_SALT = new Uint8Array(32);
 const PUBLISHED_INFO = Object.freeze({
@@ -296,6 +297,19 @@ function assertPublishedEnvelope(payload) {
   return payload;
 }
 
+function assertPublishedSplitEnvelope(payload) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Published session payload is missing.');
+  }
+
+  if (Number(payload.v) !== PUBLISHED_SPLIT_PAYLOAD_VERSION) {
+    throw new Error(`Unsupported published session version: ${payload?.v}`);
+  }
+
+  assertCipherEnvelope(payload.payload, 'Encrypted session payload');
+  return payload;
+}
+
 function assertPinBundle(bundle) {
   if (!bundle || typeof bundle !== 'object') {
     throw new Error('Secure PIN bundle is malformed.');
@@ -327,6 +341,23 @@ function assertAdvisorBundle(bundle) {
   }
 
   return bundle;
+}
+
+function assertPublishedAccessBundle(payload, role) {
+  const accessKey = role === 'advisor' ? 'advisorAccess' : 'clientAccess';
+  const access = payload?.[accessKey];
+  if (access && typeof access === 'object') {
+    return access;
+  }
+
+  // Be tolerant of the Phase 1 response contract that flattened `wrap`.
+  if (payload && typeof payload.wrap === 'object') {
+    return role === 'advisor'
+      ? { wrap: payload.wrap }
+      : { wrap: payload.wrap, pinRequired: Boolean(payload.pinRequired) };
+  }
+
+  throw new Error(`${role === 'advisor' ? 'Advisor' : 'Client'} access bundle is missing.`);
 }
 
 export async function encryptSessionJson(pin, sessionJsonString) {
@@ -475,6 +506,133 @@ export async function encryptPublishedSessionV2(sessionJsonString, options = {})
   };
 }
 
+function buildPinWrappedDekBundle(pin, dekBytes) {
+  return (async () => {
+    const pinSaltBytes = randomBytes(SALT_LENGTH);
+    const pinWrapIvBytes = randomBytes(IV_LENGTH);
+    const pinKey = await derivePublishedPinKey(pin, pinSaltBytes);
+    const pinWrapCiphertext = await encryptBytesWithKey(pinKey, dekBytes, pinWrapIvBytes);
+    return {
+      v: 1,
+      kind: 'pin-wrapped-dek',
+      kdf: {
+        alg: 'PBKDF2-SHA-256',
+        iterations: PUBLISHED_PIN_PBKDF2_ITERATIONS,
+        saltB64u: bytesToBase64Url(pinSaltBytes)
+      },
+      wrap: toCipherEnvelope(pinWrapIvBytes, pinWrapCiphertext)
+    };
+  })();
+}
+
+async function encryptPublishedPayloadWithSecret(sessionJsonString, secretBytes, wrapInfo, authInfo, options = {}) {
+  if (typeof sessionJsonString !== 'string') {
+    throw new Error('Published session payload must be a JSON string.');
+  }
+
+  const plaintextBytes = new TextEncoder().encode(sessionJsonString);
+  const dekBytes = randomBytes(PUBLISHED_KEY_LENGTH);
+  const payloadIvBytes = randomBytes(IV_LENGTH);
+  const payloadKey = await importAesKey(dekBytes);
+  const payloadCiphertext = await encryptBytesWithKey(payloadKey, plaintextBytes, payloadIvBytes);
+  const wrapKey = await deriveHkdfAesKey(secretBytes, wrapInfo);
+  const authTokenBytes = await deriveHkdfBytes(secretBytes, authInfo, PUBLISHED_KEY_LENGTH);
+  const authHashBytes = await sha256Bytes(authTokenBytes);
+
+  let wrapPlaintextBytes = dekBytes;
+  if (typeof options.pin === 'string' && options.pin) {
+    const pinBundle = await buildPinWrappedDekBundle(options.pin, dekBytes);
+    wrapPlaintextBytes = new TextEncoder().encode(JSON.stringify(pinBundle));
+  } else if (typeof options.buildWrapPlaintextBytes === 'function') {
+    wrapPlaintextBytes = options.buildWrapPlaintextBytes(dekBytes);
+  } else if (options.wrapPlaintextBytes instanceof Uint8Array) {
+    wrapPlaintextBytes = options.wrapPlaintextBytes;
+  }
+
+  const wrapIvBytes = randomBytes(IV_LENGTH);
+  const wrapCiphertext = await encryptBytesWithKey(wrapKey, wrapPlaintextBytes, wrapIvBytes);
+
+  return {
+    payload: toCipherEnvelope(payloadIvBytes, payloadCiphertext),
+    wrap: toCipherEnvelope(wrapIvBytes, wrapCiphertext),
+    authHashB64u: bytesToBase64Url(authHashBytes),
+    dekB64u: bytesToBase64Url(dekBytes)
+  };
+}
+
+export async function encryptPublishedSessionV3(options = {}) {
+  const clientSessionJson = typeof options.clientSessionJson === 'string' ? options.clientSessionJson : '';
+  const advisorSessionJson = typeof options.advisorSessionJson === 'string' ? options.advisorSessionJson : '';
+  if (!clientSessionJson || !advisorSessionJson) {
+    throw new Error('Client and advisor session payloads are both required.');
+  }
+
+  const pin = normalizeOptionalPublishedPin(options.pin);
+  const clientSecretBytes = randomBytes(PUBLISHED_KEY_LENGTH);
+  const advisorSecretBytes = randomBytes(PUBLISHED_KEY_LENGTH);
+  const clientSecretB64u = bytesToBase64Url(clientSecretBytes);
+  const advisorSecretB64u = bytesToBase64Url(advisorSecretBytes);
+
+  const clientBundle = await encryptPublishedPayloadWithSecret(
+    clientSessionJson,
+    clientSecretBytes,
+    PUBLISHED_INFO.clientWrap,
+    PUBLISHED_INFO.clientAuth,
+    { pin }
+  );
+
+  const advisorBundle = await encryptPublishedPayloadWithSecret(
+    advisorSessionJson,
+    advisorSecretBytes,
+    PUBLISHED_INFO.advisorWrap,
+    PUBLISHED_INFO.advisorAuth,
+    {
+      buildWrapPlaintextBytes: (advisorDekBytes) => new TextEncoder().encode(JSON.stringify({
+        v: 1,
+        kind: 'advisor-access',
+        dekB64u: bytesToBase64Url(advisorDekBytes),
+        clientSecretB64u,
+        clientPin: pin || ''
+      }))
+    }
+  );
+
+  return {
+    clientSecretB64u,
+    advisorSecretB64u,
+    clientPin: pin || '',
+    requestBody: {
+      v: PUBLISHED_SPLIT_PAYLOAD_VERSION,
+      meta: {
+        clientName: typeof options.clientName === 'string' ? options.clientName.trim() : '',
+        clientEmail: typeof options.clientEmail === 'string' ? options.clientEmail.trim() : '',
+        expiresInDays: Number(options.expiresInDays) || 30
+      },
+      clientBundle: {
+        v: PUBLISHED_SPLIT_PAYLOAD_VERSION,
+        kind: 'published-client-session',
+        payload: clientBundle.payload,
+        clientAccess: {
+          pinRequired: Boolean(pin),
+          wrap: clientBundle.wrap
+        }
+      },
+      advisorBundle: {
+        v: PUBLISHED_SPLIT_PAYLOAD_VERSION,
+        kind: 'published-advisor-session',
+        payload: advisorBundle.payload,
+        advisorAccess: {
+          wrap: advisorBundle.wrap
+        }
+      },
+      auth: {
+        clientAuthHashB64u: clientBundle.authHashB64u,
+        advisorAuthHashB64u: advisorBundle.authHashB64u
+      }
+    }
+  };
+}
+
 async function decryptPublishedPayloadWithDek(dekBytes, encryptedPayload, invalidMessage) {
   assertCipherEnvelope(encryptedPayload, 'Encrypted session payload');
   const payloadKey = await importAesKey(dekBytes);
@@ -488,23 +646,23 @@ async function decryptPublishedPayloadWithDek(dekBytes, encryptedPayload, invali
 }
 
 async function unwrapClientDek(clientSecretB64u, payload, pin) {
-  const envelope = assertPublishedEnvelope(payload);
-  if (!envelope.clientAccess || typeof envelope.clientAccess !== 'object') {
-    throw new Error('Client access bundle is missing.');
-  }
+  const envelope = Number(payload?.v) === PUBLISHED_SPLIT_PAYLOAD_VERSION
+    ? assertPublishedSplitEnvelope(payload)
+    : assertPublishedEnvelope(payload);
+  const clientAccess = assertPublishedAccessBundle(envelope, 'client');
 
-  assertCipherEnvelope(envelope.clientAccess.wrap, 'Client access bundle');
+  assertCipherEnvelope(clientAccess.wrap, 'Client access bundle');
   const clientSecretBytes = base64UrlToBytes(clientSecretB64u);
   const clientWrapKey = await deriveHkdfAesKey(clientSecretBytes, PUBLISHED_INFO.clientWrap);
   const wrappedBytesBuffer = await decryptBytesWithKey(
     clientWrapKey,
-    base64UrlToBytes(envelope.clientAccess.wrap.ctB64u),
-    base64UrlToBytes(envelope.clientAccess.wrap.ivB64u),
+    base64UrlToBytes(clientAccess.wrap.ctB64u),
+    base64UrlToBytes(clientAccess.wrap.ivB64u),
     'This secure link is invalid or incomplete.'
   );
   const wrappedBytes = new Uint8Array(wrappedBytesBuffer);
 
-  if (!envelope.clientAccess.pinRequired) {
+  if (!clientAccess.pinRequired) {
     if (wrappedBytes.length !== PUBLISHED_KEY_LENGTH) {
       throw new Error('Published session key is malformed.');
     }
@@ -532,26 +690,62 @@ async function unwrapClientDek(clientSecretB64u, payload, pin) {
 }
 
 export async function decryptPublishedSessionV2ForClient(clientSecretB64u, payload, options = {}) {
+  if (Number(payload?.v) === PUBLISHED_SPLIT_PAYLOAD_VERSION) {
+    return decryptPublishedSessionV3ForClient(clientSecretB64u, payload, options);
+  }
   const dekBytes = await unwrapClientDek(clientSecretB64u, payload, options.pin);
   return decryptPublishedPayloadWithDek(dekBytes, payload.payload, 'This secure link is invalid or incomplete.');
 }
 
 export async function decryptPublishedSessionV2ForAdvisor(advisorSecretB64u, payload) {
-  const envelope = assertPublishedEnvelope(payload);
-  if (!envelope.advisorAccess || typeof envelope.advisorAccess !== 'object') {
-    throw new Error('Advisor access bundle is missing.');
+  if (Number(payload?.v) === PUBLISHED_SPLIT_PAYLOAD_VERSION) {
+    return decryptPublishedSessionV3ForAdvisor(advisorSecretB64u, payload);
   }
+  const envelope = assertPublishedEnvelope(payload);
+  const advisorAccess = assertPublishedAccessBundle(envelope, 'advisor');
 
-  assertCipherEnvelope(envelope.advisorAccess.wrap, 'Advisor access bundle');
+  assertCipherEnvelope(advisorAccess.wrap, 'Advisor access bundle');
   const advisorSecretBytes = base64UrlToBytes(advisorSecretB64u);
   const advisorWrapKey = await deriveHkdfAesKey(advisorSecretBytes, PUBLISHED_INFO.advisorWrap);
   const advisorBundleBuffer = await decryptBytesWithKey(
     advisorWrapKey,
-    base64UrlToBytes(envelope.advisorAccess.wrap.ctB64u),
-    base64UrlToBytes(envelope.advisorAccess.wrap.ivB64u),
+    base64UrlToBytes(advisorAccess.wrap.ctB64u),
+    base64UrlToBytes(advisorAccess.wrap.ivB64u),
     'This advisor link is invalid or incomplete.'
   );
   const advisorBundle = assertAdvisorBundle(JSON.parse(new TextDecoder().decode(advisorBundleBuffer)));
+  const plaintext = await decryptPublishedPayloadWithDek(
+    base64UrlToBytes(advisorBundle.dekB64u),
+    envelope.payload,
+    'This advisor link is invalid or incomplete.'
+  );
+
+  return {
+    plaintext,
+    clientSecretB64u: advisorBundle.clientSecretB64u,
+    clientPin: typeof advisorBundle.clientPin === 'string' ? advisorBundle.clientPin : ''
+  };
+}
+
+export async function decryptPublishedSessionV3ForClient(clientSecretB64u, payload, options = {}) {
+  const dekBytes = await unwrapClientDek(clientSecretB64u, payload, options.pin);
+  return decryptPublishedPayloadWithDek(dekBytes, payload.payload, 'This secure link is invalid or incomplete.');
+}
+
+export async function decryptPublishedSessionV3ForAdvisor(advisorSecretB64u, payload) {
+  const envelope = assertPublishedSplitEnvelope(payload);
+  const advisorAccess = assertPublishedAccessBundle(envelope, 'advisor');
+
+  assertCipherEnvelope(advisorAccess.wrap, 'Advisor access bundle');
+  const advisorSecretBytes = base64UrlToBytes(advisorSecretB64u);
+  const advisorWrapKey = await deriveHkdfAesKey(advisorSecretBytes, PUBLISHED_INFO.advisorWrap);
+  const advisorAccessBuffer = await decryptBytesWithKey(
+    advisorWrapKey,
+    base64UrlToBytes(advisorAccess.wrap.ctB64u),
+    base64UrlToBytes(advisorAccess.wrap.ivB64u),
+    'This advisor link is invalid or incomplete.'
+  );
+  const advisorBundle = assertAdvisorBundle(JSON.parse(new TextDecoder().decode(advisorAccessBuffer)));
   const plaintext = await decryptPublishedPayloadWithDek(
     base64UrlToBytes(advisorBundle.dekB64u),
     envelope.payload,
