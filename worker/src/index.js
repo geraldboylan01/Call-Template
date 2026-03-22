@@ -21,12 +21,15 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 80;
 const PUBLISHED_DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PUBLISHED_ALLOWED_EXPIRY_DAYS = new Set([7, 30, 90]);
+const PUBLISHED_CLIENT_LINK_HOSTS = new Set(['planeir.ie', 'www.planeir.ie']);
+const PUBLISHED_CLIENT_LINK_PATH = '/app/session.html';
 const MAX_LEAD_NAME_LENGTH = 120;
 const MAX_LEAD_EMAIL_LENGTH = 160;
 const MAX_LEAD_PHONE_LENGTH = 40;
 const MAX_LEAD_REASON_LENGTH = 2_000;
 const MAX_CLIENT_NAME_LENGTH = 160;
 const MAX_CLIENT_EMAIL_LENGTH = 160;
+const MAX_USER_AGENT_LENGTH = 512;
 const PREFLIGHT_MAX_AGE_SECONDS = 86_400;
 const DEFAULT_ALLOWED_REQUEST_HEADERS = 'Content-Type';
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
@@ -139,6 +142,12 @@ function getRouteConfig(pathname) {
   }
 
   if (/^\/api\/published-sessions\/[^/]+\/send-email$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/published-sessions\/[^/]+\/unlocked$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
     };
@@ -286,6 +295,15 @@ function normalizeEnvValue(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeUserAgent(value) {
+  const normalized = normalizeEnvValue(value);
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.slice(0, MAX_USER_AGENT_LENGTH);
+}
+
 function isTruthyEnvValue(value) {
   if (value === true) {
     return true;
@@ -297,6 +315,61 @@ function isTruthyEnvValue(value) {
 
 function splitEmailList(value) {
   return normalizeEnvValue(value).split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function validatePublishedClientLink(value, publishedId) {
+  const normalized = normalizeLeadValue(value);
+  if (!normalized) {
+    throw new Error('Client link is required to send this email.');
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(normalized);
+  } catch (_error) {
+    throw new Error('Client link is invalid.');
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Client link must use HTTPS.');
+  }
+
+  if (!PUBLISHED_CLIENT_LINK_HOSTS.has(parsed.hostname.toLowerCase())) {
+    throw new Error('Client link host is not allowed.');
+  }
+
+  const normalizedPath = normalizePathname(parsed.pathname);
+  if (normalizedPath !== PUBLISHED_CLIENT_LINK_PATH) {
+    throw new Error('Client link path is invalid.');
+  }
+
+  const searchKeys = [...parsed.searchParams.keys()];
+  if (searchKeys.length !== 1 || searchKeys[0] !== 'pub') {
+    throw new Error('Client link query is invalid.');
+  }
+
+  const publishedParam = normalizeLeadValue(parsed.searchParams.get('pub'));
+  if (publishedParam !== publishedId) {
+    throw new Error('Client link does not match this session.');
+  }
+
+  const hash = parsed.hash.startsWith('#') ? parsed.hash.slice(1) : parsed.hash;
+  const hashParams = new URLSearchParams(hash);
+  const hashKeys = [...hashParams.keys()];
+  if (hashKeys.length !== 1 || hashKeys[0] !== 'ck') {
+    throw new Error('Client link hash is invalid.');
+  }
+
+  const clientSecret = normalizeLeadValue(hashParams.get('ck'));
+  if (!/^[A-Za-z0-9_-]{20,200}$/.test(clientSecret)) {
+    throw new Error('Client link key is invalid.');
+  }
+
+  return {
+    href: parsed.toString(),
+    host: parsed.hostname.toLowerCase(),
+    path: normalizedPath
+  };
 }
 
 function escapeHtml(value) {
@@ -1137,6 +1210,10 @@ function normalizePublishedSessionRow(row) {
     advisorOpenCount: Number(row.advisor_open_count || 0),
     lastClientOpenedAt: row.last_client_opened_at || null,
     lastAdvisorOpenedAt: row.last_advisor_opened_at || null,
+    clientUnlockCount: Number(row.client_unlock_count || 0),
+    advisorUnlockCount: Number(row.advisor_unlock_count || 0),
+    lastClientUnlockedAt: row.last_client_unlocked_at || null,
+    lastAdvisorUnlockedAt: row.last_advisor_unlocked_at || null,
     lastEmailSentAt: row.last_email_sent_at || null,
     emailSendCount: Number(row.email_send_count || 0),
     qrAssetToken: row.qr_asset_token || '',
@@ -1167,6 +1244,10 @@ async function getPublishedSessionRow(env, publishedId) {
       advisor_open_count,
       last_client_opened_at,
       last_advisor_opened_at,
+      client_unlock_count,
+      advisor_unlock_count,
+      last_client_unlocked_at,
+      last_advisor_unlocked_at,
       last_email_sent_at,
       email_send_count,
       qr_asset_token,
@@ -1221,12 +1302,16 @@ async function insertPublishedSessionRow(env, record) {
       advisor_open_count,
       last_client_opened_at,
       last_advisor_opened_at,
+      client_unlock_count,
+      advisor_unlock_count,
+      last_client_unlocked_at,
+      last_advisor_unlocked_at,
       last_email_sent_at,
       email_send_count,
       qr_asset_token,
       qr_asset_r2_key,
       qr_asset_content_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     record.id,
     record.version,
@@ -1242,6 +1327,10 @@ async function insertPublishedSessionRow(env, record) {
     record.advisorAuthHashB64u,
     record.clientR2Key,
     record.advisorR2Key,
+    0,
+    0,
+    null,
+    null,
     0,
     0,
     null,
@@ -1288,6 +1377,18 @@ async function recordPublishedOpen(env, publishedId, role) {
   `).bind(timestamp, timestamp, publishedId).run();
 }
 
+async function recordPublishedUnlock(env, publishedId, role) {
+  const db = getPublishedSessionsDb(env);
+  const timestamp = nowIso();
+  const countColumn = role === 'advisor' ? 'advisor_unlock_count' : 'client_unlock_count';
+  const lastUnlockedColumn = role === 'advisor' ? 'last_advisor_unlocked_at' : 'last_client_unlocked_at';
+  await db.prepare(`
+    UPDATE published_sessions
+    SET updated_at = ?, ${countColumn} = ${countColumn} + 1, ${lastUnlockedColumn} = ?
+    WHERE id = ?
+  `).bind(timestamp, timestamp, publishedId).run();
+}
+
 async function updatePublishedEmailMetadata(env, publishedId, values) {
   const db = getPublishedSessionsDb(env);
   await db.prepare(`
@@ -1312,6 +1413,27 @@ async function updatePublishedEmailMetadata(env, publishedId, values) {
   ).run();
 }
 
+async function clearPublishedQrAssetMetadata(env, publishedId) {
+  const db = getPublishedSessionsDb(env);
+  await db.prepare(`
+    UPDATE published_sessions
+    SET
+      qr_asset_token = NULL,
+      qr_asset_r2_key = NULL,
+      qr_asset_content_type = NULL,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(nowIso(), publishedId).run();
+}
+
+async function deletePublishedQrAsset(env, objectKey) {
+  if (!objectKey) {
+    return;
+  }
+
+  await env.SESSIONS_BUCKET.delete(objectKey);
+}
+
 function isPublishedSessionExpired(row) {
   return Date.parse(row.expiresAt) <= Date.now();
 }
@@ -1322,9 +1444,27 @@ async function markPublishedExpiredIfNeeded(env, row) {
   }
 
   await updatePublishedStatus(env, row.id, 'expired', null);
+  if (row.qrAssetR2Key) {
+    await deletePublishedQrAsset(env, row.qrAssetR2Key).catch((error) => {
+      console.error('Failed to delete QR asset on expiry', {
+        publishedId: row.id,
+        qrAssetR2Key: row.qrAssetR2Key,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+    await clearPublishedQrAssetMetadata(env, row.id).catch((error) => {
+      console.error('Failed to clear QR metadata on expiry', {
+        publishedId: row.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }
   return {
     ...row,
-    status: 'expired'
+    status: 'expired',
+    qrAssetToken: '',
+    qrAssetR2Key: '',
+    qrAssetContentType: ''
   };
 }
 
@@ -1755,7 +1895,9 @@ function buildPublishedSessionResponseV3(row, bundle, role) {
       lastEmailSentAt: row.lastEmailSentAt,
       emailSendCount: row.emailSendCount,
       lastAdvisorOpenedAt: row.lastAdvisorOpenedAt,
-      advisorOpenCount: row.advisorOpenCount
+      advisorOpenCount: row.advisorOpenCount,
+      lastAdvisorUnlockedAt: row.lastAdvisorUnlockedAt,
+      advisorUnlockCount: row.advisorUnlockCount
     };
   } else {
     response.clientAccess = bundle.clientAccess;
@@ -1836,7 +1978,7 @@ async function handleGetPublishedSessionV3(request, env, origin, publishedId, ro
   );
 
   await recordPublishedOpen(env, publishedId, role);
-  await insertPublishedSessionEvent(env, publishedId, role, 'opened', {
+  await insertPublishedSessionEvent(env, publishedId, role, 'bundle-fetched', {
     version: row.version
   });
 
@@ -1899,6 +2041,14 @@ async function handleRevokePublishedSession(request, env, origin, publishedId) {
 
     const revokedAt = nowIso();
     await updatePublishedStatus(env, publishedId, 'revoked', revokedAt);
+    await deletePublishedQrAsset(env, row.qrAssetR2Key).catch((error) => {
+      console.error('Failed to delete QR asset on revoke', {
+        publishedId,
+        qrAssetR2Key: row.qrAssetR2Key,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+    await clearPublishedQrAssetMetadata(env, publishedId);
     await insertPublishedSessionEvent(env, publishedId, 'advisor', 'revoked', null);
     return jsonResponse({ ok: true, status: 'revoked', revokedAt }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
@@ -1991,6 +2141,78 @@ async function handleExtendPublishedSession(request, env, origin, publishedId) {
   }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
 }
 
+async function handlePublishedSessionUnlocked(request, env, origin, publishedId) {
+  const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
+  if (originError) {
+    return originError;
+  }
+
+  const clientIp = getClientIp(request);
+  if (!checkRateLimit(clientIp)) {
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
+  }
+
+  let body = null;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    body = null;
+  }
+
+  const role = body?.role === 'advisor' ? 'advisor' : 'client';
+  const source = normalizeLeadValue(body?.source || '') || (role === 'advisor' ? 'advisor-reopen' : 'viewer');
+
+  let row = await getPublishedSessionRow(env, publishedId);
+  if (row) {
+    row = await markPublishedExpiredIfNeeded(env, row);
+    const authorized = await verifyPublishedCapability(request, row, role);
+    if (!authorized) {
+      return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+    }
+
+    if (row.status !== 'active') {
+      return jsonResponse({ error: 'This secure session is no longer active.' }, 410, origin, 'POST,OPTIONS', null, noStoreHeaders());
+    }
+
+    await recordPublishedUnlock(env, publishedId, role);
+    await insertPublishedSessionEvent(env, publishedId, role, 'unlocked', {
+      version: row.version,
+      source,
+      requestIp: clientIp,
+      userAgent: normalizeUserAgent(request.headers.get('User-Agent'))
+    });
+
+    return jsonResponse({ ok: true }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  let manifest;
+  try {
+    manifest = await loadPublishedManifest(env, publishedId);
+  } catch (error) {
+    console.error('Failed to read published session manifest for unlock telemetry', {
+      publishedId,
+      role,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'Could not verify this secure session right now.' }, 500, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (!manifest) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  const authorized = await verifyPublishedCapability(request, manifest, role);
+  if (!authorized) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (manifest.revokedAt || isPublishedManifestExpired(manifest)) {
+    return jsonResponse({ error: 'This secure session is no longer active.' }, 410, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  return jsonResponse({ ok: true }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
+}
+
 async function handleSendPublishedSessionEmail(request, env, origin, publishedId) {
   const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
   if (originError) {
@@ -2032,18 +2254,31 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     return jsonResponse({ error: error.message || 'Invalid email payload.' }, 400, origin, 'POST,OPTIONS');
   }
 
-  const clientLink = normalizeLeadValue(body?.clientLink);
-  if (!clientLink) {
-    return jsonResponse({ error: 'Client link is required to send this email.' }, 400, origin, 'POST,OPTIONS');
+  let validatedClientLink;
+  try {
+    validatedClientLink = validatePublishedClientLink(body?.clientLink, publishedId);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Client link is invalid.' }, 400, origin, 'POST,OPTIONS');
   }
 
-  const includePinInEmail = body?.includePinInEmail === true;
   const pin = normalizeLeadValue(body?.pin);
+  const includePinInEmail = body?.includePinInEmail === true && row.pinRequired;
+  const acknowledgedInlinePinRisk = body?.acknowledgeInlinePinRisk === true;
+  if (includePinInEmail && !/^\d{6}$/.test(pin)) {
+    return jsonResponse({ error: 'PIN must be a 6-digit number to include it in the email.' }, 400, origin, 'POST,OPTIONS');
+  }
+  if (includePinInEmail && !acknowledgedInlinePinRisk) {
+    return jsonResponse({ error: 'Confirm inline PIN delivery before sending the final email.' }, 400, origin, 'POST,OPTIONS');
+  }
+
   let qrImage = null;
   try {
     qrImage = parseQrImageDataUrl(body?.qrImageDataUrl);
   } catch (error) {
     return jsonResponse({ error: error.message || 'QR image is invalid.' }, 400, origin, 'POST,OPTIONS');
+  }
+  if (!qrImage) {
+    return jsonResponse({ error: 'QR image is required to send the final email.' }, 400, origin, 'POST,OPTIONS');
   }
 
   const emailConfig = getPublishedEmailConfig(env);
@@ -2051,9 +2286,11 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     return jsonResponse({ error: 'Session email delivery is not configured right now.' }, 500, origin, 'POST,OPTIONS');
   }
 
+  const previousQrAssetR2Key = row.qrAssetR2Key || '';
   let qrAssetToken = row.qrAssetToken || '';
   let qrAssetR2Key = row.qrAssetR2Key || '';
   let qrAssetContentType = row.qrAssetContentType || '';
+  let shouldDeletePreviousQrAsset = false;
   if (qrImage) {
     qrAssetToken = crypto.randomUUID().replace(/-/g, '');
     qrAssetR2Key = getPublishedQrAssetKey(publishedId, qrAssetToken);
@@ -2063,6 +2300,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
         contentType: qrImage.contentType
       }
     });
+    shouldDeletePreviousQrAsset = Boolean(previousQrAssetR2Key && previousQrAssetR2Key !== qrAssetR2Key);
   }
 
   const requestUrl = new URL(request.url);
@@ -2082,7 +2320,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
       subject: `Your Planeir session with Gerry`,
       html: buildPublishedSessionEmailHtml({
         clientName,
-        clientLink,
+        clientLink: validatedClientLink.href,
         expiresAtDisplay,
         pin,
         includePinInEmail,
@@ -2090,7 +2328,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
       }),
       text: buildPublishedSessionEmailText({
         clientName,
-        clientLink,
+        clientLink: validatedClientLink.href,
         expiresAtDisplay,
         pin,
         includePinInEmail
@@ -2098,6 +2336,15 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
       reply_to: emailConfig.replyTo || undefined
     }, `published-session-${publishedId}-email-${row.emailSendCount + 1}`);
   } catch (error) {
+    if (qrImage && qrAssetR2Key && qrAssetR2Key !== previousQrAssetR2Key) {
+      await deletePublishedQrAsset(env, qrAssetR2Key).catch((cleanupError) => {
+        console.error('Failed to clean up unsent QR asset', {
+          publishedId,
+          qrAssetR2Key,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+        });
+      });
+    }
     console.error('Failed to send published session email', {
       publishedId,
       clientEmail,
@@ -2116,9 +2363,27 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
   });
   await insertPublishedSessionEvent(env, publishedId, 'advisor', 'email-sent', {
     clientEmail,
+    clientEmailChanged: Boolean(row.clientEmail && row.clientEmail !== clientEmail),
     includePinInEmail,
-    hasQrImage: Boolean(qrImage)
+    acknowledgedInlinePinRisk,
+    hasQrImage: Boolean(qrImage),
+    rotatedQrToken: qrAssetToken !== (row.qrAssetToken || ''),
+    requestIp: clientIp,
+    userAgent: normalizeUserAgent(request.headers.get('User-Agent')),
+    clientLinkHost: validatedClientLink.host,
+    clientLinkPath: validatedClientLink.path,
+    clientLinkPubMatches: true
   });
+
+  if (shouldDeletePreviousQrAsset) {
+    await deletePublishedQrAsset(env, previousQrAssetR2Key).catch((cleanupError) => {
+      console.error('Failed to delete superseded QR asset', {
+        publishedId,
+        previousQrAssetR2Key,
+        error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+      });
+    });
+  }
 
   const updatedRow = await getPublishedSessionRow(env, publishedId);
   return jsonResponse({
@@ -2130,8 +2395,13 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
 }
 
 async function handlePublishedQrAsset(env, publishedId, token) {
-  const row = await getPublishedSessionRow(env, publishedId);
-  if (!row || !row.qrAssetToken || row.qrAssetToken !== token || !row.qrAssetR2Key) {
+  let row = await getPublishedSessionRow(env, publishedId);
+  if (!row) {
+    return new Response('Not found.', { status: 404 });
+  }
+
+  row = await markPublishedExpiredIfNeeded(env, row);
+  if (row.status !== 'active' || !row.qrAssetToken || row.qrAssetToken !== token || !row.qrAssetR2Key) {
     return new Response('Not found.', { status: 404 });
   }
 
@@ -2142,7 +2412,7 @@ async function handlePublishedQrAsset(env, publishedId, token) {
 
   const bytes = await object.arrayBuffer();
   return assetResponse(bytes, 200, row.qrAssetContentType || 'image/png', {
-    'Cache-Control': 'private, max-age=3600'
+    ...noStoreHeaders()
   });
 }
 
@@ -2237,6 +2507,16 @@ export default {
       }
 
       return handleSendPublishedSessionEmail(request, env, origin, publishedId);
+    }
+
+    const unlockedPublishedMatch = /^\/api\/published-sessions\/([^/]+)\/unlocked$/.exec(pathname);
+    if (request.method === 'POST' && unlockedPublishedMatch) {
+      const publishedId = unlockedPublishedMatch[1];
+      if (!isSafeSessionId(publishedId)) {
+        return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handlePublishedSessionUnlocked(request, env, origin, publishedId);
     }
 
     const qrAssetMatch = /^\/email-assets\/qr\/([^/]+)\/([^/]+)$/.exec(pathname);

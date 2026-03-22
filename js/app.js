@@ -1,5 +1,6 @@
 import {
   loadSession,
+  hasStoredSession,
   createStateManager,
   getModuleById,
   getOrderedModules,
@@ -51,7 +52,17 @@ import {
 import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
 
+function getMetaContent(name) {
+  const element = document.querySelector(`meta[name="${name}"]`);
+  return element?.getAttribute('content')?.trim() || '';
+}
+
 const ui = getUiElements();
+const publishedRecoveryLayer = document.getElementById('publishedRecoveryLayer');
+const publishedRecoveryMessage = document.getElementById('publishedRecoveryMessage');
+const publishedRecoveryRetryButton = document.getElementById('publishedRecoveryRetryBtn');
+const publishedRecoveryLocalButton = document.getElementById('publishedRecoveryLocalBtn');
+const publishedRecoveryFreshButton = document.getElementById('publishedRecoveryFreshBtn');
 const runtimeConfig = {
   readOnly: false,
   allowDevPanel: true,
@@ -62,9 +73,7 @@ const runtimeConfig = {
 
 const IS_LOCAL_DEV_HOST = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
 const WORKER_BASE_URL = (() => {
-  const override = typeof window.__WORKER_BASE_URL === 'string'
-    ? window.__WORKER_BASE_URL.trim()
-    : '';
+  const override = getMetaContent('call-canvas-worker-base-url');
 
   if (override) {
     return override.replace(/\/+$/, '');
@@ -95,6 +104,35 @@ const OVERVIEW_UNDO_SECONDS = 15;
 const TABLE_HIGHLIGHT_KINDS = Object.freeze(['assumptions', 'outputs']);
 const MOBILE_LAYOUT_MEDIA_QUERY = '(max-width: 720px)';
 const MOBILE_SHEET_SWIPE_CLOSE_THRESHOLD = 72;
+
+async function recordPublishedUnlock(publishedId, secretB64u, role, source) {
+  const sessionId = typeof publishedId === 'string' ? publishedId.trim() : '';
+  const secret = typeof secretB64u === 'string' ? secretB64u.trim() : '';
+  const normalizedRole = role === 'advisor' ? 'advisor' : 'client';
+  if (!sessionId || !secret || !WORKER_BASE_URL) {
+    return;
+  }
+
+  try {
+    const capability = await buildPublishedCapabilityToken(secret, normalizedRole);
+    await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(sessionId)}/unlocked`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Published-Capability': capability
+      },
+      body: JSON.stringify({
+        role: normalizedRole,
+        source: typeof source === 'string' && source.trim()
+          ? source.trim()
+          : (normalizedRole === 'advisor' ? 'advisor-reopen' : 'viewer')
+      }),
+      keepalive: true
+    });
+  } catch (_error) {
+    // Unlock telemetry must never block the session open path.
+  }
+}
 
 const appState = {
   session: newSession('Client'),
@@ -3113,6 +3151,27 @@ function buildPublishedEmailCopy(access) {
   return lines.join('\n');
 }
 
+function hasPublishedLocalRecoveryOption() {
+  return hasStoredSession();
+}
+
+function setPublishedRecoveryLocalAvailable(available) {
+  if (!publishedRecoveryLocalButton) {
+    return;
+  }
+
+  publishedRecoveryLocalButton.disabled = !available;
+  publishedRecoveryLocalButton.classList.toggle('is-hidden', !available);
+}
+
+function confirmInlinePinDelivery(access, contextLabel) {
+  if (!access?.pin || !isPublishPinIncludedInEmail()) {
+    return true;
+  }
+
+  return window.confirm(`${contextLabel}\n\nThis will place the secure link and the client PIN in the same message. Only continue if you intend to deliver both together.`);
+}
+
 function resetPublishResult(options = {}) {
   const { clearAccess = true, clearInputs = true } = options;
   if (clearAccess) {
@@ -3212,8 +3271,10 @@ async function maybeLoadPublishedSessionFromLocation() {
 
   const bundle = await fetchPublishedAdvisorBundle(publishedId, advisorSecretB64u);
   const decrypted = await decryptPublishedSessionV2ForAdvisor(advisorSecretB64u, bundle);
+  const importedSession = importPublishedSession(decrypted.plaintext);
+  void recordPublishedUnlock(publishedId, advisorSecretB64u, 'advisor', 'advisor-reopen');
   return {
-    session: importPublishedSession(decrypted.plaintext),
+    session: importedSession,
     access: {
       version: Number(bundle?.v) || 2,
       publishedId,
@@ -3230,8 +3291,90 @@ async function maybeLoadPublishedSessionFromLocation() {
   };
 }
 
-function shouldOpenLocalDraftAfterPublishedError(message) {
-  return window.confirm(`${message}\n\nOpen the local draft saved in this browser instead?`);
+function setPublishedRecoveryVisible(visible) {
+  if (!publishedRecoveryLayer) {
+    return;
+  }
+
+  publishedRecoveryLayer.classList.toggle('is-hidden', !visible);
+  publishedRecoveryLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function choosePublishedRecoveryAction(message) {
+  if (!publishedRecoveryLayer || !publishedRecoveryMessage || !publishedRecoveryRetryButton || !publishedRecoveryFreshButton) {
+    return Promise.resolve('fresh');
+  }
+
+  publishedRecoveryMessage.textContent = String(message || 'Could not reopen the published session.');
+  setPublishedRecoveryLocalAvailable(hasPublishedLocalRecoveryOption());
+  setPublishedRecoveryVisible(true);
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      publishedRecoveryRetryButton.removeEventListener('click', handleRetry);
+      publishedRecoveryLocalButton?.removeEventListener('click', handleLocal);
+      publishedRecoveryFreshButton.removeEventListener('click', handleFresh);
+      setPublishedRecoveryVisible(false);
+    };
+
+    const handleRetry = () => {
+      cleanup();
+      resolve('retry');
+    };
+    const handleLocal = () => {
+      cleanup();
+      resolve('local');
+    };
+    const handleFresh = () => {
+      cleanup();
+      resolve('fresh');
+    };
+
+    publishedRecoveryRetryButton.addEventListener('click', handleRetry, { once: true });
+    if (publishedRecoveryLocalButton && !publishedRecoveryLocalButton.disabled) {
+      publishedRecoveryLocalButton.addEventListener('click', handleLocal, { once: true });
+    }
+    publishedRecoveryFreshButton.addEventListener('click', handleFresh, { once: true });
+    publishedRecoveryRetryButton.focus();
+  });
+}
+
+async function resolvePublishedStartupRecovery(message) {
+  let recoveryMessage = String(message || 'Could not reopen the published session.');
+
+  while (true) {
+    const action = await choosePublishedRecoveryAction(recoveryMessage);
+    if (action === 'local') {
+      return {
+        session: loadSession(),
+        access: null,
+        notice: 'Opened local draft instead.'
+      };
+    }
+
+    if (action === 'fresh') {
+      return {
+        session: newSession('Client'),
+        access: null,
+        notice: 'Started a new session instead.'
+      };
+    }
+
+    try {
+      const publishedBootstrap = await maybeLoadPublishedSessionFromLocation();
+      if (publishedBootstrap?.session) {
+        return {
+          session: publishedBootstrap.session,
+          access: publishedBootstrap.access,
+          notice: 'Opened published snapshot.'
+        };
+      }
+
+      recoveryMessage = publishedBootstrap?.error || 'Could not reopen the published session.';
+    } catch (error) {
+      recoveryMessage = error?.message || 'Could not reopen the published session.';
+    }
+  }
 }
 
 async function publishCurrentSession() {
@@ -3489,6 +3632,10 @@ async function handleCopyPublishedAdvisorLink() {
 }
 
 async function handleCopyPublishedEmailCopy() {
+  if (!confirmInlinePinDelivery(appState.publishedAccess, 'Copy email copy with the client PIN included?')) {
+    return;
+  }
+
   const emailCopy = buildPublishedEmailCopy(appState.publishedAccess);
   if (!emailCopy) {
     return;
@@ -3514,6 +3661,13 @@ async function sendPublishedSessionEmail(access) {
   }
 
   const clientEmail = getPublishClientEmailFromInput({ required: true });
+  if (!confirmInlinePinDelivery(access, 'Send the final email with the client PIN included?')) {
+    throw new Error('Email sending cancelled.');
+  }
+  const qrImageDataUrl = getPublishedQrImageDataUrl();
+  if (!qrImageDataUrl) {
+    throw new Error('QR code is unavailable. Regenerate the published link before sending.');
+  }
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
   const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/send-email`, {
     method: 'POST',
@@ -3527,7 +3681,8 @@ async function sendPublishedSessionEmail(access) {
       clientLink: getPublishedClientLink(access),
       pin: access.pin || '',
       includePinInEmail: isPublishPinIncludedInEmail(),
-      qrImageDataUrl: getPublishedQrImageDataUrl()
+      acknowledgeInlinePinRisk: isPublishPinIncludedInEmail() && Boolean(access.pin),
+      qrImageDataUrl
     })
   });
 
@@ -6034,19 +6189,19 @@ export async function initApp(options = {}) {
             startupNotice = 'Opened published snapshot.';
           } else {
             if (publishedBootstrap?.error) {
-              startupNotice = publishedBootstrap.error;
-              appState.session = shouldOpenLocalDraftAfterPublishedError(publishedBootstrap.error)
-                ? loadSession()
-                : newSession('Client');
+              const recovery = await resolvePublishedStartupRecovery(publishedBootstrap.error);
+              startupNotice = recovery.notice;
+              appState.session = recovery.session;
+              startupPublishedAccess = recovery.access;
             } else {
               appState.session = loadSession();
             }
           }
         } catch (error) {
-          startupNotice = error?.message || 'Could not reopen published session.';
-          appState.session = shouldOpenLocalDraftAfterPublishedError(startupNotice)
-            ? loadSession()
-            : newSession('Client');
+          const recovery = await resolvePublishedStartupRecovery(error?.message || 'Could not reopen published session.');
+          startupNotice = recovery.notice;
+          appState.session = recovery.session;
+          startupPublishedAccess = recovery.access;
         }
       } else {
         appState.session = loadSession();

@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    />
+    <meta
+      name="call-canvas-worker-base-url"
+      content="https://call-canvas-session-worker.geraldboylan.workers.dev"
+    />
     <meta
       name="description"
       content="Planeir advisor workspace for live planning calls, reports, and client session publishing."
@@ -243,7 +252,7 @@
           </div>
           <label class="publish-toggle-row" for="publishIncludePinEmailToggle">
             <input id="publishIncludePinEmailToggle" class="publish-toggle-checkbox" type="checkbox" />
-            <span>Include the PIN in the final email too</span>
+            <span>Include the PIN in the same final email as the secure link</span>
           </label>
           <p id="publishEmailStatus" class="publish-email-status">No final email has been sent yet.</p>
           <div class="publish-modal-actions">
@@ -259,13 +268,21 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <div id="publishedRecoveryLayer" class="session-unlock-layer is-hidden" aria-hidden="true">
+      <div class="session-unlock-card published-recovery-card" role="dialog" aria-modal="true" aria-labelledby="publishedRecoveryTitle">
+        <h1 id="publishedRecoveryTitle">Published session unavailable</h1>
+        <p id="publishedRecoveryMessage" class="session-unlock-hint">This advisor link could not be reopened. Choose how to recover below.</p>
+        <div class="session-unlock-actions published-recovery-actions">
+          <button id="publishedRecoveryRetryBtn" class="ui-button" type="button">Retry Link</button>
+          <button id="publishedRecoveryLocalBtn" class="ui-button" type="button">Open Local Draft</button>
+          <button id="publishedRecoveryFreshBtn" class="ui-button" type="button">Start Fresh</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="../js/vendor/chart.umd.min.js"></script>
+    <script src="../js/vendor/Sortable.min.js"></script>
     <script src="../js/vendor/qrcode.min.js"></script>
-    <script>
-      window.__WORKER_BASE_URL = "https://call-canvas-session-worker.geraldboylan.workers.dev";
-      window.__PUBLIC_BASE_URL = new URL('./', window.location.href).toString().replace(/\/$/, '');
-    </script>
     <script type="module" src="../js/app.js"></script>
   </body>
 </html>

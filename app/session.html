@@ -6,6 +6,14 @@
     <meta name="color-scheme" content="dark" />
     <meta name="referrer" content="no-referrer" />
     <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    />
+    <meta
+      name="call-canvas-worker-base-url"
+      content="https://call-canvas-session-worker.geraldboylan.workers.dev"
+    />
+    <meta
       name="description"
       content="Planeir client session viewer for secure read-only planning conversations."
     />
@@ -105,12 +113,8 @@
       </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script>
-      window.__WORKER_BASE_URL = "https://call-canvas-session-worker.geraldboylan.workers.dev";
-      window.__PUBLIC_BASE_URL = new URL('./', window.location.href).toString().replace(/\/$/, '');
-    </script>
+    <script src="../js/vendor/chart.umd.min.js"></script>
+    <script src="../js/vendor/Sortable.min.js"></script>
     <script type="module" src="../js/session_viewer.js"></script>
   </body>
 </html>

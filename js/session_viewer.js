@@ -7,10 +7,13 @@ import { importPublishedSession } from './state.js';
 
 window.__CALL_CANVAS_AUTO_INIT__ = false;
 
+function getMetaContent(name) {
+  const element = document.querySelector(`meta[name="${name}"]`);
+  return element?.getAttribute('content')?.trim() || '';
+}
+
 const WORKER_BASE_URL = (() => {
-  const override = typeof window.__WORKER_BASE_URL === 'string'
-    ? window.__WORKER_BASE_URL.trim()
-    : '';
+  const override = getMetaContent('call-canvas-worker-base-url');
   if (override) {
     return override.replace(/\/+$/, '');
   }
@@ -31,6 +34,32 @@ const errorHost = document.getElementById('sessionUnlockError');
 
 let publishedClientSecret = '';
 let publishedBundle = null;
+
+async function recordPublishedUnlock(publishedId, clientSecretB64u, source = 'viewer') {
+  const sessionId = typeof publishedId === 'string' ? publishedId.trim() : '';
+  const secret = typeof clientSecretB64u === 'string' ? clientSecretB64u.trim() : '';
+  if (!sessionId || !secret || !WORKER_BASE_URL) {
+    return;
+  }
+
+  try {
+    const capability = await buildPublishedCapabilityToken(secret, 'client');
+    await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(sessionId)}/unlocked`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Published-Capability': capability
+      },
+      body: JSON.stringify({
+        role: 'client',
+        source
+      }),
+      keepalive: true
+    });
+  } catch (_error) {
+    // Unlock telemetry should not block the client session opening path.
+  }
+}
 
 function getPublishedPinRequired(bundle) {
   if (typeof bundle?.clientAccess?.pinRequired === 'boolean') {
@@ -186,6 +215,7 @@ async function bootstrapPublishedSession() {
       setHint('Secure link verified. Opening your session.');
       const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle);
       await openReadonlySession(plaintext);
+      void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-no-pin');
       return true;
     }
 
@@ -249,6 +279,7 @@ async function unlockPublishedSession() {
   try {
     const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle, { pin });
     await openReadonlySession(plaintext);
+    void recordPublishedUnlock(getPublishedIdFromUrl(), publishedClientSecret, 'viewer-pin');
   } catch (error) {
     setError(error?.message || 'Could not unlock session.');
   } finally {

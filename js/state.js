@@ -634,6 +634,20 @@ export function loadSession() {
   }
 }
 
+export function hasStoredSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw) {
+      return false;
+    }
+
+    const parsed = JSON.parse(raw);
+    return Boolean(parsed && typeof parsed === 'object' && !Array.isArray(parsed));
+  } catch (_error) {
+    return false;
+  }
+}
+
 export function exportSession(session) {
   const normalized = normalizeSession(session);
   normalized.updatedAt = nowIso();
