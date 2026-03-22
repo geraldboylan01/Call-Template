@@ -8,6 +8,7 @@ var SESSION_KEY_SUFFIX = ".json";
 var PUBLISHED_PAYLOAD_VERSION = 2;
 var PUBLISHED_SPLIT_PAYLOAD_VERSION = 3;
 var PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION = 4;
+var WORKER_SOURCE_FINGERPRINT = "worker-v4-first-open-pin-2026-03-22-1";
 var PUBLISHED_SESSION_KEY_PREFIX = "published/v2/";
 var PUBLISHED_CLIENT_KEY_PREFIX = "published/client/";
 var PUBLISHED_ADVISOR_KEY_PREFIX = "published/advisor/";
@@ -237,6 +238,7 @@ function securityHeaders(extraHeaders = {}) {
   return {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
+    "X-Planeir-Worker-Fingerprint": WORKER_SOURCE_FINGERPRINT,
     ...extraHeaders
   };
 }
