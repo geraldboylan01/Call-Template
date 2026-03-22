@@ -32,6 +32,18 @@ const errorHost = document.getElementById('sessionUnlockError');
 let publishedClientSecret = '';
 let publishedBundle = null;
 
+function getPublishedPinRequired(bundle) {
+  if (typeof bundle?.clientAccess?.pinRequired === 'boolean') {
+    return bundle.clientAccess.pinRequired;
+  }
+
+  if (typeof bundle?.pinRequired === 'boolean') {
+    return bundle.pinRequired;
+  }
+
+  return false;
+}
+
 function setError(message) {
   if (!errorHost) {
     return;
@@ -170,7 +182,7 @@ async function bootstrapPublishedSession() {
 
   try {
     publishedBundle = await fetchPublishedSession(publishedId, publishedClientSecret);
-    if (!publishedBundle.pinRequired) {
+    if (!getPublishedPinRequired(publishedBundle)) {
       setHint('Secure link verified. Opening your session.');
       const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle);
       await openReadonlySession(plaintext);
