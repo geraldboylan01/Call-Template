@@ -34,8 +34,8 @@ jobs:
 
       - name: Validate deploy configuration
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is required"; exit 1; }
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is required"; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is required in GitHub Settings > Secrets and variables > Actions"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is required in GitHub Settings > Secrets and variables > Actions"; exit 1; }
           test -n "$WORKER_BASE_URL" || { echo "WORKER_BASE_URL is required"; exit 1; }
           test -n "$SMOKE_ORIGIN" || { echo "SMOKE_ORIGIN is required"; exit 1; }
 
@@ -44,7 +44,7 @@ jobs:
 
       - name: Apply remote D1 migrations
         working-directory: ./worker
-        run: wrangler d1 migrations apply planeir-leads --remote --yes
+        run: wrangler d1 migrations apply planeir-leads --remote
 
       - name: Deploy Worker
         working-directory: ./worker
