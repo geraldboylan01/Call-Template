@@ -684,7 +684,33 @@ export function importSession(input) {
 }
 
 export function importPublishedSession(input) {
-  return importSession(input);
+  let parsed = input;
+
+  if (typeof input === 'string') {
+    parsed = JSON.parse(input);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Session file must contain a JSON object.');
+  }
+
+  if (!Array.isArray(parsed.modules)) {
+    throw new Error('Invalid session: modules must be an array.');
+  }
+
+  if (typeof parsed.order !== 'undefined' && !Array.isArray(parsed.order)) {
+    throw new Error('Invalid session: order must be an array.');
+  }
+
+  if (typeof parsed.clientName !== 'undefined' && typeof parsed.clientName !== 'string') {
+    throw new Error('Invalid session: clientName must be a string.');
+  }
+
+  if (typeof parsed.version === 'number' && parsed.version !== SESSION_VERSION) {
+    throw new Error(`Unsupported session version: ${parsed.version}`);
+  }
+
+  return normalizeSession(parsed);
 }
 
 export function createStateManager(delayMs = 300, options = {}) {
