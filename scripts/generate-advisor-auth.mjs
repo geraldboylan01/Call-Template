@@ -1,6 +1,6 @@
 import { pbkdf2Sync, randomBytes } from 'node:crypto';
 
-const PBKDF2_ITERATIONS = 310_000;
+const PBKDF2_ITERATIONS = 100_000;
 const KEY_LENGTH = 32;
 const SALT_LENGTH = 16;
 const SESSION_SECRET_LENGTH = 32;
