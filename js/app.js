@@ -47,7 +47,8 @@ import { runMortgageMathTests } from './tests_mortgage_math.js';
 import {
   buildPublishedCapabilityToken,
   decryptPublishedSessionV2ForAdvisor,
-  encryptPublishedSessionV3
+  encryptPublishedSessionV4,
+  rotatePublishedClientAccessV4
 } from './crypto_session.js';
 import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
@@ -3104,22 +3105,34 @@ function isPersonalBalanceSheetModule(module) {
   return title.includes('personal balance sheet');
 }
 
-function generate6DigitPin() {
-  if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
-    throw new Error('Secure random generation is unavailable in this browser.');
-  }
-
-  const values = new Uint32Array(1);
-  window.crypto.getRandomValues(values);
-  return String(values[0] % 1000000).padStart(6, '0');
-}
-
 function isPublishPinEnabled() {
   return Boolean(ui.publishPinToggle?.checked);
 }
 
-function syncPublishPinControls() {
-  const enabled = isPublishPinEnabled();
+function isFirstOpenPublishedAccess(access = appState.publishedAccess) {
+  return Number(access?.version) >= 4;
+}
+
+function isLegacyPinPublishedAccess(access = appState.publishedAccess) {
+  return Boolean(access && Number(access.version) < 4 && access.pin);
+}
+
+function syncPublishPinControls(access = appState.publishedAccess) {
+  const legacyMode = isLegacyPinPublishedAccess(access);
+  const enabled = legacyMode && isPublishPinEnabled();
+  const pinToggleRow = ui.publishPinToggle?.closest('.publish-toggle-row');
+  const inlinePinEmailRow = ui.publishIncludePinEmailToggle?.closest('.publish-toggle-row');
+
+  if (pinToggleRow) {
+    pinToggleRow.classList.toggle('is-hidden', !legacyMode);
+    pinToggleRow.setAttribute('aria-hidden', legacyMode ? 'false' : 'true');
+  }
+
+  if (inlinePinEmailRow) {
+    inlinePinEmailRow.classList.toggle('is-hidden', !legacyMode);
+    inlinePinEmailRow.setAttribute('aria-hidden', legacyMode ? 'false' : 'true');
+  }
+
   if (ui.publishPinGroup) {
     ui.publishPinGroup.classList.toggle('is-hidden', !enabled);
     ui.publishPinGroup.setAttribute('aria-hidden', enabled ? 'false' : 'true');
@@ -3129,30 +3142,27 @@ function syncPublishPinControls() {
     ui.publishPinInput.disabled = !enabled;
   }
 
+  if (!legacyMode) {
+    if (ui.publishPinToggle) {
+      ui.publishPinToggle.checked = false;
+    }
+    if (ui.publishIncludePinEmailToggle) {
+      ui.publishIncludePinEmailToggle.checked = false;
+      ui.publishIncludePinEmailToggle.disabled = true;
+    }
+    if (ui.publishPinInput) {
+      ui.publishPinInput.value = '';
+    }
+    return;
+  }
+
   if (!enabled && ui.publishPinInput) {
     ui.publishPinInput.value = '';
   }
-}
 
-function getPublishPinFromInput() {
-  if (!isPublishPinEnabled()) {
-    return '';
+  if (ui.publishIncludePinEmailToggle) {
+    ui.publishIncludePinEmailToggle.disabled = !access?.pin;
   }
-
-  if (!ui.publishPinInput) {
-    return generate6DigitPin();
-  }
-
-  const normalized = String(ui.publishPinInput.value ?? '').replace(/\s+/g, '').trim();
-  if (!normalized) {
-    return generate6DigitPin();
-  }
-
-  if (/^\d{6}$/.test(normalized)) {
-    return normalized;
-  }
-
-  throw new Error('PIN must be exactly 6 digits.');
 }
 
 function normalizePublishSessionId(rawValue) {
@@ -3281,6 +3291,34 @@ function getPublishedAdvisorLink(access) {
   return access?.advisorLink || '';
 }
 
+function formatPublishedClientPinState(access) {
+  if (!isFirstOpenPublishedAccess(access)) {
+    return access?.pin ? 'Advisor-managed PIN' : 'Not configured';
+  }
+
+  if (access?.clientPinState === 'active') {
+    return 'Created by the client';
+  }
+
+  return 'Client will create it on first open';
+}
+
+function getPublishedClientPinInfoText(access = appState.publishedAccess) {
+  if (!access) {
+    return 'The client will create their own 6-digit PIN the first time they open the secure link. The advisor never sees or stores that PIN.';
+  }
+
+  if (!isFirstOpenPublishedAccess(access)) {
+    return 'Legacy client PIN controls are shown for this older published session.';
+  }
+
+  if (access?.clientPinState === 'active') {
+    return 'The client has already created their own 6-digit PIN. If they forget it, use Reset Client Access to issue a fresh client link without losing their published modules.';
+  }
+
+  return 'The client will create their own 6-digit PIN the first time they open the secure link. The advisor never sees or stores that PIN.';
+}
+
 function getPublishClientEmailFromInput(options = {}) {
   const { required = false } = options;
   const normalized = String(ui.publishClientEmailInput?.value || '').trim().toLowerCase();
@@ -3381,6 +3419,10 @@ function updatePublishActionState(access = appState.publishedAccess) {
   if (ui.publishUpdateExpiryButton) {
     ui.publishUpdateExpiryButton.disabled = !access || Number(access.version) < 3;
   }
+
+  if (ui.publishResetClientAccessButton) {
+    ui.publishResetClientAccessButton.disabled = !access || !isFirstOpenPublishedAccess(access) || access.status !== 'active';
+  }
 }
 
 function buildPublishedEmailCopy(access) {
@@ -3400,7 +3442,9 @@ function buildPublishedEmailCopy(access) {
     `This secure link expires on ${formatPublishedExpiry(access?.expiresAt)}.`
   ];
 
-  if (access?.pin) {
+  if (isFirstOpenPublishedAccess(access)) {
+    lines.push('The first time you open this secure link, you will be asked to create your own 6-digit PIN.');
+  } else if (access?.pin) {
     if (isPublishPinIncludedInEmail()) {
       lines.push(`Use this 6-digit PIN to open it: ${access.pin}`);
     } else {
@@ -3433,7 +3477,7 @@ function setPublishedRecoveryLocalAvailable(available) {
 }
 
 function confirmInlinePinDelivery(access, contextLabel) {
-  if (!access?.pin || !isPublishPinIncludedInEmail()) {
+  if (isFirstOpenPublishedAccess(access) || !access?.pin || !isPublishPinIncludedInEmail()) {
     return true;
   }
 
@@ -3452,11 +3496,17 @@ function resetPublishResult(options = {}) {
   if (ui.publishPinWrap) {
     ui.publishPinWrap.classList.add('is-hidden');
   }
+  if (ui.publishClientPinStateRow) {
+    ui.publishClientPinStateRow.classList.remove('is-hidden');
+  }
   if (ui.publishCopyPinButton) {
     ui.publishCopyPinButton.classList.add('is-hidden');
   }
   if (ui.publishPinValue) {
     ui.publishPinValue.textContent = '------';
+  }
+  if (ui.publishClientPinStateValue) {
+    ui.publishClientPinStateValue.textContent = 'Client will create it on first open';
   }
   if (ui.publishLinkValue) {
     ui.publishLinkValue.value = '';
@@ -3469,6 +3519,9 @@ function resetPublishResult(options = {}) {
   }
   if (ui.publishEmailStatus) {
     ui.publishEmailStatus.textContent = 'No final email has been sent yet.';
+  }
+  if (ui.publishClientPinInfo) {
+    ui.publishClientPinInfo.textContent = getPublishedClientPinInfoText(null);
   }
   clearPublishedQrCode();
 
@@ -3486,9 +3539,9 @@ function resetPublishResult(options = {}) {
   }
   if (clearInputs && ui.publishIncludePinEmailToggle) {
     ui.publishIncludePinEmailToggle.checked = false;
-    ui.publishIncludePinEmailToggle.disabled = false;
+    ui.publishIncludePinEmailToggle.disabled = true;
   }
-  syncPublishPinControls();
+  syncPublishPinControls(clearAccess ? null : appState.publishedAccess);
   updatePublishActionState(clearAccess ? null : appState.publishedAccess);
 }
 
@@ -3551,6 +3604,9 @@ async function maybeLoadPublishedSessionFromLocation() {
       clientLink: buildClientSessionLink(publishedId, decrypted.clientSecretB64u),
       advisorLink: buildAdvisorSessionLink(publishedId, advisorSecretB64u),
       pin: decrypted.clientPin || '',
+      clientPinState: bundle?.meta?.clientPinState || decrypted.clientPinState || null,
+      clientAccessRevision: Number(bundle?.meta?.clientAccessRevision || decrypted.clientAccessRevision || 0),
+      clientPinInitializedAt: bundle?.meta?.clientPinInitializedAt || null,
       expiresAt: bundle.expiresAt,
       expiryDays: inferExpiryDays(bundle.expiresAt),
       clientEmail: bundle?.meta?.clientEmail || '',
@@ -3650,13 +3706,11 @@ async function resolvePublishedStartupRecovery(message) {
 async function publishCurrentSession() {
   const clientPlaintext = exportPublishedSession(appState.session);
   const advisorPlaintext = exportSession(appState.session);
-  const pin = getPublishPinFromInput();
   const clientEmail = getPublishClientEmailFromInput();
   const expiresInDays = getPublishExpiryDaysFromInput();
-  const encryptedPayload = await encryptPublishedSessionV3({
+  const encryptedPayload = await encryptPublishedSessionV4({
     clientSessionJson: clientPlaintext,
     advisorSessionJson: advisorPlaintext,
-    pin,
     clientName: appState.session?.clientName || 'Client',
     clientEmail,
     expiresInDays
@@ -3682,14 +3736,17 @@ async function publishCurrentSession() {
   const advisorLink = buildAdvisorSessionLink(publishedId, encryptedPayload.advisorSecretB64u);
 
   return {
-    version: 3,
+    version: 4,
     publishedId,
-    pin: encryptedPayload.clientPin,
+    pin: '',
     clientLink,
     advisorLink,
     expiresAt: payload?.expiresAt || '',
     expiryDays: expiresInDays,
     clientEmail: payload?.clientEmail || clientEmail,
+    clientPinState: payload?.clientPinState || encryptedPayload.clientPinState || 'pending',
+    clientAccessRevision: Number(payload?.clientAccessRevision || encryptedPayload.clientAccessRevision || 1),
+    clientPinInitializedAt: null,
     emailSendCount: Number(payload?.emailSendCount || 0),
     lastEmailSentAt: payload?.lastEmailSentAt || null,
     status: payload?.status || 'active'
@@ -3792,14 +3849,17 @@ function renderPublishedAccess(access) {
     return;
   }
 
+  const isV4 = isFirstOpenPublishedAccess(access);
+  const showLegacyPin = isLegacyPinPublishedAccess(access);
+
   if (ui.publishResult) {
     ui.publishResult.classList.remove('is-hidden');
   }
 
   if (ui.publishPinToggle) {
-    ui.publishPinToggle.checked = Boolean(access.pin);
+    ui.publishPinToggle.checked = showLegacyPin;
   }
-  syncPublishPinControls();
+  syncPublishPinControls(access);
   if (ui.publishClientEmailInput) {
     ui.publishClientEmailInput.value = access.clientEmail || '';
   }
@@ -3814,16 +3874,25 @@ function renderPublishedAccess(access) {
     ui.publishPinValue.textContent = access.pin || '------';
   }
   if (ui.publishPinWrap) {
-    ui.publishPinWrap.classList.toggle('is-hidden', !access.pin);
+    ui.publishPinWrap.classList.toggle('is-hidden', !showLegacyPin);
   }
   if (ui.publishCopyPinButton) {
-    ui.publishCopyPinButton.classList.toggle('is-hidden', !access.pin);
+    ui.publishCopyPinButton.classList.toggle('is-hidden', !showLegacyPin);
   }
   if (ui.publishIncludePinEmailToggle) {
-    ui.publishIncludePinEmailToggle.disabled = !access.pin;
-    if (!access.pin) {
+    ui.publishIncludePinEmailToggle.disabled = !showLegacyPin;
+    if (!showLegacyPin) {
       ui.publishIncludePinEmailToggle.checked = false;
     }
+  }
+  if (ui.publishClientPinStateRow) {
+    ui.publishClientPinStateRow.classList.toggle('is-hidden', !isV4);
+  }
+  if (ui.publishClientPinStateValue) {
+    ui.publishClientPinStateValue.textContent = formatPublishedClientPinState(access);
+  }
+  if (ui.publishClientPinInfo) {
+    ui.publishClientPinInfo.textContent = getPublishedClientPinInfoText(access);
   }
 
   if (ui.publishLinkValue) {
@@ -3948,6 +4017,7 @@ async function sendPublishedSessionEmail(access) {
     throw new Error('QR code is unavailable. Regenerate the published link before sending.');
   }
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
+  const includePinInEmail = !isFirstOpenPublishedAccess(access) && isPublishPinIncludedInEmail();
   const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/send-email`, {
     method: 'POST',
     headers: {
@@ -3958,9 +4028,9 @@ async function sendPublishedSessionEmail(access) {
       clientEmail,
       clientName: appState.session?.clientName || 'Client',
       clientLink: getPublishedClientLink(access),
-      pin: access.pin || '',
-      includePinInEmail: isPublishPinIncludedInEmail(),
-      acknowledgeInlinePinRisk: isPublishPinIncludedInEmail() && Boolean(access.pin),
+      pin: includePinInEmail ? (access.pin || '') : '',
+      includePinInEmail,
+      acknowledgeInlinePinRisk: includePinInEmail && Boolean(access.pin),
       qrImageDataUrl
     })
   }, {
@@ -4009,6 +4079,74 @@ async function updatePublishedSessionExpiry(access) {
   }
 
   return response.json();
+}
+
+async function resetPublishedClientAccess(access) {
+  if (!access || !isFirstOpenPublishedAccess(access)) {
+    throw new Error('Client access reset is only available for v4 published sessions.');
+  }
+
+  const publishedId = String(access.publishedId || '').trim();
+  const advisorSecretB64u = getLinkHashParam(access.advisorLink, 'ak');
+  if (!publishedId || !advisorSecretB64u) {
+    throw new Error('Advisor link is unavailable for client access reset.');
+  }
+
+  const currentBundle = await fetchPublishedAdvisorBundle(publishedId, advisorSecretB64u);
+  const decrypted = await decryptPublishedSessionV2ForAdvisor(advisorSecretB64u, currentBundle);
+  const sourceSession = importPublishedSession(decrypted.plaintext);
+  const clientPlaintext = exportPublishedSession(sourceSession);
+  const advisorPlaintext = exportSession(sourceSession);
+  const currentRevision = Number(
+    currentBundle?.meta?.clientAccessRevision
+    || decrypted.clientAccessRevision
+    || access.clientAccessRevision
+    || 1
+  );
+  const rotated = await rotatePublishedClientAccessV4({
+    clientSessionJson: clientPlaintext,
+    advisorSessionJson: advisorPlaintext,
+    advisorSecretB64u,
+    currentRevision
+  });
+  const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/client-access/reset`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Published-Capability': capability
+    },
+    body: JSON.stringify({
+      expectedRevision: currentRevision,
+      clientAuthHashB64u: rotated.clientAuthHashB64u,
+      clientBundle: rotated.clientBundle,
+      advisorBundle: rotated.advisorBundle
+    })
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to reset this client link.'
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Failed to reset client access (${response.status}).`);
+  }
+
+  const payload = await response.json();
+  return {
+    ...access,
+    version: 4,
+    clientLink: buildClientSessionLink(publishedId, rotated.clientSecretB64u),
+    advisorLink: buildAdvisorSessionLink(publishedId, advisorSecretB64u),
+    pin: '',
+    clientPinState: payload?.clientPinState || rotated.clientPinState || 'pending',
+    clientAccessRevision: Number(payload?.clientAccessRevision || rotated.clientAccessRevision || (currentRevision + 1)),
+    clientPinInitializedAt: null,
+    clientEmail: payload?.clientEmail || access.clientEmail || '',
+    emailSendCount: Number(payload?.emailSendCount || 0),
+    lastEmailSentAt: payload?.lastEmailSentAt || null,
+    status: payload?.status || access.status || 'active'
+  };
 }
 
 async function handleSendPublishedEmail() {
@@ -4060,6 +4198,33 @@ async function handleUpdatePublishedExpiry() {
     showToast('Expiry updated.');
   } catch (error) {
     setPublishError(error?.message || 'Could not update the expiry.');
+  } finally {
+    updatePublishActionState();
+  }
+}
+
+async function handleResetPublishedClientAccess() {
+  if (!appState.publishedAccess || !isFirstOpenPublishedAccess(appState.publishedAccess)) {
+    return;
+  }
+
+  const confirmed = window.confirm('Issue a fresh client link and reset the client PIN setup?\n\nThe advisor link will stay the same and the published modules will be preserved, but the current client link and QR code will stop working.');
+  if (!confirmed) {
+    return;
+  }
+
+  setPublishError('');
+  if (ui.publishResetClientAccessButton) {
+    ui.publishResetClientAccessButton.disabled = true;
+  }
+
+  try {
+    const updatedAccess = await resetPublishedClientAccess(appState.publishedAccess);
+    appState.publishedAccess = updatedAccess;
+    renderPublishedAccess(updatedAccess);
+    showToast('Client access reset. Send the new client link.');
+  } catch (error) {
+    setPublishError(error?.message || 'Could not reset the client link.');
   } finally {
     updatePublishActionState();
   }
@@ -6083,7 +6248,7 @@ function bindEvents() {
 
   if (ui.publishPinToggle) {
     ui.publishPinToggle.addEventListener('change', () => {
-      syncPublishPinControls();
+      syncPublishPinControls(appState.publishedAccess);
     });
   }
 
@@ -6120,6 +6285,12 @@ function bindEvents() {
   if (ui.publishUpdateExpiryButton) {
     ui.publishUpdateExpiryButton.addEventListener('click', async () => {
       await handleUpdatePublishedExpiry();
+    });
+  }
+
+  if (ui.publishResetClientAccessButton) {
+    ui.publishResetClientAccessButton.addEventListener('click', async () => {
+      await handleResetPublishedClientAccess();
     });
   }
 

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
 const DEFAULT_WORKER_BASE_URL = 'https://call-canvas-session-worker.geraldboylan.workers.dev';
 const DEFAULT_SMOKE_ORIGIN = 'https://planeir.ie';
@@ -62,20 +62,17 @@ function toBase64Url(bytes) {
     .replace(/=+$/g, '');
 }
 
-function fromBase64Url(value) {
-  const normalized = String(value)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
-  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
-  return Buffer.from(padded, 'base64');
-}
-
-function sha256Base64Url(value) {
-  return toBase64Url(createHash('sha256').update(value).digest());
-}
-
 function randomBase64Url(byteLength) {
   return toBase64Url(randomBytes(byteLength));
+}
+
+async function loadPublishedCrypto() {
+  const existingWindow = globalThis.window && typeof globalThis.window === 'object'
+    ? globalThis.window
+    : {};
+  existingWindow.crypto = globalThis.crypto;
+  globalThis.window = existingWindow;
+  return import(new URL('../js/crypto_session.js', import.meta.url));
 }
 
 function sleep(ms) {
@@ -194,58 +191,55 @@ async function ensureAdvisorSession(baseUrl, originHeaders, cookieJar) {
   };
 }
 
-function buildPublishedSessionPayload() {
-  const clientCapabilityToken = randomBase64Url(32);
-  const advisorCapabilityToken = randomBase64Url(32);
-
-  return {
-    clientCapabilityToken,
-    advisorCapabilityToken,
-    requestBody: {
-      v: 3,
-      meta: {
-        clientName: 'Smoke Test Client',
-        clientEmail: '',
-        expiresInDays: 7
-      },
-      auth: {
-        clientAuthHashB64u: sha256Base64Url(fromBase64Url(clientCapabilityToken)),
-        advisorAuthHashB64u: sha256Base64Url(fromBase64Url(advisorCapabilityToken))
-      },
-      clientBundle: {
-        v: 3,
-        kind: 'published-client-session',
-        payload: {
-          alg: 'AES-GCM-256',
-          ivB64u: randomBase64Url(12),
-          ctB64u: randomBase64Url(96)
-        },
-        clientAccess: {
-          pinRequired: false,
-          wrap: {
-            alg: 'AES-GCM-256',
-            ivB64u: randomBase64Url(12),
-            ctB64u: randomBase64Url(48)
-          }
-        }
-      },
-      advisorBundle: {
-        v: 3,
-        kind: 'published-advisor-session',
-        payload: {
-          alg: 'AES-GCM-256',
-          ivB64u: randomBase64Url(12),
-          ctB64u: randomBase64Url(96)
-        },
-        advisorAccess: {
-          wrap: {
-            alg: 'AES-GCM-256',
-            ivB64u: randomBase64Url(12),
-            ctB64u: randomBase64Url(48)
-          }
+async function buildPublishedSessionPayload(cryptoHelpers) {
+  const clientSessionJson = JSON.stringify({
+    version: 1,
+    clientName: 'Smoke Test Client',
+    order: ['module-1'],
+    modules: [
+      {
+        id: 'module-1',
+        title: 'Protection review',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        generated: {
+          summaryHtml: '<p>Smoke test summary.</p>'
         }
       }
-    }
+    ]
+  });
+  const advisorSessionJson = JSON.stringify({
+    version: 1,
+    clientName: 'Smoke Test Client',
+    order: ['module-1'],
+    activeModuleId: 'module-1',
+    modules: [
+      {
+        id: 'module-1',
+        title: 'Protection review',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        notes: 'Advisor-only note',
+        generated: {
+          summaryHtml: '<p>Smoke test summary.</p>'
+        }
+      }
+    ]
+  });
+  const encrypted = await cryptoHelpers.encryptPublishedSessionV4({
+    clientSessionJson,
+    advisorSessionJson,
+    clientName: 'Smoke Test Client',
+    clientEmail: '',
+    expiresInDays: 7
+  });
+
+  return {
+    ...encrypted,
+    clientSessionJson,
+    advisorSessionJson,
+    clientCapabilityToken: await cryptoHelpers.buildPublishedCapabilityToken(encrypted.clientSecretB64u, 'client'),
+    advisorCapabilityToken: await cryptoHelpers.buildPublishedCapabilityToken(encrypted.advisorSecretB64u, 'advisor')
   };
 }
 
@@ -256,6 +250,8 @@ async function main() {
   const originHeaders = {
     Origin: smokeOrigin
   };
+  const cryptoHelpers = await loadPublishedCrypto();
+  const clientPin = '123456';
 
   console.log(`Smoke checking published-session routes against ${workerBaseUrl}`);
 
@@ -264,7 +260,7 @@ async function main() {
     ? { 'X-Advisor-CSRF': advisorSession.csrfToken }
     : {};
 
-  const payload = buildPublishedSessionPayload();
+  const payload = await buildPublishedSessionPayload(cryptoHelpers);
   let publishedId = '';
 
   try {
@@ -299,9 +295,10 @@ async function main() {
       expectedStatus: 200,
       retryLabel: 'fetch client bundle'
     });
-    assert(clientFetch.data?.v === 3, 'Client bundle did not report v3.');
+    assert(clientFetch.data?.v === 4, 'Client bundle did not report v4.');
     assert(clientFetch.data?.publishedId === publishedId, 'Client bundle publishedId mismatch.');
-    assert(clientFetch.data?.clientAccess?.pinRequired === false, 'Client bundle pinRequired mismatch.');
+    assert(clientFetch.data?.clientAccess?.pinState === 'pending', 'Client bundle did not start pending.');
+    assert(clientFetch.data?.clientAccess?.revision === 1, 'Client bundle did not start at revision 1.');
 
     const advisorFetch = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/advisor`, {
       headers: advisorHeaders,
@@ -309,8 +306,53 @@ async function main() {
       retryLabel: 'fetch advisor bundle',
       cookieJar
     });
-    assert(advisorFetch.data?.v === 3, 'Advisor bundle did not report v3.');
+    assert(advisorFetch.data?.v === 4, 'Advisor bundle did not report v4.');
     assert(advisorFetch.data?.meta?.clientName === 'Smoke Test Client', 'Advisor meta clientName mismatch.');
+    assert(advisorFetch.data?.meta?.clientPinState === 'pending', 'Advisor meta pin state mismatch.');
+    assert(advisorFetch.data?.meta?.clientAccessRevision === 1, 'Advisor meta revision mismatch.');
+
+    const finalizedClientAccess = await cryptoHelpers.finalizePublishedClientPinV4(
+      payload.clientSecretB64u,
+      clientFetch.data,
+      clientPin,
+      { nextRevision: 2 }
+    );
+    const setupResult = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/client-pin/setup`, {
+      method: 'POST',
+      headers: {
+        ...clientHeaders,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        clientBundle: finalizedClientAccess.clientBundle
+      }),
+      expectedStatus: 200,
+      retryLabel: 'first-open client PIN setup'
+    });
+    assert(setupResult.data?.clientPinState === 'active', 'PIN setup did not activate the client PIN state.');
+    assert(setupResult.data?.clientAccessRevision === 2, 'PIN setup did not advance the client access revision.');
+
+    const activeClientFetch = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/client`, {
+      headers: clientHeaders,
+      expectedStatus: 200,
+      retryLabel: 'fetch active client bundle'
+    });
+    assert(activeClientFetch.data?.clientAccess?.pinState === 'active', 'Client bundle did not become active after PIN setup.');
+    assert(activeClientFetch.data?.clientAccess?.revision === 2, 'Client bundle revision did not advance after PIN setup.');
+
+    const rememberedOpenPlaintext = await cryptoHelpers.decryptPublishedSessionWithRememberedDek(
+      activeClientFetch.data,
+      finalizedClientAccess.dekB64u
+    );
+    assert(rememberedOpenPlaintext.includes('Smoke Test Client'), 'Same-device remembered access did not decrypt the client session.');
+
+    const newDeviceOpen = await cryptoHelpers.resolvePublishedClientSessionAccess(
+      payload.clientSecretB64u,
+      activeClientFetch.data,
+      { pin: clientPin }
+    );
+    assert(newDeviceOpen.plaintext.includes('Smoke Test Client'), 'New-device PIN access did not decrypt the client session.');
 
     await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/unlocked`, {
       method: 'POST',
@@ -342,6 +384,50 @@ async function main() {
       cookieJar
     });
 
+    const rotatedClientAccess = await cryptoHelpers.rotatePublishedClientAccessV4({
+      clientSessionJson: payload.clientSessionJson,
+      advisorSessionJson: payload.advisorSessionJson,
+      advisorSecretB64u: payload.advisorSecretB64u,
+      currentRevision: 2
+    });
+    const resetResult = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/client-access/reset`, {
+      method: 'POST',
+      headers: {
+        ...advisorHeaders,
+        ...advisorCsrfHeaders,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        expectedRevision: 2,
+        clientAuthHashB64u: rotatedClientAccess.clientAuthHashB64u,
+        clientBundle: rotatedClientAccess.clientBundle,
+        advisorBundle: rotatedClientAccess.advisorBundle
+      }),
+      expectedStatus: 200,
+      retryLabel: 'reset client access',
+      cookieJar
+    });
+    assert(resetResult.data?.clientPinState === 'pending', 'Reset did not return the client link to pending state.');
+    assert(resetResult.data?.clientAccessRevision === 3, 'Reset did not advance the client access revision.');
+
+    await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/client`, {
+      headers: clientHeaders,
+      expectedStatus: 404,
+      retryLabel: 'fetch old client bundle after reset'
+    });
+
+    const rotatedClientHeaders = {
+      ...originHeaders,
+      'X-Published-Capability': await cryptoHelpers.buildPublishedCapabilityToken(rotatedClientAccess.clientSecretB64u, 'client')
+    };
+    const resetClientFetch = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/client`, {
+      headers: rotatedClientHeaders,
+      expectedStatus: 200,
+      retryLabel: 'fetch rotated client bundle'
+    });
+    assert(resetClientFetch.data?.clientAccess?.pinState === 'pending', 'Rotated client bundle did not return to pending state.');
+    assert(resetClientFetch.data?.clientAccess?.revision === 3, 'Rotated client bundle revision mismatch after reset.');
+
     const extendResult = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/extend`, {
       method: 'POST',
       headers: {
@@ -368,7 +454,7 @@ async function main() {
       body: JSON.stringify({
         clientEmail: 'smoke-test@example.com',
         clientName: 'Smoke Test Client',
-        clientLink: `${workerBaseUrl}/app/session.html?pub=wrong#ck=${randomBase64Url(32)}`,
+        clientLink: `https://planeir.ie/app/session.html?pub=wrong#ck=${randomBase64Url(32)}`,
         includePinInEmail: false
       }),
       expectedStatus: 400,
@@ -395,7 +481,7 @@ async function main() {
     assert(revokeResult.data?.ok === true, 'Revoke response was not ok.');
 
     await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/client`, {
-      headers: clientHeaders,
+      headers: rotatedClientHeaders,
       expectedStatus: 410,
       retryLabel: 'fetch revoked client bundle'
     });

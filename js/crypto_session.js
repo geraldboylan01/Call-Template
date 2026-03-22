@@ -5,7 +5,9 @@ const IV_LENGTH = 12;
 const PAYLOAD_VERSION = 1;
 const PUBLISHED_PAYLOAD_VERSION = 2;
 const PUBLISHED_SPLIT_PAYLOAD_VERSION = 3;
+const PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION = 4;
 const PUBLISHED_KEY_LENGTH = 32;
+const PUBLISHED_FIRST_OPEN_MODE = 'client-first-pin';
 const HKDF_SALT = new Uint8Array(32);
 const PUBLISHED_INFO = Object.freeze({
   clientWrap: 'planeir/publish/client-wrap/v1',
@@ -99,6 +101,15 @@ function normalizeOptionalPublishedPin(pin) {
   }
 
   return normalizedPin;
+}
+
+function normalizePublishedAccessRevision(value, label = 'Published access revision') {
+  const normalized = Number(value);
+  if (!Number.isInteger(normalized) || normalized < 1) {
+    throw new Error(`${label} is invalid.`);
+  }
+
+  return normalized;
 }
 
 async function derivePasswordKey(secret, saltBytes, options = {}) {
@@ -302,7 +313,8 @@ function assertPublishedSplitEnvelope(payload) {
     throw new Error('Published session payload is missing.');
   }
 
-  if (Number(payload.v) !== PUBLISHED_SPLIT_PAYLOAD_VERSION) {
+  const version = Number(payload.v);
+  if (version !== PUBLISHED_SPLIT_PAYLOAD_VERSION && version !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
     throw new Error(`Unsupported published session version: ${payload?.v}`);
   }
 
@@ -332,12 +344,25 @@ function assertAdvisorBundle(bundle) {
     throw new Error('Advisor access bundle is malformed.');
   }
 
-  if (Number(bundle.v) !== 1 || bundle.kind !== 'advisor-access') {
+  const version = Number(bundle.v);
+  if ((version !== 1 && version !== 2) || bundle.kind !== 'advisor-access') {
     throw new Error('Advisor access bundle is unsupported.');
   }
 
   if (typeof bundle.dekB64u !== 'string' || typeof bundle.clientSecretB64u !== 'string') {
     throw new Error('Advisor access bundle is malformed.');
+  }
+
+  if (version === 2) {
+    if (bundle.clientAccessMode !== PUBLISHED_FIRST_OPEN_MODE) {
+      throw new Error('Advisor access bundle is malformed.');
+    }
+
+    if (bundle.clientPinState !== 'pending' && bundle.clientPinState !== 'active') {
+      throw new Error('Advisor access bundle is malformed.');
+    }
+
+    normalizePublishedAccessRevision(bundle.clientAccessRevision, 'Advisor access revision');
   }
 
   return bundle;
@@ -560,6 +585,43 @@ async function encryptPublishedPayloadWithSecret(sessionJsonString, secretBytes,
   };
 }
 
+function buildPublishedV4ClientBundle(payload, wrap, revision, pinState) {
+  return {
+    v: PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
+    kind: 'published-client-session',
+    payload,
+    clientAccess: {
+      mode: PUBLISHED_FIRST_OPEN_MODE,
+      pinState,
+      revision,
+      wrap
+    }
+  };
+}
+
+function buildPublishedV4AdvisorBundle(payload, wrap) {
+  return {
+    v: PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
+    kind: 'published-advisor-session',
+    payload,
+    advisorAccess: {
+      wrap
+    }
+  };
+}
+
+function buildPublishedAdvisorAccessPayloadV4(advisorDekBytes, clientSecretB64u, revision, pinState) {
+  return new TextEncoder().encode(JSON.stringify({
+    v: 2,
+    kind: 'advisor-access',
+    dekB64u: bytesToBase64Url(advisorDekBytes),
+    clientSecretB64u,
+    clientAccessMode: PUBLISHED_FIRST_OPEN_MODE,
+    clientPinState: pinState,
+    clientAccessRevision: revision
+  }));
+}
+
 export async function encryptPublishedSessionV3(options = {}) {
   const clientSessionJson = typeof options.clientSessionJson === 'string' ? options.clientSessionJson : '';
   const advisorSessionJson = typeof options.advisorSessionJson === 'string' ? options.advisorSessionJson : '';
@@ -633,6 +695,72 @@ export async function encryptPublishedSessionV3(options = {}) {
   };
 }
 
+export async function encryptPublishedSessionV4(options = {}) {
+  const clientSessionJson = typeof options.clientSessionJson === 'string' ? options.clientSessionJson : '';
+  const advisorSessionJson = typeof options.advisorSessionJson === 'string' ? options.advisorSessionJson : '';
+  if (!clientSessionJson || !advisorSessionJson) {
+    throw new Error('Client and advisor session payloads are both required.');
+  }
+
+  const clientSecretBytes = randomBytes(PUBLISHED_KEY_LENGTH);
+  const advisorSecretBytes = randomBytes(PUBLISHED_KEY_LENGTH);
+  const clientSecretB64u = bytesToBase64Url(clientSecretBytes);
+  const advisorSecretB64u = bytesToBase64Url(advisorSecretBytes);
+  const clientAccessRevision = 1;
+  const clientPinState = 'pending';
+
+  const clientBundle = await encryptPublishedPayloadWithSecret(
+    clientSessionJson,
+    clientSecretBytes,
+    PUBLISHED_INFO.clientWrap,
+    PUBLISHED_INFO.clientAuth
+  );
+
+  const advisorBundle = await encryptPublishedPayloadWithSecret(
+    advisorSessionJson,
+    advisorSecretBytes,
+    PUBLISHED_INFO.advisorWrap,
+    PUBLISHED_INFO.advisorAuth,
+    {
+      buildWrapPlaintextBytes: (advisorDekBytes) => buildPublishedAdvisorAccessPayloadV4(
+        advisorDekBytes,
+        clientSecretB64u,
+        clientAccessRevision,
+        clientPinState
+      )
+    }
+  );
+
+  return {
+    clientSecretB64u,
+    advisorSecretB64u,
+    clientPinState,
+    clientAccessRevision,
+    requestBody: {
+      v: PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
+      meta: {
+        clientName: typeof options.clientName === 'string' ? options.clientName.trim() : '',
+        clientEmail: typeof options.clientEmail === 'string' ? options.clientEmail.trim() : '',
+        expiresInDays: Number(options.expiresInDays) || 30
+      },
+      clientBundle: buildPublishedV4ClientBundle(
+        clientBundle.payload,
+        clientBundle.wrap,
+        clientAccessRevision,
+        clientPinState
+      ),
+      advisorBundle: buildPublishedV4AdvisorBundle(
+        advisorBundle.payload,
+        advisorBundle.wrap
+      ),
+      auth: {
+        clientAuthHashB64u: clientBundle.authHashB64u,
+        advisorAuthHashB64u: advisorBundle.authHashB64u
+      }
+    }
+  };
+}
+
 async function decryptPublishedPayloadWithDek(dekBytes, encryptedPayload, invalidMessage) {
   assertCipherEnvelope(encryptedPayload, 'Encrypted session payload');
   const payloadKey = await importAesKey(dekBytes);
@@ -647,6 +775,7 @@ async function decryptPublishedPayloadWithDek(dekBytes, encryptedPayload, invali
 
 async function unwrapClientDek(clientSecretB64u, payload, pin) {
   const envelope = Number(payload?.v) === PUBLISHED_SPLIT_PAYLOAD_VERSION
+    || Number(payload?.v) === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
     ? assertPublishedSplitEnvelope(payload)
     : assertPublishedEnvelope(payload);
   const clientAccess = assertPublishedAccessBundle(envelope, 'client');
@@ -661,6 +790,35 @@ async function unwrapClientDek(clientSecretB64u, payload, pin) {
     'This secure link is invalid or incomplete.'
   );
   const wrappedBytes = new Uint8Array(wrappedBytesBuffer);
+
+  if (Number(envelope?.v) === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION || clientAccess.mode === PUBLISHED_FIRST_OPEN_MODE) {
+    if (clientAccess.pinState === 'pending') {
+      if (wrappedBytes.length !== PUBLISHED_KEY_LENGTH) {
+        throw new Error('Published session key is malformed.');
+      }
+
+      return wrappedBytes;
+    }
+
+    const normalizedPin = normalizeRequiredLegacyPin(pin);
+    const pinBundle = assertPinBundle(JSON.parse(new TextDecoder().decode(wrappedBytesBuffer)));
+    const pinKey = await derivePasswordKey(normalizedPin, base64UrlToBytes(pinBundle.kdf.saltB64u), {
+      iterations: Number(pinBundle.kdf.iterations) || PUBLISHED_PIN_PBKDF2_ITERATIONS,
+      normalizeSecret: normalizeRequiredLegacyPin,
+      invalidMessage: 'PIN must be a 6-digit number.'
+    });
+    const dekBuffer = await decryptBytesWithKey(
+      pinKey,
+      base64UrlToBytes(pinBundle.wrap.ctB64u),
+      base64UrlToBytes(pinBundle.wrap.ivB64u),
+      'Invalid PIN'
+    );
+    const dekBytes = new Uint8Array(dekBuffer);
+    if (dekBytes.length !== PUBLISHED_KEY_LENGTH) {
+      throw new Error('Published session key is malformed.');
+    }
+    return dekBytes;
+  }
 
   if (!clientAccess.pinRequired) {
     if (wrappedBytes.length !== PUBLISHED_KEY_LENGTH) {
@@ -690,6 +848,9 @@ async function unwrapClientDek(clientSecretB64u, payload, pin) {
 }
 
 export async function decryptPublishedSessionV2ForClient(clientSecretB64u, payload, options = {}) {
+  if (Number(payload?.v) === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    return decryptPublishedSessionV4ForClient(clientSecretB64u, payload, options);
+  }
   if (Number(payload?.v) === PUBLISHED_SPLIT_PAYLOAD_VERSION) {
     return decryptPublishedSessionV3ForClient(clientSecretB64u, payload, options);
   }
@@ -698,6 +859,9 @@ export async function decryptPublishedSessionV2ForClient(clientSecretB64u, paylo
 }
 
 export async function decryptPublishedSessionV2ForAdvisor(advisorSecretB64u, payload) {
+  if (Number(payload?.v) === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    return decryptPublishedSessionV4ForAdvisor(advisorSecretB64u, payload);
+  }
   if (Number(payload?.v) === PUBLISHED_SPLIT_PAYLOAD_VERSION) {
     return decryptPublishedSessionV3ForAdvisor(advisorSecretB64u, payload);
   }
@@ -732,6 +896,11 @@ export async function decryptPublishedSessionV3ForClient(clientSecretB64u, paylo
   return decryptPublishedPayloadWithDek(dekBytes, payload.payload, 'This secure link is invalid or incomplete.');
 }
 
+export async function decryptPublishedSessionV4ForClient(clientSecretB64u, payload, options = {}) {
+  const dekBytes = await unwrapClientDek(clientSecretB64u, payload, options.pin);
+  return decryptPublishedPayloadWithDek(dekBytes, payload.payload, 'This secure link is invalid or incomplete.');
+}
+
 export async function decryptPublishedSessionV3ForAdvisor(advisorSecretB64u, payload) {
   const envelope = assertPublishedSplitEnvelope(payload);
   const advisorAccess = assertPublishedAccessBundle(envelope, 'advisor');
@@ -755,6 +924,203 @@ export async function decryptPublishedSessionV3ForAdvisor(advisorSecretB64u, pay
   return {
     plaintext,
     clientSecretB64u: advisorBundle.clientSecretB64u,
-    clientPin: typeof advisorBundle.clientPin === 'string' ? advisorBundle.clientPin : ''
+    clientPin: typeof advisorBundle.clientPin === 'string' ? advisorBundle.clientPin : '',
+    clientPinState: advisorBundle.clientPinState === 'active' ? 'active' : 'pending',
+    clientAccessRevision: Number.isInteger(Number(advisorBundle.clientAccessRevision))
+      ? Number(advisorBundle.clientAccessRevision)
+      : 0,
+    clientAccessMode: typeof advisorBundle.clientAccessMode === 'string'
+      ? advisorBundle.clientAccessMode
+      : ''
+  };
+}
+
+export async function decryptPublishedSessionV4ForAdvisor(advisorSecretB64u, payload) {
+  const envelope = assertPublishedSplitEnvelope(payload);
+  const advisorAccess = assertPublishedAccessBundle(envelope, 'advisor');
+
+  assertCipherEnvelope(advisorAccess.wrap, 'Advisor access bundle');
+  const advisorSecretBytes = base64UrlToBytes(advisorSecretB64u);
+  const advisorWrapKey = await deriveHkdfAesKey(advisorSecretBytes, PUBLISHED_INFO.advisorWrap);
+  const advisorAccessBuffer = await decryptBytesWithKey(
+    advisorWrapKey,
+    base64UrlToBytes(advisorAccess.wrap.ctB64u),
+    base64UrlToBytes(advisorAccess.wrap.ivB64u),
+    'This advisor link is invalid or incomplete.'
+  );
+  const advisorBundle = assertAdvisorBundle(JSON.parse(new TextDecoder().decode(advisorAccessBuffer)));
+  const plaintext = await decryptPublishedPayloadWithDek(
+    base64UrlToBytes(advisorBundle.dekB64u),
+    envelope.payload,
+    'This advisor link is invalid or incomplete.'
+  );
+
+  return {
+    plaintext,
+    clientSecretB64u: advisorBundle.clientSecretB64u,
+    clientPin: '',
+    clientPinState: advisorBundle.clientPinState === 'active' ? 'active' : 'pending',
+    clientAccessRevision: normalizePublishedAccessRevision(
+      advisorBundle.clientAccessRevision,
+      'Advisor access revision'
+    ),
+    clientAccessMode: advisorBundle.clientAccessMode
+  };
+}
+
+export async function resolvePublishedClientSessionAccess(clientSecretB64u, payload, options = {}) {
+  const envelope = Number(payload?.v) === PUBLISHED_PAYLOAD_VERSION
+    ? assertPublishedEnvelope(payload)
+    : assertPublishedSplitEnvelope(payload);
+  const clientAccess = assertPublishedAccessBundle(envelope, 'client');
+  const dekBytes = await unwrapClientDek(clientSecretB64u, payload, options.pin);
+  const plaintext = await decryptPublishedPayloadWithDek(
+    dekBytes,
+    envelope.payload,
+    'This secure link is invalid or incomplete.'
+  );
+
+  return {
+    plaintext,
+    dekB64u: bytesToBase64Url(dekBytes),
+    version: Number(envelope.v),
+    clientAccess: {
+      mode: typeof clientAccess.mode === 'string' ? clientAccess.mode : '',
+      pinState: clientAccess.pinState === 'active' ? 'active' : 'pending',
+      revision: Number.isInteger(Number(clientAccess.revision))
+        ? Number(clientAccess.revision)
+        : 0,
+      pinRequired: Boolean(clientAccess.pinRequired)
+    }
+  };
+}
+
+export async function decryptPublishedSessionWithRememberedDek(payload, dekB64u) {
+  const envelope = Number(payload?.v) === PUBLISHED_PAYLOAD_VERSION
+    ? assertPublishedEnvelope(payload)
+    : assertPublishedSplitEnvelope(payload);
+  return decryptPublishedPayloadWithDek(
+    base64UrlToBytes(dekB64u),
+    envelope.payload,
+    'This secure link is invalid or incomplete.'
+  );
+}
+
+export async function finalizePublishedClientPinV4(clientSecretB64u, pendingBundle, pin, options = {}) {
+  const envelope = assertPublishedSplitEnvelope(pendingBundle);
+  if (Number(envelope.v) !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    throw new Error('This secure link does not support first-open PIN setup.');
+  }
+
+  const clientAccess = assertPublishedAccessBundle(envelope, 'client');
+  if (clientAccess.mode !== PUBLISHED_FIRST_OPEN_MODE || clientAccess.pinState !== 'pending') {
+    throw new Error('This secure link is not waiting for first-open PIN setup.');
+  }
+
+  const currentRevision = normalizePublishedAccessRevision(clientAccess.revision, 'Current client access revision');
+  const nextRevision = normalizePublishedAccessRevision(
+    options.nextRevision ?? (currentRevision + 1),
+    'Next client access revision'
+  );
+  if (nextRevision <= currentRevision) {
+    throw new Error('Next client access revision must be greater than the current revision.');
+  }
+
+  const normalizedPin = normalizeRequiredLegacyPin(pin);
+  const dekBytes = await unwrapClientDek(clientSecretB64u, envelope);
+  const pinBundle = await buildPinWrappedDekBundle(normalizedPin, dekBytes);
+  const clientSecretBytes = base64UrlToBytes(clientSecretB64u);
+  const clientWrapKey = await deriveHkdfAesKey(clientSecretBytes, PUBLISHED_INFO.clientWrap);
+  const wrapIvBytes = randomBytes(IV_LENGTH);
+  const wrapCiphertext = await encryptBytesWithKey(
+    clientWrapKey,
+    new TextEncoder().encode(JSON.stringify(pinBundle)),
+    wrapIvBytes
+  );
+  const plaintext = await decryptPublishedPayloadWithDek(
+    dekBytes,
+    envelope.payload,
+    'This secure link is invalid or incomplete.'
+  );
+
+  return {
+    plaintext,
+    dekB64u: bytesToBase64Url(dekBytes),
+    revision: nextRevision,
+    clientBundle: buildPublishedV4ClientBundle(
+      envelope.payload,
+      toCipherEnvelope(wrapIvBytes, wrapCiphertext),
+      nextRevision,
+      'active'
+    )
+  };
+}
+
+export async function rotatePublishedClientAccessV4(options = {}) {
+  const clientSessionJson = typeof options.clientSessionJson === 'string' ? options.clientSessionJson : '';
+  const advisorSessionJson = typeof options.advisorSessionJson === 'string' ? options.advisorSessionJson : '';
+  const advisorSecretB64u = typeof options.advisorSecretB64u === 'string' ? options.advisorSecretB64u.trim() : '';
+  if (!clientSessionJson || !advisorSessionJson) {
+    throw new Error('Client and advisor session payloads are both required.');
+  }
+  if (!advisorSecretB64u) {
+    throw new Error('Advisor secret is required to rotate client access.');
+  }
+
+  const currentRevision = normalizePublishedAccessRevision(
+    options.currentRevision,
+    'Current client access revision'
+  );
+  const nextRevision = normalizePublishedAccessRevision(
+    options.nextRevision ?? (currentRevision + 1),
+    'Next client access revision'
+  );
+  if (nextRevision <= currentRevision) {
+    throw new Error('Next client access revision must be greater than the current revision.');
+  }
+
+  const clientSecretBytes = randomBytes(PUBLISHED_KEY_LENGTH);
+  const advisorSecretBytes = base64UrlToBytes(advisorSecretB64u);
+  const clientSecretB64u = bytesToBase64Url(clientSecretBytes);
+
+  const clientBundle = await encryptPublishedPayloadWithSecret(
+    clientSessionJson,
+    clientSecretBytes,
+    PUBLISHED_INFO.clientWrap,
+    PUBLISHED_INFO.clientAuth
+  );
+
+  const advisorBundle = await encryptPublishedPayloadWithSecret(
+    advisorSessionJson,
+    advisorSecretBytes,
+    PUBLISHED_INFO.advisorWrap,
+    PUBLISHED_INFO.advisorAuth,
+    {
+      buildWrapPlaintextBytes: (advisorDekBytes) => buildPublishedAdvisorAccessPayloadV4(
+        advisorDekBytes,
+        clientSecretB64u,
+        nextRevision,
+        'pending'
+      )
+    }
+  );
+
+  return {
+    clientSecretB64u,
+    advisorSecretB64u,
+    clientPinState: 'pending',
+    clientAccessRevision: nextRevision,
+    clientAuthHashB64u: clientBundle.authHashB64u,
+    advisorAuthHashB64u: advisorBundle.authHashB64u,
+    clientBundle: buildPublishedV4ClientBundle(
+      clientBundle.payload,
+      clientBundle.wrap,
+      nextRevision,
+      'pending'
+    ),
+    advisorBundle: buildPublishedV4AdvisorBundle(
+      advisorBundle.payload,
+      advisorBundle.wrap
+    )
   };
 }

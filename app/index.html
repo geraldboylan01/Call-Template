@@ -213,7 +213,10 @@
             </select>
           </div>
         </div>
-        <label class="publish-toggle-row" for="publishPinToggle">
+        <p id="publishClientPinInfo" class="publish-client-pin-info">
+          The client will create their own 6-digit PIN the first time they open the secure link. The advisor never sees or stores that PIN.
+        </p>
+        <label class="publish-toggle-row is-hidden" for="publishPinToggle" aria-hidden="true">
           <input id="publishPinToggle" class="publish-toggle-checkbox" type="checkbox" />
           <span>Require a separate 6-digit client PIN</span>
         </label>
@@ -238,6 +241,10 @@
             <div class="publish-meta-label">Expiry</div>
             <div id="publishExpiryValue" class="publish-meta-value">Not published yet</div>
           </div>
+          <div id="publishClientPinStateRow" class="publish-meta-row">
+            <div class="publish-meta-label">Client PIN</div>
+            <div id="publishClientPinStateValue" class="publish-meta-value">Client will create it on first open</div>
+          </div>
           <div id="publishPinWrap" class="publish-pin-wrap is-hidden">
             <div class="publish-pin-label">PIN</div>
             <div id="publishPinValue" class="publish-pin-value">------</div>
@@ -252,7 +259,7 @@
             <div class="publish-pin-label">Client QR</div>
             <div id="publishQrCode" class="publish-qr-code" aria-label="Client QR code"></div>
           </div>
-          <label class="publish-toggle-row" for="publishIncludePinEmailToggle">
+          <label class="publish-toggle-row is-hidden" for="publishIncludePinEmailToggle" aria-hidden="true">
             <input id="publishIncludePinEmailToggle" class="publish-toggle-checkbox" type="checkbox" />
             <span>Include the PIN in the same final email as the secure link</span>
           </label>
@@ -264,6 +271,7 @@
             <button id="publishCopyEmailBtn" class="ui-button" type="button">Copy Email Copy</button>
             <button id="publishSendEmailBtn" class="ui-button" type="button">Send Final Email</button>
             <button id="publishUpdateExpiryBtn" class="ui-button" type="button">Update Expiry</button>
+            <button id="publishResetClientAccessBtn" class="ui-button" type="button">Reset Client Access</button>
             <button id="publishRevokeBtn" class="ui-button" type="button">Revoke access</button>
           </div>
         </div>

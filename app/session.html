@@ -37,6 +37,16 @@
             placeholder="000000"
             aria-label="PIN"
           />
+          <input
+            id="sessionPinConfirmInput"
+            class="session-unlock-input is-hidden"
+            type="password"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+            placeholder="Confirm PIN"
+            aria-label="Confirm PIN"
+          />
         </div>
         <div class="session-unlock-actions">
           <button id="sessionUnlockBtn" class="ui-button" type="button">Unlock</button>

@@ -2959,6 +2959,17 @@ body.overview-has-selection .toast-host {
   font-size: 0.84rem;
 }
 
+.publish-client-pin-info {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(108, 162, 221, 0.18);
+  background: rgba(7, 16, 31, 0.34);
+  color: #bfd7f1;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 .publish-pin-input-wrap {
   margin: 0 0 10px;
 }
@@ -3192,6 +3203,10 @@ body.overview-has-selection .toast-host {
   text-align: center;
   font-size: 1.16rem;
   font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+}
+
+.session-unlock-input + .session-unlock-input {
+  margin-top: 8px;
 }
 
 .session-unlock-actions {

@@ -3,6 +3,7 @@ const SESSION_KEY_PREFIX = 'sessions/';
 const SESSION_KEY_SUFFIX = '.json';
 const PUBLISHED_PAYLOAD_VERSION = 2;
 const PUBLISHED_SPLIT_PAYLOAD_VERSION = 3;
+const PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION = 4;
 const PUBLISHED_SESSION_KEY_PREFIX = 'published/v2/';
 const PUBLISHED_CLIENT_KEY_PREFIX = 'published/client/';
 const PUBLISHED_ADVISOR_KEY_PREFIX = 'published/advisor/';
@@ -169,6 +170,18 @@ function getRouteConfig(pathname) {
   }
 
   if (/^\/api\/published-sessions\/[^/]+\/send-email$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/published-sessions\/[^/]+\/client-pin\/setup$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/published-sessions\/[^/]+\/client-access\/reset$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
     };
@@ -1010,7 +1023,9 @@ function buildPublishedSessionEmailText(payload) {
     `This secure link expires on ${payload.expiresAtDisplay}.`
   ];
 
-  if (payload.includePinInEmail && payload.pin) {
+  if (payload.clientCreatesPinOnFirstOpen) {
+    lines.push('The first time you open this link, you will be asked to create your own 6-digit PIN.');
+  } else if (payload.includePinInEmail && payload.pin) {
     lines.push(`Your 6-digit access code is: ${payload.pin}`);
   } else if (payload.pin) {
     lines.push('A separate 6-digit access code will be shared with you separately.');
@@ -1044,8 +1059,14 @@ function buildPublishedSessionEmailHtml(payload) {
     `
     : '';
 
-  const pinSection = payload.pin
-    ? (payload.includePinInEmail
+  const pinSection = payload.clientCreatesPinOnFirstOpen
+    ? `
+        <p style="margin:18px 0 0;font-size:14px;line-height:1.7;color:#52606d;">
+          The first time you open this secure link, you will be asked to create your own 6-digit PIN.
+        </p>
+      `
+    : payload.pin
+      ? (payload.includePinInEmail
       ? `
         <div style="margin:24px 0 0;padding:18px;border:1px solid #d9e2ea;border-radius:16px;background:#fff7ed;text-align:center;">
           <p style="margin:0 0 8px;font-size:13px;letter-spacing:0.05em;text-transform:uppercase;color:#9a3412;">Access code</p>
@@ -1057,7 +1078,7 @@ function buildPublishedSessionEmailHtml(payload) {
           A separate 6-digit access code will be shared with you separately.
         </p>
       `)
-    : '';
+      : '';
 
   return `<!doctype html>
 <html lang="en">
@@ -1326,7 +1347,8 @@ function validatePublishedBundlePayload(payload, expectedKind, accessKey) {
     throw new Error('Bundle payload must be a JSON object.');
   }
 
-  if (Number(payload.v) !== PUBLISHED_SPLIT_PAYLOAD_VERSION) {
+  const version = Number(payload.v);
+  if (version !== PUBLISHED_SPLIT_PAYLOAD_VERSION && version !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
     throw new Error('Unsupported bundle version.');
   }
 
@@ -1340,7 +1362,7 @@ function validatePublishedBundlePayload(payload, expectedKind, accessKey) {
   }
 
   const validated = {
-    v: PUBLISHED_SPLIT_PAYLOAD_VERSION,
+    v: version,
     kind: expectedKind,
     payload: validateEncryptedEnvelope(payload.payload, {
       allowBase64: false,
@@ -1349,17 +1371,42 @@ function validatePublishedBundlePayload(payload, expectedKind, accessKey) {
   };
 
   if (accessKey === 'clientAccess') {
-    if (typeof access.pinRequired !== 'boolean') {
-      throw new Error('Client pinRequired must be a boolean.');
-    }
+    if (version === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+      const revision = Number(access.revision);
+      if (access.mode !== 'client-first-pin') {
+        throw new Error('Client access mode is invalid.');
+      }
 
-    validated.clientAccess = {
-      pinRequired: access.pinRequired,
-      wrap: validateEncryptedEnvelope(access.wrap, {
-        allowBase64: false,
-        maxCiphertextLength: MAX_WRAP_CT_B64U_LENGTH
-      })
-    };
+      if (access.pinState !== 'pending' && access.pinState !== 'active') {
+        throw new Error('Client access pinState is invalid.');
+      }
+
+      if (!Number.isInteger(revision) || revision < 1) {
+        throw new Error('Client access revision is invalid.');
+      }
+
+      validated.clientAccess = {
+        mode: access.mode,
+        pinState: access.pinState,
+        revision,
+        wrap: validateEncryptedEnvelope(access.wrap, {
+          allowBase64: false,
+          maxCiphertextLength: MAX_WRAP_CT_B64U_LENGTH
+        })
+      };
+    } else {
+      if (typeof access.pinRequired !== 'boolean') {
+        throw new Error('Client pinRequired must be a boolean.');
+      }
+
+      validated.clientAccess = {
+        pinRequired: access.pinRequired,
+        wrap: validateEncryptedEnvelope(access.wrap, {
+          allowBase64: false,
+          maxCiphertextLength: MAX_WRAP_CT_B64U_LENGTH
+        })
+      };
+    }
   } else {
     validated.advisorAccess = {
       wrap: validateEncryptedEnvelope(access.wrap, {
@@ -1384,7 +1431,8 @@ function validatePublishedSessionCreatePayload(payload) {
     };
   }
 
-  if (Number(payload.v) !== PUBLISHED_SPLIT_PAYLOAD_VERSION) {
+  const version = Number(payload.v);
+  if (version !== PUBLISHED_SPLIT_PAYLOAD_VERSION && version !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
     throw new Error('Unsupported payload version.');
   }
 
@@ -1403,10 +1451,22 @@ function validatePublishedSessionCreatePayload(payload) {
     throw new Error('Advisor access auth hash is invalid.');
   }
 
+  const clientBundle = validatePublishedBundlePayload(payload.clientBundle, PUBLISHED_CLIENT_KIND, 'clientAccess');
+  const advisorBundle = validatePublishedBundlePayload(payload.advisorBundle, PUBLISHED_ADVISOR_KIND, 'advisorAccess');
+  if (version === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    if (clientBundle.clientAccess.pinState !== 'pending') {
+      throw new Error('New v4 client access must start pending.');
+    }
+
+    if (clientBundle.clientAccess.revision !== 1) {
+      throw new Error('New v4 client access must start at revision 1.');
+    }
+  }
+
   return {
-    kind: 'v3',
+    kind: version === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION ? 'v4' : 'v3',
     data: {
-      v: PUBLISHED_SPLIT_PAYLOAD_VERSION,
+      v: version,
       meta: {
         clientName: normalizePublishedClientName(meta.clientName),
         clientEmail: meta.clientEmail ? normalizePublishedEmail(meta.clientEmail) : '',
@@ -1416,9 +1476,84 @@ function validatePublishedSessionCreatePayload(payload) {
         clientAuthHashB64u: auth.clientAuthHashB64u,
         advisorAuthHashB64u: auth.advisorAuthHashB64u
       },
-      clientBundle: validatePublishedBundlePayload(payload.clientBundle, PUBLISHED_CLIENT_KIND, 'clientAccess'),
-      advisorBundle: validatePublishedBundlePayload(payload.advisorBundle, PUBLISHED_ADVISOR_KIND, 'advisorAccess')
+      clientBundle,
+      advisorBundle
     }
+  };
+}
+
+function normalizePublishedClientPinState(value, options = {}) {
+  const { allowNull = false } = options;
+  if (allowNull && (value === null || typeof value === 'undefined' || value === '')) {
+    return null;
+  }
+
+  return value === 'active' ? 'active' : 'pending';
+}
+
+function normalizePublishedAccessRevision(value, label = 'Client access revision') {
+  const normalized = Number(value);
+  if (!Number.isInteger(normalized) || normalized < 1) {
+    throw new Error(`${label} is invalid.`);
+  }
+
+  return normalized;
+}
+
+function validatePublishedClientPinSetupPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  const expectedRevision = normalizePublishedAccessRevision(payload.expectedRevision, 'Expected client access revision');
+  const clientBundle = validatePublishedBundlePayload(payload.clientBundle, PUBLISHED_CLIENT_KIND, 'clientAccess');
+  if (clientBundle.v !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    throw new Error('Client PIN setup only supports v4 published sessions.');
+  }
+
+  if (clientBundle.clientAccess.mode !== 'client-first-pin' || clientBundle.clientAccess.pinState !== 'active') {
+    throw new Error('Client PIN setup bundle must be an active v4 client access bundle.');
+  }
+
+  if (clientBundle.clientAccess.revision <= expectedRevision) {
+    throw new Error('Client PIN setup bundle revision must advance the current revision.');
+  }
+
+  return {
+    expectedRevision,
+    clientBundle
+  };
+}
+
+function validatePublishedClientAccessResetPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  const expectedRevision = normalizePublishedAccessRevision(payload.expectedRevision, 'Expected client access revision');
+  if (!isBase64UrlValue(payload.clientAuthHashB64u, MAX_AUTH_HASH_B64U_LENGTH)) {
+    throw new Error('Client access auth hash is invalid.');
+  }
+
+  const clientBundle = validatePublishedBundlePayload(payload.clientBundle, PUBLISHED_CLIENT_KIND, 'clientAccess');
+  const advisorBundle = validatePublishedBundlePayload(payload.advisorBundle, PUBLISHED_ADVISOR_KIND, 'advisorAccess');
+  if (clientBundle.v !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION || advisorBundle.v !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    throw new Error('Client access reset only supports v4 published sessions.');
+  }
+
+  if (clientBundle.clientAccess.mode !== 'client-first-pin' || clientBundle.clientAccess.pinState !== 'pending') {
+    throw new Error('Reset bundle must create a pending v4 client access link.');
+  }
+
+  if (clientBundle.clientAccess.revision <= expectedRevision) {
+    throw new Error('Reset bundle revision must advance the current revision.');
+  }
+
+  return {
+    expectedRevision,
+    clientAuthHashB64u: payload.clientAuthHashB64u,
+    clientBundle,
+    advisorBundle
   };
 }
 
@@ -1506,9 +1641,11 @@ function normalizePublishedSessionRow(row) {
     return null;
   }
 
+  const version = Number(row.version);
+
   return {
     id: row.id,
-    version: Number(row.version),
+    version,
     status: normalizePublishedStatus(row.status, row.expires_at, row.revoked_at),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1533,7 +1670,16 @@ function normalizePublishedSessionRow(row) {
     emailSendCount: Number(row.email_send_count || 0),
     qrAssetToken: row.qr_asset_token || '',
     qrAssetR2Key: row.qr_asset_r2_key || '',
-    qrAssetContentType: row.qr_asset_content_type || ''
+    qrAssetContentType: row.qr_asset_content_type || '',
+    clientPinState: version === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
+      ? (row.client_pin_state === 'active' ? 'active' : 'pending')
+      : null,
+    clientPinInitializedAt: version === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
+      ? (row.client_pin_initialized_at || null)
+      : null,
+    clientAccessRevision: version === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
+      ? Number(row.client_access_revision || 1)
+      : 0
   };
 }
 
@@ -1567,7 +1713,10 @@ async function getPublishedSessionRow(env, publishedId) {
       email_send_count,
       qr_asset_token,
       qr_asset_r2_key,
-      qr_asset_content_type
+      qr_asset_content_type,
+      client_pin_state,
+      client_pin_initialized_at,
+      client_access_revision
     FROM published_sessions
     WHERE id = ?
     LIMIT 1
@@ -1625,8 +1774,11 @@ async function insertPublishedSessionRow(env, record) {
       email_send_count,
       qr_asset_token,
       qr_asset_r2_key,
-      qr_asset_content_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      qr_asset_content_type,
+      client_pin_state,
+      client_pin_initialized_at,
+      client_access_revision
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     record.id,
     record.version,
@@ -1654,7 +1806,10 @@ async function insertPublishedSessionRow(env, record) {
     0,
     null,
     null,
-    null
+    null,
+    record.clientPinState || null,
+    record.clientPinInitializedAt || null,
+    Number(record.clientAccessRevision || 1)
   ).run();
 
   if (!result.success) {
@@ -1723,6 +1878,54 @@ async function updatePublishedEmailMetadata(env, publishedId, values) {
     values.qrAssetToken || null,
     values.qrAssetR2Key || null,
     values.qrAssetContentType || null,
+    nowIso(),
+    publishedId
+  ).run();
+}
+
+async function updatePublishedClientPinSetupMetadata(env, publishedId, values) {
+  const db = getPublishedSessionsDb(env);
+  await db.prepare(`
+    UPDATE published_sessions
+    SET
+      pin_required = 1,
+      client_pin_state = ?,
+      client_pin_initialized_at = ?,
+      client_access_revision = ?,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(
+    values.clientPinState,
+    values.clientPinInitializedAt || null,
+    values.clientAccessRevision,
+    nowIso(),
+    publishedId
+  ).run();
+}
+
+async function resetPublishedClientAccessMetadata(env, publishedId, values) {
+  const db = getPublishedSessionsDb(env);
+  await db.prepare(`
+    UPDATE published_sessions
+    SET
+      status = 'active',
+      revoked_at = NULL,
+      pin_required = 1,
+      client_auth_hash_b64u = ?,
+      client_pin_state = ?,
+      client_pin_initialized_at = NULL,
+      client_access_revision = ?,
+      last_email_sent_at = NULL,
+      email_send_count = 0,
+      qr_asset_token = NULL,
+      qr_asset_r2_key = NULL,
+      qr_asset_content_type = NULL,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(
+    values.clientAuthHashB64u,
+    values.clientPinState,
+    values.clientAccessRevision,
     nowIso(),
     publishedId
   ).run();
@@ -2115,6 +2318,9 @@ async function handleCreatePublishedSession(request, env, origin) {
   const expiresAt = new Date(Date.now() + validated.data.meta.expiresInDays * 24 * 60 * 60 * 1000).toISOString();
   const clientR2Key = getPublishedClientKey(publishedId);
   const advisorR2Key = getPublishedAdvisorKey(publishedId);
+  const isV4 = validated.kind === 'v4';
+  const clientPinState = isV4 ? validated.data.clientBundle.clientAccess.pinState : null;
+  const clientAccessRevision = isV4 ? validated.data.clientBundle.clientAccess.revision : 1;
 
   try {
     await env.SESSIONS_BUCKET.put(clientR2Key, JSON.stringify(validated.data.clientBundle), {
@@ -2125,7 +2331,7 @@ async function handleCreatePublishedSession(request, env, origin) {
     });
     await insertPublishedSessionRow(env, {
       id: publishedId,
-      version: PUBLISHED_SPLIT_PAYLOAD_VERSION,
+      version: validated.data.v,
       status: 'active',
       createdAt,
       updatedAt: createdAt,
@@ -2133,19 +2339,24 @@ async function handleCreatePublishedSession(request, env, origin) {
       revokedAt: null,
       clientName: validated.data.meta.clientName,
       clientEmail: validated.data.meta.clientEmail,
-      pinRequired: validated.data.clientBundle.clientAccess.pinRequired,
+      pinRequired: isV4 ? true : validated.data.clientBundle.clientAccess.pinRequired,
       clientAuthHashB64u: validated.data.auth.clientAuthHashB64u,
       advisorAuthHashB64u: validated.data.auth.advisorAuthHashB64u,
       clientR2Key,
-      advisorR2Key
+      advisorR2Key,
+      clientPinState,
+      clientPinInitializedAt: null,
+      clientAccessRevision
     });
     await insertPublishedSessionEvent(env, publishedId, 'advisor', 'published', {
-      version: PUBLISHED_SPLIT_PAYLOAD_VERSION,
-      pinRequired: validated.data.clientBundle.clientAccess.pinRequired,
+      version: validated.data.v,
+      pinRequired: isV4 ? true : validated.data.clientBundle.clientAccess.pinRequired,
+      clientPinState,
+      clientAccessRevision,
       expiresAt
     });
   } catch (error) {
-    console.error('Failed to store v3 published session', {
+    console.error('Failed to store split published session', {
       publishedId,
       error: error instanceof Error ? error.message : String(error)
     });
@@ -2159,6 +2370,8 @@ async function handleCreatePublishedSession(request, env, origin) {
     expiresAt,
     status: 'active',
     clientEmail: validated.data.meta.clientEmail || '',
+    clientPinState: clientPinState || null,
+    clientAccessRevision,
     emailSendCount: 0,
     lastEmailSentAt: null
   }, 201, origin, 'POST,OPTIONS', null, noStoreHeaders());
@@ -2344,7 +2557,7 @@ function buildPublishedSessionResponse(manifest, role) {
 
 function buildPublishedSessionResponseV3(row, bundle, role) {
   const response = {
-    v: PUBLISHED_SPLIT_PAYLOAD_VERSION,
+    v: row.version,
     role,
     publishedId: row.id,
     createdAt: row.createdAt,
@@ -2359,6 +2572,9 @@ function buildPublishedSessionResponseV3(row, bundle, role) {
       clientName: row.clientName,
       clientEmail: row.clientEmail,
       pinRequired: row.pinRequired,
+      clientPinState: row.clientPinState,
+      clientPinInitializedAt: row.clientPinInitializedAt,
+      clientAccessRevision: row.clientAccessRevision,
       lastEmailSentAt: row.lastEmailSentAt,
       emailSendCount: row.emailSendCount,
       lastAdvisorOpenedAt: row.lastAdvisorOpenedAt,
@@ -2610,6 +2826,174 @@ async function handleExtendPublishedSession(request, env, origin, publishedId) {
   }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
 }
 
+async function handlePublishedClientPinSetup(request, env, origin, publishedId) {
+  const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
+  if (originError) {
+    return originError;
+  }
+
+  const clientIp = getClientIp(request);
+  if (!checkRateLimit(clientIp)) {
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
+  }
+
+  let row = await getPublishedSessionRow(env, publishedId);
+  if (!row) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  row = await markPublishedExpiredIfNeeded(env, row);
+  const authorized = await verifyPublishedCapability(request, row, 'client');
+  if (!authorized) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (row.status !== 'active') {
+    return jsonResponse({ error: 'This secure session is no longer active.' }, 410, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (row.version !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    return jsonResponse({ error: 'This secure session does not support first-open PIN setup.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  let validated;
+  try {
+    validated = validatePublishedClientPinSetupPayload(body);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  if (row.clientPinState !== 'pending' || row.clientAccessRevision !== validated.expectedRevision) {
+    return jsonResponse({
+      error: 'This secure link has already been claimed.',
+      clientPinState: row.clientPinState,
+      clientAccessRevision: row.clientAccessRevision
+    }, 409, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  const clientPinInitializedAt = nowIso();
+  await env.SESSIONS_BUCKET.put(row.clientR2Key, JSON.stringify(validated.clientBundle), {
+    httpMetadata: { contentType: 'application/json' }
+  });
+  await updatePublishedClientPinSetupMetadata(env, publishedId, {
+    clientPinState: 'active',
+    clientPinInitializedAt,
+    clientAccessRevision: validated.clientBundle.clientAccess.revision
+  });
+  await insertPublishedSessionEvent(env, publishedId, 'client', 'client-pin-created', {
+    previousClientAccessRevision: row.clientAccessRevision,
+    clientAccessRevision: validated.clientBundle.clientAccess.revision,
+    requestIp: clientIp,
+    userAgent: normalizeUserAgent(request.headers.get('User-Agent'))
+  });
+
+  return jsonResponse({
+    ok: true,
+    clientPinState: 'active',
+    clientPinInitializedAt,
+    clientAccessRevision: validated.clientBundle.clientAccess.revision
+  }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
+}
+
+async function handleResetPublishedClientAccess(request, env, origin, publishedId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  let row = await getPublishedSessionRow(env, publishedId);
+  if (!row) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  row = await markPublishedExpiredIfNeeded(env, row);
+  const authorized = await verifyPublishedCapability(request, row, 'advisor');
+  if (!authorized) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (row.status !== 'active') {
+    return jsonResponse({ error: 'This secure session is no longer active.' }, 410, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (row.version !== PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    return jsonResponse({ error: 'Client access reset is only supported for v4 published sessions.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  let validated;
+  try {
+    validated = validatePublishedClientAccessResetPayload(body);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  if (row.clientAccessRevision !== validated.expectedRevision) {
+    return jsonResponse({
+      error: 'This published session was already updated. Refresh the published access details and try again.',
+      clientPinState: row.clientPinState,
+      clientAccessRevision: row.clientAccessRevision
+    }, 409, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  const previousQrAssetR2Key = row.qrAssetR2Key || '';
+  await env.SESSIONS_BUCKET.put(row.clientR2Key, JSON.stringify(validated.clientBundle), {
+    httpMetadata: { contentType: 'application/json' }
+  });
+  await env.SESSIONS_BUCKET.put(row.advisorR2Key, JSON.stringify(validated.advisorBundle), {
+    httpMetadata: { contentType: 'application/json' }
+  });
+  await resetPublishedClientAccessMetadata(env, publishedId, {
+    clientAuthHashB64u: validated.clientAuthHashB64u,
+    clientPinState: 'pending',
+    clientAccessRevision: validated.clientBundle.clientAccess.revision
+  });
+  await insertPublishedSessionEvent(env, publishedId, 'advisor', 'client-access-reset', {
+    previousClientAccessRevision: row.clientAccessRevision,
+    clientAccessRevision: validated.clientBundle.clientAccess.revision,
+    previousClientPinState: row.clientPinState,
+    clientPinState: 'pending',
+    requestIp: advisorAccess.clientIp,
+    userAgent: normalizeUserAgent(request.headers.get('User-Agent'))
+  });
+
+  if (previousQrAssetR2Key) {
+    await deletePublishedQrAsset(env, previousQrAssetR2Key).catch((error) => {
+      console.error('Failed to delete superseded QR asset on client access reset', {
+        publishedId,
+        previousQrAssetR2Key,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }
+
+  const updatedRow = await getPublishedSessionRow(env, publishedId);
+  return jsonResponse({
+    ok: true,
+    status: 'active',
+    clientPinState: 'pending',
+    clientAccessRevision: validated.clientBundle.clientAccess.revision,
+    clientEmail: updatedRow?.clientEmail || row.clientEmail,
+    lastEmailSentAt: null,
+    emailSendCount: 0
+  }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
+}
+
 async function handlePublishedSessionUnlocked(request, env, origin, publishedId) {
   const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
   if (originError) {
@@ -2737,8 +3121,10 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     return jsonResponse({ error: error.message || 'Client link is invalid.' }, 400, origin, 'POST,OPTIONS');
   }
 
-  const pin = normalizeLeadValue(body?.pin);
-  const includePinInEmail = body?.includePinInEmail === true && row.pinRequired;
+  const pin = row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION ? '' : normalizeLeadValue(body?.pin);
+  const includePinInEmail = row.version < PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
+    && body?.includePinInEmail === true
+    && row.pinRequired;
   const acknowledgedInlinePinRisk = body?.acknowledgeInlinePinRisk === true;
   if (includePinInEmail && !/^\d{6}$/.test(pin)) {
     return jsonResponse({ error: 'PIN must be a 6-digit number to include it in the email.' }, 400, origin, 'POST,OPTIONS');
@@ -2800,6 +3186,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
         expiresAtDisplay,
         pin,
         includePinInEmail,
+        clientCreatesPinOnFirstOpen: row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
         qrImageUrl
       }),
       text: buildPublishedSessionEmailText({
@@ -2807,7 +3194,8 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
         clientLink: validatedClientLink.href,
         expiresAtDisplay,
         pin,
-        includePinInEmail
+        includePinInEmail,
+        clientCreatesPinOnFirstOpen: row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
       }),
       reply_to: emailConfig.replyTo || undefined
     }, `published-session-${publishedId}-email-${row.emailSendCount + 1}`);
@@ -2842,6 +3230,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     clientEmailChanged: Boolean(row.clientEmail && row.clientEmail !== clientEmail),
     includePinInEmail,
     acknowledgedInlinePinRisk,
+    clientCreatesPinOnFirstOpen: row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
     hasQrImage: Boolean(qrImage),
     rotatedQrToken: qrAssetToken !== (row.qrAssetToken || ''),
     requestIp: clientIp,
@@ -2995,6 +3384,26 @@ export default {
       }
 
       return handleSendPublishedSessionEmail(request, env, origin, publishedId);
+    }
+
+    const clientPinSetupMatch = /^\/api\/published-sessions\/([^/]+)\/client-pin\/setup$/.exec(pathname);
+    if (request.method === 'POST' && clientPinSetupMatch) {
+      const publishedId = clientPinSetupMatch[1];
+      if (!isSafeSessionId(publishedId)) {
+        return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handlePublishedClientPinSetup(request, env, origin, publishedId);
+    }
+
+    const resetClientAccessMatch = /^\/api\/published-sessions\/([^/]+)\/client-access\/reset$/.exec(pathname);
+    if (request.method === 'POST' && resetClientAccessMatch) {
+      const publishedId = resetClientAccessMatch[1];
+      if (!isSafeSessionId(publishedId)) {
+        return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handleResetPublishedClientAccess(request, env, origin, publishedId);
     }
 
     const unlockedPublishedMatch = /^\/api\/published-sessions\/([^/]+)\/unlocked$/.exec(pathname);
