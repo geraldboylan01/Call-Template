@@ -51,6 +51,8 @@
           <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
           <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
           <button id="resetBtn" class="ui-button" type="button">Reset</button>
+          <span id="advisorAuthStatus" class="session-status">Advisor sign-in not checked</span>
+          <button id="advisorLogoutBtn" class="ui-button is-hidden" type="button">Log Out</button>
           <div class="mobile-topbar-meta">
             <span id="sessionStatus" class="session-status">Saved locally</span>
             <button
@@ -265,6 +267,25 @@
             <button id="publishRevokeBtn" class="ui-button" type="button">Revoke access</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="advisorAuthLayer" class="session-unlock-layer is-hidden" aria-hidden="true">
+      <div class="session-unlock-card" role="dialog" aria-modal="true" aria-labelledby="advisorAuthTitle">
+        <h1 id="advisorAuthTitle">Advisor sign in</h1>
+        <p id="advisorAuthHint" class="session-unlock-hint">Sign in to publish, reopen, revoke, extend, and send final client emails.</p>
+        <input
+          id="advisorAuthPasswordInput"
+          class="session-unlock-input"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Advisor password"
+          aria-label="Advisor password"
+        />
+        <div class="session-unlock-actions">
+          <button id="advisorAuthLoginBtn" class="ui-button" type="button">Sign In</button>
+        </div>
+        <p id="advisorAuthError" class="session-unlock-error" aria-live="polite"></p>
       </div>
     </div>
 

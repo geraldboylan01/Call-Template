@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "node ./scripts/build-pages.mjs"
+    "build": "node ./scripts/build-pages.mjs",
+    "generate:advisor-auth": "node ./scripts/generate-advisor-auth.mjs",
+    "smoke:worker": "node ./scripts/check-worker-published-session-routes.mjs"
   }
 }

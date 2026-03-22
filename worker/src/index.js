@@ -23,6 +23,14 @@ const PUBLISHED_DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PUBLISHED_ALLOWED_EXPIRY_DAYS = new Set([7, 30, 90]);
 const PUBLISHED_CLIENT_LINK_HOSTS = new Set(['planeir.ie', 'www.planeir.ie']);
 const PUBLISHED_CLIENT_LINK_PATH = '/app/session.html';
+const ADVISOR_SESSION_COOKIE = 'planeir_advisor_session';
+const ADVISOR_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ADVISOR_AUTH_PBKDF2_ITERATIONS = 310_000;
+const ADVISOR_LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const ADVISOR_LOGIN_RATE_LIMIT_MAX = 10;
+const ADVISOR_ADMIN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const ADVISOR_ADMIN_RATE_LIMIT_MAX = 60;
+const MAX_ADVISOR_PASSWORD_LENGTH = 256;
 const MAX_LEAD_NAME_LENGTH = 120;
 const MAX_LEAD_EMAIL_LENGTH = 160;
 const MAX_LEAD_PHONE_LENGTH = 40;
@@ -30,6 +38,7 @@ const MAX_LEAD_REASON_LENGTH = 2_000;
 const MAX_CLIENT_NAME_LENGTH = 160;
 const MAX_CLIENT_EMAIL_LENGTH = 160;
 const MAX_USER_AGENT_LENGTH = 512;
+const MAX_ADVISOR_SESSION_TOKEN_LENGTH = 4096;
 const PREFLIGHT_MAX_AGE_SECONDS = 86_400;
 const DEFAULT_ALLOWED_REQUEST_HEADERS = 'Content-Type';
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
@@ -106,6 +115,24 @@ function getRouteConfig(pathname) {
   }
 
   if (pathname === '/api/published-sessions') {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/auth/session') {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/auth/login') {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/auth/logout') {
     return {
       methods: 'POST,OPTIONS'
     };
@@ -202,6 +229,7 @@ function corsHeaders(origin, methods, requestHeaders) {
 
   if (origin) {
     headers['Access-Control-Allow-Origin'] = origin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
   }
 
   return headers;
@@ -302,6 +330,244 @@ function normalizeUserAgent(value) {
   }
 
   return normalized.slice(0, MAX_USER_AGENT_LENGTH);
+}
+
+function parseCookies(request) {
+  const header = request.headers.get('Cookie');
+  if (!header) {
+    return new Map();
+  }
+
+  return new Map(
+    header
+      .split(';')
+      .map((entry) => {
+        const separatorIndex = entry.indexOf('=');
+        if (separatorIndex < 0) {
+          return [normalizeEnvValue(entry), ''];
+        }
+
+        return [
+          normalizeEnvValue(entry.slice(0, separatorIndex)),
+          entry.slice(separatorIndex + 1).trim()
+        ];
+      })
+      .filter(([key]) => key)
+  );
+}
+
+function fromBase64UrlBytes(base64Url, maxLength = MAX_ADVISOR_SESSION_TOKEN_LENGTH) {
+  if (typeof base64Url !== 'string' || !base64Url || base64Url.length > maxLength || !/^[A-Za-z0-9_-]+$/.test(base64Url)) {
+    throw new Error('Base64url value is malformed.');
+  }
+
+  const normalized = base64Url
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function getAdvisorAuthConfig(env) {
+  const sessionSecret = normalizeEnvValue(env.ADVISOR_SESSION_SECRET);
+  const password = normalizeEnvValue(env.ADVISOR_PASSWORD);
+  const passwordHashB64u = normalizeEnvValue(env.ADVISOR_PASSWORD_HASH_B64U);
+  const passwordSaltB64u = normalizeEnvValue(env.ADVISOR_PASSWORD_SALT_B64U);
+
+  const enabled = Boolean(
+    sessionSecret
+      && (
+        password
+        || (passwordHashB64u && passwordSaltB64u)
+      )
+  );
+
+  return {
+    enabled,
+    sessionSecret,
+    password,
+    passwordHashB64u,
+    passwordSaltB64u
+  };
+}
+
+function constantTimeEquals(leftBytes, rightBytes) {
+  const left = leftBytes instanceof Uint8Array ? leftBytes : new Uint8Array(leftBytes);
+  const right = rightBytes instanceof Uint8Array ? rightBytes : new Uint8Array(rightBytes);
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  let diff = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    diff |= left[index] ^ right[index];
+  }
+
+  return diff === 0;
+}
+
+async function importHmacKey(secret) {
+  return crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    {
+      name: 'HMAC',
+      hash: 'SHA-256'
+    },
+    false,
+    ['sign', 'verify']
+  );
+}
+
+async function signAdvisorSessionPayload(sessionSecret, payloadBytes) {
+  const key = await importHmacKey(sessionSecret);
+  const signature = await crypto.subtle.sign('HMAC', key, payloadBytes);
+  return toBase64Url(new Uint8Array(signature));
+}
+
+async function createAdvisorSessionToken(config) {
+  const csrfToken = toBase64Url(crypto.getRandomValues(new Uint8Array(24)));
+  const issuedAt = Date.now();
+  const expiresAt = issuedAt + ADVISOR_SESSION_TTL_MS;
+  const payload = {
+    sub: 'advisor',
+    iat: issuedAt,
+    exp: expiresAt,
+    csrf: csrfToken
+  };
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+  const payloadB64u = toBase64Url(payloadBytes);
+  const signatureB64u = await signAdvisorSessionPayload(config.sessionSecret, payloadBytes);
+
+  return {
+    token: `${payloadB64u}.${signatureB64u}`,
+    csrfToken,
+    expiresAt: new Date(expiresAt).toISOString()
+  };
+}
+
+async function readAdvisorSession(request, env) {
+  const config = getAdvisorAuthConfig(env);
+  if (!config.enabled) {
+    return {
+      authEnabled: false,
+      authenticated: false,
+      csrfToken: '',
+      expiresAt: null
+    };
+  }
+
+  const cookies = parseCookies(request);
+  const token = normalizeEnvValue(cookies.get(ADVISOR_SESSION_COOKIE));
+  if (!token) {
+    return {
+      authEnabled: true,
+      authenticated: false,
+      csrfToken: '',
+      expiresAt: null
+    };
+  }
+
+  const tokenParts = token.split('.');
+  if (tokenParts.length !== 2) {
+    return {
+      authEnabled: true,
+      authenticated: false,
+      csrfToken: '',
+      expiresAt: null
+    };
+  }
+
+  try {
+    const payloadBytes = fromBase64UrlBytes(tokenParts[0]);
+    const expectedSignature = await signAdvisorSessionPayload(config.sessionSecret, payloadBytes);
+    const expectedSignatureBytes = new TextEncoder().encode(expectedSignature);
+    const actualSignatureBytes = new TextEncoder().encode(tokenParts[1]);
+    if (!constantTimeEquals(expectedSignatureBytes, actualSignatureBytes)) {
+      return {
+        authEnabled: true,
+        authenticated: false,
+        csrfToken: '',
+        expiresAt: null
+      };
+    }
+
+    const payload = JSON.parse(new TextDecoder().decode(payloadBytes));
+    if (!payload || payload.sub !== 'advisor' || !payload.csrf || Number(payload.exp) <= Date.now()) {
+      return {
+        authEnabled: true,
+        authenticated: false,
+        csrfToken: '',
+        expiresAt: null
+      };
+    }
+
+    return {
+      authEnabled: true,
+      authenticated: true,
+      csrfToken: String(payload.csrf),
+      expiresAt: new Date(Number(payload.exp)).toISOString()
+    };
+  } catch (_error) {
+    return {
+      authEnabled: true,
+      authenticated: false,
+      csrfToken: '',
+      expiresAt: null
+    };
+  }
+}
+
+function buildAdvisorSessionCookie(token, maxAgeSeconds = Math.floor(ADVISOR_SESSION_TTL_MS / 1000)) {
+  return `${ADVISOR_SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${Math.max(0, maxAgeSeconds)}`;
+}
+
+function buildExpiredAdvisorSessionCookie() {
+  return `${ADVISOR_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`;
+}
+
+async function deriveAdvisorPasswordHash(password, saltBytes) {
+  const passwordKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt: saltBytes,
+      iterations: ADVISOR_AUTH_PBKDF2_ITERATIONS
+    },
+    passwordKey,
+    256
+  );
+  return new Uint8Array(derivedBits);
+}
+
+async function verifyAdvisorPassword(password, config) {
+  const normalizedPassword = typeof password === 'string' ? password : '';
+  if (!normalizedPassword || normalizedPassword.length > MAX_ADVISOR_PASSWORD_LENGTH) {
+    return false;
+  }
+
+  if (config.password) {
+    const expectedBytes = new TextEncoder().encode(config.password);
+    const actualBytes = new TextEncoder().encode(normalizedPassword);
+    return constantTimeEquals(expectedBytes, actualBytes);
+  }
+
+  const expectedHashBytes = fromBase64UrlBytes(config.passwordHashB64u);
+  const saltBytes = fromBase64UrlBytes(config.passwordSaltB64u);
+  const actualHashBytes = await deriveAdvisorPasswordHash(normalizedPassword, saltBytes);
+  return constantTimeEquals(expectedHashBytes, actualHashBytes);
 }
 
 function isTruthyEnvValue(value) {
@@ -615,6 +881,55 @@ function getPublishedSessionsDb(env) {
   }
 
   return env.LEADS_DB;
+}
+
+async function checkPersistentRateLimit(env, scope, bucketKey, windowMs, maxRequests) {
+  const db = getPublishedSessionsDb(env);
+  const normalizedScope = normalizeLeadValue(scope);
+  const normalizedBucketKey = normalizeLeadValue(bucketKey) || 'unknown';
+  const now = Date.now();
+  const windowStartedAt = Math.floor(now / windowMs) * windowMs;
+  const updatedAt = nowIso();
+
+  const existing = await db.prepare(`
+    SELECT scope, bucket_key, window_started_at, count
+    FROM security_rate_limits
+    WHERE scope = ? AND bucket_key = ?
+    LIMIT 1
+  `).bind(normalizedScope, normalizedBucketKey).first();
+
+  if (!existing) {
+    await db.prepare(`
+      INSERT INTO security_rate_limits (
+        scope,
+        bucket_key,
+        window_started_at,
+        count,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `).bind(normalizedScope, normalizedBucketKey, windowStartedAt, 1, updatedAt).run();
+    return true;
+  }
+
+  if (Number(existing.window_started_at) !== windowStartedAt) {
+    await db.prepare(`
+      UPDATE security_rate_limits
+      SET window_started_at = ?, count = 1, updated_at = ?
+      WHERE scope = ? AND bucket_key = ?
+    `).bind(windowStartedAt, updatedAt, normalizedScope, normalizedBucketKey).run();
+    return true;
+  }
+
+  if (Number(existing.count || 0) >= maxRequests) {
+    return false;
+  }
+
+  await db.prepare(`
+    UPDATE security_rate_limits
+    SET count = count + 1, updated_at = ?
+    WHERE scope = ? AND bucket_key = ?
+  `).bind(updatedAt, normalizedScope, normalizedBucketKey).run();
+  return true;
 }
 
 function getPublishedClientKey(publishedId) {
@@ -1500,6 +1815,74 @@ function checkRateLimit(clientIp) {
   return true;
 }
 
+function advisorAuthExtraHeaders(session) {
+  if (session?.authEnabled && !session?.authenticated) {
+    return {
+      'Set-Cookie': buildExpiredAdvisorSessionCookie()
+    };
+  }
+
+  return null;
+}
+
+async function requireAdvisorSession(request, env, origin, methods, options = {}) {
+  const { requireCsrf = false, rateScope = 'advisor-admin', rateWindowMs = ADVISOR_ADMIN_RATE_LIMIT_WINDOW_MS, rateLimitMax = ADVISOR_ADMIN_RATE_LIMIT_MAX } = options;
+  const config = getAdvisorAuthConfig(env);
+  const clientIp = getClientIp(request);
+  const originError = requireTrustedOrigin(origin, methods);
+  if (originError) {
+    return {
+      response: originError
+    };
+  }
+
+  if (!checkRateLimit(clientIp)) {
+    return {
+      response: jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods)
+    };
+  }
+
+  const persistentAllowed = await checkPersistentRateLimit(env, rateScope, clientIp, rateWindowMs, rateLimitMax);
+  if (!persistentAllowed) {
+    return {
+      response: jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods, null, noStoreHeaders())
+    };
+  }
+
+  if (!config.enabled) {
+    return {
+      session: {
+        authEnabled: false,
+        authenticated: false,
+        csrfToken: '',
+        expiresAt: null
+      },
+      clientIp
+    };
+  }
+
+  const session = await readAdvisorSession(request, env);
+  if (!session.authenticated) {
+    return {
+      response: jsonResponse({ error: 'Advisor login required.' }, 401, origin, methods, null, {
+        ...noStoreHeaders(),
+        ...advisorAuthExtraHeaders(session)
+      })
+    };
+  }
+
+  if (requireCsrf && request.headers.get('X-Advisor-CSRF') !== session.csrfToken) {
+    return {
+      response: jsonResponse({ error: 'Advisor session is invalid. Refresh and sign in again.' }, 403, origin, methods, null, noStoreHeaders())
+    };
+  }
+
+  return {
+    session,
+    clientIp
+  };
+}
+
 function parseQrImageDataUrl(dataUrl) {
   const value = normalizeLeadValue(dataUrl);
   if (!value) {
@@ -1521,15 +1904,95 @@ function parseQrImageDataUrl(dataUrl) {
   };
 }
 
-async function handlePublish(request, env, origin) {
+async function handleAdvisorSession(request, env, origin) {
+  const session = await readAdvisorSession(request, env);
+  return jsonResponse({
+    authEnabled: session.authEnabled,
+    authenticated: session.authenticated,
+    csrfToken: session.authenticated ? session.csrfToken : '',
+    expiresAt: session.authenticated ? session.expiresAt : null
+  }, 200, origin, 'GET,OPTIONS', null, {
+    ...noStoreHeaders(),
+    ...advisorAuthExtraHeaders(session)
+  });
+}
+
+async function handleAdvisorLogin(request, env, origin) {
   const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
   if (originError) {
     return originError;
   }
 
+  const config = getAdvisorAuthConfig(env);
+  if (!config.enabled) {
+    return jsonResponse({ error: 'Advisor authentication is not configured.' }, 500, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
   const clientIp = getClientIp(request);
   if (!checkRateLimit(clientIp)) {
     return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
+  }
+
+  const persistentAllowed = await checkPersistentRateLimit(env, 'advisor-login', clientIp, ADVISOR_LOGIN_RATE_LIMIT_WINDOW_MS, ADVISOR_LOGIN_RATE_LIMIT_MAX);
+  if (!persistentAllowed) {
+    return jsonResponse({ error: 'Too many login attempts. Please try again later.' }, 429, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  const password = typeof body?.password === 'string' ? body.password : '';
+  const validPassword = await verifyAdvisorPassword(password, config);
+  if (!validPassword) {
+    return jsonResponse({ error: 'Password is incorrect.' }, 401, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  const token = await createAdvisorSessionToken(config);
+  return jsonResponse({
+    ok: true,
+    authEnabled: true,
+    authenticated: true,
+    csrfToken: token.csrfToken,
+    expiresAt: token.expiresAt
+  }, 200, origin, 'POST,OPTIONS', null, {
+    ...noStoreHeaders(),
+    'Set-Cookie': buildAdvisorSessionCookie(token.token)
+  });
+}
+
+async function handleAdvisorLogout(request, env, origin) {
+  const session = await readAdvisorSession(request, env);
+  const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
+  if (originError) {
+    return originError;
+  }
+
+  if (session.authEnabled && session.authenticated && request.headers.get('X-Advisor-CSRF') !== session.csrfToken) {
+    return jsonResponse({ error: 'Advisor session is invalid. Refresh and sign in again.' }, 403, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  return jsonResponse({
+    ok: true,
+    authEnabled: session.authEnabled,
+    authenticated: false,
+    csrfToken: '',
+    expiresAt: null
+  }, 200, origin, 'POST,OPTIONS', null, {
+    ...noStoreHeaders(),
+    'Set-Cookie': buildExpiredAdvisorSessionCookie()
+  });
+}
+
+async function handlePublish(request, env, origin) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
   }
 
   let body;
@@ -1604,14 +2067,11 @@ async function loadPublishedManifest(env, publishedId) {
 }
 
 async function handleCreatePublishedSession(request, env, origin) {
-  const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
-  if (originError) {
-    return originError;
-  }
-
-  const clientIp = getClientIp(request);
-  if (!checkRateLimit(clientIp)) {
-    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
   }
 
   let body;
@@ -1823,7 +2283,14 @@ async function handleGetSession(request, env, origin, sessionId) {
   });
 }
 
-async function handleRevoke(env, origin, sessionId) {
+async function handleRevoke(request, env, origin, sessionId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
   const objectKey = getSessionKey(sessionId);
   await env.SESSIONS_BUCKET.delete(objectKey);
   return jsonResponse({ ok: true }, 200, origin, 'POST,OPTIONS');
@@ -1957,6 +2424,14 @@ async function handleGetPublishedSessionV3(request, env, origin, publishedId, ro
   }
 
   row = await markPublishedExpiredIfNeeded(env, row);
+  if (role === 'advisor') {
+    const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS', {
+      requireCsrf: false
+    });
+    if (advisorAccess.response) {
+      return advisorAccess.response;
+    }
+  }
   const authorized = await verifyPublishedCapability(request, row, role);
   if (!authorized) {
     return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
@@ -2022,14 +2497,11 @@ async function handleGetPublishedSession(request, env, origin, publishedId, role
 }
 
 async function handleRevokePublishedSession(request, env, origin, publishedId) {
-  const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
-  if (originError) {
-    return originError;
-  }
-
-  const clientIp = getClientIp(request);
-  if (!checkRateLimit(clientIp)) {
-    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
   }
 
   const row = await getPublishedSessionRow(env, publishedId);
@@ -2095,14 +2567,11 @@ async function handleRevokePublishedSession(request, env, origin, publishedId) {
 }
 
 async function handleExtendPublishedSession(request, env, origin, publishedId) {
-  const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
-  if (originError) {
-    return originError;
-  }
-
-  const clientIp = getClientIp(request);
-  if (!checkRateLimit(clientIp)) {
-    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
   }
 
   const row = await getPublishedSessionRow(env, publishedId);
@@ -2161,6 +2630,14 @@ async function handlePublishedSessionUnlocked(request, env, origin, publishedId)
 
   const role = body?.role === 'advisor' ? 'advisor' : 'client';
   const source = normalizeLeadValue(body?.source || '') || (role === 'advisor' ? 'advisor-reopen' : 'viewer');
+  if (role === 'advisor') {
+    const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+      requireCsrf: false
+    });
+    if (advisorAccess.response) {
+      return advisorAccess.response;
+    }
+  }
 
   let row = await getPublishedSessionRow(env, publishedId);
   if (row) {
@@ -2214,15 +2691,14 @@ async function handlePublishedSessionUnlocked(request, env, origin, publishedId)
 }
 
 async function handleSendPublishedSessionEmail(request, env, origin, publishedId) {
-  const originError = requireTrustedOrigin(origin, 'POST,OPTIONS');
-  if (originError) {
-    return originError;
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
   }
 
-  const clientIp = getClientIp(request);
-  if (!checkRateLimit(clientIp)) {
-    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'POST,OPTIONS');
-  }
+  const clientIp = advisorAccess.clientIp;
 
   const row = await getPublishedSessionRow(env, publishedId);
   if (!row) {
@@ -2448,6 +2924,18 @@ export default {
       return handleCreatePublishedSession(request, env, origin);
     }
 
+    if (request.method === 'GET' && pathname === '/api/auth/session') {
+      return handleAdvisorSession(request, env, origin);
+    }
+
+    if (request.method === 'POST' && pathname === '/api/auth/login') {
+      return handleAdvisorLogin(request, env, origin);
+    }
+
+    if (request.method === 'POST' && pathname === '/api/auth/logout') {
+      return handleAdvisorLogout(request, env, origin);
+    }
+
     const getMatch = /^\/api\/session\/([^/]+)$/.exec(pathname);
     if (request.method === 'GET' && getMatch) {
       const sessionId = getMatch[1];
@@ -2476,7 +2964,7 @@ export default {
         return jsonResponse({ error: 'Invalid session id.' }, 400, origin, 'POST,OPTIONS');
       }
 
-      return handleRevoke(env, origin, sessionId);
+      return handleRevoke(request, env, origin, sessionId);
     }
 
     const revokePublishedMatch = /^\/api\/published-sessions\/([^/]+)\/revoke$/.exec(pathname);

@@ -63,6 +63,13 @@ const publishedRecoveryMessage = document.getElementById('publishedRecoveryMessa
 const publishedRecoveryRetryButton = document.getElementById('publishedRecoveryRetryBtn');
 const publishedRecoveryLocalButton = document.getElementById('publishedRecoveryLocalBtn');
 const publishedRecoveryFreshButton = document.getElementById('publishedRecoveryFreshBtn');
+const advisorAuthLayer = document.getElementById('advisorAuthLayer');
+const advisorAuthHint = document.getElementById('advisorAuthHint');
+const advisorAuthPasswordInput = document.getElementById('advisorAuthPasswordInput');
+const advisorAuthLoginButton = document.getElementById('advisorAuthLoginBtn');
+const advisorAuthError = document.getElementById('advisorAuthError');
+const advisorAuthStatus = document.getElementById('advisorAuthStatus');
+const advisorLogoutButton = document.getElementById('advisorLogoutBtn');
 const runtimeConfig = {
   readOnly: false,
   allowDevPanel: true,
@@ -115,7 +122,7 @@ async function recordPublishedUnlock(publishedId, secretB64u, role, source) {
 
   try {
     const capability = await buildPublishedCapabilityToken(secret, normalizedRole);
-    await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(sessionId)}/unlocked`, {
+    await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(sessionId)}/unlocked`, buildAdvisorRequestInit({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -128,7 +135,9 @@ async function recordPublishedUnlock(publishedId, secretB64u, role, source) {
           : (normalizedRole === 'advisor' ? 'advisor-reopen' : 'viewer')
       }),
       keepalive: true
-    });
+    }, {
+      includeCsrf: normalizedRole === 'advisor'
+    }));
   } catch (_error) {
     // Unlock telemetry must never block the session open path.
   }
@@ -153,9 +162,268 @@ const appState = {
   publishedAccess: null
 };
 
+const advisorAuthState = {
+  enabled: false,
+  authenticated: false,
+  csrfToken: '',
+  expiresAt: null
+};
+
 let mobileSheetRestoreFocusTarget = null;
 let mobileSheetTouchStartY = null;
 let mobileSheetTouchDeltaY = 0;
+let advisorAuthWaiters = [];
+let advisorAuthEventsBound = false;
+
+function setAdvisorAuthVisible(visible) {
+  if (!advisorAuthLayer) {
+    return;
+  }
+
+  advisorAuthLayer.classList.toggle('is-hidden', !visible);
+  advisorAuthLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function setAdvisorAuthError(message) {
+  if (!advisorAuthError) {
+    return;
+  }
+
+  advisorAuthError.textContent = String(message || '');
+}
+
+function setAdvisorAuthLoading(isLoading, label = 'Sign In') {
+  if (!advisorAuthLoginButton) {
+    return;
+  }
+
+  advisorAuthLoginButton.disabled = isLoading;
+  advisorAuthLoginButton.textContent = isLoading ? label : 'Sign In';
+}
+
+function updateAdvisorAuthChrome() {
+  if (advisorAuthStatus) {
+    if (!advisorAuthState.enabled) {
+      advisorAuthStatus.textContent = 'Advisor auth disabled';
+    } else if (advisorAuthState.authenticated) {
+      advisorAuthStatus.textContent = 'Advisor signed in';
+    } else {
+      advisorAuthStatus.textContent = 'Advisor sign-in required';
+    }
+  }
+
+  if (advisorLogoutButton) {
+    advisorLogoutButton.classList.toggle('is-hidden', !(advisorAuthState.enabled && advisorAuthState.authenticated));
+  }
+}
+
+function buildAdvisorRequestInit(init = {}, options = {}) {
+  const headers = new Headers(init.headers || {});
+  if (options.includeCsrf && advisorAuthState.csrfToken) {
+    headers.set('X-Advisor-CSRF', advisorAuthState.csrfToken);
+  }
+
+  return {
+    ...init,
+    headers,
+    credentials: 'include'
+  };
+}
+
+async function fetchAdvisorAuthSession() {
+  if (!WORKER_BASE_URL) {
+    return {
+      authEnabled: false,
+      authenticated: false,
+      csrfToken: '',
+      expiresAt: null
+    };
+  }
+
+  const response = await fetch(`${WORKER_BASE_URL}/api/auth/session`, buildAdvisorRequestInit({
+    method: 'GET',
+    cache: 'no-store'
+  }));
+  if (!response.ok) {
+    throw new Error(`Unable to check advisor session (${response.status}).`);
+  }
+  return response.json();
+}
+
+async function syncAdvisorAuthState() {
+  const payload = await fetchAdvisorAuthSession();
+  advisorAuthState.enabled = payload?.authEnabled === true;
+  advisorAuthState.authenticated = payload?.authenticated === true;
+  advisorAuthState.csrfToken = advisorAuthState.authenticated ? String(payload?.csrfToken || '') : '';
+  advisorAuthState.expiresAt = advisorAuthState.authenticated ? payload?.expiresAt || null : null;
+  updateAdvisorAuthChrome();
+  return advisorAuthState;
+}
+
+function resolveAdvisorAuthWaiters() {
+  if (advisorAuthWaiters.length === 0) {
+    return;
+  }
+
+  const waiters = advisorAuthWaiters;
+  advisorAuthWaiters = [];
+  waiters.forEach((resolve) => resolve());
+}
+
+function isAdvisorAuthFailureStatus(status) {
+  return status === 401 || status === 403;
+}
+
+async function fetchWithAdvisorAuth(url, init = {}, options = {}) {
+  const { includeCsrf = false, authPrompt = 'Sign in to continue.', retryOnAuthFailure = true } = options;
+  let response = await fetch(url, buildAdvisorRequestInit(init, { includeCsrf }));
+
+  if (!retryOnAuthFailure || !isAdvisorAuthFailureStatus(response.status)) {
+    return response;
+  }
+
+  let authState = advisorAuthState;
+  try {
+    authState = await syncAdvisorAuthState();
+  } catch (_error) {
+    authState = advisorAuthState;
+  }
+
+  if (!authState.enabled) {
+    return response;
+  }
+
+  await ensureAdvisorAuthenticated(authPrompt);
+  response = await fetch(url, buildAdvisorRequestInit(init, { includeCsrf }));
+  return response;
+}
+
+async function handleAdvisorLoginSubmit() {
+  if (!WORKER_BASE_URL) {
+    return;
+  }
+
+  const password = String(advisorAuthPasswordInput?.value || '');
+  if (!password.trim()) {
+    setAdvisorAuthError('Enter the advisor password.');
+    return;
+  }
+
+  setAdvisorAuthError('');
+  setAdvisorAuthLoading(true, 'Signing in...');
+
+  try {
+    const response = await fetch(`${WORKER_BASE_URL}/api/auth/login`, buildAdvisorRequestInit({
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ password })
+    }));
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.error || `Sign-in failed (${response.status}).`);
+    }
+
+    advisorAuthState.enabled = payload?.authEnabled === true;
+    advisorAuthState.authenticated = payload?.authenticated === true;
+    advisorAuthState.csrfToken = String(payload?.csrfToken || '');
+    advisorAuthState.expiresAt = payload?.expiresAt || null;
+    if (advisorAuthPasswordInput) {
+      advisorAuthPasswordInput.value = '';
+    }
+    setAdvisorAuthVisible(false);
+    updateAdvisorAuthChrome();
+    resolveAdvisorAuthWaiters();
+  } catch (error) {
+    setAdvisorAuthError(error?.message || 'Could not sign in.');
+  } finally {
+    setAdvisorAuthLoading(false);
+  }
+}
+
+async function ensureAdvisorAuthenticated(message = 'Sign in to publish, reopen, revoke, extend, and send final client emails.') {
+  const authState = await syncAdvisorAuthState();
+  if (!authState.enabled || authState.authenticated) {
+    setAdvisorAuthVisible(false);
+    return;
+  }
+
+  setAdvisorAuthError('');
+  if (advisorAuthHint) {
+    advisorAuthHint.textContent = String(message || 'Sign in to continue.');
+  }
+  setAdvisorAuthVisible(true);
+  if (advisorAuthPasswordInput) {
+    advisorAuthPasswordInput.focus();
+  }
+
+  await new Promise((resolve) => {
+    advisorAuthWaiters.push(resolve);
+  });
+}
+
+async function handleAdvisorLogout() {
+  if (!WORKER_BASE_URL || !advisorAuthState.enabled || !advisorAuthState.authenticated) {
+    return;
+  }
+
+  const response = await fetch(`${WORKER_BASE_URL}/api/auth/logout`, buildAdvisorRequestInit({
+    method: 'POST'
+  }, {
+    includeCsrf: true
+  }));
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Logout failed (${response.status}).`);
+  }
+
+  advisorAuthState.authenticated = false;
+  advisorAuthState.csrfToken = '';
+  advisorAuthState.expiresAt = null;
+  updateAdvisorAuthChrome();
+  setAdvisorAuthVisible(true);
+  if (advisorAuthPasswordInput) {
+    advisorAuthPasswordInput.focus();
+  }
+}
+
+function bindAdvisorAuthEvents() {
+  if (advisorAuthEventsBound) {
+    return;
+  }
+
+  if (advisorAuthLoginButton) {
+    advisorAuthLoginButton.addEventListener('click', async () => {
+      await handleAdvisorLoginSubmit();
+    });
+  }
+
+  if (advisorAuthPasswordInput) {
+    advisorAuthPasswordInput.addEventListener('keydown', async (event) => {
+      if (event.key !== 'Enter') {
+        return;
+      }
+
+      event.preventDefault();
+      await handleAdvisorLoginSubmit();
+    });
+  }
+
+  if (advisorLogoutButton) {
+    advisorLogoutButton.addEventListener('click', async () => {
+      try {
+        await handleAdvisorLogout();
+        showToast('Advisor signed out.');
+      } catch (error) {
+        showToast(error?.message || 'Could not sign out.', 'error');
+      }
+    });
+  }
+
+  advisorAuthEventsBound = true;
+}
 
 const EXAMPLE_PAYLOADS = [
   {
@@ -3235,10 +3503,12 @@ function setPublishModalOpen(open) {
 
 async function fetchPublishedAdvisorBundle(publishedId, advisorSecretB64u) {
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
-  const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/advisor`, {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/advisor`, {
     headers: {
       'X-Published-Capability': capability
     }
+  }, {
+    authPrompt: 'Sign in to reopen this published session.'
   });
 
   if (response.status === 404) {
@@ -3391,12 +3661,15 @@ async function publishCurrentSession() {
     clientEmail,
     expiresInDays
   });
-  const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions`, {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(encryptedPayload.requestBody)
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to publish secure client sessions.'
   });
 
   if (!response.ok) {
@@ -3436,12 +3709,15 @@ async function revokePublishedSession(access) {
     }
 
     const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
-    const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/revoke`, {
+    const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/revoke`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Published-Capability': capability
       }
+    }, {
+      includeCsrf: true,
+      authPrompt: 'Sign in to revoke this published client session.'
     });
 
     if (!response.ok) {
@@ -3452,11 +3728,14 @@ async function revokePublishedSession(access) {
   }
 
   const sessionId = String(access.sessionId || '').trim();
-  const response = await fetch(`${WORKER_BASE_URL}/api/revoke/${encodeURIComponent(sessionId)}`, {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/revoke/${encodeURIComponent(sessionId)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     }
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to revoke this published client session.'
   });
 
   if (!response.ok) {
@@ -3669,7 +3948,7 @@ async function sendPublishedSessionEmail(access) {
     throw new Error('QR code is unavailable. Regenerate the published link before sending.');
   }
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
-  const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/send-email`, {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/send-email`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -3684,6 +3963,9 @@ async function sendPublishedSessionEmail(access) {
       acknowledgeInlinePinRisk: isPublishPinIncludedInEmail() && Boolean(access.pin),
       qrImageDataUrl
     })
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to send the final client email.'
   });
 
   if (!response.ok) {
@@ -3707,7 +3989,7 @@ async function updatePublishedSessionExpiry(access) {
 
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
   const expiresInDays = getPublishExpiryDaysFromInput();
-  const response = await fetch(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/extend`, {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/extend`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -3716,6 +3998,9 @@ async function updatePublishedSessionExpiry(access) {
     body: JSON.stringify({
       expiresInDays
     })
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to update this published session.'
   });
 
   if (!response.ok) {
@@ -5747,6 +6032,8 @@ async function handleNewCall() {
 }
 
 function bindEvents() {
+  bindAdvisorAuthEvents();
+
   if (ui.clientNameInput && !runtimeConfig.readOnly) {
     ui.clientNameInput.addEventListener('input', (event) => {
       appState.session.clientName = normalizeClientName(event.target.value);
@@ -5762,7 +6049,8 @@ function bindEvents() {
   }
 
   if (!runtimeConfig.readOnly && runtimeConfig.allowPublish && ui.publishSessionButton) {
-    ui.publishSessionButton.addEventListener('click', () => {
+    ui.publishSessionButton.addEventListener('click', async () => {
+      await ensureAdvisorAuthenticated('Sign in to publish secure client sessions and manage final emails.');
       setPublishError('');
       if (appState.publishedAccess) {
         renderPublishedAccess(appState.publishedAccess);
@@ -6172,6 +6460,17 @@ export async function initApp(options = {}) {
 
     if (!runtimeConfig.readOnly && runtimeConfig.allowPublish && workerMissing) {
       runtimeConfig.allowPublish = false;
+    }
+
+    bindAdvisorAuthEvents();
+    updateAdvisorAuthChrome();
+
+    if (!runtimeConfig.readOnly && !workerMissing) {
+      try {
+        await syncAdvisorAuthState();
+      } catch (_error) {
+        updateAdvisorAuthChrome();
+      }
     }
 
     if ('initialSession' in options && options.initialSession != null) {
