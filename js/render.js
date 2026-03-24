@@ -3146,17 +3146,17 @@ function getOutputsBucketedRowValue(section, targetLabel) {
   return row ? row[1] : null;
 }
 
-function buildHfcsAgeBandDifferenceText(netWorth, ageBandMedian, householdLabel, currencySymbol) {
-  const difference = netWorth - ageBandMedian;
+function buildHfcsBenchmarkDifferenceText(netWorth, benchmarkValue, benchmarkLabel, currencySymbol) {
+  const difference = netWorth - benchmarkValue;
   if (difference > 0) {
-    return `${formatBucketedCurrency(difference, currencySymbol)} above the median for ${householdLabel}`;
+    return `${formatBucketedCurrency(difference, currencySymbol)} above ${benchmarkLabel}`;
   }
 
   if (difference < 0) {
-    return `${formatBucketedCurrency(Math.abs(difference), currencySymbol)} below the median for ${householdLabel}`;
+    return `${formatBucketedCurrency(Math.abs(difference), currencySymbol)} below ${benchmarkLabel}`;
   }
 
-  return `In line with the median for ${householdLabel}`;
+  return `In line with ${benchmarkLabel}`;
 }
 
 function buildHfcsWealthPositionText(netWorth, nationalMedianNetWorth, nationalNetWorthDeciles) {
@@ -3178,7 +3178,7 @@ function buildHfcsWealthPositionText(netWorth, nationalMedianNetWorth, nationalN
   }
 
   if (matchingBand.lowerBoundPercent === 0) {
-    return 'In the lower national wealth band (roughly bottom 10% of Irish households)';
+    return 'Within roughly the lower 10% of Irish households by net worth';
   }
 
   return `Richer than roughly ${matchingBand.lowerBoundPercent}% of Irish households`;
@@ -3187,35 +3187,60 @@ function buildHfcsWealthPositionText(netWorth, nationalMedianNetWorth, nationalN
 function computeNetWorthContext(netWorth, currentAge, currencySymbol = '€') {
   const dataset = getHfcsNetWorthDataset();
   const normalizedNetWorth = getFiniteNumber(netWorth);
-  const ageBand = getHfcsAgeBandMeta(currentAge);
-  if (!dataset || normalizedNetWorth === null || !ageBand) {
+  if (!dataset || normalizedNetWorth === null) {
     return null;
   }
 
-  const ageBandMedian = getFiniteNumber(dataset.ageBandMedianNetWorth?.[ageBand.key]);
   const nationalMedianNetWorth = getFiniteNumber(dataset.nationalMedianNetWorth);
-  if (ageBandMedian === null || nationalMedianNetWorth === null) {
+  if (nationalMedianNetWorth === null) {
     return null;
+  }
+
+  const ageBand = getHfcsAgeBandMeta(currentAge);
+  const ageBandMedian = ageBand
+    ? getFiniteNumber(dataset.ageBandMedianNetWorth?.[ageBand.key])
+    : null;
+  const benchmarks = [
+    {
+      label: 'National median',
+      valueText: formatBucketedCurrency(nationalMedianNetWorth, currencySymbol)
+    }
+  ];
+  const supportingLines = [
+    buildHfcsBenchmarkDifferenceText(
+      normalizedNetWorth,
+      nationalMedianNetWorth,
+      'the national median',
+      currencySymbol
+    )
+  ];
+
+  if (ageBand && ageBandMedian !== null) {
+    benchmarks.push({
+      label: ageBand.benchmarkLabel,
+      valueText: formatBucketedCurrency(ageBandMedian, currencySymbol)
+    });
+    supportingLines.push(
+      buildHfcsBenchmarkDifferenceText(
+        normalizedNetWorth,
+        ageBandMedian,
+        `the median for ${ageBand.householdLabel}`,
+        currencySymbol
+      )
+    );
   }
 
   return {
-    ageBandDifferenceText: buildHfcsAgeBandDifferenceText(
-      normalizedNetWorth,
-      ageBandMedian,
-      ageBand.householdLabel,
-      currencySymbol
-    ),
-    ageBandMedianLabel: ageBand.benchmarkLabel,
-    ageBandMedianText: formatBucketedCurrency(ageBandMedian, currencySymbol),
-    nationalMedianText: formatBucketedCurrency(nationalMedianNetWorth, currencySymbol),
-    sourceLabel: typeof dataset.sourceLabel === 'string' && dataset.sourceLabel.trim()
-      ? dataset.sourceLabel.trim()
-      : 'CSO HFCS 2023',
-    wealthPositionText: buildHfcsWealthPositionText(
+    benchmarks,
+    heroText: buildHfcsWealthPositionText(
       normalizedNetWorth,
       nationalMedianNetWorth,
       dataset.nationalNetWorthDeciles
-    )
+    ),
+    sourceLabel: typeof dataset.sourceLabel === 'string' && dataset.sourceLabel.trim()
+      ? dataset.sourceLabel.trim()
+      : 'CSO HFCS 2023',
+    supportingLines
   };
 }
 
@@ -3298,31 +3323,29 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
     }
   }
 
-  if (currentAge !== null) {
-    const summarySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'summary')
-      || findOutputsBucketedSection(outputsBucketed.sections, 'summary');
-    const netWorth = getOutputsBucketedRowValue(summarySection, 'net worth');
-    const netWorthContext = computeNetWorthContext(
-      netWorth,
-      currentAge,
-      typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
-        ? outputsBucketed.currencySymbol.trim()
-        : '€'
-    );
+  const summarySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'summary')
+    || findOutputsBucketedSection(outputsBucketed.sections, 'summary');
+  const netWorth = getOutputsBucketedRowValue(summarySection, 'net worth');
+  const netWorthContext = computeNetWorthContext(
+    netWorth,
+    currentAge,
+    typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
+      ? outputsBucketed.currencySymbol.trim()
+      : '€'
+  );
 
-    if (netWorthContext) {
-      enhancements.summary = {
-        ...(enhancements.summary || {}),
-        netWorthContext
-      };
-    }
+  if (netWorthContext) {
+    enhancements.summary = {
+      ...(enhancements.summary || {}),
+      netWorthContext
+    };
   }
 
   return enhancements;
 }
 
 function buildOutputsBucketedNetWorthContext(context) {
-  const wrap = document.createElement('div');
+  const wrap = document.createElement('section');
   wrap.className = 'pbs-net-worth-context';
 
   const header = document.createElement('div');
@@ -3330,7 +3353,7 @@ function buildOutputsBucketedNetWorthContext(context) {
 
   const kicker = document.createElement('span');
   kicker.className = 'pbs-net-worth-context-kicker';
-  kicker.textContent = 'Irish households';
+  kicker.textContent = 'IRISH HOUSEHOLD CONTEXT';
   header.appendChild(kicker);
 
   const source = document.createElement('span');
@@ -3339,13 +3362,21 @@ function buildOutputsBucketedNetWorthContext(context) {
   header.appendChild(source);
   wrap.appendChild(header);
 
+  if (typeof context.heroText === 'string' && context.heroText.trim()) {
+    const hero = document.createElement('p');
+    hero.className = 'pbs-net-worth-context-hero';
+    hero.textContent = context.heroText.trim();
+    wrap.appendChild(hero);
+  }
+
   const benchmarks = document.createElement('div');
   benchmarks.className = 'pbs-net-worth-context-benchmarks';
 
-  [
-    ['National median', context.nationalMedianText],
-    [context.ageBandMedianLabel, context.ageBandMedianText]
-  ].forEach(([label, value]) => {
+  (Array.isArray(context.benchmarks) ? context.benchmarks : []).forEach(({ label, valueText }) => {
+    if (!label || !valueText) {
+      return;
+    }
+
     const benchmark = document.createElement('div');
     benchmark.className = 'pbs-net-worth-benchmark';
 
@@ -3356,36 +3387,49 @@ function buildOutputsBucketedNetWorthContext(context) {
 
     const benchmarkValue = document.createElement('span');
     benchmarkValue.className = 'pbs-net-worth-benchmark-value';
-    benchmarkValue.textContent = value;
+    benchmarkValue.textContent = valueText;
     benchmark.appendChild(benchmarkValue);
 
     benchmarks.appendChild(benchmark);
   });
-  wrap.appendChild(benchmarks);
+  if (benchmarks.childNodes.length > 0) {
+    wrap.appendChild(benchmarks);
+  }
 
-  const primary = document.createElement('p');
-  primary.className = 'pbs-net-worth-context-primary';
-  primary.textContent = context.ageBandDifferenceText;
-  wrap.appendChild(primary);
+  const supportingLines = Array.isArray(context.supportingLines)
+    ? context.supportingLines.filter((line) => typeof line === 'string' && line.trim())
+    : [];
+  if (supportingLines.length > 0) {
+    const support = document.createElement('div');
+    support.className = 'pbs-net-worth-context-support';
 
-  const secondary = document.createElement('p');
-  secondary.className = 'pbs-net-worth-context-secondary';
-  secondary.textContent = context.wealthPositionText;
-  wrap.appendChild(secondary);
+    supportingLines.forEach((line) => {
+      const supportLine = document.createElement('p');
+      supportLine.className = 'pbs-net-worth-context-support-line';
+      supportLine.textContent = line;
+      support.appendChild(supportLine);
+    });
+
+    wrap.appendChild(support);
+  }
 
   return wrap;
 }
 
-function buildOutputsBucketedNetWorthContextRow(context) {
-  const row = document.createElement('tr');
-  row.className = 'pbs-net-worth-context-row';
+function shouldHideSummarySubtotal(section, rows, isSummary) {
+  if (!isSummary) {
+    return false;
+  }
 
-  const cell = document.createElement('td');
-  cell.colSpan = 2;
-  cell.appendChild(buildOutputsBucketedNetWorthContext(context));
-  row.appendChild(cell);
+  const subtotalValue = getFiniteNumber(section?.subtotalValue);
+  if (subtotalValue === null || normalizeSectionToken(section?.subtotalLabel) !== 'networth') {
+    return false;
+  }
 
-  return row;
+  return rows.some(([label, value]) => (
+    normalizeSectionToken(label) === 'networth'
+    && value === subtotalValue
+  ));
 }
 
 function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements = {}) {
@@ -3414,8 +3458,9 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     const subtotalLabel = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
       ? section.subtotalLabel
       : 'Subtotal';
-    const hasSubtotal = Number.isFinite(Number(section.subtotalValue));
     const isSummary = key === 'summary' || title.trim().toLowerCase() === 'summary';
+    const hasSubtotal = Number.isFinite(Number(section.subtotalValue))
+      && !shouldHideSummarySubtotal(section, rows, isSummary);
 
     const table = document.createElement('table');
     table.className = 'generated-table pbs-bucket-table';
@@ -3447,7 +3492,6 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    let hasRenderedNetWorthContext = false;
     rows.forEach((row) => {
       const tr = document.createElement('tr');
       const label = row[0];
@@ -3468,11 +3512,6 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
       }
 
       tbody.appendChild(tr);
-
-      if (isNetWorthRow && sectionEnhancement.netWorthContext && !hasRenderedNetWorthContext) {
-        tbody.appendChild(buildOutputsBucketedNetWorthContextRow(sectionEnhancement.netWorthContext));
-        hasRenderedNetWorthContext = true;
-      }
     });
 
     if (hasSubtotal) {
@@ -3496,6 +3535,10 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
 
     table.appendChild(tbody);
     sectionWrap.appendChild(table);
+
+    if (isSummary && sectionEnhancement.netWorthContext) {
+      sectionWrap.appendChild(buildOutputsBucketedNetWorthContext(sectionEnhancement.netWorthContext));
+    }
 
     if (typeof section.notes === 'string' && section.notes.trim()) {
       const note = document.createElement('p');
@@ -3529,7 +3572,8 @@ function buildOutputsBucketedDetailCard(section, {
   const subtotalLabel = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
     ? section.subtotalLabel
     : 'Subtotal';
-  const hasSubtotal = Number.isFinite(Number(section.subtotalValue));
+  const hasSubtotal = Number.isFinite(Number(section.subtotalValue))
+    && !shouldHideSummarySubtotal(section, rows, highlightNetWorth);
 
   const heading = document.createElement('h4');
   heading.className = 'generated-card-title pbs-stacked-title';
@@ -3553,7 +3597,6 @@ function buildOutputsBucketedDetailCard(section, {
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  let hasRenderedNetWorthContext = false;
   rows.forEach((row) => {
     const tr = document.createElement('tr');
     const label = row[0];
@@ -3573,11 +3616,6 @@ function buildOutputsBucketedDetailCard(section, {
     }
 
     tbody.appendChild(tr);
-
-    if (isNetWorthRow && netWorthContext && !hasRenderedNetWorthContext) {
-      tbody.appendChild(buildOutputsBucketedNetWorthContextRow(netWorthContext));
-      hasRenderedNetWorthContext = true;
-    }
   });
 
   if (hasSubtotal) {
@@ -3598,6 +3636,10 @@ function buildOutputsBucketedDetailCard(section, {
 
   table.appendChild(tbody);
   card.appendChild(table);
+
+  if (netWorthContext) {
+    card.appendChild(buildOutputsBucketedNetWorthContext(netWorthContext));
+  }
 
   return card;
 }
