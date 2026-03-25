@@ -95,6 +95,28 @@
         </button>
       </nav>
 
+      <nav id="mobileFocusNav" class="mobile-focus-nav is-hidden" aria-label="Module navigation">
+        <button
+          id="mobileFocusModulesBtn"
+          class="ui-button mobile-focus-nav-btn is-primary"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="mobileModulePanel"
+          aria-expanded="false"
+        >
+          <span class="mobile-focus-nav-icon" aria-hidden="true">&#9776;</span>
+          <span class="mobile-focus-nav-label">Modules</span>
+        </button>
+        <button id="mobileFocusPrevBtn" class="ui-button mobile-focus-nav-btn" type="button">
+          <span class="mobile-focus-nav-icon" aria-hidden="true">&#8592;</span>
+          <span class="mobile-focus-nav-label">Previous</span>
+        </button>
+        <button id="mobileFocusNextBtn" class="ui-button mobile-focus-nav-btn" type="button">
+          <span class="mobile-focus-nav-label">Next</span>
+          <span class="mobile-focus-nav-icon" aria-hidden="true">&#8594;</span>
+        </button>
+      </nav>
+
       <main class="main-viewport" aria-live="polite">
         <section id="greetingLayer" class="layer greeting-view">
           <div class="greeting-hero">
@@ -160,6 +182,31 @@
         <div id="animLayer" class="anim-layer" aria-hidden="true"></div>
         <div id="toastHost" class="toast-host" aria-live="polite"></div>
       </main>
+
+      <div id="mobileModuleSheet" class="mobile-module-sheet" aria-hidden="true">
+        <div id="mobileModuleBackdrop" class="mobile-module-backdrop"></div>
+        <div
+          id="mobileModulePanel"
+          class="mobile-module-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mobileModuleTitle"
+        >
+          <div class="mobile-module-grabber" aria-hidden="true"></div>
+          <div class="mobile-module-header">
+            <div class="mobile-module-heading">
+              <p class="mobile-module-eyebrow">Session navigation</p>
+              <h2 id="mobileModuleTitle" class="mobile-module-title">Modules</h2>
+              <p class="mobile-module-subtitle">Jump to any module or return to the overview.</p>
+            </div>
+            <button id="mobileModuleCloseBtn" class="ui-button mobile-module-close-btn" type="button">Done</button>
+          </div>
+          <button id="mobileModuleOverviewBtn" class="ui-button mobile-module-overview-btn" type="button">
+            Open overview
+          </button>
+          <div id="mobileModuleList" class="mobile-module-list" role="list"></div>
+        </div>
+      </div>
 
       <div id="mobileOverflowSheet" class="mobile-overflow-sheet" aria-hidden="true">
         <div id="mobileOverflowBackdrop" class="mobile-overflow-backdrop"></div>

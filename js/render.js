@@ -4940,6 +4940,16 @@ export function getUiElements() {
     mobileActionZoomButton: document.getElementById('mobileActionZoomBtn'),
     mobileActionZoomLabel: document.getElementById('mobileActionZoomLabel'),
     mobileActionMoreButton: document.getElementById('mobileActionMoreBtn'),
+    mobileFocusNav: document.getElementById('mobileFocusNav'),
+    mobileFocusModulesButton: document.getElementById('mobileFocusModulesBtn'),
+    mobileFocusPrevButton: document.getElementById('mobileFocusPrevBtn'),
+    mobileFocusNextButton: document.getElementById('mobileFocusNextBtn'),
+    mobileModuleSheet: document.getElementById('mobileModuleSheet'),
+    mobileModuleBackdrop: document.getElementById('mobileModuleBackdrop'),
+    mobileModulePanel: document.getElementById('mobileModulePanel'),
+    mobileModuleCloseButton: document.getElementById('mobileModuleCloseBtn'),
+    mobileModuleOverviewButton: document.getElementById('mobileModuleOverviewBtn'),
+    mobileModuleList: document.getElementById('mobileModuleList'),
     mobileOverflowSheet: document.getElementById('mobileOverflowSheet'),
     mobileOverflowBackdrop: document.getElementById('mobileOverflowBackdrop'),
     mobileOverflowPanel: document.getElementById('mobileOverflowPanel'),
@@ -5001,6 +5011,7 @@ export function renderGreeting(ui, clientName) {
 export function buildFocusedPane({
   module,
   moduleNumber,
+  moduleCount = null,
   onTitleInput,
   onNotesInput,
   onPatchInputs = null,
@@ -5021,7 +5032,9 @@ export function buildFocusedPane({
 
   const meta = document.createElement('div');
   meta.className = 'module-meta';
-  meta.textContent = `Module ${moduleNumber}`;
+  meta.textContent = Number.isFinite(moduleCount) && moduleCount > 0
+    ? `Module ${moduleNumber} of ${moduleCount}`
+    : `Module ${moduleNumber}`;
 
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
@@ -5059,6 +5072,100 @@ export function buildFocusedPane({
   pane.appendChild(card);
 
   return pane;
+}
+
+export function renderMobileModuleSheet(ui, {
+  modules = [],
+  activeModuleId = null,
+  onModuleSelect = null,
+  onOverviewAction = null
+} = {}) {
+  if (ui.mobileModuleOverviewButton) {
+    const hasOverviewAction = typeof onOverviewAction === 'function';
+    ui.mobileModuleOverviewButton.classList.toggle('is-hidden', !hasOverviewAction);
+    ui.mobileModuleOverviewButton.disabled = !hasOverviewAction;
+    ui.mobileModuleOverviewButton.onclick = hasOverviewAction
+      ? () => onOverviewAction()
+      : null;
+  }
+
+  if (!ui.mobileModuleList) {
+    return;
+  }
+
+  ui.mobileModuleList.innerHTML = '';
+
+  if (!Array.isArray(modules) || modules.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'mobile-module-empty';
+    empty.textContent = 'No modules yet.';
+    ui.mobileModuleList.appendChild(empty);
+    return;
+  }
+
+  modules.forEach((module, index) => {
+    const descriptor = buildOverviewPreviewDescriptor(module);
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'mobile-module-item';
+    item.dataset.moduleId = module.id;
+    item.dataset.moduleKind = descriptor.moduleKind.token;
+
+    if (module.id === activeModuleId) {
+      item.classList.add('is-active');
+      item.setAttribute('aria-current', 'step');
+    }
+
+    const header = document.createElement('div');
+    header.className = 'mobile-module-item-header';
+
+    const headerMeta = document.createElement('div');
+    headerMeta.className = 'mobile-module-item-meta';
+
+    const position = document.createElement('span');
+    position.className = 'mobile-module-item-position';
+    position.textContent = `Module ${index + 1} of ${modules.length}`;
+    headerMeta.appendChild(position);
+
+    const typeChip = document.createElement('span');
+    typeChip.className = 'mobile-module-item-kind';
+    typeChip.textContent = descriptor.moduleKind.label;
+    headerMeta.appendChild(typeChip);
+
+    header.appendChild(headerMeta);
+
+    if (module.id === activeModuleId) {
+      const currentBadge = document.createElement('span');
+      currentBadge.className = 'mobile-module-item-badge';
+      currentBadge.textContent = 'Current';
+      header.appendChild(currentBadge);
+    }
+
+    item.appendChild(header);
+
+    const title = document.createElement('div');
+    title.className = 'mobile-module-item-title';
+    title.textContent = module.title?.trim() ? module.title.trim() : 'Untitled Module';
+    item.appendChild(title);
+
+    const preview = buildOverviewPreviewSurface(descriptor);
+    preview.classList.add('mobile-module-item-preview');
+    item.appendChild(preview);
+
+    const metaStrip = buildOverviewMetaStrip(descriptor.metaItems);
+    if (metaStrip) {
+      metaStrip.classList.add('mobile-module-item-strip');
+      item.appendChild(metaStrip);
+    }
+
+    item.addEventListener('click', () => {
+      if (typeof onModuleSelect === 'function') {
+        onModuleSelect(module.id);
+      }
+    });
+
+    ui.mobileModuleList.appendChild(item);
+  });
 }
 
 export function renderOverview({
@@ -5313,6 +5420,26 @@ export function updateControls(ui, {
     const nextLabel = (readOnly || hasNext) ? 'Next module' : 'Create new module';
     ui.nextArrowButton.title = nextLabel;
     ui.nextArrowButton.setAttribute('aria-label', nextLabel);
+  }
+
+  if (ui.mobileFocusNav) {
+    ui.mobileFocusNav.classList.toggle('is-hidden', mode !== 'focused' || !hasModules);
+  }
+
+  if (ui.mobileFocusModulesButton) {
+    ui.mobileFocusModulesButton.disabled = !hasModules;
+  }
+
+  if (ui.mobileFocusPrevButton) {
+    ui.mobileFocusPrevButton.disabled = !hasPrevious;
+    ui.mobileFocusPrevButton.title = 'Previous module';
+    ui.mobileFocusPrevButton.setAttribute('aria-label', 'Previous module');
+  }
+
+  if (ui.mobileFocusNextButton) {
+    ui.mobileFocusNextButton.disabled = !hasNext;
+    ui.mobileFocusNextButton.title = 'Next module';
+    ui.mobileFocusNextButton.setAttribute('aria-label', 'Next module');
   }
 }
 

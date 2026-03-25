@@ -34,6 +34,7 @@ import {
   patchFocusedGeneratedCards,
   getChartHydrationModule,
   renderOverview,
+  renderMobileModuleSheet,
   setMode,
   updateControls,
   updateSessionStatus,
@@ -173,6 +174,9 @@ const advisorAuthState = {
 let mobileSheetRestoreFocusTarget = null;
 let mobileSheetTouchStartY = null;
 let mobileSheetTouchDeltaY = 0;
+let mobileModuleSheetRestoreFocusTarget = null;
+let mobileModuleSheetTouchStartY = null;
+let mobileModuleSheetTouchDeltaY = 0;
 let advisorAuthWaiters = [];
 let advisorAuthEventsBound = false;
 
@@ -2641,12 +2645,22 @@ function isMobileOverflowOpen() {
   return document.body.classList.contains('mobile-overflow-open');
 }
 
+function isMobileModuleSheetOpen() {
+  return document.body.classList.contains('mobile-module-sheet-open');
+}
+
 function setMobileMoreButtonsExpanded(expanded) {
   [ui.mobileHeaderMoreButton, ui.mobileActionMoreButton].forEach((button) => {
     if (button) {
       button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     }
   });
+}
+
+function setMobileModulesButtonExpanded(expanded) {
+  if (ui.mobileFocusModulesButton) {
+    ui.mobileFocusModulesButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
 }
 
 function getFirstMobileOverflowAction() {
@@ -2667,6 +2681,45 @@ function resetMobileOverflowSwipeStyles() {
   }
   mobileSheetTouchStartY = null;
   mobileSheetTouchDeltaY = 0;
+}
+
+function getFirstMobileModuleSheetAction() {
+  if (ui.mobileModuleOverviewButton && !ui.mobileModuleOverviewButton.disabled && !ui.mobileModuleOverviewButton.classList.contains('is-hidden')) {
+    return ui.mobileModuleOverviewButton;
+  }
+
+  if (!ui.mobileModulePanel) {
+    return null;
+  }
+
+  return ui.mobileModulePanel.querySelector('.mobile-module-item.is-active, .mobile-module-item');
+}
+
+function resetMobileModuleSheetSwipeStyles() {
+  if (ui.mobileModulePanel) {
+    ui.mobileModulePanel.style.transition = '';
+    ui.mobileModulePanel.style.transform = '';
+  }
+  if (ui.mobileModuleBackdrop) {
+    ui.mobileModuleBackdrop.style.opacity = '';
+  }
+  mobileModuleSheetTouchStartY = null;
+  mobileModuleSheetTouchDeltaY = 0;
+}
+
+function renderMobileModuleSheetState() {
+  renderMobileModuleSheet(ui, {
+    modules: getModulesInOrder(),
+    activeModuleId: appState.session.activeModuleId,
+    onModuleSelect: (moduleId) => {
+      void handleMobileModuleSelect(moduleId);
+    },
+    onOverviewAction: hasModules()
+      ? () => {
+        void handleMobileOverviewRequest();
+      }
+      : null
+  });
 }
 
 function syncMobileActionState() {
@@ -2717,11 +2770,45 @@ function syncMobileActionState() {
   }
 }
 
+function syncMobileFocusedNavState() {
+  const showFocusedNav = appState.mode === 'focused' && hasModules();
+  const activeIndex = getActiveIndex();
+  const hasPrevious = showFocusedNav && activeIndex > 0;
+  const hasNext = showFocusedNav && activeIndex >= 0 && activeIndex < appState.session.order.length - 1;
+
+  if (ui.mobileFocusNav) {
+    ui.mobileFocusNav.classList.toggle('is-hidden', !showFocusedNav);
+  }
+
+  if (ui.mobileActionBar) {
+    ui.mobileActionBar.classList.toggle('is-hidden', showFocusedNav);
+  }
+
+  if (ui.mobileFocusModulesButton) {
+    ui.mobileFocusModulesButton.disabled = !showFocusedNav || appState.transitionLock;
+  }
+
+  if (ui.mobileFocusPrevButton) {
+    ui.mobileFocusPrevButton.disabled = !hasPrevious || appState.transitionLock;
+  }
+
+  if (ui.mobileFocusNextButton) {
+    ui.mobileFocusNextButton.disabled = !hasNext || appState.transitionLock;
+  }
+
+  if (showFocusedNav) {
+    renderMobileModuleSheetState();
+  } else {
+    closeMobileModuleSheet({ restoreFocus: false });
+  }
+}
+
 function openMobileOverflowSheet(triggerButton = null) {
   if (!ui.mobileOverflowSheet || !isMobileLayoutActive() || isMobileOverflowOpen()) {
     return;
   }
 
+  closeMobileModuleSheet({ restoreFocus: false });
   syncMobileActionState();
   mobileSheetRestoreFocusTarget = triggerButton || document.activeElement;
   resetMobileOverflowSwipeStyles();
@@ -2765,6 +2852,65 @@ function toggleMobileOverflowSheet(triggerButton = null) {
     closeMobileOverflowSheet();
   } else {
     openMobileOverflowSheet(triggerButton);
+  }
+}
+
+function openMobileModuleSheet(triggerButton = null) {
+  if (
+    !ui.mobileModuleSheet
+    || !isMobileLayoutActive()
+    || appState.mode !== 'focused'
+    || !hasModules()
+    || isMobileModuleSheetOpen()
+  ) {
+    return;
+  }
+
+  closeMobileOverflowSheet({ restoreFocus: false });
+  syncMobileFocusedNavState();
+  renderMobileModuleSheetState();
+  mobileModuleSheetRestoreFocusTarget = triggerButton || document.activeElement;
+  resetMobileModuleSheetSwipeStyles();
+  ui.mobileModuleSheet.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('mobile-module-sheet-open');
+  setMobileModulesButtonExpanded(true);
+
+  window.requestAnimationFrame(() => {
+    const firstAction = getFirstMobileModuleSheetAction();
+    if (firstAction) {
+      firstAction.focus();
+    }
+  });
+}
+
+function closeMobileModuleSheet({ restoreFocus = true } = {}) {
+  if (!ui.mobileModuleSheet || !isMobileModuleSheetOpen()) {
+    return;
+  }
+
+  document.body.classList.remove('mobile-module-sheet-open');
+  ui.mobileModuleSheet.setAttribute('aria-hidden', 'true');
+  setMobileModulesButtonExpanded(false);
+  resetMobileModuleSheetSwipeStyles();
+
+  const focusTarget = mobileModuleSheetRestoreFocusTarget && mobileModuleSheetRestoreFocusTarget instanceof HTMLElement && mobileModuleSheetRestoreFocusTarget.isConnected
+    ? mobileModuleSheetRestoreFocusTarget
+    : (ui.mobileFocusModulesButton || null);
+
+  mobileModuleSheetRestoreFocusTarget = null;
+
+  if (restoreFocus && focusTarget) {
+    window.requestAnimationFrame(() => {
+      focusTarget.focus();
+    });
+  }
+}
+
+function toggleMobileModuleSheet(triggerButton = null) {
+  if (isMobileModuleSheetOpen()) {
+    closeMobileModuleSheet();
+  } else {
+    openMobileModuleSheet(triggerButton);
   }
 }
 
@@ -2819,6 +2965,53 @@ function handleMobileOverflowTouchEnd() {
   resetMobileOverflowSwipeStyles();
   if (shouldClose) {
     closeMobileOverflowSheet({ restoreFocus: false });
+  }
+}
+
+function handleMobileModuleTouchStart(event) {
+  if (!isMobileModuleSheetOpen() || event.touches.length !== 1) {
+    return;
+  }
+
+  mobileModuleSheetTouchStartY = event.touches[0].clientY;
+  mobileModuleSheetTouchDeltaY = 0;
+  if (ui.mobileModulePanel) {
+    ui.mobileModulePanel.style.transition = 'none';
+  }
+}
+
+function handleMobileModuleTouchMove(event) {
+  if (
+    !isMobileModuleSheetOpen()
+    || mobileModuleSheetTouchStartY == null
+    || event.touches.length !== 1
+    || !ui.mobileModulePanel
+  ) {
+    return;
+  }
+
+  const delta = event.touches[0].clientY - mobileModuleSheetTouchStartY;
+  if (delta <= 0) {
+    return;
+  }
+
+  mobileModuleSheetTouchDeltaY = delta;
+  ui.mobileModulePanel.style.transform = `translateY(${delta}px)`;
+  if (ui.mobileModuleBackdrop) {
+    const opacity = Math.max(0, 1 - (delta / 240));
+    ui.mobileModuleBackdrop.style.opacity = String(opacity);
+  }
+}
+
+function handleMobileModuleTouchEnd() {
+  if (mobileModuleSheetTouchStartY == null) {
+    return;
+  }
+
+  const shouldClose = mobileModuleSheetTouchDeltaY > MOBILE_SHEET_SWIPE_CLOSE_THRESHOLD;
+  resetMobileModuleSheetSwipeStyles();
+  if (shouldClose) {
+    closeMobileModuleSheet({ restoreFocus: false });
   }
 }
 
@@ -3753,6 +3946,40 @@ async function publishCurrentSession() {
   };
 }
 
+async function queuePublishedAdvisorNotification(access) {
+  if (!WORKER_BASE_URL || !access || Number(access.version) < 3) {
+    return;
+  }
+
+  const publishedId = String(access.publishedId || '').trim();
+  const advisorLink = getPublishedAdvisorLink(access);
+  const advisorSecretB64u = getLinkHashParam(advisorLink, 'ak');
+  if (!publishedId || !advisorSecretB64u || !advisorLink) {
+    throw new Error('Advisor link is unavailable for advisor notification.');
+  }
+
+  const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/send-advisor-notification`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Published-Capability': capability
+    },
+    body: JSON.stringify({
+      advisorLink,
+      clientLink: getPublishedClientLink(access)
+    }),
+    keepalive: true
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to publish secure client sessions.'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Advisor notification request failed (${response.status}).`);
+  }
+}
+
 async function revokePublishedSession(access) {
   if (!access) {
     throw new Error('No published access to revoke.');
@@ -3839,7 +4066,9 @@ function applyRuntimeChrome() {
   }
 
   syncMobileActionState();
+  syncMobileFocusedNavState();
   if (!isMobileLayoutActive()) {
+    closeMobileModuleSheet({ restoreFocus: false });
     closeMobileOverflowSheet({ restoreFocus: false });
   }
 }
@@ -3929,6 +4158,12 @@ async function handlePublishGenerate() {
     const access = await publishCurrentSession();
     appState.publishedAccess = access;
     renderPublishedAccess(access);
+    void queuePublishedAdvisorNotification(access).catch((error) => {
+      console.error('Advisor publish notification request failed', {
+        publishedId: access?.publishedId || '',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
   } catch (error) {
     setPublishError(error?.message || 'Failed to publish this session.');
   } finally {
@@ -5167,6 +5402,7 @@ function updateUiChrome() {
   setOverviewMultiSelectArmed(appState.overviewMultiSelectArmed);
   renderGreeting(ui, appState.session.clientName);
   syncMobileActionState();
+  syncMobileFocusedNavState();
 
   if (appState.mode === 'focused' && typeof window.__callcanvasReflowCharts === 'function') {
     window.requestAnimationFrame(() => {
@@ -5183,6 +5419,7 @@ function getFocusedPaneForModule(module, {
   cardId = 'focusCard'
 } = {}) {
   const moduleNumber = Math.max(1, appState.session.order.indexOf(module.id) + 1);
+  const moduleCount = Math.max(0, appState.session.order.length);
 
   ensureGenerated(module);
   const assumptionsEditorStatus = getAssumptionsEditorRenderStatus(module.id);
@@ -5190,6 +5427,7 @@ function getFocusedPaneForModule(module, {
   return buildFocusedPane({
     module,
     moduleNumber,
+    moduleCount,
     onTitleInput: (moduleId, value) => updateModule(moduleId, { title: value }),
     onNotesInput: (moduleId, value) => updateModule(moduleId, { notes: value }),
     onPatchInputs: (patch) => handleAssumptionsEditorPatch(patch),
@@ -6123,6 +6361,27 @@ async function focusPreviousModule() {
   });
 }
 
+async function focusModuleById(moduleId) {
+  if (appState.transitionLock || appState.mode !== 'focused' || getIsZoomAnimating() || !moduleId) {
+    return;
+  }
+
+  const targetIndex = appState.session.order.indexOf(moduleId);
+  const activeIndex = getActiveIndex();
+  if (targetIndex < 0 || targetIndex === activeIndex) {
+    return;
+  }
+
+  appState.session.activeModuleId = moduleId;
+  scheduleSessionSave();
+
+  await renderFocused({
+    useSwipe: true,
+    direction: targetIndex > activeIndex ? 'forward' : 'backward',
+    revealMode: true
+  });
+}
+
 async function focusNextModule() {
   if (appState.transitionLock || appState.mode !== 'focused' || getIsZoomAnimating()) {
     return;
@@ -6160,6 +6419,16 @@ async function focusNextModuleOrCreate() {
   }
 
   await createNewModule();
+}
+
+async function handleMobileModuleSelect(moduleId) {
+  closeMobileModuleSheet({ restoreFocus: false });
+  await focusModuleById(moduleId);
+}
+
+async function handleMobileOverviewRequest() {
+  closeMobileModuleSheet({ restoreFocus: false });
+  await zoomOutToOverviewMode();
 }
 
 async function handleLoadSessionFromFile(file) {
@@ -6382,6 +6651,24 @@ function bindEvents() {
     });
   }
 
+  if (ui.mobileFocusModulesButton) {
+    ui.mobileFocusModulesButton.addEventListener('click', () => {
+      toggleMobileModuleSheet(ui.mobileFocusModulesButton);
+    });
+  }
+
+  if (ui.mobileFocusPrevButton) {
+    ui.mobileFocusPrevButton.addEventListener('click', async () => {
+      await focusPreviousModule();
+    });
+  }
+
+  if (ui.mobileFocusNextButton) {
+    ui.mobileFocusNextButton.addEventListener('click', async () => {
+      await focusNextModule();
+    });
+  }
+
   if (ui.mobileOverflowPublishButton) {
     ui.mobileOverflowPublishButton.addEventListener('click', () => {
       triggerDesktopAction(ui.publishSessionButton, { closeOverflow: true });
@@ -6413,6 +6700,25 @@ function bindEvents() {
     ui.mobileOverflowBackdrop.addEventListener('click', () => {
       closeMobileOverflowSheet();
     });
+  }
+
+  if (ui.mobileModuleCloseButton) {
+    ui.mobileModuleCloseButton.addEventListener('click', () => {
+      closeMobileModuleSheet();
+    });
+  }
+
+  if (ui.mobileModuleBackdrop) {
+    ui.mobileModuleBackdrop.addEventListener('click', () => {
+      closeMobileModuleSheet();
+    });
+  }
+
+  if (ui.mobileModulePanel) {
+    ui.mobileModulePanel.addEventListener('touchstart', handleMobileModuleTouchStart, { passive: true });
+    ui.mobileModulePanel.addEventListener('touchmove', handleMobileModuleTouchMove, { passive: true });
+    ui.mobileModulePanel.addEventListener('touchend', handleMobileModuleTouchEnd, { passive: true });
+    ui.mobileModulePanel.addEventListener('touchcancel', handleMobileModuleTouchEnd, { passive: true });
   }
 
   if (ui.mobileOverflowPanel) {
@@ -6461,9 +6767,11 @@ function bindEvents() {
       refreshOverview({ enableSortable: true });
     }
     if (!isMobileLayoutActive()) {
+      closeMobileModuleSheet({ restoreFocus: false });
       closeMobileOverflowSheet({ restoreFocus: false });
     }
     syncMobileActionState();
+    syncMobileFocusedNavState();
   });
 
   if (ui.swipeStage) {
@@ -6485,6 +6793,12 @@ function bindEvents() {
     const key = event.key;
     const lower = key.toLowerCase();
     const hasDeleteConfirmOpen = Boolean(document.querySelector('.delete-confirm-backdrop'));
+
+    if (key === 'Escape' && isMobileModuleSheetOpen()) {
+      event.preventDefault();
+      closeMobileModuleSheet();
+      return;
+    }
 
     if (key === 'Escape' && isMobileOverflowOpen()) {
       event.preventDefault();

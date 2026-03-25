@@ -50,6 +50,7 @@ const DEFAULT_ALLOWED_ORIGINS = new Set([
   'https://www.planeir.ie',
   'https://geraldboylan01.github.io'
 ]);
+const DEFAULT_SESSION_ADVISOR_NOTIFICATION_TO = ['geraldboylan@gmail.com'];
 const TRUEISH_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
 
 const ALLOWED_LEAD_STAGES = new Set([
@@ -171,6 +172,12 @@ function getRouteConfig(pathname) {
   }
 
   if (/^\/api\/published-sessions\/[^/]+\/send-email$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/published-sessions\/[^/]+\/send-advisor-notification$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
     };
@@ -596,6 +603,74 @@ function isTruthyEnvValue(value) {
 
 function splitEmailList(value) {
   return normalizeEnvValue(value).split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function isAllowedPublishedNotificationLinkProtocol(url) {
+  if (url.protocol === 'https:') {
+    return true;
+  }
+
+  return url.protocol === 'http:'
+    && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+}
+
+function validatePublishedNotificationLink(value, publishedId, hashKey, label) {
+  const normalized = normalizeLeadValue(value);
+  if (!normalized) {
+    throw new Error(`${label} is required.`);
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(normalized);
+  } catch (_error) {
+    throw new Error(`${label} is invalid.`);
+  }
+
+  if (!isAllowedPublishedNotificationLinkProtocol(parsed)) {
+    throw new Error(`${label} must use HTTPS in production.`);
+  }
+
+  const searchKeys = [...parsed.searchParams.keys()];
+  if (searchKeys.length !== 1 || searchKeys[0] !== 'pub') {
+    throw new Error(`${label} query is invalid.`);
+  }
+
+  const publishedParam = normalizeLeadValue(parsed.searchParams.get('pub'));
+  if (publishedParam !== publishedId) {
+    throw new Error(`${label} does not match this session.`);
+  }
+
+  const hash = parsed.hash.startsWith('#') ? parsed.hash.slice(1) : parsed.hash;
+  const hashParams = new URLSearchParams(hash);
+  const hashKeys = [...hashParams.keys()];
+  if (hashKeys.length !== 1 || hashKeys[0] !== hashKey) {
+    throw new Error(`${label} hash is invalid.`);
+  }
+
+  const capability = normalizeLeadValue(hashParams.get(hashKey));
+  if (!/^[A-Za-z0-9_-]{20,200}$/.test(capability)) {
+    throw new Error(`${label} key is invalid.`);
+  }
+
+  return {
+    href: parsed.toString(),
+    host: parsed.hostname.toLowerCase(),
+    path: normalizePathname(parsed.pathname)
+  };
+}
+
+function validatePublishedAdvisorLink(value, publishedId) {
+  return validatePublishedNotificationLink(value, publishedId, 'ak', 'Advisor reopen link');
+}
+
+function validateOptionalPublishedClientNotificationLink(value, publishedId) {
+  const normalized = normalizeLeadValue(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return validatePublishedNotificationLink(normalized, publishedId, 'ck', 'Client link');
 }
 
 function validatePublishedClientLink(value, publishedId) {
@@ -1116,12 +1191,149 @@ function getPublishedEmailConfig(env) {
   const apiKey = normalizeEnvValue(env.RESEND_API_KEY);
   const from = normalizeEnvValue(env.SESSION_EMAIL_FROM) || normalizeEnvValue(env.LEAD_EMAIL_FROM);
   const replyTo = normalizeEnvValue(env.SESSION_EMAIL_REPLY_TO) || splitEmailList(env.LEAD_REPLY_TO)[0] || '';
+  const advisorNotificationRecipients = splitEmailList(env.SESSION_ADVISOR_NOTIFICATION_TO);
 
   return {
     apiKey,
     from,
-    replyTo
+    replyTo,
+    advisorNotificationRecipients: advisorNotificationRecipients.length > 0
+      ? advisorNotificationRecipients
+      : DEFAULT_SESSION_ADVISOR_NOTIFICATION_TO
   };
+}
+
+function formatPublishedDateTimeForEmail(value) {
+  if (!value) {
+    return 'Not available';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+
+  return parsed.toLocaleString('en-IE', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Europe/Dublin'
+  });
+}
+
+function buildAdvisorNotificationSubject(clientName) {
+  return `Planeir session published - ${normalizePublishedClientName(clientName)}`;
+}
+
+function buildPublishedAdvisorNotificationText(payload) {
+  const lines = [
+    `Planeir session published for ${payload.clientName}`,
+    '',
+    `Client: ${payload.clientName}`,
+    `Published: ${payload.publishedAtDisplay}`,
+    `Expires: ${payload.expiresAtDisplay}`,
+    `Published ID: ${payload.publishedId}`,
+    `Client PIN flow: ${payload.clientPinSummary}`,
+    '',
+    'Advisor reopen link:',
+    payload.advisorLink,
+    ''
+  ];
+
+  if (payload.clientLink) {
+    lines.push(
+      'Client link:',
+      payload.clientLink,
+      ''
+    );
+  }
+
+  if (payload.clientEmail) {
+    lines.push(`Client email: ${payload.clientEmail}`, '');
+  }
+
+  lines.push('This internal notification was created automatically after publish succeeded.');
+
+  return lines.join('\n');
+}
+
+function buildPublishedAdvisorNotificationHtml(payload) {
+  const clientEmailSection = payload.clientEmail
+    ? `
+        <tr>
+          <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Client email</td>
+          <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(payload.clientEmail)}</td>
+        </tr>
+      `
+    : '';
+  const clientLinkSection = payload.clientLink
+    ? `
+        <div style="margin:18px 0 0;">
+          <p style="margin:0 0 8px;font-size:13px;letter-spacing:0.05em;text-transform:uppercase;color:#486581;">Client link</p>
+          <p style="margin:0;padding:14px 16px;border-radius:14px;border:1px solid #d9e2ea;background:#f7fafc;overflow-wrap:anywhere;">
+            <a href="${escapeHtml(payload.clientLink)}" style="color:#0f4c81;text-decoration:none;">${escapeHtml(payload.clientLink)}</a>
+          </p>
+        </div>
+      `
+    : '';
+
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:18px;overflow:hidden;">
+      <div style="padding:28px 28px 18px;background:#0f2233;color:#ffffff;">
+        <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.82;">Planeir advisor notification</p>
+        <h1 style="margin:0;font-size:26px;line-height:1.2;">Session published for ${escapeHtml(payload.clientName)}</h1>
+      </div>
+      <div style="padding:28px;font-size:15px;line-height:1.75;">
+        <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;">
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Client</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(payload.clientName)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Published</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(payload.publishedAtDisplay)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Expires</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(payload.expiresAtDisplay)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Published ID</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(payload.publishedId)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Client PIN flow</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(payload.clientPinSummary)}</td>
+          </tr>
+          ${clientEmailSection}
+        </table>
+        <div style="margin:24px 0 0;">
+          <p style="margin:0 0 8px;font-size:13px;letter-spacing:0.05em;text-transform:uppercase;color:#486581;">Advisor reopen link</p>
+          <p style="margin:0;padding:14px 16px;border-radius:14px;border:1px solid #d9e2ea;background:#f7fafc;overflow-wrap:anywhere;">
+            <a href="${escapeHtml(payload.advisorLink)}" style="color:#0f4c81;text-decoration:none;">${escapeHtml(payload.advisorLink)}</a>
+          </p>
+        </div>
+        ${clientLinkSection}
+        <p style="margin:18px 0 0;color:#52606d;">This internal notification was created automatically after publish succeeded.</p>
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function describePublishedClientPinFlow(row) {
+  if (Number(row?.version) >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
+    return row?.clientPinState === 'active'
+      ? 'Client already created their own PIN'
+      : 'Client creates their own PIN on first open';
+  }
+
+  if (row?.pinRequired) {
+    return 'Advisor-managed 6-digit PIN required';
+  }
+
+  return 'No PIN required';
 }
 
 function isSafeSessionId(rawId) {
@@ -1986,6 +2198,86 @@ async function markPublishedExpiredIfNeeded(env, row) {
     qrAssetR2Key: '',
     qrAssetContentType: ''
   };
+}
+
+async function sendPublishedAdvisorNotificationEmail(env, row, links) {
+  const emailConfig = getPublishedEmailConfig(env);
+  const recipients = emailConfig.advisorNotificationRecipients;
+  const metadataBase = {
+    publishedId: row.id,
+    clientName: row.clientName,
+    clientEmail: row.clientEmail || '',
+    recipients,
+    advisorLinkHost: links.advisorLink.host,
+    advisorLinkPath: links.advisorLink.path,
+    clientLinkHost: links.clientLink?.host || '',
+    clientLinkPath: links.clientLink?.path || '',
+    clientPinFlow: describePublishedClientPinFlow(row)
+  };
+
+  if (!emailConfig.apiKey || !emailConfig.from) {
+    console.warn('Published advisor notification email skipped because session email delivery is not configured.', metadataBase);
+    await insertPublishedSessionEvent(env, row.id, 'system', 'advisor-notification-skipped', {
+      ...metadataBase,
+      reason: 'email-config-missing'
+    }).catch((error) => {
+      console.error('Failed to record advisor notification skip event', {
+        publishedId: row.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+    return;
+  }
+
+  const payload = {
+    clientName: row.clientName,
+    clientEmail: row.clientEmail || '',
+    publishedId: row.id,
+    publishedAtDisplay: formatPublishedDateTimeForEmail(row.createdAt),
+    expiresAtDisplay: formatPublishedDateTimeForEmail(row.expiresAt),
+    clientPinSummary: describePublishedClientPinFlow(row),
+    advisorLink: links.advisorLink.href,
+    clientLink: links.clientLink?.href || ''
+  };
+
+  try {
+    const result = await sendEmailWithResend(emailConfig, {
+      from: emailConfig.from,
+      to: recipients,
+      subject: buildAdvisorNotificationSubject(row.clientName),
+      html: buildPublishedAdvisorNotificationHtml(payload),
+      text: buildPublishedAdvisorNotificationText(payload),
+      reply_to: emailConfig.replyTo || undefined
+    }, `published-session-${row.id}-advisor-notification`);
+
+    console.log('Published advisor notification email accepted', {
+      ...metadataBase,
+      resendEmailId: result?.id || null
+    });
+    await insertPublishedSessionEvent(env, row.id, 'system', 'advisor-notification-sent', {
+      ...metadataBase,
+      resendEmailId: result?.id || null
+    }).catch((error) => {
+      console.error('Failed to record advisor notification sent event', {
+        publishedId: row.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  } catch (error) {
+    console.error('Published advisor notification email failed', {
+      ...metadataBase,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    await insertPublishedSessionEvent(env, row.id, 'system', 'advisor-notification-failed', {
+      ...metadataBase,
+      error: error instanceof Error ? error.message : String(error)
+    }).catch((eventError) => {
+      console.error('Failed to record advisor notification failure event', {
+        publishedId: row.id,
+        error: eventError instanceof Error ? eventError.message : String(eventError)
+      });
+    });
+  }
 }
 
 function checkRateLimit(clientIp) {
@@ -3076,6 +3368,61 @@ async function handlePublishedSessionUnlocked(request, env, origin, publishedId)
   return jsonResponse({ ok: true }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
 }
 
+async function handleSendPublishedAdvisorNotification(request, env, origin, ctx, publishedId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  let row = await getPublishedSessionRow(env, publishedId);
+  if (!row) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  row = await markPublishedExpiredIfNeeded(env, row);
+  const authorized = await verifyPublishedCapability(request, row, 'advisor');
+  if (!authorized) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (row.status !== 'active') {
+    return jsonResponse({ error: 'This secure session is no longer active.' }, 410, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  let advisorLink;
+  let clientLink = null;
+  try {
+    advisorLink = validatePublishedAdvisorLink(body?.advisorLink, publishedId);
+    clientLink = validateOptionalPublishedClientNotificationLink(body?.clientLink, publishedId);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Published links are invalid.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  const emailTask = sendPublishedAdvisorNotificationEmail(env, row, {
+    advisorLink,
+    clientLink
+  });
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(emailTask);
+  } else {
+    void emailTask;
+  }
+
+  return jsonResponse({
+    ok: true,
+    queued: true
+  }, 202, origin, 'POST,OPTIONS', null, noStoreHeaders());
+}
+
 async function handleSendPublishedSessionEmail(request, env, origin, publishedId) {
   const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
     requireCsrf: true
@@ -3386,6 +3733,16 @@ export default {
       }
 
       return handleSendPublishedSessionEmail(request, env, origin, publishedId);
+    }
+
+    const sendAdvisorNotificationPublishedMatch = /^\/api\/published-sessions\/([^/]+)\/send-advisor-notification$/.exec(pathname);
+    if (request.method === 'POST' && sendAdvisorNotificationPublishedMatch) {
+      const publishedId = sendAdvisorNotificationPublishedMatch[1];
+      if (!isSafeSessionId(publishedId)) {
+        return jsonResponse({ error: 'Not found.' }, 404, origin, 'POST,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handleSendPublishedAdvisorNotification(request, env, origin, ctx, publishedId);
     }
 
     const clientPinSetupMatch = /^\/api\/published-sessions\/([^/]+)\/client-pin\/setup$/.exec(pathname);

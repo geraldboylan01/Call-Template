@@ -85,6 +85,39 @@ Published session payloads still use the existing Worker and R2 bucket:
 
 When the advisor app is served from `/app/`, generated client links now resolve to `/app/session.html?id=...`.
 
+### Published Session Email Configuration
+
+Published sessions now support two separate email paths through the same Resend-backed Worker setup:
+
+- the existing client-facing final email, triggered manually from the publish modal
+- an automatic advisor notification email, triggered immediately after a successful publish
+
+Recommended configuration:
+
+- Secret: `RESEND_API_KEY`
+- Variable or secret: `SESSION_EMAIL_FROM`
+- Optional variable or secret: `SESSION_EMAIL_REPLY_TO`
+- Variable or secret: `SESSION_ADVISOR_NOTIFICATION_TO`
+
+Notes:
+
+- `SESSION_ADVISOR_NOTIFICATION_TO` should point to Gerry's inbox. The default implementation target is `geraldboylan@gmail.com`.
+- If `SESSION_EMAIL_FROM` is not set, the Worker falls back to `LEAD_EMAIL_FROM`.
+- The advisor notification is non-blocking. If email delivery fails or email is not configured, publish still succeeds and the Worker only logs the failure.
+- The advisor notification includes the client name, advisor reopen link, client link when provided, published timestamp, expiry, published session id, and the current client PIN flow summary.
+- The client-facing final email flow is unchanged and still uses the existing `Send Final Email` action in the publish modal.
+
+Example setup:
+
+```bash
+cd worker
+wrangler secret put RESEND_API_KEY
+wrangler secret put SESSION_EMAIL_FROM
+wrangler secret put SESSION_EMAIL_REPLY_TO
+```
+
+Set `SESSION_ADVISOR_NOTIFICATION_TO=geraldboylan@gmail.com` in Wrangler vars, the Cloudflare dashboard, or local Wrangler development variables.
+
 ## Build For GitHub Pages
 
 Run:
@@ -120,6 +153,15 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 5. Confirm Gerry receives the internal notification email.
 6. If `LEAD_CONFIRMATION_EMAIL_ENABLED=true`, confirm the submitter receives the acknowledgement email.
 7. To test failure handling, temporarily remove `RESEND_API_KEY` or use an invalid key, submit again, and confirm the API still returns success while the Worker logs the email failure.
+
+## Testing Published Session Emails
+
+1. Configure `RESEND_API_KEY`, `SESSION_EMAIL_FROM`, and `SESSION_ADVISOR_NOTIFICATION_TO` for the Worker.
+2. Run the static site and the Worker locally, or deploy the Worker with those variables set.
+3. Open `/app/`, publish a client session, and confirm the publish succeeds and shows the client link plus advisor reopen link in the modal.
+4. Confirm the advisor notification email arrives at `geraldboylan@gmail.com` with the advisor reopen link, client name, publish time, expiry, and published session id.
+5. From the same published session, use `Send Final Email` and confirm the client-facing final email still sends as before.
+6. To test failure handling, temporarily remove `RESEND_API_KEY` or set an invalid key, publish again, and confirm the publish still succeeds while the Worker logs the advisor notification failure instead of breaking the UI.
 
 ## File Structure
 
