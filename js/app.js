@@ -3238,7 +3238,7 @@ function getLinkHashParam(link, key) {
 }
 
 function buildClientSessionLink(publishedId, clientSecretB64u) {
-  const url = new URL('../session.html', window.location.href);
+  const url = new URL('./session.html', window.location.href);
   url.searchParams.set('pub', publishedId);
   url.hash = new URLSearchParams({ ck: clientSecretB64u }).toString();
   return url.toString();

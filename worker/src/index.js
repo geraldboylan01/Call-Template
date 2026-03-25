@@ -24,7 +24,7 @@ const RATE_LIMIT_MAX_REQUESTS = 80;
 const PUBLISHED_DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PUBLISHED_ALLOWED_EXPIRY_DAYS = new Set([7, 30, 90]);
 const PUBLISHED_CLIENT_LINK_HOSTS = new Set(['planeir.ie', 'www.planeir.ie']);
-const PUBLISHED_CLIENT_LINK_PATH = '/app/session.html';
+const PUBLISHED_CLIENT_LINK_PATHS = new Set(['/app/session.html', '/session.html']);
 const ADVISOR_SESSION_COOKIE = 'planeir_advisor_session';
 const ADVISOR_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const ADVISOR_AUTH_PBKDF2_ITERATIONS = 100_000;
@@ -620,7 +620,7 @@ function validatePublishedClientLink(value, publishedId) {
   }
 
   const normalizedPath = normalizePathname(parsed.pathname);
-  if (normalizedPath !== PUBLISHED_CLIENT_LINK_PATH) {
+  if (!PUBLISHED_CLIENT_LINK_PATHS.has(normalizedPath)) {
     throw new Error('Client link path is invalid.');
   }
 
