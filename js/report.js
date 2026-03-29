@@ -268,13 +268,21 @@ function normalizeKpiItems(items) {
         || toTrimmedString(item.change)
         || toTrimmedString(item.context);
       const tone = toTrimmedString(item.tone) || toTrimmedString(item.variant);
+      const emphasis = toTrimmedString(item.emphasis)
+        || toTrimmedString(item.size)
+        || toTrimmedString(item.priority);
+      const featured = item.featured === true
+        || emphasis.toLowerCase() === 'hero'
+        || emphasis.toLowerCase() === 'featured'
+        || emphasis.toLowerCase() === 'primary';
 
       return {
         id: toTrimmedString(item.id) || `kpi-${index + 1}`,
         label,
         value,
         detail,
-        tone
+        tone,
+        featured
       };
     })
     .filter(Boolean);
@@ -491,6 +499,9 @@ function normalizeKpiRowBlock(block, index) {
   const base = normalizeBlockBase(block, index);
   const source = isPlainObject(block?.kpiRow) ? block.kpiRow : block;
   const items = normalizeKpiItems(firstArray(source.items, source.kpis));
+  const layout = toTrimmedString(source.layout).toLowerCase() === 'hero'
+    ? 'hero'
+    : 'default';
 
   if (items.length === 0) {
     return {
@@ -504,6 +515,7 @@ function normalizeKpiRowBlock(block, index) {
     ...base,
     type: 'kpiRow',
     title: base.title || toTrimmedString(source.title),
+    layout,
     items
   };
 }

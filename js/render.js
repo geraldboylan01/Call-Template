@@ -4593,6 +4593,13 @@ function renderReportSourceListBlock(block) {
   return card;
 }
 
+function renderReportSummaryCard(summaryHtml) {
+  const card = buildSummaryCard(summaryHtml || '');
+  card.classList.add('report-block', 'report-summary-block');
+  card.dataset.reportBlockType = 'summary';
+  return card;
+}
+
 function renderReportKpiRowBlock(block) {
   const card = buildReportBlockShell(block, 'report-block report-kpi-row-block');
   appendReportBlockHeader(card, {
@@ -4600,14 +4607,26 @@ function renderReportKpiRowBlock(block) {
     subtitle: block?.subtitle || ''
   });
 
+  const layout = typeof block?.layout === 'string' && block.layout.trim().toLowerCase() === 'hero'
+    ? 'hero'
+    : 'default';
   const row = document.createElement('div');
   row.className = 'report-kpi-row';
+  row.dataset.layout = layout;
 
-  (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
+  const items = Array.isArray(block?.items) ? block.items : [];
+  const featuredIndex = layout === 'hero'
+    ? Math.max(0, items.findIndex((item) => item?.featured === true))
+    : -1;
+
+  items.forEach((item, index) => {
     const metric = document.createElement('article');
     metric.className = 'report-kpi-item';
     if (typeof item?.tone === 'string' && item.tone.trim()) {
       metric.dataset.tone = item.tone.trim().toLowerCase();
+    }
+    if (layout === 'hero' && (item?.featured === true || index === featuredIndex)) {
+      metric.dataset.featured = 'true';
     }
 
     const label = document.createElement('div');
@@ -4686,6 +4705,11 @@ function renderReportModule(module) {
 
   const content = document.createElement('div');
   content.className = 'report-generated-flow';
+  const safeSummaryHtml = sanitizeSummaryHtml(module?.generated?.summaryHtml || '');
+
+  if (safeSummaryHtml && htmlToPlainText(safeSummaryHtml)) {
+    content.appendChild(renderReportSummaryCard(safeSummaryHtml));
+  }
 
   const blocks = Array.isArray(report?.blocks) ? report.blocks : [];
   const reportChartBlocks = getReportChartBlocks(report);
