@@ -2257,15 +2257,6 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   padding: 0 14px;
 }
 
-.mobile-module-overview-btn {
-  width: 100%;
-  height: 44px;
-  border-radius: 14px;
-  border-color: rgba(133, 184, 239, 0.4);
-  background: rgba(11, 25, 47, 0.86);
-  font-weight: 650;
-}
-
 .mobile-module-list {
   display: flex;
   flex-direction: column;

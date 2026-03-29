@@ -4948,7 +4948,6 @@ export function getUiElements() {
     mobileModuleBackdrop: document.getElementById('mobileModuleBackdrop'),
     mobileModulePanel: document.getElementById('mobileModulePanel'),
     mobileModuleCloseButton: document.getElementById('mobileModuleCloseBtn'),
-    mobileModuleOverviewButton: document.getElementById('mobileModuleOverviewBtn'),
     mobileModuleList: document.getElementById('mobileModuleList'),
     mobileOverflowSheet: document.getElementById('mobileOverflowSheet'),
     mobileOverflowBackdrop: document.getElementById('mobileOverflowBackdrop'),
@@ -5077,18 +5076,8 @@ export function buildFocusedPane({
 export function renderMobileModuleSheet(ui, {
   modules = [],
   activeModuleId = null,
-  onModuleSelect = null,
-  onOverviewAction = null
+  onModuleSelect = null
 } = {}) {
-  if (ui.mobileModuleOverviewButton) {
-    const hasOverviewAction = typeof onOverviewAction === 'function';
-    ui.mobileModuleOverviewButton.classList.toggle('is-hidden', !hasOverviewAction);
-    ui.mobileModuleOverviewButton.disabled = !hasOverviewAction;
-    ui.mobileModuleOverviewButton.onclick = hasOverviewAction
-      ? () => onOverviewAction()
-      : null;
-  }
-
   if (!ui.mobileModuleList) {
     return;
   }

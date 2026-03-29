@@ -2684,10 +2684,6 @@ function resetMobileOverflowSwipeStyles() {
 }
 
 function getFirstMobileModuleSheetAction() {
-  if (ui.mobileModuleOverviewButton && !ui.mobileModuleOverviewButton.disabled && !ui.mobileModuleOverviewButton.classList.contains('is-hidden')) {
-    return ui.mobileModuleOverviewButton;
-  }
-
   if (!ui.mobileModulePanel) {
     return null;
   }
@@ -2713,12 +2709,7 @@ function renderMobileModuleSheetState() {
     activeModuleId: appState.session.activeModuleId,
     onModuleSelect: (moduleId) => {
       void handleMobileModuleSelect(moduleId);
-    },
-    onOverviewAction: hasModules()
-      ? () => {
-        void handleMobileOverviewRequest();
-      }
-      : null
+    }
   });
 }
 
@@ -6424,11 +6415,6 @@ async function focusNextModuleOrCreate() {
 async function handleMobileModuleSelect(moduleId) {
   closeMobileModuleSheet({ restoreFocus: false });
   await focusModuleById(moduleId);
-}
-
-async function handleMobileOverviewRequest() {
-  closeMobileModuleSheet({ restoreFocus: false });
-  await zoomOutToOverviewMode();
 }
 
 async function handleLoadSessionFromFile(file) {
