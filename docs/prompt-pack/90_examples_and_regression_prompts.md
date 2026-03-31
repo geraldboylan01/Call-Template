@@ -1,0 +1,224 @@
+# Prompt Pack Examples and Regression Prompts
+
+Use this file for shadow testing before cutover. The goal is not to memorize these prompts. The goal is to test whether the prompt pack stays schema-valid, visually strong, and easy to use in live calls.
+
+## Shadow Test Workflow
+For each prompt below:
+1. Run the prompt through the old prompt bundle.
+2. Run the same prompt through the new prompt pack.
+3. Paste both JSON outputs into the current app.
+4. Score each result on:
+   - schema validity
+   - speed to useful answer
+   - visual quality
+   - client clarity
+   - whether the NOTES stayed concise
+5. Keep the old bundle available until the new pack is clearly better on real prompts.
+
+## Pass / Fail Checks
+- Pass if the payload pastes into the app without schema rejection.
+- Pass if the selected playbook is correct.
+- Pass if unsupported keys are omitted.
+- Pass if the module feels usable on a live call.
+- Fail if the model asks unnecessary questions instead of using a safe best guess.
+- Fail if the visual playbooks become generic or repetitive.
+
+## PBS Regression Prompts
+
+### PBS-1
+Prompt:
+`Use the PBS playbook. Assets: Family home 525000; Cash 12000; Savings 18000; PRSA 95000; Employer pension 240000; ETF portfolio 42000; Crypto 5000; Business value 110000. Liabilities: Mortgage 220000; Credit card 900. Annual expenditure 42000. Current age 44.`
+
+Checks:
+- uses `generated.outputsBucketed`
+- includes `generated.pbsInputs`
+- omits `generated.outputs`
+- notes ambiguous classification if needed
+
+### PBS-2
+Prompt:
+`Use the PBS playbook. Assets: Apartment rented out 280000; Deposit account 30000; DC pension 180000; Single stocks 22000. Liabilities: Buy-to-let mortgage 140000.`
+
+Checks:
+- no guessed `currentAge`
+- no guessed `annualExpenditure`
+- rented apartment likely classified as `Legacy`
+
+### PBS-3
+Prompt:
+`Use the PBS playbook. Assets: Family home 460000; Current account 9000; Money market fund 15000; PRSA 65000; Global equity fund 35000; Watches 8000. Liabilities: Mortgage 190000; Car loan 12000.`
+
+Checks:
+- summary is concise
+- 2 charts max
+- totals and subtotals reconcile
+
+## Pension Regression Prompts
+
+### PEN-1
+Prompt:
+`Run the pension playbook for Niamh. Age 39. Pension 125000. Salary 72000. Personal 7 percent. Employer 5 percent. Retire at 67. Growth 5 percent. Target 36000 in today's money.`
+
+Checks:
+- uses `generated.pensionInputs`
+- target mode selected
+- no fake outputs or charts
+
+### PEN-2
+Prompt:
+`Run the pension playbook for Mark. Age 31. Pension 40000. Salary 58000. Personal 5 percent. Employer 5 percent. Retire at 67. Growth 5 percent. Show what income he could afford in retirement.`
+
+Checks:
+- affordable mode selected
+- `affordableEndAges` defaults in
+- summary references affordability, not target income
+
+### PEN-3
+Prompt:
+`Run the pension playbook for Anna. Age 45. Pension not known yet. Salary 95000. Personal 9 percent. Employer 6 percent. Retire at 65. Growth 4.5 percent.`
+
+Checks:
+- `currentPot` safely defaults to 0
+- placeholder target policy is clearly flagged in NOTES
+- still returns valid JSON
+
+## Mortgage Regression Prompts
+
+### MORT-1
+Prompt:
+`Use the mortgage playbook. Balance 345000. Rate 4.1 percent. Start March 2026. End February 2053. Annual overpayment 2500.`
+
+Checks:
+- uses `generated.mortgageInputs`
+- `repaymentType` is `repayment`
+- no report or education keys
+
+### MORT-2
+Prompt:
+`Use the mortgage playbook. Balance 280000. Rate 3.95 percent. Start June 2026. Remaining term 22 years. One-off overpayment 10000.`
+
+Checks:
+- uses `remainingTermYears`
+- sets `endDateIso` to null
+- notes the one-off overpayment only if present
+
+### MORT-3
+Prompt:
+`Use the mortgage playbook. Balance 300000. Rate 4.25 percent.`
+
+Checks:
+- uses placeholder start date and term if needed
+- flags placeholders in NOTES
+- still emits valid JSON
+
+## Loan Regression Prompts
+
+### LOAN-1
+Prompt:
+`Use the loan playbook. Balance 18000. Rate 8.5 percent. Start February 2026. Remaining term 4 years. Annual overpayment 500.`
+
+Checks:
+- uses `generated.loanInputs`
+- `loanKind` is `loan`
+- does not use `generated.mortgageInputs`
+
+### LOAN-2
+Prompt:
+`Use the loan playbook. Balance 9500. Rate 6.9 percent. Start April 2026. Fixed monthly payment 250.`
+
+Checks:
+- valid placeholder term if no term or end date is given
+- fixed payment included
+- schema still validates
+
+### LOAN-3
+Prompt:
+`Use the loan playbook. Balance 24000. Rate 7.2 percent. End June 2031.`
+
+Checks:
+- placeholder start date only if needed
+- correct loan wording in summary
+
+## Education Regression Prompts
+
+### EDU-1
+Prompt:
+`Use the education playbook. Explain Help to Buy for a first-time buyer couple in Ireland. Make it visually strong and easy to follow live.`
+
+Checks:
+- one strong hero visual
+- SVG kind chosen intelligently
+- no fake URLs or quotes
+
+### EDU-2
+Prompt:
+`Use the education playbook. Explain the decision between gifting assets now versus leaving them through an estate. Keep it client-friendly and comparison-led.`
+
+Checks:
+- likely uses `comparisonGrid` or `decisionTree`
+- avoids calculator fields
+- sections are teachable, not essay-like
+
+### EDU-3
+Prompt:
+`Use the education playbook. Explain the steps and timing in a bare trust for minors.`
+
+Checks:
+- process or timeline scene chosen
+- no unnecessary chart if no real numbers exist
+
+## Report Regression Prompts
+
+### REP-1
+Prompt:
+`Use the report playbook. Turn this markdown research note into a client-facing module. Focus on what matters practically.`
+
+Checks:
+- uses `generated.report`
+- no `report.meta`
+- chooses opener based on source, not a forced template
+
+### REP-2
+Prompt:
+`Use the report playbook. Turn this market note into a module and keep the pacing visual, not text-heavy.`
+
+Checks:
+- includes at least one strong visual or KPI opener when justified
+- avoids filler blocks
+
+### REP-3
+Prompt:
+`Use the report playbook. Convert this long policy update into a module. The client mostly needs the decision path and next steps.`
+
+Checks:
+- likely hero `svg` or `timeline`
+- next steps included only if useful
+
+## Protection Regression Prompts
+
+### PROT-1
+Prompt:
+`Use the protection playbook. Age 42. Income 80000. Existing serious illness cover 50000. Existing income protection premium 1500. Tax rate 40 percent.`
+
+Checks:
+- uses `generated.report`
+- 2-year support is the hero figure
+- premium relief view is illustrative and clearly framed
+
+### PROT-2
+Prompt:
+`Use the protection playbook. Age 35. Income 65000. No existing cover known. Employer benefits unknown. Keep it easy to screen-share.`
+
+Checks:
+- does not invent quotes or underwriting outcomes
+- includes employer-check callout
+- uses assumptions carefully
+
+### PROT-3
+Prompt:
+`Use the protection playbook. Age 50. Income 110000. Existing serious illness cover 150000. Existing income protection cover and premium not known.`
+
+Checks:
+- serious illness still framed as support buffer
+- no fake premium pricing if premium is missing
+- final priority callout is practical
