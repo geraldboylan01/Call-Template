@@ -4105,6 +4105,45 @@ function buildEducationChartVisualCard(visual, chart, chartIndex) {
   });
 }
 
+function parseSvgViewBoxSize(svg) {
+  const rawViewBox = String(svg?.getAttribute?.('viewBox') || '').trim();
+  if (!rawViewBox) {
+    return null;
+  }
+
+  const parts = rawViewBox.split(/\s+/).map((value) => Number(value));
+  if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+
+  const width = Math.max(0, parts[2]);
+  const height = Math.max(0, parts[3]);
+  if (!width || !height) {
+    return null;
+  }
+
+  return { width, height, aspectRatio: width / height };
+}
+
+function applyResponsiveSvgFit(card, svgHost, svg) {
+  const viewBoxSize = parseSvgViewBoxSize(svg);
+  if (!viewBoxSize) {
+    card.dataset.svgFit = 'natural';
+    return;
+  }
+
+  const { height, aspectRatio } = viewBoxSize;
+  const shouldContain = height >= 760 || (height >= 620 && aspectRatio <= 2.1);
+
+  card.dataset.svgFit = shouldContain ? 'contain' : 'natural';
+  svgHost.dataset.svgFit = card.dataset.svgFit;
+
+  svg.style.width = '100%';
+  svg.style.maxWidth = '100%';
+  svg.style.height = shouldContain ? 'min(72vh, 760px)' : 'auto';
+  svg.style.maxHeight = shouldContain ? '760px' : 'none';
+}
+
 function buildSvgVisualCard(module, visual, visualIndex, {
   className = 'education-visual-card education-svg-card',
   errorPrefix = 'Could not render SVG visual'
@@ -4173,6 +4212,7 @@ function buildSvgVisualCard(module, visual, visualIndex, {
       ? 'light'
       : 'dark';
     card.dataset.svgTheme = svgTheme;
+    applyResponsiveSvgFit(card, svgHost, svg);
     svgHost.appendChild(svg);
 
     const baseName = `${module?.title || module?.id || 'module'}-${titleText}`;

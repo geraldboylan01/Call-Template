@@ -1235,6 +1235,7 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 }
 
 .education-generated-grid .education-topic-card,
+.education-generated-grid .generated-summary-card,
 .education-generated-grid .education-sections-card,
 .education-generated-grid .education-references-card {
   grid-column: 1 / -1;
@@ -1374,11 +1375,19 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 }
 
 .education-svg-host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 10px;
   border: 1px solid rgba(111, 165, 221, 0.28);
   background: rgba(5, 13, 24, 0.72);
   overflow: hidden;
   padding: 8px;
+}
+
+.education-svg-card[data-svg-fit="contain"] .education-svg-host {
+  max-height: min(74vh, 780px);
+  overflow: auto;
 }
 
 .education-svg-card[data-svg-theme="dark"] {
@@ -1406,6 +1415,11 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   width: 100%;
   height: auto;
   background: var(--education-svg-bg);
+}
+
+.education-svg-card[data-svg-fit="contain"] .education-svg {
+  width: 100%;
+  height: min(72vh, 760px);
 }
 
 .education-svg .edu-node {

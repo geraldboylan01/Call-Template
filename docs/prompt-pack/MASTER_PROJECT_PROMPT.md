@@ -627,7 +627,9 @@ Do not add a chart just because charts are available. If there are no real numbe
 - Prefer 1 hero visual and 0 to 1 support visuals.
 - Keep SVGs readable on a laptop screen.
 - Prefer 6 to 12 nodes for most diagrams.
-- Keep node labels short. Put extra detail in notes, not in long labels.
+- Keep node labels very short, ideally 2 to 6 words.
+- If a node label needs a full sentence, move the nuance into the section body or visual subtitle instead.
+- Keep edge labels to 1 to 3 words where possible.
 - Give visuals a real job:
   - orient the client
   - compare options

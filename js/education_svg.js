@@ -52,7 +52,7 @@ function normalizeConnector(value) {
   return String(value || '').trim().toLowerCase() === 'straight' ? 'straight' : 'elbow';
 }
 
-function wrapText(value, maxChars = 22, maxLines = 3) {
+function splitWrappedText(value, maxChars = 22) {
   const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
   if (!raw) {
     return [''];
@@ -82,6 +82,12 @@ function wrapText(value, maxChars = 22, maxLines = 3) {
     lines.push(current);
   }
 
+  return lines;
+}
+
+function wrapText(value, maxChars = 22, maxLines = 3) {
+  const lines = splitWrappedText(value, maxChars);
+
   if (lines.length <= maxLines) {
     return lines;
   }
@@ -91,6 +97,35 @@ function wrapText(value, maxChars = 22, maxLines = 3) {
   const last = clipped[lastIndex];
   clipped[lastIndex] = last.endsWith('...') ? last : `${last.slice(0, Math.max(0, maxChars - 3))}...`;
   return clipped;
+}
+
+function computeUniformNodeLabelLayout(nodes, {
+  nodeWidth,
+  minHeight,
+  maxHeight,
+  lineHeight = 15,
+  minLines = 3,
+  maxLines = 5,
+  charsPerLineDivisor = 8.9,
+  verticalPadding = 34
+}) {
+  const labelMaxChars = Math.max(10, Math.round(nodeWidth / charsPerLineDivisor));
+  const rawMaxLineCount = nodes.reduce((maxLineCount, node) => {
+    const lineCount = splitWrappedText(node?.label || '', labelMaxChars).length;
+    return Math.max(maxLineCount, lineCount);
+  }, 1);
+  const labelMaxLines = Math.max(minLines, Math.min(maxLines, rawMaxLineCount));
+  const nodeHeight = Math.max(
+    minHeight,
+    Math.min(maxHeight, verticalPadding + (labelMaxLines * lineHeight))
+  );
+
+  return {
+    nodeHeight,
+    labelMaxChars,
+    labelMaxLines,
+    labelLineHeight: lineHeight
+  };
 }
 
 function createSvgElement(name, attrs = {}) {
@@ -233,7 +268,10 @@ function drawNodeBox(layer, node, {
   y,
   width,
   height,
-  radius = 12
+  radius = 12,
+  labelMaxChars = Math.max(10, Math.round(width / 8.5)),
+  labelMaxLines = 3,
+  labelLineHeight = 15
 }) {
   const rect = createSvgElement('rect', {
     x,
@@ -253,9 +291,9 @@ function drawNodeBox(layer, node, {
     x: centerX,
     y: centerY,
     className: 'edu-node-label',
-    maxChars: Math.max(10, Math.round(width / 8.5)),
-    maxLines: 3,
-    lineHeight: 15
+    maxChars: labelMaxChars,
+    maxLines: labelMaxLines,
+    lineHeight: labelLineHeight
   });
 }
 
@@ -509,7 +547,17 @@ function renderLayeredGraph(spec, kindLabel) {
   const layout = isPlainObject(spec.layout) ? spec.layout : {};
   const direction = normalizeDirection(layout.direction, 'TB');
   const nodeWidth = toFiniteNumber(layout.nodeWidth, 190, { min: 100, max: 420 });
-  const nodeHeight = toFiniteNumber(layout.nodeHeight, 78, { min: 48, max: 220 });
+  const requestedNodeHeight = toFiniteNumber(layout.nodeHeight, 78, { min: 48, max: 220 });
+  const {
+    nodeHeight,
+    labelMaxChars,
+    labelMaxLines,
+    labelLineHeight
+  } = computeUniformNodeLabelLayout(nodes, {
+    nodeWidth,
+    minHeight: requestedNodeHeight,
+    maxHeight: 220
+  });
   const gapX = toFiniteNumber(layout.gapX, 48, { min: 12, max: 220 });
   const gapY = toFiniteNumber(layout.gapY, 40, { min: 12, max: 220 });
   const paddingX = toFiniteNumber(layout.paddingX, 36, { min: 8, max: 160 });
@@ -591,7 +639,10 @@ function renderLayeredGraph(spec, kindLabel) {
       y: position.y,
       width: nodeWidth,
       height: nodeHeight,
-      radius: 12
+      radius: 12,
+      labelMaxChars,
+      labelMaxLines,
+      labelLineHeight
     });
   });
 
@@ -972,7 +1023,17 @@ function renderProcessMap(spec) {
 
   const layout = isPlainObject(spec.layout) ? spec.layout : {};
   const nodeWidth = toFiniteNumber(layout.nodeWidth, 170, { min: 100, max: 320 });
-  const nodeHeight = toFiniteNumber(layout.nodeHeight, 70, { min: 48, max: 220 });
+  const requestedNodeHeight = toFiniteNumber(layout.nodeHeight, 70, { min: 48, max: 220 });
+  const {
+    nodeHeight,
+    labelMaxChars,
+    labelMaxLines,
+    labelLineHeight
+  } = computeUniformNodeLabelLayout(steps, {
+    nodeWidth,
+    minHeight: requestedNodeHeight,
+    maxHeight: 220
+  });
   const laneWidth = toFiniteNumber(layout.laneWidth, nodeWidth + 48, { min: nodeWidth + 12, max: 500 });
   const gapX = toFiniteNumber(layout.gapX, 42, { min: 12, max: 220 });
   const gapY = toFiniteNumber(layout.gapY, 30, { min: 10, max: 220 });
@@ -1037,7 +1098,10 @@ function renderProcessMap(spec) {
         y,
         width: nodeWidth,
         height: nodeHeight,
-        radius: 10
+        radius: 10,
+        labelMaxChars,
+        labelMaxLines,
+        labelLineHeight
       });
     });
   });
