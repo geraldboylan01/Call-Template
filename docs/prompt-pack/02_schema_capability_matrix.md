@@ -106,7 +106,13 @@ Playbooks should only emit the subset they are responsible for.
   - `sections`
   - `visuals`
   - `references`
+- `visuals[0]` is the preferred hero scene by convention.
 - `visuals[*].type` must be `svg` or `chart`.
+- `references[*]` supports:
+  - `label`
+  - `url`
+  - `kind`
+  - `note`
 - Supported SVG kinds from the current renderer:
   - `flowchart`
   - `timeline`

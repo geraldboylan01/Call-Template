@@ -4858,6 +4858,10 @@ function validateEducationPayload(education) {
         throw new Error(`generated.education.references[${referenceIndex}].label must be a string when provided.`);
       }
 
+      if ('url' in reference && typeof reference.url !== 'string') {
+        throw new Error(`generated.education.references[${referenceIndex}].url must be a string when provided.`);
+      }
+
       if ('kind' in reference && typeof reference.kind !== 'string') {
         throw new Error(`generated.education.references[${referenceIndex}].kind must be a string when provided.`);
       }
@@ -4870,6 +4874,7 @@ function validateEducationPayload(education) {
         label: typeof reference.label === 'string' && reference.label.trim()
           ? reference.label.trim()
           : `Reference ${referenceIndex + 1}`,
+        url: typeof reference.url === 'string' ? reference.url.trim() : '',
         kind: typeof reference.kind === 'string' ? reference.kind.trim() : '',
         note: typeof reference.note === 'string' ? reference.note : ''
       };

@@ -147,6 +147,7 @@ Prompt:
 
 Checks:
 - one strong hero visual
+- `visuals[0]` reads like the hero scene
 - SVG kind chosen intelligently
 - no fake URLs or quotes
 
@@ -164,8 +165,17 @@ Prompt:
 `Use the education playbook. Explain the steps and timing in a bare trust for minors.`
 
 Checks:
-- process or timeline scene chosen
+- timeline scene preferred over a tall single-lane process map
 - no unnecessary chart if no real numbers exist
+
+### EDU-4
+Prompt:
+`Use the education playbook. Explain a family bridging loan to help a parent downsize. Make it easy to screen-share and include direct official Revenue links where confidently known.`
+
+Checks:
+- hero scene is concise and presenter-friendly
+- direct URLs are included only when confidently known
+- references stay curated rather than becoming a long dump
 
 ## Report Regression Prompts
 

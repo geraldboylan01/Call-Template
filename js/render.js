@@ -4097,12 +4097,14 @@ function buildChartMountCard({
 }
 
 function buildEducationChartVisualCard(visual, chart, chartIndex) {
-  return buildChartMountCard({
+  const card = buildChartMountCard({
     title: chart.title || visual?.title || `Chart ${chartIndex + 1}`,
     subtitle: typeof visual?.subtitle === 'string' ? visual.subtitle : '',
     chartIndex,
     className: 'education-visual-card education-chart-card generated-chart-block'
   });
+  card.dataset.sceneKind = 'chart';
+  return card;
 }
 
 function parseSvgViewBoxSize(svg) {
@@ -4125,7 +4127,7 @@ function parseSvgViewBoxSize(svg) {
   return { width, height, aspectRatio: width / height };
 }
 
-function applyResponsiveSvgFit(card, svgHost, svg) {
+function applyResponsiveSvgFit(card, svgHost, svg, svgKind = '') {
   const viewBoxSize = parseSvgViewBoxSize(svg);
   if (!viewBoxSize) {
     card.dataset.svgFit = 'natural';
@@ -4133,7 +4135,9 @@ function applyResponsiveSvgFit(card, svgHost, svg) {
   }
 
   const { height, aspectRatio } = viewBoxSize;
-  const shouldContain = height >= 760 || (height >= 620 && aspectRatio <= 2.1);
+  const kind = String(svgKind || '').trim().toLowerCase();
+  const isBranchingGraph = kind === 'flowchart' || kind === 'decisiontree';
+  const shouldContain = isBranchingGraph && aspectRatio >= 1 && (height >= 920 || (height >= 780 && aspectRatio >= 1.25));
 
   card.dataset.svgFit = shouldContain ? 'contain' : 'natural';
   svgHost.dataset.svgFit = card.dataset.svgFit;
@@ -4155,6 +4159,7 @@ function buildSvgVisualCard(module, visual, visualIndex, {
   const card = document.createElement('article');
   card.className = className;
   card.dataset.svgTheme = 'dark';
+  card.dataset.sceneKind = 'svg';
 
   const top = document.createElement('div');
   top.className = 'education-visual-top';
@@ -4212,7 +4217,7 @@ function buildSvgVisualCard(module, visual, visualIndex, {
       ? 'light'
       : 'dark';
     card.dataset.svgTheme = svgTheme;
-    applyResponsiveSvgFit(card, svgHost, svg);
+    applyResponsiveSvgFit(card, svgHost, svg, visual?.svgSpec?.kind || '');
     svgHost.appendChild(svg);
 
     const baseName = `${module?.title || module?.id || 'module'}-${titleText}`;
@@ -4242,15 +4247,81 @@ function buildEducationSvgVisualCard(module, visual, visualIndex) {
   });
 }
 
+function decorateEducationSceneCard(card, sceneRole = 'support') {
+  if (!(card instanceof HTMLElement)) {
+    return card;
+  }
+
+  card.dataset.sceneRole = sceneRole === 'hero' ? 'hero' : 'support';
+  if (sceneRole === 'hero') {
+    card.classList.add('education-hero-scene-card');
+  } else {
+    card.classList.add('education-support-scene-card');
+  }
+
+  return card;
+}
+
+function buildEducationSceneCard(module, visual, visualIndex, { chartIndex = 0, sceneRole = 'support' } = {}) {
+  const type = String(visual?.type || '').trim().toLowerCase();
+  if (type === 'chart') {
+    const chart = sanitizeEducationChart(visual?.chart, chartIndex);
+    if (!chart) {
+      const errorCard = document.createElement('article');
+      errorCard.className = 'education-visual-card education-visual-error-card';
+      errorCard.dataset.sceneRole = sceneRole === 'hero' ? 'hero' : 'support';
+
+      const error = document.createElement('p');
+      error.className = 'education-visual-error';
+      error.textContent = 'Could not render chart visual: invalid chart schema.';
+      errorCard.appendChild(error);
+      return {
+        card: errorCard,
+        nextChartIndex: chartIndex
+      };
+    }
+
+    return {
+      card: decorateEducationSceneCard(
+        buildEducationChartVisualCard(visual, chart, chartIndex),
+        sceneRole
+      ),
+      nextChartIndex: chartIndex + 1
+    };
+  }
+
+  if (type === 'svg') {
+    return {
+      card: decorateEducationSceneCard(
+        buildEducationSvgVisualCard(module, visual, visualIndex),
+        sceneRole
+      ),
+      nextChartIndex: chartIndex
+    };
+  }
+
+  const unsupported = document.createElement('article');
+  unsupported.className = 'education-visual-card education-visual-error-card';
+  unsupported.dataset.sceneRole = sceneRole === 'hero' ? 'hero' : 'support';
+  const error = document.createElement('p');
+  error.className = 'education-visual-error';
+  error.textContent = `Unsupported visual type "${type || 'unknown'}".`;
+  unsupported.appendChild(error);
+  return {
+    card: unsupported,
+    nextChartIndex: chartIndex
+  };
+}
+
 function buildEducationVisualsCard(module, education) {
   const card = document.createElement('section');
   card.className = 'generated-card education-visuals-card generated-charts-card';
   card.dataset.generatedCard = 'education-visuals';
 
-  const { header } = buildGeneratedCardHeader('Visuals');
+  const visuals = Array.isArray(education?.visuals) ? education.visuals : [];
+  const { header } = buildGeneratedCardHeader(visuals.length > 1 ? 'Scenes' : 'Scene');
   card.appendChild(header);
 
-  const visuals = Array.isArray(education?.visuals) ? education.visuals : [];
   if (visuals.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'generated-empty';
@@ -4260,42 +4331,54 @@ function buildEducationVisualsCard(module, education) {
   }
 
   const list = document.createElement('div');
-  list.className = 'education-visuals-list generated-charts-list';
+  list.className = 'education-visuals-list';
 
   let chartIndex = 0;
-  visuals.forEach((visual, visualIndex) => {
-    const type = String(visual?.type || '').trim().toLowerCase();
-    if (type === 'chart') {
-      const chart = sanitizeEducationChart(visual?.chart, chartIndex);
-      if (!chart) {
-        const errorCard = document.createElement('article');
-        errorCard.className = 'education-visual-card education-visual-error-card';
-        const error = document.createElement('p');
-        error.className = 'education-visual-error';
-        error.textContent = 'Could not render chart visual: invalid chart schema.';
-        errorCard.appendChild(error);
-        list.appendChild(errorCard);
-        return;
-      }
+  const heroVisual = visuals[0] || null;
+  const supportVisuals = visuals.slice(1);
 
-      list.appendChild(buildEducationChartVisualCard(visual, chart, chartIndex));
-      chartIndex += 1;
-      return;
-    }
+  if (heroVisual) {
+    const heroGroup = document.createElement('section');
+    heroGroup.className = 'education-scene-group education-hero-scene-group';
 
-    if (type === 'svg') {
-      list.appendChild(buildEducationSvgVisualCard(module, visual, visualIndex));
-      return;
-    }
+    const heroLabel = document.createElement('p');
+    heroLabel.className = 'education-scene-group-label';
+    heroLabel.textContent = 'Hero scene';
+    heroGroup.appendChild(heroLabel);
 
-    const unsupported = document.createElement('article');
-    unsupported.className = 'education-visual-card education-visual-error-card';
-    const error = document.createElement('p');
-    error.className = 'education-visual-error';
-    error.textContent = `Unsupported visual type \"${type || 'unknown'}\".`;
-    unsupported.appendChild(error);
-    list.appendChild(unsupported);
-  });
+    const heroResult = buildEducationSceneCard(module, heroVisual, 0, {
+      chartIndex,
+      sceneRole: 'hero'
+    });
+    chartIndex = heroResult.nextChartIndex;
+    heroGroup.appendChild(heroResult.card);
+    list.appendChild(heroGroup);
+  }
+
+  if (supportVisuals.length > 0) {
+    const supportGroup = document.createElement('section');
+    supportGroup.className = 'education-scene-group education-support-scenes-group';
+
+    const supportLabel = document.createElement('p');
+    supportLabel.className = 'education-scene-group-label';
+    supportLabel.textContent = supportVisuals.length === 1 ? 'Support scene' : 'Support scenes';
+    supportGroup.appendChild(supportLabel);
+
+    const supportGrid = document.createElement('div');
+    supportGrid.className = 'education-support-scenes-grid';
+
+    supportVisuals.forEach((visual, visualIndex) => {
+      const result = buildEducationSceneCard(module, visual, visualIndex + 1, {
+        chartIndex,
+        sceneRole: 'support'
+      });
+      chartIndex = result.nextChartIndex;
+      supportGrid.appendChild(result.card);
+    });
+
+    supportGroup.appendChild(supportGrid);
+    list.appendChild(supportGroup);
+  }
 
   card.appendChild(list);
   return card;
@@ -4310,26 +4393,44 @@ function buildEducationReferencesCard(education) {
   const card = document.createElement('section');
   card.className = 'generated-card education-references-card';
 
-  const { header } = buildGeneratedCardHeader('References');
+  const { header } = buildGeneratedCardHeader('Sources / where to verify');
   card.appendChild(header);
 
-  const list = document.createElement('ul');
-  list.className = 'education-references-list';
+  const list = document.createElement('ol');
+  list.className = 'report-source-list education-references-list';
 
   references.forEach((reference, index) => {
     const item = document.createElement('li');
-    item.className = 'education-reference-item';
+    item.className = 'report-source-item education-reference-item';
 
     const label = typeof reference?.label === 'string' && reference.label.trim()
       ? reference.label.trim()
       : `Reference ${index + 1}`;
-    const kind = typeof reference?.kind === 'string' && reference.kind.trim()
-      ? ` (${reference.kind.trim()})`
-      : '';
-    const note = typeof reference?.note === 'string' && reference.note.trim()
-      ? ` - ${reference.note.trim()}`
-      : '';
-    item.textContent = `${label}${kind}${note}`;
+    const safeHref = sanitizeExternalUrl(reference?.url);
+    const titleLine = document.createElement(safeHref ? 'a' : 'span');
+    titleLine.className = 'report-source-label';
+    titleLine.textContent = label;
+    if (safeHref) {
+      titleLine.href = safeHref;
+      titleLine.target = '_blank';
+      titleLine.rel = 'noreferrer noopener';
+    }
+    item.appendChild(titleLine);
+
+    if (typeof reference?.kind === 'string' && reference.kind.trim()) {
+      const kind = document.createElement('span');
+      kind.className = 'report-source-kind';
+      kind.textContent = reference.kind.trim();
+      item.appendChild(kind);
+    }
+
+    if (typeof reference?.note === 'string' && reference.note.trim()) {
+      const note = document.createElement('p');
+      note.className = 'report-source-note';
+      note.textContent = reference.note.trim();
+      item.appendChild(note);
+    }
+
     list.appendChild(item);
   });
 
@@ -4805,8 +4906,8 @@ function renderEducationModule(module) {
 
   grid.appendChild(buildEducationTopicCard(module, education));
   grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || ''));
-  grid.appendChild(buildEducationSectionsCard(education));
   grid.appendChild(buildEducationVisualsCard(module, education));
+  grid.appendChild(buildEducationSectionsCard(education));
 
   const referencesCard = buildEducationReferencesCard(education);
   if (referencesCard) {

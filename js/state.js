@@ -206,6 +206,7 @@ function normalizeEducationReferences(references) {
       label: typeof reference.label === 'string' && reference.label.trim()
         ? reference.label.trim()
         : `Reference ${index + 1}`,
+      url: typeof reference.url === 'string' ? reference.url.trim() : '',
       kind: typeof reference.kind === 'string' ? reference.kind.trim() : '',
       note: typeof reference.note === 'string' ? reference.note : ''
     }));

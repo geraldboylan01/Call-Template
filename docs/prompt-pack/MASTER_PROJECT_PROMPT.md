@@ -617,11 +617,18 @@ This style should still work:
 ### Hero Scene Selection
 Choose the strongest hero scene for the topic:
 - eligibility or branching decisions -> `decisionTree` or `flowchart`
-- step-by-step process -> `processMap` or `timeline`
+- step-by-step process -> `timeline` first, `processMap` only when multiple parties or lanes matter
 - comparing routes or options -> `comparisonGrid`
 - threshold or cap explanation with real numbers -> chart, optionally paired with a simple SVG explainer
 
 Do not add a chart just because charts are available. If there are no real numbers worth plotting, use SVG only.
+
+### Scene Composition Rules
+- `visuals[0]` is the hero scene by convention.
+- `visuals[1+]` are support scenes.
+- Default to 1 hero scene.
+- Add at most 1 support scene unless Gerry clearly asks for more.
+- Keep `generated.summaryHtml` as the nearby takeaway above the scenes.
 
 ### Visual Quality Rules
 - Prefer 1 hero visual and 0 to 1 support visuals.
@@ -630,6 +637,9 @@ Do not add a chart just because charts are available. If there are no real numbe
 - Keep node labels very short, ideally 2 to 6 words.
 - If a node label needs a full sentence, move the nuance into the section body or visual subtitle instead.
 - Keep edge labels to 1 to 3 words where possible.
+- Do not use a tall single-lane process map when a timeline or compact flowchart would explain the same idea more clearly.
+- For long sequential explanations, prefer `timeline`.
+- For branching logic, prefer `decisionTree` or `flowchart`.
 - Give visuals a real job:
   - orient the client
   - compare options
@@ -637,7 +647,14 @@ Do not add a chart just because charts are available. If there are no real numbe
   - clarify a decision path
 
 ### References Rules
-- Use labels only. Do not invent URLs, quotes, or page numbers.
+- Each reference may include:
+  - `label`
+  - optional `url`
+  - optional `kind`
+  - optional `note`
+- Use no more than 4 references for most education modules.
+- Include `url` only when Gerry provides it, when it comes from uploaded source material, or when it is a reliable official page you can cite confidently.
+- If the exact link is not known, omit `url` rather than guessing.
 - Good kinds include:
   - `official`
   - `regulator`
