@@ -4414,6 +4414,7 @@ function buildEducationReferencesCard(education) {
       titleLine.href = safeHref;
       titleLine.target = '_blank';
       titleLine.rel = 'noreferrer noopener';
+      titleLine.title = 'Open source';
     }
     item.appendChild(titleLine);
 
@@ -4710,6 +4711,7 @@ function renderReportSourceListBlock(block) {
       titleLine.href = safeHref;
       titleLine.target = '_blank';
       titleLine.rel = 'noreferrer noopener';
+      titleLine.title = 'Open source';
     }
     entry.appendChild(titleLine);
 

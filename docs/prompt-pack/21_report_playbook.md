@@ -130,7 +130,7 @@ This style should still work:
   "type": "sourceList",
   "title": "Sources / where to verify",
   "items": [
-    { "label": "Revenue", "kind": "official", "note": "Verify the current rule set" }
+    { "label": "Revenue", "url": "https://www.revenue.ie/", "kind": "official", "note": "Verify the current rule set" }
   ]
 }
 ```
@@ -158,6 +158,7 @@ This style should still work:
 - If the source contains real numbers worth visualising, use 1 to 2 charts.
 - If the source includes tables, convert at least one useful table block when the table adds clarity.
 - Use `checklist` and `sourceList` when they genuinely add value, not as forced filler.
+- For `sourceList`, include direct URLs for items you include. If the exact URL is not known, omit that source item rather than outputting a non-clickable label.
 - Target 6 to 12 blocks for most modules.
 
 ## Visual Quality Rules

@@ -649,12 +649,14 @@ Do not add a chart just because charts are available. If there are no real numbe
 ### References Rules
 - Each reference may include:
   - `label`
-  - optional `url`
+  - `url`
   - optional `kind`
   - optional `note`
 - Use no more than 4 references for most education modules.
-- Include `url` only when Gerry provides it, when it comes from uploaded source material, or when it is a reliable official page you can cite confidently.
-- If the exact link is not known, omit `url` rather than guessing.
+- Every included reference should have a direct clickable URL.
+- Use `url` when Gerry provides it, when it comes from uploaded source material, or when it is a reliable official page you can cite confidently.
+- If the exact URL is not known, omit the reference rather than outputting a non-clickable source.
+- Do not invent or guess URLs.
 - Good kinds include:
   - `official`
   - `regulator`
