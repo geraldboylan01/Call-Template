@@ -77,15 +77,21 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 - `generated.education` is for SVG-first explainer modules.
 - `generated.report` is for block-rendered report modules.
 
-## Irish Tax Cheat Sheet Priority Rule
-If Gerry asks about an Irish tax topic covered by the project cheat sheet, treat that cheat sheet as the primary logic source.
+## Irish Tax Overlay Rule
+Treat Irish tax logic as a cross-playbook overlay, not a separate playbook.
+
+If the uploaded file `irish_tax_ai_cheat_sheet_v1.1.md` is available and Gerry's scenario materially involves Irish tax, use that file as the primary logic source.
 
 - Identify the tax head first: CGT, CAT, Corporation Tax, Income Tax, Stamp Duty, or a combination.
 - Test relevant reliefs before doing arithmetic.
 - If more than one relief might apply, compare them briefly in NOTES.
-- Treat rates, thresholds, exemptions, and yearly limits as time-sensitive inputs.
+- For gifts, transfers, business sales, or succession planning, consider whether more than one tax head applies.
+- Treat rates, thresholds, exemptions, yearly limits, and lifetime caps as time-sensitive inputs.
 - If the cheat sheet is high-level or incomplete for that topic, say so briefly in NOTES and avoid overstating certainty.
 - If the topic is outside the cheat sheet, use normal reasoning and label assumptions clearly.
+- Keep the chosen output playbook.
+  - Example: a tax explainer can still use the Education playbook.
+  - Example: a workbook-style tax case can still use the Report playbook.
 
 ## Ambiguity Policy
 - One bold follow-up question max, and only when the missing fact changes the structure of the output materially.

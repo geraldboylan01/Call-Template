@@ -184,5 +184,6 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 The repo now includes a prompt-only ChatGPT project pack at `docs/prompt-pack/`.
 
 - Use `docs/prompt-pack/MASTER_PROJECT_PROMPT.md` as the single-file project prompt.
+- Upload `docs/prompt-pack/irish_tax_ai_cheat_sheet_v1.1.md` alongside it if you want Irish tax scenarios to use the workbook logic directly.
 - Use the component files in the same folder when you want to tune individual playbooks without changing the app.
 - Use `docs/prompt-pack/90_examples_and_regression_prompts.md` for shadow testing before replacing the live project prompt.
