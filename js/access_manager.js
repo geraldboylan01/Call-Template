@@ -126,6 +126,11 @@ function updateAdvisorAuthChrome() {
   if (ui.advisorLogoutButton) {
     ui.advisorLogoutButton.classList.toggle('is-hidden', !(advisorAuthState.enabled && advisorAuthState.authenticated));
   }
+
+  document.body.classList.toggle(
+    'is-auth-locked',
+    advisorAuthState.enabled && !advisorAuthState.authenticated
+  );
 }
 
 function buildAdvisorRequestInit(init = {}, options = {}) {
@@ -427,12 +432,13 @@ function renderSessionList() {
   state.sessions.forEach((session) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `ui-button access-session-card${session.publishedId === state.selectedId ? ' is-selected' : ''}`;
+    button.className = `access-session-card${session.publishedId === state.selectedId ? ' is-selected' : ''}`;
 
     const top = document.createElement('div');
     top.className = 'access-session-card-top';
 
     const titleWrap = document.createElement('div');
+    titleWrap.className = 'access-session-card-heading';
     const title = document.createElement('p');
     title.className = 'access-session-card-name';
     title.textContent = session.clientName || 'Unnamed client';
@@ -450,17 +456,14 @@ function renderSessionList() {
     meta.className = 'access-session-card-meta';
 
     const publishedId = document.createElement('span');
-    publishedId.className = 'access-session-card-detail';
+    publishedId.className = 'access-session-card-id';
     publishedId.textContent = session.publishedId;
-    const expiry = document.createElement('span');
-    expiry.className = 'access-session-card-detail';
-    expiry.textContent = `Expires ${formatDateTime(session.expiresAt, 'Unknown')}`;
-    const emailState = document.createElement('span');
-    emailState.className = 'access-session-card-detail';
-    emailState.textContent = session.lastEmailSentAt
-      ? `Email sent ${formatDateTime(session.lastEmailSentAt, 'recently')}`
-      : 'Email not sent';
-    meta.append(publishedId, expiry, emailState);
+    const summary = document.createElement('span');
+    summary.className = 'access-session-card-summary';
+    summary.textContent = session.lastEmailSentAt
+      ? `Expires ${formatDateTime(session.expiresAt, 'Unknown')} | Email sent ${formatDateTime(session.lastEmailSentAt, 'recently')}`
+      : `Expires ${formatDateTime(session.expiresAt, 'Unknown')} | Email not sent`;
+    meta.append(publishedId, summary);
 
     button.append(top, meta);
     button.addEventListener('click', async () => {

@@ -48,6 +48,11 @@ body.is-lead-success-active .session-unlock-layer {
   user-select: none;
 }
 
+body.access-manager-page.is-auth-locked #accessManagerApp {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 button,
 input,
 textarea {
@@ -3738,11 +3743,29 @@ body.overview-has-selection .toast-host {
   width: 100%;
   display: grid;
   gap: 10px;
+  height: auto;
+  min-height: 0;
   padding: 14px;
   border-radius: 16px;
   border: 1px solid rgba(108, 162, 221, 0.2);
   background: rgba(7, 16, 31, 0.5);
+  cursor: pointer;
   text-align: left;
+  transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.access-session-card:hover {
+  border-color: rgba(86, 180, 255, 0.46);
+  background: rgba(10, 22, 42, 0.7);
+}
+
+.access-session-card:active {
+  transform: translateY(1px);
+}
+
+.access-session-card:focus-visible {
+  outline: 2px solid rgba(86, 180, 255, 0.62);
+  outline-offset: 2px;
 }
 
 .access-session-card.is-selected {
@@ -3754,9 +3777,15 @@ body.overview-has-selection .toast-host {
 .access-session-card-top,
 .access-session-card-meta {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+}
+
+.access-session-card-heading {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
 }
 
 .access-session-card-name {
@@ -3767,7 +3796,8 @@ body.overview-has-selection .toast-host {
 }
 
 .access-session-card-email,
-.access-session-card-detail,
+.access-session-card-id,
+.access-session-card-summary,
 .access-manager-detail-id {
   margin: 0;
   color: #9fbad8;
@@ -3777,17 +3807,19 @@ body.overview-has-selection .toast-host {
 }
 
 .access-session-card-meta {
-  flex-wrap: wrap;
+  display: grid;
   justify-content: flex-start;
+  gap: 4px;
 }
 
-.access-session-card-detail {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(108, 162, 221, 0.18);
-  background: rgba(255, 255, 255, 0.02);
+.access-session-card-id {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.75rem;
+  color: #88a8cc;
+}
+
+.access-session-card-summary {
+  color: #b2cae5;
 }
 
 .access-manager-empty-state,
@@ -3818,6 +3850,7 @@ body.overview-has-selection .toast-host {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   min-width: 88px;
   min-height: 32px;
   padding: 0 12px;
