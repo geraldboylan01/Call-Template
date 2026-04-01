@@ -48,8 +48,7 @@
         <div class="topbar-right">
           <button id="newCallBtn" class="ui-button" type="button">New Call</button>
           <button id="publishSessionBtn" class="ui-button" type="button">Publish to client</button>
-          <a class="ui-button" href="./access.html">Client Access</a>
-          <button id="loadSessionBtn" class="ui-button" type="button">Load Session</button>
+          <button id="openClientAccessBtn" class="ui-button" type="button">Client Access</button>
           <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
           <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
           <button id="resetBtn" class="ui-button" type="button">Reset</button>
@@ -225,14 +224,12 @@
           </div>
           <div class="mobile-overflow-content">
             <button id="mobileOverflowPublishBtn" class="ui-button mobile-overflow-btn" type="button">Publish to client</button>
-            <a class="ui-button mobile-overflow-btn" href="./access.html">Client access</a>
-            <button id="mobileOverflowLoadBtn" class="ui-button mobile-overflow-btn" type="button">Load Session</button>
+            <button id="mobileOverflowClientAccessBtn" class="ui-button mobile-overflow-btn" type="button">Client access</button>
             <button id="mobileOverflowResetBtn" class="ui-button mobile-overflow-btn" type="button">Reset</button>
           </div>
         </div>
       </div>
     </div>
-    <input id="loadSessionInput" type="file" accept=".json,application/json" class="file-input-hidden" />
     <div id="publishQrScratch" class="access-manager-qr-scratch" aria-hidden="true"></div>
 
     <div id="publishModal" class="publish-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="publishModalTitle">
@@ -286,7 +283,7 @@
         </div>
         <div class="publish-modal-actions">
           <button id="publishGenerateBtn" class="ui-button" type="button">Publish Secure Links</button>
-          <a class="ui-button" href="./access.html">Open Client Access</a>
+          <button id="publishOpenClientAccessBtn" class="ui-button" type="button">Open Client Access</button>
         </div>
         <p class="publish-email-status">
           Need to resend, extend access, reset client PIN setup, revoke a link, or recover a client link later? Use the dedicated Client Access page instead of the publish modal.

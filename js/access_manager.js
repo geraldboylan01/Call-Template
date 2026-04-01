@@ -189,16 +189,8 @@ async function ensureAdvisorAuthenticated(message = 'Sign in to manage published
     return;
   }
 
-  if (ui.advisorAuthHint) {
-    ui.advisorAuthHint.textContent = String(message || 'Sign in to continue.');
-  }
-  setAdvisorAuthError('');
-  setAdvisorAuthVisible(true);
-  ui.advisorAuthPasswordInput?.focus();
-
-  return new Promise((resolve) => {
-    advisorAuthWaiters.push(resolve);
-  });
+  redirectToAdvisorWorkspace();
+  throw new Error(message || 'Advisor login required.');
 }
 
 async function fetchWithAdvisorAuth(input, init = {}, options = {}) {
@@ -210,8 +202,8 @@ async function fetchWithAdvisorAuth(input, init = {}, options = {}) {
     advisorAuthState.authenticated = false;
     advisorAuthState.csrfToken = '';
     updateAdvisorAuthChrome();
-    await ensureAdvisorAuthenticated(authPrompt);
-    response = await fetch(input, buildAdvisorRequestInit(init, { includeCsrf }));
+    redirectToAdvisorWorkspace();
+    throw new Error(authPrompt || 'Advisor login required.');
   }
 
   return response;
@@ -310,6 +302,10 @@ function buildAdvisorSessionLink(publishedId, advisorSecretB64u) {
   url.searchParams.set('pub', publishedId);
   url.hash = new URLSearchParams({ ak: advisorSecretB64u }).toString();
   return url.toString();
+}
+
+function redirectToAdvisorWorkspace() {
+  window.location.replace(new URL('./index.html', window.location.href).toString());
 }
 
 async function copyToClipboard(value) {
@@ -944,14 +940,12 @@ async function handleAdvisorLogout() {
     advisorAuthState.csrfToken = '';
     advisorAuthState.expiresAt = null;
     updateAdvisorAuthChrome();
-    showToast('Advisor signed out.');
     state.sessions = [];
     state.selectedId = '';
     state.selectedSession = null;
     renderSessionList();
     renderSelectedSession();
-    await ensureAdvisorAuthenticated('Sign in to manage published client access.');
-    await loadSessionList({ preserveSelection: false, autoSelect: true });
+    redirectToAdvisorWorkspace();
   } catch (error) {
     showToast(error?.message || 'Could not sign out.', 'error');
   }
@@ -1080,7 +1074,9 @@ async function init() {
     await ensureAdvisorAuthenticated('Sign in to manage published client access.');
     await loadSessionList({ preserveSelection: true, autoSelect: true });
   } catch (error) {
-    showToast(error?.message || 'Could not initialize client access manager.', 'error');
+    if (!advisorAuthState.enabled || advisorAuthState.authenticated) {
+      showToast(error?.message || 'Could not initialize client access manager.', 'error');
+    }
   }
 }
 

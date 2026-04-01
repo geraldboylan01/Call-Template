@@ -2748,7 +2748,7 @@ function syncMobileActionState() {
   syncButton(ui.mobileActionNewModuleButton, ui.newModuleButton);
   syncButton(ui.mobileActionZoomButton, ui.zoomButton);
   syncButton(ui.mobileOverflowPublishButton, ui.publishSessionButton);
-  syncButton(ui.mobileOverflowLoadButton, ui.loadSessionButton);
+  syncButton(ui.mobileOverflowClientAccessButton, ui.openClientAccessButton);
   syncButton(ui.mobileOverflowResetButton, ui.resetButton);
 
   if (ui.mobileActionZoomLabel && ui.zoomButton) {
@@ -2763,7 +2763,7 @@ function syncMobileActionState() {
 
   const hasOverflowAction = Boolean(
     (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
-    || (ui.mobileOverflowLoadButton && !ui.mobileOverflowLoadButton.classList.contains('is-hidden'))
+    || (ui.mobileOverflowClientAccessButton && !ui.mobileOverflowClientAccessButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowResetButton && !ui.mobileOverflowResetButton.classList.contains('is-hidden'))
   );
 
@@ -4091,7 +4091,7 @@ function applyRuntimeChrome() {
       ui.clientNameInput.readOnly = true;
       ui.clientNameInput.setAttribute('aria-readonly', 'true');
     }
-    [ui.newCallButton, ui.loadSessionButton, ui.newModuleButton, ui.resetButton].forEach((element) => {
+    [ui.newCallButton, ui.openClientAccessButton, ui.newModuleButton, ui.resetButton].forEach((element) => {
       if (!element) {
         return;
       }
@@ -6515,25 +6515,6 @@ async function handleMobileModuleSelect(moduleId) {
   await focusModuleById(moduleId);
 }
 
-async function handleLoadSessionFromFile(file) {
-  if (runtimeConfig.readOnly) {
-    return;
-  }
-
-  if (!file) {
-    return;
-  }
-
-  try {
-    const text = await file.text();
-    const imported = importSession(text);
-    await replaceSession(imported, { markClean: true });
-    showToast('Session loaded.');
-  } catch (_error) {
-    showToast('Invalid session file.', 'error');
-  }
-}
-
 async function handleNewCall() {
   if (runtimeConfig.readOnly) {
     return;
@@ -6547,6 +6528,20 @@ async function handleNewCall() {
   const fresh = newSession('Client');
   await replaceSession(fresh, { markClean: true });
   showToast('New call started.');
+}
+
+async function openClientAccessManager(options = {}) {
+  const { closeOverflow = false, closePublish = false } = options;
+  await ensureAdvisorAuthenticated('Sign in to open Client Access.');
+
+  if (closeOverflow) {
+    closeMobileOverflowSheet({ restoreFocus: false });
+  }
+  if (closePublish) {
+    setPublishModalOpen(false);
+  }
+
+  window.location.href = new URL('./access.html', window.location.href).toString();
 }
 
 function bindEvents() {
@@ -6667,21 +6662,15 @@ function bindEvents() {
     });
   }
 
-  if (!runtimeConfig.readOnly && ui.loadSessionButton) {
-    ui.loadSessionButton.addEventListener('click', () => {
-      if (ui.loadSessionInput) {
-        ui.loadSessionInput.value = '';
-        ui.loadSessionInput.click();
-      }
+  if (!runtimeConfig.readOnly && ui.openClientAccessButton) {
+    ui.openClientAccessButton.addEventListener('click', async () => {
+      await openClientAccessManager();
     });
   }
 
-  if (ui.loadSessionInput) {
-    ui.loadSessionInput.addEventListener('change', async (event) => {
-      const fileInput = event.target;
-      const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-      await handleLoadSessionFromFile(file);
-      fileInput.value = '';
+  if (ui.publishOpenClientAccessButton) {
+    ui.publishOpenClientAccessButton.addEventListener('click', async () => {
+      await openClientAccessManager({ closePublish: true });
     });
   }
 
@@ -6759,9 +6748,9 @@ function bindEvents() {
     });
   }
 
-  if (ui.mobileOverflowLoadButton) {
-    ui.mobileOverflowLoadButton.addEventListener('click', () => {
-      triggerDesktopAction(ui.loadSessionButton, { closeOverflow: true });
+  if (ui.mobileOverflowClientAccessButton) {
+    ui.mobileOverflowClientAccessButton.addEventListener('click', async () => {
+      await openClientAccessManager({ closeOverflow: true });
     });
   }
 
