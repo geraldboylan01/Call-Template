@@ -68,6 +68,7 @@ const publishSuccessTarget = document.getElementById('publishSuccessTarget');
 const publishSuccessTitle = document.getElementById('publishSuccessTitle');
 const publishSuccessBody = document.getElementById('publishSuccessBody');
 const publishSuccessOrigin = document.getElementById('publishSuccessOrigin');
+const publishQrScratch = document.getElementById('publishQrScratch');
 const publishedRecoveryLayer = document.getElementById('publishedRecoveryLayer');
 const publishedRecoveryMessage = document.getElementById('publishedRecoveryMessage');
 const publishedRecoveryRetryButton = document.getElementById('publishedRecoveryRetryBtn');
@@ -3571,17 +3572,45 @@ function renderPublishedQrCode(link) {
   });
 }
 
-function getPublishedQrImageDataUrl() {
-  if (!ui.publishQrCode) {
+async function getPublishedQrImageDataUrl(link) {
+  const sourceNode = ui.publishQrCode || publishQrScratch;
+  if (!sourceNode || typeof window.QRCode !== 'function' || !link) {
     return '';
   }
 
-  const image = ui.publishQrCode.querySelector('img');
+  const existingImage = ui.publishQrCode?.querySelector('img');
+  if (existingImage && typeof existingImage.src === 'string' && existingImage.src.startsWith('data:image/png;base64,')) {
+    return existingImage.src;
+  }
+
+  const existingCanvas = ui.publishQrCode?.querySelector('canvas');
+  if (existingCanvas && typeof existingCanvas.toDataURL === 'function') {
+    try {
+      return existingCanvas.toDataURL('image/png');
+    } catch (_error) {
+      // Fall through to a fresh off-screen render.
+    }
+  }
+
+  sourceNode.innerHTML = '';
+  new window.QRCode(sourceNode, {
+    text: link,
+    width: 148,
+    height: 148,
+    colorDark: '#0f2233',
+    colorLight: '#ffffff'
+  });
+
+  await new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+
+  const image = sourceNode.querySelector('img');
   if (image && typeof image.src === 'string' && image.src.startsWith('data:image/png;base64,')) {
     return image.src;
   }
 
-  const canvas = ui.publishQrCode.querySelector('canvas');
+  const canvas = sourceNode.querySelector('canvas');
   if (canvas && typeof canvas.toDataURL === 'function') {
     try {
       return canvas.toDataURL('image/png');
@@ -4293,9 +4322,9 @@ async function sendPublishedSessionEmail(access) {
   if (!confirmInlinePinDelivery(access, 'Send the final email with the client PIN included?')) {
     throw new Error('Email sending cancelled.');
   }
-  const qrImageDataUrl = getPublishedQrImageDataUrl();
+  const qrImageDataUrl = await getPublishedQrImageDataUrl(getPublishedClientLink(access));
   if (!qrImageDataUrl) {
-    throw new Error('QR code is unavailable. Regenerate the published link before sending.');
+    throw new Error('QR code is unavailable right now. Please try sending again.');
   }
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
   const includePinInEmail = !isFirstOpenPublishedAccess(access) && isPublishPinIncludedInEmail();
