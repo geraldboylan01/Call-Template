@@ -156,6 +156,9 @@ textarea {
 }
 
 .ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 34px;
   border-radius: 10px;
   border: 1px solid rgba(127, 160, 200, 0.35);
@@ -163,6 +166,7 @@ textarea {
   color: var(--text);
   padding: 0 12px;
   cursor: pointer;
+  text-decoration: none;
   transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
 }
 
@@ -3634,6 +3638,233 @@ body.overview-has-selection .toast-host {
   justify-content: center;
 }
 
+.access-manager-page #accessManagerApp {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.access-manager-search-input {
+  width: 100%;
+}
+
+.access-manager-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.access-manager-main {
+  position: absolute;
+  inset: var(--topbar-height) 0 0 0;
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.access-manager-rail,
+.access-manager-detail-panel {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(108, 162, 221, 0.24);
+  background:
+    linear-gradient(180deg, rgba(11, 23, 42, 0.92), rgba(7, 14, 28, 0.9)),
+    rgba(7, 14, 28, 0.86);
+  box-shadow: 0 22px 48px rgba(1, 9, 20, 0.5);
+}
+
+.access-manager-rail-header {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.access-manager-eyebrow {
+  margin: 0;
+  color: #90b7de;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.access-manager-title,
+.access-manager-detail-title {
+  margin: 0;
+  color: #f1f8ff;
+  line-height: 1.1;
+}
+
+.access-manager-title {
+  font-size: 1.58rem;
+}
+
+.access-manager-subtitle,
+.access-manager-empty-state p {
+  margin: 0;
+  color: #abc5e2;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.access-manager-status {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(108, 162, 221, 0.18);
+  background: rgba(7, 16, 31, 0.34);
+  color: #bfd7f1;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.access-manager-session-list {
+  display: grid;
+  gap: 10px;
+}
+
+.access-session-card {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(108, 162, 221, 0.2);
+  background: rgba(7, 16, 31, 0.5);
+  text-align: left;
+}
+
+.access-session-card.is-selected {
+  border-color: rgba(86, 180, 255, 0.72);
+  box-shadow: 0 0 0 1px rgba(86, 180, 255, 0.2), 0 12px 28px rgba(5, 18, 35, 0.26);
+  background: rgba(9, 22, 42, 0.78);
+}
+
+.access-session-card-top,
+.access-session-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.access-session-card-name {
+  margin: 0;
+  color: #eff8ff;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.access-session-card-email,
+.access-session-card-detail,
+.access-manager-detail-id {
+  margin: 0;
+  color: #9fbad8;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.access-session-card-meta {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.access-session-card-detail {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(108, 162, 221, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.access-manager-empty-state,
+.access-manager-detail-card {
+  display: grid;
+  gap: 16px;
+}
+
+.access-manager-empty-state {
+  min-height: 100%;
+  align-content: center;
+  justify-items: start;
+}
+
+.access-manager-empty-state h2 {
+  margin: 0;
+  color: #eff8ff;
+}
+
+.access-manager-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.access-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(108, 162, 221, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+  color: #d8ebff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.access-status-badge.is-active {
+  border-color: rgba(109, 217, 165, 0.38);
+  background: rgba(35, 120, 88, 0.16);
+  color: #9bf0c7;
+}
+
+.access-status-badge.is-expired {
+  border-color: rgba(255, 196, 94, 0.34);
+  background: rgba(120, 88, 30, 0.16);
+  color: #ffd585;
+}
+
+.access-status-badge.is-revoked {
+  border-color: rgba(255, 131, 151, 0.36);
+  background: rgba(120, 36, 54, 0.16);
+  color: #ffb0bf;
+}
+
+.access-manager-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.access-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.access-manager-qr-scratch {
+  position: fixed;
+  left: -10000px;
+  top: -10000px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .session-unlock-layer {
   position: fixed;
   inset: 0;
@@ -3724,6 +3955,18 @@ body.overview-has-selection .toast-host {
 
   .session-status {
     display: none;
+  }
+
+  .access-manager-search-input {
+    width: 100%;
+  }
+
+  .access-manager-main {
+    grid-template-columns: 1fr;
+  }
+
+  .access-manager-meta-grid {
+    grid-template-columns: 1fr;
   }
 
   .swipe-stage {
@@ -3895,6 +4138,25 @@ body.overview-has-selection .toast-host {
 
   .topbar-right > :not(.mobile-topbar-meta) {
     display: none;
+  }
+
+  .access-manager-page .topbar-right {
+    display: flex;
+  }
+
+  .access-manager-page .topbar-right > * {
+    display: inline-flex;
+  }
+
+  .access-manager-main {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .access-manager-rail,
+  .access-manager-detail-panel {
+    padding: 14px;
+    border-radius: 16px;
   }
 
   .mobile-topbar-meta {

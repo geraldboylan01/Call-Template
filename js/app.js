@@ -3593,9 +3593,14 @@ function formatPublishedEmailStatus(access) {
 }
 
 function updatePublishActionState(access = appState.publishedAccess) {
+  const hasEmail = Boolean(String(ui.publishClientEmailInput?.value || '').trim());
+
+  if (ui.publishGenerateButton && !ui.publishGenerateButton.disabled) {
+    ui.publishGenerateButton.textContent = hasEmail ? 'Publish & Email Client' : 'Publish Secure Links';
+  }
+
   if (ui.publishSendEmailButton) {
     const supported = Boolean(access && Number(access.version) >= 3);
-    const hasEmail = Boolean(String(ui.publishClientEmailInput?.value || '').trim());
     ui.publishSendEmailButton.disabled = !supported || !hasEmail;
     ui.publishSendEmailButton.textContent = access?.emailSendCount > 0 ? 'Resend Final Email' : 'Send Final Email';
   }
@@ -3899,6 +3904,10 @@ async function publishCurrentSession() {
     clientEmail,
     expiresInDays
   });
+  encryptedPayload.requestBody.recovery = {
+    clientSecretB64u: encryptedPayload.clientSecretB64u,
+    advisorSecretB64u: encryptedPayload.advisorSecretB64u
+  };
   const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions`, {
     method: 'POST',
     headers: {
@@ -4140,9 +4149,11 @@ async function handlePublishGenerate() {
   }
 
   setPublishError('');
+  const shouldAutoSendEmail = Boolean(String(ui.publishClientEmailInput?.value || '').trim());
 
   if (ui.publishGenerateButton) {
     ui.publishGenerateButton.disabled = true;
+    ui.publishGenerateButton.textContent = shouldAutoSendEmail ? 'Publishing & Emailing...' : 'Publishing...';
   }
 
   try {
@@ -4155,12 +4166,30 @@ async function handlePublishGenerate() {
         error: error instanceof Error ? error.message : String(error)
       });
     });
+
+    if (access.clientEmail) {
+      try {
+        const payload = await sendPublishedSessionEmail(access);
+        appState.publishedAccess = mergePublishedEmailDelivery(access, payload);
+        renderPublishedAccess(appState.publishedAccess);
+        showToast('Client access published and emailed.');
+        setPublishModalOpen(false);
+      } catch (error) {
+        setPublishError(`Secure links published, but the client email could not be sent. ${error?.message || 'Use Send Final Email to try again.'}`);
+        showToast('Secure links published, but email was not sent.', 'error');
+      }
+      return;
+    }
+
+    showToast('Client access published.');
+    setPublishModalOpen(false);
   } catch (error) {
     setPublishError(error?.message || 'Failed to publish this session.');
   } finally {
     if (ui.publishGenerateButton) {
       ui.publishGenerateButton.disabled = false;
     }
+    updatePublishActionState();
   }
 }
 
@@ -4272,6 +4301,19 @@ async function sendPublishedSessionEmail(access) {
   return response.json();
 }
 
+function mergePublishedEmailDelivery(access, payload) {
+  if (!access) {
+    return null;
+  }
+
+  return {
+    ...access,
+    clientEmail: payload?.clientEmail || getPublishClientEmailFromInput(),
+    lastEmailSentAt: payload?.lastEmailSentAt || access.lastEmailSentAt,
+    emailSendCount: Number(payload?.emailSendCount || access.emailSendCount || 0)
+  };
+}
+
 async function updatePublishedSessionExpiry(access) {
   if (!access || Number(access.version) < 3) {
     throw new Error('Expiry updates are only available for newly published sessions.');
@@ -4344,6 +4386,7 @@ async function resetPublishedClientAccess(access) {
     },
     body: JSON.stringify({
       expectedRevision: currentRevision,
+      clientSecretB64u: rotated.clientSecretB64u,
       clientAuthHashB64u: rotated.clientAuthHashB64u,
       clientBundle: rotated.clientBundle,
       advisorBundle: rotated.advisorBundle
@@ -4387,12 +4430,7 @@ async function handleSendPublishedEmail() {
 
   try {
     const payload = await sendPublishedSessionEmail(appState.publishedAccess);
-    appState.publishedAccess = {
-      ...appState.publishedAccess,
-      clientEmail: payload.clientEmail || getPublishClientEmailFromInput(),
-      lastEmailSentAt: payload.lastEmailSentAt || appState.publishedAccess.lastEmailSentAt,
-      emailSendCount: Number(payload.emailSendCount || appState.publishedAccess.emailSendCount || 0)
-    };
+    appState.publishedAccess = mergePublishedEmailDelivery(appState.publishedAccess, payload);
     renderPublishedAccess(appState.publishedAccess);
     showToast('Final email sent.');
   } catch (error) {

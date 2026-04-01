@@ -5,6 +5,7 @@ const PUBLISHED_PAYLOAD_VERSION = 2;
 const PUBLISHED_SPLIT_PAYLOAD_VERSION = 3;
 const PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION = 4;
 const WORKER_SOURCE_FINGERPRINT = 'worker-v4-first-open-pin-2026-03-22-1';
+const PUBLISHED_KEY_LENGTH = 32;
 const PUBLISHED_SESSION_KEY_PREFIX = 'published/v2/';
 const PUBLISHED_CLIENT_KEY_PREFIX = 'published/client/';
 const PUBLISHED_ADVISOR_KEY_PREFIX = 'published/advisor/';
@@ -18,6 +19,8 @@ const MAX_SALT_B64_LENGTH = 128;
 const MAX_WRAP_CT_B64U_LENGTH = 12_000;
 const MAX_AUTH_HASH_B64U_LENGTH = 128;
 const MAX_CAPABILITY_TOKEN_B64U_LENGTH = 128;
+const MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH = 128;
+const MAX_PUBLISHED_RECOVERY_PAYLOAD_B64U_LENGTH = 4_096;
 const MAX_QR_IMAGE_DATA_URL_LENGTH = 1_500_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 80;
@@ -52,6 +55,12 @@ const DEFAULT_ALLOWED_ORIGINS = new Set([
 ]);
 const DEFAULT_SESSION_ADVISOR_NOTIFICATION_TO = ['geraldboylan@gmail.com'];
 const TRUEISH_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
+const HKDF_SALT = new Uint8Array(32);
+const PUBLISHED_RECOVERY_INFO = 'planeir/publish/recovery/v1';
+const PUBLISHED_AUTH_INFO = Object.freeze({
+  client: 'planeir/publish/client-auth/v1',
+  advisor: 'planeir/publish/advisor-auth/v1'
+});
 
 const ALLOWED_LEAD_STAGES = new Set([
   'buying-a-home',
@@ -123,6 +132,12 @@ function getRouteConfig(pathname) {
     };
   }
 
+  if (pathname === '/api/advisor/published-sessions') {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
   if (pathname === '/api/auth/session') {
     return {
       methods: 'GET,OPTIONS'
@@ -148,6 +163,12 @@ function getRouteConfig(pathname) {
   }
 
   if (/^\/api\/published-sessions\/[^/]+\/(?:client|advisor)$/.test(pathname)) {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/advisor\/published-sessions\/[^/]+$/.test(pathname)) {
     return {
       methods: 'GET,OPTIONS'
     };
@@ -446,6 +467,36 @@ async function importHmacKey(secret) {
   );
 }
 
+async function importHkdfSecret(secretBytes) {
+  const secret = secretBytes instanceof Uint8Array ? secretBytes : new Uint8Array(secretBytes);
+  if (secret.length === 0) {
+    throw new Error('Secret material is required.');
+  }
+
+  return crypto.subtle.importKey(
+    'raw',
+    secret,
+    'HKDF',
+    false,
+    ['deriveBits']
+  );
+}
+
+async function deriveHkdfBytes(secretBytes, info, length) {
+  const keyMaterial = await importHkdfSecret(secretBytes);
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: HKDF_SALT,
+      info: new TextEncoder().encode(info)
+    },
+    keyMaterial,
+    length * 8
+  );
+  return new Uint8Array(derivedBits);
+}
+
 async function signAdvisorSessionPayload(sessionSecret, payloadBytes) {
   const key = await importHmacKey(sessionSecret);
   const signature = await crypto.subtle.sign('HMAC', key, payloadBytes);
@@ -590,6 +641,140 @@ async function verifyAdvisorPassword(password, config) {
   const saltBytes = fromBase64UrlBytes(config.passwordSaltB64u);
   const actualHashBytes = await deriveAdvisorPasswordHash(normalizedPassword, saltBytes);
   return constantTimeEquals(expectedHashBytes, actualHashBytes);
+}
+
+async function importPublishedRecoveryKey(sessionSecret) {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${PUBLISHED_RECOVERY_INFO}:${sessionSecret}`)
+  );
+
+  return crypto.subtle.importKey(
+    'raw',
+    digest,
+    {
+      name: 'AES-GCM',
+      length: 256
+    },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function derivePublishedAuthHash(secretB64u, role) {
+  const info = role === 'advisor' ? PUBLISHED_AUTH_INFO.advisor : PUBLISHED_AUTH_INFO.client;
+  const secretBytes = fromBase64UrlBytes(secretB64u, MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH);
+  if (secretBytes.length !== PUBLISHED_KEY_LENGTH) {
+    throw new Error('Published recovery secret is invalid.');
+  }
+  const capabilityBytes = await deriveHkdfBytes(secretBytes, info, PUBLISHED_KEY_LENGTH);
+  return sha256Base64Url(capabilityBytes);
+}
+
+async function validatePublishedRecoveryPayload(payload, auth) {
+  if (payload === null || typeof payload === 'undefined') {
+    return null;
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Recovery payload is invalid.');
+  }
+
+  const clientSecretB64u = normalizeLeadValue(payload.clientSecretB64u);
+  const advisorSecretB64u = normalizeLeadValue(payload.advisorSecretB64u);
+  if (!isBase64UrlValue(clientSecretB64u, MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH)) {
+    throw new Error('Recovery client secret is invalid.');
+  }
+  if (!isBase64UrlValue(advisorSecretB64u, MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH)) {
+    throw new Error('Recovery advisor secret is invalid.');
+  }
+
+  const [clientAuthHashB64u, advisorAuthHashB64u] = await Promise.all([
+    derivePublishedAuthHash(clientSecretB64u, 'client'),
+    derivePublishedAuthHash(advisorSecretB64u, 'advisor')
+  ]);
+
+  if (clientAuthHashB64u !== auth.clientAuthHashB64u) {
+    throw new Error('Recovery client secret does not match the published session.');
+  }
+  if (advisorAuthHashB64u !== auth.advisorAuthHashB64u) {
+    throw new Error('Recovery advisor secret does not match the published session.');
+  }
+
+  return {
+    clientSecretB64u,
+    advisorSecretB64u
+  };
+}
+
+async function encryptPublishedRecoveryPayload(env, recovery) {
+  if (!recovery) {
+    return null;
+  }
+
+  const config = getAdvisorAuthConfig(env);
+  if (!config.sessionSecret) {
+    return null;
+  }
+
+  const key = await importPublishedRecoveryKey(config.sessionSecret);
+  const ivBytes = crypto.getRandomValues(new Uint8Array(12));
+  const plaintextBytes = new TextEncoder().encode(JSON.stringify(recovery));
+  const ciphertext = await crypto.subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv: ivBytes
+    },
+    key,
+    plaintextBytes
+  );
+
+  return {
+    recoveryPayloadB64u: toBase64Url(new Uint8Array(ciphertext)),
+    recoveryIvB64u: toBase64Url(ivBytes)
+  };
+}
+
+async function decryptPublishedRecoveryPayload(env, row) {
+  if (!row?.recoveryPayloadB64u || !row?.recoveryIvB64u) {
+    return null;
+  }
+
+  const config = getAdvisorAuthConfig(env);
+  if (!config.sessionSecret) {
+    return null;
+  }
+
+  const key = await importPublishedRecoveryKey(config.sessionSecret);
+  const ciphertextBytes = fromBase64UrlBytes(row.recoveryPayloadB64u, MAX_PUBLISHED_RECOVERY_PAYLOAD_B64U_LENGTH);
+  const ivBytes = fromBase64UrlBytes(row.recoveryIvB64u, 64);
+  const plaintext = await crypto.subtle.decrypt(
+    {
+      name: 'AES-GCM',
+      iv: ivBytes
+    },
+    key,
+    ciphertextBytes
+  );
+
+  const payload = JSON.parse(new TextDecoder().decode(plaintext));
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Published recovery payload is invalid.');
+  }
+
+  const clientSecretB64u = normalizeLeadValue(payload.clientSecretB64u);
+  const advisorSecretB64u = normalizeLeadValue(payload.advisorSecretB64u);
+  if (!isBase64UrlValue(clientSecretB64u, MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH)) {
+    throw new Error('Published recovery client secret is invalid.');
+  }
+  if (!isBase64UrlValue(advisorSecretB64u, MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH)) {
+    throw new Error('Published recovery advisor secret is invalid.');
+  }
+
+  return {
+    clientSecretB64u,
+    advisorSecretB64u
+  };
 }
 
 function isTruthyEnvValue(value) {
@@ -1748,6 +1933,10 @@ function validatePublishedClientAccessResetPayload(payload) {
   if (!isBase64UrlValue(payload.clientAuthHashB64u, MAX_AUTH_HASH_B64U_LENGTH)) {
     throw new Error('Client access auth hash is invalid.');
   }
+  const clientSecretB64u = normalizeLeadValue(payload.clientSecretB64u);
+  if (clientSecretB64u && !isBase64UrlValue(clientSecretB64u, MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH)) {
+    throw new Error('Client access recovery secret is invalid.');
+  }
 
   const clientBundle = validatePublishedBundlePayload(payload.clientBundle, PUBLISHED_CLIENT_KIND, 'clientAccess');
   const advisorBundle = validatePublishedBundlePayload(payload.advisorBundle, PUBLISHED_ADVISOR_KIND, 'advisorAccess');
@@ -1766,6 +1955,7 @@ function validatePublishedClientAccessResetPayload(payload) {
   return {
     expectedRevision,
     clientAuthHashB64u: payload.clientAuthHashB64u,
+    clientSecretB64u,
     clientBundle,
     advisorBundle
   };
@@ -1885,6 +2075,9 @@ function normalizePublishedSessionRow(row) {
     qrAssetToken: row.qr_asset_token || '',
     qrAssetR2Key: row.qr_asset_r2_key || '',
     qrAssetContentType: row.qr_asset_content_type || '',
+    recoveryPayloadB64u: row.recovery_payload_b64u || '',
+    recoveryIvB64u: row.recovery_iv_b64u || '',
+    recoveryAvailable: Boolean(row.recovery_payload_b64u && row.recovery_iv_b64u),
     clientPinState: version === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
       ? (row.client_pin_state === 'active' ? 'active' : 'pending')
       : null,
@@ -1928,6 +2121,8 @@ async function getPublishedSessionRow(env, publishedId) {
       qr_asset_token,
       qr_asset_r2_key,
       qr_asset_content_type,
+      recovery_payload_b64u,
+      recovery_iv_b64u,
       client_pin_state,
       client_pin_initialized_at,
       client_access_revision
@@ -1989,10 +2184,12 @@ async function insertPublishedSessionRow(env, record) {
       qr_asset_token,
       qr_asset_r2_key,
       qr_asset_content_type,
+      recovery_payload_b64u,
+      recovery_iv_b64u,
       client_pin_state,
       client_pin_initialized_at,
       client_access_revision
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     record.id,
     record.version,
@@ -2021,6 +2218,8 @@ async function insertPublishedSessionRow(env, record) {
     null,
     null,
     null,
+    record.recoveryPayloadB64u || null,
+    record.recoveryIvB64u || null,
     record.clientPinState || null,
     record.clientPinInitializedAt || null,
     Number(record.clientAccessRevision || 1)
@@ -2029,6 +2228,101 @@ async function insertPublishedSessionRow(env, record) {
   if (!result.success) {
     throw new Error('Failed to insert published session metadata.');
   }
+}
+
+function buildPublishedSessionManagerSummary(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    publishedId: row.id,
+    version: row.version,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    expiresAt: row.expiresAt,
+    revokedAt: row.revokedAt,
+    clientName: row.clientName,
+    clientEmail: row.clientEmail,
+    clientPinState: row.clientPinState,
+    clientPinInitializedAt: row.clientPinInitializedAt,
+    clientAccessRevision: row.clientAccessRevision,
+    emailSendCount: row.emailSendCount,
+    lastEmailSentAt: row.lastEmailSentAt,
+    recoveryAvailable: row.recoveryAvailable,
+    canEmail: row.status === 'active' && row.version >= PUBLISHED_SPLIT_PAYLOAD_VERSION,
+    canExtend: row.status !== 'revoked' && row.version >= PUBLISHED_SPLIT_PAYLOAD_VERSION,
+    canResetClientAccess: row.status === 'active' && row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
+    canRevoke: row.status === 'active'
+  };
+}
+
+async function listPublishedSessionRows(env, options = {}) {
+  const db = getPublishedSessionsDb(env);
+  const query = normalizeLeadValue(options.query).toLowerCase();
+  const limit = Math.min(Math.max(Number(options.limit) || 40, 1), 100);
+  const bindings = [];
+  const where = [];
+
+  if (query) {
+    const likeValue = `%${query}%`;
+    where.push(`(
+      LOWER(id) LIKE ?
+      OR LOWER(client_name) LIKE ?
+      OR LOWER(COALESCE(client_email, '')) LIKE ?
+    )`);
+    bindings.push(likeValue, likeValue, likeValue);
+  }
+
+  const sql = `
+    SELECT
+      id,
+      version,
+      status,
+      created_at,
+      updated_at,
+      expires_at,
+      revoked_at,
+      client_name,
+      client_email,
+      pin_required,
+      client_auth_hash_b64u,
+      advisor_auth_hash_b64u,
+      client_r2_key,
+      advisor_r2_key,
+      client_open_count,
+      advisor_open_count,
+      last_client_opened_at,
+      last_advisor_opened_at,
+      client_unlock_count,
+      advisor_unlock_count,
+      last_client_unlocked_at,
+      last_advisor_unlocked_at,
+      last_email_sent_at,
+      email_send_count,
+      qr_asset_token,
+      qr_asset_r2_key,
+      qr_asset_content_type,
+      recovery_payload_b64u,
+      recovery_iv_b64u,
+      client_pin_state,
+      client_pin_initialized_at,
+      client_access_revision
+    FROM published_sessions
+    ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY updated_at DESC
+    LIMIT ?
+  `;
+
+  bindings.push(limit);
+  const result = await db.prepare(sql).bind(...bindings).all();
+  const rows = Array.isArray(result?.results) ? result.results : [];
+  const sessions = [];
+  for (const row of rows) {
+    sessions.push(await markPublishedExpiredIfNeeded(env, normalizePublishedSessionRow(row)));
+  }
+  return sessions;
 }
 
 async function updatePublishedStatus(env, publishedId, status, revokedAt = null) {
@@ -2134,12 +2428,16 @@ async function resetPublishedClientAccessMetadata(env, publishedId, values) {
       qr_asset_token = NULL,
       qr_asset_r2_key = NULL,
       qr_asset_content_type = NULL,
+      recovery_payload_b64u = ?,
+      recovery_iv_b64u = ?,
       updated_at = ?
     WHERE id = ?
   `).bind(
     values.clientAuthHashB64u,
     values.clientPinState,
     values.clientAccessRevision,
+    values.recoveryPayloadB64u || null,
+    values.recoveryIvB64u || null,
     nowIso(),
     publishedId
   ).run();
@@ -2484,6 +2782,64 @@ async function handleAdvisorLogout(request, env, origin) {
   });
 }
 
+async function handleAdvisorPublishedSessionsList(request, env, origin) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const url = new URL(request.url);
+  const query = normalizeLeadValue(url.searchParams.get('q'));
+  const limit = Number(url.searchParams.get('limit') || 40);
+  const rows = await listPublishedSessionRows(env, { query, limit });
+  return jsonResponse({
+    ok: true,
+    sessions: rows.map(buildPublishedSessionManagerSummary)
+  }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
+}
+
+async function handleAdvisorPublishedSessionDetail(request, env, origin, publishedId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  let row = await getPublishedSessionRow(env, publishedId);
+  if (!row) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  row = await markPublishedExpiredIfNeeded(env, row);
+  const summary = buildPublishedSessionManagerSummary(row);
+  let clientSecretB64u = '';
+  let advisorSecretB64u = '';
+  let recoveryAvailable = row.recoveryAvailable;
+
+  if (row.recoveryAvailable) {
+    try {
+      const recovery = await decryptPublishedRecoveryPayload(env, row);
+      clientSecretB64u = recovery.clientSecretB64u;
+      advisorSecretB64u = recovery.advisorSecretB64u;
+    } catch (error) {
+      recoveryAvailable = false;
+      console.error('Failed to recover published session links for advisor manager', {
+        publishedId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    session: {
+      ...summary,
+      recoveryAvailable,
+      clientSecretB64u,
+      advisorSecretB64u
+    }
+  }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
+}
+
 async function handlePublish(request, env, origin) {
   const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
     requireCsrf: true
@@ -2585,6 +2941,13 @@ async function handleCreatePublishedSession(request, env, origin) {
     return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'POST,OPTIONS');
   }
 
+  let recovery;
+  try {
+    recovery = await validatePublishedRecoveryPayload(body?.recovery, validated.data.auth);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Recovery payload is invalid.' }, 400, origin, 'POST,OPTIONS');
+  }
+
   if (validated.kind === 'v2') {
     const publishedId = crypto.randomUUID();
     const manifest = buildPublishedManifest(validated.data, publishedId);
@@ -2615,6 +2978,7 @@ async function handleCreatePublishedSession(request, env, origin) {
   const isV4 = validated.kind === 'v4';
   const clientPinState = isV4 ? validated.data.clientBundle.clientAccess.pinState : null;
   const clientAccessRevision = isV4 ? validated.data.clientBundle.clientAccess.revision : 1;
+  const encryptedRecovery = await encryptPublishedRecoveryPayload(env, recovery);
 
   try {
     await env.SESSIONS_BUCKET.put(clientR2Key, JSON.stringify(validated.data.clientBundle), {
@@ -2638,6 +3002,8 @@ async function handleCreatePublishedSession(request, env, origin) {
       advisorAuthHashB64u: validated.data.auth.advisorAuthHashB64u,
       clientR2Key,
       advisorR2Key,
+      recoveryPayloadB64u: encryptedRecovery?.recoveryPayloadB64u || null,
+      recoveryIvB64u: encryptedRecovery?.recoveryIvB64u || null,
       clientPinState,
       clientPinInitializedAt: null,
       clientAccessRevision
@@ -2647,6 +3013,7 @@ async function handleCreatePublishedSession(request, env, origin) {
       pinRequired: isV4 ? true : validated.data.clientBundle.clientAccess.pinRequired,
       clientPinState,
       clientAccessRevision,
+      recoveryAvailable: Boolean(encryptedRecovery),
       expiresAt
     });
   } catch (error) {
@@ -3252,10 +3619,22 @@ async function handleResetPublishedClientAccess(request, env, origin, publishedI
   await env.SESSIONS_BUCKET.put(row.advisorR2Key, JSON.stringify(validated.advisorBundle), {
     httpMetadata: { contentType: 'application/json' }
   });
+  let updatedRecovery = null;
+  if (row.recoveryAvailable && validated.clientSecretB64u) {
+    const existingRecovery = await decryptPublishedRecoveryPayload(env, row).catch(() => null);
+    if (existingRecovery?.advisorSecretB64u) {
+      updatedRecovery = await encryptPublishedRecoveryPayload(env, {
+        clientSecretB64u: validated.clientSecretB64u,
+        advisorSecretB64u: existingRecovery.advisorSecretB64u
+      });
+    }
+  }
   await resetPublishedClientAccessMetadata(env, publishedId, {
     clientAuthHashB64u: validated.clientAuthHashB64u,
     clientPinState: 'pending',
-    clientAccessRevision: validated.clientBundle.clientAccess.revision
+    clientAccessRevision: validated.clientBundle.clientAccess.revision,
+    recoveryPayloadB64u: updatedRecovery?.recoveryPayloadB64u || row.recoveryPayloadB64u || null,
+    recoveryIvB64u: updatedRecovery?.recoveryIvB64u || row.recoveryIvB64u || null
   });
   await insertPublishedSessionEvent(env, publishedId, 'advisor', 'client-access-reset', {
     previousClientAccessRevision: row.clientAccessRevision,
@@ -3662,6 +4041,10 @@ export default {
       return handleCreatePublishedSession(request, env, origin);
     }
 
+    if (request.method === 'GET' && pathname === '/api/advisor/published-sessions') {
+      return handleAdvisorPublishedSessionsList(request, env, origin);
+    }
+
     if (request.method === 'GET' && pathname === '/api/auth/session') {
       return handleAdvisorSession(request, env, origin);
     }
@@ -3693,6 +4076,16 @@ export default {
       }
 
       return handleGetPublishedSession(request, env, origin, publishedId, role);
+    }
+
+    const getAdvisorPublishedMatch = /^\/api\/advisor\/published-sessions\/([^/]+)$/.exec(pathname);
+    if (request.method === 'GET' && getAdvisorPublishedMatch) {
+      const publishedId = getAdvisorPublishedMatch[1];
+      if (!isSafeSessionId(publishedId)) {
+        return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handleAdvisorPublishedSessionDetail(request, env, origin, publishedId);
     }
 
     const revokeMatch = /^\/api\/revoke\/([^/]+)$/.exec(pathname);

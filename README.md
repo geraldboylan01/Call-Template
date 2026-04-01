@@ -89,7 +89,7 @@ When the advisor app is served from `/app/`, generated client links now resolve 
 
 Published sessions now support two separate email paths through the same Resend-backed Worker setup:
 
-- the existing client-facing final email, triggered manually from the publish modal
+- the client-facing final email, triggered automatically from the publish modal when a client email is entered
 - an automatic advisor notification email, triggered immediately after a successful publish
 
 Recommended configuration:
@@ -105,7 +105,9 @@ Notes:
 - If `SESSION_EMAIL_FROM` is not set, the Worker falls back to `LEAD_EMAIL_FROM`.
 - The advisor notification is non-blocking. If email delivery fails or email is not configured, publish still succeeds and the Worker only logs the failure.
 - The advisor notification includes the client name, advisor reopen link, client link when provided, published timestamp, expiry, published session id, and the current client PIN flow summary.
-- The client-facing final email flow is unchanged and still uses the existing `Send Final Email` action in the publish modal.
+- When a client email is entered, `Publish Secure Links` now publishes and immediately sends the client-facing final email.
+- Ongoing resend, recovery, reset, revoke, and expiry-management flows now live on `/app/access.html`.
+- Sessions published after the recovery-storage update can be searched and recovered from the Client Access page without needing the original advisor reopen link.
 
 Example setup:
 
@@ -158,15 +160,17 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 
 1. Configure `RESEND_API_KEY`, `SESSION_EMAIL_FROM`, and `SESSION_ADVISOR_NOTIFICATION_TO` for the Worker.
 2. Run the static site and the Worker locally, or deploy the Worker with those variables set.
-3. Open `/app/`, publish a client session, and confirm the publish succeeds and shows the client link plus advisor reopen link in the modal.
+3. Open `/app/`, publish a client session, and confirm the publish succeeds without exposing the old link-management panel in the publish modal.
 4. Confirm the advisor notification email arrives at `geraldboylan@gmail.com` with the advisor reopen link, client name, publish time, expiry, and published session id.
-5. From the same published session, use `Send Final Email` and confirm the client-facing final email still sends as before.
-6. To test failure handling, temporarily remove `RESEND_API_KEY` or set an invalid key, publish again, and confirm the publish still succeeds while the Worker logs the advisor notification failure instead of breaking the UI.
+5. Open `/app/access.html`, search for the published client, and confirm the recovered client link and advisor reopen link are available there.
+6. From `/app/access.html`, resend the final email, extend expiry, and reset client access, confirming each action updates the selected record.
+7. To test failure handling, temporarily remove `RESEND_API_KEY` or set an invalid key, publish again, and confirm the publish still succeeds while the Worker logs the advisor notification failure instead of breaking the UI.
 
 ## File Structure
 
 - `index.html` public landing page
 - `app/index.html` advisor app
+- `app/access.html` advisor-only client access manager
 - `app/session.html` client viewer
 - `session.html` compatibility redirect for older links
 - `dist/` the only GitHub Pages deploy artifact
