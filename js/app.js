@@ -53,6 +53,7 @@ import {
 } from './crypto_session.js';
 import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
+import { createSuccessTakeover } from './success_takeover.js';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
@@ -60,6 +61,13 @@ function getMetaContent(name) {
 }
 
 const ui = getUiElements();
+const appShell = document.getElementById('app');
+const publishSuccessOverlay = document.getElementById('publishSuccessOverlay');
+const publishSuccessGhost = document.getElementById('publishSuccessGhost');
+const publishSuccessTarget = document.getElementById('publishSuccessTarget');
+const publishSuccessTitle = document.getElementById('publishSuccessTitle');
+const publishSuccessBody = document.getElementById('publishSuccessBody');
+const publishSuccessOrigin = document.getElementById('publishSuccessOrigin');
 const publishedRecoveryLayer = document.getElementById('publishedRecoveryLayer');
 const publishedRecoveryMessage = document.getElementById('publishedRecoveryMessage');
 const publishedRecoveryRetryButton = document.getElementById('publishedRecoveryRetryBtn');
@@ -72,6 +80,16 @@ const advisorAuthLoginButton = document.getElementById('advisorAuthLoginBtn');
 const advisorAuthError = document.getElementById('advisorAuthError');
 const advisorAuthStatus = document.getElementById('advisorAuthStatus');
 const advisorLogoutButton = document.getElementById('advisorLogoutBtn');
+const publishSuccessTakeover = createSuccessTakeover({
+  overlay: publishSuccessOverlay,
+  origin: publishSuccessOrigin,
+  ghost: publishSuccessGhost,
+  target: publishSuccessTarget,
+  title: publishSuccessTitle,
+  body: publishSuccessBody,
+  holdMs: 10000,
+  lockTargets: [appShell, advisorAuthLayer, publishedRecoveryLayer].filter(Boolean)
+});
 const runtimeConfig = {
   readOnly: false,
   allowDevPanel: true,
@@ -3743,6 +3761,16 @@ function setPublishModalOpen(open) {
   ui.publishModal.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
 
+async function playPublishSuccessTakeover() {
+  setPublishModalOpen(false);
+  await publishSuccessTakeover.play({
+    titleText: 'Congratulations',
+    bodyText: 'Thanks for using Planeir, your future self will thank you!',
+    restoreFocusIfContainedIn: ui.publishModal,
+    restoreFocusTo: ui.publishSessionButton
+  });
+}
+
 async function fetchPublishedAdvisorBundle(publishedId, advisorSecretB64u) {
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
   const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/advisor`, {
@@ -4172,8 +4200,7 @@ async function handlePublishGenerate() {
         const payload = await sendPublishedSessionEmail(access);
         appState.publishedAccess = mergePublishedEmailDelivery(access, payload);
         renderPublishedAccess(appState.publishedAccess);
-        showToast('Client access published and emailed.');
-        setPublishModalOpen(false);
+        await playPublishSuccessTakeover();
       } catch (error) {
         setPublishError(`Secure links published, but the client email could not be sent. ${error?.message || 'Use Send Final Email to try again.'}`);
         showToast('Secure links published, but email was not sent.', 'error');
@@ -4181,8 +4208,7 @@ async function handlePublishGenerate() {
       return;
     }
 
-    showToast('Client access published.');
-    setPublishModalOpen(false);
+    await playPublishSuccessTakeover();
   } catch (error) {
     setPublishError(error?.message || 'Failed to publish this session.');
   } finally {

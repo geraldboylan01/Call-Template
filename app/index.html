@@ -27,6 +27,7 @@
         <div class="topbar-left">
           <a class="app-home-link" href="../" aria-label="Return to Planeir website">
             <img
+              id="publishSuccessOrigin"
               class="app-home-link-image"
               src="../assets/brand/planeir-wordmark-light.svg"
               alt=""
@@ -289,6 +290,50 @@
         <p class="publish-email-status">
           Need to resend, extend access, reset client PIN setup, revoke a link, or recover a client link later? Use the dedicated Client Access page instead of the publish modal.
         </p>
+      </div>
+    </div>
+
+    <div id="publishSuccessOverlay" class="lead-success-overlay" aria-hidden="true">
+      <div id="publishSuccessGhost" class="lead-success-ghost" aria-hidden="true">
+        <img
+          class="lead-success-ghost-logo"
+          src="../assets/brand/planeir-wordmark-light.svg"
+          alt=""
+          width="1330"
+          height="384"
+          decoding="async"
+        />
+      </div>
+
+      <div class="lead-success-stage">
+        <div id="publishSuccessTarget" class="lead-success-lockup" aria-hidden="true">
+          <div class="lead-success-wordmark-shell">
+            <img
+              class="lead-success-stage-logo"
+              src="../assets/brand/planeir-wordmark-light.svg"
+              alt=""
+              width="1330"
+              height="384"
+              decoding="async"
+            />
+            <span class="lead-success-harp-eraser"></span>
+            <span class="lead-success-harp-shell" aria-hidden="true">
+              <span class="lead-success-harp">
+                <span class="lead-success-harp-face lead-success-harp-face-dark"></span>
+                <span class="lead-success-harp-face lead-success-harp-face-light"></span>
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <div class="lead-success-copy" role="status" aria-live="polite">
+          <h2 id="publishSuccessTitle" class="lead-success-title">Congratulations</h2>
+          <p id="publishSuccessBody" class="lead-success-body">Thanks for using Planeir, your future self will thank you!</p>
+        </div>
+      </div>
+
+      <div class="lead-success-timer" aria-hidden="true">
+        <span class="lead-success-timer-bar"></span>
       </div>
     </div>
 
