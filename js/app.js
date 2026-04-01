@@ -2766,16 +2766,17 @@ function syncMobileActionState() {
     || (ui.mobileOverflowClientAccessButton && !ui.mobileOverflowClientAccessButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowResetButton && !ui.mobileOverflowResetButton.classList.contains('is-hidden'))
   );
+  const canUseOverflow = isMobileLayoutActive() && hasOverflowAction;
 
   [ui.mobileHeaderMoreButton, ui.mobileActionMoreButton].forEach((button) => {
     if (!button) {
       return;
     }
-    button.classList.toggle('is-hidden', !hasOverflowAction);
-    button.disabled = !hasOverflowAction;
+    button.classList.toggle('is-hidden', !canUseOverflow);
+    button.disabled = !canUseOverflow;
   });
 
-  if (!hasOverflowAction) {
+  if (!canUseOverflow) {
     closeMobileOverflowSheet({ restoreFocus: false });
   }
 }
