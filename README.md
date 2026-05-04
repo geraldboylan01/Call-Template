@@ -3,7 +3,7 @@
 Planeir now ships as two connected experiences:
 
 - `/` is the public landing page for first-time visitors.
-- `/app/` is the existing advisor workspace. The public landing page includes an "admin log in" link to `/app/?login=1`; the separate "Open app" link only appears when an authenticated advisor session is already present. Unauthenticated `/app/` visits redirect back to the request form.
+- `/app/` is the existing advisor workspace. The public landing page includes an "Admin Login" link to `/app/?login=1&return=home`; after sign-in, the advisor returns to `/` and sees the separate "Open app" link. Unauthenticated `/app/` visits redirect back to the request form.
 - `/app/session.html?id=...` is the client session viewer used by published links.
 - `/session.html?id=...` remains as a compatibility redirect to `/app/session.html?id=...`.
 
@@ -13,7 +13,7 @@ Static site:
 
 1. Serve the repo with any static server.
 2. Open `/` for the landing page.
-3. Open `/app/?login=1` to sign in as an advisor, or `/app/` when an advisor session already exists.
+3. Open `/app/?login=1&return=home` to sign in as an advisor and return to the homepage, or `/app/` when an advisor session already exists.
 
 Worker:
 

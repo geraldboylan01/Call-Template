@@ -28,6 +28,7 @@ const leadSuccessTarget = document.getElementById('leadSuccessTarget');
 const leadSuccessTitle = document.querySelector('#leadSuccessCopy .lead-success-title');
 const leadSuccessBody = document.querySelector('#leadSuccessCopy .lead-success-body');
 const leadSuccessOrigin = document.querySelector('.site-brand-logo-wrap');
+const advisorLoginLinks = [...document.querySelectorAll('[data-advisor-login-link]')];
 const advisorAppLinks = [...document.querySelectorAll('[data-advisor-app-link]')];
 const advisorGateNotice = document.getElementById('advisorGateNotice');
 const leadSuccessLockTargets = [
@@ -65,6 +66,12 @@ const leadFields = {
 };
 
 function setAdvisorAppLinksVisible(visible) {
+  advisorLoginLinks.forEach((link) => {
+    link.hidden = visible;
+    link.classList.toggle('is-hidden', visible);
+    link.setAttribute('aria-hidden', visible ? 'true' : 'false');
+  });
+
   advisorAppLinks.forEach((link) => {
     link.hidden = !visible;
     link.classList.toggle('is-hidden', !visible);

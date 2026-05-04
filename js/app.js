@@ -407,10 +407,7 @@ async function handleAdvisorLogout() {
   advisorAuthState.csrfToken = '';
   advisorAuthState.expiresAt = null;
   updateAdvisorAuthChrome();
-  setAdvisorAuthVisible(true);
-  if (advisorAuthPasswordInput) {
-    advisorAuthPasswordInput.focus();
-  }
+  window.location.replace(new URL('../', window.location.href).toString());
 }
 
 function bindAdvisorAuthEvents() {
@@ -7033,6 +7030,10 @@ export async function initApp(options = {}) {
 
       if (options.requireAdvisorAuthOnStart === true) {
         await ensureAdvisorAuthenticated(options.advisorAuthStartMessage || 'Sign in to open the advisor workspace.');
+        if (options.returnHomeAfterAdvisorAuthOnStart === true) {
+          window.location.replace(new URL('../', window.location.href).toString());
+          return;
+        }
       }
     }
 

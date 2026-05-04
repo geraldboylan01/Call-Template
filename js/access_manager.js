@@ -945,7 +945,7 @@ async function handleAdvisorLogout() {
     state.selectedSession = null;
     renderSessionList();
     renderSelectedSession();
-    redirectToAdvisorWorkspace();
+    window.location.replace(new URL('../', window.location.href).toString());
   } catch (error) {
     showToast(error?.message || 'Could not sign out.', 'error');
   }

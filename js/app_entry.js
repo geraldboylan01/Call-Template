@@ -31,6 +31,11 @@ function hasAdvisorEntryIntent() {
     || (params.has('pub') && hashParams.has('ak'));
 }
 
+function shouldReturnHomeAfterAdvisorLogin() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('return') === 'home';
+}
+
 function redirectToRequestForm() {
   const target = new URL('../', window.location.href);
   target.searchParams.set('app', 'advisor-required');
@@ -62,6 +67,7 @@ async function startAdvisorApp(options = {}) {
 
 async function boot() {
   const advisorIntent = hasAdvisorEntryIntent();
+  const returnHomeAfterLogin = shouldReturnHomeAfterAdvisorLogin();
 
   if (!WORKER_BASE_URL) {
     if (!advisorIntent) {
@@ -85,6 +91,11 @@ async function boot() {
   }
 
   if (session?.authEnabled === true && session.authenticated === true) {
+    if (returnHomeAfterLogin) {
+      window.location.replace(new URL('../', window.location.href).toString());
+      return;
+    }
+
     document.body?.classList.remove('advisor-gate-pending');
     await startAdvisorApp();
     return;
@@ -93,7 +104,8 @@ async function boot() {
   if (advisorIntent) {
     await startAdvisorApp({
       requireAdvisorAuthOnStart: true,
-      advisorAuthStartMessage: 'Sign in to open the advisor workspace.'
+      advisorAuthStartMessage: 'Sign in to open the advisor workspace.',
+      returnHomeAfterAdvisorAuthOnStart: returnHomeAfterLogin
     });
     return;
   }
