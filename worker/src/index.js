@@ -977,7 +977,7 @@ function buildLeadSummaryRows(lead, leadId) {
     ['Planning stage', formatLeadSelection(lead.stage, LEAD_STAGE_LABELS)],
     ['Requested outcome', formatLeadSelection(lead.callOutcome, CALL_OUTCOME_LABELS)],
     ['Understands this is a free recorded call', formatLeadConsent(lead.understandsRecordedCall)],
-    ['Understands Planeir is financial education only', formatLeadConsent(lead.understandsEducationalOnly)],
+    ['Understands Planeir uses their scenario for financial education only', formatLeadConsent(lead.understandsEducationalOnly)],
     ['Understands recording may be used as educational content', formatLeadConsent(lead.understandsEducationalContent)],
     ['Submitted at', formatOptionalText(lead.createdAt)],
     ['Source', LEAD_SOURCE_LABEL]
@@ -1045,7 +1045,7 @@ function buildLeadConfirmationText(lead) {
     'Thanks for getting in touch with Planeir.',
     'Gerry has received your request for a free financial education call and will review it shortly.',
     'If the request looks like a good fit for the format, you will hear back.',
-    'Planeir provides education only, not regulated financial advice, tax advice, legal advice, or product recommendations.',
+    'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',
     'Best,',
     'Planeir',
@@ -1070,7 +1070,7 @@ function buildLeadConfirmationHtml(lead) {
           If the request looks like a good fit for the format, you will hear back.
         </p>
         <p style="margin:0 0 16px;">
-          Planeir provides education only, not regulated financial advice, tax advice, legal advice, or product recommendations.
+          Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.
         </p>
         <p style="margin:0;">Best,<br />Planeir</p>
         ${buildPlaneirEmailCardHtml()}

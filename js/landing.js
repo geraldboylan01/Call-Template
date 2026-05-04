@@ -340,7 +340,7 @@ function validateLeadPayload(payload) {
   if (!payload.understandsEducationalOnly) {
     errors.push({
       field: leadFields.understandsEducationalOnly,
-      message: 'Confirm that you understand Planeir provides financial education only, not regulated financial advice or product recommendations.'
+      message: 'Confirm that you understand Planeir uses your scenario for financial education only, not regulated financial advice or product recommendations.'
     });
   }
 
