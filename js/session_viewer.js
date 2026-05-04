@@ -11,25 +11,10 @@ import { importPublishedSession } from './state.js';
 window.__CALL_CANVAS_AUTO_INIT__ = false;
 
 const PUBLISHED_DEVICE_ACCESS_STORAGE_PREFIX = 'planeir_published_client_access_v1';
-const REVIEW_PROMPT_STORAGE_PREFIX = 'planeir_review_prompt_seen_v1';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
   return element?.getAttribute('content')?.trim() || '';
-}
-
-function normalizeExternalReviewUrl(value) {
-  const rawValue = typeof value === 'string' ? value.trim() : '';
-  if (!rawValue) {
-    return '';
-  }
-
-  try {
-    const url = new URL(rawValue);
-    return url.protocol === 'https:' ? url.toString() : '';
-  } catch (_error) {
-    return '';
-  }
 }
 
 const WORKER_BASE_URL = (() => {
@@ -44,7 +29,6 @@ const WORKER_BASE_URL = (() => {
 
   return '';
 })();
-const REVIEW_URL = normalizeExternalReviewUrl(getMetaContent('planeir-review-url'));
 
 const unlockLayer = document.getElementById('sessionUnlockLayer');
 const unlockHint = document.getElementById('sessionUnlockHint');
@@ -53,9 +37,6 @@ const pinInput = document.getElementById('sessionPinInput');
 const pinConfirmInput = document.getElementById('sessionPinConfirmInput');
 const unlockButton = document.getElementById('sessionUnlockBtn');
 const errorHost = document.getElementById('sessionUnlockError');
-const reviewPromptLayer = document.getElementById('reviewPromptLayer');
-const reviewPromptButton = document.getElementById('reviewPromptBtn');
-const reviewPromptContinueButton = document.getElementById('reviewPromptContinueBtn');
 
 let publishedClientSecret = '';
 let publishedBundle = null;
@@ -180,54 +161,6 @@ function setUnlockLayerVisible(visible) {
   unlockLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 
-function setReviewPromptLayerVisible(visible) {
-  if (!reviewPromptLayer) {
-    return;
-  }
-
-  reviewPromptLayer.classList.toggle('is-hidden', !visible);
-  reviewPromptLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
-}
-
-function getReviewPromptStorageKey(publishedId) {
-  return `${REVIEW_PROMPT_STORAGE_PREFIX}:${publishedId}`;
-}
-
-function hasSeenReviewPrompt(publishedId) {
-  if (!publishedId) {
-    return true;
-  }
-
-  try {
-    return localStorage.getItem(getReviewPromptStorageKey(publishedId)) === '1';
-  } catch (_error) {
-    return false;
-  }
-}
-
-function markReviewPromptSeen(publishedId) {
-  if (!publishedId) {
-    return;
-  }
-
-  try {
-    localStorage.setItem(getReviewPromptStorageKey(publishedId), '1');
-  } catch (_error) {
-    // The prompt is optional; storage failures should not interrupt opening.
-  }
-}
-
-function shouldShowReviewPrompt(publishedId) {
-  return Boolean(
-    publishedId
-      && REVIEW_URL
-      && reviewPromptLayer
-      && reviewPromptButton
-      && reviewPromptContinueButton
-      && !hasSeenReviewPrompt(publishedId)
-  );
-}
-
 function shouldUseRememberedPublishedAccess(bundle, rememberedAccess) {
   if (!isFirstOpenPublishedBundle(bundle) || getPublishedClientPinState(bundle) !== 'active') {
     return false;
@@ -307,84 +240,6 @@ function setLoading(isLoading, label) {
   } else {
     unlockButton.textContent = getUnlockButtonLabel();
   }
-}
-
-function setReviewPromptBusy(isBusy) {
-  if (reviewPromptButton) {
-    reviewPromptButton.disabled = isBusy;
-  }
-
-  if (reviewPromptContinueButton) {
-    reviewPromptContinueButton.disabled = isBusy;
-    reviewPromptContinueButton.textContent = isBusy ? 'Opening session...' : 'Continue to session';
-  }
-}
-
-function openReviewUrl() {
-  if (!REVIEW_URL) {
-    return false;
-  }
-
-  const openedWindow = window.open(REVIEW_URL, '_blank', 'noopener,noreferrer');
-  if (openedWindow) {
-    openedWindow.opener = null;
-  }
-
-  return Boolean(openedWindow);
-}
-
-function showReviewPrompt(publishedId) {
-  return new Promise((resolve) => {
-    let settled = false;
-
-    const finish = () => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      markReviewPromptSeen(publishedId);
-      setReviewPromptBusy(true);
-      reviewPromptButton?.removeEventListener('click', handleReviewClick);
-      reviewPromptContinueButton?.removeEventListener('click', handleContinueClick);
-      reviewPromptLayer?.removeEventListener('keydown', handleKeydown);
-      resolve();
-    };
-
-    const handleReviewClick = () => {
-      openReviewUrl();
-      finish();
-    };
-
-    const handleContinueClick = () => {
-      finish();
-    };
-
-    const handleKeydown = (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        finish();
-      }
-    };
-
-    setReviewPromptBusy(false);
-    setUnlockLayerVisible(false);
-    setReviewPromptLayerVisible(true);
-    reviewPromptButton?.addEventListener('click', handleReviewClick);
-    reviewPromptContinueButton?.addEventListener('click', handleContinueClick);
-    reviewPromptLayer?.addEventListener('keydown', handleKeydown);
-    reviewPromptButton?.focus();
-  });
-}
-
-async function maybeShowReviewPrompt(publishedId) {
-  const normalizedPublishedId = typeof publishedId === 'string' ? publishedId.trim() : '';
-  if (!shouldShowReviewPrompt(normalizedPublishedId)) {
-    return false;
-  }
-
-  await showReviewPrompt(normalizedPublishedId);
-  return true;
 }
 
 function getSearchParam(name) {
@@ -505,32 +360,19 @@ async function submitPublishedClientPinSetup(publishedId, clientSecretB64u, expe
   };
 }
 
-async function openReadonlySession(sessionInput, options = {}) {
+async function openReadonlySession(sessionInput) {
   const importedSession = importPublishedSession(sessionInput);
-  const promptShown = await maybeShowReviewPrompt(options.publishedId);
-
-  try {
-    const { initApp } = await import('./app.js');
-    await initApp({
-      initialSession: importedSession,
-      readOnly: true,
-      allowDevPanel: false,
-      allowPublish: false,
-      persistLocalSession: false,
-      showPensionToggle: false
-    });
-  } catch (error) {
-    if (promptShown) {
-      setReviewPromptLayerVisible(false);
-      setReviewPromptBusy(false);
-      setUnlockLayerVisible(true);
-    }
-    throw error;
-  }
+  const { initApp } = await import('./app.js');
+  await initApp({
+    initialSession: importedSession,
+    readOnly: true,
+    allowDevPanel: false,
+    allowPublish: false,
+    persistLocalSession: false,
+    showPensionToggle: false
+  });
 
   setUnlockLayerVisible(false);
-  setReviewPromptLayerVisible(false);
-  setReviewPromptBusy(false);
 }
 
 async function tryOpenPublishedSessionWithRememberedAccess(publishedId, rememberedAccess) {
@@ -540,7 +382,7 @@ async function tryOpenPublishedSessionWithRememberedAccess(publishedId, remember
 
   try {
     const plaintext = await decryptPublishedSessionWithRememberedDek(publishedBundle, rememberedAccess.dekB64u);
-    await openReadonlySession(plaintext, { publishedId });
+    await openReadonlySession(plaintext);
     void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-remembered');
     return true;
   } catch (_error) {
@@ -609,7 +451,7 @@ async function bootstrapPublishedSession() {
     if (!getPublishedPinRequired(publishedBundle)) {
       setHint('Secure link verified. Opening your session.');
       const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle);
-      await openReadonlySession(plaintext, { publishedId });
+      await openReadonlySession(plaintext);
       void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-no-pin');
       return true;
     }
@@ -713,7 +555,7 @@ async function unlockPublishedSession() {
           ...publishedBundle,
           clientAccess: finalized.clientBundle.clientAccess
         };
-        await openReadonlySession(finalized.plaintext, { publishedId });
+        await openReadonlySession(finalized.plaintext);
         void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-first-open-pin-created');
       } catch (error) {
         setError(error?.message || 'Could not save your PIN.');
@@ -739,7 +581,7 @@ async function unlockPublishedSession() {
         dekB64u: resolved.dekB64u,
         expiresAt: publishedBundle?.expiresAt || ''
       });
-      await openReadonlySession(resolved.plaintext, { publishedId });
+      await openReadonlySession(resolved.plaintext);
       void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-pin');
     } catch (error) {
       setError(error?.message || 'Could not unlock session.');
@@ -760,7 +602,7 @@ async function unlockPublishedSession() {
 
   try {
     const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle, { pin });
-    await openReadonlySession(plaintext, { publishedId });
+    await openReadonlySession(plaintext);
     void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-pin');
   } catch (error) {
     setError(error?.message || 'Could not unlock session.');

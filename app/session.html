@@ -15,10 +15,6 @@
       content="https://call-canvas-session-worker.geraldboylan.workers.dev"
     />
     <meta
-      name="planeir-review-url"
-      content=""
-    />
-    <meta
       name="description"
       content="Planeir client session viewer for secure read-only planning conversations."
     />
@@ -57,27 +53,6 @@
           <button id="sessionUnlockBtn" class="ui-button" type="button">Unlock</button>
         </div>
         <p id="sessionUnlockError" class="session-unlock-error" aria-live="polite"></p>
-      </div>
-    </div>
-
-    <div
-      id="reviewPromptLayer"
-      class="session-unlock-layer review-prompt-layer is-hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="reviewPromptTitle"
-      aria-hidden="true"
-    >
-      <div class="session-unlock-card review-prompt-card">
-        <p class="review-prompt-eyebrow">Before you continue</p>
-        <h1 id="reviewPromptTitle">Would you leave a Trustpilot review?</h1>
-        <p class="session-unlock-hint review-prompt-copy">
-          If today's session was useful, an honest Trustpilot review helps other clients know what to expect.
-        </p>
-        <div class="session-unlock-actions review-prompt-actions">
-          <button id="reviewPromptBtn" class="ui-button review-prompt-primary" type="button">Leave a Trustpilot review</button>
-          <button id="reviewPromptContinueBtn" class="ui-button" type="button">Continue to session</button>
-        </div>
       </div>
     </div>
 

@@ -1241,6 +1241,21 @@ function normalizePublishedEmail(value) {
   return normalized;
 }
 
+function normalizeOptionalEmailRecipients(value) {
+  return splitEmailList(value).reduce((recipients, email) => {
+    try {
+      const normalized = normalizePublishedEmail(email);
+      if (normalized) {
+        recipients.push(normalized);
+      }
+    } catch (_error) {
+      // Optional third-party hooks should not block normal email delivery.
+    }
+
+    return recipients;
+  }, []);
+}
+
 function normalizePublishedClientName(value) {
   const normalized = normalizeLeadValue(value);
   if (!normalized) {
@@ -1382,11 +1397,13 @@ function getPublishedEmailConfig(env) {
   const from = normalizeEnvValue(env.SESSION_EMAIL_FROM) || normalizeEnvValue(env.LEAD_EMAIL_FROM);
   const replyTo = normalizeEnvValue(env.SESSION_EMAIL_REPLY_TO) || splitEmailList(env.LEAD_REPLY_TO)[0] || '';
   const advisorNotificationRecipients = splitEmailList(env.SESSION_ADVISOR_NOTIFICATION_TO);
+  const trustpilotAfsRecipients = normalizeOptionalEmailRecipients(env.TRUSTPILOT_AFS_EMAIL);
 
   return {
     apiKey,
     from,
     replyTo,
+    trustpilotAfsRecipients,
     advisorNotificationRecipients: advisorNotificationRecipients.length > 0
       ? advisorNotificationRecipients
       : DEFAULT_SESSION_ADVISOR_NOTIFICATION_TO
@@ -3938,6 +3955,9 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
         includePinInEmail,
         clientCreatesPinOnFirstOpen: row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
       }),
+      bcc: emailConfig.trustpilotAfsRecipients.length > 0
+        ? emailConfig.trustpilotAfsRecipients
+        : undefined,
       reply_to: emailConfig.replyTo || undefined
     }, `published-session-${publishedId}-email-${row.emailSendCount + 1}`);
   } catch (error) {
@@ -3972,6 +3992,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     includePinInEmail,
     acknowledgedInlinePinRisk,
     clientCreatesPinOnFirstOpen: row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
+    trustpilotAfsTriggered: emailConfig.trustpilotAfsRecipients.length > 0,
     hasQrImage: Boolean(qrImage),
     rotatedQrToken: qrAssetToken !== (row.qrAssetToken || ''),
     requestIp: clientIp,

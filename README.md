@@ -100,6 +100,7 @@ Recommended configuration:
 - Variable or secret: `SESSION_EMAIL_FROM`
 - Optional variable or secret: `SESSION_EMAIL_REPLY_TO`
 - Variable or secret: `SESSION_ADVISOR_NOTIFICATION_TO`
+- Optional variable or secret: `TRUSTPILOT_AFS_EMAIL`
 
 Notes:
 
@@ -108,6 +109,7 @@ Notes:
 - The advisor notification is non-blocking. If email delivery fails or email is not configured, publish still succeeds and the Worker only logs the failure.
 - The advisor notification includes the client name, advisor reopen link, client link when provided, published timestamp, expiry, published session id, and the current client PIN flow summary.
 - When a client email is entered, `Publish Secure Links` now publishes and immediately sends the client-facing final email.
+- If `TRUSTPILOT_AFS_EMAIL` is set, the client-facing final email includes that unique Trustpilot Automatic Feedback Service address as BCC so Trustpilot can queue its own review invitation.
 - Ongoing resend, recovery, reset, revoke, and expiry-management flows now live on `/app/access.html`.
 - Sessions published after the recovery-storage update can be searched and recovered from the Client Access page without needing the original advisor reopen link.
 
@@ -122,13 +124,7 @@ wrangler secret put SESSION_EMAIL_REPLY_TO
 
 Set `SESSION_ADVISOR_NOTIFICATION_TO=geraldboylan@gmail.com` in Wrangler vars, the Cloudflare dashboard, or local Wrangler development variables.
 
-### Client Trustpilot Review Prompt
-
-The client session viewer can show an optional Trustpilot review prompt after the secure link is verified and before the session opens. Configure it by setting the `planeir-review-url` meta tag in `app/session.html` to the Planeir Trustpilot review/profile URL.
-
-If the meta tag is empty, the prompt is skipped. The prompt opens Trustpilot in a new tab and does not collect private Planeir ratings or notes.
-
-Trustpilot does not require a Google-style physical business listing. Planeir should create or claim a free Trustpilot Business profile first, then use the Trustpilot profile or review invitation link for this setting.
+For Trustpilot AFS, set `TRUSTPILOT_AFS_EMAIL=planeir.ie+c36359b3d5@invite.trustpilot.com` in Wrangler vars, the Cloudflare dashboard, or local Wrangler development variables.
 
 ## Organic SEO
 
