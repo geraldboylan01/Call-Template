@@ -209,6 +209,13 @@ textarea {
   display: none !important;
 }
 
+body.advisor-gate-pending #app,
+body.advisor-gate-pending #publishModal,
+body.advisor-gate-pending #publishSuccessOverlay,
+body.advisor-gate-pending #publishedRecoveryLayer {
+  display: none !important;
+}
+
 #greetingLayer {
   z-index: 4;
 }

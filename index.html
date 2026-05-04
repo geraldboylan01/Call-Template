@@ -135,7 +135,7 @@
           <a href="#gerry-boylan">About Gerry</a>
           <a href="#free-calls">Free calls</a>
           <a href="#request-call">Request a free call</a>
-          <a class="site-nav-app" href="./app/">Open app</a>
+          <a class="site-nav-app advisor-app-link is-hidden" href="./app/" data-advisor-app-link hidden>Open app</a>
         </nav>
       </header>
 
@@ -467,6 +467,15 @@
             </div>
 
             <form id="leadForm" class="lead-form" novalidate data-reveal data-reveal-delay="120">
+              <div id="advisorGateNotice" class="advisor-gate-notice" hidden tabindex="-1">
+                <strong>Advisor workspace is private.</strong>
+                <p>
+                  The app area is reserved for Gerry's advisor tools. If you were trying to request
+                  a Planeir call, use the form below. If you were trying to open a client session,
+                  use the secure link Gerry sent you.
+                </p>
+              </div>
+
               <div class="form-review-note">
                 <strong>A little more detail makes the call easier to assess.</strong>
                 <p>
@@ -596,7 +605,7 @@
           <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>
           <a href="#privacy-note">Privacy notice</a>
           <a href="#request-call">Request a free call</a>
-          <a href="./app/">Open app</a>
+          <a class="advisor-app-link is-hidden" href="./app/" data-advisor-app-link hidden>Open app</a>
         </div>
       </footer>
 

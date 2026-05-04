@@ -28,6 +28,8 @@ const leadSuccessTarget = document.getElementById('leadSuccessTarget');
 const leadSuccessTitle = document.querySelector('#leadSuccessCopy .lead-success-title');
 const leadSuccessBody = document.querySelector('#leadSuccessCopy .lead-success-body');
 const leadSuccessOrigin = document.querySelector('.site-brand-logo-wrap');
+const advisorAppLinks = [...document.querySelectorAll('[data-advisor-app-link]')];
+const advisorGateNotice = document.getElementById('advisorGateNotice');
 const leadSuccessLockTargets = [
   siteHeader,
   document.querySelector('main'),
@@ -61,6 +63,60 @@ const leadFields = {
   understandsEducationalOnly: document.getElementById('leadUnderstandsEducationalOnly'),
   understandsEducationalContent: document.getElementById('leadUnderstandsEducationalContent')
 };
+
+function setAdvisorAppLinksVisible(visible) {
+  advisorAppLinks.forEach((link) => {
+    link.hidden = !visible;
+    link.classList.toggle('is-hidden', !visible);
+    link.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  });
+}
+
+async function syncAdvisorAppLinkVisibility() {
+  if (advisorAppLinks.length === 0) {
+    return;
+  }
+
+  setAdvisorAppLinksVisible(false);
+  if (!WORKER_BASE_URL) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${WORKER_BASE_URL}/api/auth/session`, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'include'
+    });
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json().catch(() => null);
+    setAdvisorAppLinksVisible(payload?.authEnabled === true && payload?.authenticated === true);
+  } catch (_error) {
+    setAdvisorAppLinksVisible(false);
+  }
+}
+
+function showAdvisorGateNoticeIfNeeded() {
+  if (!advisorGateNotice) {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('app') !== 'advisor-required') {
+    return;
+  }
+
+  advisorGateNotice.hidden = false;
+  advisorGateNotice.classList.remove('is-hidden');
+
+  window.requestAnimationFrame(() => {
+    scrollToHash('#request-call', { behavior: 'auto' });
+    advisorGateNotice.focus({ preventScroll: true });
+  });
+}
 
 function setNavOpen(open) {
   if (!navToggle || !siteNav) {
@@ -439,5 +495,7 @@ function bindLeadForm() {
 }
 
 bindNavigation();
+showAdvisorGateNoticeIfNeeded();
+void syncAdvisorAppLinkVisibility();
 initRevealAnimations();
 bindLeadForm();

@@ -7030,7 +7030,13 @@ export async function initApp(options = {}) {
       } catch (_error) {
         updateAdvisorAuthChrome();
       }
+
+      if (options.requireAdvisorAuthOnStart === true) {
+        await ensureAdvisorAuthenticated(options.advisorAuthStartMessage || 'Sign in to open the advisor workspace.');
+      }
     }
+
+    document.body?.classList.remove('advisor-gate-pending');
 
     if ('initialSession' in options && options.initialSession != null) {
       appState.session = importSession(options.initialSession);

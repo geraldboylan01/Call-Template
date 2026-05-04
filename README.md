@@ -3,7 +3,7 @@
 Planeir now ships as two connected experiences:
 
 - `/` is the public landing page for first-time visitors.
-- `/app/` is the existing advisor workspace.
+- `/app/` is the existing advisor workspace. The public landing page only shows its "Open app" link when an authenticated advisor session is already present; unauthenticated `/app/` visits redirect back to the request form.
 - `/app/session.html?id=...` is the client session viewer used by published links.
 - `/session.html?id=...` remains as a compatibility redirect to `/app/session.html?id=...`.
 
