@@ -47,6 +47,9 @@ const MAX_ADVISOR_SESSION_TOKEN_LENGTH = 4096;
 const PREFLIGHT_MAX_AGE_SECONDS = 86_400;
 const DEFAULT_ALLOWED_REQUEST_HEADERS = 'Content-Type';
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
+const PLANEIR_SITE_URL = 'https://planeir.ie';
+const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-card.png`;
+const PLANEIR_EMAIL_CARD_ALT = 'Planeir - Irish financial education calls. Educational only, not financial advice.';
 const LEAD_SOURCE_LABEL = 'Planeir landing page';
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   'https://planeir.ie',
@@ -940,6 +943,31 @@ function formatLeadConsent(value) {
   return value ? 'Yes' : 'No';
 }
 
+function buildPlaneirEmailCardHtml() {
+  return `
+        <div style="margin:28px 0 0;padding-top:20px;border-top:1px solid #d9e2ea;">
+          <a href="${PLANEIR_SITE_URL}/" style="display:block;text-decoration:none;">
+            <img
+              src="${PLANEIR_EMAIL_CARD_URL}"
+              alt="${PLANEIR_EMAIL_CARD_ALT}"
+              width="560"
+              height="294"
+              style="display:block;width:100%;max-width:560px;height:auto;margin:0 auto;border:0;border-radius:16px;"
+            />
+          </a>
+        </div>
+  `;
+}
+
+function buildPlaneirEmailCardText() {
+  return [
+    '',
+    'Planeir - Irish financial education calls',
+    `${PLANEIR_SITE_URL}/`,
+    'Educational only, not financial advice.'
+  ].join('\n');
+}
+
 function buildLeadSummaryRows(lead, leadId) {
   return [
     ['Lead ID', leadId ? String(leadId) : 'Not available'],
@@ -967,7 +995,8 @@ function buildLeadNotificationText(lead, leadId) {
     summary,
     '',
     'Main question / concern:',
-    formatOptionalText(lead.reason)
+    formatOptionalText(lead.reason),
+    buildPlaneirEmailCardText()
   ].join('\n');
 }
 
@@ -1002,6 +1031,7 @@ function buildLeadNotificationHtml(lead, leadId) {
         <div style="padding:16px;border:1px solid #d9e2ea;border-radius:12px;background:#f7fafc;font-size:14px;line-height:1.7;">
           ${reasonHtml}
         </div>
+        ${buildPlaneirEmailCardHtml()}
       </div>
     </div>
   </body>
@@ -1018,7 +1048,8 @@ function buildLeadConfirmationText(lead) {
     'Planeir provides education only, not regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',
     'Best,',
-    'Planeir'
+    'Planeir',
+    buildPlaneirEmailCardText()
   ].join('\n');
 }
 
@@ -1042,6 +1073,7 @@ function buildLeadConfirmationHtml(lead) {
           Planeir provides education only, not regulated financial advice, tax advice, legal advice, or product recommendations.
         </p>
         <p style="margin:0;">Best,<br />Planeir</p>
+        ${buildPlaneirEmailCardHtml()}
       </div>
     </div>
   </body>
@@ -1318,7 +1350,8 @@ function buildPublishedSessionEmailText(payload) {
     'If the button or QR code does not open, copy and paste the link above into your browser.',
     '',
     'Best,',
-    'Gerry'
+    'Gerry',
+    buildPlaneirEmailCardText()
   );
 
   return lines.join('\n');
@@ -1386,6 +1419,7 @@ function buildPublishedSessionEmailHtml(payload) {
         <p style="margin:18px 0 0;color:#52606d;">This secure link expires on <strong>${escapeHtml(payload.expiresAtDisplay)}</strong>.</p>
         ${pinSection}
         ${qrSection}
+        ${buildPlaneirEmailCardHtml()}
       </div>
     </div>
   </body>
@@ -1458,7 +1492,7 @@ function buildPublishedAdvisorNotificationText(payload) {
     lines.push(`Client email: ${payload.clientEmail}`, '');
   }
 
-  lines.push('This internal notification was created automatically after publish succeeded.');
+  lines.push('This internal notification was created automatically after publish succeeded.', buildPlaneirEmailCardText());
 
   return lines.join('\n');
 }
@@ -1523,6 +1557,7 @@ function buildPublishedAdvisorNotificationHtml(payload) {
         </div>
         ${clientLinkSection}
         <p style="margin:18px 0 0;color:#52606d;">This internal notification was created automatically after publish succeeded.</p>
+        ${buildPlaneirEmailCardHtml()}
       </div>
     </div>
   </body>
