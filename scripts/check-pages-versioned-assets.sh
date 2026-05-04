@@ -63,7 +63,7 @@ render_js="$(fetch_html "${SITE_ORIGIN}/js/render.js?v=${EXPECTED_VERSION}")"
 session_viewer_js="$(fetch_html "${SITE_ORIGIN}/js/session_viewer.js?v=${EXPECTED_VERSION}")"
 landing_css="$(fetch_html "${SITE_ORIGIN}/styles/landing.css?v=${EXPECTED_VERSION}")"
 
-assert_contains "$landing_html" "<title>Planeir | Irish Financial Education Calls with Gerry Boylan QFA</title>" "landing title"
+assert_contains "$landing_html" "<title>Planeir | Irish Financial Education Calls with Gerry Boylan</title>" "landing title"
 assert_contains "$landing_html" '<link rel="canonical" href="https://planeir.ie/"' "landing canonical"
 assert_contains "$landing_html" 'application/ld+json' "landing structured data"
 assert_contains "$landing_html" 'og:image' "landing Open Graph image"

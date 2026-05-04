@@ -973,6 +973,15 @@ main {
   overflow: hidden;
 }
 
+.showcase-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.showcase-grid-single .showcase-card-large {
+  grid-column: auto;
+  grid-row: auto;
+}
+
 .showcase-compare-visual {
   display: grid;
   gap: 0.85rem;
@@ -1659,6 +1668,10 @@ main {
     grid-column: 1 / -1;
   }
 
+  .showcase-grid-single .showcase-card-large {
+    grid-column: auto;
+  }
+
   .showcase-card-large .showcase-compare-visual {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1765,6 +1778,14 @@ main {
 
   .showcase-card-large {
     grid-row: span 2;
+  }
+
+  .showcase-grid-single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .showcase-grid-single .showcase-card-large {
+    grid-row: auto;
   }
 
   .site-footer {
