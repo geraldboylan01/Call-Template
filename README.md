@@ -68,6 +68,8 @@ Notes:
 - `LEAD_REPLY_TO` is only used on the optional confirmation email.
 - If email delivery fails or email is not configured, the lead is still stored and the API still returns success.
 
+Inbound mail to `hello@planeir.ie` is handled separately from this outbound Resend path. See [docs/email-architecture.md](/Users/geraldboylan/Documents/GitHub/Call-Template/docs/email-architecture.md) for the intended Cloudflare Email Routing setup.
+
 Apply the remote migration with:
 
 ```bash
@@ -138,7 +140,7 @@ The public homepage is positioned as Irish financial education, not regulated fi
 - `noindex, nofollow` metadata on `/app/`, `/app/session.html`, `/app/access.html`, and `/session.html`
 - `assets/brand/planeir-social-card.png` for social previews
 
-The public contact address is `hello@planeir.ie`. Configure this through Cloudflare Email Routing and forward it to Gerry's real inbox.
+The public contact address is `hello@planeir.ie`. Configure inbound delivery through Cloudflare Email Routing and forward it to Gerry's real inbox. This is separate from the existing outbound Worker/Resend email setup; see [docs/email-architecture.md](/Users/geraldboylan/Documents/GitHub/Call-Template/docs/email-architecture.md).
 
 After deployment, add `planeir.ie` to Google Search Console with DNS verification, submit `https://planeir.ie/sitemap.xml`, inspect `https://planeir.ie/`, run a live test, and request indexing.
 
