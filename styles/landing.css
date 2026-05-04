@@ -214,10 +214,16 @@ body.is-lead-success-active .landing-shell > :not(.lead-success-overlay) {
   outline: none;
 }
 
+.site-nav-admin-login,
 .site-nav-app {
   border: 1px solid rgba(143, 208, 255, 0.26);
   color: var(--landing-text) !important;
   background: rgba(18, 35, 61, 0.78);
+}
+
+.site-nav-admin-login {
+  border-color: rgba(168, 220, 255, 0.42);
+  background: rgba(24, 52, 84, 0.86);
 }
 
 .is-hidden,
@@ -1643,6 +1649,10 @@ main {
   outline: none;
 }
 
+.site-footer-admin-login {
+  color: var(--landing-text) !important;
+}
+
 .mobile-cta-bar {
   position: fixed;
   inset: auto 0 0;
@@ -1742,6 +1752,8 @@ main {
     position: static;
     display: inline-flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 0.3rem;
     width: auto;
     margin: 0;
@@ -1758,6 +1770,7 @@ main {
     padding: 0.8rem 1rem;
   }
 
+  .site-nav-admin-login,
   .site-nav-app {
     margin-left: 0.35rem;
   }
