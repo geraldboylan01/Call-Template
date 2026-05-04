@@ -14,6 +14,10 @@
       content="https://call-canvas-session-worker.geraldboylan.workers.dev"
     />
     <meta
+      name="planeir-google-review-url"
+      content=""
+    />
+    <meta
       name="description"
       content="Planeir client session viewer for secure read-only planning conversations."
     />
@@ -52,6 +56,27 @@
           <button id="sessionUnlockBtn" class="ui-button" type="button">Unlock</button>
         </div>
         <p id="sessionUnlockError" class="session-unlock-error" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <div
+      id="googleReviewLayer"
+      class="session-unlock-layer google-review-layer is-hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="googleReviewTitle"
+      aria-hidden="true"
+    >
+      <div class="session-unlock-card google-review-card">
+        <p class="google-review-eyebrow">Before you continue</p>
+        <h1 id="googleReviewTitle">Would you leave a Google review?</h1>
+        <p class="session-unlock-hint google-review-copy">
+          If today's session was useful, an honest Google review helps other clients know what to expect.
+        </p>
+        <div class="session-unlock-actions google-review-actions">
+          <button id="googleReviewBtn" class="ui-button google-review-primary" type="button">Leave a Google review</button>
+          <button id="googleReviewContinueBtn" class="ui-button" type="button">Continue to session</button>
+        </div>
       </div>
     </div>
 

@@ -11,10 +11,25 @@ import { importPublishedSession } from './state.js';
 window.__CALL_CANVAS_AUTO_INIT__ = false;
 
 const PUBLISHED_DEVICE_ACCESS_STORAGE_PREFIX = 'planeir_published_client_access_v1';
+const GOOGLE_REVIEW_PROMPT_STORAGE_PREFIX = 'planeir_google_review_prompt_seen_v1';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
   return element?.getAttribute('content')?.trim() || '';
+}
+
+function normalizeExternalReviewUrl(value) {
+  const rawValue = typeof value === 'string' ? value.trim() : '';
+  if (!rawValue) {
+    return '';
+  }
+
+  try {
+    const url = new URL(rawValue);
+    return url.protocol === 'https:' ? url.toString() : '';
+  } catch (_error) {
+    return '';
+  }
 }
 
 const WORKER_BASE_URL = (() => {
@@ -29,6 +44,7 @@ const WORKER_BASE_URL = (() => {
 
   return '';
 })();
+const GOOGLE_REVIEW_URL = normalizeExternalReviewUrl(getMetaContent('planeir-google-review-url'));
 
 const unlockLayer = document.getElementById('sessionUnlockLayer');
 const unlockHint = document.getElementById('sessionUnlockHint');
@@ -37,6 +53,9 @@ const pinInput = document.getElementById('sessionPinInput');
 const pinConfirmInput = document.getElementById('sessionPinConfirmInput');
 const unlockButton = document.getElementById('sessionUnlockBtn');
 const errorHost = document.getElementById('sessionUnlockError');
+const googleReviewLayer = document.getElementById('googleReviewLayer');
+const googleReviewButton = document.getElementById('googleReviewBtn');
+const googleReviewContinueButton = document.getElementById('googleReviewContinueBtn');
 
 let publishedClientSecret = '';
 let publishedBundle = null;
@@ -152,6 +171,63 @@ function clearRememberedPublishedAccess(publishedId) {
   }
 }
 
+function setUnlockLayerVisible(visible) {
+  if (!unlockLayer) {
+    return;
+  }
+
+  unlockLayer.classList.toggle('is-hidden', !visible);
+  unlockLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function setGoogleReviewLayerVisible(visible) {
+  if (!googleReviewLayer) {
+    return;
+  }
+
+  googleReviewLayer.classList.toggle('is-hidden', !visible);
+  googleReviewLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function getGoogleReviewPromptStorageKey(publishedId) {
+  return `${GOOGLE_REVIEW_PROMPT_STORAGE_PREFIX}:${publishedId}`;
+}
+
+function hasSeenGoogleReviewPrompt(publishedId) {
+  if (!publishedId) {
+    return true;
+  }
+
+  try {
+    return localStorage.getItem(getGoogleReviewPromptStorageKey(publishedId)) === '1';
+  } catch (_error) {
+    return false;
+  }
+}
+
+function markGoogleReviewPromptSeen(publishedId) {
+  if (!publishedId) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(getGoogleReviewPromptStorageKey(publishedId), '1');
+  } catch (_error) {
+    // The prompt is optional; storage failures should not interrupt opening.
+  }
+}
+
+function shouldShowGoogleReviewPrompt(publishedId) {
+  return Boolean(
+    publishedId
+      && GOOGLE_REVIEW_URL
+      && googleReviewLayer
+      && googleReviewButton
+      && googleReviewContinueButton
+      && !hasSeenGoogleReviewPrompt(publishedId)
+  );
+}
+
 function shouldUseRememberedPublishedAccess(bundle, rememberedAccess) {
   if (!isFirstOpenPublishedBundle(bundle) || getPublishedClientPinState(bundle) !== 'active') {
     return false;
@@ -231,6 +307,84 @@ function setLoading(isLoading, label) {
   } else {
     unlockButton.textContent = getUnlockButtonLabel();
   }
+}
+
+function setGoogleReviewPromptBusy(isBusy) {
+  if (googleReviewButton) {
+    googleReviewButton.disabled = isBusy;
+  }
+
+  if (googleReviewContinueButton) {
+    googleReviewContinueButton.disabled = isBusy;
+    googleReviewContinueButton.textContent = isBusy ? 'Opening session...' : 'Continue to session';
+  }
+}
+
+function openGoogleReviewUrl() {
+  if (!GOOGLE_REVIEW_URL) {
+    return false;
+  }
+
+  const openedWindow = window.open(GOOGLE_REVIEW_URL, '_blank', 'noopener,noreferrer');
+  if (openedWindow) {
+    openedWindow.opener = null;
+  }
+
+  return Boolean(openedWindow);
+}
+
+function showGoogleReviewPrompt(publishedId) {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      markGoogleReviewPromptSeen(publishedId);
+      setGoogleReviewPromptBusy(true);
+      googleReviewButton?.removeEventListener('click', handleGoogleReviewClick);
+      googleReviewContinueButton?.removeEventListener('click', handleContinueClick);
+      googleReviewLayer?.removeEventListener('keydown', handleKeydown);
+      resolve();
+    };
+
+    const handleGoogleReviewClick = () => {
+      openGoogleReviewUrl();
+      finish();
+    };
+
+    const handleContinueClick = () => {
+      finish();
+    };
+
+    const handleKeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        finish();
+      }
+    };
+
+    setGoogleReviewPromptBusy(false);
+    setUnlockLayerVisible(false);
+    setGoogleReviewLayerVisible(true);
+    googleReviewButton?.addEventListener('click', handleGoogleReviewClick);
+    googleReviewContinueButton?.addEventListener('click', handleContinueClick);
+    googleReviewLayer?.addEventListener('keydown', handleKeydown);
+    googleReviewButton?.focus();
+  });
+}
+
+async function maybeShowGoogleReviewPrompt(publishedId) {
+  const normalizedPublishedId = typeof publishedId === 'string' ? publishedId.trim() : '';
+  if (!shouldShowGoogleReviewPrompt(normalizedPublishedId)) {
+    return false;
+  }
+
+  await showGoogleReviewPrompt(normalizedPublishedId);
+  return true;
 }
 
 function getSearchParam(name) {
@@ -351,22 +505,32 @@ async function submitPublishedClientPinSetup(publishedId, clientSecretB64u, expe
   };
 }
 
-async function openReadonlySession(sessionInput) {
+async function openReadonlySession(sessionInput, options = {}) {
   const importedSession = importPublishedSession(sessionInput);
-  const { initApp } = await import('./app.js');
-  await initApp({
-    initialSession: importedSession,
-    readOnly: true,
-    allowDevPanel: false,
-    allowPublish: false,
-    persistLocalSession: false,
-    showPensionToggle: false
-  });
+  const promptShown = await maybeShowGoogleReviewPrompt(options.publishedId);
 
-  if (unlockLayer) {
-    unlockLayer.classList.add('is-hidden');
-    unlockLayer.setAttribute('aria-hidden', 'true');
+  try {
+    const { initApp } = await import('./app.js');
+    await initApp({
+      initialSession: importedSession,
+      readOnly: true,
+      allowDevPanel: false,
+      allowPublish: false,
+      persistLocalSession: false,
+      showPensionToggle: false
+    });
+  } catch (error) {
+    if (promptShown) {
+      setGoogleReviewLayerVisible(false);
+      setGoogleReviewPromptBusy(false);
+      setUnlockLayerVisible(true);
+    }
+    throw error;
   }
+
+  setUnlockLayerVisible(false);
+  setGoogleReviewLayerVisible(false);
+  setGoogleReviewPromptBusy(false);
 }
 
 async function tryOpenPublishedSessionWithRememberedAccess(publishedId, rememberedAccess) {
@@ -376,7 +540,7 @@ async function tryOpenPublishedSessionWithRememberedAccess(publishedId, remember
 
   try {
     const plaintext = await decryptPublishedSessionWithRememberedDek(publishedBundle, rememberedAccess.dekB64u);
-    await openReadonlySession(plaintext);
+    await openReadonlySession(plaintext, { publishedId });
     void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-remembered');
     return true;
   } catch (_error) {
@@ -445,7 +609,7 @@ async function bootstrapPublishedSession() {
     if (!getPublishedPinRequired(publishedBundle)) {
       setHint('Secure link verified. Opening your session.');
       const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle);
-      await openReadonlySession(plaintext);
+      await openReadonlySession(plaintext, { publishedId });
       void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-no-pin');
       return true;
     }
@@ -549,7 +713,7 @@ async function unlockPublishedSession() {
           ...publishedBundle,
           clientAccess: finalized.clientBundle.clientAccess
         };
-        await openReadonlySession(finalized.plaintext);
+        await openReadonlySession(finalized.plaintext, { publishedId });
         void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-first-open-pin-created');
       } catch (error) {
         setError(error?.message || 'Could not save your PIN.');
@@ -575,7 +739,7 @@ async function unlockPublishedSession() {
         dekB64u: resolved.dekB64u,
         expiresAt: publishedBundle?.expiresAt || ''
       });
-      await openReadonlySession(resolved.plaintext);
+      await openReadonlySession(resolved.plaintext, { publishedId });
       void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-pin');
     } catch (error) {
       setError(error?.message || 'Could not unlock session.');
@@ -596,7 +760,7 @@ async function unlockPublishedSession() {
 
   try {
     const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle, { pin });
-    await openReadonlySession(plaintext);
+    await openReadonlySession(plaintext, { publishedId });
     void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-pin');
   } catch (error) {
     setError(error?.message || 'Could not unlock session.');

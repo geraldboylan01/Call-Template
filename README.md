@@ -120,6 +120,12 @@ wrangler secret put SESSION_EMAIL_REPLY_TO
 
 Set `SESSION_ADVISOR_NOTIFICATION_TO=geraldboylan@gmail.com` in Wrangler vars, the Cloudflare dashboard, or local Wrangler development variables.
 
+### Client Google Review Prompt
+
+The client session viewer can show an optional Google review prompt after the secure link is verified and before the session opens. Configure it by setting the `planeir-google-review-url` meta tag in `app/session.html` to the direct Google Business Profile "Get more reviews" URL.
+
+If the meta tag is empty, the prompt is skipped. The prompt opens Google in a new tab and does not collect private Planeir ratings or notes.
+
 ## Build For GitHub Pages
 
 Run:
