@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://planeir.ie/sitemap.xml

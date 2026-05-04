@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS leads (
   help_reason TEXT NOT NULL,
   stage TEXT,
   consent_free_call INTEGER NOT NULL DEFAULT 0,
+  consent_education_only INTEGER NOT NULL DEFAULT 0,
   consent_recording INTEGER NOT NULL DEFAULT 0,
   source TEXT NOT NULL DEFAULT 'landing-page'
 );

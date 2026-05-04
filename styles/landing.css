@@ -220,6 +220,19 @@ body.is-lead-success-active .landing-shell > :not(.lead-success-overlay) {
   background: rgba(18, 35, 61, 0.78);
 }
 
+.inline-link {
+  color: var(--landing-accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(143, 208, 255, 0.45);
+  text-underline-offset: 0.18em;
+}
+
+.inline-link:hover,
+.inline-link:focus-visible {
+  color: #d9f1ff;
+  outline: none;
+}
+
 main {
   display: grid;
   gap: 5rem;
@@ -265,13 +278,13 @@ main {
 .request-copy h2 {
   margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-  letter-spacing: -0.045em;
+  letter-spacing: 0;
 }
 
 .hero-title {
-  font-size: clamp(2.9rem, 11vw, 5.6rem);
+  font-size: clamp(2.75rem, 10vw, 5rem);
   line-height: 0.98;
-  max-width: 12ch;
+  max-width: 14ch;
 }
 
 .hero-subtitle,
@@ -429,7 +442,7 @@ main {
 .difference-card h3 {
   margin: 0;
   font-size: 1.45rem;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .problem-card p,
@@ -480,7 +493,7 @@ main {
 
 .conversation-card strong {
   font-size: 1.08rem;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .conversation-card p {
@@ -531,7 +544,7 @@ main {
 
 .early-access-point strong {
   font-size: 1rem;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .early-access-point span {
@@ -737,7 +750,7 @@ main {
 
 .mock-metric strong {
   font-size: 1.2rem;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .mock-stage-grid {
@@ -758,7 +771,7 @@ main {
 .mock-summary-card h2 {
   margin: 0.5rem 0 0.65rem;
   font-size: 1.2rem;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .mock-summary-card p {
@@ -790,7 +803,7 @@ main {
 .mock-decision-card strong,
 .mock-insight strong {
   font-size: 1.05rem;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .mock-decision-card small {
@@ -881,7 +894,7 @@ main {
   margin-top: 0.45rem;
   margin-bottom: 0.4rem;
   font-size: 1.02rem;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .floating-card p {
@@ -943,7 +956,7 @@ main {
 .showcase-copy h3 {
   margin: 0.7rem 0 0.55rem;
   font-size: 1.35rem;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .showcase-card {
@@ -985,7 +998,7 @@ main {
 .showcase-compare-column strong {
   margin-top: 0.7rem;
   font-size: 1.06rem;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .showcase-compare-column span {
@@ -1087,7 +1100,7 @@ main {
   display: block;
   margin-bottom: 0.55rem;
   font-size: 1rem;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .lead-form {
@@ -1106,7 +1119,7 @@ main {
 }
 
 .form-review-note strong {
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .form-review-note p {
@@ -1453,7 +1466,7 @@ main {
   margin: 0;
   font-size: clamp(2.2rem, 5.2vw, 4.4rem);
   line-height: 1;
-  letter-spacing: -0.055em;
+  letter-spacing: 0;
   font-weight: 800;
 }
 

@@ -1,0 +1,1 @@
+ALTER TABLE leads ADD COLUMN consent_education_only INTEGER NOT NULL DEFAULT 0;

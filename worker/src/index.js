@@ -949,6 +949,7 @@ function buildLeadSummaryRows(lead, leadId) {
     ['Planning stage', formatLeadSelection(lead.stage, LEAD_STAGE_LABELS)],
     ['Requested outcome', formatLeadSelection(lead.callOutcome, CALL_OUTCOME_LABELS)],
     ['Understands this is a free recorded call', formatLeadConsent(lead.understandsRecordedCall)],
+    ['Understands Planeir is financial education only', formatLeadConsent(lead.understandsEducationalOnly)],
     ['Understands recording may be used as educational content', formatLeadConsent(lead.understandsEducationalContent)],
     ['Submitted at', formatOptionalText(lead.createdAt)],
     ['Source', LEAD_SOURCE_LABEL]
@@ -1012,8 +1013,9 @@ function buildLeadConfirmationText(lead) {
     `Hi ${lead.fullName},`,
     '',
     'Thanks for getting in touch with Planeir.',
-    'Gerry has received your request for a free call and will review it shortly.',
+    'Gerry has received your request for a free financial education call and will review it shortly.',
     'If the request looks like a good fit for the format, you will hear back.',
+    'Planeir provides education only, not regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',
     'Best,',
     'Planeir'
@@ -1031,10 +1033,13 @@ function buildLeadConfirmationHtml(lead) {
       <div style="padding:24px;font-size:15px;line-height:1.7;">
         <p style="margin:0 0 16px;">Hi ${escapeHtml(lead.fullName)},</p>
         <p style="margin:0 0 16px;">
-          Gerry has received your request for a free call and will review it shortly.
+          Gerry has received your request for a free financial education call and will review it shortly.
         </p>
         <p style="margin:0 0 16px;">
           If the request looks like a good fit for the format, you will hear back.
+        </p>
+        <p style="margin:0 0 16px;">
+          Planeir provides education only, not regulated financial advice, tax advice, legal advice, or product recommendations.
         </p>
         <p style="margin:0;">Best,<br />Planeir</p>
       </div>
@@ -1975,6 +1980,7 @@ function validateLeadPayload(payload) {
   const understandsRecordedCall = normalizeLeadConsent(
     payload.understandsRecordedCall ?? payload.understandsEarlyAccess
   );
+  const understandsEducationalOnly = normalizeLeadConsent(payload.understandsEducationalOnly);
   const understandsEducationalContent = normalizeLeadConsent(
     payload.understandsEducationalContent ?? payload.openToRecording
   );
@@ -2023,6 +2029,10 @@ function validateLeadPayload(payload) {
     throw new Error('Recorded-call acknowledgement is required.');
   }
 
+  if (!understandsEducationalOnly) {
+    throw new Error('Financial-education-only acknowledgement is required.');
+  }
+
   if (!understandsEducationalContent) {
     throw new Error('Educational-content consent is required for this free call.');
   }
@@ -2035,6 +2045,7 @@ function validateLeadPayload(payload) {
     stage,
     callOutcome,
     understandsRecordedCall,
+    understandsEducationalOnly,
     understandsEducationalContent,
     source: 'landing-page'
   };
@@ -3079,9 +3090,10 @@ async function handleLeadSubmit(request, env, origin, ctx) {
         stage,
         call_outcome,
         consent_free_call,
+        consent_education_only,
         consent_recording,
         source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       createdAt,
       validated.fullName,
@@ -3091,6 +3103,7 @@ async function handleLeadSubmit(request, env, origin, ctx) {
       stage,
       callOutcome,
       validated.understandsRecordedCall ? 1 : 0,
+      validated.understandsEducationalOnly ? 1 : 0,
       validated.understandsEducationalContent ? 1 : 0,
       validated.source
     ).run();

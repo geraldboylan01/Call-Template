@@ -58,6 +58,7 @@ const leadFields = {
   callOutcome: document.getElementById('leadCallOutcome'),
   reason: document.getElementById('leadReason'),
   understandsRecordedCall: document.getElementById('leadUnderstandsRecordedCall'),
+  understandsEducationalOnly: document.getElementById('leadUnderstandsEducationalOnly'),
   understandsEducationalContent: document.getElementById('leadUnderstandsEducationalContent')
 };
 
@@ -290,6 +291,7 @@ function normalizeLeadPayload() {
     callOutcome: String(leadFields.callOutcome?.value || '').trim(),
     reason: String(leadFields.reason?.value || '').trim(),
     understandsRecordedCall: Boolean(leadFields.understandsRecordedCall?.checked),
+    understandsEducationalOnly: Boolean(leadFields.understandsEducationalOnly?.checked),
     understandsEducationalContent: Boolean(leadFields.understandsEducationalContent?.checked)
   };
 }
@@ -332,6 +334,13 @@ function validateLeadPayload(payload) {
     errors.push({
       field: leadFields.understandsRecordedCall,
       message: 'Confirm that you understand this is a free recorded call.'
+    });
+  }
+
+  if (!payload.understandsEducationalOnly) {
+    errors.push({
+      field: leadFields.understandsEducationalOnly,
+      message: 'Confirm that you understand Planeir provides financial education only, not regulated financial advice or product recommendations.'
     });
   }
 
@@ -413,7 +422,7 @@ function bindLeadForm() {
       setFormStatus('success', LEAD_SUCCESS_MESSAGE);
       await leadSuccessTakeover.play({
         titleText: 'Congratulations',
-        bodyText: 'You have taken the first step towards getting on top of your finances.',
+        bodyText: 'You have taken the first step towards understanding your options more clearly.',
         restoreFocusIfContainedIn: leadForm,
         restoreFocusTo: leadFormStatus
       });

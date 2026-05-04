@@ -32,8 +32,8 @@ The landing page form posts to the existing Cloudflare Worker:
 
 - Endpoint: `POST /api/leads`
 - Storage: the `LEADS_DB` D1 binding, table `leads`
-- Stored columns: `created_at`, `full_name`, `email`, `phone`, `help_reason`, `stage`, `call_outcome`, `consent_free_call`, `consent_recording`, `source`
-- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`
+- Stored columns: `created_at`, `full_name`, `email`, `phone`, `help_reason`, `stage`, `call_outcome`, `consent_free_call`, `consent_education_only`, `consent_recording`, `source`
+- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`
 - Email notifications: Resend API is called from the Worker after a successful D1 insert
 
 ### Lead Email Configuration
@@ -126,6 +126,22 @@ The client session viewer can show an optional Google review prompt after the se
 
 If the meta tag is empty, the prompt is skipped. The prompt opens Google in a new tab and does not collect private Planeir ratings or notes.
 
+Because Planeir is currently online-only and education-only, it may not be eligible for a Google Business Profile under Google's current rules unless the operating model changes to include eligible in-person customer contact or a valid service-area setup.
+
+## Organic SEO
+
+The public homepage is positioned as Irish financial education, not regulated financial advice. The static build publishes:
+
+- `robots.txt` with a sitemap reference
+- `sitemap.xml` containing only `https://planeir.ie/`
+- canonical, Open Graph, Twitter, and JSON-LD metadata on `/`
+- `noindex, nofollow` metadata on `/app/`, `/app/session.html`, `/app/access.html`, and `/session.html`
+- `assets/brand/planeir-social-card.png` for social previews
+
+The public contact address is `hello@planeir.ie`. Configure this through Cloudflare Email Routing and forward it to Gerry's real inbox.
+
+After deployment, add `planeir.ie` to Google Search Console with DNS verification, submit `https://planeir.ie/sitemap.xml`, inspect `https://planeir.ie/`, run a live test, and request indexing.
+
 ## Build For GitHub Pages
 
 Run:
@@ -137,6 +153,7 @@ npm run build
 The build step:
 
 - copies static assets into `dist/`
+- copies `robots.txt` and `sitemap.xml` into `dist/`
 - versions relative asset URLs in HTML
 - emits `dist/index.html`
 - emits `dist/app/index.html`
