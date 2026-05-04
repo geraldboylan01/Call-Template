@@ -120,13 +120,13 @@ wrangler secret put SESSION_EMAIL_REPLY_TO
 
 Set `SESSION_ADVISOR_NOTIFICATION_TO=geraldboylan@gmail.com` in Wrangler vars, the Cloudflare dashboard, or local Wrangler development variables.
 
-### Client Google Review Prompt
+### Client Trustpilot Review Prompt
 
-The client session viewer can show an optional Google review prompt after the secure link is verified and before the session opens. Configure it by setting the `planeir-google-review-url` meta tag in `app/session.html` to the direct Google Business Profile "Get more reviews" URL.
+The client session viewer can show an optional Trustpilot review prompt after the secure link is verified and before the session opens. Configure it by setting the `planeir-review-url` meta tag in `app/session.html` to the Planeir Trustpilot review/profile URL.
 
-If the meta tag is empty, the prompt is skipped. The prompt opens Google in a new tab and does not collect private Planeir ratings or notes.
+If the meta tag is empty, the prompt is skipped. The prompt opens Trustpilot in a new tab and does not collect private Planeir ratings or notes.
 
-Because Planeir is currently online-only and education-only, it may not be eligible for a Google Business Profile under Google's current rules unless the operating model changes to include eligible in-person customer contact or a valid service-area setup.
+Trustpilot does not require a Google-style physical business listing. Planeir should create or claim a free Trustpilot Business profile first, then use the Trustpilot profile or review invitation link for this setting.
 
 ## Organic SEO
 

@@ -11,7 +11,7 @@ import { importPublishedSession } from './state.js';
 window.__CALL_CANVAS_AUTO_INIT__ = false;
 
 const PUBLISHED_DEVICE_ACCESS_STORAGE_PREFIX = 'planeir_published_client_access_v1';
-const GOOGLE_REVIEW_PROMPT_STORAGE_PREFIX = 'planeir_google_review_prompt_seen_v1';
+const REVIEW_PROMPT_STORAGE_PREFIX = 'planeir_review_prompt_seen_v1';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
@@ -44,7 +44,7 @@ const WORKER_BASE_URL = (() => {
 
   return '';
 })();
-const GOOGLE_REVIEW_URL = normalizeExternalReviewUrl(getMetaContent('planeir-google-review-url'));
+const REVIEW_URL = normalizeExternalReviewUrl(getMetaContent('planeir-review-url'));
 
 const unlockLayer = document.getElementById('sessionUnlockLayer');
 const unlockHint = document.getElementById('sessionUnlockHint');
@@ -53,9 +53,9 @@ const pinInput = document.getElementById('sessionPinInput');
 const pinConfirmInput = document.getElementById('sessionPinConfirmInput');
 const unlockButton = document.getElementById('sessionUnlockBtn');
 const errorHost = document.getElementById('sessionUnlockError');
-const googleReviewLayer = document.getElementById('googleReviewLayer');
-const googleReviewButton = document.getElementById('googleReviewBtn');
-const googleReviewContinueButton = document.getElementById('googleReviewContinueBtn');
+const reviewPromptLayer = document.getElementById('reviewPromptLayer');
+const reviewPromptButton = document.getElementById('reviewPromptBtn');
+const reviewPromptContinueButton = document.getElementById('reviewPromptContinueBtn');
 
 let publishedClientSecret = '';
 let publishedBundle = null;
@@ -180,51 +180,51 @@ function setUnlockLayerVisible(visible) {
   unlockLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 
-function setGoogleReviewLayerVisible(visible) {
-  if (!googleReviewLayer) {
+function setReviewPromptLayerVisible(visible) {
+  if (!reviewPromptLayer) {
     return;
   }
 
-  googleReviewLayer.classList.toggle('is-hidden', !visible);
-  googleReviewLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  reviewPromptLayer.classList.toggle('is-hidden', !visible);
+  reviewPromptLayer.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 
-function getGoogleReviewPromptStorageKey(publishedId) {
-  return `${GOOGLE_REVIEW_PROMPT_STORAGE_PREFIX}:${publishedId}`;
+function getReviewPromptStorageKey(publishedId) {
+  return `${REVIEW_PROMPT_STORAGE_PREFIX}:${publishedId}`;
 }
 
-function hasSeenGoogleReviewPrompt(publishedId) {
+function hasSeenReviewPrompt(publishedId) {
   if (!publishedId) {
     return true;
   }
 
   try {
-    return localStorage.getItem(getGoogleReviewPromptStorageKey(publishedId)) === '1';
+    return localStorage.getItem(getReviewPromptStorageKey(publishedId)) === '1';
   } catch (_error) {
     return false;
   }
 }
 
-function markGoogleReviewPromptSeen(publishedId) {
+function markReviewPromptSeen(publishedId) {
   if (!publishedId) {
     return;
   }
 
   try {
-    localStorage.setItem(getGoogleReviewPromptStorageKey(publishedId), '1');
+    localStorage.setItem(getReviewPromptStorageKey(publishedId), '1');
   } catch (_error) {
     // The prompt is optional; storage failures should not interrupt opening.
   }
 }
 
-function shouldShowGoogleReviewPrompt(publishedId) {
+function shouldShowReviewPrompt(publishedId) {
   return Boolean(
     publishedId
-      && GOOGLE_REVIEW_URL
-      && googleReviewLayer
-      && googleReviewButton
-      && googleReviewContinueButton
-      && !hasSeenGoogleReviewPrompt(publishedId)
+      && REVIEW_URL
+      && reviewPromptLayer
+      && reviewPromptButton
+      && reviewPromptContinueButton
+      && !hasSeenReviewPrompt(publishedId)
   );
 }
 
@@ -309,23 +309,23 @@ function setLoading(isLoading, label) {
   }
 }
 
-function setGoogleReviewPromptBusy(isBusy) {
-  if (googleReviewButton) {
-    googleReviewButton.disabled = isBusy;
+function setReviewPromptBusy(isBusy) {
+  if (reviewPromptButton) {
+    reviewPromptButton.disabled = isBusy;
   }
 
-  if (googleReviewContinueButton) {
-    googleReviewContinueButton.disabled = isBusy;
-    googleReviewContinueButton.textContent = isBusy ? 'Opening session...' : 'Continue to session';
+  if (reviewPromptContinueButton) {
+    reviewPromptContinueButton.disabled = isBusy;
+    reviewPromptContinueButton.textContent = isBusy ? 'Opening session...' : 'Continue to session';
   }
 }
 
-function openGoogleReviewUrl() {
-  if (!GOOGLE_REVIEW_URL) {
+function openReviewUrl() {
+  if (!REVIEW_URL) {
     return false;
   }
 
-  const openedWindow = window.open(GOOGLE_REVIEW_URL, '_blank', 'noopener,noreferrer');
+  const openedWindow = window.open(REVIEW_URL, '_blank', 'noopener,noreferrer');
   if (openedWindow) {
     openedWindow.opener = null;
   }
@@ -333,7 +333,7 @@ function openGoogleReviewUrl() {
   return Boolean(openedWindow);
 }
 
-function showGoogleReviewPrompt(publishedId) {
+function showReviewPrompt(publishedId) {
   return new Promise((resolve) => {
     let settled = false;
 
@@ -343,16 +343,16 @@ function showGoogleReviewPrompt(publishedId) {
       }
 
       settled = true;
-      markGoogleReviewPromptSeen(publishedId);
-      setGoogleReviewPromptBusy(true);
-      googleReviewButton?.removeEventListener('click', handleGoogleReviewClick);
-      googleReviewContinueButton?.removeEventListener('click', handleContinueClick);
-      googleReviewLayer?.removeEventListener('keydown', handleKeydown);
+      markReviewPromptSeen(publishedId);
+      setReviewPromptBusy(true);
+      reviewPromptButton?.removeEventListener('click', handleReviewClick);
+      reviewPromptContinueButton?.removeEventListener('click', handleContinueClick);
+      reviewPromptLayer?.removeEventListener('keydown', handleKeydown);
       resolve();
     };
 
-    const handleGoogleReviewClick = () => {
-      openGoogleReviewUrl();
+    const handleReviewClick = () => {
+      openReviewUrl();
       finish();
     };
 
@@ -367,23 +367,23 @@ function showGoogleReviewPrompt(publishedId) {
       }
     };
 
-    setGoogleReviewPromptBusy(false);
+    setReviewPromptBusy(false);
     setUnlockLayerVisible(false);
-    setGoogleReviewLayerVisible(true);
-    googleReviewButton?.addEventListener('click', handleGoogleReviewClick);
-    googleReviewContinueButton?.addEventListener('click', handleContinueClick);
-    googleReviewLayer?.addEventListener('keydown', handleKeydown);
-    googleReviewButton?.focus();
+    setReviewPromptLayerVisible(true);
+    reviewPromptButton?.addEventListener('click', handleReviewClick);
+    reviewPromptContinueButton?.addEventListener('click', handleContinueClick);
+    reviewPromptLayer?.addEventListener('keydown', handleKeydown);
+    reviewPromptButton?.focus();
   });
 }
 
-async function maybeShowGoogleReviewPrompt(publishedId) {
+async function maybeShowReviewPrompt(publishedId) {
   const normalizedPublishedId = typeof publishedId === 'string' ? publishedId.trim() : '';
-  if (!shouldShowGoogleReviewPrompt(normalizedPublishedId)) {
+  if (!shouldShowReviewPrompt(normalizedPublishedId)) {
     return false;
   }
 
-  await showGoogleReviewPrompt(normalizedPublishedId);
+  await showReviewPrompt(normalizedPublishedId);
   return true;
 }
 
@@ -507,7 +507,7 @@ async function submitPublishedClientPinSetup(publishedId, clientSecretB64u, expe
 
 async function openReadonlySession(sessionInput, options = {}) {
   const importedSession = importPublishedSession(sessionInput);
-  const promptShown = await maybeShowGoogleReviewPrompt(options.publishedId);
+  const promptShown = await maybeShowReviewPrompt(options.publishedId);
 
   try {
     const { initApp } = await import('./app.js');
@@ -521,16 +521,16 @@ async function openReadonlySession(sessionInput, options = {}) {
     });
   } catch (error) {
     if (promptShown) {
-      setGoogleReviewLayerVisible(false);
-      setGoogleReviewPromptBusy(false);
+      setReviewPromptLayerVisible(false);
+      setReviewPromptBusy(false);
       setUnlockLayerVisible(true);
     }
     throw error;
   }
 
   setUnlockLayerVisible(false);
-  setGoogleReviewLayerVisible(false);
-  setGoogleReviewPromptBusy(false);
+  setReviewPromptLayerVisible(false);
+  setReviewPromptBusy(false);
 }
 
 async function tryOpenPublishedSessionWithRememberedAccess(publishedId, rememberedAccess) {
