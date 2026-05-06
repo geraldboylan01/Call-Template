@@ -7,7 +7,10 @@ const REPORT_BLOCK_TYPES = new Set([
   'timeline',
   'checklist',
   'sourcelist',
-  'kpirow'
+  'kpirow',
+  'insightgrid',
+  'scenariocompare',
+  'accordion'
 ]);
 
 function isPlainObject(value) {
@@ -88,10 +91,147 @@ function normalizeDataset(dataset, datasetIndex) {
     })
     : [];
 
-  return {
+  const normalized = {
     label,
     data
   };
+
+  [
+    'backgroundColor',
+    'borderColor',
+    'pointBackgroundColor',
+    'pointBorderColor'
+  ].forEach((key) => {
+    if (typeof dataset?.[key] === 'string' && dataset[key].trim()) {
+      normalized[key] = dataset[key].trim();
+    }
+  });
+
+  return normalized;
+}
+
+function normalizeTone(value) {
+  return toTrimmedString(value).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+function normalizeInsightItems(items, fallbackPrefix = 'insight') {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => isPlainObject(item))
+    .map((item, index) => {
+      const normalized = {
+        id: toTrimmedString(item.id) || `${fallbackPrefix}-${index + 1}`,
+        label: toTrimmedString(item.label)
+          || toTrimmedString(item.title)
+          || toTrimmedString(item.metric)
+          || `Insight ${index + 1}`
+      };
+
+      const value = typeof item.value === 'number' && Number.isFinite(item.value)
+        ? String(item.value)
+        : toTrimmedString(item.value);
+      if (value) {
+        normalized.value = value;
+      }
+
+      const detail = toTrimmedString(item.detail)
+        || toTrimmedString(item.body)
+        || toTrimmedString(item.note)
+        || toTrimmedString(item.context);
+      if (detail) {
+        normalized.detail = detail;
+      }
+
+      const tone = normalizeTone(item.tone);
+      if (tone) {
+        normalized.tone = tone;
+      }
+
+      const emphasis = toTrimmedString(item.emphasis)
+        || toTrimmedString(item.size)
+        || toTrimmedString(item.priority);
+      if (
+        item.featured === true
+        || emphasis.toLowerCase() === 'hero'
+        || emphasis.toLowerCase() === 'featured'
+        || emphasis.toLowerCase() === 'primary'
+      ) {
+        normalized.featured = true;
+      }
+
+      return normalized;
+    });
+}
+
+function normalizeChartDisplay(display) {
+  if (!isPlainObject(display)) {
+    return null;
+  }
+
+  const normalized = {};
+  const variant = toTrimmedString(display.variant).toLowerCase();
+  if (variant === 'hero' || variant === 'compact' || variant === 'wide') {
+    normalized.variant = variant;
+  }
+
+  const valueFormat = toTrimmedString(display.valueFormat).toLowerCase();
+  if (valueFormat === 'currency' || valueFormat === 'percent' || valueFormat === 'number') {
+    normalized.valueFormat = valueFormat;
+  }
+
+  ['xAxisTitle', 'yAxisTitle', 'highlightDataset'].forEach((key) => {
+    if (toTrimmedString(display[key])) {
+      normalized[key] = toTrimmedString(display[key]);
+    }
+  });
+
+  if (typeof display.showLegend === 'boolean') {
+    normalized.showLegend = display.showLegend;
+  }
+
+  if (typeof display.stacked === 'boolean') {
+    normalized.stacked = display.stacked;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function normalizeChartAnnotations(annotations) {
+  if (!Array.isArray(annotations)) {
+    return [];
+  }
+
+  return annotations
+    .filter((annotation) => isPlainObject(annotation))
+    .map((annotation, index) => {
+      const normalized = {
+        id: toTrimmedString(annotation.id) || `annotation-${index + 1}`,
+        label: toTrimmedString(annotation.label) || `Annotation ${index + 1}`
+      };
+
+      if (toTrimmedString(annotation.body)) {
+        normalized.body = toTrimmedString(annotation.body);
+      }
+
+      if (toTrimmedString(annotation.xLabel)) {
+        normalized.xLabel = toTrimmedString(annotation.xLabel);
+      }
+
+      const yValue = Number(annotation.yValue);
+      if (Number.isFinite(yValue)) {
+        normalized.yValue = yValue;
+      }
+
+      const tone = normalizeTone(annotation.tone);
+      if (tone) {
+        normalized.tone = tone;
+      }
+
+      return normalized;
+    });
 }
 
 function normalizeChart(chart, index = 0) {
@@ -112,14 +252,35 @@ function normalizeChart(chart, index = 0) {
     return { chart: null, errorMessage: 'Chart block requires a non-empty datasets array.' };
   }
 
+  const normalizedChart = {
+    id: toTrimmedString(chart.id) || `report-chart-${index + 1}`,
+    title: toTrimmedString(chart.title) || `Chart ${index + 1}`,
+    type: chart.type === 'bar' ? 'bar' : 'line',
+    labels,
+    datasets
+  };
+
+  if (toTrimmedString(chart.subtitle)) {
+    normalizedChart.subtitle = toTrimmedString(chart.subtitle);
+  }
+
+  const display = normalizeChartDisplay(chart.display);
+  if (display) {
+    normalizedChart.display = display;
+  }
+
+  const annotations = normalizeChartAnnotations(chart.annotations);
+  if (annotations.length > 0) {
+    normalizedChart.annotations = annotations;
+  }
+
+  const insights = normalizeInsightItems(chart.insights, 'chart-insight');
+  if (insights.length > 0) {
+    normalizedChart.insights = insights;
+  }
+
   return {
-    chart: {
-      id: toTrimmedString(chart.id) || `report-chart-${index + 1}`,
-      title: toTrimmedString(chart.title) || `Chart ${index + 1}`,
-      type: chart.type === 'bar' ? 'bar' : 'line',
-      labels,
-      datasets
-    },
+    chart: normalizedChart,
     errorMessage: ''
   };
 }
@@ -286,6 +447,64 @@ function normalizeKpiItems(items) {
       };
     })
     .filter(Boolean);
+}
+
+function normalizeAccordionItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => isPlainObject(item))
+    .map((item, index) => {
+      const markdown = typeof item.markdown === 'string'
+        ? item.markdown
+        : (typeof item.body === 'string'
+          ? item.body
+          : (typeof item.content === 'string' ? item.content : ''));
+      const bodyHtml = typeof item.bodyHtml === 'string'
+        ? item.bodyHtml
+        : (typeof item.html === 'string' ? item.html : '');
+      const bullets = normalizeStringList(item.bullets);
+
+      return {
+        id: toTrimmedString(item.id) || `accordion-item-${index + 1}`,
+        title: toTrimmedString(item.title)
+          || toTrimmedString(item.label)
+          || `Detail ${index + 1}`,
+        markdown,
+        bodyHtml,
+        bullets,
+        defaultOpen: item.defaultOpen === true || item.open === true
+      };
+    })
+    .filter((item) => item.title || item.markdown || item.bodyHtml || item.bullets.length > 0);
+}
+
+function normalizeScenarioMetrics(metrics) {
+  return normalizeInsightItems(metrics, 'scenario-metric');
+}
+
+function normalizeScenarioItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => isPlainObject(item))
+    .map((item, index) => ({
+      id: toTrimmedString(item.id) || `scenario-${index + 1}`,
+      label: toTrimmedString(item.label)
+        || toTrimmedString(item.title)
+        || `Scenario ${index + 1}`,
+      summary: toTrimmedString(item.summary)
+        || toTrimmedString(item.body)
+        || toTrimmedString(item.detail),
+      tone: normalizeTone(item.tone),
+      metrics: normalizeScenarioMetrics(firstArray(item.metrics, item.items, item.kpis)),
+      callout: toTrimmedString(item.callout) || toTrimmedString(item.note)
+    }))
+    .filter((item) => item.metrics.length > 0 || item.summary || item.callout);
 }
 
 function normalizeBlockBase(block, index) {
@@ -520,6 +739,73 @@ function normalizeKpiRowBlock(block, index) {
   };
 }
 
+function normalizeInsightGridBlock(block, index) {
+  const base = normalizeBlockBase(block, index);
+  const source = isPlainObject(block?.insightGrid) ? block.insightGrid : block;
+  const items = normalizeInsightItems(firstArray(source.items, source.insights, source.cards), 'insight');
+  const layout = toTrimmedString(source.layout).toLowerCase() === 'featured'
+    ? 'featured'
+    : 'default';
+
+  if (items.length === 0) {
+    return {
+      ...base,
+      type: 'insightGrid',
+      errorMessage: 'Insight grid block requires a non-empty items array.'
+    };
+  }
+
+  return {
+    ...base,
+    type: 'insightGrid',
+    title: base.title || toTrimmedString(source.title),
+    layout,
+    items
+  };
+}
+
+function normalizeScenarioCompareBlock(block, index) {
+  const base = normalizeBlockBase(block, index);
+  const source = isPlainObject(block?.scenarioCompare) ? block.scenarioCompare : block;
+  const scenarios = normalizeScenarioItems(firstArray(source.scenarios, source.items));
+
+  if (scenarios.length === 0) {
+    return {
+      ...base,
+      type: 'scenarioCompare',
+      errorMessage: 'Scenario compare block requires a non-empty scenarios array.'
+    };
+  }
+
+  return {
+    ...base,
+    type: 'scenarioCompare',
+    title: base.title || toTrimmedString(source.title),
+    scenarios
+  };
+}
+
+function normalizeAccordionBlock(block, index) {
+  const base = normalizeBlockBase(block, index);
+  const source = isPlainObject(block?.accordion) ? block.accordion : block;
+  const items = normalizeAccordionItems(firstArray(source.items, source.sections));
+
+  if (items.length === 0) {
+    return {
+      ...base,
+      type: 'accordion',
+      errorMessage: 'Accordion block requires a non-empty items array.'
+    };
+  }
+
+  return {
+    ...base,
+    type: 'accordion',
+    title: base.title || toTrimmedString(source.title),
+    items
+  };
+}
+
 function normalizeUnknownBlock(block, index) {
   const base = normalizeBlockBase(block, index);
   return {
@@ -585,6 +871,12 @@ export function normalizeReportBlock(block, index = 0) {
       return normalizeSourceListBlock(block, index);
     case 'kpirow':
       return normalizeKpiRowBlock(block, index);
+    case 'insightgrid':
+      return normalizeInsightGridBlock(block, index);
+    case 'scenariocompare':
+      return normalizeScenarioCompareBlock(block, index);
+    case 'accordion':
+      return normalizeAccordionBlock(block, index);
     default:
       return normalizeUnknownBlock(block, index);
   }

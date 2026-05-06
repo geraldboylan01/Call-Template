@@ -149,6 +149,7 @@ Checks:
 - one strong hero visual
 - `visuals[0]` reads like the hero scene
 - SVG kind chosen intelligently
+- uses `metrics`, `steps`, chart `annotations`, or chart `insights` only if they genuinely clarify the topic
 - no fake URLs or quotes
 
 ### EDU-2
@@ -194,6 +195,7 @@ Prompt:
 
 Checks:
 - includes at least one strong visual or KPI opener when justified
+- may use `insightGrid`, chart `insights`, or chart `annotations` if they improve interpretation
 - avoids filler blocks
 
 ### REP-3
@@ -202,6 +204,7 @@ Prompt:
 
 Checks:
 - likely hero `svg` or `timeline`
+- may use `accordion` for verification detail if the source has caveats or assumptions
 - next steps included only if useful
 
 ## Protection Regression Prompts

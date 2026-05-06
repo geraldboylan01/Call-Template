@@ -67,11 +67,13 @@ Do not turn it into a mortgage protection module unless Gerry explicitly asks fo
 
 ## Recommended Block Pattern
 - one hero `kpiRow` for the key number set
+- optionally one `insightGrid` if the client needs a concise executive picture
 - one short `markdown` intro for income protection
 - one `chart` for premium or relief comparison when numbers exist
 - one short `markdown` intro for serious illness
 - one hero or standard `kpiRow` for the support-years framing
 - one `chart` for 1-year vs 2-year vs 3-year support
+- optionally one `scenarioCompare` if comparing cover levels or support-year options
 - one `callout` for employer or contract checks
 - one final `callout` for priority or what to consider
 

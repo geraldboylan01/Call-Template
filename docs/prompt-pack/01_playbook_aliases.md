@@ -63,7 +63,7 @@ Use `22_protection_playbook.md` when Gerry says things like:
   - repeatable retirement maths -> Pension
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
-  - SVG-first topic explanation -> Education
+  - structured topic explanation -> Education
   - long-form report transformation -> Report
   - protection review -> Protection
 

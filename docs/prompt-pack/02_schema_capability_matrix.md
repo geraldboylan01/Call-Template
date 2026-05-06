@@ -50,6 +50,17 @@ Playbooks should only emit the subset they are responsible for.
 - Supported chart types: `bar`, `line`
 - Dataset values must be numbers.
 - Labels may be strings.
+- Optional chart presentation fields:
+  - `subtitle`: short client-facing chart context.
+  - `display.variant`: `hero`, `wide`, or `compact`.
+  - `display.valueFormat`: `currency`, `percent`, or `number`.
+  - `display.xAxisTitle` / `display.yAxisTitle`: concise axis labels.
+  - `display.showLegend`: boolean.
+  - `display.stacked`: boolean for stacked bar presentation.
+  - `display.highlightDataset`: dataset label to visually emphasize.
+  - `annotations[]`: trusted chart guide metadata with `label`, optional `xLabel`, optional numeric `yValue`, optional `tone`, and optional `body`.
+  - `insights[]`: concise metric cards below the chart with `label`, optional `value`, optional `detail`, optional `tone`, and optional `featured`.
+- Chart metadata is rendered by trusted components only. Do not emit Chart.js options, plugins, callbacks, HTML, or JavaScript.
 
 ## PBS Support
 - Preferred output path: `generated.outputsBucketed`
@@ -103,11 +114,16 @@ Playbooks should only emit the subset they are responsible for.
 - Supported fields:
   - `topic`
   - `audience`
+  - `metrics`
+  - `steps`
   - `sections`
   - `visuals`
   - `references`
 - `visuals[0]` is the preferred hero scene by convention.
 - `visuals[*].type` must be `svg` or `chart`.
+- `metrics[]` supports the same concise `label`, `value`, `detail`, `tone`, and `featured` structure as chart insights.
+- `steps[]` supports `id`, `kicker`, `title`, `bodyHtml`, `bullets`, and `focus` for a trusted step-through explanation.
+- `sections[]` supports optional `whyItMatters` and `defaultOpen` in addition to the existing section fields.
 - `references[*]` supports:
   - `label`
   - `url`
@@ -138,6 +154,9 @@ Playbooks should only emit the subset they are responsible for.
 - `checklist`
 - `sourceList`
 - `kpiRow`
+- `insightGrid`
+- `scenarioCompare`
+- `accordion`
 
 ## Preferred Canonical Report Block Shapes
 - `callout`:
@@ -212,6 +231,51 @@ Playbooks should only emit the subset they are responsible for.
   "layout": "hero",
   "items": [
     { "label": "Main number", "value": "EUR 120,000", "detail": "Context", "featured": true }
+  ]
+}
+```
+
+- `insightGrid`:
+
+```json
+{
+  "type": "insightGrid",
+  "title": "Executive picture",
+  "layout": "featured",
+  "items": [
+    { "label": "Main signal", "value": "Moderate", "detail": "Context", "tone": "warning", "featured": true }
+  ]
+}
+```
+
+- `scenarioCompare`:
+
+```json
+{
+  "type": "scenarioCompare",
+  "title": "Scenario comparison",
+  "scenarios": [
+    {
+      "label": "Base case",
+      "summary": "Short scenario summary",
+      "tone": "positive",
+      "metrics": [
+        { "label": "Outcome", "value": "EUR 120,000", "detail": "Context" }
+      ],
+      "callout": "Presenter interpretation"
+    }
+  ]
+}
+```
+
+- `accordion`:
+
+```json
+{
+  "type": "accordion",
+  "title": "What needs verifying",
+  "items": [
+    { "title": "Assumption", "markdown": "Short explanation", "defaultOpen": true }
   ]
 }
 ```

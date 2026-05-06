@@ -528,6 +528,117 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'pbs-balance-sheet-artifact-demo',
+    label: 'PBS: Balance Sheet Artifact Demo',
+    payload: {
+      title: 'Personal Balance Sheet - Client',
+      generated: {
+        summaryHtml: '<p>The balance sheet separates assets by job: lifestyle, liquidity, longevity, and legacy. This view keeps the conversation focused on what is available for near-term resilience, what supports future income, and what is more optional or concentrated.</p>',
+        pbsInputs: {
+          annualExpenditure: 42000,
+          currentAge: 44
+        },
+        outputsBucketed: {
+          currencySymbol: '€',
+          sections: [
+            {
+              key: 'lifestyle',
+              title: 'Lifestyle',
+              columns: ['Asset', 'Amount (€)'],
+              rows: [
+                ['Family home', 525000],
+                ['Car', 18000]
+              ],
+              subtotalLabel: 'Lifestyle assets',
+              subtotalValue: 543000,
+              notes: 'Lifestyle assets support day-to-day living but are not usually treated as spendable reserves.'
+            },
+            {
+              key: 'liquidity',
+              title: 'Liquidity',
+              columns: ['Asset', 'Amount (€)'],
+              rows: [
+                ['Cash', 12000],
+                ['Savings', 18000]
+              ],
+              subtotalLabel: 'Liquid reserves',
+              subtotalValue: 30000,
+              notes: 'Liquid reserves are the first line of defense for unexpected expenditure.'
+            },
+            {
+              key: 'longevity',
+              title: 'Longevity',
+              columns: ['Asset', 'Amount (€)'],
+              rows: [
+                ['PRSA', 95000],
+                ['Employer pension', 240000],
+                ['Long-term ETF portfolio', 42000]
+              ],
+              subtotalLabel: 'Longevity assets',
+              subtotalValue: 377000,
+              notes: 'These assets are framed around future income and retirement resilience.'
+            },
+            {
+              key: 'legacy',
+              title: 'Legacy',
+              columns: ['Asset', 'Amount (€)'],
+              rows: [
+                ['Business value', 110000],
+                ['Crypto', 5000]
+              ],
+              subtotalLabel: 'Legacy / concentrated assets',
+              subtotalValue: 115000,
+              notes: 'Business value and crypto are shown separately because liquidity and valuation can be less certain.'
+            },
+            {
+              key: 'liabilities',
+              title: 'Liabilities',
+              columns: ['Liability', 'Amount (€)'],
+              rows: [
+                ['Mortgage', 220000],
+                ['Credit card', 900]
+              ],
+              subtotalLabel: 'Total liabilities',
+              subtotalValue: 220900
+            },
+            {
+              key: 'summary',
+              title: 'Summary',
+              columns: ['Metric', 'Amount (€)'],
+              rows: [
+                ['Gross assets', 1065000],
+                ['Total liabilities', 220900],
+                ['Net worth', 844100]
+              ],
+              subtotalLabel: 'Net worth',
+              subtotalValue: 844100
+            }
+          ]
+        },
+        charts: [
+          {
+            title: 'Assets by bucket',
+            subtitle: 'The split shows what each part of the balance sheet is meant to do.',
+            type: 'bar',
+            labels: ['Lifestyle', 'Liquidity', 'Longevity', 'Legacy'],
+            display: {
+              variant: 'wide',
+              valueFormat: 'currency',
+              yAxisTitle: 'Asset value'
+            },
+            insights: [
+              { label: 'Liquid buffer', value: '€30,000', detail: 'About 8.6 months of stated annual expenditure.', tone: 'positive' },
+              { label: 'Largest bucket', value: 'Lifestyle', detail: 'The home dominates gross assets, so spendable wealth is lower than headline wealth.' }
+            ],
+            datasets: [
+              { label: 'Assets', data: [543000, 30000, 377000, 115000] }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
     id: 'education-htb-flowchart-demo',
     label: 'Education: HTB Flowchart Demo',
     payload: {
@@ -609,6 +720,132 @@ const EXAMPLE_PAYLOADS = [
               label: 'Revenue - Help to Buy',
               kind: 'official',
               note: 'Verify current limits before client recommendations.'
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    id: 'education-artifact-htb-demo',
+    label: 'Education: Guided HTB Artifact Demo',
+    payload: {
+      title: 'Education - Help to Buy Decision Path',
+      generated: {
+        summaryHtml: '<p>Help to Buy is easiest to understand as a sequence of checks rather than a single grant figure. The key question is whether the buyer, property, tax record, and purchase structure all qualify before relying on the refund in the funding plan.</p>',
+        education: {
+          topic: 'Help to Buy for first-time buyers',
+          audience: 'First-time buyer couple in Ireland',
+          metrics: [
+            { label: 'Main dependency', value: 'Eligibility', detail: 'Buyer and property rules matter before the refund amount.' },
+            { label: 'Funding role', value: 'Deposit support', detail: 'Treat it as conditional support, not guaranteed cash.', tone: 'warning' },
+            { label: 'Best live-call use', value: 'Sequence', detail: 'Walk through checks in order to avoid false confidence.' }
+          ],
+          steps: [
+            {
+              id: 'buyer',
+              kicker: 'Step 1',
+              title: 'Confirm buyer status',
+              bodyHtml: '<p>Start with whether each buyer meets the first-time buyer and tax compliance conditions.</p>',
+              bullets: ['Check prior ownership history.', 'Confirm Revenue compliance before relying on the claim.'],
+              focus: 'This decides whether the conversation continues to property and funding checks.'
+            },
+            {
+              id: 'property',
+              kicker: 'Step 2',
+              title: 'Check the property',
+              bodyHtml: '<p>The property must fit the current scheme conditions, including new-build and value limits where relevant.</p>',
+              focus: 'A good buyer can still fail the scheme if the property does not qualify.'
+            },
+            {
+              id: 'funding',
+              kicker: 'Step 3',
+              title: 'Place it in the funding stack',
+              bodyHtml: '<p>Show the mortgage, deposit, savings, and conditional refund together so the client sees the dependency clearly.</p>',
+              bullets: ['Separate confirmed savings from conditional support.', 'Stress-test the fallback if the claim is delayed.']
+            }
+          ],
+          visuals: [
+            {
+              type: 'chart',
+              title: 'Illustrative funding stack',
+              subtitle: 'Example only: use live figures before relying on any amount.',
+              chart: {
+                title: 'Funding stack',
+                subtitle: 'Conditional support should be separated from confirmed funds.',
+                type: 'bar',
+                labels: ['Savings', 'HTB support', 'Mortgage'],
+                display: {
+                  variant: 'hero',
+                  valueFormat: 'currency',
+                  yAxisTitle: 'Funding amount',
+                  highlightDataset: 'Amount'
+                },
+                annotations: [
+                  { label: 'Conditional', xLabel: 'HTB support', yValue: 30000, tone: 'warning', body: 'Only use once eligibility is confirmed.' }
+                ],
+                insights: [
+                  { label: 'Presenter focus', value: 'Conditional layer', detail: 'The client should see which part is not yet guaranteed.', tone: 'warning', featured: true }
+                ],
+                datasets: [
+                  { label: 'Amount', data: [60000, 30000, 360000] }
+                ]
+              }
+            },
+            {
+              type: 'svg',
+              title: 'Eligibility route',
+              subtitle: 'A compact decision path for the live explanation',
+              svgSpec: {
+                kind: 'decisionTree',
+                theme: 'dark',
+                layout: {
+                  direction: 'TB',
+                  nodeWidth: 210,
+                  nodeHeight: 72,
+                  gapX: 52,
+                  gapY: 34,
+                  connector: 'elbow'
+                },
+                nodes: [
+                  { id: 'buyer', label: 'Buyer qualifies?' },
+                  { id: 'tax', label: 'Tax record clean?' },
+                  { id: 'property', label: 'Property qualifies?' },
+                  { id: 'claim', label: 'Claim can support deposit' },
+                  { id: 'fallback', label: 'Use fallback funding plan' }
+                ],
+                edges: [
+                  { from: 'buyer', to: 'tax', label: 'Yes' },
+                  { from: 'buyer', to: 'fallback', label: 'No' },
+                  { from: 'tax', to: 'property', label: 'Yes' },
+                  { from: 'tax', to: 'fallback', label: 'No' },
+                  { from: 'property', to: 'claim', label: 'Yes' },
+                  { from: 'property', to: 'fallback', label: 'No' }
+                ]
+              }
+            }
+          ],
+          sections: [
+            {
+              id: 'plain-english',
+              title: 'Plain English Frame',
+              bodyHtml: '<p>Help to Buy is a tax refund mechanism that may support the deposit on a qualifying new-build home.</p>',
+              bullets: ['It is not a universal grant.', 'It should be checked before being treated as part of confirmed funds.'],
+              whyItMatters: 'Clients often anchor on the headline amount before checking whether the purchase path qualifies.'
+            },
+            {
+              id: 'call-structure',
+              title: 'How To Explain It Live',
+              bodyHtml: '<p>Use the chart for the funding stack and the decision tree for the eligibility route. Keep the explanation anchored to what is confirmed versus conditional.</p>',
+              defaultOpen: false
+            }
+          ],
+          references: [
+            {
+              label: 'Revenue - Help to Buy',
+              url: 'https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx',
+              kind: 'official',
+              note: 'Use the current Revenue page before relying on limits or eligibility wording.'
             }
           ]
         }
@@ -974,6 +1211,107 @@ const EXAMPLE_PAYLOADS = [
                   note: 'Scenario assumptions for housing cost burden.'
                 }
               ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    id: 'report-artifact-client-demo',
+    label: 'Report: Artifact Blocks Demo',
+    payload: {
+      title: 'Report - Retirement Readiness Review',
+      generated: {
+        summaryHtml: '<p>This report frames retirement readiness around resilience, funding path, and decision points. The aim is to give the client a structured view of what is strong, what needs testing, and what should be verified before acting.</p>',
+        report: {
+          title: 'Retirement readiness review',
+          blocks: [
+            {
+              type: 'insightGrid',
+              title: 'Executive picture',
+              layout: 'featured',
+              items: [
+                { label: 'Readiness signal', value: 'Moderate', detail: 'Current assets support the target path, but contribution discipline remains important.', tone: 'warning', featured: true },
+                { label: 'Strongest point', value: 'Pension base', detail: 'Existing accumulated fund gives the plan a meaningful starting point.', tone: 'positive' },
+                { label: 'Main risk', value: 'Income gap', detail: 'The desired income depends on sustained contributions and market assumptions.' }
+              ]
+            },
+            {
+              type: 'chart',
+              title: 'Projected pension path',
+              chart: {
+                title: 'Projected pension path',
+                subtitle: 'Illustrative path using current assumptions.',
+                type: 'line',
+                labels: ['2026', '2031', '2036', '2041', '2046', '2051'],
+                display: {
+                  variant: 'wide',
+                  valueFormat: 'currency',
+                  yAxisTitle: 'Projected fund value'
+                },
+                annotations: [
+                  { label: 'Retirement', xLabel: '2051', tone: 'positive', body: 'Target retirement point in this example.' }
+                ],
+                insights: [
+                  { label: 'Compounding window', value: '25 years', detail: 'The slope depends heavily on contribution consistency.' }
+                ],
+                datasets: [
+                  { label: 'Current path', data: [180000, 260000, 370000, 520000, 720000, 980000] },
+                  { label: 'Lower-return path', data: [180000, 245000, 330000, 445000, 590000, 760000] }
+                ]
+              }
+            },
+            {
+              type: 'scenarioCompare',
+              title: 'Scenario comparison',
+              scenarios: [
+                {
+                  label: 'Current path',
+                  summary: 'Maintains current contributions and assumptions.',
+                  tone: 'positive',
+                  metrics: [
+                    { label: 'Estimated fund', value: '€980k', detail: 'Illustrative retirement value' },
+                    { label: 'Client message', value: 'Stay disciplined', detail: 'The plan is sensitive to consistency.' }
+                  ],
+                  callout: 'Useful as the base case, not a guarantee.'
+                },
+                {
+                  label: 'Lower-return path',
+                  summary: 'Shows the effect of a more cautious growth assumption.',
+                  tone: 'warning',
+                  metrics: [
+                    { label: 'Estimated fund', value: '€760k', detail: 'Lower projected retirement value' },
+                    { label: 'Client message', value: 'Build margin', detail: 'Higher contributions or flexibility may be needed.' }
+                  ],
+                  callout: 'Use this to discuss resilience rather than fear.'
+                }
+              ]
+            },
+            {
+              type: 'accordion',
+              title: 'What needs verifying',
+              items: [
+                {
+                  title: 'Contribution affordability',
+                  markdown: 'Check whether the current monthly contribution can be maintained through housing, family, and business-cycle changes.',
+                  defaultOpen: true
+                },
+                {
+                  title: 'Tax and product assumptions',
+                  markdown: 'Verify pension rules, tax relief, charges, and fund assumptions before turning this into advice.'
+                },
+                {
+                  title: 'Retirement income target',
+                  markdown: 'Confirm whether the target is essential spending, desired lifestyle spending, or a blended figure.'
+                }
+              ]
+            },
+            {
+              type: 'callout',
+              title: 'Client-facing interpretation',
+              tone: 'info',
+              markdown: 'The current path is workable enough to discuss seriously, but not strong enough to ignore assumptions. The best next step is to test contribution capacity and retirement-income flexibility together.'
             }
           ]
         }
@@ -4738,6 +5076,202 @@ function validateGeneratedTablesPayload(tables, label = 'generated.tables') {
   });
 }
 
+function normalizePayloadTone(value) {
+  const tone = typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    : '';
+  return tone || '';
+}
+
+function validateInsightItemsPayload(items, label, fallbackPrefix = 'insight') {
+  if (typeof items === 'undefined') {
+    return [];
+  }
+
+  if (!Array.isArray(items)) {
+    throw new Error(`${label} must be an array when provided.`);
+  }
+
+  return items.map((item, itemIndex) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`${label}[${itemIndex}] must be an object.`);
+    }
+
+    if ('label' in item && typeof item.label !== 'string') {
+      throw new Error(`${label}[${itemIndex}].label must be a string when provided.`);
+    }
+
+    if ('title' in item && typeof item.title !== 'string') {
+      throw new Error(`${label}[${itemIndex}].title must be a string when provided.`);
+    }
+
+    if ('value' in item && typeof item.value !== 'string' && typeof item.value !== 'number') {
+      throw new Error(`${label}[${itemIndex}].value must be a string or number when provided.`);
+    }
+
+    if ('detail' in item && typeof item.detail !== 'string') {
+      throw new Error(`${label}[${itemIndex}].detail must be a string when provided.`);
+    }
+
+    if ('body' in item && typeof item.body !== 'string') {
+      throw new Error(`${label}[${itemIndex}].body must be a string when provided.`);
+    }
+
+    const normalized = {
+      id: typeof item.id === 'string' && item.id.trim()
+        ? item.id.trim()
+        : `${fallbackPrefix}-${itemIndex + 1}`,
+      label: typeof item.label === 'string' && item.label.trim()
+        ? item.label.trim()
+        : (typeof item.title === 'string' && item.title.trim()
+          ? item.title.trim()
+          : `Insight ${itemIndex + 1}`)
+    };
+
+    if (typeof item.value === 'number' && Number.isFinite(item.value)) {
+      normalized.value = String(item.value);
+    } else if (typeof item.value === 'string' && item.value.trim()) {
+      normalized.value = item.value.trim();
+    }
+
+    const detail = typeof item.detail === 'string' && item.detail.trim()
+      ? item.detail.trim()
+      : (typeof item.body === 'string' && item.body.trim() ? item.body.trim() : '');
+    if (detail) {
+      normalized.detail = detail;
+    }
+
+    const tone = normalizePayloadTone(item.tone);
+    if (tone) {
+      normalized.tone = tone;
+    }
+
+    if (item.featured === true) {
+      normalized.featured = true;
+    }
+
+    return normalized;
+  });
+}
+
+function validateChartDisplayPayload(display, label) {
+  if (typeof display === 'undefined') {
+    return null;
+  }
+
+  if (!display || typeof display !== 'object' || Array.isArray(display)) {
+    throw new Error(`${label} must be an object when provided.`);
+  }
+
+  const normalized = {};
+  const variant = typeof display.variant === 'string'
+    ? display.variant.trim().toLowerCase()
+    : '';
+  if (variant) {
+    if (variant !== 'hero' && variant !== 'compact' && variant !== 'wide') {
+      throw new Error(`${label}.variant must be "hero", "compact", or "wide" when provided.`);
+    }
+    normalized.variant = variant;
+  }
+
+  const valueFormat = typeof display.valueFormat === 'string'
+    ? display.valueFormat.trim().toLowerCase()
+    : '';
+  if (valueFormat) {
+    if (valueFormat !== 'currency' && valueFormat !== 'percent' && valueFormat !== 'number') {
+      throw new Error(`${label}.valueFormat must be "currency", "percent", or "number" when provided.`);
+    }
+    normalized.valueFormat = valueFormat;
+  }
+
+  ['xAxisTitle', 'yAxisTitle', 'highlightDataset'].forEach((key) => {
+    if (key in display) {
+      if (typeof display[key] !== 'string') {
+        throw new Error(`${label}.${key} must be a string when provided.`);
+      }
+      if (display[key].trim()) {
+        normalized[key] = display[key].trim();
+      }
+    }
+  });
+
+  if ('showLegend' in display) {
+    if (typeof display.showLegend !== 'boolean') {
+      throw new Error(`${label}.showLegend must be a boolean when provided.`);
+    }
+    normalized.showLegend = display.showLegend;
+  }
+
+  if ('stacked' in display) {
+    if (typeof display.stacked !== 'boolean') {
+      throw new Error(`${label}.stacked must be a boolean when provided.`);
+    }
+    normalized.stacked = display.stacked;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function validateChartAnnotationsPayload(annotations, label) {
+  if (typeof annotations === 'undefined') {
+    return [];
+  }
+
+  if (!Array.isArray(annotations)) {
+    throw new Error(`${label} must be an array when provided.`);
+  }
+
+  return annotations.map((annotation, annotationIndex) => {
+    if (!annotation || typeof annotation !== 'object' || Array.isArray(annotation)) {
+      throw new Error(`${label}[${annotationIndex}] must be an object.`);
+    }
+
+    if ('label' in annotation && typeof annotation.label !== 'string') {
+      throw new Error(`${label}[${annotationIndex}].label must be a string when provided.`);
+    }
+
+    if ('body' in annotation && typeof annotation.body !== 'string') {
+      throw new Error(`${label}[${annotationIndex}].body must be a string when provided.`);
+    }
+
+    if ('xLabel' in annotation && typeof annotation.xLabel !== 'string') {
+      throw new Error(`${label}[${annotationIndex}].xLabel must be a string when provided.`);
+    }
+
+    if ('yValue' in annotation && (typeof annotation.yValue !== 'number' || !Number.isFinite(annotation.yValue))) {
+      throw new Error(`${label}[${annotationIndex}].yValue must be a finite number when provided.`);
+    }
+
+    const normalized = {
+      id: typeof annotation.id === 'string' && annotation.id.trim()
+        ? annotation.id.trim()
+        : `annotation-${annotationIndex + 1}`,
+      label: typeof annotation.label === 'string' && annotation.label.trim()
+        ? annotation.label.trim()
+        : `Annotation ${annotationIndex + 1}`
+    };
+
+    if (typeof annotation.body === 'string' && annotation.body.trim()) {
+      normalized.body = annotation.body.trim();
+    }
+
+    if (typeof annotation.xLabel === 'string' && annotation.xLabel.trim()) {
+      normalized.xLabel = annotation.xLabel.trim();
+    }
+
+    if (typeof annotation.yValue === 'number' && Number.isFinite(annotation.yValue)) {
+      normalized.yValue = annotation.yValue;
+    }
+
+    const tone = normalizePayloadTone(annotation.tone);
+    if (tone) {
+      normalized.tone = tone;
+    }
+
+    return normalized;
+  });
+}
+
 function validateChartsPayload(charts) {
   if (!Array.isArray(charts)) {
     throw new Error('generated.charts must be an array.');
@@ -4764,7 +5298,7 @@ function validateChartsPayload(charts) {
       throw new Error(`Chart ${index + 1} datasets must be a non-empty array.`);
     }
 
-    return {
+    const normalizedChart = {
       id: typeof chart.id === 'string' && chart.id.trim() ? chart.id : '',
       title: chart.title,
       type: chart.type,
@@ -4778,7 +5312,7 @@ function validateChartsPayload(charts) {
           throw new Error(`Chart ${index + 1}, dataset ${datasetIndex + 1} must include data[].`);
         }
 
-        return {
+        const normalizedDataset = {
           label: typeof dataset.label === 'string' ? dataset.label : `Series ${datasetIndex + 1}`,
           data: dataset.data.map((value) => {
             if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -4787,8 +5321,52 @@ function validateChartsPayload(charts) {
             return value;
           })
         };
+
+        [
+          'backgroundColor',
+          'borderColor',
+          'pointBackgroundColor',
+          'pointBorderColor'
+        ].forEach((key) => {
+          if (key in dataset) {
+            if (typeof dataset[key] !== 'string') {
+              throw new Error(`Chart ${index + 1}, dataset ${datasetIndex + 1}.${key} must be a string when provided.`);
+            }
+            if (dataset[key].trim()) {
+              normalizedDataset[key] = dataset[key].trim();
+            }
+          }
+        });
+
+        return normalizedDataset;
       })
     };
+
+    if ('subtitle' in chart) {
+      if (typeof chart.subtitle !== 'string') {
+        throw new Error(`Chart ${index + 1} subtitle must be a string when provided.`);
+      }
+      if (chart.subtitle.trim()) {
+        normalizedChart.subtitle = chart.subtitle.trim();
+      }
+    }
+
+    const display = validateChartDisplayPayload(chart.display, `Chart ${index + 1}.display`);
+    if (display) {
+      normalizedChart.display = display;
+    }
+
+    const annotations = validateChartAnnotationsPayload(chart.annotations, `Chart ${index + 1}.annotations`);
+    if (annotations.length > 0) {
+      normalizedChart.annotations = annotations;
+    }
+
+    const insights = validateInsightItemsPayload(chart.insights, `Chart ${index + 1}.insights`, 'chart-insight');
+    if (insights.length > 0) {
+      normalizedChart.insights = insights;
+    }
+
+    return normalizedChart;
   });
 }
 
@@ -4877,6 +5455,14 @@ function validateEducationPayload(education) {
         throw new Error(`generated.education.sections[${sectionIndex}].bodyHtml must be a string when provided.`);
       }
 
+      if ('whyItMatters' in section && typeof section.whyItMatters !== 'string') {
+        throw new Error(`generated.education.sections[${sectionIndex}].whyItMatters must be a string when provided.`);
+      }
+
+      if ('defaultOpen' in section && typeof section.defaultOpen !== 'boolean') {
+        throw new Error(`generated.education.sections[${sectionIndex}].defaultOpen must be a boolean when provided.`);
+      }
+
       return {
         id: typeof section.id === 'string' && section.id.trim()
           ? section.id.trim()
@@ -4885,7 +5471,61 @@ function validateEducationPayload(education) {
           ? section.title.trim()
           : `Section ${sectionIndex + 1}`,
         bodyHtml: typeof section.bodyHtml === 'string' ? section.bodyHtml : '',
-        bullets
+        bullets,
+        ...(typeof section.whyItMatters === 'string' && section.whyItMatters.trim()
+          ? { whyItMatters: section.whyItMatters.trim() }
+          : {}),
+        ...(typeof section.defaultOpen === 'boolean'
+          ? { defaultOpen: section.defaultOpen }
+          : {})
+      };
+    });
+  }
+
+  if ('metrics' in education) {
+    normalized.metrics = validateInsightItemsPayload(education.metrics, 'generated.education.metrics', 'education-metric');
+  }
+
+  if ('steps' in education) {
+    if (!Array.isArray(education.steps)) {
+      throw new Error('generated.education.steps must be an array when provided.');
+    }
+
+    normalized.steps = education.steps.map((step, stepIndex) => {
+      if (!step || typeof step !== 'object' || Array.isArray(step)) {
+        throw new Error(`generated.education.steps[${stepIndex}] must be an object.`);
+      }
+
+      ['title', 'bodyHtml', 'kicker', 'focus'].forEach((key) => {
+        if (key in step && typeof step[key] !== 'string') {
+          throw new Error(`generated.education.steps[${stepIndex}].${key} must be a string when provided.`);
+        }
+      });
+
+      const bullets = Array.isArray(step.bullets)
+        ? step.bullets.map((bullet, bulletIndex) => {
+          if (typeof bullet !== 'string') {
+            throw new Error(`generated.education.steps[${stepIndex}].bullets[${bulletIndex}] must be a string.`);
+          }
+          return bullet;
+        })
+        : [];
+
+      return {
+        id: typeof step.id === 'string' && step.id.trim()
+          ? step.id.trim()
+          : `step-${stepIndex + 1}`,
+        title: typeof step.title === 'string' && step.title.trim()
+          ? step.title.trim()
+          : `Step ${stepIndex + 1}`,
+        bodyHtml: typeof step.bodyHtml === 'string' ? step.bodyHtml : '',
+        bullets,
+        ...(typeof step.kicker === 'string' && step.kicker.trim()
+          ? { kicker: step.kicker.trim() }
+          : {}),
+        ...(typeof step.focus === 'string' && step.focus.trim()
+          ? { focus: step.focus.trim() }
+          : {})
       };
     });
   }

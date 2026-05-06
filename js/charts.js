@@ -1,4 +1,4 @@
-const COLOR_PALETTE = ['#2ea3ff', '#67d7ff', '#7bffbf', '#ffd166', '#ff8fa3', '#b28dff'];
+const COLOR_PALETTE = ['#6aa7c8', '#66b89e', '#d4a64f', '#c96f62', '#8ca36a', '#9aa9b8'];
 const chartRegistry = new Map();
 const OVERLAY_LAYER_ID = 'chart-overlay-layer';
 const SCALE_EPSILON = 0.01;
@@ -539,6 +539,83 @@ function formatEuroTick(value) {
     return `€${Math.round(amount / 1000)}k`;
   }
   return `€${Math.round(amount)}`;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeTone(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+function getChartDisplay(chartData) {
+  return isPlainObject(chartData?.display) ? chartData.display : {};
+}
+
+function getChartValueFormat(chartData) {
+  const valueFormat = normalizeTone(getChartDisplay(chartData).valueFormat);
+  if (valueFormat === 'currency' || valueFormat === 'percent' || valueFormat === 'number') {
+    return valueFormat;
+  }
+
+  const title = String(chartData?.title || '').toLowerCase();
+  if (
+    title.includes('income')
+    || title.includes('balance')
+    || title.includes('assets')
+    || title.includes('liabilities')
+    || title.includes('pot')
+    || title.includes('payment')
+    || title.includes('premium')
+    || title.includes('worth')
+    || title.includes('cost')
+  ) {
+    return 'currency';
+  }
+
+  return 'number';
+}
+
+function formatCompactNumber(value) {
+  const amount = clampNumber(value);
+  const absolute = Math.abs(amount);
+  if (absolute >= 1000000) {
+    return `${(amount / 1000000).toFixed(1)}m`;
+  }
+  if (absolute >= 1000) {
+    return `${Math.round(amount / 1000)}k`;
+  }
+  if (Math.abs(amount) < 10 && !Number.isInteger(amount)) {
+    return amount.toFixed(1);
+  }
+  return String(Math.round(amount));
+}
+
+function formatChartValue(value, valueFormat) {
+  if (valueFormat === 'currency') {
+    return formatEuro(value);
+  }
+
+  if (valueFormat === 'percent') {
+    const amount = clampNumber(value);
+    return `${Number.isInteger(amount) ? amount : amount.toFixed(1)}%`;
+  }
+
+  return formatCompactNumber(value);
+}
+
+function formatChartTick(value, valueFormat) {
+  if (valueFormat === 'currency') {
+    return formatEuroTick(value);
+  }
+
+  if (valueFormat === 'percent') {
+    const amount = clampNumber(value);
+    return `${Number.isInteger(amount) ? amount : amount.toFixed(1)}%`;
+  }
+
+  return formatCompactNumber(value);
 }
 
 function hexToRgba(hex, alpha) {
@@ -1166,11 +1243,126 @@ function buildMortgageMixedDataset(dataset, index) {
   return buildDatasetStyle(dataset, index, 'bar');
 }
 
+function getAnnotationColor(tone) {
+  const normalized = normalizeTone(tone);
+  if (normalized === 'positive' || normalized === 'success') {
+    return '#66b89e';
+  }
+  if (normalized === 'warning' || normalized === 'caution') {
+    return '#d4a64f';
+  }
+  if (normalized === 'negative' || normalized === 'danger' || normalized === 'critical') {
+    return '#c96f62';
+  }
+  return '#9ec4da';
+}
+
+function drawAnnotationLabel(ctx, text, x, y, color, chartArea) {
+  const label = String(text || '').trim();
+  if (!label) {
+    return;
+  }
+
+  ctx.save();
+  ctx.font = '600 11px Manrope, Segoe UI, sans-serif';
+  const metrics = ctx.measureText(label);
+  const paddingX = 8;
+  const paddingY = 5;
+  const width = Math.min(metrics.width + paddingX * 2, Math.max(72, chartArea.right - chartArea.left));
+  const height = 22;
+  const left = Math.min(Math.max(x, chartArea.left), chartArea.right - width);
+  const top = Math.min(Math.max(y - height - 6, chartArea.top + 4), chartArea.bottom - height - 4);
+  const radius = 6;
+
+  ctx.fillStyle = 'rgba(6, 13, 22, 0.86)';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left + radius, top);
+  ctx.lineTo(left + width - radius, top);
+  ctx.quadraticCurveTo(left + width, top, left + width, top + radius);
+  ctx.lineTo(left + width, top + height - radius);
+  ctx.quadraticCurveTo(left + width, top + height, left + width - radius, top + height);
+  ctx.lineTo(left + radius, top + height);
+  ctx.quadraticCurveTo(left, top + height, left, top + height - radius);
+  ctx.lineTo(left, top + radius);
+  ctx.quadraticCurveTo(left, top, left + radius, top);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#eef6fb';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, left + paddingX, top + height / 2, width - paddingX * 2);
+  ctx.restore();
+}
+
+const CHART_ANNOTATION_GUIDE_PLUGIN = {
+  id: 'planeirAnnotationGuide',
+  afterDatasetsDraw(chart, _args, pluginOptions) {
+    const annotations = Array.isArray(pluginOptions?.annotations) ? pluginOptions.annotations : [];
+    if (annotations.length === 0) {
+      return;
+    }
+
+    const { ctx, chartArea, scales } = chart;
+    if (!ctx || !chartArea || !scales) {
+      return;
+    }
+
+    const yScale = scales.y;
+    const xScale = scales.x;
+    const labels = Array.isArray(chart.data?.labels) ? chart.data.labels.map((label) => String(label)) : [];
+
+    annotations.forEach((annotation) => {
+      const color = getAnnotationColor(annotation?.tone);
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.globalAlpha = 0.82;
+
+      let labelX = chartArea.left + 8;
+      let labelY = chartArea.top + 28;
+
+      if (Number.isFinite(annotation?.yValue) && yScale && typeof yScale.getPixelForValue === 'function') {
+        const y = yScale.getPixelForValue(annotation.yValue);
+        if (Number.isFinite(y) && y >= chartArea.top && y <= chartArea.bottom) {
+          ctx.beginPath();
+          ctx.moveTo(chartArea.left, y);
+          ctx.lineTo(chartArea.right, y);
+          ctx.stroke();
+          labelY = y;
+        }
+      }
+
+      if (typeof annotation?.xLabel === 'string' && annotation.xLabel.trim() && xScale && typeof xScale.getPixelForValue === 'function') {
+        const labelIndex = labels.findIndex((label) => label === annotation.xLabel.trim());
+        if (labelIndex >= 0) {
+          const x = xScale.getPixelForValue(labelIndex);
+          if (Number.isFinite(x) && x >= chartArea.left && x <= chartArea.right) {
+            ctx.beginPath();
+            ctx.moveTo(x, chartArea.top);
+            ctx.lineTo(x, chartArea.bottom);
+            ctx.stroke();
+            labelX = x + 6;
+          }
+        }
+      }
+
+      ctx.restore();
+      drawAnnotationLabel(ctx, annotation?.label, labelX, labelY, color, chartArea);
+    });
+  }
+};
+
 function buildChartConfig(chartData, { module } = {}) {
   const isMortgageMixed = isMortgageMixedChart(chartData);
   const chartType = isMortgageMixed
     ? 'bar'
     : (chartData.type === 'bar' ? 'bar' : 'line');
+  const display = getChartDisplay(chartData);
+  const valueFormat = getChartValueFormat(chartData);
   const labels = Array.isArray(chartData.labels) ? chartData.labels.map((value) => String(value)) : [];
   const pensionModule = isPensionModule(module);
   const accumulationByTitleOrLabels = isPensionAccumulationChart(chartData);
@@ -1197,6 +1389,25 @@ function buildChartConfig(chartData, { module } = {}) {
       return buildDatasetStyle(dataset, index, chartType);
     })
     : [];
+
+  const highlightDataset = normalizeLabel(display.highlightDataset).toLowerCase();
+  if (highlightDataset) {
+    datasets.forEach((dataset) => {
+      const isHighlighted = normalizeLabel(dataset?.label).toLowerCase() === highlightDataset;
+      if (isHighlighted) {
+        dataset.borderWidth = Math.max(Number(dataset.borderWidth) || 0, dataset.type === 'bar' ? 1.4 : 2.8);
+        return;
+      }
+
+      if (dataset.backgroundColor && typeof dataset.backgroundColor === 'string' && dataset.backgroundColor.startsWith('#')) {
+        dataset.backgroundColor = hexToRgba(dataset.backgroundColor, 0.22);
+      }
+      dataset.borderColor = typeof dataset.borderColor === 'string' && dataset.borderColor.startsWith('#')
+        ? hexToRgba(dataset.borderColor, 0.48)
+        : dataset.borderColor;
+      dataset.pointRadius = 1.5;
+    });
+  }
 
   if (isAccumulation) {
     ensureAtLeastOneAccumulationBarVisible(datasets, showMax);
@@ -1226,6 +1437,7 @@ function buildChartConfig(chartData, { module } = {}) {
       },
       plugins: {
         legend: {
+          display: display.showLegend !== false,
           labels: {
             color: '#eaf4ff',
             boxWidth: 14,
@@ -1245,7 +1457,19 @@ function buildChartConfig(chartData, { module } = {}) {
           titleColor: '#ffffff',
           bodyColor: '#d9ebff',
           mode: 'nearest',
-          intersect: true
+          intersect: true,
+          callbacks: {
+            label: (context) => {
+              const label = context?.dataset?.label || 'Series';
+              const value = typeof context?.parsed?.y === 'number'
+                ? context.parsed.y
+                : context?.raw;
+              return `${label}: ${formatChartValue(value, valueFormat)}`;
+            }
+          }
+        },
+        planeirAnnotationGuide: {
+          annotations: Array.isArray(chartData.annotations) ? chartData.annotations : []
         }
       },
       scales: {
@@ -1257,21 +1481,46 @@ function buildChartConfig(chartData, { module } = {}) {
           grid: {
             color: 'rgba(140, 175, 220, 0.16)',
             drawBorder: false
+          },
+          title: {
+            display: typeof display.xAxisTitle === 'string' && display.xAxisTitle.trim().length > 0,
+            text: display.xAxisTitle || '',
+            color: '#b8cce1',
+            font: {
+              size: 11,
+              weight: '600'
+            }
           }
         },
         y: {
           beginAtZero: true,
           ticks: {
-            color: '#d3e8ff'
+            color: '#d3e8ff',
+            callback: (value) => formatChartTick(value, valueFormat)
           },
           grid: {
             color: 'rgba(140, 175, 220, 0.16)',
             drawBorder: false
+          },
+          title: {
+            display: typeof display.yAxisTitle === 'string' && display.yAxisTitle.trim().length > 0,
+            text: display.yAxisTitle || '',
+            color: '#b8cce1',
+            font: {
+              size: 11,
+              weight: '600'
+            }
           }
         }
       }
-    }
+    },
+    plugins: [CHART_ANNOTATION_GUIDE_PLUGIN]
   };
+
+  if (chartType === 'bar' && display.stacked === true) {
+    config.options.scales.x.stacked = true;
+    config.options.scales.y.stacked = true;
+  }
 
   if (isAccumulation) {
     config.options.scales.x.stacked = true;

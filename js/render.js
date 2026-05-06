@@ -1382,6 +1382,38 @@ function collectReportInsightLines(report, maxItems = 3) {
       continue;
     }
 
+    if (block?.type === 'insightGrid' || block?.type === 'kpiRow') {
+      lines.push(...uniqueOverviewItems(
+        (Array.isArray(block?.items) ? block.items : [])
+          .map((item) => item?.detail || item?.value || item?.label || ''),
+        maxItems
+      ));
+      continue;
+    }
+
+    if (block?.type === 'scenarioCompare') {
+      lines.push(...uniqueOverviewItems(
+        (Array.isArray(block?.scenarios) ? block.scenarios : [])
+          .flatMap((scenario) => [
+            scenario?.summary || '',
+            ...(Array.isArray(scenario?.metrics)
+              ? scenario.metrics.map((metric) => metric?.detail || metric?.value || metric?.label || '')
+              : [])
+          ]),
+        maxItems
+      ));
+      continue;
+    }
+
+    if (block?.type === 'accordion') {
+      (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
+        lines.push(item?.title || '');
+        lines.push(...extractHtmlPreviewLines(item?.bodyHtml || '', maxItems));
+        lines.push(...extractMarkdownPreviewLines(item?.markdown || '', maxItems));
+      });
+      continue;
+    }
+
     if (block?.type === 'timeline') {
       const timeline = normalizeReportTimelineContent(block?.svgSpec || {});
       if (timeline.events.length > 0) {
@@ -1404,10 +1436,24 @@ function collectEducationInsightLines(module, maxItems = 3) {
   const lines = [];
   const education = module?.generated?.education || {};
   const sections = Array.isArray(education?.sections) ? education.sections : [];
+  const metrics = Array.isArray(education?.metrics) ? education.metrics : [];
+  const steps = Array.isArray(education?.steps) ? education.steps : [];
+
+  lines.push(...uniqueOverviewItems(
+    metrics.map((metric) => metric?.detail || metric?.value || metric?.label || ''),
+    maxItems
+  ));
+
+  steps.forEach((step) => {
+    lines.push(step?.focus || '');
+    lines.push(...extractHtmlPreviewLines(step?.bodyHtml || '', maxItems));
+    lines.push(...uniqueOverviewItems(Array.isArray(step?.bullets) ? step.bullets : [], maxItems));
+  });
 
   sections.forEach((section) => {
     lines.push(...uniqueOverviewItems(Array.isArray(section?.bullets) ? section.bullets : [], maxItems));
     lines.push(...extractHtmlPreviewLines(section?.bodyHtml || '', maxItems));
+    lines.push(section?.whyItMatters || '');
   });
 
   lines.push(...extractHtmlPreviewLines(module?.generated?.summaryHtml || '', maxItems));
@@ -2097,6 +2143,129 @@ function sanitizeFileToken(value, fallback) {
   return normalized || fallback;
 }
 
+function normalizeRenderTone(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+function normalizeChartDisplay(display) {
+  if (!isPlainObject(display)) {
+    return null;
+  }
+
+  const normalized = {};
+  const variant = normalizeRenderTone(display.variant);
+  if (variant === 'hero' || variant === 'compact' || variant === 'wide') {
+    normalized.variant = variant;
+  }
+
+  const valueFormat = normalizeRenderTone(display.valueFormat);
+  if (valueFormat === 'currency' || valueFormat === 'percent' || valueFormat === 'number') {
+    normalized.valueFormat = valueFormat;
+  }
+
+  ['xAxisTitle', 'yAxisTitle', 'highlightDataset'].forEach((key) => {
+    if (typeof display[key] === 'string' && display[key].trim()) {
+      normalized[key] = display[key].trim();
+    }
+  });
+
+  if (typeof display.showLegend === 'boolean') {
+    normalized.showLegend = display.showLegend;
+  }
+
+  if (typeof display.stacked === 'boolean') {
+    normalized.stacked = display.stacked;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function normalizeChartAnnotations(annotations) {
+  if (!Array.isArray(annotations)) {
+    return [];
+  }
+
+  return annotations
+    .filter((annotation) => isPlainObject(annotation))
+    .map((annotation, index) => {
+      const normalized = {
+        id: typeof annotation.id === 'string' && annotation.id.trim()
+          ? annotation.id.trim()
+          : `annotation-${index + 1}`,
+        label: typeof annotation.label === 'string' && annotation.label.trim()
+          ? annotation.label.trim()
+          : `Annotation ${index + 1}`
+      };
+
+      if (typeof annotation.body === 'string' && annotation.body.trim()) {
+        normalized.body = annotation.body.trim();
+      }
+
+      if (typeof annotation.xLabel === 'string' && annotation.xLabel.trim()) {
+        normalized.xLabel = annotation.xLabel.trim();
+      }
+
+      const yValue = Number(annotation.yValue);
+      if (Number.isFinite(yValue)) {
+        normalized.yValue = yValue;
+      }
+
+      const tone = normalizeRenderTone(annotation.tone);
+      if (tone) {
+        normalized.tone = tone;
+      }
+
+      return normalized;
+    });
+}
+
+function normalizeInsightItems(items, fallbackPrefix = 'insight') {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => isPlainObject(item))
+    .map((item, index) => {
+      const normalized = {
+        id: typeof item.id === 'string' && item.id.trim()
+          ? item.id.trim()
+          : `${fallbackPrefix}-${index + 1}`,
+        label: typeof item.label === 'string' && item.label.trim()
+          ? item.label.trim()
+          : (typeof item.title === 'string' && item.title.trim()
+            ? item.title.trim()
+            : `Insight ${index + 1}`)
+      };
+
+      if (typeof item.value === 'number' && Number.isFinite(item.value)) {
+        normalized.value = String(item.value);
+      } else if (typeof item.value === 'string' && item.value.trim()) {
+        normalized.value = item.value.trim();
+      }
+
+      const detail = typeof item.detail === 'string' && item.detail.trim()
+        ? item.detail.trim()
+        : (typeof item.body === 'string' && item.body.trim()
+          ? item.body.trim()
+          : (typeof item.note === 'string' && item.note.trim() ? item.note.trim() : ''));
+      if (detail) {
+        normalized.detail = detail;
+      }
+
+      const tone = normalizeRenderTone(item.tone);
+      if (tone) {
+        normalized.tone = tone;
+      }
+
+      if (item.featured === true) {
+        normalized.featured = true;
+      }
+
+      return normalized;
+    });
+}
+
 function sanitizeEducationChart(chart, index = 0) {
   if (!chart || typeof chart !== 'object' || Array.isArray(chart)) {
     return null;
@@ -2108,24 +2277,39 @@ function sanitizeEducationChart(chart, index = 0) {
   const datasets = Array.isArray(chart.datasets)
     ? chart.datasets
       .filter((dataset) => dataset && typeof dataset === 'object' && !Array.isArray(dataset))
-      .map((dataset, datasetIndex) => ({
-        label: typeof dataset.label === 'string' && dataset.label.trim()
-          ? dataset.label
-          : `Series ${datasetIndex + 1}`,
-        data: Array.isArray(dataset.data)
-          ? dataset.data.map((value) => {
-            const parsed = Number(value);
-            return Number.isFinite(parsed) ? parsed : 0;
-          })
-          : []
-      }))
+      .map((dataset, datasetIndex) => {
+        const normalizedDataset = {
+          label: typeof dataset.label === 'string' && dataset.label.trim()
+            ? dataset.label
+            : `Series ${datasetIndex + 1}`,
+          data: Array.isArray(dataset.data)
+            ? dataset.data.map((value) => {
+              const parsed = Number(value);
+              return Number.isFinite(parsed) ? parsed : 0;
+            })
+            : []
+        };
+
+        [
+          'backgroundColor',
+          'borderColor',
+          'pointBackgroundColor',
+          'pointBorderColor'
+        ].forEach((key) => {
+          if (typeof dataset[key] === 'string' && dataset[key].trim()) {
+            normalizedDataset[key] = dataset[key].trim();
+          }
+        });
+
+        return normalizedDataset;
+      })
     : [];
 
   if (datasets.length === 0) {
     return null;
   }
 
-  return {
+  const normalizedChart = {
     id: typeof chart.id === 'string' && chart.id.trim()
       ? chart.id
       : `education-chart-${index + 1}`,
@@ -2136,6 +2320,27 @@ function sanitizeEducationChart(chart, index = 0) {
     labels,
     datasets
   };
+
+  if (typeof chart.subtitle === 'string' && chart.subtitle.trim()) {
+    normalizedChart.subtitle = chart.subtitle.trim();
+  }
+
+  const display = normalizeChartDisplay(chart.display);
+  if (display) {
+    normalizedChart.display = display;
+  }
+
+  const annotations = normalizeChartAnnotations(chart.annotations);
+  if (annotations.length > 0) {
+    normalizedChart.annotations = annotations;
+  }
+
+  const insights = normalizeInsightItems(chart.insights, 'chart-insight');
+  if (insights.length > 0) {
+    normalizedChart.insights = insights;
+  }
+
+  return normalizedChart;
 }
 
 function getEducationVisuals(module) {
@@ -3888,7 +4093,8 @@ function buildChartsCard(module, charts, { showPensionToggle = true, readOnly = 
       list.appendChild(buildChartMountCard({
         title: chart.title || `Chart ${index + 1}`,
         chartIndex: index,
-        className: 'generated-chart-block'
+        className: 'generated-chart-block',
+        chart
       }));
     });
   }
@@ -3979,6 +4185,165 @@ function buildEducationTopicCard(module, education) {
   return card;
 }
 
+function buildEducationMetricsCard(education) {
+  const metrics = Array.isArray(education?.metrics) ? education.metrics : [];
+  if (metrics.length === 0) {
+    return null;
+  }
+
+  const card = document.createElement('section');
+  card.className = 'generated-card education-metrics-card';
+
+  const { header } = buildGeneratedCardHeader('Key ideas');
+  card.appendChild(header);
+  appendArtifactMetricItems(card, metrics, {
+    className: 'education-metric-grid',
+    itemClassName: 'education-metric-card'
+  });
+
+  return card;
+}
+
+function buildEducationStepsCard(education) {
+  const steps = Array.isArray(education?.steps) ? education.steps : [];
+  if (steps.length === 0) {
+    return null;
+  }
+
+  const card = document.createElement('section');
+  card.className = 'generated-card education-steps-card';
+
+  const { header } = buildGeneratedCardHeader('Walkthrough');
+  card.appendChild(header);
+
+  const shell = document.createElement('div');
+  shell.className = 'education-stepper';
+
+  const tabList = document.createElement('div');
+  tabList.className = 'education-step-tabs';
+  tabList.setAttribute('role', 'tablist');
+
+  const panelWrap = document.createElement('div');
+  panelWrap.className = 'education-step-panels';
+
+  const buttons = [];
+  const panels = [];
+  const setActiveStep = (targetIndex) => {
+    buttons.forEach((button, index) => {
+      const isActive = index === targetIndex;
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      button.tabIndex = isActive ? 0 : -1;
+    });
+
+    panels.forEach((panel, index) => {
+      const isActive = index === targetIndex;
+      panel.classList.toggle('is-active', isActive);
+      panel.hidden = !isActive;
+    });
+  };
+
+  steps.forEach((step, index) => {
+    const panelId = `education-step-${sanitizeFileToken(step?.id || String(index + 1), `step-${index + 1}`)}`;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'education-step-tab';
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', panelId);
+    button.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
+    button.tabIndex = index === 0 ? 0 : -1;
+
+    const number = document.createElement('span');
+    number.className = 'education-step-number';
+    number.textContent = String(index + 1).padStart(2, '0');
+    button.appendChild(number);
+
+    const label = document.createElement('span');
+    label.className = 'education-step-tab-label';
+    label.textContent = step?.title || `Step ${index + 1}`;
+    button.appendChild(label);
+
+    button.addEventListener('click', () => setActiveStep(index));
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') {
+        return;
+      }
+      event.preventDefault();
+      const direction = event.key === 'ArrowRight' ? 1 : -1;
+      const nextIndex = (index + direction + steps.length) % steps.length;
+      setActiveStep(nextIndex);
+      buttons[nextIndex]?.focus();
+    });
+
+    buttons.push(button);
+    tabList.appendChild(button);
+
+    const panel = document.createElement('section');
+    panel.className = 'education-step-panel';
+    panel.id = panelId;
+    panel.setAttribute('role', 'tabpanel');
+    panel.hidden = index !== 0;
+    panel.classList.toggle('is-active', index === 0);
+
+    if (typeof step?.kicker === 'string' && step.kicker.trim()) {
+      const kicker = document.createElement('p');
+      kicker.className = 'education-step-kicker';
+      kicker.textContent = step.kicker.trim();
+      panel.appendChild(kicker);
+    }
+
+    const title = document.createElement('h4');
+    title.className = 'education-step-title';
+    title.textContent = step?.title || `Step ${index + 1}`;
+    panel.appendChild(title);
+
+    const safeBodyHtml = sanitizeSummaryHtml(step?.bodyHtml || '');
+    if (safeBodyHtml) {
+      const body = document.createElement('div');
+      body.className = 'education-section-body-content';
+      body.innerHTML = safeBodyHtml;
+      panel.appendChild(body);
+    }
+
+    const bullets = Array.isArray(step?.bullets)
+      ? step.bullets.filter((bullet) => typeof bullet === 'string' && bullet.trim())
+      : [];
+    if (bullets.length > 0) {
+      const list = document.createElement('ul');
+      list.className = 'education-section-bullets';
+      bullets.forEach((bullet) => {
+        const item = document.createElement('li');
+        item.textContent = bullet;
+        list.appendChild(item);
+      });
+      panel.appendChild(list);
+    }
+
+    if (typeof step?.focus === 'string' && step.focus.trim()) {
+      const focus = document.createElement('p');
+      focus.className = 'education-step-focus';
+      focus.textContent = step.focus.trim();
+      panel.appendChild(focus);
+    }
+
+    if (!safeBodyHtml && bullets.length === 0 && !(typeof step?.focus === 'string' && step.focus.trim())) {
+      const empty = document.createElement('p');
+      empty.className = 'generated-empty';
+      empty.textContent = 'No step details provided.';
+      panel.appendChild(empty);
+    }
+
+    panels.push(panel);
+    panelWrap.appendChild(panel);
+  });
+
+  shell.appendChild(tabList);
+  shell.appendChild(panelWrap);
+  card.appendChild(shell);
+  return card;
+}
+
 function buildEducationSectionsCard(education) {
   const card = document.createElement('section');
   card.className = 'generated-card education-sections-card';
@@ -4001,7 +4366,7 @@ function buildEducationSectionsCard(education) {
   sections.forEach((section, index) => {
     const details = document.createElement('details');
     details.className = 'education-section-block';
-    details.open = index === 0;
+    details.open = typeof section?.defaultOpen === 'boolean' ? section.defaultOpen : index === 0;
 
     const summary = document.createElement('summary');
     summary.className = 'education-section-summary';
@@ -4033,7 +4398,25 @@ function buildEducationSectionsCard(education) {
       bodyWrap.appendChild(ul);
     }
 
-    if (!safeBodyHtml && bullets.length === 0) {
+    if (typeof section?.whyItMatters === 'string' && section.whyItMatters.trim()) {
+      const why = document.createElement('aside');
+      why.className = 'education-why-card';
+
+      const label = document.createElement('span');
+      label.className = 'education-why-label';
+      label.textContent = 'Why this matters';
+      why.appendChild(label);
+
+      const body = document.createElement('p');
+      body.className = 'education-why-body';
+      body.textContent = section.whyItMatters.trim();
+      why.appendChild(body);
+
+      bodyWrap.appendChild(why);
+    }
+
+    const hasWhyItMatters = typeof section?.whyItMatters === 'string' && section.whyItMatters.trim();
+    if (!safeBodyHtml && bullets.length === 0 && !hasWhyItMatters) {
       const empty = document.createElement('p');
       empty.className = 'generated-empty';
       empty.textContent = 'No section details provided.';
@@ -4048,15 +4431,125 @@ function buildEducationSectionsCard(education) {
   return card;
 }
 
+function appendArtifactMetricItems(parent, items, {
+  className = 'artifact-metric-grid',
+  itemClassName = 'artifact-metric-card'
+} = {}) {
+  const metrics = normalizeInsightItems(items, 'metric');
+  if (metrics.length === 0) {
+    return false;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = className;
+
+  metrics.forEach((metric) => {
+    const item = document.createElement('article');
+    item.className = itemClassName;
+    if (metric.tone) {
+      item.dataset.tone = metric.tone;
+    }
+    if (metric.featured) {
+      item.dataset.featured = 'true';
+    }
+
+    const label = document.createElement('div');
+    label.className = 'artifact-metric-label';
+    label.textContent = metric.label;
+    item.appendChild(label);
+
+    if (metric.value) {
+      const value = document.createElement('div');
+      value.className = 'artifact-metric-value';
+      value.textContent = metric.value;
+      item.appendChild(value);
+    }
+
+    if (metric.detail) {
+      const detail = document.createElement('div');
+      detail.className = 'artifact-metric-detail';
+      detail.textContent = metric.detail;
+      item.appendChild(detail);
+    }
+
+    grid.appendChild(item);
+  });
+
+  parent.appendChild(grid);
+  return true;
+}
+
+function appendChartInsightContent(card, chart) {
+  const insights = normalizeInsightItems(chart?.insights, 'chart-insight');
+  if (insights.length > 0) {
+    appendArtifactMetricItems(card, insights, {
+      className: 'chart-insight-grid',
+      itemClassName: 'chart-insight-card'
+    });
+  }
+
+  const annotations = normalizeChartAnnotations(chart?.annotations);
+  if (annotations.length === 0) {
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'chart-annotation-list';
+
+  annotations.forEach((annotation) => {
+    const item = document.createElement('article');
+    item.className = 'chart-annotation-item';
+    if (annotation.tone) {
+      item.dataset.tone = annotation.tone;
+    }
+
+    const label = document.createElement('span');
+    label.className = 'chart-annotation-label';
+    label.textContent = annotation.label;
+    item.appendChild(label);
+
+    const details = [];
+    if (typeof annotation.xLabel === 'string' && annotation.xLabel.trim()) {
+      details.push(annotation.xLabel.trim());
+    }
+    if (Number.isFinite(annotation.yValue)) {
+      details.push(String(annotation.yValue));
+    }
+    if (details.length > 0) {
+      const anchor = document.createElement('span');
+      anchor.className = 'chart-annotation-anchor';
+      anchor.textContent = details.join(' / ');
+      item.appendChild(anchor);
+    }
+
+    if (annotation.body) {
+      const body = document.createElement('p');
+      body.className = 'chart-annotation-body';
+      body.textContent = annotation.body;
+      item.appendChild(body);
+    }
+
+    list.appendChild(item);
+  });
+
+  card.appendChild(list);
+}
+
 function buildChartMountCard({
   title,
   subtitle = '',
   chartIndex = 0,
-  className = 'generated-chart-block'
+  className = 'generated-chart-block',
+  chart = null
 } = {}) {
   const card = document.createElement('article');
   card.className = className;
   card.dataset.chartIndex = String(chartIndex);
+
+  const displayVariant = normalizeChartDisplay(chart?.display)?.variant || '';
+  if (displayVariant) {
+    card.dataset.chartVariant = displayVariant;
+  }
 
   const chartTop = document.createElement('div');
   chartTop.className = 'generated-chart-top';
@@ -4077,10 +4570,13 @@ function buildChartMountCard({
 
   card.appendChild(chartTop);
 
-  if (typeof subtitle === 'string' && subtitle.trim()) {
+  const subtitleText = typeof subtitle === 'string' && subtitle.trim()
+    ? subtitle.trim()
+    : (typeof chart?.subtitle === 'string' && chart.subtitle.trim() ? chart.subtitle.trim() : '');
+  if (subtitleText) {
     const subtitleEl = document.createElement('p');
     subtitleEl.className = 'education-visual-subtitle';
-    subtitleEl.textContent = subtitle.trim();
+    subtitleEl.textContent = subtitleText;
     card.appendChild(subtitleEl);
   }
 
@@ -4093,6 +4589,7 @@ function buildChartMountCard({
   canvasWrap.appendChild(canvas);
 
   card.appendChild(canvasWrap);
+  appendChartInsightContent(card, chart);
   return card;
 }
 
@@ -4101,7 +4598,8 @@ function buildEducationChartVisualCard(visual, chart, chartIndex) {
     title: chart.title || visual?.title || `Chart ${chartIndex + 1}`,
     subtitle: typeof visual?.subtitle === 'string' ? visual.subtitle : '',
     chartIndex,
-    className: 'education-visual-card education-chart-card generated-chart-block'
+    className: 'education-visual-card education-chart-card generated-chart-block',
+    chart
   });
   card.dataset.sceneKind = 'chart';
   return card;
@@ -4587,9 +5085,12 @@ function renderReportTableBlock(block) {
 function renderReportChartBlock(block, chartIndex) {
   const card = buildChartMountCard({
     title: block?.title || block?.chart?.title || `Chart ${chartIndex + 1}`,
-    subtitle: typeof block?.subtitle === 'string' ? block.subtitle : '',
+    subtitle: typeof block?.subtitle === 'string' && block.subtitle.trim()
+      ? block.subtitle
+      : (typeof block?.chart?.subtitle === 'string' ? block.chart.subtitle : ''),
     chartIndex,
-    className: 'report-block report-chart-block generated-chart-block'
+    className: 'report-block report-chart-block generated-chart-block',
+    chart: block?.chart || null
   });
 
   if (typeof block?.id === 'string' && block.id.trim()) {
@@ -4796,6 +5297,169 @@ function renderReportKpiRowBlock(block) {
   return card;
 }
 
+function renderReportInsightGridBlock(block) {
+  const card = buildReportBlockShell(block, 'report-block report-insight-grid-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || '',
+    subtitle: block?.subtitle || ''
+  });
+
+  const layout = typeof block?.layout === 'string' && block.layout.trim().toLowerCase() === 'featured'
+    ? 'featured'
+    : 'default';
+  const grid = document.createElement('div');
+  grid.className = 'report-insight-grid';
+  grid.dataset.layout = layout;
+
+  (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
+    const insight = document.createElement('article');
+    insight.className = 'report-insight-card';
+    if (item?.tone) {
+      insight.dataset.tone = item.tone;
+    }
+    if (item?.featured) {
+      insight.dataset.featured = 'true';
+    }
+
+    const label = document.createElement('div');
+    label.className = 'report-insight-label';
+    label.textContent = item?.label || 'Insight';
+    insight.appendChild(label);
+
+    if (item?.value) {
+      const value = document.createElement('div');
+      value.className = 'report-insight-value';
+      value.textContent = item.value;
+      insight.appendChild(value);
+    }
+
+    if (item?.detail) {
+      const detail = document.createElement('p');
+      detail.className = 'report-insight-detail';
+      detail.textContent = item.detail;
+      insight.appendChild(detail);
+    }
+
+    grid.appendChild(insight);
+  });
+
+  card.appendChild(grid);
+  return card;
+}
+
+function renderReportScenarioCompareBlock(block) {
+  const card = buildReportBlockShell(block, 'report-block report-scenario-compare-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || '',
+    subtitle: block?.subtitle || ''
+  });
+
+  const grid = document.createElement('div');
+  grid.className = 'report-scenario-grid';
+
+  (Array.isArray(block?.scenarios) ? block.scenarios : []).forEach((scenario) => {
+    const scenarioCard = document.createElement('article');
+    scenarioCard.className = 'report-scenario-card';
+    if (scenario?.tone) {
+      scenarioCard.dataset.tone = scenario.tone;
+    }
+
+    const label = document.createElement('h4');
+    label.className = 'report-scenario-title';
+    label.textContent = scenario?.label || 'Scenario';
+    scenarioCard.appendChild(label);
+
+    if (scenario?.summary) {
+      const summary = document.createElement('p');
+      summary.className = 'report-scenario-summary';
+      summary.textContent = scenario.summary;
+      scenarioCard.appendChild(summary);
+    }
+
+    appendArtifactMetricItems(scenarioCard, scenario?.metrics, {
+      className: 'report-scenario-metrics',
+      itemClassName: 'report-scenario-metric'
+    });
+
+    if (scenario?.callout) {
+      const callout = document.createElement('p');
+      callout.className = 'report-scenario-callout';
+      callout.textContent = scenario.callout;
+      scenarioCard.appendChild(callout);
+    }
+
+    grid.appendChild(scenarioCard);
+  });
+
+  card.appendChild(grid);
+  return card;
+}
+
+function renderReportAccordionBlock(block) {
+  const card = buildReportBlockShell(block, 'report-block report-accordion-block');
+  appendReportBlockHeader(card, {
+    title: block?.title || '',
+    subtitle: block?.subtitle || ''
+  });
+
+  const list = document.createElement('div');
+  list.className = 'report-accordion-list';
+
+  (Array.isArray(block?.items) ? block.items : []).forEach((item, index) => {
+    const details = document.createElement('details');
+    details.className = 'report-accordion-item';
+    details.open = item?.defaultOpen === true || index === 0;
+
+    const summary = document.createElement('summary');
+    summary.className = 'report-accordion-summary';
+    summary.textContent = item?.title || `Detail ${index + 1}`;
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'report-accordion-body';
+
+    const safeBodyHtml = sanitizeSummaryHtml(item?.bodyHtml || '');
+    if (safeBodyHtml && htmlToPlainText(safeBodyHtml)) {
+      const content = document.createElement('div');
+      content.className = 'report-markdown-content';
+      content.innerHTML = safeBodyHtml;
+      body.appendChild(content);
+    } else if (typeof item?.markdown === 'string' && item.markdown.trim()) {
+      const content = document.createElement('div');
+      content.className = 'report-markdown-content';
+      content.appendChild(renderMarkdownFragment(item.markdown));
+      body.appendChild(content);
+    }
+
+    const bullets = Array.isArray(item?.bullets)
+      ? item.bullets.filter((bullet) => typeof bullet === 'string' && bullet.trim())
+      : [];
+    if (bullets.length > 0) {
+      const listEl = document.createElement('ul');
+      listEl.className = 'report-callout-bullets';
+      bullets.forEach((bullet) => {
+        const bulletEl = document.createElement('li');
+        bulletEl.textContent = bullet;
+        listEl.appendChild(bulletEl);
+      });
+      body.appendChild(listEl);
+    }
+
+    if (body.childElementCount === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'generated-empty';
+      empty.textContent = 'No detail provided.';
+      body.appendChild(empty);
+    }
+
+    details.appendChild(body);
+    list.appendChild(details);
+  });
+
+  card.appendChild(list);
+  return card;
+}
+
 function renderReportBlock(module, block, context) {
   if (block?.errorMessage) {
     return buildReportBlockErrorCard(block, block.errorMessage);
@@ -4826,6 +5490,12 @@ function renderReportBlock(module, block, context) {
         return renderReportSourceListBlock(block);
       case 'kpiRow':
         return renderReportKpiRowBlock(block);
+      case 'insightGrid':
+        return renderReportInsightGridBlock(block);
+      case 'scenarioCompare':
+        return renderReportScenarioCompareBlock(block);
+      case 'accordion':
+        return renderReportAccordionBlock(block);
       default:
         return buildReportBlockErrorCard(block, `Unsupported report block type \"${block?.type || 'unknown'}\".`);
     }
@@ -4908,6 +5578,14 @@ function renderEducationModule(module) {
 
   grid.appendChild(buildEducationTopicCard(module, education));
   grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || ''));
+  const metricsCard = buildEducationMetricsCard(education);
+  if (metricsCard) {
+    grid.appendChild(metricsCard);
+  }
+  const stepsCard = buildEducationStepsCard(education);
+  if (stepsCard) {
+    grid.appendChild(stepsCard);
+  }
   grid.appendChild(buildEducationVisualsCard(module, education));
   grid.appendChild(buildEducationSectionsCard(education));
 

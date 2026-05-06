@@ -96,6 +96,8 @@ Prefer up to 2 bar charts:
 
 Use the exact bucket subtotals and summary totals from `outputsBucketed`.
 
+If a chart is useful, add chart `subtitle`, `display.valueFormat = "currency"`, and 1 to 2 `insights` that explain the client-facing meaning. Do not add decorative charts.
+
 ## Notes Rules
 Keep NOTES concise and call-friendly.
 Include:
@@ -110,3 +112,13 @@ Include:
 - Omit `generated.assumptions` unless Gerry explicitly says `override assumptions`.
 - Omit `generated.outputs`.
 - Omit unrelated keys such as `report`, `education`, `mortgageInputs`, `loanInputs`, and `pensionInputs`.
+
+## Good Output Looks Like
+- Bucket subtotals reconcile to gross assets, liabilities, and net worth.
+- Liquidity and longevity are framed as financial jobs, not just categories.
+- Any chart reinforces the bucket story without replacing the detailed table.
+
+## Avoid
+- Guessing age or expenditure.
+- Hiding uncertain or concentrated assets inside liquidity.
+- Extra report or education structures for a PBS module.

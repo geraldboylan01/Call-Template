@@ -80,3 +80,18 @@ For this playbook, do not emit:
 - `generated.loanInputs`
 
 The app computes the repeatable mortgage outputs after apply.
+
+## Rendering Expectations
+- The runtime will render payment structure, outputs, and charts from the mortgage engine after the payload is applied.
+- Keep the payload to `generated.mortgageInputs` plus a concise screen-share summary.
+- If Gerry wants affordability teaching or a narrative tradeoff report, create a separate Education or Report module rather than mixing block structures into this engine module.
+
+## Good Output Looks Like
+- Balance, rate, start date, term/end date, repayment type, and overpayments are cleanly parsed.
+- Placeholders are limited and clearly identified in NOTES.
+- Summary wording explains the scenario without overstating certainty.
+
+## Avoid
+- Interest-only structures, unless the runtime explicitly supports them in future.
+- Fake amortisation tables or charts.
+- Loan wording for a housing mortgage module.

@@ -85,3 +85,18 @@ For this playbook, do not emit:
 - `generated.mortgageInputs`
 
 The app computes the repeatable loan outputs after apply.
+
+## Rendering Expectations
+- The runtime will render assumptions, repayment outputs, and charts from the loan engine after the payload is applied.
+- Keep the payload to `generated.loanInputs` plus a concise screen-share summary.
+- If Gerry wants a teaching module about borrowing tradeoffs, create a separate Education or Report module instead of mixing block structures into this engine module.
+
+## Good Output Looks Like
+- The module uses `generated.loanInputs`, not `generated.mortgageInputs`.
+- Summary wording clearly uses loan language.
+- Placeholders are limited and called out in NOTES.
+
+## Avoid
+- Housing-mortgage language unless Gerry explicitly says the loan is secured on a property.
+- Fake repayment tables or charts.
+- Extra Report or Education keys in the same engine payload.

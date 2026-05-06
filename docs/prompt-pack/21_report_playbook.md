@@ -38,6 +38,9 @@ This style should still work:
 - `checklist`
 - `sourceList`
 - `kpiRow`
+- `insightGrid`
+- `scenarioCompare`
+- `accordion`
 
 ## Canonical Block Shapes
 - `callout`
@@ -72,8 +75,20 @@ This style should still work:
   "type": "chart",
   "chart": {
     "title": "Example chart",
+    "subtitle": "Why this chart matters",
     "type": "bar",
     "labels": ["A", "B"],
+    "display": {
+      "variant": "wide",
+      "valueFormat": "currency",
+      "yAxisTitle": "Amount"
+    },
+    "annotations": [
+      { "label": "Key point", "xLabel": "B", "yValue": 20, "tone": "warning", "body": "Short explanation" }
+    ],
+    "insights": [
+      { "label": "Main read", "value": "Higher", "detail": "Short client interpretation" }
+    ],
     "datasets": [
       { "label": "Value", "data": [10, 20] }
     ]
@@ -148,15 +163,63 @@ This style should still work:
 }
 ```
 
+- `insightGrid`
+
+```json
+{
+  "type": "insightGrid",
+  "title": "Executive picture",
+  "layout": "featured",
+  "items": [
+    { "label": "Main signal", "value": "Moderate", "detail": "Why it matters", "tone": "warning", "featured": true }
+  ]
+}
+```
+
+- `scenarioCompare`
+
+```json
+{
+  "type": "scenarioCompare",
+  "title": "Scenario comparison",
+  "scenarios": [
+    {
+      "label": "Base case",
+      "summary": "Short scenario summary",
+      "tone": "positive",
+      "metrics": [
+        { "label": "Outcome", "value": "EUR 120,000", "detail": "Context" }
+      ],
+      "callout": "Presenter interpretation"
+    }
+  ]
+}
+```
+
+- `accordion`
+
+```json
+{
+  "type": "accordion",
+  "title": "What needs verifying",
+  "items": [
+    { "title": "Assumption", "markdown": "Short explanation", "defaultOpen": true }
+  ]
+}
+```
+
 ## Layout Rules
 - Do not force the same opener every time.
 - Choose the opener based on the source:
   - metric-heavy -> `kpiRow`
+  - insight-heavy -> `insightGrid`
+  - option-heavy -> `scenarioCompare`
   - recommendation-heavy -> `callout`
   - narrative-heavy -> `markdown`
 - If the source contains a process, decision path, or phased workflow, prefer one hero `svg` or `timeline`.
 - If the source contains real numbers worth visualising, use 1 to 2 charts.
 - If the source includes tables, convert at least one useful table block when the table adds clarity.
+- Use `accordion` for verification detail, assumptions, or caveats that should be available but not dominate the live call.
 - Use `checklist` and `sourceList` when they genuinely add value, not as forced filler.
 - For `sourceList`, include direct URLs for items you include. If the exact URL is not known, omit that source item rather than outputting a non-clickable label.
 - Target 6 to 12 blocks for most modules.
@@ -166,6 +229,22 @@ This style should still work:
 - Alternate dense text with more scannable blocks.
 - Avoid long runs of markdown-only blocks.
 - Never invent numbers or fabricate structure that is not supported by the source.
+- Use chart annotations and insights to make charts explainable, not decorative.
+- Use `scenarioCompare` only when there are genuinely distinct scenarios, routes, or tradeoffs.
+
+## Good Output Looks Like
+- The report opens with a clear hierarchy of the most important point.
+- Charts have an interpretation layer, not just plotted numbers.
+- Dense source content is paced into readable blocks.
+- Caveats and verification points are present but progressively disclosed.
+- Every block has a job in the client conversation.
+
+## Avoid
+- A rigid template that starts every report with the same block sequence.
+- Decorative KPI cards with vague labels.
+- Scenario comparisons that merely repeat the same facts.
+- Long markdown blocks copied from the source with no synthesis.
+- Chart data that is invented or visually impressive but unsupported.
 
 ## Runtime Rules
 - `generated.report` supports `title`, `rawMarkdown`, and `blocks`.

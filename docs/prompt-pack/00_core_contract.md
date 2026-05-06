@@ -67,6 +67,8 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - `type` must be exactly `bar` or `line`.
   - All dataset values must be numbers only.
   - No currency symbols, commas, percentages, or numeric strings in dataset values.
+  - Use optional chart `subtitle`, `display`, `annotations`, and `insights` only as structured metadata.
+  - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
 
 ## Runtime-Safe Module Boundaries
 - `generated.pensionInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
@@ -74,7 +76,7 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Do not invent the engine's outputs, tables, or charts unless Gerry explicitly asks for a separate explanatory module.
 - `generated.outputsBucketed` is used by the PBS playbook.
   - The AI must classify items and calculate the displayed totals for PBS.
-- `generated.education` is for SVG-first explainer modules.
+- `generated.education` is for structured explainer modules with optional metrics, steps, SVG scenes, and charts.
 - `generated.report` is for block-rendered report modules.
 
 ## Irish Tax Overlay Rule

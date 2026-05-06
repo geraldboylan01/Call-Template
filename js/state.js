@@ -67,10 +67,151 @@ function normalizeChartDataset(dataset, index) {
     })
     : [];
 
-  return {
+  const normalized = {
     label,
     data
   };
+
+  [
+    'backgroundColor',
+    'borderColor',
+    'pointBackgroundColor',
+    'pointBorderColor'
+  ].forEach((key) => {
+    if (typeof dataset?.[key] === 'string' && dataset[key].trim()) {
+      normalized[key] = dataset[key].trim();
+    }
+  });
+
+  return normalized;
+}
+
+function normalizeChartDisplay(display) {
+  if (!display || typeof display !== 'object' || Array.isArray(display)) {
+    return null;
+  }
+
+  const normalized = {};
+  const variant = typeof display.variant === 'string'
+    ? display.variant.trim().toLowerCase()
+    : '';
+  if (variant === 'hero' || variant === 'compact' || variant === 'wide') {
+    normalized.variant = variant;
+  }
+
+  const valueFormat = typeof display.valueFormat === 'string'
+    ? display.valueFormat.trim().toLowerCase()
+    : '';
+  if (valueFormat === 'currency' || valueFormat === 'percent' || valueFormat === 'number') {
+    normalized.valueFormat = valueFormat;
+  }
+
+  ['xAxisTitle', 'yAxisTitle', 'highlightDataset'].forEach((key) => {
+    if (typeof display[key] === 'string' && display[key].trim()) {
+      normalized[key] = display[key].trim();
+    }
+  });
+
+  if (typeof display.showLegend === 'boolean') {
+    normalized.showLegend = display.showLegend;
+  }
+
+  if (typeof display.stacked === 'boolean') {
+    normalized.stacked = display.stacked;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function normalizeTone(value) {
+  const tone = typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    : '';
+  return tone || '';
+}
+
+function normalizeChartAnnotations(annotations) {
+  if (!Array.isArray(annotations)) {
+    return [];
+  }
+
+  return annotations
+    .filter((annotation) => annotation && typeof annotation === 'object' && !Array.isArray(annotation))
+    .map((annotation, index) => {
+      const normalized = {
+        id: typeof annotation.id === 'string' && annotation.id.trim()
+          ? annotation.id.trim()
+          : `annotation-${index + 1}`,
+        label: typeof annotation.label === 'string' && annotation.label.trim()
+          ? annotation.label.trim()
+          : `Annotation ${index + 1}`
+      };
+
+      if (typeof annotation.body === 'string' && annotation.body.trim()) {
+        normalized.body = annotation.body.trim();
+      }
+
+      if (typeof annotation.xLabel === 'string' && annotation.xLabel.trim()) {
+        normalized.xLabel = annotation.xLabel.trim();
+      }
+
+      const yValue = Number(annotation.yValue);
+      if (Number.isFinite(yValue)) {
+        normalized.yValue = yValue;
+      }
+
+      const tone = normalizeTone(annotation.tone);
+      if (tone) {
+        normalized.tone = tone;
+      }
+
+      return normalized;
+    });
+}
+
+function normalizeInsightItems(items, fallbackPrefix = 'insight') {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+    .map((item, index) => {
+      const normalized = {
+        id: typeof item.id === 'string' && item.id.trim()
+          ? item.id.trim()
+          : `${fallbackPrefix}-${index + 1}`,
+        label: typeof item.label === 'string' && item.label.trim()
+          ? item.label.trim()
+          : (typeof item.title === 'string' && item.title.trim()
+            ? item.title.trim()
+            : `Insight ${index + 1}`)
+      };
+
+      if (typeof item.value === 'number' && Number.isFinite(item.value)) {
+        normalized.value = String(item.value);
+      } else if (typeof item.value === 'string' && item.value.trim()) {
+        normalized.value = item.value.trim();
+      }
+
+      const detail = typeof item.detail === 'string' && item.detail.trim()
+        ? item.detail.trim()
+        : (typeof item.body === 'string' && item.body.trim() ? item.body.trim() : '');
+      if (detail) {
+        normalized.detail = detail;
+      }
+
+      const tone = normalizeTone(item.tone);
+      if (tone) {
+        normalized.tone = tone;
+      }
+
+      if (item.featured === true) {
+        normalized.featured = true;
+      }
+
+      return normalized;
+    });
 }
 
 function normalizeCharts(charts) {
@@ -80,19 +221,42 @@ function normalizeCharts(charts) {
 
   return charts
     .filter((chart) => chart && typeof chart === 'object')
-    .map((chart, index) => ({
-      id: typeof chart.id === 'string' && chart.id.trim()
-        ? chart.id
-        : `chart-${index + 1}`,
-      title: typeof chart.title === 'string' ? chart.title : `Chart ${index + 1}`,
-      type: chart.type === 'bar' ? 'bar' : 'line',
-      labels: Array.isArray(chart.labels)
-        ? chart.labels.map((label) => String(label ?? ''))
-        : [],
-      datasets: Array.isArray(chart.datasets)
-        ? chart.datasets.map((dataset, datasetIndex) => normalizeChartDataset(dataset, datasetIndex))
-        : []
-    }));
+    .map((chart, index) => {
+      const normalized = {
+        id: typeof chart.id === 'string' && chart.id.trim()
+          ? chart.id
+          : `chart-${index + 1}`,
+        title: typeof chart.title === 'string' ? chart.title : `Chart ${index + 1}`,
+        type: chart.type === 'bar' ? 'bar' : 'line',
+        labels: Array.isArray(chart.labels)
+          ? chart.labels.map((label) => String(label ?? ''))
+          : [],
+        datasets: Array.isArray(chart.datasets)
+          ? chart.datasets.map((dataset, datasetIndex) => normalizeChartDataset(dataset, datasetIndex))
+          : []
+      };
+
+      if (typeof chart.subtitle === 'string' && chart.subtitle.trim()) {
+        normalized.subtitle = chart.subtitle.trim();
+      }
+
+      const display = normalizeChartDisplay(chart.display);
+      if (display) {
+        normalized.display = display;
+      }
+
+      const annotations = normalizeChartAnnotations(chart.annotations);
+      if (annotations.length > 0) {
+        normalized.annotations = annotations;
+      }
+
+      const insights = normalizeInsightItems(chart.insights, 'chart-insight');
+      if (insights.length > 0) {
+        normalized.insights = insights;
+      }
+
+      return normalized;
+    });
 }
 
 function cloneEducationSpecValue(value, depth = 0) {
@@ -139,18 +303,30 @@ function normalizeEducationSections(sections) {
 
   return sections
     .filter((section) => section && typeof section === 'object' && !Array.isArray(section))
-    .map((section, index) => ({
-      id: typeof section.id === 'string' && section.id.trim()
-        ? section.id.trim()
-        : `section-${index + 1}`,
-      title: typeof section.title === 'string' && section.title.trim()
-        ? section.title.trim()
-        : `Section ${index + 1}`,
-      bodyHtml: typeof section.bodyHtml === 'string' ? section.bodyHtml : '',
-      bullets: Array.isArray(section.bullets)
-        ? section.bullets.map((bullet) => String(bullet ?? '')).filter((bullet) => bullet.trim().length > 0)
-        : []
-    }));
+    .map((section, index) => {
+      const normalized = {
+        id: typeof section.id === 'string' && section.id.trim()
+          ? section.id.trim()
+          : `section-${index + 1}`,
+        title: typeof section.title === 'string' && section.title.trim()
+          ? section.title.trim()
+          : `Section ${index + 1}`,
+        bodyHtml: typeof section.bodyHtml === 'string' ? section.bodyHtml : '',
+        bullets: Array.isArray(section.bullets)
+          ? section.bullets.map((bullet) => String(bullet ?? '')).filter((bullet) => bullet.trim().length > 0)
+          : []
+      };
+
+      if (typeof section.whyItMatters === 'string' && section.whyItMatters.trim()) {
+        normalized.whyItMatters = section.whyItMatters.trim();
+      }
+
+      if (typeof section.defaultOpen === 'boolean') {
+        normalized.defaultOpen = section.defaultOpen;
+      }
+
+      return normalized;
+    });
 }
 
 function normalizeEducationVisuals(visuals) {
@@ -212,6 +388,39 @@ function normalizeEducationReferences(references) {
     }));
 }
 
+function normalizeEducationSteps(steps) {
+  if (!Array.isArray(steps)) {
+    return [];
+  }
+
+  return steps
+    .filter((step) => step && typeof step === 'object' && !Array.isArray(step))
+    .map((step, index) => {
+      const normalized = {
+        id: typeof step.id === 'string' && step.id.trim()
+          ? step.id.trim()
+          : `step-${index + 1}`,
+        title: typeof step.title === 'string' && step.title.trim()
+          ? step.title.trim()
+          : `Step ${index + 1}`,
+        bodyHtml: typeof step.bodyHtml === 'string' ? step.bodyHtml : '',
+        bullets: Array.isArray(step.bullets)
+          ? step.bullets.map((bullet) => String(bullet ?? '')).filter((bullet) => bullet.trim())
+          : []
+      };
+
+      if (typeof step.kicker === 'string' && step.kicker.trim()) {
+        normalized.kicker = step.kicker.trim();
+      }
+
+      if (typeof step.focus === 'string' && step.focus.trim()) {
+        normalized.focus = step.focus.trim();
+      }
+
+      return normalized;
+    });
+}
+
 function normalizeEducation(education) {
   if (!education || typeof education !== 'object' || Array.isArray(education)) {
     return null;
@@ -220,6 +429,8 @@ function normalizeEducation(education) {
   const normalized = {
     topic: typeof education.topic === 'string' ? education.topic : '',
     sections: normalizeEducationSections(education.sections),
+    metrics: normalizeInsightItems(education.metrics, 'education-metric'),
+    steps: normalizeEducationSteps(education.steps),
     visuals: normalizeEducationVisuals(education.visuals),
     references: normalizeEducationReferences(education.references)
   };

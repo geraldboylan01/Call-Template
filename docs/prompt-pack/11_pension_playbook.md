@@ -120,3 +120,18 @@ For this playbook, do not emit:
 - `generated.education`
 
 The app computes the repeatable pension outputs after apply.
+
+## Rendering Expectations
+- The runtime will render assumptions, outputs, and charts from the pension engine after the payload is applied.
+- Keep AI output focused on clean inputs and a short explanation of the selected mode.
+- Do not try to create artifact blocks inside the pension payload. If Gerry wants a separate educational explanation, create a separate Education or Report module.
+
+## Good Output Looks Like
+- Inputs are complete enough for the engine to run.
+- Mode choice is obvious from the summary and NOTES.
+- Placeholder targets or unknown pension values are clearly labelled.
+
+## Avoid
+- Fake projection tables or charts.
+- Mixing `generated.report` or `generated.education` into the pension engine module.
+- Presenting future values as promises.

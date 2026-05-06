@@ -67,6 +67,8 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - `type` must be exactly `bar` or `line`.
   - All dataset values must be numbers only.
   - No currency symbols, commas, percentages, or numeric strings in dataset values.
+  - Use optional chart `subtitle`, `display`, `annotations`, and `insights` only as structured metadata.
+  - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
 
 ## Runtime-Safe Module Boundaries
 - `generated.pensionInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
@@ -74,7 +76,7 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Do not invent the engine's outputs, tables, or charts unless Gerry explicitly asks for a separate explanatory module.
 - `generated.outputsBucketed` is used by the PBS playbook.
   - The AI must classify items and calculate the displayed totals for PBS.
-- `generated.education` is for SVG-first explainer modules.
+- `generated.education` is for structured explainer modules with optional metrics, steps, SVG scenes, and charts.
 - `generated.report` is for block-rendered report modules.
 
 ## Irish Tax Overlay Rule
@@ -160,7 +162,7 @@ Use the Protection playbook when Gerry says things like:
   - repeatable retirement maths -> Pension
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
-  - SVG-first topic explanation -> Education
+  - structured topic explanation -> Education
   - long-form report transformation -> Report
   - protection review -> Protection
 - If Gerry asks for a JS-engine module and a separate explainer, prefer the JS-engine playbook first.
@@ -256,6 +258,8 @@ Prefer up to 2 bar charts:
 - `Gross assets vs liabilities vs net worth`
 
 Use the exact bucket subtotals and summary totals from `outputsBucketed`.
+
+If a chart is useful, add chart `subtitle`, `display.valueFormat = "currency"`, and 1 to 2 `insights` that explain the client-facing meaning. Do not add decorative charts.
 
 ### Notes Rules
 Keep NOTES concise and call-friendly.
@@ -555,12 +559,12 @@ For this playbook, do not emit:
 The app computes the repeatable loan outputs after apply.
 
 ## Education Playbook
-Use this playbook when Gerry says `use the education playbook`, asks to explain a topic visually, or wants a client-friendly SVG-first learning module.
+Use this playbook when Gerry says `use the education playbook`, asks to explain a topic visually, or wants a client-friendly learning module.
 
 ### Job
-Turn a dictated topic into a clear explainer module with strong visual pacing.
+Turn a dictated topic into a clear explainer module with strong visual pacing, progressive explanation, and client-friendly teaching structure.
 
-Prefer one hero visual scene and, only if helpful, one support visual. Do not fill the module with safe but repetitive visuals.
+Prefer one strong teaching route over a pile of generic sections. Use metrics, steps, charts, and SVG scenes only when they improve comprehension.
 
 ### Gerry's Live Prompt Can Stay Short
 This style should still work:
@@ -576,6 +580,8 @@ This style should still work:
     "education": {
       "topic": "Topic",
       "audience": "Optional audience",
+      "metrics": [],
+      "steps": [],
       "sections": [],
       "visuals": [],
       "references": []
@@ -590,8 +596,19 @@ This style should still work:
 
 ### Optional Education Fields
 - `generated.education.audience`
+- `generated.education.metrics`
+- `generated.education.steps`
 - `generated.education.visuals`
 - `generated.education.references`
+
+### Artifact Capabilities
+Use these selectively:
+- `metrics`: 2 to 4 compact teaching anchors such as caps, thresholds, dependencies, or plain-English signals.
+- `steps`: 3 to 5 step-through panels when the topic benefits from progressive explanation.
+- `sections[*].whyItMatters`: one concise reason the client should care about that section.
+- chart `annotations` and `insights`: only when there are real numbers worth calling out.
+
+Do not force all of these into every module.
 
 ### Section Rules
 - Use 3 to 5 sections for most topics.
@@ -600,8 +617,22 @@ This style should still work:
   - `title`
   - `bodyHtml`
   - optional `bullets`
+  - optional `whyItMatters`
+  - optional `defaultOpen`
 - Keep sections teachable, not essay-like.
 - No advisor-only notes inside sections.
+
+### Step Rules
+- Use `steps` when the teaching path matters: eligibility checks, sequencing, cause/effect, or layered concepts.
+- Each step may include:
+  - `id`
+  - `kicker`
+  - `title`
+  - `bodyHtml`
+  - `bullets`
+  - `focus`
+- Keep each step short enough to discuss while screen-sharing.
+- Do not duplicate the same text in `steps` and `sections`; use steps for the live walkthrough and sections for supporting explanation.
 
 ### Supported Visual Types
 - `svg`
@@ -629,6 +660,7 @@ Do not add a chart just because charts are available. If there are no real numbe
 - Default to 1 hero scene.
 - Add at most 1 support scene unless Gerry clearly asks for more.
 - Keep `generated.summaryHtml` as the nearby takeaway above the scenes.
+- If a chart is the hero, use `chart.subtitle`, `chart.display`, `chart.annotations`, and `chart.insights` to explain why the plotted number matters.
 
 ### Visual Quality Rules
 - Prefer 1 hero visual and 0 to 1 support visuals.
@@ -645,6 +677,20 @@ Do not add a chart just because charts are available. If there are no real numbe
   - compare options
   - show sequence
   - clarify a decision path
+
+### Good Output Looks Like
+- The first screen tells the client what they are learning and where to look.
+- Metrics, if used, anchor the conversation in a few memorable signals.
+- Steps, if used, create a natural presenter rhythm.
+- Visuals are legible from a laptop screen and have short labels.
+- Written sections explain implications, not implementation details.
+
+### Avoid
+- Generic explainers with five same-looking cards and no hierarchy.
+- Tall process maps when a compact timeline or decision tree would do.
+- Charts with no real numeric teaching value.
+- Decorative visuals that do not change the client's understanding.
+- Fake URLs, fake citations, or current-rule claims without a reliable source.
 
 ### References Rules
 - Each reference may include:
@@ -721,6 +767,9 @@ This style should still work:
 - `checklist`
 - `sourceList`
 - `kpiRow`
+- `insightGrid`
+- `scenarioCompare`
+- `accordion`
 
 ### Canonical Block Shapes
 - `callout`
@@ -755,12 +804,69 @@ This style should still work:
   "type": "chart",
   "chart": {
     "title": "Example chart",
+    "subtitle": "Why this chart matters",
     "type": "bar",
     "labels": ["A", "B"],
+    "display": {
+      "variant": "wide",
+      "valueFormat": "currency",
+      "yAxisTitle": "Amount"
+    },
+    "annotations": [
+      { "label": "Key point", "xLabel": "B", "yValue": 20, "tone": "warning", "body": "Short explanation" }
+    ],
+    "insights": [
+      { "label": "Main read", "value": "Higher", "detail": "Short client interpretation" }
+    ],
     "datasets": [
       { "label": "Value", "data": [10, 20] }
     ]
   }
+}
+```
+
+- `insightGrid`
+
+```json
+{
+  "type": "insightGrid",
+  "title": "Executive picture",
+  "layout": "featured",
+  "items": [
+    { "label": "Main signal", "value": "Moderate", "detail": "Why it matters", "tone": "warning", "featured": true }
+  ]
+}
+```
+
+- `scenarioCompare`
+
+```json
+{
+  "type": "scenarioCompare",
+  "title": "Scenario comparison",
+  "scenarios": [
+    {
+      "label": "Base case",
+      "summary": "Short scenario summary",
+      "tone": "positive",
+      "metrics": [
+        { "label": "Outcome", "value": "EUR 120,000", "detail": "Context" }
+      ],
+      "callout": "Presenter interpretation"
+    }
+  ]
+}
+```
+
+- `accordion`
+
+```json
+{
+  "type": "accordion",
+  "title": "What needs verifying",
+  "items": [
+    { "title": "Assumption", "markdown": "Short explanation", "defaultOpen": true }
+  ]
 }
 ```
 
@@ -835,11 +941,14 @@ This style should still work:
 - Do not force the same opener every time.
 - Choose the opener based on the source:
   - metric-heavy -> `kpiRow`
+  - insight-heavy -> `insightGrid`
+  - option-heavy -> `scenarioCompare`
   - recommendation-heavy -> `callout`
   - narrative-heavy -> `markdown`
 - If the source contains a process, decision path, or phased workflow, prefer one hero `svg` or `timeline`.
 - If the source contains real numbers worth visualising, use 1 to 2 charts.
 - If the source includes tables, convert at least one useful table block when the table adds clarity.
+- Use `accordion` for verification detail, assumptions, or caveats that should be available but not dominate the live call.
 - Use `checklist` and `sourceList` when they genuinely add value, not as forced filler.
 - Target 6 to 12 blocks for most modules.
 
@@ -848,6 +957,22 @@ This style should still work:
 - Alternate dense text with more scannable blocks.
 - Avoid long runs of markdown-only blocks.
 - Never invent numbers or fabricate structure that is not supported by the source.
+- Use chart annotations and insights to make charts explainable, not decorative.
+- Use `scenarioCompare` only when there are genuinely distinct scenarios, routes, or tradeoffs.
+
+### Good Output Looks Like
+- The report opens with a clear hierarchy of the most important point.
+- Charts have an interpretation layer, not just plotted numbers.
+- Dense source content is paced into readable blocks.
+- Caveats and verification points are present but progressively disclosed.
+- Every block has a job in the client conversation.
+
+### Avoid
+- A rigid template that starts every report with the same block sequence.
+- Decorative KPI cards with vague labels.
+- Scenario comparisons that merely repeat the same facts.
+- Long markdown blocks copied from the source with no synthesis.
+- Chart data that is invented or visually impressive but unsupported.
 
 ### Runtime Rules
 - `generated.report` supports `title`, `rawMarkdown`, and `blocks`.
@@ -935,11 +1060,13 @@ Do not turn it into a mortgage protection module unless Gerry explicitly asks fo
 
 ### Recommended Block Pattern
 - one hero `kpiRow` for the key number set
+- optionally one `insightGrid` if the client needs a concise executive picture
 - one short `markdown` intro for income protection
 - one `chart` for premium or relief comparison when numbers exist
 - one short `markdown` intro for serious illness
 - one hero or standard `kpiRow` for the support-years framing
 - one `chart` for 1-year vs 2-year vs 3-year support
+- optionally one `scenarioCompare` if comparing cover levels or support-year options
 - one `callout` for employer or contract checks
 - one final `callout` for priority or what to consider
 

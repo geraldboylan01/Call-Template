@@ -196,6 +196,7 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 - `session.html` compatibility redirect for older links
 - `dist/` the only GitHub Pages deploy artifact
 - `docs/prompt-pack/` zero-token ChatGPT project prompt pack, including the assembled `MASTER_PROJECT_PROMPT.md`
+- `docs/artifact-module-upgrade.md` notes for the upgraded structured artifact module capabilities
 - `styles/landing.css` landing page styling
 - `styles/base.css` advisor app styling
 - `js/landing.js` landing page interactions and lead form submission
@@ -212,3 +213,4 @@ The repo now includes a prompt-only ChatGPT project pack at `docs/prompt-pack/`.
 - Upload `docs/prompt-pack/irish_tax_ai_cheat_sheet_v1.1.md` alongside it if you want Irish tax scenarios to use the workbook logic directly.
 - Use the component files in the same folder when you want to tune individual playbooks without changing the app.
 - Use `docs/prompt-pack/90_examples_and_regression_prompts.md` for shadow testing before replacing the live project prompt.
+- Use `docs/prompt-pack/91_artifact_payload_examples.md` for representative Dev Panel payloads that exercise the artifact-style renderer.

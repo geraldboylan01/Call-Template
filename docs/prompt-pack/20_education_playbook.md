@@ -1,11 +1,11 @@
 # Education Playbook
 
-Use this playbook when Gerry says `use the education playbook`, asks to explain a topic visually, or wants a client-friendly SVG-first learning module.
+Use this playbook when Gerry says `use the education playbook`, asks to explain a topic visually, or wants a client-friendly learning module.
 
 ## Job
-Turn a dictated topic into a clear explainer module with strong visual pacing.
+Turn a dictated topic into a clear explainer module with strong visual pacing, progressive explanation, and client-friendly teaching structure.
 
-Prefer one hero visual scene and, only if helpful, one support visual. Do not fill the module with safe but repetitive visuals.
+Prefer one strong teaching route over a pile of generic sections. Use metrics, steps, charts, and SVG scenes only when they improve comprehension.
 
 ## Gerry's Live Prompt Can Stay Short
 This style should still work:
@@ -22,6 +22,8 @@ This style should still work:
     "education": {
       "topic": "Topic",
       "audience": "Optional audience",
+      "metrics": [],
+      "steps": [],
       "sections": [],
       "visuals": [],
       "references": []
@@ -36,8 +38,19 @@ This style should still work:
 
 ## Optional Education Fields
 - `generated.education.audience`
+- `generated.education.metrics`
+- `generated.education.steps`
 - `generated.education.visuals`
 - `generated.education.references`
+
+## Artifact Capabilities
+Use these selectively:
+- `metrics`: 2 to 4 compact teaching anchors such as caps, thresholds, dependencies, or plain-English signals.
+- `steps`: 3 to 5 step-through panels when the topic benefits from progressive explanation.
+- `sections[*].whyItMatters`: one concise reason the client should care about that section.
+- chart `annotations` and `insights`: only when there are real numbers worth calling out.
+
+Do not force all of these into every module.
 
 ## Section Rules
 - Use 3 to 5 sections for most topics.
@@ -46,8 +59,22 @@ This style should still work:
   - `title`
   - `bodyHtml`
   - optional `bullets`
+  - optional `whyItMatters`
+  - optional `defaultOpen`
 - Keep sections teachable, not essay-like.
 - No advisor-only notes inside sections.
+
+## Step Rules
+- Use `steps` when the teaching path matters: eligibility checks, sequencing, cause/effect, or layered concepts.
+- Each step may include:
+  - `id`
+  - `kicker`
+  - `title`
+  - `bodyHtml`
+  - `bullets`
+  - `focus`
+- Keep each step short enough to discuss while screen-sharing.
+- Do not duplicate the same text in `steps` and `sections`; use steps for the live walkthrough and sections for supporting explanation.
 
 ## Supported Visual Types
 - `svg`
@@ -75,6 +102,7 @@ Do not add a chart just because charts are available. If there are no real numbe
 - Default to 1 hero scene.
 - Add at most 1 support scene unless Gerry clearly asks for more.
 - Keep `generated.summaryHtml` as the nearby takeaway above the scenes.
+- If a chart is the hero, use `chart.subtitle`, `chart.display`, `chart.annotations`, and `chart.insights` to explain why the plotted number matters.
 
 ## Visual Quality Rules
 - Prefer 1 hero visual and 0 to 1 support visuals.
@@ -91,6 +119,20 @@ Do not add a chart just because charts are available. If there are no real numbe
   - compare options
   - show sequence
   - clarify a decision path
+
+## Good Output Looks Like
+- The first screen tells the client what they are learning and where to look.
+- Metrics, if used, anchor the conversation in a few memorable signals.
+- Steps, if used, create a natural presenter rhythm.
+- Visuals are legible from a laptop screen and have short labels.
+- Written sections explain implications, not implementation details.
+
+## Avoid
+- Generic explainers with five same-looking cards and no hierarchy.
+- Tall process maps when a compact timeline or decision tree would do.
+- Charts with no real numeric teaching value.
+- Decorative visuals that do not change the client's understanding.
+- Fake URLs, fake citations, or current-rule claims without a reliable source.
 
 ## References Rules
 - Each reference may include:

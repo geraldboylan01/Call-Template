@@ -30,6 +30,8 @@ This folder contains the zero-token prompt pack for the ChatGPT project workflow
   - the tax logic source file to upload alongside the master prompt
 - `90_examples_and_regression_prompts.md`
   - shadow test prompts and pass criteria
+- `91_artifact_payload_examples.md`
+  - representative JSON payloads for the upgraded artifact-style module capabilities
 
 ## Recommended Upload / Paste Strategy
 For the live ChatGPT project, use `MASTER_PROJECT_PROMPT.md`.
@@ -68,6 +70,6 @@ The assembled master prompt should include these files in this order:
 - Tax scenarios use the uploaded cheat sheet as a logic overlay without forcing a separate tax playbook.
 
 ## Notes
-- This prompt pack does not change the app code.
+- The current prompt pack now targets the upgraded structured artifact renderer in the app.
 - The prompt pack corrects stale documentation where needed, especially the loan input path and unsupported report meta fields.
 - The tax cheat sheet is now an explicit uploaded project asset, not an implicit memory from older instructions.
