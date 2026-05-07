@@ -49,6 +49,12 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - If a field is not part of the active playbook contract, omit it.
 
 ## Shared JSON Rules
+- Client-facing only:
+  - Everything inside `SECTION 2 - DEV PANEL JSON` is rendered in the app and may be seen by the client.
+  - Do not include advisor-only, adviser-only, presenter-only, or Gerry-only framing inside JSON content.
+  - Avoid headings and labels such as `Practical adviser framing`, `Advisor notes`, `Presenter interpretation`, `For Gerry`, `talk track`, or `internal note`.
+  - Rewrite those ideas as client-facing headings, for example `What this means for you`, `Decision point`, `Why this matters`, `Important caveat`, or `Next step`.
+  - It is acceptable to include assumptions, caveats, verification points, and next steps, but they must be worded for the client, not as instructions to the adviser.
 - `moduleId`:
   - If Gerry says `new module`, omit `moduleId`.
   - If Gerry says `update current module`, omit `moduleId`.
@@ -737,6 +743,8 @@ Turn longer content into a block-rendered module that is client-friendly, struct
 
 Prefer a strong opener and one hero visual idea over a rigid, repetitive block sequence.
 
+The module is client-facing only. Every report block, title, label, callout, checklist, accordion item, and chart insight should read as something suitable to show directly to the client during or after the call.
+
 ### Gerry's Live Prompt Can Stay Short
 This style should still work:
 
@@ -852,7 +860,7 @@ This style should still work:
       "metrics": [
         { "label": "Outcome", "value": "EUR 120,000", "detail": "Context" }
       ],
-      "callout": "Presenter interpretation"
+      "callout": "Client-facing interpretation"
     }
   ]
 }
@@ -959,13 +967,14 @@ This style should still work:
 - Never invent numbers or fabricate structure that is not supported by the source.
 - Use chart annotations and insights to make charts explainable, not decorative.
 - Use `scenarioCompare` only when there are genuinely distinct scenarios, routes, or tradeoffs.
+- If the source contains adviser notes, research notes, or suggested framing, translate them into client-facing implications before placing them in a block.
 
 ### Good Output Looks Like
 - The report opens with a clear hierarchy of the most important point.
 - Charts have an interpretation layer, not just plotted numbers.
 - Dense source content is paced into readable blocks.
 - Caveats and verification points are present but progressively disclosed.
-- Every block has a job in the client conversation.
+- Every block has a job in the client conversation and can be read by the client without exposing internal adviser guidance.
 
 ### Avoid
 - A rigid template that starts every report with the same block sequence.
@@ -973,6 +982,8 @@ This style should still work:
 - Scenario comparisons that merely repeat the same facts.
 - Long markdown blocks copied from the source with no synthesis.
 - Chart data that is invented or visually impressive but unsupported.
+- Any advisor/adviser/presenter-only headings or body copy inside JSON content, including phrases like `Practical adviser framing`, `Advisor notes`, `Presenter interpretation`, `talk track`, `for the adviser`, or `for Gerry`.
+- Referring to the client in the third person when a direct client-facing version is clearer. Prefer `you`, `your plan`, and `your decision` where appropriate.
 
 ### Runtime Rules
 - `generated.report` supports `title`, `rawMarkdown`, and `blocks`.

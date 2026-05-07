@@ -262,7 +262,7 @@ Playbooks should only emit the subset they are responsible for.
       "metrics": [
         { "label": "Outcome", "value": "EUR 120,000", "detail": "Context" }
       ],
-      "callout": "Presenter interpretation"
+      "callout": "Client-facing interpretation"
     }
   ]
 }

@@ -49,6 +49,12 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - If a field is not part of the active playbook contract, omit it.
 
 ## Shared JSON Rules
+- Client-facing only:
+  - Everything inside `SECTION 2 - DEV PANEL JSON` is rendered in the app and may be seen by the client.
+  - Do not include advisor-only, adviser-only, presenter-only, or Gerry-only framing inside JSON content.
+  - Avoid headings and labels such as `Practical adviser framing`, `Advisor notes`, `Presenter interpretation`, `For Gerry`, `talk track`, or `internal note`.
+  - Rewrite those ideas as client-facing headings, for example `What this means for you`, `Decision point`, `Why this matters`, `Important caveat`, or `Next step`.
+  - It is acceptable to include assumptions, caveats, verification points, and next steps, but they must be worded for the client, not as instructions to the adviser.
 - `moduleId`:
   - If Gerry says `new module`, omit `moduleId`.
   - If Gerry says `update current module`, omit `moduleId`.

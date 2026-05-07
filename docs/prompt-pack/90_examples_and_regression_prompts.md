@@ -188,6 +188,7 @@ Checks:
 - uses `generated.report`
 - no `report.meta`
 - chooses opener based on source, not a forced template
+- no advisor/adviser/presenter-only labels or internal talk-track copy inside the JSON
 
 ### REP-2
 Prompt:
@@ -197,6 +198,7 @@ Checks:
 - includes at least one strong visual or KPI opener when justified
 - may use `insightGrid`, chart `insights`, or chart `annotations` if they improve interpretation
 - avoids filler blocks
+- rewrites any research-note or adviser-note framing into client-facing implications
 
 ### REP-3
 Prompt:

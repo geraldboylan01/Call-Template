@@ -35,7 +35,7 @@ Education fields:
 
 Report blocks:
 - `insightGrid`: executive insight cards, optionally `layout: "featured"`.
-- `scenarioCompare`: scenario cards with metrics and presenter callouts.
+- `scenarioCompare`: scenario cards with metrics and client-facing callouts.
 - `accordion`: progressive disclosure for caveats, assumptions, and verification details.
 
 ## How To Test
@@ -53,10 +53,11 @@ Report blocks:
 
 Future prompts should ask for artifact primitives by communication need, not by template:
 - Use `metrics` when a few numbers or labels anchor the topic.
-- Use `steps` when the presenter needs a guided walkthrough.
+- Use `steps` when the client needs a guided walkthrough.
 - Use chart `annotations` when one plotted point or threshold needs attention.
 - Use `insightGrid` when a report needs a strong executive picture.
 - Use `scenarioCompare` only for real scenarios or tradeoffs.
 - Use `accordion` for details that should be available but not visually dominant.
+- Treat every JSON title, label, callout, and body field as client-visible. Do not emit advisor-only labels such as `Practical adviser framing`, `Presenter interpretation`, `talk track`, or `for Gerry`.
 
 Avoid forcing every module to use all capabilities. Static summaries and simple tables are still correct when they best serve the call.
