@@ -13,8 +13,8 @@ const WORKER_BASE_URL = (() => {
 })();
 
 const DEFAULT_TIMEZONE = 'Europe/Dublin';
-const DEFAULT_LOCATION = 'Video call link to follow';
-const DEFAULT_DURATION_MINUTES = 45;
+const DEFAULT_LOCATION = 'Zoom meeting link will be created automatically';
+const DEFAULT_DURATION_MINUTES = 30;
 
 const STATUS_LABELS = {
   new: 'New',
@@ -299,7 +299,7 @@ function inferDurationMinutes(lead) {
   }
 
   const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
-  return [30, 45, 60].includes(minutes) ? minutes : DEFAULT_DURATION_MINUTES;
+  return minutes === 30 ? minutes : DEFAULT_DURATION_MINUTES;
 }
 
 function getSelectedScheduleValues(options = {}) {
@@ -348,7 +348,7 @@ function buildDefaultScheduleMessage(lead = state.selectedLead) {
     '',
     formatScheduleRange(draftLead),
     '',
-    'The calendar invite is attached. If that time works, you can add it to your calendar and reply to confirm. If it does not suit, reply with a few windows that work for you and I will suggest another option.',
+    'The calendar invite is attached and includes the Zoom link. If that time works, you can add it to your calendar and reply to confirm. If it does not suit, reply with a few windows that work for you and I will suggest another option.',
     '',
     'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',
@@ -483,8 +483,8 @@ function updateDetailActionState() {
   if (ui.leadSendScheduleButton) {
     ui.leadSendScheduleButton.disabled = busy || !hasLead;
     ui.leadSendScheduleButton.textContent = state.selectedLead?.scheduleEmailSendCount > 0
-      ? 'Resend Schedule Email'
-      : 'Send Schedule Email';
+      ? 'Create Zoom + Resend'
+      : 'Create Zoom + Send';
   }
   if (ui.leadCopyEmailButton) {
     ui.leadCopyEmailButton.disabled = busy || !hasLead;
@@ -581,7 +581,7 @@ function renderSelectedLead() {
     ui.leadScheduleTimezone.value = lead.scheduledTimezone || DEFAULT_TIMEZONE;
   }
   if (ui.leadScheduleLocation) {
-    ui.leadScheduleLocation.value = lead.scheduledLocation || DEFAULT_LOCATION;
+    ui.leadScheduleLocation.value = lead.zoomJoinUrl || lead.scheduledLocation || DEFAULT_LOCATION;
   }
   if (ui.leadScheduleMessage) {
     state.lastGeneratedMessage = buildDefaultScheduleMessage(lead);

@@ -34,7 +34,7 @@ The landing page form posts to the existing Cloudflare Worker:
 - Endpoint: `POST /api/leads`
 - Storage: the `LEADS_DB` D1 binding, table `leads`
 - Stored columns include contact details, submitted context, availability notes, consent fields, workflow status, advisor notes, schedule metadata, and schedule email counts
-- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`, `worker/migrations/0009_add_lead_scheduling_workflow.sql`
+- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`, `worker/migrations/0009_add_lead_scheduling_workflow.sql`, `worker/migrations/0010_add_zoom_meeting_fields_to_leads.sql`
 - Email notifications: Resend API is called from the Worker after a successful D1 insert
 
 ### Lead Inbox And Scheduling
@@ -48,7 +48,7 @@ Advisor endpoints:
 - `PATCH /api/advisor/leads/:id`
 - `POST /api/advisor/leads/:id/send-schedule-email`
 
-The schedule email endpoint sends a branded client email through Resend with a `planeir-call.ics` calendar invite attachment. It also sends a separate advisor copy to `LEAD_ADVISOR_COPY_TO` when configured. This is a short-term calendar-invite workflow only; it does not create or manage a Google Calendar or Outlook event.
+The schedule email endpoint creates a 30-minute Zoom meeting, sends a branded client email through Resend with a `planeir-call.ics` calendar invite attachment, and uses the Zoom join URL as the invite location. It also sends a separate advisor copy to `LEAD_ADVISOR_COPY_TO` when configured. This is a short-term calendar-invite workflow only; it does not create or manage a Google Calendar or Outlook event.
 
 ### Lead Email Configuration
 
@@ -62,6 +62,10 @@ Recommended configuration:
 - Optional variable or secret: `LEAD_REPLY_TO`
 - Optional variable or secret: `LEAD_ADVISOR_COPY_TO`
 - Optional variable or secret: `LEAD_CONFIRMATION_EMAIL_ENABLED`
+- Secret or variable: `ZOOM_ACCOUNT_ID`
+- Secret or variable: `ZOOM_CLIENT_ID`
+- Secret: `ZOOM_CLIENT_SECRET`
+- Secret or variable: `ZOOM_USER_ID`
 
 Example setup:
 
@@ -72,9 +76,22 @@ wrangler secret put LEAD_EMAIL_FROM
 wrangler secret put LEAD_NOTIFICATION_TO
 wrangler secret put LEAD_REPLY_TO
 wrangler secret put LEAD_ADVISOR_COPY_TO
+wrangler secret put ZOOM_ACCOUNT_ID
+wrangler secret put ZOOM_CLIENT_ID
+wrangler secret put ZOOM_CLIENT_SECRET
+wrangler secret put ZOOM_USER_ID
 ```
 
 For the optional confirmation email toggle, set `LEAD_CONFIRMATION_EMAIL_ENABLED=true` in the Cloudflare dashboard or in local Wrangler development variables.
+
+For local Zoom testing, create an uncommitted `worker/.dev.vars` file:
+
+```ini
+ZOOM_ACCOUNT_ID="your Zoom account ID"
+ZOOM_CLIENT_ID="your Zoom client ID"
+ZOOM_CLIENT_SECRET="your Zoom client secret"
+ZOOM_USER_ID="your Zoom login email"
+```
 
 Notes:
 
@@ -83,6 +100,9 @@ Notes:
 - The internal notification uses the submitter's email as `Reply-To`, so Gerry can reply directly.
 - `LEAD_REPLY_TO` should be `hello@planeir.ie` for branded client-facing confirmations and schedule emails.
 - `LEAD_ADVISOR_COPY_TO` receives separate advisor copies of schedule emails. If it is not set, the Worker falls back to `LEAD_NOTIFICATION_TO`.
+- In Zoom Marketplace, choose Server-to-Server OAuth App for this integration. `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, and `ZOOM_CLIENT_SECRET` come from that app's credentials page. Add meeting write/create scopes for the Zoom user that will host the calls.
+- `ZOOM_USER_ID` should usually be the Zoom account email that will host Planeir calls.
+- In Cloudflare, paste these under Workers & Pages -> the Worker -> Settings -> Variables and Secrets. Use Secret for `ZOOM_CLIENT_SECRET`; the other Zoom values can also be secrets if you want to keep the dashboard tidy.
 - If email delivery fails or email is not configured, the lead is still stored and the API still returns success.
 
 Inbound mail to `hello@planeir.ie` is handled separately from this outbound Resend path. See [docs/email-architecture.md](/Users/geraldboylan/Documents/GitHub/Call-Template/docs/email-architecture.md) for the intended Cloudflare Email Routing setup.

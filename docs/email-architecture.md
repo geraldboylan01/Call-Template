@@ -20,7 +20,7 @@ The public landing page already shows the public address:
 The Worker already sends outbound email with Resend:
 
 - Lead capture notifications use `RESEND_API_KEY`, `LEAD_EMAIL_FROM`, `LEAD_NOTIFICATION_TO`, `LEAD_REPLY_TO`, and `LEAD_CONFIRMATION_EMAIL_ENABLED`.
-- Lead scheduling replies from `/app/leads.html` use the same Resend sender and attach a `planeir-call.ics` calendar invite. Advisor copies go to `LEAD_ADVISOR_COPY_TO`, falling back to `LEAD_NOTIFICATION_TO`.
+- Lead scheduling replies from `/app/leads.html` create a Zoom meeting first, use the Zoom join URL in the email and `planeir-call.ics` calendar invite, and send through the same Resend sender. Advisor copies go to `LEAD_ADVISOR_COPY_TO`, falling back to `LEAD_NOTIFICATION_TO`.
 - Published-session emails use `RESEND_API_KEY`, `SESSION_EMAIL_FROM`, `SESSION_EMAIL_REPLY_TO`, and `SESSION_ADVISOR_NOTIFICATION_TO`.
 - `SESSION_EMAIL_FROM` falls back to `LEAD_EMAIL_FROM` when it is not set.
 

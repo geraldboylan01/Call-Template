@@ -56,8 +56,10 @@ const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-
 const PLANEIR_EMAIL_CARD_ALT = 'Planeir - Irish financial education calls. Educational only, not financial advice.';
 const LEAD_SOURCE_LABEL = 'Planeir landing page';
 const DEFAULT_LEAD_SCHEDULE_TIMEZONE = 'Europe/Dublin';
-const DEFAULT_LEAD_SCHEDULE_LOCATION = 'Video call link to follow';
-const DEFAULT_LEAD_SCHEDULE_DURATION_MINUTES = 45;
+const DEFAULT_LEAD_SCHEDULE_LOCATION = 'Zoom meeting link to be created automatically';
+const DEFAULT_LEAD_SCHEDULE_DURATION_MINUTES = 30;
+const ZOOM_OAUTH_TOKEN_URL = 'https://zoom.us/oauth/token';
+const ZOOM_API_BASE_URL = 'https://api.zoom.us/v2';
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   'https://planeir.ie',
   'https://www.planeir.ie',
@@ -1175,6 +1177,21 @@ function getLeadEmailConfig(env) {
   };
 }
 
+function getZoomConfig(env) {
+  const accountId = normalizeEnvValue(env.ZOOM_ACCOUNT_ID);
+  const clientId = normalizeEnvValue(env.ZOOM_CLIENT_ID);
+  const clientSecret = normalizeEnvValue(env.ZOOM_CLIENT_SECRET);
+  const userId = normalizeEnvValue(env.ZOOM_USER_ID);
+
+  return {
+    accountId,
+    clientId,
+    clientSecret,
+    userId,
+    enabled: Boolean(accountId && clientId && clientSecret && userId)
+  };
+}
+
 function buildEmailIdempotencyKey(leadId, createdAt, kind) {
   const base = String(leadId || createdAt || kind).replace(/[^a-zA-Z0-9_-]/g, '-');
   return `lead-${base}-${kind}`;
@@ -1204,6 +1221,106 @@ async function sendEmailWithResend(config, payload, idempotencyKey) {
   }
 
   return data;
+}
+
+async function fetchZoomAccessToken(config) {
+  const tokenUrl = new URL(ZOOM_OAUTH_TOKEN_URL);
+  tokenUrl.searchParams.set('grant_type', 'account_credentials');
+  tokenUrl.searchParams.set('account_id', config.accountId);
+  const authorization = toBase64(new TextEncoder().encode(`${config.clientId}:${config.clientSecret}`));
+  const response = await fetch(tokenUrl.toString(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${authorization}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
+  });
+
+  const responseText = await response.text();
+  let data = null;
+  try {
+    data = responseText ? JSON.parse(responseText) : null;
+  } catch (_error) {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.reason || data?.message || data?.error || `Zoom token request failed with status ${response.status}.`);
+  }
+
+  const accessToken = normalizeEnvValue(data?.access_token);
+  if (!accessToken) {
+    throw new Error('Zoom token response did not include an access token.');
+  }
+
+  return accessToken;
+}
+
+function getLeadScheduleDurationMinutes(schedule) {
+  const startMs = Date.parse(schedule.scheduledStartAt);
+  const endMs = Date.parse(schedule.scheduledEndAt);
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) {
+    return DEFAULT_LEAD_SCHEDULE_DURATION_MINUTES;
+  }
+
+  return Math.max(1, Math.round((endMs - startMs) / 60000));
+}
+
+async function createZoomMeeting(env, lead, schedule) {
+  const config = getZoomConfig(env);
+  if (!config.enabled) {
+    throw new Error('Zoom meeting creation is not configured. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, and ZOOM_USER_ID.');
+  }
+
+  const accessToken = await fetchZoomAccessToken(config);
+  const userId = encodeURIComponent(config.userId);
+  const response = await fetch(`${ZOOM_API_BASE_URL}/users/${userId}/meetings`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      topic: 'Planeir education call with Gerry',
+      type: 2,
+      start_time: schedule.scheduledStartAt,
+      duration: getLeadScheduleDurationMinutes(schedule),
+      timezone: schedule.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE,
+      agenda: `Free Planeir education call with ${lead.fullName || 'client'}. Educational only, not financial advice.`,
+      settings: {
+        join_before_host: false,
+        waiting_room: true,
+        mute_upon_entry: true,
+        approval_type: 2,
+        audio: 'voip',
+        auto_recording: 'none'
+      }
+    })
+  });
+
+  const responseText = await response.text();
+  let data = null;
+  try {
+    data = responseText ? JSON.parse(responseText) : null;
+  } catch (_error) {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.message || data?.reason || data?.error || `Zoom meeting creation failed with status ${response.status}.`);
+  }
+
+  const joinUrl = normalizeEnvValue(data?.join_url);
+  if (!joinUrl) {
+    throw new Error('Zoom created the meeting but did not return a join URL.');
+  }
+
+  return {
+    zoomMeetingId: data?.id ? String(data.id) : '',
+    zoomJoinUrl: joinUrl,
+    zoomMeetingPassword: normalizeEnvValue(data?.password),
+    zoomCreatedAt: nowIso()
+  };
 }
 
 async function sendLeadEmails(env, lead, leadId) {
@@ -1298,6 +1415,10 @@ function normalizeLeadRow(row) {
     scheduledLocation: row.scheduled_location || '',
     scheduledMessage: row.scheduled_message || '',
     scheduleInviteUid: row.schedule_invite_uid || '',
+    zoomMeetingId: row.zoom_meeting_id || '',
+    zoomJoinUrl: row.zoom_join_url || '',
+    zoomMeetingPassword: row.zoom_meeting_password || '',
+    zoomCreatedAt: row.zoom_created_at || '',
     lastScheduleEmailSentAt: row.last_schedule_email_sent_at || '',
     scheduleEmailSendCount: Number(row.schedule_email_send_count || 0),
     understandsRecordedCall: Boolean(Number(row.consent_free_call || 0)),
@@ -1327,6 +1448,10 @@ function buildLeadManagerSummary(lead) {
     scheduledEndAt: lead.scheduledEndAt,
     scheduledTimezone: lead.scheduledTimezone,
     scheduledLocation: lead.scheduledLocation,
+    zoomMeetingId: lead.zoomMeetingId,
+    zoomJoinUrl: lead.zoomJoinUrl,
+    zoomMeetingPassword: lead.zoomMeetingPassword,
+    zoomCreatedAt: lead.zoomCreatedAt,
     lastScheduleEmailSentAt: lead.lastScheduleEmailSentAt,
     scheduleEmailSendCount: lead.scheduleEmailSendCount
   };
@@ -1454,7 +1579,7 @@ function buildDefaultLeadScheduleMessage(lead, schedule) {
     '',
     formatLeadScheduleRange(schedule),
     '',
-    'The calendar invite is attached. If that time works, you can add it to your calendar and reply to confirm. If it does not suit, reply with a few windows that work for you and I will suggest another option.',
+    'The calendar invite is attached and includes the Zoom link. If that time works, you can add it to your calendar and reply to confirm. If it does not suit, reply with a few windows that work for you and I will suggest another option.',
     '',
     'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',
@@ -1488,13 +1613,52 @@ function formatLeadScheduleRange(schedule) {
   return `${dateText}, ${timeFormatter.format(start)}-${timeFormatter.format(end)} (${schedule.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE})`;
 }
 
+function getLeadScheduleLocation(schedule) {
+  return schedule.zoomJoinUrl || schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION;
+}
+
+function getLeadScheduleZoomTextLines(schedule) {
+  const lines = [];
+  if (schedule.zoomJoinUrl) {
+    lines.push(`Zoom link: ${schedule.zoomJoinUrl}`);
+  }
+  if (schedule.zoomMeetingId) {
+    lines.push(`Meeting ID: ${schedule.zoomMeetingId}`);
+  }
+  if (schedule.zoomMeetingPassword) {
+    lines.push(`Passcode: ${schedule.zoomMeetingPassword}`);
+  }
+  return lines;
+}
+
+function buildLeadScheduleZoomHtmlRows(schedule) {
+  const rows = [];
+  if (schedule.zoomJoinUrl) {
+    rows.push(['Zoom link', `<a href="${escapeHtml(schedule.zoomJoinUrl)}" style="color:#0b66c3;">${escapeHtml(schedule.zoomJoinUrl)}</a>`]);
+  }
+  if (schedule.zoomMeetingId) {
+    rows.push(['Meeting ID', escapeHtml(schedule.zoomMeetingId)]);
+  }
+  if (schedule.zoomMeetingPassword) {
+    rows.push(['Passcode', escapeHtml(schedule.zoomMeetingPassword)]);
+  }
+
+  return rows.map(([label, value]) => `
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">${label}</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${value}</td>
+          </tr>`).join('');
+}
+
 function buildLeadScheduleEmailText(lead, schedule) {
+  const zoomLines = getLeadScheduleZoomTextLines(schedule);
   return [
     schedule.scheduledMessage,
     '',
     'Call details:',
     `Time: ${formatLeadScheduleRange(schedule)}`,
-    `Location: ${schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION}`,
+    `Location: ${getLeadScheduleLocation(schedule)}`,
+    ...zoomLines,
     '',
     'Educational only, not financial advice.',
     buildPlaneirEmailCardText()
@@ -1525,8 +1689,9 @@ function buildLeadScheduleEmailHtml(lead, schedule) {
           </tr>
           <tr>
             <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Location</td>
-            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION)}</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(getLeadScheduleLocation(schedule))}</td>
           </tr>
+          ${buildLeadScheduleZoomHtmlRows(schedule)}
         </table>
         <p style="margin:0;color:#52606d;">A calendar invite is attached to this email.</p>
         ${buildPlaneirEmailCardHtml()}
@@ -1542,7 +1707,8 @@ function buildLeadScheduleAdvisorCopyText(lead, schedule) {
     '',
     `Client email: ${lead.email}`,
     `Time: ${formatLeadScheduleRange(schedule)}`,
-    `Location: ${schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION}`,
+    `Location: ${getLeadScheduleLocation(schedule)}`,
+    ...getLeadScheduleZoomTextLines(schedule),
     '',
     'Message sent:',
     schedule.scheduledMessage
@@ -1561,7 +1727,10 @@ function buildLeadScheduleAdvisorCopyHtml(lead, schedule) {
       <div style="padding:24px;font-size:15px;line-height:1.7;">
         <p style="margin:0 0 12px;"><strong>Client:</strong> ${escapeHtml(lead.fullName)} &lt;${escapeHtml(lead.email)}&gt;</p>
         <p style="margin:0 0 12px;"><strong>Time:</strong> ${escapeHtml(formatLeadScheduleRange(schedule))}</p>
-        <p style="margin:0 0 18px;"><strong>Location:</strong> ${escapeHtml(schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION)}</p>
+        <p style="margin:0 0 18px;"><strong>Location:</strong> ${escapeHtml(getLeadScheduleLocation(schedule))}</p>
+        ${schedule.zoomJoinUrl ? `<p style="margin:0 0 12px;"><strong>Zoom link:</strong> <a href="${escapeHtml(schedule.zoomJoinUrl)}" style="color:#0b66c3;">${escapeHtml(schedule.zoomJoinUrl)}</a></p>` : ''}
+        ${schedule.zoomMeetingId ? `<p style="margin:0 0 12px;"><strong>Meeting ID:</strong> ${escapeHtml(schedule.zoomMeetingId)}</p>` : ''}
+        ${schedule.zoomMeetingPassword ? `<p style="margin:0 0 18px;"><strong>Passcode:</strong> ${escapeHtml(schedule.zoomMeetingPassword)}</p>` : ''}
         <h2 style="margin:0 0 10px;font-size:18px;">Message sent</h2>
         <div style="padding:16px;border:1px solid #d9e2ea;border-radius:12px;background:#f7fafc;white-space:pre-wrap;">${escapeHtml(schedule.scheduledMessage)}</div>
       </div>
@@ -1595,9 +1764,12 @@ function foldIcsLine(line) {
 
 function buildLeadScheduleIcs(lead, schedule, config) {
   const organizerEmail = config.publicReplyTo || extractEmailAddress(config.from) || 'hello@planeir.ie';
+  const zoomTextLines = getLeadScheduleZoomTextLines(schedule);
   const description = [
     schedule.scheduledMessage,
     '',
+    ...zoomTextLines,
+    ...(zoomTextLines.length > 0 ? [''] : []),
     'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.'
   ].join('\n');
   const lines = [
@@ -1613,7 +1785,8 @@ function buildLeadScheduleIcs(lead, schedule, config) {
     `DTEND:${formatIcsDate(schedule.scheduledEndAt)}`,
     'SUMMARY:Planeir education call with Gerry',
     `DESCRIPTION:${escapeIcsText(description)}`,
-    `LOCATION:${escapeIcsText(schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION)}`,
+    `LOCATION:${escapeIcsText(getLeadScheduleLocation(schedule))}`,
+    ...(schedule.zoomJoinUrl ? [`URL:${escapeIcsText(schedule.zoomJoinUrl)}`] : []),
     `ORGANIZER;CN=Planeir:mailto:${organizerEmail}`,
     `ATTENDEE;CN=${escapeIcsText(lead.fullName)};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${lead.email}`,
     'END:VEVENT',
@@ -1719,6 +1892,10 @@ async function getLeadRow(env, leadId) {
       scheduled_location,
       scheduled_message,
       schedule_invite_uid,
+      zoom_meeting_id,
+      zoom_join_url,
+      zoom_meeting_password,
+      zoom_created_at,
       last_schedule_email_sent_at,
       schedule_email_send_count,
       updated_at
@@ -1781,6 +1958,10 @@ async function listLeadRows(env, options = {}) {
       scheduled_location,
       scheduled_message,
       schedule_invite_uid,
+      zoom_meeting_id,
+      zoom_join_url,
+      zoom_meeting_password,
+      zoom_created_at,
       last_schedule_email_sent_at,
       schedule_email_send_count,
       updated_at
@@ -1911,6 +2092,10 @@ async function recordLeadScheduleEmailSent(env, leadId, values) {
       scheduled_location = ?,
       scheduled_message = ?,
       schedule_invite_uid = ?,
+      zoom_meeting_id = ?,
+      zoom_join_url = ?,
+      zoom_meeting_password = ?,
+      zoom_created_at = ?,
       last_schedule_email_sent_at = ?,
       schedule_email_send_count = schedule_email_send_count + 1,
       updated_at = ?
@@ -1924,6 +2109,10 @@ async function recordLeadScheduleEmailSent(env, leadId, values) {
     values.scheduledLocation || null,
     values.scheduledMessage,
     values.scheduleInviteUid,
+    values.zoomMeetingId || null,
+    values.zoomJoinUrl || null,
+    values.zoomMeetingPassword || null,
+    values.zoomCreatedAt || null,
     values.lastScheduleEmailSentAt,
     values.lastScheduleEmailSentAt,
     leadId
@@ -3785,6 +3974,37 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
   schedule.scheduleInviteUid = currentLead.scheduleInviteUid
     || `planeir-lead-${leadId}-${Date.parse(schedule.scheduledStartAt)}@planeir.ie`;
 
+  const reusableZoomMeeting = currentLead.zoomJoinUrl
+    && currentLead.scheduledStartAt === schedule.scheduledStartAt
+    && currentLead.scheduledEndAt === schedule.scheduledEndAt
+    ? {
+      zoomMeetingId: currentLead.zoomMeetingId,
+      zoomJoinUrl: currentLead.zoomJoinUrl,
+      zoomMeetingPassword: currentLead.zoomMeetingPassword,
+      zoomCreatedAt: currentLead.zoomCreatedAt
+    }
+    : null;
+
+  try {
+    const zoomMeeting = reusableZoomMeeting || (await createZoomMeeting(env, currentLead, schedule));
+    schedule = {
+      ...schedule,
+      ...zoomMeeting,
+      scheduledLocation: zoomMeeting.zoomJoinUrl
+    };
+  } catch (error) {
+    console.error('Lead schedule Zoom meeting creation failed', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    await insertLeadEvent(env, leadId, 'system', 'schedule-zoom-failed', {
+      error: error instanceof Error ? error.message : String(error),
+      scheduledStartAt: schedule.scheduledStartAt,
+      scheduledEndAt: schedule.scheduledEndAt
+    }).catch(() => {});
+    return jsonResponse({ error: error.message || 'Could not create Zoom meeting.' }, 502, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
   let emailResult;
   try {
     emailResult = await sendLeadScheduleEmails(env, currentLead, schedule);
@@ -3796,7 +4016,8 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
     await insertLeadEvent(env, leadId, 'system', 'schedule-email-failed', {
       error: error instanceof Error ? error.message : String(error),
       scheduledStartAt: schedule.scheduledStartAt,
-      scheduledEndAt: schedule.scheduledEndAt
+      scheduledEndAt: schedule.scheduledEndAt,
+      zoomMeetingId: schedule.zoomMeetingId || null
     }).catch(() => {});
     return jsonResponse({ error: error.message || 'Could not send schedule email.' }, 502, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
@@ -3817,7 +4038,10 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
     scheduledEndAt: schedule.scheduledEndAt,
     scheduledTimezone: schedule.scheduledTimezone,
     scheduledLocation: schedule.scheduledLocation,
-    scheduleInviteUid: schedule.scheduleInviteUid
+    scheduleInviteUid: schedule.scheduleInviteUid,
+    zoomMeetingId: schedule.zoomMeetingId || null,
+    zoomJoinUrl: schedule.zoomJoinUrl || null,
+    zoomCreatedAt: schedule.zoomCreatedAt || null
   }).catch((error) => {
     console.error('Failed to record lead schedule email event', {
       leadId,
