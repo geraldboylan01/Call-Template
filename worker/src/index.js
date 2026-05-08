@@ -58,6 +58,7 @@ const LEAD_SOURCE_LABEL = 'Planeir landing page';
 const DEFAULT_LEAD_SCHEDULE_TIMEZONE = 'Europe/Dublin';
 const DEFAULT_LEAD_SCHEDULE_LOCATION = 'Zoom meeting link to be created automatically';
 const DEFAULT_LEAD_SCHEDULE_DURATION_MINUTES = 30;
+const LEAD_SCHEDULE_RESPONSE_TTL_MS = 48 * 60 * 60 * 1000;
 const ZOOM_OAUTH_TOKEN_URL = 'https://zoom.us/oauth/token';
 const ZOOM_API_BASE_URL = 'https://api.zoom.us/v2';
 const DEFAULT_ALLOWED_ORIGINS = new Set([
@@ -181,6 +182,12 @@ function getRouteConfig(pathname) {
   if (/^\/api\/advisor\/leads\/\d+\/send-schedule-email$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/leads/schedule-response') {
+    return {
+      methods: 'GET,OPTIONS'
     };
   }
 
@@ -419,6 +426,11 @@ function normalizeLeadStatus(value, fallback = 'new') {
   }
 
   return fallback;
+}
+
+function normalizeScheduleResponseStatus(value) {
+  const normalized = normalizeLeadValue(value).toLowerCase();
+  return ['pending', 'accepted', 'declined', 'expired'].includes(normalized) ? normalized : '';
 }
 
 function normalizeOptionalIsoDate(value, label) {
@@ -1415,6 +1427,10 @@ function normalizeLeadRow(row) {
     scheduledLocation: row.scheduled_location || '',
     scheduledMessage: row.scheduled_message || '',
     scheduleInviteUid: row.schedule_invite_uid || '',
+    scheduleResponseToken: row.schedule_response_token || '',
+    scheduleResponseStatus: normalizeScheduleResponseStatus(row.schedule_response_status),
+    scheduleResponseAt: row.schedule_response_at || '',
+    scheduleResponseExpiresAt: row.schedule_response_expires_at || '',
     zoomMeetingId: row.zoom_meeting_id || '',
     zoomJoinUrl: row.zoom_join_url || '',
     zoomMeetingPassword: row.zoom_meeting_password || '',
@@ -1448,6 +1464,9 @@ function buildLeadManagerSummary(lead) {
     scheduledEndAt: lead.scheduledEndAt,
     scheduledTimezone: lead.scheduledTimezone,
     scheduledLocation: lead.scheduledLocation,
+    scheduleResponseStatus: lead.scheduleResponseStatus,
+    scheduleResponseAt: lead.scheduleResponseAt,
+    scheduleResponseExpiresAt: lead.scheduleResponseExpiresAt,
     zoomMeetingId: lead.zoomMeetingId,
     zoomJoinUrl: lead.zoomJoinUrl,
     zoomMeetingPassword: lead.zoomMeetingPassword,
@@ -1579,7 +1598,7 @@ function buildDefaultLeadScheduleMessage(lead, schedule) {
     '',
     formatLeadScheduleRange(schedule),
     '',
-    'The calendar invite is attached and includes the Zoom link. If that time works, you can add it to your calendar and reply to confirm. If it does not suit, reply with a few windows that work for you and I will suggest another option.',
+    'The calendar invite is attached and includes the Zoom link. Please use the accept link in this email within 48 hours so I know the slot is confirmed. If it does not suit, use the other link and I will suggest another option.',
     '',
     'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',
@@ -1650,8 +1669,63 @@ function buildLeadScheduleZoomHtmlRows(schedule) {
           </tr>`).join('');
 }
 
+function formatLeadScheduleExpiry(schedule) {
+  if (!schedule.scheduleResponseExpiresAt) {
+    return '48 hours';
+  }
+
+  const parsed = new Date(schedule.scheduleResponseExpiresAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return '48 hours';
+  }
+
+  return parsed.toLocaleString('en-IE', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: schedule.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE
+  });
+}
+
+function getLeadScheduleResponseTextLines(schedule) {
+  if (!schedule.acceptUrl || !schedule.declineUrl) {
+    return [];
+  }
+
+  return [
+    'Please confirm whether this time works within 48 hours. If it is not accepted within 48 hours, the proposed slot will be released and will not be treated as booked.',
+    `Accept this time: ${schedule.acceptUrl}`,
+    `Does not suit: ${schedule.declineUrl}`,
+    `Response deadline: ${formatLeadScheduleExpiry(schedule)}`
+  ];
+}
+
+function buildLeadScheduleResponseHtml(schedule) {
+  if (!schedule.acceptUrl || !schedule.declineUrl) {
+    return '';
+  }
+
+  return `
+        <div style="margin:24px 0;padding:18px;border:1px solid #d9e2ea;border-radius:14px;background:#f7fafc;">
+          <p style="margin:0 0 14px;font-weight:700;">Please confirm this proposed time within 48 hours.</p>
+          <p style="margin:0 0 16px;color:#52606d;">If it is not accepted within 48 hours, the proposed slot will be released and will not be treated as booked.</p>
+          <p style="margin:0 0 10px;">
+            <a href="${escapeHtml(schedule.acceptUrl)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0f2233;color:#ffffff;text-decoration:none;font-weight:700;">Accept proposed time</a>
+          </p>
+          <p style="margin:0;">
+            <a href="${escapeHtml(schedule.declineUrl)}" style="display:inline-block;padding:10px 16px;border-radius:999px;border:1px solid #bcccdc;color:#102a43;text-decoration:none;font-weight:700;">This does not suit</a>
+          </p>
+          <p style="margin:14px 0 0;color:#52606d;font-size:13px;">Response deadline: ${escapeHtml(formatLeadScheduleExpiry(schedule))}</p>
+        </div>`;
+}
+
 function buildLeadScheduleEmailText(lead, schedule) {
   const zoomLines = getLeadScheduleZoomTextLines(schedule);
+  const responseLines = getLeadScheduleResponseTextLines(schedule);
   return [
     schedule.scheduledMessage,
     '',
@@ -1659,6 +1733,7 @@ function buildLeadScheduleEmailText(lead, schedule) {
     `Time: ${formatLeadScheduleRange(schedule)}`,
     `Location: ${getLeadScheduleLocation(schedule)}`,
     ...zoomLines,
+    ...(responseLines.length > 0 ? ['', ...responseLines] : []),
     '',
     'Educational only, not financial advice.',
     buildPlaneirEmailCardText()
@@ -1693,6 +1768,7 @@ function buildLeadScheduleEmailHtml(lead, schedule) {
           </tr>
           ${buildLeadScheduleZoomHtmlRows(schedule)}
         </table>
+        ${buildLeadScheduleResponseHtml(schedule)}
         <p style="margin:0;color:#52606d;">A calendar invite is attached to this email.</p>
         ${buildPlaneirEmailCardHtml()}
       </div>
@@ -1803,7 +1879,8 @@ function buildLeadScheduleIdempotencyKey(leadId, schedule, kind) {
     'schedule',
     kind,
     schedule.scheduledStartAt,
-    schedule.scheduledEndAt
+    schedule.scheduledEndAt,
+    schedule.scheduleResponseToken || schedule.scheduleInviteUid || ''
   ].join('-');
   return base.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 240);
 }
@@ -1892,6 +1969,10 @@ async function getLeadRow(env, leadId) {
       scheduled_location,
       scheduled_message,
       schedule_invite_uid,
+      schedule_response_token,
+      schedule_response_status,
+      schedule_response_at,
+      schedule_response_expires_at,
       zoom_meeting_id,
       zoom_join_url,
       zoom_meeting_password,
@@ -1958,6 +2039,10 @@ async function listLeadRows(env, options = {}) {
       scheduled_location,
       scheduled_message,
       schedule_invite_uid,
+      schedule_response_token,
+      schedule_response_status,
+      schedule_response_at,
+      schedule_response_expires_at,
       zoom_meeting_id,
       zoom_join_url,
       zoom_meeting_password,
@@ -2035,6 +2120,22 @@ async function insertLeadEvent(env, leadId, actorType, eventType, metadata) {
   ).run();
 }
 
+function createLeadScheduleResponseToken() {
+  return toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+function getLeadScheduleResponseExpiresAt() {
+  return new Date(Date.now() + LEAD_SCHEDULE_RESPONSE_TTL_MS).toISOString();
+}
+
+function buildLeadScheduleResponseUrl(baseUrl, leadId, token, response) {
+  const url = new URL('/api/leads/schedule-response', baseUrl);
+  url.searchParams.set('lead', String(leadId));
+  url.searchParams.set('token', token);
+  url.searchParams.set('response', response);
+  return url.toString();
+}
+
 async function updateLeadWorkflow(env, leadId, values, eventMetadata = null) {
   const db = getPublishedSessionsDb(env);
   const updatedAt = nowIso();
@@ -2092,6 +2193,10 @@ async function recordLeadScheduleEmailSent(env, leadId, values) {
       scheduled_location = ?,
       scheduled_message = ?,
       schedule_invite_uid = ?,
+      schedule_response_token = ?,
+      schedule_response_status = 'pending',
+      schedule_response_at = NULL,
+      schedule_response_expires_at = ?,
       zoom_meeting_id = ?,
       zoom_join_url = ?,
       zoom_meeting_password = ?,
@@ -2109,6 +2214,8 @@ async function recordLeadScheduleEmailSent(env, leadId, values) {
     values.scheduledLocation || null,
     values.scheduledMessage,
     values.scheduleInviteUid,
+    values.scheduleResponseToken,
+    values.scheduleResponseExpiresAt,
     values.zoomMeetingId || null,
     values.zoomJoinUrl || null,
     values.zoomMeetingPassword || null,
@@ -2117,6 +2224,67 @@ async function recordLeadScheduleEmailSent(env, leadId, values) {
     values.lastScheduleEmailSentAt,
     leadId
   ).run();
+}
+
+async function recordLeadScheduleResponse(env, leadId, token, responseStatus) {
+  const db = getPublishedSessionsDb(env);
+  const status = responseStatus === 'accepted'
+    ? 'booked'
+    : (responseStatus === 'declined' ? 'declined' : 'awaiting-client');
+  const respondedAt = nowIso();
+  await db.prepare(`
+    UPDATE leads
+    SET
+      status = ?,
+      schedule_response_status = ?,
+      schedule_response_at = ?,
+      updated_at = ?
+    WHERE id = ?
+      AND schedule_response_token = ?
+  `).bind(
+    status,
+    responseStatus,
+    respondedAt,
+    respondedAt,
+    leadId,
+    token
+  ).run();
+
+  return respondedAt;
+}
+
+function buildLeadScheduleResponsePage(options = {}) {
+  const {
+    heading = 'Planeir call response',
+    message = 'Thanks. Your response has been recorded.',
+    lead = null,
+    statusCode = 200
+  } = options;
+  const scheduleText = lead?.scheduledStartAt && lead?.scheduledEndAt
+    ? formatLeadScheduleRange(lead)
+    : '';
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(heading)}</title>
+  </head>
+  <body style="margin:0;padding:28px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <main style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px;background:#0f2233;color:#ffffff;">
+        <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.82;">Planeir education call</p>
+        <h1 style="margin:0;font-size:26px;line-height:1.25;">${escapeHtml(heading)}</h1>
+      </div>
+      <div style="padding:24px;font-size:16px;line-height:1.7;">
+        <p style="margin:0 0 16px;">${escapeHtml(message)}</p>
+        ${scheduleText ? `<p style="margin:0 0 16px;"><strong>Proposed time:</strong> ${escapeHtml(scheduleText)}</p>` : ''}
+        <p style="margin:0;color:#52606d;">You can close this page now.</p>
+      </div>
+    </main>
+  </body>
+</html>`;
+  return assetResponse(html, statusCode, 'text/html; charset=utf-8', noStoreHeaders());
 }
 
 async function checkPersistentRateLimit(env, scope, bucketKey, windowMs, maxRequests) {
@@ -3933,6 +4101,82 @@ async function handleAdvisorLeadUpdate(request, env, origin, leadId) {
   }, 200, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
 }
 
+async function handleLeadScheduleResponse(request, env) {
+  const url = new URL(request.url);
+  const leadId = validateLeadId(url.searchParams.get('lead'));
+  const token = normalizeLeadValue(url.searchParams.get('token'));
+  const response = normalizeLeadValue(url.searchParams.get('response')).toLowerCase();
+  const responseStatus = response === 'accept'
+    ? 'accepted'
+    : (response === 'decline' || response === 'does-not-suit' ? 'declined' : '');
+
+  if (!leadId || !/^[A-Za-z0-9_-]{32,128}$/.test(token) || !responseStatus) {
+    return buildLeadScheduleResponsePage({
+      heading: 'This response link is invalid',
+      message: 'Please reply to the email from Planeir and Gerry will help arrange another time.',
+      statusCode: 400
+    });
+  }
+
+  const lead = await getLeadRow(env, leadId);
+  if (!lead || !lead.scheduleResponseToken || lead.scheduleResponseToken !== token) {
+    return buildLeadScheduleResponsePage({
+      heading: 'This response link is no longer valid',
+      message: 'Please reply to the email from Planeir and Gerry will help arrange the call.',
+      statusCode: 404
+    });
+  }
+
+  if (lead.scheduleResponseStatus === 'accepted') {
+    return buildLeadScheduleResponsePage({
+      heading: 'Your call time is already confirmed',
+      message: 'Gerry can see that you accepted this proposed time.',
+      lead
+    });
+  }
+
+  if (lead.scheduleResponseStatus === 'declined') {
+    return buildLeadScheduleResponsePage({
+      heading: 'Your response is already recorded',
+      message: 'Gerry can see that this proposed time does not suit and will follow up with alternatives.',
+      lead
+    });
+  }
+
+  if (lead.scheduleResponseExpiresAt && Date.parse(lead.scheduleResponseExpiresAt) <= Date.now()) {
+    if (lead.scheduleResponseStatus !== 'expired') {
+      await recordLeadScheduleResponse(env, leadId, token, 'expired');
+      await insertLeadEvent(env, leadId, 'client', 'schedule-response-expired', {
+        scheduledStartAt: lead.scheduledStartAt,
+        scheduledEndAt: lead.scheduledEndAt,
+        scheduleResponseExpiresAt: lead.scheduleResponseExpiresAt
+      }).catch(() => {});
+    }
+
+    return buildLeadScheduleResponsePage({
+      heading: 'This proposed slot has expired',
+      message: 'Please reply to the email from Planeir and Gerry will suggest another option.',
+      lead,
+      statusCode: 410
+    });
+  }
+
+  const respondedAt = await recordLeadScheduleResponse(env, leadId, token, responseStatus);
+  await insertLeadEvent(env, leadId, 'client', responseStatus === 'accepted' ? 'schedule-accepted' : 'schedule-declined', {
+    scheduledStartAt: lead.scheduledStartAt,
+    scheduledEndAt: lead.scheduledEndAt,
+    respondedAt
+  }).catch(() => {});
+
+  return buildLeadScheduleResponsePage({
+    heading: responseStatus === 'accepted' ? 'Your call time is confirmed' : 'Thanks, Gerry will follow up',
+    message: responseStatus === 'accepted'
+      ? 'Thanks. Gerry can see that you accepted this time, so the Zoom call is now treated as confirmed.'
+      : 'Thanks. Gerry can see that this time does not suit and will email you with alternative options.',
+    lead
+  });
+}
+
 async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
   const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
     requireCsrf: true,
@@ -3973,6 +4217,11 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
   schedule.scheduledMessage = schedule.scheduledMessage || buildDefaultLeadScheduleMessage(currentLead, schedule);
   schedule.scheduleInviteUid = currentLead.scheduleInviteUid
     || `planeir-lead-${leadId}-${Date.parse(schedule.scheduledStartAt)}@planeir.ie`;
+  schedule.scheduleResponseToken = createLeadScheduleResponseToken();
+  schedule.scheduleResponseExpiresAt = getLeadScheduleResponseExpiresAt();
+  const responseBaseUrl = normalizeEnvValue(env.LEAD_SCHEDULE_RESPONSE_BASE_URL) || new URL(request.url).origin;
+  schedule.acceptUrl = buildLeadScheduleResponseUrl(responseBaseUrl, leadId, schedule.scheduleResponseToken, 'accept');
+  schedule.declineUrl = buildLeadScheduleResponseUrl(responseBaseUrl, leadId, schedule.scheduleResponseToken, 'decline');
 
   const reusableZoomMeeting = currentLead.zoomJoinUrl
     && currentLead.scheduledStartAt === schedule.scheduledStartAt
@@ -4039,6 +4288,7 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
     scheduledTimezone: schedule.scheduledTimezone,
     scheduledLocation: schedule.scheduledLocation,
     scheduleInviteUid: schedule.scheduleInviteUid,
+    scheduleResponseExpiresAt: schedule.scheduleResponseExpiresAt,
     zoomMeetingId: schedule.zoomMeetingId || null,
     zoomJoinUrl: schedule.zoomJoinUrl || null,
     zoomCreatedAt: schedule.zoomCreatedAt || null
@@ -5274,6 +5524,10 @@ export default {
 
     if (request.method === 'POST' && pathname === '/api/leads') {
       return handleLeadSubmit(request, env, origin, ctx);
+    }
+
+    if (request.method === 'GET' && pathname === '/api/leads/schedule-response') {
+      return handleLeadScheduleResponse(request, env);
     }
 
     if (request.method === 'POST' && pathname === '/api/publish') {

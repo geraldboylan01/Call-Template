@@ -40,6 +40,7 @@ const ui = {
   leadActionError: document.getElementById('leadActionError'),
   leadCreatedAt: document.getElementById('leadCreatedAt'),
   leadLastScheduleEmailSent: document.getElementById('leadLastScheduleEmailSent'),
+  leadScheduleResponse: document.getElementById('leadScheduleResponse'),
   leadStageValue: document.getElementById('leadStageValue'),
   leadOutcomeValue: document.getElementById('leadOutcomeValue'),
   leadReasonText: document.getElementById('leadReasonText'),
@@ -269,6 +270,28 @@ function formatScheduleRange(lead = state.selectedLead) {
   return `${dateText}, ${timeFormatter.format(start)}-${timeFormatter.format(end)} (${DEFAULT_TIMEZONE})`;
 }
 
+function formatScheduleResponse(lead) {
+  const status = String(lead?.scheduleResponseStatus || '').toLowerCase();
+  const expiresAt = lead?.scheduleResponseExpiresAt ? Date.parse(lead.scheduleResponseExpiresAt) : 0;
+  const isExpired = expiresAt && !Number.isNaN(expiresAt) && expiresAt <= Date.now();
+  if (status === 'accepted') {
+    return lead.scheduleResponseAt ? `Accepted ${formatDateTime(lead.scheduleResponseAt)}` : 'Accepted';
+  }
+  if (status === 'declined') {
+    return lead.scheduleResponseAt ? `Does not suit ${formatDateTime(lead.scheduleResponseAt)}` : 'Does not suit';
+  }
+  if (status === 'expired' || (status === 'pending' && isExpired)) {
+    return lead.scheduleResponseAt ? `Expired ${formatDateTime(lead.scheduleResponseAt)}` : 'Expired';
+  }
+  if (status === 'pending' || lead?.lastScheduleEmailSentAt) {
+    return lead?.scheduleResponseExpiresAt
+      ? `Awaiting client - expires ${formatDateTime(lead.scheduleResponseExpiresAt)}`
+      : 'Awaiting client';
+  }
+
+  return 'Not sent yet';
+}
+
 function pad2(value) {
   return String(value).padStart(2, '0');
 }
@@ -348,7 +371,7 @@ function buildDefaultScheduleMessage(lead = state.selectedLead) {
     '',
     formatScheduleRange(draftLead),
     '',
-    'The calendar invite is attached and includes the Zoom link. If that time works, you can add it to your calendar and reply to confirm. If it does not suit, reply with a few windows that work for you and I will suggest another option.',
+    'The calendar invite is attached and includes the Zoom link. Please use the accept link in this email within 48 hours so I know the slot is confirmed. If it does not suit, use the other link and I will suggest another option.',
     '',
     'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',
@@ -462,7 +485,7 @@ function renderLeadList() {
     const summary = document.createElement('span');
     summary.className = 'access-session-card-summary';
     summary.textContent = lead.lastScheduleEmailSentAt
-      ? `Schedule sent ${formatDateTime(lead.lastScheduleEmailSentAt, 'recently')} | ${lead.reasonPreview || ''}`
+      ? `${formatScheduleResponse(lead)} | ${lead.reasonPreview || ''}`
       : `${formatDateTime(lead.createdAt, 'Unknown')} | ${lead.reasonPreview || ''}`;
     meta.append(leadId, summary);
 
@@ -546,6 +569,9 @@ function renderSelectedLead() {
     ui.leadLastScheduleEmailSent.textContent = lead.lastScheduleEmailSentAt
       ? `${formatDateTime(lead.lastScheduleEmailSentAt)} (${lead.scheduleEmailSendCount || 1})`
       : 'Not sent yet';
+  }
+  if (ui.leadScheduleResponse) {
+    ui.leadScheduleResponse.textContent = formatScheduleResponse(lead);
   }
   if (ui.leadStageValue) {
     ui.leadStageValue.textContent = lead.stageLabel || 'Not provided';

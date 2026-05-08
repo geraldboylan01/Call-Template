@@ -33,8 +33,8 @@ The landing page form posts to the existing Cloudflare Worker:
 
 - Endpoint: `POST /api/leads`
 - Storage: the `LEADS_DB` D1 binding, table `leads`
-- Stored columns include contact details, submitted context, availability notes, consent fields, workflow status, advisor notes, schedule metadata, and schedule email counts
-- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`, `worker/migrations/0009_add_lead_scheduling_workflow.sql`, `worker/migrations/0010_add_zoom_meeting_fields_to_leads.sql`
+- Stored columns include contact details, submitted context, availability notes, consent fields, workflow status, advisor notes, schedule metadata, client schedule responses, and schedule email counts
+- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`, `worker/migrations/0009_add_lead_scheduling_workflow.sql`, `worker/migrations/0010_add_zoom_meeting_fields_to_leads.sql`, `worker/migrations/0011_add_lead_schedule_response_fields.sql`
 - Email notifications: Resend API is called from the Worker after a successful D1 insert
 
 ### Lead Inbox And Scheduling
@@ -47,8 +47,9 @@ Advisor endpoints:
 - `GET /api/advisor/leads/:id`
 - `PATCH /api/advisor/leads/:id`
 - `POST /api/advisor/leads/:id/send-schedule-email`
+- `GET /api/leads/schedule-response` for client accept/decline links
 
-The schedule email endpoint creates a 30-minute Zoom meeting, sends a branded client email through Resend with a `planeir-call.ics` calendar invite attachment, and uses the Zoom join URL as the invite location. It also sends a separate advisor copy to `LEAD_ADVISOR_COPY_TO` when configured. This is a short-term calendar-invite workflow only; it does not create or manage a Google Calendar or Outlook event.
+The schedule email endpoint creates a 30-minute Zoom meeting, sends a branded client email through Resend with a `planeir-call.ics` calendar invite attachment, and uses the Zoom join URL as the invite location. The email includes secure accept and decline links that expire after 48 hours. Accepted calls move to `booked`; declined calls move to `declined`; expired response links are shown in the lead detail. It also sends a separate advisor copy to `LEAD_ADVISOR_COPY_TO` when configured. This is a short-term calendar-invite workflow only; it does not create or manage a Google Calendar or Outlook event.
 
 ### Lead Email Configuration
 
