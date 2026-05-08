@@ -34,7 +34,7 @@ The landing page form posts to the existing Cloudflare Worker:
 - Endpoint: `POST /api/leads`
 - Storage: the `LEADS_DB` D1 binding, table `leads`
 - Stored columns include contact details, submitted context, availability notes, consent fields, workflow status, advisor notes, schedule metadata, client schedule responses, and schedule email counts
-- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`, `worker/migrations/0009_add_lead_scheduling_workflow.sql`, `worker/migrations/0010_add_zoom_meeting_fields_to_leads.sql`, `worker/migrations/0011_add_lead_schedule_response_fields.sql`
+- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`, `worker/migrations/0009_add_lead_scheduling_workflow.sql`, `worker/migrations/0010_add_zoom_meeting_fields_to_leads.sql`, `worker/migrations/0011_add_lead_schedule_response_fields.sql`, `worker/migrations/0012_add_zoom_cleanup_fields.sql`
 - Email notifications: Resend API is called from the Worker after a successful D1 insert
 
 ### Lead Inbox And Scheduling
@@ -49,7 +49,7 @@ Advisor endpoints:
 - `POST /api/advisor/leads/:id/send-schedule-email`
 - `GET /api/leads/schedule-response` for client accept/decline links
 
-The schedule email endpoint creates a 30-minute Zoom meeting, sends a branded client email through Resend with a `planeir-call.ics` calendar invite attachment, and uses the Zoom join URL as the invite location. The email includes secure accept and decline links that expire after 48 hours. Accepted calls move to `booked`; declined calls move to `declined`; expired response links are shown in the lead detail. It also sends a separate advisor copy to `LEAD_ADVISOR_COPY_TO` when configured. This is a short-term calendar-invite workflow only; it does not create or manage a Google Calendar or Outlook event.
+The schedule email endpoint creates a 30-minute Zoom meeting, sends a branded client email through Resend with a `planeir-call.ics` calendar invite attachment, and uses the Zoom join URL as the invite location. The email includes secure accept and decline links that expire after 48 hours. Accepted calls move to `booked`; declined calls move to `declined` and attempt to delete the Zoom meeting; expired unaccepted proposals are marked `expired` and deleted from Zoom by the hourly Worker cron cleanup. It also sends a separate advisor copy to `LEAD_ADVISOR_COPY_TO` when configured. This is a short-term calendar-invite workflow only; it does not create or manage a Google Calendar or Outlook event.
 
 ### Lead Email Configuration
 
@@ -101,7 +101,7 @@ Notes:
 - The internal notification uses the submitter's email as `Reply-To`, so Gerry can reply directly.
 - `LEAD_REPLY_TO` should be `hello@planeir.ie` for branded client-facing confirmations and schedule emails.
 - `LEAD_ADVISOR_COPY_TO` receives separate advisor copies of schedule emails. If it is not set, the Worker falls back to `LEAD_NOTIFICATION_TO`.
-- In Zoom Marketplace, choose Server-to-Server OAuth App for this integration. `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, and `ZOOM_CLIENT_SECRET` come from that app's credentials page. Add meeting write/create scopes for the Zoom user that will host the calls.
+- In Zoom Marketplace, choose Server-to-Server OAuth App for this integration. `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, and `ZOOM_CLIENT_SECRET` come from that app's credentials page. Add meeting write/create and meeting delete scopes for the Zoom user that will host the calls.
 - `ZOOM_USER_ID` should usually be the Zoom account email that will host Planeir calls.
 - In Cloudflare, paste these under Workers & Pages -> the Worker -> Settings -> Variables and Secrets. Use Secret for `ZOOM_CLIENT_SECRET`; the other Zoom values can also be secrets if you want to keep the dashboard tidy.
 - If email delivery fails or email is not configured, the lead is still stored and the API still returns success.

@@ -22,6 +22,7 @@ const STATUS_LABELS = {
   'awaiting-client': 'Awaiting client',
   booked: 'Booked',
   declined: 'Declined',
+  expired: 'Expired',
   archived: 'Archived'
 };
 
@@ -278,10 +279,12 @@ function formatScheduleResponse(lead) {
     return lead.scheduleResponseAt ? `Accepted ${formatDateTime(lead.scheduleResponseAt)}` : 'Accepted';
   }
   if (status === 'declined') {
-    return lead.scheduleResponseAt ? `Does not suit ${formatDateTime(lead.scheduleResponseAt)}` : 'Does not suit';
+    const suffix = lead.zoomDeletedAt ? ` - Zoom deleted ${formatDateTime(lead.zoomDeletedAt)}` : '';
+    return lead.scheduleResponseAt ? `Does not suit ${formatDateTime(lead.scheduleResponseAt)}${suffix}` : `Does not suit${suffix}`;
   }
   if (status === 'expired' || (status === 'pending' && isExpired)) {
-    return lead.scheduleResponseAt ? `Expired ${formatDateTime(lead.scheduleResponseAt)}` : 'Expired';
+    const suffix = lead.zoomDeletedAt ? ` - Zoom deleted ${formatDateTime(lead.zoomDeletedAt)}` : '';
+    return lead.scheduleResponseAt ? `Expired ${formatDateTime(lead.scheduleResponseAt)}${suffix}` : `Expired${suffix}`;
   }
   if (status === 'pending' || lead?.lastScheduleEmailSentAt) {
     return lead?.scheduleResponseExpiresAt
@@ -371,7 +374,7 @@ function buildDefaultScheduleMessage(lead = state.selectedLead) {
     '',
     formatScheduleRange(draftLead),
     '',
-    'The calendar invite is attached and includes the Zoom link. Please use the accept link in this email within 48 hours so I know the slot is confirmed. If it does not suit, use the other link and I will suggest another option.',
+    'The calendar invite is attached and includes the Zoom link. Please use the accept link in this email within 48 hours so I know the slot is confirmed. If it is not accepted within 48 hours, the Zoom meeting will be deleted automatically. If it does not suit, use the other link and I will suggest another option.',
     '',
     'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',

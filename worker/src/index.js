@@ -112,6 +112,7 @@ const ALLOWED_LEAD_STATUSES = new Set([
   'awaiting-client',
   'booked',
   'declined',
+  'expired',
   'archived'
 ]);
 const LEAD_STATUS_LABELS = {
@@ -120,6 +121,7 @@ const LEAD_STATUS_LABELS = {
   'awaiting-client': 'Awaiting client',
   booked: 'Booked',
   declined: 'Declined',
+  expired: 'Expired',
   archived: 'Archived'
 };
 
@@ -1335,6 +1337,66 @@ async function createZoomMeeting(env, lead, schedule) {
   };
 }
 
+async function deleteZoomMeetingWithToken(accessToken, meetingId) {
+  const normalizedMeetingId = normalizeLeadValue(meetingId);
+  if (!normalizedMeetingId) {
+    return {
+      deleted: false,
+      alreadyMissing: false,
+      status: 0,
+      error: 'Zoom meeting ID is missing.'
+    };
+  }
+
+  const response = await fetch(`${ZOOM_API_BASE_URL}/meetings/${encodeURIComponent(normalizedMeetingId)}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  const responseText = await response.text();
+  let data = null;
+  try {
+    data = responseText ? JSON.parse(responseText) : null;
+  } catch (_error) {
+    data = null;
+  }
+
+  if (response.ok || response.status === 204) {
+    return {
+      deleted: true,
+      alreadyMissing: false,
+      status: response.status,
+      error: ''
+    };
+  }
+
+  const error = data?.message || data?.reason || data?.error || responseText || `Zoom meeting delete failed with status ${response.status}.`;
+  const alreadyMissing = response.status === 404 || /not\s+found/i.test(error);
+  return {
+    deleted: alreadyMissing,
+    alreadyMissing,
+    status: response.status,
+    error: alreadyMissing ? '' : error
+  };
+}
+
+async function deleteZoomMeeting(env, meetingId) {
+  const config = getZoomConfig(env);
+  if (!config.enabled) {
+    return {
+      deleted: false,
+      alreadyMissing: false,
+      status: 0,
+      error: 'Zoom meeting deletion is not configured.'
+    };
+  }
+
+  const accessToken = await fetchZoomAccessToken(config);
+  return deleteZoomMeetingWithToken(accessToken, meetingId);
+}
+
 async function sendLeadEmails(env, lead, leadId) {
   const config = getLeadEmailConfig(env);
 
@@ -1435,6 +1497,9 @@ function normalizeLeadRow(row) {
     zoomJoinUrl: row.zoom_join_url || '',
     zoomMeetingPassword: row.zoom_meeting_password || '',
     zoomCreatedAt: row.zoom_created_at || '',
+    zoomDeletedAt: row.zoom_deleted_at || '',
+    scheduleCleanupAttemptedAt: row.schedule_cleanup_attempted_at || '',
+    scheduleCleanupError: row.schedule_cleanup_error || '',
     lastScheduleEmailSentAt: row.last_schedule_email_sent_at || '',
     scheduleEmailSendCount: Number(row.schedule_email_send_count || 0),
     understandsRecordedCall: Boolean(Number(row.consent_free_call || 0)),
@@ -1471,6 +1536,9 @@ function buildLeadManagerSummary(lead) {
     zoomJoinUrl: lead.zoomJoinUrl,
     zoomMeetingPassword: lead.zoomMeetingPassword,
     zoomCreatedAt: lead.zoomCreatedAt,
+    zoomDeletedAt: lead.zoomDeletedAt,
+    scheduleCleanupAttemptedAt: lead.scheduleCleanupAttemptedAt,
+    scheduleCleanupError: lead.scheduleCleanupError,
     lastScheduleEmailSentAt: lead.lastScheduleEmailSentAt,
     scheduleEmailSendCount: lead.scheduleEmailSendCount
   };
@@ -1598,7 +1666,7 @@ function buildDefaultLeadScheduleMessage(lead, schedule) {
     '',
     formatLeadScheduleRange(schedule),
     '',
-    'The calendar invite is attached and includes the Zoom link. Please use the accept link in this email within 48 hours so I know the slot is confirmed. If it does not suit, use the other link and I will suggest another option.',
+    'The calendar invite is attached and includes the Zoom link. Please use the accept link in this email within 48 hours so I know the slot is confirmed. If it is not accepted within 48 hours, the Zoom meeting will be deleted automatically. If it does not suit, use the other link and I will suggest another option.',
     '',
     'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.',
     '',
@@ -1697,7 +1765,7 @@ function getLeadScheduleResponseTextLines(schedule) {
   }
 
   return [
-    'Please confirm whether this time works within 48 hours. If it is not accepted within 48 hours, the proposed slot will be released and will not be treated as booked.',
+    'Please confirm whether this time works within 48 hours. If it is not accepted within 48 hours, the Zoom meeting will be deleted automatically and the slot will not be treated as booked.',
     `Accept this time: ${schedule.acceptUrl}`,
     `Does not suit: ${schedule.declineUrl}`,
     `Response deadline: ${formatLeadScheduleExpiry(schedule)}`
@@ -1712,7 +1780,7 @@ function buildLeadScheduleResponseHtml(schedule) {
   return `
         <div style="margin:24px 0;padding:18px;border:1px solid #d9e2ea;border-radius:14px;background:#f7fafc;">
           <p style="margin:0 0 14px;font-weight:700;">Please confirm this proposed time within 48 hours.</p>
-          <p style="margin:0 0 16px;color:#52606d;">If it is not accepted within 48 hours, the proposed slot will be released and will not be treated as booked.</p>
+          <p style="margin:0 0 16px;color:#52606d;">If it is not accepted within 48 hours, the Zoom meeting will be deleted automatically and the slot will not be treated as booked.</p>
           <p style="margin:0 0 10px;">
             <a href="${escapeHtml(schedule.acceptUrl)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0f2233;color:#ffffff;text-decoration:none;font-weight:700;">Accept proposed time</a>
           </p>
@@ -1977,6 +2045,9 @@ async function getLeadRow(env, leadId) {
       zoom_join_url,
       zoom_meeting_password,
       zoom_created_at,
+      zoom_deleted_at,
+      schedule_cleanup_attempted_at,
+      schedule_cleanup_error,
       last_schedule_email_sent_at,
       schedule_email_send_count,
       updated_at
@@ -2047,6 +2118,9 @@ async function listLeadRows(env, options = {}) {
       zoom_join_url,
       zoom_meeting_password,
       zoom_created_at,
+      zoom_deleted_at,
+      schedule_cleanup_attempted_at,
+      schedule_cleanup_error,
       last_schedule_email_sent_at,
       schedule_email_send_count,
       updated_at
@@ -2059,8 +2133,9 @@ async function listLeadRows(env, options = {}) {
         WHEN 'awaiting-client' THEN 2
         WHEN 'booked' THEN 3
         WHEN 'declined' THEN 4
-        WHEN 'archived' THEN 5
-        ELSE 6
+        WHEN 'expired' THEN 5
+        WHEN 'archived' THEN 6
+        ELSE 7
       END,
       COALESCE(updated_at, created_at) DESC,
       id DESC
@@ -2230,7 +2305,7 @@ async function recordLeadScheduleResponse(env, leadId, token, responseStatus) {
   const db = getPublishedSessionsDb(env);
   const status = responseStatus === 'accepted'
     ? 'booked'
-    : (responseStatus === 'declined' ? 'declined' : 'awaiting-client');
+    : (responseStatus === 'declined' ? 'declined' : 'expired');
   const respondedAt = nowIso();
   await db.prepare(`
     UPDATE leads
@@ -2251,6 +2326,189 @@ async function recordLeadScheduleResponse(env, leadId, token, responseStatus) {
   ).run();
 
   return respondedAt;
+}
+
+async function recordLeadScheduleZoomCleanup(env, leadId, values = {}) {
+  const db = getPublishedSessionsDb(env);
+  const updatedAt = nowIso();
+  await db.prepare(`
+    UPDATE leads
+    SET
+      status = CASE WHEN schedule_response_status = 'accepted' THEN status ELSE 'expired' END,
+      schedule_response_status = CASE WHEN schedule_response_status = 'accepted' THEN schedule_response_status ELSE 'expired' END,
+      schedule_response_at = CASE WHEN schedule_response_status = 'accepted' THEN schedule_response_at ELSE COALESCE(schedule_response_at, ?) END,
+      zoom_deleted_at = CASE WHEN ? IS NULL THEN zoom_deleted_at ELSE ? END,
+      schedule_cleanup_attempted_at = ?,
+      schedule_cleanup_error = ?,
+      updated_at = ?
+    WHERE id = ?
+      AND schedule_response_status != 'accepted'
+  `).bind(
+    values.expiredAt || updatedAt,
+    values.zoomDeletedAt || null,
+    values.zoomDeletedAt || null,
+    updatedAt,
+    values.cleanupError || null,
+    updatedAt,
+    leadId
+  ).run();
+}
+
+async function recordLeadZoomCleanupFields(env, leadId, values = {}) {
+  const db = getPublishedSessionsDb(env);
+  const updatedAt = nowIso();
+  await db.prepare(`
+    UPDATE leads
+    SET
+      zoom_deleted_at = CASE WHEN ? IS NULL THEN zoom_deleted_at ELSE ? END,
+      schedule_cleanup_attempted_at = ?,
+      schedule_cleanup_error = ?,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(
+    values.zoomDeletedAt || null,
+    values.zoomDeletedAt || null,
+    updatedAt,
+    values.cleanupError || null,
+    updatedAt,
+    leadId
+  ).run();
+}
+
+async function listExpiredLeadScheduleRowsForCleanup(env, limit = 25) {
+  const db = getPublishedSessionsDb(env);
+  const result = await db.prepare(`
+    SELECT
+      id,
+      created_at,
+      full_name,
+      email,
+      phone,
+      help_reason,
+      stage,
+      call_outcome,
+      consent_free_call,
+      consent_education_only,
+      consent_recording,
+      source,
+      status,
+      advisor_notes,
+      availability_notes,
+      scheduled_start_at,
+      scheduled_end_at,
+      scheduled_timezone,
+      scheduled_location,
+      scheduled_message,
+      schedule_invite_uid,
+      schedule_response_token,
+      schedule_response_status,
+      schedule_response_at,
+      schedule_response_expires_at,
+      zoom_meeting_id,
+      zoom_join_url,
+      zoom_meeting_password,
+      zoom_created_at,
+      zoom_deleted_at,
+      schedule_cleanup_attempted_at,
+      schedule_cleanup_error,
+      last_schedule_email_sent_at,
+      schedule_email_send_count,
+      updated_at
+    FROM leads
+    WHERE schedule_response_expires_at IS NOT NULL
+      AND schedule_response_expires_at <= ?
+      AND (
+        schedule_response_status = 'pending'
+        OR (
+          schedule_response_status = 'expired'
+          AND zoom_meeting_id IS NOT NULL
+          AND zoom_deleted_at IS NULL
+        )
+      )
+    ORDER BY schedule_response_expires_at ASC, id ASC
+    LIMIT ?
+  `).bind(nowIso(), Math.min(Math.max(Number(limit) || 25, 1), 100)).all();
+
+  return (Array.isArray(result?.results) ? result.results : []).map(normalizeLeadRow);
+}
+
+async function cleanupExpiredLeadScheduleProposals(env, options = {}) {
+  const limit = options.limit || 25;
+  const leads = await listExpiredLeadScheduleRowsForCleanup(env, limit);
+  if (leads.length === 0) {
+    return {
+      checked: 0,
+      deleted: 0,
+      failed: 0
+    };
+  }
+
+  let accessToken = '';
+  let tokenError = '';
+  if (leads.some((lead) => lead.zoomMeetingId && !lead.zoomDeletedAt)) {
+    try {
+      const config = getZoomConfig(env);
+      if (!config.enabled) {
+        throw new Error('Zoom meeting deletion is not configured.');
+      }
+      accessToken = await fetchZoomAccessToken(config);
+    } catch (error) {
+      tokenError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  let deleted = 0;
+  let failed = 0;
+  for (const lead of leads) {
+    const expiredAt = lead.scheduleResponseAt || nowIso();
+    let zoomDeletedAt = lead.zoomDeletedAt || '';
+    let cleanupError = '';
+    let deleteResult = null;
+
+    if (lead.zoomMeetingId && !zoomDeletedAt) {
+      if (!accessToken) {
+        cleanupError = tokenError || 'Zoom access token is unavailable.';
+      } else {
+        try {
+          deleteResult = await deleteZoomMeetingWithToken(accessToken, lead.zoomMeetingId);
+          if (deleteResult.deleted) {
+            zoomDeletedAt = nowIso();
+            deleted += 1;
+          } else {
+            cleanupError = deleteResult.error || 'Zoom meeting could not be deleted.';
+          }
+        } catch (error) {
+          cleanupError = error instanceof Error ? error.message : String(error);
+        }
+      }
+    }
+
+    if (cleanupError) {
+      failed += 1;
+    }
+
+    await recordLeadScheduleZoomCleanup(env, lead.id, {
+      expiredAt,
+      zoomDeletedAt,
+      cleanupError
+    });
+
+    await insertLeadEvent(env, lead.id, 'system', cleanupError ? 'schedule-expired-zoom-delete-failed' : 'schedule-expired-zoom-deleted', {
+      scheduledStartAt: lead.scheduledStartAt,
+      scheduledEndAt: lead.scheduledEndAt,
+      scheduleResponseExpiresAt: lead.scheduleResponseExpiresAt,
+      zoomMeetingId: lead.zoomMeetingId || null,
+      zoomDeleteStatus: deleteResult?.status || null,
+      zoomAlreadyMissing: Boolean(deleteResult?.alreadyMissing),
+      error: cleanupError || null
+    }).catch(() => {});
+  }
+
+  return {
+    checked: leads.length,
+    deleted,
+    failed
+  };
 }
 
 function buildLeadScheduleResponsePage(options = {}) {
@@ -4146,26 +4404,70 @@ async function handleLeadScheduleResponse(request, env) {
   if (lead.scheduleResponseExpiresAt && Date.parse(lead.scheduleResponseExpiresAt) <= Date.now()) {
     if (lead.scheduleResponseStatus !== 'expired') {
       await recordLeadScheduleResponse(env, leadId, token, 'expired');
+      let zoomDeleteResult = null;
+      let zoomDeleteError = '';
+      if (lead.zoomMeetingId && !lead.zoomDeletedAt) {
+        try {
+          zoomDeleteResult = await deleteZoomMeeting(env, lead.zoomMeetingId);
+          await recordLeadZoomCleanupFields(env, leadId, {
+            zoomDeletedAt: zoomDeleteResult.deleted ? nowIso() : '',
+            cleanupError: zoomDeleteResult.deleted ? '' : (zoomDeleteResult.error || 'Zoom meeting could not be deleted.')
+          });
+          zoomDeleteError = zoomDeleteResult.deleted ? '' : (zoomDeleteResult.error || 'Zoom meeting could not be deleted.');
+        } catch (error) {
+          zoomDeleteError = error instanceof Error ? error.message : String(error);
+          await recordLeadZoomCleanupFields(env, leadId, {
+            cleanupError: zoomDeleteError
+          }).catch(() => {});
+        }
+      }
       await insertLeadEvent(env, leadId, 'client', 'schedule-response-expired', {
         scheduledStartAt: lead.scheduledStartAt,
         scheduledEndAt: lead.scheduledEndAt,
-        scheduleResponseExpiresAt: lead.scheduleResponseExpiresAt
+        scheduleResponseExpiresAt: lead.scheduleResponseExpiresAt,
+        zoomDeleted: Boolean(zoomDeleteResult?.deleted),
+        zoomDeleteError: zoomDeleteError || null
       }).catch(() => {});
     }
 
     return buildLeadScheduleResponsePage({
       heading: 'This proposed slot has expired',
-      message: 'Please reply to the email from Planeir and Gerry will suggest another option.',
+      message: 'This proposed Zoom meeting has expired and will not be treated as booked. Please reply to the email from Planeir and Gerry will suggest another option.',
       lead,
       statusCode: 410
     });
   }
 
   const respondedAt = await recordLeadScheduleResponse(env, leadId, token, responseStatus);
+  let zoomDeleteResult = null;
+  let zoomDeleteError = '';
+  if (responseStatus === 'declined' && lead.zoomMeetingId && !lead.zoomDeletedAt) {
+    try {
+      zoomDeleteResult = await deleteZoomMeeting(env, lead.zoomMeetingId);
+      if (zoomDeleteResult.deleted) {
+        await recordLeadZoomCleanupFields(env, leadId, {
+          zoomDeletedAt: nowIso(),
+          cleanupError: ''
+        });
+      } else {
+        zoomDeleteError = zoomDeleteResult.error || 'Zoom meeting could not be deleted.';
+        await recordLeadZoomCleanupFields(env, leadId, {
+          cleanupError: zoomDeleteError
+        });
+      }
+    } catch (error) {
+      zoomDeleteError = error instanceof Error ? error.message : String(error);
+      await recordLeadZoomCleanupFields(env, leadId, {
+        cleanupError: zoomDeleteError
+      }).catch(() => {});
+    }
+  }
   await insertLeadEvent(env, leadId, 'client', responseStatus === 'accepted' ? 'schedule-accepted' : 'schedule-declined', {
     scheduledStartAt: lead.scheduledStartAt,
     scheduledEndAt: lead.scheduledEndAt,
-    respondedAt
+    respondedAt,
+    zoomDeleted: Boolean(zoomDeleteResult?.deleted),
+    zoomDeleteError: zoomDeleteError || null
   }).catch(() => {});
 
   return buildLeadScheduleResponsePage({
@@ -5503,6 +5805,20 @@ async function handlePublishedQrAsset(env, publishedId, token) {
 }
 
 export default {
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      cleanupExpiredLeadScheduleProposals(env).then((result) => {
+        if (result.checked > 0 || result.failed > 0) {
+          console.log('Lead schedule cleanup completed', result);
+        }
+      }).catch((error) => {
+        console.error('Lead schedule cleanup failed', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      })
+    );
+  },
+
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const pathname = normalizePathname(url.pathname);
