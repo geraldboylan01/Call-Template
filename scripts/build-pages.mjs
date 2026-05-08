@@ -25,7 +25,7 @@ const TEXT_EXTENSIONS = new Set([
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const HTML_FILES = ['index.html', 'session.html', 'app/index.html', 'app/session.html', 'app/access.html'];
+const HTML_FILES = ['index.html', 'session.html', 'app/index.html', 'app/session.html', 'app/access.html', 'app/leads.html'];
 const COPY_ENTRIES = [
   'styles',
   'js',

@@ -4,7 +4,7 @@ const SESSION_KEY_SUFFIX = '.json';
 const PUBLISHED_PAYLOAD_VERSION = 2;
 const PUBLISHED_SPLIT_PAYLOAD_VERSION = 3;
 const PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION = 4;
-const WORKER_SOURCE_FINGERPRINT = 'worker-v4-first-open-pin-2026-03-22-1';
+const WORKER_SOURCE_FINGERPRINT = 'worker-v5-lead-scheduling-2026-05-08-1';
 const PUBLISHED_KEY_LENGTH = 32;
 const PUBLISHED_SESSION_KEY_PREFIX = 'published/v2/';
 const PUBLISHED_CLIENT_KEY_PREFIX = 'published/client/';
@@ -40,6 +40,10 @@ const MAX_LEAD_NAME_LENGTH = 120;
 const MAX_LEAD_EMAIL_LENGTH = 160;
 const MAX_LEAD_PHONE_LENGTH = 40;
 const MAX_LEAD_REASON_LENGTH = 2_000;
+const MAX_LEAD_AVAILABILITY_LENGTH = 1_200;
+const MAX_LEAD_ADVISOR_NOTES_LENGTH = 4_000;
+const MAX_LEAD_SCHEDULE_MESSAGE_LENGTH = 4_000;
+const MAX_LEAD_SCHEDULE_LOCATION_LENGTH = 240;
 const MAX_CLIENT_NAME_LENGTH = 160;
 const MAX_CLIENT_EMAIL_LENGTH = 160;
 const MAX_USER_AGENT_LENGTH = 512;
@@ -51,6 +55,9 @@ const PLANEIR_SITE_URL = 'https://planeir.ie';
 const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-card.png`;
 const PLANEIR_EMAIL_CARD_ALT = 'Planeir - Irish financial education calls. Educational only, not financial advice.';
 const LEAD_SOURCE_LABEL = 'Planeir landing page';
+const DEFAULT_LEAD_SCHEDULE_TIMEZONE = 'Europe/Dublin';
+const DEFAULT_LEAD_SCHEDULE_LOCATION = 'Video call link to follow';
+const DEFAULT_LEAD_SCHEDULE_DURATION_MINUTES = 45;
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   'https://planeir.ie',
   'https://www.planeir.ie',
@@ -96,6 +103,22 @@ const CALL_OUTCOME_LABELS = {
   'sense-check-on-a-plan': 'Sense-check on a plan',
   other: 'Other'
 };
+const ALLOWED_LEAD_STATUSES = new Set([
+  'new',
+  'reviewing',
+  'awaiting-client',
+  'booked',
+  'declined',
+  'archived'
+]);
+const LEAD_STATUS_LABELS = {
+  new: 'New',
+  reviewing: 'Reviewing',
+  'awaiting-client': 'Awaiting client',
+  booked: 'Booked',
+  declined: 'Declined',
+  archived: 'Archived'
+};
 
 const requestBuckets = new Map();
 
@@ -138,6 +161,24 @@ function getRouteConfig(pathname) {
   if (pathname === '/api/advisor/published-sessions') {
     return {
       methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/advisor/leads') {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/advisor\/leads\/\d+$/.test(pathname)) {
+    return {
+      methods: 'GET,PATCH,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/advisor\/leads\/\d+\/send-schedule-email$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
     };
   }
 
@@ -363,6 +404,33 @@ function normalizeLeadConsent(value) {
 function normalizeOptionalLeadValue(value) {
   const normalized = normalizeLeadValue(value);
   return normalized ? normalized : null;
+}
+
+function normalizeLongText(value) {
+  return typeof value === 'string' ? value.replace(/\r\n/g, '\n').trim() : '';
+}
+
+function normalizeLeadStatus(value, fallback = 'new') {
+  const normalized = normalizeLeadValue(value).toLowerCase();
+  if (ALLOWED_LEAD_STATUSES.has(normalized)) {
+    return normalized;
+  }
+
+  return fallback;
+}
+
+function normalizeOptionalIsoDate(value, label) {
+  const normalized = normalizeLeadValue(value);
+  if (!normalized) {
+    return '';
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`${label} is invalid.`);
+  }
+
+  return parsed.toISOString();
 }
 
 function normalizeEnvValue(value) {
@@ -793,6 +861,13 @@ function splitEmailList(value) {
   return normalizeEnvValue(value).split(',').map((item) => item.trim()).filter(Boolean);
 }
 
+function extractEmailAddress(value) {
+  const normalized = normalizeEnvValue(value);
+  const match = /<([^<>]+)>/.exec(normalized);
+  const candidate = normalizeEnvValue(match ? match[1] : normalized).toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate : '';
+}
+
 function isAllowedPublishedNotificationLinkProtocol(url) {
   if (url.protocol === 'https:') {
     return true;
@@ -976,6 +1051,7 @@ function buildLeadSummaryRows(lead, leadId) {
     ['Phone', formatOptionalText(lead.phone)],
     ['Planning stage', formatLeadSelection(lead.stage, LEAD_STAGE_LABELS)],
     ['Requested outcome', formatLeadSelection(lead.callOutcome, CALL_OUTCOME_LABELS)],
+    ['Availability notes', formatOptionalText(lead.availabilityNotes)],
     ['Understands this is a free recorded call', formatLeadConsent(lead.understandsRecordedCall)],
     ['Understands Planeir uses their scenario for financial education only', formatLeadConsent(lead.understandsEducationalOnly)],
     ['Understands recording may be used as educational content', formatLeadConsent(lead.understandsEducationalContent)],
@@ -1085,13 +1161,16 @@ function getLeadEmailConfig(env) {
   const from = normalizeEnvValue(env.LEAD_EMAIL_FROM);
   const notificationRecipients = splitEmailList(env.LEAD_NOTIFICATION_TO);
   const replyTo = splitEmailList(env.LEAD_REPLY_TO)[0] || '';
+  const advisorCopyRecipients = splitEmailList(env.LEAD_ADVISOR_COPY_TO);
   const confirmationEnabled = isTruthyEnvValue(env.LEAD_CONFIRMATION_EMAIL_ENABLED);
 
   return {
     apiKey,
     from,
     notificationRecipients,
+    advisorCopyRecipients: advisorCopyRecipients.length > 0 ? advisorCopyRecipients : notificationRecipients,
     replyTo,
+    publicReplyTo: replyTo || extractEmailAddress(from),
     confirmationEnabled
   };
 }
@@ -1187,12 +1266,668 @@ async function sendLeadEmails(env, lead, leadId) {
   }
 }
 
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function formatLeadStatus(status) {
+  return LEAD_STATUS_LABELS[status] || LEAD_STATUS_LABELS.new;
+}
+
+function normalizeLeadRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: Number(row.id),
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || row.created_at || '',
+    fullName: row.full_name || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    reason: row.help_reason || '',
+    stage: row.stage || '',
+    callOutcome: row.call_outcome || '',
+    availabilityNotes: row.availability_notes || '',
+    status: normalizeLeadStatus(row.status, 'new'),
+    advisorNotes: row.advisor_notes || '',
+    scheduledStartAt: row.scheduled_start_at || '',
+    scheduledEndAt: row.scheduled_end_at || '',
+    scheduledTimezone: row.scheduled_timezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE,
+    scheduledLocation: row.scheduled_location || '',
+    scheduledMessage: row.scheduled_message || '',
+    scheduleInviteUid: row.schedule_invite_uid || '',
+    lastScheduleEmailSentAt: row.last_schedule_email_sent_at || '',
+    scheduleEmailSendCount: Number(row.schedule_email_send_count || 0),
+    understandsRecordedCall: Boolean(Number(row.consent_free_call || 0)),
+    understandsEducationalOnly: Boolean(Number(row.consent_education_only || 0)),
+    understandsEducationalContent: Boolean(Number(row.consent_recording || 0)),
+    source: row.source || 'landing-page'
+  };
+}
+
+function buildLeadManagerSummary(lead) {
+  return {
+    id: lead.id,
+    createdAt: lead.createdAt,
+    updatedAt: lead.updatedAt,
+    fullName: lead.fullName,
+    email: lead.email,
+    phone: lead.phone,
+    reasonPreview: lead.reason.length > 180 ? `${lead.reason.slice(0, 177)}...` : lead.reason,
+    stage: lead.stage,
+    stageLabel: formatLeadSelection(lead.stage, LEAD_STAGE_LABELS),
+    callOutcome: lead.callOutcome,
+    callOutcomeLabel: formatLeadSelection(lead.callOutcome, CALL_OUTCOME_LABELS),
+    availabilityNotes: lead.availabilityNotes,
+    status: lead.status,
+    statusLabel: formatLeadStatus(lead.status),
+    scheduledStartAt: lead.scheduledStartAt,
+    scheduledEndAt: lead.scheduledEndAt,
+    scheduledTimezone: lead.scheduledTimezone,
+    scheduledLocation: lead.scheduledLocation,
+    lastScheduleEmailSentAt: lead.lastScheduleEmailSentAt,
+    scheduleEmailSendCount: lead.scheduleEmailSendCount
+  };
+}
+
+function buildLeadManagerDetail(lead, events = []) {
+  return {
+    ...buildLeadManagerSummary(lead),
+    reason: lead.reason,
+    advisorNotes: lead.advisorNotes,
+    scheduledMessage: lead.scheduledMessage,
+    scheduleInviteUid: lead.scheduleInviteUid,
+    understandsRecordedCall: lead.understandsRecordedCall,
+    understandsEducationalOnly: lead.understandsEducationalOnly,
+    understandsEducationalContent: lead.understandsEducationalContent,
+    source: lead.source,
+    events
+  };
+}
+
+function validateLeadId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : 0;
+}
+
+function validateLeadStatus(value) {
+  const normalized = normalizeLeadValue(value).toLowerCase();
+  if (!ALLOWED_LEAD_STATUSES.has(normalized)) {
+    throw new Error('Lead status is invalid.');
+  }
+
+  return normalized;
+}
+
+function validateLeadScheduleValues(payload, currentLead = {}, options = {}) {
+  const { requireSchedule = false } = options;
+  const scheduledStartAt = hasOwn(payload, 'scheduledStartAt')
+    ? normalizeOptionalIsoDate(payload.scheduledStartAt, 'Scheduled start')
+    : (currentLead.scheduledStartAt || '');
+  const scheduledEndAt = hasOwn(payload, 'scheduledEndAt')
+    ? normalizeOptionalIsoDate(payload.scheduledEndAt, 'Scheduled end')
+    : (currentLead.scheduledEndAt || '');
+
+  if (requireSchedule && !scheduledStartAt) {
+    throw new Error('Choose a call date and time before sending.');
+  }
+
+  if ((scheduledStartAt && !scheduledEndAt) || (!scheduledStartAt && scheduledEndAt)) {
+    throw new Error('Scheduled start and end are both required.');
+  }
+
+  if (scheduledStartAt && Date.parse(scheduledEndAt) <= Date.parse(scheduledStartAt)) {
+    throw new Error('Scheduled end must be after the scheduled start.');
+  }
+
+  const scheduledTimezone = hasOwn(payload, 'scheduledTimezone')
+    ? (normalizeLeadValue(payload.scheduledTimezone) || DEFAULT_LEAD_SCHEDULE_TIMEZONE)
+    : (currentLead.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE);
+  if (scheduledTimezone !== DEFAULT_LEAD_SCHEDULE_TIMEZONE) {
+    throw new Error('Only Europe/Dublin scheduling is supported right now.');
+  }
+
+  const scheduledLocation = hasOwn(payload, 'scheduledLocation')
+    ? normalizeLongText(payload.scheduledLocation)
+    : (currentLead.scheduledLocation || '');
+  if (scheduledLocation.length > MAX_LEAD_SCHEDULE_LOCATION_LENGTH) {
+    throw new Error('Meeting location is too long.');
+  }
+
+  const scheduledMessage = hasOwn(payload, 'scheduledMessage')
+    ? normalizeLongText(payload.scheduledMessage)
+    : (currentLead.scheduledMessage || '');
+  if (scheduledMessage.length > MAX_LEAD_SCHEDULE_MESSAGE_LENGTH) {
+    throw new Error('Schedule message is too long.');
+  }
+
+  return {
+    scheduledStartAt,
+    scheduledEndAt,
+    scheduledTimezone,
+    scheduledLocation,
+    scheduledMessage
+  };
+}
+
+function validateAdvisorLeadUpdatePayload(payload, currentLead) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  const status = hasOwn(payload, 'status')
+    ? validateLeadStatus(payload.status)
+    : currentLead.status;
+  const advisorNotes = hasOwn(payload, 'advisorNotes')
+    ? normalizeLongText(payload.advisorNotes)
+    : currentLead.advisorNotes;
+  const availabilityNotes = hasOwn(payload, 'availabilityNotes')
+    ? normalizeLongText(payload.availabilityNotes)
+    : currentLead.availabilityNotes;
+
+  if (advisorNotes.length > MAX_LEAD_ADVISOR_NOTES_LENGTH) {
+    throw new Error('Advisor notes are too long.');
+  }
+
+  if (availabilityNotes.length > MAX_LEAD_AVAILABILITY_LENGTH) {
+    throw new Error('Availability notes are too long.');
+  }
+
+  return {
+    status,
+    advisorNotes,
+    availabilityNotes,
+    ...validateLeadScheduleValues(payload, currentLead)
+  };
+}
+
+function buildDefaultLeadScheduleMessage(lead, schedule) {
+  const firstName = normalizeLeadValue(lead.fullName).split(/\s+/)[0] || 'there';
+  return [
+    `Hi ${firstName},`,
+    '',
+    'Thanks again for your Planeir request.',
+    '',
+    'I can offer the following time for the free education call:',
+    '',
+    formatLeadScheduleRange(schedule),
+    '',
+    'The calendar invite is attached. If that time works, you can add it to your calendar and reply to confirm. If it does not suit, reply with a few windows that work for you and I will suggest another option.',
+    '',
+    'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.',
+    '',
+    'Best,',
+    'Gerry',
+    'Planeir'
+  ].join('\n');
+}
+
+function formatLeadScheduleRange(schedule) {
+  const start = new Date(schedule.scheduledStartAt);
+  const end = new Date(schedule.scheduledEndAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 'Time to be confirmed';
+  }
+
+  const dateText = start.toLocaleDateString('en-IE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: schedule.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE
+  });
+  const timeFormatter = new Intl.DateTimeFormat('en-IE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: schedule.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE
+  });
+
+  return `${dateText}, ${timeFormatter.format(start)}-${timeFormatter.format(end)} (${schedule.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE})`;
+}
+
+function buildLeadScheduleEmailText(lead, schedule) {
+  return [
+    schedule.scheduledMessage,
+    '',
+    'Call details:',
+    `Time: ${formatLeadScheduleRange(schedule)}`,
+    `Location: ${schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION}`,
+    '',
+    'Educational only, not financial advice.',
+    buildPlaneirEmailCardText()
+  ].join('\n');
+}
+
+function buildLeadScheduleEmailHtml(lead, schedule) {
+  const paragraphs = normalizeLongText(schedule.scheduledMessage)
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.split('\n').map(escapeHtml).join('<br />'))
+    .map((paragraph) => `<p style="margin:0 0 16px;">${paragraph}</p>`)
+    .join('');
+
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px;background:#0f2233;color:#ffffff;">
+        <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.82;">Planeir education call</p>
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">Proposed call time with Gerry</h1>
+      </div>
+      <div style="padding:24px;font-size:15px;line-height:1.7;">
+        ${paragraphs}
+        <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;line-height:1.5;">
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Time</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(formatLeadScheduleRange(schedule))}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">Location</td>
+            <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION)}</td>
+          </tr>
+        </table>
+        <p style="margin:0;color:#52606d;">A calendar invite is attached to this email.</p>
+        ${buildPlaneirEmailCardHtml()}
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function buildLeadScheduleAdvisorCopyText(lead, schedule) {
+  return [
+    `Schedule email sent to ${lead.fullName}`,
+    '',
+    `Client email: ${lead.email}`,
+    `Time: ${formatLeadScheduleRange(schedule)}`,
+    `Location: ${schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION}`,
+    '',
+    'Message sent:',
+    schedule.scheduledMessage
+  ].join('\n');
+}
+
+function buildLeadScheduleAdvisorCopyHtml(lead, schedule) {
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px;background:#0f2233;color:#ffffff;">
+        <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.82;">Planeir advisor copy</p>
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">Schedule email sent to ${escapeHtml(lead.fullName)}</h1>
+      </div>
+      <div style="padding:24px;font-size:15px;line-height:1.7;">
+        <p style="margin:0 0 12px;"><strong>Client:</strong> ${escapeHtml(lead.fullName)} &lt;${escapeHtml(lead.email)}&gt;</p>
+        <p style="margin:0 0 12px;"><strong>Time:</strong> ${escapeHtml(formatLeadScheduleRange(schedule))}</p>
+        <p style="margin:0 0 18px;"><strong>Location:</strong> ${escapeHtml(schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION)}</p>
+        <h2 style="margin:0 0 10px;font-size:18px;">Message sent</h2>
+        <div style="padding:16px;border:1px solid #d9e2ea;border-radius:12px;background:#f7fafc;white-space:pre-wrap;">${escapeHtml(schedule.scheduledMessage)}</div>
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function formatIcsDate(value) {
+  return new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function escapeIcsText(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n/g, '\\n')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,');
+}
+
+function foldIcsLine(line) {
+  const value = String(line);
+  const chunks = [];
+  for (let index = 0; index < value.length; index += 73) {
+    chunks.push(`${index === 0 ? '' : ' '}${value.slice(index, index + 73)}`);
+  }
+  return chunks.join('\r\n');
+}
+
+function buildLeadScheduleIcs(lead, schedule, config) {
+  const organizerEmail = config.publicReplyTo || extractEmailAddress(config.from) || 'hello@planeir.ie';
+  const description = [
+    schedule.scheduledMessage,
+    '',
+    'Planeir uses real scenarios for education and explanation only. It does not sell products or provide regulated financial advice, tax advice, legal advice, or product recommendations.'
+  ].join('\n');
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'PRODID:-//Planeir//Lead Scheduling//EN',
+    'VERSION:2.0',
+    'CALSCALE:GREGORIAN',
+    'METHOD:REQUEST',
+    'BEGIN:VEVENT',
+    `UID:${schedule.scheduleInviteUid}`,
+    `DTSTAMP:${formatIcsDate(nowIso())}`,
+    `DTSTART:${formatIcsDate(schedule.scheduledStartAt)}`,
+    `DTEND:${formatIcsDate(schedule.scheduledEndAt)}`,
+    'SUMMARY:Planeir education call with Gerry',
+    `DESCRIPTION:${escapeIcsText(description)}`,
+    `LOCATION:${escapeIcsText(schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION)}`,
+    `ORGANIZER;CN=Planeir:mailto:${organizerEmail}`,
+    `ATTENDEE;CN=${escapeIcsText(lead.fullName)};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${lead.email}`,
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ];
+
+  return `${lines.map(foldIcsLine).join('\r\n')}\r\n`;
+}
+
+function buildLeadScheduleIdempotencyKey(leadId, schedule, kind) {
+  const base = [
+    'lead',
+    leadId,
+    'schedule',
+    kind,
+    schedule.scheduledStartAt,
+    schedule.scheduledEndAt
+  ].join('-');
+  return base.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 240);
+}
+
+async function sendLeadScheduleEmails(env, lead, schedule) {
+  const config = getLeadEmailConfig(env);
+  if (!config.apiKey || !config.from) {
+    throw new Error('Lead schedule email delivery is not configured.');
+  }
+
+  const icsContent = buildLeadScheduleIcs(lead, schedule, config);
+  const calendarAttachment = {
+    filename: 'planeir-call.ics',
+    content: toBase64(new TextEncoder().encode(icsContent))
+  };
+  const clientResult = await sendEmailWithResend(config, {
+    from: config.from,
+    to: [lead.email],
+    subject: 'Your Planeir education call time',
+    html: buildLeadScheduleEmailHtml(lead, schedule),
+    text: buildLeadScheduleEmailText(lead, schedule),
+    reply_to: config.publicReplyTo || undefined,
+    attachments: [calendarAttachment]
+  }, buildLeadScheduleIdempotencyKey(lead.id, schedule, 'client'));
+
+  let advisorCopyResult = null;
+  let advisorCopyError = '';
+  if (config.advisorCopyRecipients.length > 0) {
+    try {
+      advisorCopyResult = await sendEmailWithResend(config, {
+        from: config.from,
+        to: config.advisorCopyRecipients,
+        subject: `Advisor copy: Planeir call time sent to ${lead.fullName}`,
+        html: buildLeadScheduleAdvisorCopyHtml(lead, schedule),
+        text: buildLeadScheduleAdvisorCopyText(lead, schedule),
+        reply_to: config.publicReplyTo || undefined,
+        attachments: [calendarAttachment]
+      }, buildLeadScheduleIdempotencyKey(lead.id, schedule, 'advisor'));
+    } catch (error) {
+      advisorCopyError = error instanceof Error ? error.message : String(error);
+      console.error('Lead schedule advisor copy email failed', {
+        leadId: lead.id,
+        error: advisorCopyError
+      });
+    }
+  }
+
+  return {
+    clientResendEmailId: clientResult?.id || null,
+    advisorCopyResendEmailId: advisorCopyResult?.id || null,
+    advisorCopySent: Boolean(advisorCopyResult?.id),
+    advisorCopyError
+  };
+}
+
 function getPublishedSessionsDb(env) {
   if (!env.LEADS_DB) {
     throw new Error('Published session database is not configured.');
   }
 
   return env.LEADS_DB;
+}
+
+async function getLeadRow(env, leadId) {
+  const db = getPublishedSessionsDb(env);
+  const row = await db.prepare(`
+    SELECT
+      id,
+      created_at,
+      full_name,
+      email,
+      phone,
+      help_reason,
+      stage,
+      call_outcome,
+      consent_free_call,
+      consent_education_only,
+      consent_recording,
+      source,
+      status,
+      advisor_notes,
+      availability_notes,
+      scheduled_start_at,
+      scheduled_end_at,
+      scheduled_timezone,
+      scheduled_location,
+      scheduled_message,
+      schedule_invite_uid,
+      last_schedule_email_sent_at,
+      schedule_email_send_count,
+      updated_at
+    FROM leads
+    WHERE id = ?
+    LIMIT 1
+  `).bind(leadId).first();
+
+  return normalizeLeadRow(row);
+}
+
+async function listLeadRows(env, options = {}) {
+  const db = getPublishedSessionsDb(env);
+  const query = normalizeLeadValue(options.query).toLowerCase();
+  const status = normalizeLeadValue(options.status).toLowerCase();
+  const limit = Math.min(Math.max(Number(options.limit) || 60, 1), 120);
+  const bindings = [];
+  const where = [];
+
+  if (query) {
+    const likeValue = `%${query}%`;
+    where.push(`(
+      LOWER(full_name) LIKE ?
+      OR LOWER(email) LIKE ?
+      OR LOWER(COALESCE(phone, '')) LIKE ?
+      OR LOWER(help_reason) LIKE ?
+      OR LOWER(COALESCE(availability_notes, '')) LIKE ?
+    )`);
+    bindings.push(likeValue, likeValue, likeValue, likeValue, likeValue);
+  }
+
+  if (status && status !== 'all') {
+    if (!ALLOWED_LEAD_STATUSES.has(status)) {
+      throw new Error('Lead status filter is invalid.');
+    }
+    where.push('status = ?');
+    bindings.push(status);
+  }
+
+  const sql = `
+    SELECT
+      id,
+      created_at,
+      full_name,
+      email,
+      phone,
+      help_reason,
+      stage,
+      call_outcome,
+      consent_free_call,
+      consent_education_only,
+      consent_recording,
+      source,
+      status,
+      advisor_notes,
+      availability_notes,
+      scheduled_start_at,
+      scheduled_end_at,
+      scheduled_timezone,
+      scheduled_location,
+      scheduled_message,
+      schedule_invite_uid,
+      last_schedule_email_sent_at,
+      schedule_email_send_count,
+      updated_at
+    FROM leads
+    ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY
+      CASE status
+        WHEN 'new' THEN 0
+        WHEN 'reviewing' THEN 1
+        WHEN 'awaiting-client' THEN 2
+        WHEN 'booked' THEN 3
+        WHEN 'declined' THEN 4
+        WHEN 'archived' THEN 5
+        ELSE 6
+      END,
+      COALESCE(updated_at, created_at) DESC,
+      id DESC
+    LIMIT ?
+  `;
+
+  bindings.push(limit);
+  const result = await db.prepare(sql).bind(...bindings).all();
+  return (Array.isArray(result?.results) ? result.results : []).map(normalizeLeadRow);
+}
+
+async function listLeadEvents(env, leadId) {
+  const db = getPublishedSessionsDb(env);
+  const result = await db.prepare(`
+    SELECT id, lead_id, actor_type, event_type, created_at, metadata_json
+    FROM lead_events
+    WHERE lead_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT 40
+  `).bind(leadId).all();
+
+  return (Array.isArray(result?.results) ? result.results : []).map((row) => {
+    let metadata = null;
+    try {
+      metadata = row.metadata_json ? JSON.parse(row.metadata_json) : null;
+    } catch (_error) {
+      metadata = null;
+    }
+
+    return {
+      id: Number(row.id),
+      leadId: Number(row.lead_id),
+      actorType: row.actor_type,
+      eventType: row.event_type,
+      createdAt: row.created_at,
+      metadata
+    };
+  });
+}
+
+async function insertLeadEvent(env, leadId, actorType, eventType, metadata) {
+  const db = getPublishedSessionsDb(env);
+  await db.prepare(`
+    INSERT INTO lead_events (
+      lead_id,
+      actor_type,
+      event_type,
+      created_at,
+      metadata_json
+    ) VALUES (?, ?, ?, ?, ?)
+  `).bind(
+    leadId,
+    actorType,
+    eventType,
+    nowIso(),
+    metadata ? JSON.stringify(metadata) : null
+  ).run();
+}
+
+async function updateLeadWorkflow(env, leadId, values, eventMetadata = null) {
+  const db = getPublishedSessionsDb(env);
+  const updatedAt = nowIso();
+  await db.prepare(`
+    UPDATE leads
+    SET
+      status = ?,
+      advisor_notes = ?,
+      availability_notes = ?,
+      scheduled_start_at = ?,
+      scheduled_end_at = ?,
+      scheduled_timezone = ?,
+      scheduled_location = ?,
+      scheduled_message = ?,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(
+    values.status,
+    values.advisorNotes || null,
+    values.availabilityNotes || null,
+    values.scheduledStartAt || null,
+    values.scheduledEndAt || null,
+    values.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE,
+    values.scheduledLocation || null,
+    values.scheduledMessage || null,
+    updatedAt,
+    leadId
+  ).run();
+
+  if (eventMetadata) {
+    await insertLeadEvent(env, leadId, 'advisor', 'lead-updated', {
+      ...eventMetadata,
+      status: values.status,
+      updatedAt
+    }).catch((error) => {
+      console.error('Failed to record lead update event', {
+        leadId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }
+}
+
+async function recordLeadScheduleEmailSent(env, leadId, values) {
+  const db = getPublishedSessionsDb(env);
+  await db.prepare(`
+    UPDATE leads
+    SET
+      status = 'awaiting-client',
+      advisor_notes = ?,
+      availability_notes = ?,
+      scheduled_start_at = ?,
+      scheduled_end_at = ?,
+      scheduled_timezone = ?,
+      scheduled_location = ?,
+      scheduled_message = ?,
+      schedule_invite_uid = ?,
+      last_schedule_email_sent_at = ?,
+      schedule_email_send_count = schedule_email_send_count + 1,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(
+    values.advisorNotes || null,
+    values.availabilityNotes || null,
+    values.scheduledStartAt,
+    values.scheduledEndAt,
+    values.scheduledTimezone,
+    values.scheduledLocation || null,
+    values.scheduledMessage,
+    values.scheduleInviteUid,
+    values.lastScheduleEmailSentAt,
+    values.lastScheduleEmailSentAt,
+    leadId
+  ).run();
 }
 
 async function checkPersistentRateLimit(env, scope, bucketKey, windowMs, maxRequests) {
@@ -1613,6 +2348,19 @@ function toBase64Url(bytes) {
     .replace(/=+$/g, '');
 }
 
+function toBase64(bytes) {
+  let binary = '';
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < view.length; index += chunkSize) {
+    const chunk = view.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
 function fromBase64Url(base64Url) {
   if (!isBase64UrlValue(base64Url, MAX_CAPABILITY_TOKEN_B64U_LENGTH)) {
     throw new Error('Capability is malformed.');
@@ -2029,6 +2777,7 @@ function validateLeadPayload(payload) {
   const stage = normalizeLeadValue(payload.stage);
   const callOutcome = normalizeLeadValue(payload.callOutcome);
   const reason = normalizeLeadValue(payload.reason);
+  const availabilityNotes = normalizeLongText(payload.availabilityNotes);
   const understandsRecordedCall = normalizeLeadConsent(
     payload.understandsRecordedCall ?? payload.understandsEarlyAccess
   );
@@ -2077,6 +2826,10 @@ function validateLeadPayload(payload) {
     throw new Error('Help request is too long.');
   }
 
+  if (availabilityNotes.length > MAX_LEAD_AVAILABILITY_LENGTH) {
+    throw new Error('Availability notes are too long.');
+  }
+
   if (!understandsRecordedCall) {
     throw new Error('Recorded-call acknowledgement is required.');
   }
@@ -2094,6 +2847,7 @@ function validateLeadPayload(payload) {
     email,
     phone,
     reason,
+    availabilityNotes,
     stage,
     callOutcome,
     understandsRecordedCall,
@@ -2903,6 +3657,184 @@ async function handleAdvisorPublishedSessionDetail(request, env, origin, publish
   }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
 }
 
+async function handleAdvisorLeadsList(request, env, origin) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const url = new URL(request.url);
+  const query = normalizeLeadValue(url.searchParams.get('q'));
+  const status = normalizeLeadValue(url.searchParams.get('status')) || 'all';
+  const limit = Number(url.searchParams.get('limit') || 60);
+
+  try {
+    const rows = await listLeadRows(env, { query, status, limit });
+    return jsonResponse({
+      ok: true,
+      leads: rows.map(buildLeadManagerSummary)
+    }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Could not load leads.' }, 400, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+}
+
+async function handleAdvisorLeadDetail(request, env, origin, leadId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const lead = await getLeadRow(env, leadId);
+  if (!lead) {
+    return jsonResponse({ error: 'Lead not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  const events = await listLeadEvents(env, leadId).catch((error) => {
+    console.error('Failed to load lead events', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return [];
+  });
+
+  return jsonResponse({
+    ok: true,
+    lead: buildLeadManagerDetail(lead, events)
+  }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
+}
+
+async function handleAdvisorLeadUpdate(request, env, origin, leadId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'PATCH,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const currentLead = await getLeadRow(env, leadId);
+  if (!currentLead) {
+    return jsonResponse({ error: 'Lead not found.' }, 404, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'PATCH,OPTIONS');
+  }
+
+  let validated;
+  try {
+    validated = validateAdvisorLeadUpdatePayload(body, currentLead);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+  }
+
+  await updateLeadWorkflow(env, leadId, validated, {
+    previousStatus: currentLead.status,
+    nextStatus: validated.status
+  });
+  const updatedLead = await getLeadRow(env, leadId);
+  const events = await listLeadEvents(env, leadId).catch(() => []);
+
+  return jsonResponse({
+    ok: true,
+    lead: buildLeadManagerDetail(updatedLead, events)
+  }, 200, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+}
+
+async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true,
+    rateScope: 'advisor-lead-schedule-email',
+    rateLimitMax: 30
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const currentLead = await getLeadRow(env, leadId);
+  if (!currentLead) {
+    return jsonResponse({ error: 'Lead not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
+  }
+
+  let validated;
+  try {
+    validated = validateAdvisorLeadUpdatePayload(body, currentLead);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  let schedule;
+  try {
+    schedule = validateLeadScheduleValues(body, currentLead, { requireSchedule: true });
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Schedule details are invalid.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  schedule.scheduledLocation = schedule.scheduledLocation || DEFAULT_LEAD_SCHEDULE_LOCATION;
+  schedule.scheduledMessage = schedule.scheduledMessage || buildDefaultLeadScheduleMessage(currentLead, schedule);
+  schedule.scheduleInviteUid = currentLead.scheduleInviteUid
+    || `planeir-lead-${leadId}-${Date.parse(schedule.scheduledStartAt)}@planeir.ie`;
+
+  let emailResult;
+  try {
+    emailResult = await sendLeadScheduleEmails(env, currentLead, schedule);
+  } catch (error) {
+    console.error('Lead schedule email failed', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    await insertLeadEvent(env, leadId, 'system', 'schedule-email-failed', {
+      error: error instanceof Error ? error.message : String(error),
+      scheduledStartAt: schedule.scheduledStartAt,
+      scheduledEndAt: schedule.scheduledEndAt
+    }).catch(() => {});
+    return jsonResponse({ error: error.message || 'Could not send schedule email.' }, 502, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  const lastScheduleEmailSentAt = nowIso();
+  await recordLeadScheduleEmailSent(env, leadId, {
+    ...validated,
+    ...schedule,
+    status: 'awaiting-client',
+    lastScheduleEmailSentAt
+  });
+  await insertLeadEvent(env, leadId, 'advisor', 'schedule-email-sent', {
+    clientResendEmailId: emailResult.clientResendEmailId,
+    advisorCopyResendEmailId: emailResult.advisorCopyResendEmailId,
+    advisorCopySent: emailResult.advisorCopySent,
+    advisorCopyError: emailResult.advisorCopyError || null,
+    scheduledStartAt: schedule.scheduledStartAt,
+    scheduledEndAt: schedule.scheduledEndAt,
+    scheduledTimezone: schedule.scheduledTimezone,
+    scheduledLocation: schedule.scheduledLocation,
+    scheduleInviteUid: schedule.scheduleInviteUid
+  }).catch((error) => {
+    console.error('Failed to record lead schedule email event', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  });
+
+  const updatedLead = await getLeadRow(env, leadId);
+  const events = await listLeadEvents(env, leadId).catch(() => []);
+  return jsonResponse({
+    ok: true,
+    lead: buildLeadManagerDetail(updatedLead, events),
+    advisorCopySent: emailResult.advisorCopySent,
+    advisorCopyError: emailResult.advisorCopyError || ''
+  }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
+}
+
 async function handlePublish(request, env, origin) {
   const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
     requireCsrf: true
@@ -3130,23 +4062,28 @@ async function handleLeadSubmit(request, env, origin, ctx) {
   const phone = normalizeOptionalLeadValue(validated.phone);
   const stage = normalizeOptionalLeadValue(validated.stage);
   const callOutcome = normalizeOptionalLeadValue(validated.callOutcome);
+  const availabilityNotes = normalizeOptionalLeadValue(validated.availabilityNotes);
 
   try {
     const result = await env.LEADS_DB.prepare(`
       INSERT INTO leads (
         created_at,
+        updated_at,
         full_name,
         email,
         phone,
         help_reason,
         stage,
         call_outcome,
+        availability_notes,
+        status,
         consent_free_call,
         consent_education_only,
         consent_recording,
         source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
+      createdAt,
       createdAt,
       validated.fullName,
       validated.email,
@@ -3154,6 +4091,8 @@ async function handleLeadSubmit(request, env, origin, ctx) {
       validated.reason,
       stage,
       callOutcome,
+      availabilityNotes,
+      'new',
       validated.understandsRecordedCall ? 1 : 0,
       validated.understandsEducationalOnly ? 1 : 0,
       validated.understandsEducationalContent ? 1 : 0,
@@ -3170,8 +4109,19 @@ async function handleLeadSubmit(request, env, origin, ctx) {
       phone,
       stage,
       callOutcome,
+      availabilityNotes,
       createdAt
     };
+    if (leadId) {
+      await insertLeadEvent(env, leadId, 'client', 'lead-submitted', {
+        source: validated.source
+      }).catch((error) => {
+        console.error('Failed to record lead submitted event', {
+          leadId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
+    }
     const emailTask = sendLeadEmails(env, emailLead, leadId).catch((error) => {
       console.error('Lead email notification failed', {
         leadId,
@@ -4114,6 +5064,10 @@ export default {
       return handleAdvisorPublishedSessionsList(request, env, origin);
     }
 
+    if (request.method === 'GET' && pathname === '/api/advisor/leads') {
+      return handleAdvisorLeadsList(request, env, origin);
+    }
+
     if (request.method === 'GET' && pathname === '/api/auth/session') {
       return handleAdvisorSession(request, env, origin);
     }
@@ -4155,6 +5109,30 @@ export default {
       }
 
       return handleAdvisorPublishedSessionDetail(request, env, origin, publishedId);
+    }
+
+    const sendLeadScheduleEmailMatch = /^\/api\/advisor\/leads\/(\d+)\/send-schedule-email$/.exec(pathname);
+    if (request.method === 'POST' && sendLeadScheduleEmailMatch) {
+      const leadId = validateLeadId(sendLeadScheduleEmailMatch[1]);
+      if (!leadId) {
+        return jsonResponse({ error: 'Lead not found.' }, 404, origin, 'POST,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handleSendLeadScheduleEmail(request, env, origin, leadId);
+    }
+
+    const advisorLeadMatch = /^\/api\/advisor\/leads\/(\d+)$/.exec(pathname);
+    if ((request.method === 'GET' || request.method === 'PATCH') && advisorLeadMatch) {
+      const leadId = validateLeadId(advisorLeadMatch[1]);
+      if (!leadId) {
+        return jsonResponse({ error: 'Lead not found.' }, 404, origin, `${request.method},OPTIONS`, requestHeaders, noStoreHeaders());
+      }
+
+      if (request.method === 'GET') {
+        return handleAdvisorLeadDetail(request, env, origin, leadId);
+      }
+
+      return handleAdvisorLeadUpdate(request, env, origin, leadId);
     }
 
     const revokeMatch = /^\/api\/revoke\/([^/]+)$/.exec(pathname);

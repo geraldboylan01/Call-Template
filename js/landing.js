@@ -60,6 +60,7 @@ const leadFields = {
   stage: document.getElementById('leadStage'),
   callOutcome: document.getElementById('leadCallOutcome'),
   reason: document.getElementById('leadReason'),
+  availabilityNotes: document.getElementById('leadAvailabilityNotes'),
   understandsRecordedCall: document.getElementById('leadUnderstandsRecordedCall'),
   understandsEducationalOnly: document.getElementById('leadUnderstandsEducationalOnly'),
   understandsEducationalContent: document.getElementById('leadUnderstandsEducationalContent')
@@ -353,6 +354,7 @@ function normalizeLeadPayload() {
     stage: String(leadFields.stage?.value || '').trim(),
     callOutcome: String(leadFields.callOutcome?.value || '').trim(),
     reason: String(leadFields.reason?.value || '').trim(),
+    availabilityNotes: String(leadFields.availabilityNotes?.value || '').trim(),
     understandsRecordedCall: Boolean(leadFields.understandsRecordedCall?.checked),
     understandsEducationalOnly: Boolean(leadFields.understandsEducationalOnly?.checked),
     understandsEducationalContent: Boolean(leadFields.understandsEducationalContent?.checked)
@@ -390,6 +392,13 @@ function validateLeadPayload(payload) {
     errors.push({
       field: leadFields.reason,
       message: 'Add a little more context so Gerry can understand the situation and whether the call is a good fit.'
+    });
+  }
+
+  if (payload.availabilityNotes.length > 1200) {
+    errors.push({
+      field: leadFields.availabilityNotes,
+      message: 'Keep availability notes shorter.'
     });
   }
 

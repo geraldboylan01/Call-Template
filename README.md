@@ -4,6 +4,7 @@ Planeir now ships as two connected experiences:
 
 - `/` is the public landing page for first-time visitors.
 - `/app/` is the existing advisor workspace. The public landing page includes an "Admin Login" link to `/app/?login=1&return=home`; after sign-in, the advisor returns to `/` and sees the separate "Open app" link. Unauthenticated `/app/` visits redirect back to the request form.
+- `/app/leads.html` is the advisor-only lead inbox for reviewing D1 leads, choosing call times, and sending branded schedule emails with calendar invites.
 - `/app/session.html?id=...` is the client session viewer used by published links.
 - `/session.html?id=...` remains as a compatibility redirect to `/app/session.html?id=...`.
 
@@ -32,9 +33,22 @@ The landing page form posts to the existing Cloudflare Worker:
 
 - Endpoint: `POST /api/leads`
 - Storage: the `LEADS_DB` D1 binding, table `leads`
-- Stored columns: `created_at`, `full_name`, `email`, `phone`, `help_reason`, `stage`, `call_outcome`, `consent_free_call`, `consent_education_only`, `consent_recording`, `source`
-- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`
+- Stored columns include contact details, submitted context, availability notes, consent fields, workflow status, advisor notes, schedule metadata, and schedule email counts
+- Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`, `worker/migrations/0009_add_lead_scheduling_workflow.sql`
 - Email notifications: Resend API is called from the Worker after a successful D1 insert
+
+### Lead Inbox And Scheduling
+
+The advisor lead inbox lives at `/app/leads.html` and uses the existing advisor auth cookie and CSRF flow.
+
+Advisor endpoints:
+
+- `GET /api/advisor/leads`
+- `GET /api/advisor/leads/:id`
+- `PATCH /api/advisor/leads/:id`
+- `POST /api/advisor/leads/:id/send-schedule-email`
+
+The schedule email endpoint sends a branded client email through Resend with a `planeir-call.ics` calendar invite attachment. It also sends a separate advisor copy to `LEAD_ADVISOR_COPY_TO` when configured. This is a short-term calendar-invite workflow only; it does not create or manage a Google Calendar or Outlook event.
 
 ### Lead Email Configuration
 
@@ -46,6 +60,7 @@ Recommended configuration:
 - Variable or secret: `LEAD_EMAIL_FROM`
 - Variable or secret: `LEAD_NOTIFICATION_TO`
 - Optional variable or secret: `LEAD_REPLY_TO`
+- Optional variable or secret: `LEAD_ADVISOR_COPY_TO`
 - Optional variable or secret: `LEAD_CONFIRMATION_EMAIL_ENABLED`
 
 Example setup:
@@ -56,6 +71,7 @@ wrangler secret put RESEND_API_KEY
 wrangler secret put LEAD_EMAIL_FROM
 wrangler secret put LEAD_NOTIFICATION_TO
 wrangler secret put LEAD_REPLY_TO
+wrangler secret put LEAD_ADVISOR_COPY_TO
 ```
 
 For the optional confirmation email toggle, set `LEAD_CONFIRMATION_EMAIL_ENABLED=true` in the Cloudflare dashboard or in local Wrangler development variables.
@@ -65,7 +81,8 @@ Notes:
 - `LEAD_EMAIL_FROM` must be a sender address verified with Resend, for example `Planeir <hello@yourdomain.com>`.
 - `LEAD_NOTIFICATION_TO` can be Gerry's email address or a comma-separated list of internal recipients.
 - The internal notification uses the submitter's email as `Reply-To`, so Gerry can reply directly.
-- `LEAD_REPLY_TO` is only used on the optional confirmation email.
+- `LEAD_REPLY_TO` should be `hello@planeir.ie` for branded client-facing confirmations and schedule emails.
+- `LEAD_ADVISOR_COPY_TO` receives separate advisor copies of schedule emails. If it is not set, the Worker falls back to `LEAD_NOTIFICATION_TO`.
 - If email delivery fails or email is not configured, the lead is still stored and the API still returns success.
 
 Inbound mail to `hello@planeir.ie` is handled separately from this outbound Resend path. See [docs/email-architecture.md](/Users/geraldboylan/Documents/GitHub/Call-Template/docs/email-architecture.md) for the intended Cloudflare Email Routing setup.
@@ -175,7 +192,10 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 4. Confirm the lead row was inserted into D1.
 5. Confirm Gerry receives the internal notification email.
 6. If `LEAD_CONFIRMATION_EMAIL_ENABLED=true`, confirm the submitter receives the acknowledgement email.
-7. To test failure handling, temporarily remove `RESEND_API_KEY` or use an invalid key, submit again, and confirm the API still returns success while the Worker logs the email failure.
+7. Open `/app/leads.html`, sign in, choose the lead, set a date/time, and send the schedule email.
+8. Confirm the client-facing email comes from `hello@planeir.ie` and includes `planeir-call.ics`.
+9. Confirm the advisor copy goes only to `LEAD_ADVISOR_COPY_TO` or the fallback notification recipient.
+10. To test failure handling, temporarily remove `RESEND_API_KEY` or use an invalid key, submit again, and confirm the API still returns success while the Worker logs the notification failure. Then try schedule sending and confirm the lead inbox reports the send failure.
 
 ## Testing Published Session Emails
 
