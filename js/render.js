@@ -5830,7 +5830,6 @@ export function getUiElements() {
     publishAdvisorLinkValue: document.getElementById('publishAdvisorLinkValue'),
     publishExpiryValue: document.getElementById('publishExpiryValue'),
     publishEmailStatus: document.getElementById('publishEmailStatus'),
-    publishQrCode: document.getElementById('publishQrCode'),
     publishResult: document.getElementById('publishResult'),
     newCallButton: document.getElementById('newCallBtn'),
     sessionStatus: document.getElementById('sessionStatus'),

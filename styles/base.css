@@ -4051,32 +4051,6 @@ body.overview-has-selection .toast-host {
   text-align: right;
 }
 
-.publish-qr-wrap {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid rgba(108, 162, 221, 0.22);
-  border-radius: 14px;
-  background: rgba(7, 16, 31, 0.46);
-}
-
-.publish-qr-code {
-  min-width: 168px;
-  min-height: 168px;
-  padding: 10px;
-  border-radius: 12px;
-  background: #ffffff;
-}
-
-.publish-qr-code img,
-.publish-qr-code canvas,
-.publish-qr-code svg {
-  display: block;
-  width: 148px;
-  height: 148px;
-}
-
 .publish-email-status {
   margin: 0;
   padding: 10px 12px;
@@ -4380,16 +4354,6 @@ body.overview-has-selection .toast-host {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.access-manager-qr-scratch {
-  position: fixed;
-  left: -10000px;
-  top: -10000px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .lead-filter-row {

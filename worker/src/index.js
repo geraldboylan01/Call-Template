@@ -9,7 +9,6 @@ const PUBLISHED_KEY_LENGTH = 32;
 const PUBLISHED_SESSION_KEY_PREFIX = 'published/v2/';
 const PUBLISHED_CLIENT_KEY_PREFIX = 'published/client/';
 const PUBLISHED_ADVISOR_KEY_PREFIX = 'published/advisor/';
-const PUBLISHED_EMAIL_ASSET_KEY_PREFIX = 'published/email-assets/';
 const PUBLISHED_SESSION_KIND = 'published-session';
 const PUBLISHED_CLIENT_KIND = 'published-client-session';
 const PUBLISHED_ADVISOR_KIND = 'published-advisor-session';
@@ -21,7 +20,6 @@ const MAX_AUTH_HASH_B64U_LENGTH = 128;
 const MAX_CAPABILITY_TOKEN_B64U_LENGTH = 128;
 const MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH = 128;
 const MAX_PUBLISHED_RECOVERY_PAYLOAD_B64U_LENGTH = 4_096;
-const MAX_QR_IMAGE_DATA_URL_LENGTH = 1_500_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 80;
 const PUBLISHED_DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -274,12 +272,6 @@ function getRouteConfig(pathname) {
   if (/^\/api\/published-sessions\/[^/]+\/unlocked$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
-    };
-  }
-
-  if (/^\/email-assets\/qr\/[^/]+\/[^/]+$/.test(pathname)) {
-    return {
-      methods: 'GET,OPTIONS'
     };
   }
 
@@ -2602,10 +2594,6 @@ function getPublishedAdvisorKey(publishedId) {
   return `${PUBLISHED_ADVISOR_KEY_PREFIX}${publishedId}${SESSION_KEY_SUFFIX}`;
 }
 
-function getPublishedQrAssetKey(publishedId, token) {
-  return `${PUBLISHED_EMAIL_ASSET_KEY_PREFIX}${publishedId}/qr-${token}`;
-}
-
 function normalizePublishedEmail(value) {
   const normalized = normalizeLeadValue(value).toLowerCase();
   if (!normalized) {
@@ -2697,7 +2685,7 @@ function buildPublishedSessionEmailText(payload) {
 
   lines.push(
     '',
-    'If the button or QR code does not open, copy and paste the link above into your browser.',
+    'If the button does not open, copy and paste the link above into your browser.',
     '',
     'Best,',
     'Gerry',
@@ -2708,22 +2696,6 @@ function buildPublishedSessionEmailText(payload) {
 }
 
 function buildPublishedSessionEmailHtml(payload) {
-  const qrSection = payload.qrImageUrl
-    ? `
-      <div style="margin:24px 0 0;padding:20px;border:1px solid #d9e2ea;border-radius:16px;background:#f7fafc;text-align:center;">
-        <p style="margin:0 0 12px;font-size:13px;letter-spacing:0.05em;text-transform:uppercase;color:#486581;">Mobile access</p>
-        <img
-          src="${escapeHtml(payload.qrImageUrl)}"
-          alt="QR code for your secure Planeir session link"
-          width="180"
-          height="180"
-          style="display:block;margin:0 auto 12px;width:180px;height:180px;border:0;"
-        />
-        <p style="margin:0;color:#52606d;font-size:14px;line-height:1.6;">Scan this QR code to open the same secure link on your phone.</p>
-      </div>
-    `
-    : '';
-
   const pinSection = payload.clientCreatesPinOnFirstOpen
     ? `
         <p style="margin:18px 0 0;font-size:14px;line-height:1.7;color:#52606d;">
@@ -2768,7 +2740,6 @@ function buildPublishedSessionEmailHtml(payload) {
         </p>
         <p style="margin:18px 0 0;color:#52606d;">This secure link expires on <strong>${escapeHtml(payload.expiresAtDisplay)}</strong>.</p>
         ${pinSection}
-        ${qrSection}
         ${buildPlaneirEmailCardHtml()}
       </div>
     </div>
@@ -3504,9 +3475,6 @@ function normalizePublishedSessionRow(row) {
     lastAdvisorUnlockedAt: row.last_advisor_unlocked_at || null,
     lastEmailSentAt: row.last_email_sent_at || null,
     emailSendCount: Number(row.email_send_count || 0),
-    qrAssetToken: row.qr_asset_token || '',
-    qrAssetR2Key: row.qr_asset_r2_key || '',
-    qrAssetContentType: row.qr_asset_content_type || '',
     recoveryPayloadB64u: row.recovery_payload_b64u || '',
     recoveryIvB64u: row.recovery_iv_b64u || '',
     recoveryAvailable: Boolean(row.recovery_payload_b64u && row.recovery_iv_b64u),
@@ -3550,9 +3518,6 @@ async function getPublishedSessionRow(env, publishedId) {
       last_advisor_unlocked_at,
       last_email_sent_at,
       email_send_count,
-      qr_asset_token,
-      qr_asset_r2_key,
-      qr_asset_content_type,
       recovery_payload_b64u,
       recovery_iv_b64u,
       client_pin_state,
@@ -3613,15 +3578,12 @@ async function insertPublishedSessionRow(env, record) {
       last_advisor_unlocked_at,
       last_email_sent_at,
       email_send_count,
-      qr_asset_token,
-      qr_asset_r2_key,
-      qr_asset_content_type,
       recovery_payload_b64u,
       recovery_iv_b64u,
       client_pin_state,
       client_pin_initialized_at,
       client_access_revision
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     record.id,
     record.version,
@@ -3647,9 +3609,6 @@ async function insertPublishedSessionRow(env, record) {
     null,
     null,
     0,
-    null,
-    null,
-    null,
     record.recoveryPayloadB64u || null,
     record.recoveryIvB64u || null,
     record.clientPinState || null,
@@ -3733,9 +3692,6 @@ async function listPublishedSessionRows(env, options = {}) {
       last_advisor_unlocked_at,
       last_email_sent_at,
       email_send_count,
-      qr_asset_token,
-      qr_asset_r2_key,
-      qr_asset_content_type,
       recovery_payload_b64u,
       recovery_iv_b64u,
       client_pin_state,
@@ -3807,17 +3763,11 @@ async function updatePublishedEmailMetadata(env, publishedId, values) {
       client_email = ?,
       last_email_sent_at = ?,
       email_send_count = email_send_count + 1,
-      qr_asset_token = ?,
-      qr_asset_r2_key = ?,
-      qr_asset_content_type = ?,
       updated_at = ?
     WHERE id = ?
   `).bind(
     values.clientEmail || null,
     values.lastEmailSentAt,
-    values.qrAssetToken || null,
-    values.qrAssetR2Key || null,
-    values.qrAssetContentType || null,
     nowIso(),
     publishedId
   ).run();
@@ -3857,9 +3807,6 @@ async function resetPublishedClientAccessMetadata(env, publishedId, values) {
       client_access_revision = ?,
       last_email_sent_at = NULL,
       email_send_count = 0,
-      qr_asset_token = NULL,
-      qr_asset_r2_key = NULL,
-      qr_asset_content_type = NULL,
       recovery_payload_b64u = ?,
       recovery_iv_b64u = ?,
       updated_at = ?
@@ -3875,27 +3822,6 @@ async function resetPublishedClientAccessMetadata(env, publishedId, values) {
   ).run();
 }
 
-async function clearPublishedQrAssetMetadata(env, publishedId) {
-  const db = getPublishedSessionsDb(env);
-  await db.prepare(`
-    UPDATE published_sessions
-    SET
-      qr_asset_token = NULL,
-      qr_asset_r2_key = NULL,
-      qr_asset_content_type = NULL,
-      updated_at = ?
-    WHERE id = ?
-  `).bind(nowIso(), publishedId).run();
-}
-
-async function deletePublishedQrAsset(env, objectKey) {
-  if (!objectKey) {
-    return;
-  }
-
-  await env.SESSIONS_BUCKET.delete(objectKey);
-}
-
 function isPublishedSessionExpired(row) {
   return Date.parse(row.expiresAt) <= Date.now();
 }
@@ -3906,27 +3832,9 @@ async function markPublishedExpiredIfNeeded(env, row) {
   }
 
   await updatePublishedStatus(env, row.id, 'expired', null);
-  if (row.qrAssetR2Key) {
-    await deletePublishedQrAsset(env, row.qrAssetR2Key).catch((error) => {
-      console.error('Failed to delete QR asset on expiry', {
-        publishedId: row.id,
-        qrAssetR2Key: row.qrAssetR2Key,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    });
-    await clearPublishedQrAssetMetadata(env, row.id).catch((error) => {
-      console.error('Failed to clear QR metadata on expiry', {
-        publishedId: row.id,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    });
-  }
   return {
     ...row,
-    status: 'expired',
-    qrAssetToken: '',
-    qrAssetR2Key: '',
-    qrAssetContentType: ''
+    status: 'expired'
   };
 }
 
@@ -4107,27 +4015,6 @@ async function requireAdvisorSession(request, env, origin, methods, options = {}
   return {
     session,
     clientIp
-  };
-}
-
-function parseQrImageDataUrl(dataUrl) {
-  const value = normalizeLeadValue(dataUrl);
-  if (!value) {
-    return null;
-  }
-
-  if (value.length > MAX_QR_IMAGE_DATA_URL_LENGTH) {
-    throw new Error('QR image is too large.');
-  }
-
-  const match = /^data:(image\/png);base64,([A-Za-z0-9+/=]+)$/.exec(value);
-  if (!match) {
-    throw new Error('QR image must be a PNG data URL.');
-  }
-
-  return {
-    contentType: match[1],
-    bytes: Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0))
   };
 }
 
@@ -5181,14 +5068,6 @@ async function handleRevokePublishedSession(request, env, origin, publishedId) {
 
     const revokedAt = nowIso();
     await updatePublishedStatus(env, publishedId, 'revoked', revokedAt);
-    await deletePublishedQrAsset(env, row.qrAssetR2Key).catch((error) => {
-      console.error('Failed to delete QR asset on revoke', {
-        publishedId,
-        qrAssetR2Key: row.qrAssetR2Key,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    });
-    await clearPublishedQrAssetMetadata(env, publishedId);
     await insertPublishedSessionEvent(env, publishedId, 'advisor', 'revoked', null);
     return jsonResponse({ ok: true, status: 'revoked', revokedAt }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
@@ -5403,7 +5282,6 @@ async function handleResetPublishedClientAccess(request, env, origin, publishedI
     }, 409, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
 
-  const previousQrAssetR2Key = row.qrAssetR2Key || '';
   await env.SESSIONS_BUCKET.put(row.clientR2Key, JSON.stringify(validated.clientBundle), {
     httpMetadata: { contentType: 'application/json' }
   });
@@ -5435,16 +5313,6 @@ async function handleResetPublishedClientAccess(request, env, origin, publishedI
     requestIp: advisorAccess.clientIp,
     userAgent: normalizeUserAgent(request.headers.get('User-Agent'))
   });
-
-  if (previousQrAssetR2Key) {
-    await deletePublishedQrAsset(env, previousQrAssetR2Key).catch((error) => {
-      console.error('Failed to delete superseded QR asset on client access reset', {
-        publishedId,
-        previousQrAssetR2Key,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    });
-  }
 
   const updatedRow = await getPublishedSessionRow(env, publishedId);
   return jsonResponse({
@@ -5652,42 +5520,11 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     return jsonResponse({ error: 'Confirm inline PIN delivery before sending the final email.' }, 400, origin, 'POST,OPTIONS');
   }
 
-  let qrImage = null;
-  try {
-    qrImage = parseQrImageDataUrl(body?.qrImageDataUrl);
-  } catch (error) {
-    return jsonResponse({ error: error.message || 'QR image is invalid.' }, 400, origin, 'POST,OPTIONS');
-  }
-  if (!qrImage) {
-    return jsonResponse({ error: 'QR image is required to send the final email.' }, 400, origin, 'POST,OPTIONS');
-  }
-
   const emailConfig = getPublishedEmailConfig(env);
   if (!emailConfig.apiKey || !emailConfig.from) {
     return jsonResponse({ error: 'Session email delivery is not configured right now.' }, 500, origin, 'POST,OPTIONS');
   }
 
-  const previousQrAssetR2Key = row.qrAssetR2Key || '';
-  let qrAssetToken = row.qrAssetToken || '';
-  let qrAssetR2Key = row.qrAssetR2Key || '';
-  let qrAssetContentType = row.qrAssetContentType || '';
-  let shouldDeletePreviousQrAsset = false;
-  if (qrImage) {
-    qrAssetToken = crypto.randomUUID().replace(/-/g, '');
-    qrAssetR2Key = getPublishedQrAssetKey(publishedId, qrAssetToken);
-    qrAssetContentType = qrImage.contentType;
-    await env.SESSIONS_BUCKET.put(qrAssetR2Key, qrImage.bytes, {
-      httpMetadata: {
-        contentType: qrImage.contentType
-      }
-    });
-    shouldDeletePreviousQrAsset = Boolean(previousQrAssetR2Key && previousQrAssetR2Key !== qrAssetR2Key);
-  }
-
-  const requestUrl = new URL(request.url);
-  const qrImageUrl = qrAssetToken
-    ? `${requestUrl.origin}/email-assets/qr/${encodeURIComponent(publishedId)}/${encodeURIComponent(qrAssetToken)}`
-    : '';
   const expiresAtDisplay = new Date(row.expiresAt).toLocaleString('en-IE', {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -5705,8 +5542,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
         expiresAtDisplay,
         pin,
         includePinInEmail,
-        clientCreatesPinOnFirstOpen: row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
-        qrImageUrl
+        clientCreatesPinOnFirstOpen: row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION
       }),
       text: buildPublishedSessionEmailText({
         clientName,
@@ -5722,15 +5558,6 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
       reply_to: emailConfig.replyTo || undefined
     }, `published-session-${publishedId}-email-${row.emailSendCount + 1}`);
   } catch (error) {
-    if (qrImage && qrAssetR2Key && qrAssetR2Key !== previousQrAssetR2Key) {
-      await deletePublishedQrAsset(env, qrAssetR2Key).catch((cleanupError) => {
-        console.error('Failed to clean up unsent QR asset', {
-          publishedId,
-          qrAssetR2Key,
-          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
-        });
-      });
-    }
     console.error('Failed to send published session email', {
       publishedId,
       clientEmail,
@@ -5742,10 +5569,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
   const lastEmailSentAt = nowIso();
   await updatePublishedEmailMetadata(env, publishedId, {
     clientEmail,
-    lastEmailSentAt,
-    qrAssetToken,
-    qrAssetR2Key,
-    qrAssetContentType
+    lastEmailSentAt
   });
   await insertPublishedSessionEvent(env, publishedId, 'advisor', 'email-sent', {
     clientEmail,
@@ -5754,24 +5578,12 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     acknowledgedInlinePinRisk,
     clientCreatesPinOnFirstOpen: row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
     trustpilotAfsTriggered: emailConfig.trustpilotAfsRecipients.length > 0,
-    hasQrImage: Boolean(qrImage),
-    rotatedQrToken: qrAssetToken !== (row.qrAssetToken || ''),
     requestIp: clientIp,
     userAgent: normalizeUserAgent(request.headers.get('User-Agent')),
     clientLinkHost: validatedClientLink.host,
     clientLinkPath: validatedClientLink.path,
     clientLinkPubMatches: true
   });
-
-  if (shouldDeletePreviousQrAsset) {
-    await deletePublishedQrAsset(env, previousQrAssetR2Key).catch((cleanupError) => {
-      console.error('Failed to delete superseded QR asset', {
-        publishedId,
-        previousQrAssetR2Key,
-        error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
-      });
-    });
-  }
 
   const updatedRow = await getPublishedSessionRow(env, publishedId);
   return jsonResponse({
@@ -5780,28 +5592,6 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     lastEmailSentAt,
     emailSendCount: updatedRow?.emailSendCount || row.emailSendCount + 1
   }, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
-}
-
-async function handlePublishedQrAsset(env, publishedId, token) {
-  let row = await getPublishedSessionRow(env, publishedId);
-  if (!row) {
-    return new Response('Not found.', { status: 404 });
-  }
-
-  row = await markPublishedExpiredIfNeeded(env, row);
-  if (row.status !== 'active' || !row.qrAssetToken || row.qrAssetToken !== token || !row.qrAssetR2Key) {
-    return new Response('Not found.', { status: 404 });
-  }
-
-  const object = await env.SESSIONS_BUCKET.get(row.qrAssetR2Key);
-  if (!object) {
-    return new Response('Not found.', { status: 404 });
-  }
-
-  const bytes = await object.arrayBuffer();
-  return assetResponse(bytes, 200, row.qrAssetContentType || 'image/png', {
-    ...noStoreHeaders()
-  });
 }
 
 export default {
@@ -6007,17 +5797,6 @@ export default {
       }
 
       return handlePublishedSessionUnlocked(request, env, origin, publishedId);
-    }
-
-    const qrAssetMatch = /^\/email-assets\/qr\/([^/]+)\/([^/]+)$/.exec(pathname);
-    if (request.method === 'GET' && qrAssetMatch) {
-      const publishedId = qrAssetMatch[1];
-      const token = qrAssetMatch[2];
-      if (!isSafeSessionId(publishedId) || !/^[a-zA-Z0-9_-]{16,80}$/.test(token)) {
-        return new Response('Not found.', { status: 404 });
-      }
-
-      return handlePublishedQrAsset(env, publishedId, token);
     }
 
     return jsonResponse({ error: 'Not found.' }, 404, origin, routeConfig?.methods, requestHeaders);

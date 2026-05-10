@@ -636,6 +636,29 @@ main {
   background: #050b14;
 }
 
+.hero-video-caption {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.95rem 0.35rem 0.2rem;
+}
+
+.hero-video-caption span {
+  color: var(--landing-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.hero-video-caption p {
+  margin: 0;
+  max-width: 42rem;
+  color: var(--landing-muted);
+  line-height: 1.68;
+}
+
 .mock-window,
 .feature-card,
 .use-case-card,
@@ -1734,6 +1757,10 @@ main {
 
   .hero-video-shell {
     border-radius: 0.85rem;
+  }
+
+  .hero-video-caption {
+    padding: 0.85rem 0.2rem 0.15rem;
   }
 }
 

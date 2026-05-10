@@ -46,7 +46,6 @@ const ui = {
   detailUpdateExpiryButton: document.getElementById('detailUpdateExpiryBtn'),
   detailResetAccessButton: document.getElementById('detailResetAccessBtn'),
   detailRevokeButton: document.getElementById('detailRevokeBtn'),
-  accessQrScratch: document.getElementById('accessQrScratch'),
   advisorAuthLayer: document.getElementById('advisorAuthLayer'),
   advisorAuthHint: document.getElementById('advisorAuthHint'),
   advisorAuthPasswordInput: document.getElementById('advisorAuthPasswordInput'),
@@ -347,35 +346,6 @@ function getSelectedClientEmail() {
 function getSelectedExpiryDays() {
   const value = Number(ui.detailExpirySelect?.value || 30);
   return [7, 30, 90].includes(value) ? value : 30;
-}
-
-async function getQrImageDataUrl(link) {
-  if (!ui.accessQrScratch || typeof window.QRCode !== 'function' || !link) {
-    throw new Error('QR code is unavailable right now.');
-  }
-
-  ui.accessQrScratch.innerHTML = '';
-  new window.QRCode(ui.accessQrScratch, {
-    text: link,
-    width: 148,
-    height: 148,
-    colorDark: '#0f2233',
-    colorLight: '#ffffff'
-  });
-
-  await new Promise((resolve) => window.requestAnimationFrame(resolve));
-
-  const image = ui.accessQrScratch.querySelector('img');
-  if (image?.src?.startsWith('data:image/png;base64,')) {
-    return image.src;
-  }
-
-  const canvas = ui.accessQrScratch.querySelector('canvas');
-  if (canvas && typeof canvas.toDataURL === 'function') {
-    return canvas.toDataURL('image/png');
-  }
-
-  throw new Error('QR code could not be generated.');
 }
 
 function mergeSelectedIntoList(session) {
@@ -714,7 +684,6 @@ async function sendPublishedSessionEmail(session) {
   }
 
   const clientEmail = getSelectedClientEmail();
-  const qrImageDataUrl = await getQrImageDataUrl(session.clientLink);
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
   const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/send-email`, {
     method: 'POST',
@@ -728,8 +697,7 @@ async function sendPublishedSessionEmail(session) {
       clientLink: session.clientLink,
       pin: '',
       includePinInEmail: false,
-      acknowledgeInlinePinRisk: false,
-      qrImageDataUrl
+      acknowledgeInlinePinRisk: false
     })
   }, {
     includeCsrf: true,
@@ -1018,7 +986,7 @@ function bindEvents() {
   });
 
   ui.detailResetAccessButton?.addEventListener('click', async () => {
-    if (!window.confirm('Issue a fresh client link and reset the client PIN setup?\n\nThe current client link and QR code will stop working.')) {
+    if (!window.confirm('Issue a fresh client link and reset the client PIN setup?\n\nThe current client link will stop working.')) {
       return;
     }
 

@@ -68,7 +68,6 @@ const publishSuccessTarget = document.getElementById('publishSuccessTarget');
 const publishSuccessTitle = document.getElementById('publishSuccessTitle');
 const publishSuccessBody = document.getElementById('publishSuccessBody');
 const publishSuccessOrigin = document.getElementById('publishSuccessOrigin');
-const publishQrScratch = document.getElementById('publishQrScratch');
 const publishedRecoveryLayer = document.getElementById('publishedRecoveryLayer');
 const publishedRecoveryMessage = document.getElementById('publishedRecoveryMessage');
 const publishedRecoveryRetryButton = document.getElementById('publishedRecoveryRetryBtn');
@@ -3884,80 +3883,6 @@ function isPublishPinIncludedInEmail() {
   return Boolean(ui.publishIncludePinEmailToggle?.checked);
 }
 
-function clearPublishedQrCode() {
-  if (!ui.publishQrCode) {
-    return;
-  }
-
-  ui.publishQrCode.innerHTML = '';
-}
-
-function renderPublishedQrCode(link) {
-  clearPublishedQrCode();
-  if (!ui.publishQrCode || typeof window.QRCode !== 'function' || !link) {
-    return;
-  }
-
-  // The QR only encodes the client link, never the advisor link or PIN.
-  new window.QRCode(ui.publishQrCode, {
-    text: link,
-    width: 148,
-    height: 148,
-    colorDark: '#0f2233',
-    colorLight: '#ffffff'
-  });
-}
-
-async function getPublishedQrImageDataUrl(link) {
-  const sourceNode = ui.publishQrCode || publishQrScratch;
-  if (!sourceNode || typeof window.QRCode !== 'function' || !link) {
-    return '';
-  }
-
-  const existingImage = ui.publishQrCode?.querySelector('img');
-  if (existingImage && typeof existingImage.src === 'string' && existingImage.src.startsWith('data:image/png;base64,')) {
-    return existingImage.src;
-  }
-
-  const existingCanvas = ui.publishQrCode?.querySelector('canvas');
-  if (existingCanvas && typeof existingCanvas.toDataURL === 'function') {
-    try {
-      return existingCanvas.toDataURL('image/png');
-    } catch (_error) {
-      // Fall through to a fresh off-screen render.
-    }
-  }
-
-  sourceNode.innerHTML = '';
-  new window.QRCode(sourceNode, {
-    text: link,
-    width: 148,
-    height: 148,
-    colorDark: '#0f2233',
-    colorLight: '#ffffff'
-  });
-
-  await new Promise((resolve) => {
-    window.requestAnimationFrame(() => resolve());
-  });
-
-  const image = sourceNode.querySelector('img');
-  if (image && typeof image.src === 'string' && image.src.startsWith('data:image/png;base64,')) {
-    return image.src;
-  }
-
-  const canvas = sourceNode.querySelector('canvas');
-  if (canvas && typeof canvas.toDataURL === 'function') {
-    try {
-      return canvas.toDataURL('image/png');
-    } catch (_error) {
-      return '';
-    }
-  }
-
-  return '';
-}
-
 function formatPublishedEmailStatus(access) {
   if (!access) {
     return 'No final email has been sent yet.';
@@ -4026,8 +3951,6 @@ function buildPublishedEmailCopy(access) {
 
   lines.push(
     '',
-    'You can also scan the attached QR code to open the same secure link on mobile.',
-    '',
     'Best,',
     'Gerry'
   );
@@ -4095,7 +4018,6 @@ function resetPublishResult(options = {}) {
   if (ui.publishClientPinInfo) {
     ui.publishClientPinInfo.textContent = getPublishedClientPinInfoText(null);
   }
-  clearPublishedQrCode();
 
   if (clearInputs && ui.publishClientEmailInput) {
     ui.publishClientEmailInput.value = '';
@@ -4532,7 +4454,6 @@ function renderPublishedAccess(access) {
     ui.publishEmailStatus.textContent = formatPublishedEmailStatus(access);
   }
 
-  renderPublishedQrCode(getPublishedClientLink(access));
   updatePublishActionState(access);
 }
 
@@ -4658,10 +4579,6 @@ async function sendPublishedSessionEmail(access) {
   if (!confirmInlinePinDelivery(access, 'Send the final email with the client PIN included?')) {
     throw new Error('Email sending cancelled.');
   }
-  const qrImageDataUrl = await getPublishedQrImageDataUrl(getPublishedClientLink(access));
-  if (!qrImageDataUrl) {
-    throw new Error('QR code is unavailable right now. Please try sending again.');
-  }
   const capability = await buildPublishedCapabilityToken(advisorSecretB64u, 'advisor');
   const includePinInEmail = !isFirstOpenPublishedAccess(access) && isPublishPinIncludedInEmail();
   const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(publishedId)}/send-email`, {
@@ -4676,8 +4593,7 @@ async function sendPublishedSessionEmail(access) {
       clientLink: getPublishedClientLink(access),
       pin: includePinInEmail ? (access.pin || '') : '',
       includePinInEmail,
-      acknowledgeInlinePinRisk: includePinInEmail && Boolean(access.pin),
-      qrImageDataUrl
+      acknowledgeInlinePinRisk: includePinInEmail && Boolean(access.pin)
     })
   }, {
     includeCsrf: true,
@@ -4863,7 +4779,7 @@ async function handleResetPublishedClientAccess() {
     return;
   }
 
-  const confirmed = window.confirm('Issue a fresh client link and reset the client PIN setup?\n\nThe advisor link will stay the same and the published modules will be preserved, but the current client link and QR code will stop working.');
+  const confirmed = window.confirm('Issue a fresh client link and reset the client PIN setup?\n\nThe advisor link will stay the same and the published modules will be preserved, but the current client link will stop working.');
   if (!confirmed) {
     return;
   }
