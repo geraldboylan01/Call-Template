@@ -179,7 +179,8 @@ const appState = {
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
-  publishedAccess: null
+  publishedAccess: null,
+  pipelineContext: null
 };
 
 const advisorAuthState = {
@@ -1661,6 +1662,46 @@ function setOverviewMultiSelectArmed(armed) {
 
 function normalizeClientName(value) {
   return value.trim();
+}
+
+function getClientPipelineContextFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  const clientId = params.get('client')?.trim() || '';
+  const leadId = params.get('lead')?.trim() || '';
+  const clientName = params.get('name')?.trim() || '';
+  const clientEmail = params.get('email')?.trim().toLowerCase() || '';
+  if (!clientId && !leadId && !clientName && !clientEmail) {
+    return null;
+  }
+
+  return {
+    clientId,
+    leadId,
+    clientName,
+    clientEmail
+  };
+}
+
+function applyClientPipelineContextToSession() {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const context = appState.pipelineContext;
+  if (!context) {
+    return;
+  }
+
+  if (context.clientName) {
+    appState.session.clientName = normalizeClientName(context.clientName) || appState.session.clientName;
+    if (ui.clientNameInput) {
+      ui.clientNameInput.value = appState.session.clientName;
+    }
+  }
+
+  if (context.clientEmail && ui.publishClientEmailInput) {
+    ui.publishClientEmailInput.value = context.clientEmail;
+  }
 }
 
 function ensureGenerated(module) {
@@ -4223,6 +4264,12 @@ async function publishCurrentSession() {
     clientSecretB64u: encryptedPayload.clientSecretB64u,
     advisorSecretB64u: encryptedPayload.advisorSecretB64u
   };
+  if (appState.pipelineContext?.clientId) {
+    encryptedPayload.requestBody.clientId = appState.pipelineContext.clientId;
+  }
+  if (appState.pipelineContext?.leadId) {
+    encryptedPayload.requestBody.sourceLeadId = appState.pipelineContext.leadId;
+  }
   const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions`, {
     method: 'POST',
     headers: {
@@ -4246,6 +4293,8 @@ async function publishCurrentSession() {
   return {
     version: 4,
     publishedId,
+    clientId: payload?.clientId || appState.pipelineContext?.clientId || null,
+    sourceLeadId: payload?.sourceLeadId || appState.pipelineContext?.leadId || null,
     pin: '',
     clientLink,
     advisorLink,
@@ -7086,7 +7135,7 @@ async function handleNewCall() {
 
 async function openClientAccessManager(options = {}) {
   const { closeOverflow = false, closePublish = false } = options;
-  await ensureAdvisorAuthenticated('Sign in to open Client Access.');
+  await ensureAdvisorAuthenticated('Sign in to open the Client Pipeline.');
 
   if (closeOverflow) {
     closeMobileOverflowSheet({ restoreFocus: false });
@@ -7095,7 +7144,7 @@ async function openClientAccessManager(options = {}) {
     setPublishModalOpen(false);
   }
 
-  window.location.href = new URL('./access.html', window.location.href).toString();
+  window.location.href = new URL('./clients.html', window.location.href).toString();
 }
 
 function bindEvents() {
@@ -7123,6 +7172,7 @@ function bindEvents() {
         renderPublishedAccess(appState.publishedAccess);
       } else {
         resetPublishResult({ clearAccess: false });
+        applyClientPipelineContextToSession();
       }
       setPublishModalOpen(true);
     });
@@ -7569,6 +7619,9 @@ export async function initApp(options = {}) {
     const workerMissing = !WORKER_BASE_URL;
     let startupPublishedAccess = null;
     let startupNotice = '';
+    appState.pipelineContext = getClientPipelineContextFromLocation();
+    const startFreshFromPipeline = appState.pipelineContext
+      && new URLSearchParams(window.location.search).get('fresh') === '1';
 
     if (!runtimeConfig.readOnly && runtimeConfig.allowPublish && workerMissing) {
       runtimeConfig.allowPublish = false;
@@ -7615,7 +7668,9 @@ export async function initApp(options = {}) {
               appState.session = recovery.session;
               startupPublishedAccess = recovery.access;
             } else {
-              appState.session = loadSession();
+              appState.session = startFreshFromPipeline
+                ? newSession(appState.pipelineContext?.clientName || 'Client')
+                : loadSession();
             }
           }
         } catch (error) {
@@ -7625,16 +7680,20 @@ export async function initApp(options = {}) {
           startupPublishedAccess = recovery.access;
         }
       } else {
-        appState.session = loadSession();
+        appState.session = startFreshFromPipeline
+          ? newSession(appState.pipelineContext?.clientName || 'Client')
+          : loadSession();
       }
     }
 
+    applyClientPipelineContextToSession();
     ensureActiveModule(appState.session);
     appState.mode = hasModules() ? 'focused' : 'greeting';
     appState.publishedAccess = startupPublishedAccess;
 
     applyRuntimeChrome();
     resetPublishResult({ clearAccess: false });
+    applyClientPipelineContextToSession();
     bindEvents();
     if (appState.publishedAccess) {
       renderPublishedAccess(appState.publishedAccess);

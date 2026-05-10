@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    />
+    <meta
+      name="call-canvas-worker-base-url"
+      content="https://call-canvas-session-worker.geraldboylan.workers.dev"
+    />
+    <meta
+      name="description"
+      content="Planeir advisor client pipeline for managing leads, meetings, published sessions, and post-session emails in one place."
+    />
+    <title>Planeir Client Pipeline</title>
+    <link rel="icon" type="image/png" href="../favicon.png" />
+    <link rel="stylesheet" href="../styles/base.css" />
+  </head>
+  <body class="access-manager-page lead-manager-page client-pipeline-page is-auth-locked">
+    <div id="clientPipelineApp">
+      <header class="topbar" aria-label="Client pipeline controls">
+        <div class="topbar-left">
+          <a class="app-home-link" href="../" aria-label="Return to Planeir website">
+            <img
+              class="app-home-link-image"
+              src="../assets/brand/planeir-wordmark-light.svg"
+              alt=""
+              width="1330"
+              height="384"
+              decoding="async"
+            />
+          </a>
+          <a class="ui-button" href="./index.html">Back to session</a>
+        </div>
+        <div class="topbar-right">
+          <span id="advisorAuthStatus" class="session-status">Advisor sign-in not checked</span>
+          <button id="advisorLogoutBtn" class="ui-button is-hidden" type="button">Log Out</button>
+        </div>
+      </header>
+
+      <main class="access-manager-main lead-manager-main">
+        <section class="access-manager-rail" aria-labelledby="clientPipelineHeading">
+          <div class="access-manager-rail-header">
+            <p class="access-manager-eyebrow">Advisor tools</p>
+            <h1 id="clientPipelineHeading" class="access-manager-title">Client Pipeline</h1>
+            <p class="access-manager-subtitle">
+              Manage each client from first request through meeting, published session, final email, and client open.
+            </p>
+          </div>
+
+          <div id="clientStageTabs" class="client-stage-tabs" role="tablist" aria-label="Filter clients by stage"></div>
+
+          <div class="access-manager-search-row lead-filter-row">
+            <input
+              id="clientSearchInput"
+              class="topbar-input access-manager-search-input"
+              type="search"
+              inputmode="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Search client, email, phone, lead context, or session id"
+              aria-label="Search clients"
+            />
+            <button id="clientRefreshBtn" class="ui-button" type="button">Refresh</button>
+          </div>
+          <p id="clientListStatus" class="access-manager-status">Loading clients.</p>
+          <div id="clientList" class="access-manager-session-list" role="list"></div>
+        </section>
+
+        <section class="access-manager-detail-panel" aria-labelledby="clientDetailTitle">
+          <div id="clientEmptyState" class="access-manager-empty-state">
+            <h2 id="clientDetailTitle">Select a client</h2>
+            <p>Choose a client to manage profile, meeting, published-session access, and timeline.</p>
+          </div>
+
+          <div id="clientDetailCard" class="access-manager-detail-card is-hidden">
+            <div class="access-manager-detail-header">
+              <div>
+                <p class="access-manager-eyebrow">Client record</p>
+                <h2 id="clientNameTitle" class="access-manager-detail-title">Client</h2>
+                <p id="clientEmailTitle" class="access-manager-detail-id"></p>
+              </div>
+              <span id="clientStageBadge" class="access-status-badge">New lead</span>
+            </div>
+
+            <p id="clientActionError" class="publish-error" aria-live="polite"></p>
+
+            <div class="access-manager-meta-grid">
+              <div class="publish-meta-row">
+                <div class="publish-meta-label">Stage Updated</div>
+                <div id="clientStageUpdatedAt" class="publish-meta-value">Not set</div>
+              </div>
+              <div class="publish-meta-row">
+                <div class="publish-meta-label">Latest Meeting Email</div>
+                <div id="clientLastScheduleEmail" class="publish-meta-value">Not sent</div>
+              </div>
+              <div class="publish-meta-row">
+                <div class="publish-meta-label">Latest Final Email</div>
+                <div id="clientLastFinalEmail" class="publish-meta-value">Not sent</div>
+              </div>
+              <div class="publish-meta-row">
+                <div class="publish-meta-label">Client Opened</div>
+                <div id="clientLastOpened" class="publish-meta-value">Not opened</div>
+              </div>
+            </div>
+
+            <section class="lead-detail-section client-pipeline-section" aria-label="Client profile">
+              <h3>Profile</h3>
+              <div class="publish-form-grid">
+                <div class="publish-field-wrap">
+                  <label for="clientFullNameInput" class="publish-pin-input-label">Name</label>
+                  <input id="clientFullNameInput" class="publish-link-value" type="text" autocomplete="name" />
+                </div>
+                <div class="publish-field-wrap">
+                  <label for="clientEmailInput" class="publish-pin-input-label">Email</label>
+                  <input id="clientEmailInput" class="publish-link-value" type="email" autocomplete="email" />
+                </div>
+                <div class="publish-field-wrap">
+                  <label for="clientPhoneInput" class="publish-pin-input-label">Phone</label>
+                  <input id="clientPhoneInput" class="publish-link-value" type="text" autocomplete="tel" />
+                </div>
+                <div class="publish-field-wrap">
+                  <label for="clientStageSelect" class="publish-pin-input-label">Stage</label>
+                  <select id="clientStageSelect" class="publish-select-input"></select>
+                </div>
+              </div>
+              <label for="clientAdvisorNotes" class="publish-pin-input-label">Internal notes</label>
+              <textarea id="clientAdvisorNotes" class="lead-manager-textarea" rows="4"></textarea>
+              <div class="access-manager-actions client-inline-actions">
+                <button id="clientSaveBtn" class="ui-button" type="button">Save Client</button>
+                <button id="clientStartSessionBtn" class="ui-button" type="button">Start Session</button>
+              </div>
+            </section>
+
+            <section class="lead-detail-section client-pipeline-section" aria-label="Meeting workflow">
+              <div class="client-section-header">
+                <h3>Meeting</h3>
+                <select id="clientLeadSelect" class="publish-select-input" aria-label="Select lead request"></select>
+              </div>
+              <div class="lead-context-grid">
+                <div>
+                  <label for="clientLeadReason" class="publish-pin-input-label">Main question or concern</label>
+                  <textarea id="clientLeadReason" class="lead-manager-textarea" rows="7" readonly></textarea>
+                </div>
+                <div>
+                  <label for="clientLeadAvailabilityNotes" class="publish-pin-input-label">Availability notes</label>
+                  <textarea id="clientLeadAvailabilityNotes" class="lead-manager-textarea" rows="7"></textarea>
+                </div>
+              </div>
+              <div class="publish-form-grid lead-schedule-grid">
+                <div class="publish-field-wrap">
+                  <label for="clientScheduleDate" class="publish-pin-input-label">Date</label>
+                  <input id="clientScheduleDate" class="publish-link-value" type="date" />
+                </div>
+                <div class="publish-field-wrap">
+                  <label for="clientScheduleTime" class="publish-pin-input-label">Start time</label>
+                  <input id="clientScheduleTime" class="publish-link-value" type="time" step="900" />
+                </div>
+                <div class="publish-field-wrap">
+                  <label for="clientScheduleDuration" class="publish-pin-input-label">Duration</label>
+                  <select id="clientScheduleDuration" class="publish-select-input">
+                    <option value="30" selected>30 minutes</option>
+                  </select>
+                </div>
+                <div class="publish-field-wrap">
+                  <label for="clientScheduleTimezone" class="publish-pin-input-label">Timezone</label>
+                  <input id="clientScheduleTimezone" class="publish-link-value" type="text" value="Europe/Dublin" readonly />
+                </div>
+              </div>
+              <label for="clientScheduleLocation" class="publish-pin-input-label">Location</label>
+              <input
+                id="clientScheduleLocation"
+                class="publish-link-value"
+                type="text"
+                placeholder="Zoom meeting link will be created automatically"
+                readonly
+              />
+              <label for="clientScheduleMessage" class="publish-pin-input-label">Email preview</label>
+              <textarea id="clientScheduleMessage" class="lead-manager-textarea lead-schedule-message" rows="10"></textarea>
+              <div class="access-manager-actions client-inline-actions">
+                <button id="clientSendScheduleBtn" class="ui-button" type="button">Create Zoom + Send</button>
+                <button id="clientCopyScheduleBtn" class="ui-button" type="button">Copy Meeting Email</button>
+              </div>
+            </section>
+
+            <section class="lead-detail-section client-pipeline-section" aria-label="Published session workflow">
+              <div class="client-section-header">
+                <h3>Published Session</h3>
+                <select id="clientPublishedSelect" class="publish-select-input" aria-label="Select published session"></select>
+              </div>
+              <div class="access-manager-meta-grid">
+                <div class="publish-meta-row">
+                  <div class="publish-meta-label">Status</div>
+                  <div id="clientPublishedStatus" class="publish-meta-value">No session</div>
+                </div>
+                <div class="publish-meta-row">
+                  <div class="publish-meta-label">Expires</div>
+                  <div id="clientPublishedExpires" class="publish-meta-value">Not set</div>
+                </div>
+                <div class="publish-meta-row">
+                  <div class="publish-meta-label">Email</div>
+                  <div id="clientPublishedEmailSent" class="publish-meta-value">Not sent</div>
+                </div>
+                <div class="publish-meta-row">
+                  <div class="publish-meta-label">Client PIN</div>
+                  <div id="clientPublishedPin" class="publish-meta-value">Pending</div>
+                </div>
+              </div>
+              <div class="publish-form-grid">
+                <div class="publish-field-wrap">
+                  <label for="clientPublishedEmailInput" class="publish-pin-input-label">Final email recipient</label>
+                  <input id="clientPublishedEmailInput" class="publish-link-value" type="email" inputmode="email" />
+                </div>
+                <div class="publish-field-wrap">
+                  <label for="clientPublishedExpirySelect" class="publish-pin-input-label">Link expiry</label>
+                  <select id="clientPublishedExpirySelect" class="publish-select-input">
+                    <option value="7">7 days</option>
+                    <option value="30" selected>30 days</option>
+                    <option value="90">90 days</option>
+                  </select>
+                </div>
+              </div>
+              <div class="publish-link-stack">
+                <label for="clientPublishedClientLink" class="publish-pin-input-label">Client link</label>
+                <input id="clientPublishedClientLink" class="publish-link-value" type="text" readonly />
+                <label for="clientPublishedAdvisorLink" class="publish-pin-input-label">Advisor reopen link</label>
+                <input id="clientPublishedAdvisorLink" class="publish-link-value" type="text" readonly />
+              </div>
+              <div class="access-manager-actions client-inline-actions">
+                <button id="clientCopyClientLinkBtn" class="ui-button" type="button">Copy Client Link</button>
+                <button id="clientCopyAdvisorLinkBtn" class="ui-button" type="button">Copy Advisor Link</button>
+                <button id="clientSendFinalEmailBtn" class="ui-button" type="button">Send Final Email</button>
+                <button id="clientUpdateExpiryBtn" class="ui-button" type="button">Update Expiry</button>
+                <button id="clientResetAccessBtn" class="ui-button" type="button">Reset Client Access</button>
+                <button id="clientRevokeAccessBtn" class="ui-button" type="button">Revoke Access</button>
+              </div>
+            </section>
+
+            <section class="lead-detail-section client-pipeline-section" aria-label="Client timeline">
+              <h3>Timeline</h3>
+              <div id="clientTimeline" class="lead-event-list"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <div id="toastHost" class="toast-host" aria-live="polite"></div>
+    </div>
+
+    <div id="advisorAuthLayer" class="session-unlock-layer is-hidden" aria-hidden="true">
+      <div class="session-unlock-card" role="dialog" aria-modal="true" aria-labelledby="advisorAuthTitle">
+        <h1 id="advisorAuthTitle">Advisor sign in</h1>
+        <p id="advisorAuthHint" class="session-unlock-hint">Sign in to manage the Planeir client pipeline.</p>
+        <input
+          id="advisorAuthPasswordInput"
+          class="session-unlock-input"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Advisor password"
+          aria-label="Advisor password"
+        />
+        <div class="session-unlock-actions">
+          <button id="advisorAuthLoginBtn" class="ui-button" type="button">Sign In</button>
+        </div>
+        <p id="advisorAuthError" class="session-unlock-error" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <script type="module" src="../js/client_manager.js"></script>
+  </body>
+</html>

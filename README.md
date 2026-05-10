@@ -4,7 +4,7 @@ Planeir now ships as two connected experiences:
 
 - `/` is the public landing page for first-time visitors.
 - `/app/` is the existing advisor workspace. The public landing page includes an "Admin Login" link to `/app/?login=1&return=home`; after sign-in, the advisor returns to `/` and sees the separate "Open app" link. Unauthenticated `/app/` visits redirect back to the request form.
-- `/app/leads.html` is the advisor-only lead inbox for reviewing D1 leads, choosing call times, and sending branded schedule emails with calendar invites.
+- `/app/clients.html` is the advisor-only client pipeline for reviewing leads, choosing call times, managing published sessions, and sending post-session emails from one client record.
 - `/app/session.html?id=...` is the client session viewer used by published links.
 - `/session.html?id=...` remains as a compatibility redirect to `/app/session.html?id=...`.
 
@@ -37,12 +37,15 @@ The landing page form posts to the existing Cloudflare Worker:
 - Migration files: `worker/migrations/0001_create_leads.sql`, `worker/migrations/0002_add_call_outcome_to_leads.sql`, `worker/migrations/0008_add_education_only_consent_to_leads.sql`, `worker/migrations/0009_add_lead_scheduling_workflow.sql`, `worker/migrations/0010_add_zoom_meeting_fields_to_leads.sql`, `worker/migrations/0011_add_lead_schedule_response_fields.sql`, `worker/migrations/0012_add_zoom_cleanup_fields.sql`
 - Email notifications: Resend API is called from the Worker after a successful D1 insert
 
-### Lead Inbox And Scheduling
+### Client Pipeline And Scheduling
 
-The advisor lead inbox lives at `/app/leads.html` and uses the existing advisor auth cookie and CSRF flow.
+The advisor client pipeline lives at `/app/clients.html` and uses the existing advisor auth cookie and CSRF flow. Legacy `/app/leads.html` and `/app/access.html` requests redirect there.
 
 Advisor endpoints:
 
+- `GET /api/advisor/clients`
+- `GET /api/advisor/clients/:id`
+- `PATCH /api/advisor/clients/:id`
 - `GET /api/advisor/leads`
 - `GET /api/advisor/leads/:id`
 - `PATCH /api/advisor/leads/:id`
@@ -148,8 +151,8 @@ Notes:
 - The advisor notification includes the client name, advisor reopen link, client link when provided, published timestamp, expiry, published session id, and the current client PIN flow summary.
 - When a client email is entered, `Publish Secure Links` now publishes and immediately sends the client-facing final email.
 - If `TRUSTPILOT_AFS_EMAIL` is set, the client-facing final email includes that unique Trustpilot Automatic Feedback Service address as BCC so Trustpilot can queue its own review invitation.
-- Ongoing resend, recovery, reset, revoke, and expiry-management flows now live on `/app/access.html`.
-- Sessions published after the recovery-storage update can be searched and recovered from the Client Access page without needing the original advisor reopen link.
+- Ongoing resend, recovery, reset, revoke, and expiry-management flows now live on `/app/clients.html`.
+- Sessions published after the recovery-storage update can be searched and recovered from the Client Pipeline without needing the original advisor reopen link.
 
 Example setup:
 
@@ -171,7 +174,7 @@ The public homepage is positioned as Irish financial education, not regulated fi
 - `robots.txt` with a sitemap reference
 - `sitemap.xml` containing only `https://planeir.ie/`
 - canonical, Open Graph, Twitter, and JSON-LD metadata on `/`
-- `noindex, nofollow` metadata on `/app/`, `/app/session.html`, `/app/access.html`, and `/session.html`
+- `noindex, nofollow` metadata on `/app/`, `/app/session.html`, `/app/clients.html`, `/app/access.html`, and `/session.html`
 - `assets/brand/planeir-social-card.png` for social previews
 
 The public contact address is `hello@planeir.ie`. Configure inbound delivery through Cloudflare Email Routing and forward it to Gerry's real inbox. This is separate from the existing outbound Worker/Resend email setup; see [docs/email-architecture.md](/Users/geraldboylan/Documents/GitHub/Call-Template/docs/email-architecture.md).
@@ -213,7 +216,7 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 4. Confirm the lead row was inserted into D1.
 5. Confirm Gerry receives the internal notification email.
 6. If `LEAD_CONFIRMATION_EMAIL_ENABLED=true`, confirm the submitter receives the acknowledgement email.
-7. Open `/app/leads.html`, sign in, choose the lead, set a date/time, and send the schedule email.
+7. Open `/app/clients.html`, sign in, choose the client, set a date/time, and send the schedule email.
 8. Confirm the client-facing email comes from `hello@planeir.ie` and includes `planeir-call.ics`.
 9. Confirm the advisor copy goes only to `LEAD_ADVISOR_COPY_TO` or the fallback notification recipient.
 10. To test failure handling, temporarily remove `RESEND_API_KEY` or use an invalid key, submit again, and confirm the API still returns success while the Worker logs the notification failure. Then try schedule sending and confirm the lead inbox reports the send failure.
@@ -224,15 +227,16 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 2. Run the static site and the Worker locally, or deploy the Worker with those variables set.
 3. Open `/app/`, publish a client session, and confirm the publish succeeds without exposing the old link-management panel in the publish modal.
 4. Confirm the advisor notification email arrives at `geraldboylan@gmail.com` with the advisor reopen link, client name, publish time, expiry, and published session id.
-5. Open `/app/access.html`, search for the published client, and confirm the recovered client link and advisor reopen link are available there.
-6. From `/app/access.html`, resend the final email, extend expiry, and reset client access, confirming each action updates the selected record.
+5. Open `/app/clients.html`, search for the published client, and confirm the recovered client link and advisor reopen link are available there.
+6. From `/app/clients.html`, resend the final email, extend expiry, and reset client access, confirming each action updates the selected record.
 7. To test failure handling, temporarily remove `RESEND_API_KEY` or set an invalid key, publish again, and confirm the publish still succeeds while the Worker logs the advisor notification failure instead of breaking the UI.
 
 ## File Structure
 
 - `index.html` public landing page
 - `app/index.html` advisor app
-- `app/access.html` advisor-only client access manager
+- `app/clients.html` advisor-only client pipeline
+- `app/access.html` compatibility redirect to the client pipeline
 - `app/session.html` client viewer
 - `session.html` compatibility redirect for older links
 - `dist/` the only GitHub Pages deploy artifact

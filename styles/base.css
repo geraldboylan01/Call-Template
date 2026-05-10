@@ -4326,7 +4326,24 @@ body.overview-has-selection .toast-host {
   color: #b8f3dc;
 }
 
+.access-status-badge.is-new-lead,
+.access-status-badge.is-awaiting-meeting,
+.access-status-badge.is-session-in-progress,
+.access-status-badge.is-session-published,
+.access-status-badge.is-post-session-email-sent,
+.access-status-badge.is-client-opened {
+  border-color: rgba(127, 205, 177, 0.4);
+  background: rgba(39, 118, 95, 0.17);
+  color: #b8f3dc;
+}
+
 .access-status-badge.is-booked {
+  border-color: rgba(109, 217, 165, 0.46);
+  background: rgba(35, 120, 88, 0.2);
+  color: #9bf0c7;
+}
+
+.access-status-badge.is-meeting-booked {
   border-color: rgba(109, 217, 165, 0.46);
   background: rgba(35, 120, 88, 0.2);
   color: #9bf0c7;
@@ -4336,6 +4353,12 @@ body.overview-has-selection .toast-host {
   border-color: rgba(255, 131, 151, 0.36);
   background: rgba(120, 36, 54, 0.16);
   color: #ffb0bf;
+}
+
+.access-status-badge.is-expired {
+  border-color: rgba(255, 176, 96, 0.42);
+  background: rgba(128, 73, 18, 0.16);
+  color: #ffd2a3;
 }
 
 .access-status-badge.is-archived {
@@ -4354,6 +4377,52 @@ body.overview-has-selection .toast-host {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.client-stage-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.client-stage-tab {
+  flex: 0 0 auto;
+  border: 1px solid rgba(127, 160, 200, 0.24);
+  border-radius: 999px;
+  background: rgba(7, 16, 31, 0.38);
+  color: #cde2f7;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 8px 11px;
+}
+
+.client-stage-tab:hover,
+.client-stage-tab:focus-visible,
+.client-stage-tab.is-active {
+  border-color: rgba(127, 205, 177, 0.55);
+  background: rgba(39, 118, 95, 0.2);
+  color: #f2fbff;
+}
+
+.client-pipeline-section {
+  gap: 12px;
+}
+
+.client-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.client-section-header .publish-select-input {
+  width: min(320px, 100%);
+}
+
+.client-inline-actions {
+  padding-top: 2px;
 }
 
 .lead-filter-row {
@@ -4876,6 +4945,11 @@ body.overview-has-selection .toast-host {
   .lead-context-grid,
   .lead-schedule-grid {
     grid-template-columns: 1fr;
+  }
+
+  .client-section-header {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .swipe-stage {

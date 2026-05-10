@@ -425,20 +425,59 @@
             <div class="request-copy" data-reveal>
               <p class="section-eyebrow">Request a free call</p>
               <h2>Tell Gerry what you want to understand more clearly.</h2>
-              <p>
+              <p class="request-lede">
                 You do not need to explain everything perfectly, but more relevant context helps.
                 The clearer the situation is, the easier it is to judge whether a free education
                 call is likely to be useful.
               </p>
-              <div class="request-note-card">
-                <strong>How Gerry reviews requests</strong>
+
+              <div class="request-rail-panel">
+                <span class="request-rail-label">What helps Gerry decide</span>
                 <p>
-                  Gerry reads each request personally. Sharing the decision you are facing, what is
-                  worrying you, why now, relevant figures, timelines, and constraints helps him
-                  understand whether he can genuinely help you understand the topic and whether it is
-                  right for this free recorded educational format.
+                  Gerry reads each request personally. Share enough real context for him to assess
+                  whether he can genuinely help you understand the topic.
                 </p>
+                <ul class="request-check-list">
+                  <li>The decision or question you are facing</li>
+                  <li>Why it matters now</li>
+                  <li>Relevant figures, ranges, or timelines</li>
+                  <li>Constraints, worries, or trade-offs</li>
+                </ul>
               </div>
+
+              <div class="request-rail-panel">
+                <span class="request-rail-label">What happens next</span>
+                <ol class="request-step-list">
+                  <li>
+                    <span>1</span>
+                    <div>
+                      <strong>Request reviewed</strong>
+                      <p>Gerry checks whether the topic fits the recorded education format.</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span>2</span>
+                    <div>
+                      <strong>Fit assessed</strong>
+                      <p>If the call can be useful, he will suggest a time directly.</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span>3</span>
+                    <div>
+                      <strong>Call arranged</strong>
+                      <p>You can keep your camera off and use a first name or different name.</p>
+                    </div>
+                  </li>
+                </ol>
+              </div>
+
+              <ul class="request-reassurance-list" aria-label="Request reassurances">
+                <li>Camera off is fine</li>
+                <li>First name is fine</li>
+                <li>Education only</li>
+                <li>No sensitive details</li>
+              </ul>
             </div>
 
             <form id="leadForm" class="lead-form" novalidate data-reveal data-reveal-delay="120">
@@ -451,129 +490,135 @@
                 </p>
               </div>
 
-              <div class="form-review-note">
-                <strong>A little more detail makes the call easier to assess.</strong>
-                <p>
-                  Not every request will be right for this format, so a clearer picture helps Gerry
-                  decide whether the educational conversation is a good fit before arranging a call.
-                  Share enough real context for the call to have something useful to work with.
+              <div class="form-section">
+                <div class="form-section-heading">
+                  <span class="form-section-label">Your details</span>
+                  <p>Only the basics Gerry needs to reply and identify the request.</p>
+                </div>
+
+                <div class="form-grid">
+                  <label class="field">
+                    <span>Full name <em>(required)</em></span>
+                    <input id="leadFullName" name="fullName" type="text" autocomplete="name" required />
+                  </label>
+
+                  <label class="field">
+                    <span>Email <em>(required)</em></span>
+                    <input id="leadEmail" name="email" type="email" autocomplete="email" required />
+                  </label>
+
+                  <label class="field">
+                    <span>Phone <em>(optional)</em></span>
+                    <input id="leadPhone" name="phone" type="tel" autocomplete="tel" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <div class="form-section-heading">
+                  <span class="form-section-label">Your situation</span>
+                  <p>Give enough context for the call to have something useful to work with.</p>
+                </div>
+
+                <div class="form-grid">
+                  <label class="field">
+                    <span>Planning stage <em>(optional)</em></span>
+                    <select id="leadStage" name="stage">
+                      <option value="">Select a stage</option>
+                      <option value="buying-a-home">Buying a home</option>
+                      <option value="building-wealth">Building wealth</option>
+                      <option value="retirement-planning">Retirement planning</option>
+                      <option value="financial-education">Financial education</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+
+                  <label class="field">
+                    <span>Outcome you are hoping for <em>(optional)</em></span>
+                    <select id="leadCallOutcome" name="callOutcome">
+                      <option value="">Select an outcome</option>
+                      <option value="clearer-understanding">Clearer understanding</option>
+                      <option value="reassurance">Reassurance</option>
+                      <option value="decision-support">Decision support</option>
+                      <option value="comparing-options">Comparing options</option>
+                      <option value="sense-check-on-a-plan">Sense-check on a plan</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label class="field field-full">
+                  <span>Main financial question or concern <em>(required)</em></span>
+                  <small class="field-help">
+                    Include the decision, worry, timing, figures, or constraints that matter.
+                  </small>
+                  <textarea
+                    id="leadReason"
+                    name="reason"
+                    rows="5"
+                    required
+                    placeholder="For example: I am deciding whether to buy in the next 12 months. I have about X saved, my current rent is Y, my expected mortgage approval is around Z, and I want to understand the pressure, trade-offs, and buffer I may need."
+                  ></textarea>
+                </label>
+
+                <label class="field field-full">
+                  <span>Useful availability notes <em>(optional)</em></span>
+                  <small class="field-help">
+                    Gerry will still suggest the time himself. This helps avoid obvious bad windows.
+                  </small>
+                  <textarea
+                    id="leadAvailabilityNotes"
+                    name="availabilityNotes"
+                    rows="3"
+                    placeholder="For example: weekday evenings after 6, Friday mornings, or not available next week."
+                  ></textarea>
+                </label>
+              </div>
+
+              <fieldset class="consent-fieldset" aria-describedby="consentSummary privacy-note">
+                <legend class="form-section-label">Before you send</legend>
+                <p id="consentSummary" class="form-section-copy">
+                  Please confirm the format and avoid sensitive personal details in the form.
                 </p>
-              </div>
 
-              <div class="form-grid">
-                <label class="field">
-                  <span>Full name</span>
-                  <input id="leadFullName" name="fullName" type="text" autocomplete="name" required />
-                </label>
+                <div class="consent-grid">
+                  <label class="consent-check">
+                    <input
+                      id="leadUnderstandsRecordedCall"
+                      name="understandsRecordedCall"
+                      type="checkbox"
+                      required
+                    />
+                    <span>I understand this is a free recorded call.</span>
+                  </label>
+                  <label class="consent-check">
+                    <input
+                      id="leadUnderstandsEducationalOnly"
+                      name="understandsEducationalOnly"
+                      type="checkbox"
+                      required
+                    />
+                    <span>I understand Planeir uses my scenario for financial education only, not regulated financial advice or product recommendations.</span>
+                  </label>
+                  <label class="consent-check">
+                    <input
+                      id="leadUnderstandsEducationalContent"
+                      name="understandsEducationalContent"
+                      type="checkbox"
+                      required
+                    />
+                    <span>I understand the recording may be used as educational content online.</span>
+                  </label>
+                </div>
 
-                <label class="field">
-                  <span>Email</span>
-                  <input id="leadEmail" name="email" type="email" autocomplete="email" required />
-                </label>
-
-                <label class="field">
-                  <span>Optional phone</span>
-                  <input id="leadPhone" name="phone" type="tel" autocomplete="tel" />
-                </label>
-
-                <label class="field">
-                  <span>Planning stage <em>(optional)</em></span>
-                  <select id="leadStage" name="stage">
-                    <option value="">Select a stage</option>
-                    <option value="buying-a-home">Buying a home</option>
-                    <option value="building-wealth">Building wealth</option>
-                    <option value="retirement-planning">Retirement planning</option>
-                    <option value="financial-education">Financial education</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-
-                <label class="field">
-                  <span>What outcome are you hoping for from the call? <em>(optional)</em></span>
-                  <select id="leadCallOutcome" name="callOutcome">
-                    <option value="">Select an outcome</option>
-                    <option value="clearer-understanding">Clearer understanding</option>
-                    <option value="reassurance">Reassurance</option>
-                    <option value="decision-support">Decision support</option>
-                    <option value="comparing-options">Comparing options</option>
-                    <option value="sense-check-on-a-plan">Sense-check on a plan</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-              </div>
-
-              <label class="field field-full">
-                <span>What is the main financial question or concern you want to talk through?</span>
-                <small class="field-help">
-                  Helpful context can include the decision you are facing, what is worrying you, why
-                  now, the figures or constraints that matter, and what you hope to feel clearer on
-                  by the end of the education call.
-                </small>
-                <textarea
-                  id="leadReason"
-                  name="reason"
-                  rows="5"
-                  required
-                  placeholder="For example: I am deciding whether to buy in the next 12 months. I have about X saved, my current rent is Y, my expected mortgage approval is around Z, and I want to understand the pressure, trade-offs, and buffer I may need."
-                ></textarea>
-              </label>
-
-              <label class="field field-full">
-                <span>Any useful availability notes? <em>(optional)</em></span>
-                <small class="field-help">
-                  Gerry will still suggest the time himself. This just helps him avoid obvious bad
-                  windows when reviewing the request.
-                </small>
-                <textarea
-                  id="leadAvailabilityNotes"
-                  name="availabilityNotes"
-                  rows="3"
-                  placeholder="For example: weekday evenings after 6, Friday mornings, or not available next week."
-                ></textarea>
-              </label>
-
-              <div class="consent-grid">
-                <label class="consent-check">
-                  <input
-                    id="leadUnderstandsRecordedCall"
-                    name="understandsRecordedCall"
-                    type="checkbox"
-                    required
-                  />
-                  <span>I understand this is a free recorded call.</span>
-                </label>
-                <label class="consent-check">
-                  <input
-                    id="leadUnderstandsEducationalOnly"
-                    name="understandsEducationalOnly"
-                    type="checkbox"
-                    required
-                  />
-                  <span>I understand Planeir uses my scenario for financial education only, not regulated financial advice or product recommendations.</span>
-                </label>
-                <label class="consent-check">
-                  <input
-                    id="leadUnderstandsEducationalContent"
-                    name="understandsEducationalContent"
-                    type="checkbox"
-                    required
-                  />
-                  <span>I understand the recording may be used as educational content online.</span>
-                </label>
-              </div>
-
-              <p class="consent-note">
-                Camera off is absolutely fine. You can use a first name or different name if you prefer.
-              </p>
-
-              <p id="privacy-note" class="form-privacy">
-                The more relevant context you share, the easier it is to assess fit and make the call
-                useful. You can include real figures where they matter. Please do not include PPS
-                numbers, bank account details, card details, passwords, exact addresses, or copies of
-                documents in this form. Planeir uses your scenario for education and explanation; it
-                does not sell products, arrange products, or provide regulated financial advice, tax
-                advice, legal advice, or product recommendations.
-              </p>
+                <p id="privacy-note" class="form-privacy">
+                  You can include real figures where they matter. Please do not include PPS numbers,
+                  bank account details, card details, passwords, exact addresses, or copies of
+                  documents in this form. Planeir uses your scenario for education and explanation;
+                  it does not sell products, arrange products, or provide regulated financial advice,
+                  tax advice, legal advice, or product recommendations.
+                </p>
+              </fieldset>
 
               <div id="leadFormStatus" class="form-status" aria-live="polite" tabindex="-1"></div>
 

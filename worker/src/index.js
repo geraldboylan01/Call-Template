@@ -123,6 +123,38 @@ const LEAD_STATUS_LABELS = {
   archived: 'Archived'
 };
 
+const CLIENT_PIPELINE_STAGES = [
+  'new_lead',
+  'reviewing',
+  'awaiting_meeting',
+  'meeting_booked',
+  'session_in_progress',
+  'session_published',
+  'post_session_email_sent',
+  'client_opened',
+  'declined',
+  'expired',
+  'archived'
+];
+const ALLOWED_CLIENT_PIPELINE_STAGES = new Set(CLIENT_PIPELINE_STAGES);
+const CLIENT_PIPELINE_STAGE_LABELS = {
+  new_lead: 'New lead',
+  reviewing: 'Reviewing',
+  awaiting_meeting: 'Awaiting meeting',
+  meeting_booked: 'Meeting booked',
+  session_in_progress: 'Session in progress',
+  session_published: 'Session published',
+  post_session_email_sent: 'Post-session email sent',
+  client_opened: 'Client opened',
+  declined: 'Declined',
+  expired: 'Expired',
+  archived: 'Archived'
+};
+const CLIENT_PIPELINE_STAGE_RANKS = CLIENT_PIPELINE_STAGES.reduce((memo, stage, index) => {
+  memo[stage] = index;
+  return memo;
+}, {});
+
 const requestBuckets = new Map();
 
 function getAllowedOrigins(env) {
@@ -164,6 +196,18 @@ function getRouteConfig(pathname) {
   if (pathname === '/api/advisor/published-sessions') {
     return {
       methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/advisor/clients') {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/advisor\/clients\/\d+$/.test(pathname)) {
+    return {
+      methods: 'GET,PATCH,OPTIONS'
     };
   }
 
@@ -1464,6 +1508,7 @@ function normalizeLeadRow(row) {
 
   return {
     id: Number(row.id),
+    clientId: Number(row.client_id || 0) || null,
     createdAt: row.created_at || '',
     updatedAt: row.updated_at || row.created_at || '',
     fullName: row.full_name || '',
@@ -1504,6 +1549,7 @@ function normalizeLeadRow(row) {
 function buildLeadManagerSummary(lead) {
   return {
     id: lead.id,
+    clientId: lead.clientId,
     createdAt: lead.createdAt,
     updatedAt: lead.updatedAt,
     fullName: lead.fullName,
@@ -1563,6 +1609,65 @@ function validateLeadStatus(value) {
   }
 
   return normalized;
+}
+
+function normalizeClientPipelineStage(value, fallback = 'new_lead') {
+  const normalized = normalizeLeadValue(value).toLowerCase().replace(/-/g, '_');
+  if (ALLOWED_CLIENT_PIPELINE_STAGES.has(normalized)) {
+    return normalized;
+  }
+
+  if (fallback === '') {
+    return '';
+  }
+
+  return ALLOWED_CLIENT_PIPELINE_STAGES.has(fallback) ? fallback : 'new_lead';
+}
+
+function formatClientPipelineStage(stage) {
+  return CLIENT_PIPELINE_STAGE_LABELS[stage] || CLIENT_PIPELINE_STAGE_LABELS.new_lead;
+}
+
+function validateClientPipelineStage(value) {
+  const normalized = normalizeClientPipelineStage(value, '');
+  if (!normalized || !ALLOWED_CLIENT_PIPELINE_STAGES.has(normalized)) {
+    throw new Error('Client pipeline stage is invalid.');
+  }
+
+  return normalized;
+}
+
+function validateClientId(value) {
+  return validateLeadId(value);
+}
+
+function normalizeClientEmailForMatch(value) {
+  return normalizeLeadValue(value).toLowerCase();
+}
+
+function inferPipelineStageFromLeadStatus(status) {
+  switch (normalizeLeadStatus(status, 'new')) {
+    case 'reviewing':
+      return 'reviewing';
+    case 'awaiting-client':
+      return 'awaiting_meeting';
+    case 'booked':
+      return 'meeting_booked';
+    case 'declined':
+      return 'declined';
+    case 'expired':
+      return 'expired';
+    case 'archived':
+      return 'archived';
+    default:
+      return 'new_lead';
+  }
+}
+
+function shouldAdvanceClientStage(currentStage, nextStage) {
+  const current = normalizeClientPipelineStage(currentStage, 'new_lead');
+  const next = normalizeClientPipelineStage(nextStage, 'new_lead');
+  return CLIENT_PIPELINE_STAGE_RANKS[next] > CLIENT_PIPELINE_STAGE_RANKS[current];
 }
 
 function validateLeadScheduleValues(payload, currentLead = {}, options = {}) {
@@ -2004,11 +2109,388 @@ function getPublishedSessionsDb(env) {
   return env.LEADS_DB;
 }
 
+function normalizeClientRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  const pipelineStage = normalizeClientPipelineStage(row.pipeline_stage, 'new_lead');
+  return {
+    id: Number(row.id),
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || row.created_at || '',
+    fullName: row.full_name || 'Client',
+    email: row.email || '',
+    normalizedEmail: row.normalized_email || '',
+    phone: row.phone || '',
+    pipelineStage,
+    pipelineStageLabel: formatClientPipelineStage(pipelineStage),
+    stageUpdatedAt: row.stage_updated_at || row.updated_at || row.created_at || '',
+    advisorNotes: row.advisor_notes || '',
+    leadCount: Number(row.lead_count || 0),
+    publishedSessionCount: Number(row.published_session_count || 0),
+    latestLeadId: Number(row.latest_lead_id || 0) || null,
+    latestPublishedId: row.latest_published_id || '',
+    lastScheduleEmailSentAt: row.last_schedule_email_sent_at || null,
+    lastPublishedEmailSentAt: row.last_published_email_sent_at || null,
+    lastClientOpenedAt: row.last_client_opened_at || null
+  };
+}
+
+function buildClientManagerSummary(client) {
+  if (!client) {
+    return null;
+  }
+
+  return {
+    id: client.id,
+    createdAt: client.createdAt,
+    updatedAt: client.updatedAt,
+    fullName: client.fullName,
+    email: client.email,
+    phone: client.phone,
+    pipelineStage: client.pipelineStage,
+    pipelineStageLabel: client.pipelineStageLabel,
+    stageUpdatedAt: client.stageUpdatedAt,
+    advisorNotes: client.advisorNotes,
+    leadCount: client.leadCount,
+    publishedSessionCount: client.publishedSessionCount,
+    latestLeadId: client.latestLeadId,
+    latestPublishedId: client.latestPublishedId,
+    lastScheduleEmailSentAt: client.lastScheduleEmailSentAt,
+    lastPublishedEmailSentAt: client.lastPublishedEmailSentAt,
+    lastClientOpenedAt: client.lastClientOpenedAt
+  };
+}
+
+async function getClientRow(env, clientId) {
+  const db = getPublishedSessionsDb(env);
+  const row = await db.prepare(`
+    SELECT
+      c.id,
+      c.created_at,
+      c.updated_at,
+      c.full_name,
+      c.email,
+      c.normalized_email,
+      c.phone,
+      c.pipeline_stage,
+      c.stage_updated_at,
+      c.advisor_notes,
+      (SELECT COUNT(*) FROM leads WHERE client_id = c.id) AS lead_count,
+      (SELECT COUNT(*) FROM published_sessions WHERE client_id = c.id) AS published_session_count,
+      (SELECT id FROM leads WHERE client_id = c.id ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1) AS latest_lead_id,
+      (SELECT id FROM published_sessions WHERE client_id = c.id ORDER BY updated_at DESC, created_at DESC LIMIT 1) AS latest_published_id,
+      (SELECT MAX(last_schedule_email_sent_at) FROM leads WHERE client_id = c.id) AS last_schedule_email_sent_at,
+      (SELECT MAX(last_email_sent_at) FROM published_sessions WHERE client_id = c.id) AS last_published_email_sent_at,
+      (SELECT MAX(last_client_unlocked_at) FROM published_sessions WHERE client_id = c.id) AS last_client_opened_at
+    FROM clients c
+    WHERE c.id = ?
+    LIMIT 1
+  `).bind(clientId).first();
+
+  return normalizeClientRow(row);
+}
+
+async function listClientRows(env, options = {}) {
+  const db = getPublishedSessionsDb(env);
+  const query = normalizeLeadValue(options.query).toLowerCase();
+  const stage = normalizeLeadValue(options.stage).toLowerCase().replace(/-/g, '_');
+  const limit = Math.min(Math.max(Number(options.limit) || 60, 1), 120);
+  const where = [];
+  const bindings = [];
+
+  if (query) {
+    const likeValue = `%${query}%`;
+    where.push(`(
+      LOWER(c.full_name) LIKE ?
+      OR LOWER(COALESCE(c.email, '')) LIKE ?
+      OR LOWER(COALESCE(c.phone, '')) LIKE ?
+      OR LOWER(COALESCE(c.advisor_notes, '')) LIKE ?
+      OR EXISTS (
+        SELECT 1
+        FROM leads l
+        WHERE l.client_id = c.id
+          AND (
+            LOWER(l.full_name) LIKE ?
+            OR LOWER(l.email) LIKE ?
+            OR LOWER(COALESCE(l.phone, '')) LIKE ?
+            OR LOWER(l.help_reason) LIKE ?
+          )
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM published_sessions ps
+        WHERE ps.client_id = c.id
+          AND (
+            LOWER(ps.id) LIKE ?
+            OR LOWER(ps.client_name) LIKE ?
+            OR LOWER(COALESCE(ps.client_email, '')) LIKE ?
+          )
+      )
+    )`);
+    bindings.push(
+      likeValue,
+      likeValue,
+      likeValue,
+      likeValue,
+      likeValue,
+      likeValue,
+      likeValue,
+      likeValue,
+      likeValue,
+      likeValue,
+      likeValue
+    );
+  }
+
+  if (stage && stage !== 'all') {
+    if (!ALLOWED_CLIENT_PIPELINE_STAGES.has(stage)) {
+      throw new Error('Client stage filter is invalid.');
+    }
+    where.push('c.pipeline_stage = ?');
+    bindings.push(stage);
+  }
+
+  const sql = `
+    SELECT
+      c.id,
+      c.created_at,
+      c.updated_at,
+      c.full_name,
+      c.email,
+      c.normalized_email,
+      c.phone,
+      c.pipeline_stage,
+      c.stage_updated_at,
+      c.advisor_notes,
+      (SELECT COUNT(*) FROM leads WHERE client_id = c.id) AS lead_count,
+      (SELECT COUNT(*) FROM published_sessions WHERE client_id = c.id) AS published_session_count,
+      (SELECT id FROM leads WHERE client_id = c.id ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1) AS latest_lead_id,
+      (SELECT id FROM published_sessions WHERE client_id = c.id ORDER BY updated_at DESC, created_at DESC LIMIT 1) AS latest_published_id,
+      (SELECT MAX(last_schedule_email_sent_at) FROM leads WHERE client_id = c.id) AS last_schedule_email_sent_at,
+      (SELECT MAX(last_email_sent_at) FROM published_sessions WHERE client_id = c.id) AS last_published_email_sent_at,
+      (SELECT MAX(last_client_unlocked_at) FROM published_sessions WHERE client_id = c.id) AS last_client_opened_at
+    FROM clients c
+    ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY
+      CASE c.pipeline_stage
+        WHEN 'new_lead' THEN 0
+        WHEN 'reviewing' THEN 1
+        WHEN 'awaiting_meeting' THEN 2
+        WHEN 'meeting_booked' THEN 3
+        WHEN 'session_in_progress' THEN 4
+        WHEN 'session_published' THEN 5
+        WHEN 'post_session_email_sent' THEN 6
+        WHEN 'client_opened' THEN 7
+        WHEN 'declined' THEN 8
+        WHEN 'expired' THEN 9
+        WHEN 'archived' THEN 10
+        ELSE 11
+      END,
+      COALESCE(c.stage_updated_at, c.updated_at, c.created_at) DESC,
+      c.id DESC
+    LIMIT ?
+  `;
+
+  bindings.push(limit);
+  const result = await db.prepare(sql).bind(...bindings).all();
+  return (Array.isArray(result?.results) ? result.results : []).map(normalizeClientRow);
+}
+
+async function updateClientProfileFromSource(env, clientId, profile = {}) {
+  const db = getPublishedSessionsDb(env);
+  const fullName = normalizePublishedClientName(profile.fullName || profile.clientName || 'Client');
+  const email = normalizeClientEmailForMatch(profile.email || profile.clientEmail || '');
+  const phone = normalizeOptionalLeadValue(profile.phone || '');
+  const updatedAt = nowIso();
+
+  await db.prepare(`
+    UPDATE clients
+    SET
+      full_name = CASE WHEN ? != '' AND (full_name = '' OR full_name = 'Client') THEN ? ELSE full_name END,
+      email = CASE WHEN ? != '' AND COALESCE(email, '') = '' THEN ? ELSE email END,
+      normalized_email = CASE WHEN ? != '' AND COALESCE(normalized_email, '') = '' THEN ? ELSE normalized_email END,
+      phone = CASE WHEN ? != '' AND COALESCE(phone, '') = '' THEN ? ELSE phone END,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(
+    fullName,
+    fullName,
+    email,
+    email,
+    email,
+    email,
+    phone,
+    phone,
+    updatedAt,
+    clientId
+  ).run();
+}
+
+async function advanceClientPipelineStage(env, clientId, nextStage, options = {}) {
+  const id = validateClientId(clientId);
+  if (!id) {
+    return null;
+  }
+
+  const next = normalizeClientPipelineStage(nextStage, '');
+  if (!next) {
+    return null;
+  }
+
+  const current = await getClientRow(env, id);
+  if (!current) {
+    return null;
+  }
+
+  const force = options.force === true;
+  if (!force && !shouldAdvanceClientStage(current.pipelineStage, next)) {
+    if (options.profile) {
+      await updateClientProfileFromSource(env, id, options.profile).catch(() => {});
+    }
+    return current;
+  }
+
+  const updatedAt = options.timestamp || nowIso();
+  const advisorNotes = typeof options.advisorNotes === 'string'
+    ? normalizeLongText(options.advisorNotes)
+    : current.advisorNotes;
+
+  const db = getPublishedSessionsDb(env);
+  await db.prepare(`
+    UPDATE clients
+    SET
+      pipeline_stage = ?,
+      stage_updated_at = ?,
+      advisor_notes = ?,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(
+    next,
+    updatedAt,
+    advisorNotes || null,
+    updatedAt,
+    id
+  ).run();
+
+  if (options.profile) {
+    await updateClientProfileFromSource(env, id, options.profile).catch(() => {});
+  }
+
+  return getClientRow(env, id);
+}
+
+async function findOrCreateClientForProfile(env, profile = {}) {
+  const db = getPublishedSessionsDb(env);
+  const timestamp = profile.timestamp || nowIso();
+  const fullName = normalizePublishedClientName(profile.fullName || profile.clientName || 'Client');
+  const email = normalizeClientEmailForMatch(profile.email || profile.clientEmail || '');
+  const phone = normalizeOptionalLeadValue(profile.phone || '');
+  const pipelineStage = normalizeClientPipelineStage(profile.pipelineStage || 'new_lead', 'new_lead');
+
+  if (email) {
+    const existing = await db.prepare(`
+      SELECT id
+      FROM clients
+      WHERE normalized_email = ?
+      LIMIT 1
+    `).bind(email).first();
+    if (existing?.id) {
+      await updateClientProfileFromSource(env, existing.id, {
+        fullName,
+        email,
+        phone
+      }).catch(() => {});
+      await advanceClientPipelineStage(env, existing.id, pipelineStage, {
+        timestamp,
+        profile: {
+          fullName,
+          email,
+          phone
+        }
+      });
+      return getClientRow(env, existing.id);
+    }
+  }
+
+  const result = await db.prepare(`
+    INSERT INTO clients (
+      created_at,
+      updated_at,
+      full_name,
+      email,
+      normalized_email,
+      phone,
+      pipeline_stage,
+      stage_updated_at,
+      advisor_notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    timestamp,
+    timestamp,
+    fullName,
+    email || null,
+    email || null,
+    phone || null,
+    pipelineStage,
+    timestamp,
+    normalizeLongText(profile.advisorNotes || '') || null
+  ).run();
+
+  const clientId = result.meta?.last_row_id;
+  if (clientId) {
+    return getClientRow(env, clientId);
+  }
+
+  if (email) {
+    const existing = await db.prepare(`
+      SELECT id
+      FROM clients
+      WHERE normalized_email = ?
+      LIMIT 1
+    `).bind(email).first();
+    if (existing?.id) {
+      return getClientRow(env, existing.id);
+    }
+  }
+
+  throw new Error('Could not create client profile.');
+}
+
+async function ensureClientForLead(env, lead) {
+  if (!lead) {
+    return null;
+  }
+
+  if (lead.clientId) {
+    return getClientRow(env, lead.clientId);
+  }
+
+  const client = await findOrCreateClientForProfile(env, {
+    fullName: lead.fullName,
+    email: lead.email,
+    phone: lead.phone,
+    pipelineStage: inferPipelineStageFromLeadStatus(lead.status),
+    timestamp: lead.updatedAt || lead.createdAt || nowIso(),
+    advisorNotes: lead.advisorNotes
+  });
+
+  await getPublishedSessionsDb(env).prepare(`
+    UPDATE leads
+    SET client_id = ?, updated_at = ?
+    WHERE id = ?
+  `).bind(client.id, nowIso(), lead.id).run();
+
+  return client;
+}
+
 async function getLeadRow(env, leadId) {
   const db = getPublishedSessionsDb(env);
   const row = await db.prepare(`
     SELECT
       id,
+      client_id,
       created_at,
       full_name,
       email,
@@ -2082,6 +2564,7 @@ async function listLeadRows(env, options = {}) {
   const sql = `
     SELECT
       id,
+      client_id,
       created_at,
       full_name,
       email,
@@ -2185,6 +2668,169 @@ async function insertLeadEvent(env, leadId, actorType, eventType, metadata) {
     nowIso(),
     metadata ? JSON.stringify(metadata) : null
   ).run();
+}
+
+async function listClientLeadRows(env, clientId) {
+  const db = getPublishedSessionsDb(env);
+  const result = await db.prepare(`
+    SELECT
+      id,
+      client_id,
+      created_at,
+      full_name,
+      email,
+      phone,
+      help_reason,
+      stage,
+      call_outcome,
+      consent_free_call,
+      consent_education_only,
+      consent_recording,
+      source,
+      status,
+      advisor_notes,
+      availability_notes,
+      scheduled_start_at,
+      scheduled_end_at,
+      scheduled_timezone,
+      scheduled_location,
+      scheduled_message,
+      schedule_invite_uid,
+      schedule_response_token,
+      schedule_response_status,
+      schedule_response_at,
+      schedule_response_expires_at,
+      zoom_meeting_id,
+      zoom_join_url,
+      zoom_meeting_password,
+      zoom_created_at,
+      zoom_deleted_at,
+      schedule_cleanup_attempted_at,
+      schedule_cleanup_error,
+      last_schedule_email_sent_at,
+      schedule_email_send_count,
+      updated_at
+    FROM leads
+    WHERE client_id = ?
+    ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+    LIMIT 20
+  `).bind(clientId).all();
+
+  return (Array.isArray(result?.results) ? result.results : []).map(normalizeLeadRow);
+}
+
+async function listClientPublishedSessionRows(env, clientId) {
+  const db = getPublishedSessionsDb(env);
+  const result = await db.prepare(`
+    SELECT
+      id,
+      client_id,
+      source_lead_id,
+      version,
+      status,
+      created_at,
+      updated_at,
+      expires_at,
+      revoked_at,
+      client_name,
+      client_email,
+      pin_required,
+      client_auth_hash_b64u,
+      advisor_auth_hash_b64u,
+      client_r2_key,
+      advisor_r2_key,
+      client_open_count,
+      advisor_open_count,
+      last_client_opened_at,
+      last_advisor_opened_at,
+      client_unlock_count,
+      advisor_unlock_count,
+      last_client_unlocked_at,
+      last_advisor_unlocked_at,
+      last_email_sent_at,
+      email_send_count,
+      recovery_payload_b64u,
+      recovery_iv_b64u,
+      client_pin_state,
+      client_pin_initialized_at,
+      client_access_revision
+    FROM published_sessions
+    WHERE client_id = ?
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT 20
+  `).bind(clientId).all();
+
+  const rows = Array.isArray(result?.results) ? result.results : [];
+  const sessions = [];
+  for (const row of rows) {
+    sessions.push(await markPublishedExpiredIfNeeded(env, normalizePublishedSessionRow(row)));
+  }
+  return sessions;
+}
+
+async function listClientTimeline(env, clientId) {
+  const db = getPublishedSessionsDb(env);
+  const leadEventsResult = await db.prepare(`
+    SELECT
+      le.id,
+      le.lead_id,
+      le.actor_type,
+      le.event_type,
+      le.created_at,
+      le.metadata_json
+    FROM lead_events le
+    INNER JOIN leads l ON l.id = le.lead_id
+    WHERE l.client_id = ?
+    ORDER BY le.created_at DESC, le.id DESC
+    LIMIT 60
+  `).bind(clientId).all();
+
+  const publishedEventsResult = await db.prepare(`
+    SELECT
+      pse.id,
+      pse.published_session_id,
+      pse.actor_type,
+      pse.event_type,
+      pse.created_at,
+      pse.metadata_json
+    FROM published_session_events pse
+    INNER JOIN published_sessions ps ON ps.id = pse.published_session_id
+    WHERE ps.client_id = ?
+    ORDER BY pse.created_at DESC, pse.id DESC
+    LIMIT 60
+  `).bind(clientId).all();
+
+  const parseMetadata = (value) => {
+    try {
+      return value ? JSON.parse(value) : null;
+    } catch (_error) {
+      return null;
+    }
+  };
+
+  const leadEvents = (Array.isArray(leadEventsResult?.results) ? leadEventsResult.results : []).map((row) => ({
+    id: `lead-${row.id}`,
+    sourceType: 'lead',
+    sourceId: Number(row.lead_id),
+    actorType: row.actor_type,
+    eventType: row.event_type,
+    createdAt: row.created_at,
+    metadata: parseMetadata(row.metadata_json)
+  }));
+
+  const publishedEvents = (Array.isArray(publishedEventsResult?.results) ? publishedEventsResult.results : []).map((row) => ({
+    id: `published-${row.id}`,
+    sourceType: 'published_session',
+    sourceId: row.published_session_id,
+    actorType: row.actor_type,
+    eventType: row.event_type,
+    createdAt: row.created_at,
+    metadata: parseMetadata(row.metadata_json)
+  }));
+
+  return [...leadEvents, ...publishedEvents]
+    .sort((a, b) => Date.parse(b.createdAt || '') - Date.parse(a.createdAt || ''))
+    .slice(0, 80);
 }
 
 function createLeadScheduleResponseToken() {
@@ -2372,6 +3018,7 @@ async function listExpiredLeadScheduleRowsForCleanup(env, limit = 25) {
   const result = await db.prepare(`
     SELECT
       id,
+      client_id,
       created_at,
       full_name,
       email,
@@ -2484,8 +3131,18 @@ async function cleanupExpiredLeadScheduleProposals(env, options = {}) {
       zoomDeletedAt,
       cleanupError
     });
+    const linkedClient = await ensureClientForLead(env, lead).catch(() => null);
+    await advanceClientPipelineStage(env, linkedClient?.id || lead.clientId, 'expired', {
+      timestamp: expiredAt,
+      profile: {
+        fullName: lead.fullName,
+        email: lead.email,
+        phone: lead.phone
+      }
+    }).catch(() => {});
 
     await insertLeadEvent(env, lead.id, 'system', cleanupError ? 'schedule-expired-zoom-delete-failed' : 'schedule-expired-zoom-deleted', {
+      clientId: linkedClient?.id || lead.clientId || null,
       scheduledStartAt: lead.scheduledStartAt,
       scheduledEndAt: lead.scheduledEndAt,
       scheduleResponseExpiresAt: lead.scheduleResponseExpiresAt,
@@ -3452,6 +4109,8 @@ function normalizePublishedSessionRow(row) {
 
   return {
     id: row.id,
+    clientId: Number(row.client_id || 0) || null,
+    sourceLeadId: Number(row.source_lead_id || 0) || null,
     version,
     status: normalizePublishedStatus(row.status, row.expires_at, row.revoked_at),
     createdAt: row.created_at,
@@ -3495,6 +4154,8 @@ async function getPublishedSessionRow(env, publishedId) {
   const row = await db.prepare(`
     SELECT
       id,
+      client_id,
+      source_lead_id,
       version,
       status,
       created_at,
@@ -3555,6 +4216,8 @@ async function insertPublishedSessionRow(env, record) {
   const result = await db.prepare(`
     INSERT INTO published_sessions (
       id,
+      client_id,
+      source_lead_id,
       version,
       status,
       created_at,
@@ -3583,9 +4246,11 @@ async function insertPublishedSessionRow(env, record) {
       client_pin_state,
       client_pin_initialized_at,
       client_access_revision
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     record.id,
+    record.clientId || null,
+    record.sourceLeadId || null,
     record.version,
     record.status,
     record.createdAt,
@@ -3628,6 +4293,8 @@ function buildPublishedSessionManagerSummary(row) {
 
   return {
     publishedId: row.id,
+    clientId: row.clientId,
+    sourceLeadId: row.sourceLeadId,
     version: row.version,
     status: row.status,
     createdAt: row.createdAt,
@@ -3669,6 +4336,8 @@ async function listPublishedSessionRows(env, options = {}) {
   const sql = `
     SELECT
       id,
+      client_id,
+      source_lead_id,
       version,
       status,
       created_at,
@@ -4159,6 +4828,199 @@ async function handleAdvisorPublishedSessionDetail(request, env, origin, publish
   }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
 }
 
+function buildClientManagerDetail(client, leads = [], sessions = [], timeline = []) {
+  return {
+    ...buildClientManagerSummary(client),
+    leads: leads.map((lead) => buildLeadManagerDetail(lead, [])),
+    publishedSessions: sessions.map(buildPublishedSessionManagerSummary),
+    timeline
+  };
+}
+
+function validateAdvisorClientUpdatePayload(payload, currentClient) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  const fullName = hasOwn(payload, 'fullName')
+    ? normalizePublishedClientName(payload.fullName)
+    : currentClient.fullName;
+  const email = hasOwn(payload, 'email')
+    ? normalizeClientEmailForMatch(payload.email)
+    : currentClient.email;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Client email address is invalid.');
+  }
+
+  const phone = hasOwn(payload, 'phone')
+    ? normalizeOptionalLeadValue(payload.phone)
+    : currentClient.phone;
+  if (phone.length > MAX_LEAD_PHONE_LENGTH) {
+    throw new Error('Phone number is too long.');
+  }
+
+  const pipelineStage = hasOwn(payload, 'pipelineStage')
+    ? validateClientPipelineStage(payload.pipelineStage)
+    : currentClient.pipelineStage;
+  const advisorNotes = hasOwn(payload, 'advisorNotes')
+    ? normalizeLongText(payload.advisorNotes)
+    : currentClient.advisorNotes;
+  if (advisorNotes.length > MAX_LEAD_ADVISOR_NOTES_LENGTH) {
+    throw new Error('Advisor notes are too long.');
+  }
+
+  return {
+    fullName,
+    email,
+    phone,
+    pipelineStage,
+    advisorNotes
+  };
+}
+
+async function handleAdvisorClientsList(request, env, origin) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const url = new URL(request.url);
+  const query = normalizeLeadValue(url.searchParams.get('q'));
+  const stage = normalizeLeadValue(url.searchParams.get('stage')) || 'all';
+  const limit = Number(url.searchParams.get('limit') || 60);
+
+  try {
+    const rows = await listClientRows(env, { query, stage, limit });
+    return jsonResponse({
+      ok: true,
+      stages: CLIENT_PIPELINE_STAGES.map((value) => ({
+        value,
+        label: formatClientPipelineStage(value)
+      })),
+      clients: rows.map(buildClientManagerSummary)
+    }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Could not load clients.' }, 400, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+}
+
+async function handleAdvisorClientDetail(request, env, origin, clientId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const client = await getClientRow(env, clientId);
+  if (!client) {
+    return jsonResponse({ error: 'Client not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  const leads = await listClientLeadRows(env, clientId).catch((error) => {
+    console.error('Failed to load client leads', {
+      clientId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return [];
+  });
+  const sessions = await listClientPublishedSessionRows(env, clientId).catch((error) => {
+    console.error('Failed to load client published sessions', {
+      clientId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return [];
+  });
+  const timeline = await listClientTimeline(env, clientId).catch((error) => {
+    console.error('Failed to load client timeline', {
+      clientId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return [];
+  });
+
+  return jsonResponse({
+    ok: true,
+    client: buildClientManagerDetail(client, leads, sessions, timeline)
+  }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
+}
+
+async function handleAdvisorClientUpdate(request, env, origin, clientId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'PATCH,OPTIONS', {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const currentClient = await getClientRow(env, clientId);
+  if (!currentClient) {
+    return jsonResponse({ error: 'Client not found.' }, 404, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'PATCH,OPTIONS');
+  }
+
+  let validated;
+  try {
+    validated = validateAdvisorClientUpdatePayload(body, currentClient);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+  }
+
+  const db = getPublishedSessionsDb(env);
+  if (validated.email) {
+    const existing = await db.prepare(`
+      SELECT id
+      FROM clients
+      WHERE normalized_email = ?
+        AND id != ?
+      LIMIT 1
+    `).bind(validated.email, clientId).first();
+    if (existing?.id) {
+      return jsonResponse({ error: 'Another client already uses that email address.' }, 409, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+    }
+  }
+
+  const updatedAt = nowIso();
+  await db.prepare(`
+    UPDATE clients
+    SET
+      full_name = ?,
+      email = ?,
+      normalized_email = ?,
+      phone = ?,
+      pipeline_stage = ?,
+      stage_updated_at = CASE WHEN pipeline_stage != ? THEN ? ELSE stage_updated_at END,
+      advisor_notes = ?,
+      updated_at = ?
+    WHERE id = ?
+  `).bind(
+    validated.fullName,
+    validated.email || null,
+    validated.email || null,
+    validated.phone || null,
+    validated.pipelineStage,
+    validated.pipelineStage,
+    updatedAt,
+    validated.advisorNotes || null,
+    updatedAt,
+    clientId
+  ).run();
+
+  const client = await getClientRow(env, clientId);
+  const leads = await listClientLeadRows(env, clientId).catch(() => []);
+  const sessions = await listClientPublishedSessionRows(env, clientId).catch(() => []);
+  const timeline = await listClientTimeline(env, clientId).catch(() => []);
+
+  return jsonResponse({
+    ok: true,
+    client: buildClientManagerDetail(client, leads, sessions, timeline)
+  }, 200, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+}
+
 async function handleAdvisorLeadsList(request, env, origin) {
   const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
   if (advisorAccess.response) {
@@ -4238,6 +5100,15 @@ async function handleAdvisorLeadUpdate(request, env, origin, leadId) {
     nextStatus: validated.status
   });
   const updatedLead = await getLeadRow(env, leadId);
+  const linkedClient = await ensureClientForLead(env, updatedLead).catch(() => null);
+  await advanceClientPipelineStage(env, linkedClient?.id || updatedLead?.clientId, inferPipelineStageFromLeadStatus(updatedLead?.status), {
+    timestamp: updatedLead?.updatedAt || nowIso(),
+    profile: {
+      fullName: updatedLead?.fullName,
+      email: updatedLead?.email,
+      phone: updatedLead?.phone
+    }
+  }).catch(() => {});
   const events = await listLeadEvents(env, leadId).catch(() => []);
 
   return jsonResponse({
@@ -4291,6 +5162,15 @@ async function handleLeadScheduleResponse(request, env) {
   if (lead.scheduleResponseExpiresAt && Date.parse(lead.scheduleResponseExpiresAt) <= Date.now()) {
     if (lead.scheduleResponseStatus !== 'expired') {
       await recordLeadScheduleResponse(env, leadId, token, 'expired');
+      const linkedClient = await ensureClientForLead(env, lead).catch(() => null);
+      await advanceClientPipelineStage(env, linkedClient?.id || lead.clientId, 'expired', {
+        timestamp: nowIso(),
+        profile: {
+          fullName: lead.fullName,
+          email: lead.email,
+          phone: lead.phone
+        }
+      }).catch(() => {});
       let zoomDeleteResult = null;
       let zoomDeleteError = '';
       if (lead.zoomMeetingId && !lead.zoomDeletedAt) {
@@ -4309,6 +5189,7 @@ async function handleLeadScheduleResponse(request, env) {
         }
       }
       await insertLeadEvent(env, leadId, 'client', 'schedule-response-expired', {
+        clientId: linkedClient?.id || lead.clientId || null,
         scheduledStartAt: lead.scheduledStartAt,
         scheduledEndAt: lead.scheduledEndAt,
         scheduleResponseExpiresAt: lead.scheduleResponseExpiresAt,
@@ -4326,6 +5207,15 @@ async function handleLeadScheduleResponse(request, env) {
   }
 
   const respondedAt = await recordLeadScheduleResponse(env, leadId, token, responseStatus);
+  const linkedClient = await ensureClientForLead(env, lead).catch(() => null);
+  await advanceClientPipelineStage(env, linkedClient?.id || lead.clientId, responseStatus === 'accepted' ? 'meeting_booked' : 'declined', {
+    timestamp: respondedAt,
+    profile: {
+      fullName: lead.fullName,
+      email: lead.email,
+      phone: lead.phone
+    }
+  }).catch(() => {});
   let zoomDeleteResult = null;
   let zoomDeleteError = '';
   if (responseStatus === 'declined' && lead.zoomMeetingId && !lead.zoomDeletedAt) {
@@ -4350,6 +5240,7 @@ async function handleLeadScheduleResponse(request, env) {
     }
   }
   await insertLeadEvent(env, leadId, 'client', responseStatus === 'accepted' ? 'schedule-accepted' : 'schedule-declined', {
+    clientId: linkedClient?.id || lead.clientId || null,
     scheduledStartAt: lead.scheduledStartAt,
     scheduledEndAt: lead.scheduledEndAt,
     respondedAt,
@@ -4467,7 +5358,17 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
     status: 'awaiting-client',
     lastScheduleEmailSentAt
   });
+  const linkedClient = await ensureClientForLead(env, currentLead).catch(() => null);
+  await advanceClientPipelineStage(env, linkedClient?.id || currentLead.clientId, 'awaiting_meeting', {
+    timestamp: lastScheduleEmailSentAt,
+    profile: {
+      fullName: currentLead.fullName,
+      email: currentLead.email,
+      phone: currentLead.phone
+    }
+  }).catch(() => {});
   await insertLeadEvent(env, leadId, 'advisor', 'schedule-email-sent', {
+    clientId: linkedClient?.id || currentLead.clientId || null,
     clientResendEmailId: emailResult.clientResendEmailId,
     advisorCopyResendEmailId: emailResult.advisorCopyResendEmailId,
     advisorCopySent: emailResult.advisorCopySent,
@@ -4637,6 +5538,40 @@ async function handleCreatePublishedSession(request, env, origin) {
   const clientPinState = isV4 ? validated.data.clientBundle.clientAccess.pinState : null;
   const clientAccessRevision = isV4 ? validated.data.clientBundle.clientAccess.revision : 1;
   const encryptedRecovery = await encryptPublishedRecoveryPayload(env, recovery);
+  const requestedClientId = validateClientId(body?.clientId);
+  const sourceLeadId = validateLeadId(body?.sourceLeadId);
+  let linkedClientId = requestedClientId || null;
+
+  if (sourceLeadId) {
+    const sourceLead = await getLeadRow(env, sourceLeadId);
+    if (!sourceLead) {
+      return jsonResponse({ error: 'Source lead was not found.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+    }
+    const leadClient = await ensureClientForLead(env, sourceLead);
+    if (linkedClientId && leadClient?.id && linkedClientId !== leadClient.id) {
+      return jsonResponse({ error: 'Source lead belongs to a different client.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+    }
+    linkedClientId = leadClient?.id || linkedClientId;
+  }
+
+  if (linkedClientId) {
+    const linkedClient = await getClientRow(env, linkedClientId);
+    if (!linkedClient) {
+      return jsonResponse({ error: 'Linked client was not found.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+    }
+    await updateClientProfileFromSource(env, linkedClientId, {
+      fullName: validated.data.meta.clientName,
+      email: validated.data.meta.clientEmail
+    }).catch(() => {});
+  } else {
+    const client = await findOrCreateClientForProfile(env, {
+      fullName: validated.data.meta.clientName,
+      email: validated.data.meta.clientEmail,
+      pipelineStage: 'session_published',
+      timestamp: createdAt
+    });
+    linkedClientId = client?.id || null;
+  }
 
   try {
     await env.SESSIONS_BUCKET.put(clientR2Key, JSON.stringify(validated.data.clientBundle), {
@@ -4647,6 +5582,8 @@ async function handleCreatePublishedSession(request, env, origin) {
     });
     await insertPublishedSessionRow(env, {
       id: publishedId,
+      clientId: linkedClientId,
+      sourceLeadId: sourceLeadId || null,
       version: validated.data.v,
       status: 'active',
       createdAt,
@@ -4666,7 +5603,16 @@ async function handleCreatePublishedSession(request, env, origin) {
       clientPinInitializedAt: null,
       clientAccessRevision
     });
+    await advanceClientPipelineStage(env, linkedClientId, 'session_published', {
+      timestamp: createdAt,
+      profile: {
+        fullName: validated.data.meta.clientName,
+        email: validated.data.meta.clientEmail
+      }
+    });
     await insertPublishedSessionEvent(env, publishedId, 'advisor', 'published', {
+      clientId: linkedClientId,
+      sourceLeadId: sourceLeadId || null,
       version: validated.data.v,
       pinRequired: isV4 ? true : validated.data.clientBundle.clientAccess.pinRequired,
       clientPinState,
@@ -4685,6 +5631,8 @@ async function handleCreatePublishedSession(request, env, origin) {
   return jsonResponse({
     ok: true,
     publishedId,
+    clientId: linkedClientId,
+    sourceLeadId: sourceLeadId || null,
     createdAt,
     expiresAt,
     status: 'active',
@@ -4728,8 +5676,16 @@ async function handleLeadSubmit(request, env, origin, ctx) {
   const availabilityNotes = normalizeOptionalLeadValue(validated.availabilityNotes);
 
   try {
+    const client = await findOrCreateClientForProfile(env, {
+      fullName: validated.fullName,
+      email: validated.email,
+      phone,
+      pipelineStage: 'new_lead',
+      timestamp: createdAt
+    });
     const result = await env.LEADS_DB.prepare(`
       INSERT INTO leads (
+        client_id,
         created_at,
         updated_at,
         full_name,
@@ -4744,8 +5700,9 @@ async function handleLeadSubmit(request, env, origin, ctx) {
         consent_education_only,
         consent_recording,
         source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
+      client?.id || null,
       createdAt,
       createdAt,
       validated.fullName,
@@ -4777,7 +5734,8 @@ async function handleLeadSubmit(request, env, origin, ctx) {
     };
     if (leadId) {
       await insertLeadEvent(env, leadId, 'client', 'lead-submitted', {
-        source: validated.source
+        source: validated.source,
+        clientId: client?.id || null
       }).catch((error) => {
         console.error('Failed to record lead submitted event', {
           leadId,
@@ -4800,7 +5758,8 @@ async function handleLeadSubmit(request, env, origin, ctx) {
 
     return jsonResponse({
       ok: true,
-      leadId
+      leadId,
+      clientId: client?.id || null
     }, 201, origin, 'POST,OPTIONS');
   } catch (error) {
     console.error('Failed to store lead submission', {
@@ -4908,6 +5867,8 @@ function buildPublishedSessionResponseV3(row, bundle, role) {
   if (role === 'advisor') {
     response.advisorAccess = bundle.advisorAccess;
     response.meta = {
+      clientId: row.clientId,
+      sourceLeadId: row.sourceLeadId,
       clientName: row.clientName,
       clientEmail: row.clientEmail,
       pinRequired: row.pinRequired,
@@ -5368,7 +6329,17 @@ async function handlePublishedSessionUnlocked(request, env, origin, publishedId)
     }
 
     await recordPublishedUnlock(env, publishedId, role);
+    if (role === 'client') {
+      await advanceClientPipelineStage(env, row.clientId, 'client_opened', {
+        timestamp: nowIso(),
+        profile: {
+          fullName: row.clientName,
+          email: row.clientEmail
+        }
+      }).catch(() => {});
+    }
     await insertPublishedSessionEvent(env, publishedId, role, 'unlocked', {
+      clientId: row.clientId || null,
       version: row.version,
       source,
       requestIp: clientIp,
@@ -5571,7 +6542,15 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
     clientEmail,
     lastEmailSentAt
   });
+  await advanceClientPipelineStage(env, row.clientId, 'post_session_email_sent', {
+    timestamp: lastEmailSentAt,
+    profile: {
+      fullName: clientName,
+      email: clientEmail
+    }
+  }).catch(() => {});
   await insertPublishedSessionEvent(env, publishedId, 'advisor', 'email-sent', {
+    clientId: row.clientId || null,
     clientEmail,
     clientEmailChanged: Boolean(row.clientEmail && row.clientEmail !== clientEmail),
     includePinInEmail,
@@ -5648,6 +6627,10 @@ export default {
       return handleAdvisorPublishedSessionsList(request, env, origin);
     }
 
+    if (request.method === 'GET' && pathname === '/api/advisor/clients') {
+      return handleAdvisorClientsList(request, env, origin);
+    }
+
     if (request.method === 'GET' && pathname === '/api/advisor/leads') {
       return handleAdvisorLeadsList(request, env, origin);
     }
@@ -5693,6 +6676,20 @@ export default {
       }
 
       return handleAdvisorPublishedSessionDetail(request, env, origin, publishedId);
+    }
+
+    const advisorClientMatch = /^\/api\/advisor\/clients\/(\d+)$/.exec(pathname);
+    if ((request.method === 'GET' || request.method === 'PATCH') && advisorClientMatch) {
+      const clientId = validateClientId(advisorClientMatch[1]);
+      if (!clientId) {
+        return jsonResponse({ error: 'Client not found.' }, 404, origin, `${request.method},OPTIONS`, requestHeaders, noStoreHeaders());
+      }
+
+      if (request.method === 'GET') {
+        return handleAdvisorClientDetail(request, env, origin, clientId);
+      }
+
+      return handleAdvisorClientUpdate(request, env, origin, clientId);
     }
 
     const sendLeadScheduleEmailMatch = /^\/api\/advisor\/leads\/(\d+)\/send-schedule-email$/.exec(pathname);
