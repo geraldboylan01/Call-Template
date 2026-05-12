@@ -3508,6 +3508,237 @@ function toGenericTableRows(rows) {
   });
 }
 
+function isPlainPayloadObject(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function hasGeneratedTableShape(value) {
+  return isPlainPayloadObject(value) && Array.isArray(value.columns) && Array.isArray(value.rows);
+}
+
+function formatGeneratedObjectValue(value) {
+  if (value === null || typeof value === 'undefined') {
+    return '';
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch (_error) {
+    return String(value);
+  }
+}
+
+function humanizePayloadKey(key) {
+  const value = String(key ?? '').trim();
+  if (!value) {
+    return 'Assumption';
+  }
+
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function parsePayloadNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.replace(/[,$€£\s]/g, '').replace(/^\((.*)\)$/, '-$1');
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getFirstPayloadNumber(source, keys) {
+  if (!isPlainPayloadObject(source)) {
+    return null;
+  }
+
+  for (const key of keys) {
+    if (key in source) {
+      const parsed = parsePayloadNumber(source[key]);
+      if (parsed !== null) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizePayloadToken(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function inferCurrencySymbol(value) {
+  const rawValue = String(value ?? '').trim();
+  const upperValue = rawValue.toUpperCase();
+
+  if (!upperValue) {
+    return '€';
+  }
+
+  if (rawValue === '$' || upperValue === 'USD') {
+    return '$';
+  }
+
+  if (rawValue === '€' || upperValue === 'EUR') {
+    return '€';
+  }
+
+  if (rawValue === '£' || upperValue === 'GBP') {
+    return '£';
+  }
+
+  return rawValue;
+}
+
+function extractPbsItemRows(items, fallbackPrefix) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item, index) => {
+      if (!isPlainPayloadObject(item)) {
+        return null;
+      }
+
+      const label = String(item.name || item.label || item.title || `${fallbackPrefix} ${index + 1}`).trim();
+      const value = getFirstPayloadNumber(item, ['value', 'amount', 'balance', 'currentBalance']);
+
+      if (!label || value === null) {
+        return null;
+      }
+
+      return [label, value];
+    })
+    .filter(Boolean);
+}
+
+function findPbsProjectBucket(buckets, bucketKey) {
+  const targetToken = normalizePayloadToken(bucketKey);
+  return buckets.find((bucket) => (
+    isPlainPayloadObject(bucket)
+    && (
+      normalizePayloadToken(bucket.key) === targetToken
+      || normalizePayloadToken(bucket.name) === targetToken
+      || normalizePayloadToken(bucket.title) === targetToken
+    )
+  )) || null;
+}
+
+function buildOutputsBucketedFromProjectPbs(generated, sourceAssumptions = null) {
+  if (!Array.isArray(generated?.buckets)) {
+    return null;
+  }
+
+  const assumptions = isPlainPayloadObject(sourceAssumptions) && !hasGeneratedTableShape(sourceAssumptions)
+    ? sourceAssumptions
+    : {};
+  const metrics = isPlainPayloadObject(generated.metrics) ? generated.metrics : {};
+  const currencySymbol = inferCurrencySymbol(assumptions.currency || generated.currencySymbol || generated.currency);
+  const amountColumn = `Amount (${currencySymbol})`;
+  const assetBucketMeta = [
+    { key: 'lifestyle', title: 'Lifestyle', subtotalLabel: 'Lifestyle assets' },
+    { key: 'liquidity', title: 'Liquidity', subtotalLabel: 'Liquid reserves' },
+    { key: 'longevity', title: 'Longevity', subtotalLabel: 'Longevity assets' },
+    { key: 'legacy', title: 'Legacy', subtotalLabel: 'Legacy assets' }
+  ];
+
+  const assetSections = assetBucketMeta.map((meta) => {
+    const bucket = findPbsProjectBucket(generated.buckets, meta.key);
+    const rows = extractPbsItemRows(bucket?.assets, 'Asset');
+    const subtotalValue = getFirstPayloadNumber(bucket, ['grossValue', 'assetValue', 'netValue'])
+      ?? rows.reduce((total, row) => total + row[1], 0);
+
+    return {
+      key: meta.key,
+      title: meta.title,
+      columns: ['Asset', amountColumn],
+      rows,
+      subtotalLabel: meta.subtotalLabel,
+      subtotalValue,
+      notes: typeof bucket?.description === 'string' ? bucket.description : ''
+    };
+  });
+
+  const bucketLiabilityRows = generated.buckets.flatMap((bucket) => extractPbsItemRows(bucket?.liabilities, 'Liability'));
+  const payloadLiabilityRows = extractPbsItemRows(generated.liabilities, 'Liability');
+  const liabilityRows = bucketLiabilityRows.length > 0 ? bucketLiabilityRows : payloadLiabilityRows;
+  const totalLiabilities = getFirstPayloadNumber(metrics, ['totalLiabilities', 'liabilities'])
+    ?? liabilityRows.reduce((total, row) => total + row[1], 0);
+  const grossAssets = getFirstPayloadNumber(metrics, ['grossAssets', 'totalAssets'])
+    ?? assetSections.reduce((total, section) => total + section.subtotalValue, 0);
+  const netWorth = getFirstPayloadNumber(metrics, ['netWorth'])
+    ?? (grossAssets - totalLiabilities);
+
+  return {
+    currencySymbol,
+    sections: [
+      ...assetSections,
+      {
+        key: 'liabilities',
+        title: 'Liabilities',
+        columns: ['Liability', amountColumn],
+        rows: liabilityRows,
+        subtotalLabel: 'Total liabilities',
+        subtotalValue: totalLiabilities
+      },
+      {
+        key: 'summary',
+        title: 'Summary',
+        columns: ['Metric', amountColumn],
+        rows: [
+          ['Gross assets', grossAssets],
+          ['Total liabilities', totalLiabilities],
+          ['Net worth', netWorth]
+        ],
+        subtotalLabel: 'Net worth',
+        subtotalValue: netWorth
+      }
+    ]
+  };
+}
+
+function looksLikePbsProjectPayload(payload, generated) {
+  const moduleToken = normalizePayloadToken(payload.module || payload.moduleType || payload.type);
+  const titleToken = normalizePayloadToken(payload.title);
+
+  return moduleToken === 'pbs'
+    || titleToken.includes('personalbalancesheet')
+    || Array.isArray(generated?.buckets)
+    || isPlainPayloadObject(generated?.metrics);
+}
+
 function normalizeDevPanelPayload(payload) {
   const warnings = [];
 
@@ -3518,6 +3749,55 @@ function normalizeDevPanelPayload(payload) {
   const generated = payload.generated;
   if (!generated || typeof generated !== 'object' || Array.isArray(generated)) {
     return { payload, warnings };
+  }
+
+  const rawGeneratedAssumptions = generated.assumptions;
+
+  if (typeof generated.summary === 'string' && generated.summary.trim() && typeof generated.summaryHtml !== 'string') {
+    generated.summaryHtml = `<p>${escapeHtmlText(generated.summary.trim())}</p>`;
+    warnings.push('Moved generated.summary into generated.summaryHtml.');
+  }
+
+  if ('assumptions' in generated && !hasGeneratedTableShape(generated.assumptions)) {
+    if (isPlainPayloadObject(generated.assumptions)) {
+      generated.assumptions = {
+        columns: ['Assumption', 'Value'],
+        rows: Object.entries(generated.assumptions).map(([key, value]) => [
+          humanizePayloadKey(key),
+          formatGeneratedObjectValue(value)
+        ])
+      };
+      warnings.push('Converted generated.assumptions object into a two-column table.');
+    } else if (generated.assumptions == null) {
+      delete generated.assumptions;
+      warnings.push('Removed empty generated.assumptions.');
+    }
+  }
+
+  if (looksLikePbsProjectPayload(payload, generated)) {
+    const sourceAssumptions = isPlainPayloadObject(rawGeneratedAssumptions) && !hasGeneratedTableShape(rawGeneratedAssumptions)
+      ? rawGeneratedAssumptions
+      : {};
+    const pbsInputSource = {
+      annualExpenditure: getFirstPayloadNumber(sourceAssumptions, ['annualExpenditure'])
+        ?? getFirstPayloadNumber(generated.metrics, ['annualExpenditure']),
+      currentAge: getFirstPayloadNumber(sourceAssumptions, ['currentAge', 'clientAge'])
+        ?? getFirstPayloadNumber(generated.metrics, ['currentAge', 'clientAge'])
+    };
+    const normalizedPbsInputs = normalizePbsInputs(pbsInputSource);
+
+    if (normalizedPbsInputs && !generated.pbsInputs) {
+      generated.pbsInputs = normalizedPbsInputs;
+      warnings.push('Created generated.pbsInputs from PBS assumptions.');
+    }
+
+    if (!isPlainPayloadObject(generated.outputsBucketed)) {
+      const repairedOutputsBucketed = buildOutputsBucketedFromProjectPbs(generated, rawGeneratedAssumptions);
+      if (repairedOutputsBucketed) {
+        generated.outputsBucketed = repairedOutputsBucketed;
+        warnings.push('Created generated.outputsBucketed from PBS buckets and metrics.');
+      }
+    }
   }
 
   const outputsBucketed = generated.outputsBucketed;

@@ -36,6 +36,13 @@ This style should still work:
 }
 ```
 
+## Strict Schema Guardrails
+- Do not emit a top-level `module` key. The app infers PBS from the payload shape and title.
+- Do not emit `generated.summary`; use `generated.summaryHtml`.
+- Do not emit custom primary PBS keys such as `generated.metrics`, `generated.buckets`, `generated.assets`, or `generated.liabilities`.
+- Do not emit `generated.assumptions` as a key-value object. If Gerry explicitly asks to override assumptions, it must be a table: `{ "columns": ["Assumption", "Value"], "rows": [["Current age", 43]] }`.
+- The primary PBS table must be `generated.outputsBucketed.sections`, not `generated.tables`.
+
 ## Required PBS Sections
 Emit `generated.outputsBucketed.sections` in this exact order:
 1. `lifestyle`

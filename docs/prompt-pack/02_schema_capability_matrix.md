@@ -43,6 +43,7 @@ Playbooks should only emit the subset they are responsible for.
 ```
 
 - `generated.assumptions` and `generated.outputs` both use this shape.
+- `generated.assumptions` must never be a plain key-value object.
 - `generated.tables` is supported by the runtime, but playbooks should only use it when explicitly helpful.
 - `generated.outputsBucketed.sections[*].columns` supports exactly 2 columns.
 
@@ -67,6 +68,7 @@ Playbooks should only emit the subset they are responsible for.
 - Optional inputs path: `generated.pbsInputs`
 - `generated.outputs` should be omitted by the PBS playbook.
 - `generated.assumptions` is supported, but PBS should usually omit it unless Gerry explicitly asks to override the scaffold.
+- PBS must use `generated.summaryHtml` and `generated.outputsBucketed`; do not invent `generated.summary`, `generated.metrics`, `generated.buckets`, `generated.assets`, or `generated.liabilities` as the primary app contract.
 
 ## Pension Support
 - Use `generated.pensionInputs`
