@@ -48,6 +48,7 @@ import { runMortgageMathTests } from './tests_mortgage_math.js';
 import {
   buildPublishedCapabilityToken,
   decryptPublishedSessionV2ForAdvisor,
+  encryptPublishedSessionV3,
   encryptPublishedSessionV4,
   rotatePublishedClientAccessV4
 } from './crypto_session.js';
@@ -4287,6 +4288,7 @@ function getLinkHashParam(link, key) {
 function buildClientSessionLink(publishedId, clientSecretB64u) {
   const url = new URL('./session.html', window.location.href);
   url.searchParams.set('pub', publishedId);
+  url.searchParams.set('view', 'overview');
   url.hash = new URLSearchParams({ ck: clientSecretB64u }).toString();
   return url.toString();
 }
@@ -4294,6 +4296,7 @@ function buildClientSessionLink(publishedId, clientSecretB64u) {
 function buildAdvisorSessionLink(publishedId, advisorSecretB64u) {
   const url = new URL('./index.html', window.location.href);
   url.searchParams.set('pub', publishedId);
+  url.searchParams.set('view', 'overview');
   url.hash = new URLSearchParams({ ak: advisorSecretB64u }).toString();
   return url.toString();
 }
@@ -4338,7 +4341,51 @@ function getPublishedAdvisorLink(access) {
   return access?.advisorLink || '';
 }
 
+function getLocationViewMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('view')?.trim().toLowerCase() || '';
+}
+
+function getPublishMode() {
+  return ui.publishModeEmailInput?.checked ? 'email' : 'share';
+}
+
+function setPublishMode(mode) {
+  const normalizedMode = mode === 'email' ? 'email' : 'share';
+  if (ui.publishModeShareInput) {
+    ui.publishModeShareInput.checked = normalizedMode === 'share';
+  }
+  if (ui.publishModeEmailInput) {
+    ui.publishModeEmailInput.checked = normalizedMode === 'email';
+  }
+  syncPublishModeControls();
+}
+
+function syncPublishModeControls() {
+  const mode = getPublishMode();
+  const isShareMode = mode === 'share';
+
+  if (ui.publishEmailField) {
+    ui.publishEmailField.classList.toggle('is-hidden', isShareMode && !appState.publishedAccess?.clientEmail);
+    ui.publishEmailField.setAttribute('aria-hidden', isShareMode && !appState.publishedAccess?.clientEmail ? 'true' : 'false');
+  }
+  if (ui.publishClientEmailInput) {
+    ui.publishClientEmailInput.required = mode === 'email';
+    ui.publishClientEmailInput.disabled = isShareMode && !appState.publishedAccess?.clientEmail;
+  }
+  if (ui.publishClientPinInfo) {
+    ui.publishClientPinInfo.textContent = isShareMode && !appState.publishedAccess
+      ? 'Anyone with the published link can open a read-only view until it expires or is revoked.'
+      : getPublishedClientPinInfoText(appState.publishedAccess);
+  }
+  updatePublishActionState();
+}
+
 function formatPublishedClientPinState(access) {
+  if (access?.linkAccessMode === 'direct') {
+    return 'Direct read-only link';
+  }
+
   if (!isFirstOpenPublishedAccess(access)) {
     return access?.pin ? 'Advisor-managed PIN' : 'Not configured';
   }
@@ -4353,6 +4400,10 @@ function formatPublishedClientPinState(access) {
 function getPublishedClientPinInfoText(access = appState.publishedAccess) {
   if (!access) {
     return 'The client will create their own 6-digit PIN the first time they open the secure link. The advisor never sees or stores that PIN.';
+  }
+
+  if (access?.linkAccessMode === 'direct') {
+    return 'Anyone with the published link can open a read-only view until it expires or is revoked.';
   }
 
   if (!isFirstOpenPublishedAccess(access)) {
@@ -4410,10 +4461,11 @@ function formatPublishedEmailStatus(access) {
 }
 
 function updatePublishActionState(access = appState.publishedAccess) {
+  const mode = getPublishMode();
   const hasEmail = Boolean(String(ui.publishClientEmailInput?.value || '').trim());
 
   if (ui.publishGenerateButton && !ui.publishGenerateButton.disabled) {
-    ui.publishGenerateButton.textContent = hasEmail ? 'Publish & Email Client' : 'Publish Secure Links';
+    ui.publishGenerateButton.textContent = mode === 'share' ? 'Publish Share Link' : 'Publish & Email Client';
   }
 
   if (ui.publishSendEmailButton) {
@@ -4545,6 +4597,7 @@ function resetPublishResult(options = {}) {
     ui.publishIncludePinEmailToggle.disabled = true;
   }
   syncPublishPinControls(clearAccess ? null : appState.publishedAccess);
+  syncPublishModeControls();
   updatePublishActionState(clearAccess ? null : appState.publishedAccess);
 }
 
@@ -4719,9 +4772,11 @@ async function resolvePublishedStartupRecovery(message) {
 async function publishCurrentSession() {
   const clientPlaintext = exportPublishedSession(appState.session);
   const advisorPlaintext = exportSession(appState.session);
-  const clientEmail = getPublishClientEmailFromInput();
+  const mode = getPublishMode();
+  const isShareMode = mode === 'share';
+  const clientEmail = isShareMode ? '' : getPublishClientEmailFromInput({ required: true });
   const expiresInDays = getPublishExpiryDaysFromInput();
-  const encryptedPayload = await encryptPublishedSessionV4({
+  const encryptedPayload = await (isShareMode ? encryptPublishedSessionV3 : encryptPublishedSessionV4)({
     clientSessionJson: clientPlaintext,
     advisorSessionJson: advisorPlaintext,
     clientName: appState.session?.clientName || 'Client',
@@ -4732,10 +4787,15 @@ async function publishCurrentSession() {
     clientSecretB64u: encryptedPayload.clientSecretB64u,
     advisorSecretB64u: encryptedPayload.advisorSecretB64u
   };
-  if (appState.pipelineContext?.clientId) {
+
+  if (isShareMode) {
+    encryptedPayload.requestBody.publishTarget = 'detached-share';
+    encryptedPayload.requestBody.linkAccessMode = 'direct';
+  } else if (appState.pipelineContext?.clientId) {
     encryptedPayload.requestBody.clientId = appState.pipelineContext.clientId;
   }
-  if (appState.pipelineContext?.leadId) {
+
+  if (!isShareMode && appState.pipelineContext?.leadId) {
     encryptedPayload.requestBody.sourceLeadId = appState.pipelineContext.leadId;
   }
   const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/published-sessions`, {
@@ -4759,17 +4819,19 @@ async function publishCurrentSession() {
   const advisorLink = buildAdvisorSessionLink(publishedId, encryptedPayload.advisorSecretB64u);
 
   return {
-    version: 4,
+    version: isShareMode ? 3 : 4,
     publishedId,
-    clientId: payload?.clientId || appState.pipelineContext?.clientId || null,
-    sourceLeadId: payload?.sourceLeadId || appState.pipelineContext?.leadId || null,
+    clientId: payload?.clientId || (!isShareMode ? appState.pipelineContext?.clientId : null) || null,
+    sourceLeadId: payload?.sourceLeadId || (!isShareMode ? appState.pipelineContext?.leadId : null) || null,
     pin: '',
     clientLink,
     advisorLink,
     expiresAt: payload?.expiresAt || '',
     expiryDays: expiresInDays,
     clientEmail: payload?.clientEmail || clientEmail,
-    clientPinState: payload?.clientPinState || encryptedPayload.clientPinState || 'pending',
+    publishTarget: isShareMode ? 'detached-share' : 'client-email',
+    linkAccessMode: isShareMode ? 'direct' : 'client-first-pin',
+    clientPinState: isShareMode ? null : (payload?.clientPinState || encryptedPayload.clientPinState || 'pending'),
     clientAccessRevision: Number(payload?.clientAccessRevision || encryptedPayload.clientAccessRevision || 1),
     clientPinInitializedAt: null,
     emailSendCount: Number(payload?.emailSendCount || 0),
@@ -4911,6 +4973,7 @@ function renderPublishedAccess(access) {
   }
 
   const isV4 = isFirstOpenPublishedAccess(access);
+  const isDirectLink = access.linkAccessMode === 'direct';
   const showLegacyPin = isLegacyPinPublishedAccess(access);
 
   if (ui.publishResult) {
@@ -4947,7 +5010,7 @@ function renderPublishedAccess(access) {
     }
   }
   if (ui.publishClientPinStateRow) {
-    ui.publishClientPinStateRow.classList.toggle('is-hidden', !isV4);
+    ui.publishClientPinStateRow.classList.toggle('is-hidden', !(isV4 || isDirectLink));
   }
   if (ui.publishClientPinStateValue) {
     ui.publishClientPinStateValue.textContent = formatPublishedClientPinState(access);
@@ -4971,6 +5034,7 @@ function renderPublishedAccess(access) {
     ui.publishEmailStatus.textContent = formatPublishedEmailStatus(access);
   }
 
+  setPublishMode(isDirectLink ? 'share' : 'email');
   updatePublishActionState(access);
 }
 
@@ -4980,7 +5044,7 @@ async function handlePublishGenerate() {
   }
 
   setPublishError('');
-  const shouldAutoSendEmail = Boolean(String(ui.publishClientEmailInput?.value || '').trim());
+  const shouldAutoSendEmail = getPublishMode() === 'email';
 
   if (ui.publishGenerateButton) {
     ui.publishGenerateButton.disabled = true;
@@ -4991,14 +5055,16 @@ async function handlePublishGenerate() {
     const access = await publishCurrentSession();
     appState.publishedAccess = access;
     renderPublishedAccess(access);
-    void queuePublishedAdvisorNotification(access).catch((error) => {
-      console.error('Advisor publish notification request failed', {
-        publishedId: access?.publishedId || '',
-        error: error instanceof Error ? error.message : String(error)
+    if (access.linkAccessMode !== 'direct') {
+      void queuePublishedAdvisorNotification(access).catch((error) => {
+        console.error('Advisor publish notification request failed', {
+          publishedId: access?.publishedId || '',
+          error: error instanceof Error ? error.message : String(error)
+        });
       });
-    });
+    }
 
-    if (access.clientEmail) {
+    if (shouldAutoSendEmail && access.clientEmail) {
       try {
         const payload = await sendPublishedSessionEmail(access);
         appState.publishedAccess = mergePublishedEmailDelivery(access, payload);
@@ -5011,7 +5077,7 @@ async function handlePublishGenerate() {
       return;
     }
 
-    await playPublishSuccessTakeover();
+    showToast('Share link published.');
   } catch (error) {
     setPublishError(error?.message || 'Failed to publish this session.');
   } finally {
@@ -7615,6 +7681,17 @@ async function openClientAccessManager(options = {}) {
   window.location.href = new URL('./clients.html', window.location.href).toString();
 }
 
+async function openPublishedLinksManager(options = {}) {
+  const { closePublish = false } = options;
+  await ensureAdvisorAuthenticated('Sign in to open Published Links.');
+
+  if (closePublish) {
+    setPublishModalOpen(false);
+  }
+
+  window.location.href = new URL('./access.html', window.location.href).toString();
+}
+
 function bindEvents() {
   bindAdvisorAuthEvents();
 
@@ -7641,6 +7718,7 @@ function bindEvents() {
       } else {
         resetPublishResult({ clearAccess: false });
         applyClientPipelineContextToSession();
+        setPublishMode(appState.pipelineContext?.clientId || appState.pipelineContext?.leadId ? 'email' : 'share');
       }
       setPublishModalOpen(true);
     });
@@ -7665,6 +7743,15 @@ function bindEvents() {
       await handlePublishGenerate();
     });
   }
+
+  [ui.publishModeShareInput, ui.publishModeEmailInput].forEach((input) => {
+    if (!input) {
+      return;
+    }
+    input.addEventListener('change', () => {
+      syncPublishModeControls();
+    });
+  });
 
   if (ui.publishPinToggle) {
     ui.publishPinToggle.addEventListener('change', () => {
@@ -7742,7 +7829,7 @@ function bindEvents() {
 
   if (ui.publishOpenClientAccessButton) {
     ui.publishOpenClientAccessButton.addEventListener('click', async () => {
-      await openClientAccessManager({ closePublish: true });
+      await openPublishedLinksManager({ closePublish: true });
     });
   }
 
@@ -8156,8 +8243,13 @@ export async function initApp(options = {}) {
 
     applyClientPipelineContextToSession();
     ensureActiveModule(appState.session);
-    appState.mode = hasModules() ? 'focused' : 'greeting';
     appState.publishedAccess = startupPublishedAccess;
+    const startInOverview = hasModules() && (
+      options.startInOverview === true
+      || getLocationViewMode() === 'overview'
+      || Boolean(startupPublishedAccess)
+    );
+    appState.mode = hasModules() ? (startInOverview ? 'overview' : 'focused') : 'greeting';
 
     applyRuntimeChrome();
     resetPublishResult({ clearAccess: false });
@@ -8209,6 +8301,10 @@ export async function initApp(options = {}) {
 
     if (appState.mode === 'focused') {
       await renderFocused({ useSwipe: false, revealMode: true });
+    } else if (appState.mode === 'overview') {
+      setMode(ui, 'overview');
+      refreshOverview({ enableSortable: !runtimeConfig.readOnly });
+      updateUiChrome();
     } else {
       setMode(ui, 'greeting');
       updateUiChrome();

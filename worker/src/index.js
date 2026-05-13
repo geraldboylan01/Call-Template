@@ -947,8 +947,17 @@ function validatePublishedNotificationLink(value, publishedId, hashKey, label) {
   }
 
   const searchKeys = [...parsed.searchParams.keys()];
-  if (searchKeys.length !== 1 || searchKeys[0] !== 'pub') {
+  const invalidSearchKey = searchKeys.find((key) => key !== 'pub' && key !== 'view');
+  if (
+    invalidSearchKey
+    || parsed.searchParams.getAll('pub').length !== 1
+    || parsed.searchParams.getAll('view').length > 1
+  ) {
     throw new Error(`${label} query is invalid.`);
+  }
+  const viewParam = normalizeLeadValue(parsed.searchParams.get('view'));
+  if (viewParam && viewParam !== 'overview') {
+    throw new Error(`${label} view is invalid.`);
   }
 
   const publishedParam = normalizeLeadValue(parsed.searchParams.get('pub'));
@@ -1015,8 +1024,17 @@ function validatePublishedClientLink(value, publishedId) {
   }
 
   const searchKeys = [...parsed.searchParams.keys()];
-  if (searchKeys.length !== 1 || searchKeys[0] !== 'pub') {
+  const invalidSearchKey = searchKeys.find((key) => key !== 'pub' && key !== 'view');
+  if (
+    invalidSearchKey
+    || parsed.searchParams.getAll('pub').length !== 1
+    || parsed.searchParams.getAll('view').length > 1
+  ) {
     throw new Error('Client link query is invalid.');
+  }
+  const viewParam = normalizeLeadValue(parsed.searchParams.get('view'));
+  if (viewParam && viewParam !== 'overview') {
+    throw new Error('Client link view is invalid.');
   }
 
   const publishedParam = normalizeLeadValue(parsed.searchParams.get('pub'));
@@ -4303,6 +4321,7 @@ function buildPublishedSessionManagerSummary(row) {
     revokedAt: row.revokedAt,
     clientName: row.clientName,
     clientEmail: row.clientEmail,
+    pinRequired: row.pinRequired,
     clientPinState: row.clientPinState,
     clientPinInitializedAt: row.clientPinInitializedAt,
     clientAccessRevision: row.clientAccessRevision,
@@ -5538,11 +5557,32 @@ async function handleCreatePublishedSession(request, env, origin) {
   const clientPinState = isV4 ? validated.data.clientBundle.clientAccess.pinState : null;
   const clientAccessRevision = isV4 ? validated.data.clientBundle.clientAccess.revision : 1;
   const encryptedRecovery = await encryptPublishedRecoveryPayload(env, recovery);
-  const requestedClientId = validateClientId(body?.clientId);
-  const sourceLeadId = validateLeadId(body?.sourceLeadId);
+  const publishTarget = normalizeLeadValue(body?.publishTarget);
+  const linkAccessMode = normalizeLeadValue(body?.linkAccessMode);
+  const isDetachedShare = publishTarget === 'detached-share';
+  const isDirectLink = linkAccessMode === 'direct';
+
+  if (publishTarget && publishTarget !== 'detached-share') {
+    return jsonResponse({ error: 'Publish target is invalid.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+  if (linkAccessMode && linkAccessMode !== 'direct') {
+    return jsonResponse({ error: 'Link access mode is invalid.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+  if (isDirectLink !== isDetachedShare) {
+    return jsonResponse({ error: 'Direct share links must use detached-share publish target.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+  if (isDetachedShare && (hasOwn(body, 'clientId') || hasOwn(body, 'sourceLeadId'))) {
+    return jsonResponse({ error: 'Detached share links cannot be linked to a client or lead.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+  if (isDetachedShare && (validated.kind !== 'v3' || validated.data.clientBundle.clientAccess.pinRequired)) {
+    return jsonResponse({ error: 'Detached share links must use direct no-PIN client access.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
+  const requestedClientId = isDetachedShare ? null : validateClientId(body?.clientId);
+  const sourceLeadId = isDetachedShare ? null : validateLeadId(body?.sourceLeadId);
   let linkedClientId = requestedClientId || null;
 
-  if (sourceLeadId) {
+  if (!isDetachedShare && sourceLeadId) {
     const sourceLead = await getLeadRow(env, sourceLeadId);
     if (!sourceLead) {
       return jsonResponse({ error: 'Source lead was not found.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
@@ -5563,7 +5603,7 @@ async function handleCreatePublishedSession(request, env, origin) {
       fullName: validated.data.meta.clientName,
       email: validated.data.meta.clientEmail
     }).catch(() => {});
-  } else {
+  } else if (!isDetachedShare) {
     const client = await findOrCreateClientForProfile(env, {
       fullName: validated.data.meta.clientName,
       email: validated.data.meta.clientEmail,
@@ -5603,16 +5643,20 @@ async function handleCreatePublishedSession(request, env, origin) {
       clientPinInitializedAt: null,
       clientAccessRevision
     });
-    await advanceClientPipelineStage(env, linkedClientId, 'session_published', {
-      timestamp: createdAt,
-      profile: {
-        fullName: validated.data.meta.clientName,
-        email: validated.data.meta.clientEmail
-      }
-    });
+    if (!isDetachedShare) {
+      await advanceClientPipelineStage(env, linkedClientId, 'session_published', {
+        timestamp: createdAt,
+        profile: {
+          fullName: validated.data.meta.clientName,
+          email: validated.data.meta.clientEmail
+        }
+      });
+    }
     await insertPublishedSessionEvent(env, publishedId, 'advisor', 'published', {
       clientId: linkedClientId,
       sourceLeadId: sourceLeadId || null,
+      publishTarget: isDetachedShare ? 'detached-share' : 'client-pipeline',
+      linkAccessMode: isDirectLink ? 'direct' : 'client-first-pin',
       version: validated.data.v,
       pinRequired: isV4 ? true : validated.data.clientBundle.clientAccess.pinRequired,
       clientPinState,
@@ -5633,6 +5677,8 @@ async function handleCreatePublishedSession(request, env, origin) {
     publishedId,
     clientId: linkedClientId,
     sourceLeadId: sourceLeadId || null,
+    publishTarget: isDetachedShare ? 'detached-share' : 'client-pipeline',
+    linkAccessMode: isDirectLink ? 'direct' : 'client-first-pin',
     createdAt,
     expiresAt,
     status: 'active',

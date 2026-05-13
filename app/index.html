@@ -49,7 +49,7 @@
         <div class="topbar-right">
           <button id="newCallBtn" class="ui-button" type="button">New Call</button>
           <a class="ui-button" href="./clients.html">Client Pipeline</a>
-          <button id="publishSessionBtn" class="ui-button" type="button">Publish to client</button>
+          <button id="publishSessionBtn" class="ui-button" type="button">Publish</button>
           <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
           <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
           <button id="resetBtn" class="ui-button" type="button">Reset</button>
@@ -225,7 +225,7 @@
           </div>
           <div class="mobile-overflow-content">
             <a class="ui-button mobile-overflow-btn" href="./clients.html">Client pipeline</a>
-            <button id="mobileOverflowPublishBtn" class="ui-button mobile-overflow-btn" type="button">Publish to client</button>
+            <button id="mobileOverflowPublishBtn" class="ui-button mobile-overflow-btn" type="button">Publish</button>
             <button id="mobileOverflowClientAccessBtn" class="ui-button mobile-overflow-btn" type="button">Client pipeline</button>
             <button id="mobileOverflowResetBtn" class="ui-button mobile-overflow-btn" type="button">Reset</button>
           </div>
@@ -238,10 +238,26 @@
           <h2 id="publishModalTitle" class="publish-modal-title">Client access</h2>
           <button id="publishCloseBtn" class="ui-button publish-close-btn" type="button">Close</button>
         </div>
-        <p class="publish-modal-subtitle">Publish the secure link and email it to the client. Ongoing recovery and access management now live in the Client Pipeline.</p>
+        <p class="publish-modal-subtitle">Publish a read-only client view as a shareable link or send it by email.</p>
         <p id="publishError" class="publish-error" aria-live="polite"></p>
+        <fieldset class="publish-mode-group" aria-label="Publish mode">
+          <label class="publish-mode-option" for="publishModeShare">
+            <input id="publishModeShare" name="publishMode" type="radio" value="share" checked />
+            <span>
+              <strong>Share link only</strong>
+              <small>Direct read-only access for anyone with the link. No email is sent.</small>
+            </span>
+          </label>
+          <label class="publish-mode-option" for="publishModeEmail">
+            <input id="publishModeEmail" name="publishMode" type="radio" value="email" />
+            <span>
+              <strong>Email client</strong>
+              <small>Client creates a PIN on first open and receives the final email.</small>
+            </span>
+          </label>
+        </fieldset>
         <div class="publish-form-grid">
-          <div class="publish-field-wrap">
+          <div id="publishEmailField" class="publish-field-wrap">
             <label for="publishClientEmailInput" class="publish-pin-input-label">Client email</label>
             <input
               id="publishClientEmailInput"
@@ -283,10 +299,44 @@
         </div>
         <div class="publish-modal-actions">
           <button id="publishGenerateBtn" class="ui-button" type="button">Publish Secure Links</button>
-          <button id="publishOpenClientAccessBtn" class="ui-button" type="button">Open Client Pipeline</button>
+          <button id="publishOpenClientAccessBtn" class="ui-button" type="button">Open Published Links</button>
+        </div>
+        <div id="publishResult" class="publish-result is-hidden">
+          <div id="publishPinWrap" class="publish-pin-wrap is-hidden">
+            <div class="publish-pin-label">Client PIN</div>
+            <div id="publishPinValue" class="publish-pin-value">------</div>
+          </div>
+          <div id="publishClientPinStateRow" class="publish-meta-row">
+            <div class="publish-meta-label">Access</div>
+            <div id="publishClientPinStateValue" class="publish-meta-value">Client will create it on first open</div>
+          </div>
+          <div class="publish-link-stack">
+            <label for="publishLinkValue" class="publish-pin-input-label">Client share link</label>
+            <input id="publishLinkValue" class="publish-link-value" type="text" readonly />
+            <label for="publishAdvisorLinkValue" class="publish-pin-input-label">Advisor reopen link</label>
+            <input id="publishAdvisorLinkValue" class="publish-link-value" type="text" readonly />
+          </div>
+          <div class="publish-meta-row">
+            <div class="publish-meta-label">Expires</div>
+            <div id="publishExpiryValue" class="publish-meta-value">Not published yet</div>
+          </div>
+          <label class="publish-toggle-row is-hidden" for="publishIncludePinEmailToggle" aria-hidden="true">
+            <input id="publishIncludePinEmailToggle" class="publish-toggle-checkbox" type="checkbox" />
+            <span>Include legacy PIN in copied/sent email</span>
+          </label>
+          <p id="publishEmailStatus" class="publish-email-status">No final email has been sent yet.</p>
+          <div class="publish-modal-actions">
+            <button id="publishCopyLinkBtn" class="ui-button" type="button">Copy Client Link</button>
+            <button id="publishCopyAdvisorLinkBtn" class="ui-button" type="button">Copy Advisor Link</button>
+            <button id="publishCopyEmailBtn" class="ui-button" type="button">Copy Email Text</button>
+            <button id="publishSendEmailBtn" class="ui-button" type="button">Send Final Email</button>
+            <button id="publishUpdateExpiryBtn" class="ui-button" type="button">Update Expiry</button>
+            <button id="publishResetClientAccessBtn" class="ui-button" type="button">Reset Client Access</button>
+            <button id="publishRevokeBtn" class="ui-button" type="button">Revoke Link</button>
+          </div>
         </div>
         <p class="publish-email-status">
-          Need to resend, extend access, reset client PIN setup, revoke a link, or recover a client link later? Use the Client Pipeline instead of the publish modal.
+          Need to recover, extend, revoke, or email a published link later? Use Published Links.
         </p>
       </div>
     </div>

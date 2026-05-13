@@ -243,6 +243,84 @@ async function buildPublishedSessionPayload(cryptoHelpers) {
   };
 }
 
+async function buildDetachedSharePayload(cryptoHelpers) {
+  const clientSessionJson = JSON.stringify({
+    version: 1,
+    clientName: 'Detached Share Smoke',
+    order: ['module-1', 'module-2'],
+    activeModuleId: 'module-1',
+    modules: [
+      {
+        id: 'module-1',
+        title: 'Overview module',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        generated: {
+          summaryHtml: '<p>Detached share smoke summary.</p>'
+        }
+      },
+      {
+        id: 'module-2',
+        title: 'Second module',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        generated: {
+          summaryHtml: '<p>Second module summary.</p>'
+        }
+      }
+    ]
+  });
+  const advisorSessionJson = JSON.stringify({
+    version: 1,
+    clientName: 'Detached Share Smoke',
+    order: ['module-1', 'module-2'],
+    activeModuleId: 'module-1',
+    modules: [
+      {
+        id: 'module-1',
+        title: 'Overview module',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        notes: 'Advisor-only detached note',
+        generated: {
+          summaryHtml: '<p>Detached share smoke summary.</p>'
+        }
+      },
+      {
+        id: 'module-2',
+        title: 'Second module',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        notes: 'Another advisor-only note',
+        generated: {
+          summaryHtml: '<p>Second module summary.</p>'
+        }
+      }
+    ]
+  });
+  const encrypted = await cryptoHelpers.encryptPublishedSessionV3({
+    clientSessionJson,
+    advisorSessionJson,
+    clientName: 'Detached Share Smoke',
+    clientEmail: '',
+    expiresInDays: 7
+  });
+  encrypted.requestBody.publishTarget = 'detached-share';
+  encrypted.requestBody.linkAccessMode = 'direct';
+  encrypted.requestBody.recovery = {
+    clientSecretB64u: encrypted.clientSecretB64u,
+    advisorSecretB64u: encrypted.advisorSecretB64u
+  };
+
+  return {
+    ...encrypted,
+    clientSessionJson,
+    advisorSessionJson,
+    clientCapabilityToken: await cryptoHelpers.buildPublishedCapabilityToken(encrypted.clientSecretB64u, 'client'),
+    advisorCapabilityToken: await cryptoHelpers.buildPublishedCapabilityToken(encrypted.advisorSecretB64u, 'advisor')
+  };
+}
+
 async function main() {
   const workerBaseUrl = trimTrailingSlashes(process.env.WORKER_BASE_URL || DEFAULT_WORKER_BASE_URL);
   const smokeOrigin = String(process.env.SMOKE_ORIGIN || DEFAULT_SMOKE_ORIGIN).trim();
@@ -261,7 +339,9 @@ async function main() {
     : {};
 
   const payload = await buildPublishedSessionPayload(cryptoHelpers);
+  const detachedPayload = await buildDetachedSharePayload(cryptoHelpers);
   let publishedId = '';
+  let detachedPublishedId = '';
 
   try {
     const createResult = await requestJson(workerBaseUrl, '/api/published-sessions', {
@@ -281,6 +361,26 @@ async function main() {
     assert(publishedId, 'Publish response did not include publishedId.');
     console.log(`Created smoke session ${publishedId}`);
 
+    const detachedCreateResult = await requestJson(workerBaseUrl, '/api/published-sessions', {
+      method: 'POST',
+      headers: {
+        ...originHeaders,
+        ...advisorCsrfHeaders,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(detachedPayload.requestBody),
+      expectedStatus: 201,
+      retryLabel: 'create detached share session',
+      cookieJar
+    });
+    detachedPublishedId = String(detachedCreateResult.data?.publishedId || '').trim();
+    assert(detachedPublishedId, 'Detached publish response did not include publishedId.');
+    assert(detachedCreateResult.data?.clientId === null, 'Detached publish unexpectedly linked a client.');
+    assert(detachedCreateResult.data?.sourceLeadId === null, 'Detached publish unexpectedly linked a lead.');
+    assert(detachedCreateResult.data?.publishTarget === 'detached-share', 'Detached publish target mismatch.');
+    assert(detachedCreateResult.data?.linkAccessMode === 'direct', 'Detached link access mode mismatch.');
+    console.log(`Created detached share smoke session ${detachedPublishedId}`);
+
     const clientHeaders = {
       ...originHeaders,
       'X-Published-Capability': payload.clientCapabilityToken
@@ -289,6 +389,59 @@ async function main() {
       ...originHeaders,
       'X-Published-Capability': payload.advisorCapabilityToken
     };
+    const detachedClientHeaders = {
+      ...originHeaders,
+      'X-Published-Capability': detachedPayload.clientCapabilityToken
+    };
+    const detachedAdvisorHeaders = {
+      ...originHeaders,
+      'X-Published-Capability': detachedPayload.advisorCapabilityToken
+    };
+
+    const detachedClientFetch = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(detachedPublishedId)}/client`, {
+      headers: detachedClientHeaders,
+      expectedStatus: 200,
+      retryLabel: 'fetch detached direct client bundle'
+    });
+    assert(detachedClientFetch.data?.v === 3, 'Detached client bundle did not report v3.');
+    assert(detachedClientFetch.data?.publishedId === detachedPublishedId, 'Detached client bundle publishedId mismatch.');
+    assert(detachedClientFetch.data?.clientAccess?.pinRequired === false, 'Detached client bundle unexpectedly required a PIN.');
+    const detachedPlaintext = await cryptoHelpers.decryptPublishedSessionV2ForClient(
+      detachedPayload.clientSecretB64u,
+      detachedClientFetch.data
+    );
+    assert(detachedPlaintext.includes('Detached Share Smoke'), 'Detached direct client access did not decrypt without a PIN.');
+
+    const detachedAdvisorFetch = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(detachedPublishedId)}/advisor`, {
+      headers: detachedAdvisorHeaders,
+      expectedStatus: 200,
+      retryLabel: 'fetch detached direct advisor bundle',
+      cookieJar
+    });
+    assert(detachedAdvisorFetch.data?.v === 3, 'Detached advisor bundle did not report v3.');
+    assert(detachedAdvisorFetch.data?.meta?.clientId === null, 'Detached advisor meta unexpectedly linked a client.');
+    assert(detachedAdvisorFetch.data?.meta?.sourceLeadId === null, 'Detached advisor meta unexpectedly linked a lead.');
+
+    const detachedListResult = await requestJson(workerBaseUrl, `/api/advisor/published-sessions?q=${encodeURIComponent(detachedPublishedId)}`, {
+      headers: originHeaders,
+      expectedStatus: 200,
+      retryLabel: 'list detached share in published manager',
+      cookieJar
+    });
+    const detachedSummary = (detachedListResult.data?.sessions || []).find((session) => session.publishedId === detachedPublishedId);
+    assert(detachedSummary, 'Detached share session did not appear in the published-session manager list.');
+    assert(detachedSummary.clientId === null, 'Detached manager summary unexpectedly linked a client.');
+    assert(detachedSummary.pinRequired === false, 'Detached manager summary unexpectedly required a PIN.');
+    assert(detachedSummary.recoveryAvailable === true, 'Detached manager summary did not report recovery data.');
+
+    const detachedDetailResult = await requestJson(workerBaseUrl, `/api/advisor/published-sessions/${encodeURIComponent(detachedPublishedId)}`, {
+      headers: originHeaders,
+      expectedStatus: 200,
+      retryLabel: 'load detached share manager detail',
+      cookieJar
+    });
+    assert(detachedDetailResult.data?.session?.clientSecretB64u, 'Detached manager detail did not recover the client secret.');
+    assert(detachedDetailResult.data?.session?.advisorSecretB64u, 'Detached manager detail did not recover the advisor secret.');
 
     const clientFetch = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/client`, {
       headers: clientHeaders,
@@ -486,8 +639,40 @@ async function main() {
       retryLabel: 'fetch revoked client bundle'
     });
 
+    const detachedRevokeResult = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(detachedPublishedId)}/revoke`, {
+      method: 'POST',
+      headers: {
+        ...detachedAdvisorHeaders,
+        ...advisorCsrfHeaders,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({}),
+      expectedStatus: 200,
+      retryLabel: 'revoke detached share session',
+      cookieJar
+    });
+    assert(detachedRevokeResult.data?.ok === true, 'Detached revoke response was not ok.');
+
     console.log(`Worker published-session smoke checks passed for ${workerBaseUrl}`);
   } finally {
+    if (detachedPublishedId) {
+      try {
+        await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(detachedPublishedId)}/revoke`, {
+          method: 'POST',
+          headers: {
+            ...originHeaders,
+            ...advisorCsrfHeaders,
+            'Content-Type': 'application/json',
+            'X-Published-Capability': detachedPayload.advisorCapabilityToken
+          },
+          body: JSON.stringify({}),
+          retryLabel: 'cleanup detached revoke',
+          cookieJar
+        });
+      } catch (_error) {
+        // Cleanup is best-effort only.
+      }
+    }
     if (publishedId) {
       try {
         await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(publishedId)}/revoke`, {

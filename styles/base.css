@@ -3894,6 +3894,54 @@ body.overview-has-selection .toast-host {
   font-size: 0.84rem;
 }
 
+.publish-mode-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+
+.publish-mode-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(108, 162, 221, 0.22);
+  background: rgba(7, 16, 31, 0.36);
+  color: #d9eaff;
+  cursor: pointer;
+}
+
+.publish-mode-option:has(input:checked) {
+  border-color: rgba(101, 186, 255, 0.68);
+  background: rgba(22, 84, 139, 0.26);
+}
+
+.publish-mode-option input {
+  margin-top: 2px;
+  accent-color: #65baff;
+}
+
+.publish-mode-option strong,
+.publish-mode-option small {
+  display: block;
+}
+
+.publish-mode-option strong {
+  font-size: 0.84rem;
+}
+
+.publish-mode-option small {
+  margin-top: 3px;
+  color: #abc7e5;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
 .publish-client-pin-info {
   margin: 0 0 12px;
   padding: 10px 12px;
@@ -4067,6 +4115,13 @@ body.overview-has-selection .toast-host {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+@media (max-width: 680px) {
+  .publish-mode-group,
+  .publish-form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .access-manager-page #accessManagerApp {

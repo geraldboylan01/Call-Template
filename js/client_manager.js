@@ -314,6 +314,10 @@ function formatClientPinState(session) {
     return session.clientPinState === 'active' ? 'Created by client' : 'Pending first open';
   }
 
+  if (session?.version >= 3 && session.pinRequired === false) {
+    return 'Direct read-only link';
+  }
+
   return 'Legacy link';
 }
 
@@ -381,6 +385,7 @@ function getLinkHashParam(link, key) {
 function buildClientSessionLink(publishedId, clientSecretB64u) {
   const url = new URL('./session.html', window.location.href);
   url.searchParams.set('pub', publishedId);
+  url.searchParams.set('view', 'overview');
   url.hash = new URLSearchParams({ ck: clientSecretB64u }).toString();
   return url.toString();
 }
@@ -388,6 +393,7 @@ function buildClientSessionLink(publishedId, clientSecretB64u) {
 function buildAdvisorSessionLink(publishedId, advisorSecretB64u) {
   const url = new URL('./index.html', window.location.href);
   url.searchParams.set('pub', publishedId);
+  url.searchParams.set('view', 'overview');
   url.hash = new URLSearchParams({ ak: advisorSecretB64u }).toString();
   return url.toString();
 }

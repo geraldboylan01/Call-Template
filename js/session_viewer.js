@@ -369,7 +369,8 @@ async function openReadonlySession(sessionInput) {
     allowDevPanel: false,
     allowPublish: false,
     persistLocalSession: false,
-    showPensionToggle: false
+    showPensionToggle: false,
+    startInOverview: true
   });
 
   setUnlockLayerVisible(false);
