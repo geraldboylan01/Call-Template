@@ -69,11 +69,15 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 - Tables:
   - Use `{ "columns": [...], "rows": [[...]] }`.
   - Every row length must match the column count.
+- `generated.outputsBucketed.sections`:
+  - Each section supports exactly 2 columns.
+  - Each row must be exactly `[labelString, numericValue]`.
 - Charts:
   - `type` must be exactly `bar` or `line`.
   - All dataset values must be numbers only.
   - No currency symbols, commas, percentages, or numeric strings in dataset values.
   - Use optional chart `subtitle`, `display`, `annotations`, and `insights` only as structured metadata.
+  - `insights[]` and `annotations[]` entries must be objects, never plain strings.
   - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
 
 ## Runtime-Safe Module Boundaries
@@ -211,6 +215,9 @@ This style should still work:
 - Do not emit custom primary PBS keys such as `generated.metrics`, `generated.buckets`, `generated.assets`, or `generated.liabilities`.
 - Do not emit `generated.assumptions` as a key-value object. If Gerry explicitly asks to override assumptions, it must be a table: `{ "columns": ["Assumption", "Value"], "rows": [["Current age", 43]] }`.
 - The primary PBS table must be `generated.outputsBucketed.sections`, not `generated.tables`.
+- Every `outputsBucketed.sections[*].columns` array must contain exactly 2 strings.
+- Every `outputsBucketed.sections[*].rows` entry must be exactly `[labelString, numericValue]`.
+- Do not add Owner, Comment, Notes, or Balance columns inside `outputsBucketed`; put narrative in SECTION 1 notes or section `notes`.
 
 ### Required PBS Sections
 Emit `generated.outputsBucketed.sections` in this exact order:
@@ -224,8 +231,8 @@ Emit `generated.outputsBucketed.sections` in this exact order:
 Each section must include:
 - `key`
 - `title`
-- `columns`
-- `rows`
+- `columns`: exactly `["Asset", "Amount ($)"]`, `["Liability", "Amount ($)"]`, or `["Metric", "Amount ($)"]` using the correct currency symbol.
+- `rows`: exactly two values per row, with the second value as a number, for example `["Primary residence", 450000]`.
 - `subtotalLabel`
 - `subtotalValue`
 
@@ -272,7 +279,7 @@ Prefer up to 2 bar charts:
 
 Use the exact bucket subtotals and summary totals from `outputsBucketed`.
 
-If a chart is useful, add chart `subtitle`, `display.valueFormat = "currency"`, and 1 to 2 `insights` that explain the client-facing meaning. Do not add decorative charts.
+If a chart is useful, add chart `subtitle`, `display.valueFormat = "currency"`, and 1 to 2 `insights` that explain the client-facing meaning. Chart `insights` must be objects, never strings, for example `{ "label": "Liquidity", "detail": "Reserve adequacy depends on annual spending." }`. Do not add decorative charts.
 
 ### Notes Rules
 Keep NOTES concise and call-friendly.

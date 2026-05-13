@@ -69,11 +69,15 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 - Tables:
   - Use `{ "columns": [...], "rows": [[...]] }`.
   - Every row length must match the column count.
+- `generated.outputsBucketed.sections`:
+  - Each section supports exactly 2 columns.
+  - Each row must be exactly `[labelString, numericValue]`.
 - Charts:
   - `type` must be exactly `bar` or `line`.
   - All dataset values must be numbers only.
   - No currency symbols, commas, percentages, or numeric strings in dataset values.
   - Use optional chart `subtitle`, `display`, `annotations`, and `insights` only as structured metadata.
+  - `insights[]` and `annotations[]` entries must be objects, never plain strings.
   - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
 
 ## Runtime-Safe Module Boundaries

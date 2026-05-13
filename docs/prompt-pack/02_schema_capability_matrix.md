@@ -46,6 +46,7 @@ Playbooks should only emit the subset they are responsible for.
 - `generated.assumptions` must never be a plain key-value object.
 - `generated.tables` is supported by the runtime, but playbooks should only use it when explicitly helpful.
 - `generated.outputsBucketed.sections[*].columns` supports exactly 2 columns.
+- `generated.outputsBucketed.sections[*].rows[*]` must be exactly `[string, number]`.
 
 ## Chart Support
 - Supported chart types: `bar`, `line`
@@ -60,7 +61,7 @@ Playbooks should only emit the subset they are responsible for.
   - `display.stacked`: boolean for stacked bar presentation.
   - `display.highlightDataset`: dataset label to visually emphasize.
   - `annotations[]`: trusted chart guide metadata with `label`, optional `xLabel`, optional numeric `yValue`, optional `tone`, and optional `body`.
-  - `insights[]`: concise metric cards below the chart with `label`, optional `value`, optional `detail`, optional `tone`, and optional `featured`.
+  - `insights[]`: concise metric card objects below the chart with `label`, optional `value`, optional `detail`, optional `tone`, and optional `featured`. Do not emit strings inside `insights[]`.
 - Chart metadata is rendered by trusted components only. Do not emit Chart.js options, plugins, callbacks, HTML, or JavaScript.
 
 ## PBS Support

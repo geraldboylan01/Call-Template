@@ -3598,6 +3598,81 @@ function normalizePayloadToken(value) {
   return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function findPayloadAmountColumnIndex(columns, rows = []) {
+  const preferredTokens = new Set([
+    'amount',
+    'assetvalue',
+    'balance',
+    'currentbalance',
+    'netvalue',
+    'value'
+  ]);
+  const exactIndex = columns.findIndex((column) => preferredTokens.has(normalizePayloadToken(column)));
+  if (exactIndex >= 0) {
+    return exactIndex;
+  }
+
+  const likelyIndex = columns.findIndex((column) => {
+    const token = normalizePayloadToken(column);
+    return token.includes('amount') || token.includes('balance') || token.includes('value');
+  });
+  if (likelyIndex >= 0) {
+    return likelyIndex;
+  }
+
+  const maxColumns = columns.length;
+  for (let columnIndex = 1; columnIndex < maxColumns; columnIndex += 1) {
+    const hasNumericValue = rows.some((row) => Array.isArray(row) && parsePayloadNumber(row[columnIndex]) !== null);
+    if (hasNumericValue) {
+      return columnIndex;
+    }
+  }
+
+  return -1;
+}
+
+function repairOutputBucketedSectionColumns(section, columns, rows, sectionTitle, warnings) {
+  if (columns.length === 2) {
+    return null;
+  }
+
+  const amountColumnIndex = findPayloadAmountColumnIndex(columns, rows);
+  if (amountColumnIndex < 0) {
+    return null;
+  }
+
+  const labelColumnIndex = amountColumnIndex === 0 ? 1 : 0;
+  const ownerColumnIndex = columns.findIndex((column, columnIndex) => (
+    columnIndex !== labelColumnIndex
+    && columnIndex !== amountColumnIndex
+    && normalizePayloadToken(column) === 'owner'
+  ));
+  const labelColumn = columns[labelColumnIndex] || 'Item';
+  const amountColumn = columns[amountColumnIndex] || 'Amount';
+  const repairedRows = (Array.isArray(rows) ? rows : [])
+    .filter((row) => Array.isArray(row) && row.length > Math.max(labelColumnIndex, amountColumnIndex))
+    .map((row) => {
+      let label = String(row[labelColumnIndex] ?? '').trim();
+      const owner = ownerColumnIndex >= 0 ? String(row[ownerColumnIndex] ?? '').trim() : '';
+      if (owner && normalizePayloadToken(owner) !== 'household' && !normalizePayloadToken(label).includes(normalizePayloadToken(owner))) {
+        label = `${owner} ${label}`.trim();
+      }
+      const value = parsePayloadNumber(row[amountColumnIndex]);
+      if (value === null) {
+        warnings.push(`Normalized non-numeric value to 0 in outputsBucketed section '${sectionTitle}'.`);
+        return [label, 0];
+      }
+      return [label, value];
+    });
+
+  warnings.push(`Reduced outputsBucketed section '${sectionTitle}' to 2 columns using '${amountColumn}' as the amount column.`);
+
+  return {
+    columns: [labelColumn, amountColumn],
+    rows: repairedRows
+  };
+}
+
 function inferCurrencySymbol(value) {
   const rawValue = String(value ?? '').trim();
   const upperValue = rawValue.toUpperCase();
@@ -3739,6 +3814,70 @@ function looksLikePbsProjectPayload(payload, generated) {
     || isPlainPayloadObject(generated?.metrics);
 }
 
+function repairChartMetadataPayload(generated, warnings) {
+  if (!Array.isArray(generated?.charts)) {
+    return;
+  }
+
+  generated.charts.forEach((chart, chartIndex) => {
+    if (!isPlainPayloadObject(chart)) {
+      return;
+    }
+
+    if (Array.isArray(chart.insights)) {
+      let repairedInsights = false;
+      chart.insights = chart.insights
+        .map((insight, insightIndex) => {
+          if (isPlainPayloadObject(insight)) {
+            return insight;
+          }
+
+          if (typeof insight === 'string' && insight.trim()) {
+            repairedInsights = true;
+            return {
+              label: `Insight ${insightIndex + 1}`,
+              detail: insight.trim()
+            };
+          }
+
+          repairedInsights = true;
+          return null;
+        })
+        .filter(Boolean);
+
+      if (repairedInsights) {
+        warnings.push(`Converted Chart ${chartIndex + 1}.insights entries into insight objects.`);
+      }
+    }
+
+    if (Array.isArray(chart.annotations)) {
+      let repairedAnnotations = false;
+      chart.annotations = chart.annotations
+        .map((annotation, annotationIndex) => {
+          if (isPlainPayloadObject(annotation)) {
+            return annotation;
+          }
+
+          if (typeof annotation === 'string' && annotation.trim()) {
+            repairedAnnotations = true;
+            return {
+              label: `Annotation ${annotationIndex + 1}`,
+              body: annotation.trim()
+            };
+          }
+
+          repairedAnnotations = true;
+          return null;
+        })
+        .filter(Boolean);
+
+      if (repairedAnnotations) {
+        warnings.push(`Converted Chart ${chartIndex + 1}.annotations entries into annotation objects.`);
+      }
+    }
+  });
+}
+
 function normalizeDevPanelPayload(payload) {
   const warnings = [];
 
@@ -3800,6 +3939,8 @@ function normalizeDevPanelPayload(payload) {
     }
   }
 
+  repairChartMetadataPayload(generated, warnings);
+
   const outputsBucketed = generated.outputsBucketed;
   if (!outputsBucketed || typeof outputsBucketed !== 'object' || Array.isArray(outputsBucketed)) {
     return { payload, warnings };
@@ -3836,19 +3977,26 @@ function normalizeDevPanelPayload(payload) {
       : fallbackTitle;
     section.title = sectionTitle;
 
-    const columns = Array.isArray(section.columns)
+    let columns = Array.isArray(section.columns)
       ? section.columns.map((column) => String(column ?? ''))
       : [];
+    const sourceRows = Array.isArray(section.rows) ? section.rows : [];
 
     if (columns.length !== 2) {
-      const migratedTable = {
-        title: sectionTitle,
-        columns: columns.length > 0 ? columns : ['Item', 'Value'],
-        rows: toGenericTableRows(section.rows)
-      };
-      generated.tables.push(migratedTable);
-      warnings.push(`Moved outputsBucketed section '${sectionTitle}' into generated.tables because outputsBucketed only supports 2-column sections.`);
-      return;
+      const repairedSection = repairOutputBucketedSectionColumns(section, columns, sourceRows, sectionTitle, warnings);
+      if (!repairedSection) {
+        const migratedTable = {
+          title: sectionTitle,
+          columns: columns.length > 0 ? columns : ['Item', 'Value'],
+          rows: toGenericTableRows(section.rows)
+        };
+        generated.tables.push(migratedTable);
+        warnings.push(`Moved outputsBucketed section '${sectionTitle}' into generated.tables because outputsBucketed only supports 2-column sections.`);
+        return;
+      }
+
+      columns = repairedSection.columns;
+      section.rows = repairedSection.rows;
     }
 
     section.columns = columns;
