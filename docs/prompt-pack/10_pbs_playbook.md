@@ -40,10 +40,11 @@ This style should still work:
 - Do not emit a top-level `module` key. The app infers PBS from the payload shape and title.
 - Do not emit `generated.summary`; use `generated.summaryHtml`.
 - Do not emit custom primary PBS keys such as `generated.metrics`, `generated.buckets`, `generated.assets`, or `generated.liabilities`.
-- Do not emit `generated.assumptions` as a key-value object. If Gerry explicitly asks to override assumptions, it must be a table: `{ "columns": ["Assumption", "Value"], "rows": [["Current age", 43]] }`.
+- Do not emit `generated.assumptions` as a key-value object or an array of `{ "label": ..., "value": ... }` objects. If Gerry explicitly asks to override assumptions, it must be a table: `{ "columns": ["Assumption", "Value"], "rows": [["Current age", 43]] }`.
 - The primary PBS table must be `generated.outputsBucketed.sections`, not `generated.tables`.
 - Every `outputsBucketed.sections[*].columns` array must contain exactly 2 strings.
 - Every `outputsBucketed.sections[*].rows` entry must be exactly `[labelString, numericValue]`.
+- Do not put formatted currency strings or unit strings in `outputsBucketed` numeric cells. Use `880000`, not `"€880,000"`; use `5.5`, not `"5.5 months"`.
 - Do not add Owner, Comment, Notes, or Balance columns inside `outputsBucketed`; put narrative in SECTION 1 notes or section `notes`.
 
 ## Required PBS Sections

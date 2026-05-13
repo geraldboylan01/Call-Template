@@ -3516,6 +3516,29 @@ function hasGeneratedTableShape(value) {
   return isPlainPayloadObject(value) && Array.isArray(value.columns) && Array.isArray(value.rows);
 }
 
+function hasLabelValueItemShape(value) {
+  return isPlainPayloadObject(value)
+    && (
+      'label' in value
+      || 'title' in value
+      || 'name' in value
+      || 'value' in value
+      || 'detail' in value
+      || 'body' in value
+    );
+}
+
+function normalizeLabelValueItem(item, index) {
+  const label = String(item.label || item.title || item.name || `Assumption ${index + 1}`).trim();
+  const value = 'value' in item
+    ? item.value
+    : ('detail' in item ? item.detail : item.body);
+  return [
+    label || `Assumption ${index + 1}`,
+    formatGeneratedObjectValue(value)
+  ];
+}
+
 function formatGeneratedObjectValue(value) {
   if (value === null || typeof value === 'undefined') {
     return '';
@@ -3570,7 +3593,13 @@ function parsePayloadNumber(value) {
 
   const normalized = trimmed.replace(/[,$€£\s]/g, '').replace(/^\((.*)\)$/, '-$1');
   if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
-    return null;
+    const leadingNumber = normalized.match(/^-?\d+(\.\d+)?/);
+    if (!leadingNumber) {
+      return null;
+    }
+
+    const leadingParsed = Number(leadingNumber[0]);
+    return Number.isFinite(leadingParsed) ? leadingParsed : null;
   }
 
   const parsed = Number(normalized);
@@ -3907,6 +3936,12 @@ function normalizeDevPanelPayload(payload) {
         ])
       };
       warnings.push('Converted generated.assumptions object into a two-column table.');
+    } else if (Array.isArray(generated.assumptions) && generated.assumptions.every(hasLabelValueItemShape)) {
+      generated.assumptions = {
+        columns: ['Assumption', 'Value'],
+        rows: generated.assumptions.map((item, index) => normalizeLabelValueItem(item, index))
+      };
+      warnings.push('Converted generated.assumptions label/value list into a two-column table.');
     } else if (generated.assumptions == null) {
       delete generated.assumptions;
       warnings.push('Removed empty generated.assumptions.');
@@ -4010,8 +4045,8 @@ function normalizeDevPanelPayload(payload) {
       .filter((row) => Array.isArray(row) && row.length >= 2)
       .map((row) => {
         const label = String(row[0] ?? '');
-        const numericValue = Number(row[1]);
-        if (!Number.isFinite(numericValue)) {
+        const numericValue = parsePayloadNumber(row[1]);
+        if (numericValue === null) {
           warnings.push(`Normalized non-numeric value to 0 in outputsBucketed section '${sectionTitle}'.`);
           return [label, 0];
         }
@@ -4022,9 +4057,14 @@ function normalizeDevPanelPayload(payload) {
       section.subtotalValue = 0;
       warnings.push(`Filled missing subtotalValue = 0 for outputsBucketed section '${sectionTitle}'.`);
     } else if (typeof section.subtotalValue !== 'number' || !Number.isFinite(section.subtotalValue)) {
-      const parsedSubtotal = Number(section.subtotalValue);
-      section.subtotalValue = Number.isFinite(parsedSubtotal) ? parsedSubtotal : 0;
-      warnings.push(`Normalized invalid subtotalValue to 0 for outputsBucketed section '${sectionTitle}'.`);
+      const parsedSubtotal = parsePayloadNumber(section.subtotalValue);
+      if (parsedSubtotal === null) {
+        section.subtotalValue = 0;
+        warnings.push(`Normalized invalid subtotalValue to 0 for outputsBucketed section '${sectionTitle}'.`);
+      } else {
+        section.subtotalValue = parsedSubtotal;
+        warnings.push(`Parsed subtotalValue for outputsBucketed section '${sectionTitle}' as a number.`);
+      }
     }
 
     nextSections.push(section);

@@ -72,6 +72,7 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 - `generated.outputsBucketed.sections`:
   - Each section supports exactly 2 columns.
   - Each row must be exactly `[labelString, numericValue]`.
+  - Numeric cells must be numbers, not formatted currency or unit strings.
 - Charts:
   - `type` must be exactly `bar` or `line`.
   - All dataset values must be numbers only.

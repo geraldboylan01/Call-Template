@@ -43,10 +43,11 @@ Playbooks should only emit the subset they are responsible for.
 ```
 
 - `generated.assumptions` and `generated.outputs` both use this shape.
-- `generated.assumptions` must never be a plain key-value object.
+- `generated.assumptions` must never be a plain key-value object or label/value object array.
 - `generated.tables` is supported by the runtime, but playbooks should only use it when explicitly helpful.
 - `generated.outputsBucketed.sections[*].columns` supports exactly 2 columns.
 - `generated.outputsBucketed.sections[*].rows[*]` must be exactly `[string, number]`.
+- `generated.outputsBucketed` numeric cells must be numbers, not formatted currency or unit strings.
 
 ## Chart Support
 - Supported chart types: `bar`, `line`
