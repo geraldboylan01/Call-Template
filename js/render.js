@@ -69,6 +69,16 @@ const HFCS_DECILE_BANDS = Object.freeze([
   { upperKey: 'd8Upper', lowerBoundPercent: 70, upperBoundPercent: 80 },
   { upperKey: 'd9Upper', lowerBoundPercent: 80, upperBoundPercent: 90 }
 ]);
+const PBS_ASSET_SECTION_KEYS = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
+const PBS_BUCKET_DEFINITIONS = Object.freeze({
+  lifestyle: 'Assets that support day-to-day living, usually not treated as spendable reserves.',
+  liquidity: 'Cash or near-cash reserves for short-term spending needs and shocks.',
+  longevity: 'Pensions and long-term investments intended to fund later-life income.',
+  legacy: 'Illiquid, concentrated, optional, or higher-risk assets such as property, business interests, or single holdings.'
+});
+let pbsInfoIdCounter = 0;
+let activePbsInfoButton = null;
+let pbsInfoDismissHandlersBound = false;
 
 function formatLocalTime(isoString) {
   try {
@@ -3209,6 +3219,14 @@ function getFiniteNumber(value) {
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
+function getOptionalFiniteNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  return getFiniteNumber(value);
+}
+
 function formatBucketedCurrency(value, currencySymbol = '€') {
   const numericValue = getFiniteNumber(value);
   if (numericValue === null) {
@@ -3219,8 +3237,8 @@ function formatBucketedCurrency(value, currencySymbol = '€') {
 }
 
 function getOutputsBucketedSubtotal(section) {
-  const subtotalValue = Number(section?.subtotalValue);
-  if (Number.isFinite(subtotalValue)) {
+  const subtotalValue = getOptionalFiniteNumber(section?.subtotalValue);
+  if (subtotalValue !== null) {
     return subtotalValue;
   }
 
@@ -3253,6 +3271,8 @@ function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
 
   return {
     annualExpenditure: normalizedAnnualExpenditure,
+    explainerLabel: 'What the liquidity buffer means',
+    explainerText: `${formatReserveMonths(months)} months of spending buffer, based on liquid assets divided by stated monthly spending. It shows the near-term breathing room before touching longer-term assets.`,
     monthlyExpenditure,
     months,
     label: `${formatReserveMonths(months)} mo buffer`,
@@ -3317,6 +3337,8 @@ function computeLongevityPressureAssessment(reserveValue, annualExpenditure, cur
   return {
     annualExpenditure: normalizedAnnualExpenditure,
     currentAge: normalizedCurrentAge,
+    explainerLabel: 'What the longevity pressure means',
+    explainerText: `Longevity assets are ${multipleText} times stated annual spending. This is a quick pressure check for how much future-income funding is already visible in the long-term bucket.`,
     label,
     ariaLabel: `Longevity pressure ${label.toLowerCase()}, longevity assets ${multipleText} times annual spending`,
     reserveMultiple,
@@ -3349,6 +3371,354 @@ function getOutputsBucketedRowValue(section, targetLabel) {
   const row = sanitizeSectionRows(section?.rows)
     .find(([label]) => normalizeSectionToken(label) === targetToken);
   return row ? row[1] : null;
+}
+
+function getOutputsBucketedCurrencySymbol(outputsBucketed) {
+  return typeof outputsBucketed?.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
+    ? outputsBucketed.currencySymbol.trim()
+    : '€';
+}
+
+function getFirstOutputsBucketedRowValue(section, targetLabels) {
+  for (const targetLabel of targetLabels) {
+    const value = getOutputsBucketedRowValue(section, targetLabel);
+    if (value !== null) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function closeActivePbsInfoPopover({ restoreFocus = false } = {}) {
+  if (!activePbsInfoButton) {
+    return;
+  }
+
+  const button = activePbsInfoButton;
+  const wrap = button.closest('.pbs-bucket-info');
+  if (wrap) {
+    wrap.classList.remove('is-open');
+  }
+  button.setAttribute('aria-expanded', 'false');
+  activePbsInfoButton = null;
+
+  if (restoreFocus) {
+    button.focus();
+  }
+}
+
+function setPbsInfoPopoverOpen(button, shouldOpen) {
+  if (!button) {
+    return;
+  }
+
+  if (!shouldOpen) {
+    closeActivePbsInfoPopover();
+    return;
+  }
+
+  if (activePbsInfoButton && activePbsInfoButton !== button) {
+    closeActivePbsInfoPopover();
+  }
+
+  const wrap = button.closest('.pbs-bucket-info');
+  if (!wrap) {
+    return;
+  }
+
+  wrap.classList.add('is-open');
+  button.setAttribute('aria-expanded', 'true');
+  activePbsInfoButton = button;
+}
+
+function ensurePbsInfoDismissHandlers() {
+  if (pbsInfoDismissHandlersBound || typeof document === 'undefined') {
+    return;
+  }
+
+  document.addEventListener('click', (event) => {
+    if (!activePbsInfoButton) {
+      return;
+    }
+
+    const wrap = activePbsInfoButton.closest('.pbs-bucket-info');
+    if (wrap && event.target instanceof Node && wrap.contains(event.target)) {
+      return;
+    }
+
+    closeActivePbsInfoPopover();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeActivePbsInfoPopover({ restoreFocus: true });
+    }
+  });
+
+  pbsInfoDismissHandlersBound = true;
+}
+
+function buildPbsInfoPopoverControl({
+  className = '',
+  text,
+  ariaLabel,
+  label,
+  popoverKey,
+  buttonClassName,
+  buttonDataset = {},
+  iconClassName = '',
+  iconText = '',
+  visibleText = ''
+}) {
+  if (!text) {
+    return null;
+  }
+
+  ensurePbsInfoDismissHandlers();
+  pbsInfoIdCounter += 1;
+  const popoverId = `pbs-info-${popoverKey}-${pbsInfoIdCounter}`;
+
+  const wrap = document.createElement('span');
+  wrap.className = ['pbs-bucket-info', className].filter(Boolean).join(' ');
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = buttonClassName;
+  button.setAttribute('aria-label', ariaLabel || label || 'More information');
+  button.setAttribute('aria-describedby', popoverId);
+  button.setAttribute('aria-expanded', 'false');
+  Object.entries(buttonDataset).forEach(([key, value]) => {
+    button.dataset[key] = value;
+  });
+
+  if (visibleText) {
+    button.textContent = visibleText;
+  }
+
+  if (iconClassName) {
+    const icon = document.createElement('span');
+    icon.className = iconClassName;
+    icon.setAttribute('aria-hidden', 'true');
+    if (iconText) {
+      icon.textContent = iconText;
+    }
+    button.appendChild(icon);
+  }
+
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setPbsInfoPopoverOpen(button, button.getAttribute('aria-expanded') !== 'true');
+  });
+
+  const popover = document.createElement('span');
+  popover.id = popoverId;
+  popover.className = 'pbs-bucket-info-popover';
+  popover.setAttribute('role', 'tooltip');
+  popover.textContent = text;
+
+  wrap.appendChild(button);
+  wrap.appendChild(popover);
+  return wrap;
+}
+
+function buildPbsBucketInfoControl(sectionToken, title) {
+  const definition = PBS_BUCKET_DEFINITIONS[sectionToken];
+  if (!definition) {
+    return null;
+  }
+
+  return buildPbsInfoPopoverControl({
+    text: definition,
+    ariaLabel: `What ${title} means`,
+    popoverKey: sectionToken,
+    buttonClassName: 'pbs-bucket-info-button',
+    iconClassName: 'pbs-bucket-info-icon'
+  });
+}
+
+function buildPbsBucketTitleLine(title, sectionToken) {
+  const titleLine = document.createElement('div');
+  titleLine.className = 'pbs-bucket-title-line';
+
+  const heading = document.createElement('h4');
+  heading.className = 'pbs-bucket-card-title';
+  heading.textContent = title;
+  titleLine.appendChild(heading);
+
+  const infoControl = buildPbsBucketInfoControl(sectionToken, title);
+  if (infoControl) {
+    titleLine.appendChild(infoControl);
+  }
+
+  return titleLine;
+}
+
+function buildPbsLeadCopy(summaryHtml) {
+  const safeHtml = sanitizeSummaryHtml(summaryHtml || '');
+  if (!safeHtml) {
+    return null;
+  }
+
+  const lead = document.createElement('div');
+  lead.className = 'pbs-main-summary generated-summary-content';
+  lead.innerHTML = safeHtml;
+  return lead;
+}
+
+function buildPbsHeroMetricRail(outputsBucketed, currencySymbol) {
+  const sections = outputsBucketed.sections;
+  const summarySection = findOutputsBucketedSectionByKey(sections, 'summary')
+    || findOutputsBucketedSection(sections, 'summary');
+  if (!summarySection) {
+    return null;
+  }
+
+  const assetSections = PBS_ASSET_SECTION_KEYS
+    .map((key) => findOutputsBucketedSectionByKey(sections, key) || findOutputsBucketedSection(sections, key))
+    .filter(Boolean);
+  const grossAssetsFallback = assetSections.length > 0
+    ? assetSections.reduce((sum, section) => sum + getOutputsBucketedSubtotal(section), 0)
+    : null;
+  const liabilitiesSection = findOutputsBucketedSectionByKey(sections, 'liabilities')
+    || findOutputsBucketedSection(sections, 'liabilities');
+  const liabilitiesFallback = liabilitiesSection
+    ? Math.abs(getOutputsBucketedSubtotal(liabilitiesSection))
+    : null;
+
+  const grossAssets = getFirstOutputsBucketedRowValue(summarySection, ['gross assets', 'total assets'])
+    ?? grossAssetsFallback;
+  const liabilities = getFirstOutputsBucketedRowValue(summarySection, ['total liabilities', 'liabilities'])
+    ?? liabilitiesFallback;
+  const netWorth = getFirstOutputsBucketedRowValue(summarySection, ['net worth'])
+    ?? (
+      getOptionalFiniteNumber(grossAssets) !== null && getOptionalFiniteNumber(liabilities) !== null
+        ? grossAssets - liabilities
+        : null
+    );
+
+  const metricItems = [
+    { key: 'net-worth', label: 'Net worth', value: getOptionalFiniteNumber(netWorth), isPrimary: true },
+    { key: 'gross-assets', label: 'Gross assets', value: getOptionalFiniteNumber(grossAssets) },
+    { key: 'liabilities', label: 'Liabilities', value: getOptionalFiniteNumber(liabilities) }
+  ].filter((item) => item.value !== null);
+
+  if (metricItems.length === 0) {
+    return null;
+  }
+
+  const rail = document.createElement('div');
+  rail.className = 'pbs-hero-metrics';
+
+  metricItems.forEach((item) => {
+    const metric = document.createElement('article');
+    metric.className = 'pbs-hero-metric';
+    metric.dataset.metric = item.key;
+    if (item.isPrimary) {
+      metric.dataset.primary = 'true';
+    }
+
+    const label = document.createElement('span');
+    label.className = 'pbs-hero-metric-label';
+    label.textContent = item.label;
+    metric.appendChild(label);
+
+    const value = document.createElement('span');
+    value.className = 'pbs-hero-metric-value';
+    value.textContent = formatBucketedCurrency(item.value, currencySymbol);
+    metric.appendChild(value);
+
+    rail.appendChild(metric);
+  });
+
+  return rail;
+}
+
+function buildPbsBucketCard(section, {
+  fallbackKey,
+  sectionEnhancements = {}
+} = {}) {
+  const sectionToken = normalizeSectionToken(section?.key || section?.title || fallbackKey);
+  const indicator = sectionEnhancements[sectionToken]?.indicator || null;
+  const title = typeof section.title === 'string' && section.title.trim()
+    ? section.title
+    : fallbackKey.charAt(0).toUpperCase() + fallbackKey.slice(1);
+  const rows = sanitizeSectionRows(section.rows);
+  const subtotalLabel = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
+    ? section.subtotalLabel
+    : 'Subtotal';
+  const subtotalValue = getOptionalFiniteNumber(section.subtotalValue) ?? getOutputsBucketedSubtotal(section);
+
+  const card = document.createElement('article');
+  card.className = 'pbs-bucket-card';
+  card.dataset.bucket = fallbackKey;
+  if (indicator) {
+    card.dataset.healthTone = indicator.tone;
+  }
+
+  const header = document.createElement('div');
+  header.className = 'pbs-bucket-card-header';
+
+  const headingCopy = document.createElement('div');
+  headingCopy.className = 'pbs-bucket-heading-copy';
+  headingCopy.appendChild(buildPbsBucketTitleLine(title, sectionToken));
+
+  if (indicator?.supportText) {
+    const supportText = document.createElement('span');
+    supportText.className = 'pbs-section-support-text';
+    supportText.textContent = indicator.supportText;
+    headingCopy.appendChild(supportText);
+  }
+
+  header.appendChild(headingCopy);
+  if (indicator) {
+    header.appendChild(buildOutputsBucketedHealthBadge(indicator));
+  }
+  card.appendChild(header);
+
+  const rowList = document.createElement('div');
+  rowList.className = 'pbs-bucket-row-list';
+  if (rows.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'pbs-bucket-empty-state';
+    empty.textContent = 'No assets listed.';
+    rowList.appendChild(empty);
+  } else {
+    rows.forEach(([label, amount]) => {
+      const row = document.createElement('div');
+      row.className = 'pbs-bucket-row';
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'pbs-bucket-row-label';
+      labelEl.textContent = label;
+      row.appendChild(labelEl);
+
+      const amountEl = document.createElement('span');
+      amountEl.className = 'pbs-bucket-row-amount';
+      amountEl.textContent = formatBucketedAmount(amount);
+      row.appendChild(amountEl);
+
+      rowList.appendChild(row);
+    });
+  }
+  card.appendChild(rowList);
+
+  const total = document.createElement('div');
+  total.className = 'pbs-bucket-total';
+
+  const totalLabel = document.createElement('span');
+  totalLabel.className = 'pbs-bucket-total-label';
+  totalLabel.textContent = subtotalLabel;
+  total.appendChild(totalLabel);
+
+  const totalValue = document.createElement('span');
+  totalValue.className = 'pbs-bucket-total-value';
+  totalValue.textContent = formatBucketedAmount(subtotalValue);
+  total.appendChild(totalValue);
+
+  card.appendChild(total);
+  return card;
 }
 
 function buildHfcsBenchmarkDifferenceText(netWorth, benchmarkValue, benchmarkLabel, currencySymbol) {
@@ -3450,6 +3820,22 @@ function computeNetWorthContext(netWorth, currentAge, currencySymbol = '€') {
 }
 
 function buildOutputsBucketedHealthBadge(indicator) {
+  if (indicator.explainerText) {
+    return buildPbsInfoPopoverControl({
+      className: 'pbs-indicator-info',
+      text: indicator.explainerText,
+      ariaLabel: indicator.explainerLabel || indicator.ariaLabel,
+      popoverKey: `indicator-${indicator.tone || 'neutral'}`,
+      buttonClassName: 'pbs-health-badge',
+      buttonDataset: {
+        tone: indicator.tone
+      },
+      iconClassName: 'pbs-health-badge-info-icon',
+      iconText: 'i',
+      visibleText: indicator.label
+    });
+  }
+
   const badge = document.createElement('span');
   badge.className = 'pbs-health-badge';
   badge.dataset.tone = indicator.tone;
@@ -3849,10 +4235,13 @@ function buildOutputsBucketedDetailCard(section, {
   return card;
 }
 
-function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements = {}) {
+function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements = {}, {
+  summaryHtml = ''
+} = {}) {
   const sections = outputsBucketed.sections;
-  const assetSectionKeys = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
-  const assetSections = assetSectionKeys.map((key) => findOutputsBucketedSection(sections, key));
+  const assetSections = PBS_ASSET_SECTION_KEYS.map((key) => (
+    findOutputsBucketedSectionByKey(sections, key) || findOutputsBucketedSection(sections, key)
+  ));
 
   if (assetSections.some((section) => !section)) {
     return null;
@@ -3861,104 +4250,34 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
   const outputStack = document.createElement('div');
   outputStack.className = 'pbs-outputs-stack';
 
-  const matrixPanel = document.createElement('section');
-  matrixPanel.className = 'pbs-matrix-panel';
-
-  const matrixWrap = document.createElement('div');
-  matrixWrap.className = 'pbs-matrix-wrap';
-
-  const matrixTable = document.createElement('table');
-  matrixTable.className = 'generated-table pbs-matrix';
-
-  const rowsByBucket = assetSections.map((section) => sanitizeSectionRows(section.rows));
-  const rowCount = Math.max(0, ...rowsByBucket.map((rows) => rows.length));
-
-  const thead = document.createElement('thead');
-  const headRow = document.createElement('tr');
-  headRow.className = 'pbs-matrix-head';
-  assetSections.forEach((section, index) => {
-    const th = document.createElement('th');
-    const sectionToken = normalizeSectionToken(section?.key || section?.title || assetSectionKeys[index]);
-    const indicator = sectionEnhancements[sectionToken]?.indicator || null;
-    const title = typeof section.title === 'string' && section.title.trim()
-      ? section.title
-      : assetSectionKeys[index].charAt(0).toUpperCase() + assetSectionKeys[index].slice(1);
-    if (indicator) {
-      th.dataset.healthTone = indicator.tone;
-    }
-    th.appendChild(buildOutputsBucketedSectionHeading(title, indicator));
-    headRow.appendChild(th);
-  });
-  thead.appendChild(headRow);
-  matrixTable.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
-    const tr = document.createElement('tr');
-
-    rowsByBucket.forEach((bucketRows) => {
-      const cell = document.createElement('td');
-      cell.className = 'pbs-cell';
-
-      const item = bucketRows[rowIndex];
-      if (item) {
-        const name = document.createElement('div');
-        name.className = 'pbs-cell-name';
-        name.textContent = item[0];
-
-        const amount = document.createElement('div');
-        amount.className = 'pbs-cell-amt';
-        amount.textContent = formatBucketedAmount(item[1]);
-
-        cell.appendChild(name);
-        cell.appendChild(amount);
-      } else {
-        cell.classList.add('pbs-cell-empty');
-      }
-
-      tr.appendChild(cell);
-    });
-
-    tbody.appendChild(tr);
+  const leadCopy = buildPbsLeadCopy(summaryHtml);
+  if (leadCopy) {
+    outputStack.appendChild(leadCopy);
   }
-  matrixTable.appendChild(tbody);
 
-  const tfoot = document.createElement('tfoot');
-  const subtotalRow = document.createElement('tr');
-  subtotalRow.className = 'pbs-subtotal-row';
-  assetSections.forEach((section) => {
-    const sectionToken = normalizeSectionToken(section?.key || section?.title || '');
-    const indicator = sectionEnhancements[sectionToken]?.indicator || null;
-    const subtotalCell = document.createElement('td');
-    if (indicator) {
-      subtotalCell.dataset.healthTone = indicator.tone;
-    }
-    const subtotalLabel = document.createElement('div');
-    subtotalLabel.className = 'pbs-subtotal-label';
-    subtotalLabel.textContent = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
-      ? section.subtotalLabel
-      : 'Subtotal';
+  const currencySymbol = getOutputsBucketedCurrencySymbol(outputsBucketed);
+  const metricRail = buildPbsHeroMetricRail(outputsBucketed, currencySymbol);
+  if (metricRail) {
+    outputStack.appendChild(metricRail);
+  }
 
-    const subtotalAmount = document.createElement('div');
-    subtotalAmount.className = 'pbs-cell-amt pbs-subtotal-amt';
-    subtotalAmount.textContent = formatBucketedAmount(Number(section.subtotalValue));
+  const bucketSurface = document.createElement('section');
+  bucketSurface.className = 'pbs-bucket-surface';
 
-    subtotalCell.appendChild(subtotalLabel);
-    subtotalCell.appendChild(subtotalAmount);
-    subtotalRow.appendChild(subtotalCell);
+  const bucketGrid = document.createElement('div');
+  bucketGrid.className = 'pbs-bucket-grid';
+  assetSections.forEach((section, index) => {
+    bucketGrid.appendChild(buildPbsBucketCard(section, {
+      fallbackKey: PBS_ASSET_SECTION_KEYS[index],
+      sectionEnhancements
+    }));
   });
-  tfoot.appendChild(subtotalRow);
-  matrixTable.appendChild(tfoot);
 
-  matrixWrap.appendChild(matrixTable);
-  matrixPanel.appendChild(matrixWrap);
-  outputStack.appendChild(matrixPanel);
+  bucketSurface.appendChild(bucketGrid);
+  outputStack.appendChild(bucketSurface);
 
-  const currencySymbol = typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
-    ? outputsBucketed.currencySymbol
-    : '€';
-
-  const liabilitiesSection = findOutputsBucketedSection(sections, 'liabilities');
+  const liabilitiesSection = findOutputsBucketedSectionByKey(sections, 'liabilities')
+    || findOutputsBucketedSection(sections, 'liabilities');
   if (liabilitiesSection) {
     outputStack.appendChild(buildOutputsBucketedDetailCard(liabilitiesSection, {
       defaultTitle: 'Liabilities',
@@ -3966,7 +4285,8 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
     }));
   }
 
-  const summarySection = findOutputsBucketedSection(sections, 'summary');
+  const summarySection = findOutputsBucketedSectionByKey(sections, 'summary')
+    || findOutputsBucketedSection(sections, 'summary');
   if (summarySection) {
     const summaryToken = normalizeSectionToken(summarySection?.key || summarySection?.title || 'summary');
     outputStack.appendChild(buildOutputsBucketedDetailCard(summarySection, {
@@ -3980,29 +4300,44 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
   return outputStack;
 }
 
-function buildOutputsBucketedCard(module, outputsBucketed) {
+function buildOutputsBucketedCard(module, outputsBucketed, {
+  summaryHtml = ''
+} = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-table-card generated-outputs-bucketed-card';
   card.dataset.generatedCard = 'outputs-bucketed';
 
-  const { header } = buildGeneratedCardHeader('Outputs');
+  const isPbsModule = isPersonalBalanceSheetModule(module);
+  if (isPbsModule) {
+    card.classList.add('pbs-main-event-card');
+  }
+
+  const { header } = buildGeneratedCardHeader(isPbsModule ? 'Personal Balance Sheet' : 'Outputs');
   card.appendChild(header);
 
   if (!hasOutputsBucketed(outputsBucketed)) {
     const empty = document.createElement('p');
     empty.className = 'generated-empty';
-    empty.textContent = 'No outputs provided.';
+    empty.textContent = isPbsModule ? 'No balance sheet provided.' : 'No outputs provided.';
     card.appendChild(empty);
     return card;
   }
 
   const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, outputsBucketed);
-  const matrixContent = buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements);
+  const matrixContent = buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements, {
+    summaryHtml: isPbsModule ? summaryHtml : ''
+  });
   if (matrixContent) {
     card.appendChild(matrixContent);
     return card;
   }
 
+  if (isPbsModule) {
+    const leadCopy = buildPbsLeadCopy(summaryHtml);
+    if (leadCopy) {
+      card.appendChild(leadCopy);
+    }
+  }
   card.appendChild(buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements));
   return card;
 }
@@ -5635,15 +5970,28 @@ function buildGeneratedSection(module, {
   const grid = document.createElement('div');
   grid.className = 'generated-grid';
 
-  grid.appendChild(buildSummaryCard(generated.summaryHtml));
+  const hasBucketedOutputs = isOutputsBucketedPresent(generated.outputsBucketed);
+  const isPbsBucketedModule = hasBucketedOutputs && isPersonalBalanceSheetModule(module);
+
+  if (isPbsBucketedModule) {
+    grid.appendChild(buildOutputsBucketedCard(module, generated.outputsBucketed, {
+      summaryHtml: generated.summaryHtml || ''
+    }));
+  } else {
+    grid.appendChild(buildSummaryCard(generated.summaryHtml));
+  }
+
   grid.appendChild(buildAssumptionsTableCard(module, {
     onPatchInputs,
     status: assumptionsEditorStatus,
     readOnly
   }));
-  if (isOutputsBucketedPresent(generated.outputsBucketed)) {
-    grid.appendChild(buildOutputsBucketedCard(module, generated.outputsBucketed));
-  } else {
+
+  if (!isPbsBucketedModule && hasBucketedOutputs) {
+    grid.appendChild(buildOutputsBucketedCard(module, generated.outputsBucketed, {
+      summaryHtml: generated.summaryHtml || ''
+    }));
+  } else if (!isPbsBucketedModule) {
     const outputsForDisplay = filterOutputsRowsForPensionToggle(module, generated.outputs);
     grid.appendChild(buildTableCard('Outputs', outputsForDisplay, {
       dataGeneratedCard: 'outputs',
@@ -5709,6 +6057,21 @@ export function patchFocusedGeneratedCards({
     return;
   }
 
+  const generated = module.generated || {};
+  if (
+    generatedSection
+    && isPersonalBalanceSheetModule(module)
+    && isOutputsBucketedPresent(generated.outputsBucketed)
+    && (patchSummary || patchOutputs)
+  ) {
+    generatedSection.replaceWith(buildGeneratedSection(module, {
+      onPatchInputs,
+      assumptionsEditorStatus,
+      readOnly
+    }));
+    return;
+  }
+
   const grid = generatedSection?.querySelector('.generated-grid');
   if (!generatedSection || !grid) {
     return;
@@ -5735,9 +6098,10 @@ export function patchFocusedGeneratedCards({
   }
 
   if (patchOutputs) {
-    const generated = module.generated || {};
     const outputCard = isOutputsBucketedPresent(generated.outputsBucketed)
-      ? buildOutputsBucketedCard(module, generated.outputsBucketed)
+      ? buildOutputsBucketedCard(module, generated.outputsBucketed, {
+        summaryHtml: generated.summaryHtml || ''
+      })
       : buildTableCard(
         'Outputs',
         filterOutputsRowsForPensionToggle(module, generated.outputs),
