@@ -5461,50 +5461,46 @@ function validateTablePayload(table, label) {
   };
 }
 
-function validateOutputsBucketedPayload(outputsBucketed, label = 'generated.outputsBucketed') {
-  if (!outputsBucketed || typeof outputsBucketed !== 'object' || Array.isArray(outputsBucketed)) {
-    throw new Error(`${label} must be an object with sections[].`);
+function validateOutputsBucketedSectionsPayload(sectionsPayload, label) {
+  if (!Array.isArray(sectionsPayload)) {
+    throw new Error(`${label} must be an array.`);
   }
 
-  if (!Array.isArray(outputsBucketed.sections)) {
-    throw new Error(`${label}.sections must be an array.`);
-  }
-
-  const sections = outputsBucketed.sections.map((section, sectionIndex) => {
+  return sectionsPayload.map((section, sectionIndex) => {
     if (!section || typeof section !== 'object' || Array.isArray(section)) {
-      throw new Error(`${label}.sections[${sectionIndex}] must be an object.`);
+      throw new Error(`${label}[${sectionIndex}] must be an object.`);
     }
 
     if (typeof section.title !== 'string' || !section.title.trim()) {
-      throw new Error(`${label}.sections[${sectionIndex}].title must be a non-empty string.`);
+      throw new Error(`${label}[${sectionIndex}].title must be a non-empty string.`);
     }
 
     if (!Array.isArray(section.columns) || section.columns.length !== 2) {
-      throw new Error(`${label}.sections[${sectionIndex}].columns: outputsBucketed sections only support 2 columns. For multi-column tables, use generated.tables[].`);
+      throw new Error(`${label}[${sectionIndex}].columns: outputsBucketed sections only support 2 columns. For multi-column tables, use generated.tables[].`);
     }
 
     const columns = section.columns.map((column, columnIndex) => {
       if (typeof column !== 'string') {
-        throw new Error(`${label}.sections[${sectionIndex}].columns[${columnIndex}] must be a string.`);
+        throw new Error(`${label}[${sectionIndex}].columns[${columnIndex}] must be a string.`);
       }
       return column;
     });
 
     if (!Array.isArray(section.rows)) {
-      throw new Error(`${label}.sections[${sectionIndex}].rows must be an array.`);
+      throw new Error(`${label}[${sectionIndex}].rows must be an array.`);
     }
 
     const rows = section.rows.map((row, rowIndex) => {
       if (!Array.isArray(row) || row.length !== 2) {
-        throw new Error(`${label}.sections[${sectionIndex}].rows[${rowIndex}] must be [string, number].`);
+        throw new Error(`${label}[${sectionIndex}].rows[${rowIndex}] must be [string, number].`);
       }
 
       if (typeof row[0] !== 'string') {
-        throw new Error(`${label}.sections[${sectionIndex}].rows[${rowIndex}][0] must be a string.`);
+        throw new Error(`${label}[${sectionIndex}].rows[${rowIndex}][0] must be a string.`);
       }
 
       if (typeof row[1] !== 'number' || !Number.isFinite(row[1])) {
-        throw new Error(`${label}.sections[${sectionIndex}].rows[${rowIndex}][1] must be a finite number.`);
+        throw new Error(`${label}[${sectionIndex}].rows[${rowIndex}][1] must be a finite number.`);
       }
 
       return [row[0], row[1]];
@@ -5518,19 +5514,19 @@ function validateOutputsBucketedPayload(outputsBucketed, label = 'generated.outp
     const hasSubtotal = 'subtotalValue' in section;
 
     if (!isSummary && !hasSubtotal) {
-      throw new Error(`${label}.sections[${sectionIndex}].subtotalValue is required; dev panel now auto-fills missing subtotalValue = 0.`);
+      throw new Error(`${label}[${sectionIndex}].subtotalValue is required; dev panel now auto-fills missing subtotalValue = 0.`);
     }
 
     let subtotalValue = null;
     if (hasSubtotal) {
       if (typeof section.subtotalValue !== 'number' || !Number.isFinite(section.subtotalValue)) {
-        throw new Error(`${label}.sections[${sectionIndex}].subtotalValue must be a finite number.`);
+        throw new Error(`${label}[${sectionIndex}].subtotalValue must be a finite number.`);
       }
       subtotalValue = section.subtotalValue;
     }
 
     if ('notes' in section && typeof section.notes !== 'string') {
-      throw new Error(`${label}.sections[${sectionIndex}].notes must be a string when provided.`);
+      throw new Error(`${label}[${sectionIndex}].notes must be a string when provided.`);
     }
 
     return {
@@ -5545,13 +5541,134 @@ function validateOutputsBucketedPayload(outputsBucketed, label = 'generated.outp
       notes: typeof section.notes === 'string' ? section.notes : ''
     };
   });
+}
 
-  return {
+function validatePbsMovementEndpointPayload(endpoint, label, { includeAction = false } = {}) {
+  if (!endpoint || typeof endpoint !== 'object' || Array.isArray(endpoint)) {
+    throw new Error(`${label} must be an object.`);
+  }
+
+  if (typeof endpoint.sectionKey !== 'string' || !endpoint.sectionKey.trim()) {
+    throw new Error(`${label}.sectionKey must be a non-empty string.`);
+  }
+
+  if (typeof endpoint.rowLabel !== 'string' || !endpoint.rowLabel.trim()) {
+    throw new Error(`${label}.rowLabel must be a non-empty string.`);
+  }
+
+  if (typeof endpoint.amount !== 'number' || !Number.isFinite(endpoint.amount)) {
+    throw new Error(`${label}.amount must be a finite number.`);
+  }
+
+  const normalized = {
+    sectionKey: endpoint.sectionKey.trim().toLowerCase(),
+    rowLabel: endpoint.rowLabel,
+    amount: endpoint.amount
+  };
+
+  if (includeAction) {
+    const action = typeof endpoint.action === 'string' && endpoint.action.trim()
+      ? endpoint.action.trim().toLowerCase()
+      : 'increase';
+    if (!['add', 'remove', 'increase', 'reduce'].includes(action)) {
+      throw new Error(`${label}.action must be add, remove, increase, or reduce.`);
+    }
+    normalized.action = action;
+  }
+
+  return normalized;
+}
+
+function validatePbsScenarioMovementsPayload(movements, label) {
+  if (movements === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(movements)) {
+    throw new Error(`${label} must be an array when provided.`);
+  }
+
+  return movements.map((movement, movementIndex) => {
+    if (!movement || typeof movement !== 'object' || Array.isArray(movement)) {
+      throw new Error(`${label}[${movementIndex}] must be an object.`);
+    }
+
+    const from = validatePbsMovementEndpointPayload(movement.from, `${label}[${movementIndex}].from`);
+
+    if (!Array.isArray(movement.to) || movement.to.length === 0) {
+      throw new Error(`${label}[${movementIndex}].to must be a non-empty array.`);
+    }
+
+    const to = movement.to.map((endpoint, endpointIndex) => (
+      validatePbsMovementEndpointPayload(endpoint, `${label}[${movementIndex}].to[${endpointIndex}]`, {
+        includeAction: true
+      })
+    ));
+
+    return {
+      label: typeof movement.label === 'string' && movement.label.trim()
+        ? movement.label.trim()
+        : `Movement ${movementIndex + 1}`,
+      from,
+      to
+    };
+  });
+}
+
+function validateOutputsBucketedScenariosPayload(scenarios, label) {
+  if (scenarios === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(scenarios)) {
+    throw new Error(`${label} must be an array when provided.`);
+  }
+
+  return scenarios.map((scenario, scenarioIndex) => {
+    if (!scenario || typeof scenario !== 'object' || Array.isArray(scenario)) {
+      throw new Error(`${label}[${scenarioIndex}] must be an object.`);
+    }
+
+    return {
+      id: typeof scenario.id === 'string' && scenario.id.trim()
+        ? scenario.id.trim()
+        : `scenario-${scenarioIndex + 1}`,
+      title: typeof scenario.title === 'string' && scenario.title.trim()
+        ? scenario.title.trim()
+        : `Alternative ${scenarioIndex + 1}`,
+      summaryHtml: typeof scenario.summaryHtml === 'string' ? scenario.summaryHtml : '',
+      sections: validateOutputsBucketedSectionsPayload(
+        scenario.sections,
+        `${label}[${scenarioIndex}].sections`
+      ),
+      movements: validatePbsScenarioMovementsPayload(
+        scenario.movements,
+        `${label}[${scenarioIndex}].movements`
+      )
+    };
+  });
+}
+
+function validateOutputsBucketedPayload(outputsBucketed, label = 'generated.outputsBucketed') {
+  if (!outputsBucketed || typeof outputsBucketed !== 'object' || Array.isArray(outputsBucketed)) {
+    throw new Error(`${label} must be an object with sections[].`);
+  }
+
+  const sections = validateOutputsBucketedSectionsPayload(outputsBucketed.sections, `${label}.sections`);
+  const scenarios = validateOutputsBucketedScenariosPayload(outputsBucketed.scenarios, `${label}.scenarios`);
+
+  const normalized = {
     currencySymbol: typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
       ? outputsBucketed.currencySymbol
       : '€',
     sections
   };
+
+  if (scenarios.length > 0) {
+    normalized.scenarios = scenarios;
+  }
+
+  return normalized;
 }
 
 function validateGeneratedTablesPayload(tables, label = 'generated.tables') {

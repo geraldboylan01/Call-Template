@@ -238,6 +238,30 @@ Each section must include:
 - `subtotalLabel`
 - `subtotalValue`
 
+### Optional PBS Alternatives
+If Gerry asks for a second version of the PBS, keep the current position in `generated.outputsBucketed.sections` and add alternatives in `generated.outputsBucketed.scenarios`.
+
+Each scenario must include:
+- `id`: stable slug, for example `"sell-rental-property"`.
+- `title`: client-facing title without the word `scenario`, for example `"Sell Rental Property"`.
+- `summaryHtml`: optional short case note.
+- `sections`: the same six PBS sections as the current position, fully recalculated for that alternative.
+- `movements`: optional animation metadata only. Do not use movements instead of recalculating the scenario sections.
+
+Movement entries:
+```json
+{
+  "label": "Sell rental property",
+  "from": { "sectionKey": "legacy", "rowLabel": "Buy-to-let property", "amount": 340000 },
+  "to": [
+    { "sectionKey": "liabilities", "rowLabel": "Mortgage", "amount": 220000, "action": "reduce" },
+    { "sectionKey": "liquidity", "rowLabel": "Cash from sale", "amount": 120000, "action": "add" }
+  ]
+}
+```
+
+For a property sale case, remove or reduce the property in `Legacy`, reduce the relevant debt in `Liabilities`, add any surplus proceeds to `Liquidity`, and ensure `Gross assets`, `Total liabilities`, and `Net worth` / `Net assets` reconcile independently in that scenario.
+
 ### Bucket Rules
 - `Lifestyle`
   - Personal-use assets central to day-to-day living.

@@ -457,13 +457,9 @@ function normalizeGeneratedTables(tables) {
     }));
 }
 
-function normalizeOutputsBucketed(outputsBucketed) {
-  if (!outputsBucketed || typeof outputsBucketed !== 'object' || Array.isArray(outputsBucketed)) {
-    return null;
-  }
-
-  const sections = Array.isArray(outputsBucketed.sections)
-    ? outputsBucketed.sections
+function normalizeOutputsBucketedSections(sections) {
+  return Array.isArray(sections)
+    ? sections
       .filter((section) => section && typeof section === 'object' && !Array.isArray(section))
       .map((section, index) => {
         const title = typeof section.title === 'string' && section.title.trim()
@@ -499,17 +495,105 @@ function normalizeOutputsBucketed(outputsBucketed) {
         };
       })
     : [];
+}
+
+function normalizePbsMovementEndpoint(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object' || Array.isArray(endpoint)) {
+    return null;
+  }
+
+  const amount = typeof endpoint.amount === 'number' && Number.isFinite(endpoint.amount)
+    ? endpoint.amount
+    : null;
+  if (amount === null) {
+    return null;
+  }
+
+  return {
+    sectionKey: typeof endpoint.sectionKey === 'string' ? endpoint.sectionKey.trim().toLowerCase() : '',
+    rowLabel: typeof endpoint.rowLabel === 'string' ? endpoint.rowLabel : '',
+    amount,
+    action: typeof endpoint.action === 'string' && endpoint.action.trim()
+      ? endpoint.action.trim().toLowerCase()
+      : undefined
+  };
+}
+
+function normalizePbsScenarioMovements(movements) {
+  return Array.isArray(movements)
+    ? movements
+      .filter((movement) => movement && typeof movement === 'object' && !Array.isArray(movement))
+      .map((movement, index) => {
+        const from = normalizePbsMovementEndpoint(movement.from);
+        const to = Array.isArray(movement.to)
+          ? movement.to.map(normalizePbsMovementEndpoint).filter(Boolean)
+          : [];
+        if (!from || to.length === 0) {
+          return null;
+        }
+
+        return {
+          label: typeof movement.label === 'string' && movement.label.trim()
+            ? movement.label.trim()
+            : `Movement ${index + 1}`,
+          from,
+          to
+        };
+      })
+      .filter(Boolean)
+    : [];
+}
+
+function normalizeOutputsBucketedScenarios(scenarios) {
+  return Array.isArray(scenarios)
+    ? scenarios
+      .filter((scenario) => scenario && typeof scenario === 'object' && !Array.isArray(scenario))
+      .map((scenario, index) => {
+        const sections = normalizeOutputsBucketedSections(scenario.sections);
+        if (sections.length === 0) {
+          return null;
+        }
+
+        return {
+          id: typeof scenario.id === 'string' && scenario.id.trim()
+            ? scenario.id.trim()
+            : `scenario-${index + 1}`,
+          title: typeof scenario.title === 'string' && scenario.title.trim()
+            ? scenario.title.trim()
+            : `Alternative ${index + 1}`,
+          summaryHtml: typeof scenario.summaryHtml === 'string' ? scenario.summaryHtml : '',
+          sections,
+          movements: normalizePbsScenarioMovements(scenario.movements)
+        };
+      })
+      .filter(Boolean)
+    : [];
+}
+
+function normalizeOutputsBucketed(outputsBucketed) {
+  if (!outputsBucketed || typeof outputsBucketed !== 'object' || Array.isArray(outputsBucketed)) {
+    return null;
+  }
+
+  const sections = normalizeOutputsBucketedSections(outputsBucketed.sections);
 
   if (sections.length === 0) {
     return null;
   }
 
-  return {
+  const normalized = {
     currencySymbol: typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
       ? outputsBucketed.currencySymbol
       : '€',
     sections
   };
+
+  const scenarios = normalizeOutputsBucketedScenarios(outputsBucketed.scenarios);
+  if (scenarios.length > 0) {
+    normalized.scenarios = scenarios;
+  }
+
+  return normalized;
 }
 
 export function normalizePbsInputs(pbsInputs) {

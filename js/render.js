@@ -70,6 +70,7 @@ const HFCS_DECILE_BANDS = Object.freeze([
   { upperKey: 'd9Upper', lowerBoundPercent: 80, upperBoundPercent: 90 }
 ]);
 const PBS_ASSET_SECTION_KEYS = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
+const PBS_CURRENT_SCENARIO_ID = 'current';
 const PBS_BUCKET_DEFINITIONS = Object.freeze({
   lifestyle: 'Assets that support day-to-day living, usually not treated as spendable reserves.',
   liquidity: 'Cash or near-cash reserves for short-term spending needs and shocks.',
@@ -3379,6 +3380,63 @@ function getOutputsBucketedCurrencySymbol(outputsBucketed) {
     : '€';
 }
 
+function getPbsScenarioTitle(rawTitle, fallbackTitle) {
+  const title = typeof rawTitle === 'string' && rawTitle.trim()
+    ? rawTitle.trim()
+    : fallbackTitle;
+  const withoutTrailingScenario = title.replace(/\s+scenario$/i, '').trim();
+  return withoutTrailingScenario || fallbackTitle;
+}
+
+function getPbsScenarioCases(outputsBucketed, summaryHtml = '') {
+  const scenarios = Array.isArray(outputsBucketed?.scenarios)
+    ? outputsBucketed.scenarios
+    : [];
+  const cases = [
+    {
+      id: PBS_CURRENT_SCENARIO_ID,
+      title: 'Current position',
+      summaryHtml,
+      sections: outputsBucketed.sections,
+      movements: []
+    }
+  ];
+
+  scenarios.forEach((scenario, index) => {
+    if (!scenario || typeof scenario !== 'object' || Array.isArray(scenario)) {
+      return;
+    }
+
+    if (!Array.isArray(scenario.sections) || scenario.sections.length === 0) {
+      return;
+    }
+
+    const fallbackTitle = `Alternative ${index + 1}`;
+    const rawId = typeof scenario.id === 'string' && scenario.id.trim()
+      ? scenario.id.trim()
+      : `scenario-${index + 1}`;
+
+    cases.push({
+      id: rawId,
+      title: getPbsScenarioTitle(scenario.title, fallbackTitle),
+      summaryHtml: typeof scenario.summaryHtml === 'string' && scenario.summaryHtml.trim()
+        ? scenario.summaryHtml
+        : summaryHtml,
+      sections: scenario.sections,
+      movements: Array.isArray(scenario.movements) ? scenario.movements : []
+    });
+  });
+
+  return cases;
+}
+
+function getOutputsBucketedForPbsCase(outputsBucketed, pbsCase) {
+  return {
+    currencySymbol: getOutputsBucketedCurrencySymbol(outputsBucketed),
+    sections: Array.isArray(pbsCase?.sections) ? pbsCase.sections : []
+  };
+}
+
 function getFirstOutputsBucketedRowValue(section, targetLabels) {
   for (const targetLabel of targetLabels) {
     const value = getOutputsBucketedRowValue(section, targetLabel);
@@ -3567,14 +3625,10 @@ function buildPbsLeadCopy(summaryHtml) {
   return lead;
 }
 
-function buildPbsHeroMetricRail(outputsBucketed, currencySymbol) {
+function getPbsBalanceMetrics(outputsBucketed) {
   const sections = outputsBucketed.sections;
   const summarySection = findOutputsBucketedSectionByKey(sections, 'summary')
     || findOutputsBucketedSection(sections, 'summary');
-  if (!summarySection) {
-    return null;
-  }
-
   const assetSections = PBS_ASSET_SECTION_KEYS
     .map((key) => findOutputsBucketedSectionByKey(sections, key) || findOutputsBucketedSection(sections, key))
     .filter(Boolean);
@@ -3589,58 +3643,147 @@ function buildPbsHeroMetricRail(outputsBucketed, currencySymbol) {
 
   const grossAssets = getFirstOutputsBucketedRowValue(summarySection, ['gross assets', 'total assets'])
     ?? grossAssetsFallback;
-  const liabilities = getFirstOutputsBucketedRowValue(summarySection, ['total liabilities', 'liabilities'])
+  const grossLiabilities = getFirstOutputsBucketedRowValue(summarySection, [
+    'gross liabilities',
+    'total liabilities',
+    'liabilities'
+  ])
     ?? liabilitiesFallback;
-  const netWorth = getFirstOutputsBucketedRowValue(summarySection, ['net worth'])
+  const normalizedGrossAssets = getOptionalFiniteNumber(grossAssets);
+  const normalizedGrossLiabilities = getOptionalFiniteNumber(grossLiabilities);
+  const netAssets = getFirstOutputsBucketedRowValue(summarySection, ['net assets', 'net worth'])
     ?? (
-      getOptionalFiniteNumber(grossAssets) !== null && getOptionalFiniteNumber(liabilities) !== null
-        ? grossAssets - liabilities
+      normalizedGrossAssets !== null && normalizedGrossLiabilities !== null
+        ? normalizedGrossAssets - Math.abs(normalizedGrossLiabilities)
         : null
     );
 
-  const metricItems = [
-    { key: 'net-worth', label: 'Net worth', value: getOptionalFiniteNumber(netWorth), isPrimary: true },
-    { key: 'gross-assets', label: 'Gross assets', value: getOptionalFiniteNumber(grossAssets) },
-    { key: 'liabilities', label: 'Liabilities', value: getOptionalFiniteNumber(liabilities) }
-  ].filter((item) => item.value !== null);
+  return {
+    netAssets: getOptionalFiniteNumber(netAssets),
+    grossAssets: normalizedGrossAssets,
+    grossLiabilities: normalizedGrossLiabilities === null ? null : Math.abs(normalizedGrossLiabilities)
+  };
+}
 
-  if (metricItems.length === 0) {
+function setPbsValueDataset(element, {
+  key,
+  value,
+  format = 'amount',
+  currencySymbol = '€'
+} = {}) {
+  const normalizedValue = getOptionalFiniteNumber(value);
+  if (!key || normalizedValue === null) {
+    return;
+  }
+
+  element.dataset.pbsValueKey = key;
+  element.dataset.pbsValue = String(normalizedValue);
+  element.dataset.pbsValueFormat = format;
+  element.dataset.pbsCurrency = currencySymbol;
+}
+
+function getPbsSectionAnchorKey(sectionKey) {
+  return `section:${normalizeSectionToken(sectionKey)}`;
+}
+
+function getPbsRowAnchorKey(sectionKey, rowLabel) {
+  return `${getPbsSectionAnchorKey(sectionKey)}:row:${normalizeSectionToken(rowLabel)}`;
+}
+
+function buildPbsBalanceHeader(outputsBucketed, currencySymbol) {
+  const metrics = getPbsBalanceMetrics(outputsBucketed);
+  const metricItems = [
+    { key: 'net-assets', label: 'Net assets', value: metrics.netAssets, isPrimary: true },
+    { key: 'gross-assets', label: 'Gross assets', value: metrics.grossAssets },
+    { key: 'gross-liabilities', label: 'Gross liabilities', value: metrics.grossLiabilities }
+  ];
+  const presentItems = metricItems.filter((item) => item.value !== null);
+
+  if (presentItems.length === 0) {
     return null;
   }
 
-  const rail = document.createElement('div');
-  rail.className = 'pbs-hero-metrics';
+  const header = document.createElement('section');
+  header.className = 'pbs-balance-header';
+  header.setAttribute('aria-label', 'Personal balance sheet totals');
 
-  metricItems.forEach((item) => {
-    const metric = document.createElement('article');
-    metric.className = 'pbs-hero-metric';
-    metric.dataset.metric = item.key;
-    if (item.isPrimary) {
-      metric.dataset.primary = 'true';
-    }
+  const netMetric = metricItems[0];
+  if (netMetric.value !== null) {
+    const netSlab = document.createElement('article');
+    netSlab.className = 'pbs-balance-slab pbs-balance-slab-primary';
+    netSlab.dataset.balanceMetric = netMetric.key;
+    netSlab.dataset.pbsAnchorKey = `balance:${netMetric.key}`;
 
     const label = document.createElement('span');
-    label.className = 'pbs-hero-metric-label';
-    label.textContent = item.label;
-    metric.appendChild(label);
+    label.className = 'pbs-balance-label';
+    label.textContent = netMetric.label;
+    netSlab.appendChild(label);
 
     const value = document.createElement('span');
-    value.className = 'pbs-hero-metric-value';
-    value.textContent = formatBucketedCurrency(item.value, currencySymbol);
-    metric.appendChild(value);
+    value.className = 'pbs-balance-value';
+    value.textContent = formatBucketedCurrency(netMetric.value, currencySymbol);
+    setPbsValueDataset(value, {
+      key: `balance:${netMetric.key}`,
+      value: netMetric.value,
+      format: 'currency',
+      currencySymbol
+    });
+    netSlab.appendChild(value);
 
-    rail.appendChild(metric);
+    const formula = document.createElement('span');
+    formula.className = 'pbs-balance-formula';
+    formula.textContent = 'Gross assets - gross liabilities';
+    netSlab.appendChild(formula);
+
+    header.appendChild(netSlab);
+  }
+
+  const stack = document.createElement('div');
+  stack.className = 'pbs-balance-stack';
+  metricItems.slice(1).forEach((item) => {
+    if (item.value === null) {
+      return;
+    }
+
+    const slab = document.createElement('article');
+    slab.className = 'pbs-balance-slab';
+    slab.dataset.balanceMetric = item.key;
+    slab.dataset.pbsAnchorKey = `balance:${item.key}`;
+
+    const label = document.createElement('span');
+    label.className = 'pbs-balance-label';
+    label.textContent = item.label;
+    slab.appendChild(label);
+
+    const value = document.createElement('span');
+    value.className = 'pbs-balance-value pbs-balance-value-secondary';
+    value.textContent = formatBucketedCurrency(item.value, currencySymbol);
+    setPbsValueDataset(value, {
+      key: `balance:${item.key}`,
+      value: item.value,
+      format: 'currency',
+      currencySymbol
+    });
+    slab.appendChild(value);
+
+    stack.appendChild(slab);
   });
 
-  return rail;
+  if (stack.childNodes.length > 0) {
+    header.appendChild(stack);
+  }
+
+  return header;
 }
 
 function buildPbsBucketCard(section, {
   fallbackKey,
-  sectionEnhancements = {}
+  sectionEnhancements = {},
+  currencySymbol = '€'
 } = {}) {
   const sectionToken = normalizeSectionToken(section?.key || section?.title || fallbackKey);
   const indicator = sectionEnhancements[sectionToken]?.indicator || null;
+  const sectionKey = normalizeSectionToken(fallbackKey || section?.key || section?.title);
   const title = typeof section.title === 'string' && section.title.trim()
     ? section.title
     : fallbackKey.charAt(0).toUpperCase() + fallbackKey.slice(1);
@@ -3653,6 +3796,8 @@ function buildPbsBucketCard(section, {
   const card = document.createElement('article');
   card.className = 'pbs-bucket-card';
   card.dataset.bucket = fallbackKey;
+  card.dataset.pbsSectionKey = sectionKey;
+  card.dataset.pbsAnchorKey = getPbsSectionAnchorKey(sectionKey);
   if (indicator) {
     card.dataset.healthTone = indicator.tone;
   }
@@ -3688,6 +3833,9 @@ function buildPbsBucketCard(section, {
     rows.forEach(([label, amount]) => {
       const row = document.createElement('div');
       row.className = 'pbs-bucket-row';
+      row.dataset.pbsSectionKey = sectionKey;
+      row.dataset.pbsRowLabel = normalizeSectionToken(label);
+      row.dataset.pbsAnchorKey = getPbsRowAnchorKey(sectionKey, label);
 
       const labelEl = document.createElement('span');
       labelEl.className = 'pbs-bucket-row-label';
@@ -3697,6 +3845,11 @@ function buildPbsBucketCard(section, {
       const amountEl = document.createElement('span');
       amountEl.className = 'pbs-bucket-row-amount';
       amountEl.textContent = formatBucketedAmount(amount);
+      setPbsValueDataset(amountEl, {
+        key: `bucket:${sectionKey}:row:${normalizeSectionToken(label)}`,
+        value: amount,
+        currencySymbol
+      });
       row.appendChild(amountEl);
 
       rowList.appendChild(row);
@@ -3715,6 +3868,11 @@ function buildPbsBucketCard(section, {
   const totalValue = document.createElement('span');
   totalValue.className = 'pbs-bucket-total-value';
   totalValue.textContent = formatBucketedAmount(subtotalValue);
+  setPbsValueDataset(totalValue, {
+    key: `bucket:${sectionKey}:subtotal`,
+    value: subtotalValue,
+    currencySymbol
+  });
   total.appendChild(totalValue);
 
   card.appendChild(total);
@@ -4148,10 +4306,17 @@ function buildOutputsBucketedDetailCard(section, {
   defaultTitle,
   defaultColumns,
   highlightNetWorth = false,
-  netWorthContext = null
+  netWorthContext = null,
+  sectionKey = '',
+  currencySymbol = '€'
 } = {}) {
   const card = document.createElement('section');
   card.className = 'pbs-stacked-card';
+  const normalizedSectionKey = normalizeSectionToken(sectionKey || section?.key || section?.title || defaultTitle);
+  if (normalizedSectionKey) {
+    card.dataset.pbsSectionKey = normalizedSectionKey;
+    card.dataset.pbsAnchorKey = getPbsSectionAnchorKey(normalizedSectionKey);
+  }
 
   const title = typeof section.title === 'string' && section.title.trim()
     ? section.title
@@ -4191,6 +4356,11 @@ function buildOutputsBucketedDetailCard(section, {
   rows.forEach((row) => {
     const tr = document.createElement('tr');
     const label = row[0];
+    if (normalizedSectionKey) {
+      tr.dataset.pbsSectionKey = normalizedSectionKey;
+      tr.dataset.pbsRowLabel = normalizeSectionToken(label);
+      tr.dataset.pbsAnchorKey = getPbsRowAnchorKey(normalizedSectionKey, label);
+    }
 
     const labelCell = document.createElement('td');
     labelCell.textContent = label;
@@ -4199,6 +4369,13 @@ function buildOutputsBucketedDetailCard(section, {
     const amountCell = document.createElement('td');
     amountCell.className = 'pbs-amount-col';
     amountCell.textContent = formatBucketedAmount(row[1]);
+    if (normalizedSectionKey) {
+      setPbsValueDataset(amountCell, {
+        key: `detail:${normalizedSectionKey}:row:${normalizeSectionToken(label)}`,
+        value: row[1],
+        currencySymbol
+      });
+    }
     tr.appendChild(amountCell);
 
     const isNetWorthRow = highlightNetWorth && normalizeSectionToken(label) === 'networth';
@@ -4220,6 +4397,13 @@ function buildOutputsBucketedDetailCard(section, {
     const subtotalValueCell = document.createElement('td');
     subtotalValueCell.className = 'pbs-amount-col';
     subtotalValueCell.textContent = formatBucketedAmount(Number(section.subtotalValue));
+    if (normalizedSectionKey) {
+      setPbsValueDataset(subtotalValueCell, {
+        key: `detail:${normalizedSectionKey}:subtotal`,
+        value: Number(section.subtotalValue),
+        currencySymbol
+      });
+    }
     subtotalRow.appendChild(subtotalValueCell);
 
     tbody.appendChild(subtotalRow);
@@ -4256,9 +4440,12 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
   }
 
   const currencySymbol = getOutputsBucketedCurrencySymbol(outputsBucketed);
-  const metricRail = buildPbsHeroMetricRail(outputsBucketed, currencySymbol);
-  if (metricRail) {
-    outputStack.appendChild(metricRail);
+  const tableFrame = document.createElement('section');
+  tableFrame.className = 'pbs-table-frame';
+
+  const balanceHeader = buildPbsBalanceHeader(outputsBucketed, currencySymbol);
+  if (balanceHeader) {
+    tableFrame.appendChild(balanceHeader);
   }
 
   const bucketSurface = document.createElement('section');
@@ -4269,19 +4456,23 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
   assetSections.forEach((section, index) => {
     bucketGrid.appendChild(buildPbsBucketCard(section, {
       fallbackKey: PBS_ASSET_SECTION_KEYS[index],
-      sectionEnhancements
+      sectionEnhancements,
+      currencySymbol
     }));
   });
 
   bucketSurface.appendChild(bucketGrid);
-  outputStack.appendChild(bucketSurface);
+  tableFrame.appendChild(bucketSurface);
+  outputStack.appendChild(tableFrame);
 
   const liabilitiesSection = findOutputsBucketedSectionByKey(sections, 'liabilities')
     || findOutputsBucketedSection(sections, 'liabilities');
   if (liabilitiesSection) {
     outputStack.appendChild(buildOutputsBucketedDetailCard(liabilitiesSection, {
       defaultTitle: 'Liabilities',
-      defaultColumns: ['Liability', `Amount (${currencySymbol})`]
+      defaultColumns: ['Liability', `Amount (${currencySymbol})`],
+      sectionKey: 'liabilities',
+      currencySymbol
     }));
   }
 
@@ -4289,15 +4480,415 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
     || findOutputsBucketedSection(sections, 'summary');
   if (summarySection) {
     const summaryToken = normalizeSectionToken(summarySection?.key || summarySection?.title || 'summary');
-    outputStack.appendChild(buildOutputsBucketedDetailCard(summarySection, {
-      defaultTitle: 'Summary',
-      defaultColumns: ['Metric', `Amount (${currencySymbol})`],
-      highlightNetWorth: true,
-      netWorthContext: sectionEnhancements[summaryToken]?.netWorthContext || null
-    }));
+    const netWorthContext = sectionEnhancements[summaryToken]?.netWorthContext || null;
+    if (netWorthContext) {
+      outputStack.appendChild(buildOutputsBucketedNetWorthContext(netWorthContext));
+    } else if (!balanceHeader) {
+      outputStack.appendChild(buildOutputsBucketedDetailCard(summarySection, {
+        defaultTitle: 'Summary',
+        defaultColumns: ['Metric', `Amount (${currencySymbol})`],
+        highlightNetWorth: true,
+        sectionKey: 'summary',
+        currencySymbol
+      }));
+    }
   }
 
   return outputStack;
+}
+
+function isPbsReducedMotionPreferred() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function collectPbsValueMap(root) {
+  const values = new Map();
+  if (!root) {
+    return values;
+  }
+
+  root.querySelectorAll('[data-pbs-value-key][data-pbs-value]').forEach((element) => {
+    const value = getOptionalFiniteNumber(element.dataset.pbsValue);
+    if (element.dataset.pbsValueKey && value !== null) {
+      values.set(element.dataset.pbsValueKey, value);
+    }
+  });
+  return values;
+}
+
+function formatPbsValueForElement(element, value) {
+  if (element?.dataset?.pbsValueFormat === 'currency') {
+    return formatBucketedCurrency(value, element.dataset.pbsCurrency || '€');
+  }
+
+  return formatBucketedAmount(value);
+}
+
+function animatePbsNumericValues(root, previousValues) {
+  if (!root || isPbsReducedMotionPreferred()) {
+    return;
+  }
+
+  const animatedElements = Array.from(root.querySelectorAll('[data-pbs-value-key][data-pbs-value]'))
+    .map((element) => {
+      const key = element.dataset.pbsValueKey;
+      const start = previousValues.get(key);
+      const end = getOptionalFiniteNumber(element.dataset.pbsValue);
+      if (start === undefined || end === null || start === end) {
+        return null;
+      }
+
+      return { element, start, end };
+    })
+    .filter(Boolean);
+
+  if (animatedElements.length === 0) {
+    return;
+  }
+
+  const duration = 460;
+  const startTime = performance.now();
+  const tick = (now) => {
+    const elapsed = Math.min(1, (now - startTime) / duration);
+    const eased = 1 - Math.pow(1 - elapsed, 3);
+    animatedElements.forEach(({ element, start, end }) => {
+      element.textContent = formatPbsValueForElement(element, start + ((end - start) * eased));
+    });
+
+    if (elapsed < 1) {
+      requestAnimationFrame(tick);
+      return;
+    }
+
+    animatedElements.forEach(({ element, end }) => {
+      element.textContent = formatPbsValueForElement(element, end);
+    });
+  };
+
+  requestAnimationFrame(tick);
+}
+
+function capturePbsAnchorRects(root) {
+  const rects = new Map();
+  if (!root) {
+    return rects;
+  }
+
+  root.querySelectorAll('[data-pbs-anchor-key]').forEach((element) => {
+    const key = element.dataset.pbsAnchorKey;
+    if (!key || rects.has(key)) {
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      rects.set(key, rect);
+    }
+  });
+
+  return rects;
+}
+
+function findFirstPbsRect(rects, keys) {
+  for (const key of keys) {
+    if (rects.has(key)) {
+      return rects.get(key);
+    }
+  }
+
+  return null;
+}
+
+function getPbsEndpointAnchorKeys(endpoint, { preferLiabilityBalance = false } = {}) {
+  const sectionKey = normalizeSectionToken(endpoint?.sectionKey);
+  const rowLabel = endpoint?.rowLabel || endpoint?.label || '';
+  const keys = [];
+
+  if (preferLiabilityBalance) {
+    keys.push('balance:gross-liabilities');
+  }
+
+  if (sectionKey && rowLabel) {
+    keys.push(getPbsRowAnchorKey(sectionKey, rowLabel));
+  }
+
+  if (sectionKey) {
+    keys.push(getPbsSectionAnchorKey(sectionKey));
+  }
+
+  return keys;
+}
+
+function getPbsMovementPlans(movements, { reverse = false } = {}) {
+  return (Array.isArray(movements) ? movements : []).flatMap((movement) => {
+    const from = movement?.from;
+    const destinations = Array.isArray(movement?.to) ? movement.to : [];
+    if (!from || destinations.length === 0) {
+      return [];
+    }
+
+    return destinations.map((destination) => {
+      const action = typeof destination?.action === 'string' ? destination.action.toLowerCase() : '';
+      const destinationSection = normalizeSectionToken(destination?.sectionKey);
+      const usesLiabilityMetric = destinationSection === 'liabilities' && action === 'reduce';
+      const amount = getOptionalFiniteNumber(destination?.amount)
+        ?? getOptionalFiniteNumber(movement?.amount)
+        ?? getOptionalFiniteNumber(from?.amount)
+        ?? 0;
+
+      if (reverse) {
+        return {
+          amount,
+          action,
+          endKeys: getPbsEndpointAnchorKeys(from),
+          pulseKeys: getPbsEndpointAnchorKeys(from),
+          startKeys: getPbsEndpointAnchorKeys(destination, { preferLiabilityBalance: usesLiabilityMetric })
+        };
+      }
+
+      return {
+        amount,
+        action,
+        endKeys: getPbsEndpointAnchorKeys(destination, { preferLiabilityBalance: usesLiabilityMetric }),
+        pulseKeys: getPbsEndpointAnchorKeys(destination, { preferLiabilityBalance: usesLiabilityMetric }),
+        startKeys: getPbsEndpointAnchorKeys(from)
+      };
+    });
+  });
+}
+
+function getPbsTransitionMovementConfig(previousCase, nextCase) {
+  if (!previousCase || !nextCase) {
+    return { movements: [], reverse: false };
+  }
+
+  if (previousCase.id === PBS_CURRENT_SCENARIO_ID && nextCase.id !== PBS_CURRENT_SCENARIO_ID) {
+    return { movements: nextCase.movements, reverse: false };
+  }
+
+  if (previousCase.id !== PBS_CURRENT_SCENARIO_ID && nextCase.id === PBS_CURRENT_SCENARIO_ID) {
+    return { movements: previousCase.movements, reverse: true };
+  }
+
+  return { movements: [], reverse: false };
+}
+
+function escapePbsSelectorValue(value) {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value);
+  }
+
+  return String(value).replace(/["\\]/g, '\\$&');
+}
+
+function pulsePbsAnchors(root, keys) {
+  if (!root) {
+    return;
+  }
+
+  keys.forEach((key) => {
+    const target = root.querySelector(`[data-pbs-anchor-key="${escapePbsSelectorValue(key)}"]`);
+    if (!target) {
+      return;
+    }
+
+    target.classList.add('pbs-flow-pulse');
+    window.setTimeout(() => target.classList.remove('pbs-flow-pulse'), 820);
+  });
+}
+
+function markPbsScenarioContentUpdated(content) {
+  if (!content) {
+    return;
+  }
+
+  content.classList.add('pbs-scenario-content-highlight');
+  window.setTimeout(() => content.classList.remove('pbs-scenario-content-highlight'), 700);
+}
+
+function animatePbsFlowChips({
+  previousRects,
+  nextRects,
+  previousCase,
+  nextCase,
+  nextContent,
+  currencySymbol
+}) {
+  const { movements, reverse } = getPbsTransitionMovementConfig(previousCase, nextCase);
+  const plans = getPbsMovementPlans(movements, { reverse });
+  if (plans.length === 0 || isPbsReducedMotionPreferred()) {
+    markPbsScenarioContentUpdated(nextContent);
+    return;
+  }
+
+  let animatedCount = 0;
+  plans.forEach((plan) => {
+    const startRect = findFirstPbsRect(previousRects, plan.startKeys);
+    const endRect = findFirstPbsRect(nextRects, plan.endKeys);
+    if (!startRect || !endRect) {
+      return;
+    }
+
+    animatedCount += 1;
+    const chip = document.createElement('span');
+    chip.className = 'pbs-flow-chip';
+    if (plan.action) {
+      chip.dataset.action = plan.action;
+    }
+    chip.textContent = formatBucketedCurrency(plan.amount, currencySymbol);
+
+    const startX = startRect.left + (startRect.width / 2);
+    const startY = startRect.top + (startRect.height / 2);
+    const endX = endRect.left + (endRect.width / 2);
+    const endY = endRect.top + (endRect.height / 2);
+
+    chip.style.transform = `translate3d(${startX}px, ${startY}px, 0) translate(-50%, -50%) scale(0.96)`;
+    document.body.appendChild(chip);
+
+    requestAnimationFrame(() => {
+      chip.classList.add('is-moving');
+      chip.style.transform = `translate3d(${endX}px, ${endY}px, 0) translate(-50%, -50%) scale(1)`;
+    });
+
+    window.setTimeout(() => {
+      chip.remove();
+    }, 820);
+
+    pulsePbsAnchors(nextContent, plan.pulseKeys);
+  });
+
+  if (animatedCount === 0) {
+    markPbsScenarioContentUpdated(nextContent);
+  }
+}
+
+function buildPbsScenarioSwitcher(cases, onSelect) {
+  const wrap = document.createElement('section');
+  wrap.className = 'pbs-scenario-switcher';
+  wrap.setAttribute('aria-label', 'Personal balance sheet case');
+
+  const label = document.createElement('span');
+  label.className = 'pbs-scenario-switcher-label';
+  label.textContent = 'Case';
+  wrap.appendChild(label);
+
+  const options = document.createElement('div');
+  options.className = 'pbs-scenario-options';
+  options.setAttribute('role', 'group');
+  options.setAttribute('aria-label', 'Choose balance sheet case');
+
+  const buttons = cases.map((pbsCase, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pbs-scenario-option';
+    button.textContent = pbsCase.title;
+    button.dataset.scenarioIndex = String(index);
+    button.setAttribute('aria-pressed', index === 0 ? 'true' : 'false');
+    if (index === 0) {
+      button.classList.add('is-active');
+    }
+
+    button.addEventListener('click', () => onSelect(index));
+    options.appendChild(button);
+    return button;
+  });
+
+  wrap.appendChild(options);
+
+  return {
+    element: wrap,
+    setActive(index) {
+      buttons.forEach((button, buttonIndex) => {
+        const isActive = buttonIndex === index;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    }
+  };
+}
+
+function buildPbsScenarioMatrixContent(module, outputsBucketed, {
+  summaryHtml = ''
+} = {}) {
+  const cases = getPbsScenarioCases(outputsBucketed, summaryHtml)
+    .filter((pbsCase, index) => (
+      index === 0
+      || hasPersonalBalanceSheetBucketShape(getOutputsBucketedForPbsCase(outputsBucketed, pbsCase))
+    ));
+
+  if (!hasPersonalBalanceSheetBucketShape(getOutputsBucketedForPbsCase(outputsBucketed, cases[0]))) {
+    return null;
+  }
+
+  const shell = document.createElement('div');
+  shell.className = 'pbs-scenario-shell';
+
+  const contentHost = document.createElement('div');
+  contentHost.className = 'pbs-scenario-content-host';
+
+  let selectedIndex = 0;
+  let switcher = null;
+
+  const renderCase = (nextIndex, { animate = false } = {}) => {
+    const previousIndex = selectedIndex;
+    const previousCase = cases[previousIndex];
+    const nextCase = cases[nextIndex];
+    const previousContent = contentHost.firstElementChild;
+    const previousValues = collectPbsValueMap(previousContent);
+    const previousRects = capturePbsAnchorRects(previousContent);
+    const selectedOutputsBucketed = getOutputsBucketedForPbsCase(outputsBucketed, nextCase);
+    const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, selectedOutputsBucketed);
+    const nextContent = buildOutputsBucketedMatrixContent(selectedOutputsBucketed, sectionEnhancements, {
+      summaryHtml: nextCase.summaryHtml
+    });
+
+    if (!nextContent) {
+      return;
+    }
+
+    nextContent.classList.add('pbs-scenario-content');
+    nextContent.dataset.scenarioId = nextCase.id;
+    nextContent.classList.toggle('is-entering', animate);
+    contentHost.replaceChildren(nextContent);
+    selectedIndex = nextIndex;
+    switcher?.setActive(nextIndex);
+
+    if (!animate) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      nextContent.classList.remove('is-entering');
+      const nextRects = capturePbsAnchorRects(nextContent);
+      animatePbsNumericValues(nextContent, previousValues);
+      animatePbsFlowChips({
+        previousRects,
+        nextRects,
+        previousCase,
+        nextCase,
+        nextContent,
+        currencySymbol: getOutputsBucketedCurrencySymbol(selectedOutputsBucketed)
+      });
+    });
+  };
+
+  if (cases.length > 1) {
+    switcher = buildPbsScenarioSwitcher(cases, (index) => {
+      if (index === selectedIndex) {
+        return;
+      }
+
+      closeActivePbsInfoPopover();
+      renderCase(index, { animate: true });
+    });
+    shell.appendChild(switcher.element);
+  }
+
+  renderCase(0);
+  shell.appendChild(contentHost);
+  return shell;
 }
 
 function buildOutputsBucketedCard(module, outputsBucketed, {
@@ -4324,9 +4915,11 @@ function buildOutputsBucketedCard(module, outputsBucketed, {
   }
 
   const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, outputsBucketed);
-  const matrixContent = buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements, {
-    summaryHtml: isPbsModule ? summaryHtml : ''
-  });
+  const matrixContent = isPbsModule
+    ? buildPbsScenarioMatrixContent(module, outputsBucketed, { summaryHtml })
+    : buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements, {
+      summaryHtml: ''
+    });
   if (matrixContent) {
     card.appendChild(matrixContent);
     return card;

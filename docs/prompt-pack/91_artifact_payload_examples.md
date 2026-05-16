@@ -44,9 +44,9 @@ Representative payloads for testing the upgraded module renderer through the exi
           "key": "legacy",
           "title": "Legacy",
           "columns": ["Asset", "Amount (€)"],
-          "rows": [["Business value", 110000]],
+          "rows": [["Buy-to-let property", 340000]],
           "subtotalLabel": "Legacy assets",
-          "subtotalValue": 110000
+          "subtotalValue": 340000
         },
         {
           "key": "liabilities",
@@ -60,9 +60,76 @@ Representative payloads for testing the upgraded module renderer through the exi
           "key": "summary",
           "title": "Summary",
           "columns": ["Metric", "Amount (€)"],
-          "rows": [["Gross assets", 1000000], ["Total liabilities", 220000], ["Net worth", 780000]],
+          "rows": [["Gross assets", 1230000], ["Total liabilities", 220000], ["Net worth", 1010000]],
           "subtotalLabel": "Net worth",
-          "subtotalValue": 780000
+          "subtotalValue": 1010000
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "sell-rental-property",
+          "title": "Sell Rental Property",
+          "summaryHtml": "<p>This case shows the buy-to-let property sold, the mortgage cleared, and surplus proceeds moved into liquid reserves.</p>",
+          "sections": [
+            {
+              "key": "lifestyle",
+              "title": "Lifestyle",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Family home", 525000]],
+              "subtotalLabel": "Lifestyle assets",
+              "subtotalValue": 525000
+            },
+            {
+              "key": "liquidity",
+              "title": "Liquidity",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Cash", 12000], ["Savings", 18000], ["Cash from sale", 120000]],
+              "subtotalLabel": "Liquid reserves",
+              "subtotalValue": 150000
+            },
+            {
+              "key": "longevity",
+              "title": "Longevity",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["PRSA", 95000], ["Employer pension", 240000]],
+              "subtotalLabel": "Longevity assets",
+              "subtotalValue": 335000
+            },
+            {
+              "key": "legacy",
+              "title": "Legacy",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [],
+              "subtotalLabel": "Legacy assets",
+              "subtotalValue": 0
+            },
+            {
+              "key": "liabilities",
+              "title": "Liabilities",
+              "columns": ["Liability", "Amount (€)"],
+              "rows": [],
+              "subtotalLabel": "Total liabilities",
+              "subtotalValue": 0
+            },
+            {
+              "key": "summary",
+              "title": "Summary",
+              "columns": ["Metric", "Amount (€)"],
+              "rows": [["Gross assets", 1010000], ["Total liabilities", 0], ["Net worth", 1010000]],
+              "subtotalLabel": "Net worth",
+              "subtotalValue": 1010000
+            }
+          ],
+          "movements": [
+            {
+              "label": "Sell rental property",
+              "from": { "sectionKey": "legacy", "rowLabel": "Buy-to-let property", "amount": 340000 },
+              "to": [
+                { "sectionKey": "liabilities", "rowLabel": "Mortgage", "amount": 220000, "action": "reduce" },
+                { "sectionKey": "liquidity", "rowLabel": "Cash from sale", "amount": 120000, "action": "add" }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -81,7 +148,7 @@ Representative payloads for testing the upgraded module renderer through the exi
           { "label": "Liquid buffer", "value": "€30,000", "detail": "About 8.6 months of spending.", "tone": "positive" }
         ],
         "datasets": [
-          { "label": "Assets", "data": [525000, 30000, 335000, 110000] }
+          { "label": "Assets", "data": [525000, 30000, 335000, 340000] }
         ]
       }
     ]
