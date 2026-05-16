@@ -350,7 +350,13 @@ This style should still work:
       "employerPct": 0.06,
       "growthRate": 0.05,
       "incomeMode": "target",
-      "targetIncomeToday": 42000
+      "targetIncomeToday": 42000,
+      "rentalIncomeToday": 18000,
+      "baseScenarioId": "with-rent",
+      "rentalIncomeScenarios": [
+        { "id": "with-rent", "title": "With rental income", "rentalIncomeToday": 18000 },
+        { "id": "rent-lost", "title": "Rental income lost", "rentalIncomeToday": 0 }
+      ]
     }
   }
 }
@@ -375,6 +381,9 @@ This style should still work:
 - `incomeMode`
 - `affordableEndAges`
 - `minDrawdownMode`
+- `rentalIncomeToday`
+- `baseScenarioId`
+- `rentalIncomeScenarios`
 
 Only emit optional keys when Gerry gives them, when the playbook requires them, or when a labeled placeholder is needed.
 
@@ -410,6 +419,25 @@ For affordable mode:
 - set `affordableEndAges` if Gerry gives depletion ages
 - if Gerry does not give depletion ages, use `[85, 90, 95, 100]`
 - keep `minDrawdownMode` false unless Gerry explicitly asks for minimum drawdowns
+
+### Rental Income
+Use rental income fields when Gerry says things like:
+- rental income of EUR X today
+- rental income coming in at retirement
+- with and without rental income
+- rent lost scenario
+
+Rules:
+- Treat `rentalIncomeToday` as gross annual rent in today's money.
+- Do not net it down for tax, costs, vacancy, or maintenance.
+- The runtime inflation-indexes rent from today to retirement and through the retirement horizon.
+- In target mode, rental income reduces the pension-funded withdrawal needed.
+- In affordable mode, the runtime goal-seeks pension-funded income and then adds gross rental income to show total affordable income.
+- For a simple rent assumption, emit only `rentalIncomeToday`.
+- For with/without or rent-lost comparisons, emit `rentalIncomeScenarios` and `baseScenarioId`.
+- Each `rentalIncomeScenarios` item must include `id`, `title`, and `rentalIncomeToday`.
+- If Gerry names the base case, use that case's `id` as `baseScenarioId`.
+- If Gerry does not name the base case, use the first mentioned case. For generic "with and without rent", default the base to the with-rent case.
 
 ### Best-Guess Defaults
 - If Gerry does not specify target mode or affordable mode:

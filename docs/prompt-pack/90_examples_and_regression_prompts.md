@@ -82,6 +82,17 @@ Checks:
 - placeholder target policy is clearly flagged in NOTES
 - still returns valid JSON
 
+### PEN-4
+Prompt:
+`Run the pension playbook for Sarah. Age 42. Pension 180000. Salary 85000. Personal 8 percent. Employer 6 percent. Retire at 67. Growth 5 percent. Target 42000 in today's money. Rental income 18000 gross a year today. Show with and without rental income, with rent as the base case.`
+
+Checks:
+- uses `generated.pensionInputs`
+- includes `rentalIncomeToday`, `baseScenarioId`, and two `rentalIncomeScenarios`
+- uses gross annual rent in today's money
+- does not emit fake outputs or charts
+- keeps pension module JS-backed
+
 ## Mortgage Regression Prompts
 
 ### MORT-1

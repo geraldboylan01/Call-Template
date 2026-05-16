@@ -91,7 +91,12 @@ Playbooks should only emit the subset they are responsible for.
   - `incomeMode`
   - `affordableEndAges`
   - `minDrawdownMode`
+  - `rentalIncomeToday`
+  - `baseScenarioId`
+  - `rentalIncomeScenarios`
 - The runtime supplies defaults for omitted `inflationRate`, `wageGrowthRate`, `horizonEndAge`, `currentYear`, and `minDrawdownMode`.
+- `rentalIncomeToday` is gross annual rent in today's money and defaults to `0`.
+- `rentalIncomeScenarios` enables pension case switching. Each item should include `id`, `title`, and `rentalIncomeToday`; `baseScenarioId` selects the first visible case.
 
 ## Mortgage Support
 - Use `generated.mortgageInputs`

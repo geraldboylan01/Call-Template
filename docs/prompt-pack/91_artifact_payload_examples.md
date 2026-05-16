@@ -175,7 +175,13 @@ Representative payloads for testing the upgraded module renderer through the exi
       "wageGrowthRate": 0.025,
       "incomeMode": "target",
       "targetIncomeToday": 42000,
-      "currentYear": 2026
+      "currentYear": 2026,
+      "rentalIncomeToday": 18000,
+      "baseScenarioId": "with-rent",
+      "rentalIncomeScenarios": [
+        { "id": "with-rent", "title": "With rental income", "rentalIncomeToday": 18000 },
+        { "id": "rent-lost", "title": "Rental income lost", "rentalIncomeToday": 0 }
+      ]
     }
   }
 }

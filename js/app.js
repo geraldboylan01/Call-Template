@@ -42,9 +42,15 @@ import {
   getOverviewCardElement,
   ensureLayerVisibleForMeasure
 } from './render.js';
-import { normalizePensionInputs, computePensionProjection } from './pension_math.js';
+import {
+  normalizePensionInputs,
+  computePensionProjection,
+  getDefaultPensionScenarioId,
+  getPensionScenarioCases
+} from './pension_math.js';
 import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_math.js';
 import { runMortgageMathTests } from './tests_mortgage_math.js';
+import { runPensionMathTests } from './tests_pension_math.js';
 import {
   buildPublishedCapabilityToken,
   decryptPublishedSessionV2ForAdvisor,
@@ -177,6 +183,7 @@ const appState = {
   undoAction: null,
   lastDeletedBatch: null,
   pensionShowMaxByModuleId: new Map(),
+  pensionScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
@@ -1417,6 +1424,37 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'pension-rental-income-scenarios-demo',
+    label: 'Pension Rental Income Scenarios Demo',
+    payload: {
+      title: 'Pension Projection (Rental Income Scenarios Demo)',
+      generated: {
+        summaryHtml: '<p>This pension projection compares the retirement path with gross rental income continuing and with that rental income removed.</p>',
+        pensionInputs: {
+          currentAge: 42,
+          retirementAge: 67,
+          currentSalary: 85000,
+          currentPot: 180000,
+          personalPct: 0.08,
+          employerPct: 0.06,
+          growthRate: 0.05,
+          inflationRate: 0.02,
+          wageGrowthRate: 0.025,
+          horizonEndAge: 92,
+          incomeMode: 'target',
+          targetIncomeToday: 42000,
+          currentYear: 2026,
+          rentalIncomeToday: 18000,
+          baseScenarioId: 'with-rent',
+          rentalIncomeScenarios: [
+            { id: 'with-rent', title: 'With rental income', rentalIncomeToday: 18000 },
+            { id: 'rent-lost', title: 'Rental income lost', rentalIncomeToday: 0 }
+          ]
+        }
+      }
+    }
+  },
+  {
     id: 'mortgage-inline-assumptions-demo',
     label: 'Mortgage Inline Assumptions Demo',
     payload: {
@@ -2312,6 +2350,9 @@ function mapPensionNormalizationErrorToField(message) {
   if (message.includes('.targetIncomeToday')) {
     return 'targetIncomeToday';
   }
+  if (message.includes('.rentalIncomeToday')) {
+    return 'rentalIncomeToday';
+  }
   if (message.includes('.horizonEndAge')) {
     return 'horizonEndAge';
   }
@@ -2392,6 +2433,8 @@ function parsePensionFieldInput(field, rawValue) {
       return parseRateInput(rawValue, { label: 'Inflation' });
     case 'targetIncomeToday':
       return parseNonNegativeNumberInput(rawValue, { label: 'Target retirement income' });
+    case 'rentalIncomeToday':
+      return parseNonNegativeNumberInput(rawValue, { label: 'Gross rental income' });
     default:
       return { error: 'Unsupported pension assumption field.' };
   }
@@ -2489,6 +2532,26 @@ function commitPensionAssumptionField({
     };
   }
   candidate[field] = parsed.value;
+
+  if (field === 'rentalIncomeToday' && Array.isArray(candidate.rentalIncomeScenarios)) {
+    const selectedScenarioId = getPensionScenarioForModule(module.id);
+    let updatedSelectedScenario = false;
+    candidate.rentalIncomeScenarios = candidate.rentalIncomeScenarios.map((scenario) => {
+      if (scenario?.id !== selectedScenarioId) {
+        return scenario;
+      }
+
+      updatedSelectedScenario = true;
+      return {
+        ...scenario,
+        rentalIncomeToday: parsed.value
+      };
+    });
+
+    if (updatedSelectedScenario && candidate.baseScenarioId !== selectedScenarioId) {
+      candidate.rentalIncomeToday = baseInputs.rentalIncomeToday ?? 0;
+    }
+  }
 
   let normalizedInputs;
   try {
@@ -5417,6 +5480,7 @@ async function replaceSession(nextSession, options = {}) {
   appState.overviewSelection = [];
   ui.swipeStage.classList.remove('is-compare');
   appState.pensionShowMaxByModuleId = new Map();
+  appState.pensionScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -6483,6 +6547,85 @@ async function hydrateChartsWhenStable({ reason = 'unknown' } = {}) {
   return false;
 }
 
+function getPensionScenarioCasesForModule(module) {
+  if (!module?.generated?.pensionInputs) {
+    return [];
+  }
+
+  try {
+    return getPensionScenarioCases(module.generated.pensionInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getDefaultPensionScenarioForModule(module) {
+  if (!module?.generated?.pensionInputs) {
+    return '';
+  }
+
+  try {
+    return getDefaultPensionScenarioId(module.generated.pensionInputs);
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getPensionScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getPensionScenarioCasesForModule(module);
+  if (cases.length === 0) {
+    appState.pensionScenarioByModuleId.delete(moduleId);
+    return '';
+  }
+
+  const selectedId = appState.pensionScenarioByModuleId.get(moduleId);
+  if (cases.some((pensionCase) => pensionCase.id === selectedId)) {
+    return selectedId;
+  }
+
+  const defaultId = getDefaultPensionScenarioForModule(module) || cases[0].id;
+  appState.pensionScenarioByModuleId.delete(moduleId);
+  return defaultId;
+}
+
+async function setPensionScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getPensionScenarioCasesForModule(module);
+  if (cases.length <= 1) {
+    appState.pensionScenarioByModuleId.delete(moduleId);
+    return;
+  }
+
+  const nextCase = cases.find((pensionCase) => pensionCase.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  const currentId = getPensionScenarioForModule(moduleId);
+  if (currentId === nextCase.id) {
+    return;
+  }
+
+  appState.pensionScenarioByModuleId.set(moduleId, nextCase.id);
+
+  if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
+    await renderFocused({ useSwipe: false, revealMode: false });
+  } else if (appState.mode === 'overview') {
+    refreshOverview({ enableSortable: !runtimeConfig.readOnly });
+  } else if (appState.mode === 'compare') {
+    await renderCompareView();
+  }
+}
+
 function getPensionShowMaxForModule(moduleId) {
   if (typeof moduleId !== 'string' || !moduleId) {
     return false;
@@ -6523,12 +6666,8 @@ function setPensionShowMaxForModule(moduleId, value) {
     const isAffordableMode = pensionInputs?.incomeMode === 'affordable' && pensionInputs?.minDrawdownMode !== true;
 
     if (isAffordableMode) {
-      patchFocusedModuleGeneratedContent(moduleId, {
-        patchSummary: false,
-        patchAssumptions: false,
-        patchOutputs: true,
-        updateCharts: false
-      });
+      void renderFocused({ useSwipe: false, revealMode: false });
+      return;
     }
 
     if (typeof window.__setPensionShowMaxForModule === 'function') {
@@ -8408,13 +8547,18 @@ export async function initApp(options = {}) {
       if (warnings.length > 0) {
         console.warn('[CallCanvas][applyModuleUpdate] auto-repairs applied', warnings);
       }
-    return applyModuleUpdateInternal(repairedPayload, {});
-  };
-  window.__setPensionShowMax = (moduleId, value) => {
-    setPensionShowMaxForModule(moduleId, value);
-  };
-  window.__getPensionShowMaxForModule = (moduleId) => getPensionShowMaxForModule(moduleId);
-  window.__runMortgageMathTests = () => runMortgageMathTests();
+      return applyModuleUpdateInternal(repairedPayload, {});
+    };
+    window.__setPensionShowMax = (moduleId, value) => {
+      setPensionShowMaxForModule(moduleId, value);
+    };
+    window.__getPensionShowMaxForModule = (moduleId) => getPensionShowMaxForModule(moduleId);
+    window.__setPensionScenario = (moduleId, scenarioId) => {
+      void setPensionScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getPensionScenarioForModule = (moduleId) => getPensionScenarioForModule(moduleId);
+    window.__runMortgageMathTests = () => runMortgageMathTests();
+    window.__runPensionMathTests = () => runPensionMathTests();
 
     if (appState.mode === 'focused') {
       await renderFocused({ useSwipe: false, revealMode: true });

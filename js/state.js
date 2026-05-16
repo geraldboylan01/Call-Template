@@ -644,12 +644,17 @@ function normalizePensionInputs(pensionInputs) {
     'inflationRate',
     'wageGrowthRate',
     'horizonEndAge',
-    'currentYear'
+    'currentYear',
+    'rentalIncomeToday'
   ].forEach((key) => {
     if (typeof pensionInputs[key] === 'number' && Number.isFinite(pensionInputs[key])) {
       normalized[key] = pensionInputs[key];
     }
   });
+
+  if (typeof pensionInputs.baseScenarioId === 'string' && pensionInputs.baseScenarioId.trim()) {
+    normalized.baseScenarioId = pensionInputs.baseScenarioId.trim();
+  }
 
   if (typeof pensionInputs.minDrawdownMode === 'boolean') {
     normalized.minDrawdownMode = pensionInputs.minDrawdownMode;
@@ -670,6 +675,31 @@ function normalizePensionInputs(pensionInputs) {
 
     if (dedupedSorted.length > 0) {
       normalized.affordableEndAges = dedupedSorted;
+    }
+  }
+
+  if (Array.isArray(pensionInputs.rentalIncomeScenarios)) {
+    const scenarios = pensionInputs.rentalIncomeScenarios
+      .filter((scenario) => scenario && typeof scenario === 'object' && !Array.isArray(scenario))
+      .map((scenario, index) => {
+        if (typeof scenario.rentalIncomeToday !== 'number' || !Number.isFinite(scenario.rentalIncomeToday)) {
+          return null;
+        }
+
+        return {
+          id: typeof scenario.id === 'string' && scenario.id.trim()
+            ? scenario.id.trim()
+            : `rental-income-${index + 1}`,
+          title: typeof scenario.title === 'string' && scenario.title.trim()
+            ? scenario.title.trim()
+            : `Rental income case ${index + 1}`,
+          rentalIncomeToday: scenario.rentalIncomeToday
+        };
+      })
+      .filter(Boolean);
+
+    if (scenarios.length > 0) {
+      normalized.rentalIncomeScenarios = scenarios;
     }
   }
 

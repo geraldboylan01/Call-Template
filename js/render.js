@@ -2,6 +2,11 @@ import { computeGridPosition, applyOverviewLayout } from './layout.js';
 import { renderSvgDiagram, serializeSvg } from './education_svg.js';
 import { getReportChartBlocks, isReportModule } from './report.js';
 import { HFCS_NET_WORTH_DATA } from './data/hfcs2023.js';
+import {
+  computePensionProjection,
+  getDefaultPensionScenarioId,
+  getPensionScenarioCases
+} from './pension_math.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -2020,6 +2025,78 @@ function getPensionShowMaxForModule(moduleId) {
   return Boolean(window.__getPensionShowMaxForModule(moduleId));
 }
 
+function getPensionScenarioCasesForModule(module) {
+  if (!isPensionModule(module)) {
+    return [];
+  }
+
+  try {
+    return getPensionScenarioCases(module.generated.pensionInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getDefaultPensionScenarioForModule(module) {
+  if (!isPensionModule(module)) {
+    return '';
+  }
+
+  try {
+    return getDefaultPensionScenarioId(module.generated.pensionInputs);
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getPensionScenarioForModule(module) {
+  const cases = getPensionScenarioCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const selectedId = typeof window.__getPensionScenarioForModule === 'function'
+    ? window.__getPensionScenarioForModule(module.id)
+    : '';
+
+  if (cases.some((pensionCase) => pensionCase.id === selectedId)) {
+    return selectedId;
+  }
+
+  return getDefaultPensionScenarioForModule(module) || cases[0].id;
+}
+
+function getPensionDisplayModule(module) {
+  if (!isPensionModule(module)) {
+    return module;
+  }
+
+  try {
+    const scenarioId = getPensionScenarioForModule(module);
+    const projection = computePensionProjection(module.generated.pensionInputs, { scenarioId });
+    const existingCharts = Array.isArray(module.generated?.charts) ? module.generated.charts : [];
+
+    return {
+      ...module,
+      generated: {
+        ...(module.generated || {}),
+        pensionInputs: {
+          ...(module.generated?.pensionInputs || {}),
+          rentalIncomeToday: projection.debug.rentalIncomeToday
+        },
+        assumptions: projection.assumptionsTable,
+        outputs: projection.outputsTable,
+        charts: projection.charts.map((chart, index) => ({
+          ...chart,
+          id: chart.id || existingCharts[index]?.id || ''
+        }))
+      }
+    };
+  } catch (_error) {
+    return module;
+  }
+}
+
 function filterOutputsRowsForPensionToggle(module, tableData) {
   if (!isAffordablePensionMode(module)) {
     return tableData;
@@ -2034,8 +2111,10 @@ function filterOutputsRowsForPensionToggle(module, tableData) {
   const showMax = getPensionShowMaxForModule(module?.id);
   const filteredRows = rows.filter((row) => {
     const label = String(Array.isArray(row) ? row[0] ?? '' : '').trim().toLowerCase();
-    const isCurrentAffordable = label.startsWith('affordable income (current');
-    const isMaxAffordable = label.startsWith('affordable income (max');
+    const isCurrentAffordable = label.startsWith('affordable income (current')
+      || label.startsWith('pension-funded affordable income (current');
+    const isMaxAffordable = label.startsWith('affordable income (max')
+      || label.startsWith('pension-funded affordable income (max');
 
     if (!isCurrentAffordable && !isMaxAffordable) {
       return true;
@@ -2398,7 +2477,7 @@ export function getChartHydrationModule(module) {
   }
 
   if (!isEducationModule(module)) {
-    return module;
+    return getPensionDisplayModule(module);
   }
 
   const charts = getEducationChartVisuals(module);
@@ -2780,6 +2859,12 @@ function createEditableAssumptionCell({
         field: 'targetIncomeToday',
         value: draftValues.targetIncomeToday ?? formatNumberForInput(pensionInputs.targetIncomeToday, 2),
         placeholder: '42000',
+        inputMode: 'decimal'
+      },
+      grossrentalincometoday: {
+        field: 'rentalIncomeToday',
+        value: draftValues.rentalIncomeToday ?? formatNumberForInput(pensionInputs.rentalIncomeToday, 2),
+        placeholder: '18000',
         inputMode: 'decimal'
       }
     };
@@ -4962,6 +5047,49 @@ function buildSummaryCard(summaryHtml) {
   return card;
 }
 
+function buildPensionScenarioSwitcher(module, cases) {
+  if (!isPensionModule(module) || !Array.isArray(cases) || cases.length <= 1) {
+    return null;
+  }
+
+  const selectedId = getPensionScenarioForModule(module);
+  const wrap = document.createElement('section');
+  wrap.className = 'pension-scenario-switcher';
+  wrap.setAttribute('aria-label', 'Pension rental income case');
+
+  const label = document.createElement('span');
+  label.className = 'pension-scenario-switcher-label';
+  label.textContent = 'Case';
+  wrap.appendChild(label);
+
+  const options = document.createElement('div');
+  options.className = 'pension-scenario-options';
+  options.setAttribute('role', 'group');
+  options.setAttribute('aria-label', 'Choose pension rental income case');
+
+  cases.forEach((pensionCase) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pension-scenario-option';
+    button.textContent = pensionCase.title;
+    button.dataset.pensionScenarioId = pensionCase.id;
+    const isActive = pensionCase.id === selectedId;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+
+    button.addEventListener('click', () => {
+      if (typeof window.__setPensionScenario === 'function') {
+        window.__setPensionScenario(module.id, pensionCase.id);
+      }
+    });
+
+    options.appendChild(button);
+  });
+
+  wrap.appendChild(options);
+  return wrap;
+}
+
 function buildChartsCard(module, charts, { showPensionToggle = true, readOnly = false } = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-charts-card';
@@ -6533,7 +6661,8 @@ function buildGeneratedSection(module, {
   onPatchInputs = null,
   assumptionsEditorStatus = null
 } = {}) {
-  const generated = module.generated || {
+  const displayModule = getPensionDisplayModule(module);
+  const generated = displayModule.generated || {
     summaryHtml: '',
     assumptions: { columns: [], rows: [] },
     outputs: { columns: [], rows: [] },
@@ -6545,12 +6674,12 @@ function buildGeneratedSection(module, {
     charts: []
   };
 
-  if (isReportModule(module)) {
-    return renderReportModule(module);
+  if (isReportModule(displayModule)) {
+    return renderReportModule(displayModule);
   }
 
-  if (isEducationModule(module)) {
-    return renderEducationModule(module);
+  if (isEducationModule(displayModule)) {
+    return renderEducationModule(displayModule);
   }
 
   const section = document.createElement('section');
@@ -6564,31 +6693,39 @@ function buildGeneratedSection(module, {
   grid.className = 'generated-grid';
 
   const hasBucketedOutputs = isOutputsBucketedPresent(generated.outputsBucketed);
-  const isPbsBucketedModule = hasBucketedOutputs && isPersonalBalanceSheetModule(module);
+  const isPbsBucketedModule = hasBucketedOutputs && isPersonalBalanceSheetModule(displayModule);
 
   if (isPbsBucketedModule) {
-    grid.appendChild(buildOutputsBucketedCard(module, generated.outputsBucketed, {
+    grid.appendChild(buildOutputsBucketedCard(displayModule, generated.outputsBucketed, {
       summaryHtml: generated.summaryHtml || ''
     }));
   } else {
     grid.appendChild(buildSummaryCard(generated.summaryHtml));
   }
 
-  grid.appendChild(buildAssumptionsTableCard(module, {
+  const pensionScenarioSwitcher = buildPensionScenarioSwitcher(
+    displayModule,
+    getPensionScenarioCasesForModule(displayModule)
+  );
+  if (pensionScenarioSwitcher) {
+    grid.appendChild(pensionScenarioSwitcher);
+  }
+
+  grid.appendChild(buildAssumptionsTableCard(displayModule, {
     onPatchInputs,
     status: assumptionsEditorStatus,
     readOnly
   }));
 
   if (!isPbsBucketedModule && hasBucketedOutputs) {
-    grid.appendChild(buildOutputsBucketedCard(module, generated.outputsBucketed, {
+    grid.appendChild(buildOutputsBucketedCard(displayModule, generated.outputsBucketed, {
       summaryHtml: generated.summaryHtml || ''
     }));
   } else if (!isPbsBucketedModule) {
-    const outputsForDisplay = filterOutputsRowsForPensionToggle(module, generated.outputs);
+    const outputsForDisplay = filterOutputsRowsForPensionToggle(displayModule, generated.outputs);
     grid.appendChild(buildTableCard('Outputs', outputsForDisplay, {
       dataGeneratedCard: 'outputs',
-      module,
+      module: displayModule,
       tableKind: 'outputs'
     }));
   }
@@ -6600,7 +6737,7 @@ function buildGeneratedSection(module, {
       grid.appendChild(buildTableCard(title, table));
     });
   }
-  grid.appendChild(buildChartsCard(module, generated.charts, { showPensionToggle, readOnly }));
+  grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
 
   section.appendChild(heading);
   section.appendChild(grid);
