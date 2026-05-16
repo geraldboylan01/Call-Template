@@ -227,6 +227,12 @@ Use `pensions[]` when Gerry describes a couple or two pension pots working towar
       "targetIncomeToday": 70000,
       "targetStartYear": 2052,
       "horizonEndAge": 95,
+      "currentAge": 42,
+      "retirementAge": 67,
+      "currentSalary": 155000,
+      "currentPot": 300000,
+      "personalPct": 0.07548,
+      "employerPct": 0.05548,
       "pensions": [
         { "id": "john", "title": "John", "currentAge": 42, "retirementAge": 67, "currentSalary": 85000, "currentPot": 180000, "personalPct": 0.08, "employerPct": 0.06 },
         { "id": "mary", "title": "Mary", "currentAge": 40, "retirementAge": 66, "currentSalary": 70000, "currentPot": 120000, "personalPct": 0.07, "employerPct": 0.05 }
@@ -482,6 +488,7 @@ Use `pensions[]` when Gerry says:
 
 Rules:
 - Each pension must include `id`, `title`, `currentAge`, `retirementAge`, `currentSalary`, `currentPot`, `personalPct`, and `employerPct`.
+- Also include the legacy top-level pension keys (`currentAge`, `retirementAge`, `currentSalary`, `currentPot`, `personalPct`, `employerPct`) for compatibility. Use the first pension's ages, household totals for salary/current pot, and salary-weighted household contribution percentages. The runtime uses `pensions[]` for the actual household calculation.
 - Put shared `growthRate`, `wageGrowthRate`, and `inflationRate` at household level unless Gerry gives different rates per person.
 - Set `targetStartYear` if Gerry gives the household income start year. If he gives an age instead, use `targetStartAge`.
 - The runtime includes the Irish State Pension by default for each person from age 66, using EUR 15,563.60 p.a. today and inflation-indexing it.

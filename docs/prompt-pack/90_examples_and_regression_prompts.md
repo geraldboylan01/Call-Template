@@ -99,6 +99,7 @@ Prompt:
 
 Checks:
 - uses `generated.pensionInputs.pensions` with two named pension entries
+- includes legacy top-level pension keys for couple payload compatibility
 - includes a household `targetStartYear`
 - leaves State Pension included by default
 - includes `otherIncomeSources` for the DB pension with explicit `inflationIndexed`

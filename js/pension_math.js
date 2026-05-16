@@ -1038,9 +1038,14 @@ function aggregateScenario(memberScenarios) {
 }
 
 function buildAccumulationChart(member, currentScenario, maxScenario) {
-  const titlePrefix = /pension/i.test(member.title) ? member.title : `${member.title} Pension`;
+  const titleAlreadyIncludesPension = /pension/i.test(member.title);
+  const titlePrefix = titleAlreadyIncludesPension ? member.title : `${member.title} Pension`;
+  const titleSuffix = titleAlreadyIncludesPension
+    ? ' pot at retirement (before withdrawals)'
+    : ' Pot at Retirement (Before Withdrawals)';
+
   return {
-    title: `${titlePrefix} Pot at Retirement (Before Withdrawals)`,
+    title: `${titlePrefix}${titleSuffix}`,
     type: 'bar',
     labels: currentScenario.labels,
     datasets: [

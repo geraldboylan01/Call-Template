@@ -51,6 +51,7 @@ import {
 import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_math.js';
 import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { runPensionMathTests } from './tests_pension_math.js';
+import { normalizeEditorJsonInput } from './dev_payload_input.js';
 import {
   buildPublishedCapabilityToken,
   decryptPublishedSessionV2ForAdvisor,
@@ -1470,6 +1471,12 @@ const EXAMPLE_PAYLOADS = [
           targetIncomeToday: 70000,
           targetStartYear: 2052,
           horizonEndAge: 95,
+          currentAge: 42,
+          retirementAge: 67,
+          currentSalary: 155000,
+          currentPot: 300000,
+          personalPct: 0.07548,
+          employerPct: 0.05548,
           rentalIncomeToday: 18000,
           pensions: [
             {
@@ -3531,13 +3538,6 @@ function loadSelectedExampleIntoEditor() {
 
   ui.devPayloadInput.value = JSON.stringify(selected.payload, null, 2);
   renderDevPayloadWarnings([]);
-}
-
-function normalizeEditorJsonInput(rawInput) {
-  return String(rawInput ?? '')
-    .trim()
-    .replace(/\u201C|\u201D/g, '"')
-    .replace(/\u2018|\u2019/g, '\'');
 }
 
 function ensureDevPayloadWarningHost() {

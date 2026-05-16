@@ -104,6 +104,7 @@ Playbooks should only emit the subset they are responsible for.
 - `rentalIncomeToday` is gross annual rent in today's money and defaults to `0`.
 - `rentalIncomeScenarios` enables pension case switching. Each item should include `id`, `title`, and `rentalIncomeToday`; `baseScenarioId` selects the first visible case.
 - `pensions[]` enables couple/household pension projections. Each item should include `id`, `title`, ages, salary, pot, and contribution percentages.
+- Couple payloads should also include legacy top-level pension keys for compatibility. Use the first member's ages, household totals for salary/current pot, and salary-weighted household contribution percentages; the runtime uses `pensions[]` for the actual household maths.
 - State Pension is included by default per pension member; set `includeStatePension: false` to exclude a person.
 - `otherIncomeSources[]` supports DB pensions and similar income; `inflationIndexed` must be explicit.
 

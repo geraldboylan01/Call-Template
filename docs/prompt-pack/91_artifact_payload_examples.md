@@ -203,6 +203,12 @@ Representative payloads for testing the upgraded module renderer through the exi
       "targetIncomeToday": 70000,
       "targetStartYear": 2052,
       "horizonEndAge": 95,
+      "currentAge": 42,
+      "retirementAge": 67,
+      "currentSalary": 155000,
+      "currentPot": 300000,
+      "personalPct": 0.07548,
+      "employerPct": 0.05548,
       "rentalIncomeToday": 18000,
       "pensions": [
         { "id": "john", "title": "John", "currentAge": 42, "retirementAge": 67, "currentSalary": 85000, "currentPot": 180000, "personalPct": 0.08, "employerPct": 0.06 },
