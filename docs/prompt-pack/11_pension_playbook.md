@@ -46,6 +46,36 @@ This style should still work:
 }
 ```
 
+## Couple Payload Shape
+
+Use `pensions[]` when Gerry describes a couple or two pension pots working toward one household target.
+
+```json
+{
+  "title": "Pension Projection - John and Mary",
+  "generated": {
+    "summaryHtml": "<p>...</p>",
+    "pensionInputs": {
+      "currentYear": 2026,
+      "inflationRate": 0.02,
+      "growthRate": 0.05,
+      "wageGrowthRate": 0.025,
+      "incomeMode": "target",
+      "targetIncomeToday": 70000,
+      "targetStartYear": 2052,
+      "horizonEndAge": 95,
+      "pensions": [
+        { "id": "john", "title": "John", "currentAge": 42, "retirementAge": 67, "currentSalary": 85000, "currentPot": 180000, "personalPct": 0.08, "employerPct": 0.06 },
+        { "id": "mary", "title": "Mary", "currentAge": 40, "retirementAge": 66, "currentSalary": 70000, "currentPot": 120000, "personalPct": 0.07, "employerPct": 0.05 }
+      ],
+      "otherIncomeSources": [
+        { "id": "mary-db", "title": "Mary DB pension", "type": "db", "ownerId": "mary", "annualAmountToday": 12000, "startAge": 66, "inflationIndexed": true }
+      ]
+    }
+  }
+}
+```
+
 ## Required Runtime Keys
 - `currentAge`
 - `retirementAge`
@@ -68,6 +98,12 @@ This style should still work:
 - `rentalIncomeToday`
 - `baseScenarioId`
 - `rentalIncomeScenarios`
+- `pensions`
+- `targetStartYear`
+- `targetStartAge`
+- `horizonEndYear`
+- `includeStatePension`
+- `otherIncomeSources`
 
 Only emit optional keys when Gerry gives them, when the playbook requires them, or when a labeled placeholder is needed.
 
@@ -122,6 +158,33 @@ Rules:
 - Each `rentalIncomeScenarios` item must include `id`, `title`, and `rentalIncomeToday`.
 - If Gerry names the base case, use that case's `id` as `baseScenarioId`.
 - If Gerry does not name the base case, use the first mentioned case. For generic "with and without rent", default the base to the with-rent case.
+
+## Couples And State Pension
+Use `pensions[]` when Gerry says:
+- couple pension projection
+- John pension and Mary pension
+- two pensions working toward the same retirement income
+
+Rules:
+- Each pension must include `id`, `title`, `currentAge`, `retirementAge`, `currentSalary`, `currentPot`, `personalPct`, and `employerPct`.
+- Put shared `growthRate`, `wageGrowthRate`, and `inflationRate` at household level unless Gerry gives different rates per person.
+- Set `targetStartYear` if Gerry gives the household income start year. If he gives an age instead, use `targetStartAge`.
+- The runtime includes the Irish State Pension by default for each person from age 66, using EUR 15,563.60 p.a. today and inflation-indexing it.
+- If Gerry says to exclude State Pension for one person, set that pension member's `includeStatePension` to `false`.
+
+## Other Income Sources
+Use `otherIncomeSources[]` for DB pensions and similar income.
+
+Rules:
+- Required keys are `id`, `title`, `annualAmountToday`, `inflationIndexed`, and either `startYear` or `ownerId` plus `startAge`.
+- If using `startAge` or `endAge` in a couple case, include `ownerId`.
+- `inflationIndexed` must be explicit for non-state, non-rental income.
+- Omit `endYear` / `endAge` unless Gerry gives an end point.
+
+## ARF Minimum Withdrawals
+- The runtime models Irish ARF minimum withdrawals automatically.
+- Do not emit separate fake ARF outputs.
+- Mention in NOTES only if Gerry specifically asks about mandatory withdrawals or if it materially affects the explanation.
 
 ## Best-Guess Defaults
 - If Gerry does not specify target mode or affordable mode:

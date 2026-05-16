@@ -5055,7 +5055,7 @@ function buildPensionScenarioSwitcher(module, cases) {
   const selectedId = getPensionScenarioForModule(module);
   const wrap = document.createElement('section');
   wrap.className = 'pension-scenario-switcher';
-  wrap.setAttribute('aria-label', 'Pension rental income case');
+  wrap.setAttribute('aria-label', 'Retirement income case');
 
   const label = document.createElement('span');
   label.className = 'pension-scenario-switcher-label';
@@ -5065,7 +5065,7 @@ function buildPensionScenarioSwitcher(module, cases) {
   const options = document.createElement('div');
   options.className = 'pension-scenario-options';
   options.setAttribute('role', 'group');
-  options.setAttribute('aria-label', 'Choose pension rental income case');
+  options.setAttribute('aria-label', 'Choose retirement income case');
 
   cases.forEach((pensionCase) => {
     const button = document.createElement('button');

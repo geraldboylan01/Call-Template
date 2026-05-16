@@ -93,6 +93,28 @@ Checks:
 - does not emit fake outputs or charts
 - keeps pension module JS-backed
 
+### PEN-5
+Prompt:
+`Run the pension playbook for John and Mary as a couple. John is 42, salary 85000, pension 180000, personal 8 percent, employer 6 percent, retire at 67. Mary is 40, salary 70000, pension 120000, personal 7 percent, employer 5 percent, retire at 66. Growth 5 percent, inflation 2 percent, target household income 70000 in today's money from 2052. Include rental income of 18000 today and Mary's DB pension of 12000 from age 66 indexed.`
+
+Checks:
+- uses `generated.pensionInputs.pensions` with two named pension entries
+- includes a household `targetStartYear`
+- leaves State Pension included by default
+- includes `otherIncomeSources` for the DB pension with explicit `inflationIndexed`
+- does not emit fake outputs or charts
+- keeps pension module JS-backed
+
+### PEN-6
+Prompt:
+`Run the pension playbook for John and Mary. Same as before, but exclude Mary's State Pension and show the rent-lost case as a scenario.`
+
+Checks:
+- sets Mary's pension member `includeStatePension` to `false`
+- includes `baseScenarioId` and `rentalIncomeScenarios`
+- keeps the two pension entries named
+- does not emit fake outputs or charts
+
 ## Mortgage Regression Prompts
 
 ### MORT-1

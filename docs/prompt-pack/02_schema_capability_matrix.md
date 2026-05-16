@@ -94,9 +94,18 @@ Playbooks should only emit the subset they are responsible for.
   - `rentalIncomeToday`
   - `baseScenarioId`
   - `rentalIncomeScenarios`
+  - `pensions`
+  - `targetStartYear`
+  - `targetStartAge`
+  - `horizonEndYear`
+  - `includeStatePension`
+  - `otherIncomeSources`
 - The runtime supplies defaults for omitted `inflationRate`, `wageGrowthRate`, `horizonEndAge`, `currentYear`, and `minDrawdownMode`.
 - `rentalIncomeToday` is gross annual rent in today's money and defaults to `0`.
 - `rentalIncomeScenarios` enables pension case switching. Each item should include `id`, `title`, and `rentalIncomeToday`; `baseScenarioId` selects the first visible case.
+- `pensions[]` enables couple/household pension projections. Each item should include `id`, `title`, ages, salary, pot, and contribution percentages.
+- State Pension is included by default per pension member; set `includeStatePension: false` to exclude a person.
+- `otherIncomeSources[]` supports DB pensions and similar income; `inflationIndexed` must be explicit.
 
 ## Mortgage Support
 - Use `generated.mortgageInputs`

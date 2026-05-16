@@ -645,12 +645,19 @@ function normalizePensionInputs(pensionInputs) {
     'wageGrowthRate',
     'horizonEndAge',
     'currentYear',
-    'rentalIncomeToday'
+    'rentalIncomeToday',
+    'targetStartYear',
+    'targetStartAge',
+    'horizonEndYear'
   ].forEach((key) => {
     if (typeof pensionInputs[key] === 'number' && Number.isFinite(pensionInputs[key])) {
       normalized[key] = pensionInputs[key];
     }
   });
+
+  if (typeof pensionInputs.includeStatePension === 'boolean') {
+    normalized.includeStatePension = pensionInputs.includeStatePension;
+  }
 
   if (typeof pensionInputs.baseScenarioId === 'string' && pensionInputs.baseScenarioId.trim()) {
     normalized.baseScenarioId = pensionInputs.baseScenarioId.trim();
@@ -700,6 +707,93 @@ function normalizePensionInputs(pensionInputs) {
 
     if (scenarios.length > 0) {
       normalized.rentalIncomeScenarios = scenarios;
+    }
+  }
+
+  if (Array.isArray(pensionInputs.pensions)) {
+    const pensions = pensionInputs.pensions
+      .filter((member) => member && typeof member === 'object' && !Array.isArray(member))
+      .map((member, index) => {
+        const normalizedMember = {};
+        if (typeof member.id === 'string' && member.id.trim()) {
+          normalizedMember.id = member.id.trim();
+        } else {
+          normalizedMember.id = index === 0 ? 'primary' : `pension-${index + 1}`;
+        }
+        if (typeof member.title === 'string' && member.title.trim()) {
+          normalizedMember.title = member.title.trim();
+        }
+        [
+          'currentAge',
+          'retirementAge',
+          'currentSalary',
+          'currentPot',
+          'personalPct',
+          'employerPct',
+          'growthRate',
+          'wageGrowthRate'
+        ].forEach((key) => {
+          if (typeof member[key] === 'number' && Number.isFinite(member[key])) {
+            normalizedMember[key] = member[key];
+          }
+        });
+        if (typeof member.includeStatePension === 'boolean') {
+          normalizedMember.includeStatePension = member.includeStatePension;
+        }
+        return normalizedMember;
+      })
+      .filter((member) => typeof member.currentAge === 'number'
+        && typeof member.retirementAge === 'number'
+        && typeof member.currentSalary === 'number'
+        && typeof member.currentPot === 'number'
+        && typeof member.personalPct === 'number'
+        && typeof member.employerPct === 'number');
+
+    if (pensions.length > 0) {
+      normalized.pensions = pensions;
+    }
+  }
+
+  if (Array.isArray(pensionInputs.otherIncomeSources)) {
+    const otherIncomeSources = pensionInputs.otherIncomeSources
+      .filter((source) => source && typeof source === 'object' && !Array.isArray(source))
+      .map((source, index) => {
+        const normalizedSource = {
+          id: typeof source.id === 'string' && source.id.trim()
+            ? source.id.trim()
+            : `other-income-${index + 1}`,
+          title: typeof source.title === 'string' && source.title.trim()
+            ? source.title.trim()
+            : `Other income ${index + 1}`,
+          type: typeof source.type === 'string' && source.type.trim()
+            ? source.type.trim().toLowerCase()
+            : 'other'
+        };
+        if (typeof source.ownerId === 'string' && source.ownerId.trim()) {
+          normalizedSource.ownerId = source.ownerId.trim();
+        }
+        [
+          'annualAmountToday',
+          'startYear',
+          'startAge',
+          'endYear',
+          'endAge'
+        ].forEach((key) => {
+          if (typeof source[key] === 'number' && Number.isFinite(source[key])) {
+            normalizedSource[key] = source[key];
+          }
+        });
+        if (typeof source.inflationIndexed === 'boolean') {
+          normalizedSource.inflationIndexed = source.inflationIndexed;
+        }
+        return normalizedSource;
+      })
+      .filter((source) => typeof source.annualAmountToday === 'number'
+        && (typeof source.startYear === 'number' || typeof source.startAge === 'number')
+        && typeof source.inflationIndexed === 'boolean');
+
+    if (otherIncomeSources.length > 0) {
+      normalized.otherIncomeSources = otherIncomeSources;
     }
   }
 

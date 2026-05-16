@@ -14,7 +14,24 @@ const PENSION_DATASET_LABELS = {
   sustainabilityCurrent: 'Balance (current)',
   sustainabilityMax: 'Balance (max)',
   requiredReference: 'Required pot path',
-  withdrawals: 'Withdrawals'
+  withdrawals: 'Withdrawals',
+  combinedBalanceCurrent: 'Combined pension balance (current)',
+  combinedBalanceMax: 'Combined pension balance (max)',
+  requiredIncome: 'Required income',
+  statePensionCurrent: 'State Pension (current)',
+  statePensionMax: 'State Pension (max)',
+  rentalIncomeCurrent: 'Rental income (current)',
+  rentalIncomeMax: 'Rental income (max)',
+  otherIncomeCurrent: 'Other income (current)',
+  otherIncomeMax: 'Other income (max)',
+  mandatoryWithdrawalsCurrent: 'Mandatory pension withdrawals (current)',
+  mandatoryWithdrawalsMax: 'Mandatory pension withdrawals (max)',
+  electedWithdrawalsCurrent: 'Elected pension withdrawals (current)',
+  electedWithdrawalsMax: 'Elected pension withdrawals (max)',
+  shortfallCurrent: 'Shortfall (current)',
+  shortfallMax: 'Shortfall (max)',
+  surplusCurrent: 'Surplus (current)',
+  surplusMax: 'Surplus (max)'
 };
 const MORTGAGE_DATASET_LABELS = {
   balance: 'Remaining balance',
@@ -804,9 +821,12 @@ function isPensionAccumulationChart(chartData) {
 function isPensionSustainabilityChart(chartData) {
   const title = String(chartData?.title || '').toLowerCase();
   return title.includes('retirement sustainability')
+    || title.includes('retirement income stack')
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.requiredReference)
+    || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.requiredIncome)
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.sustainabilityCurrent)
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.sustainabilityMax)
+    || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.combinedBalanceCurrent)
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.withdrawals);
 }
 
@@ -815,6 +835,36 @@ function isRequiredReferenceLabel(label) {
   return normalized === normalizeLabel(PENSION_DATASET_LABELS.requiredReference).toLowerCase()
     || normalized.includes('required-balance reference')
     || normalized.includes('required pot path');
+}
+
+function isRequiredIncomeLabel(label) {
+  return normalizeLabel(label).toLowerCase() === normalizeLabel(PENSION_DATASET_LABELS.requiredIncome).toLowerCase();
+}
+
+function isCombinedPensionBalanceLabel(label) {
+  const normalized = normalizeLabel(label);
+  return normalized === PENSION_DATASET_LABELS.combinedBalanceCurrent
+    || normalized === PENSION_DATASET_LABELS.combinedBalanceMax;
+}
+
+function isPensionIncomeStackLabel(label) {
+  const normalized = normalizeLabel(label);
+  return [
+    PENSION_DATASET_LABELS.statePensionCurrent,
+    PENSION_DATASET_LABELS.statePensionMax,
+    PENSION_DATASET_LABELS.rentalIncomeCurrent,
+    PENSION_DATASET_LABELS.rentalIncomeMax,
+    PENSION_DATASET_LABELS.otherIncomeCurrent,
+    PENSION_DATASET_LABELS.otherIncomeMax,
+    PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent,
+    PENSION_DATASET_LABELS.mandatoryWithdrawalsMax,
+    PENSION_DATASET_LABELS.electedWithdrawalsCurrent,
+    PENSION_DATASET_LABELS.electedWithdrawalsMax,
+    PENSION_DATASET_LABELS.shortfallCurrent,
+    PENSION_DATASET_LABELS.shortfallMax,
+    PENSION_DATASET_LABELS.surplusCurrent,
+    PENSION_DATASET_LABELS.surplusMax
+  ].includes(normalized);
 }
 
 function isCurrentScenarioLabel(label) {
@@ -840,6 +890,9 @@ function hasSustainabilityLabels(datasets) {
     const label = normalizeLabel(dataset?.label);
     const normalized = label.toLowerCase();
     return isRequiredReferenceLabel(label)
+      || isRequiredIncomeLabel(label)
+      || isCombinedPensionBalanceLabel(label)
+      || isPensionIncomeStackLabel(label)
       || label === PENSION_DATASET_LABELS.sustainabilityCurrent
       || label === PENSION_DATASET_LABELS.sustainabilityMax
       || label === PENSION_DATASET_LABELS.withdrawals
@@ -888,8 +941,12 @@ function applySustainabilityLegendFilter(chart, showMax) {
     if (label === PENSION_DATASET_LABELS.withdrawals) {
       return false;
     }
+    if (isRequiredIncomeLabel(label) || isRequiredReferenceLabel(label)) {
+      return true;
+    }
     if (
       label === PENSION_DATASET_LABELS.sustainabilityCurrent
+      || label === PENSION_DATASET_LABELS.combinedBalanceCurrent
       || label === 'Balance with target income (current start pot)'
       || isCurrentScenarioLabel(label)
     ) {
@@ -897,6 +954,7 @@ function applySustainabilityLegendFilter(chart, showMax) {
     }
     if (
       label === PENSION_DATASET_LABELS.sustainabilityMax
+      || label === PENSION_DATASET_LABELS.combinedBalanceMax
       || label === 'Balance with target income (max start pot)'
       || isMaxScenarioLabel(label)
     ) {
@@ -916,7 +974,7 @@ function applyPensionShowMaxToChart(chart, showMax) {
     const label = normalizeLabel(dataset?.label);
     let nextHidden = null;
 
-    if (isRequiredReferenceLabel(label)) {
+    if (isRequiredReferenceLabel(label) || isRequiredIncomeLabel(label)) {
       nextHidden = false;
     } else if (isMaxScenarioLabel(label)) {
       nextHidden = !showMax;
@@ -1052,6 +1110,38 @@ function buildPensionAccumulationDataset(dataset, index, showMax) {
 
 function buildPensionSustainabilityDataset(dataset, index, showMax) {
   const label = normalizeLabel(dataset?.label);
+  if (isPensionIncomeStackLabel(label)) {
+    const barBase = buildDatasetStyle(dataset, index, 'bar');
+    const colorMap = {
+      [PENSION_DATASET_LABELS.statePensionCurrent]: '#4cc9f0',
+      [PENSION_DATASET_LABELS.statePensionMax]: '#4cc9f0',
+      [PENSION_DATASET_LABELS.rentalIncomeCurrent]: '#7bffbf',
+      [PENSION_DATASET_LABELS.rentalIncomeMax]: '#7bffbf',
+      [PENSION_DATASET_LABELS.otherIncomeCurrent]: '#ffd166',
+      [PENSION_DATASET_LABELS.otherIncomeMax]: '#ffd166',
+      [PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent]: '#b48cff',
+      [PENSION_DATASET_LABELS.mandatoryWithdrawalsMax]: '#b48cff',
+      [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: '#2ea3ff',
+      [PENSION_DATASET_LABELS.electedWithdrawalsMax]: '#2ea3ff',
+      [PENSION_DATASET_LABELS.shortfallCurrent]: '#ff5f7e',
+      [PENSION_DATASET_LABELS.shortfallMax]: '#ff5f7e',
+      [PENSION_DATASET_LABELS.surplusCurrent]: '#ffffff',
+      [PENSION_DATASET_LABELS.surplusMax]: '#ffffff'
+    };
+    const color = colorMap[label] || '#6FE6D8';
+    return {
+      ...barBase,
+      type: 'bar',
+      yAxisID: 'y1',
+      stack: isMaxScenarioLabel(label) ? 'income-max' : 'income-current',
+      order: 1,
+      borderColor: color,
+      backgroundColor: hexToRgba(color, label.includes('Surplus') ? 0.28 : 0.58),
+      borderWidth: 1,
+      hidden: isMaxScenarioLabel(label) ? !showMax : showMax
+    };
+  }
+
   if (label === PENSION_DATASET_LABELS.withdrawals) {
     const barBase = buildDatasetStyle(dataset, index, 'bar');
     const color = '#6FE6D8';
@@ -1063,6 +1153,22 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       borderColor: color,
       backgroundColor: hexToRgba(color, 0.5),
       borderWidth: 1,
+      hidden: false
+    };
+  }
+
+  if (isRequiredIncomeLabel(label)) {
+    return {
+      ...buildDatasetStyle(dataset, index, 'line'),
+      type: 'line',
+      yAxisID: 'y1',
+      order: 0,
+      borderColor: '#ffffff',
+      backgroundColor: 'rgba(255, 255, 255, 0.16)',
+      pointBackgroundColor: '#ffffff',
+      pointBorderColor: '#ffffff',
+      borderDash: [6, 5],
+      borderWidth: 2,
       hidden: false
     };
   }
@@ -1096,6 +1202,22 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       yAxisID: 'y',
       order: 0,
       hidden: !showMax
+    };
+  }
+
+  if (label === PENSION_DATASET_LABELS.combinedBalanceCurrent || label === PENSION_DATASET_LABELS.combinedBalanceMax) {
+    const color = label === PENSION_DATASET_LABELS.combinedBalanceMax ? '#7bffbf' : '#2ea3ff';
+    return {
+      ...buildDatasetStyle(dataset, index, 'line'),
+      type: 'line',
+      yAxisID: 'y',
+      order: 0,
+      borderColor: color,
+      backgroundColor: hexToRgba(color, 0.18),
+      pointBackgroundColor: color,
+      pointBorderColor: color,
+      borderWidth: label === PENSION_DATASET_LABELS.combinedBalanceMax ? 2.4 : 2.2,
+      hidden: label === PENSION_DATASET_LABELS.combinedBalanceMax ? !showMax : showMax
     };
   }
 
@@ -1204,7 +1326,32 @@ function computeSustainabilityWithdrawalMax(chartData) {
   }
 
   const withdrawalsValues = getRawDatasetValues(chartData, PENSION_DATASET_LABELS.withdrawals, labelsLength);
-  return maxArrayValue(withdrawalsValues);
+  const requiredIncomeValues = getRawDatasetValues(chartData, PENSION_DATASET_LABELS.requiredIncome, labelsLength);
+  const stackLabels = [
+    PENSION_DATASET_LABELS.statePensionCurrent,
+    PENSION_DATASET_LABELS.rentalIncomeCurrent,
+    PENSION_DATASET_LABELS.otherIncomeCurrent,
+    PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent,
+    PENSION_DATASET_LABELS.electedWithdrawalsCurrent,
+    PENSION_DATASET_LABELS.shortfallCurrent,
+    PENSION_DATASET_LABELS.surplusCurrent,
+    PENSION_DATASET_LABELS.statePensionMax,
+    PENSION_DATASET_LABELS.rentalIncomeMax,
+    PENSION_DATASET_LABELS.otherIncomeMax,
+    PENSION_DATASET_LABELS.mandatoryWithdrawalsMax,
+    PENSION_DATASET_LABELS.electedWithdrawalsMax,
+    PENSION_DATASET_LABELS.shortfallMax,
+    PENSION_DATASET_LABELS.surplusMax
+  ];
+  const stackSeries = stackLabels.map((label) => getRawDatasetValues(chartData, label, labelsLength));
+  let stackMax = 0;
+  for (let index = 0; index < labelsLength; index += 1) {
+    const currentStack = stackSeries.slice(0, 7).reduce((total, values) => total + values[index], 0);
+    const maxStack = stackSeries.slice(7).reduce((total, values) => total + values[index], 0);
+    stackMax = Math.max(stackMax, currentStack, maxStack);
+  }
+
+  return Math.max(maxArrayValue(withdrawalsValues), maxArrayValue(requiredIncomeValues), stackMax);
 }
 
 function buildMortgageMixedDataset(dataset, index) {
@@ -1628,7 +1775,7 @@ function buildChartConfig(chartData, { module } = {}) {
     };
 
     if (hasRightAxisDataset) {
-      const subtitleText = 'Bars (right axis): withdrawals per year';
+      const subtitleText = 'Bars (right axis): annual income sources and pension withdrawals';
       const subtitlePluginAvailable = Boolean(
         window.Chart?.defaults?.plugins
         && Object.prototype.hasOwnProperty.call(window.Chart.defaults.plugins, 'subtitle')

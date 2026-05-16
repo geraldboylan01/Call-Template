@@ -1,8 +1,14 @@
 const DEFAULT_INFLATION_RATE = 0.025;
 const DEFAULT_WAGE_GROWTH_RATE = 0.025;
+const DEFAULT_GROWTH_RATE = 0.05;
 const DEFAULT_HORIZON_END_AGE = 100;
 const DEFAULT_INCOME_MODE = 'target';
 const DEFAULT_AFFORDABLE_END_AGES = Object.freeze([100]);
+const STATE_PENSION_WEEKLY_TODAY = 299.30;
+const STATE_PENSION_ANNUAL_TODAY = STATE_PENSION_WEEKLY_TODAY * 52;
+const STATE_PENSION_START_AGE = 66;
+const ARF_HIGH_VALUE_THRESHOLD = 2000000;
+const REQUIRED_POT_TOLERANCE_EUR = 25;
 
 function isFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
@@ -80,37 +86,36 @@ function normalizeRentalIncomeScenarios(rawValue) {
   }
 
   const usedIds = new Set();
-  return rawValue
-    .map((scenario, index) => {
-      if (!scenario || typeof scenario !== 'object' || Array.isArray(scenario)) {
-        throw new Error(`generated.pensionInputs.rentalIncomeScenarios[${index}] must be an object.`);
-      }
+  return rawValue.map((scenario, index) => {
+    if (!scenario || typeof scenario !== 'object' || Array.isArray(scenario)) {
+      throw new Error(`generated.pensionInputs.rentalIncomeScenarios[${index}] must be an object.`);
+    }
 
-      if (typeof scenario.rentalIncomeToday === 'undefined') {
-        throw new Error(`generated.pensionInputs.rentalIncomeScenarios[${index}].rentalIncomeToday must be provided.`);
-      }
+    if (typeof scenario.rentalIncomeToday === 'undefined') {
+      throw new Error(`generated.pensionInputs.rentalIncomeScenarios[${index}].rentalIncomeToday must be provided.`);
+    }
 
-      const fallbackId = `rental-income-${index + 1}`;
-      const id = normalizeScenarioId(scenario.id, fallbackId);
-      if (usedIds.has(id)) {
-        throw new Error(`generated.pensionInputs.rentalIncomeScenarios[${index}].id must be unique.`);
-      }
-      usedIds.add(id);
+    const fallbackId = `rental-income-${index + 1}`;
+    const id = normalizeScenarioId(scenario.id, fallbackId);
+    if (usedIds.has(id)) {
+      throw new Error(`generated.pensionInputs.rentalIncomeScenarios[${index}].id must be unique.`);
+    }
+    usedIds.add(id);
 
-      return {
-        id,
-        title: typeof scenario.title === 'string' && scenario.title.trim()
-          ? scenario.title.trim()
-          : `Rental income case ${index + 1}`,
-        rentalIncomeToday: requireNonNegativeNumber(
-          scenario.rentalIncomeToday,
-          `rentalIncomeScenarios[${index}].rentalIncomeToday`
-        )
-      };
-    });
+    return {
+      id,
+      title: typeof scenario.title === 'string' && scenario.title.trim()
+        ? scenario.title.trim()
+        : `Retirement income case ${index + 1}`,
+      rentalIncomeToday: requireNonNegativeNumber(
+        scenario.rentalIncomeToday,
+        `rentalIncomeScenarios[${index}].rentalIncomeToday`
+      )
+    };
+  });
 }
 
-function normalizeAffordableEndAges(rawValue, retirementAge) {
+function normalizeAffordableEndAges(rawValue, minimumAge) {
   const source = typeof rawValue === 'undefined'
     ? DEFAULT_AFFORDABLE_END_AGES
     : rawValue;
@@ -123,7 +128,7 @@ function normalizeAffordableEndAges(rawValue, retirementAge) {
     throw new Error('generated.pensionInputs.affordableEndAges must include at least one age.');
   }
 
-  const minimumEndAge = retirementAge + 1;
+  const minimumEndAge = minimumAge + 1;
   const unique = new Set();
 
   source.forEach((value, index) => {
@@ -179,6 +184,12 @@ function floorSeriesToZero(values) {
   }
 
   return values.map((value) => (Math.abs(value) < 1e-6 ? 0 : clampToZero(value)));
+}
+
+function sum(values) {
+  return Array.isArray(values)
+    ? values.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0)
+    : 0;
 }
 
 function ageBandPct(age) {
@@ -268,19 +279,19 @@ export function buildSftSummarySentence(flags, sftMeta) {
   let baseSentence = '';
 
   if (flags.current && !flags.max && !flags.required) {
-    baseSentence = `Based on your current contribution path, the projected fund at retirement may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
+    baseSentence = `Based on your current contribution path, a projected fund at retirement may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
   } else if (!flags.current && flags.max && !flags.required) {
-    baseSentence = `If you maximise personal contributions within Irish limits, the projected fund at retirement may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
+    baseSentence = `If personal contributions are maximised within Irish limits, a projected fund at retirement may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
   } else if (flags.current && flags.max && !flags.required) {
-    baseSentence = `Both the current and maximised contribution projections suggest the fund at retirement may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
+    baseSentence = `Both the current and maximised contribution projections suggest a fund at retirement may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
   } else if (!flags.current && !flags.max && flags.required) {
-    baseSentence = `To fund the target retirement income on these assumptions, the required pot at retirement may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
+    baseSentence = `To fund the target retirement income on these assumptions, a required starting fund may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
   } else if (flags.current && !flags.max && flags.required) {
-    baseSentence = `Your current projection and the pot required to meet the target income may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
+    baseSentence = `The current projection and required starting fund may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
   } else if (!flags.current && flags.max && flags.required) {
-    baseSentence = `The maximised projection and the pot required to meet the target income may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
+    baseSentence = `The maximised projection and required starting fund may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
   } else if (flags.current && flags.max && flags.required) {
-    baseSentence = `Across both projections and the pot required to meet the target income, the fund at retirement may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
+    baseSentence = `Across the contribution projections and required starting fund, a fund may exceed the Standard Fund Threshold (SFT) of ${sftText} for ${yearText}${suffix}`;
   }
 
   if (!baseSentence) {
@@ -294,336 +305,615 @@ export function buildSftSummarySentence(flags, sftMeta) {
   return `${baseSentence} Future SFT increases may apply but aren’t predictable, so we’ve held the threshold constant beyond 2029.`;
 }
 
-function buildAgeRange(startAge, endAge) {
-  const labels = [];
-  for (let age = startAge; age <= endAge; age += 1) {
-    labels.push(age);
-  }
-  return labels;
+function ageAtYear(person, year, currentYear) {
+  return person.currentAge + (year - currentYear);
 }
 
-function targetIncomeNominalAtAge(inputs, age) {
-  const yearsFromToday = Math.max(0, age - inputs.currentAge);
-  const nominal = inputs.targetIncomeToday * Math.pow(1 + inputs.inflationRate, yearsFromToday);
+function yearForAge(person, age, currentYear) {
+  return currentYear + (age - person.currentAge);
+}
+
+function normalizePensionMember(rawMember, index, defaults, prefix) {
+  if (!rawMember || typeof rawMember !== 'object' || Array.isArray(rawMember)) {
+    throw new Error(`generated.pensionInputs.${prefix} must be an object.`);
+  }
+
+  const member = {
+    id: normalizeScenarioId(rawMember.id, index === 0 ? 'primary' : `pension-${index + 1}`),
+    title: typeof rawMember.title === 'string' && rawMember.title.trim()
+      ? rawMember.title.trim()
+      : (index === 0 ? 'Pension' : `Pension ${index + 1}`),
+    currentAge: requireFiniteInteger(rawMember.currentAge, `${prefix}.currentAge`),
+    retirementAge: requireFiniteInteger(rawMember.retirementAge, `${prefix}.retirementAge`),
+    currentSalary: requireFiniteNumber(rawMember.currentSalary, `${prefix}.currentSalary`),
+    currentPot: requireFiniteNumber(rawMember.currentPot, `${prefix}.currentPot`),
+    personalPct: requireFiniteNumber(rawMember.personalPct, `${prefix}.personalPct`),
+    employerPct: requireFiniteNumber(rawMember.employerPct, `${prefix}.employerPct`),
+    growthRate: optionalFiniteNumber(rawMember.growthRate, defaults.growthRate, `${prefix}.growthRate`),
+    wageGrowthRate: optionalFiniteNumber(rawMember.wageGrowthRate, defaults.wageGrowthRate, `${prefix}.wageGrowthRate`),
+    includeStatePension: rawMember.includeStatePension === false ? false : true
+  };
+
+  if (member.retirementAge < member.currentAge) {
+    throw new Error(`generated.pensionInputs.${prefix}.retirementAge must be greater than or equal to currentAge.`);
+  }
+  if (member.growthRate <= -1) {
+    throw new Error(`generated.pensionInputs.${prefix}.growthRate must be greater than -1.`);
+  }
+  if (member.wageGrowthRate <= -1) {
+    throw new Error(`generated.pensionInputs.${prefix}.wageGrowthRate must be greater than -1.`);
+  }
+
+  member.retirementYear = yearForAge(member, member.retirementAge, defaults.currentYear);
+  return member;
+}
+
+function normalizePensionMembers(raw, defaults) {
+  if (typeof raw.pensions !== 'undefined') {
+    if (!Array.isArray(raw.pensions) || raw.pensions.length === 0) {
+      throw new Error('generated.pensionInputs.pensions must be a non-empty array when provided.');
+    }
+
+    const usedIds = new Set();
+    return raw.pensions.map((member, index) => {
+      const normalized = normalizePensionMember(member, index, defaults, `pensions[${index}]`);
+      if (usedIds.has(normalized.id)) {
+        throw new Error(`generated.pensionInputs.pensions[${index}].id must be unique.`);
+      }
+      usedIds.add(normalized.id);
+      return normalized;
+    });
+  }
+
+  const member = normalizePensionMember({
+    id: raw.id,
+    title: raw.title || 'Pension',
+    currentAge: raw.currentAge,
+    retirementAge: raw.retirementAge,
+    currentSalary: raw.currentSalary,
+    currentPot: raw.currentPot,
+    personalPct: raw.personalPct,
+    employerPct: raw.employerPct,
+    growthRate: raw.growthRate,
+    wageGrowthRate: raw.wageGrowthRate,
+    includeStatePension: raw.includeStatePension
+  }, 0, defaults, 'legacy');
+
+  return [member];
+}
+
+function resolveTargetStartYear(raw, pensions, currentYear) {
+  if (typeof raw.targetStartYear !== 'undefined') {
+    return requireFiniteInteger(raw.targetStartYear, 'targetStartYear');
+  }
+
+  const primary = pensions[0];
+  if (typeof raw.targetStartAge !== 'undefined') {
+    return yearForAge(primary, requireFiniteInteger(raw.targetStartAge, 'targetStartAge'), currentYear);
+  }
+
+  if (pensions.length > 1) {
+    return Math.min(...pensions.map((member) => member.retirementYear));
+  }
+
+  return primary.retirementYear;
+}
+
+function resolveYearFromAgeSource(source, pensions, currentYear, ageKey, yearKey, fieldName, { required = true } = {}) {
+  if (typeof source[yearKey] !== 'undefined') {
+    return requireFiniteInteger(source[yearKey], `${fieldName}.${yearKey}`);
+  }
+
+  if (typeof source[ageKey] === 'undefined') {
+    if (required) {
+      throw new Error(`generated.pensionInputs.${fieldName} must include ${yearKey} or ${ageKey}.`);
+    }
+    return null;
+  }
+
+  const ownerId = typeof source.ownerId === 'string' ? source.ownerId.trim() : '';
+  let owner = ownerId ? pensions.find((member) => member.id === ownerId) : null;
+  if (!owner && pensions.length === 1) {
+    owner = pensions[0];
+  }
+  if (!owner) {
+    throw new Error(`generated.pensionInputs.${fieldName}.ownerId must match a pension id when ${ageKey} is used.`);
+  }
+
+  return yearForAge(owner, requireFiniteInteger(source[ageKey], `${fieldName}.${ageKey}`), currentYear);
+}
+
+function normalizeOtherIncomeSources(rawValue, pensions, currentYear) {
+  if (typeof rawValue === 'undefined') {
+    return [];
+  }
+
+  if (!Array.isArray(rawValue)) {
+    throw new Error('generated.pensionInputs.otherIncomeSources must be an array when provided.');
+  }
+
+  const usedIds = new Set();
+  return rawValue.map((source, index) => {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+      throw new Error(`generated.pensionInputs.otherIncomeSources[${index}] must be an object.`);
+    }
+    if (typeof source.inflationIndexed !== 'boolean') {
+      throw new Error(`generated.pensionInputs.otherIncomeSources[${index}].inflationIndexed must be true or false.`);
+    }
+
+    const id = normalizeScenarioId(source.id, `other-income-${index + 1}`);
+    if (usedIds.has(id)) {
+      throw new Error(`generated.pensionInputs.otherIncomeSources[${index}].id must be unique.`);
+    }
+    usedIds.add(id);
+
+    const fieldName = `otherIncomeSources[${index}]`;
+    const startYear = resolveYearFromAgeSource(source, pensions, currentYear, 'startAge', 'startYear', fieldName);
+    const endYear = resolveYearFromAgeSource(source, pensions, currentYear, 'endAge', 'endYear', fieldName, {
+      required: false
+    });
+    if (endYear !== null && endYear < startYear) {
+      throw new Error(`generated.pensionInputs.otherIncomeSources[${index}].endYear must be after startYear.`);
+    }
+
+    return {
+      id,
+      title: typeof source.title === 'string' && source.title.trim()
+        ? source.title.trim()
+        : `Other income ${index + 1}`,
+      type: typeof source.type === 'string' && source.type.trim()
+        ? source.type.trim().toLowerCase()
+        : 'other',
+      ownerId: typeof source.ownerId === 'string' ? source.ownerId.trim() : '',
+      annualAmountToday: requireNonNegativeNumber(source.annualAmountToday, `${fieldName}.annualAmountToday`),
+      startYear,
+      endYear,
+      inflationIndexed: source.inflationIndexed
+    };
+  });
+}
+
+function targetAgeAtStart(primary, targetStartYear, currentYear) {
+  return ageAtYear(primary, targetStartYear, currentYear);
+}
+
+function resolveHorizonEndYear(raw, primary, currentYear, targetStartYear) {
+  if (typeof raw.horizonEndYear !== 'undefined') {
+    return requireFiniteInteger(raw.horizonEndYear, 'horizonEndYear');
+  }
+
+  const horizonEndAge = typeof raw.horizonEndAge === 'undefined'
+    ? DEFAULT_HORIZON_END_AGE
+    : requireFiniteInteger(raw.horizonEndAge, 'horizonEndAge');
+  const horizonEndYear = yearForAge(primary, horizonEndAge, currentYear);
+  if (horizonEndYear < targetStartYear) {
+    throw new Error('generated.pensionInputs.horizonEndAge must be greater than or equal to targetStartAge.');
+  }
+  return horizonEndYear;
+}
+
+function inflationFactorForYear(inputs, year) {
+  return Math.pow(1 + inputs.inflationRate, year - inputs.currentYear);
+}
+
+function targetIncomeNominalAtYear(inputs, year, targetIncomeToday = inputs.targetIncomeToday) {
+  const nominal = targetIncomeToday * inflationFactorForYear(inputs, year);
   return Number.isFinite(nominal) ? nominal : 0;
 }
 
-function rentalIncomeNominalAtAge(inputs, age) {
-  const yearsFromToday = Math.max(0, age - inputs.currentAge);
-  const nominal = inputs.rentalIncomeToday * Math.pow(1 + inputs.inflationRate, yearsFromToday);
-  return Number.isFinite(nominal) ? nominal : 0;
+function ageLabelForYear(inputs, year) {
+  if (inputs.isHousehold) {
+    return String(year);
+  }
+  return String(ageAtYear(inputs.primaryPension, year, inputs.currentYear));
 }
 
-function pensionWithdrawalNominalAtAge(inputs, age) {
-  return clampToZero(targetIncomeNominalAtAge(inputs, age) - rentalIncomeNominalAtAge(inputs, age));
+function buildYearRange(startYear, endYear) {
+  const years = [];
+  for (let year = startYear; year <= endYear; year += 1) {
+    years.push(year);
+  }
+  return years;
 }
 
-function simulateAccumulation(inputs, personalContributionFn) {
-  const labels = [inputs.currentAge];
-  const balances = [inputs.currentPot];
-  const personalEurSeries = [];
-  const employerEurSeries = [];
-  const contribEurSeries = [];
-  const growthEurSeries = [];
-  let balance = inputs.currentPot;
+function buildIncomeBreakdownAtYear(inputs, year) {
+  const statePension = inputs.pensions.reduce((total, member) => {
+    const age = ageAtYear(member, year, inputs.currentYear);
+    if (!member.includeStatePension || age < STATE_PENSION_START_AGE) {
+      return total;
+    }
+    return total + (STATE_PENSION_ANNUAL_TODAY * inflationFactorForYear(inputs, year));
+  }, 0);
 
-  for (let age = inputs.currentAge; age < inputs.retirementAge; age += 1) {
-    const startBalance = balance;
-    const salaryAtAge = inputs.currentSalary * Math.pow(1 + inputs.wageGrowthRate, age - inputs.currentAge);
-    const personalEurRaw = personalContributionFn(age, salaryAtAge);
-    const personalEur = Number.isFinite(personalEurRaw) ? personalEurRaw : 0;
-    const employerEurRaw = inputs.employerPct * salaryAtAge;
-    const employerEur = Number.isFinite(employerEurRaw) ? employerEurRaw : 0;
-    const contribEur = personalEur + employerEur;
-    const preGrowth = startBalance + contribEur;
-    const endBalance = preGrowth * (1 + inputs.growthRate);
-    const growthEurRaw = endBalance - preGrowth;
-    const growthEur = Number.isFinite(growthEurRaw) ? growthEurRaw : 0;
+  const rentalIncome = year >= inputs.targetStartYear
+    ? inputs.rentalIncomeToday * inflationFactorForYear(inputs, year)
+    : 0;
 
-    balance = Number.isFinite(endBalance) ? endBalance : preGrowth;
-    personalEurSeries.push(personalEur);
-    employerEurSeries.push(employerEur);
-    contribEurSeries.push(contribEur);
-    growthEurSeries.push(growthEur);
+  const otherIncome = inputs.otherIncomeSources.reduce((total, source) => {
+    if (year < source.startYear || (source.endYear !== null && year > source.endYear)) {
+      return total;
+    }
+    const amount = source.inflationIndexed
+      ? source.annualAmountToday * inflationFactorForYear(inputs, year)
+      : source.annualAmountToday;
+    return total + amount;
+  }, 0);
 
-    labels.push(age + 1);
-    balances.push(balance);
+  return {
+    statePension: Number.isFinite(statePension) ? statePension : 0,
+    rentalIncome: Number.isFinite(rentalIncome) ? rentalIncome : 0,
+    otherIncome: Number.isFinite(otherIncome) ? otherIncome : 0,
+    total: statePension + rentalIncome + otherIncome
+  };
+}
+
+function arfMinimumRate(member, year, currentYear, openingBalance) {
+  if (openingBalance > ARF_HIGH_VALUE_THRESHOLD) {
+    return 0.06;
   }
+  return ageAtYear(member, year, currentYear) >= 70 ? 0.05 : 0.04;
+}
 
-  while (personalEurSeries.length < labels.length) {
-    personalEurSeries.push(0);
-  }
+function withdrawProRata(balances, desiredAmount, eligibleIndexes) {
+  let remaining = clampToZero(desiredAmount);
+  const withdrawn = balances.map(() => 0);
 
-  while (employerEurSeries.length < labels.length) {
-    employerEurSeries.push(0);
-  }
+  for (let pass = 0; pass < 8 && remaining > 0.01; pass += 1) {
+    const availableIndexes = eligibleIndexes.filter((index) => balances[index] > 0.01);
+    const availableTotal = availableIndexes.reduce((total, index) => total + balances[index], 0);
+    if (availableTotal <= 0) {
+      break;
+    }
 
-  while (contribEurSeries.length < labels.length) {
-    contribEurSeries.push(0);
-  }
+    availableIndexes.forEach((index) => {
+      if (remaining <= 0.01) {
+        return;
+      }
+      const share = balances[index] / availableTotal;
+      const amount = Math.min(balances[index], remaining * share);
+      balances[index] -= amount;
+      withdrawn[index] += amount;
+    });
 
-  while (growthEurSeries.length < labels.length) {
-    growthEurSeries.push(0);
+    remaining = clampToZero(desiredAmount - sum(withdrawn));
   }
 
   return {
+    withdrawn,
+    total: sum(withdrawn),
+    unmet: remaining
+  };
+}
+
+function contributionForMemberAtYear(member, inputs, year, mode) {
+  if (year >= member.retirementYear) {
+    return {
+      personal: 0,
+      employer: 0,
+      total: 0,
+      growthBase: 0
+    };
+  }
+
+  const age = ageAtYear(member, year, inputs.currentYear);
+  const salaryAtYear = member.currentSalary * Math.pow(1 + member.wageGrowthRate, year - inputs.currentYear);
+  const uncappedPersonal = mode === 'max'
+    ? maxRelievablePersonalContribution(age, salaryAtYear)
+    : member.personalPct * salaryAtYear;
+  const personal = Math.min(uncappedPersonal, maxRelievablePersonalContribution(age, salaryAtYear));
+  const employer = member.employerPct * salaryAtYear;
+
+  return {
+    personal: Number.isFinite(personal) ? personal : 0,
+    employer: Number.isFinite(employer) ? employer : 0,
+    total: (Number.isFinite(personal) ? personal : 0) + (Number.isFinite(employer) ? employer : 0),
+    growthBase: salaryAtYear
+  };
+}
+
+function simulateMemberAccumulation(inputs, member, mode) {
+  const labels = [String(member.currentAge)];
+  const balances = [member.currentPot];
+  const personalEurSeries = [0];
+  const employerEurSeries = [0];
+  const contribEurSeries = [0];
+  const growthEurSeries = [0];
+  let balance = member.currentPot;
+
+  for (let year = inputs.currentYear; year < inputs.targetStartYear; year += 1) {
+    const contribution = contributionForMemberAtYear(member, inputs, year, mode);
+    const preGrowth = balance + contribution.total;
+    const endBalance = preGrowth * (1 + member.growthRate);
+    const growthEur = endBalance - preGrowth;
+
+    balance = Number.isFinite(endBalance) ? endBalance : preGrowth;
+    labels.push(String(ageAtYear(member, year + 1, inputs.currentYear)));
+    balances.push(balance);
+    personalEurSeries.push(contribution.personal);
+    employerEurSeries.push(contribution.employer);
+    contribEurSeries.push(contribution.total);
+    growthEurSeries.push(Number.isFinite(growthEur) ? growthEur : 0);
+  }
+
+  return {
+    member,
+    mode,
     labels,
     balances,
     personalEurSeries,
     employerEurSeries,
     contribEurSeries,
     growthEurSeries,
-    retirementPot: balances[balances.length - 1]
+    retirementPot: balances[balances.length - 1] || 0
   };
 }
 
-function computeRequiredPotAtRetirement(inputs) {
-  let requiredBalance = 0;
+function simulateHouseholdRetirement(inputs, startingBalances, {
+  targetIncomeToday = inputs.targetIncomeToday,
+  horizonEndYear = inputs.horizonEndYear,
+  contributionMode = 'current'
+} = {}) {
+  const years = buildYearRange(inputs.targetStartYear, horizonEndYear);
+  const labels = years.map((year) => ageLabelForYear(inputs, year));
+  const balances = startingBalances.map((value) => clampToZero(value));
+  const combinedBalances = [];
+  const requiredIncome = [];
+  const statePensionIncome = [];
+  const rentalIncome = [];
+  const otherIncome = [];
+  const mandatoryWithdrawals = [];
+  const electedWithdrawals = [];
+  const shortfalls = [];
+  const surpluses = [];
+  const totalIncome = [];
+  const perPensionMandatory = inputs.pensions.map(() => []);
+  const perPensionElected = inputs.pensions.map(() => []);
 
-  for (let age = inputs.horizonEndAge - 1; age >= inputs.retirementAge; age -= 1) {
-    const withdrawalAtAge = pensionWithdrawalNominalAtAge(inputs, age);
-    requiredBalance = withdrawalAtAge + (requiredBalance / (1 + inputs.growthRate));
+  years.forEach((year) => {
+    const openingBalances = balances.map((value) => clampToZero(value));
+    combinedBalances.push(sum(openingBalances));
+
+    const target = targetIncomeNominalAtYear(inputs, year, targetIncomeToday);
+    const external = buildIncomeBreakdownAtYear(inputs, year);
+    const availableIndexes = inputs.pensions
+      .map((member, index) => (year >= member.retirementYear ? index : null))
+      .filter((index) => index !== null);
+
+    const mandatoryByPension = inputs.pensions.map((member, index) => {
+      if (!availableIndexes.includes(index)) {
+        return 0;
+      }
+      const openingBalance = clampToZero(balances[index]);
+      const rate = arfMinimumRate(member, year, inputs.currentYear, openingBalance);
+      return Math.min(openingBalance, openingBalance * rate);
+    });
+
+    mandatoryByPension.forEach((amount, index) => {
+      balances[index] = clampToZero(balances[index] - amount);
+      perPensionMandatory[index].push(amount);
+    });
+
+    const mandatoryTotal = sum(mandatoryByPension);
+    const desiredElectedWithdrawal = clampToZero(target - external.total - mandatoryTotal);
+    const elected = withdrawProRata(balances, desiredElectedWithdrawal, availableIndexes);
+    elected.withdrawn.forEach((amount, index) => {
+      perPensionElected[index].push(amount);
+    });
+
+    const incomeBeforeShortfall = external.total + mandatoryTotal + elected.total;
+    const shortfall = clampToZero(target - incomeBeforeShortfall);
+    const surplus = clampToZero(incomeBeforeShortfall - target);
+
+    requiredIncome.push(target);
+    statePensionIncome.push(external.statePension);
+    rentalIncome.push(external.rentalIncome);
+    otherIncome.push(external.otherIncome);
+    mandatoryWithdrawals.push(mandatoryTotal);
+    electedWithdrawals.push(elected.total);
+    shortfalls.push(shortfall);
+    surpluses.push(surplus);
+    totalIncome.push(incomeBeforeShortfall);
+
+    inputs.pensions.forEach((member, index) => {
+      const contribution = contributionForMemberAtYear(member, inputs, year, contributionMode);
+      const preGrowth = balances[index] + contribution.total;
+      balances[index] = clampToZero(preGrowth * (1 + member.growthRate));
+    });
+  });
+
+  return {
+    years,
+    labels,
+    combinedBalances: floorSeriesToZero(combinedBalances),
+    endingBalances: balances.map((value) => clampToZero(value)),
+    endingBalanceAfterHorizon: sum(balances),
+    requiredIncome,
+    statePensionIncome,
+    rentalIncome,
+    otherIncome,
+    mandatoryWithdrawals,
+    electedWithdrawals,
+    shortfalls,
+    surpluses,
+    totalIncome,
+    perPensionMandatory,
+    perPensionElected,
+    totalShortfall: sum(shortfalls),
+    maxShortfall: Math.max(0, ...shortfalls),
+    totalSurplus: sum(surpluses),
+    firstYearMandatoryWithdrawal: mandatoryWithdrawals[0] || 0,
+    firstYearElectedWithdrawal: electedWithdrawals[0] || 0
+  };
+}
+
+function splitTotalByShares(total, shares) {
+  return shares.map((share) => clampToZero(total * share));
+}
+
+function findRequiredStartingBalances(inputs, referenceBalances) {
+  const referenceTotal = sum(referenceBalances);
+  const shares = referenceTotal > 0
+    ? referenceBalances.map((value) => clampToZero(value) / referenceTotal)
+    : inputs.pensions.map(() => 1 / inputs.pensions.length);
+  const isSustainable = (total) => {
+    const simulation = simulateHouseholdRetirement(inputs, splitTotalByShares(total, shares), {
+      contributionMode: 'current'
+    });
+    return simulation.maxShortfall <= REQUIRED_POT_TOLERANCE_EUR;
+  };
+
+  let high = Math.max(referenceTotal, inputs.targetIncomeToday * 8, 1000);
+  while (!isSustainable(high) && high < 25000000) {
+    high *= 1.6;
   }
 
-  return clampToZero(requiredBalance);
-}
-
-function computeRequiredPotForIncomeToday(inputs, incomeToday, horizonEndAge, {
-  includeRentalOffset = true
-} = {}) {
-  const cloned = {
-    ...inputs,
-    targetIncomeToday: clampToZero(Number.isFinite(incomeToday) ? incomeToday : 0),
-    horizonEndAge,
-    rentalIncomeToday: includeRentalOffset ? inputs.rentalIncomeToday : 0
-  };
-
-  return computeRequiredPotAtRetirement(cloned);
-}
-
-function goalSeekAffordableIncomeToday(inputs, retirementPot, horizonEndAge) {
-  const safeRetirementPot = clampToZero(Number.isFinite(retirementPot) ? retirementPot : 0);
-  const tolerance = Math.max(50, 0.00005 * safeRetirementPot);
+  const breakpoints = shares
+    .map((share) => (share > 0 ? ARF_HIGH_VALUE_THRESHOLD / share : null))
+    .filter((value) => Number.isFinite(value) && value > 0 && value < high)
+    .flatMap((value) => [value * 0.999, value, value * 1.001]);
+  const intervalEnds = [...new Set([0, ...breakpoints, high])]
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right);
 
   let low = 0;
-  let high = clampToZero(inputs.currentSalary);
-  if (high <= 0) {
-    high = 1;
-  }
-
-  let requiredAtHigh = computeRequiredPotForIncomeToday(inputs, high, horizonEndAge, {
-    includeRentalOffset: false
-  });
-  while (requiredAtHigh <= safeRetirementPot && high < 5000000) {
-    high *= 1.5;
-    requiredAtHigh = computeRequiredPotForIncomeToday(inputs, high, horizonEndAge, {
-      includeRentalOffset: false
-    });
-  }
-
-  let incomeTodayBest = 0;
-  let requiredPotAtRetirementBest = computeRequiredPotForIncomeToday(inputs, 0, horizonEndAge, {
-    includeRentalOffset: false
-  });
-  let gap = requiredPotAtRetirementBest - safeRetirementPot;
-
-  if (Math.abs(gap) <= tolerance) {
-    return {
-      incomeTodayBest,
-      requiredPotAtRetirementBest,
-      gap
-    };
-  }
-
-  for (let iteration = 0; iteration < 50; iteration += 1) {
-    const mid = (low + high) / 2;
-    const requiredAtMid = computeRequiredPotForIncomeToday(inputs, mid, horizonEndAge, {
-      includeRentalOffset: false
-    });
-    const nextGap = requiredAtMid - safeRetirementPot;
-
-    const currentBestDistance = Math.abs(gap);
-    const candidateDistance = Math.abs(nextGap);
-    if (candidateDistance <= currentBestDistance) {
-      incomeTodayBest = mid;
-      requiredPotAtRetirementBest = requiredAtMid;
-      gap = nextGap;
+  let upper = high;
+  for (const candidateUpper of intervalEnds) {
+    if (candidateUpper <= low) {
+      continue;
     }
-
-    if (Math.abs(nextGap) <= tolerance) {
+    if (isSustainable(candidateUpper)) {
+      upper = candidateUpper;
       break;
     }
+    low = candidateUpper;
+  }
 
-    if (requiredAtMid <= safeRetirementPot) {
+  for (let iteration = 0; iteration < 70; iteration += 1) {
+    const mid = (low + upper) / 2;
+    if (isSustainable(mid)) {
+      upper = mid;
+    } else {
+      low = mid;
+    }
+  }
+
+  const requiredBalances = splitTotalByShares(upper, shares);
+  const simulation = simulateHouseholdRetirement(inputs, requiredBalances, {
+    contributionMode: 'current'
+  });
+
+  return {
+    requiredPot: sum(requiredBalances),
+    requiredBalances,
+    shares,
+    simulation,
+    arfThresholdBreakpoints: breakpoints
+  };
+}
+
+function goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEndYear, contributionMode) {
+  const isSustainable = (targetIncomeToday) => {
+    const simulation = simulateHouseholdRetirement(inputs, startBalances, {
+      targetIncomeToday,
+      horizonEndYear,
+      contributionMode
+    });
+    return simulation.maxShortfall <= REQUIRED_POT_TOLERANCE_EUR;
+  };
+
+  let low = 0;
+  let high = Math.max(sum(inputs.pensions.map((member) => member.currentSalary)), STATE_PENSION_ANNUAL_TODAY, 1000);
+  while (isSustainable(high) && high < 5000000) {
+    low = high;
+    high *= 1.5;
+  }
+
+  for (let iteration = 0; iteration < 64; iteration += 1) {
+    const mid = (low + high) / 2;
+    if (isSustainable(mid)) {
       low = mid;
     } else {
       high = mid;
     }
   }
 
-  return {
-    incomeTodayBest: clampToZero(Number.isFinite(incomeTodayBest) ? incomeTodayBest : 0),
-    requiredPotAtRetirementBest: clampToZero(
-      Number.isFinite(requiredPotAtRetirementBest) ? requiredPotAtRetirementBest : 0
-    ),
-    gap: Number.isFinite(gap) ? gap : 0
-  };
-}
-
-function simulateRetirementBalances(inputs, startBalance) {
-  const labels = buildAgeRange(inputs.retirementAge, inputs.horizonEndAge);
-  const balances = [];
-  const withdrawals = [];
-  let balance = clampToZero(startBalance);
-
-  labels.forEach((age) => {
-    const currentBalance = clampToZero(balance);
-    balances.push(currentBalance);
-
-    const withdrawalAtAge = age <= (inputs.horizonEndAge - 1)
-      ? pensionWithdrawalNominalAtAge(inputs, age)
-      : 0;
-    withdrawals.push(withdrawalAtAge);
-
-    const postWithdrawal = currentBalance - withdrawalAtAge;
-    if (postWithdrawal <= 0) {
-      balance = 0;
-      return;
-    }
-
-    balance = clampToZero(postWithdrawal * (1 + inputs.growthRate));
+  const simulation = simulateHouseholdRetirement(inputs, startBalances, {
+    targetIncomeToday: low,
+    horizonEndYear,
+    contributionMode
   });
+  const firstYearFactor = inflationFactorForYear(inputs, inputs.targetStartYear);
+  const pensionFundedAtStart = (simulation.mandatoryWithdrawals[0] || 0) + (simulation.electedWithdrawals[0] || 0);
 
   return {
-    labels,
-    balances,
-    withdrawals,
-    endingBalanceAfterHorizon: clampToZero(balance)
+    incomeTodayBest: clampToZero(pensionFundedAtStart / Math.max(firstYearFactor, 0.000001)),
+    totalIncomeToday: clampToZero(low),
+    incomeNominalAtRetirement: pensionFundedAtStart,
+    totalIncomeNominalAtRetirement: targetIncomeNominalAtYear(inputs, inputs.targetStartYear, low),
+    requiredPotAtRetirementBest: sum(startBalances),
+    gap: simulation.maxShortfall,
+    simulation
   };
 }
 
-function simulateMinimumDrawdown(inputs, startBalance) {
-  const labels = buildAgeRange(inputs.retirementAge, inputs.horizonEndAge);
-  const minDrawdowns = [];
-  const targets = [];
-  let balance = clampToZero(startBalance);
-
-  labels.forEach((age) => {
-    const currentBalance = clampToZero(balance);
-    const drawdownRate = age < 70 ? 0.04 : 0.05;
-    const minimumDrawdown = drawdownRate * currentBalance;
-    const targetIncome = pensionWithdrawalNominalAtAge(inputs, age);
-
-    minDrawdowns.push(minimumDrawdown);
-    targets.push(targetIncome);
-
-    if (currentBalance <= 0) {
-      balance = 0;
-      return;
-    }
-
-    if (minimumDrawdown >= currentBalance) {
-      balance = 0;
-      return;
-    }
-
-    balance = (currentBalance - minimumDrawdown) * (1 + inputs.growthRate);
-    balance = clampToZero(balance);
-  });
-
-  return {
-    labels,
-    minDrawdowns,
-    targets,
-    firstYearMinimumDrawdown: minDrawdowns[0] || 0,
-    firstYearTargetIncome: targets[0] || 0,
-    endingBalanceAfterHorizon: clampToZero(balance)
-  };
-}
-
-function buildAffordableDrawdownSeries(inputs, startBalance, incomeToday, horizonEndAge) {
-  const cloned = {
-    ...inputs,
-    targetIncomeToday: clampToZero(Number.isFinite(incomeToday) ? incomeToday : 0),
-    horizonEndAge,
-    minDrawdownMode: false,
-    rentalIncomeToday: 0
-  };
-
-  const result = simulateRetirementBalances(cloned, startBalance);
-  return {
-    labels: result.labels,
-    balances: result.balances,
-    withdrawals: result.withdrawals,
-    endingBalanceAfterHorizon: result.endingBalanceAfterHorizon
-  };
-}
-
-function buildAffordableIncomeResult(inputs, retirementPot, endAge, fullLabels) {
-  const goalSeek = goalSeekAffordableIncomeToday(inputs, retirementPot, endAge);
-  const drawdown = buildAffordableDrawdownSeries(
-    inputs,
-    retirementPot,
-    goalSeek.incomeTodayBest,
-    endAge
-  );
-  const flooredBalances = floorSeriesToZero(drawdown.balances);
-  const paddedBalances = [...flooredBalances];
-
-  while (paddedBalances.length < fullLabels.length) {
-    paddedBalances.push(null);
-  }
-  if (paddedBalances.length > fullLabels.length) {
-    paddedBalances.length = fullLabels.length;
-  }
-
-  const goalSeekInputs = {
-    ...inputs,
-    targetIncomeToday: goalSeek.incomeTodayBest,
-    horizonEndAge: endAge,
-    rentalIncomeToday: 0
-  };
-  const incomeNominalAtRetirement = targetIncomeNominalAtAge(goalSeekInputs, inputs.retirementAge);
-  const rentalIncomeNominalAtRetirement = rentalIncomeNominalAtAge(inputs, inputs.retirementAge);
-
-  return {
-    endAge,
-    incomeToday: goalSeek.incomeTodayBest,
-    incomeNominalAtRetirement,
-    totalIncomeToday: goalSeek.incomeTodayBest + inputs.rentalIncomeToday,
-    totalIncomeNominalAtRetirement: incomeNominalAtRetirement + rentalIncomeNominalAtRetirement,
-    requiredPotAtRetirement: goalSeek.requiredPotAtRetirementBest,
-    gap: goalSeek.gap,
-    endingBalanceAfterHorizon: drawdown.endingBalanceAfterHorizon,
-    balancesPadded: paddedBalances
-  };
-}
-
-export function normalizePensionInputs(raw) {
+function normalizePensionInputsInternal(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('generated.pensionInputs must be an object.');
   }
 
   const nowYear = new Date().getFullYear();
+  const currentYear = typeof raw.currentYear === 'undefined'
+    ? nowYear
+    : requireFiniteInteger(raw.currentYear, 'currentYear');
+  const hasPensionsArray = Array.isArray(raw.pensions);
+  const householdGrowthRate = hasPensionsArray
+    ? optionalFiniteNumber(raw.growthRate, DEFAULT_GROWTH_RATE, 'growthRate')
+    : requireFiniteNumber(raw.growthRate, 'growthRate');
+  const inflationRate = optionalFiniteNumber(raw.inflationRate, DEFAULT_INFLATION_RATE, 'inflationRate');
+  const householdWageGrowthRate = optionalFiniteNumber(raw.wageGrowthRate, DEFAULT_WAGE_GROWTH_RATE, 'wageGrowthRate');
+
+  if (householdGrowthRate <= -1) {
+    throw new Error('generated.pensionInputs.growthRate must be greater than -1.');
+  }
+  if (inflationRate <= -1) {
+    throw new Error('generated.pensionInputs.inflationRate must be greater than -1.');
+  }
+  if (householdWageGrowthRate <= -1) {
+    throw new Error('generated.pensionInputs.wageGrowthRate must be greater than -1.');
+  }
+
+  const pensions = normalizePensionMembers(raw, {
+    currentYear,
+    growthRate: householdGrowthRate,
+    wageGrowthRate: householdWageGrowthRate
+  });
+  const primary = pensions[0];
+  const targetStartYear = resolveTargetStartYear(raw, pensions, currentYear);
+  const targetStartAge = ageAtYear(primary, targetStartYear, currentYear);
+  const horizonEndYear = resolveHorizonEndYear(raw, primary, currentYear, targetStartYear);
+  const horizonEndAge = ageAtYear(primary, horizonEndYear, currentYear);
+  const incomeMode = normalizeIncomeMode(raw.incomeMode);
 
   const normalized = {
-    currentAge: requireFiniteInteger(raw.currentAge, 'currentAge'),
-    retirementAge: requireFiniteInteger(raw.retirementAge, 'retirementAge'),
-    currentSalary: requireFiniteNumber(raw.currentSalary, 'currentSalary'),
-    currentPot: requireFiniteNumber(raw.currentPot, 'currentPot'),
-    personalPct: requireFiniteNumber(raw.personalPct, 'personalPct'),
-    employerPct: requireFiniteNumber(raw.employerPct, 'employerPct'),
-    growthRate: requireFiniteNumber(raw.growthRate, 'growthRate'),
-    inflationRate: optionalFiniteNumber(raw.inflationRate, DEFAULT_INFLATION_RATE, 'inflationRate'),
-    wageGrowthRate: optionalFiniteNumber(raw.wageGrowthRate, DEFAULT_WAGE_GROWTH_RATE, 'wageGrowthRate'),
-    horizonEndAge: typeof raw.horizonEndAge === 'undefined'
-      ? DEFAULT_HORIZON_END_AGE
-      : requireFiniteInteger(raw.horizonEndAge, 'horizonEndAge'),
-    currentYear: typeof raw.currentYear === 'undefined'
-      ? nowYear
-      : requireFiniteInteger(raw.currentYear, 'currentYear'),
-    incomeMode: normalizeIncomeMode(raw.incomeMode),
-    rentalIncomeToday: optionalNonNegativeNumber(raw.rentalIncomeToday, 0, 'rentalIncomeToday')
+    currentAge: primary.currentAge,
+    retirementAge: primary.retirementAge,
+    currentSalary: sum(pensions.map((member) => member.currentSalary)),
+    currentPot: sum(pensions.map((member) => member.currentPot)),
+    personalPct: primary.personalPct,
+    employerPct: primary.employerPct,
+    growthRate: householdGrowthRate,
+    inflationRate,
+    wageGrowthRate: householdWageGrowthRate,
+    horizonEndAge,
+    horizonEndYear,
+    currentYear,
+    targetStartYear,
+    targetStartAge,
+    incomeMode,
+    rentalIncomeToday: optionalNonNegativeNumber(raw.rentalIncomeToday, 0, 'rentalIncomeToday'),
+    pensions,
+    primaryPension: primary,
+    isHousehold: pensions.length > 1
   };
 
   const rentalIncomeScenarios = normalizeRentalIncomeScenarios(raw.rentalIncomeScenarios);
@@ -671,30 +961,16 @@ export function normalizePensionInputs(raw) {
     normalized.affordableEndAges = [];
   } else {
     normalized.targetIncomeToday = 0;
-    normalized.affordableEndAges = normalizeAffordableEndAges(raw.affordableEndAges, normalized.retirementAge);
+    normalized.affordableEndAges = normalizeAffordableEndAges(raw.affordableEndAges, targetStartAge);
   }
 
-  if (normalized.retirementAge < normalized.currentAge) {
-    throw new Error('generated.pensionInputs.retirementAge must be greater than or equal to currentAge.');
-  }
-
-  if (normalized.horizonEndAge < normalized.retirementAge) {
-    throw new Error('generated.pensionInputs.horizonEndAge must be greater than or equal to retirementAge.');
-  }
-
-  if (normalized.growthRate <= -1) {
-    throw new Error('generated.pensionInputs.growthRate must be greater than -1.');
-  }
-
-  if (normalized.inflationRate <= -1) {
-    throw new Error('generated.pensionInputs.inflationRate must be greater than -1.');
-  }
-
-  if (normalized.wageGrowthRate <= -1) {
-    throw new Error('generated.pensionInputs.wageGrowthRate must be greater than -1.');
-  }
+  normalized.otherIncomeSources = normalizeOtherIncomeSources(raw.otherIncomeSources, pensions, currentYear);
 
   return normalized;
+}
+
+export function normalizePensionInputs(raw) {
+  return normalizePensionInputsInternal(raw);
 }
 
 function resolvePensionScenario(inputs, scenarioId = '') {
@@ -742,6 +1018,176 @@ export function getDefaultPensionScenarioId(rawInputs) {
   return resolvePensionScenario(inputs, '').id;
 }
 
+function aggregateScenario(memberScenarios) {
+  const maxLength = Math.max(0, ...memberScenarios.map((scenario) => scenario.contribEurSeries.length));
+  const aggregate = {
+    personalEurSeries: [],
+    employerEurSeries: [],
+    contribEurSeries: [],
+    growthEurSeries: []
+  };
+
+  for (let index = 0; index < maxLength; index += 1) {
+    aggregate.personalEurSeries.push(sum(memberScenarios.map((scenario) => scenario.personalEurSeries[index] || 0)));
+    aggregate.employerEurSeries.push(sum(memberScenarios.map((scenario) => scenario.employerEurSeries[index] || 0)));
+    aggregate.contribEurSeries.push(sum(memberScenarios.map((scenario) => scenario.contribEurSeries[index] || 0)));
+    aggregate.growthEurSeries.push(sum(memberScenarios.map((scenario) => scenario.growthEurSeries[index] || 0)));
+  }
+
+  return aggregate;
+}
+
+function buildAccumulationChart(member, currentScenario, maxScenario) {
+  const titlePrefix = /pension/i.test(member.title) ? member.title : `${member.title} Pension`;
+  return {
+    title: `${titlePrefix} Pot at Retirement (Before Withdrawals)`,
+    type: 'bar',
+    labels: currentScenario.labels,
+    datasets: [
+      {
+        label: 'Pot (current)',
+        data: currentScenario.balances
+      },
+      {
+        label: 'Pot (max)',
+        data: maxScenario.balances
+      },
+      {
+        label: 'Personal (current)',
+        data: currentScenario.personalEurSeries
+      },
+      {
+        label: 'Employer (current)',
+        data: currentScenario.employerEurSeries
+      },
+      {
+        label: 'Growth (current)',
+        data: currentScenario.growthEurSeries
+      },
+      {
+        label: 'Personal (max)',
+        data: maxScenario.personalEurSeries
+      },
+      {
+        label: 'Employer (max)',
+        data: maxScenario.employerEurSeries
+      },
+      {
+        label: 'Growth (max)',
+        data: maxScenario.growthEurSeries
+      }
+    ]
+  };
+}
+
+function buildIncomeStackDatasets(simulation, suffix, hidden = false) {
+  return [
+    {
+      label: `State Pension (${suffix})`,
+      data: simulation.statePensionIncome,
+      hidden
+    },
+    {
+      label: `Rental income (${suffix})`,
+      data: simulation.rentalIncome,
+      hidden
+    },
+    {
+      label: `Other income (${suffix})`,
+      data: simulation.otherIncome,
+      hidden
+    },
+    {
+      label: `Mandatory pension withdrawals (${suffix})`,
+      data: simulation.mandatoryWithdrawals,
+      hidden
+    },
+    {
+      label: `Elected pension withdrawals (${suffix})`,
+      data: simulation.electedWithdrawals,
+      hidden
+    },
+    {
+      label: `Shortfall (${suffix})`,
+      data: simulation.shortfalls,
+      hidden
+    },
+    {
+      label: `Surplus (${suffix})`,
+      data: simulation.surpluses,
+      hidden
+    }
+  ];
+}
+
+function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation) {
+  return {
+    title: 'Retirement Income Stack and Pension Balance',
+    type: 'bar',
+    labels: currentSimulation.labels,
+    display: {
+      stacked: true,
+      valueFormat: 'currency'
+    },
+    datasets: [
+      {
+        label: 'Combined pension balance (current)',
+        data: currentSimulation.combinedBalances
+      },
+      {
+        label: 'Combined pension balance (max)',
+        data: maxSimulation.combinedBalances,
+        hidden: true
+      },
+      {
+        label: 'Required income',
+        data: currentSimulation.requiredIncome,
+        borderColor: '#ffffff',
+        backgroundColor: 'rgba(255, 255, 255, 0.16)',
+        pointBackgroundColor: '#ffffff',
+        pointBorderColor: '#ffffff'
+      },
+      ...buildIncomeStackDatasets(currentSimulation, 'current', false),
+      ...buildIncomeStackDatasets(maxSimulation, 'max', true)
+    ]
+  };
+}
+
+function padSeries(values, targetLength) {
+  const padded = Array.isArray(values) ? [...values] : [];
+  while (padded.length < targetLength) {
+    padded.push(null);
+  }
+  if (padded.length > targetLength) {
+    padded.length = targetLength;
+  }
+  return padded;
+}
+
+function buildAffordableIncomeResult(inputs, startBalances, endAge, fullLabels, contributionMode) {
+  const horizonEndYear = yearForAge(inputs.primaryPension, endAge, inputs.currentYear);
+  const goalSeek = goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEndYear, contributionMode);
+  const balancesPadded = padSeries(floorSeriesToZero(goalSeek.simulation.combinedBalances), fullLabels.length);
+
+  return {
+    endAge,
+    incomeToday: goalSeek.incomeTodayBest,
+    incomeNominalAtRetirement: goalSeek.incomeNominalAtRetirement,
+    totalIncomeToday: goalSeek.totalIncomeToday,
+    totalIncomeNominalAtRetirement: goalSeek.totalIncomeNominalAtRetirement,
+    requiredPotAtRetirement: goalSeek.requiredPotAtRetirementBest,
+    gap: goalSeek.gap,
+    endingBalanceAfterHorizon: goalSeek.simulation.endingBalanceAfterHorizon,
+    balancesPadded
+  };
+}
+
+function pensionFundedTargetAtStart(inputs) {
+  const targetAtStart = targetIncomeNominalAtYear(inputs, inputs.targetStartYear);
+  const externalAtStart = buildIncomeBreakdownAtYear(inputs, inputs.targetStartYear);
+  return clampToZero(targetAtStart - externalAtStart.total);
+}
+
 export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
   const normalizedInputs = normalizePensionInputs(rawInputs);
   const selectedScenario = resolvePensionScenario(normalizedInputs, scenarioId);
@@ -754,6 +1200,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
   const isAffordableMode = inputs.incomeMode === 'affordable' && !inputs.minDrawdownMode;
   const hasRentalContext = inputs.rentalIncomeToday > 0
     || (Array.isArray(inputs.rentalIncomeScenarios) && inputs.rentalIncomeScenarios.length > 0);
+  const hasOtherIncomeContext = inputs.otherIncomeSources.length > 0;
+  const hasStatePensionContext = inputs.pensions.some((member) => member.includeStatePension);
 
   const currentContributionCapStats = {
     wasCapped: false,
@@ -761,78 +1209,70 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     maxRelievableAtFirstCap: null
   };
 
-  const currentScenario = simulateAccumulation(
-    inputs,
-    (age, salaryAtAge) => {
-      const desired = inputs.personalPct * salaryAtAge;
-      const cap = maxRelievablePersonalContribution(age, salaryAtAge);
-      if (desired > cap && !currentContributionCapStats.wasCapped) {
-        currentContributionCapStats.wasCapped = true;
-        currentContributionCapStats.firstCappedAge = age;
-        currentContributionCapStats.maxRelievableAtFirstCap = cap;
+  const currentMemberScenarios = inputs.pensions.map((member) => {
+    const scenario = simulateMemberAccumulation(inputs, member, 'current');
+    const cappedIndex = scenario.personalEurSeries.findIndex((personal, index) => {
+      if (index === 0) {
+        return false;
       }
-      return Math.min(desired, cap);
+      const year = inputs.currentYear + index - 1;
+      const age = ageAtYear(member, year, inputs.currentYear);
+      const salaryAtAge = member.currentSalary * Math.pow(1 + member.wageGrowthRate, year - inputs.currentYear);
+      return member.personalPct * salaryAtAge > maxRelievablePersonalContribution(age, salaryAtAge);
+    });
+    if (cappedIndex > 0 && !currentContributionCapStats.wasCapped) {
+      const year = inputs.currentYear + cappedIndex - 1;
+      const age = ageAtYear(member, year, inputs.currentYear);
+      const salaryAtAge = member.currentSalary * Math.pow(1 + member.wageGrowthRate, year - inputs.currentYear);
+      currentContributionCapStats.wasCapped = true;
+      currentContributionCapStats.firstCappedAge = age;
+      currentContributionCapStats.maxRelievableAtFirstCap = maxRelievablePersonalContribution(age, salaryAtAge);
     }
-  );
+    return scenario;
+  });
+  const maxMemberScenarios = inputs.pensions.map((member) => simulateMemberAccumulation(inputs, member, 'max'));
 
-  const maxScenario = simulateAccumulation(
-    inputs,
-    (age, salaryAtAge) => maxRelievablePersonalContribution(age, salaryAtAge)
-  );
+  const currentStartBalances = currentMemberScenarios.map((scenario) => scenario.retirementPot);
+  const maxStartBalances = maxMemberScenarios.map((scenario) => scenario.retirementPot);
+  const projectedPotCurrent = sum(currentStartBalances);
+  const projectedPotMaxPersonal = sum(maxStartBalances);
+  const currentScenario = aggregateScenario(currentMemberScenarios);
+  const maxScenario = aggregateScenario(maxMemberScenarios);
 
-  const monotonicIssues = [];
-  for (let index = 1; index < maxScenario.balances.length; index += 1) {
-    const previous = maxScenario.balances[index - 1];
-    const current = maxScenario.balances[index];
-
-    if (previous > 0 && current < previous * 0.99) {
-      monotonicIssues.push({
-        age: maxScenario.labels[index],
-        previous,
-        current,
-        dropPct: ((previous - current) / previous) * 100
-      });
-    }
-  }
-
-  const retirementSimulationProjectedCurrent = simulateRetirementBalances(inputs, currentScenario.retirementPot);
-  const retirementSimulationProjectedMax = simulateRetirementBalances(inputs, maxScenario.retirementPot);
-  const minDrawdownSimulation = simulateMinimumDrawdown(inputs, currentScenario.retirementPot);
-  const sustainabilityCurrentFloored = floorSeriesToZero(retirementSimulationProjectedCurrent.balances);
-  const sustainabilityMaxFloored = floorSeriesToZero(retirementSimulationProjectedMax.balances);
-  const baseSustainabilityLabels = retirementSimulationProjectedCurrent.labels;
-  const withdrawalsSeries = baseSustainabilityLabels.map((_label, index) => {
-    const rawValue = retirementSimulationProjectedCurrent.withdrawals?.[index];
-    return clampToZero(Number.isFinite(rawValue) ? rawValue : 0);
+  const retirementSimulationProjectedCurrent = simulateHouseholdRetirement(inputs, currentStartBalances, {
+    contributionMode: 'current'
+  });
+  const retirementSimulationProjectedMax = simulateHouseholdRetirement(inputs, maxStartBalances, {
+    contributionMode: 'max'
   });
 
-  const requiredPot = isAffordableMode ? null : computeRequiredPotAtRetirement(inputs);
-  const retirementSimulationRequired = isAffordableMode ? null : simulateRetirementBalances(inputs, requiredPot);
-  const requiredReferenceFloored = isAffordableMode
-    ? []
-    : floorSeriesToZero(retirementSimulationRequired.balances);
-  let sustainabilityLabels = baseSustainabilityLabels;
+  const requiredResult = isAffordableMode ? null : findRequiredStartingBalances(inputs, currentStartBalances);
+  const requiredPot = requiredResult?.requiredPot ?? null;
+
+  let sustainabilityLabels = retirementSimulationProjectedCurrent.labels;
   let affordableChartDatasets = [];
   let affordableCurrentResults = [];
   let affordableMaxResults = [];
 
   const depletionAgeProjected = retirementSimulationProjectedCurrent.labels[
-    sustainabilityCurrentFloored.findIndex((value) => value === 0)
+    retirementSimulationProjectedCurrent.combinedBalances.findIndex((value) => value === 0)
   ] ?? null;
-  const depletionAgeRequired = retirementSimulationRequired
-    ? retirementSimulationRequired.labels[requiredReferenceFloored.findIndex((value) => value === 0)] ?? null
+  const depletionAgeRequired = requiredResult?.simulation
+    ? requiredResult.simulation.labels[requiredResult.simulation.combinedBalances.findIndex((value) => value === 0)] ?? null
     : null;
 
-  if (!inputs.minDrawdownMode && isAffordableMode) {
+  if (isAffordableMode) {
     const affordableEndAges = inputs.affordableEndAges;
     const maxAffordableEndAge = affordableEndAges[affordableEndAges.length - 1];
-    sustainabilityLabels = buildAgeRange(inputs.retirementAge, maxAffordableEndAge);
+    const maxAffordableEndYear = yearForAge(inputs.primaryPension, maxAffordableEndAge, inputs.currentYear);
+    sustainabilityLabels = buildYearRange(inputs.targetStartYear, maxAffordableEndYear)
+      .map((year) => ageLabelForYear(inputs, year));
 
     affordableCurrentResults = affordableEndAges.map((endAge) => (
-      buildAffordableIncomeResult(inputs, currentScenario.retirementPot, endAge, sustainabilityLabels)
+      buildAffordableIncomeResult(inputs, currentStartBalances, endAge, sustainabilityLabels, 'current')
     ));
     affordableMaxResults = affordableEndAges.map((endAge) => (
-      buildAffordableIncomeResult(inputs, maxScenario.retirementPot, endAge, sustainabilityLabels)
+      buildAffordableIncomeResult(inputs, maxStartBalances, endAge, sustainabilityLabels, 'max')
     ));
 
     affordableChartDatasets = [
@@ -847,74 +1287,105 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     ];
   }
 
-  const retirementYear = inputs.currentYear + (inputs.retirementAge - inputs.currentAge);
+  const retirementYear = inputs.targetStartYear;
   const sftMeta = computeSft(retirementYear);
-
-  const projectedPotCurrent = currentScenario.retirementPot;
-  const projectedPotMaxPersonal = maxScenario.retirementPot;
   const sftBreaches = isAffordableMode
     ? {
-      current: projectedPotCurrent > sftMeta.sftValue,
-      max: projectedPotMaxPersonal > sftMeta.sftValue,
+      current: currentStartBalances.some((value) => value > sftMeta.sftValue),
+      max: maxStartBalances.some((value) => value > sftMeta.sftValue),
       required: false,
-      any: projectedPotCurrent > sftMeta.sftValue || projectedPotMaxPersonal > sftMeta.sftValue
+      any: currentStartBalances.some((value) => value > sftMeta.sftValue)
+        || maxStartBalances.some((value) => value > sftMeta.sftValue)
     }
-    : computeSftBreaches({
-      projectedPotCurrent,
-      projectedPotMaxPersonal,
-      requiredPot,
-      sftValue: sftMeta.sftValue
-    });
+    : {
+      current: currentStartBalances.some((value) => value > sftMeta.sftValue),
+      max: maxStartBalances.some((value) => value > sftMeta.sftValue),
+      required: (requiredResult?.requiredBalances || []).some((value) => value > sftMeta.sftValue),
+      any: currentStartBalances.some((value) => value > sftMeta.sftValue)
+        || maxStartBalances.some((value) => value > sftMeta.sftValue)
+        || (requiredResult?.requiredBalances || []).some((value) => value > sftMeta.sftValue)
+    };
   const sftSentence = buildSftSummarySentence(sftBreaches, sftMeta);
 
-  const targetIncomeNominalAtRetirement = targetIncomeNominalAtAge(inputs, inputs.retirementAge);
-  const rentalIncomeNominalAtRetirement = rentalIncomeNominalAtAge(inputs, inputs.retirementAge);
-  const pensionWithdrawalNominalAtRetirement = pensionWithdrawalNominalAtAge(inputs, inputs.retirementAge);
-  const expectedFactor = Math.pow(1 + inputs.inflationRate, inputs.retirementAge - inputs.currentAge);
+  const targetIncomeNominalAtRetirement = targetIncomeNominalAtYear(inputs, inputs.targetStartYear);
+  const externalAtTargetStart = buildIncomeBreakdownAtYear(inputs, inputs.targetStartYear);
+  const rentalIncomeNominalAtRetirement = externalAtTargetStart.rentalIncome;
+  const statePensionNominalAtRetirement = externalAtTargetStart.statePension;
+  const otherIncomeNominalAtRetirement = externalAtTargetStart.otherIncome;
+  const pensionWithdrawalNominalAtRetirement = pensionFundedTargetAtStart(inputs);
+  const expectedFactor = inflationFactorForYear(inputs, inputs.targetStartYear);
   const expectedNominal = inputs.targetIncomeToday * expectedFactor;
   const nominalDiff = Math.abs(targetIncomeNominalAtRetirement - expectedNominal);
   const nominalTolerance = 1e-6 * Math.max(1, Math.abs(expectedNominal));
-  if (Number.isFinite(expectedNominal) && nominalDiff > nominalTolerance) {
+  if (!isAffordableMode && Number.isFinite(expectedNominal) && nominalDiff > nominalTolerance) {
     console.warn('[Pension] target income nominal-at-retirement consistency mismatch', {
-      currentAge: inputs.currentAge,
-      retirementAge: inputs.retirementAge,
+      currentYear: inputs.currentYear,
+      targetStartYear: inputs.targetStartYear,
       inflationRate: inputs.inflationRate,
       nominalAtRetirement: targetIncomeNominalAtRetirement,
       expectedNominal
     });
   }
-  const modeLabel = inputs.minDrawdownMode ? 'Minimum drawdowns' : 'Target withdrawals';
+
+  const modeLabel = inputs.minDrawdownMode ? 'Mandatory withdrawals' : (isAffordableMode ? 'Affordable income' : 'Target withdrawals');
   const currentPersonalWasCapped = currentContributionCapStats.wasCapped;
   const firstCappedAge = currentContributionCapStats.firstCappedAge;
   const maxRelievableAtFirstCap = currentContributionCapStats.maxRelievableAtFirstCap;
   const currentPersonalCapSentence = currentPersonalWasCapped && Number.isInteger(firstCappedAge)
-    ? `Your current personal contribution rate reaches the Irish max tax-relievable limit from age ${firstCappedAge}, so personal contributions are capped from that point.`
+    ? `A current personal contribution rate reaches the Irish max tax-relievable limit from age ${firstCappedAge}, so personal contributions are capped from that point.`
     : '';
+
+  const assumptionsRows = inputs.isHousehold
+    ? [
+      ['Household members', inputs.pensions.map((member) => member.title).join(', ')],
+      ['Target income start year', String(inputs.targetStartYear)],
+      ['Target income start age', `${inputs.primaryPension.title}: ${inputs.targetStartAge}`],
+      ...inputs.pensions.flatMap((member) => ([
+        [`${member.title} current age`, String(member.currentAge)],
+        [`${member.title} retirement age`, String(member.retirementAge)],
+        [`${member.title} current salary`, toEuroText(member.currentSalary)],
+        [`${member.title} current pension value`, toEuroText(member.currentPot)],
+        [`${member.title} personal contribution`, toPercentText(member.personalPct)],
+        [`${member.title} employer contribution`, toPercentText(member.employerPct)],
+        [`${member.title} State Pension`, member.includeStatePension ? 'Included' : 'Excluded']
+      ]))
+    ]
+    : [
+      ['Current age', String(inputs.currentAge)],
+      ['Retirement age', String(inputs.retirementAge)],
+      ['Current salary', toEuroText(inputs.primaryPension.currentSalary)],
+      ['Current pension value', toEuroText(inputs.primaryPension.currentPot)],
+      ['Personal contribution', toPercentText(inputs.primaryPension.personalPct)],
+      ['Employer contribution', toPercentText(inputs.primaryPension.employerPct)],
+      ['State Pension', inputs.primaryPension.includeStatePension ? 'Included' : 'Excluded']
+    ];
 
   const assumptionsTable = {
     columns: ['Assumption', 'Value'],
     rows: [
-      ['Current age', String(inputs.currentAge)],
-      ['Retirement age', String(inputs.retirementAge)],
-      ['Current salary', toEuroText(inputs.currentSalary)],
-      ['Current pension value', toEuroText(inputs.currentPot)],
-      ['Personal contribution', toPercentText(inputs.personalPct)],
-      ['Employer contribution', toPercentText(inputs.employerPct)],
+      ...assumptionsRows,
       ['Growth rate', toPercentText(inputs.growthRate)],
       ['Wage growth', toPercentText(inputs.wageGrowthRate)],
       ['Inflation', toPercentText(inputs.inflationRate)],
+      ['Default State Pension today', toEuroText(STATE_PENSION_ANNUAL_TODAY)],
       ...(hasRentalContext
         ? [
-          ['Rental income case', inputs.selectedScenarioTitle],
+          ['Retirement income case', inputs.selectedScenarioTitle],
           ['Gross rental income today', toEuroText(inputs.rentalIncomeToday)],
-          ['Gross rental income at retirement', toEuroText(rentalIncomeNominalAtRetirement)]
+          ['Gross rental income at target start', toEuroText(rentalIncomeNominalAtRetirement)]
         ]
+        : []),
+      ...(hasOtherIncomeContext
+        ? inputs.otherIncomeSources.map((source) => [
+          source.title,
+          `${toEuroText(source.annualAmountToday)} p.a. from ${source.startYear}${source.endYear ? ` to ${source.endYear}` : ''}${source.inflationIndexed ? ' (indexed)' : ' (flat nominal)'}`
+        ])
         : []),
       isAffordableMode
         ? ['Affordable income mode', 'Goal-seek (see outputs)']
         : ['Target retirement income', toEuroText(inputs.targetIncomeToday)],
-      ['Earnings cap for max-relief maths', toEuroText(Math.min(inputs.currentSalary, 115000))],
-      ['Max personal age band %', `${toPercentText(ageBandPct(inputs.currentAge))} (steps with age)`],
+      ['Earnings cap for max-relief maths', toEuroText(115000)],
+      ['ARF minimum withdrawals', '4% under 70, 5% from 70, 6% where an individual fund exceeds €2m'],
       ...(currentPersonalWasCapped && Number.isInteger(firstCappedAge)
         ? [[
           'Current personal contributions capped?',
@@ -923,54 +1394,60 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         : []),
       ['Mode', modeLabel],
       [
-        'Horizon end age',
-        isAffordableMode ? inputs.affordableEndAges.join(', ') : String(inputs.horizonEndAge)
+        'Horizon',
+        isAffordableMode ? inputs.affordableEndAges.join(', ') : `${inputs.horizonEndYear} (${inputs.primaryPension.title} age ${inputs.horizonEndAge})`
       ]
     ]
   };
 
   const outputsRows = [
-    ['Projected pot at retirement (current)', toEuroText(projectedPotCurrent)],
-    ['Projected pot at retirement (max personal)', toEuroText(projectedPotMaxPersonal)]
+    ['Projected pot at target start (current)', toEuroText(projectedPotCurrent)],
+    ['Projected pot at target start (max personal)', toEuroText(projectedPotMaxPersonal)]
   ];
 
-  if (isAffordableMode && !inputs.minDrawdownMode) {
+  if (isAffordableMode) {
     affordableCurrentResults.forEach((entry) => {
-      if (hasRentalContext) {
-        outputsRows.push([
-          `Pension-funded affordable income (current, deplete by ${entry.endAge})`,
-          `${toEuroText(entry.incomeToday)} p.a.`
-        ]);
-      }
+      outputsRows.push([
+        `Pension-funded affordable income (current, deplete by ${entry.endAge})`,
+        `${toEuroText(entry.incomeToday)} p.a.`
+      ]);
       outputsRows.push([
         `Affordable income (current, deplete by ${entry.endAge})`,
-        `${toEuroText(hasRentalContext ? entry.totalIncomeToday : entry.incomeToday)} p.a.`
+        `${toEuroText(entry.totalIncomeToday)} p.a.`
       ]);
     });
     affordableMaxResults.forEach((entry) => {
-      if (hasRentalContext) {
-        outputsRows.push([
-          `Pension-funded affordable income (max, deplete by ${entry.endAge})`,
-          `${toEuroText(entry.incomeToday)} p.a.`
-        ]);
-      }
+      outputsRows.push([
+        `Pension-funded affordable income (max, deplete by ${entry.endAge})`,
+        `${toEuroText(entry.incomeToday)} p.a.`
+      ]);
       outputsRows.push([
         `Affordable income (max, deplete by ${entry.endAge})`,
-        `${toEuroText(hasRentalContext ? entry.totalIncomeToday : entry.incomeToday)} p.a.`
+        `${toEuroText(entry.totalIncomeToday)} p.a.`
       ]);
     });
   } else {
-    outputsRows.push(['Required pot at retirement (Mode 1)', toEuroText(requiredPot)]);
+    outputsRows.push(['Required pot at target start (Mode 1)', toEuroText(requiredPot)]);
     outputsRows.push(['Gap vs required (required - projected current)', toEuroText(requiredPot - projectedPotCurrent)]);
     outputsRows.push(['Target income (today\'s money)', toEuroText(inputs.targetIncomeToday)]);
-    outputsRows.push(['Target income (nominal at retirement)', toEuroText(targetIncomeNominalAtRetirement)]);
-    if (hasRentalContext) {
-      outputsRows.push(['Gross rental income at retirement', toEuroText(rentalIncomeNominalAtRetirement)]);
-      outputsRows.push([
-        'Pension-funded target after rent (nominal at retirement)',
-        toEuroText(pensionWithdrawalNominalAtRetirement)
-      ]);
+    outputsRows.push(['Target income (nominal at target start)', toEuroText(targetIncomeNominalAtRetirement)]);
+    if (hasStatePensionContext) {
+      outputsRows.push(['State Pension at target start', toEuroText(statePensionNominalAtRetirement)]);
     }
+    if (hasRentalContext) {
+      outputsRows.push(['Gross rental income at target start', toEuroText(rentalIncomeNominalAtRetirement)]);
+    }
+    if (hasOtherIncomeContext) {
+      outputsRows.push(['Other income at target start', toEuroText(otherIncomeNominalAtRetirement)]);
+    }
+    outputsRows.push([
+      'Pension-funded target after other income (nominal at target start)',
+      toEuroText(pensionWithdrawalNominalAtRetirement)
+    ]);
+    outputsRows.push(['First-year mandatory pension withdrawals', toEuroText(retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal)]);
+    outputsRows.push(['First-year elected pension withdrawals', toEuroText(retirementSimulationProjectedCurrent.firstYearElectedWithdrawal)]);
+    outputsRows.push(['First-year surplus over target', toEuroText(retirementSimulationProjectedCurrent.surpluses[0] || 0)]);
+    outputsRows.push(['Total shortfall on current path', toEuroText(retirementSimulationProjectedCurrent.totalShortfall)]);
   }
 
   outputsRows.push([
@@ -988,116 +1465,32 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       : 'No'
   ]);
 
-  if (inputs.minDrawdownMode) {
-    outputsRows.push(['First-year min drawdown amount', toEuroText(minDrawdownSimulation.firstYearMinimumDrawdown)]);
-    outputsRows.push([
-      hasRentalContext
-        ? 'First-year min drawdown >= pension-funded target after rent'
-        : 'First-year min drawdown >= target_nominal_at_retirement',
-      minDrawdownSimulation.firstYearMinimumDrawdown >= minDrawdownSimulation.firstYearTargetIncome ? 'Yes' : 'No'
-    ]);
-  }
-
   const outputsTable = {
     columns: ['Output', 'Value'],
     rows: outputsRows
   };
 
   const charts = [
-    {
-      title: 'Pension Pot at Retirement (Before Withdrawals)',
-      type: 'bar',
-      labels: currentScenario.labels,
-      datasets: [
-        {
-          label: 'Pot (current)',
-          data: currentScenario.balances
-        },
-        {
-          label: 'Pot (max)',
-          data: maxScenario.balances
-        },
-        {
-          label: 'Personal (current)',
-          data: currentScenario.personalEurSeries
-        },
-        {
-          label: 'Employer (current)',
-          data: currentScenario.employerEurSeries
-        },
-        {
-          label: 'Growth (current)',
-          data: currentScenario.growthEurSeries
-        },
-        {
-          label: 'Personal (max)',
-          data: maxScenario.personalEurSeries
-        },
-        {
-          label: 'Employer (max)',
-          data: maxScenario.employerEurSeries
-        },
-        {
-          label: 'Growth (max)',
-          data: maxScenario.growthEurSeries
-        }
-      ]
-    }
+    ...inputs.pensions.map((member, index) => buildAccumulationChart(
+      member,
+      currentMemberScenarios[index],
+      maxMemberScenarios[index]
+    ))
   ];
 
-  if (inputs.minDrawdownMode) {
+  if (isAffordableMode) {
     charts.push({
-      title: 'Minimum Drawdown vs Target Income',
-      type: 'bar',
-      labels: minDrawdownSimulation.labels,
-      datasets: [
-        {
-          label: 'Minimum drawdown',
-          data: minDrawdownSimulation.minDrawdowns
-        },
-        {
-          label: hasRentalContext ? 'Pension-funded target after rent' : 'Target income',
-          data: minDrawdownSimulation.targets
-        }
-      ]
+      title: 'Retirement Sustainability (Affordable Income)',
+      type: 'line',
+      labels: sustainabilityLabels,
+      datasets: affordableChartDatasets
     });
   } else {
-    if (isAffordableMode) {
-      charts.push({
-        title: 'Retirement Sustainability (Affordable Income)',
-        type: 'line',
-        labels: sustainabilityLabels,
-        datasets: affordableChartDatasets
-      });
-    } else {
-      charts.push({
-        title: 'Retirement Sustainability (Target Income)',
-        type: 'line',
-        labels: sustainabilityLabels,
-        datasets: [
-          {
-            label: 'Balance (current)',
-            data: sustainabilityCurrentFloored
-          },
-          {
-            label: 'Balance (max)',
-            data: sustainabilityMaxFloored
-          },
-          {
-            label: 'Required pot path',
-            data: requiredReferenceFloored,
-            borderColor: '#B48CFF',
-            backgroundColor: 'rgba(180, 140, 255, 0.20)',
-            pointBackgroundColor: '#B48CFF',
-            pointBorderColor: '#B48CFF'
-          },
-          {
-            label: 'Withdrawals',
-            data: withdrawalsSeries
-          }
-        ]
-      });
-    }
+    charts.push(buildHouseholdIncomeChart(
+      inputs,
+      retirementSimulationProjectedCurrent,
+      retirementSimulationProjectedMax
+    ));
   }
 
   charts.forEach((chart) => {
@@ -1125,15 +1518,21 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     charts,
     debug: {
       inputs,
+      pensions: inputs.pensions,
       projectedPotCurrent,
       projectedPotMaxPersonal,
       requiredPot,
+      requiredBalances: requiredResult?.requiredBalances ?? [],
       rentalIncomeToday: inputs.rentalIncomeToday,
       rentalIncomeNominalAtRetirement,
+      statePensionNominalAtRetirement,
+      otherIncomeNominalAtRetirement,
       pensionWithdrawalNominalAtRetirement,
       selectedScenarioId: inputs.selectedScenarioId,
       selectedScenarioTitle: inputs.selectedScenarioTitle,
       retirementYear,
+      targetStartYear: inputs.targetStartYear,
+      horizonEndYear: inputs.horizonEndYear,
       sftValue: sftMeta.sftValue,
       sftYearUsed: sftMeta.sftYearUsed,
       sftHeldConstantBeyond2029: sftMeta.heldConstantBeyond2029,
@@ -1143,18 +1542,21 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       firstCappedAge,
       maxRelievableAtFirstCap,
       currentPersonalCapSentence,
-      currentScenario: {
-        personalEurSeries: currentScenario.personalEurSeries,
-        employerEurSeries: currentScenario.employerEurSeries,
-        contribEurSeries: currentScenario.contribEurSeries,
-        growthEurSeries: currentScenario.growthEurSeries
+      currentScenario,
+      maxScenario,
+      memberScenarios: {
+        current: currentMemberScenarios,
+        max: maxMemberScenarios
       },
+      retirementSimulationProjectedCurrent,
+      retirementSimulationProjectedMax,
+      retirementSimulationRequired: requiredResult?.simulation ?? null,
       depletionAgeProjected,
       depletionAgeRequired,
-      maxSeriesMonotonicIssues: monotonicIssues,
+      maxSeriesMonotonicIssues: [],
       retirementEndingBalanceFromProjected: retirementSimulationProjectedCurrent.endingBalanceAfterHorizon,
       retirementEndingBalanceFromProjectedMax: retirementSimulationProjectedMax.endingBalanceAfterHorizon,
-      retirementEndingBalanceFromRequired: retirementSimulationRequired?.endingBalanceAfterHorizon ?? null,
+      retirementEndingBalanceFromRequired: requiredResult?.simulation?.endingBalanceAfterHorizon ?? null,
       affordableIncome: isAffordableMode
         ? {
           current: affordableCurrentResults.map((entry) => ({

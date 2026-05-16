@@ -187,6 +187,35 @@ Representative payloads for testing the upgraded module renderer through the exi
 }
 ```
 
+## Couple Pension Projection
+
+```json
+{
+  "title": "Pension Projection - John and Mary",
+  "generated": {
+    "summaryHtml": "<p>This projection models two pension pots working toward a shared household retirement income target. The browser app will calculate the repeatable pension outputs, State Pension, DB income, ARF minimum withdrawals, and charts after the payload is applied.</p>",
+    "pensionInputs": {
+      "currentYear": 2026,
+      "inflationRate": 0.02,
+      "growthRate": 0.05,
+      "wageGrowthRate": 0.025,
+      "incomeMode": "target",
+      "targetIncomeToday": 70000,
+      "targetStartYear": 2052,
+      "horizonEndAge": 95,
+      "rentalIncomeToday": 18000,
+      "pensions": [
+        { "id": "john", "title": "John", "currentAge": 42, "retirementAge": 67, "currentSalary": 85000, "currentPot": 180000, "personalPct": 0.08, "employerPct": 0.06 },
+        { "id": "mary", "title": "Mary", "currentAge": 40, "retirementAge": 66, "currentSalary": 70000, "currentPot": 120000, "personalPct": 0.07, "employerPct": 0.05 }
+      ],
+      "otherIncomeSources": [
+        { "id": "mary-db", "title": "Mary DB pension", "type": "db", "ownerId": "mary", "annualAmountToday": 12000, "startAge": 66, "inflationIndexed": true }
+      ]
+    }
+  }
+}
+```
+
 ## Mortgage / Loan
 
 ```json

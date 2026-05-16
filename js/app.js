@@ -1455,6 +1455,60 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'pension-couple-income-stack-demo',
+    label: 'Pension Couple Income Stack Demo',
+    payload: {
+      title: 'Pension Projection (Couple Income Stack Demo)',
+      generated: {
+        summaryHtml: '<p>This pension projection models two pensions working toward a shared household retirement income target, with State Pension, rental income, DB income, and ARF minimum withdrawals included.</p>',
+        pensionInputs: {
+          currentYear: 2026,
+          inflationRate: 0.02,
+          growthRate: 0.05,
+          wageGrowthRate: 0.025,
+          incomeMode: 'target',
+          targetIncomeToday: 70000,
+          targetStartYear: 2052,
+          horizonEndAge: 95,
+          rentalIncomeToday: 18000,
+          pensions: [
+            {
+              id: 'john',
+              title: 'John',
+              currentAge: 42,
+              retirementAge: 67,
+              currentSalary: 85000,
+              currentPot: 180000,
+              personalPct: 0.08,
+              employerPct: 0.06
+            },
+            {
+              id: 'mary',
+              title: 'Mary',
+              currentAge: 40,
+              retirementAge: 66,
+              currentSalary: 70000,
+              currentPot: 120000,
+              personalPct: 0.07,
+              employerPct: 0.05
+            }
+          ],
+          otherIncomeSources: [
+            {
+              id: 'mary-db',
+              title: 'Mary DB pension',
+              type: 'db',
+              ownerId: 'mary',
+              annualAmountToday: 12000,
+              startAge: 66,
+              inflationIndexed: true
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
     id: 'mortgage-inline-assumptions-demo',
     label: 'Mortgage Inline Assumptions Demo',
     payload: {
