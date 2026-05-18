@@ -646,9 +646,11 @@ function normalizePensionInputs(pensionInputs) {
     'horizonEndAge',
     'currentYear',
     'rentalIncomeToday',
+    'incomeStartYear',
     'targetStartYear',
     'targetStartAge',
-    'horizonEndYear'
+    'horizonEndYear',
+    'requiredPotReferenceYear'
   ].forEach((key) => {
     if (typeof pensionInputs[key] === 'number' && Number.isFinite(pensionInputs[key])) {
       normalized[key] = pensionInputs[key];
@@ -657,6 +659,10 @@ function normalizePensionInputs(pensionInputs) {
 
   if (typeof pensionInputs.includeStatePension === 'boolean') {
     normalized.includeStatePension = pensionInputs.includeStatePension;
+  }
+
+  if (typeof pensionInputs.includeEmploymentIncomeDuringBridge === 'boolean') {
+    normalized.includeEmploymentIncomeDuringBridge = pensionInputs.includeEmploymentIncomeDuringBridge;
   }
 
   if (typeof pensionInputs.baseScenarioId === 'string' && pensionInputs.baseScenarioId.trim()) {

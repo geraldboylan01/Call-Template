@@ -6767,7 +6767,8 @@ export function patchFocusedGeneratedCards({
   readOnly = false,
   patchSummary = true,
   patchAssumptions = true,
-  patchOutputs = true
+  patchOutputs = true,
+  patchCharts = false
 }) {
   if (!focusedCard || !module) {
     return;
@@ -6845,6 +6846,19 @@ export function patchFocusedGeneratedCards({
       grid,
       selector: '[data-generated-card="outputs"], [data-generated-card="outputs-bucketed"]',
       replacement: outputCard
+    });
+  }
+
+  if (patchCharts) {
+    const displayModule = getPensionDisplayModule(module);
+    replaceGeneratedCard({
+      grid,
+      selector: '[data-generated-card="charts"]',
+      replacement: buildChartsCard(
+        displayModule,
+        Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : [],
+        { showPensionToggle: true, readOnly }
+      )
     });
   }
 }

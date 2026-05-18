@@ -106,6 +106,17 @@ Checks:
 - does not emit fake outputs or charts
 - keeps pension module JS-backed
 
+### PEN-5A
+Prompt:
+`Run the pension playbook for a couple. Alex is 60, salary 100000, pension 100000, personal 10 percent, employer 0 percent. Blake is 55, salary 80000, pension 200000, personal 10 percent, employer 0 percent. They both retire at 65. Growth 0 percent, inflation 0 percent, target household income 50000.`
+
+Checks:
+- sets each pension member's own `retirementAge` to 65
+- includes `incomeStartYear` for the first retirement year
+- includes `requiredPotReferenceYear` for the later retirement year
+- leaves `includeEmploymentIncomeDuringBridge` omitted or `true`
+- does not emit fake outputs or charts
+
 ### PEN-6
 Prompt:
 `Run the pension playbook for John and Mary. Same as before, but exclude Mary's State Pension and show the rent-lost case as a scenario.`

@@ -107,10 +107,13 @@ Use `pensions[]` when Gerry describes a couple or two pension pots working towar
 - `baseScenarioId`
 - `rentalIncomeScenarios`
 - `pensions`
+- `incomeStartYear`
 - `targetStartYear`
 - `targetStartAge`
+- `requiredPotReferenceYear`
 - `horizonEndYear`
 - `includeStatePension`
+- `includeEmploymentIncomeDuringBridge`
 - `otherIncomeSources`
 
 Only emit optional keys when Gerry gives them, when the playbook requires them, or when a labeled placeholder is needed.
@@ -177,7 +180,10 @@ Rules:
 - Each pension must include `id`, `title`, `currentAge`, `retirementAge`, `currentSalary`, `currentPot`, `personalPct`, and `employerPct`.
 - Also include the legacy top-level pension keys (`currentAge`, `retirementAge`, `currentSalary`, `currentPot`, `personalPct`, `employerPct`) for compatibility. Use the first pension's ages, household totals for salary/current pot, and salary-weighted household contribution percentages. The runtime uses `pensions[]` for the actual household calculation.
 - Put shared `growthRate`, `wageGrowthRate`, and `inflationRate` at household level unless Gerry gives different rates per person.
-- Set `targetStartYear` if Gerry gives the household income start year. If he gives an age instead, use `targetStartAge`.
+- If Gerry says "both retire at X's 65th birthday", derive each member's `retirementAge` so both retirement years match X's age-65 year.
+- If Gerry says "both retire at 65", set each member's own `retirementAge` to 65; if their current ages differ, this creates staggered retirement years.
+- For staggered retirement years, set `incomeStartYear` to the first retirement year and `requiredPotReferenceYear` to the later retirement year. Gross employment income is included during the bridge by default unless Gerry excludes it.
+- Set `targetStartYear` only if Gerry explicitly gives the household income start year. If he gives an age instead, use `targetStartAge`.
 - The runtime includes the Irish State Pension by default for each person from age 66, using EUR 15,563.60 p.a. today and inflation-indexing it.
 - If Gerry says to exclude State Pension for one person, set that pension member's `includeStatePension` to `false`.
 

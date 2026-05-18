@@ -383,6 +383,10 @@ function normalizePensionMembers(raw, defaults) {
 }
 
 function resolveTargetStartYear(raw, pensions, currentYear) {
+  if (typeof raw.incomeStartYear !== 'undefined') {
+    return requireFiniteInteger(raw.incomeStartYear, 'incomeStartYear');
+  }
+
   if (typeof raw.targetStartYear !== 'undefined') {
     return requireFiniteInteger(raw.targetStartYear, 'targetStartYear');
   }
@@ -397,6 +401,37 @@ function resolveTargetStartYear(raw, pensions, currentYear) {
   }
 
   return primary.retirementYear;
+}
+
+function resolveRequiredPotReferenceYear(raw, pensions, incomeStartYear) {
+  if (typeof raw.requiredPotReferenceYear !== 'undefined') {
+    return requireFiniteInteger(raw.requiredPotReferenceYear, 'requiredPotReferenceYear');
+  }
+
+  if (pensions.length > 1) {
+    return Math.max(...pensions.map((member) => member.retirementYear));
+  }
+
+  return incomeStartYear;
+}
+
+function hasStaggeredRetirementYears(pensions) {
+  if (!Array.isArray(pensions) || pensions.length <= 1) {
+    return false;
+  }
+
+  return new Set(pensions.map((member) => member.retirementYear)).size > 1;
+}
+
+function resolveIncludeEmploymentIncomeDuringBridge(raw, pensions) {
+  if (typeof raw.includeEmploymentIncomeDuringBridge !== 'undefined') {
+    if (typeof raw.includeEmploymentIncomeDuringBridge !== 'boolean') {
+      throw new Error('generated.pensionInputs.includeEmploymentIncomeDuringBridge must be a boolean when provided.');
+    }
+    return raw.includeEmploymentIncomeDuringBridge;
+  }
+
+  return hasStaggeredRetirementYears(pensions);
 }
 
 function resolveYearFromAgeSource(source, pensions, currentYear, ageKey, yearKey, fieldName, { required = true } = {}) {
@@ -473,10 +508,6 @@ function normalizeOtherIncomeSources(rawValue, pensions, currentYear) {
   });
 }
 
-function targetAgeAtStart(primary, targetStartYear, currentYear) {
-  return ageAtYear(primary, targetStartYear, currentYear);
-}
-
 function resolveHorizonEndYear(raw, primary, currentYear, targetStartYear) {
   if (typeof raw.horizonEndYear !== 'undefined') {
     return requireFiniteInteger(raw.horizonEndYear, 'horizonEndYear');
@@ -508,6 +539,12 @@ function ageLabelForYear(inputs, year) {
   return String(ageAtYear(inputs.primaryPension, year, inputs.currentYear));
 }
 
+function ageSummaryForYear(inputs, year) {
+  return inputs.pensions
+    .map((member) => `${member.title} age ${ageAtYear(member, year, inputs.currentYear)}`)
+    .join(', ');
+}
+
 function buildYearRange(startYear, endYear) {
   const years = [];
   for (let year = startYear; year <= endYear; year += 1) {
@@ -517,6 +554,16 @@ function buildYearRange(startYear, endYear) {
 }
 
 function buildIncomeBreakdownAtYear(inputs, year) {
+  const employmentIncome = inputs.includeEmploymentIncomeDuringBridge
+    ? inputs.pensions.reduce((total, member) => {
+      if (year < inputs.incomeStartYear || year >= member.retirementYear) {
+        return total;
+      }
+      const salary = member.currentSalary * Math.pow(1 + member.wageGrowthRate, year - inputs.currentYear);
+      return total + (Number.isFinite(salary) ? salary : 0);
+    }, 0)
+    : 0;
+
   const statePension = inputs.pensions.reduce((total, member) => {
     const age = ageAtYear(member, year, inputs.currentYear);
     if (!member.includeStatePension || age < STATE_PENSION_START_AGE) {
@@ -525,7 +572,7 @@ function buildIncomeBreakdownAtYear(inputs, year) {
     return total + (STATE_PENSION_ANNUAL_TODAY * inflationFactorForYear(inputs, year));
   }, 0);
 
-  const rentalIncome = year >= inputs.targetStartYear
+  const rentalIncome = year >= inputs.incomeStartYear
     ? inputs.rentalIncomeToday * inflationFactorForYear(inputs, year)
     : 0;
 
@@ -540,10 +587,11 @@ function buildIncomeBreakdownAtYear(inputs, year) {
   }, 0);
 
   return {
+    employmentIncome: Number.isFinite(employmentIncome) ? employmentIncome : 0,
     statePension: Number.isFinite(statePension) ? statePension : 0,
     rentalIncome: Number.isFinite(rentalIncome) ? rentalIncome : 0,
     otherIncome: Number.isFinite(otherIncome) ? otherIncome : 0,
-    total: statePension + rentalIncome + otherIncome
+    total: employmentIncome + statePension + rentalIncome + otherIncome
   };
 }
 
@@ -612,6 +660,7 @@ function contributionForMemberAtYear(member, inputs, year, mode) {
 }
 
 function simulateMemberAccumulation(inputs, member, mode) {
+  const years = [inputs.currentYear];
   const labels = [String(member.currentAge)];
   const balances = [member.currentPot];
   const personalEurSeries = [0];
@@ -620,13 +669,14 @@ function simulateMemberAccumulation(inputs, member, mode) {
   const growthEurSeries = [0];
   let balance = member.currentPot;
 
-  for (let year = inputs.currentYear; year < inputs.targetStartYear; year += 1) {
+  for (let year = inputs.currentYear; year < member.retirementYear; year += 1) {
     const contribution = contributionForMemberAtYear(member, inputs, year, mode);
     const preGrowth = balance + contribution.total;
     const endBalance = preGrowth * (1 + member.growthRate);
     const growthEur = endBalance - preGrowth;
 
     balance = Number.isFinite(endBalance) ? endBalance : preGrowth;
+    years.push(year + 1);
     labels.push(String(ageAtYear(member, year + 1, inputs.currentYear)));
     balances.push(balance);
     personalEurSeries.push(contribution.personal);
@@ -638,6 +688,7 @@ function simulateMemberAccumulation(inputs, member, mode) {
   return {
     member,
     mode,
+    years,
     labels,
     balances,
     personalEurSeries,
@@ -648,16 +699,30 @@ function simulateMemberAccumulation(inputs, member, mode) {
   };
 }
 
+function balanceFromMemberScenarioAtYear(scenario, year) {
+  const index = Array.isArray(scenario?.years)
+    ? scenario.years.findIndex((entry) => entry === year)
+    : -1;
+  if (index >= 0 && Number.isFinite(scenario.balances[index])) {
+    return scenario.balances[index];
+  }
+
+  return Number.isFinite(scenario?.retirementPot) ? scenario.retirementPot : 0;
+}
+
 function simulateHouseholdRetirement(inputs, startingBalances, {
   targetIncomeToday = inputs.targetIncomeToday,
   horizonEndYear = inputs.horizonEndYear,
-  contributionMode = 'current'
+  contributionMode = 'current',
+  startYear = inputs.incomeStartYear
 } = {}) {
-  const years = buildYearRange(inputs.targetStartYear, horizonEndYear);
+  const years = buildYearRange(startYear, horizonEndYear);
   const labels = years.map((year) => ageLabelForYear(inputs, year));
   const balances = startingBalances.map((value) => clampToZero(value));
   const combinedBalances = [];
+  const totalPensionBalances = [];
   const requiredIncome = [];
+  const employmentIncome = [];
   const statePensionIncome = [];
   const rentalIncome = [];
   const otherIncome = [];
@@ -666,18 +731,24 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
   const shortfalls = [];
   const surpluses = [];
   const totalIncome = [];
+  const perPensionOpeningBalances = inputs.pensions.map(() => []);
   const perPensionMandatory = inputs.pensions.map(() => []);
   const perPensionElected = inputs.pensions.map(() => []);
 
   years.forEach((year) => {
     const openingBalances = balances.map((value) => clampToZero(value));
-    combinedBalances.push(sum(openingBalances));
-
-    const target = targetIncomeNominalAtYear(inputs, year, targetIncomeToday);
-    const external = buildIncomeBreakdownAtYear(inputs, year);
     const availableIndexes = inputs.pensions
       .map((member, index) => (year >= member.retirementYear ? index : null))
       .filter((index) => index !== null);
+
+    inputs.pensions.forEach((_member, index) => {
+      perPensionOpeningBalances[index].push(openingBalances[index] || 0);
+    });
+    combinedBalances.push(sum(availableIndexes.map((index) => openingBalances[index] || 0)));
+    totalPensionBalances.push(sum(openingBalances));
+
+    const target = targetIncomeNominalAtYear(inputs, year, targetIncomeToday);
+    const external = buildIncomeBreakdownAtYear(inputs, year);
 
     const mandatoryByPension = inputs.pensions.map((member, index) => {
       if (!availableIndexes.includes(index)) {
@@ -705,6 +776,7 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
     const surplus = clampToZero(incomeBeforeShortfall - target);
 
     requiredIncome.push(target);
+    employmentIncome.push(external.employmentIncome);
     statePensionIncome.push(external.statePension);
     rentalIncome.push(external.rentalIncome);
     otherIncome.push(external.otherIncome);
@@ -725,9 +797,11 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
     years,
     labels,
     combinedBalances: floorSeriesToZero(combinedBalances),
+    totalPensionBalances: floorSeriesToZero(totalPensionBalances),
     endingBalances: balances.map((value) => clampToZero(value)),
     endingBalanceAfterHorizon: sum(balances),
     requiredIncome,
+    employmentIncome,
     statePensionIncome,
     rentalIncome,
     otherIncome,
@@ -736,6 +810,7 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
     shortfalls,
     surpluses,
     totalIncome,
+    perPensionOpeningBalances,
     perPensionMandatory,
     perPensionElected,
     totalShortfall: sum(shortfalls),
@@ -757,7 +832,8 @@ function findRequiredStartingBalances(inputs, referenceBalances) {
     : inputs.pensions.map(() => 1 / inputs.pensions.length);
   const isSustainable = (total) => {
     const simulation = simulateHouseholdRetirement(inputs, splitTotalByShares(total, shares), {
-      contributionMode: 'current'
+      contributionMode: 'current',
+      startYear: inputs.requiredPotReferenceYear
     });
     return simulation.maxShortfall <= REQUIRED_POT_TOLERANCE_EUR;
   };
@@ -799,7 +875,8 @@ function findRequiredStartingBalances(inputs, referenceBalances) {
 
   const requiredBalances = splitTotalByShares(upper, shares);
   const simulation = simulateHouseholdRetirement(inputs, requiredBalances, {
-    contributionMode: 'current'
+    contributionMode: 'current',
+    startYear: inputs.requiredPotReferenceYear
   });
 
   return {
@@ -842,14 +919,14 @@ function goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEn
     horizonEndYear,
     contributionMode
   });
-  const firstYearFactor = inflationFactorForYear(inputs, inputs.targetStartYear);
+  const firstYearFactor = inflationFactorForYear(inputs, inputs.incomeStartYear);
   const pensionFundedAtStart = (simulation.mandatoryWithdrawals[0] || 0) + (simulation.electedWithdrawals[0] || 0);
 
   return {
     incomeTodayBest: clampToZero(pensionFundedAtStart / Math.max(firstYearFactor, 0.000001)),
     totalIncomeToday: clampToZero(low),
     incomeNominalAtRetirement: pensionFundedAtStart,
-    totalIncomeNominalAtRetirement: targetIncomeNominalAtYear(inputs, inputs.targetStartYear, low),
+    totalIncomeNominalAtRetirement: targetIncomeNominalAtYear(inputs, inputs.incomeStartYear, low),
     requiredPotAtRetirementBest: sum(startBalances),
     gap: simulation.maxShortfall,
     simulation
@@ -888,11 +965,20 @@ function normalizePensionInputsInternal(raw) {
     wageGrowthRate: householdWageGrowthRate
   });
   const primary = pensions[0];
-  const targetStartYear = resolveTargetStartYear(raw, pensions, currentYear);
-  const targetStartAge = ageAtYear(primary, targetStartYear, currentYear);
-  const horizonEndYear = resolveHorizonEndYear(raw, primary, currentYear, targetStartYear);
+  const incomeStartYear = resolveTargetStartYear(raw, pensions, currentYear);
+  const targetStartYear = incomeStartYear;
+  const targetStartAge = ageAtYear(primary, incomeStartYear, currentYear);
+  const requiredPotReferenceYear = resolveRequiredPotReferenceYear(raw, pensions, incomeStartYear);
+  if (requiredPotReferenceYear < incomeStartYear) {
+    throw new Error('generated.pensionInputs.requiredPotReferenceYear must be greater than or equal to incomeStartYear.');
+  }
+  const horizonEndYear = resolveHorizonEndYear(raw, primary, currentYear, incomeStartYear);
+  if (horizonEndYear < requiredPotReferenceYear) {
+    throw new Error('generated.pensionInputs.horizonEndAge must be greater than or equal to the required pot reference year.');
+  }
   const horizonEndAge = ageAtYear(primary, horizonEndYear, currentYear);
   const incomeMode = normalizeIncomeMode(raw.incomeMode);
+  const includeEmploymentIncomeDuringBridge = resolveIncludeEmploymentIncomeDuringBridge(raw, pensions);
 
   const normalized = {
     currentAge: primary.currentAge,
@@ -908,7 +994,11 @@ function normalizePensionInputsInternal(raw) {
     horizonEndYear,
     currentYear,
     targetStartYear,
+    incomeStartYear,
     targetStartAge,
+    requiredPotReferenceYear,
+    requiredPotReferenceAge: ageAtYear(primary, requiredPotReferenceYear, currentYear),
+    includeEmploymentIncomeDuringBridge,
     incomeMode,
     rentalIncomeToday: optionalNonNegativeNumber(raw.rentalIncomeToday, 0, 'rentalIncomeToday'),
     pensions,
@@ -1088,6 +1178,11 @@ function buildAccumulationChart(member, currentScenario, maxScenario) {
 function buildIncomeStackDatasets(simulation, suffix, hidden = false) {
   return [
     {
+      label: `Employment income (${suffix})`,
+      data: simulation.employmentIncome,
+      hidden
+    },
+    {
       label: `State Pension (${suffix})`,
       data: simulation.statePensionIncome,
       hidden
@@ -1125,14 +1220,33 @@ function buildIncomeStackDatasets(simulation, suffix, hidden = false) {
   ];
 }
 
-function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation) {
+function buildRequiredPotPathData(baseSimulation, requiredSimulation) {
+  if (!requiredSimulation || !Array.isArray(baseSimulation?.years)) {
+    return [];
+  }
+
+  return baseSimulation.years.map((year) => {
+    const index = requiredSimulation.years.findIndex((entry) => entry === year);
+    return index >= 0 ? requiredSimulation.combinedBalances[index] : null;
+  });
+}
+
+function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, requiredSimulation = null) {
   return {
     title: 'Retirement Income Stack and Pension Balance',
     type: 'bar',
     labels: currentSimulation.labels,
+    subtitle: inputs.isHousehold
+      ? 'Calendar years shown; hover a year to see each person’s age.'
+      : '',
+    meta: {
+      ageLabels: currentSimulation.years.map((year) => ageSummaryForYear(inputs, year))
+    },
     display: {
       stacked: true,
-      valueFormat: 'currency'
+      valueFormat: 'currency',
+      xAxisTitle: inputs.isHousehold ? 'Calendar year' : `${inputs.primaryPension.title} age`,
+      yAxisTitle: 'Pension balance'
     },
     datasets: [
       {
@@ -1152,6 +1266,12 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation) {
         pointBackgroundColor: '#ffffff',
         pointBorderColor: '#ffffff'
       },
+      ...(requiredSimulation
+        ? [{
+          label: 'Required pot path',
+          data: buildRequiredPotPathData(currentSimulation, requiredSimulation)
+        }]
+        : []),
       ...buildIncomeStackDatasets(currentSimulation, 'current', false),
       ...buildIncomeStackDatasets(maxSimulation, 'max', true)
     ]
@@ -1167,6 +1287,33 @@ function padSeries(values, targetLength) {
     padded.length = targetLength;
   }
   return padded;
+}
+
+function simulationIndexForYear(simulation, year) {
+  return Array.isArray(simulation?.years)
+    ? simulation.years.findIndex((entry) => entry === year)
+    : -1;
+}
+
+function simulationSeriesValueAtYear(simulation, values, year, fallback = 0) {
+  const index = simulationIndexForYear(simulation, year);
+  if (index < 0) {
+    return fallback;
+  }
+  const value = Array.isArray(values) ? values[index] : null;
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function simulationPensionBalancesAtYear(simulation, year, fallbackBalances = []) {
+  const index = simulationIndexForYear(simulation, year);
+  if (index < 0 || !Array.isArray(simulation?.perPensionOpeningBalances)) {
+    return fallbackBalances.map((value) => clampToZero(value));
+  }
+
+  return simulation.perPensionOpeningBalances.map((series, pensionIndex) => {
+    const value = Array.isArray(series) ? series[index] : null;
+    return Number.isFinite(value) ? clampToZero(value) : clampToZero(fallbackBalances[pensionIndex] || 0);
+  });
 }
 
 function buildAffordableIncomeResult(inputs, startBalances, endAge, fullLabels, contributionMode) {
@@ -1188,8 +1335,8 @@ function buildAffordableIncomeResult(inputs, startBalances, endAge, fullLabels, 
 }
 
 function pensionFundedTargetAtStart(inputs) {
-  const targetAtStart = targetIncomeNominalAtYear(inputs, inputs.targetStartYear);
-  const externalAtStart = buildIncomeBreakdownAtYear(inputs, inputs.targetStartYear);
+  const targetAtStart = targetIncomeNominalAtYear(inputs, inputs.incomeStartYear);
+  const externalAtStart = buildIncomeBreakdownAtYear(inputs, inputs.incomeStartYear);
   return clampToZero(targetAtStart - externalAtStart.total);
 }
 
@@ -1237,21 +1384,48 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
   });
   const maxMemberScenarios = inputs.pensions.map((member) => simulateMemberAccumulation(inputs, member, 'max'));
 
-  const currentStartBalances = currentMemberScenarios.map((scenario) => scenario.retirementPot);
-  const maxStartBalances = maxMemberScenarios.map((scenario) => scenario.retirementPot);
-  const projectedPotCurrent = sum(currentStartBalances);
-  const projectedPotMaxPersonal = sum(maxStartBalances);
+  const currentIncomeStartBalances = currentMemberScenarios.map((scenario) => (
+    balanceFromMemberScenarioAtYear(scenario, inputs.incomeStartYear)
+  ));
+  const maxIncomeStartBalances = maxMemberScenarios.map((scenario) => (
+    balanceFromMemberScenarioAtYear(scenario, inputs.incomeStartYear)
+  ));
+  const projectedTotalPotAtIncomeStartCurrent = sum(currentIncomeStartBalances);
+  const projectedTotalPotAtIncomeStartMaxPersonal = sum(maxIncomeStartBalances);
   const currentScenario = aggregateScenario(currentMemberScenarios);
   const maxScenario = aggregateScenario(maxMemberScenarios);
 
-  const retirementSimulationProjectedCurrent = simulateHouseholdRetirement(inputs, currentStartBalances, {
+  const retirementSimulationProjectedCurrent = simulateHouseholdRetirement(inputs, currentIncomeStartBalances, {
     contributionMode: 'current'
   });
-  const retirementSimulationProjectedMax = simulateHouseholdRetirement(inputs, maxStartBalances, {
+  const retirementSimulationProjectedMax = simulateHouseholdRetirement(inputs, maxIncomeStartBalances, {
     contributionMode: 'max'
   });
+  const projectedAvailablePotAtIncomeStartCurrent = simulationSeriesValueAtYear(
+    retirementSimulationProjectedCurrent,
+    retirementSimulationProjectedCurrent.combinedBalances,
+    inputs.incomeStartYear
+  );
+  const projectedAvailablePotAtIncomeStartMaxPersonal = simulationSeriesValueAtYear(
+    retirementSimulationProjectedMax,
+    retirementSimulationProjectedMax.combinedBalances,
+    inputs.incomeStartYear
+  );
 
-  const requiredResult = isAffordableMode ? null : findRequiredStartingBalances(inputs, currentStartBalances);
+  const currentReferenceBalances = simulationPensionBalancesAtYear(
+    retirementSimulationProjectedCurrent,
+    inputs.requiredPotReferenceYear,
+    currentIncomeStartBalances
+  );
+  const maxReferenceBalances = simulationPensionBalancesAtYear(
+    retirementSimulationProjectedMax,
+    inputs.requiredPotReferenceYear,
+    maxIncomeStartBalances
+  );
+  const projectedPotCurrent = sum(currentReferenceBalances);
+  const projectedPotMaxPersonal = sum(maxReferenceBalances);
+
+  const requiredResult = isAffordableMode ? null : findRequiredStartingBalances(inputs, currentReferenceBalances);
   const requiredPot = requiredResult?.requiredPot ?? null;
 
   let sustainabilityLabels = retirementSimulationProjectedCurrent.labels;
@@ -1270,14 +1444,14 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     const affordableEndAges = inputs.affordableEndAges;
     const maxAffordableEndAge = affordableEndAges[affordableEndAges.length - 1];
     const maxAffordableEndYear = yearForAge(inputs.primaryPension, maxAffordableEndAge, inputs.currentYear);
-    sustainabilityLabels = buildYearRange(inputs.targetStartYear, maxAffordableEndYear)
+    sustainabilityLabels = buildYearRange(inputs.incomeStartYear, maxAffordableEndYear)
       .map((year) => ageLabelForYear(inputs, year));
 
     affordableCurrentResults = affordableEndAges.map((endAge) => (
-      buildAffordableIncomeResult(inputs, currentStartBalances, endAge, sustainabilityLabels, 'current')
+      buildAffordableIncomeResult(inputs, currentIncomeStartBalances, endAge, sustainabilityLabels, 'current')
     ));
     affordableMaxResults = affordableEndAges.map((endAge) => (
-      buildAffordableIncomeResult(inputs, maxStartBalances, endAge, sustainabilityLabels, 'max')
+      buildAffordableIncomeResult(inputs, maxIncomeStartBalances, endAge, sustainabilityLabels, 'max')
     ));
 
     affordableChartDatasets = [
@@ -1292,40 +1466,41 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     ];
   }
 
-  const retirementYear = inputs.targetStartYear;
-  const sftMeta = computeSft(retirementYear);
+  const retirementYear = inputs.incomeStartYear;
+  const sftMeta = computeSft(inputs.requiredPotReferenceYear);
   const sftBreaches = isAffordableMode
     ? {
-      current: currentStartBalances.some((value) => value > sftMeta.sftValue),
-      max: maxStartBalances.some((value) => value > sftMeta.sftValue),
+      current: currentReferenceBalances.some((value) => value > sftMeta.sftValue),
+      max: maxReferenceBalances.some((value) => value > sftMeta.sftValue),
       required: false,
-      any: currentStartBalances.some((value) => value > sftMeta.sftValue)
-        || maxStartBalances.some((value) => value > sftMeta.sftValue)
+      any: currentReferenceBalances.some((value) => value > sftMeta.sftValue)
+        || maxReferenceBalances.some((value) => value > sftMeta.sftValue)
     }
     : {
-      current: currentStartBalances.some((value) => value > sftMeta.sftValue),
-      max: maxStartBalances.some((value) => value > sftMeta.sftValue),
+      current: currentReferenceBalances.some((value) => value > sftMeta.sftValue),
+      max: maxReferenceBalances.some((value) => value > sftMeta.sftValue),
       required: (requiredResult?.requiredBalances || []).some((value) => value > sftMeta.sftValue),
-      any: currentStartBalances.some((value) => value > sftMeta.sftValue)
-        || maxStartBalances.some((value) => value > sftMeta.sftValue)
+      any: currentReferenceBalances.some((value) => value > sftMeta.sftValue)
+        || maxReferenceBalances.some((value) => value > sftMeta.sftValue)
         || (requiredResult?.requiredBalances || []).some((value) => value > sftMeta.sftValue)
     };
   const sftSentence = buildSftSummarySentence(sftBreaches, sftMeta);
 
-  const targetIncomeNominalAtRetirement = targetIncomeNominalAtYear(inputs, inputs.targetStartYear);
-  const externalAtTargetStart = buildIncomeBreakdownAtYear(inputs, inputs.targetStartYear);
+  const targetIncomeNominalAtRetirement = targetIncomeNominalAtYear(inputs, inputs.incomeStartYear);
+  const externalAtTargetStart = buildIncomeBreakdownAtYear(inputs, inputs.incomeStartYear);
   const rentalIncomeNominalAtRetirement = externalAtTargetStart.rentalIncome;
   const statePensionNominalAtRetirement = externalAtTargetStart.statePension;
   const otherIncomeNominalAtRetirement = externalAtTargetStart.otherIncome;
+  const employmentIncomeNominalAtRetirement = externalAtTargetStart.employmentIncome;
   const pensionWithdrawalNominalAtRetirement = pensionFundedTargetAtStart(inputs);
-  const expectedFactor = inflationFactorForYear(inputs, inputs.targetStartYear);
+  const expectedFactor = inflationFactorForYear(inputs, inputs.incomeStartYear);
   const expectedNominal = inputs.targetIncomeToday * expectedFactor;
   const nominalDiff = Math.abs(targetIncomeNominalAtRetirement - expectedNominal);
   const nominalTolerance = 1e-6 * Math.max(1, Math.abs(expectedNominal));
   if (!isAffordableMode && Number.isFinite(expectedNominal) && nominalDiff > nominalTolerance) {
     console.warn('[Pension] target income nominal-at-retirement consistency mismatch', {
       currentYear: inputs.currentYear,
-      targetStartYear: inputs.targetStartYear,
+      targetStartYear: inputs.incomeStartYear,
       inflationRate: inputs.inflationRate,
       nominalAtRetirement: targetIncomeNominalAtRetirement,
       expectedNominal
@@ -1343,8 +1518,11 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
   const assumptionsRows = inputs.isHousehold
     ? [
       ['Household members', inputs.pensions.map((member) => member.title).join(', ')],
-      ['Target income start year', String(inputs.targetStartYear)],
-      ['Target income start age', `${inputs.primaryPension.title}: ${inputs.targetStartAge}`],
+      ['Household income start year', String(inputs.incomeStartYear)],
+      ['Household income start ages', ageSummaryForYear(inputs, inputs.incomeStartYear)],
+      ['Required pot reference year', String(inputs.requiredPotReferenceYear)],
+      ['Required pot reference ages', ageSummaryForYear(inputs, inputs.requiredPotReferenceYear)],
+      ['Bridge employment income', inputs.includeEmploymentIncomeDuringBridge ? 'Included before each member retires' : 'Excluded'],
       ...inputs.pensions.flatMap((member) => ([
         [`${member.title} current age`, String(member.currentAge)],
         [`${member.title} retirement age`, String(member.retirementAge)],
@@ -1373,6 +1551,9 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ['Wage growth', toPercentText(inputs.wageGrowthRate)],
       ['Inflation', toPercentText(inputs.inflationRate)],
       ['Default State Pension today', toEuroText(STATE_PENSION_ANNUAL_TODAY)],
+      ...(inputs.includeEmploymentIncomeDuringBridge
+        ? [['Gross employment income at income start', toEuroText(employmentIncomeNominalAtRetirement)]]
+        : []),
       ...(hasRentalContext
         ? [
           ['Retirement income case', inputs.selectedScenarioTitle],
@@ -1405,10 +1586,17 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     ]
   };
 
-  const outputsRows = [
-    ['Projected pot at target start (current)', toEuroText(projectedPotCurrent)],
-    ['Projected pot at target start (max personal)', toEuroText(projectedPotMaxPersonal)]
-  ];
+  const outputsRows = inputs.isHousehold
+    ? [
+      ['Projected available pension pot at income start (current)', toEuroText(projectedAvailablePotAtIncomeStartCurrent)],
+      ['Projected available pension pot at income start (max personal)', toEuroText(projectedAvailablePotAtIncomeStartMaxPersonal)],
+      ['Projected combined pot at required reference (current)', toEuroText(projectedPotCurrent)],
+      ['Projected combined pot at required reference (max personal)', toEuroText(projectedPotMaxPersonal)]
+    ]
+    : [
+      ['Projected pot at target start (current)', toEuroText(projectedPotCurrent)],
+      ['Projected pot at target start (max personal)', toEuroText(projectedPotMaxPersonal)]
+    ];
 
   if (isAffordableMode) {
     affordableCurrentResults.forEach((entry) => {
@@ -1432,10 +1620,19 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ]);
     });
   } else {
-    outputsRows.push(['Required pot at target start (Mode 1)', toEuroText(requiredPot)]);
-    outputsRows.push(['Gap vs required (required - projected current)', toEuroText(requiredPot - projectedPotCurrent)]);
+    outputsRows.push([
+      inputs.isHousehold ? 'Required pot at reference year (Mode 1)' : 'Required pot at target start (Mode 1)',
+      toEuroText(requiredPot)
+    ]);
+    outputsRows.push([
+      inputs.isHousehold ? 'Gap vs required at reference year' : 'Gap vs required (required - projected current)',
+      toEuroText(requiredPot - projectedPotCurrent)
+    ]);
     outputsRows.push(['Target income (today\'s money)', toEuroText(inputs.targetIncomeToday)]);
     outputsRows.push(['Target income (nominal at target start)', toEuroText(targetIncomeNominalAtRetirement)]);
+    if (inputs.includeEmploymentIncomeDuringBridge) {
+      outputsRows.push(['Gross employment income at target start', toEuroText(employmentIncomeNominalAtRetirement)]);
+    }
     if (hasStatePensionContext) {
       outputsRows.push(['State Pension at target start', toEuroText(statePensionNominalAtRetirement)]);
     }
@@ -1494,7 +1691,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     charts.push(buildHouseholdIncomeChart(
       inputs,
       retirementSimulationProjectedCurrent,
-      retirementSimulationProjectedMax
+      retirementSimulationProjectedMax,
+      requiredResult?.simulation ?? null
     ));
   }
 
@@ -1526,10 +1724,19 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       pensions: inputs.pensions,
       projectedPotCurrent,
       projectedPotMaxPersonal,
+      projectedAvailablePotAtIncomeStartCurrent,
+      projectedAvailablePotAtIncomeStartMaxPersonal,
+      projectedTotalPotAtIncomeStartCurrent,
+      projectedTotalPotAtIncomeStartMaxPersonal,
+      currentIncomeStartBalances,
+      maxIncomeStartBalances,
+      currentReferenceBalances,
+      maxReferenceBalances,
       requiredPot,
       requiredBalances: requiredResult?.requiredBalances ?? [],
       rentalIncomeToday: inputs.rentalIncomeToday,
       rentalIncomeNominalAtRetirement,
+      employmentIncomeNominalAtRetirement,
       statePensionNominalAtRetirement,
       otherIncomeNominalAtRetirement,
       pensionWithdrawalNominalAtRetirement,
@@ -1537,6 +1744,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       selectedScenarioTitle: inputs.selectedScenarioTitle,
       retirementYear,
       targetStartYear: inputs.targetStartYear,
+      incomeStartYear: inputs.incomeStartYear,
+      requiredPotReferenceYear: inputs.requiredPotReferenceYear,
       horizonEndYear: inputs.horizonEndYear,
       sftValue: sftMeta.sftValue,
       sftYearUsed: sftMeta.sftYearUsed,

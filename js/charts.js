@@ -18,6 +18,8 @@ const PENSION_DATASET_LABELS = {
   combinedBalanceCurrent: 'Combined pension balance (current)',
   combinedBalanceMax: 'Combined pension balance (max)',
   requiredIncome: 'Required income',
+  employmentIncomeCurrent: 'Employment income (current)',
+  employmentIncomeMax: 'Employment income (max)',
   statePensionCurrent: 'State Pension (current)',
   statePensionMax: 'State Pension (max)',
   rentalIncomeCurrent: 'Rental income (current)',
@@ -852,6 +854,8 @@ function isPensionIncomeStackLabel(label) {
   return [
     PENSION_DATASET_LABELS.statePensionCurrent,
     PENSION_DATASET_LABELS.statePensionMax,
+    PENSION_DATASET_LABELS.employmentIncomeCurrent,
+    PENSION_DATASET_LABELS.employmentIncomeMax,
     PENSION_DATASET_LABELS.rentalIncomeCurrent,
     PENSION_DATASET_LABELS.rentalIncomeMax,
     PENSION_DATASET_LABELS.otherIncomeCurrent,
@@ -1119,6 +1123,8 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       [PENSION_DATASET_LABELS.rentalIncomeMax]: '#7bffbf',
       [PENSION_DATASET_LABELS.otherIncomeCurrent]: '#ffd166',
       [PENSION_DATASET_LABELS.otherIncomeMax]: '#ffd166',
+      [PENSION_DATASET_LABELS.employmentIncomeCurrent]: '#66b89e',
+      [PENSION_DATASET_LABELS.employmentIncomeMax]: '#66b89e',
       [PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent]: '#b48cff',
       [PENSION_DATASET_LABELS.mandatoryWithdrawalsMax]: '#b48cff',
       [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: '#2ea3ff',
@@ -1329,6 +1335,7 @@ function computeSustainabilityWithdrawalMax(chartData) {
   const requiredIncomeValues = getRawDatasetValues(chartData, PENSION_DATASET_LABELS.requiredIncome, labelsLength);
   const stackLabels = [
     PENSION_DATASET_LABELS.statePensionCurrent,
+    PENSION_DATASET_LABELS.employmentIncomeCurrent,
     PENSION_DATASET_LABELS.rentalIncomeCurrent,
     PENSION_DATASET_LABELS.otherIncomeCurrent,
     PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent,
@@ -1336,6 +1343,7 @@ function computeSustainabilityWithdrawalMax(chartData) {
     PENSION_DATASET_LABELS.shortfallCurrent,
     PENSION_DATASET_LABELS.surplusCurrent,
     PENSION_DATASET_LABELS.statePensionMax,
+    PENSION_DATASET_LABELS.employmentIncomeMax,
     PENSION_DATASET_LABELS.rentalIncomeMax,
     PENSION_DATASET_LABELS.otherIncomeMax,
     PENSION_DATASET_LABELS.mandatoryWithdrawalsMax,
@@ -1344,10 +1352,11 @@ function computeSustainabilityWithdrawalMax(chartData) {
     PENSION_DATASET_LABELS.surplusMax
   ];
   const stackSeries = stackLabels.map((label) => getRawDatasetValues(chartData, label, labelsLength));
+  const halfStackLength = stackSeries.length / 2;
   let stackMax = 0;
   for (let index = 0; index < labelsLength; index += 1) {
-    const currentStack = stackSeries.slice(0, 7).reduce((total, values) => total + values[index], 0);
-    const maxStack = stackSeries.slice(7).reduce((total, values) => total + values[index], 0);
+    const currentStack = stackSeries.slice(0, halfStackLength).reduce((total, values) => total + values[index], 0);
+    const maxStack = stackSeries.slice(halfStackLength).reduce((total, values) => total + values[index], 0);
     stackMax = Math.max(stackMax, currentStack, maxStack);
   }
 
@@ -1612,6 +1621,14 @@ function buildChartConfig(chartData, { module } = {}) {
                 ? context.parsed.y
                 : context?.raw;
               return `${label}: ${formatChartValue(value, valueFormat)}`;
+            },
+            footer: (items) => {
+              if (!Array.isArray(chartData?.meta?.ageLabels) || !Array.isArray(items) || items.length === 0) {
+                return '';
+              }
+              const dataIndex = items[0]?.dataIndex;
+              const ageLabel = chartData.meta.ageLabels[dataIndex];
+              return typeof ageLabel === 'string' && ageLabel.trim() ? ageLabel : '';
             }
           }
         },

@@ -2152,7 +2152,8 @@ function patchFocusedModuleGeneratedContent(moduleId, {
     readOnly: runtimeConfig.readOnly,
     patchSummary,
     patchAssumptions,
-    patchOutputs
+    patchOutputs,
+    patchCharts: updateCharts
   });
 
   if (!updateCharts) {

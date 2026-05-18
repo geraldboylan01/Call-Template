@@ -73,6 +73,87 @@ const COUPLE_INPUTS = Object.freeze({
   ]
 });
 
+const USER_SPOUSE_PAYLOAD = Object.freeze({
+  currentYear: 2026,
+  currentAge: 48,
+  retirementAge: 63,
+  currentSalary: 175000,
+  currentPot: 585000,
+  personalPct: 0.0914285714,
+  employerPct: 0,
+  growthRate: 0.05,
+  inflationRate: 0.025,
+  wageGrowthRate: 0.025,
+  incomeMode: 'target',
+  targetIncomeToday: 80000,
+  targetStartYear: 2041,
+  horizonEndAge: 95,
+  rentalIncomeToday: 21600,
+  baseScenarioId: 'current-scenario',
+  rentalIncomeScenarios: [
+    { id: 'current-scenario', title: 'Current scenario', rentalIncomeToday: 21600 },
+    { id: 'sell-btl-scenario', title: 'Sell BTL scenario', rentalIncomeToday: 0 }
+  ],
+  pensions: [
+    {
+      id: 'user-pension',
+      title: 'User pension',
+      currentAge: 48,
+      retirementAge: 63,
+      currentSalary: 100000,
+      currentPot: 300000,
+      personalPct: 0.1,
+      employerPct: 0,
+      includeStatePension: true
+    },
+    {
+      id: 'spouse-pension',
+      title: 'Spouse pension',
+      currentAge: 50,
+      retirementAge: 65,
+      currentSalary: 75000,
+      currentPot: 285000,
+      personalPct: 0.08,
+      employerPct: 0,
+      includeStatePension: true
+    }
+  ]
+});
+
+const STAGGERED_RETIREMENT_INPUTS = Object.freeze({
+  currentYear: 2026,
+  inflationRate: 0,
+  growthRate: 0,
+  wageGrowthRate: 0,
+  incomeMode: 'target',
+  targetIncomeToday: 50000,
+  horizonEndAge: 70,
+  pensions: [
+    {
+      id: 'older',
+      title: 'Older',
+      currentAge: 60,
+      retirementAge: 65,
+      currentSalary: 100000,
+      currentPot: 100000,
+      personalPct: 0.1,
+      employerPct: 0,
+      includeStatePension: false
+    },
+    {
+      id: 'younger',
+      title: 'Younger',
+      currentAge: 55,
+      retirementAge: 65,
+      currentSalary: 80000,
+      currentPot: 200000,
+      personalPct: 0.1,
+      employerPct: 0,
+      includeStatePension: false
+    }
+  ]
+});
+
 export function runPensionMathTests() {
   const cases = [];
 
@@ -172,6 +253,69 @@ export function runPensionMathTests() {
     assert(titles.includes('Retirement Income Stack and Pension Balance'), 'Combined drawdown chart missing');
     assert(projection.charts[2].datasets.some((dataset) => dataset.label === 'Combined pension balance (current)'), 'Combined balance dataset missing');
     assert(projection.charts[2].datasets.some((dataset) => dataset.label === 'Required income'), 'Required income line missing');
+  }));
+
+  cases.push(runCase('Supplied household payload produces two accumulation charts and one combined drawdown chart', () => {
+    const projection = computePensionProjection(USER_SPOUSE_PAYLOAD, { scenarioId: 'current-scenario' });
+    const titles = projection.charts.map((chart) => chart.title);
+
+    assert(projection.charts.length === 3, 'Household payload should produce three charts');
+    assert(titles.includes('User pension pot at retirement (before withdrawals)'), 'User accumulation chart missing');
+    assert(titles.includes('Spouse pension pot at retirement (before withdrawals)'), 'Spouse accumulation chart missing');
+    assert(titles.includes('Retirement Income Stack and Pension Balance'), 'Combined drawdown chart missing');
+  }));
+
+  cases.push(runCase('Same household retirement year creates no bridge period', () => {
+    const projection = computePensionProjection(USER_SPOUSE_PAYLOAD);
+
+    assert(projection.debug.incomeStartYear === 2041, 'Income should start in the shared retirement year');
+    assert(projection.debug.requiredPotReferenceYear === 2041, 'Required pot reference should be the shared retirement year');
+    assert(projection.debug.inputs.includeEmploymentIncomeDuringBridge === false, 'Bridge employment income should default off without staggered retirement years');
+  }));
+
+  cases.push(runCase('Staggered retire-at-65 household starts drawdown at first retirement and references required pot at second retirement', () => {
+    const projection = computePensionProjection(STAGGERED_RETIREMENT_INPUTS);
+    const combinedChart = projection.charts[2];
+
+    assert(projection.debug.incomeStartYear === 2031, 'Drawdown should start when the first person retires');
+    assert(projection.debug.requiredPotReferenceYear === 2036, 'Required pot reference should default to the later retirement year');
+    assert(combinedChart.labels[0] === '2031', 'Combined chart should start at first retirement year');
+    assert(combinedChart.labels.includes('2036'), 'Combined chart should include the later retirement year');
+  }));
+
+  cases.push(runCase('Later pension is unavailable before retirement but keeps accumulating until it enters the household pool', () => {
+    const projection = computePensionProjection(STAGGERED_RETIREMENT_INPUTS);
+    const simulation = projection.debug.retirementSimulationProjectedCurrent;
+    const combinedChart = projection.charts[2];
+    const combinedBalance = combinedChart.datasets.find((dataset) => dataset.label === 'Combined pension balance (current)');
+
+    assert(combinedBalance.data[0] === projection.debug.currentIncomeStartBalances[0], 'Only the first retired pension should show in the opening combined balance');
+    assert(projection.debug.currentReferenceBalances[1] > projection.debug.currentIncomeStartBalances[1], 'Later pension should continue accumulating before its retirement year');
+    assert(simulation.perPensionMandatory[1].slice(0, 5).every((value) => value === 0), 'Later pension should not have mandatory withdrawals before retirement');
+    assert(simulation.perPensionElected[1].slice(0, 5).every((value) => value === 0), 'Later pension should not have elected withdrawals before retirement');
+  }));
+
+  cases.push(runCase('Bridge employment income reduces withdrawals and required pot path begins at reference year', () => {
+    const withBridge = computePensionProjection(STAGGERED_RETIREMENT_INPUTS);
+    const withoutBridge = computePensionProjection({
+      ...STAGGERED_RETIREMENT_INPUTS,
+      includeEmploymentIncomeDuringBridge: false
+    });
+    const combinedChart = withBridge.charts[2];
+    const employment = combinedChart.datasets.find((dataset) => dataset.label === 'Employment income (current)');
+    const requiredPath = combinedChart.datasets.find((dataset) => dataset.label === 'Required pot path');
+    const referenceIndex = combinedChart.labels.indexOf('2036');
+
+    assert(employment.data.slice(0, referenceIndex).some((value) => value > 0), 'Bridge employment income should appear before second retirement');
+    assert(withBridge.debug.retirementSimulationProjectedCurrent.electedWithdrawals[0] < withoutBridge.debug.retirementSimulationProjectedCurrent.electedWithdrawals[0], 'Bridge salary should reduce first-year elected withdrawals');
+    assert(requiredPath.data.slice(0, referenceIndex).every((value) => value === null), 'Required pot path should be blank before the reference year');
+    assert(Number.isFinite(requiredPath.data[referenceIndex]), 'Required pot path should start at the reference year');
+    assertApprox(
+      withBridge.debug.projectedPotCurrent,
+      withBridge.debug.currentReferenceBalances.reduce((total, value) => total + value, 0),
+      0.01,
+      'Projected pot should be measured at the reference year'
+    );
   }));
 
   cases.push(runCase('Default State Pension applies once per included person and indexes correctly', () => {
