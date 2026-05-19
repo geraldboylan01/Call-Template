@@ -2904,7 +2904,7 @@ function createEditableAssumptionCell({
       wagegrowth: {
         field: 'wageGrowthRate',
         value: draftValues.wageGrowthRate ?? formatRateForInput(pensionInputs.wageGrowthRate),
-        placeholder: '2.5%',
+        placeholder: '2%',
         inputMode: 'decimal'
       },
       inflation: {

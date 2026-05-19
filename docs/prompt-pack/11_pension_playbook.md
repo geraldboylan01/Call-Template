@@ -61,7 +61,7 @@ Use `pensions[]` when Gerry describes a couple or two pension pots working towar
       "currentYear": 2026,
       "inflationRate": 0.02,
       "growthRate": 0.05,
-      "wageGrowthRate": 0.025,
+      "wageGrowthRate": 0.02,
       "incomeMode": "target",
       "targetIncomeToday": 70000,
       "targetStartYear": 2052,
