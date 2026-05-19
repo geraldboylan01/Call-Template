@@ -471,8 +471,9 @@ export function runPensionMathTests() {
 
     assert(projection.debug.incomeStartYear === 2031, 'Drawdown should start when the first person retires');
     assert(projection.debug.requiredPotReferenceYear === 2036, 'Required pot reference should default to the later retirement year');
-    assert(combinedChart.labels[0] === '2031', 'Combined chart should start at first retirement year');
-    assert(combinedChart.labels.includes('2036'), 'Combined chart should include the later retirement year');
+    assert(combinedChart.labels[0] === '65', 'Combined chart should start at the primary member age at first retirement');
+    assert(combinedChart.labels.includes('70'), 'Combined chart should include the primary member age at later retirement');
+    assert(combinedChart.display.xAxisTitle === 'Older age', 'Combined chart x-axis should name the primary member age');
   }));
 
   cases.push(runCase('Later pension is unavailable before retirement but keeps accumulating until it enters the household pool', () => {
@@ -496,7 +497,7 @@ export function runPensionMathTests() {
     const combinedChart = withBridge.charts[2];
     const employment = combinedChart.datasets.find((dataset) => dataset.label === 'Employment income (current)');
     const requiredPath = combinedChart.datasets.find((dataset) => dataset.label === 'Required pot path');
-    const referenceIndex = combinedChart.labels.indexOf('2036');
+    const referenceIndex = combinedChart.labels.indexOf('70');
 
     assert(employment.data.slice(0, referenceIndex).some((value) => value > 0), 'Bridge employment income should appear before second retirement');
     assert(withBridge.debug.retirementSimulationProjectedCurrent.electedWithdrawals[0] < withoutBridge.debug.retirementSimulationProjectedCurrent.electedWithdrawals[0], 'Bridge salary should reduce first-year elected withdrawals');
@@ -518,7 +519,7 @@ export function runPensionMathTests() {
 
     assert(combinedChart.display.variant === 'pension-drawdown-composite', 'Drawdown chart should use the composite variant');
     assert(balancePanel.labels.length === requiredPath.data.length, 'Balance-panel required path should align with terminal label');
-    assert(balancePanel.labels[balancePanel.labels.length - 1].startsWith('End horizon'), 'Balance panel should include terminal horizon label');
+    assert(balancePanel.labels[balancePanel.labels.length - 1].startsWith('End Older age'), 'Balance panel should include terminal primary-age label');
     assert(
       requiredPath.data[requiredPath.data.length - 1] <= projection.debug.requiredPotDepletionTolerance,
       'Required path terminal point should deplete within tolerance'

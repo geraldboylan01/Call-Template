@@ -619,10 +619,13 @@ function targetIncomeNominalAtYear(inputs, year, targetIncomeToday = inputs.targ
   return Number.isFinite(nominal) ? nominal : 0;
 }
 
+function axisPersonLabel(member) {
+  const rawTitle = typeof member?.title === 'string' ? member.title.trim() : '';
+  const withoutPension = rawTitle.replace(/\s+pension$/i, '').trim();
+  return withoutPension || 'User';
+}
+
 function ageLabelForYear(inputs, year) {
-  if (inputs.isHousehold) {
-    return String(year);
-  }
   return String(ageAtYear(inputs.primaryPension, year, inputs.currentYear));
 }
 
@@ -1333,10 +1336,7 @@ function buildIncomeStackDatasets(simulation, suffix, hidden = false) {
 }
 
 function buildTerminalBalanceLabel(inputs) {
-  if (inputs.isHousehold) {
-    return `End horizon ${inputs.horizonEndYear}`;
-  }
-  return `End age ${inputs.horizonEndAge}`;
+  return `End ${axisPersonLabel(inputs.primaryPension)} age ${ageAtYear(inputs.primaryPension, inputs.horizonEndYear, inputs.currentYear)}`;
 }
 
 function appendTerminalValue(values, simulation) {
@@ -1365,6 +1365,7 @@ function buildRequiredPotPathData(baseSimulation, requiredSimulation, includeTer
 
 function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, requiredSimulation = null) {
   const balanceLabels = [...currentSimulation.labels, buildTerminalBalanceLabel(inputs)];
+  const xAxisTitle = `${axisPersonLabel(inputs.primaryPension)} age`;
   const balanceDatasets = [
     {
       label: 'Combined pension balance (current)',
@@ -1400,7 +1401,7 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
     type: 'bar',
     labels: currentSimulation.labels,
     subtitle: inputs.isHousehold
-      ? 'Calendar years shown; hover a year to see each person’s age.'
+      ? `${xAxisTitle} shown; hover a point to see each person’s age.`
       : '',
     meta: {
       kind: 'pensionDrawdownComposite',
@@ -1416,7 +1417,7 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
       variant: 'pension-drawdown-composite',
       stacked: true,
       valueFormat: 'currency',
-      xAxisTitle: inputs.isHousehold ? 'Calendar year' : `${inputs.primaryPension.title} age`,
+      xAxisTitle,
       yAxisTitle: 'Pension balance'
     },
     datasets: [
@@ -1445,7 +1446,7 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
         datasets: balanceDatasets,
         display: {
           valueFormat: 'currency',
-          xAxisTitle: inputs.isHousehold ? 'Calendar year' : `${inputs.primaryPension.title} age`,
+          xAxisTitle,
           yAxisTitle: 'Pension balance',
           showLegend: false
         },
@@ -1466,7 +1467,7 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
         display: {
           stacked: true,
           valueFormat: 'currency',
-          xAxisTitle: inputs.isHousehold ? 'Calendar year' : `${inputs.primaryPension.title} age`,
+          xAxisTitle,
           yAxisTitle: 'Annual income',
           showLegend: false
         },
