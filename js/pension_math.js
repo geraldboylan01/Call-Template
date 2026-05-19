@@ -305,6 +305,82 @@ export function buildSftSummarySentence(flags, sftMeta) {
   return `${baseSentence} Future SFT increases may apply but aren’t predictable, so we’ve held the threshold constant beyond 2029.`;
 }
 
+function buildPensionReadiness({
+  isAffordableMode,
+  requiredPot,
+  projectedPotCurrent,
+  projectedPotMaxPersonal
+}) {
+  if (isAffordableMode || !Number.isFinite(requiredPot)) {
+    return {
+      requiredPotIsApplicable: true,
+      readinessStatus: 'not-classified',
+      readinessSentence: '',
+      currentSurplusVsRequired: 0,
+      currentGapVsRequired: 0,
+      maxSurplusVsRequired: 0,
+      maxGapVsRequired: 0
+    };
+  }
+
+  const requiredPotIsApplicable = requiredPot > REQUIRED_POT_TOLERANCE_EUR;
+  const currentDifference = projectedPotCurrent - requiredPot;
+  const maxDifference = projectedPotMaxPersonal - requiredPot;
+  const currentSurplusVsRequired = currentDifference > REQUIRED_POT_TOLERANCE_EUR ? currentDifference : 0;
+  const currentGapVsRequired = currentDifference < -REQUIRED_POT_TOLERANCE_EUR ? Math.abs(currentDifference) : 0;
+  const maxSurplusVsRequired = maxDifference > REQUIRED_POT_TOLERANCE_EUR ? maxDifference : 0;
+  const maxGapVsRequired = maxDifference < -REQUIRED_POT_TOLERANCE_EUR ? Math.abs(maxDifference) : 0;
+
+  if (!requiredPotIsApplicable) {
+    return {
+      requiredPotIsApplicable: false,
+      readinessStatus: 'externalIncomeCoversTarget',
+      readinessSentence: 'On these assumptions, other retirement income sources cover the target spending need, so a separate required pension pot is not shown for this scenario.',
+      currentSurplusVsRequired,
+      currentGapVsRequired: 0,
+      maxSurplusVsRequired,
+      maxGapVsRequired: 0
+    };
+  }
+
+  if (currentGapVsRequired === 0) {
+    const readinessSentence = currentSurplusVsRequired > 0
+      ? 'This is a strong position: on these assumptions, the current trajectory is projected to meet the target retirement income and leave a surplus against the required pension pot.'
+      : 'On these assumptions, the current trajectory is projected to meet the target retirement income within the required-pot tolerance.';
+    return {
+      requiredPotIsApplicable: true,
+      readinessStatus: 'currentOnTrack',
+      readinessSentence,
+      currentSurplusVsRequired,
+      currentGapVsRequired: 0,
+      maxSurplusVsRequired,
+      maxGapVsRequired: 0
+    };
+  }
+
+  if (maxGapVsRequired === 0) {
+    return {
+      requiredPotIsApplicable: true,
+      readinessStatus: 'maxContributionsCloseGap',
+      readinessSentence: 'The current path is below the required pension pot, but increasing toward maximum relievable personal contributions is projected to close the gap under these assumptions.',
+      currentSurplusVsRequired: 0,
+      currentGapVsRequired,
+      maxSurplusVsRequired,
+      maxGapVsRequired: 0
+    };
+  }
+
+  return {
+    requiredPotIsApplicable: true,
+    readinessStatus: 'shortfallAfterMax',
+    readinessSentence: 'Even with maximum personal contributions, the projection remains below the required pot. The planning levers are increasing income to support higher contributions, adding income-generating assets such as rental property, reducing retirement expenditure, or revisiting timing and assumptions.',
+    currentSurplusVsRequired: 0,
+    currentGapVsRequired,
+    maxSurplusVsRequired: 0,
+    maxGapVsRequired
+  };
+}
+
 function ageAtYear(person, year, currentYear) {
   return person.currentAge + (year - currentYear);
 }
@@ -1551,6 +1627,12 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
 
   const requiredResult = isAffordableMode ? null : findRequiredStartingBalances(inputs, currentReferenceBalances);
   const requiredPot = requiredResult?.requiredPot ?? null;
+  const readiness = buildPensionReadiness({
+    isAffordableMode,
+    requiredPot,
+    projectedPotCurrent,
+    projectedPotMaxPersonal
+  });
 
   let sustainabilityLabels = retirementSimulationProjectedCurrent.labels;
   let affordableChartDatasets = [];
@@ -1746,16 +1828,36 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ]);
     });
   } else {
-    outputsRows.push([
-      inputs.isHousehold
-        ? `Required pot at reference year, depleting by ${inputs.horizonEndYear}`
-        : `Required pot at target start, depleting by age ${inputs.horizonEndAge}`,
-      toEuroText(requiredPot)
-    ]);
-    outputsRows.push([
-      inputs.isHousehold ? 'Gap vs required at reference year' : 'Gap vs required (required - projected current)',
-      toEuroText(requiredPot - projectedPotCurrent)
-    ]);
+    outputsRows.push(['Retirement income position', readiness.readinessSentence]);
+    if (readiness.requiredPotIsApplicable) {
+      outputsRows.push([
+        inputs.isHousehold
+          ? `Required pot at reference year, depleting by ${inputs.horizonEndYear}`
+          : `Required pot at target start, depleting by age ${inputs.horizonEndAge}`,
+        toEuroText(requiredPot)
+      ]);
+      if (readiness.currentGapVsRequired > 0) {
+        outputsRows.push([
+          inputs.isHousehold ? 'Current gap vs required at reference year' : 'Current gap vs required',
+          toEuroText(readiness.currentGapVsRequired)
+        ]);
+      } else if (readiness.currentSurplusVsRequired > 0) {
+        outputsRows.push([
+          inputs.isHousehold ? 'Current surplus vs required at reference year' : 'Current surplus vs required',
+          toEuroText(readiness.currentSurplusVsRequired)
+        ]);
+      } else {
+        outputsRows.push([
+          inputs.isHousehold ? 'Current position vs required at reference year' : 'Current position vs required',
+          'On track within tolerance'
+        ]);
+      }
+      if (readiness.maxGapVsRequired > 0) {
+        outputsRows.push(['Max-contribution gap vs required', toEuroText(readiness.maxGapVsRequired)]);
+      } else if (readiness.maxSurplusVsRequired > 0) {
+        outputsRows.push(['Max-contribution surplus vs required', toEuroText(readiness.maxSurplusVsRequired)]);
+      }
+    }
     outputsRows.push(['Target income (today\'s money)', toEuroText(inputs.targetIncomeToday)]);
     outputsRows.push(['Target income (nominal at target start)', toEuroText(targetIncomeNominalAtRetirement)]);
     if (inputs.includeEmploymentIncomeDuringBridge) {
@@ -1777,7 +1879,9 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     outputsRows.push(['First-year mandatory pension withdrawals', toEuroText(retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal)]);
     outputsRows.push(['First-year elected pension withdrawals', toEuroText(retirementSimulationProjectedCurrent.firstYearElectedWithdrawal)]);
     outputsRows.push(['First-year surplus over target', toEuroText(retirementSimulationProjectedCurrent.surpluses[0] || 0)]);
-    outputsRows.push(['Required path ending balance', toEuroText(requiredResult?.depletionResidual ?? 0)]);
+    if (readiness.requiredPotIsApplicable) {
+      outputsRows.push(['Required path ending balance', toEuroText(requiredResult?.depletionResidual ?? 0)]);
+    }
     outputsRows.push(['Depletion horizon year and ages', `${inputs.horizonEndYear} (${ageSummaryForYear(inputs, inputs.horizonEndYear)})`]);
     outputsRows.push(['Total shortfall on current path', toEuroText(retirementSimulationProjectedCurrent.totalShortfall)]);
   }
@@ -1822,7 +1926,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       inputs,
       retirementSimulationProjectedCurrent,
       retirementSimulationProjectedMax,
-      requiredResult?.simulation ?? null
+      readiness.requiredPotIsApplicable ? requiredResult?.simulation ?? null : null
     ));
   }
 
@@ -1865,6 +1969,13 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       requiredPot,
       requiredPotDepletionResidual: requiredResult?.depletionResidual ?? null,
       requiredPotDepletionTolerance: requiredResult?.depletionTolerance ?? REQUIRED_POT_TOLERANCE_EUR,
+      requiredPotIsApplicable: readiness.requiredPotIsApplicable,
+      readinessStatus: readiness.readinessStatus,
+      readinessSentence: readiness.readinessSentence,
+      currentSurplusVsRequired: readiness.currentSurplusVsRequired,
+      currentGapVsRequired: readiness.currentGapVsRequired,
+      maxSurplusVsRequired: readiness.maxSurplusVsRequired,
+      maxGapVsRequired: readiness.maxGapVsRequired,
       requiredBalances: requiredResult?.requiredBalances ?? [],
       rentalIncomeToday: inputs.rentalIncomeToday,
       rentalIncomeNominalAtRetirement,

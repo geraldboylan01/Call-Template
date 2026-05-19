@@ -528,6 +528,7 @@ Rules:
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
 - Explain the chosen mode in plain language.
+- Do not state whether the client is on track, short, surplus, or does not need a pension pot; the runtime calculates and appends that readiness wording from the pension outputs.
 - Do not promise exact future outcomes.
 - Do not mention internal validators, engines, charts, or JSON.
 

@@ -107,6 +107,57 @@ function htmlToPlainText(html) {
   return (temp.content.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
+const AUTO_PENSION_SUMMARY_PATTERNS = [
+  /<span\b[^>]*\bdata-auto=(["'])readiness\1[^>]*>[\s\S]*?<\/span>/gi,
+  /<span\b[^>]*\bdata-auto=(["'])sft\1[^>]*>[\s\S]*?<\/span>/gi,
+  /<span\b[^>]*\bdata-auto=(["'])personal-cap\1[^>]*>[\s\S]*?<\/span>/gi
+];
+
+function escapeSummaryText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function removeAutoPensionSummarySpans(summaryHtml) {
+  return AUTO_PENSION_SUMMARY_PATTERNS
+    .reduce((html, pattern) => html.replace(pattern, ''), String(summaryHtml ?? ''))
+    .replace(/\s+<\/p>/gi, '</p>')
+    .trim();
+}
+
+function appendAutoPensionSummarySentence(summaryHtml, sentence, autoKey) {
+  const cleaned = String(summaryHtml ?? '').trim();
+  if (!sentence) {
+    return cleaned;
+  }
+  const autoSpan = `<span data-auto="${escapeSummaryText(autoKey)}">${escapeSummaryText(sentence)}</span>`;
+  const firstParagraphCloseMatch = /<\/p>/i.exec(cleaned);
+  if (!cleaned) {
+    return `<p>${autoSpan}</p>`;
+  }
+  if (!firstParagraphCloseMatch || typeof firstParagraphCloseMatch.index !== 'number') {
+    return `${cleaned}<p>${autoSpan}</p>`;
+  }
+  const closeTagIndex = firstParagraphCloseMatch.index;
+  return `${cleaned.slice(0, closeTagIndex)} ${autoSpan}${cleaned.slice(closeTagIndex)}`;
+}
+
+function injectAutoPensionSummaryDisplay(summaryHtml, {
+  readinessSentence = '',
+  sftSentence = '',
+  personalCapSentence = ''
+} = {}) {
+  let next = removeAutoPensionSummarySpans(summaryHtml);
+  next = appendAutoPensionSummarySentence(next, readinessSentence, 'readiness');
+  next = appendAutoPensionSummarySentence(next, sftSentence, 'sft');
+  next = appendAutoPensionSummarySentence(next, personalCapSentence, 'personal-cap');
+  return next;
+}
+
 function sanitizeSummaryHtml(rawHtml) {
   if (!rawHtml || typeof rawHtml !== 'string') {
     return '';
@@ -2076,10 +2127,17 @@ function getPensionDisplayModule(module) {
     const projection = computePensionProjection(module.generated.pensionInputs, { scenarioId });
     const existingCharts = Array.isArray(module.generated?.charts) ? module.generated.charts : [];
 
+    const summaryHtml = injectAutoPensionSummaryDisplay(module.generated?.summaryHtml || '', {
+      readinessSentence: projection.debug?.readinessSentence || '',
+      sftSentence: projection.debug?.sftSentence || '',
+      personalCapSentence: projection.debug?.currentPersonalCapSentence || ''
+    });
+
     return {
       ...module,
       generated: {
         ...(module.generated || {}),
+        summaryHtml,
         pensionInputs: {
           ...(module.generated?.pensionInputs || {}),
           rentalIncomeToday: projection.debug.rentalIncomeToday

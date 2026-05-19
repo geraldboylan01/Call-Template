@@ -2775,6 +2775,7 @@ function applyPensionProjectionToModule(module, { updateSummary = true } = {}) {
     module.generated.summaryHtml = injectAutoPensionSummarySentences(
       module.generated.summaryHtml,
       {
+        readinessSentence: projection.debug.readinessSentence,
         sftSentence: projection.debug.sftSentence,
         personalCapSentence: projection.debug.currentPersonalCapSentence
       }
@@ -4199,6 +4200,7 @@ function normalizeDevPanelPayload(payload) {
 
 const AUTO_SFT_SPAN_PATTERN = /<span\b[^>]*\bdata-auto=(["'])sft\1[^>]*>[\s\S]*?<\/span>/gi;
 const AUTO_PERSONAL_CAP_SPAN_PATTERN = /<span\b[^>]*\bdata-auto=(["'])personal-cap\1[^>]*>[\s\S]*?<\/span>/gi;
+const AUTO_READINESS_SPAN_PATTERN = /<span\b[^>]*\bdata-auto=(["'])readiness\1[^>]*>[\s\S]*?<\/span>/gi;
 
 function escapeHtmlText(value) {
   return String(value ?? '')
@@ -4213,12 +4215,13 @@ function removeAutoSftSummarySpan(summaryHtml) {
   return String(summaryHtml ?? '')
     .replace(AUTO_SFT_SPAN_PATTERN, '')
     .replace(AUTO_PERSONAL_CAP_SPAN_PATTERN, '')
+    .replace(AUTO_READINESS_SPAN_PATTERN, '')
     .replace(/\s+<\/p>/gi, '</p>')
     .trim();
 }
 
 function injectAutoSummarySentence(summaryHtml, sentence, autoKey) {
-  const cleaned = removeAutoSftSummarySpan(summaryHtml);
+  const cleaned = String(summaryHtml ?? '').trim();
   if (!sentence) {
     return cleaned;
   }
@@ -4240,14 +4243,18 @@ function injectAutoSummarySentence(summaryHtml, sentence, autoKey) {
 }
 
 function injectAutoPensionSummarySentences(summaryHtml, {
+  readinessSentence = '',
   sftSentence = '',
   personalCapSentence = ''
 } = {}) {
   let next = removeAutoSftSummarySpan(summaryHtml);
+  next = injectAutoSummarySentence(next, readinessSentence, 'readiness');
   next = injectAutoSummarySentence(next, sftSentence, 'sft');
   next = injectAutoSummarySentence(next, personalCapSentence, 'personal-cap');
   return next;
 }
+
+window.__injectAutoPensionSummarySentences = injectAutoPensionSummarySentences;
 
 function isPersonalBalanceSheetModule(module) {
   const generated = module?.generated;

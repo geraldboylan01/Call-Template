@@ -210,6 +210,159 @@ export function runPensionMathTests() {
     assert(maryHorizon?.age === 100, 'Later member should be age 100 at default household horizon');
   }));
 
+  cases.push(runCase('External income covering target suppresses required pot and path', () => {
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      currentAge: 60,
+      retirementAge: 60,
+      currentSalary: 0,
+      currentPot: 0,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0,
+      inflationRate: 0,
+      wageGrowthRate: 0,
+      horizonEndAge: 62,
+      incomeMode: 'target',
+      targetIncomeToday: 10000,
+      rentalIncomeToday: 20000,
+      includeStatePension: false
+    });
+    const outputLabels = projection.outputsTable.rows.map((row) => row[0]);
+    const drawdownChart = projection.charts[1];
+
+    assert(projection.debug.readinessStatus === 'externalIncomeCoversTarget', 'External income should classify as covering target');
+    assert(projection.debug.requiredPotIsApplicable === false, 'Required pot should not be applicable');
+    assert(!outputLabels.some((label) => String(label).startsWith('Required pot')), 'Required pot row should be suppressed');
+    assert(!outputLabels.some((label) => String(label).includes('Gap vs required')), 'Gap row should be suppressed');
+    assert(!drawdownChart.datasets.some((dataset) => dataset.label === 'Required pot path'), 'Required pot path should be suppressed');
+    assert(projection.debug.readinessSentence.includes('separate required pension pot is not shown'), 'Readiness wording should explain suppression');
+  }));
+
+  cases.push(runCase('Current projected pot above required shows surplus wording', () => {
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      currentAge: 60,
+      retirementAge: 60,
+      currentSalary: 0,
+      currentPot: 40000,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0,
+      inflationRate: 0,
+      wageGrowthRate: 0,
+      horizonEndAge: 62,
+      incomeMode: 'target',
+      targetIncomeToday: 10000,
+      includeStatePension: false
+    });
+
+    assert(projection.debug.readinessStatus === 'currentOnTrack', 'Current surplus should classify as on track');
+    assert(projection.debug.currentSurplusVsRequired > 0, 'Current surplus should be captured');
+    assert(projection.outputsTable.rows.some((row) => row[0] === 'Current surplus vs required'), 'Surplus row should be shown');
+    assert(projection.debug.readinessSentence.includes('strong position'), 'Readiness wording should be professional and positive');
+  }));
+
+  cases.push(runCase('Max contributions can close the required-pot gap', () => {
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      currentAge: 60,
+      retirementAge: 62,
+      currentSalary: 100000,
+      currentPot: 0,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0,
+      inflationRate: 0,
+      wageGrowthRate: 0,
+      horizonEndAge: 64,
+      incomeMode: 'target',
+      targetIncomeToday: 10000,
+      includeStatePension: false
+    });
+
+    assert(projection.debug.readinessStatus === 'maxContributionsCloseGap', 'Max contributions should close the gap');
+    assert(projection.debug.currentGapVsRequired > 0, 'Current gap should be captured');
+    assert(projection.debug.maxGapVsRequired === 0, 'Max path should not leave a gap');
+    assert(projection.outputsTable.rows.some((row) => row[0] === 'Max-contribution surplus vs required'), 'Max surplus row should be shown');
+  }));
+
+  cases.push(runCase('Shortfall remains after max contributions and shows planning levers', () => {
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      currentAge: 60,
+      retirementAge: 60,
+      currentSalary: 0,
+      currentPot: 0,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0,
+      inflationRate: 0,
+      wageGrowthRate: 0,
+      horizonEndAge: 62,
+      incomeMode: 'target',
+      targetIncomeToday: 10000,
+      includeStatePension: false
+    });
+
+    assert(projection.debug.readinessStatus === 'shortfallAfterMax', 'Persistent gap should classify as shortfall after max');
+    assert(projection.debug.maxGapVsRequired > 0, 'Max gap should be captured');
+    assert(projection.debug.readinessSentence.includes('planning levers'), 'Readiness wording should mention planning levers');
+  }));
+
+  cases.push(runCase('Tolerance-sized gaps are treated as on track', () => {
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      currentAge: 60,
+      retirementAge: 60,
+      currentSalary: 0,
+      currentPot: 29960,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0,
+      inflationRate: 0,
+      wageGrowthRate: 0,
+      horizonEndAge: 62,
+      incomeMode: 'target',
+      targetIncomeToday: 10000,
+      includeStatePension: false
+    });
+
+    assert(projection.debug.readinessStatus === 'currentOnTrack', 'Small gap should be treated as on track');
+    assert(projection.debug.currentGapVsRequired === 0, 'Tolerance-sized gap should be zeroed');
+    assert(projection.outputsTable.rows.some((row) => row[1] === 'On track within tolerance'), 'Tolerance row should be shown');
+  }));
+
+  cases.push(runCase('Rental-lost scenario can change readiness status', () => {
+    const inputs = {
+      currentYear: 2026,
+      currentAge: 60,
+      retirementAge: 60,
+      currentSalary: 0,
+      currentPot: 0,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0,
+      inflationRate: 0,
+      wageGrowthRate: 0,
+      horizonEndAge: 62,
+      incomeMode: 'target',
+      targetIncomeToday: 10000,
+      rentalIncomeToday: 20000,
+      includeStatePension: false,
+      baseScenarioId: 'with-rent',
+      rentalIncomeScenarios: [
+        { id: 'with-rent', title: 'With rent', rentalIncomeToday: 20000 },
+        { id: 'rent-lost', title: 'Rent lost', rentalIncomeToday: 0 }
+      ]
+    };
+    const withRent = computePensionProjection(inputs, { scenarioId: 'with-rent' });
+    const rentLost = computePensionProjection(inputs, { scenarioId: 'rent-lost' });
+
+    assert(withRent.debug.readinessStatus === 'externalIncomeCoversTarget', 'With-rent scenario should be externally funded');
+    assert(rentLost.debug.readinessStatus === 'shortfallAfterMax', 'Rent-lost scenario should show a shortfall');
+  }));
+
   cases.push(runCase('Target-mode required pot falls when rental income is present', () => {
     const noRent = computePensionProjection(BASE_TARGET_INPUTS);
     const withRent = computePensionProjection({
