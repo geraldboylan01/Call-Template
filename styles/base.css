@@ -2047,6 +2047,99 @@ button.pbs-health-badge {
   height: clamp(260px, 32vw, 390px);
 }
 
+.generated-chart-block[data-chart-variant="pension-drawdown-composite"] {
+  padding: 12px;
+}
+
+.pension-drawdown-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: flex-start;
+  margin: 8px 0 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.pension-drawdown-legend-group {
+  display: flex;
+  min-width: min(100%, 220px);
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pension-drawdown-legend-title {
+  color: rgba(211, 232, 255, 0.74);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pension-drawdown-legend-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pension-drawdown-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 210px;
+  min-height: 26px;
+  border: 1px solid rgba(140, 175, 220, 0.28);
+  border-radius: 999px;
+  background: rgba(8, 21, 35, 0.68);
+  color: #eaf4ff;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 650;
+  padding: 4px 9px;
+}
+
+.pension-drawdown-legend-chip.is-muted {
+  opacity: 0.45;
+}
+
+.pension-drawdown-legend-swatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.pension-drawdown-legend-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pension-drawdown-panels {
+  display: grid;
+  gap: 8px;
+}
+
+.pension-drawdown-panel {
+  min-width: 0;
+}
+
+.pension-drawdown-panel-title {
+  margin: 0 0 5px;
+  color: rgba(234, 244, 255, 0.82);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.pension-drawdown-panel[data-chart-panel="balance"] .pension-drawdown-canvas-wrap {
+  height: 160px;
+}
+
+.pension-drawdown-panel[data-chart-panel="income"] .pension-drawdown-canvas-wrap {
+  height: 230px;
+}
+
 .generated-chart-top {
   display: flex;
   align-items: center;

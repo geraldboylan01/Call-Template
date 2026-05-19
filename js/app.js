@@ -5903,8 +5903,8 @@ function validateChartDisplayPayload(display, label) {
     ? display.variant.trim().toLowerCase()
     : '';
   if (variant) {
-    if (variant !== 'hero' && variant !== 'compact' && variant !== 'wide') {
-      throw new Error(`${label}.variant must be "hero", "compact", or "wide" when provided.`);
+    if (variant !== 'hero' && variant !== 'compact' && variant !== 'wide' && variant !== 'pension-drawdown-composite') {
+      throw new Error(`${label}.variant must be "hero", "compact", "wide", or "pension-drawdown-composite" when provided.`);
     }
     normalized.variant = variant;
   }

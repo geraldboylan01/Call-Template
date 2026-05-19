@@ -202,7 +202,7 @@ Representative payloads for testing the upgraded module renderer through the exi
       "incomeMode": "target",
       "targetIncomeToday": 70000,
       "targetStartYear": 2052,
-      "horizonEndAge": 95,
+      "horizonEndAge": 100,
       "currentAge": 42,
       "retirementAge": 67,
       "currentSalary": 155000,

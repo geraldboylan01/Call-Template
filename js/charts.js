@@ -572,6 +572,11 @@ function getChartDisplay(chartData) {
   return isPlainObject(chartData?.display) ? chartData.display : {};
 }
 
+function isPensionDrawdownCompositeChart(chartData) {
+  return chartData?.meta?.kind === 'pensionDrawdownComposite'
+    || normalizeTone(getChartDisplay(chartData).variant) === 'pension-drawdown-composite';
+}
+
 function getChartValueFormat(chartData) {
   const valueFormat = normalizeTone(getChartDisplay(chartData).valueFormat);
   if (valueFormat === 'currency' || valueFormat === 'percent' || valueFormat === 'number') {
@@ -676,6 +681,26 @@ function isMortgageMixedChart(chartData) {
 function chartToCsv(chartData, _module) {
   const datasets = Array.isArray(chartData.datasets) ? chartData.datasets : [];
   const labels = Array.isArray(chartData.labels) ? chartData.labels : [];
+
+  if (isPensionDrawdownCompositeChart(chartData)) {
+    const lines = [];
+    ['balance', 'income'].forEach((panelKey) => {
+      const panel = chartData?.panels?.[panelKey];
+      if (!panel) {
+        return;
+      }
+      const panelLabels = Array.isArray(panel.labels) ? panel.labels : [];
+      const panelDatasets = Array.isArray(panel.datasets) ? panel.datasets : [];
+      lines.push([panel.title || panelKey].map(csvEscape).join(','));
+      lines.push(['Label', ...panelDatasets.map((dataset) => dataset.label || '')].map(csvEscape).join(','));
+      panelLabels.forEach((label, index) => {
+        const row = [label, ...panelDatasets.map((dataset) => clampNumber(dataset.data?.[index] ?? ''))];
+        lines.push(row.map(csvEscape).join(','));
+      });
+      lines.push('');
+    });
+    return `${lines.join('\n').replace(/\n+$/, '')}\n`;
+  }
 
   if (isMortgageMixedChart(chartData)) {
     const labelsLength = labels.length;
@@ -1002,6 +1027,175 @@ function applyPensionShowMaxToChart(chart, showMax) {
   return changed;
 }
 
+function datasetHasAnyValue(dataset) {
+  return Array.isArray(dataset?.data)
+    && dataset.data.some((value) => Number.isFinite(value) && Math.abs(value) > 0.01);
+}
+
+function pensionLegendGroupForLabel(label) {
+  if (
+    label === PENSION_DATASET_LABELS.combinedBalanceCurrent
+    || label === PENSION_DATASET_LABELS.combinedBalanceMax
+    || isRequiredReferenceLabel(label)
+  ) {
+    return 'Balances';
+  }
+  if (
+    label === PENSION_DATASET_LABELS.shortfallCurrent
+    || label === PENSION_DATASET_LABELS.shortfallMax
+    || label === PENSION_DATASET_LABELS.surplusCurrent
+    || label === PENSION_DATASET_LABELS.surplusMax
+  ) {
+    return 'Alerts';
+  }
+  return 'Income sources';
+}
+
+function pensionLegendColorForLabel(label) {
+  const map = {
+    [PENSION_DATASET_LABELS.combinedBalanceCurrent]: '#2ea3ff',
+    [PENSION_DATASET_LABELS.combinedBalanceMax]: '#7bffbf',
+    [PENSION_DATASET_LABELS.requiredReference]: '#B48CFF',
+    [PENSION_DATASET_LABELS.requiredIncome]: '#ffffff',
+    [PENSION_DATASET_LABELS.employmentIncomeCurrent]: '#66b89e',
+    [PENSION_DATASET_LABELS.employmentIncomeMax]: '#66b89e',
+    [PENSION_DATASET_LABELS.statePensionCurrent]: '#4cc9f0',
+    [PENSION_DATASET_LABELS.statePensionMax]: '#4cc9f0',
+    [PENSION_DATASET_LABELS.rentalIncomeCurrent]: '#7bffbf',
+    [PENSION_DATASET_LABELS.rentalIncomeMax]: '#7bffbf',
+    [PENSION_DATASET_LABELS.otherIncomeCurrent]: '#ffd166',
+    [PENSION_DATASET_LABELS.otherIncomeMax]: '#ffd166',
+    [PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent]: '#b48cff',
+    [PENSION_DATASET_LABELS.mandatoryWithdrawalsMax]: '#b48cff',
+    [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: '#2ea3ff',
+    [PENSION_DATASET_LABELS.electedWithdrawalsMax]: '#2ea3ff',
+    [PENSION_DATASET_LABELS.shortfallCurrent]: '#ff5f7e',
+    [PENSION_DATASET_LABELS.shortfallMax]: '#ff5f7e',
+    [PENSION_DATASET_LABELS.surplusCurrent]: '#ffffff',
+    [PENSION_DATASET_LABELS.surplusMax]: '#ffffff'
+  };
+  return map[label] || '#6FE6D8';
+}
+
+function visibleCompositeLegendDatasets(chartData, moduleId) {
+  const showMax = getPensionShowMax(moduleId);
+  const panels = [chartData?.panels?.balance, chartData?.panels?.income].filter(Boolean);
+  const seen = new Set();
+  const items = [];
+  panels.forEach((panel) => {
+    (Array.isArray(panel.datasets) ? panel.datasets : []).forEach((dataset) => {
+      const label = normalizeLabel(dataset?.label);
+      if (!label || seen.has(label)) {
+        return;
+      }
+      if ((isMaxScenarioLabel(label) && !showMax) || (isCurrentScenarioLabel(label) && showMax)) {
+        return;
+      }
+      if (
+        (label === PENSION_DATASET_LABELS.shortfallCurrent || label === PENSION_DATASET_LABELS.shortfallMax
+          || label === PENSION_DATASET_LABELS.surplusCurrent || label === PENSION_DATASET_LABELS.surplusMax)
+        && !datasetHasAnyValue(dataset)
+      ) {
+        return;
+      }
+      seen.add(label);
+      items.push({
+        label,
+        group: pensionLegendGroupForLabel(label),
+        color: pensionLegendColorForLabel(label)
+      });
+    });
+  });
+  return items;
+}
+
+function setCompositeDatasetVisibility(blockEl, label, visible) {
+  const canvases = [...blockEl.querySelectorAll('[data-chart-panel-canvas]')];
+  canvases.forEach((canvas) => {
+    const chartKey = canvas.dataset.chartKey;
+    const entry = chartKey ? chartRegistry.get(chartKey) : null;
+    const chart = entry?.chart;
+    if (!chart?.data?.datasets) {
+      return;
+    }
+    chart.data.datasets.forEach((dataset) => {
+      if (normalizeLabel(dataset?.label) === label) {
+        dataset.hidden = !visible;
+      }
+    });
+    chart.update('none');
+  });
+}
+
+function buildPensionCompositeLegend(blockEl, chartData, moduleId) {
+  const host = blockEl.querySelector('[data-pension-drawdown-legend]');
+  if (!host) {
+    return;
+  }
+  host.textContent = '';
+  const groups = new Map();
+  visibleCompositeLegendDatasets(chartData, moduleId).forEach((item) => {
+    if (!groups.has(item.group)) {
+      groups.set(item.group, []);
+    }
+    groups.get(item.group).push(item);
+  });
+
+  groups.forEach((items, groupName) => {
+    const group = document.createElement('div');
+    group.className = 'pension-drawdown-legend-group';
+
+    const title = document.createElement('div');
+    title.className = 'pension-drawdown-legend-title';
+    title.textContent = groupName;
+    group.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'pension-drawdown-legend-list';
+    items.forEach((item) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'pension-drawdown-legend-chip';
+      button.dataset.seriesLabel = item.label;
+      button.setAttribute('aria-pressed', 'true');
+      button.title = item.label;
+
+      const swatch = document.createElement('span');
+      swatch.className = 'pension-drawdown-legend-swatch';
+      swatch.style.backgroundColor = item.color;
+      button.appendChild(swatch);
+
+      const text = document.createElement('span');
+      text.className = 'pension-drawdown-legend-text';
+      text.textContent = item.label
+        .replace(' pension ', ' ')
+        .replace(' (current)', '')
+        .replace(' (max)', '');
+      button.appendChild(text);
+
+      button.addEventListener('click', () => {
+        const nextVisible = button.getAttribute('aria-pressed') !== 'true';
+        button.setAttribute('aria-pressed', nextVisible ? 'true' : 'false');
+        button.classList.toggle('is-muted', !nextVisible);
+        setCompositeDatasetVisibility(blockEl, item.label, nextVisible);
+      });
+
+      list.appendChild(button);
+    });
+    group.appendChild(list);
+    host.appendChild(group);
+  });
+}
+
+function refreshPensionCompositeLegendForBlock(blockEl, moduleId, chartData) {
+  if (!blockEl || !blockEl.isConnected) {
+    return;
+  }
+  if (chartData && isPensionDrawdownCompositeChart(chartData)) {
+    buildPensionCompositeLegend(blockEl, chartData, moduleId);
+  }
+}
+
 function setPensionShowMaxForModuleCharts(moduleId, showMax) {
   if (typeof moduleId !== 'string' || !moduleId) {
     return 0;
@@ -1019,6 +1213,7 @@ function setPensionShowMaxForModuleCharts(moduleId, showMax) {
       if (entry.mode === 'overlay') {
         scheduleOverlayPositionUpdate();
       }
+      refreshPensionCompositeLegendForBlock(entry.blockEl, moduleId, entry.compositeChartData);
       updated += 1;
     }
   }
@@ -1138,7 +1333,7 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
     return {
       ...barBase,
       type: 'bar',
-      yAxisID: 'y1',
+      yAxisID: dataset?.forceYAxisID === 'y' ? 'y' : 'y1',
       stack: isMaxScenarioLabel(label) ? 'income-max' : 'income-current',
       order: 1,
       borderColor: color,
@@ -1167,7 +1362,7 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
     return {
       ...buildDatasetStyle(dataset, index, 'line'),
       type: 'line',
-      yAxisID: 'y1',
+      yAxisID: dataset?.forceYAxisID === 'y' ? 'y' : 'y1',
       order: 0,
       borderColor: '#ffffff',
       backgroundColor: 'rgba(255, 255, 255, 0.16)',
@@ -1953,6 +2148,159 @@ export function destroyAllCharts() {
   maybeTearDownOverlayInfrastructure();
 }
 
+function getPensionCompositePanelChartData(chartData, panelKey) {
+  const panel = chartData?.panels?.[panelKey];
+  if (!panel) {
+    return null;
+  }
+  return {
+    title: panel.title || chartData.title,
+    type: panel.type || (panelKey === 'income' ? 'bar' : 'line'),
+    labels: Array.isArray(panel.labels) ? panel.labels : chartData.labels,
+    datasets: Array.isArray(panel.datasets) ? panel.datasets : [],
+    display: {
+      ...getChartDisplay(panel),
+      showLegend: false
+    },
+    meta: {
+      ...(isPlainObject(chartData.meta) ? chartData.meta : {}),
+      ...(isPlainObject(panel.meta) ? panel.meta : {}),
+      panel: panelKey
+    }
+  };
+}
+
+function attachPensionCompositeHover(entries) {
+  const activeEntries = entries.filter((entry) => entry?.chart && entry?.sourceCanvas);
+  if (activeEntries.length < 2) {
+    return () => {};
+  }
+
+  const clearHover = () => {
+    activeEntries.forEach((entry) => {
+      entry.chart.setActiveElements([]);
+      if (entry.chart.tooltip && typeof entry.chart.tooltip.setActiveElements === 'function') {
+        entry.chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+      }
+      entry.chart.update('none');
+    });
+  };
+
+  const handleMove = (event) => {
+    const sourceEntry = activeEntries.find((entry) => entry.sourceCanvas === event.currentTarget);
+    if (!sourceEntry) {
+      return;
+    }
+    const points = sourceEntry.chart.getElementsAtEventForMode(
+      event,
+      'index',
+      { intersect: false },
+      false
+    );
+    const dataIndex = points?.[0]?.index;
+    if (!Number.isInteger(dataIndex)) {
+      clearHover();
+      return;
+    }
+
+    activeEntries.forEach((entry) => {
+      const active = entry.chart.data.datasets
+        .map((dataset, datasetIndex) => (
+          dataset.hidden !== true && Array.isArray(dataset.data) && dataIndex < dataset.data.length
+            ? { datasetIndex, index: dataIndex }
+            : null
+        ))
+        .filter(Boolean);
+      entry.chart.setActiveElements(active);
+      if (entry.chart.tooltip && typeof entry.chart.tooltip.setActiveElements === 'function') {
+        const rect = entry.sourceCanvas.getBoundingClientRect();
+        entry.chart.tooltip.setActiveElements(active, {
+          x: rect.width / 2,
+          y: rect.height / 2
+        });
+      }
+      entry.chart.update('none');
+    });
+  };
+
+  activeEntries.forEach((entry) => {
+    entry.sourceCanvas.addEventListener('mousemove', handleMove, { passive: true });
+    entry.sourceCanvas.addEventListener('mouseleave', clearHover, { passive: true });
+  });
+
+  return () => {
+    activeEntries.forEach((entry) => {
+      entry.sourceCanvas.removeEventListener('mousemove', handleMove);
+      entry.sourceCanvas.removeEventListener('mouseleave', clearHover);
+    });
+  };
+}
+
+function renderPensionCompositeChartBlock(block, chartData, module, {
+  paneToken,
+  moduleToken,
+  chartIndex,
+  clientName,
+  moduleTitle
+} = {}) {
+  buildPensionCompositeLegend(block, chartData, module?.id || '');
+  const createdEntries = [];
+  ['balance', 'income'].forEach((panelKey) => {
+    const panelData = getPensionCompositePanelChartData(chartData, panelKey);
+    const sourceCanvas = block.querySelector(`[data-chart-panel-canvas="${panelKey}"]`);
+    if (!panelData || !sourceCanvas) {
+      return;
+    }
+
+    sourceCanvas.id = `${paneToken}-canvas-${moduleToken}-${chartIndex}-${panelKey}`;
+    const existingKey = sourceCanvas.dataset.chartKey;
+    if (existingKey) {
+      destroyChartByKey(existingKey);
+    }
+
+    const context = sourceCanvas.getContext('2d');
+    if (!context) {
+      return;
+    }
+
+    const chartConfig = buildChartConfig(panelData, { module });
+    const chart = new window.Chart(context, chartConfig);
+    maybeWarnDprMismatch(chart.canvas);
+    const chartKey = nextChartKey(`${paneToken}-chart`);
+    sourceCanvas.dataset.chartKey = chartKey;
+    const registryEntry = {
+      chart,
+      canvas: sourceCanvas,
+      sourceCanvas,
+      moduleId: module?.id || '',
+      chartIndex,
+      mode: 'inline',
+      blockEl: block,
+      positionSourceEl: sourceCanvas,
+      compositeChartData: chartData,
+      compositePanelKey: panelKey,
+      reflowRafId: 0
+    };
+    chartRegistry.set(chartKey, registryEntry);
+    createdEntries.push(registryEntry);
+  });
+
+  const hoverCleanup = attachPensionCompositeHover(createdEntries);
+  createdEntries.forEach((entry) => {
+    entry.pointerDiagnosticsCleanup = hoverCleanup;
+  });
+
+  const downloadButton = block.querySelector('[data-chart-download]');
+  if (downloadButton) {
+    const titleText = chartData.title || `Chart ${chartIndex + 1}`;
+    downloadButton.onclick = () => {
+      const csv = chartToCsv(chartData, module);
+      const filename = buildFilename(clientName, moduleTitle, titleText);
+      downloadTextFile(filename, csv);
+    };
+  }
+}
+
 export function renderChartsForPane(paneElement, module, { clientName, moduleTitle, paneKey = 'pane' } = {}) {
   cleanupDetachedCharts();
 
@@ -1979,12 +2327,23 @@ export function renderChartsForPane(paneElement, module, { clientName, moduleTit
       return;
     }
 
+    const moduleToken = sanitizeFileToken(module?.id || 'module', 'module');
+    if (isPensionDrawdownCompositeChart(chartData)) {
+      renderPensionCompositeChartBlock(block, chartData, module, {
+        paneToken,
+        moduleToken,
+        chartIndex,
+        clientName,
+        moduleTitle
+      });
+      return;
+    }
+
     const sourceCanvas = block.querySelector('canvas');
     if (!sourceCanvas) {
       return;
     }
 
-    const moduleToken = sanitizeFileToken(module?.id || 'module', 'module');
     sourceCanvas.id = `${paneToken}-canvas-${moduleToken}-${chartIndex}`;
 
     const existingKey = sourceCanvas.dataset.chartKey;
@@ -2252,6 +2611,19 @@ export function updateChartsForPane(paneElement, module, { clientName, moduleTit
 
   const blocks = [...paneElement.querySelectorAll('[data-chart-index]')];
   if (blocks.length === 0) {
+    return;
+  }
+
+  if (blocks.some((block) => {
+    const chartIndex = Number(block.dataset.chartIndex);
+    const chartData = Number.isFinite(chartIndex) ? module.generated.charts[chartIndex] : null;
+    return isPensionDrawdownCompositeChart(chartData);
+  })) {
+    renderChartsForPane(paneElement, module, {
+      clientName,
+      moduleTitle,
+      paneKey: paneKey || paneElement?.dataset?.chartPaneKey || paneElement?.dataset?.comparePane || paneElement?.dataset?.moduleId || 'pane'
+    });
     return;
   }
 

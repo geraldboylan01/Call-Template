@@ -171,6 +171,45 @@ export function runPensionMathTests() {
     );
   }));
 
+  cases.push(runCase('Required pot defaults to deplete by age 100', () => {
+    const { horizonEndAge, ...inputsWithoutExplicitHorizon } = BASE_TARGET_INPUTS;
+    const projection = computePensionProjection({
+      ...inputsWithoutExplicitHorizon,
+      currentAge: 60,
+      retirementAge: 60,
+      currentSalary: 0,
+      currentPot: 0,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0,
+      wageGrowthRate: 0,
+      inflationRate: 0,
+      targetIncomeToday: 10000,
+      includeStatePension: false
+    });
+
+    assert(projection.debug.inputs.horizonEndAge === 100, 'Default pension horizon should be age 100');
+    assert(
+      projection.debug.requiredPotDepletionResidual <= projection.debug.requiredPotDepletionTolerance,
+      'Required path should deplete within tolerance by age 100'
+    );
+  }));
+
+  cases.push(runCase('Explicit horizon age is respected', () => {
+    const projection = computePensionProjection(BASE_TARGET_INPUTS);
+
+    assert(projection.debug.inputs.horizonEndAge === 92, 'Explicit horizon age should be respected');
+  }));
+
+  cases.push(runCase('Household default horizon uses the later member age-100 year', () => {
+    const { horizonEndAge, ...coupleWithoutExplicitHorizon } = COUPLE_INPUTS;
+    const projection = computePensionProjection(coupleWithoutExplicitHorizon);
+    const maryHorizon = projection.debug.inputs.horizonEndAges.find((entry) => entry.id === 'mary');
+
+    assert(projection.debug.inputs.horizonEndYear === 2086, 'Household default horizon should use later age-100 calendar year');
+    assert(maryHorizon?.age === 100, 'Later member should be age 100 at default household horizon');
+  }));
+
   cases.push(runCase('Target-mode required pot falls when rental income is present', () => {
     const noRent = computePensionProjection(BASE_TARGET_INPUTS);
     const withRent = computePensionProjection({
@@ -315,6 +354,34 @@ export function runPensionMathTests() {
       withBridge.debug.currentReferenceBalances.reduce((total, value) => total + value, 0),
       0.01,
       'Projected pot should be measured at the reference year'
+    );
+  }));
+
+  cases.push(runCase('Required pot terminal point is shown in the balance panel', () => {
+    const projection = computePensionProjection(STAGGERED_RETIREMENT_INPUTS);
+    const combinedChart = projection.charts[2];
+    const balancePanel = combinedChart.panels.balance;
+    const requiredPath = balancePanel.datasets.find((dataset) => dataset.label === 'Required pot path');
+
+    assert(combinedChart.display.variant === 'pension-drawdown-composite', 'Drawdown chart should use the composite variant');
+    assert(balancePanel.labels.length === requiredPath.data.length, 'Balance-panel required path should align with terminal label');
+    assert(balancePanel.labels[balancePanel.labels.length - 1].startsWith('End horizon'), 'Balance panel should include terminal horizon label');
+    assert(
+      requiredPath.data[requiredPath.data.length - 1] <= projection.debug.requiredPotDepletionTolerance,
+      'Required path terminal point should deplete within tolerance'
+    );
+  }));
+
+  cases.push(runCase('Composite drawdown chart separates balance and income panels', () => {
+    const projection = computePensionProjection(COUPLE_INPUTS);
+    const combinedChart = projection.charts[2];
+
+    assert(combinedChart.panels.balance.datasets.some((dataset) => dataset.label === 'Combined pension balance (current)'), 'Balance panel should include current balance line');
+    assert(combinedChart.panels.balance.datasets.some((dataset) => dataset.label === 'Required pot path'), 'Balance panel should include required pot path');
+    assert(combinedChart.panels.income.datasets.some((dataset) => dataset.label === 'Required income'), 'Income panel should include required income line');
+    assert(
+      combinedChart.panels.income.datasets.every((dataset) => dataset.label !== 'Combined pension balance (current)'),
+      'Income panel should not include balance lines'
     );
   }));
 

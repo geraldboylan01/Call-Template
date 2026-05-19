@@ -2244,7 +2244,7 @@ function normalizeChartDisplay(display) {
 
   const normalized = {};
   const variant = normalizeRenderTone(display.variant);
-  if (variant === 'hero' || variant === 'compact' || variant === 'wide') {
+  if (variant === 'hero' || variant === 'compact' || variant === 'wide' || variant === 'pension-drawdown-composite') {
     normalized.variant = variant;
   }
 
@@ -5636,15 +5636,51 @@ function buildChartMountCard({
     card.appendChild(subtitleEl);
   }
 
-  const canvasWrap = document.createElement('div');
-  canvasWrap.className = 'generated-chart-canvas-wrap';
+  if (displayVariant === 'pension-drawdown-composite') {
+    const legend = document.createElement('div');
+    legend.className = 'pension-drawdown-legend';
+    legend.setAttribute('data-pension-drawdown-legend', 'true');
+    card.appendChild(legend);
 
-  const canvas = document.createElement('canvas');
-  canvas.className = 'generated-chart-canvas';
-  canvas.height = 220;
-  canvasWrap.appendChild(canvas);
+    const panels = [
+      ['balance', chart?.panels?.balance?.title || 'Pension balance'],
+      ['income', chart?.panels?.income?.title || 'Income sources']
+    ];
+    const panelGrid = document.createElement('div');
+    panelGrid.className = 'pension-drawdown-panels';
+    panels.forEach(([panelKey, panelTitle]) => {
+      const panel = document.createElement('section');
+      panel.className = 'pension-drawdown-panel';
+      panel.dataset.chartPanel = panelKey;
 
-  card.appendChild(canvasWrap);
+      const panelHeading = document.createElement('div');
+      panelHeading.className = 'pension-drawdown-panel-title';
+      panelHeading.textContent = panelTitle;
+      panel.appendChild(panelHeading);
+
+      const canvasWrap = document.createElement('div');
+      canvasWrap.className = 'generated-chart-canvas-wrap pension-drawdown-canvas-wrap';
+
+      const canvas = document.createElement('canvas');
+      canvas.className = 'generated-chart-canvas';
+      canvas.dataset.chartPanelCanvas = panelKey;
+      canvas.height = panelKey === 'balance' ? 150 : 210;
+      canvasWrap.appendChild(canvas);
+      panel.appendChild(canvasWrap);
+      panelGrid.appendChild(panel);
+    });
+    card.appendChild(panelGrid);
+  } else {
+    const canvasWrap = document.createElement('div');
+    canvasWrap.className = 'generated-chart-canvas-wrap';
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'generated-chart-canvas';
+    canvas.height = 220;
+    canvasWrap.appendChild(canvas);
+
+    card.appendChild(canvasWrap);
+  }
   appendChartInsightContent(card, chart);
   return card;
 }

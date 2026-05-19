@@ -95,7 +95,7 @@ function normalizeChartDisplay(display) {
   const variant = typeof display.variant === 'string'
     ? display.variant.trim().toLowerCase()
     : '';
-  if (variant === 'hero' || variant === 'compact' || variant === 'wide') {
+  if (variant === 'hero' || variant === 'compact' || variant === 'wide' || variant === 'pension-drawdown-composite') {
     normalized.variant = variant;
   }
 

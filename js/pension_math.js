@@ -508,9 +508,20 @@ function normalizeOtherIncomeSources(rawValue, pensions, currentYear) {
   });
 }
 
-function resolveHorizonEndYear(raw, primary, currentYear, targetStartYear) {
+function resolveHorizonEndYear(raw, pensions, currentYear, targetStartYear) {
+  const primary = pensions[0];
   if (typeof raw.horizonEndYear !== 'undefined') {
     return requireFiniteInteger(raw.horizonEndYear, 'horizonEndYear');
+  }
+
+  if (typeof raw.horizonEndAge === 'undefined' && pensions.length > 1) {
+    const householdEndYear = Math.max(
+      ...pensions.map((member) => yearForAge(member, DEFAULT_HORIZON_END_AGE, currentYear))
+    );
+    if (householdEndYear < targetStartYear) {
+      throw new Error('generated.pensionInputs.horizonEndAge must be greater than or equal to targetStartAge.');
+    }
+    return householdEndYear;
   }
 
   const horizonEndAge = typeof raw.horizonEndAge === 'undefined'
@@ -720,7 +731,9 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
   const labels = years.map((year) => ageLabelForYear(inputs, year));
   const balances = startingBalances.map((value) => clampToZero(value));
   const combinedBalances = [];
+  const closingCombinedBalances = [];
   const totalPensionBalances = [];
+  const totalClosingPensionBalances = [];
   const requiredIncome = [];
   const employmentIncome = [];
   const statePensionIncome = [];
@@ -732,6 +745,7 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
   const surpluses = [];
   const totalIncome = [];
   const perPensionOpeningBalances = inputs.pensions.map(() => []);
+  const perPensionClosingBalances = inputs.pensions.map(() => []);
   const perPensionMandatory = inputs.pensions.map(() => []);
   const perPensionElected = inputs.pensions.map(() => []);
 
@@ -791,13 +805,25 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
       const preGrowth = balances[index] + contribution.total;
       balances[index] = clampToZero(preGrowth * (1 + member.growthRate));
     });
+
+    const closingBalances = balances.map((value) => clampToZero(value));
+    const closingAvailableIndexes = inputs.pensions
+      .map((member, index) => (year >= member.retirementYear ? index : null))
+      .filter((index) => index !== null);
+    inputs.pensions.forEach((_member, index) => {
+      perPensionClosingBalances[index].push(closingBalances[index] || 0);
+    });
+    closingCombinedBalances.push(sum(closingAvailableIndexes.map((index) => closingBalances[index] || 0)));
+    totalClosingPensionBalances.push(sum(closingBalances));
   });
 
   return {
     years,
     labels,
     combinedBalances: floorSeriesToZero(combinedBalances),
+    closingCombinedBalances: floorSeriesToZero(closingCombinedBalances),
     totalPensionBalances: floorSeriesToZero(totalPensionBalances),
+    totalClosingPensionBalances: floorSeriesToZero(totalClosingPensionBalances),
     endingBalances: balances.map((value) => clampToZero(value)),
     endingBalanceAfterHorizon: sum(balances),
     requiredIncome,
@@ -811,6 +837,7 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
     surpluses,
     totalIncome,
     perPensionOpeningBalances,
+    perPensionClosingBalances,
     perPensionMandatory,
     perPensionElected,
     totalShortfall: sum(shortfalls),
@@ -878,12 +905,15 @@ function findRequiredStartingBalances(inputs, referenceBalances) {
     contributionMode: 'current',
     startYear: inputs.requiredPotReferenceYear
   });
+  const depletionResidual = simulation.endingBalanceAfterHorizon;
 
   return {
     requiredPot: sum(requiredBalances),
     requiredBalances,
     shares,
     simulation,
+    depletionResidual,
+    depletionTolerance: REQUIRED_POT_TOLERANCE_EUR,
     arfThresholdBreakpoints: breakpoints
   };
 }
@@ -972,11 +1002,16 @@ function normalizePensionInputsInternal(raw) {
   if (requiredPotReferenceYear < incomeStartYear) {
     throw new Error('generated.pensionInputs.requiredPotReferenceYear must be greater than or equal to incomeStartYear.');
   }
-  const horizonEndYear = resolveHorizonEndYear(raw, primary, currentYear, incomeStartYear);
+  const horizonEndYear = resolveHorizonEndYear(raw, pensions, currentYear, incomeStartYear);
   if (horizonEndYear < requiredPotReferenceYear) {
     throw new Error('generated.pensionInputs.horizonEndAge must be greater than or equal to the required pot reference year.');
   }
   const horizonEndAge = ageAtYear(primary, horizonEndYear, currentYear);
+  const horizonEndAges = pensions.map((member) => ({
+    id: member.id,
+    title: member.title,
+    age: ageAtYear(member, horizonEndYear, currentYear)
+  }));
   const incomeMode = normalizeIncomeMode(raw.incomeMode);
   const includeEmploymentIncomeDuringBridge = resolveIncludeEmploymentIncomeDuringBridge(raw, pensions);
 
@@ -991,6 +1026,7 @@ function normalizePensionInputsInternal(raw) {
     inflationRate,
     wageGrowthRate: householdWageGrowthRate,
     horizonEndAge,
+    horizonEndAges,
     horizonEndYear,
     currentYear,
     targetStartYear,
@@ -1220,18 +1256,69 @@ function buildIncomeStackDatasets(simulation, suffix, hidden = false) {
   ];
 }
 
-function buildRequiredPotPathData(baseSimulation, requiredSimulation) {
+function buildTerminalBalanceLabel(inputs) {
+  if (inputs.isHousehold) {
+    return `End horizon ${inputs.horizonEndYear}`;
+  }
+  return `End age ${inputs.horizonEndAge}`;
+}
+
+function appendTerminalValue(values, simulation) {
+  return [
+    ...(Array.isArray(values) ? values : []),
+    Number.isFinite(simulation?.endingBalanceAfterHorizon) ? simulation.endingBalanceAfterHorizon : 0
+  ];
+}
+
+function buildRequiredPotPathData(baseSimulation, requiredSimulation, includeTerminalPoint = false) {
   if (!requiredSimulation || !Array.isArray(baseSimulation?.years)) {
     return [];
   }
 
-  return baseSimulation.years.map((year) => {
+  const values = baseSimulation.years.map((year) => {
     const index = requiredSimulation.years.findIndex((entry) => entry === year);
     return index >= 0 ? requiredSimulation.combinedBalances[index] : null;
   });
+
+  if (includeTerminalPoint) {
+    values.push(requiredSimulation.endingBalanceAfterHorizon);
+  }
+
+  return values;
 }
 
 function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, requiredSimulation = null) {
+  const balanceLabels = [...currentSimulation.labels, buildTerminalBalanceLabel(inputs)];
+  const balanceDatasets = [
+    {
+      label: 'Combined pension balance (current)',
+      data: appendTerminalValue(currentSimulation.combinedBalances, currentSimulation)
+    },
+    {
+      label: 'Combined pension balance (max)',
+      data: appendTerminalValue(maxSimulation.combinedBalances, maxSimulation),
+      hidden: true
+    },
+    ...(requiredSimulation
+      ? [{
+        label: 'Required pot path',
+        data: buildRequiredPotPathData(currentSimulation, requiredSimulation, true)
+      }]
+      : [])
+  ];
+  const incomeDatasets = [
+    {
+      label: 'Required income',
+      data: currentSimulation.requiredIncome,
+      borderColor: '#ffffff',
+      backgroundColor: 'rgba(255, 255, 255, 0.16)',
+      pointBackgroundColor: '#ffffff',
+      pointBorderColor: '#ffffff'
+    },
+    ...buildIncomeStackDatasets(currentSimulation, 'current', false),
+    ...buildIncomeStackDatasets(maxSimulation, 'max', true)
+  ].map((dataset) => ({ ...dataset, forceYAxisID: 'y' }));
+
   return {
     title: 'Retirement Income Stack and Pension Balance',
     type: 'bar',
@@ -1240,9 +1327,17 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
       ? 'Calendar years shown; hover a year to see each person’s age.'
       : '',
     meta: {
-      ageLabels: currentSimulation.years.map((year) => ageSummaryForYear(inputs, year))
+      kind: 'pensionDrawdownComposite',
+      ageLabels: currentSimulation.years.map((year) => ageSummaryForYear(inputs, year)),
+      balanceAgeLabels: [
+        ...currentSimulation.years.map((year) => ageSummaryForYear(inputs, year)),
+        inputs.isHousehold
+          ? ageSummaryForYear(inputs, inputs.horizonEndYear)
+          : `${inputs.primaryPension.title} age ${inputs.horizonEndAge}`
+      ]
     },
     display: {
+      variant: 'pension-drawdown-composite',
       stacked: true,
       valueFormat: 'currency',
       xAxisTitle: inputs.isHousehold ? 'Calendar year' : `${inputs.primaryPension.title} age`,
@@ -1258,23 +1353,52 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
         data: maxSimulation.combinedBalances,
         hidden: true
       },
-      {
-        label: 'Required income',
-        data: currentSimulation.requiredIncome,
-        borderColor: '#ffffff',
-        backgroundColor: 'rgba(255, 255, 255, 0.16)',
-        pointBackgroundColor: '#ffffff',
-        pointBorderColor: '#ffffff'
-      },
       ...(requiredSimulation
         ? [{
           label: 'Required pot path',
           data: buildRequiredPotPathData(currentSimulation, requiredSimulation)
         }]
         : []),
-      ...buildIncomeStackDatasets(currentSimulation, 'current', false),
-      ...buildIncomeStackDatasets(maxSimulation, 'max', true)
-    ]
+      ...incomeDatasets
+    ],
+    panels: {
+      balance: {
+        title: 'Pension balance',
+        type: 'line',
+        labels: balanceLabels,
+        datasets: balanceDatasets,
+        display: {
+          valueFormat: 'currency',
+          xAxisTitle: inputs.isHousehold ? 'Calendar year' : `${inputs.primaryPension.title} age`,
+          yAxisTitle: 'Pension balance',
+          showLegend: false
+        },
+        meta: {
+          ageLabels: [
+            ...currentSimulation.years.map((year) => ageSummaryForYear(inputs, year)),
+            inputs.isHousehold
+              ? ageSummaryForYear(inputs, inputs.horizonEndYear)
+              : `${inputs.primaryPension.title} age ${inputs.horizonEndAge}`
+          ]
+        }
+      },
+      income: {
+        title: 'Income sources',
+        type: 'bar',
+        labels: currentSimulation.labels,
+        datasets: incomeDatasets,
+        display: {
+          stacked: true,
+          valueFormat: 'currency',
+          xAxisTitle: inputs.isHousehold ? 'Calendar year' : `${inputs.primaryPension.title} age`,
+          yAxisTitle: 'Annual income',
+          showLegend: false
+        },
+        meta: {
+          ageLabels: currentSimulation.years.map((year) => ageSummaryForYear(inputs, year))
+        }
+      }
+    }
   };
 }
 
@@ -1581,7 +1705,9 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ['Mode', modeLabel],
       [
         'Horizon',
-        isAffordableMode ? inputs.affordableEndAges.join(', ') : `${inputs.horizonEndYear} (${inputs.primaryPension.title} age ${inputs.horizonEndAge})`
+        isAffordableMode
+          ? inputs.affordableEndAges.join(', ')
+          : `${inputs.horizonEndYear} (${ageSummaryForYear(inputs, inputs.horizonEndYear)})`
       ]
     ]
   };
@@ -1621,7 +1747,9 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     });
   } else {
     outputsRows.push([
-      inputs.isHousehold ? 'Required pot at reference year (Mode 1)' : 'Required pot at target start (Mode 1)',
+      inputs.isHousehold
+        ? `Required pot at reference year, depleting by ${inputs.horizonEndYear}`
+        : `Required pot at target start, depleting by age ${inputs.horizonEndAge}`,
       toEuroText(requiredPot)
     ]);
     outputsRows.push([
@@ -1649,6 +1777,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     outputsRows.push(['First-year mandatory pension withdrawals', toEuroText(retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal)]);
     outputsRows.push(['First-year elected pension withdrawals', toEuroText(retirementSimulationProjectedCurrent.firstYearElectedWithdrawal)]);
     outputsRows.push(['First-year surplus over target', toEuroText(retirementSimulationProjectedCurrent.surpluses[0] || 0)]);
+    outputsRows.push(['Required path ending balance', toEuroText(requiredResult?.depletionResidual ?? 0)]);
+    outputsRows.push(['Depletion horizon year and ages', `${inputs.horizonEndYear} (${ageSummaryForYear(inputs, inputs.horizonEndYear)})`]);
     outputsRows.push(['Total shortfall on current path', toEuroText(retirementSimulationProjectedCurrent.totalShortfall)]);
   }
 
@@ -1733,6 +1863,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       currentReferenceBalances,
       maxReferenceBalances,
       requiredPot,
+      requiredPotDepletionResidual: requiredResult?.depletionResidual ?? null,
+      requiredPotDepletionTolerance: requiredResult?.depletionTolerance ?? REQUIRED_POT_TOLERANCE_EUR,
       requiredBalances: requiredResult?.requiredBalances ?? [],
       rentalIncomeToday: inputs.rentalIncomeToday,
       rentalIncomeNominalAtRetirement,

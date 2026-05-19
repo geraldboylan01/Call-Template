@@ -65,7 +65,7 @@ Use `pensions[]` when Gerry describes a couple or two pension pots working towar
       "incomeMode": "target",
       "targetIncomeToday": 70000,
       "targetStartYear": 2052,
-      "horizonEndAge": 95,
+      "horizonEndAge": 100,
       "currentAge": 42,
       "retirementAge": 67,
       "currentSalary": 155000,
@@ -138,6 +138,8 @@ Use target mode when Gerry says things like:
 Provide at least one of:
 - `targetIncomeToday`
 - `targetIncomePctOfSalary`
+
+For target mode, omit `horizonEndAge` unless Gerry gives a different depletion age; the runtime defaults required-pot planning to deplete by age 100.
 
 ## Affordable Mode
 Use affordable mode when Gerry says things like:
