@@ -6728,6 +6728,7 @@ function renderEducationModule(module) {
 
   grid.appendChild(buildEducationTopicCard(module, education));
   grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || ''));
+  grid.appendChild(buildEducationVisualsCard(module, education));
   const metricsCard = buildEducationMetricsCard(education);
   if (metricsCard) {
     grid.appendChild(metricsCard);
@@ -6736,7 +6737,6 @@ function renderEducationModule(module) {
   if (stepsCard) {
     grid.appendChild(stepsCard);
   }
-  grid.appendChild(buildEducationVisualsCard(module, education));
   grid.appendChild(buildEducationSectionsCard(education));
 
   const referencesCard = buildEducationReferencesCard(education);
@@ -6805,6 +6805,10 @@ function buildGeneratedSection(module, {
     grid.appendChild(pensionScenarioSwitcher);
   }
 
+  if (isPensionModule(displayModule)) {
+    grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
+  }
+
   grid.appendChild(buildAssumptionsTableCard(displayModule, {
     onPatchInputs,
     status: assumptionsEditorStatus,
@@ -6831,7 +6835,9 @@ function buildGeneratedSection(module, {
       grid.appendChild(buildTableCard(title, table));
     });
   }
-  grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
+  if (!isPensionModule(displayModule)) {
+    grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
+  }
 
   section.appendChild(heading);
   section.appendChild(grid);
@@ -6998,6 +7004,7 @@ export function getUiElements() {
     mobileOverflowSheet: document.getElementById('mobileOverflowSheet'),
     mobileOverflowBackdrop: document.getElementById('mobileOverflowBackdrop'),
     mobileOverflowPanel: document.getElementById('mobileOverflowPanel'),
+    mobileOverflowNewModuleButton: document.getElementById('mobileOverflowNewModuleBtn'),
     mobileOverflowPublishButton: document.getElementById('mobileOverflowPublishBtn'),
     mobileOverflowClientAccessButton: document.getElementById('mobileOverflowClientAccessBtn'),
     mobileOverflowResetButton: document.getElementById('mobileOverflowResetBtn'),
@@ -7084,13 +7091,45 @@ export function buildFocusedPane({
     ? `Module ${moduleNumber} of ${moduleCount}`
     : `Module ${moduleNumber}`;
 
-  const titleInput = document.createElement('input');
-  titleInput.type = 'text';
+  const header = document.createElement('div');
+  header.className = 'module-header-band';
+  header.appendChild(meta);
+
+  const titleShell = document.createElement('div');
+  titleShell.className = 'module-title-shell';
+
+  const titleInput = document.createElement('textarea');
   titleInput.className = 'module-title-input';
   titleInput.placeholder = 'Untitled Module';
   titleInput.value = module.title || '';
   titleInput.autocomplete = 'off';
+  titleInput.rows = 1;
+  titleInput.spellcheck = false;
   titleInput.readOnly = readOnly;
+  titleInput.setAttribute('aria-label', 'Module title');
+
+  const resizeTitleInput = () => {
+    titleInput.style.height = 'auto';
+    titleInput.style.height = `${Math.max(titleInput.scrollHeight, 42)}px`;
+  };
+  window.requestAnimationFrame(resizeTitleInput);
+
+  titleShell.appendChild(titleInput);
+
+  if (!readOnly) {
+    const titleEditButton = document.createElement('button');
+    titleEditButton.type = 'button';
+    titleEditButton.className = 'module-title-edit-btn';
+    titleEditButton.textContent = 'Edit';
+    titleEditButton.setAttribute('aria-label', 'Edit module title');
+    titleEditButton.addEventListener('click', () => {
+      titleInput.focus();
+      titleInput.setSelectionRange(titleInput.value.length, titleInput.value.length);
+    });
+    titleShell.appendChild(titleEditButton);
+  }
+
+  header.appendChild(titleShell);
 
   const notesInput = document.createElement('textarea');
   notesInput.className = 'module-notes-input';
@@ -7101,6 +7140,14 @@ export function buildFocusedPane({
   if (!readOnly) {
     titleInput.addEventListener('input', (event) => {
       onTitleInput(module.id, event.target.value);
+      resizeTitleInput();
+    });
+
+    titleInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        titleInput.blur();
+      }
     });
 
     notesInput.addEventListener('input', (event) => {
@@ -7108,9 +7155,26 @@ export function buildFocusedPane({
     });
   }
 
-  card.appendChild(meta);
-  card.appendChild(titleInput);
-  card.appendChild(notesInput);
+  card.appendChild(header);
+
+  const notesText = typeof module.notes === 'string' ? module.notes.trim() : '';
+  const shouldRenderNotes = !readOnly || Boolean(notesText);
+  if (shouldRenderNotes) {
+    const notesPanel = document.createElement('details');
+    notesPanel.className = 'module-notes-panel';
+    const isCompactViewport = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 1024px)').matches;
+    notesPanel.open = readOnly ? Boolean(notesText) : (Boolean(notesText) || !isCompactViewport);
+
+    const notesSummary = document.createElement('summary');
+    notesSummary.className = 'module-notes-summary';
+    notesSummary.textContent = notesText ? 'Notes' : 'Add notes';
+    notesPanel.appendChild(notesSummary);
+    notesPanel.appendChild(notesInput);
+    card.appendChild(notesPanel);
+  }
+
   card.appendChild(buildGeneratedSection(module, {
     showPensionToggle,
     readOnly,

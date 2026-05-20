@@ -567,7 +567,7 @@ function normalizeOtherIncomeSources(rawValue, pensions, currentYear) {
       throw new Error(`generated.pensionInputs.otherIncomeSources[${index}].endYear must be after startYear.`);
     }
 
-    return {
+    const normalizedSource = {
       id,
       title: typeof source.title === 'string' && source.title.trim()
         ? source.title.trim()
@@ -578,9 +578,14 @@ function normalizeOtherIncomeSources(rawValue, pensions, currentYear) {
       ownerId: typeof source.ownerId === 'string' ? source.ownerId.trim() : '',
       annualAmountToday: requireNonNegativeNumber(source.annualAmountToday, `${fieldName}.annualAmountToday`),
       startYear,
-      endYear,
       inflationIndexed: source.inflationIndexed
     };
+
+    if (endYear !== null) {
+      normalizedSource.endYear = endYear;
+    }
+
+    return normalizedSource;
   });
 }
 

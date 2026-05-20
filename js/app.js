@@ -137,7 +137,7 @@ const stateManager = createStateManager(300, {
 const ASSUMPTIONS_UPDATED_FEEDBACK_MS = 800;
 const OVERVIEW_UNDO_SECONDS = 15;
 const TABLE_HIGHLIGHT_KINDS = Object.freeze(['assumptions', 'outputs']);
-const MOBILE_LAYOUT_MEDIA_QUERY = '(max-width: 720px)';
+const MOBILE_LAYOUT_MEDIA_QUERY = '(max-width: 1024px)';
 const MOBILE_SHEET_SWIPE_CLOSE_THRESHOLD = 72;
 
 async function recordPublishedUnlock(publishedId, secretB64u, role, source) {
@@ -3249,6 +3249,7 @@ function syncMobileActionState() {
   syncButton(ui.mobileActionNewCallButton, ui.newCallButton);
   syncButton(ui.mobileActionNewModuleButton, ui.newModuleButton);
   syncButton(ui.mobileActionZoomButton, ui.zoomButton);
+  syncButton(ui.mobileOverflowNewModuleButton, ui.newModuleButton);
   syncButton(ui.mobileOverflowPublishButton, ui.publishSessionButton);
   syncButton(ui.mobileOverflowClientAccessButton, ui.openClientAccessButton);
   syncButton(ui.mobileOverflowResetButton, ui.resetButton);
@@ -3264,7 +3265,8 @@ function syncMobileActionState() {
   }
 
   const hasOverflowAction = Boolean(
-    (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
+    (ui.mobileOverflowNewModuleButton && !ui.mobileOverflowNewModuleButton.classList.contains('is-hidden'))
+    || (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowClientAccessButton && !ui.mobileOverflowClientAccessButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowResetButton && !ui.mobileOverflowResetButton.classList.contains('is-hidden'))
   );
@@ -3576,28 +3578,43 @@ function ensureDevPayloadWarningHost() {
   return host;
 }
 
-function renderDevPayloadWarnings(warnings) {
+function renderDevPayloadWarnings(warnings, { errorMessage = '' } = {}) {
   const host = ensureDevPayloadWarningHost();
   if (!host) {
     return;
   }
 
   host.innerHTML = '';
-  if (!Array.isArray(warnings) || warnings.length === 0) {
+  const hasError = typeof errorMessage === 'string' && errorMessage.trim();
+  const hasWarnings = Array.isArray(warnings) && warnings.length > 0;
+  if (!hasError && !hasWarnings) {
     host.style.display = 'none';
     return;
   }
 
   host.style.display = 'block';
+  host.style.borderColor = hasError ? 'rgba(255, 132, 153, 0.5)' : 'rgba(255, 209, 102, 0.45)';
+  host.style.background = hasError ? 'rgba(70, 16, 28, 0.48)' : 'rgba(54, 36, 7, 0.45)';
+  host.style.color = hasError ? '#ffd7df' : '#ffe5a8';
 
   const title = document.createElement('div');
-  title.textContent = 'Auto-repairs applied:';
+  title.textContent = hasError ? 'Payload error:' : 'Auto-repairs applied:';
   title.style.fontWeight = '700';
   title.style.marginBottom = '6px';
   host.appendChild(title);
 
+  if (hasError) {
+    const error = document.createElement('div');
+    error.textContent = errorMessage.trim();
+    host.appendChild(error);
+  }
+
+  if (!hasWarnings) {
+    return;
+  }
+
   const list = document.createElement('ul');
-  list.style.margin = '0';
+  list.style.margin = hasError ? '8px 0 0' : '0';
   list.style.padding = '0 0 0 16px';
 
   warnings.forEach((warning) => {
@@ -7765,32 +7782,14 @@ function mergeGeneratedPatch(module, generatedPatch) {
   }
 }
 
-async function applyModuleUpdateInternal(payload, options = {}) {
-  if (runtimeConfig.readOnly) {
-    throw new Error('This session is read only.');
+function cloneSessionValue(value) {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value);
   }
+  return JSON.parse(JSON.stringify(value));
+}
 
-  const normalizedPayload = normalizePayload(payload);
-
-  let targetModuleId = options.targetModuleId || normalizedPayload.moduleId || appState.session.activeModuleId;
-
-  if (options.createNewModule) {
-    const newModuleId = await createNewModule();
-    if (!newModuleId) {
-      throw new Error('Unable to create a new module while a transition is active.');
-    }
-    targetModuleId = newModuleId;
-  }
-
-  if (!targetModuleId) {
-    throw new Error('No active module found. Create a module first, or provide moduleId.');
-  }
-
-  const module = getModuleById(appState.session, targetModuleId);
-  if (!module) {
-    throw new Error(`Module not found: ${targetModuleId}`);
-  }
-
+function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditorState = true } = {}) {
   if ('title' in normalizedPayload) {
     module.title = normalizedPayload.title;
   }
@@ -7804,53 +7803,130 @@ async function applyModuleUpdateInternal(payload, options = {}) {
 
     if (hasLoanInputsPatch && module.generated.loanInputs) {
       applyMortgageProjectionToModule(module, { updateSummary: true });
-      resetAssumptionsEditorState(module.id);
+      if (resetEditorState) {
+        resetAssumptionsEditorState(module.id);
+      }
     } else if (hasMortgageInputsPatch && module.generated.mortgageInputs) {
       applyMortgageProjectionToModule(module, { updateSummary: true });
-      resetAssumptionsEditorState(module.id);
+      if (resetEditorState) {
+        resetAssumptionsEditorState(module.id);
+      }
     } else if (hasPensionInputsPatch && module.generated.pensionInputs) {
       applyPensionProjectionToModule(module, { updateSummary: true });
-      resetAssumptionsEditorState(module.id);
+      if (resetEditorState) {
+        resetAssumptionsEditorState(module.id);
+      }
     }
   }
+}
 
-  module.updatedAt = nowIso();
+function preflightGeneratedPayload(normalizedPayload) {
+  const scratchModule = createBlankModule();
+  applyNormalizedPayloadToModule(scratchModule, normalizedPayload, { resetEditorState: false });
+}
 
-  if (appState.session.activeModuleId === module.id && appState.mode === 'focused') {
+async function rerenderAfterPayloadRollback(previousMode) {
+  ensureActiveModule(appState.session);
+
+  if (!hasModules()) {
+    appState.mode = 'greeting';
     await renderFocused({ useSwipe: false, revealMode: true });
+    return;
   }
 
-  if (appState.mode === 'overview') {
+  if (previousMode === 'overview') {
+    appState.mode = 'overview';
+    setMode(ui, 'overview');
     refreshOverview({ enableSortable: true });
+    updateUiChrome();
+    return;
   }
 
-  markSessionDirty();
-  saveSessionNow();
+  appState.mode = 'focused';
+  setMode(ui, 'focused');
+  await renderFocused({ useSwipe: false, revealMode: true });
+}
 
-  const activeModule = getModuleById(appState.session, appState.session.activeModuleId);
-  if (activeModule?.generated) {
-    const hasOutputsBucketed = Boolean(
-      activeModule.generated.outputsBucketed
-      && typeof activeModule.generated.outputsBucketed === 'object'
-      && !Array.isArray(activeModule.generated.outputsBucketed)
-    );
-    const hasOutputs = Boolean(
-      activeModule.generated.outputs
-      && Array.isArray(activeModule.generated.outputs.columns)
-      && Array.isArray(activeModule.generated.outputs.rows)
-    );
-
-    console.info('[CallCanvas] applyModuleUpdate generated state', {
-      moduleId: activeModule.id,
-      hasOutputsBucketed,
-      hasOutputs
-    });
+async function applyModuleUpdateInternal(payload, options = {}) {
+  if (runtimeConfig.readOnly) {
+    throw new Error('This session is read only.');
   }
 
-  return {
-    ok: true,
-    moduleId: module.id
-  };
+  const normalizedPayload = normalizePayload(payload);
+  preflightGeneratedPayload(normalizedPayload);
+
+  const previousSession = cloneSessionValue(appState.session);
+  const previousMode = appState.mode;
+  let targetModuleId = options.targetModuleId || normalizedPayload.moduleId || appState.session.activeModuleId;
+
+  try {
+    if (options.createNewModule) {
+      if (appState.transitionLock || getIsZoomAnimating()) {
+        throw new Error('Unable to create a new module while a transition is active.');
+      }
+
+      destroySortable();
+      const module = createBlankModule();
+      appState.session.modules.push(module);
+      appState.session.order.push(module.id);
+      appState.session.activeModuleId = module.id;
+      targetModuleId = module.id;
+    }
+
+    if (!targetModuleId) {
+      throw new Error('No active module found. Create a module first, or provide moduleId.');
+    }
+
+    const module = getModuleById(appState.session, targetModuleId);
+    if (!module) {
+      throw new Error(`Module not found: ${targetModuleId}`);
+    }
+
+    applyNormalizedPayloadToModule(module, normalizedPayload);
+
+    module.updatedAt = nowIso();
+
+    if (options.createNewModule) {
+      appState.mode = 'focused';
+      await renderFocused({ useSwipe: false, revealMode: true });
+    } else if (appState.mode === 'focused') {
+      await renderFocused({ useSwipe: false, revealMode: true });
+    } else if (appState.mode === 'overview') {
+      refreshOverview({ enableSortable: true });
+    }
+
+    markSessionDirty();
+    saveSessionNow();
+
+    const activeModule = getModuleById(appState.session, appState.session.activeModuleId);
+    if (activeModule?.generated) {
+      const hasOutputsBucketed = Boolean(
+        activeModule.generated.outputsBucketed
+        && typeof activeModule.generated.outputsBucketed === 'object'
+        && !Array.isArray(activeModule.generated.outputsBucketed)
+      );
+      const hasOutputs = Boolean(
+        activeModule.generated.outputs
+        && Array.isArray(activeModule.generated.outputs.columns)
+        && Array.isArray(activeModule.generated.outputs.rows)
+      );
+
+      console.info('[CallCanvas] applyModuleUpdate generated state', {
+        moduleId: activeModule.id,
+        hasOutputsBucketed,
+        hasOutputs
+      });
+    }
+
+    return {
+      ok: true,
+      moduleId: module.id
+    };
+  } catch (error) {
+    appState.session = previousSession;
+    await rerenderAfterPayloadRollback(previousMode);
+    throw error;
+  }
 }
 
 async function applyPayloadFromEditor({ createNewModuleFirst }) {
@@ -7864,7 +7940,7 @@ async function applyPayloadFromEditor({ createNewModuleFirst }) {
     ui.devPayloadInput.value = normalizedInput;
     parsed = JSON.parse(normalizedInput || '{}');
   } catch (_error) {
-    renderDevPayloadWarnings([]);
+    renderDevPayloadWarnings([], { errorMessage: 'Invalid JSON (check quotes)' });
     showToast('Invalid JSON (check quotes)', 'error');
     return;
   }
@@ -7877,10 +7953,14 @@ async function applyPayloadFromEditor({ createNewModuleFirst }) {
 
   try {
     await applyModuleUpdateInternal(repairedPayload, { createNewModule: createNewModuleFirst });
+    renderDevPayloadWarnings(warnings);
     showToast(warnings.length > 0
       ? `Payload applied with ${warnings.length} auto-repair${warnings.length === 1 ? '' : 's'}.`
       : 'Payload applied successfully.');
   } catch (error) {
+    renderDevPayloadWarnings(warnings, {
+      errorMessage: error.message || 'Failed to apply payload.'
+    });
     showToast(error.message || 'Failed to apply payload.', 'error');
   }
 }
@@ -8222,6 +8302,12 @@ function bindEvents() {
   if (ui.mobileOverflowPublishButton) {
     ui.mobileOverflowPublishButton.addEventListener('click', () => {
       triggerDesktopAction(ui.publishSessionButton, { closeOverflow: true });
+    });
+  }
+
+  if (ui.mobileOverflowNewModuleButton) {
+    ui.mobileOverflowNewModuleButton.addEventListener('click', () => {
+      triggerDesktopAction(ui.newModuleButton, { closeOverflow: true });
     });
   }
 
