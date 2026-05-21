@@ -229,12 +229,13 @@ export function runPensionMathTests() {
       includeStatePension: false
     });
     const outputLabels = projection.outputsTable.rows.map((row) => row[0]);
-    const drawdownChart = projection.charts[1];
+    const drawdownChart = projection.charts.find((chart) => chart.title === 'Retirement Income Stack and Pension Balance');
 
     assert(projection.debug.readinessStatus === 'externalIncomeCoversTarget', 'External income should classify as covering target');
     assert(projection.debug.requiredPotIsApplicable === false, 'Required pension pot should not be applicable');
     assert(!outputLabels.some((label) => String(label).startsWith('Required pension pot')), 'Required pension pot row should be suppressed');
     assert(!outputLabels.some((label) => String(label).includes('Gap vs required')), 'Gap row should be suppressed');
+    assert(drawdownChart, 'Drawdown chart should still be present');
     assert(!drawdownChart.datasets.some((dataset) => dataset.label === 'Required pension pot path'), 'Required pension pot path should be suppressed');
     assert(projection.debug.readinessSentence.includes('separate required pension pot is not shown'), 'Readiness wording should explain suppression');
   }));
@@ -517,6 +518,49 @@ export function runPensionMathTests() {
     assert(projection.charts.length === 3, 'Household payload should produce three charts');
     assert(titles.includes('User pension pot at retirement (before withdrawals)'), 'User accumulation chart missing');
     assert(titles.includes('Spouse pension pot at retirement (before withdrawals)'), 'Spouse accumulation chart missing');
+    assert(titles.includes('Retirement Income Stack and Pension Balance'), 'Combined drawdown chart missing');
+  }));
+
+  cases.push(runCase('State Pension-only spouse does not produce an empty accumulation chart', () => {
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      inflationRate: 0.02,
+      growthRate: 0.05,
+      wageGrowthRate: 0.02,
+      incomeMode: 'target',
+      targetIncomeToday: 50000,
+      targetStartAge: 60,
+      horizonEndAge: 100,
+      pensions: [
+        {
+          id: 'client',
+          title: 'Client DC pension',
+          currentAge: 53,
+          retirementAge: 60,
+          currentSalary: 80000,
+          currentPot: 200000,
+          personalPct: 0.3,
+          employerPct: 0.05,
+          includeStatePension: true
+        },
+        {
+          id: 'spouse',
+          title: 'Spouse State Pension allowance',
+          currentAge: 49,
+          retirementAge: 60,
+          currentSalary: 0,
+          currentPot: 0,
+          personalPct: 0,
+          employerPct: 0,
+          includeStatePension: true
+        }
+      ]
+    });
+    const titles = projection.charts.map((chart) => chart.title);
+
+    assert(projection.charts.length === 2, 'State Pension-only spouse should not add a zero-value accumulation chart');
+    assert(titles.includes('Client DC pension pot at retirement (before withdrawals)'), 'Client accumulation chart missing');
+    assert(!titles.some((title) => title.includes('Spouse State Pension')), 'State Pension-only spouse accumulation chart should be omitted');
     assert(titles.includes('Retirement Income Stack and Pension Balance'), 'Combined drawdown chart missing');
   }));
 

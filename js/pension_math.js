@@ -1317,6 +1317,16 @@ function buildAccumulationChart(member, currentScenario, maxScenario) {
   };
 }
 
+function memberHasPrivatePensionPosition(member) {
+  if (!member) {
+    return false;
+  }
+
+  return (Number(member.currentPot) || 0) > 0
+    || (Number(member.personalPct) || 0) > 0
+    || (Number(member.employerPct) || 0) > 0;
+}
+
 function buildIncomeSurplusDataset(simulation, suffix, hidden = false) {
   return {
     label: `Surplus (${suffix})`,
@@ -1964,13 +1974,19 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     rows: outputsRows
   };
 
-  const charts = [
-    ...inputs.pensions.map((member, index) => buildAccumulationChart(
-      member,
-      currentMemberScenarios[index],
-      maxMemberScenarios[index]
-    ))
-  ];
+  const charts = inputs.pensions
+    .map((member, index) => {
+      if (!memberHasPrivatePensionPosition(member)) {
+        return null;
+      }
+
+      return buildAccumulationChart(
+        member,
+        currentMemberScenarios[index],
+        maxMemberScenarios[index]
+      );
+    })
+    .filter(Boolean);
 
   if (isAffordableMode) {
     charts.push({
