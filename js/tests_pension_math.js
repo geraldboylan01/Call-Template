@@ -171,7 +171,7 @@ export function runPensionMathTests() {
     );
   }));
 
-  cases.push(runCase('Required pot defaults to deplete by age 100', () => {
+  cases.push(runCase('Required pension pot defaults to deplete by age 100', () => {
     const { horizonEndAge, ...inputsWithoutExplicitHorizon } = BASE_TARGET_INPUTS;
     const projection = computePensionProjection({
       ...inputsWithoutExplicitHorizon,
@@ -232,10 +232,10 @@ export function runPensionMathTests() {
     const drawdownChart = projection.charts[1];
 
     assert(projection.debug.readinessStatus === 'externalIncomeCoversTarget', 'External income should classify as covering target');
-    assert(projection.debug.requiredPotIsApplicable === false, 'Required pot should not be applicable');
-    assert(!outputLabels.some((label) => String(label).startsWith('Required pot')), 'Required pot row should be suppressed');
+    assert(projection.debug.requiredPotIsApplicable === false, 'Required pension pot should not be applicable');
+    assert(!outputLabels.some((label) => String(label).startsWith('Required pension pot')), 'Required pension pot row should be suppressed');
     assert(!outputLabels.some((label) => String(label).includes('Gap vs required')), 'Gap row should be suppressed');
-    assert(!drawdownChart.datasets.some((dataset) => dataset.label === 'Required pot path'), 'Required pot path should be suppressed');
+    assert(!drawdownChart.datasets.some((dataset) => dataset.label === 'Required pension pot path'), 'Required pension pot path should be suppressed');
     assert(projection.debug.readinessSentence.includes('separate required pension pot is not shown'), 'Readiness wording should explain suppression');
   }));
 
@@ -370,7 +370,7 @@ export function runPensionMathTests() {
       rentalIncomeToday: 18000
     });
 
-    assert(withRent.debug.requiredPot < noRent.debug.requiredPot, 'Required pot should fall with rental income');
+    assert(withRent.debug.requiredPot < noRent.debug.requiredPot, 'Required pension pot should fall with rental income');
     assert(withRent.debug.pensionWithdrawalNominalAtRetirement < noRent.debug.pensionWithdrawalNominalAtRetirement, 'Pension-funded withdrawal should fall with rental income');
   }));
 
@@ -402,7 +402,7 @@ export function runPensionMathTests() {
       includeStatePension: false
     });
 
-    assertApprox(projection.debug.requiredPot, 0, 0.01, 'Required pot should floor at zero');
+    assertApprox(projection.debug.requiredPot, 0, 0.01, 'Required pension pot should floor at zero');
     assertApprox(projection.debug.pensionWithdrawalNominalAtRetirement, 0, 0.01, 'Pension withdrawal should floor at zero');
   }));
 
@@ -461,7 +461,7 @@ export function runPensionMathTests() {
     const projection = computePensionProjection(USER_SPOUSE_PAYLOAD);
 
     assert(projection.debug.incomeStartYear === 2041, 'Income should start in the shared retirement year');
-    assert(projection.debug.requiredPotReferenceYear === 2041, 'Required pot reference should be the shared retirement year');
+    assert(projection.debug.requiredPotReferenceYear === 2041, 'Required pension pot reference should be the shared retirement year');
     assert(projection.debug.inputs.includeEmploymentIncomeDuringBridge === false, 'Bridge employment income should default off without staggered retirement years');
   }));
 
@@ -470,7 +470,7 @@ export function runPensionMathTests() {
     const combinedChart = projection.charts[2];
 
     assert(projection.debug.incomeStartYear === 2031, 'Drawdown should start when the first person retires');
-    assert(projection.debug.requiredPotReferenceYear === 2036, 'Required pot reference should default to the later retirement year');
+    assert(projection.debug.requiredPotReferenceYear === 2036, 'Required pension pot reference should default to the later retirement year');
     assert(combinedChart.labels[0] === '65', 'Combined chart should start at the primary member age at first retirement');
     assert(combinedChart.labels.includes('70'), 'Combined chart should include the primary member age at later retirement');
     assert(combinedChart.display.xAxisTitle === 'Older age', 'Combined chart x-axis should name the primary member age');
@@ -496,13 +496,13 @@ export function runPensionMathTests() {
     });
     const combinedChart = withBridge.charts[2];
     const employment = combinedChart.datasets.find((dataset) => dataset.label === 'Employment income (current)');
-    const requiredPath = combinedChart.datasets.find((dataset) => dataset.label === 'Required pot path');
+    const requiredPath = combinedChart.datasets.find((dataset) => dataset.label === 'Required pension pot path');
     const referenceIndex = combinedChart.labels.indexOf('70');
 
     assert(employment.data.slice(0, referenceIndex).some((value) => value > 0), 'Bridge employment income should appear before second retirement');
     assert(withBridge.debug.retirementSimulationProjectedCurrent.electedWithdrawals[0] < withoutBridge.debug.retirementSimulationProjectedCurrent.electedWithdrawals[0], 'Bridge salary should reduce first-year elected withdrawals');
-    assert(requiredPath.data.slice(0, referenceIndex).every((value) => value === null), 'Required pot path should be blank before the reference year');
-    assert(Number.isFinite(requiredPath.data[referenceIndex]), 'Required pot path should start at the reference year');
+    assert(requiredPath.data.slice(0, referenceIndex).every((value) => value === null), 'Required pension pot path should be blank before the reference year');
+    assert(Number.isFinite(requiredPath.data[referenceIndex]), 'Required pension pot path should start at the reference year');
     assertApprox(
       withBridge.debug.projectedPotCurrent,
       withBridge.debug.currentReferenceBalances.reduce((total, value) => total + value, 0),
@@ -511,11 +511,11 @@ export function runPensionMathTests() {
     );
   }));
 
-  cases.push(runCase('Required pot terminal point is shown in the balance panel', () => {
+  cases.push(runCase('Required pension pot terminal point is shown in the balance panel', () => {
     const projection = computePensionProjection(STAGGERED_RETIREMENT_INPUTS);
     const combinedChart = projection.charts[2];
     const balancePanel = combinedChart.panels.balance;
-    const requiredPath = balancePanel.datasets.find((dataset) => dataset.label === 'Required pot path');
+    const requiredPath = balancePanel.datasets.find((dataset) => dataset.label === 'Required pension pot path');
 
     assert(combinedChart.display.variant === 'pension-drawdown-composite', 'Drawdown chart should use the composite variant');
     assert(balancePanel.labels.length === requiredPath.data.length, 'Balance-panel required path should align with terminal label');
@@ -531,7 +531,7 @@ export function runPensionMathTests() {
     const combinedChart = projection.charts[2];
 
     assert(combinedChart.panels.balance.datasets.some((dataset) => dataset.label === 'Combined pension balance (current)'), 'Balance panel should include current balance line');
-    assert(combinedChart.panels.balance.datasets.some((dataset) => dataset.label === 'Required pot path'), 'Balance panel should include required pot path');
+    assert(combinedChart.panels.balance.datasets.some((dataset) => dataset.label === 'Required pension pot path'), 'Balance panel should include required pension pot path');
     assert(combinedChart.panels.income.datasets.some((dataset) => dataset.label === 'Required income'), 'Income panel should include required income line');
     assert(
       combinedChart.panels.income.datasets.every((dataset) => dataset.label !== 'Combined pension balance (current)'),
@@ -684,7 +684,7 @@ export function runPensionMathTests() {
       includeStatePension: false
     });
 
-    assert(Number.isFinite(projection.debug.requiredPot) && projection.debug.requiredPot > 0, 'Required pot should be finite');
+    assert(Number.isFinite(projection.debug.requiredPot) && projection.debug.requiredPot > 0, 'Required pension pot should be finite');
     assert(projection.debug.retirementSimulationRequired.maxShortfall <= 25, 'Required simulation should not leave material shortfall');
   }));
 

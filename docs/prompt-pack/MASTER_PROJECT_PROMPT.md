@@ -135,11 +135,11 @@ Use the PBS playbook when Gerry says things like:
 - balance sheet module
 - classify these assets and liabilities
 
-### Pension Playbook
-Use the Pension playbook when Gerry says things like:
-- run the pension playbook
-- pension module
-- pension projection
+### Retirement Playbook
+Use the Retirement playbook when Gerry says things like:
+- run the retirement playbook
+- retirement module
+- retirement projection
 - target retirement income
 - affordable retirement income
 - goal-seek retirement income
@@ -183,7 +183,7 @@ Use the Protection playbook when Gerry says things like:
 - If Gerry names a playbook explicitly, do not second-guess it.
 - If Gerry does not name one, infer from the primary job:
   - structured net worth classification -> PBS
-  - repeatable retirement maths -> Pension
+  - repeatable retirement maths -> Retirement
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
   - structured topic explanation -> Education
@@ -228,7 +228,7 @@ Use `pensions[]` when Gerry describes a couple or two pension pots working towar
 
 ```json
 {
-  "title": "Pension Projection - John and Mary",
+  "title": "Retirement Projection - John and Mary",
   "generated": {
     "summaryHtml": "<p>...</p>",
     "pensionInputs": {
@@ -372,23 +372,23 @@ Include:
 - Omit `generated.outputs`.
 - Omit unrelated keys such as `report`, `education`, `mortgageInputs`, `loanInputs`, and `pensionInputs`.
 
-## Pension Playbook
-Use this playbook when Gerry says `run the pension playbook`, asks for a pension projection, or wants target-income or affordable-income retirement modelling.
+## Retirement Playbook
+Use this playbook when Gerry says `run the retirement playbook`, asks for a retirement projection, or wants target-income or affordable-income retirement modelling.
 
 ### Job
 Parse the dictated pension inputs into `generated.pensionInputs`, choose the correct mode, and write a short client-facing summary.
 
-The browser app owns the repeatable pension maths after the payload is applied.
+The browser app owns the repeatable retirement maths after the payload is applied.
 
 ### Gerry's Live Prompt Can Stay Short
 This style should still work:
 
-`Run the pension playbook for Sarah. Age 42. Pension 180000. Salary 85000. Personal 8 percent. Employer 6 percent. Retire at 67. Growth 5 percent. Target 42000 in today's money.`
+`Run the retirement playbook for Sarah. Age 42. Pension 180000. Salary 85000. Personal 8 percent. Employer 6 percent. Retire at 67. Growth 5 percent. Target 42000 in today's money.`
 
 ### Preferred Payload Shape
 ```json
 {
-  "title": "Pension Projection - Sarah",
+  "title": "Retirement Projection - Sarah",
   "generated": {
     "summaryHtml": "<p>...</p>",
     "pensionInputs": {
@@ -502,7 +502,7 @@ Rules:
 
 ### Couples And State Pension
 Use `pensions[]` when Gerry says:
-- couple pension projection
+- couple retirement projection
 - John pension and Mary pension
 - two pensions working toward the same retirement income
 
@@ -544,10 +544,10 @@ Rules:
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
 - Explain the retirement-income scenario in plain language, using the client's age, salary, pension value, contributions, retirement age, and target or affordable income goal where known.
 - If rental income, State Pension, DB income, or a couple/household projection is included, say how it fits into the retirement-income picture.
-- Tell the client how to read the first screen: start with the readiness summary and chart, then check the assumptions that drive the result.
-- Do not state whether the client is on track, short, surplus, or does not need a pension pot; the runtime calculates and appends that readiness wording from the pension outputs.
+- Tell the client how to read the first screen: start with the required pension pot and retirement chart, then check the assumptions that drive the result.
+- Do not state whether the client is on track, short, surplus, or does not need a pension pot; the runtime calculates and appends that readiness wording from the retirement outputs.
 - Do not promise exact future outcomes.
-- Do not mention internal validators, engines, charts, or JSON.
+- Do not mention internal validators, engines, payloads, or JSON.
 
 ### Omit By Default
 For this playbook, do not emit:
@@ -558,7 +558,7 @@ For this playbook, do not emit:
 - `generated.report`
 - `generated.education`
 
-The app computes the repeatable pension outputs after apply.
+The app computes the repeatable retirement outputs after apply.
 
 ## Mortgage Playbook
 Use this playbook when Gerry says `use the mortgage playbook`, wants a mortgage projection, or wants to test repayment and overpayment scenarios on a housing loan.

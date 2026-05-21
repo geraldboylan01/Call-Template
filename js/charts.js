@@ -13,7 +13,7 @@ const PENSION_DATASET_LABELS = {
   growthMax: 'Growth (max)',
   sustainabilityCurrent: 'Balance (current)',
   sustainabilityMax: 'Balance (max)',
-  requiredReference: 'Required pot path',
+  requiredReference: 'Required pension pot path',
   withdrawals: 'Withdrawals',
   combinedBalanceCurrent: 'Combined pension balance (current)',
   combinedBalanceMax: 'Combined pension balance (max)',
@@ -34,6 +34,24 @@ const PENSION_DATASET_LABELS = {
   shortfallMax: 'Shortfall (max)',
   surplusCurrent: 'Surplus (current)',
   surplusMax: 'Surplus (max)'
+};
+const PENSION_LINE_COLORS = {
+  current: '#38bdf8',
+  max: '#a78bfa',
+  required: '#f5c542',
+  requiredIncome: '#f8fafc'
+};
+const PENSION_BAR_COLORS = {
+  personal: '#5d7284',
+  employer: '#678376',
+  growth: '#8a7d61',
+  employment: '#6f8f7a',
+  state: '#67899e',
+  rental: '#74936f',
+  other: '#9b8462',
+  mandatoryWithdrawals: '#88708f',
+  electedWithdrawals: '#7f8ea3',
+  shortfall: '#c96f62'
 };
 const MORTGAGE_DATASET_LABELS = {
   balance: 'Remaining balance',
@@ -1055,26 +1073,26 @@ function pensionLegendGroupForLabel(label) {
 
 function pensionLegendColorForLabel(label) {
   const map = {
-    [PENSION_DATASET_LABELS.combinedBalanceCurrent]: '#2ea3ff',
-    [PENSION_DATASET_LABELS.combinedBalanceMax]: '#7bffbf',
-    [PENSION_DATASET_LABELS.requiredReference]: '#B48CFF',
-    [PENSION_DATASET_LABELS.requiredIncome]: '#ffffff',
-    [PENSION_DATASET_LABELS.employmentIncomeCurrent]: '#66b89e',
-    [PENSION_DATASET_LABELS.employmentIncomeMax]: '#66b89e',
-    [PENSION_DATASET_LABELS.statePensionCurrent]: '#4cc9f0',
-    [PENSION_DATASET_LABELS.statePensionMax]: '#4cc9f0',
-    [PENSION_DATASET_LABELS.rentalIncomeCurrent]: '#7bffbf',
-    [PENSION_DATASET_LABELS.rentalIncomeMax]: '#7bffbf',
-    [PENSION_DATASET_LABELS.otherIncomeCurrent]: '#ffd166',
-    [PENSION_DATASET_LABELS.otherIncomeMax]: '#ffd166',
-    [PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent]: '#b48cff',
-    [PENSION_DATASET_LABELS.mandatoryWithdrawalsMax]: '#b48cff',
-    [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: '#2ea3ff',
-    [PENSION_DATASET_LABELS.electedWithdrawalsMax]: '#2ea3ff',
-    [PENSION_DATASET_LABELS.shortfallCurrent]: '#ff5f7e',
-    [PENSION_DATASET_LABELS.shortfallMax]: '#ff5f7e'
+    [PENSION_DATASET_LABELS.combinedBalanceCurrent]: PENSION_LINE_COLORS.current,
+    [PENSION_DATASET_LABELS.combinedBalanceMax]: PENSION_LINE_COLORS.max,
+    [PENSION_DATASET_LABELS.requiredReference]: PENSION_LINE_COLORS.required,
+    [PENSION_DATASET_LABELS.requiredIncome]: PENSION_LINE_COLORS.requiredIncome,
+    [PENSION_DATASET_LABELS.employmentIncomeCurrent]: PENSION_BAR_COLORS.employment,
+    [PENSION_DATASET_LABELS.employmentIncomeMax]: PENSION_BAR_COLORS.employment,
+    [PENSION_DATASET_LABELS.statePensionCurrent]: PENSION_BAR_COLORS.state,
+    [PENSION_DATASET_LABELS.statePensionMax]: PENSION_BAR_COLORS.state,
+    [PENSION_DATASET_LABELS.rentalIncomeCurrent]: PENSION_BAR_COLORS.rental,
+    [PENSION_DATASET_LABELS.rentalIncomeMax]: PENSION_BAR_COLORS.rental,
+    [PENSION_DATASET_LABELS.otherIncomeCurrent]: PENSION_BAR_COLORS.other,
+    [PENSION_DATASET_LABELS.otherIncomeMax]: PENSION_BAR_COLORS.other,
+    [PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent]: PENSION_BAR_COLORS.mandatoryWithdrawals,
+    [PENSION_DATASET_LABELS.mandatoryWithdrawalsMax]: PENSION_BAR_COLORS.mandatoryWithdrawals,
+    [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: PENSION_BAR_COLORS.electedWithdrawals,
+    [PENSION_DATASET_LABELS.electedWithdrawalsMax]: PENSION_BAR_COLORS.electedWithdrawals,
+    [PENSION_DATASET_LABELS.shortfallCurrent]: PENSION_BAR_COLORS.shortfall,
+    [PENSION_DATASET_LABELS.shortfallMax]: PENSION_BAR_COLORS.shortfall
   };
-  return map[label] || '#6FE6D8';
+  return map[label] || PENSION_BAR_COLORS.other;
 }
 
 function visibleCompositeLegendDatasets(chartData, moduleId) {
@@ -1228,11 +1246,11 @@ window.__setPensionShowMaxForModule = (moduleId, showMax) => setPensionShowMaxFo
 function applyLineColorOverrides(datasetStyle) {
   const label = normalizeLabel(datasetStyle.label);
   const map = {
-    [PENSION_DATASET_LABELS.currentPath]: '#2ea3ff',
-    [PENSION_DATASET_LABELS.maxPath]: '#7bffbf',
-    [PENSION_DATASET_LABELS.sustainabilityCurrent]: '#2ea3ff',
-    [PENSION_DATASET_LABELS.sustainabilityMax]: '#7bffbf',
-    [PENSION_DATASET_LABELS.requiredReference]: '#B48CFF'
+    [PENSION_DATASET_LABELS.currentPath]: PENSION_LINE_COLORS.current,
+    [PENSION_DATASET_LABELS.maxPath]: PENSION_LINE_COLORS.max,
+    [PENSION_DATASET_LABELS.sustainabilityCurrent]: PENSION_LINE_COLORS.current,
+    [PENSION_DATASET_LABELS.sustainabilityMax]: PENSION_LINE_COLORS.max,
+    [PENSION_DATASET_LABELS.requiredReference]: PENSION_LINE_COLORS.required
   };
   const color = map[label];
 
@@ -1268,17 +1286,18 @@ function buildPensionAccumulationDataset(dataset, index, showMax) {
       yAxisID: 'y',
       order: 0,
       borderWidth: label === PENSION_DATASET_LABELS.maxPath ? 2.4 : 2,
+      borderDash: label === PENSION_DATASET_LABELS.maxPath ? [7, 5] : [],
       hidden: label === PENSION_DATASET_LABELS.maxPath ? !showMax : showMax
     };
   }
 
   const barSeriesMap = {
-    [PENSION_DATASET_LABELS.personalCurrent]: { color: '#2ea3ff', hidden: showMax },
-    [PENSION_DATASET_LABELS.employerCurrent]: { color: '#00BFA6', hidden: showMax },
-    [PENSION_DATASET_LABELS.growthCurrent]: { color: '#7bffbf', hidden: showMax },
-    [PENSION_DATASET_LABELS.personalMax]: { color: '#ffd166', hidden: !showMax },
-    [PENSION_DATASET_LABELS.employerMax]: { color: '#ffb703', hidden: !showMax },
-    [PENSION_DATASET_LABELS.growthMax]: { color: '#ff8fa3', hidden: !showMax }
+    [PENSION_DATASET_LABELS.personalCurrent]: { color: PENSION_BAR_COLORS.personal, hidden: showMax },
+    [PENSION_DATASET_LABELS.employerCurrent]: { color: PENSION_BAR_COLORS.employer, hidden: showMax },
+    [PENSION_DATASET_LABELS.growthCurrent]: { color: PENSION_BAR_COLORS.growth, hidden: showMax },
+    [PENSION_DATASET_LABELS.personalMax]: { color: PENSION_BAR_COLORS.personal, hidden: !showMax },
+    [PENSION_DATASET_LABELS.employerMax]: { color: PENSION_BAR_COLORS.employer, hidden: !showMax },
+    [PENSION_DATASET_LABELS.growthMax]: { color: PENSION_BAR_COLORS.growth, hidden: !showMax }
   };
   const barMeta = barSeriesMap[label];
   const barBase = buildDatasetStyle(dataset, index, 'bar');
@@ -1293,7 +1312,7 @@ function buildPensionAccumulationDataset(dataset, index, showMax) {
   }
   const fallbackHidden = label.toLowerCase().includes('(max)') ? !showMax : showMax;
   const resolvedBarMeta = barMeta || {
-    color: '#2ea3ff',
+    color: PENSION_BAR_COLORS.personal,
     hidden: fallbackHidden
   };
 
@@ -1304,7 +1323,7 @@ function buildPensionAccumulationDataset(dataset, index, showMax) {
     stack: 'cashflows',
     order: 1,
     borderColor: resolvedBarMeta.color,
-    backgroundColor: hexToRgba(resolvedBarMeta.color, 0.5),
+    backgroundColor: hexToRgba(resolvedBarMeta.color, 0.62),
     hidden: resolvedBarMeta.hidden
   };
 }
@@ -1314,22 +1333,22 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
   if (isPensionIncomeStackLabel(label)) {
     const barBase = buildDatasetStyle(dataset, index, 'bar');
     const colorMap = {
-      [PENSION_DATASET_LABELS.statePensionCurrent]: '#4cc9f0',
-      [PENSION_DATASET_LABELS.statePensionMax]: '#4cc9f0',
-      [PENSION_DATASET_LABELS.rentalIncomeCurrent]: '#7bffbf',
-      [PENSION_DATASET_LABELS.rentalIncomeMax]: '#7bffbf',
-      [PENSION_DATASET_LABELS.otherIncomeCurrent]: '#ffd166',
-      [PENSION_DATASET_LABELS.otherIncomeMax]: '#ffd166',
-      [PENSION_DATASET_LABELS.employmentIncomeCurrent]: '#66b89e',
-      [PENSION_DATASET_LABELS.employmentIncomeMax]: '#66b89e',
-      [PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent]: '#b48cff',
-      [PENSION_DATASET_LABELS.mandatoryWithdrawalsMax]: '#b48cff',
-      [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: '#2ea3ff',
-      [PENSION_DATASET_LABELS.electedWithdrawalsMax]: '#2ea3ff',
-      [PENSION_DATASET_LABELS.shortfallCurrent]: '#ff5f7e',
-      [PENSION_DATASET_LABELS.shortfallMax]: '#ff5f7e'
+      [PENSION_DATASET_LABELS.statePensionCurrent]: PENSION_BAR_COLORS.state,
+      [PENSION_DATASET_LABELS.statePensionMax]: PENSION_BAR_COLORS.state,
+      [PENSION_DATASET_LABELS.rentalIncomeCurrent]: PENSION_BAR_COLORS.rental,
+      [PENSION_DATASET_LABELS.rentalIncomeMax]: PENSION_BAR_COLORS.rental,
+      [PENSION_DATASET_LABELS.otherIncomeCurrent]: PENSION_BAR_COLORS.other,
+      [PENSION_DATASET_LABELS.otherIncomeMax]: PENSION_BAR_COLORS.other,
+      [PENSION_DATASET_LABELS.employmentIncomeCurrent]: PENSION_BAR_COLORS.employment,
+      [PENSION_DATASET_LABELS.employmentIncomeMax]: PENSION_BAR_COLORS.employment,
+      [PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent]: PENSION_BAR_COLORS.mandatoryWithdrawals,
+      [PENSION_DATASET_LABELS.mandatoryWithdrawalsMax]: PENSION_BAR_COLORS.mandatoryWithdrawals,
+      [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: PENSION_BAR_COLORS.electedWithdrawals,
+      [PENSION_DATASET_LABELS.electedWithdrawalsMax]: PENSION_BAR_COLORS.electedWithdrawals,
+      [PENSION_DATASET_LABELS.shortfallCurrent]: PENSION_BAR_COLORS.shortfall,
+      [PENSION_DATASET_LABELS.shortfallMax]: PENSION_BAR_COLORS.shortfall
     };
-    const color = colorMap[label] || '#6FE6D8';
+    const color = colorMap[label] || PENSION_BAR_COLORS.other;
     return {
       ...barBase,
       type: 'bar',
@@ -1337,7 +1356,7 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       stack: isMaxScenarioLabel(label) ? 'income-max' : 'income-current',
       order: 1,
       borderColor: color,
-      backgroundColor: hexToRgba(color, 0.58),
+      backgroundColor: hexToRgba(color, 0.64),
       borderWidth: 1,
       hidden: isMaxScenarioLabel(label) ? !showMax : showMax
     };
@@ -1345,7 +1364,7 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
 
   if (label === PENSION_DATASET_LABELS.withdrawals) {
     const barBase = buildDatasetStyle(dataset, index, 'bar');
-    const color = '#6FE6D8';
+    const color = PENSION_BAR_COLORS.electedWithdrawals;
     return {
       ...barBase,
       type: 'bar',
@@ -1364,10 +1383,10 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       type: 'line',
       yAxisID: dataset?.forceYAxisID === 'y' ? 'y' : 'y1',
       order: 0,
-      borderColor: '#ffffff',
+      borderColor: PENSION_LINE_COLORS.requiredIncome,
       backgroundColor: 'rgba(255, 255, 255, 0.16)',
-      pointBackgroundColor: '#ffffff',
-      pointBorderColor: '#ffffff',
+      pointBackgroundColor: PENSION_LINE_COLORS.requiredIncome,
+      pointBorderColor: PENSION_LINE_COLORS.requiredIncome,
       borderDash: [6, 5],
       borderWidth: 2,
       hidden: false
@@ -1382,6 +1401,8 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       type: 'line',
       yAxisID: 'y',
       order: 0,
+      borderDash: [7, 5],
+      borderWidth: 2.2,
       hidden: false
     };
   }
@@ -1402,12 +1423,14 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       type: 'line',
       yAxisID: 'y',
       order: 0,
+      borderDash: [7, 5],
       hidden: !showMax
     };
   }
 
   if (label === PENSION_DATASET_LABELS.combinedBalanceCurrent || label === PENSION_DATASET_LABELS.combinedBalanceMax) {
-    const color = label === PENSION_DATASET_LABELS.combinedBalanceMax ? '#7bffbf' : '#2ea3ff';
+    const isMaxBalance = label === PENSION_DATASET_LABELS.combinedBalanceMax;
+    const color = isMaxBalance ? PENSION_LINE_COLORS.max : PENSION_LINE_COLORS.current;
     return {
       ...buildDatasetStyle(dataset, index, 'line'),
       type: 'line',
@@ -1417,8 +1440,9 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       backgroundColor: hexToRgba(color, 0.18),
       pointBackgroundColor: color,
       pointBorderColor: color,
-      borderWidth: label === PENSION_DATASET_LABELS.combinedBalanceMax ? 2.4 : 2.2,
-      hidden: label === PENSION_DATASET_LABELS.combinedBalanceMax ? !showMax : showMax
+      borderDash: isMaxBalance ? [7, 5] : [],
+      borderWidth: isMaxBalance ? 2.4 : 2.2,
+      hidden: isMaxBalance ? !showMax : showMax
     };
   }
 
@@ -1908,7 +1932,7 @@ function buildChartConfig(chartData, { module } = {}) {
       return !(dataset.type === 'bar' || dataset.yAxisID === 'y1');
     };
 
-    const subtitleText = 'Bars (right axis): Personal + Employer contributions, topped by Growth';
+    const subtitleText = 'Lines = projected pension pot; bars = annual contributions and growth';
     const subtitlePluginAvailable = Boolean(
       window.Chart?.defaults?.plugins
       && Object.prototype.hasOwnProperty.call(window.Chart.defaults.plugins, 'subtitle')
@@ -2575,11 +2599,60 @@ function cloneDatasetForUpdate(dataset) {
   };
 }
 
-function applyChartConfigToExistingChart(entry, chartData, module) {
+function setChartBlockHeader(block, chartData, chartIndex, module, { clientName, moduleTitle } = {}) {
+  const titleText = chartData?.title || `Chart ${chartIndex + 1}`;
+  const titleEl = block?.querySelector('.generated-chart-title');
+  if (titleEl) {
+    titleEl.textContent = titleText;
+  }
+
+  const downloadButton = block?.querySelector('[data-chart-download]');
+  if (downloadButton) {
+    downloadButton.setAttribute('aria-label', `Download CSV for ${titleText}`);
+    downloadButton.onclick = () => {
+      const csv = chartToCsv(chartData, module);
+      const filename = buildFilename(clientName, moduleTitle, titleText);
+      downloadTextFile(filename, csv);
+    };
+  }
+}
+
+function setChartBlockSubtitle(block, chartData) {
+  if (!block) {
+    return;
+  }
+
+  const subtitleText = typeof chartData?.subtitle === 'string' && chartData.subtitle.trim()
+    ? chartData.subtitle.trim()
+    : '';
+  const existingSubtitle = [...block.children].find((child) => child.classList?.contains('education-visual-subtitle'));
+
+  if (!subtitleText) {
+    existingSubtitle?.remove();
+    return;
+  }
+
+  const subtitleEl = existingSubtitle || document.createElement('p');
+  subtitleEl.className = 'education-visual-subtitle';
+  subtitleEl.textContent = subtitleText;
+
+  if (!existingSubtitle) {
+    const chartTop = block.querySelector('.generated-chart-top');
+    if (chartTop?.nextSibling) {
+      block.insertBefore(subtitleEl, chartTop.nextSibling);
+    } else {
+      block.prepend(subtitleEl);
+    }
+  }
+}
+
+function applyChartConfigToExistingChart(entry, chartData, module, options = {}) {
   if (!entry?.chart || !chartData) {
     return false;
   }
 
+  const hasExplicitUpdateMode = Object.prototype.hasOwnProperty.call(options, 'updateMode');
+  const updateMode = hasExplicitUpdateMode ? options.updateMode : 'none';
   const chart = entry.chart;
   const nextConfig = buildChartConfig(chartData, { module });
   chart.config.type = nextConfig.type;
@@ -2596,12 +2669,62 @@ function applyChartConfigToExistingChart(entry, chartData, module) {
     applyPensionShowMaxToChart(chart, showMax);
   }
 
-  chart.update('none');
+  if (hasExplicitUpdateMode && typeof updateMode === 'undefined') {
+    chart.update();
+  } else {
+    chart.update(updateMode);
+  }
   if (entry.mode === 'overlay') {
     scheduleOverlayPositionUpdate();
   }
   maybeWarnDprMismatch(chart.canvas);
   return true;
+}
+
+function updatePensionCompositeChartBlock(block, chartData, module, {
+  chartIndex,
+  clientName,
+  moduleTitle
+} = {}) {
+  if (!block || !isPensionDrawdownCompositeChart(chartData)) {
+    return false;
+  }
+
+  setChartBlockHeader(block, chartData, chartIndex, module, { clientName, moduleTitle });
+  setChartBlockSubtitle(block, chartData);
+  buildPensionCompositeLegend(block, chartData, module?.id || '');
+
+  let updated = true;
+  ['balance', 'income'].forEach((panelKey) => {
+    if (!updated) {
+      return;
+    }
+
+    const panelData = getPensionCompositePanelChartData(chartData, panelKey);
+    const panelEl = block.querySelector(`[data-chart-panel="${panelKey}"]`);
+    const panelHeading = panelEl?.querySelector('.pension-drawdown-panel-title');
+    if (panelHeading && panelData?.title) {
+      panelHeading.textContent = panelData.title;
+    }
+
+    const sourceCanvas = block.querySelector(`[data-chart-panel-canvas="${panelKey}"]`);
+    const chartKey = sourceCanvas?.dataset?.chartKey;
+    const entry = chartKey ? chartRegistry.get(chartKey) : null;
+    if (!panelData || !sourceCanvas || !entry || entry.sourceCanvas !== sourceCanvas) {
+      updated = false;
+      return;
+    }
+
+    entry.moduleId = module?.id || '';
+    entry.chartIndex = chartIndex;
+    entry.blockEl = block;
+    entry.compositeChartData = chartData;
+    entry.compositePanelKey = panelKey;
+
+    updated = applyChartConfigToExistingChart(entry, panelData, module, { updateMode: undefined });
+  });
+
+  return updated;
 }
 
 export function updateChartsForPane(paneElement, module, { clientName, moduleTitle, paneKey = null } = {}) {
@@ -2613,19 +2736,6 @@ export function updateChartsForPane(paneElement, module, { clientName, moduleTit
 
   const blocks = [...paneElement.querySelectorAll('[data-chart-index]')];
   if (blocks.length === 0) {
-    return;
-  }
-
-  if (blocks.some((block) => {
-    const chartIndex = Number(block.dataset.chartIndex);
-    const chartData = Number.isFinite(chartIndex) ? module.generated.charts[chartIndex] : null;
-    return isPensionDrawdownCompositeChart(chartData);
-  })) {
-    renderChartsForPane(paneElement, module, {
-      clientName,
-      moduleTitle,
-      paneKey: paneKey || paneElement?.dataset?.chartPaneKey || paneElement?.dataset?.comparePane || paneElement?.dataset?.moduleId || 'pane'
-    });
     return;
   }
 
@@ -2642,21 +2752,20 @@ export function updateChartsForPane(paneElement, module, { clientName, moduleTit
       return;
     }
 
-    const titleEl = block.querySelector('.generated-chart-title');
-    if (titleEl) {
-      titleEl.textContent = chartData.title || `Chart ${chartIndex + 1}`;
+    if (isPensionDrawdownCompositeChart(chartData)) {
+      const updated = updatePensionCompositeChartBlock(block, chartData, module, {
+        chartIndex,
+        clientName,
+        moduleTitle
+      });
+      if (!updated) {
+        fallbackToFullRender = true;
+      }
+      return;
     }
 
-    const downloadButton = block.querySelector('[data-chart-download]');
-    if (downloadButton) {
-      const titleText = chartData.title || `Chart ${chartIndex + 1}`;
-      downloadButton.setAttribute('aria-label', `Download CSV for ${titleText}`);
-      downloadButton.onclick = () => {
-        const csv = chartToCsv(chartData, module);
-        const filename = buildFilename(clientName, moduleTitle, titleText);
-        downloadTextFile(filename, csv);
-      };
-    }
+    setChartBlockHeader(block, chartData, chartIndex, module, { clientName, moduleTitle });
+    setChartBlockSubtitle(block, chartData);
 
     const sourceCanvas = block.querySelector('canvas');
     if (!sourceCanvas) {
@@ -2674,7 +2783,7 @@ export function updateChartsForPane(paneElement, module, { clientName, moduleTit
     entry.moduleId = module?.id || '';
     entry.chartIndex = chartIndex;
 
-    const updated = applyChartConfigToExistingChart(entry, chartData, module);
+    const updated = applyChartConfigToExistingChart(entry, chartData, module, { updateMode: undefined });
     if (!updated) {
       fallbackToFullRender = true;
     }

@@ -1,16 +1,16 @@
-# Pension Playbook
+# Retirement Playbook
 
-Use this playbook when Gerry says `run the pension playbook`, asks for a pension projection, or wants target-income or affordable-income retirement modelling.
+Use this playbook when Gerry says `run the retirement playbook`, asks for a retirement projection, or wants target-income or affordable-income retirement modelling.
 
 ## Job
 Parse the dictated pension inputs into `generated.pensionInputs`, choose the correct mode, and write a short client-facing summary.
 
-The browser app owns the repeatable pension maths after the payload is applied.
+The browser app owns the repeatable retirement maths after the payload is applied.
 
 ## Gerry's Live Prompt Can Stay Short
 This style should still work:
 
-`Run the pension playbook for Sarah. Age 42. Pension 180000. Salary 85000. Personal 8 percent. Employer 6 percent. Retire at 67. Growth 5 percent. Target 42000 in today's money.`
+`Run the retirement playbook for Sarah. Age 42. Pension 180000. Salary 85000. Personal 8 percent. Employer 6 percent. Retire at 67. Growth 5 percent. Target 42000 in today's money.`
 
 ## Output Contract
 - SECTION 1 - NOTES (FOR GERRY ONLY)
@@ -24,7 +24,7 @@ This style should still work:
 
 ```json
 {
-  "title": "Pension Projection - Sarah",
+  "title": "Retirement Projection - Sarah",
   "generated": {
     "summaryHtml": "<p>...</p>",
     "pensionInputs": {
@@ -54,7 +54,7 @@ Use `pensions[]` when Gerry describes a couple or two pension pots working towar
 
 ```json
 {
-  "title": "Pension Projection - John and Mary",
+  "title": "Retirement Projection - John and Mary",
   "generated": {
     "summaryHtml": "<p>...</p>",
     "pensionInputs": {
@@ -174,7 +174,7 @@ Rules:
 
 ## Couples And State Pension
 Use `pensions[]` when Gerry says:
-- couple pension projection
+- couple retirement projection
 - John pension and Mary pension
 - two pensions working toward the same retirement income
 
@@ -216,10 +216,10 @@ Rules:
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
 - Explain the retirement-income scenario in plain language, using the client's age, salary, pension value, contributions, retirement age, and target or affordable income goal where known.
 - If rental income, State Pension, DB income, or a couple/household projection is included, say how it fits into the retirement-income picture.
-- Tell the client how to read the first screen: start with the readiness summary and chart, then check the assumptions that drive the result.
-- Do not state whether the client is on track, short, surplus, or does not need a pension pot; the runtime calculates and appends that readiness wording from the pension outputs.
+- Tell the client how to read the first screen: start with the required pension pot and retirement chart, then check the assumptions that drive the result.
+- Do not state whether the client is on track, short, surplus, or does not need a pension pot; the runtime calculates and appends that readiness wording from the retirement outputs.
 - Do not promise exact future outcomes.
-- Do not mention internal validators, engines, charts, or JSON.
+- Do not mention internal validators, engines, payloads, or JSON.
 
 ## Omit By Default
 For this playbook, do not emit:
@@ -230,12 +230,12 @@ For this playbook, do not emit:
 - `generated.report`
 - `generated.education`
 
-The app computes the repeatable pension outputs after apply.
+The app computes the repeatable retirement outputs after apply.
 
 ## Rendering Expectations
-- The runtime will render assumptions, outputs, and charts from the pension engine after the payload is applied.
+- The runtime will render assumptions, outputs, and charts from the retirement engine after the payload is applied.
 - Keep AI output focused on clean inputs and a short explanation of the selected mode.
-- Do not try to create artifact blocks inside the pension payload. If Gerry wants a separate educational explanation, create a separate Education or Report module.
+- Do not try to create artifact blocks inside the JS-backed retirement payload. If Gerry wants a separate educational explanation, create a separate Education or Report module.
 
 ## Good Output Looks Like
 - Inputs are complete enough for the engine to run.
@@ -244,5 +244,5 @@ The app computes the repeatable pension outputs after apply.
 
 ## Avoid
 - Fake projection tables or charts.
-- Mixing `generated.report` or `generated.education` into the pension engine module.
+- Mixing `generated.report` or `generated.education` into the retirement engine module.
 - Presenting future values as promises.

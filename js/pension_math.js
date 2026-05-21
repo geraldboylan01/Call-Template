@@ -1392,7 +1392,7 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
     },
     ...(requiredSimulation
       ? [{
-        label: 'Required pot path',
+        label: 'Required pension pot path',
         data: buildRequiredPotPathData(currentSimulation, requiredSimulation, true)
       }]
       : [])
@@ -1458,7 +1458,7 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
       },
       ...(requiredSimulation
         ? [{
-          label: 'Required pot path',
+          label: 'Required pension pot path',
           data: buildRequiredPotPathData(currentSimulation, requiredSimulation)
         }]
         : []),
@@ -1754,8 +1754,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ['Household members', inputs.pensions.map((member) => member.title).join(', ')],
       ['Household income start year', String(inputs.incomeStartYear)],
       ['Household income start ages', ageSummaryForYear(inputs, inputs.incomeStartYear)],
-      ['Required pot reference year', String(inputs.requiredPotReferenceYear)],
-      ['Required pot reference ages', ageSummaryForYear(inputs, inputs.requiredPotReferenceYear)],
+      ['Required pension pot reference year', String(inputs.requiredPotReferenceYear)],
+      ['Required pension pot reference ages', ageSummaryForYear(inputs, inputs.requiredPotReferenceYear)],
       ['Bridge employment income', inputs.includeEmploymentIncomeDuringBridge ? 'Included before each member retires' : 'Excluded'],
       ...inputs.pensions.flatMap((member) => ([
         [`${member.title} current age`, String(member.currentAge)],
@@ -1860,8 +1860,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     if (readiness.requiredPotIsApplicable) {
       outputsRows.push([
         inputs.isHousehold
-          ? `Required pot at reference year, depleting by ${inputs.horizonEndYear}`
-          : `Required pot at target start, depleting by age ${inputs.horizonEndAge}`,
+          ? `Required pension pot at reference year, depleting by ${inputs.horizonEndYear}`
+          : `Required pension pot at target start, depleting by age ${inputs.horizonEndAge}`,
         toEuroText(requiredPot)
       ]);
       if (readiness.currentGapVsRequired > 0) {

@@ -84,12 +84,18 @@ const PBS_BUCKET_DEFINITIONS = Object.freeze({
 });
 const CLIENT_GUIDE_COPY = Object.freeze({
   pbs: 'Start with net worth, then read the buckets as jobs for your money: spending reserves, retirement funding, concentrated assets, and debts.',
-  pension: 'Start with the readiness summary and chart, then use the assumptions table to see which facts drive the projection.',
+  pension: 'Start with the required pension pot and chart, then use the assumptions table to see which facts drive the retirement projection.',
   mortgage: 'Start with repayment, term, and interest; the chart and outputs show how overpayments change the path.',
   loan: 'Start with payoff timing and interest cost; the assumptions show the balance, rate, payment structure, and overpayment being tested.',
   education: 'Start with the plain-English frame and hero visual, then use the steps and references for detail.',
   report: 'Start with the executive picture, then read supporting visuals, scenarios, and verification points.',
   protection: 'Start with the support buffer and employer-check items; these figures are planning anchors, not insurer quotes.'
+});
+const RETIREMENT_EURO_FORMATTER = new Intl.NumberFormat('en-IE', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
 });
 let pbsInfoIdCounter = 0;
 let activePbsInfoButton = null;
@@ -2112,7 +2118,7 @@ function getPlaybookDisplayContext(module) {
   if (isPensionModule(module)) {
     return {
       key: 'pension',
-      heading: 'Pension Projection',
+      heading: 'Retirement Projection',
       guide: CLIENT_GUIDE_COPY.pension
     };
   }
@@ -2266,6 +2272,10 @@ function getPensionDisplayModule(module) {
 
     return {
       ...module,
+      _retirementProjection: {
+        scenarioId,
+        debug: projection.debug
+      },
       generated: {
         ...(module.generated || {}),
         summaryHtml,
@@ -5257,6 +5267,281 @@ function buildSummaryCard(summaryHtml, {
   return card;
 }
 
+function formatRetirementCurrency(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return 'N/A';
+  }
+
+  return RETIREMENT_EURO_FORMATTER.format(amount);
+}
+
+function getRetirementProjectionDebug(module) {
+  if (module?._retirementProjection?.debug) {
+    return module._retirementProjection.debug;
+  }
+
+  if (!isPensionModule(module)) {
+    return null;
+  }
+
+  try {
+    const scenarioId = getPensionScenarioForModule(module);
+    return computePensionProjection(module.generated.pensionInputs, { scenarioId }).debug;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getRetirementRequiredPotMeta(module) {
+  const debug = getRetirementProjectionDebug(module);
+  if (!debug) {
+    return {
+      valueText: 'N/A',
+      label: 'Required pension pot',
+      detail: 'The required pension pot could not be calculated from the current assumptions.',
+      applicable: false
+    };
+  }
+
+  if (debug.requiredPotIsApplicable === false) {
+    return {
+      valueText: 'Not needed',
+      label: 'Required pension pot',
+      detail: 'On this case, other retirement income sources cover the target spending need, so a separate required pension pot is not shown.',
+      applicable: false
+    };
+  }
+
+  if (!Number.isFinite(Number(debug.requiredPot))) {
+    return {
+      valueText: 'N/A',
+      label: 'Required pension pot',
+      detail: 'This retirement mode estimates affordable income rather than a target required pension pot.',
+      applicable: false
+    };
+  }
+
+  const referenceYear = Number.isFinite(Number(debug.requiredPotReferenceYear))
+    ? ` in ${Math.round(Number(debug.requiredPotReferenceYear))}`
+    : '';
+
+  return {
+    valueText: formatRetirementCurrency(debug.requiredPot),
+    label: 'Required pension pot',
+    detail: `Estimated pension balance needed${referenceYear} after other retirement income sources are allowed for.`,
+    applicable: true
+  };
+}
+
+function buildRetirementExplainerCard() {
+  const card = document.createElement('section');
+  card.className = 'generated-card retirement-explainer-card';
+  card.dataset.generatedCard = 'retirement-explainer';
+
+  const { header } = buildGeneratedCardHeader('How to read this retirement playbook');
+  card.appendChild(header);
+
+  const content = document.createElement('div');
+  content.className = 'retirement-explainer-content generated-summary-content';
+
+  [
+    'This playbook tests whether projected pension savings, other retirement income, and desired spending line up over time.',
+    'Irish pensions matter because contributions can receive tax relief, and growth inside the pension is generally tax-free, subject to Revenue rules and limits.',
+    'Start with the required pension pot, then compare cases to see how losing or gaining an income source changes the pension balance needed.'
+  ].forEach((text) => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = text;
+    content.appendChild(paragraph);
+  });
+
+  card.appendChild(content);
+  return card;
+}
+
+function buildRetirementPositionChips(debug) {
+  const chips = document.createElement('div');
+  chips.className = 'retirement-position-chips';
+
+  const items = [];
+  if (Number(debug?.currentGapVsRequired) > 0) {
+    items.push({
+      label: 'Current gap',
+      value: formatRetirementCurrency(debug.currentGapVsRequired),
+      tone: 'risk'
+    });
+  } else if (Number(debug?.currentSurplusVsRequired) > 0) {
+    items.push({
+      label: 'Current surplus',
+      value: formatRetirementCurrency(debug.currentSurplusVsRequired),
+      tone: 'positive'
+    });
+  }
+
+  if (Number(debug?.maxGapVsRequired) > 0) {
+    items.push({
+      label: 'Max gap',
+      value: formatRetirementCurrency(debug.maxGapVsRequired),
+      tone: 'risk'
+    });
+  } else if (Number(debug?.maxSurplusVsRequired) > 0) {
+    items.push({
+      label: 'Max surplus',
+      value: formatRetirementCurrency(debug.maxSurplusVsRequired),
+      tone: 'positive'
+    });
+  }
+
+  if (items.length === 0) {
+    items.push({
+      label: 'Current path',
+      value: 'On track',
+      tone: 'neutral'
+    });
+  }
+
+  items.forEach((item) => {
+    const chip = document.createElement('span');
+    chip.className = 'retirement-position-chip';
+    chip.dataset.tone = item.tone;
+
+    const label = document.createElement('span');
+    label.className = 'retirement-position-chip-label';
+    label.textContent = item.label;
+    chip.appendChild(label);
+
+    const value = document.createElement('strong');
+    value.className = 'retirement-position-chip-value';
+    value.textContent = item.value;
+    chip.appendChild(value);
+
+    chips.appendChild(chip);
+  });
+
+  return chips;
+}
+
+function getRetirementCaseProjection(module, scenarioId) {
+  if (!isPensionModule(module)) {
+    return null;
+  }
+
+  try {
+    return computePensionProjection(module.generated.pensionInputs, { scenarioId });
+  } catch (_error) {
+    return null;
+  }
+}
+
+function buildRetirementCaseDetail(projection) {
+  const debug = projection?.debug || {};
+  const details = [];
+  const rent = Number(debug.rentalIncomeToday);
+
+  if (Number.isFinite(rent)) {
+    details.push(rent > 0
+      ? `${formatRetirementCurrency(rent)} gross rent today`
+      : 'Rental income removed');
+  }
+
+  if (debug.requiredPotIsApplicable === false) {
+    details.push('No separate required pension pot');
+  } else if (Number.isFinite(Number(debug.requiredPot))) {
+    details.push(`${formatRetirementCurrency(debug.requiredPot)} required pension pot`);
+  }
+
+  return details.join(' - ');
+}
+
+function buildRetirementScenarioOptions(module, cases, selectedId) {
+  const options = document.createElement('div');
+  options.className = 'retirement-scenario-options';
+  options.setAttribute('role', 'radiogroup');
+  options.setAttribute('aria-label', 'Choose retirement income case');
+
+  cases.forEach((pensionCase) => {
+    const projection = getRetirementCaseProjection(module, pensionCase.id);
+    const isActive = pensionCase.id === selectedId;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'retirement-scenario-card';
+    button.dataset.pensionScenarioId = pensionCase.id;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('role', 'radio');
+    button.setAttribute('aria-checked', isActive ? 'true' : 'false');
+
+    const title = document.createElement('span');
+    title.className = 'retirement-scenario-title';
+    title.textContent = pensionCase.title;
+    button.appendChild(title);
+
+    const detail = document.createElement('span');
+    detail.className = 'retirement-scenario-detail';
+    detail.textContent = buildRetirementCaseDetail(projection) || 'Scenario assumptions';
+    button.appendChild(detail);
+
+    button.addEventListener('click', () => {
+      if (typeof window.__setPensionScenario === 'function') {
+        window.__setPensionScenario(module.id, pensionCase.id);
+      }
+    });
+
+    options.appendChild(button);
+  });
+
+  return options;
+}
+
+function buildRetirementDecisionPanel(module) {
+  if (!isPensionModule(module)) {
+    return null;
+  }
+
+  const debug = getRetirementProjectionDebug(module);
+  const requiredPot = getRetirementRequiredPotMeta(module);
+  const cases = getPensionScenarioCasesForModule(module);
+  const selectedId = getPensionScenarioForModule(module);
+  const panel = document.createElement('section');
+  panel.className = 'generated-card retirement-decision-panel';
+  panel.dataset.generatedCard = 'retirement-decision';
+
+  const required = document.createElement('div');
+  required.className = 'retirement-required-pot-card';
+  required.dataset.requiredPotValue = requiredPot.valueText;
+
+  const eyebrow = document.createElement('p');
+  eyebrow.className = 'retirement-required-eyebrow';
+  eyebrow.textContent = requiredPot.label;
+  required.appendChild(eyebrow);
+
+  const value = document.createElement('div');
+  value.className = 'retirement-required-value';
+  value.textContent = requiredPot.valueText;
+  required.appendChild(value);
+
+  const detail = document.createElement('p');
+  detail.className = 'retirement-required-detail';
+  detail.textContent = requiredPot.detail;
+  required.appendChild(detail);
+
+  required.appendChild(buildRetirementPositionChips(debug));
+  panel.appendChild(required);
+
+  if (cases.length > 1) {
+    const scenarioArea = document.createElement('div');
+    scenarioArea.className = 'retirement-scenario-area';
+
+    const scenarioLabel = document.createElement('p');
+    scenarioLabel.className = 'retirement-scenario-label';
+    scenarioLabel.textContent = 'Retirement income case';
+    scenarioArea.appendChild(scenarioLabel);
+    scenarioArea.appendChild(buildRetirementScenarioOptions(module, cases, selectedId));
+    panel.appendChild(scenarioArea);
+  }
+
+  return panel;
+}
+
 function buildPensionScenarioSwitcher(module, cases) {
   if (!isPensionModule(module) || !Array.isArray(cases) || cases.length <= 1) {
     return null;
@@ -6942,6 +7227,9 @@ function buildGeneratedSection(module, {
 
   const grid = document.createElement('div');
   grid.className = 'generated-grid';
+  if (isPensionModule(displayModule)) {
+    grid.classList.add('retirement-generated-grid');
+  }
 
   const hasBucketedOutputs = isOutputsBucketedPresent(generated.outputsBucketed);
   const isPbsBucketedModule = hasBucketedOutputs && isPersonalBalanceSheetModule(displayModule);
@@ -6956,12 +7244,12 @@ function buildGeneratedSection(module, {
     }));
   }
 
-  const pensionScenarioSwitcher = buildPensionScenarioSwitcher(
-    displayModule,
-    getPensionScenarioCasesForModule(displayModule)
-  );
-  if (pensionScenarioSwitcher) {
-    grid.appendChild(pensionScenarioSwitcher);
+  if (isPensionModule(displayModule)) {
+    grid.appendChild(buildRetirementExplainerCard());
+    const retirementDecisionPanel = buildRetirementDecisionPanel(displayModule);
+    if (retirementDecisionPanel) {
+      grid.appendChild(retirementDecisionPanel);
+    }
   }
 
   if (isPensionModule(displayModule)) {
@@ -7066,22 +7354,43 @@ export function patchFocusedGeneratedCards({
   if (!generatedSection || !grid) {
     return;
   }
+  const displayModule = getPensionDisplayModule(module);
+  const cardModule = isPensionModule(displayModule) ? displayModule : module;
 
   if (patchSummary) {
     replaceGeneratedCard({
       grid,
       selector: '[data-generated-card="summary"]',
-      replacement: buildSummaryCard(module.generated?.summaryHtml || '', {
-        guideText: getPlaybookDisplayContext(module).guide
+      replacement: buildSummaryCard(cardModule.generated?.summaryHtml || '', {
+        guideText: getPlaybookDisplayContext(cardModule).guide
       })
     });
+
+    if (isPensionModule(cardModule)) {
+      replaceGeneratedCard({
+        grid,
+        selector: '[data-generated-card="retirement-explainer"]',
+        replacement: buildRetirementExplainerCard()
+      });
+    }
+  }
+
+  if (isPensionModule(cardModule) && (patchSummary || patchOutputs)) {
+    const retirementDecisionPanel = buildRetirementDecisionPanel(cardModule);
+    if (retirementDecisionPanel) {
+      replaceGeneratedCard({
+        grid,
+        selector: '[data-generated-card="retirement-decision"]',
+        replacement: retirementDecisionPanel
+      });
+    }
   }
 
   if (patchAssumptions) {
     replaceGeneratedCard({
       grid,
       selector: '[data-generated-card="assumptions"]',
-      replacement: buildAssumptionsTableCard(module, {
+      replacement: buildAssumptionsTableCard(cardModule, {
         onPatchInputs,
         status: assumptionsEditorStatus,
         readOnly
@@ -7090,16 +7399,17 @@ export function patchFocusedGeneratedCards({
   }
 
   if (patchOutputs) {
-    const outputCard = isOutputsBucketedPresent(generated.outputsBucketed)
-      ? buildOutputsBucketedCard(module, generated.outputsBucketed, {
-        summaryHtml: generated.summaryHtml || ''
+    const displayGenerated = cardModule.generated || generated;
+    const outputCard = isOutputsBucketedPresent(displayGenerated.outputsBucketed)
+      ? buildOutputsBucketedCard(cardModule, displayGenerated.outputsBucketed, {
+        summaryHtml: displayGenerated.summaryHtml || ''
       })
       : buildTableCard(
         'Outputs',
-        filterOutputsRowsForPensionToggle(module, generated.outputs),
+        filterOutputsRowsForPensionToggle(cardModule, displayGenerated.outputs),
         {
           dataGeneratedCard: 'outputs',
-          module,
+          module: cardModule,
           tableKind: 'outputs'
         }
       );
@@ -7111,7 +7421,6 @@ export function patchFocusedGeneratedCards({
   }
 
   if (patchCharts) {
-    const displayModule = getPensionDisplayModule(module);
     replaceGeneratedCard({
       grid,
       selector: '[data-generated-card="charts"]',

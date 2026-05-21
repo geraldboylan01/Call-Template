@@ -12,11 +12,11 @@ Use `10_pbs_playbook.md` when Gerry says things like:
 - balance sheet module
 - classify these assets and liabilities
 
-### Pension Playbook
-Use `11_pension_playbook.md` when Gerry says things like:
-- run the pension playbook
-- pension module
-- pension projection
+### Retirement Playbook
+Use `11_retirement_playbook.md` when Gerry says things like:
+- run the retirement playbook
+- retirement module
+- retirement projection
 - target retirement income
 - affordable retirement income
 - goal-seek retirement income
@@ -60,7 +60,7 @@ Use `22_protection_playbook.md` when Gerry says things like:
 - If Gerry names a playbook explicitly, do not second-guess it.
 - If Gerry does not name one, infer from the primary job:
   - structured net worth classification -> PBS
-  - repeatable retirement maths -> Pension
+  - repeatable retirement maths -> Retirement
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
   - structured topic explanation -> Education

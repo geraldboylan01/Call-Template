@@ -1377,11 +1377,11 @@ const EXAMPLE_PAYLOADS = [
   },
   {
     id: 'pension-inline-assumptions-demo',
-    label: 'Pension Inline Assumptions Demo',
+    label: 'Retirement Inline Assumptions Demo',
     payload: {
-      title: 'Pension Projection (Inline Assumptions Demo)',
+      title: 'Retirement Projection (Inline Assumptions Demo)',
       generated: {
-        summaryHtml: '<p>Use the Assumptions pencil to edit pension inputs inline.</p>',
+        summaryHtml: '<p>This retirement projection tests whether the current pension value, salary, contributions, and retirement age support the chosen income target. Start with the required pension pot and chart, then check the assumptions table to see which facts drive the result.</p>',
         pensionInputs: {
           currentAge: 42,
           retirementAge: 67,
@@ -1402,11 +1402,11 @@ const EXAMPLE_PAYLOADS = [
   },
   {
     id: 'pension-affordable-income-demo',
-    label: 'Pension Affordable Income Demo',
+    label: 'Retirement Affordable Income Demo',
     payload: {
-      title: 'Pension Projection (Affordable Income Mode Demo)',
+      title: 'Retirement Projection (Affordable Income Mode Demo)',
       generated: {
-        summaryHtml: '<p>Affordable income mode goal-seeks sustainable retirement income across multiple end ages.</p>',
+        summaryHtml: '<p>This retirement projection estimates the income the pension could support across different planning end ages. Start with the affordable-income outputs and chart, then check the assumptions that drive the sustainable income range.</p>',
         pensionInputs: {
           currentAge: 43,
           retirementAge: 67,
@@ -1426,11 +1426,11 @@ const EXAMPLE_PAYLOADS = [
   },
   {
     id: 'pension-rental-income-scenarios-demo',
-    label: 'Pension Rental Income Scenarios Demo',
+    label: 'Retirement Rental Income Scenarios Demo',
     payload: {
-      title: 'Pension Projection (Rental Income Scenarios Demo)',
+      title: 'Retirement Projection (Rental Income Scenarios Demo)',
       generated: {
-        summaryHtml: '<p>This pension projection compares the retirement path with gross rental income continuing and with that rental income removed.</p>',
+        summaryHtml: '<p>This retirement projection compares the retirement path with gross rental income continuing and with that rental income removed. Start with the required pension pot and scenario cards to see how the rental income changes the pension balance needed.</p>',
         pensionInputs: {
           currentAge: 42,
           retirementAge: 67,
@@ -1457,11 +1457,11 @@ const EXAMPLE_PAYLOADS = [
   },
   {
     id: 'pension-couple-income-stack-demo',
-    label: 'Pension Couple Income Stack Demo',
+    label: 'Retirement Couple Income Stack Demo',
     payload: {
-      title: 'Pension Projection (Couple Income Stack Demo)',
+      title: 'Retirement Projection (Couple Income Stack Demo)',
       generated: {
-        summaryHtml: '<p>This pension projection models two pensions working toward a shared household retirement income target, with State Pension, rental income, DB income, and ARF minimum withdrawals included.</p>',
+        summaryHtml: '<p>This retirement projection models two pensions working toward a shared household retirement income target, with State Pension, rental income, DB income, and ARF minimum withdrawals included. Start with the required pension pot and household income chart, then check the assumptions that need verifying.</p>',
         pensionInputs: {
           currentYear: 2026,
           inflationRate: 0.02,
@@ -2128,7 +2128,8 @@ function patchFocusedModuleGeneratedContent(moduleId, {
   patchSummary = true,
   patchAssumptions = true,
   patchOutputs = true,
-  updateCharts = true
+  updateCharts = true,
+  replaceCharts = false
 } = {}) {
   if (appState.mode !== 'focused' || appState.session.activeModuleId !== moduleId) {
     return;
@@ -2153,7 +2154,7 @@ function patchFocusedModuleGeneratedContent(moduleId, {
     patchSummary,
     patchAssumptions,
     patchOutputs,
-    patchCharts: updateCharts
+    patchCharts: replaceCharts
   });
 
   if (!updateCharts) {
@@ -6697,7 +6698,13 @@ async function setPensionScenarioForModule(moduleId, scenarioId) {
   appState.pensionScenarioByModuleId.set(moduleId, nextCase.id);
 
   if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
-    await renderFocused({ useSwipe: false, revealMode: false });
+    patchFocusedModuleGeneratedContent(moduleId, {
+      patchSummary: true,
+      patchAssumptions: true,
+      patchOutputs: true,
+      updateCharts: true,
+      replaceCharts: false
+    });
   } else if (appState.mode === 'overview') {
     refreshOverview({ enableSortable: !runtimeConfig.readOnly });
   } else if (appState.mode === 'compare') {

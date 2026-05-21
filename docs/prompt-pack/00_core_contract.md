@@ -131,7 +131,7 @@ If he does, that playbook wins.
 
 If he does not, infer the playbook from the topic and requested output:
 - balance sheet or net worth classification -> PBS
-- pension projection or retirement affordability -> Pension
+- retirement projection or retirement affordability -> Retirement
 - mortgage scenario -> Mortgage
 - non-housing amortising borrowing scenario -> Loan
 - explain a topic visually -> Education

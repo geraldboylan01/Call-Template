@@ -156,13 +156,13 @@ Representative payloads for testing the upgraded module renderer through the exi
 }
 ```
 
-## Pension Projection
+## Retirement Projection
 
 ```json
 {
-  "title": "Pension Projection - Client",
+  "title": "Retirement Projection - Client",
   "generated": {
-    "summaryHtml": "<p>This projection tests whether your current pension value, salary, contributions, retirement age, and growth assumption can support a target retirement income. Start with the readiness summary and chart, then check the assumptions table to see which facts are driving the result. Treat the figures as a planning scenario to review, not a promise of future pension income.</p>",
+    "summaryHtml": "<p>This projection tests whether your current pension value, salary, contributions, retirement age, and growth assumption can support a target retirement income. Start with the required pension pot and retirement chart, then check the assumptions table to see which facts are driving the result. Treat the figures as a planning scenario to review, not a promise of future pension income.</p>",
     "pensionInputs": {
       "currentAge": 42,
       "retirementAge": 67,
@@ -187,13 +187,13 @@ Representative payloads for testing the upgraded module renderer through the exi
 }
 ```
 
-## Couple Pension Projection
+## Couple Retirement Projection
 
 ```json
 {
-  "title": "Pension Projection - John and Mary",
+  "title": "Retirement Projection - John and Mary",
   "generated": {
-    "summaryHtml": "<p>This projection looks at John and Mary as one household against a shared retirement-income target. It includes their salaries, pension values, contributions, retirement ages, rental income, State Pension, and Mary's DB pension so the first screen can show how the income stack fits together. Start with the household readiness summary and chart, then check the assumptions that need verifying.</p>",
+    "summaryHtml": "<p>This projection looks at John and Mary as one household against a shared retirement-income target. It includes their salaries, pension values, contributions, retirement ages, rental income, State Pension, and Mary's DB pension so the first screen can show how the income stack fits together. Start with the required pension pot and household income chart, then check the assumptions that need verifying.</p>",
     "pensionInputs": {
       "currentYear": 2026,
       "inflationRate": 0.02,

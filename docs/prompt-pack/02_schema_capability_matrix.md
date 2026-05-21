@@ -106,7 +106,7 @@ Playbooks should only emit the subset they are responsible for.
 - The runtime supplies defaults for omitted `inflationRate`, `wageGrowthRate`, `horizonEndAge`, `currentYear`, and `minDrawdownMode`; pension target-mode defaults to depleting by age 100, and household mode defaults the horizon to the later member's age-100 calendar year.
 - `rentalIncomeToday` is gross annual rent in today's money and defaults to `0`.
 - `rentalIncomeScenarios` enables pension case switching. Each item should include `id`, `title`, and `rentalIncomeToday`; `baseScenarioId` selects the first visible case.
-- `pensions[]` enables couple/household pension projections. Each item should include `id`, `title`, ages, salary, pot, and contribution percentages.
+- `pensions[]` enables couple/household retirement projections. Each item should include `id`, `title`, ages, salary, pot, and contribution percentages.
 - Couple payloads should also include legacy top-level pension keys for compatibility. Use the first member's ages, household totals for salary/current pot, and salary-weighted household contribution percentages; the runtime uses `pensions[]` for the actual household maths.
 - `incomeStartYear` can anchor the first household drawdown year for staggered retirements; `requiredPotReferenceYear` can anchor the later combined-pot reference year. If omitted in household mode, the runtime defaults to earliest and latest member retirement years respectively.
 - `includeEmploymentIncomeDuringBridge` controls whether still-working members' gross salary is included between the first and later retirement dates; it defaults to `true` only when household retirement years are staggered.

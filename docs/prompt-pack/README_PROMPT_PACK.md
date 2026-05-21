@@ -20,7 +20,7 @@ This folder contains the zero-token prompt pack for the ChatGPT project workflow
 - `03_irish_tax_overlay.md`
   - cross-playbook rule layer for Irish tax scenarios
 - `10_pbs_playbook.md`
-- `11_pension_playbook.md`
+- `11_retirement_playbook.md`
 - `12_mortgage_playbook.md`
 - `13_loan_playbook.md`
 - `20_education_playbook.md`
@@ -46,7 +46,7 @@ The assembled master prompt should include these files in this order:
 2. `01_playbook_aliases.md`
 3. `03_irish_tax_overlay.md`
 4. `10_pbs_playbook.md`
-5. `11_pension_playbook.md`
+5. `11_retirement_playbook.md`
 6. `12_mortgage_playbook.md`
 7. `13_loan_playbook.md`
 8. `20_education_playbook.md`
@@ -63,9 +63,9 @@ The assembled master prompt should include these files in this order:
 5. Keep the old prompt bundle available for at least one week after cutover.
 
 ## Success Criteria
-- Gerry can still say `use the PBS playbook`, `run the pension playbook`, and similar short commands.
+- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, and similar short commands.
 - JSON pastes into the current app without schema rejection.
-- Mortgage, loan, and pension modules stay JS-backed.
+- Mortgage, loan, and retirement modules stay JS-backed.
 - Education, report, and protection outputs become visually stronger and less repetitive.
 - Tax scenarios use the uploaded cheat sheet as a logic overlay without forcing a separate tax playbook.
 
