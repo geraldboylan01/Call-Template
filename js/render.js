@@ -100,6 +100,7 @@ const RETIREMENT_EURO_FORMATTER = new Intl.NumberFormat('en-IE', {
 let pbsInfoIdCounter = 0;
 let activePbsInfoButton = null;
 let pbsInfoDismissHandlersBound = false;
+let activePbsExplanationModal = null;
 
 function formatLocalTime(isoString) {
   try {
@@ -3554,14 +3555,43 @@ function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
     tone = 'warning';
   }
 
+  const monthsText = formatReserveMonths(months);
+  const warningThresholdText = formatReserveMonths(warningThreshold);
+  const healthyThresholdText = formatReserveMonths(healthyThreshold);
   return {
     annualExpenditure: normalizedAnnualExpenditure,
     explainerLabel: 'What the liquidity buffer means',
-    explainerText: `${formatReserveMonths(months)} months of spending buffer, based on liquid assets divided by stated monthly spending. It shows the near-term breathing room before touching longer-term assets.`,
+    explainerText: `${monthsText} months of spending buffer, based on liquid assets divided by stated monthly spending. It shows the near-term breathing room before touching longer-term assets. Click to view threshold table.`,
+    explanation: {
+      currentLabel: `${monthsText} months`,
+      description: 'Liquidity compares cash or near-cash reserves with stated monthly spending to show how much short-term breathing room is visible before touching longer-term assets.',
+      formula: 'Liquidity subtotal / (annual expenditure / 12)',
+      rows: [
+        {
+          tone: 'negative',
+          status: 'Red',
+          classification: 'Pressure warning',
+          range: `Under ${warningThresholdText} months`
+        },
+        {
+          tone: 'warning',
+          status: 'Yellow',
+          classification: 'Watch zone',
+          range: `${warningThresholdText} to under ${healthyThresholdText} months`
+        },
+        {
+          tone: 'positive',
+          status: 'Green',
+          classification: 'Healthier buffer',
+          range: `${healthyThresholdText}+ months`
+        }
+      ],
+      title: 'Liquidity buffer'
+    },
     monthlyExpenditure,
     months,
-    label: `${formatReserveMonths(months)} mo buffer`,
-    ariaLabel: `Liquidity buffer ${formatReserveMonths(months)} months`,
+    label: `${monthsText} mo buffer`,
+    ariaLabel: `Liquidity buffer ${monthsText} months`,
     reserveValue: normalizedReserveValue,
     tone
   };
@@ -3619,11 +3649,46 @@ function computeLongevityPressureAssessment(reserveValue, annualExpenditure, cur
   }
 
   const multipleText = formatReserveMultiple(reserveMultiple);
+  const warningThresholdText = formatReserveMultiple(warningThreshold);
+  const healthyThresholdText = formatReserveMultiple(healthyThreshold);
+  let ageBandText = 'Age 40 to 54';
+  if (normalizedCurrentAge < 40) {
+    ageBandText = 'Under age 40';
+  } else if (normalizedCurrentAge >= 55) {
+    ageBandText = 'Age 55+';
+  }
+
   return {
     annualExpenditure: normalizedAnnualExpenditure,
     currentAge: normalizedCurrentAge,
     explainerLabel: 'What the longevity pressure means',
-    explainerText: `Longevity assets are ${multipleText} times stated annual spending. This is a quick pressure check for how much future-income funding is already visible in the long-term bucket.`,
+    explainerText: `Longevity assets are ${multipleText} times stated annual spending. This is a quick pressure check for how much future-income funding is already visible in the long-term bucket. Click to view threshold table.`,
+    explanation: {
+      currentLabel: `${multipleText}x annual spending`,
+      description: `Longevity compares pensions and long-term investment assets with stated annual spending. The thresholds adjust by age band because the time left to fund later-life income changes the pressure reading. Current age band: ${ageBandText}.`,
+      formula: 'Longevity subtotal / annual expenditure',
+      rows: [
+        {
+          tone: 'negative',
+          status: 'Red',
+          classification: 'Higher pressure',
+          range: `Under ${warningThresholdText}x`
+        },
+        {
+          tone: 'warning',
+          status: 'Yellow',
+          classification: 'Moderate pressure',
+          range: `${warningThresholdText}x to under ${healthyThresholdText}x`
+        },
+        {
+          tone: 'positive',
+          status: 'Green',
+          classification: 'Lower pressure',
+          range: `${healthyThresholdText}x+`
+        }
+      ],
+      title: 'Longevity pressure'
+    },
     label,
     ariaLabel: `Longevity pressure ${label.toLowerCase()}, longevity assets ${multipleText} times annual spending`,
     reserveMultiple,
@@ -3792,13 +3857,259 @@ function ensurePbsInfoDismissHandlers() {
     closeActivePbsInfoPopover();
   });
 
-  document.addEventListener('keydown', (event) => {
+  const handleDismissKeydown = (event) => {
     if (event.key === 'Escape') {
+      if (activePbsExplanationModal) {
+        closeActivePbsExplanationModal();
+        return;
+      }
+
       closeActivePbsInfoPopover({ restoreFocus: true });
+    }
+  };
+
+  document.addEventListener('keydown', handleDismissKeydown);
+  window.addEventListener('keydown', handleDismissKeydown);
+
+  pbsInfoDismissHandlersBound = true;
+}
+
+function getPbsExplanationFocusableElements(container) {
+  if (!container) {
+    return [];
+  }
+
+  return Array.from(container.querySelectorAll([
+    'button:not([disabled])',
+    '[href]',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+  ].join(','))).filter((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+    return element.offsetParent !== null || element === document.activeElement;
+  });
+}
+
+function closeActivePbsExplanationModal({ restoreFocus = true } = {}) {
+  if (!activePbsExplanationModal) {
+    return;
+  }
+
+  const { overlay, triggerButton } = activePbsExplanationModal;
+  activePbsExplanationModal = null;
+  document.body.classList.remove('pbs-explanation-modal-open');
+  overlay.classList.remove('is-open');
+  window.setTimeout(() => {
+    if (overlay.parentNode) {
+      overlay.parentNode.removeChild(overlay);
+    }
+  }, 160);
+
+  if (restoreFocus && triggerButton) {
+    triggerButton.focus();
+  }
+}
+
+function buildPbsExplanationStatusPill({ tone, label }) {
+  const pill = document.createElement('span');
+  pill.className = 'pbs-health-badge pbs-explanation-current-pill';
+  pill.dataset.tone = tone || 'neutral';
+  pill.textContent = label || 'Current reading';
+  return pill;
+}
+
+function openPbsExplanationModal(indicator, triggerButton) {
+  const explanation = indicator?.explanation;
+  if (!explanation || typeof document === 'undefined') {
+    return false;
+  }
+
+  closeActivePbsInfoPopover();
+  closeActivePbsExplanationModal({ restoreFocus: false });
+  pbsInfoIdCounter += 1;
+  const titleId = `pbs-explanation-title-${pbsInfoIdCounter}`;
+  const descriptionId = `pbs-explanation-description-${pbsInfoIdCounter}`;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'pbs-explanation-modal';
+
+  const dialog = document.createElement('section');
+  dialog.className = 'pbs-explanation-dialog';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', titleId);
+  dialog.setAttribute('aria-describedby', descriptionId);
+
+  const header = document.createElement('div');
+  header.className = 'pbs-explanation-header';
+
+  const headingCopy = document.createElement('div');
+  headingCopy.className = 'pbs-explanation-heading-copy';
+
+  const title = document.createElement('h3');
+  title.id = titleId;
+  title.className = 'pbs-explanation-title';
+  title.textContent = explanation.title || indicator.explainerLabel || 'Buffer explanation';
+  headingCopy.appendChild(title);
+
+  const subtitle = document.createElement('p');
+  subtitle.className = 'pbs-explanation-subtitle';
+  subtitle.textContent = 'How the app reads this red, yellow, or green signal.';
+  headingCopy.appendChild(subtitle);
+
+  header.appendChild(headingCopy);
+  header.appendChild(buildPbsExplanationStatusPill({
+    tone: indicator.tone,
+    label: indicator.label
+  }));
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'pbs-explanation-close';
+  closeButton.setAttribute('aria-label', 'Close explanation');
+  closeButton.textContent = 'x';
+  closeButton.addEventListener('click', () => {
+    closeActivePbsExplanationModal();
+  });
+  header.appendChild(closeButton);
+  dialog.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'pbs-explanation-body';
+
+  const current = document.createElement('div');
+  current.className = 'pbs-explanation-current';
+
+  const currentLabel = document.createElement('span');
+  currentLabel.className = 'pbs-explanation-kicker';
+  currentLabel.textContent = 'Current reading';
+  current.appendChild(currentLabel);
+
+  const currentValue = document.createElement('strong');
+  currentValue.className = 'pbs-explanation-current-value';
+  currentValue.textContent = explanation.currentLabel || indicator.label;
+  current.appendChild(currentValue);
+  body.appendChild(current);
+
+  const calc = document.createElement('section');
+  calc.className = 'pbs-explanation-calc';
+
+  const calcTitle = document.createElement('h4');
+  calcTitle.textContent = 'How this is calculated';
+  calc.appendChild(calcTitle);
+
+  const description = document.createElement('p');
+  description.id = descriptionId;
+  description.textContent = explanation.description || indicator.explainerText || '';
+  calc.appendChild(description);
+
+  const formula = document.createElement('div');
+  formula.className = 'pbs-explanation-formula';
+  formula.textContent = explanation.formula || '';
+  calc.appendChild(formula);
+  body.appendChild(calc);
+
+  const table = document.createElement('table');
+  table.className = 'pbs-explanation-table';
+
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  ['Status', 'Classification', 'Range'].forEach((columnLabel) => {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = columnLabel;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  (Array.isArray(explanation.rows) ? explanation.rows : []).forEach((row) => {
+    const tr = document.createElement('tr');
+    tr.dataset.tone = row.tone || 'neutral';
+    if (row.tone === indicator.tone) {
+      tr.classList.add('is-current');
+    }
+
+    const statusCell = document.createElement('td');
+    const status = document.createElement('span');
+    status.className = 'pbs-explanation-status';
+    status.dataset.tone = row.tone || 'neutral';
+    status.textContent = row.status || '';
+    statusCell.appendChild(status);
+    tr.appendChild(statusCell);
+
+    const classificationCell = document.createElement('td');
+    classificationCell.textContent = row.classification || '';
+    if (row.tone === indicator.tone) {
+      const currentMarker = document.createElement('span');
+      currentMarker.className = 'pbs-explanation-current-marker';
+      currentMarker.textContent = 'Current';
+      classificationCell.appendChild(currentMarker);
+    }
+    tr.appendChild(classificationCell);
+
+    const rangeCell = document.createElement('td');
+    rangeCell.textContent = row.range || '';
+    tr.appendChild(rangeCell);
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  dialog.appendChild(body);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) {
+      closeActivePbsExplanationModal();
     }
   });
 
-  pbsInfoDismissHandlersBound = true;
+  overlay.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeActivePbsExplanationModal();
+      return;
+    }
+
+    if (event.key !== 'Tab') {
+      return;
+    }
+
+    const focusableElements = getPbsExplanationFocusableElements(dialog);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  });
+
+  document.body.appendChild(overlay);
+  document.body.classList.add('pbs-explanation-modal-open');
+  activePbsExplanationModal = { overlay, triggerButton };
+
+  window.requestAnimationFrame(() => {
+    overlay.classList.add('is-open');
+    closeButton.focus({ preventScroll: true });
+  });
+
+  return true;
 }
 
 function buildPbsInfoPopoverControl({
@@ -3811,7 +4122,9 @@ function buildPbsInfoPopoverControl({
   buttonDataset = {},
   iconClassName = '',
   iconText = '',
-  visibleText = ''
+  visibleText = '',
+  onClick = null,
+  opensDialog = false
 }) {
   if (!text) {
     return null;
@@ -3830,6 +4143,9 @@ function buildPbsInfoPopoverControl({
   button.setAttribute('aria-label', ariaLabel || label || 'More information');
   button.setAttribute('aria-describedby', popoverId);
   button.setAttribute('aria-expanded', 'false');
+  if (opensDialog) {
+    button.setAttribute('aria-haspopup', 'dialog');
+  }
   Object.entries(buttonDataset).forEach(([key, value]) => {
     button.dataset[key] = value;
   });
@@ -3851,7 +4167,19 @@ function buildPbsInfoPopoverControl({
   button.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
+    if (typeof onClick === 'function' && onClick(button) === true) {
+      return;
+    }
     setPbsInfoPopoverOpen(button, button.getAttribute('aria-expanded') !== 'true');
+  });
+  button.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    button.click();
   });
 
   const popover = document.createElement('span');
@@ -4283,7 +4611,11 @@ function buildOutputsBucketedHealthBadge(indicator) {
       },
       iconClassName: 'pbs-health-badge-info-icon',
       iconText: 'i',
-      visibleText: indicator.label
+      visibleText: indicator.label,
+      onClick: indicator.explanation
+        ? (button) => openPbsExplanationModal(indicator, button)
+        : null,
+      opensDialog: Boolean(indicator.explanation)
     });
   }
 

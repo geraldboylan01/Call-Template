@@ -1775,6 +1775,255 @@ button.pbs-health-badge {
   color: #ffc6d1;
 }
 
+.pbs-explanation-modal-open {
+  overflow: hidden;
+}
+
+.pbs-explanation-modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(2, 8, 17, 0.66);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+  z-index: 120;
+}
+
+.pbs-explanation-modal.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pbs-explanation-dialog {
+  width: min(620px, 100%);
+  max-height: min(720px, calc(100vh - 44px));
+  overflow: auto;
+  border: 1px solid rgba(156, 197, 242, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(19, 37, 58, 0.98), rgba(8, 18, 33, 0.98)),
+    rgba(8, 18, 33, 0.98);
+  box-shadow: 0 28px 70px rgba(0, 7, 18, 0.64);
+  color: #dcecff;
+  transform: translateY(8px) scale(0.985);
+  transition: transform 150ms ease;
+}
+
+.pbs-explanation-modal.is-open .pbs-explanation-dialog {
+  transform: translateY(0) scale(1);
+}
+
+.pbs-explanation-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: start;
+  padding: 18px 18px 15px;
+  border-bottom: 1px solid rgba(137, 177, 223, 0.18);
+  background: linear-gradient(180deg, rgba(57, 118, 174, 0.18), rgba(20, 50, 84, 0.06));
+}
+
+.pbs-explanation-heading-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pbs-explanation-title {
+  margin: 0;
+  color: #f4f9ff;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.16;
+}
+
+.pbs-explanation-subtitle {
+  margin: 0;
+  color: rgba(216, 234, 255, 0.72);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.pbs-explanation-current-pill {
+  align-self: start;
+  min-height: 26px;
+}
+
+.pbs-explanation-close {
+  display: inline-grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  border: 1px solid rgba(177, 210, 247, 0.34);
+  border-radius: 50%;
+  background: rgba(6, 18, 34, 0.58);
+  color: #dcecff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+}
+
+.pbs-explanation-close:hover,
+.pbs-explanation-close:focus-visible {
+  border-color: rgba(116, 214, 255, 0.76);
+  background: rgba(46, 163, 255, 0.18);
+  color: #f5fbff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(46, 163, 255, 0.2);
+}
+
+.pbs-explanation-body {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 18px;
+}
+
+.pbs-explanation-current {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid rgba(125, 160, 207, 0.24);
+  border-radius: 8px;
+  background: rgba(6, 16, 31, 0.38);
+}
+
+.pbs-explanation-kicker {
+  color: rgba(216, 234, 255, 0.68);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.pbs-explanation-current-value {
+  color: #f4f9ff;
+  font-size: 1.12rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 820;
+  line-height: 1.15;
+}
+
+.pbs-explanation-calc {
+  display: grid;
+  gap: 8px;
+}
+
+.pbs-explanation-calc h4 {
+  margin: 0;
+  color: #f4f9ff;
+  font-size: 0.82rem;
+  font-weight: 780;
+  line-height: 1.2;
+}
+
+.pbs-explanation-calc p {
+  margin: 0;
+  color: #c9dcf3;
+  font-size: 0.8rem;
+  font-weight: 560;
+  line-height: 1.48;
+}
+
+.pbs-explanation-formula {
+  width: fit-content;
+  max-width: 100%;
+  padding: 7px 9px;
+  border: 1px solid rgba(125, 160, 207, 0.22);
+  border-radius: 8px;
+  background: rgba(8, 18, 35, 0.72);
+  color: #dcecff;
+  font-size: 0.78rem;
+  font-weight: 720;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.pbs-explanation-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid rgba(125, 160, 207, 0.28);
+  border-radius: 8px;
+  background: rgba(8, 18, 35, 0.64);
+}
+
+.pbs-explanation-table th,
+.pbs-explanation-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(128, 164, 204, 0.13);
+  color: #dcecff;
+  font-size: 0.76rem;
+  line-height: 1.32;
+  text-align: left;
+  vertical-align: top;
+}
+
+.pbs-explanation-table th {
+  background: rgba(44, 83, 128, 0.3);
+  color: #f2f9ff;
+  font-weight: 780;
+}
+
+.pbs-explanation-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.pbs-explanation-table tr.is-current td {
+  background: rgba(46, 163, 255, 0.08);
+}
+
+.pbs-explanation-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.pbs-explanation-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.pbs-explanation-status[data-tone="positive"] {
+  color: #bdfbdd;
+}
+
+.pbs-explanation-status[data-tone="warning"] {
+  color: #ffe3a0;
+}
+
+.pbs-explanation-status[data-tone="negative"] {
+  color: #ffc6d1;
+}
+
+.pbs-explanation-current-marker {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border: 1px solid rgba(116, 214, 255, 0.3);
+  border-radius: 999px;
+  color: #cce6ff;
+  font-size: 0.62rem;
+  font-weight: 760;
+  line-height: 1.1;
+  vertical-align: middle;
+}
+
 .pbs-bucket-table thead tr:nth-child(2) th {
   background: rgba(44, 83, 128, 0.3);
 }
@@ -2256,6 +2505,47 @@ button.pbs-health-badge {
   .pbs-bucket-info:focus-within .pbs-bucket-info-popover,
   .pbs-bucket-info.is-open .pbs-bucket-info-popover {
     transform: translateY(0);
+  }
+
+  .pbs-explanation-modal {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .pbs-explanation-dialog {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    border-radius: 8px;
+    transform: translateY(18px);
+  }
+
+  .pbs-explanation-modal.is-open .pbs-explanation-dialog {
+    transform: translateY(0);
+  }
+
+  .pbs-explanation-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 15px 14px 13px;
+  }
+
+  .pbs-explanation-current-pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .pbs-explanation-body {
+    padding: 14px;
+  }
+
+  .pbs-explanation-table th,
+  .pbs-explanation-table td {
+    padding: 8px;
+    font-size: 0.72rem;
+  }
+
+  .pbs-explanation-current-marker {
+    display: table;
+    margin: 5px 0 0;
   }
 }
 
