@@ -9,6 +9,7 @@ const STATE_PENSION_ANNUAL_TODAY = STATE_PENSION_WEEKLY_TODAY * 52;
 const STATE_PENSION_START_AGE = 66;
 const ARF_HIGH_VALUE_THRESHOLD = 2000000;
 const REQUIRED_POT_TOLERANCE_EUR = 25;
+const HOUSEHOLD_OWNER_IDS = new Set(['household', 'joint', 'family']);
 
 function isFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
@@ -523,12 +524,18 @@ function resolveYearFromAgeSource(source, pensions, currentYear, ageKey, yearKey
   }
 
   const ownerId = typeof source.ownerId === 'string' ? source.ownerId.trim() : '';
-  let owner = ownerId ? pensions.find((member) => member.id === ownerId) : null;
+  const ownerToken = ownerId.toLowerCase();
+  let owner = ownerId && !HOUSEHOLD_OWNER_IDS.has(ownerToken)
+    ? pensions.find((member) => member.id === ownerId)
+    : null;
+  if (!owner && HOUSEHOLD_OWNER_IDS.has(ownerToken)) {
+    owner = pensions[0];
+  }
   if (!owner && pensions.length === 1) {
     owner = pensions[0];
   }
   if (!owner) {
-    throw new Error(`generated.pensionInputs.${fieldName}.ownerId must match a pension id when ${ageKey} is used.`);
+    throw new Error(`generated.pensionInputs.${fieldName}.ownerId must match a pension id, or use "household", when ${ageKey} is used.`);
   }
 
   return yearForAge(owner, requireFiniteInteger(source[ageKey], `${fieldName}.${ageKey}`), currentYear);
@@ -581,6 +588,13 @@ function normalizeOtherIncomeSources(rawValue, pensions, currentYear) {
       inflationIndexed: source.inflationIndexed
     };
 
+    if (typeof source.inflationRate !== 'undefined') {
+      normalizedSource.inflationRate = optionalFiniteNumber(source.inflationRate, null, `${fieldName}.inflationRate`);
+      if (normalizedSource.inflationRate <= -1) {
+        throw new Error(`generated.pensionInputs.${fieldName}.inflationRate must be greater than -1.`);
+      }
+    }
+
     if (endYear !== null) {
       normalizedSource.endYear = endYear;
     }
@@ -617,6 +631,20 @@ function resolveHorizonEndYear(raw, pensions, currentYear, targetStartYear) {
 
 function inflationFactorForYear(inputs, year) {
   return Math.pow(1 + inputs.inflationRate, year - inputs.currentYear);
+}
+
+function incomeSourceAmountAtYear(inputs, source, year) {
+  if (year < source.startYear || (source.endYear !== null && year > source.endYear)) {
+    return 0;
+  }
+
+  const incomeInflationRate = Number.isFinite(source.inflationRate)
+    ? source.inflationRate
+    : inputs.inflationRate;
+  const amount = source.inflationIndexed
+    ? source.annualAmountToday * Math.pow(1 + incomeInflationRate, year - inputs.currentYear)
+    : source.annualAmountToday;
+  return Number.isFinite(amount) ? amount : 0;
 }
 
 function targetIncomeNominalAtYear(inputs, year, targetIncomeToday = inputs.targetIncomeToday) {
@@ -672,13 +700,7 @@ function buildIncomeBreakdownAtYear(inputs, year) {
     : 0;
 
   const otherIncome = inputs.otherIncomeSources.reduce((total, source) => {
-    if (year < source.startYear || (source.endYear !== null && year > source.endYear)) {
-      return total;
-    }
-    const amount = source.inflationIndexed
-      ? source.annualAmountToday * inflationFactorForYear(inputs, year)
-      : source.annualAmountToday;
-    return total + amount;
+    return total + incomeSourceAmountAtYear(inputs, source, year);
   }, 0);
 
   return {
@@ -1898,7 +1920,15 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       outputsRows.push(['Gross rental income at target start', toEuroText(rentalIncomeNominalAtRetirement)]);
     }
     if (hasOtherIncomeContext) {
-      outputsRows.push(['Other income at target start', toEuroText(otherIncomeNominalAtRetirement)]);
+      inputs.otherIncomeSources.forEach((source) => {
+        outputsRows.push([
+          `${source.title} at target start`,
+          toEuroText(incomeSourceAmountAtYear(inputs, source, inputs.incomeStartYear))
+        ]);
+      });
+      if (inputs.otherIncomeSources.length > 1) {
+        outputsRows.push(['Other income at target start', toEuroText(otherIncomeNominalAtRetirement)]);
+      }
     }
     outputsRows.push([
       'Pension-funded target after other income (nominal at target start)',

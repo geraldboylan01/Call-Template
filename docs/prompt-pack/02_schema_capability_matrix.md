@@ -111,7 +111,30 @@ Playbooks should only emit the subset they are responsible for.
 - `incomeStartYear` can anchor the first household drawdown year for staggered retirements; `requiredPotReferenceYear` can anchor the later combined-pot reference year. If omitted in household mode, the runtime defaults to earliest and latest member retirement years respectively.
 - `includeEmploymentIncomeDuringBridge` controls whether still-working members' gross salary is included between the first and later retirement dates; it defaults to `true` only when household retirement years are staggered.
 - State Pension is included by default per pension member; set `includeStatePension: false` to exclude a person.
-- `otherIncomeSources[]` supports DB pensions and similar income; `inflationIndexed` must be explicit.
+- `otherIncomeSources[]` supports DB pensions and similar named income; `inflationIndexed` must be explicit. If using `startAge`/`endAge`, `ownerId` may be a pension member id or `"household"` to anchor the age to the primary pension member.
+
+## College Funding Support
+- Use `generated.collegeFundingInputs`.
+- Runtime-supported keys:
+  - `currentYear`
+  - `childrenCount`
+  - `childCurrentAge`
+  - `collegeStartAge`
+  - `collegeDurationYears`
+  - `inflationRate`
+  - `currencySymbol`
+  - `planningNote`
+  - `scenarios`
+- Each scenario supports:
+  - `id`
+  - `title`
+  - `category`
+  - `annualCostTodayPerChild`
+  - `oneOffCostTodayPerChild`
+  - `interpretation`
+  - `tone`
+- Shorthand at-home/away inputs are also supported: `atHomeAnnualCostTodayPerChild`, `awayAnnualCostTodayPerChild`, and `carSupportTodayPerChild`.
+- The runtime calculates `generated.assumptions`, `generated.outputs`, and `generated.charts`; the playbook should not hand-build those fields.
 
 ## Mortgage Support
 - Use `generated.mortgageInputs`

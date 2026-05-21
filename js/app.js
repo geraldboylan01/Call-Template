@@ -48,9 +48,14 @@ import {
   getDefaultPensionScenarioId,
   getPensionScenarioCases
 } from './pension_math.js';
+import {
+  normalizeCollegeFundingInputs,
+  computeCollegeFundingProjection
+} from './college_funding_math.js';
 import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_math.js';
 import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { runPensionMathTests } from './tests_pension_math.js';
+import { runCollegeFundingMathTests } from './tests_college_funding_math.js';
 import { normalizeEditorJsonInput } from './dev_payload_input.js';
 import {
   buildPublishedCapabilityToken,
@@ -1371,6 +1376,60 @@ const EXAMPLE_PAYLOADS = [
           title: 'Raw markdown fallback',
           rawMarkdown: '# Fallback content\\n\\nNo structured blocks were supplied, so the module should render this markdown instead.\\n\\n- Bullet one\\n- Bullet two',
           blocks: []
+        }
+      }
+    }
+  },
+  {
+    id: 'college-funding-twins-demo',
+    label: 'College Funding: Twins Scenario Demo',
+    payload: {
+      title: 'College Funding - Twins',
+      generated: {
+        summaryHtml: '<p>This module compares possible college funding targets for two children, showing living at home versus going away and the effect of one-off car support. The key planning decision is how much liquidity to ring-fence for education before deciding what can be moved into longer-term retirement assets.</p>',
+        collegeFundingInputs: {
+          currentYear: 2026,
+          childrenCount: 2,
+          childCurrentAge: 13,
+          collegeStartAge: 18,
+          collegeDurationYears: 4,
+          inflationRate: 0.02,
+          planningNote: 'Education costs are modelled separately from normal household spending because they may overlap with early retirement.',
+          scenarios: [
+            {
+              id: 'at-home-no-car',
+              title: 'At home, no car support',
+              category: 'At home',
+              annualCostTodayPerChild: 5000,
+              oneOffCostTodayPerChild: 0,
+              interpretation: 'Lower education funding target if both children live at home during college.'
+            },
+            {
+              id: 'at-home-with-car',
+              title: 'At home, with car support',
+              category: 'At home',
+              annualCostTodayPerChild: 5000,
+              oneOffCostTodayPerChild: 10000,
+              interpretation: 'Adds car support to the at-home college scenario.'
+            },
+            {
+              id: 'away-no-car',
+              title: 'Away from home, no car support',
+              category: 'Away from home',
+              annualCostTodayPerChild: 15000,
+              oneOffCostTodayPerChild: 0,
+              interpretation: 'Higher funding target reflecting accommodation and wider living costs.'
+            },
+            {
+              id: 'away-with-car',
+              title: 'Away from home, with car support',
+              category: 'Away from home',
+              annualCostTodayPerChild: 15000,
+              oneOffCostTodayPerChild: 10000,
+              interpretation: 'Stress-test scenario including away-from-home college costs and car support.',
+              tone: 'warning'
+            }
+          ]
         }
       }
     }
@@ -2816,6 +2875,34 @@ function applyPensionProjectionToModule(module, { updateSummary = true } = {}) {
   return projection;
 }
 
+function applyCollegeFundingProjectionToModule(module) {
+  const projection = computeCollegeFundingProjection(module.generated.collegeFundingInputs);
+
+  module.generated.assumptions = projection.assumptionsTable;
+  module.generated.outputs = projection.outputsTable;
+  module.generated.outputsBucketed = null;
+  module.generated.charts = projection.charts.map((chart, index) => ({
+    ...chart,
+    id: chart.id || makeChartId(module.id, chart.title, index)
+  }));
+
+  console.info('[CallCanvas] college funding projection computed', {
+    inputs: projection.debug.inputs,
+    yearsUntilCollege: projection.debug.yearsUntilCollege,
+    todayRange: projection.debug.todayRange,
+    nominalRange: projection.debug.nominalRange,
+    stressScenario: projection.debug.stressScenario?.title
+  });
+
+  appState.lastValidProjectionByModuleId.set(module.id, {
+    calculator: 'collegeFunding',
+    inputs: { ...module.generated.collegeFundingInputs },
+    debug: projection.debug
+  });
+
+  return projection;
+}
+
 function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) {
   const loanEngineInputs = getLoanEngineInputs(module);
   if (!loanEngineInputs) {
@@ -4045,6 +4132,80 @@ function repairChartMetadataPayload(generated, warnings) {
   });
 }
 
+function getPayloadTableRows(table) {
+  return Array.isArray(table?.rows) ? table.rows.filter((row) => Array.isArray(row)) : [];
+}
+
+function findPayloadTableValue(table, labelPatterns) {
+  const patterns = labelPatterns.map((pattern) => (
+    pattern instanceof RegExp ? pattern : new RegExp(String(pattern), 'i')
+  ));
+  const row = getPayloadTableRows(table).find((candidate) => {
+    const label = String(candidate[0] ?? '');
+    return patterns.some((pattern) => pattern.test(label));
+  });
+  return row ? row[1] : undefined;
+}
+
+function parsePayloadPercent(value) {
+  const parsed = parsePayloadNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+  return parsed > 1 ? parsed / 100 : parsed;
+}
+
+function looksLikeCollegeFundingPayload(payload, generated) {
+  const moduleToken = normalizePayloadToken(payload.module || payload.moduleType || payload.type);
+  const titleToken = normalizePayloadToken(payload.title);
+  const outputColumns = Array.isArray(generated?.outputs?.columns)
+    ? generated.outputs.columns.map((column) => normalizePayloadToken(column)).join(' ')
+    : '';
+
+  return moduleToken === 'collegefunding'
+    || moduleToken === 'educationfunding'
+    || titleToken.includes('collegefunding')
+    || titleToken.includes('educationfunding')
+    || (
+      outputColumns.includes('scenario')
+      && outputColumns.includes('todaysterms')
+      && outputColumns.includes('futurenominalcost')
+    );
+}
+
+function buildCollegeFundingInputsFromLegacyTables(payload, generated) {
+  if (!looksLikeCollegeFundingPayload(payload, generated)) {
+    return null;
+  }
+
+  const assumptions = generated.assumptions;
+  const childrenCount = parsePayloadNumber(findPayloadTableValue(assumptions, [/number of children/i]));
+  const childCurrentAge = parsePayloadNumber(findPayloadTableValue(assumptions, [/children.*current age/i, /child.*current age/i]));
+  const collegeStartAge = parsePayloadNumber(findPayloadTableValue(assumptions, [/college start age/i]));
+  const collegeDurationYears = parsePayloadNumber(findPayloadTableValue(assumptions, [/college duration/i]));
+  const inflationRate = parsePayloadPercent(findPayloadTableValue(assumptions, [/inflation/i]));
+  const atHomeAnnual = parsePayloadNumber(findPayloadTableValue(assumptions, [/at.home.*college support/i, /living at home/i]));
+  const awayAnnual = parsePayloadNumber(findPayloadTableValue(assumptions, [/away.*from.*home.*college support/i, /away from home/i]));
+  const carSupport = parsePayloadNumber(findPayloadTableValue(assumptions, [/optional car support/i, /car support/i]));
+
+  if (childrenCount === null && atHomeAnnual === null && awayAnnual === null) {
+    return null;
+  }
+
+  const normalized = {};
+  if (childrenCount !== null) normalized.childrenCount = childrenCount;
+  if (childCurrentAge !== null) normalized.childCurrentAge = childCurrentAge;
+  if (collegeStartAge !== null) normalized.collegeStartAge = collegeStartAge;
+  if (collegeDurationYears !== null) normalized.collegeDurationYears = collegeDurationYears;
+  if (inflationRate !== null) normalized.inflationRate = inflationRate;
+  if (atHomeAnnual !== null) normalized.atHomeAnnualCostTodayPerChild = atHomeAnnual;
+  if (awayAnnual !== null) normalized.awayAnnualCostTodayPerChild = awayAnnual;
+  if (carSupport !== null) normalized.carSupportTodayPerChild = carSupport;
+  normalized.planningNote = 'Education costs are modelled separately from normal household spending.';
+
+  return normalized;
+}
+
 function normalizeDevPanelPayload(payload) {
   const warnings = [];
 
@@ -4109,6 +4270,14 @@ function normalizeDevPanelPayload(payload) {
         generated.outputsBucketed = repairedOutputsBucketed;
         warnings.push('Created generated.outputsBucketed from PBS buckets and metrics.');
       }
+    }
+  }
+
+  if (!generated.collegeFundingInputs && !generated.collegeFunding) {
+    const repairedCollegeFundingInputs = buildCollegeFundingInputsFromLegacyTables(payload, generated);
+    if (repairedCollegeFundingInputs) {
+      generated.collegeFundingInputs = repairedCollegeFundingInputs;
+      warnings.push('Created generated.collegeFundingInputs from college funding tables.');
     }
   }
 
@@ -6379,6 +6548,10 @@ function validatePensionInputsPayload(pensionInputs) {
   return normalizePensionInputs(pensionInputs);
 }
 
+function validateCollegeFundingInputsPayload(collegeFundingInputs) {
+  return normalizeCollegeFundingInputs(collegeFundingInputs);
+}
+
 function validateMortgageInputsPayload(mortgageInputs) {
   return normalizeMortgageInputs(mortgageInputs, { defaultLoanKind: 'mortgage' });
 }
@@ -6458,6 +6631,14 @@ function normalizePayload(payload) {
 
     if ('pensionInputs' in payload.generated) {
       generatedPatch.pensionInputs = validatePensionInputsPayload(payload.generated.pensionInputs);
+    }
+
+    if ('collegeFundingInputs' in payload.generated) {
+      generatedPatch.collegeFundingInputs = validateCollegeFundingInputsPayload(payload.generated.collegeFundingInputs);
+    }
+
+    if ('collegeFunding' in payload.generated && !('collegeFundingInputs' in payload.generated)) {
+      generatedPatch.collegeFundingInputs = validateCollegeFundingInputsPayload(payload.generated.collegeFunding);
     }
 
     if ('mortgageInputs' in payload.generated) {
@@ -7717,6 +7898,18 @@ function mergeGeneratedPatch(module, generatedPatch) {
     if (generatedPatch.pensionInputs) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
+      module.generated.education = null;
+      module.generated.report = null;
+    }
+  }
+
+  if ('collegeFundingInputs' in generatedPatch) {
+    module.generated.collegeFundingInputs = generatedPatch.collegeFundingInputs;
+    if (generatedPatch.collegeFundingInputs) {
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
       module.generated.education = null;
       module.generated.report = null;
     }
@@ -7727,6 +7920,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
     if (generatedPatch.mortgageInputs) {
       module.generated.pensionInputs = null;
       module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
       module.generated.education = null;
       module.generated.report = null;
     }
@@ -7737,6 +7931,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
     if (generatedPatch.loanInputs) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
+      module.generated.collegeFundingInputs = null;
       module.generated.education = null;
       module.generated.report = null;
     }
@@ -7748,6 +7943,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
       module.generated.report = null;
     }
   }
@@ -7758,6 +7954,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
       module.generated.education = null;
     }
   }
@@ -7805,6 +8002,7 @@ function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditor
     mergeGeneratedPatch(module, normalizedPayload.generated);
 
     const hasPensionInputsPatch = 'pensionInputs' in normalizedPayload.generated;
+    const hasCollegeFundingInputsPatch = 'collegeFundingInputs' in normalizedPayload.generated;
     const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
     const hasLoanInputsPatch = 'loanInputs' in normalizedPayload.generated;
 
@@ -7823,6 +8021,8 @@ function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditor
       if (resetEditorState) {
         resetAssumptionsEditorState(module.id);
       }
+    } else if (hasCollegeFundingInputsPatch && module.generated.collegeFundingInputs) {
+      applyCollegeFundingProjectionToModule(module);
     }
   }
 }
@@ -8714,6 +8914,7 @@ export async function initApp(options = {}) {
     window.__getPensionScenarioForModule = (moduleId) => getPensionScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
+    window.__runCollegeFundingMathTests = () => runCollegeFundingMathTests();
 
     if (appState.mode === 'focused') {
       await renderFocused({ useSwipe: false, revealMode: true });

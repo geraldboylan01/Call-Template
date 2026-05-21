@@ -95,7 +95,7 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 
 ## Runtime-Safe Module Boundaries
-- `generated.pensionInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
+- `generated.pensionInputs`, `generated.collegeFundingInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
   - The AI's job is to parse inputs, choose the right mode, and write a short summary.
   - Do not invent the engine's outputs, tables, or charts unless Gerry explicitly asks for a separate explanatory module.
 - `generated.outputsBucketed` is used by the PBS playbook.

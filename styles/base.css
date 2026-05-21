@@ -1086,6 +1086,16 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   color: #dce3e4;
 }
 
+.generated-table td.generated-money-cell:not(:first-child) {
+  color: #f2f8ff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.generated-table td.generated-money-cell:first-child {
+  color: #e7eef3;
+}
+
 .generated-table td.cc-cell-hoverable {
   cursor: pointer;
   transition: background-color 150ms ease, box-shadow 150ms ease, font-weight 150ms ease;
@@ -2885,6 +2895,175 @@ button.pbs-health-badge {
   color: #bdc9cc;
   font-size: 0.76rem;
   line-height: 1.4;
+}
+
+.college-generated-grid .college-hero-card,
+.college-generated-grid .generated-summary-card,
+.college-generated-grid .college-scenarios-card,
+.college-generated-grid .generated-charts-card,
+.college-generated-grid .generated-table-card {
+  grid-column: 1 / -1;
+}
+
+.college-hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(300px, 1fr);
+  gap: 16px;
+  align-items: stretch;
+  border-color: rgba(116, 214, 255, 0.24);
+  background:
+    linear-gradient(135deg, rgba(12, 30, 42, 0.92), rgba(19, 26, 31, 0.82) 52%, rgba(46, 36, 19, 0.82)),
+    rgba(11, 18, 23, 0.86);
+  overflow: hidden;
+}
+
+.college-hero-copy {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.college-hero-kicker {
+  margin: 0;
+  color: #8ed8ff;
+  font-size: 0.72rem;
+  font-weight: 820;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.college-hero-title {
+  margin: 0;
+  color: #f7fbff;
+  font-size: clamp(1.76rem, 3.4vw, 3.1rem);
+  font-weight: 850;
+  letter-spacing: 0;
+  line-height: 1.02;
+}
+
+.college-hero-subtitle {
+  max-width: 66ch;
+  margin: 0;
+  color: #d2e4ee;
+  font-size: 0.94rem;
+  line-height: 1.46;
+}
+
+.college-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.college-hero-metric {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(190, 202, 207, 0.16);
+  border-radius: 8px;
+  background: rgba(5, 12, 17, 0.46);
+  padding: 11px;
+}
+
+.college-hero-metric[data-tone="warning"] {
+  border-color: rgba(255, 209, 102, 0.32);
+  background: rgba(54, 39, 17, 0.42);
+}
+
+.college-hero-metric-label {
+  color: #a9becd;
+  font-size: 0.66rem;
+  font-weight: 790;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.college-hero-metric-value {
+  min-width: 0;
+  color: #f5fbff;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 820;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.college-hero-metric-detail {
+  color: #bfd0d9;
+  font-size: 0.76rem;
+  line-height: 1.34;
+}
+
+.college-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.college-scenario-card {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  border: 1px solid rgba(145, 178, 203, 0.2);
+  border-radius: 8px;
+  background: rgba(8, 17, 24, 0.58);
+  padding: 12px;
+}
+
+.college-scenario-card[data-tone="warning"],
+.college-scenario-card[data-tone="risk"] {
+  border-color: rgba(255, 209, 102, 0.34);
+  background: linear-gradient(180deg, rgba(58, 42, 17, 0.42), rgba(8, 17, 24, 0.58));
+}
+
+.college-scenario-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.college-scenario-title {
+  margin: 0;
+  color: #eef8ff;
+  font-size: 0.96rem;
+  font-weight: 780;
+  line-height: 1.24;
+}
+
+.college-scenario-badge {
+  flex: 0 0 auto;
+  max-width: 44%;
+  border: 1px solid rgba(116, 214, 255, 0.22);
+  border-radius: 999px;
+  color: #bfe8ff;
+  font-size: 0.66rem;
+  font-weight: 760;
+  line-height: 1.1;
+  padding: 4px 7px;
+  text-align: center;
+}
+
+.college-scenario-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.college-scenario-values .college-hero-metric {
+  padding: 9px;
+}
+
+.college-scenario-values .college-hero-metric-value {
+  font-size: 0.98rem;
+}
+
+.college-scenario-interpretation {
+  margin: 0;
+  color: #cbdce5;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .education-generated-grid .education-topic-card,
@@ -6677,6 +6856,15 @@ body.overview-has-selection .toast-host {
   }
 
   .retirement-generated-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .college-hero-card {
+    grid-template-columns: 1fr;
+  }
+
+  .college-hero-metrics,
+  .college-scenario-values {
     grid-template-columns: 1fr;
   }
 

@@ -23,6 +23,7 @@ This folder contains the zero-token prompt pack for the ChatGPT project workflow
 - `11_retirement_playbook.md`
 - `12_mortgage_playbook.md`
 - `13_loan_playbook.md`
+- `14_college_funding_playbook.md`
 - `20_education_playbook.md`
 - `21_report_playbook.md`
 - `22_protection_playbook.md`
@@ -49,9 +50,10 @@ The assembled master prompt should include these files in this order:
 5. `11_retirement_playbook.md`
 6. `12_mortgage_playbook.md`
 7. `13_loan_playbook.md`
-8. `20_education_playbook.md`
-9. `21_report_playbook.md`
-10. `22_protection_playbook.md`
+8. `14_college_funding_playbook.md`
+9. `20_education_playbook.md`
+10. `21_report_playbook.md`
+11. `22_protection_playbook.md`
 
 `02_schema_capability_matrix.md`, `03_irish_tax_overlay.md`, and `90_examples_and_regression_prompts.md` are maintenance/reference files. The live project should still use `MASTER_PROJECT_PROMPT.md`, plus the uploaded `irish_tax_ai_cheat_sheet_v1.1.md` file.
 
@@ -63,7 +65,7 @@ The assembled master prompt should include these files in this order:
 5. Keep the old prompt bundle available for at least one week after cutover.
 
 ## Success Criteria
-- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, and similar short commands.
+- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, `use the college funding playbook`, and similar short commands.
 - JSON pastes into the current app without schema rejection.
 - Mortgage, loan, and retirement modules stay JS-backed.
 - Education, report, and protection outputs become visually stronger and less repetitive.

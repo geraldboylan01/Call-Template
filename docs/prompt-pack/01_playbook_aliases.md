@@ -35,6 +35,14 @@ Use `13_loan_playbook.md` when Gerry says things like:
 - personal loan projection
 - non-housing loan scenario
 
+### College Funding Playbook
+Use `14_college_funding_playbook.md` when Gerry says things like:
+- use the college funding playbook
+- education funding options
+- college costs for children
+- ring-fence college funding
+- at home versus away from home for college
+
 ### Education Playbook
 Use `20_education_playbook.md` when Gerry says things like:
 - use the education playbook
@@ -63,6 +71,7 @@ Use `22_protection_playbook.md` when Gerry says things like:
   - repeatable retirement maths -> Retirement
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
+  - children’s college cost scenarios -> College Funding
   - structured topic explanation -> Education
   - long-form report transformation -> Report
   - protection review -> Protection

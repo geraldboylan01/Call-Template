@@ -442,6 +442,119 @@ function normalizeEducation(education) {
   return normalized;
 }
 
+function firstDefinedNumber(source, keys) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    if (typeof source[key] !== 'undefined') {
+      return source[key];
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeCollegeFundingInputs(collegeFundingInputs) {
+  if (!collegeFundingInputs || typeof collegeFundingInputs !== 'object' || Array.isArray(collegeFundingInputs)) {
+    return null;
+  }
+
+  const normalized = {};
+  [
+    'currentYear',
+    'inflationRate',
+    'childrenCount',
+    'numberOfChildren',
+    'childCurrentAge',
+    'childrenCurrentAge',
+    'collegeStartAge',
+    'collegeDurationYears',
+    'atHomeAnnualCostTodayPerChild',
+    'atHomeAnnualCostToday',
+    'awayAnnualCostTodayPerChild',
+    'awayAnnualCostToday',
+    'carSupportTodayPerChild',
+    'carSupportToday'
+  ].forEach((key) => {
+    if (typeof collegeFundingInputs[key] === 'number' && Number.isFinite(collegeFundingInputs[key])) {
+      normalized[key] = collegeFundingInputs[key];
+    }
+  });
+
+  if (typeof collegeFundingInputs.currencySymbol === 'string' && collegeFundingInputs.currencySymbol.trim()) {
+    normalized.currencySymbol = collegeFundingInputs.currencySymbol.trim();
+  }
+
+  if (typeof collegeFundingInputs.planningNote === 'string' && collegeFundingInputs.planningNote.trim()) {
+    normalized.planningNote = collegeFundingInputs.planningNote.trim();
+  }
+
+  if (Array.isArray(collegeFundingInputs.scenarios)) {
+    const scenarios = collegeFundingInputs.scenarios
+      .filter((scenario) => scenario && typeof scenario === 'object' && !Array.isArray(scenario))
+      .map((scenario, index) => {
+        const normalizedScenario = {
+          id: typeof scenario.id === 'string' && scenario.id.trim()
+            ? scenario.id.trim()
+            : `college-scenario-${index + 1}`,
+          title: typeof scenario.title === 'string' && scenario.title.trim()
+            ? scenario.title.trim()
+            : `Scenario ${index + 1}`
+        };
+
+        [
+          'category',
+          'interpretation',
+          'detail',
+          'tone'
+        ].forEach((key) => {
+          if (typeof scenario[key] === 'string' && scenario[key].trim()) {
+            normalizedScenario[key] = scenario[key].trim();
+          }
+        });
+
+        [
+          'annualCostTodayPerChild',
+          'annualCostPerChildToday',
+          'annualCostToday',
+          'oneOffCostTodayPerChild',
+          'upfrontCostTodayPerChild',
+          'carSupportTodayPerChild',
+          'carSupportToday'
+        ].forEach((key) => {
+          if (typeof scenario[key] === 'number' && Number.isFinite(scenario[key])) {
+            normalizedScenario[key] = scenario[key];
+          }
+        });
+
+        const annualCost = firstDefinedNumber(normalizedScenario, [
+          'annualCostTodayPerChild',
+          'annualCostPerChildToday',
+          'annualCostToday'
+        ]);
+        const oneOffCost = firstDefinedNumber(normalizedScenario, [
+          'oneOffCostTodayPerChild',
+          'upfrontCostTodayPerChild',
+          'carSupportTodayPerChild',
+          'carSupportToday'
+        ]);
+
+        return typeof annualCost === 'number' || typeof oneOffCost === 'number'
+          ? normalizedScenario
+          : null;
+      })
+      .filter(Boolean);
+
+    if (scenarios.length > 0) {
+      normalized.scenarios = scenarios;
+    }
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 function normalizeGeneratedTables(tables) {
   if (!Array.isArray(tables)) {
     return [];
@@ -868,6 +981,7 @@ export function createEmptyGenerated() {
     tables: [],
     pbsInputs: null,
     pensionInputs: null,
+    collegeFundingInputs: null,
     mortgageInputs: null,
     loanInputs: null,
     education: null,
@@ -889,6 +1003,7 @@ export function normalizeGenerated(generated) {
     tables: normalizeGeneratedTables(generated.tables),
     pbsInputs: normalizePbsInputs(generated.pbsInputs || generated.personalBalanceSheetInputs),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
+    collegeFundingInputs: normalizeCollegeFundingInputs(generated.collegeFundingInputs || generated.collegeFunding),
     mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs, { defaultLoanKind: 'mortgage' }),
     loanInputs: normalizeMortgageInputs(generated.loanInputs, { defaultLoanKind: 'loan' }),
     education: normalizeEducation(generated.education),
@@ -899,10 +1014,14 @@ export function normalizeGenerated(generated) {
 
   if (normalized.report) {
     normalized.pensionInputs = null;
+    normalized.collegeFundingInputs = null;
     normalized.mortgageInputs = null;
     normalized.loanInputs = null;
     normalized.education = null;
   } else if (normalized.pensionInputs || normalized.mortgageInputs || normalized.loanInputs) {
+    normalized.collegeFundingInputs = null;
+    normalized.education = null;
+  } else if (normalized.collegeFundingInputs) {
     normalized.education = null;
   }
 

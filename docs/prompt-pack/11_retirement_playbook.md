@@ -195,7 +195,9 @@ Use `otherIncomeSources[]` for DB pensions and similar income.
 Rules:
 - Required keys are `id`, `title`, `annualAmountToday`, `inflationIndexed`, and either `startYear` or `ownerId` plus `startAge`.
 - If using `startAge` or `endAge` in a couple case, include `ownerId`.
+- `ownerId` may be a pension member id or `"household"` when the income starts at the primary/client age rather than one spouse's age.
 - `inflationIndexed` must be explicit for non-state, non-rental income.
+- `inflationRate` may be set per source when the income source has its own indexation assumption; otherwise the household inflation rate is used.
 - Omit `endYear` / `endAge` unless Gerry gives an end point.
 
 ## ARF Minimum Withdrawals

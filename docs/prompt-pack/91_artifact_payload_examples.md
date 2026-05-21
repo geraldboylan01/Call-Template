@@ -265,6 +265,28 @@ Representative payloads for testing the upgraded module renderer through the exi
 }
 ```
 
+## College Funding
+
+```json
+{
+  "title": "College Funding - Twins",
+  "generated": {
+    "summaryHtml": "<p>This module compares possible college funding targets for two children, showing living at home versus going away and the effect of one-off car support. The key planning decision is how much liquidity to ring-fence for education before deciding what can be moved into longer-term retirement assets.</p>",
+    "collegeFundingInputs": {
+      "currentYear": 2026,
+      "childrenCount": 2,
+      "childCurrentAge": 13,
+      "collegeStartAge": 18,
+      "collegeDurationYears": 4,
+      "inflationRate": 0.02,
+      "atHomeAnnualCostTodayPerChild": 5000,
+      "awayAnnualCostTodayPerChild": 15000,
+      "carSupportTodayPerChild": 10000
+    }
+  }
+}
+```
+
 ## Education
 
 ```json

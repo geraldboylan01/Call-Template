@@ -394,6 +394,69 @@ export function runPensionMathTests() {
     );
   }));
 
+  cases.push(runCase('Household other income can start from the primary age without member ownership', () => {
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      inflationRate: 0.02,
+      growthRate: 0.05,
+      wageGrowthRate: 0.02,
+      incomeMode: 'target',
+      targetIncomeToday: 50000,
+      targetStartAge: 60,
+      horizonEndAge: 100,
+      pensions: [
+        {
+          id: 'client',
+          title: 'Client DC pension',
+          currentAge: 53,
+          retirementAge: 60,
+          currentSalary: 80000,
+          currentPot: 200000,
+          personalPct: 0.3,
+          employerPct: 0.05,
+          includeStatePension: true
+        },
+        {
+          id: 'spouse',
+          title: 'Spouse State Pension allowance',
+          currentAge: 49,
+          retirementAge: 60,
+          currentSalary: 0,
+          currentPot: 0,
+          personalPct: 0,
+          employerPct: 0,
+          includeStatePension: true
+        }
+      ],
+      otherIncomeSources: [
+        {
+          id: 'client-db-pension',
+          title: 'Defined benefit pension',
+          type: 'db',
+          ownerId: 'client',
+          annualAmountToday: 9000,
+          startAge: 66,
+          inflationIndexed: true
+        },
+        {
+          id: 'land-lease-income',
+          title: 'Land lease income',
+          type: 'rental_or_lease_income',
+          ownerId: 'household',
+          annualAmountToday: 15000,
+          startAge: 65,
+          inflationIndexed: true,
+          inflationRate: 0.02
+        }
+      ]
+    });
+    const outputLabels = projection.outputsTable.rows.map((row) => row[0]);
+
+    assert(projection.debug.inputs.otherIncomeSources.length === 2, 'Both other income sources should normalize');
+    assert(outputLabels.includes('Defined benefit pension at target start'), 'DB income output row should be listed by name');
+    assert(outputLabels.includes('Land lease income at target start'), 'Household income output row should be listed by name');
+  }));
+
   cases.push(runCase('Rental income above target floors pension withdrawal at zero', () => {
     const projection = computePensionProjection({
       ...BASE_TARGET_INPUTS,

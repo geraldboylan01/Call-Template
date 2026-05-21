@@ -7,6 +7,7 @@ import {
   getDefaultPensionScenarioId,
   getPensionScenarioCases
 } from './pension_math.js';
+import { computeCollegeFundingProjection } from './college_funding_math.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -85,6 +86,7 @@ const PBS_BUCKET_DEFINITIONS = Object.freeze({
 const CLIENT_GUIDE_COPY = Object.freeze({
   pbs: 'Start with net worth, then read the buckets as jobs for your money: spending reserves, retirement funding, concentrated assets, and debts.',
   pension: 'Start with the required pension pot and chart, then use the assumptions table to see which facts drive the retirement projection.',
+  collegeFunding: 'Start with the funding range, then compare today’s-money and future nominal costs before deciding what to ring-fence.',
   mortgage: 'Start with repayment, term, and interest; the chart and outputs show how overpayments change the path.',
   loan: 'Start with payoff timing and interest cost; the assumptions show the balance, rate, payment structure, and overpayment being tested.',
   education: 'Start with the plain-English frame and hero visual, then use the steps and references for detail.',
@@ -96,6 +98,18 @@ const RETIREMENT_EURO_FORMATTER = new Intl.NumberFormat('en-IE', {
   currency: 'EUR',
   minimumFractionDigits: 0,
   maximumFractionDigits: 0
+});
+const DISPLAY_EURO_FORMATTER = new Intl.NumberFormat('en-IE', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
+});
+const DISPLAY_EURO_DECIMAL_FORMATTER = new Intl.NumberFormat('en-IE', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 let pbsInfoIdCounter = 0;
 let activePbsInfoButton = null;
@@ -228,6 +242,169 @@ function isPlainObject(value) {
 
 function toTrimmedString(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeMoneyToken(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9€£$]+/g, '');
+}
+
+function textHasCurrencyMarker(value) {
+  return /[€£$]|\b(?:eur|euro|euros|gbp|usd)\b/i.test(String(value ?? ''));
+}
+
+function isNumericLikeText(value) {
+  return /^-?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(String(value ?? '').trim());
+}
+
+function parseDisplayNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (!isNumericLikeText(value)) {
+    return null;
+  }
+
+  const parsed = Number(String(value).replace(/[,\s]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatDisplayCurrency(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return '';
+  }
+
+  return Number.isInteger(amount)
+    ? DISPLAY_EURO_FORMATTER.format(amount)
+    : DISPLAY_EURO_DECIMAL_FORMATTER.format(amount);
+}
+
+function isClearlyNonMoneyLabel(token) {
+  if (!token) {
+    return false;
+  }
+
+  return token.includes('age')
+    || token.includes('year')
+    || token.includes('duration')
+    || token.includes('numberofchildren')
+    || token.includes('childrenage')
+    || token.includes('inflation')
+    || token.includes('growth')
+    || token.includes('rate')
+    || token.includes('percent')
+    || token.includes('percentage')
+    || token.includes('term')
+    || token.includes('mode')
+    || token.includes('scenario');
+}
+
+function isMoneyLabelToken(token) {
+  if (!token || isClearlyNonMoneyLabel(token)) {
+    return false;
+  }
+
+  return token.includes('€')
+    || token.includes('eur')
+    || token.includes('euro')
+    || token.includes('amount')
+    || token.includes('balance')
+    || token.includes('value')
+    || token.includes('salary')
+    || token.includes('income')
+    || token.includes('cost')
+    || token.includes('fund')
+    || token.includes('funding')
+    || token.includes('support')
+    || token.includes('asset')
+    || token.includes('liability')
+    || token.includes('worth')
+    || token.includes('cash')
+    || token.includes('savings')
+    || token.includes('premium')
+    || token.includes('cover')
+    || token.includes('reserve')
+    || token.includes('payment')
+    || token.includes('repayment')
+    || token.includes('overpayment')
+    || token.includes('expenditure')
+    || token.includes('withdrawal')
+    || token.includes('pot')
+    || token.includes('pension')
+    || token.includes('debt')
+    || token.includes('nominal')
+    || token.includes('todaysterms');
+}
+
+function isCurrencyTableContext({ cardTitle = '', rowLabel = '', columnLabel = '' } = {}) {
+  const columnToken = normalizeMoneyToken(columnLabel);
+  const rowToken = normalizeMoneyToken(rowLabel);
+  const titleToken = normalizeMoneyToken(cardTitle);
+
+  if (isMoneyLabelToken(columnToken) || isMoneyLabelToken(rowToken)) {
+    return true;
+  }
+
+  return (titleToken.includes('outputs') || titleToken.includes('scenario'))
+    && isMoneyLabelToken(rowToken);
+}
+
+function formatCurrencyInText(value) {
+  const raw = String(value ?? '');
+  if (!raw.trim() || textHasCurrencyMarker(raw)) {
+    return raw;
+  }
+
+  if (isNumericLikeText(raw)) {
+    const parsed = parseDisplayNumber(raw);
+    return parsed === null ? raw : formatDisplayCurrency(parsed);
+  }
+
+  return raw.replace(/(^|[^\w€£$])(-?\d{4,}(?:\.\d+)?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?)(?![\w%])/g, (match, prefix, numericText) => {
+    const parsed = parseDisplayNumber(numericText);
+    return parsed === null ? match : `${prefix}${formatDisplayCurrency(parsed)}`;
+  });
+}
+
+function formatGeneratedTableCell(value, {
+  cardTitle = '',
+  rowLabel = '',
+  columnLabel = ''
+} = {}) {
+  if (!isCurrencyTableContext({ cardTitle, rowLabel, columnLabel })) {
+    return String(value ?? '');
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return formatDisplayCurrency(value);
+  }
+
+  return formatCurrencyInText(value);
+}
+
+function formatMetricDisplayValue(label, value) {
+  const raw = String(value ?? '');
+  if (!raw.trim() || textHasCurrencyMarker(raw)) {
+    return raw || '--';
+  }
+
+  const parsed = parseDisplayNumber(raw);
+  if (
+    parsed !== null
+    && (
+      Math.abs(parsed) >= 10000
+      || isCurrencyTableContext({ rowLabel: label, columnLabel: 'Value' })
+    )
+  ) {
+    return formatDisplayCurrency(parsed);
+  }
+
+  if (isCurrencyTableContext({ rowLabel: label, columnLabel: 'Value' })) {
+    return formatCurrencyInText(raw);
+  }
+
+  return raw || '--';
 }
 
 function getTimelineSourceEvents(svgSpec) {
@@ -1762,6 +1939,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isCollegeFundingModule(module)) {
+    return {
+      label: 'College Funding',
+      token: 'college-funding'
+    };
+  }
+
   if (module?.generated?.loanInputs?.loanKind === 'loan' || module?.generated?.loanInputs) {
     return {
       label: 'Loan',
@@ -1843,6 +2027,21 @@ function buildOverviewMetaItems(module, signalCounts) {
     }
     if (signalCounts.outputs > 0) {
       items.push(pluralizeOverview(signalCounts.outputs, 'output'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'college-funding') {
+    const inputs = module?.generated?.collegeFundingInputs || {};
+    const childCount = Number(inputs.childrenCount || inputs.numberOfChildren);
+    if (Number.isFinite(childCount) && childCount > 0) {
+      items.push(pluralizeOverview(childCount, 'child', 'children'));
+    }
+    if (Array.isArray(inputs.scenarios) && inputs.scenarios.length > 0) {
+      items.push(pluralizeOverview(inputs.scenarios.length, 'scenario'));
+    }
+    if (signalCounts.charts > 0) {
+      items.push(pluralizeOverview(signalCounts.charts, 'chart'));
     }
     return uniqueOverviewItems(items, 3, 22);
   }
@@ -1994,7 +2193,7 @@ function buildOverviewKpiPreview(items) {
 
     const value = document.createElement('div');
     value.className = 'overview-kpi-value';
-    value.textContent = item?.value || '--';
+    value.textContent = formatMetricDisplayValue(item?.label || 'Metric', item?.value || '--');
     metric.appendChild(value);
 
     if (item?.detail) {
@@ -2079,6 +2278,10 @@ function isPensionModule(module) {
   return Boolean(module?.generated?.pensionInputs);
 }
 
+function isCollegeFundingModule(module) {
+  return Boolean(module?.generated?.collegeFundingInputs);
+}
+
 function isLoanProjectionModule(module) {
   return Boolean(module?.generated?.loanInputs);
 }
@@ -2121,6 +2324,14 @@ function getPlaybookDisplayContext(module) {
       key: 'pension',
       heading: 'Retirement Projection',
       guide: CLIENT_GUIDE_COPY.pension
+    };
+  }
+
+  if (isCollegeFundingModule(module)) {
+    return {
+      key: 'collegeFunding',
+      heading: 'College Funding',
+      guide: CLIENT_GUIDE_COPY.collegeFunding
     };
   }
 
@@ -2672,6 +2883,26 @@ export function getChartHydrationModule(module) {
       generated: {
         ...(module.generated || {}),
         charts: getReportChartBlocks(module).map((entry) => entry.chart)
+      }
+    };
+  }
+
+  if (isCollegeFundingModule(module)) {
+    const generatedCharts = Array.isArray(module.generated?.charts) ? module.generated.charts : [];
+    if (generatedCharts.length > 0) {
+      return module;
+    }
+
+    const projection = getCollegeProjection(module);
+    if (!projection) {
+      return module;
+    }
+
+    return {
+      ...module,
+      generated: {
+        ...(module.generated || {}),
+        charts: projection.charts
       }
     };
   }
@@ -3263,7 +3494,11 @@ function buildAssumptionsTableCard(module, {
 
     columns.forEach((_column, index) => {
       const td = document.createElement('td');
-      const cellText = String(safeRow[index] ?? '');
+      const cellText = formatGeneratedTableCell(safeRow[index], {
+        cardTitle: 'Assumptions',
+        rowLabel,
+        columnLabel: columns[index]
+      });
 
       if (editMode && hasInlineEditor && index === valueColumnIndex) {
         const editorCell = createEditableAssumptionCell({
@@ -3282,6 +3517,14 @@ function buildAssumptionsTableCard(module, {
         }
       } else {
         td.textContent = cellText;
+      }
+
+      if (isCurrencyTableContext({
+        cardTitle: 'Assumptions',
+        rowLabel,
+        columnLabel: columns[index]
+      })) {
+        td.classList.add('generated-money-cell');
       }
 
       decorateSelectableTableCell(td, {
@@ -3378,7 +3621,19 @@ function buildTableCard(cardTitle, tableData, {
 
     columns.forEach((column, index) => {
       const td = document.createElement('td');
-      td.textContent = String(safeRow[index] ?? '');
+      td.textContent = formatGeneratedTableCell(safeRow[index], {
+        cardTitle,
+        rowLabel: safeRow[0],
+        columnLabel: column
+      });
+
+      if (isCurrencyTableContext({
+        cardTitle,
+        rowLabel: safeRow[0],
+        columnLabel: column
+      })) {
+        td.classList.add('generated-money-cell');
+      }
 
       if (tableHighlightEnabled) {
         decorateSelectableTableCell(td, {
@@ -4465,7 +4720,7 @@ function buildPbsBucketCard(section, {
 
       const amountEl = document.createElement('span');
       amountEl.className = 'pbs-bucket-row-amount';
-      amountEl.textContent = formatBucketedAmount(amount);
+      amountEl.textContent = formatBucketedCurrency(amount, currencySymbol);
       setPbsValueDataset(amountEl, {
         key: `bucket:${sectionKey}:row:${normalizeSectionToken(label)}`,
         value: amount,
@@ -4488,7 +4743,7 @@ function buildPbsBucketCard(section, {
 
   const totalValue = document.createElement('span');
   totalValue.className = 'pbs-bucket-total-value';
-  totalValue.textContent = formatBucketedAmount(subtotalValue);
+  totalValue.textContent = formatBucketedCurrency(subtotalValue, currencySymbol);
   setPbsValueDataset(totalValue, {
     key: `bucket:${sectionKey}:subtotal`,
     value: subtotalValue,
@@ -4877,7 +5132,7 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
 
       const amountCell = document.createElement('td');
       amountCell.className = 'pbs-amount-col';
-      amountCell.textContent = formatBucketedAmount(amount);
+      amountCell.textContent = formatBucketedCurrency(amount, currencySymbol);
       tr.appendChild(amountCell);
 
       const isNetWorthRow = isSummary && normalizeSectionToken(label) === 'networth';
@@ -4901,7 +5156,7 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
 
       const subtotalValueCell = document.createElement('td');
       subtotalValueCell.className = 'pbs-amount-col';
-      subtotalValueCell.textContent = formatBucketedAmount(Number(section.subtotalValue));
+      subtotalValueCell.textContent = formatBucketedCurrency(Number(section.subtotalValue), currencySymbol);
       subtotalRow.appendChild(subtotalValueCell);
 
       tbody.appendChild(subtotalRow);
@@ -4993,7 +5248,7 @@ function buildOutputsBucketedDetailCard(section, {
 
     const amountCell = document.createElement('td');
     amountCell.className = 'pbs-amount-col';
-    amountCell.textContent = formatBucketedAmount(row[1]);
+    amountCell.textContent = formatBucketedCurrency(row[1], currencySymbol);
     if (normalizedSectionKey) {
       setPbsValueDataset(amountCell, {
         key: `detail:${normalizedSectionKey}:row:${normalizeSectionToken(label)}`,
@@ -5021,7 +5276,7 @@ function buildOutputsBucketedDetailCard(section, {
 
     const subtotalValueCell = document.createElement('td');
     subtotalValueCell.className = 'pbs-amount-col';
-    subtotalValueCell.textContent = formatBucketedAmount(Number(section.subtotalValue));
+    subtotalValueCell.textContent = formatBucketedCurrency(Number(section.subtotalValue), currencySymbol);
     if (normalizedSectionKey) {
       setPbsValueDataset(subtotalValueCell, {
         key: `detail:${normalizedSectionKey}:subtotal`,
@@ -6344,7 +6599,7 @@ function appendArtifactMetricItems(parent, items, {
     if (metric.value) {
       const value = document.createElement('div');
       value.className = 'artifact-metric-value';
-      value.textContent = metric.value;
+      value.textContent = formatMetricDisplayValue(metric.label, metric.value);
       item.appendChild(value);
     }
 
@@ -7201,7 +7456,7 @@ function renderReportKpiRowBlock(block) {
 
     const value = document.createElement('div');
     value.className = 'report-kpi-value';
-    value.textContent = item?.value || '--';
+    value.textContent = formatMetricDisplayValue(item?.label || 'Metric', item?.value || '--');
     metric.appendChild(value);
 
     if (typeof item?.detail === 'string' && item.detail.trim()) {
@@ -7250,7 +7505,7 @@ function renderReportInsightGridBlock(block) {
     if (item?.value) {
       const value = document.createElement('div');
       value.className = 'report-insight-value';
-      value.textContent = item.value;
+      value.textContent = formatMetricDisplayValue(item?.label || 'Insight', item.value);
       insight.appendChild(value);
     }
 
@@ -7522,6 +7777,223 @@ function renderEducationModule(module) {
   return section;
 }
 
+function getCollegeProjection(module) {
+  try {
+    return computeCollegeFundingProjection(module?.generated?.collegeFundingInputs || {});
+  } catch (error) {
+    console.warn('[CallCanvas] college funding projection unavailable for render', error);
+    return null;
+  }
+}
+
+function buildCollegeHeroMetric(label, value, detail, tone = '') {
+  const item = document.createElement('div');
+  item.className = 'college-hero-metric';
+  if (tone) {
+    item.dataset.tone = tone;
+  }
+
+  const labelEl = document.createElement('span');
+  labelEl.className = 'college-hero-metric-label';
+  labelEl.textContent = label;
+  item.appendChild(labelEl);
+
+  const valueEl = document.createElement('strong');
+  valueEl.className = 'college-hero-metric-value';
+  valueEl.textContent = value;
+  item.appendChild(valueEl);
+
+  if (detail) {
+    const detailEl = document.createElement('span');
+    detailEl.className = 'college-hero-metric-detail';
+    detailEl.textContent = detail;
+    item.appendChild(detailEl);
+  }
+
+  return item;
+}
+
+function buildCollegeFundingHeroCard(projection) {
+  const debug = projection?.debug || {};
+  const inputs = debug.inputs || {};
+  const card = document.createElement('section');
+  card.className = 'generated-card college-hero-card';
+  card.dataset.generatedCard = 'college-hero';
+
+  const copy = document.createElement('div');
+  copy.className = 'college-hero-copy';
+
+  const kicker = document.createElement('p');
+  kicker.className = 'college-hero-kicker';
+  kicker.textContent = 'Funding range';
+  copy.appendChild(kicker);
+
+  const title = document.createElement('h3');
+  title.className = 'college-hero-title';
+  title.textContent = `${formatDisplayCurrency(debug.todayRange?.low || 0)} to ${formatDisplayCurrency(debug.todayRange?.high || 0)}`;
+  copy.appendChild(title);
+
+  const subtitle = document.createElement('p');
+  subtitle.className = 'college-hero-subtitle';
+  subtitle.textContent = `Today’s-money targets for ${inputs.childrenCount || 0} ${inputs.childrenCount === 1 ? 'child' : 'children'}, with future nominal costs shown separately for planning cashflow.`;
+  copy.appendChild(subtitle);
+
+  card.appendChild(copy);
+
+  const metrics = document.createElement('div');
+  metrics.className = 'college-hero-metrics';
+  metrics.appendChild(buildCollegeHeroMetric(
+    'College starts',
+    String(debug.collegeStartYear || ''),
+    `${debug.yearsUntilCollege || 0} years from now`
+  ));
+  metrics.appendChild(buildCollegeHeroMetric(
+    'Stress test',
+    formatDisplayCurrency(debug.stressScenario?.costToday || 0),
+    debug.stressScenario?.title || '',
+    'warning'
+  ));
+  metrics.appendChild(buildCollegeHeroMetric(
+    'Future nominal high',
+    formatDisplayCurrency(debug.nominalRange?.high || 0),
+    `To ${debug.collegeEndYear || ''}`
+  ));
+  card.appendChild(metrics);
+
+  return card;
+}
+
+function buildCollegeFundingScenarioCard(projection) {
+  const scenarios = Array.isArray(projection?.debug?.scenarios) ? projection.debug.scenarios : [];
+  const card = document.createElement('section');
+  card.className = 'generated-card college-scenarios-card';
+  card.dataset.generatedCard = 'college-scenarios';
+
+  const { header } = buildGeneratedCardHeader('Scenario Comparison');
+  card.appendChild(header);
+
+  const list = document.createElement('div');
+  list.className = 'college-scenario-grid';
+
+  scenarios.forEach((scenario) => {
+    const item = document.createElement('article');
+    item.className = 'college-scenario-card';
+    if (scenario.tone) {
+      item.dataset.tone = scenario.tone;
+    }
+
+    const top = document.createElement('div');
+    top.className = 'college-scenario-top';
+
+    const title = document.createElement('h4');
+    title.className = 'college-scenario-title';
+    title.textContent = scenario.title;
+    top.appendChild(title);
+
+    const badge = document.createElement('span');
+    badge.className = 'college-scenario-badge';
+    badge.textContent = scenario.category || 'Scenario';
+    top.appendChild(badge);
+    item.appendChild(top);
+
+    const values = document.createElement('div');
+    values.className = 'college-scenario-values';
+    values.appendChild(buildCollegeHeroMetric(
+      'Today’s terms',
+      formatDisplayCurrency(scenario.costToday),
+      `${formatDisplayCurrency(scenario.annualTodayTotal)} annual family cost`
+    ));
+    values.appendChild(buildCollegeHeroMetric(
+      'Future nominal',
+      formatDisplayCurrency(scenario.nominalCost),
+      `${formatDisplayCurrency(scenario.inflationImpact)} inflation impact`
+    ));
+    item.appendChild(values);
+
+    if (scenario.interpretation) {
+      const interpretation = document.createElement('p');
+      interpretation.className = 'college-scenario-interpretation';
+      interpretation.textContent = scenario.interpretation;
+      item.appendChild(interpretation);
+    }
+
+    list.appendChild(item);
+  });
+
+  card.appendChild(list);
+  return card;
+}
+
+function renderCollegeFundingModule(module, {
+  showPensionToggle = true,
+  readOnly = false,
+  onPatchInputs = null,
+  assumptionsEditorStatus = null
+} = {}) {
+  const projection = getCollegeProjection(module);
+  const generatedOutputs = module?.generated?.outputs;
+  const generatedAssumptions = module?.generated?.assumptions;
+  const generatedCharts = Array.isArray(module?.generated?.charts) ? module.generated.charts : [];
+  const hasGeneratedOutputs = Array.isArray(generatedOutputs?.rows) && generatedOutputs.rows.length > 0;
+  const hasGeneratedAssumptions = Array.isArray(generatedAssumptions?.rows) && generatedAssumptions.rows.length > 0;
+  const displayModule = projection
+    ? {
+      ...module,
+      generated: {
+        ...(module.generated || {}),
+        assumptions: hasGeneratedAssumptions ? generatedAssumptions : projection.assumptionsTable,
+        outputs: hasGeneratedOutputs ? generatedOutputs : projection.outputsTable,
+        charts: generatedCharts.length > 0 ? generatedCharts : projection.charts
+      }
+    }
+    : module;
+  const displayContext = getPlaybookDisplayContext(module);
+  const section = document.createElement('section');
+  section.className = 'generated-section college-generated-section';
+
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = displayContext.heading;
+
+  const grid = document.createElement('div');
+  grid.className = 'generated-grid college-generated-grid';
+
+  if (projection) {
+    grid.appendChild(buildCollegeFundingHeroCard(projection));
+  }
+
+  grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || '', {
+    guideText: displayContext.guide
+  }));
+
+  if (projection) {
+    grid.appendChild(buildCollegeFundingScenarioCard(projection));
+  }
+
+  const chartsForDisplay = Array.isArray(displayModule?.generated?.charts) ? displayModule.generated.charts : [];
+
+  grid.appendChild(buildChartsCard(displayModule, chartsForDisplay, {
+    showPensionToggle,
+    readOnly
+  }));
+
+  grid.appendChild(buildTableCard('Scenario Outputs', displayModule?.generated?.outputs || {}, {
+    dataGeneratedCard: 'outputs',
+    module: displayModule,
+    tableKind: 'outputs'
+  }));
+
+  grid.appendChild(buildAssumptionsTableCard(displayModule, {
+    onPatchInputs,
+    status: assumptionsEditorStatus,
+    readOnly
+  }));
+
+  section.appendChild(heading);
+  section.appendChild(grid);
+  return section;
+}
+
 function buildGeneratedSection(module, {
   showPensionToggle = true,
   readOnly = false,
@@ -7535,6 +8007,7 @@ function buildGeneratedSection(module, {
     outputs: { columns: [], rows: [] },
     tables: [],
     pbsInputs: null,
+    collegeFundingInputs: null,
     outputsBucketed: null,
     education: null,
     report: null,
@@ -7547,6 +8020,15 @@ function buildGeneratedSection(module, {
 
   if (isEducationModule(displayModule)) {
     return renderEducationModule(displayModule);
+  }
+
+  if (isCollegeFundingModule(displayModule)) {
+    return renderCollegeFundingModule(displayModule, {
+      showPensionToggle,
+      readOnly,
+      onPatchInputs,
+      assumptionsEditorStatus
+    });
   }
 
   const section = document.createElement('section');
@@ -7654,7 +8136,7 @@ export function patchFocusedGeneratedCards({
   }
 
   const generatedSection = focusedCard.querySelector('.generated-section');
-  if (isReportModule(module) || isEducationModule(module)) {
+  if (isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module)) {
     if (!generatedSection) {
       return;
     }
