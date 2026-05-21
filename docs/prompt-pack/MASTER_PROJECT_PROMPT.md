@@ -66,6 +66,16 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - 2 to 4 sentences unless the selected playbook says otherwise.
   - Professional, client-facing, and suitable for screen-sharing.
   - No tool references.
+  - Must be understandable without knowing the playbook name.
+  - Must answer, in plain English:
+    1. What this module is doing.
+    2. Which client facts are driving it.
+    3. How to read the first screen.
+    4. What decision, risk, or verification point to focus on next.
+  - Do not mention `browser app`, `payload`, `engine`, `runtime`, `JSON`, validators, schemas, or internal implementation details.
+  - Avoid unexplained jargon such as `target-income mode`; explain the idea instead.
+  - Prefer `you`, `your plan`, and `your decision` where direct client-facing wording is clearer.
+  - Keep Gerry-only assumptions in SECTION 1 NOTES, not in client-facing summary copy.
 - Tables:
   - Use `{ "columns": [...], "rows": [[...]] }`.
   - Every row length must match the column count.
@@ -80,6 +90,9 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Use optional chart `subtitle`, `display`, `annotations`, and `insights` only as structured metadata.
   - `insights[]` and `annotations[]` entries must be objects, never plain strings.
   - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
+
+## Client Explanation Standard
+Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 
 ## Runtime-Safe Module Boundaries
 - `generated.pensionInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
@@ -323,6 +336,8 @@ For a property sale case, remove or reduce the property in `Legacy`, reduce the 
 
 ### Summary Rules
 - `generated.summaryHtml` should explain the four-bucket view in 2 to 4 sentences.
+- Define the buckets as jobs for your money: spendable reserves, lifestyle assets, retirement funding, concentrated or optional assets, and debts.
+- Tell the client how to read the first screen: start with net worth, then look at where wealth is tied up versus available.
 - If `annualExpenditure` is provided, you may mention the liquidity reserve in plain English.
 - If both `annualExpenditure` and `currentAge` are provided, you may mention long-term funding pressure in plain English.
 - Do not mention internal threshold colors or implementation details.
@@ -527,7 +542,9 @@ Rules:
 
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Explain the chosen mode in plain language.
+- Explain the retirement-income scenario in plain language, using the client's age, salary, pension value, contributions, retirement age, and target or affordable income goal where known.
+- If rental income, State Pension, DB income, or a couple/household projection is included, say how it fits into the retirement-income picture.
+- Tell the client how to read the first screen: start with the readiness summary and chart, then check the assumptions that drive the result.
 - Do not state whether the client is on track, short, surplus, or does not need a pension pot; the runtime calculates and appends that readiness wording from the pension outputs.
 - Do not promise exact future outcomes.
 - Do not mention internal validators, engines, charts, or JSON.
@@ -608,7 +625,8 @@ Use placeholders only when needed to keep an exploratory module moving:
 
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Describe the scenario in plain English.
+- Describe the scenario in plain English using the balance, rate, term or end date, repayment structure, and overpayment facts supplied.
+- Tell the client how to read the first screen: focus on repayment, term/end date, interest cost, and how any overpayment changes the path.
 - Mention overpayments only if Gerry gave them.
 - Do not claim that the modeled payment path is the only possible structure.
 
@@ -695,7 +713,9 @@ Use placeholders only when needed to keep an exploratory module moving:
 
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Explain the scenario in plain English using loan wording, not mortgage wording.
+- Explain the scenario in plain English using non-housing loan wording, not mortgage wording.
+- Use the balance, rate, term/end date or fixed payment, and overpayment facts supplied.
+- Tell the client how to read the first screen: focus on payoff timing, interest cost, payment structure, and the effect of any overpayment.
 - Mention overpayments only if Gerry gave them.
 
 ### Omit By Default
@@ -868,7 +888,10 @@ Do not add a chart just because charts are available. If there are no real numbe
 
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Explain what the topic is and what the client should focus on.
+- Define the topic before giving the decision lens, especially for unfamiliar schemes, tax rules, trusts, or family-finance concepts.
+- Say what the client should learn, decide, or verify after reading the module.
+- Tell the client how to read the first screen: start with the plain-English frame and hero visual, then use steps, sections, and references for detail.
+- For unfamiliar topics, make the first written section `Plain English Frame`.
 - Keep the tone calm, direct, and clear.
 
 ### Omit By Default
@@ -1137,7 +1160,9 @@ This style should still work:
 
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Tell the client what the report is about and what to focus on.
+- Identify the source topic, the practical implication for the client, and the part of the report to read first.
+- Tell the client how to read the first screen: start with the executive picture or strongest opener, then use supporting visuals, scenarios, and verification points.
+- The first block should be chosen by content, but it must orient the client rather than act as decorative structure.
 - Keep it screen-share friendly and plain English.
 
 ### Omit By Default
@@ -1231,7 +1256,9 @@ Do not overbuild it. One strong visual comparison is better than several filler 
 
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Say which protection theme appears more relevant right now and why.
+- Explain income protection and serious illness cover as support buffers, not quotes or underwriting outcomes.
+- Say which protection theme appears more relevant right now from the supplied facts and why.
+- Tell the client how to read the first screen: start with the support buffer, then check employer benefits, contract terms, and any assumptions before acting.
 - Keep the tone calm and advisory.
 
 ### Omit By Default

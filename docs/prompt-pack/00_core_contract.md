@@ -66,6 +66,16 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - 2 to 4 sentences unless the selected playbook says otherwise.
   - Professional, client-facing, and suitable for screen-sharing.
   - No tool references.
+  - Must be understandable without knowing the playbook name.
+  - Must answer, in plain English:
+    1. What this module is doing.
+    2. Which client facts are driving it.
+    3. How to read the first screen.
+    4. What decision, risk, or verification point to focus on next.
+  - Do not mention `browser app`, `payload`, `engine`, `runtime`, `JSON`, validators, schemas, or internal implementation details.
+  - Avoid unexplained jargon such as `target-income mode`; explain the idea instead.
+  - Prefer `you`, `your plan`, and `your decision` where direct client-facing wording is clearer.
+  - Keep Gerry-only assumptions in SECTION 1 NOTES, not in client-facing summary copy.
 - Tables:
   - Use `{ "columns": [...], "rows": [[...]] }`.
   - Every row length must match the column count.
@@ -80,6 +90,9 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Use optional chart `subtitle`, `display`, `annotations`, and `insights` only as structured metadata.
   - `insights[]` and `annotations[]` entries must be objects, never plain strings.
   - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
+
+## Client Explanation Standard
+Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 
 ## Runtime-Safe Module Boundaries
 - `generated.pensionInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.

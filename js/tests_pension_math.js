@@ -633,7 +633,7 @@ export function runPensionMathTests() {
     assertApprox(overThreshold.debug.retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal, 126000, 0.01, 'Over-€2m ARF minimum should be 6%');
   }));
 
-  cases.push(runCase('Mandatory withdrawal surplus is shown when income exceeds target', () => {
+  cases.push(runCase('Mandatory withdrawal surplus is calculated and exported without charting', () => {
     const projection = computePensionProjection({
       ...BASE_TARGET_INPUTS,
       currentAge: 60,
@@ -649,8 +649,22 @@ export function runPensionMathTests() {
       targetIncomeToday: 10000,
       includeStatePension: false
     });
+    const drawdownChart = projection.charts.find((chart) => chart.display?.variant === 'pension-drawdown-composite');
+    assert(drawdownChart, 'Drawdown composite chart should be present');
+    const rootLabels = drawdownChart.datasets.map((dataset) => dataset.label);
+    const incomeLabels = drawdownChart.panels.income.datasets.map((dataset) => dataset.label);
+    const csvLabels = drawdownChart.panels.income.csvDatasets.map((dataset) => dataset.label);
+    const surplusCsvDataset = drawdownChart.panels.income.csvDatasets.find((dataset) => dataset.label === 'Surplus (current)');
 
-    assert(projection.debug.retirementSimulationProjectedCurrent.surpluses[0] > 0, 'Mandatory withdrawal surplus should be shown');
+    assert(projection.debug.retirementSimulationProjectedCurrent.surpluses[0] > 0, 'Mandatory withdrawal surplus should still be calculated');
+    assert(rootLabels.every((label) => !String(label).startsWith('Surplus')), 'Root chart datasets should not include surplus');
+    assert(incomeLabels.every((label) => !String(label).startsWith('Surplus')), 'Visible income panel datasets should not include surplus');
+    assert(csvLabels.includes('Surplus (current)'), 'CSV datasets should include current surplus');
+    assert(csvLabels.includes('Surplus (max)'), 'CSV datasets should include max surplus');
+    assert(
+      surplusCsvDataset.data[0] === projection.debug.retirementSimulationProjectedCurrent.surpluses[0],
+      'CSV surplus should match the calculated current surplus'
+    );
   }));
 
   cases.push(runCase('Target-mode required-pot solver works around ARF threshold', () => {

@@ -8,7 +8,7 @@ Representative payloads for testing the upgraded module renderer through the exi
 {
   "title": "Personal Balance Sheet - Client",
   "generated": {
-    "summaryHtml": "<p>The balance sheet separates assets by job: lifestyle, liquidity, longevity, and legacy. This helps keep the discussion focused on what is spendable, what supports future income, and what is more concentrated or optional.</p>",
+    "summaryHtml": "<p>This balance sheet groups your assets by the job they do: lifestyle, short-term liquidity, retirement funding, and concentrated or optional legacy wealth. Start with net worth, then look at how much is readily available versus tied up in property, pensions, or higher-risk holdings. The main decision is whether the current mix gives enough accessible reserves while still supporting long-term income.</p>",
     "pbsInputs": {
       "annualExpenditure": 42000,
       "currentAge": 44
@@ -69,7 +69,7 @@ Representative payloads for testing the upgraded module renderer through the exi
         {
           "id": "sell-rental-property",
           "title": "Sell Rental Property",
-          "summaryHtml": "<p>This case shows the buy-to-let property sold, the mortgage cleared, and surplus proceeds moved into liquid reserves.</p>",
+          "summaryHtml": "<p>This case shows what changes if the buy-to-let property is sold, the mortgage is cleared, and surplus proceeds move into liquid reserves. Read it against the current balance sheet to see whether the same net worth becomes more flexible and less concentrated. The key question is whether extra liquidity is worth giving up the rental-property exposure.</p>",
           "sections": [
             {
               "key": "lifestyle",
@@ -162,7 +162,7 @@ Representative payloads for testing the upgraded module renderer through the exi
 {
   "title": "Pension Projection - Client",
   "generated": {
-    "summaryHtml": "<p>This projection uses target-income mode and models the pension path from the supplied age, salary, fund value, contributions, and growth assumption. The browser app will calculate the repeatable outputs after the payload is applied.</p>",
+    "summaryHtml": "<p>This projection tests whether your current pension value, salary, contributions, retirement age, and growth assumption can support a target retirement income. Start with the readiness summary and chart, then check the assumptions table to see which facts are driving the result. Treat the figures as a planning scenario to review, not a promise of future pension income.</p>",
     "pensionInputs": {
       "currentAge": 42,
       "retirementAge": 67,
@@ -193,7 +193,7 @@ Representative payloads for testing the upgraded module renderer through the exi
 {
   "title": "Pension Projection - John and Mary",
   "generated": {
-    "summaryHtml": "<p>This projection models two pension pots working toward a shared household retirement income target. The browser app will calculate the repeatable pension outputs, State Pension, DB income, ARF minimum withdrawals, and charts after the payload is applied.</p>",
+    "summaryHtml": "<p>This projection looks at John and Mary as one household against a shared retirement-income target. It includes their salaries, pension values, contributions, retirement ages, rental income, State Pension, and Mary's DB pension so the first screen can show how the income stack fits together. Start with the household readiness summary and chart, then check the assumptions that need verifying.</p>",
     "pensionInputs": {
       "currentYear": 2026,
       "inflationRate": 0.02,
@@ -228,7 +228,7 @@ Representative payloads for testing the upgraded module renderer through the exi
 {
   "title": "Mortgage Projection - Client",
   "generated": {
-    "summaryHtml": "<p>This mortgage projection models a repayment loan using the current balance, interest rate, term dates, and annual overpayment supplied. The output should be treated as a scenario view rather than a promise of future rates or lender treatment.</p>",
+    "summaryHtml": "<p>This mortgage projection shows how the current balance, interest rate, term dates, repayment structure, and annual overpayment shape the repayment path. Start with the repayment, end-date, and interest figures, then use the chart to see how overpayments change the path. Treat this as a scenario view to discuss, not a promise of future rates or lender treatment.</p>",
     "mortgageInputs": {
       "currentBalance": 320000,
       "annualInterestRate": 0.0425,
@@ -248,7 +248,7 @@ Representative payloads for testing the upgraded module renderer through the exi
 {
   "title": "Loan Projection - Client",
   "generated": {
-    "summaryHtml": "<p>This loan projection models a non-housing repayment loan using the stated balance, rate, remaining term, and annual overpayment. The browser app owns the repayment calculation after the payload is applied.</p>",
+    "summaryHtml": "<p>This loan projection shows how the stated balance, rate, remaining term, and annual overpayment affect payoff timing and interest cost. Start with the repayment and end-date figures, then check how the overpayment changes the path. The decision is whether the faster payoff is worth the cash-flow tradeoff.</p>",
     "loanInputs": {
       "currentBalance": 18000,
       "annualInterestRate": 0.085,
@@ -271,7 +271,7 @@ Representative payloads for testing the upgraded module renderer through the exi
 {
   "title": "Education - Help to Buy Decision Path",
   "generated": {
-    "summaryHtml": "<p>Help to Buy is easiest to understand as a sequence of checks rather than a single grant figure. The client should separate confirmed savings from conditional support until eligibility is verified.</p>",
+    "summaryHtml": "<p>Help to Buy is a tax-refund support that may help fund a qualifying new-build purchase, but only if the buyer, property, tax record, and claim sequence all line up. Start with the funding stack and decision path to separate confirmed savings from conditional support. The key next step is to verify eligibility before treating the refund as part of the dependable deposit.</p>",
     "education": {
       "topic": "Help to Buy for first-time buyers",
       "audience": "First-time buyer couple in Ireland",
@@ -346,7 +346,7 @@ Representative payloads for testing the upgraded module renderer through the exi
 {
   "title": "Report - Retirement Readiness Review",
   "generated": {
-    "summaryHtml": "<p>This report frames retirement readiness around resilience, funding path, and decision points. The aim is to show what is strong, what needs testing, and what should be verified before acting.</p>",
+    "summaryHtml": "<p>This report frames retirement readiness around resilience, funding path, and the decisions that still need testing. Start with the executive picture to see the main signal, then use the chart, scenario comparison, and verification points to understand what is strong and what needs checking. The next focus is whether contribution affordability and retirement-income assumptions are strong enough before acting.</p>",
     "report": {
       "title": "Retirement readiness review",
       "blocks": [

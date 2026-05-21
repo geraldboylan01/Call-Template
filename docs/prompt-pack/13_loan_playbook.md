@@ -71,7 +71,9 @@ Use placeholders only when needed to keep an exploratory module moving:
 
 ## Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Explain the scenario in plain English using loan wording, not mortgage wording.
+- Explain the scenario in plain English using non-housing loan wording, not mortgage wording.
+- Use the balance, rate, term/end date or fixed payment, and overpayment facts supplied.
+- Tell the client how to read the first screen: focus on payoff timing, interest cost, payment structure, and the effect of any overpayment.
 - Mention overpayments only if Gerry gave them.
 
 ## Omit By Default

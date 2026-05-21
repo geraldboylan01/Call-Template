@@ -65,7 +65,8 @@ Use placeholders only when needed to keep an exploratory module moving:
 
 ## Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Describe the scenario in plain English.
+- Describe the scenario in plain English using the balance, rate, term or end date, repayment structure, and overpayment facts supplied.
+- Tell the client how to read the first screen: focus on repayment, term/end date, interest cost, and how any overpayment changes the path.
 - Mention overpayments only if Gerry gave them.
 - Do not claim that the modeled payment path is the only possible structure.
 

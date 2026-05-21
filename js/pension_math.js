@@ -1295,8 +1295,16 @@ function buildAccumulationChart(member, currentScenario, maxScenario) {
   };
 }
 
-function buildIncomeStackDatasets(simulation, suffix, hidden = false) {
-  return [
+function buildIncomeSurplusDataset(simulation, suffix, hidden = false) {
+  return {
+    label: `Surplus (${suffix})`,
+    data: simulation.surpluses,
+    hidden
+  };
+}
+
+function buildIncomeStackDatasets(simulation, suffix, hidden = false, { includeSurplus = false } = {}) {
+  const datasets = [
     {
       label: `Employment income (${suffix})`,
       data: simulation.employmentIncome,
@@ -1331,13 +1339,14 @@ function buildIncomeStackDatasets(simulation, suffix, hidden = false) {
       label: `Shortfall (${suffix})`,
       data: simulation.shortfalls,
       hidden
-    },
-    {
-      label: `Surplus (${suffix})`,
-      data: simulation.surpluses,
-      hidden
     }
   ];
+
+  if (includeSurplus) {
+    datasets.push(buildIncomeSurplusDataset(simulation, suffix, hidden));
+  }
+
+  return datasets;
 }
 
 function buildTerminalBalanceLabel(inputs) {
@@ -1399,6 +1408,18 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
     },
     ...buildIncomeStackDatasets(currentSimulation, 'current', false),
     ...buildIncomeStackDatasets(maxSimulation, 'max', true)
+  ].map((dataset) => ({ ...dataset, forceYAxisID: 'y' }));
+  const incomeCsvDatasets = [
+    {
+      label: 'Required income',
+      data: currentSimulation.requiredIncome,
+      borderColor: '#ffffff',
+      backgroundColor: 'rgba(255, 255, 255, 0.16)',
+      pointBackgroundColor: '#ffffff',
+      pointBorderColor: '#ffffff'
+    },
+    ...buildIncomeStackDatasets(currentSimulation, 'current', false, { includeSurplus: true }),
+    ...buildIncomeStackDatasets(maxSimulation, 'max', true, { includeSurplus: true })
   ].map((dataset) => ({ ...dataset, forceYAxisID: 'y' }));
 
   return {
@@ -1469,6 +1490,7 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
         type: 'bar',
         labels: currentSimulation.labels,
         datasets: incomeDatasets,
+        csvDatasets: incomeCsvDatasets,
         display: {
           stacked: true,
           valueFormat: 'currency',

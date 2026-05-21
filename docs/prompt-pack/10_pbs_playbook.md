@@ -114,6 +114,8 @@ For a property sale case, remove or reduce the property in `Legacy`, reduce the 
 
 ## Summary Rules
 - `generated.summaryHtml` should explain the four-bucket view in 2 to 4 sentences.
+- Define the buckets as jobs for your money: spendable reserves, lifestyle assets, retirement funding, concentrated or optional assets, and debts.
+- Tell the client how to read the first screen: start with net worth, then look at where wealth is tied up versus available.
 - If `annualExpenditure` is provided, you may mention the liquidity reserve in plain English.
 - If both `annualExpenditure` and `currentAge` are provided, you may mention long-term funding pressure in plain English.
 - Do not mention internal threshold colors or implementation details.

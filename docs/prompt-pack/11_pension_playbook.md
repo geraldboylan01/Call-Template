@@ -214,7 +214,9 @@ Rules:
 
 ## Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Explain the chosen mode in plain language.
+- Explain the retirement-income scenario in plain language, using the client's age, salary, pension value, contributions, retirement age, and target or affordable income goal where known.
+- If rental income, State Pension, DB income, or a couple/household projection is included, say how it fits into the retirement-income picture.
+- Tell the client how to read the first screen: start with the readiness summary and chart, then check the assumptions that drive the result.
 - Do not state whether the client is on track, short, surplus, or does not need a pension pot; the runtime calculates and appends that readiness wording from the pension outputs.
 - Do not promise exact future outcomes.
 - Do not mention internal validators, engines, charts, or JSON.

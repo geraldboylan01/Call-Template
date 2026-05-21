@@ -158,7 +158,10 @@ Do not add a chart just because charts are available. If there are no real numbe
 
 ## Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Explain what the topic is and what the client should focus on.
+- Define the topic before giving the decision lens, especially for unfamiliar schemes, tax rules, trusts, or family-finance concepts.
+- Say what the client should learn, decide, or verify after reading the module.
+- Tell the client how to read the first screen: start with the plain-English frame and hero visual, then use steps, sections, and references for detail.
+- For unfamiliar topics, make the first written section `Plain English Frame`.
 - Keep the tone calm, direct, and clear.
 
 ## Omit By Default

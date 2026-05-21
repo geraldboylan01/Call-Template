@@ -82,6 +82,15 @@ const PBS_BUCKET_DEFINITIONS = Object.freeze({
   longevity: 'Pensions and long-term investments intended to fund later-life income.',
   legacy: 'Illiquid, concentrated, optional, or higher-risk assets such as property, business interests, or single holdings.'
 });
+const CLIENT_GUIDE_COPY = Object.freeze({
+  pbs: 'Start with net worth, then read the buckets as jobs for your money: spending reserves, retirement funding, concentrated assets, and debts.',
+  pension: 'Start with the readiness summary and chart, then use the assumptions table to see which facts drive the projection.',
+  mortgage: 'Start with repayment, term, and interest; the chart and outputs show how overpayments change the path.',
+  loan: 'Start with payoff timing and interest cost; the assumptions show the balance, rate, payment structure, and overpayment being tested.',
+  education: 'Start with the plain-English frame and hero visual, then use the steps and references for detail.',
+  report: 'Start with the executive picture, then read supporting visuals, scenarios, and verification points.',
+  protection: 'Start with the support buffer and employer-check items; these figures are planning anchors, not insurer quotes.'
+});
 let pbsInfoIdCounter = 0;
 let activePbsInfoButton = null;
 let pbsInfoDismissHandlersBound = false;
@@ -2063,6 +2072,128 @@ function isPensionModule(module) {
   return Boolean(module?.generated?.pensionInputs);
 }
 
+function isLoanProjectionModule(module) {
+  return Boolean(module?.generated?.loanInputs);
+}
+
+function isMortgageProjectionModule(module) {
+  return Boolean(module?.generated?.mortgageInputs && !isLoanProjectionModule(module));
+}
+
+function isProtectionReportModule(module) {
+  if (!isReportModule(module)) {
+    return false;
+  }
+
+  const text = [
+    module?.title,
+    module?.generated?.report?.title,
+    module?.generated?.summaryHtml
+  ]
+    .map((value) => (typeof value === 'string' ? htmlToPlainText(value) : ''))
+    .join(' ')
+    .toLowerCase();
+
+  return text.includes('protection')
+    || text.includes('income protection')
+    || text.includes('serious illness')
+    || text.includes('illness cover');
+}
+
+function getPlaybookDisplayContext(module) {
+  if (isPersonalBalanceSheetModule(module)) {
+    return {
+      key: 'pbs',
+      heading: 'Personal Balance Sheet',
+      guide: CLIENT_GUIDE_COPY.pbs
+    };
+  }
+
+  if (isPensionModule(module)) {
+    return {
+      key: 'pension',
+      heading: 'Pension Projection',
+      guide: CLIENT_GUIDE_COPY.pension
+    };
+  }
+
+  if (isLoanProjectionModule(module)) {
+    return {
+      key: 'loan',
+      heading: 'Loan Projection',
+      guide: CLIENT_GUIDE_COPY.loan
+    };
+  }
+
+  if (isMortgageProjectionModule(module)) {
+    return {
+      key: 'mortgage',
+      heading: 'Mortgage Projection',
+      guide: CLIENT_GUIDE_COPY.mortgage
+    };
+  }
+
+  if (isEducationModule(module)) {
+    return {
+      key: 'education',
+      heading: 'Education Guide',
+      guide: CLIENT_GUIDE_COPY.education
+    };
+  }
+
+  if (isProtectionReportModule(module)) {
+    return {
+      key: 'protection',
+      heading: 'Protection Planning',
+      guide: CLIENT_GUIDE_COPY.protection
+    };
+  }
+
+  if (isReportModule(module)) {
+    return {
+      key: 'report',
+      heading: 'Client Report',
+      guide: CLIENT_GUIDE_COPY.report
+    };
+  }
+
+  return {
+    key: 'generated',
+    heading: 'Generated Content',
+    guide: ''
+  };
+}
+
+function normalizeGuideComparisonText(value) {
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function shouldRenderClientGuide(summaryHtml, guideText) {
+  const guide = normalizeGuideComparisonText(guideText);
+  if (!guide) {
+    return false;
+  }
+
+  const summary = normalizeGuideComparisonText(htmlToPlainText(summaryHtml || ''));
+  return !summary.includes(guide);
+}
+
+function buildClientGuideLine(summaryHtml, guideText) {
+  if (!shouldRenderClientGuide(summaryHtml, guideText)) {
+    return null;
+  }
+
+  const guide = document.createElement('p');
+  guide.className = 'client-guide-line';
+  guide.textContent = guideText;
+  return guide;
+}
+
 function isAffordablePensionMode(module) {
   const inputs = module?.generated?.pensionInputs;
   return Boolean(inputs && inputs.incomeMode === 'affordable' && inputs.minDrawdownMode !== true);
@@ -3756,15 +3887,24 @@ function buildPbsBucketTitleLine(title, sectionToken) {
   return titleLine;
 }
 
-function buildPbsLeadCopy(summaryHtml) {
+function buildPbsLeadCopy(summaryHtml, guideText = '') {
   const safeHtml = sanitizeSummaryHtml(summaryHtml || '');
-  if (!safeHtml) {
+  const guideLine = buildClientGuideLine(safeHtml, guideText);
+  if (!safeHtml && !guideLine) {
     return null;
   }
 
   const lead = document.createElement('div');
   lead.className = 'pbs-main-summary generated-summary-content';
-  lead.innerHTML = safeHtml;
+  if (guideLine) {
+    lead.appendChild(guideLine);
+  }
+  if (safeHtml) {
+    const summary = document.createElement('div');
+    summary.className = 'generated-summary-copy';
+    summary.innerHTML = safeHtml;
+    lead.appendChild(summary);
+  }
   return lead;
 }
 
@@ -4563,7 +4703,8 @@ function buildOutputsBucketedDetailCard(section, {
 }
 
 function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements = {}, {
-  summaryHtml = ''
+  summaryHtml = '',
+  guideText = ''
 } = {}) {
   const sections = outputsBucketed.sections;
   const assetSections = PBS_ASSET_SECTION_KEYS.map((key) => (
@@ -4577,7 +4718,7 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
   const outputStack = document.createElement('div');
   outputStack.className = 'pbs-outputs-stack';
 
-  const leadCopy = buildPbsLeadCopy(summaryHtml);
+  const leadCopy = buildPbsLeadCopy(summaryHtml, guideText);
   if (leadCopy) {
     outputStack.appendChild(leadCopy);
   }
@@ -4955,6 +5096,7 @@ function buildPbsScenarioSwitcher(cases, onSelect) {
 function buildPbsScenarioMatrixContent(module, outputsBucketed, {
   summaryHtml = ''
 } = {}) {
+  const displayContext = getPlaybookDisplayContext(module);
   const cases = getPbsScenarioCases(outputsBucketed, summaryHtml)
     .filter((pbsCase, index) => (
       index === 0
@@ -4984,7 +5126,8 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
     const selectedOutputsBucketed = getOutputsBucketedForPbsCase(outputsBucketed, nextCase);
     const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, selectedOutputsBucketed);
     const nextContent = buildOutputsBucketedMatrixContent(selectedOutputsBucketed, sectionEnhancements, {
-      summaryHtml: nextCase.summaryHtml
+      summaryHtml: nextCase.summaryHtml,
+      guideText: displayContext.guide
     });
 
     if (!nextContent) {
@@ -5078,18 +5221,24 @@ function buildOutputsBucketedCard(module, outputsBucketed, {
   return card;
 }
 
-function buildSummaryCard(summaryHtml) {
+function buildSummaryCard(summaryHtml, {
+  guideText = ''
+} = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-summary-card';
   card.dataset.generatedCard = 'summary';
 
-  const { header } = buildGeneratedCardHeader('Summary');
+  const { header } = buildGeneratedCardHeader('Client guide');
   card.appendChild(header);
 
   const content = document.createElement('div');
   content.className = 'generated-summary-content';
 
   const safeHtml = sanitizeSummaryHtml(summaryHtml || '');
+  const guideLine = buildClientGuideLine(safeHtml, guideText);
+  if (guideLine) {
+    content.appendChild(guideLine);
+  }
 
   if (!safeHtml) {
     const empty = document.createElement('p');
@@ -5097,7 +5246,10 @@ function buildSummaryCard(summaryHtml) {
     empty.textContent = 'No generated summary yet.';
     content.appendChild(empty);
   } else {
-    content.innerHTML = safeHtml;
+    const summary = document.createElement('div');
+    summary.className = 'generated-summary-copy';
+    summary.innerHTML = safeHtml;
+    content.appendChild(summary);
   }
 
   card.appendChild(content);
@@ -6387,8 +6539,10 @@ function renderReportSourceListBlock(block) {
   return card;
 }
 
-function renderReportSummaryCard(summaryHtml) {
-  const card = buildSummaryCard(summaryHtml || '');
+function renderReportSummaryCard(summaryHtml, module) {
+  const card = buildSummaryCard(summaryHtml || '', {
+    guideText: getPlaybookDisplayContext(module).guide
+  });
   card.classList.add('report-block', 'report-summary-block');
   card.dataset.reportBlockType = 'summary';
   return card;
@@ -6656,14 +6810,13 @@ function renderReportBlock(module, block, context) {
 
 function renderReportModule(module) {
   const report = module?.generated?.report || {};
+  const displayContext = getPlaybookDisplayContext(module);
   const section = document.createElement('section');
   section.className = 'generated-section report-generated-section';
 
   const heading = document.createElement('h2');
   heading.className = 'generated-section-title';
-  heading.textContent = typeof report?.title === 'string' && report.title.trim()
-    ? report.title.trim()
-    : 'Report';
+  heading.textContent = displayContext.heading;
   section.appendChild(heading);
 
   const content = document.createElement('div');
@@ -6671,7 +6824,7 @@ function renderReportModule(module) {
   const safeSummaryHtml = sanitizeSummaryHtml(module?.generated?.summaryHtml || '');
 
   if (safeSummaryHtml && htmlToPlainText(safeSummaryHtml)) {
-    content.appendChild(renderReportSummaryCard(safeSummaryHtml));
+    content.appendChild(renderReportSummaryCard(safeSummaryHtml, module));
   }
 
   const blocks = Array.isArray(report?.blocks) ? report.blocks : [];
@@ -6715,19 +6868,22 @@ function renderReportModule(module) {
 
 function renderEducationModule(module) {
   const education = module?.generated?.education || {};
+  const displayContext = getPlaybookDisplayContext(module);
 
   const section = document.createElement('section');
   section.className = 'generated-section education-generated-section';
 
   const heading = document.createElement('h2');
   heading.className = 'generated-section-title';
-  heading.textContent = 'Education';
+  heading.textContent = displayContext.heading;
 
   const grid = document.createElement('div');
   grid.className = 'generated-grid education-generated-grid';
 
   grid.appendChild(buildEducationTopicCard(module, education));
-  grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || ''));
+  grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || '', {
+    guideText: displayContext.guide
+  }));
   grid.appendChild(buildEducationVisualsCard(module, education));
   const metricsCard = buildEducationMetricsCard(education);
   if (metricsCard) {
@@ -6778,10 +6934,11 @@ function buildGeneratedSection(module, {
 
   const section = document.createElement('section');
   section.className = 'generated-section';
+  const displayContext = getPlaybookDisplayContext(displayModule);
 
   const heading = document.createElement('h2');
   heading.className = 'generated-section-title';
-  heading.textContent = 'Generated Content';
+  heading.textContent = displayContext.heading;
 
   const grid = document.createElement('div');
   grid.className = 'generated-grid';
@@ -6794,7 +6951,9 @@ function buildGeneratedSection(module, {
       summaryHtml: generated.summaryHtml || ''
     }));
   } else {
-    grid.appendChild(buildSummaryCard(generated.summaryHtml));
+    grid.appendChild(buildSummaryCard(generated.summaryHtml, {
+      guideText: displayContext.guide
+    }));
   }
 
   const pensionScenarioSwitcher = buildPensionScenarioSwitcher(
@@ -6912,7 +7071,9 @@ export function patchFocusedGeneratedCards({
     replaceGeneratedCard({
       grid,
       selector: '[data-generated-card="summary"]',
-      replacement: buildSummaryCard(module.generated?.summaryHtml || '')
+      replacement: buildSummaryCard(module.generated?.summaryHtml || '', {
+        guideText: getPlaybookDisplayContext(module).guide
+      })
     });
   }
 

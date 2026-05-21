@@ -81,7 +81,9 @@ Do not overbuild it. One strong visual comparison is better than several filler 
 
 ## Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Say which protection theme appears more relevant right now and why.
+- Explain income protection and serious illness cover as support buffers, not quotes or underwriting outcomes.
+- Say which protection theme appears more relevant right now from the supplied facts and why.
+- Tell the client how to read the first screen: start with the support buffer, then check employer benefits, contract terms, and any assumptions before acting.
 - Keep the tone calm and advisory.
 
 ## Omit By Default

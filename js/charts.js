@@ -577,6 +577,12 @@ function isPensionDrawdownCompositeChart(chartData) {
     || normalizeTone(getChartDisplay(chartData).variant) === 'pension-drawdown-composite';
 }
 
+function isPensionSurplusLabel(label) {
+  const normalized = normalizeLabel(label);
+  return normalized === PENSION_DATASET_LABELS.surplusCurrent
+    || normalized === PENSION_DATASET_LABELS.surplusMax;
+}
+
 function getChartValueFormat(chartData) {
   const valueFormat = normalizeTone(getChartDisplay(chartData).valueFormat);
   if (valueFormat === 'currency' || valueFormat === 'percent' || valueFormat === 'number') {
@@ -690,7 +696,7 @@ function chartToCsv(chartData, _module) {
         return;
       }
       const panelLabels = Array.isArray(panel.labels) ? panel.labels : [];
-      const panelDatasets = Array.isArray(panel.datasets) ? panel.datasets : [];
+      const panelDatasets = Array.isArray(panel.csvDatasets) ? panel.csvDatasets : (Array.isArray(panel.datasets) ? panel.datasets : []);
       lines.push([panel.title || panelKey].map(csvEscape).join(','));
       lines.push(['Label', ...panelDatasets.map((dataset) => dataset.label || '')].map(csvEscape).join(','));
       panelLabels.forEach((label, index) => {
@@ -890,9 +896,7 @@ function isPensionIncomeStackLabel(label) {
     PENSION_DATASET_LABELS.electedWithdrawalsCurrent,
     PENSION_DATASET_LABELS.electedWithdrawalsMax,
     PENSION_DATASET_LABELS.shortfallCurrent,
-    PENSION_DATASET_LABELS.shortfallMax,
-    PENSION_DATASET_LABELS.surplusCurrent,
-    PENSION_DATASET_LABELS.surplusMax
+    PENSION_DATASET_LABELS.shortfallMax
   ].includes(normalized);
 }
 
@@ -1043,8 +1047,6 @@ function pensionLegendGroupForLabel(label) {
   if (
     label === PENSION_DATASET_LABELS.shortfallCurrent
     || label === PENSION_DATASET_LABELS.shortfallMax
-    || label === PENSION_DATASET_LABELS.surplusCurrent
-    || label === PENSION_DATASET_LABELS.surplusMax
   ) {
     return 'Alerts';
   }
@@ -1070,9 +1072,7 @@ function pensionLegendColorForLabel(label) {
     [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: '#2ea3ff',
     [PENSION_DATASET_LABELS.electedWithdrawalsMax]: '#2ea3ff',
     [PENSION_DATASET_LABELS.shortfallCurrent]: '#ff5f7e',
-    [PENSION_DATASET_LABELS.shortfallMax]: '#ff5f7e',
-    [PENSION_DATASET_LABELS.surplusCurrent]: '#ffffff',
-    [PENSION_DATASET_LABELS.surplusMax]: '#ffffff'
+    [PENSION_DATASET_LABELS.shortfallMax]: '#ff5f7e'
   };
   return map[label] || '#6FE6D8';
 }
@@ -1092,10 +1092,12 @@ function visibleCompositeLegendDatasets(chartData, moduleId) {
         return;
       }
       if (
-        (label === PENSION_DATASET_LABELS.shortfallCurrent || label === PENSION_DATASET_LABELS.shortfallMax
-          || label === PENSION_DATASET_LABELS.surplusCurrent || label === PENSION_DATASET_LABELS.surplusMax)
+        (label === PENSION_DATASET_LABELS.shortfallCurrent || label === PENSION_DATASET_LABELS.shortfallMax)
         && !datasetHasAnyValue(dataset)
       ) {
+        return;
+      }
+      if (isPensionSurplusLabel(label)) {
         return;
       }
       seen.add(label);
@@ -1325,9 +1327,7 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: '#2ea3ff',
       [PENSION_DATASET_LABELS.electedWithdrawalsMax]: '#2ea3ff',
       [PENSION_DATASET_LABELS.shortfallCurrent]: '#ff5f7e',
-      [PENSION_DATASET_LABELS.shortfallMax]: '#ff5f7e',
-      [PENSION_DATASET_LABELS.surplusCurrent]: '#ffffff',
-      [PENSION_DATASET_LABELS.surplusMax]: '#ffffff'
+      [PENSION_DATASET_LABELS.shortfallMax]: '#ff5f7e'
     };
     const color = colorMap[label] || '#6FE6D8';
     return {
@@ -1337,7 +1337,7 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       stack: isMaxScenarioLabel(label) ? 'income-max' : 'income-current',
       order: 1,
       borderColor: color,
-      backgroundColor: hexToRgba(color, label.includes('Surplus') ? 0.28 : 0.58),
+      backgroundColor: hexToRgba(color, 0.58),
       borderWidth: 1,
       hidden: isMaxScenarioLabel(label) ? !showMax : showMax
     };
@@ -1536,15 +1536,13 @@ function computeSustainabilityWithdrawalMax(chartData) {
     PENSION_DATASET_LABELS.mandatoryWithdrawalsCurrent,
     PENSION_DATASET_LABELS.electedWithdrawalsCurrent,
     PENSION_DATASET_LABELS.shortfallCurrent,
-    PENSION_DATASET_LABELS.surplusCurrent,
     PENSION_DATASET_LABELS.statePensionMax,
     PENSION_DATASET_LABELS.employmentIncomeMax,
     PENSION_DATASET_LABELS.rentalIncomeMax,
     PENSION_DATASET_LABELS.otherIncomeMax,
     PENSION_DATASET_LABELS.mandatoryWithdrawalsMax,
     PENSION_DATASET_LABELS.electedWithdrawalsMax,
-    PENSION_DATASET_LABELS.shortfallMax,
-    PENSION_DATASET_LABELS.surplusMax
+    PENSION_DATASET_LABELS.shortfallMax
   ];
   const stackSeries = stackLabels.map((label) => getRawDatasetValues(chartData, label, labelsLength));
   const halfStackLength = stackSeries.length / 2;
@@ -2153,11 +2151,15 @@ function getPensionCompositePanelChartData(chartData, panelKey) {
   if (!panel) {
     return null;
   }
+  const panelDatasets = Array.isArray(panel.datasets) ? panel.datasets : [];
+  const visualDatasets = panelKey === 'income'
+    ? panelDatasets.filter((dataset) => !isPensionSurplusLabel(dataset?.label))
+    : panelDatasets;
   return {
     title: panel.title || chartData.title,
     type: panel.type || (panelKey === 'income' ? 'bar' : 'line'),
     labels: Array.isArray(panel.labels) ? panel.labels : chartData.labels,
-    datasets: Array.isArray(panel.datasets) ? panel.datasets : [],
+    datasets: visualDatasets,
     display: {
       ...getChartDisplay(panel),
       showLegend: false

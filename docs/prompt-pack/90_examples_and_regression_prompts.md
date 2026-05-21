@@ -20,8 +20,18 @@ For each prompt below:
 - Pass if the selected playbook is correct.
 - Pass if unsupported keys are omitted.
 - Pass if the module feels usable on a live call.
+- Pass only if `generated.summaryHtml` is understandable without knowing the playbook name.
+- Pass only if client-facing JSON avoids internal words such as `browser app`, `payload`, `engine`, `runtime`, `JSON`, validators, and schemas.
 - Fail if the model asks unnecessary questions instead of using a safe best guess.
 - Fail if the visual playbooks become generic or repetitive.
+
+## Summary Clarity Checklist
+Every regression output should pass this client-clarity test:
+- the summary says what the module is doing
+- the summary names the client facts driving the view
+- the summary tells the client how to read the first screen
+- the summary identifies the next decision, risk, or verification point
+- Gerry-only assumptions stay in SECTION 1 NOTES, not in client-facing JSON
 
 ## PBS Regression Prompts
 

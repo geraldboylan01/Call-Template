@@ -257,7 +257,9 @@ This style should still work:
 
 ## Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
-- Tell the client what the report is about and what to focus on.
+- Identify the source topic, the practical implication for the client, and the part of the report to read first.
+- Tell the client how to read the first screen: start with the executive picture or strongest opener, then use supporting visuals, scenarios, and verification points.
+- The first block should be chosen by content, but it must orient the client rather than act as decorative structure.
 - Keep it screen-share friendly and plain English.
 
 ## Omit By Default

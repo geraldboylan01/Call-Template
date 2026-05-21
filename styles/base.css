@@ -837,6 +837,17 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   line-height: 1.48;
 }
 
+.client-guide-line {
+  margin: 0 0 9px;
+  padding: 8px 10px;
+  border-left: 3px solid rgba(123, 255, 191, 0.68);
+  border-radius: 8px;
+  background: rgba(123, 255, 191, 0.07);
+  color: #dff8ed;
+  font-size: 0.82rem;
+  line-height: 1.44;
+}
+
 .generated-summary-content p,
 .generated-summary-content ul,
 .generated-summary-content ol {
