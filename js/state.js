@@ -56,6 +56,26 @@ function normalizeTable(table) {
   };
 }
 
+function normalizeCurrencySymbol(value, fallback = '€') {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) {
+    return fallback;
+  }
+
+  const upper = raw.toUpperCase();
+  if (upper === 'EUR' || upper === 'EURO' || upper === 'EUROS') {
+    return '€';
+  }
+  if (upper === 'GBP' || upper === 'POUND' || upper === 'POUNDS') {
+    return '£';
+  }
+  if (upper === 'USD' || upper === 'DOLLAR' || upper === 'DOLLARS') {
+    return '$';
+  }
+
+  return raw;
+}
+
 function normalizeChartDataset(dataset, index) {
   const label = typeof dataset?.label === 'string'
     ? dataset.label
@@ -695,9 +715,7 @@ function normalizeOutputsBucketed(outputsBucketed) {
   }
 
   const normalized = {
-    currencySymbol: typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
-      ? outputsBucketed.currencySymbol
-      : '€',
+    currencySymbol: normalizeCurrencySymbol(outputsBucketed.currencySymbol),
     sections
   };
 

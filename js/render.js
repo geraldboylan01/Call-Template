@@ -248,12 +248,39 @@ function normalizeMoneyToken(value) {
   return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9€£$]+/g, '');
 }
 
+function normalizeDisplayCurrencySymbol(value, fallback = '€') {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  const upper = raw.toUpperCase();
+  if (upper === 'EUR' || upper === 'EURO' || upper === 'EUROS') {
+    return '€';
+  }
+  if (upper === 'GBP' || upper === 'POUND' || upper === 'POUNDS') {
+    return '£';
+  }
+  if (upper === 'USD' || upper === 'DOLLAR' || upper === 'DOLLARS') {
+    return '$';
+  }
+
+  return raw;
+}
+
+function normalizeCurrencyLabelText(value) {
+  return String(value ?? '')
+    .replace(/\bEUR\b|\bEUROS?\b/gi, '€')
+    .replace(/\bGBP\b|\bPOUNDS?\b/gi, '£')
+    .replace(/\bUSD\b|\bDOLLARS?\b/gi, '$');
+}
+
 function textHasCurrencyMarker(value) {
   return /[€£$]|\b(?:eur|euro|euros|gbp|usd)\b/i.test(String(value ?? ''));
 }
 
 function isNumericLikeText(value) {
-  return /^-?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(String(value ?? '').trim());
+  return /^-?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\s*[km]?$/i.test(String(value ?? '').trim());
 }
 
 function parseDisplayNumber(value) {
@@ -261,23 +288,52 @@ function parseDisplayNumber(value) {
     return value;
   }
 
-  if (!isNumericLikeText(value)) {
+  const match = String(value ?? '')
+    .trim()
+    .replace(/\s+/g, '')
+    .match(/^(-?)(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?([km])?$/i);
+  if (!match) {
     return null;
   }
 
-  const parsed = Number(String(value).replace(/[,\s]/g, ''));
+  const [, sign, whole, decimals = '', suffix = ''] = match;
+  let parsed = Number(`${sign}${whole.replace(/,/g, '')}${decimals ? `.${decimals}` : ''}`);
+  if (suffix.toLowerCase() === 'k') {
+    parsed *= 1000;
+  } else if (suffix.toLowerCase() === 'm') {
+    parsed *= 1000000;
+  }
+
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatDisplayCurrency(value) {
+function formatDisplayCurrency(value, currencySymbol = '€') {
   const amount = Number(value);
   if (!Number.isFinite(amount)) {
     return '';
   }
 
-  return Number.isInteger(amount)
+  const symbol = normalizeDisplayCurrencySymbol(currencySymbol);
+  const formatted = Number.isInteger(amount)
     ? DISPLAY_EURO_FORMATTER.format(amount)
     : DISPLAY_EURO_DECIMAL_FORMATTER.format(amount);
+  return symbol === '€' ? formatted : formatted.replace('€', symbol);
+}
+
+function formatCurrencyMarkedText(value) {
+  const raw = String(value ?? '');
+  const amountPattern = '(-?\\d{1,3}(?:,\\d{3})+|-?\\d+)(?:\\.\\d+)?\\s*[km]?';
+  const markerPattern = '(€|£|\\$|\\bEUR|\\bEUROS?\\b|\\bGBP\\b|\\bUSD\\b)';
+  const regex = new RegExp(`${markerPattern}\\s*(${amountPattern})`, 'gi');
+
+  return normalizeCurrencyLabelText(raw.replace(regex, (match, marker, amountText) => {
+    const parsed = parseDisplayNumber(amountText);
+    if (parsed === null) {
+      return match;
+    }
+
+    return formatDisplayCurrency(parsed, normalizeDisplayCurrencySymbol(marker));
+  }));
 }
 
 function isClearlyNonMoneyLabel(token) {
@@ -285,7 +341,24 @@ function isClearlyNonMoneyLabel(token) {
     return false;
   }
 
-  return token.includes('age')
+  const exactNonMoneyTokens = new Set([
+    'child',
+    'children',
+    'dependant',
+    'dependants',
+    'dependent',
+    'dependents',
+    'people',
+    'person',
+    'count',
+    'quantity',
+    'scenario'
+  ]);
+
+  return exactNonMoneyTokens.has(token)
+    || token.startsWith('numberof')
+    || token.endsWith('count')
+    || token.includes('age')
     || token.includes('year')
     || token.includes('duration')
     || token.includes('numberofchildren')
@@ -300,11 +373,14 @@ function isClearlyNonMoneyLabel(token) {
     || token.includes('scenario');
 }
 
-function isMoneyLabelToken(token) {
-  if (!token || isClearlyNonMoneyLabel(token)) {
-    return false;
-  }
+function isGenericValueColumnToken(token) {
+  return token === 'value'
+    || token === 'input'
+    || token === 'inputused'
+    || token === 'used';
+}
 
+function hasMoneyKeyword(token) {
   return token.includes('€')
     || token.includes('eur')
     || token.includes('euro')
@@ -337,12 +413,24 @@ function isMoneyLabelToken(token) {
     || token.includes('todaysterms');
 }
 
+function isMoneyLabelToken(token) {
+  if (!token) {
+    return false;
+  }
+
+  return hasMoneyKeyword(token);
+}
+
 function isCurrencyTableContext({ cardTitle = '', rowLabel = '', columnLabel = '' } = {}) {
   const columnToken = normalizeMoneyToken(columnLabel);
   const rowToken = normalizeMoneyToken(rowLabel);
   const titleToken = normalizeMoneyToken(cardTitle);
 
-  if (isMoneyLabelToken(columnToken) || isMoneyLabelToken(rowToken)) {
+  if (isMoneyLabelToken(rowToken)) {
+    return true;
+  }
+
+  if (!isGenericValueColumnToken(columnToken) && isMoneyLabelToken(columnToken)) {
     return true;
   }
 
@@ -352,8 +440,12 @@ function isCurrencyTableContext({ cardTitle = '', rowLabel = '', columnLabel = '
 
 function formatCurrencyInText(value) {
   const raw = String(value ?? '');
-  if (!raw.trim() || textHasCurrencyMarker(raw)) {
+  if (!raw.trim()) {
     return raw;
+  }
+
+  if (textHasCurrencyMarker(raw)) {
+    return formatCurrencyMarkedText(raw);
   }
 
   if (isNumericLikeText(raw)) {
@@ -361,7 +453,7 @@ function formatCurrencyInText(value) {
     return parsed === null ? raw : formatDisplayCurrency(parsed);
   }
 
-  return raw.replace(/(^|[^\w€£$])(-?\d{4,}(?:\.\d+)?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?)(?![\w%])/g, (match, prefix, numericText) => {
+  return raw.replace(/(^|[^\w€£$])(-?\d{4,}(?:\.\d+)?\s*[km]?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*[km]?|-?\d+(?:\.\d+)?\s*[km])(?![\w%])/gi, (match, prefix, numericText) => {
     const parsed = parseDisplayNumber(numericText);
     return parsed === null ? match : `${prefix}${formatDisplayCurrency(parsed)}`;
   });
@@ -385,22 +477,29 @@ function formatGeneratedTableCell(value, {
 
 function formatMetricDisplayValue(label, value) {
   const raw = String(value ?? '');
-  if (!raw.trim() || textHasCurrencyMarker(raw)) {
-    return raw || '--';
+  if (!raw.trim()) {
+    return '--';
   }
 
+  if (textHasCurrencyMarker(raw)) {
+    return formatCurrencyMarkedText(raw) || raw;
+  }
+
+  const labelToken = normalizeMoneyToken(label);
+  const isMoneyMetric = isMoneyLabelToken(labelToken);
+  const isClearlyNonMoneyMetric = isClearlyNonMoneyLabel(labelToken);
   const parsed = parseDisplayNumber(raw);
   if (
     parsed !== null
     && (
-      Math.abs(parsed) >= 10000
-      || isCurrencyTableContext({ rowLabel: label, columnLabel: 'Value' })
+      isMoneyMetric
+      || (Math.abs(parsed) >= 10000 && !isClearlyNonMoneyMetric)
     )
   ) {
     return formatDisplayCurrency(parsed);
   }
 
-  if (isCurrencyTableContext({ rowLabel: label, columnLabel: 'Value' })) {
+  if (isMoneyMetric) {
     return formatCurrencyInText(raw);
   }
 
@@ -1480,10 +1579,8 @@ function extractTablePreviewItems(tableData, maxItems = 4) {
 }
 
 function formatOverviewBucketedValue(outputsBucketed, value) {
-  const currencySymbol = typeof outputsBucketed?.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
-    ? outputsBucketed.currencySymbol.trim()
-    : '€';
-  return `${currencySymbol}${formatBucketedAmount(Number(value))}`;
+  const currencySymbol = getOutputsBucketedCurrencySymbol(outputsBucketed);
+  return formatBucketedCurrency(Number(value), currencySymbol);
 }
 
 function extractOutputsBucketedPreviewItems(outputsBucketed, maxItems = 4) {
@@ -3475,7 +3572,7 @@ function buildAssumptionsTableCard(module, {
   const headerRow = document.createElement('tr');
   columns.forEach((column) => {
     const th = document.createElement('th');
-    th.textContent = String(column ?? '');
+    th.textContent = normalizeCurrencyLabelText(column);
     headerRow.appendChild(th);
   });
   thead.appendChild(headerRow);
@@ -3606,7 +3703,7 @@ function buildTableCard(cardTitle, tableData, {
 
   columns.forEach((column) => {
     const th = document.createElement('th');
-    th.textContent = String(column ?? '');
+    th.textContent = normalizeCurrencyLabelText(column);
     headerRow.appendChild(th);
   });
 
@@ -3774,7 +3871,8 @@ function formatBucketedCurrency(value, currencySymbol = '€') {
     return '';
   }
 
-  return `${numericValue < 0 ? '-' : ''}${currencySymbol}${formatBucketedAmount(Math.abs(numericValue))}`;
+  const symbol = normalizeDisplayCurrencySymbol(currencySymbol);
+  return `${numericValue < 0 ? '-' : ''}${symbol}${formatBucketedAmount(Math.abs(numericValue))}`;
 }
 
 function getOutputsBucketedSubtotal(section) {
@@ -3979,9 +4077,7 @@ function getOutputsBucketedRowValue(section, targetLabel) {
 }
 
 function getOutputsBucketedCurrencySymbol(outputsBucketed) {
-  return typeof outputsBucketed?.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
-    ? outputsBucketed.currencySymbol.trim()
-    : '€';
+  return normalizeDisplayCurrencySymbol(outputsBucketed?.currencySymbol, '€');
 }
 
 function getPbsScenarioTitle(rawTitle, fallbackTitle) {
@@ -4958,9 +5054,7 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
   const netWorthContext = computeNetWorthContext(
     netWorth,
     currentAge,
-    typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
-      ? outputsBucketed.currencySymbol.trim()
-      : '€'
+    getOutputsBucketedCurrencySymbol(outputsBucketed)
   );
 
   if (netWorthContext) {
@@ -5065,9 +5159,7 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
   const wrap = document.createElement('div');
   wrap.className = 'pbs-bucket-tables';
 
-  const currencySymbol = typeof outputsBucketed.currencySymbol === 'string' && outputsBucketed.currencySymbol.trim()
-    ? outputsBucketed.currencySymbol
-    : '€';
+  const currencySymbol = getOutputsBucketedCurrencySymbol(outputsBucketed);
 
   outputsBucketed.sections.forEach((section, sectionIndex) => {
     const sectionWrap = document.createElement('article');
@@ -5111,7 +5203,7 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     const headerRow = document.createElement('tr');
     columns.forEach((column, columnIndex) => {
       const th = document.createElement('th');
-      th.textContent = String(column ?? '');
+      th.textContent = normalizeCurrencyLabelText(column);
       if (columnIndex === 1) {
         th.classList.add('pbs-amount-col');
       }
@@ -5223,7 +5315,7 @@ function buildOutputsBucketedDetailCard(section, {
   const headerRow = document.createElement('tr');
   columns.forEach((column, index) => {
     const th = document.createElement('th');
-    th.textContent = String(column ?? '');
+    th.textContent = normalizeCurrencyLabelText(column);
     if (index === 1) {
       th.classList.add('pbs-amount-col');
     }

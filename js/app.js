@@ -724,7 +724,7 @@ const EXAMPLE_PAYLOADS = [
                 type: 'bar',
                 labels: ['Property price', 'Illustrative max rebate'],
                 datasets: [
-                  { label: 'EUR', data: [500000, 30000] }
+                  { label: '€', data: [500000, 30000] }
                 ]
               }
             }
@@ -1114,7 +1114,7 @@ const EXAMPLE_PAYLOADS = [
               title: 'Headline KPIs',
               items: [
                 { label: 'Peak growth window', value: '25 to 39', detail: 'Largest step-up in mean earnings' },
-                { label: 'Age 30 to 39 income', value: 'EUR 53,269', detail: 'Illustrative annual average' },
+                { label: 'Age 30 to 39 income', value: '€53,269', detail: 'Illustrative annual average' },
                 { label: 'Affordability pressure', value: 'High', detail: 'Rent and deposit drag grow with age' }
               ]
             },
@@ -1140,9 +1140,9 @@ const EXAMPLE_PAYLOADS = [
               table: {
                 columns: ['Age group', 'Average income', 'Illustrative rent burden'],
                 rows: [
-                  ['15 to 24', 'EUR 21,453', '41%'],
-                  ['25 to 29', 'EUR 39,997', '34%'],
-                  ['30 to 39', 'EUR 53,269', '31%']
+                  ['15 to 24', '€21,453', '41%'],
+                  ['25 to 29', '€39,997', '34%'],
+                  ['30 to 39', '€53,269', '31%']
                 ]
               }
             },
@@ -4291,6 +4291,12 @@ function normalizeDevPanelPayload(payload) {
   if (typeof outputsBucketed.currencySymbol !== 'string' || !outputsBucketed.currencySymbol.trim()) {
     outputsBucketed.currencySymbol = '€';
     warnings.push('Filled missing generated.outputsBucketed.currencySymbol with "€".');
+  } else {
+    const normalizedCurrencySymbol = inferCurrencySymbol(outputsBucketed.currencySymbol);
+    if (normalizedCurrencySymbol !== outputsBucketed.currencySymbol) {
+      outputsBucketed.currencySymbol = normalizedCurrencySymbol;
+      warnings.push(`Normalized generated.outputsBucketed.currencySymbol to "${normalizedCurrencySymbol}".`);
+    }
   }
 
   if (!Array.isArray(outputsBucketed.sections)) {

@@ -83,6 +83,11 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Each section supports exactly 2 columns.
   - Each row must be exactly `[labelString, numericValue]`.
   - Numeric cells must be numbers, not formatted currency or unit strings.
+- Currency display rules:
+  - When a value is money, make that clear in the label, column, chart display, or text by using `€`, `Amount (€)`, `display.valueFormat = "currency"`, or a money-specific label such as `Cost`, `Income`, `Balance`, `Asset value`, `Funding target`, or `Support amount`.
+  - For Irish planning modules, use the euro sign `€`, not `EUR`, in display strings, metric values, and table headings.
+  - Do not mark counts, ages, years, durations, percentages, rates, scenario numbers, or child/person counts as currency. A value such as `2 children`, `age 13`, `5 years`, or `4%` must stay non-currency.
+  - In engine-owned numeric fields and chart datasets, keep values as plain numbers and rely on the surrounding label/display metadata to identify currency.
 - Charts:
   - `type` must be exactly `bar` or `line`.
   - All dataset values must be numbers only.
@@ -224,7 +229,7 @@ This style should still work:
       "currentAge": 45
     },
     "outputsBucketed": {
-      "currencySymbol": "EUR",
+      "currencySymbol": "€",
       "sections": []
     },
     "charts": []
@@ -290,7 +295,7 @@ Emit `generated.outputsBucketed.sections` in this exact order:
 Each section must include:
 - `key`
 - `title`
-- `columns`: exactly `["Asset", "Amount ($)"]`, `["Liability", "Amount ($)"]`, or `["Metric", "Amount ($)"]` using the correct currency symbol.
+- `columns`: exactly `["Asset", "Amount (€)"]`, `["Liability", "Amount (€)"]`, or `["Metric", "Amount (€)"]` for Irish euro planning unless a different currency is explicitly requested.
 - `rows`: exactly two values per row, with the second value as a number, for example `["Primary residence", 450000]`.
 - `subtotalLabel`
 - `subtotalValue`
@@ -469,7 +474,7 @@ Only emit optional keys when Gerry gives them, when the playbook requires them, 
 ### Target Mode
 Use target mode when Gerry says things like:
 - target retirement income
-- want EUR X a year in retirement
+- want €X a year in retirement
 - want 50 percent of salary in retirement
 
 Provide at least one of:
@@ -492,7 +497,7 @@ For affordable mode:
 
 ### Rental Income
 Use rental income fields when Gerry says things like:
-- rental income of EUR X today
+- rental income of €X today
 - rental income coming in at retirement
 - with and without rental income
 - rent lost scenario
@@ -523,7 +528,7 @@ Rules:
 - If Gerry says "both retire at 65", set each member's own `retirementAge` to 65; if their current ages differ, this creates staggered retirement years.
 - For staggered retirement years, set `incomeStartYear` to the first retirement year and `requiredPotReferenceYear` to the later retirement year. Gross employment income is included during the bridge by default unless Gerry excludes it.
 - Set `targetStartYear` only if Gerry explicitly gives the household income start year. If he gives an age instead, use `targetStartAge`.
-- The runtime includes the Irish State Pension by default for each person from age 66, using EUR 15,563.60 p.a. today and inflation-indexing it.
+- The runtime includes the Irish State Pension by default for each person from age 66, using €15,563.60 p.a. today and inflation-indexing it.
 - If Gerry says to exclude State Pension for one person, set that pension member's `includeStatePension` to `false`.
 
 ### Other Income Sources
@@ -1159,7 +1164,7 @@ This style should still work:
       "summary": "Short scenario summary",
       "tone": "positive",
       "metrics": [
-        { "label": "Outcome", "value": "EUR 120,000", "detail": "Context" }
+        { "label": "Outcome", "value": "€120,000", "detail": "Context" }
       ],
       "callout": "Client-facing interpretation"
     }
@@ -1241,7 +1246,7 @@ This style should still work:
   "title": "At a glance",
   "layout": "hero",
   "items": [
-    { "label": "Main figure", "value": "EUR 120,000", "detail": "Context", "featured": true }
+    { "label": "Main figure", "value": "€120,000", "detail": "Context", "featured": true }
   ]
 }
 ```

@@ -90,7 +90,7 @@ Each scenario needs:
 
 ## Optional Inputs
 - `currentYear`
-- `currencySymbol`
+- `currencySymbol` (use `€` for Irish euro planning, not `EUR`)
 - `planningNote`
 - scenario `category`
 - scenario `interpretation`

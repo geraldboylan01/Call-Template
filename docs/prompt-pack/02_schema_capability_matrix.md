@@ -48,6 +48,8 @@ Playbooks should only emit the subset they are responsible for.
 - `generated.outputsBucketed.sections[*].columns` supports exactly 2 columns.
 - `generated.outputsBucketed.sections[*].rows[*]` must be exactly `[string, number]`.
 - `generated.outputsBucketed` numeric cells must be numbers, not formatted currency or unit strings.
+- Use `€`, not `EUR`, in Irish euro-facing headings and metric strings. Currency numeric fields still stay as plain numbers.
+- Do not tag counts, ages, years, durations, percentages, or rates as currency.
 
 ## Chart Support
 - Supported chart types: `bar`, `line`
@@ -122,7 +124,7 @@ Playbooks should only emit the subset they are responsible for.
   - `collegeStartAge`
   - `collegeDurationYears`
   - `inflationRate`
-  - `currencySymbol`
+  - `currencySymbol` (`€` for Irish euro planning, not `EUR`)
   - `planningNote`
   - `scenarios`
 - Each scenario supports:
@@ -277,7 +279,7 @@ Playbooks should only emit the subset they are responsible for.
   "title": "At a glance",
   "layout": "hero",
   "items": [
-    { "label": "Main number", "value": "EUR 120,000", "detail": "Context", "featured": true }
+    { "label": "Main number", "value": "€120,000", "detail": "Context", "featured": true }
   ]
 }
 ```
@@ -307,7 +309,7 @@ Playbooks should only emit the subset they are responsible for.
       "summary": "Short scenario summary",
       "tone": "positive",
       "metrics": [
-        { "label": "Outcome", "value": "EUR 120,000", "detail": "Context" }
+        { "label": "Outcome", "value": "€120,000", "detail": "Context" }
       ],
       "callout": "Client-facing interpretation"
     }

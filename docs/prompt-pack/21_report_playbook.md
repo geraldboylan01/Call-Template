@@ -160,7 +160,7 @@ This style should still work:
   "title": "At a glance",
   "layout": "hero",
   "items": [
-    { "label": "Main figure", "value": "EUR 120,000", "detail": "Context", "featured": true }
+    { "label": "Main figure", "value": "€120,000", "detail": "Context", "featured": true }
   ]
 }
 ```
@@ -190,7 +190,7 @@ This style should still work:
       "summary": "Short scenario summary",
       "tone": "positive",
       "metrics": [
-        { "label": "Outcome", "value": "EUR 120,000", "detail": "Context" }
+        { "label": "Outcome", "value": "€120,000", "detail": "Context" }
       ],
       "callout": "Client-facing interpretation"
     }

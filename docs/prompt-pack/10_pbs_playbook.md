@@ -28,7 +28,7 @@ This style should still work:
       "currentAge": 45
     },
     "outputsBucketed": {
-      "currencySymbol": "EUR",
+      "currencySymbol": "€",
       "sections": []
     },
     "charts": []

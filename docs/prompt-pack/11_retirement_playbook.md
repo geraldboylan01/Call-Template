@@ -132,7 +132,7 @@ Only emit optional keys when Gerry gives them, when the playbook requires them, 
 ## Target Mode
 Use target mode when Gerry says things like:
 - target retirement income
-- want EUR X a year in retirement
+- want €X a year in retirement
 - want 50 percent of salary in retirement
 
 Provide at least one of:
@@ -155,7 +155,7 @@ For affordable mode:
 
 ## Rental Income
 Use rental income fields when Gerry says things like:
-- rental income of EUR X today
+- rental income of €X today
 - rental income coming in at retirement
 - with and without rental income
 - rent lost scenario
@@ -186,7 +186,7 @@ Rules:
 - If Gerry says "both retire at 65", set each member's own `retirementAge` to 65; if their current ages differ, this creates staggered retirement years.
 - For staggered retirement years, set `incomeStartYear` to the first retirement year and `requiredPotReferenceYear` to the later retirement year. Gross employment income is included during the bridge by default unless Gerry excludes it.
 - Set `targetStartYear` only if Gerry explicitly gives the household income start year. If he gives an age instead, use `targetStartAge`.
-- The runtime includes the Irish State Pension by default for each person from age 66, using EUR 15,563.60 p.a. today and inflation-indexing it.
+- The runtime includes the Irish State Pension by default for each person from age 66, using €15,563.60 p.a. today and inflation-indexing it.
 - If Gerry says to exclude State Pension for one person, set that pension member's `includeStatePension` to `false`.
 
 ## Other Income Sources
