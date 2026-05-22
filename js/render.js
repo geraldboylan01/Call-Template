@@ -322,7 +322,7 @@ function formatDisplayCurrency(value, currencySymbol = '€') {
 
 function formatCurrencyMarkedText(value) {
   const raw = String(value ?? '');
-  const amountPattern = '(-?\\d{1,3}(?:,\\d{3})+|-?\\d+)(?:\\.\\d+)?\\s*[km]?';
+  const amountPattern = '(-?\\d{1,3}(?:,\\d{3})+|-?\\d+)(?:\\.\\d+)?(?:\\s*[km])?';
   const markerPattern = '(€|£|\\$|\\bEUR|\\bEUROS?\\b|\\bGBP\\b|\\bUSD\\b)';
   const regex = new RegExp(`${markerPattern}\\s*(${amountPattern})`, 'gi');
 
@@ -421,16 +421,35 @@ function isMoneyLabelToken(token) {
   return hasMoneyKeyword(token);
 }
 
-function isCurrencyTableContext({ cardTitle = '', rowLabel = '', columnLabel = '' } = {}) {
+function isYearLikeNumberText(value) {
+  const normalized = String(value ?? '').trim().replace(/,/g, '');
+  if (!/^\d{4}$/.test(normalized)) {
+    return false;
+  }
+
+  const year = Number(normalized);
+  return year >= 1900 && year <= 2099;
+}
+
+function isCurrencyTableContext({
+  cardTitle = '',
+  rowLabel = '',
+  columnLabel = '',
+  isRowLabelCell = false
+} = {}) {
   const columnToken = normalizeMoneyToken(columnLabel);
   const rowToken = normalizeMoneyToken(rowLabel);
   const titleToken = normalizeMoneyToken(cardTitle);
 
-  if (isMoneyLabelToken(rowToken)) {
+  if (!isGenericValueColumnToken(columnToken) && isMoneyLabelToken(columnToken)) {
     return true;
   }
 
-  if (!isGenericValueColumnToken(columnToken) && isMoneyLabelToken(columnToken)) {
+  if (isRowLabelCell) {
+    return false;
+  }
+
+  if (isMoneyLabelToken(rowToken)) {
     return true;
   }
 
@@ -453,7 +472,11 @@ function formatCurrencyInText(value) {
     return parsed === null ? raw : formatDisplayCurrency(parsed);
   }
 
-  return raw.replace(/(^|[^\w€£$])(-?\d{4,}(?:\.\d+)?\s*[km]?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*[km]?|-?\d+(?:\.\d+)?\s*[km])(?![\w%])/gi, (match, prefix, numericText) => {
+  return raw.replace(/(^|[^\w€£$])(-?\d{4,}(?:\.\d+)?(?:\s*[km])?|-?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:\s*[km])?|-?\d+(?:\.\d+)?\s*[km])(?![\w%])/gi, (match, prefix, numericText) => {
+    if (isYearLikeNumberText(numericText)) {
+      return match;
+    }
+
     const parsed = parseDisplayNumber(numericText);
     return parsed === null ? match : `${prefix}${formatDisplayCurrency(parsed)}`;
   });
@@ -462,9 +485,10 @@ function formatCurrencyInText(value) {
 function formatGeneratedTableCell(value, {
   cardTitle = '',
   rowLabel = '',
-  columnLabel = ''
+  columnLabel = '',
+  isRowLabelCell = false
 } = {}) {
-  if (!isCurrencyTableContext({ cardTitle, rowLabel, columnLabel })) {
+  if (!isCurrencyTableContext({ cardTitle, rowLabel, columnLabel, isRowLabelCell })) {
     return String(value ?? '');
   }
 
@@ -3591,10 +3615,12 @@ function buildAssumptionsTableCard(module, {
 
     columns.forEach((_column, index) => {
       const td = document.createElement('td');
+      const isRowLabelCell = index === 0 && columns.length > 1;
       const cellText = formatGeneratedTableCell(safeRow[index], {
         cardTitle: 'Assumptions',
         rowLabel,
-        columnLabel: columns[index]
+        columnLabel: columns[index],
+        isRowLabelCell
       });
 
       if (editMode && hasInlineEditor && index === valueColumnIndex) {
@@ -3619,7 +3645,8 @@ function buildAssumptionsTableCard(module, {
       if (isCurrencyTableContext({
         cardTitle: 'Assumptions',
         rowLabel,
-        columnLabel: columns[index]
+        columnLabel: columns[index],
+        isRowLabelCell
       })) {
         td.classList.add('generated-money-cell');
       }
@@ -3718,16 +3745,19 @@ function buildTableCard(cardTitle, tableData, {
 
     columns.forEach((column, index) => {
       const td = document.createElement('td');
+      const isRowLabelCell = index === 0 && columns.length > 1;
       td.textContent = formatGeneratedTableCell(safeRow[index], {
         cardTitle,
         rowLabel: safeRow[0],
-        columnLabel: column
+        columnLabel: column,
+        isRowLabelCell
       });
 
       if (isCurrencyTableContext({
         cardTitle,
         rowLabel: safeRow[0],
-        columnLabel: column
+        columnLabel: column,
+        isRowLabelCell
       })) {
         td.classList.add('generated-money-cell');
       }
