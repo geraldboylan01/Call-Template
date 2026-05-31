@@ -8623,6 +8623,10 @@ function bindEvents() {
     syncMobileFocusedNavState();
   });
 
+  window.addEventListener('callcanvas:pbs-scenario-charts-updated', async () => {
+    await hydrateChartsWhenStable({ reason: 'pbs-scenario-change' });
+  });
+
   if (ui.swipeStage) {
     ui.swipeStage.addEventListener('click', (event) => {
       handleTableCellHighlightClick(event);

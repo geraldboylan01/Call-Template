@@ -77,6 +77,8 @@ const HFCS_DECILE_BANDS = Object.freeze([
 ]);
 const PBS_ASSET_SECTION_KEYS = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
 const PBS_CURRENT_SCENARIO_ID = 'current';
+const PBS_SCENARIO_CHARTS_UPDATED_EVENT = 'callcanvas:pbs-scenario-charts-updated';
+const activePbsScenarioChartsByModuleId = new Map();
 const PBS_BUCKET_DEFINITIONS = Object.freeze({
   lifestyle: 'Assets that support day-to-day living, usually not treated as spendable reserves.',
   liquidity: 'Cash or near-cash reserves for short-term spending needs and shocks.',
@@ -2998,6 +3000,17 @@ export function getChartHydrationModule(module) {
     return module;
   }
 
+  const pbsScenarioCharts = getActivePbsScenarioCharts(module);
+  if (pbsScenarioCharts) {
+    return {
+      ...module,
+      generated: {
+        ...(module.generated || {}),
+        charts: pbsScenarioCharts
+      }
+    };
+  }
+
   if (isReportModule(module)) {
     return {
       ...module,
@@ -4178,6 +4191,188 @@ function getOutputsBucketedForPbsCase(outputsBucketed, pbsCase) {
     currencySymbol: getOutputsBucketedCurrencySymbol(outputsBucketed),
     sections: Array.isArray(pbsCase?.sections) ? pbsCase.sections : []
   };
+}
+
+function getPbsScenarioChartSubtitle(pbsCase, fallback = '') {
+  if (pbsCase?.id === PBS_CURRENT_SCENARIO_ID) {
+    return fallback || 'Current position';
+  }
+
+  return pbsCase?.title ? `${pbsCase.title} position` : (fallback || 'Selected case');
+}
+
+function copyChartDatasetStyle(dataset, fallbackLabel) {
+  const normalized = {
+    label: typeof dataset?.label === 'string' && dataset.label.trim()
+      ? dataset.label
+      : fallbackLabel
+  };
+
+  [
+    'backgroundColor',
+    'borderColor',
+    'pointBackgroundColor',
+    'pointBorderColor'
+  ].forEach((key) => {
+    if (typeof dataset?.[key] === 'string' && dataset[key].trim()) {
+      normalized[key] = dataset[key];
+    }
+  });
+
+  return normalized;
+}
+
+function getPbsScenarioAssetChart(template, outputsBucketed, pbsCase) {
+  const sections = Array.isArray(outputsBucketed?.sections) ? outputsBucketed.sections : [];
+  const labels = ['Lifestyle', 'Liquidity', 'Longevity', 'Legacy'];
+  const data = PBS_ASSET_SECTION_KEYS.map((key) => {
+    const section = findOutputsBucketedSectionByKey(sections, key)
+      || findOutputsBucketedSection(sections, key);
+    return section ? getOutputsBucketedSubtotal(section) : 0;
+  });
+  const templateDataset = Array.isArray(template?.datasets) ? template.datasets[0] : null;
+
+  return {
+    ...(template || {}),
+    title: template?.title || 'Assets by bucket',
+    subtitle: getPbsScenarioChartSubtitle(pbsCase, template?.subtitle),
+    type: 'bar',
+    labels,
+    datasets: [
+      {
+        ...copyChartDatasetStyle(templateDataset, 'Assets'),
+        data
+      }
+    ],
+    display: {
+      ...(isPlainObject(template?.display) ? template.display : {}),
+      valueFormat: 'currency'
+    },
+    insights: Array.isArray(template?.insights) ? template.insights : []
+  };
+}
+
+function getPbsScenarioBalanceChart(template, outputsBucketed, pbsCase) {
+  const metrics = getPbsBalanceMetrics(outputsBucketed);
+  const templateDataset = Array.isArray(template?.datasets) ? template.datasets[0] : null;
+
+  return {
+    ...(template || {}),
+    title: template?.title || 'Gross assets vs liabilities vs net worth',
+    subtitle: getPbsScenarioChartSubtitle(pbsCase, template?.subtitle),
+    type: 'bar',
+    labels: ['Gross assets', 'Total liabilities', 'Net worth'],
+    datasets: [
+      {
+        ...copyChartDatasetStyle(templateDataset, 'Amount'),
+        data: [
+          metrics.grossAssets ?? 0,
+          metrics.grossLiabilities ?? 0,
+          metrics.netAssets ?? 0
+        ]
+      }
+    ],
+    display: {
+      ...(isPlainObject(template?.display) ? template.display : {}),
+      valueFormat: 'currency'
+    },
+    insights: Array.isArray(template?.insights) ? template.insights : []
+  };
+}
+
+function getPbsScenarioCharts(module, outputsBucketed, pbsCase) {
+  const charts = Array.isArray(module?.generated?.charts) ? module.generated.charts : [];
+  if (!hasPersonalBalanceSheetBucketShape(outputsBucketed) || charts.length === 0) {
+    return [];
+  }
+
+  return charts.map((chart) => {
+    const titleToken = normalizeSectionToken(chart?.title || '');
+    if (titleToken === 'assetsbybucket') {
+      return getPbsScenarioAssetChart(chart, outputsBucketed, pbsCase);
+    }
+
+    if (
+      titleToken === 'grossassetsvsliabilitiesvsnetworth'
+      || titleToken === 'grossassetsliabilitiesnetworth'
+    ) {
+      return getPbsScenarioBalanceChart(chart, outputsBucketed, pbsCase);
+    }
+
+    return chart;
+  });
+}
+
+function setActivePbsScenarioCharts(module, outputsBucketed, pbsCase) {
+  if (!module?.id) {
+    return [];
+  }
+
+  const charts = getPbsScenarioCharts(module, outputsBucketed, pbsCase);
+  if (charts.length > 0) {
+    activePbsScenarioChartsByModuleId.set(module.id, {
+      charts,
+      scenarioId: pbsCase?.id || PBS_CURRENT_SCENARIO_ID
+    });
+  } else {
+    activePbsScenarioChartsByModuleId.delete(module.id);
+  }
+
+  return charts;
+}
+
+function getActivePbsScenarioCharts(module) {
+  if (!isPersonalBalanceSheetModule(module) || !module?.id) {
+    return null;
+  }
+
+  const active = activePbsScenarioChartsByModuleId.get(module.id);
+  return Array.isArray(active?.charts) && active.charts.length > 0 ? active.charts : null;
+}
+
+function getPbsChartsForDisplay(module, generated = module?.generated || {}) {
+  const activeCharts = getActivePbsScenarioCharts(module);
+  if (activeCharts) {
+    return activeCharts;
+  }
+
+  return Array.isArray(generated?.charts) ? generated.charts : [];
+}
+
+function notifyPbsScenarioChartsUpdated(module, pbsCase) {
+  if (typeof window === 'undefined' || typeof window.CustomEvent !== 'function') {
+    return;
+  }
+
+  window.dispatchEvent(new CustomEvent(PBS_SCENARIO_CHARTS_UPDATED_EVENT, {
+    detail: {
+      moduleId: module?.id || '',
+      scenarioId: pbsCase?.id || PBS_CURRENT_SCENARIO_ID
+    }
+  }));
+}
+
+function updatePbsScenarioChartsCard(module, outputsBucketed, pbsCase, contentHost) {
+  const charts = setActivePbsScenarioCharts(module, outputsBucketed, pbsCase);
+  const generatedSection = contentHost?.closest('.generated-section');
+  const grid = generatedSection?.querySelector('.generated-grid');
+  const existingChartCard = grid?.querySelector('[data-generated-card="charts"]');
+  if (!grid || !existingChartCard) {
+    return;
+  }
+
+  const chartModule = {
+    ...module,
+    generated: {
+      ...(module.generated || {}),
+      charts
+    }
+  };
+  existingChartCard.replaceWith(buildChartsCard(chartModule, charts, {
+    showPensionToggle: false
+  }));
+
+  requestAnimationFrame(() => notifyPbsScenarioChartsUpdated(module, pbsCase));
 }
 
 function getFirstOutputsBucketedRowValue(section, targetLabels) {
@@ -5865,6 +6060,7 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
     const previousValues = collectPbsValueMap(previousContent);
     const previousRects = capturePbsAnchorRects(previousContent);
     const selectedOutputsBucketed = getOutputsBucketedForPbsCase(outputsBucketed, nextCase);
+    updatePbsScenarioChartsCard(module, selectedOutputsBucketed, nextCase, contentHost);
     const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, selectedOutputsBucketed);
     const nextContent = buildOutputsBucketedMatrixContent(selectedOutputsBucketed, sectionEnhancements, {
       summaryHtml: nextCase.summaryHtml,
@@ -8241,7 +8437,10 @@ function buildGeneratedSection(module, {
     });
   }
   if (!isPensionModule(displayModule)) {
-    grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
+    const chartsForDisplay = isPbsBucketedModule
+      ? getPbsChartsForDisplay(displayModule, generated)
+      : generated.charts;
+    grid.appendChild(buildChartsCard(displayModule, chartsForDisplay, { showPensionToggle, readOnly }));
   }
 
   section.appendChild(heading);
@@ -8379,12 +8578,15 @@ export function patchFocusedGeneratedCards({
   }
 
   if (patchCharts) {
+    const chartsForDisplay = isPersonalBalanceSheetModule(displayModule)
+      ? getPbsChartsForDisplay(displayModule, displayModule.generated || {})
+      : (Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : []);
     replaceGeneratedCard({
       grid,
       selector: '[data-generated-card="charts"]',
       replacement: buildChartsCard(
         displayModule,
-        Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : [],
+        chartsForDisplay,
         { showPensionToggle: true, readOnly }
       )
     });
