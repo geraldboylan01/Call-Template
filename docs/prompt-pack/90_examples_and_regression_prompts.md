@@ -137,6 +137,21 @@ Checks:
 - keeps the two pension entries named
 - does not emit fake outputs or charts
 
+## Net Retirement Cash Flow Regression Prompts
+
+### NETRET-1
+Prompt:
+`Use the net retirement cash flow playbook. Household age 60 to 100. Net expenditure 90000. Net Irish rent 10000. Net EU rent 14000. Include 50 percent Irish State Pension from age 66 as 7781.80 today. PV growth 4 percent. Expenditure inflation 2 percent. Compare keep Irish rental with sell Irish rental. Keep case investable assets 1027000. Sell case investable assets 1477000 and Irish rent is lost.`
+
+Checks:
+- uses `generated.netRetirementInputs`
+- does not use `generated.pensionInputs`
+- includes `incomeSources` for the net rental income and 50% State Pension assumption
+- includes two `scenarios` and `baseScenarioId`
+- uses `presentValueRate` for the PV growth assumption
+- omits fake outputs, tables, and charts
+- mentions the net required fund / gross pension compatibility caveat
+
 ## Mortgage Regression Prompts
 
 ### MORT-1

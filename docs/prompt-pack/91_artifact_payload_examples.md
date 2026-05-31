@@ -222,6 +222,37 @@ Representative payloads for testing the upgraded module renderer through the exi
 }
 ```
 
+## Net Retirement Cash Flow
+
+```json
+{
+  "title": "Net Retirement Cash Flow - Property Income Scenarios",
+  "generated": {
+    "summaryHtml": "<p>This projection compares the household net spending need against net income sources and converts the annual shortfalls into a required net investment fund today. It uses the stated expenditure, rental income, assumed 50% Irish State Pension from age 66, and the selected after-tax net growth rate. Start with the required net fund and income-versus-expenditure chart, then use the scenario buttons to see how losing the Irish rental income changes the result.</p>",
+    "netRetirementInputs": {
+      "currentYear": 2026,
+      "currentAge": 60,
+      "horizonEndAge": 100,
+      "annualExpenditureToday": 90000,
+      "expenditureInflationRate": 0.02,
+      "presentValueRate": 0.04,
+      "availableInvestmentFundToday": 1027000,
+      "planningNote": "All income and expenditure figures are treated as after-tax net amounts. Pension funds are pre-tax and should not be compared directly with the required net fund unless pension withdrawal tax has been allowed for separately.",
+      "incomeSources": [
+        { "id": "irish-rent", "title": "Irish rental income", "annualAmountToday": 10000, "startAge": 60, "inflationIndexed": true },
+        { "id": "eu-rent", "title": "Non-Irish EU rental income", "annualAmountToday": 14000, "startAge": 60, "inflationIndexed": true },
+        { "id": "half-irish-state-pension", "title": "50% Irish State Pension", "annualAmountToday": 7781.8, "startAge": 66, "inflationIndexed": true }
+      ],
+      "baseScenarioId": "keep-irish-rental",
+      "scenarios": [
+        { "id": "keep-irish-rental", "title": "Keep Irish rental", "availableInvestmentFundToday": 1027000 },
+        { "id": "sell-irish-rental", "title": "Sell Irish rental", "availableInvestmentFundToday": 1477000, "excludedIncomeSourceIds": ["irish-rent"] }
+      ]
+    }
+  }
+}
+```
+
 ## Mortgage / Loan
 
 ```json

@@ -85,9 +85,12 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Numeric cells must be numbers, not formatted currency or unit strings.
 - Charts:
   - `type` must be exactly `bar` or `line`.
+  - For mixed charts, `datasets[*].type` may be `bar` or `line`.
+  - For stacked mixed charts, use `display.stacked = true` and optional `datasets[*].stack` labels on bar datasets.
   - All dataset values must be numbers only.
   - No currency symbols, commas, percentages, or numeric strings in dataset values.
   - Use optional chart `subtitle`, `display`, `annotations`, and `insights` only as structured metadata.
+  - Use numeric `display.yMin`, `display.yMax`, `display.suggestedMin`, or `display.suggestedMax` only when the axis bound has a client-facing reason.
   - `insights[]` and `annotations[]` entries must be objects, never plain strings.
   - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
 
@@ -95,7 +98,7 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 
 ## Runtime-Safe Module Boundaries
-- `generated.pensionInputs`, `generated.collegeFundingInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
+- `generated.pensionInputs`, `generated.netRetirementInputs`, `generated.collegeFundingInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
   - The AI's job is to parse inputs, choose the right mode, and write a short summary.
   - Do not invent the engine's outputs, tables, or charts unless Gerry explicitly asks for a separate explanatory module.
 - `generated.outputsBucketed` is used by the PBS playbook.
@@ -131,7 +134,8 @@ If he does, that playbook wins.
 
 If he does not, infer the playbook from the topic and requested output:
 - balance sheet or net worth classification -> PBS
-- retirement projection or retirement affordability -> Retirement
+- pension accumulation, pension drawdown, or gross pension income maths -> Retirement
+- net retirement shortfall from net income and net expenditure -> Net Retirement Cash Flow
 - mortgage scenario -> Mortgage
 - non-housing amortising borrowing scenario -> Loan
 - explain a topic visually -> Education

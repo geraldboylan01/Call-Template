@@ -8,6 +8,11 @@ import {
   getPensionScenarioCases
 } from './pension_math.js';
 import { computeCollegeFundingProjection } from './college_funding_math.js';
+import {
+  computeNetRetirementProjection,
+  getDefaultNetRetirementScenarioId,
+  getNetRetirementScenarioCases
+} from './net_retirement_math.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -88,6 +93,7 @@ const PBS_BUCKET_DEFINITIONS = Object.freeze({
 const CLIENT_GUIDE_COPY = Object.freeze({
   pbs: 'Start with net worth, then read the buckets as jobs for your money: spending reserves, retirement funding, concentrated assets, and debts.',
   pension: 'Start with the required pension pot and chart, then use the assumptions table to see which facts drive the retirement projection.',
+  netRetirement: 'Start with the annual net shortfall, then read the required net investment fund as an after-tax funding target.',
   collegeFunding: 'Start with the funding range, then compare today’s-money and future nominal costs before deciding what to ring-fence.',
   mortgage: 'Start with repayment, term, and interest; the chart and outputs show how overpayments change the path.',
   loan: 'Start with payoff timing and interest cost; the assumptions show the balance, rate, payment structure, and overpayment being tested.',
@@ -2062,6 +2068,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isNetRetirementModule(module)) {
+    return {
+      label: 'Net Cash Flow',
+      token: 'net-retirement'
+    };
+  }
+
   if (isCollegeFundingModule(module)) {
     return {
       label: 'College Funding',
@@ -2150,6 +2163,21 @@ function buildOverviewMetaItems(module, signalCounts) {
     }
     if (signalCounts.outputs > 0) {
       items.push(pluralizeOverview(signalCounts.outputs, 'output'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'net-retirement') {
+    const inputs = module?.generated?.netRetirementInputs || {};
+    const scenarioCount = Array.isArray(inputs.scenarios) ? inputs.scenarios.length : 0;
+    if (scenarioCount > 1) {
+      items.push(pluralizeOverview(scenarioCount, 'scenario'));
+    }
+    if (Number.isFinite(Number(inputs.currentAge)) && Number.isFinite(Number(inputs.horizonEndAge))) {
+      items.push(`Age ${inputs.currentAge}-${inputs.horizonEndAge}`);
+    }
+    if (signalCounts.charts > 0) {
+      items.push(pluralizeOverview(signalCounts.charts, 'chart'));
     }
     return uniqueOverviewItems(items, 3, 22);
   }
@@ -2405,6 +2433,10 @@ function isCollegeFundingModule(module) {
   return Boolean(module?.generated?.collegeFundingInputs);
 }
 
+function isNetRetirementModule(module) {
+  return Boolean(module?.generated?.netRetirementInputs);
+}
+
 function isLoanProjectionModule(module) {
   return Boolean(module?.generated?.loanInputs);
 }
@@ -2447,6 +2479,14 @@ function getPlaybookDisplayContext(module) {
       key: 'pension',
       heading: 'Retirement Projection',
       guide: CLIENT_GUIDE_COPY.pension
+    };
+  }
+
+  if (isNetRetirementModule(module)) {
+    return {
+      key: 'netRetirement',
+      heading: 'Net Retirement Cash Flow',
+      guide: CLIENT_GUIDE_COPY.netRetirement
     };
   }
 
@@ -2631,6 +2671,87 @@ function getPensionDisplayModule(module) {
   }
 }
 
+function getNetRetirementScenarioCasesForModule(module) {
+  if (!isNetRetirementModule(module)) {
+    return [];
+  }
+
+  try {
+    return getNetRetirementScenarioCases(module.generated.netRetirementInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getDefaultNetRetirementScenarioForModule(module) {
+  if (!isNetRetirementModule(module)) {
+    return '';
+  }
+
+  try {
+    return getDefaultNetRetirementScenarioId(module.generated.netRetirementInputs);
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getNetRetirementScenarioForModule(module) {
+  const cases = getNetRetirementScenarioCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const selectedId = typeof window.__getNetRetirementScenarioForModule === 'function'
+    ? window.__getNetRetirementScenarioForModule(module.id)
+    : '';
+
+  if (cases.some((netCase) => netCase.id === selectedId)) {
+    return selectedId;
+  }
+
+  return getDefaultNetRetirementScenarioForModule(module) || cases[0].id;
+}
+
+function getNetRetirementDisplayModule(module) {
+  if (!isNetRetirementModule(module)) {
+    return module;
+  }
+
+  try {
+    const scenarioId = getNetRetirementScenarioForModule(module);
+    const projection = computeNetRetirementProjection(module.generated.netRetirementInputs, { scenarioId });
+    const existingCharts = Array.isArray(module.generated?.charts) ? module.generated.charts : [];
+
+    return {
+      ...module,
+      _netRetirementProjection: {
+        scenarioId,
+        debug: projection.debug
+      },
+      generated: {
+        ...(module.generated || {}),
+        assumptions: projection.assumptionsTable,
+        outputs: projection.outputsTable,
+        tables: projection.tables,
+        charts: projection.charts.map((chart, index) => ({
+          ...chart,
+          id: chart.id || existingCharts[index]?.id || ''
+        }))
+      }
+    };
+  } catch (_error) {
+    return module;
+  }
+}
+
+function getCalculatedDisplayModule(module) {
+  if (isNetRetirementModule(module)) {
+    return getNetRetirementDisplayModule(module);
+  }
+
+  return getPensionDisplayModule(module);
+}
+
 function filterOutputsRowsForPensionToggle(module, tableData) {
   if (!isAffordablePensionMode(module)) {
     return tableData;
@@ -2801,6 +2922,13 @@ function normalizeChartDisplay(display) {
     normalized.stacked = display.stacked;
   }
 
+  ['yMin', 'yMax', 'suggestedMin', 'suggestedMax'].forEach((key) => {
+    const value = Number(display[key]);
+    if (Number.isFinite(value)) {
+      normalized[key] = value;
+    }
+  });
+
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
@@ -2913,6 +3041,13 @@ function sanitizeEducationChart(chart, index = 0) {
             })
             : []
         };
+
+        if (dataset.type === 'line' || dataset.type === 'bar') {
+          normalizedDataset.type = dataset.type;
+        }
+        if (typeof dataset.stack === 'string' && dataset.stack.trim()) {
+          normalizedDataset.stack = dataset.stack.trim();
+        }
 
         [
           'backgroundColor',
@@ -3042,7 +3177,7 @@ export function getChartHydrationModule(module) {
   }
 
   if (!isEducationModule(module)) {
-    return getPensionDisplayModule(module);
+    return getCalculatedDisplayModule(module);
   }
 
   const charts = getEducationChartVisuals(module);
@@ -3156,7 +3291,7 @@ function normalizeAssumptionLabelToken(value) {
 }
 
 function isInlineAssumptionsEditableModule(module) {
-  return isPensionModule(module) || isMortgageModule(module);
+  return isPensionModule(module) || isNetRetirementModule(module) || isMortgageModule(module);
 }
 
 function deriveRemainingTermMonths(mortgageInputs) {
@@ -3452,6 +3587,65 @@ function createEditableAssumptionCell({
     });
   }
 
+  if (isNetRetirementModule(module)) {
+    const netInputs = module.generated.netRetirementInputs;
+    const netFieldMap = {
+      currentage: {
+        field: 'currentAge',
+        value: draftValues.currentAge ?? formatNumberForInput(netInputs.currentAge, 0),
+        placeholder: '60',
+        inputMode: 'numeric'
+      },
+      projectionendage: {
+        field: 'horizonEndAge',
+        value: draftValues.horizonEndAge ?? formatNumberForInput(netInputs.horizonEndAge, 0),
+        placeholder: '100',
+        inputMode: 'numeric'
+      },
+      annualnetexpendituretoday: {
+        field: 'annualExpenditureToday',
+        value: draftValues.annualExpenditureToday ?? formatNumberForInput(netInputs.annualExpenditureToday, 2),
+        placeholder: '90000',
+        inputMode: 'decimal'
+      },
+      expenditureinflation: {
+        field: 'expenditureInflationRate',
+        value: draftValues.expenditureInflationRate ?? formatRateForInput(netInputs.expenditureInflationRate),
+        placeholder: '2%',
+        inputMode: 'decimal'
+      },
+      presentvaluenetgrowthrate: {
+        field: 'presentValueRate',
+        value: draftValues.presentValueRate ?? formatRateForInput(netInputs.presentValueRate),
+        placeholder: '4%',
+        inputMode: 'decimal'
+      },
+      availableinvestmentfundtoday: {
+        field: 'availableInvestmentFundToday',
+        value: draftValues.availableInvestmentFundToday ?? formatNumberForInput(netInputs.availableInvestmentFundToday, 2),
+        placeholder: '1027000',
+        inputMode: 'decimal'
+      }
+    };
+
+    const descriptor = netFieldMap[labelToken];
+    if (!descriptor) {
+      return null;
+    }
+
+    return buildInlineAssumptionInputCell({
+      module,
+      calculator: 'netRetirement',
+      field: descriptor.field,
+      value: descriptor.value,
+      placeholder: descriptor.placeholder,
+      inputMode: descriptor.inputMode,
+      onPatchInputs,
+      error: errors[descriptor.field],
+      readOnly
+    });
+  }
+
   if (isMortgageModule(module)) {
     const mortgageInputs = getLoanEngineInputs(module);
     if (!mortgageInputs) {
@@ -3580,7 +3774,9 @@ function buildAssumptionsTableCard(module, {
       onPatchInputs({
         type: 'toggle-edit-mode',
         moduleId: module.id,
-        calculator: isPensionModule(module) ? 'pension' : 'mortgage'
+        calculator: isPensionModule(module)
+          ? 'pension'
+          : (isNetRetirementModule(module) ? 'netRetirement' : 'mortgage')
       });
     });
     actions.appendChild(editButton);
@@ -6469,6 +6665,172 @@ function buildRetirementDecisionPanel(module) {
   return panel;
 }
 
+function getNetRetirementProjectionDebug(module) {
+  if (module?._netRetirementProjection?.debug) {
+    return module._netRetirementProjection.debug;
+  }
+
+  if (!isNetRetirementModule(module)) {
+    return null;
+  }
+
+  try {
+    const scenarioId = getNetRetirementScenarioForModule(module);
+    return computeNetRetirementProjection(module.generated.netRetirementInputs, { scenarioId }).debug;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getNetRetirementRequiredFundMeta(module) {
+  const debug = getNetRetirementProjectionDebug(module);
+  if (!debug) {
+    return {
+      valueText: 'N/A',
+      label: 'Required net investment fund',
+      detail: 'The required fund could not be calculated from the current assumptions.'
+    };
+  }
+
+  const scenario = debug.scenario || {};
+  return {
+    valueText: formatRetirementCurrency(debug.requiredFundToday),
+    label: 'Required net investment fund',
+    detail: `After-tax fund needed today for ${scenario.title || 'this case'}, using the selected net growth rate.`
+  };
+}
+
+function buildNetRetirementPositionChips(debug) {
+  const chips = document.createElement('div');
+  chips.className = 'retirement-position-chips';
+  const items = [
+    {
+      label: 'First-year shortfall',
+      value: formatRetirementCurrency(debug?.firstYearShortfall || 0),
+      tone: Number(debug?.firstYearShortfall) > 0 ? 'risk' : 'positive'
+    }
+  ];
+
+  if (Number.isFinite(Number(debug?.surplusVsRequired))) {
+    const surplus = Number(debug.surplusVsRequired);
+    items.push({
+      label: surplus >= 0 ? 'Fund surplus' : 'Fund gap',
+      value: formatRetirementCurrency(Math.abs(surplus)),
+      tone: surplus >= 0 ? 'positive' : 'risk'
+    });
+  }
+
+  items.forEach((item) => {
+    const chip = document.createElement('span');
+    chip.className = 'retirement-position-chip';
+    chip.dataset.tone = item.tone;
+
+    const label = document.createElement('span');
+    label.className = 'retirement-position-chip-label';
+    label.textContent = item.label;
+    chip.appendChild(label);
+
+    const value = document.createElement('strong');
+    value.className = 'retirement-position-chip-value';
+    value.textContent = item.value;
+    chip.appendChild(value);
+
+    chips.appendChild(chip);
+  });
+
+  return chips;
+}
+
+function buildNetRetirementScenarioOptions(module, cases, selectedId) {
+  const options = document.createElement('div');
+  options.className = 'retirement-scenario-options';
+  options.setAttribute('role', 'radiogroup');
+  options.setAttribute('aria-label', 'Choose net retirement cash-flow case');
+
+  cases.forEach((netCase) => {
+    const isActive = netCase.id === selectedId;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'retirement-scenario-card';
+    button.dataset.netRetirementScenarioId = netCase.id;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('role', 'radio');
+    button.setAttribute('aria-checked', isActive ? 'true' : 'false');
+
+    const title = document.createElement('span');
+    title.className = 'retirement-scenario-title';
+    title.textContent = netCase.title;
+    button.appendChild(title);
+
+    const detail = document.createElement('span');
+    detail.className = 'retirement-scenario-detail';
+    detail.textContent = netCase.detail || 'Scenario assumptions';
+    button.appendChild(detail);
+
+    button.addEventListener('click', () => {
+      if (typeof window.__setNetRetirementScenario === 'function') {
+        window.__setNetRetirementScenario(module.id, netCase.id);
+      }
+    });
+
+    options.appendChild(button);
+  });
+
+  return options;
+}
+
+function buildNetRetirementDecisionPanel(module) {
+  if (!isNetRetirementModule(module)) {
+    return null;
+  }
+
+  const debug = getNetRetirementProjectionDebug(module);
+  const requiredFund = getNetRetirementRequiredFundMeta(module);
+  const cases = getNetRetirementScenarioCasesForModule(module);
+  const selectedId = getNetRetirementScenarioForModule(module);
+  const panel = document.createElement('section');
+  panel.className = 'generated-card retirement-decision-panel net-retirement-decision-panel';
+  panel.dataset.generatedCard = 'net-retirement-decision';
+
+  const required = document.createElement('div');
+  required.className = 'retirement-required-pot-card';
+  required.dataset.requiredFundValue = requiredFund.valueText;
+
+  const eyebrow = document.createElement('p');
+  eyebrow.className = 'retirement-required-eyebrow';
+  eyebrow.textContent = requiredFund.label;
+  required.appendChild(eyebrow);
+
+  const value = document.createElement('div');
+  value.className = 'retirement-required-value';
+  value.textContent = requiredFund.valueText;
+  required.appendChild(value);
+
+  const detail = document.createElement('p');
+  detail.className = 'retirement-required-detail';
+  detail.textContent = requiredFund.detail;
+  required.appendChild(detail);
+
+  if (debug) {
+    required.appendChild(buildNetRetirementPositionChips(debug));
+  }
+  panel.appendChild(required);
+
+  if (cases.length > 1) {
+    const scenarioArea = document.createElement('div');
+    scenarioArea.className = 'retirement-scenario-area';
+
+    const scenarioLabel = document.createElement('p');
+    scenarioLabel.className = 'retirement-scenario-label';
+    scenarioLabel.textContent = 'Net cash-flow case';
+    scenarioArea.appendChild(scenarioLabel);
+    scenarioArea.appendChild(buildNetRetirementScenarioOptions(module, cases, selectedId));
+    panel.appendChild(scenarioArea);
+  }
+
+  return panel;
+}
+
 function buildPensionScenarioSwitcher(module, cases) {
   if (!isPensionModule(module) || !Array.isArray(cases) || cases.length <= 1) {
     return null;
@@ -8340,7 +8702,7 @@ function buildGeneratedSection(module, {
   onPatchInputs = null,
   assumptionsEditorStatus = null
 } = {}) {
-  const displayModule = getPensionDisplayModule(module);
+  const displayModule = getCalculatedDisplayModule(module);
   const generated = displayModule.generated || {
     summaryHtml: '',
     assumptions: { columns: [], rows: [] },
@@ -8348,6 +8710,7 @@ function buildGeneratedSection(module, {
     tables: [],
     pbsInputs: null,
     collegeFundingInputs: null,
+    netRetirementInputs: null,
     outputsBucketed: null,
     education: null,
     report: null,
@@ -8384,6 +8747,9 @@ function buildGeneratedSection(module, {
   if (isPensionModule(displayModule)) {
     grid.classList.add('retirement-generated-grid');
   }
+  if (isNetRetirementModule(displayModule)) {
+    grid.classList.add('retirement-generated-grid', 'net-retirement-generated-grid');
+  }
 
   const hasBucketedOutputs = isOutputsBucketedPresent(generated.outputsBucketed);
   const isPbsBucketedModule = hasBucketedOutputs && isPersonalBalanceSheetModule(displayModule);
@@ -8406,7 +8772,14 @@ function buildGeneratedSection(module, {
     }
   }
 
-  if (isPensionModule(displayModule)) {
+  if (isNetRetirementModule(displayModule)) {
+    const netRetirementDecisionPanel = buildNetRetirementDecisionPanel(displayModule);
+    if (netRetirementDecisionPanel) {
+      grid.appendChild(netRetirementDecisionPanel);
+    }
+  }
+
+  if (isPensionModule(displayModule) || isNetRetirementModule(displayModule)) {
     grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
   }
 
@@ -8436,7 +8809,7 @@ function buildGeneratedSection(module, {
       grid.appendChild(buildTableCard(title, table));
     });
   }
-  if (!isPensionModule(displayModule)) {
+  if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule)) {
     const chartsForDisplay = isPbsBucketedModule
       ? getPbsChartsForDisplay(displayModule, generated)
       : generated.charts;
@@ -8479,7 +8852,7 @@ export function patchFocusedGeneratedCards({
   }
 
   const generatedSection = focusedCard.querySelector('.generated-section');
-  if (isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module)) {
+  if (isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module) || isNetRetirementModule(module)) {
     if (!generatedSection) {
       return;
     }
@@ -8511,7 +8884,7 @@ export function patchFocusedGeneratedCards({
   if (!generatedSection || !grid) {
     return;
   }
-  const displayModule = getPensionDisplayModule(module);
+  const displayModule = getCalculatedDisplayModule(module);
   const cardModule = isPensionModule(displayModule) ? displayModule : module;
 
   if (patchSummary) {

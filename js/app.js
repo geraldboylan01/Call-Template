@@ -52,10 +52,17 @@ import {
   normalizeCollegeFundingInputs,
   computeCollegeFundingProjection
 } from './college_funding_math.js';
+import {
+  normalizeNetRetirementInputs,
+  computeNetRetirementProjection,
+  getDefaultNetRetirementScenarioId,
+  getNetRetirementScenarioCases
+} from './net_retirement_math.js';
 import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_math.js';
 import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { runPensionMathTests } from './tests_pension_math.js';
 import { runCollegeFundingMathTests } from './tests_college_funding_math.js';
+import { runNetRetirementMathTests } from './tests_net_retirement_math.js';
 import { normalizeEditorJsonInput } from './dev_payload_input.js';
 import {
   buildPublishedCapabilityToken,
@@ -190,6 +197,7 @@ const appState = {
   lastDeletedBatch: null,
   pensionShowMaxByModuleId: new Map(),
   pensionScenarioByModuleId: new Map(),
+  netRetirementScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
@@ -1435,6 +1443,64 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'net-retirement-cashflow-demo',
+    label: 'Net Retirement Cash Flow Demo',
+    payload: {
+      title: 'Net Retirement Cash Flow - Property Income Scenarios',
+      generated: {
+        summaryHtml: '<p>This projection compares the household net spending need against net income sources and converts the annual shortfalls into a required net investment fund today. It uses the stated expenditure, rental income, assumed 50% Irish State Pension from age 66, and the selected after-tax net growth rate. Start with the required net fund and income-versus-expenditure chart, then use the scenario buttons to see how losing the Irish rental income changes the result.</p>',
+        netRetirementInputs: {
+          currentYear: 2026,
+          currentAge: 60,
+          horizonEndAge: 100,
+          annualExpenditureToday: 90000,
+          expenditureInflationRate: 0.02,
+          presentValueRate: 0.04,
+          availableInvestmentFundToday: 1027000,
+          planningNote: 'All income and expenditure figures are treated as after-tax net amounts. Pension funds are pre-tax and should not be compared directly with the required net fund unless pension withdrawal tax has been allowed for separately.',
+          incomeSources: [
+            {
+              id: 'irish-rent',
+              title: 'Irish rental income',
+              annualAmountToday: 10000,
+              startAge: 60,
+              inflationIndexed: true
+            },
+            {
+              id: 'eu-rent',
+              title: 'Non-Irish EU rental income',
+              annualAmountToday: 14000,
+              startAge: 60,
+              inflationIndexed: true
+            },
+            {
+              id: 'half-irish-state-pension',
+              title: '50% Irish State Pension',
+              annualAmountToday: 7781.8,
+              startAge: 66,
+              inflationIndexed: true
+            }
+          ],
+          baseScenarioId: 'keep-irish-rental',
+          scenarios: [
+            {
+              id: 'keep-irish-rental',
+              title: 'Keep Irish rental',
+              availableInvestmentFundToday: 1027000
+            },
+            {
+              id: 'sell-irish-rental',
+              title: 'Sell Irish rental',
+              availableInvestmentFundToday: 1477000,
+              excludedIncomeSourceIds: ['irish-rent'],
+              description: 'Irish rental income is removed and gross sale proceeds are added to investable assets after the cash reserve top-up.'
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
     id: 'pension-inline-assumptions-demo',
     label: 'Retirement Inline Assumptions Demo',
     payload: {
@@ -2481,6 +2547,28 @@ function mapPensionNormalizationErrorToField(message) {
   return null;
 }
 
+function mapNetRetirementNormalizationErrorToField(message) {
+  if (message.includes('.currentAge')) {
+    return 'currentAge';
+  }
+  if (message.includes('.horizonEndAge')) {
+    return 'horizonEndAge';
+  }
+  if (message.includes('.annualExpenditureToday')) {
+    return 'annualExpenditureToday';
+  }
+  if (message.includes('.expenditureInflationRate')) {
+    return 'expenditureInflationRate';
+  }
+  if (message.includes('.presentValueRate')) {
+    return 'presentValueRate';
+  }
+  if (message.includes('.availableInvestmentFundToday')) {
+    return 'availableInvestmentFundToday';
+  }
+  return null;
+}
+
 function mapMortgageNormalizationErrorToField(message) {
   if (message.includes('.currentBalance')) {
     return 'currentBalance';
@@ -2562,6 +2650,25 @@ function parsePensionFieldInput(field, rawValue) {
   }
 }
 
+function parseNetRetirementFieldInput(field, rawValue) {
+  switch (field) {
+    case 'currentAge':
+      return parseIntegerInput(rawValue, { label: 'Current age' });
+    case 'horizonEndAge':
+      return parseIntegerInput(rawValue, { label: 'Projection end age' });
+    case 'annualExpenditureToday':
+      return parseNonNegativeNumberInput(rawValue, { label: 'Annual net expenditure' });
+    case 'expenditureInflationRate':
+      return parseRateInput(rawValue, { label: 'Expenditure inflation' });
+    case 'presentValueRate':
+      return parseRateInput(rawValue, { label: 'Present value net growth rate' });
+    case 'availableInvestmentFundToday':
+      return parseNonNegativeNumberInput(rawValue, { label: 'Available investment fund' });
+    default:
+      return { error: 'Unsupported net retirement assumption field.' };
+  }
+}
+
 function parseMortgageFieldInput(field, rawValue) {
   switch (field) {
     case 'currentBalance':
@@ -2613,7 +2720,18 @@ function applyUpdatedProjectionToModule({
     module.generated.pensionInputs = normalizedInputs;
     module.generated.mortgageInputs = null;
     module.generated.loanInputs = null;
+    module.generated.netRetirementInputs = null;
     applyPensionProjectionToModule(module, { updateSummary: true });
+    return;
+  }
+
+  if (calculator === 'netRetirement') {
+    module.generated.netRetirementInputs = normalizedInputs;
+    module.generated.pensionInputs = null;
+    module.generated.mortgageInputs = null;
+    module.generated.loanInputs = null;
+    module.generated.collegeFundingInputs = null;
+    applyNetRetirementProjectionToModule(module);
     return;
   }
 
@@ -2624,6 +2742,7 @@ function applyUpdatedProjectionToModule({
       : 'mortgageInputs';
     setLoanEngineInputs(module, normalizedInputs, { source: targetSource });
     module.generated.pensionInputs = null;
+    module.generated.netRetirementInputs = null;
     const shouldUpdateSummary = shouldRefreshMortgageSummary(module.generated.summaryHtml);
     applyMortgageProjectionToModule(module, { updateSummary: shouldUpdateSummary });
   }
@@ -2691,6 +2810,56 @@ function commitPensionAssumptionField({
   applyUpdatedProjectionToModule({
     module,
     calculator: 'pension',
+    normalizedInputs
+  });
+  clearAssumptionsDraftFields(state, [field]);
+  return {
+    ok: true
+  };
+}
+
+function commitNetRetirementAssumptionField({
+  module,
+  state,
+  field,
+  rawValue
+}) {
+  const baseInputs = module?.generated?.netRetirementInputs;
+  if (!baseInputs) {
+    return {
+      ok: false,
+      field,
+      message: 'Net retirement inputs are unavailable for this module.'
+    };
+  }
+
+  const candidate = { ...baseInputs };
+  const parsed = parseNetRetirementFieldInput(field, rawValue);
+  if (parsed.error) {
+    return {
+      ok: false,
+      field,
+      message: parsed.error
+    };
+  }
+  candidate[field] = parsed.value;
+
+  let normalizedInputs;
+  try {
+    normalizedInputs = normalizeNetRetirementInputs(candidate);
+  } catch (error) {
+    const message = error?.message || 'Invalid net retirement assumptions.';
+    const mappedField = mapNetRetirementNormalizationErrorToField(message) || field;
+    return {
+      ok: false,
+      field: mappedField,
+      message
+    };
+  }
+
+  applyUpdatedProjectionToModule({
+    module,
+    calculator: 'netRetirement',
     normalizedInputs
   });
   clearAssumptionsDraftFields(state, [field]);
@@ -2897,6 +3066,35 @@ function applyCollegeFundingProjectionToModule(module) {
   appState.lastValidProjectionByModuleId.set(module.id, {
     calculator: 'collegeFunding',
     inputs: { ...module.generated.collegeFundingInputs },
+    debug: projection.debug
+  });
+
+  return projection;
+}
+
+function applyNetRetirementProjectionToModule(module) {
+  const projection = computeNetRetirementProjection(module.generated.netRetirementInputs);
+
+  module.generated.assumptions = projection.assumptionsTable;
+  module.generated.outputs = projection.outputsTable;
+  module.generated.outputsBucketed = null;
+  module.generated.tables = projection.tables;
+  module.generated.charts = projection.charts.map((chart, index) => ({
+    ...chart,
+    id: chart.id || makeChartId(module.id, chart.title, index)
+  }));
+
+  console.info('[CallCanvas] net retirement projection computed', {
+    inputs: projection.debug.inputs,
+    scenarioId: projection.debug.scenarioId,
+    firstYearShortfall: projection.debug.firstYearShortfall,
+    requiredFundToday: projection.debug.requiredFundToday,
+    surplusVsRequired: projection.debug.surplusVsRequired
+  });
+
+  appState.lastValidProjectionByModuleId.set(module.id, {
+    calculator: 'netRetirement',
+    inputs: { ...module.generated.netRetirementInputs },
     debug: projection.debug
   });
 
@@ -5736,6 +5934,7 @@ async function replaceSession(nextSession, options = {}) {
   ui.swipeStage.classList.remove('is-compare');
   appState.pensionShowMaxByModuleId = new Map();
   appState.pensionScenarioByModuleId = new Map();
+  appState.netRetirementScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -6144,6 +6343,16 @@ function validateChartDisplayPayload(display, label) {
     normalized.stacked = display.stacked;
   }
 
+  ['yMin', 'yMax', 'suggestedMin', 'suggestedMax'].forEach((key) => {
+    if (key in display) {
+      const value = Number(display[key]);
+      if (!Number.isFinite(value)) {
+        throw new Error(`${label}.${key} must be a finite number when provided.`);
+      }
+      normalized[key] = value;
+    }
+  });
+
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
@@ -6256,6 +6465,21 @@ function validateChartsPayload(charts) {
             return value;
           })
         };
+
+        if ('type' in dataset) {
+          if (dataset.type !== 'line' && dataset.type !== 'bar') {
+            throw new Error(`Chart ${index + 1}, dataset ${datasetIndex + 1}.type must be "line" or "bar" when provided.`);
+          }
+          normalizedDataset.type = dataset.type;
+        }
+        if ('stack' in dataset) {
+          if (typeof dataset.stack !== 'string') {
+            throw new Error(`Chart ${index + 1}, dataset ${datasetIndex + 1}.stack must be a string when provided.`);
+          }
+          if (dataset.stack.trim()) {
+            normalizedDataset.stack = dataset.stack.trim();
+          }
+        }
 
         [
           'backgroundColor',
@@ -6558,6 +6782,10 @@ function validateCollegeFundingInputsPayload(collegeFundingInputs) {
   return normalizeCollegeFundingInputs(collegeFundingInputs);
 }
 
+function validateNetRetirementInputsPayload(netRetirementInputs) {
+  return normalizeNetRetirementInputs(netRetirementInputs);
+}
+
 function validateMortgageInputsPayload(mortgageInputs) {
   return normalizeMortgageInputs(mortgageInputs, { defaultLoanKind: 'mortgage' });
 }
@@ -6645,6 +6873,14 @@ function normalizePayload(payload) {
 
     if ('collegeFunding' in payload.generated && !('collegeFundingInputs' in payload.generated)) {
       generatedPatch.collegeFundingInputs = validateCollegeFundingInputsPayload(payload.generated.collegeFunding);
+    }
+
+    if ('netRetirementInputs' in payload.generated) {
+      generatedPatch.netRetirementInputs = validateNetRetirementInputsPayload(payload.generated.netRetirementInputs);
+    }
+
+    if ('netCashflowInputs' in payload.generated && !('netRetirementInputs' in payload.generated)) {
+      generatedPatch.netRetirementInputs = validateNetRetirementInputsPayload(payload.generated.netCashflowInputs);
     }
 
     if ('mortgageInputs' in payload.generated) {
@@ -6899,6 +7135,91 @@ async function setPensionScenarioForModule(moduleId, scenarioId) {
   }
 }
 
+function getNetRetirementScenarioCasesForModule(module) {
+  if (!module?.generated?.netRetirementInputs) {
+    return [];
+  }
+
+  try {
+    return getNetRetirementScenarioCases(module.generated.netRetirementInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getDefaultNetRetirementScenarioForModule(module) {
+  if (!module?.generated?.netRetirementInputs) {
+    return '';
+  }
+
+  try {
+    return getDefaultNetRetirementScenarioId(module.generated.netRetirementInputs);
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getNetRetirementScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getNetRetirementScenarioCasesForModule(module);
+  if (cases.length === 0) {
+    appState.netRetirementScenarioByModuleId.delete(moduleId);
+    return '';
+  }
+
+  const selectedId = appState.netRetirementScenarioByModuleId.get(moduleId);
+  if (cases.some((netCase) => netCase.id === selectedId)) {
+    return selectedId;
+  }
+
+  const defaultId = getDefaultNetRetirementScenarioForModule(module) || cases[0].id;
+  appState.netRetirementScenarioByModuleId.delete(moduleId);
+  return defaultId;
+}
+
+async function setNetRetirementScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getNetRetirementScenarioCasesForModule(module);
+  if (cases.length <= 1) {
+    appState.netRetirementScenarioByModuleId.delete(moduleId);
+    return;
+  }
+
+  const nextCase = cases.find((netCase) => netCase.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  const currentId = getNetRetirementScenarioForModule(moduleId);
+  if (currentId === nextCase.id) {
+    return;
+  }
+
+  appState.netRetirementScenarioByModuleId.set(moduleId, nextCase.id);
+
+  if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
+    patchFocusedModuleGeneratedContent(moduleId, {
+      patchSummary: true,
+      patchAssumptions: true,
+      patchOutputs: true,
+      updateCharts: true,
+      replaceCharts: true
+    });
+  } else if (appState.mode === 'overview') {
+    refreshOverview({ enableSortable: !runtimeConfig.readOnly });
+  } else if (appState.mode === 'compare') {
+    await renderCompareView();
+  }
+}
+
 function getPensionShowMaxForModule(moduleId) {
   if (typeof moduleId !== 'string' || !moduleId) {
     return false;
@@ -7039,6 +7360,14 @@ async function commitInlineAssumption({
       field,
       rawValue
     });
+  } else if (calculator === 'netRetirement') {
+    const rawValue = hasOwnPropertyValue(state.draftValues, field) ? state.draftValues[field] : value;
+    result = commitNetRetirementAssumptionField({
+      module,
+      state,
+      field,
+      rawValue
+    });
   } else if (calculator === 'mortgage') {
     const rawValue = field && hasOwnPropertyValue(state.draftValues, field) ? state.draftValues[field] : value;
     result = commitMortgageAssumptionField({
@@ -7053,7 +7382,9 @@ async function commitInlineAssumption({
   }
 
   if (!result?.ok) {
-    const errorField = result?.field || (calculator === 'mortgage' ? 'currentBalance' : 'growthRate');
+    const errorField = result?.field || (calculator === 'mortgage'
+      ? 'currentBalance'
+      : (calculator === 'netRetirement' ? 'presentValueRate' : 'growthRate'));
     setAssumptionsFieldError(state, errorField, result?.message || 'Could not update assumptions.');
     setAssumptionsEditorPhase(moduleId, 'idle');
     return;
@@ -7905,6 +8236,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
     }
@@ -7916,6 +8248,19 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
+      module.generated.netRetirementInputs = null;
+      module.generated.education = null;
+      module.generated.report = null;
+    }
+  }
+
+  if ('netRetirementInputs' in generatedPatch) {
+    module.generated.netRetirementInputs = generatedPatch.netRetirementInputs;
+    if (generatedPatch.netRetirementInputs) {
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
       module.generated.education = null;
       module.generated.report = null;
     }
@@ -7927,6 +8272,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
     }
@@ -7938,6 +8284,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
     }
@@ -7950,6 +8297,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.netRetirementInputs = null;
       module.generated.report = null;
     }
   }
@@ -7961,6 +8309,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.netRetirementInputs = null;
       module.generated.education = null;
     }
   }
@@ -8009,6 +8358,7 @@ function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditor
 
     const hasPensionInputsPatch = 'pensionInputs' in normalizedPayload.generated;
     const hasCollegeFundingInputsPatch = 'collegeFundingInputs' in normalizedPayload.generated;
+    const hasNetRetirementInputsPatch = 'netRetirementInputs' in normalizedPayload.generated;
     const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
     const hasLoanInputsPatch = 'loanInputs' in normalizedPayload.generated;
 
@@ -8024,6 +8374,11 @@ function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditor
       }
     } else if (hasPensionInputsPatch && module.generated.pensionInputs) {
       applyPensionProjectionToModule(module, { updateSummary: true });
+      if (resetEditorState) {
+        resetAssumptionsEditorState(module.id);
+      }
+    } else if (hasNetRetirementInputsPatch && module.generated.netRetirementInputs) {
+      applyNetRetirementProjectionToModule(module);
       if (resetEditorState) {
         resetAssumptionsEditorState(module.id);
       }
@@ -8922,9 +9277,14 @@ export async function initApp(options = {}) {
       void setPensionScenarioForModule(moduleId, scenarioId);
     };
     window.__getPensionScenarioForModule = (moduleId) => getPensionScenarioForModule(moduleId);
+    window.__setNetRetirementScenario = (moduleId, scenarioId) => {
+      void setNetRetirementScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getNetRetirementScenarioForModule = (moduleId) => getNetRetirementScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
     window.__runCollegeFundingMathTests = () => runCollegeFundingMathTests();
+    window.__runNetRetirementMathTests = () => runNetRetirementMathTests();
 
     if (appState.mode === 'focused') {
       await renderFocused({ useSwipe: false, revealMode: true });

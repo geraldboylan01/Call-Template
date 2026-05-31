@@ -96,6 +96,16 @@ function normalizeDataset(dataset, datasetIndex) {
     data
   };
 
+  if (dataset?.type === 'bar' || dataset?.type === 'line') {
+    normalized.type = dataset.type;
+  }
+  if (typeof dataset?.stack === 'string' && dataset.stack.trim()) {
+    normalized.stack = dataset.stack.trim();
+  }
+  if (typeof dataset?.hidden === 'boolean') {
+    normalized.hidden = dataset.hidden;
+  }
+
   [
     'backgroundColor',
     'borderColor',
@@ -195,6 +205,13 @@ function normalizeChartDisplay(display) {
   if (typeof display.stacked === 'boolean') {
     normalized.stacked = display.stacked;
   }
+
+  ['yMin', 'yMax', 'suggestedMin', 'suggestedMax'].forEach((key) => {
+    const value = Number(display[key]);
+    if (Number.isFinite(value)) {
+      normalized[key] = value;
+    }
+  });
 
   return Object.keys(normalized).length > 0 ? normalized : null;
 }

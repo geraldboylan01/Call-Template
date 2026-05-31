@@ -21,6 +21,15 @@ Use `11_retirement_playbook.md` when Gerry says things like:
 - affordable retirement income
 - goal-seek retirement income
 
+### Net Retirement Cash Flow Playbook
+Use `15_net_retirement_cashflow_playbook.md` when Gerry says things like:
+- net retirement cash flow
+- retirement shortfall from net income and net expenditure
+- required net investment fund
+- present value retirement shortfall
+- compare keeping or losing rental income
+- pension tax is too uncertain to model directly
+
 ### Mortgage Playbook
 Use `12_mortgage_playbook.md` when Gerry says things like:
 - use the mortgage playbook
@@ -68,7 +77,8 @@ Use `22_protection_playbook.md` when Gerry says things like:
 - If Gerry names a playbook explicitly, do not second-guess it.
 - If Gerry does not name one, infer from the primary job:
   - structured net worth classification -> PBS
-  - repeatable retirement maths -> Retirement
+  - pension accumulation, pension drawdown, or gross pension income maths -> Retirement
+  - net cash-flow shortfall and required after-tax investment fund maths -> Net Retirement Cash Flow
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
   - children’s college cost scenarios -> College Funding

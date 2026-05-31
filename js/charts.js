@@ -797,18 +797,22 @@ function buildFilename(clientName, moduleTitle, chartTitle) {
 }
 
 function buildDatasetStyle(dataset, index, type) {
+  const datasetType = dataset?.type === 'bar' || dataset?.type === 'line'
+    ? dataset.type
+    : type;
   const paletteColor = COLOR_PALETTE[index % COLOR_PALETTE.length];
   const color = typeof dataset?.borderColor === 'string' && dataset.borderColor.trim()
     ? dataset.borderColor
     : paletteColor;
   const backgroundColor = typeof dataset?.backgroundColor === 'string' && dataset.backgroundColor.trim()
     ? dataset.backgroundColor
-    : hexToRgba(color, type === 'bar' ? 0.52 : 0.24);
+    : hexToRgba(color, datasetType === 'bar' ? 0.52 : 0.24);
   const points = Array.isArray(dataset?.data) ? dataset.data.map((value) => clampNumber(value)) : [];
 
-  if (type === 'bar') {
-    return {
+  if (datasetType === 'bar') {
+    const styled = {
       label: dataset.label || `Series ${index + 1}`,
+      type: 'bar',
       data: points,
       backgroundColor,
       borderColor: color,
@@ -816,10 +820,18 @@ function buildDatasetStyle(dataset, index, type) {
       borderRadius: 6,
       maxBarThickness: 46
     };
+    if (typeof dataset?.stack === 'string' && dataset.stack.trim()) {
+      styled.stack = dataset.stack.trim();
+    }
+    if (typeof dataset?.hidden === 'boolean') {
+      styled.hidden = dataset.hidden;
+    }
+    return styled;
   }
 
-  return {
+  const styled = {
     label: dataset.label || `Series ${index + 1}`,
+    type: 'line',
     data: points,
     borderColor: color,
     backgroundColor,
@@ -835,6 +847,10 @@ function buildDatasetStyle(dataset, index, type) {
     tension: 0.28,
     fill: false
   };
+  if (typeof dataset?.hidden === 'boolean') {
+    styled.hidden = dataset.hidden;
+  }
+  return styled;
 }
 
 function normalizeLabel(value) {
@@ -1898,10 +1914,20 @@ function buildChartConfig(chartData, { module } = {}) {
     plugins: [CHART_ANNOTATION_GUIDE_PLUGIN]
   };
 
-  if (chartType === 'bar' && display.stacked === true) {
+  if (display.stacked === true) {
     config.options.scales.x.stacked = true;
     config.options.scales.y.stacked = true;
   }
+
+  ['min', 'max', 'suggestedMin', 'suggestedMax'].forEach((axisKey) => {
+    const displayKey = axisKey === 'min'
+      ? 'yMin'
+      : (axisKey === 'max' ? 'yMax' : axisKey);
+    const value = Number(display[displayKey]);
+    if (Number.isFinite(value)) {
+      config.options.scales.y[axisKey] = value;
+    }
+  });
 
   if (isAccumulation) {
     config.options.scales.x.stacked = true;

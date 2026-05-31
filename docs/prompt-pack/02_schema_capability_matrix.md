@@ -25,6 +25,7 @@ This file is a reference source of truth for the prompt pack. It mirrors the cur
 - `pbsInputs`
 - `charts`
 - `pensionInputs`
+- `netRetirementInputs`
 - `mortgageInputs`
 - `loanInputs`
 - `education`
@@ -53,6 +54,8 @@ Playbooks should only emit the subset they are responsible for.
 
 ## Chart Support
 - Supported chart types: `bar`, `line`
+- Mixed charts are supported by setting `datasets[*].type` to `bar` or `line`.
+- For stacked mixed charts, use `display.stacked = true` and optional `datasets[*].stack` labels on bar datasets.
 - Dataset values must be numbers.
 - Labels may be strings.
 - Optional chart presentation fields:
@@ -63,6 +66,8 @@ Playbooks should only emit the subset they are responsible for.
   - `display.showLegend`: boolean.
   - `display.stacked`: boolean for stacked bar presentation.
   - `display.highlightDataset`: dataset label to visually emphasize.
+  - `display.yMin` / `display.yMax`: numeric hard bounds for the y-axis.
+  - `display.suggestedMin` / `display.suggestedMax`: numeric soft bounds for the y-axis.
   - `annotations[]`: trusted chart guide metadata with `label`, optional `xLabel`, optional numeric `yValue`, optional `tone`, and optional `body`.
   - `insights[]`: concise metric card objects below the chart with `label`, optional `value`, optional `detail`, optional `tone`, and optional `featured`. Do not emit strings inside `insights[]`.
 - Chart metadata is rendered by trusted components only. Do not emit Chart.js options, plugins, callbacks, HTML, or JavaScript.
@@ -114,6 +119,30 @@ Playbooks should only emit the subset they are responsible for.
 - `includeEmploymentIncomeDuringBridge` controls whether still-working members' gross salary is included between the first and later retirement dates; it defaults to `true` only when household retirement years are staggered.
 - State Pension is included by default per pension member; set `includeStatePension: false` to exclude a person.
 - `otherIncomeSources[]` supports DB pensions and similar named income; `inflationIndexed` must be explicit. If using `startAge`/`endAge`, `ownerId` may be a pension member id or `"household"` to anchor the age to the primary pension member.
+
+## Net Retirement Cash Flow Support
+- Use `generated.netRetirementInputs`.
+- Runtime-supported keys:
+  - `currentYear`
+  - `currentAge`
+  - `horizonEndAge`
+  - `annualExpenditureToday`
+  - `expenditureInflationRate`
+  - `presentValueRate`
+  - `availableInvestmentFundToday`
+  - `currencySymbol`
+  - `planningNote`
+  - `taxCompatibilityNote`
+  - `incomeSources`
+  - `baseScenarioId`
+  - `scenarios`
+- `annualExpenditureToday` is the household net spending need in today's money.
+- The runtime defaults `horizonEndAge` to age 100 and uses client age for chart x-axis labels.
+- `presentValueRate` is the after-tax net growth or discount rate used to convert future annual net shortfalls into the required net fund today.
+- `incomeSources[]` supports named net income sources with `id`, `title`, `annualAmountToday`, optional `type`, `startAge` or `startYear`, optional `endAge` or `endYear`, and `inflationIndexed`.
+- Scenario switching is supported through `scenarios[]`. Each scenario supports `id`, `title`, optional `description`, optional `availableInvestmentFundToday`, optional `annualExpenditureToday`, `excludedIncomeSourceIds[]`, `incomeSourceOverrides[]`, and `additionalIncomeSources[]`.
+- The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables`, and `generated.charts`; the playbook should not hand-build those fields.
+- Required fund outputs are after-tax net figures. Do not compare them directly with pension balances or gross pension withdrawals unless pension withdrawal tax has been allowed for separately.
 
 ## College Funding Support
 - Use `generated.collegeFundingInputs`.

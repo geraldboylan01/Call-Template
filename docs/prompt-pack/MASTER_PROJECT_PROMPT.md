@@ -90,9 +90,12 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - In engine-owned numeric fields and chart datasets, keep values as plain numbers and rely on the surrounding label/display metadata to identify currency.
 - Charts:
   - `type` must be exactly `bar` or `line`.
+  - For mixed charts, `datasets[*].type` may be `bar` or `line`.
+  - For stacked mixed charts, use `display.stacked = true` and optional `datasets[*].stack` labels on bar datasets.
   - All dataset values must be numbers only.
   - No currency symbols, commas, percentages, or numeric strings in dataset values.
   - Use optional chart `subtitle`, `display`, `annotations`, and `insights` only as structured metadata.
+  - Use numeric `display.yMin`, `display.yMax`, `display.suggestedMin`, or `display.suggestedMax` only when the axis bound has a client-facing reason.
   - `insights[]` and `annotations[]` entries must be objects, never plain strings.
   - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
 
@@ -100,7 +103,7 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 
 ## Runtime-Safe Module Boundaries
-- `generated.pensionInputs`, `generated.collegeFundingInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
+- `generated.pensionInputs`, `generated.netRetirementInputs`, `generated.collegeFundingInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
   - The AI's job is to parse inputs, choose the right mode, and write a short summary.
   - Do not invent the engine's outputs, tables, or charts unless Gerry explicitly asks for a separate explanatory module.
 - `generated.outputsBucketed` is used by the PBS playbook.
@@ -149,6 +152,15 @@ Use the Retirement playbook when Gerry says things like:
 - affordable retirement income
 - goal-seek retirement income
 
+### Net Retirement Cash Flow Playbook
+Use the Net Retirement Cash Flow playbook when Gerry says things like:
+- net retirement cash flow
+- retirement shortfall from net income and net expenditure
+- required net investment fund
+- present value retirement shortfall
+- compare keeping or losing rental income
+- pension tax is too uncertain to model directly
+
 ### Mortgage Playbook
 Use the Mortgage playbook when Gerry says things like:
 - use the mortgage playbook
@@ -196,7 +208,8 @@ Use the Protection playbook when Gerry says things like:
 - If Gerry names a playbook explicitly, do not second-guess it.
 - If Gerry does not name one, infer from the primary job:
   - structured net worth classification -> PBS
-  - repeatable retirement maths -> Retirement
+  - pension accumulation, pension drawdown, or gross pension income maths -> Retirement
+  - net cash-flow shortfall and required after-tax investment fund maths -> Net Retirement Cash Flow
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
   - children’s college cost scenarios -> College Funding
@@ -578,6 +591,134 @@ For this playbook, do not emit:
 - `generated.education`
 
 The app computes the repeatable retirement outputs after apply.
+
+## Net Retirement Cash Flow Playbook
+Use this playbook when Gerry wants to model retirement spending from net expenditure and net income, where pension taxation is too uncertain for a true net-income pension projection.
+
+### Job
+Parse the dictated net cash-flow inputs into `generated.netRetirementInputs`, choose the base scenario, and write a short client-facing summary.
+
+The browser app owns the repeatable present-value maths, annual shortfall table, charts, and scenario switching after the payload is applied.
+
+### Gerry's Live Prompt Can Stay Short
+This style should work:
+
+`Use the net retirement cash flow playbook. Client age 60, spouse age 60. Project to age 100. Net spending 90000. Net Irish rent 10000. Net EU rent 14000. Assume 50 percent Irish State Pension from 66, 7781.80 today. PV growth 4 percent, expenditure inflation 2 percent. Compare keeping the Irish rental with selling it, where Irish rent is lost and investable assets rise from 1027000 to 1477000.`
+
+### Preferred Payload Shape
+```json
+{
+  "title": "Net Retirement Cash Flow - Client",
+  "generated": {
+    "summaryHtml": "<p>This projection compares your household net spending need with net income sources and converts the annual shortfalls into the required net investment fund today. It uses the stated net expenditure, rental income, State Pension assumption, and selected after-tax growth rate. Start with the required net fund and income-versus-expenditure chart, then use the scenario buttons to test what happens if a net income source is lost.</p>",
+    "netRetirementInputs": {
+      "currentYear": 2026,
+      "currentAge": 60,
+      "horizonEndAge": 100,
+      "annualExpenditureToday": 90000,
+      "expenditureInflationRate": 0.02,
+      "presentValueRate": 0.04,
+      "availableInvestmentFundToday": 1027000,
+      "planningNote": "All income and expenditure figures are treated as after-tax net amounts.",
+      "incomeSources": [
+        { "id": "irish-rent", "title": "Irish rental income", "annualAmountToday": 10000, "startAge": 60, "inflationIndexed": true },
+        { "id": "eu-rent", "title": "Non-Irish EU rental income", "annualAmountToday": 14000, "startAge": 60, "inflationIndexed": true },
+        { "id": "half-irish-state-pension", "title": "50% Irish State Pension", "annualAmountToday": 7781.8, "startAge": 66, "inflationIndexed": true }
+      ],
+      "baseScenarioId": "keep-irish-rental",
+      "scenarios": [
+        { "id": "keep-irish-rental", "title": "Keep Irish rental", "availableInvestmentFundToday": 1027000 },
+        { "id": "sell-irish-rental", "title": "Sell Irish rental", "availableInvestmentFundToday": 1477000, "excludedIncomeSourceIds": ["irish-rent"] }
+      ]
+    }
+  }
+}
+```
+
+### Required Runtime Keys
+- `currentAge`
+- `horizonEndAge`
+- `annualExpenditureToday`
+- `presentValueRate`
+
+### Supported Optional Keys
+- `currentYear`
+- `expenditureInflationRate`
+- `availableInvestmentFundToday`
+- `currencySymbol`
+- `planningNote`
+- `taxCompatibilityNote`
+- `incomeSources`
+- `baseScenarioId`
+- `scenarios`
+
+### Core Modelling Rules
+- Treat `annualExpenditureToday` as the client's annual net spending need in today's money.
+- Treat every `incomeSources[].annualAmountToday` as net annual income in today's money.
+- The projection defaults to the client age axis and runs to age 100 unless Gerry gives a different `horizonEndAge`.
+- Use `presentValueRate` as the after-tax net growth or discount rate for required-fund maths.
+- Use `expenditureInflationRate` to inflate the spending need from today through the projection.
+- Use `incomeSources[].inflationIndexed = true` when the income should inflate with the expenditure/inflation assumption.
+- Use `incomeSources[].inflationIndexed = false` when the income is flat nominal.
+- The engine calculates each year's net shortfall, the present value of each shortfall, and the required net investment fund today.
+
+### Income Sources
+Each income source should include:
+- `id`
+- `title`
+- `annualAmountToday`
+- `startAge` or `startYear`
+- `inflationIndexed`
+
+Do not use the default pension State Pension logic from the retirement playbook here. If Gerry says 50% of the Irish State Pension, enter it as a named net income source if he gives or approves the amount.
+
+### Scenario Rules
+Use `scenarios[]` when Gerry wants a case button such as keeping or losing rental income, including or excluding spouse income, changing spending, or comparing foreign pension assumptions.
+
+Each scenario should include `id` and `title`.
+
+Scenario optional keys:
+- `availableInvestmentFundToday`
+- `annualExpenditureToday`
+- `description`
+- `excludedIncomeSourceIds`
+- `incomeSourceOverrides`
+- `additionalIncomeSources`
+
+For lost-income cases, prefer `excludedIncomeSourceIds`. For changed-income cases, use `incomeSourceOverrides`.
+
+### Summary Rules
+- Keep `generated.summaryHtml` to 2 to 4 sentences.
+- Explain that the module compares net spending with net income sources and calculates the required net investment fund today.
+- Tell the client to start with the required net fund, income-versus-expenditure chart, and scenario buttons.
+- Mention the main decision or verification point, such as whether losing rental income is offset by higher investable assets.
+- Include the pension compatibility caveat in client-facing language when pension assets are part of the wider conversation.
+- Do not promise future outcomes.
+
+### Tax And Pension Compatibility
+Always preserve this logic:
+- Required fund figures are after-tax net amounts.
+- Pension funds and pension withdrawals are usually pre-tax or gross before PAYE.
+- A gross pension balance is not directly comparable with the required net investment fund unless pension withdrawal tax has been modelled separately.
+- If the client has multiple tax regimes, joint/separate assessment, credits, or foreign pension treatment, state that these need separate verification.
+
+### Omit By Default
+For this playbook, do not emit:
+- `generated.outputs`
+- `generated.outputsBucketed`
+- `generated.tables`
+- `generated.charts`
+- `generated.pensionInputs`
+- `generated.education`
+- `generated.report`
+
+The app computes the repeatable outputs, annual table, and charts after apply.
+
+### Rendering Expectations
+- The runtime will render assumptions, outputs, annual net shortfall table, scenario buttons, and charts from the net cash-flow engine after the payload is applied.
+- The annual chart shows net income as stacked bars by income source and net expenditure as a line; the net shortfall is the implied gap, not a separate plotted series.
+- The x-axis uses client age by default and extends to age 100 unless `horizonEndAge` says otherwise.
+- The fund chart floors the available fund path at zero after depletion.
 
 ## Mortgage Playbook
 Use this playbook when Gerry says `use the mortgage playbook`, wants a mortgage projection, or wants to test repayment and overpayment scenarios on a housing loan.

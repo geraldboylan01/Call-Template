@@ -76,6 +76,29 @@ function normalizeCurrencySymbol(value, fallback = '€') {
   return raw;
 }
 
+function normalizeJsonValue(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string' || typeof value === 'boolean' || value === null) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeJsonValue(item)).filter((item) => typeof item !== 'undefined');
+  }
+  if (value && typeof value === 'object') {
+    const normalized = {};
+    Object.entries(value).forEach(([key, nestedValue]) => {
+      const safeValue = normalizeJsonValue(nestedValue);
+      if (typeof safeValue !== 'undefined') {
+        normalized[key] = safeValue;
+      }
+    });
+    return normalized;
+  }
+  return undefined;
+}
+
 function normalizeChartDataset(dataset, index) {
   const label = typeof dataset?.label === 'string'
     ? dataset.label
@@ -91,6 +114,16 @@ function normalizeChartDataset(dataset, index) {
     label,
     data
   };
+
+  if (dataset?.type === 'bar' || dataset?.type === 'line') {
+    normalized.type = dataset.type;
+  }
+  if (typeof dataset?.stack === 'string' && dataset.stack.trim()) {
+    normalized.stack = dataset.stack.trim();
+  }
+  if (typeof dataset?.hidden === 'boolean') {
+    normalized.hidden = dataset.hidden;
+  }
 
   [
     'backgroundColor',
@@ -139,6 +172,13 @@ function normalizeChartDisplay(display) {
   if (typeof display.stacked === 'boolean') {
     normalized.stacked = display.stacked;
   }
+
+  ['yMin', 'yMax', 'suggestedMin', 'suggestedMax'].forEach((key) => {
+    const value = Number(display[key]);
+    if (Number.isFinite(value)) {
+      normalized[key] = value;
+    }
+  });
 
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
@@ -575,6 +615,14 @@ function normalizeCollegeFundingInputs(collegeFundingInputs) {
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
+function normalizeNetRetirementInputs(netRetirementInputs) {
+  if (!netRetirementInputs || typeof netRetirementInputs !== 'object' || Array.isArray(netRetirementInputs)) {
+    return null;
+  }
+
+  return normalizeJsonValue(netRetirementInputs);
+}
+
 function normalizeGeneratedTables(tables) {
   if (!Array.isArray(tables)) {
     return [];
@@ -1009,6 +1057,7 @@ export function createEmptyGenerated() {
     pbsInputs: null,
     pensionInputs: null,
     collegeFundingInputs: null,
+    netRetirementInputs: null,
     mortgageInputs: null,
     loanInputs: null,
     education: null,
@@ -1031,6 +1080,7 @@ export function normalizeGenerated(generated) {
     pbsInputs: normalizePbsInputs(generated.pbsInputs || generated.personalBalanceSheetInputs),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
     collegeFundingInputs: normalizeCollegeFundingInputs(generated.collegeFundingInputs || generated.collegeFunding),
+    netRetirementInputs: normalizeNetRetirementInputs(generated.netRetirementInputs || generated.netCashflowInputs),
     mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs, { defaultLoanKind: 'mortgage' }),
     loanInputs: normalizeMortgageInputs(generated.loanInputs, { defaultLoanKind: 'loan' }),
     education: normalizeEducation(generated.education),
@@ -1042,13 +1092,22 @@ export function normalizeGenerated(generated) {
   if (normalized.report) {
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
+    normalized.netRetirementInputs = null;
+    normalized.mortgageInputs = null;
+    normalized.loanInputs = null;
+    normalized.education = null;
+  } else if (normalized.netRetirementInputs) {
+    normalized.pensionInputs = null;
+    normalized.collegeFundingInputs = null;
     normalized.mortgageInputs = null;
     normalized.loanInputs = null;
     normalized.education = null;
   } else if (normalized.pensionInputs || normalized.mortgageInputs || normalized.loanInputs) {
     normalized.collegeFundingInputs = null;
+    normalized.netRetirementInputs = null;
     normalized.education = null;
   } else if (normalized.collegeFundingInputs) {
+    normalized.netRetirementInputs = null;
     normalized.education = null;
   }
 
