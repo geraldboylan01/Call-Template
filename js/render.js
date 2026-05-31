@@ -4683,7 +4683,7 @@ function getPbsBalanceMetrics(outputsBucketed) {
 function setPbsValueDataset(element, {
   key,
   value,
-  format = 'amount',
+  format = 'currency',
   currencySymbol = '€'
 } = {}) {
   const normalizedValue = getOptionalFiniteNumber(value);
