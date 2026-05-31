@@ -3917,7 +3917,8 @@ function getOutputsBucketedSubtotal(section) {
 
 function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
   warningThreshold = 3,
-  healthyThreshold = 6
+  healthyThreshold = 6,
+  thresholdContext = ''
 } = {}) {
   const normalizedAnnualExpenditure = getPositiveFiniteNumber(annualExpenditure);
   const normalizedReserveValue = Number(reserveValue);
@@ -3941,13 +3942,16 @@ function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
   const monthsText = formatReserveMonths(months);
   const warningThresholdText = formatReserveMonths(warningThreshold);
   const healthyThresholdText = formatReserveMonths(healthyThreshold);
+  const thresholdContextText = thresholdContext
+    ? ` ${thresholdContext}`
+    : '';
   return {
     annualExpenditure: normalizedAnnualExpenditure,
     explainerLabel: 'What the liquidity buffer means',
     explainerText: `${monthsText} months of spending buffer, based on liquid assets divided by stated monthly spending. It shows the near-term breathing room before touching longer-term assets. Click to view threshold table.`,
     explanation: {
       currentLabel: `${monthsText} months`,
-      description: 'Liquidity compares cash or near-cash reserves with stated monthly spending to show how much short-term breathing room is visible before touching longer-term assets.',
+      description: `Liquidity compares cash or near-cash reserves with stated monthly spending to show how much short-term breathing room is visible before touching longer-term assets.${thresholdContextText}`,
       formula: 'Liquidity subtotal / (annual expenditure / 12)',
       rows: [
         {
@@ -3978,6 +3982,15 @@ function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
     reserveValue: normalizedReserveValue,
     tone
   };
+}
+
+function isRetiredPbsCase(pbsInputs = {}) {
+  const retirementStatus = typeof pbsInputs.retirementStatus === 'string'
+    ? pbsInputs.retirementStatus.trim().toLowerCase()
+    : '';
+  const currentAge = getPositiveFiniteNumber(pbsInputs.currentAge);
+
+  return retirementStatus === 'retired' || (currentAge !== null && currentAge >= 65);
 }
 
 function formatReserveMonths(value) {
@@ -5044,8 +5057,10 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
     return enhancements;
   }
 
-  const annualExpenditure = getPositiveFiniteNumber(module?.generated?.pbsInputs?.annualExpenditure);
-  const currentAge = getPositiveFiniteNumber(module?.generated?.pbsInputs?.currentAge);
+  const pbsInputs = module?.generated?.pbsInputs || {};
+  const annualExpenditure = getPositiveFiniteNumber(pbsInputs.annualExpenditure);
+  const currentAge = getPositiveFiniteNumber(pbsInputs.currentAge);
+  const useRetiredLiquidityThresholds = isRetiredPbsCase(pbsInputs);
 
   if (annualExpenditure !== null) {
     const liquiditySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'liquidity')
@@ -5053,7 +5068,14 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
     if (liquiditySection) {
       const indicator = computeReserveMonthsAssessment(
         getOutputsBucketedSubtotal(liquiditySection),
-        annualExpenditure
+        annualExpenditure,
+        useRetiredLiquidityThresholds
+          ? {
+            warningThreshold: 12,
+            healthyThreshold: 24,
+            thresholdContext: 'Because the client is retired or age 65+, the guide uses a one-to-two-year reserve range rather than the standard three-to-six-month working-age range.'
+          }
+          : {}
       );
 
       if (indicator) {

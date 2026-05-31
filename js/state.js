@@ -748,6 +748,15 @@ export function normalizePbsInputs(pbsInputs) {
     normalized.currentAge = pbsInputs.currentAge;
   }
 
+  if (typeof pbsInputs.retirementStatus === 'string' && pbsInputs.retirementStatus.trim()) {
+    const retirementStatus = pbsInputs.retirementStatus.trim().toLowerCase();
+    if (retirementStatus === 'retired' || retirementStatus === 'not-retired' || retirementStatus === 'working') {
+      normalized.retirementStatus = retirementStatus === 'working' ? 'not-retired' : retirementStatus;
+    }
+  } else if (pbsInputs.retired === true) {
+    normalized.retirementStatus = 'retired';
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 

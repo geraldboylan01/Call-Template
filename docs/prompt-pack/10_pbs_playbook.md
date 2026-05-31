@@ -25,7 +25,8 @@ This style should still work:
     "summaryHtml": "<p>...</p>",
     "pbsInputs": {
       "annualExpenditure": 36000,
-      "currentAge": 45
+      "currentAge": 45,
+      "retirementStatus": "not-retired"
     },
     "outputsBucketed": {
       "currencySymbol": "€",
@@ -123,8 +124,10 @@ For a property sale case, remove or reduce the property in `Legacy`, reduce the 
 ## `generated.pbsInputs`
 - Include `annualExpenditure` only if Gerry provides it or clearly implies it.
 - Include `currentAge` only if Gerry provides it or clearly implies it.
+- Include `retirementStatus: "retired"` if Gerry says the client is retired. Use `retirementStatus: "not-retired"` only if Gerry explicitly says they are not retired or still working.
 - If neither is known, omit `generated.pbsInputs`.
-- Do not guess age or annual expenditure.
+- Do not guess age, annual expenditure, or retirement status.
+- Liquidity colour coding is standard three-to-six-month reserve logic unless `retirementStatus` is `"retired"` or `currentAge` is 65 or over. For retired / age 65+ cases, liquidity is red under 12 months, yellow from 12 to under 24 months, and green at 24+ months.
 
 ## Chart Rules
 Prefer up to 2 bar charts:
