@@ -7501,6 +7501,56 @@ function parseSvgViewBoxSize(svg) {
   return { width, height, aspectRatio: width / height };
 }
 
+function getResponsiveFlowchartColumns(nodeCount, viewportWidth) {
+  if (nodeCount <= 4) {
+    return Math.max(2, nodeCount);
+  }
+
+  if (nodeCount >= 6 && viewportWidth >= 1200) {
+    return 4;
+  }
+
+  return 3;
+}
+
+function getResponsiveSvgSpec(svgSpec) {
+  if (!isPlainObject(svgSpec)) {
+    return svgSpec;
+  }
+
+  const kind = toTrimmedString(svgSpec.kind).toLowerCase();
+  const nodes = Array.isArray(svgSpec.nodes) ? svgSpec.nodes : [];
+  if (kind !== 'flowchart' || nodes.length < 4) {
+    return svgSpec;
+  }
+
+  const layout = isPlainObject(svgSpec.layout) ? svgSpec.layout : {};
+  const direction = toTrimmedString(layout.direction).toUpperCase();
+  if (direction === 'LR' || direction === 'SNAKE' || direction === 'SERPENTINE' || layout.responsive === false) {
+    return svgSpec;
+  }
+
+  const viewportWidth = typeof window !== 'undefined' ? Number(window.innerWidth) : 0;
+  const hasDesktopSpace = viewportWidth >= 900
+    && typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(min-width: 900px)').matches;
+  if (!hasDesktopSpace) {
+    return svgSpec;
+  }
+
+  return {
+    ...svgSpec,
+    layout: {
+      ...layout,
+      direction: 'SNAKE',
+      snakeColumns: Number.isFinite(Number(layout.snakeColumns || layout.columns))
+        ? Number(layout.snakeColumns || layout.columns)
+        : getResponsiveFlowchartColumns(nodes.length, viewportWidth)
+    }
+  };
+}
+
 function applyResponsiveSvgFit(card, svgHost, svg, svgKind = '') {
   const viewBoxSize = parseSvgViewBoxSize(svg);
   if (!viewBoxSize) {
@@ -7508,18 +7558,29 @@ function applyResponsiveSvgFit(card, svgHost, svg, svgKind = '') {
     return;
   }
 
-  const { height, aspectRatio } = viewBoxSize;
+  const { width, height, aspectRatio } = viewBoxSize;
   const kind = String(svgKind || '').trim().toLowerCase();
   const isBranchingGraph = kind === 'flowchart' || kind === 'decisiontree';
+  const shouldFitPortrait = isBranchingGraph && aspectRatio < 1.15 && height >= 260;
   const shouldContain = isBranchingGraph && aspectRatio >= 1 && (height >= 920 || (height >= 780 && aspectRatio >= 1.25));
+  const fitMode = shouldFitPortrait ? 'portrait' : (shouldContain ? 'contain' : 'natural');
 
-  card.dataset.svgFit = shouldContain ? 'contain' : 'natural';
+  card.dataset.svgFit = fitMode;
   svgHost.dataset.svgFit = card.dataset.svgFit;
 
-  svg.style.width = '100%';
   svg.style.maxWidth = '100%';
-  svg.style.height = shouldContain ? 'min(72vh, 760px)' : 'auto';
-  svg.style.maxHeight = shouldContain ? '760px' : 'none';
+  svg.style.maxHeight = fitMode === 'natural' ? 'none' : 'min(72vh, 760px)';
+
+  if (fitMode === 'portrait') {
+    const targetHeight = 720;
+    const targetWidth = Math.min(width, Math.max(160, Math.round(targetHeight * aspectRatio)));
+    svg.style.width = `min(100%, ${targetWidth}px)`;
+    svg.style.height = 'auto';
+    return;
+  }
+
+  svg.style.width = '100%';
+  svg.style.height = fitMode === 'contain' ? 'min(72vh, 760px)' : 'auto';
 }
 
 function buildSvgVisualCard(module, visual, visualIndex, {
@@ -7580,18 +7641,19 @@ function buildSvgVisualCard(module, visual, visualIndex, {
   card.appendChild(svgHost);
 
   try {
-    const svg = renderSvgDiagram(visual?.svgSpec || {});
+    const responsiveSvgSpec = getResponsiveSvgSpec(visual?.svgSpec || {});
+    const svg = renderSvgDiagram(responsiveSvgSpec);
     if (!(svg instanceof SVGElement)) {
       throw new Error('Diagram renderer returned an invalid SVG element.');
     }
 
-    const svgTheme = String(svg.getAttribute('data-theme') || visual?.svgSpec?.theme || 'dark')
+    const svgTheme = String(svg.getAttribute('data-theme') || responsiveSvgSpec?.theme || 'dark')
       .trim()
       .toLowerCase() === 'light'
       ? 'light'
       : 'dark';
     card.dataset.svgTheme = svgTheme;
-    applyResponsiveSvgFit(card, svgHost, svg, visual?.svgSpec?.kind || '');
+    applyResponsiveSvgFit(card, svgHost, svg, responsiveSvgSpec?.kind || '');
     svgHost.appendChild(svg);
 
     const baseName = `${module?.title || module?.id || 'module'}-${titleText}`;

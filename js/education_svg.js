@@ -45,7 +45,14 @@ function normalizeTheme(value) {
 }
 
 function normalizeDirection(value, fallback = 'TB') {
-  return String(value || '').trim().toUpperCase() === 'LR' ? 'LR' : fallback;
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'LR') {
+    return 'LR';
+  }
+  if (normalized === 'SNAKE' || normalized === 'SERPENTINE') {
+    return 'SNAKE';
+  }
+  return fallback;
 }
 
 function normalizeConnector(value) {
@@ -370,6 +377,53 @@ function buildOutgoingIndex(edges) {
   return outgoing;
 }
 
+function getLinearGraphSequence(nodes, edges) {
+  if (nodes.length < 2 || edges.length !== nodes.length - 1) {
+    return null;
+  }
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
+  const outgoingEdge = new Map();
+
+  edges.forEach((edge) => {
+    incomingCount.set(edge.to, (incomingCount.get(edge.to) || 0) + 1);
+    if (outgoingEdge.has(edge.from)) {
+      outgoingEdge.set(edge.from, null);
+      return;
+    }
+    outgoingEdge.set(edge.from, edge);
+  });
+
+  if ([...incomingCount.values()].some((count) => count > 1)) {
+    return null;
+  }
+  if ([...outgoingEdge.values()].some((edge) => edge === null)) {
+    return null;
+  }
+
+  const starts = nodes.filter((node) => (incomingCount.get(node.id) || 0) === 0);
+  if (starts.length !== 1) {
+    return null;
+  }
+
+  const sequence = [];
+  const seen = new Set();
+  let current = starts[0];
+  while (current) {
+    if (seen.has(current.id)) {
+      return null;
+    }
+    seen.add(current.id);
+    sequence.push(current);
+
+    const edge = outgoingEdge.get(current.id);
+    current = edge ? nodeById.get(edge.to) : null;
+  }
+
+  return sequence.length === nodes.length ? sequence : null;
+}
+
 function computeLayering(nodes, edges) {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const indegree = new Map(nodes.map((node) => [node.id, 0]));
@@ -425,13 +479,42 @@ function computeLayering(nodes, edges) {
 
 function layoutLayeredGraph(nodes, layerById, {
   direction,
+  linearSequence = null,
   nodeWidth,
   nodeHeight,
   gapX,
   gapY,
   paddingX,
-  paddingY
+  paddingY,
+  snakeColumns
 }) {
+  if (direction === 'SNAKE' && Array.isArray(linearSequence) && linearSequence.length > 0) {
+    const columns = toFiniteNumber(snakeColumns, 3, {
+      min: 2,
+      max: Math.min(5, linearSequence.length),
+      integer: true
+    });
+    const rows = Math.ceil(linearSequence.length / columns);
+    const positionById = new Map();
+
+    linearSequence.forEach((node, index) => {
+      const rowIndex = Math.floor(index / columns);
+      const indexInRow = index % columns;
+      const columnIndex = rowIndex % 2 === 1
+        ? columns - 1 - indexInRow
+        : indexInRow;
+      const x = paddingX + columnIndex * (nodeWidth + gapX);
+      const y = paddingY + rowIndex * (nodeHeight + gapY);
+      positionById.set(node.id, { x, y });
+    });
+
+    return {
+      positionById,
+      width: paddingX * 2 + (columns * nodeWidth) + Math.max(0, columns - 1) * gapX,
+      height: paddingY * 2 + (rows * nodeHeight) + Math.max(0, rows - 1) * gapY
+    };
+  }
+
   const nodesByLayer = new Map();
   nodes.forEach((node) => {
     const layer = layerById.get(node.id) || 0;
@@ -497,6 +580,41 @@ function buildConnectorPath(fromPos, toPos, {
   direction,
   connector
 }) {
+  if (direction === 'SNAKE') {
+    const sameRow = Math.abs(fromPos.y - toPos.y) < 1;
+    if (sameRow) {
+      const forward = toPos.x > fromPos.x;
+      const sx = forward ? fromPos.x + nodeWidth : fromPos.x;
+      const sy = fromPos.y + nodeHeight / 2;
+      const ex = forward ? toPos.x : toPos.x + nodeWidth;
+      const ey = toPos.y + nodeHeight / 2;
+      return {
+        d: `M ${sx} ${sy} L ${ex} ${ey}`,
+        labelX: (sx + ex) / 2,
+        labelY: sy
+      };
+    }
+
+    const sx = fromPos.x + nodeWidth / 2;
+    const sy = fromPos.y + nodeHeight;
+    const ex = toPos.x + nodeWidth / 2;
+    const ey = toPos.y;
+    if (connector === 'straight' || Math.abs(sx - ex) < 1) {
+      return {
+        d: `M ${sx} ${sy} L ${ex} ${ey}`,
+        labelX: (sx + ex) / 2,
+        labelY: (sy + ey) / 2
+      };
+    }
+
+    const midY = sy + (ey - sy) / 2;
+    return {
+      d: `M ${sx} ${sy} L ${sx} ${midY} L ${ex} ${midY} L ${ex} ${ey}`,
+      labelX: sx + (ex - sx) / 2,
+      labelY: midY
+    };
+  }
+
   let sx;
   let sy;
   let ex;
@@ -545,7 +663,7 @@ function renderLayeredGraph(spec, kindLabel) {
   const edges = normalizeGraphEdges(spec.edges, nodeMap, kindLabel);
 
   const layout = isPlainObject(spec.layout) ? spec.layout : {};
-  const direction = normalizeDirection(layout.direction, 'TB');
+  const requestedDirection = normalizeDirection(layout.direction, 'TB');
   const nodeWidth = toFiniteNumber(layout.nodeWidth, 190, { min: 100, max: 420 });
   const requestedNodeHeight = toFiniteNumber(layout.nodeHeight, 78, { min: 48, max: 220 });
   const {
@@ -566,18 +684,22 @@ function renderLayeredGraph(spec, kindLabel) {
   const theme = normalizeTheme(spec.theme);
 
   const layerById = computeLayering(nodes, edges);
+  const linearSequence = requestedDirection === 'SNAKE' ? getLinearGraphSequence(nodes, edges) : null;
+  const direction = requestedDirection === 'SNAKE' && !linearSequence ? 'TB' : requestedDirection;
   const {
     positionById,
     width,
     height
   } = layoutLayeredGraph(nodes, layerById, {
     direction,
+    linearSequence,
     nodeWidth,
     nodeHeight,
     gapX,
     gapY,
     paddingX,
-    paddingY
+    paddingY,
+    snakeColumns: layout.snakeColumns || layout.columns
   });
 
   const svg = createRootSvg({
@@ -586,6 +708,7 @@ function renderLayeredGraph(spec, kindLabel) {
     theme,
     title: toNonEmptyString(spec.title, toNonEmptyString(spec.topic, 'Education diagram'))
   });
+  svg.setAttribute('data-layout-direction', direction);
 
   const edgeLayer = createSvgElement('g', { class: 'edu-edge-layer' });
   const nodeLayer = createSvgElement('g', { class: 'edu-node-layer' });
