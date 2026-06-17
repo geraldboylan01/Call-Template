@@ -22,6 +22,7 @@ For each prompt below:
 - Pass if the module feels usable on a live call.
 - Pass only if `generated.summaryHtml` is understandable without knowing the playbook name.
 - Pass only if client-facing JSON avoids internal words such as `browser app`, `payload`, `engine`, `runtime`, `JSON`, validators, and schemas.
+- Pass only if SECTION 2 starts with `{` and ends with `}` as one complete top-level object.
 - PBS outputs pass only if the summary section uses `key: "summary"`, the exact row label `Net worth`, and `subtotalLabel: "Net worth"`.
 - Fail if the model asks unnecessary questions instead of using a safe best guess.
 - Fail if the visual playbooks become generic or repetitive.

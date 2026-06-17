@@ -15,8 +15,11 @@ This style should still work:
   - Call out only the important classification decisions and totals.
 - SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Return a single JSON object.
+  - Include the outer opening `{` before `"title"` and the final closing `}` after `generated`.
 
 ## Preferred Payload Shape
+
+The object must include the outer opening `{` before `"title"` and the final closing `}` after `generated`.
 
 ```json
 {

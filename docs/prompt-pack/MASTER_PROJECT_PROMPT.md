@@ -39,6 +39,8 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 
 ## SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 - Output one valid JSON object only.
+- The first non-whitespace character must be `{` and the last non-whitespace character must be `}`.
+- Include the enclosing outer braces. Do not output a bare list of object properties such as `"title": ...` without the opening `{`.
 - No headings, no commentary, no markdown, no code fences.
 - Use straight ASCII double quotes only.
 - Do not use raw double quote characters inside string values. Rephrase or use apostrophes if needed.
@@ -232,6 +234,8 @@ This style should still work:
 `Use the PBS playbook. Assets: ... Liabilities: ... Annual expenditure: ... Current age: ...`
 
 ### Preferred Payload Shape
+The object must include the outer opening `{` before `"title"` and the final closing `}` after `generated`.
+
 ```json
 {
   "title": "Personal Balance Sheet",

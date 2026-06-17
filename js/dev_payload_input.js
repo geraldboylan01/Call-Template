@@ -47,11 +47,35 @@ export function extractJsonObjectFromEditorText(input) {
   return '';
 }
 
+function repairMissingLeadingObjectBrace(input) {
+  const text = String(input ?? '').trim();
+  if (!/^"[^"]+"\s*:/.test(text)) {
+    return '';
+  }
+
+  const candidate = `{${text}`;
+  try {
+    const parsed = JSON.parse(candidate);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return candidate;
+    }
+  } catch (_error) {
+    return '';
+  }
+
+  return '';
+}
+
 export function normalizeEditorJsonInput(rawInput) {
   const normalizedInput = String(rawInput ?? '')
     .trim()
     .replace(/\u201C|\u201D/g, '"')
     .replace(/\u2018|\u2019/g, '\'');
+
+  const repairedInput = repairMissingLeadingObjectBrace(normalizedInput);
+  if (repairedInput) {
+    return repairedInput;
+  }
 
   return extractJsonObjectFromEditorText(normalizedInput) || normalizedInput;
 }
