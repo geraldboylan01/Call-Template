@@ -83,6 +83,8 @@ const HFCS_DECILE_BANDS = Object.freeze([
 const PBS_ASSET_SECTION_KEYS = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
 const PBS_CURRENT_SCENARIO_ID = 'current';
 const PBS_SCENARIO_CHARTS_UPDATED_EVENT = 'callcanvas:pbs-scenario-charts-updated';
+const PBS_NET_WORTH_TOKENS = new Set(['networth', 'netassets', 'netwealth']);
+const PBS_BALANCE_CHANGE_WORDS = /\b(change|difference|increase|decrease|movement|delta|gap|variance)\b/i;
 const activePbsScenarioChartsByModuleId = new Map();
 const PBS_BUCKET_DEFINITIONS = Object.freeze({
   lifestyle: 'Assets that support day-to-day living, usually not treated as spendable reserves.',
@@ -1622,7 +1624,7 @@ function extractOutputsBucketedPreviewItems(outputsBucketed, maxItems = 4) {
 
   const items = [];
   const sections = outputsBucketed.sections;
-  const summarySection = findOutputsBucketedSection(sections, 'summary');
+  const summarySection = findOutputsBucketedSummarySection(sections);
 
   if (summarySection) {
     sanitizeSectionRows(summarySection.rows).forEach((row) => {
@@ -1634,7 +1636,7 @@ function extractOutputsBucketedPreviewItems(outputsBucketed, maxItems = 4) {
         label: truncateOverviewText(row[0], 30),
         value: formatOverviewBucketedValue(outputsBucketed, row[1]),
         detail: 'Summary',
-        tone: normalizeSectionToken(row[0]) === 'networth' ? 'positive' : ''
+        tone: isPbsNetWorthSummaryLabel(row[0]) ? 'positive' : ''
       });
     });
   }
@@ -4035,6 +4037,29 @@ function normalizeSectionToken(value) {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+function normalizeReadableLabelText(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isPbsNetWorthSummaryLabel(value) {
+  const token = normalizeSectionToken(value);
+  if (PBS_NET_WORTH_TOKENS.has(token)) {
+    return true;
+  }
+
+  const text = normalizeReadableLabelText(value);
+  if (!/\bnet\s+(worth|assets|wealth)\b/i.test(text)) {
+    return false;
+  }
+
+  return !PBS_BALANCE_CHANGE_WORDS.test(text);
+}
+
 function findOutputsBucketedSection(sections, targetKey) {
   const targetToken = normalizeSectionToken(targetKey);
   return sections.find((section) => (
@@ -4048,6 +4073,35 @@ function findOutputsBucketedSectionByKey(sections, targetKey) {
   return (Array.isArray(sections) ? sections : []).find((section) => (
     normalizeSectionToken(section?.key) === targetToken
   )) || null;
+}
+
+function isOutputsBucketedSummarySection(section) {
+  const keyToken = normalizeSectionToken(section?.key);
+  const titleToken = normalizeSectionToken(section?.title);
+  if (keyToken === 'summary' || titleToken === 'summary') {
+    return true;
+  }
+
+  if (keyToken.endsWith('summary') || titleToken.endsWith('summary')) {
+    return true;
+  }
+
+  const rows = sanitizeSectionRows(section?.rows);
+  const hasNetWorth = rows.some(([label]) => isPbsNetWorthSummaryLabel(label));
+  const hasBalanceMetric = rows.some(([label]) => (
+    ['grossassets', 'totalassets', 'totalliabilities', 'grossliabilities', 'liabilities']
+      .includes(normalizeSectionToken(label))
+  ));
+
+  return hasNetWorth && hasBalanceMetric;
+}
+
+function findOutputsBucketedSummarySection(sections) {
+  const list = Array.isArray(sections) ? sections : [];
+  return findOutputsBucketedSectionByKey(list, 'summary')
+    || findOutputsBucketedSection(list, 'summary')
+    || list.find((section) => isOutputsBucketedSummarySection(section))
+    || null;
 }
 
 function sanitizeSectionRows(rows) {
@@ -4326,6 +4380,30 @@ function getOutputsBucketedRowValue(section, targetLabel) {
   const row = sanitizeSectionRows(section?.rows)
     .find(([label]) => normalizeSectionToken(label) === targetToken);
   return row ? row[1] : null;
+}
+
+function getFirstOutputsBucketedRowValueByPredicate(section, predicate) {
+  const row = sanitizeSectionRows(section?.rows)
+    .find(([label]) => predicate(label));
+  return row ? row[1] : null;
+}
+
+function getPbsSummaryNetWorthValue(summarySection) {
+  const exactValue = getFirstOutputsBucketedRowValue(summarySection, ['net worth', 'net assets', 'net wealth']);
+  if (exactValue !== null) {
+    return exactValue;
+  }
+
+  const flexibleValue = getFirstOutputsBucketedRowValueByPredicate(summarySection, isPbsNetWorthSummaryLabel);
+  if (flexibleValue !== null) {
+    return flexibleValue;
+  }
+
+  if (isPbsNetWorthSummaryLabel(summarySection?.subtotalLabel)) {
+    return getOptionalFiniteNumber(summarySection?.subtotalValue);
+  }
+
+  return null;
 }
 
 function getOutputsBucketedCurrencySymbol(outputsBucketed) {
@@ -5033,8 +5111,7 @@ function buildPbsLeadCopy(summaryHtml, guideText = '') {
 
 function getPbsBalanceMetrics(outputsBucketed) {
   const sections = outputsBucketed.sections;
-  const summarySection = findOutputsBucketedSectionByKey(sections, 'summary')
-    || findOutputsBucketedSection(sections, 'summary');
+  const summarySection = findOutputsBucketedSummarySection(sections);
   const assetSections = PBS_ASSET_SECTION_KEYS
     .map((key) => findOutputsBucketedSectionByKey(sections, key) || findOutputsBucketedSection(sections, key))
     .filter(Boolean);
@@ -5057,7 +5134,7 @@ function getPbsBalanceMetrics(outputsBucketed) {
     ?? liabilitiesFallback;
   const normalizedGrossAssets = getOptionalFiniteNumber(grossAssets);
   const normalizedGrossLiabilities = getOptionalFiniteNumber(grossLiabilities);
-  const netAssets = getFirstOutputsBucketedRowValue(summarySection, ['net assets', 'net worth'])
+  const netAssets = getPbsSummaryNetWorthValue(summarySection)
     ?? (
       normalizedGrossAssets !== null && normalizedGrossLiabilities !== null
         ? normalizedGrossAssets - Math.abs(normalizedGrossLiabilities)
@@ -5491,9 +5568,9 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
     }
   }
 
-  const summarySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'summary')
-    || findOutputsBucketedSection(outputsBucketed.sections, 'summary');
-  const netWorth = getOutputsBucketedRowValue(summarySection, 'net worth');
+  const summarySection = findOutputsBucketedSummarySection(outputsBucketed.sections);
+  const netWorth = getPbsSummaryNetWorthValue(summarySection)
+    ?? getPbsBalanceMetrics(outputsBucketed).netAssets;
   const netWorthContext = computeNetWorthContext(
     netWorth,
     currentAge,
@@ -5588,12 +5665,12 @@ function shouldHideSummarySubtotal(section, rows, isSummary) {
   }
 
   const subtotalValue = getFiniteNumber(section?.subtotalValue);
-  if (subtotalValue === null || normalizeSectionToken(section?.subtotalLabel) !== 'networth') {
+  if (subtotalValue === null || !isPbsNetWorthSummaryLabel(section?.subtotalLabel)) {
     return false;
   }
 
   return rows.some(([label, value]) => (
-    normalizeSectionToken(label) === 'networth'
+    isPbsNetWorthSummaryLabel(label)
     && value === subtotalValue
   ));
 }
@@ -5614,7 +5691,10 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     const rows = sanitizeSectionRows(section.rows);
     const key = typeof section.key === 'string' ? section.key.toLowerCase() : '';
     const sectionToken = normalizeSectionToken(key || section.title || '');
-    const sectionEnhancement = sectionEnhancements[sectionToken] || {};
+    const isSummary = isOutputsBucketedSummarySection(section);
+    const sectionEnhancement = sectionEnhancements[sectionToken]
+      || (isSummary ? sectionEnhancements.summary : {})
+      || {};
     const indicator = sectionEnhancement.indicator || null;
     const title = typeof section.title === 'string' && section.title.trim()
       ? section.title
@@ -5622,7 +5702,6 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     const subtotalLabel = typeof section.subtotalLabel === 'string' && section.subtotalLabel.trim()
       ? section.subtotalLabel
       : 'Subtotal';
-    const isSummary = key === 'summary' || title.trim().toLowerCase() === 'summary';
     const hasSubtotal = Number.isFinite(Number(section.subtotalValue))
       && !shouldHideSummarySubtotal(section, rows, isSummary);
 
@@ -5670,7 +5749,7 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
       amountCell.textContent = formatBucketedCurrency(amount, currencySymbol);
       tr.appendChild(amountCell);
 
-      const isNetWorthRow = isSummary && normalizeSectionToken(label) === 'networth';
+      const isNetWorthRow = isSummary && isPbsNetWorthSummaryLabel(label);
       if (isNetWorthRow) {
         tr.classList.add('pbs-net-worth-row');
       }
@@ -5793,7 +5872,7 @@ function buildOutputsBucketedDetailCard(section, {
     }
     tr.appendChild(amountCell);
 
-    const isNetWorthRow = highlightNetWorth && normalizeSectionToken(label) === 'networth';
+    const isNetWorthRow = highlightNetWorth && isPbsNetWorthSummaryLabel(label);
     if (isNetWorthRow) {
       tr.classList.add('pbs-net-worth-row');
     }
@@ -5892,11 +5971,12 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
     }));
   }
 
-  const summarySection = findOutputsBucketedSectionByKey(sections, 'summary')
-    || findOutputsBucketedSection(sections, 'summary');
+  const summarySection = findOutputsBucketedSummarySection(sections);
   if (summarySection) {
     const summaryToken = normalizeSectionToken(summarySection?.key || summarySection?.title || 'summary');
-    const netWorthContext = sectionEnhancements[summaryToken]?.netWorthContext || null;
+    const netWorthContext = sectionEnhancements[summaryToken]?.netWorthContext
+      || sectionEnhancements.summary?.netWorthContext
+      || null;
     if (netWorthContext) {
       outputStack.appendChild(buildOutputsBucketedNetWorthContext(netWorthContext));
     } else if (!balanceHeader) {
@@ -6037,6 +6117,59 @@ function getPbsEndpointAnchorKeys(endpoint, { preferLiabilityBalance = false } =
   return keys;
 }
 
+function normalizePbsMovementAction(action) {
+  const token = String(action ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+  if (!token) {
+    return '';
+  }
+
+  const aliases = {
+    add: 'add',
+    added: 'add',
+    contribute: 'add',
+    contributed: 'add',
+    contribution: 'add',
+    fund: 'add',
+    funded: 'add',
+    redirect: 'add',
+    redirected: 'add',
+    reinvest: 'add',
+    reinvested: 'add',
+    transfer: 'add',
+    transferred: 'add',
+    transferin: 'add',
+    increase: 'increase',
+    increased: 'increase',
+    reduce: 'reduce',
+    reduced: 'reduce',
+    decrease: 'reduce',
+    decreased: 'reduce',
+    lower: 'reduce',
+    lowered: 'reduce',
+    paydown: 'reduce',
+    payoff: 'reduce',
+    repay: 'reduce',
+    repaid: 'reduce',
+    repayment: 'reduce',
+    clear: 'reduce',
+    cleared: 'reduce',
+    settle: 'reduce',
+    settled: 'reduce',
+    remove: 'remove',
+    removed: 'remove',
+    sell: 'remove',
+    sold: 'remove',
+    dispose: 'remove',
+    disposed: 'remove',
+    disposal: 'remove'
+  };
+
+  return aliases[token] || '';
+}
+
 function getPbsMovementPlans(movements, { reverse = false } = {}) {
   return (Array.isArray(movements) ? movements : []).flatMap((movement) => {
     const from = movement?.from;
@@ -6046,7 +6179,7 @@ function getPbsMovementPlans(movements, { reverse = false } = {}) {
     }
 
     return destinations.map((destination) => {
-      const action = typeof destination?.action === 'string' ? destination.action.toLowerCase() : '';
+      const action = normalizePbsMovementAction(destination?.action);
       const destinationSection = normalizeSectionToken(destination?.sectionKey);
       const usesLiabilityMetric = destinationSection === 'liabilities' && action === 'reduce';
       const amount = getOptionalFiniteNumber(destination?.amount)

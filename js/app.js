@@ -5979,6 +5979,13 @@ function validateTablePayload(table, label) {
   };
 }
 
+function normalizePbsPayloadToken(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
 function validateOutputsBucketedSectionsPayload(sectionsPayload, label) {
   if (!Array.isArray(sectionsPayload)) {
     throw new Error(`${label} must be an array.`);
@@ -6028,7 +6035,12 @@ function validateOutputsBucketedSectionsPayload(sectionsPayload, label) {
       ? section.key.trim().toLowerCase()
       : `section_${sectionIndex + 1}`;
     const title = section.title.trim();
-    const isSummary = key === 'summary' || title.toLowerCase() === 'summary';
+    const keyToken = normalizePbsPayloadToken(key);
+    const titleToken = normalizePbsPayloadToken(title);
+    const isSummary = keyToken === 'summary'
+      || titleToken === 'summary'
+      || keyToken.endsWith('summary')
+      || titleToken.endsWith('summary');
     const hasSubtotal = 'subtotalValue' in section;
 
     if (!isSummary && !hasSubtotal) {
@@ -6070,31 +6082,75 @@ function validatePbsMovementEndpointPayload(endpoint, label, { includeAction = f
     throw new Error(`${label}.sectionKey must be a non-empty string.`);
   }
 
-  if (typeof endpoint.rowLabel !== 'string' || !endpoint.rowLabel.trim()) {
-    throw new Error(`${label}.rowLabel must be a non-empty string.`);
-  }
-
   if (typeof endpoint.amount !== 'number' || !Number.isFinite(endpoint.amount)) {
     throw new Error(`${label}.amount must be a finite number.`);
   }
 
   const normalized = {
     sectionKey: endpoint.sectionKey.trim().toLowerCase(),
-    rowLabel: endpoint.rowLabel,
+    rowLabel: typeof endpoint.rowLabel === 'string' ? endpoint.rowLabel.trim() : '',
     amount: endpoint.amount
   };
 
   if (includeAction) {
-    const action = typeof endpoint.action === 'string' && endpoint.action.trim()
-      ? endpoint.action.trim().toLowerCase()
-      : 'increase';
-    if (!['add', 'remove', 'increase', 'reduce'].includes(action)) {
-      throw new Error(`${label}.action must be add, remove, increase, or reduce.`);
-    }
+    const action = normalizePbsMovementAction(endpoint.action) || 'increase';
     normalized.action = action;
   }
 
   return normalized;
+}
+
+function normalizePbsMovementAction(action) {
+  const token = String(action ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+  if (!token) {
+    return '';
+  }
+
+  const aliases = {
+    add: 'add',
+    added: 'add',
+    contribute: 'add',
+    contributed: 'add',
+    contribution: 'add',
+    fund: 'add',
+    funded: 'add',
+    redirect: 'add',
+    redirected: 'add',
+    reinvest: 'add',
+    reinvested: 'add',
+    transfer: 'add',
+    transferred: 'add',
+    transferin: 'add',
+    increase: 'increase',
+    increased: 'increase',
+    reduce: 'reduce',
+    reduced: 'reduce',
+    decrease: 'reduce',
+    decreased: 'reduce',
+    lower: 'reduce',
+    lowered: 'reduce',
+    paydown: 'reduce',
+    payoff: 'reduce',
+    repay: 'reduce',
+    repaid: 'reduce',
+    repayment: 'reduce',
+    clear: 'reduce',
+    cleared: 'reduce',
+    settle: 'reduce',
+    settled: 'reduce',
+    remove: 'remove',
+    removed: 'remove',
+    sell: 'remove',
+    sold: 'remove',
+    dispose: 'remove',
+    disposed: 'remove',
+    disposal: 'remove'
+  };
+
+  return aliases[token] || '';
 }
 
 function validatePbsScenarioMovementsPayload(movements, label) {

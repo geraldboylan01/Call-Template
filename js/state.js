@@ -692,12 +692,63 @@ function normalizePbsMovementEndpoint(endpoint) {
 
   return {
     sectionKey: typeof endpoint.sectionKey === 'string' ? endpoint.sectionKey.trim().toLowerCase() : '',
-    rowLabel: typeof endpoint.rowLabel === 'string' ? endpoint.rowLabel : '',
+    rowLabel: typeof endpoint.rowLabel === 'string' ? endpoint.rowLabel.trim() : '',
     amount,
-    action: typeof endpoint.action === 'string' && endpoint.action.trim()
-      ? endpoint.action.trim().toLowerCase()
-      : undefined
+    action: normalizePbsMovementAction(endpoint.action)
   };
+}
+
+function normalizePbsMovementAction(action) {
+  const token = String(action ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+  if (!token) {
+    return undefined;
+  }
+
+  const aliases = {
+    add: 'add',
+    added: 'add',
+    contribute: 'add',
+    contributed: 'add',
+    contribution: 'add',
+    fund: 'add',
+    funded: 'add',
+    redirect: 'add',
+    redirected: 'add',
+    reinvest: 'add',
+    reinvested: 'add',
+    transfer: 'add',
+    transferred: 'add',
+    transferin: 'add',
+    increase: 'increase',
+    increased: 'increase',
+    reduce: 'reduce',
+    reduced: 'reduce',
+    decrease: 'reduce',
+    decreased: 'reduce',
+    lower: 'reduce',
+    lowered: 'reduce',
+    paydown: 'reduce',
+    payoff: 'reduce',
+    repay: 'reduce',
+    repaid: 'reduce',
+    repayment: 'reduce',
+    clear: 'reduce',
+    cleared: 'reduce',
+    settle: 'reduce',
+    settled: 'reduce',
+    remove: 'remove',
+    removed: 'remove',
+    sell: 'remove',
+    sold: 'remove',
+    dispose: 'remove',
+    disposed: 'remove',
+    disposal: 'remove'
+  };
+
+  return aliases[token];
 }
 
 function normalizePbsScenarioMovements(movements) {
