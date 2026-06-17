@@ -47,6 +47,8 @@ This style should still work:
 - Every `outputsBucketed.sections[*].rows` entry must be exactly `[labelString, numericValue]`.
 - Do not put formatted currency strings or unit strings in `outputsBucketed` numeric cells. Use `880000`, not `"€880,000"`; use `5.5`, not `"5.5 months"`.
 - Do not add Owner, Comment, Notes, or Balance columns inside `outputsBucketed`; put narrative in SECTION 1 notes or section `notes`.
+- The PBS summary section must use `key: "summary"` and must include a row labelled exactly `"Net worth"`. Do not label the rendered row `"Known net worth"`, `"Net wealth"`, `"Known net wealth"`, or `"Net assets"`.
+- If only known values are being included, explain that in SECTION 1 NOTES and/or `summaryHtml`; keep the JSON metric label as `"Net worth"`.
 
 ## Required PBS Sections
 Emit `generated.outputsBucketed.sections` in this exact order:
@@ -60,10 +62,20 @@ Emit `generated.outputsBucketed.sections` in this exact order:
 Each section must include:
 - `key`
 - `title`
-- `columns`: exactly `["Asset", "Amount ($)"]`, `["Liability", "Amount ($)"]`, or `["Metric", "Amount ($)"]` using the correct currency symbol.
+- `columns`: exactly `["Asset", "Amount (€)"]`, `["Liability", "Amount (€)"]`, or `["Metric", "Amount (€)"]` for Irish euro planning unless a different currency is explicitly requested.
 - `rows`: exactly two values per row, with the second value as a number, for example `["Primary residence", 450000]`.
 - `subtotalLabel`
 - `subtotalValue`
+
+The `summary` section must use these three rows in this order:
+```json
+[
+  ["Gross assets", 1050000],
+  ["Total liabilities", 385000],
+  ["Net worth", 665000]
+]
+```
+Its `subtotalLabel` must also be exactly `"Net worth"`, and `subtotalValue` must equal the `"Net worth"` row.
 
 ## Optional PBS Alternatives
 If Gerry asks for a second version of the PBS, keep the current position in `generated.outputsBucketed.sections` and add alternatives in `generated.outputsBucketed.scenarios`.
@@ -75,7 +87,14 @@ Each scenario must include:
 - `sections`: the same six PBS sections as the current position, fully recalculated for that alternative.
 - `movements`: optional animation metadata only. Do not use movements instead of recalculating the scenario sections.
 
+Each scenario's own `sections` array must also include a `summary` section with `key: "summary"`, the same three summary rows, and the exact `"Net worth"` label.
+
 Movement entries:
+- Use only these movement actions: `"add"`, `"reduce"`, `"increase"`, or `"remove"`.
+- `from.rowLabel` should exactly match the row label in the current-position section.
+- `to.rowLabel` should exactly match the target row label in the scenario section when that row exists.
+- For a debt that is repaid and disappears from the scenario, keep `to.sectionKey: "liabilities"`, use the original liability row label, and set `action: "reduce"`.
+
 ```json
 {
   "label": "Sell rental property",
@@ -87,7 +106,7 @@ Movement entries:
 }
 ```
 
-For a property sale case, remove or reduce the property in `Legacy`, reduce the relevant debt in `Liabilities`, add any surplus proceeds to `Liquidity`, and ensure `Gross assets`, `Total liabilities`, and `Net worth` / `Net assets` reconcile independently in that scenario.
+For a property sale case, remove or reduce the property in `Legacy`, reduce the relevant debt in `Liabilities`, and put the surplus proceeds in the destination Gerry asked for. Use `Liquidity` only when the proceeds are being kept as cash or reserves. If Gerry asks to redirect the equity into a pension, add it to `Longevity` instead. Ensure `Gross assets`, `Total liabilities`, and `Net worth` reconcile independently in that scenario.
 
 ## Bucket Rules
 - `Lifestyle`

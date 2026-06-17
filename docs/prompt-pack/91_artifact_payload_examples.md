@@ -4,6 +4,8 @@ Representative payloads for testing the upgraded module renderer through the exi
 
 ## PBS / Balance Sheet
 
+PBS examples should keep the summary contract exact: the summary section uses `key: "summary"`, rows labelled `Gross assets`, `Total liabilities`, and `Net worth`, and `subtotalLabel: "Net worth"`. Scenario `movements` are only animation metadata; keep scenario sections fully recalculated and use canonical movement actions such as `add` and `reduce`.
+
 ```json
 {
   "title": "Personal Balance Sheet - Client",

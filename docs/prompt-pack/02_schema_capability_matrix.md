@@ -78,6 +78,10 @@ Playbooks should only emit the subset they are responsible for.
 - `generated.outputs` should be omitted by the PBS playbook.
 - `generated.assumptions` is supported, but PBS should usually omit it unless Gerry explicitly asks to override the scaffold.
 - PBS must use `generated.summaryHtml` and `generated.outputsBucketed`; do not invent `generated.summary`, `generated.metrics`, `generated.buckets`, `generated.assets`, or `generated.liabilities` as the primary app contract.
+- PBS `outputsBucketed.sections` must include the six standard sections in order: `lifestyle`, `liquidity`, `longevity`, `legacy`, `liabilities`, `summary`.
+- The summary section must use `key: "summary"` and the exact rows `Gross assets`, `Total liabilities`, and `Net worth`; use `Net worth` as the row label and subtotal label even when the values are known-values-only.
+- PBS alternatives belong in `generated.outputsBucketed.scenarios[]`; every scenario must contain fully recalculated sections, including its own `summary` section with the exact `Net worth` label.
+- PBS `movements` are optional animation metadata. Use canonical actions only: `add`, `reduce`, `increase`, or `remove`. Prefer exact `rowLabel` values that match the visible source or destination rows.
 
 ## Pension Support
 - Use `generated.pensionInputs`

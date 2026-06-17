@@ -22,6 +22,7 @@ For each prompt below:
 - Pass if the module feels usable on a live call.
 - Pass only if `generated.summaryHtml` is understandable without knowing the playbook name.
 - Pass only if client-facing JSON avoids internal words such as `browser app`, `payload`, `engine`, `runtime`, `JSON`, validators, and schemas.
+- PBS outputs pass only if the summary section uses `key: "summary"`, the exact row label `Net worth`, and `subtotalLabel: "Net worth"`.
 - Fail if the model asks unnecessary questions instead of using a safe best guess.
 - Fail if the visual playbooks become generic or repetitive.
 
@@ -62,6 +63,18 @@ Checks:
 - summary is concise
 - 2 charts max
 - totals and subtotals reconcile
+
+### PBS-4
+Prompt:
+`Use the PBS playbook. Client age 46. Household take-home pay 7500 per month. Saves 1000 per month. Assets: family home 560000; buy-to-let property 280000; cash 10000; DC pension 200000; spouse teacher public service pension value not known. Liabilities: family home mortgage 275000; buy-to-let mortgage 110000. Add a scenario where the buy-to-let is sold, the buy-to-let mortgage is repaid, and the remaining equity is redirected into the DC pension.`
+
+Checks:
+- current summary rows are exactly `Gross assets`, `Total liabilities`, `Net worth`
+- current net worth is 665000
+- scenario summary rows also use exact `Net worth`, not `Known net worth`, `Net assets`, or `Net wealth`
+- scenario redirects 170000 to `Longevity`, not `Liquidity`, because the prompt says it goes into the pension
+- scenario net worth remains 665000 before tax and sale-cost adjustments
+- movement actions use canonical `reduce` for the repaid buy-to-let mortgage and `add` for the pension redirect
 
 ## Retirement Regression Prompts
 
