@@ -1208,6 +1208,58 @@ function normalizeTableHighlightState(state) {
   };
 }
 
+const MODULE_IMAGE_CONTENT_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp'
+]);
+const MAX_MODULE_IMAGES = 20;
+
+function normalizeModuleMedia(media) {
+  const images = media && typeof media === 'object' && !Array.isArray(media) && Array.isArray(media.images)
+    ? media.images
+    : [];
+
+  const seenAssetIds = new Set();
+  const seenImageIds = new Set();
+  const normalizedImages = [];
+
+  images.forEach((image, index) => {
+    if (!image || typeof image !== 'object' || Array.isArray(image) || normalizedImages.length >= MAX_MODULE_IMAGES) {
+      return;
+    }
+
+    const assetId = typeof image.assetId === 'string' ? image.assetId.trim() : '';
+    const contentType = typeof image.contentType === 'string' ? image.contentType.trim().toLowerCase() : '';
+    if (!assetId || !MODULE_IMAGE_CONTENT_TYPES.has(contentType) || seenAssetIds.has(assetId)) {
+      return;
+    }
+
+    let imageId = typeof image.id === 'string' ? image.id.trim() : '';
+    if (!imageId || seenImageIds.has(imageId)) {
+      imageId = `image-${index + 1}`;
+    }
+    while (seenImageIds.has(imageId)) {
+      imageId = `${imageId}-${normalizedImages.length + 1}`;
+    }
+
+    const width = Number(image.width);
+    const height = Number(image.height);
+    normalizedImages.push({
+      id: imageId,
+      assetId,
+      contentType,
+      width: Number.isInteger(width) && width > 0 ? width : 0,
+      height: Number.isInteger(height) && height > 0 ? height : 0,
+      alt: typeof image.alt === 'string' && image.alt.trim() ? image.alt.trim() : 'Module image'
+    });
+    seenAssetIds.add(assetId);
+    seenImageIds.add(imageId);
+  });
+
+  return { images: normalizedImages };
+}
+
 function normalizeModuleUi(ui) {
   const tableHighlights = ui && typeof ui === 'object' && !Array.isArray(ui)
     && ui.tableHighlights && typeof ui.tableHighlights === 'object' && !Array.isArray(ui.tableHighlights)
@@ -1218,7 +1270,12 @@ function normalizeModuleUi(ui) {
     tableHighlights: {
       assumptions: normalizeTableHighlightState(tableHighlights.assumptions),
       outputs: normalizeTableHighlightState(tableHighlights.outputs)
-    }
+    },
+    hiddenCardIds: ui && typeof ui === 'object' && !Array.isArray(ui) && Array.isArray(ui.hiddenCardIds)
+      ? [...new Set(ui.hiddenCardIds
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter(Boolean))]
+      : []
   };
 }
 
@@ -1236,6 +1293,7 @@ function normalizeModules(modules) {
       title: typeof item.title === 'string' ? item.title : '',
       notes: typeof item.notes === 'string' ? item.notes : '',
       generated: normalizeGenerated(item.generated),
+      media: normalizeModuleMedia(item.media),
       ui: normalizeModuleUi(item.ui)
     }));
 }
@@ -1344,7 +1402,11 @@ export function exportPublishedSession(session) {
     createdAt: module.createdAt,
     updatedAt: module.updatedAt,
     title: module.title,
-    generated: module.generated
+    generated: module.generated,
+    media: module.media,
+    ui: {
+      hiddenCardIds: module.ui.hiddenCardIds
+    }
   }));
   return JSON.stringify(normalized, null, 2);
 }

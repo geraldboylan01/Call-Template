@@ -148,6 +148,10 @@ const stateManager = createStateManager(300, {
 
 const ASSUMPTIONS_UPDATED_FEEDBACK_MS = 800;
 const OVERVIEW_UNDO_SECONDS = 15;
+const MODULE_MEDIA_UNDO_SECONDS = 10;
+const MODULE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const MODULE_IMAGE_MAX_PIXELS = 24_000_000;
+const MODULE_IMAGE_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const TABLE_HIGHLIGHT_KINDS = Object.freeze(['assumptions', 'outputs']);
 const MOBILE_LAYOUT_MEDIA_QUERY = '(max-width: 1024px)';
 const MOBILE_SHEET_SWIPE_CLOSE_THRESHOLD = 72;
@@ -202,6 +206,8 @@ const appState = {
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
   publishedAccess: null,
+  assetAccess: null,
+  mediaObjectUrls: new Map(),
   pipelineContext: null
 };
 
@@ -1777,6 +1783,9 @@ function createBlankModule() {
     title: '',
     notes: '',
     generated: createEmptyGenerated(),
+    media: {
+      images: []
+    },
     ui: {
       tableHighlights: {
         assumptions: {
@@ -1787,7 +1796,8 @@ function createBlankModule() {
           selected: [],
           anchor: null
         }
-      }
+      },
+      hiddenCardIds: []
     }
   };
 }
@@ -1994,6 +2004,14 @@ function ensureModuleUi(module) {
       anchor: normalizeTableHighlightAnchor(current.anchor)
     };
   });
+
+  if (!Array.isArray(module.ui.hiddenCardIds)) {
+    module.ui.hiddenCardIds = [];
+  } else {
+    module.ui.hiddenCardIds = [...new Set(module.ui.hiddenCardIds
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean))];
+  }
 
   return module.ui;
 }
@@ -2274,6 +2292,12 @@ function patchFocusedModuleGeneratedContent(moduleId, {
     focusedCard,
     module,
     onPatchInputs: (action) => handleAssumptionsEditorPatch(action),
+    onRemoveCard: (cardId) => {
+      void hideModuleCard(moduleId, cardId);
+    },
+    onRemoveImage: (imageId) => {
+      void removeModuleImage(moduleId, imageId);
+    },
     assumptionsEditorStatus: getAssumptionsEditorRenderStatus(moduleId),
     readOnly: runtimeConfig.readOnly,
     patchSummary,
@@ -2281,6 +2305,7 @@ function patchFocusedModuleGeneratedContent(moduleId, {
     patchOutputs,
     patchCharts: replaceCharts
   });
+  void hydrateModuleMediaImages(focusedCard);
 
   if (!updateCharts) {
     return;
@@ -5180,6 +5205,11 @@ async function maybeLoadPublishedSessionFromLocation() {
   void recordPublishedUnlock(publishedId, advisorSecretB64u, 'advisor', 'advisor-reopen');
   return {
     session: importedSession,
+    assetAccess: {
+      publishedId,
+      secret: advisorSecretB64u,
+      role: 'advisor'
+    },
     access: {
       version: Number(bundle?.v) || 2,
       publishedId,
@@ -5256,6 +5286,7 @@ async function resolvePublishedStartupRecovery(message) {
       return {
         session: loadSession(),
         access: null,
+        assetAccess: null,
         notice: 'Opened local draft instead.'
       };
     }
@@ -5264,6 +5295,7 @@ async function resolvePublishedStartupRecovery(message) {
       return {
         session: newSession('Client'),
         access: null,
+        assetAccess: null,
         notice: 'Started a new session instead.'
       };
     }
@@ -5274,6 +5306,7 @@ async function resolvePublishedStartupRecovery(message) {
         return {
           session: publishedBootstrap.session,
           access: publishedBootstrap.access,
+          assetAccess: publishedBootstrap.assetAccess || null,
           notice: 'Opened published snapshot.'
         };
       }
@@ -5303,6 +5336,16 @@ async function publishCurrentSession() {
     clientSecretB64u: encryptedPayload.clientSecretB64u,
     advisorSecretB64u: encryptedPayload.advisorSecretB64u
   };
+  const assetIds = [...new Set(appState.session.modules
+    .flatMap((module) => Array.isArray(module?.media?.images) ? module.media.images : [])
+    .map((image) => String(image?.assetId || '').trim())
+    .filter(Boolean))];
+  if (assetIds.length > 0) {
+    encryptedPayload.requestBody.assetRefs = {
+      draftSessionId: String(appState.session.sessionId || '').trim(),
+      assetIds
+    };
+  }
 
   if (isShareMode) {
     encryptedPayload.requestBody.publishTarget = 'detached-share';
@@ -7555,6 +7598,425 @@ function updateUiChrome() {
   }
 }
 
+function makeModuleMediaId(prefix = 'image') {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return `${prefix}-${window.crypto.randomUUID()}`;
+  }
+
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function ensureModuleMedia(module) {
+  if (!module || typeof module !== 'object') {
+    return { images: [] };
+  }
+
+  if (!module.media || typeof module.media !== 'object' || Array.isArray(module.media)) {
+    module.media = { images: [] };
+  }
+  if (!Array.isArray(module.media.images)) {
+    module.media.images = [];
+  }
+  return module.media;
+}
+
+function isTextEntryTarget(target) {
+  return target instanceof HTMLElement && (
+    target.tagName === 'INPUT'
+    || target.tagName === 'TEXTAREA'
+    || target.tagName === 'SELECT'
+    || target.isContentEditable
+  );
+}
+
+async function readImageDimensions(file) {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file);
+    try {
+      return { width: bitmap.width, height: bitmap.height };
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const dimensions = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error('This image could not be decoded.'));
+      image.src = objectUrl;
+    });
+    return dimensions;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function validateModuleImageFile(file) {
+  if (!(file instanceof Blob)) {
+    throw new Error('Choose a JPEG, PNG, or WebP image.');
+  }
+
+  const contentType = String(file.type || '').trim().toLowerCase();
+  if (!MODULE_IMAGE_CONTENT_TYPES.has(contentType)) {
+    throw new Error('Use a JPEG, PNG, or WebP image.');
+  }
+  if (file.size <= 0) {
+    throw new Error('This image is empty.');
+  }
+  if (file.size > MODULE_IMAGE_MAX_BYTES) {
+    throw new Error('Images must be 10 MB or smaller.');
+  }
+
+  const dimensions = await readImageDimensions(file);
+  if (!Number.isInteger(dimensions.width) || !Number.isInteger(dimensions.height) || dimensions.width < 1 || dimensions.height < 1) {
+    throw new Error('This image has invalid dimensions.');
+  }
+  if (dimensions.width * dimensions.height > MODULE_IMAGE_MAX_PIXELS) {
+    throw new Error('Images must be 24 megapixels or smaller.');
+  }
+
+  return {
+    contentType,
+    width: dimensions.width,
+    height: dimensions.height
+  };
+}
+
+function buildModuleImageAlt(file, module) {
+  const rawName = typeof file?.name === 'string' ? file.name.trim() : '';
+  if (!rawName) {
+    return 'Module image';
+  }
+
+  const withoutExtension = rawName.replace(/\.[a-z0-9]{1,8}$/i, '').replace(/[._-]+/g, ' ').trim();
+  return withoutExtension || `${module?.title?.trim() || 'Module'} image`;
+}
+
+function getDraftAssetUrl(assetId) {
+  const sessionId = String(appState.session?.sessionId || '').trim();
+  if (!sessionId || !assetId) {
+    return '';
+  }
+  return `${WORKER_BASE_URL}/api/advisor/module-assets/${encodeURIComponent(sessionId)}/${encodeURIComponent(assetId)}`;
+}
+
+async function uploadModuleImage(moduleId, file) {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+  if (!WORKER_BASE_URL) {
+    throw new Error('Image uploads are unavailable because the worker URL is not configured.');
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    throw new Error('The active module is unavailable.');
+  }
+
+  const metadata = await validateModuleImageFile(file);
+  const assetId = makeModuleMediaId('asset');
+  const response = await fetchWithAdvisorAuth(getDraftAssetUrl(assetId), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': metadata.contentType
+    },
+    body: file
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to add private module images.'
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Could not upload the image (${response.status}).`);
+  }
+
+  const media = ensureModuleMedia(module);
+  media.images.push({
+    id: makeModuleMediaId('image'),
+    assetId: String(payload?.assetId || assetId),
+    contentType: metadata.contentType,
+    width: metadata.width,
+    height: metadata.height,
+    alt: buildModuleImageAlt(file, module)
+  });
+  module.updatedAt = nowIso();
+  markSessionDirty();
+  saveSessionNow();
+  await renderFocused({ useSwipe: false, revealMode: true });
+  showToast('Image added.');
+}
+
+async function uploadModuleImages(moduleId, files) {
+  const candidates = [...files].filter((file) => file instanceof Blob);
+  if (candidates.length === 0) {
+    return;
+  }
+
+  for (const file of candidates) {
+    await uploadModuleImage(moduleId, file);
+  }
+}
+
+function openModuleImagePicker(moduleId) {
+  if (runtimeConfig.readOnly || !moduleId) {
+    return;
+  }
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/jpeg,image/png,image/webp';
+  input.multiple = true;
+  input.className = 'visually-hidden';
+  input.addEventListener('change', async () => {
+    try {
+      await uploadModuleImages(moduleId, input.files || []);
+    } catch (error) {
+      showToast(error?.message || 'Could not add the image.', 'error');
+    } finally {
+      input.remove();
+    }
+  }, { once: true });
+  document.body.appendChild(input);
+  input.click();
+}
+
+function isDraftAssetReferenced(assetId) {
+  return appState.session.modules.some((module) => (
+    Array.isArray(module?.media?.images) && module.media.images.some((image) => image?.assetId === assetId)
+  ));
+}
+
+async function deleteDraftModuleAsset(assetId) {
+  if (!assetId || !WORKER_BASE_URL || appState.assetAccess || isDraftAssetReferenced(assetId)) {
+    return;
+  }
+
+  const response = await fetchWithAdvisorAuth(getDraftAssetUrl(assetId), {
+    method: 'DELETE'
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to remove private module images.'
+  });
+  if (!response.ok && response.status !== 404) {
+    console.warn('[CallCanvas] failed to remove unused module asset', { assetId, status: response.status });
+    return;
+  }
+  const objectUrl = appState.mediaObjectUrls.get(assetId);
+  if (objectUrl) {
+    URL.revokeObjectURL(objectUrl);
+    appState.mediaObjectUrls.delete(assetId);
+  }
+}
+
+function startAdvisorUndoToast(message, onUndo, onExpire = null) {
+  if (!ui.toastHost) {
+    return;
+  }
+
+  clearUndoActionState();
+  ui.toastHost.classList.add('has-interactive-toast');
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-undo';
+  const messageEl = document.createElement('span');
+  messageEl.className = 'toast-undo-message';
+  messageEl.textContent = message;
+  toast.appendChild(messageEl);
+  const undoButton = document.createElement('button');
+  undoButton.type = 'button';
+  undoButton.className = 'toast-undo-btn';
+  toast.appendChild(undoButton);
+  ui.toastHost.appendChild(toast);
+
+  const undoState = {
+    toastEl: toast,
+    undoButtonEl: undoButton,
+    remainingSeconds: MODULE_MEDIA_UNDO_SECONDS,
+    intervalId: 0,
+    timeoutId: 0
+  };
+  const renderCountdown = () => {
+    undoButton.textContent = `Undo · ${undoState.remainingSeconds}s`;
+  };
+  const finish = async (wasUndone) => {
+    if (appState.undoAction !== undoState) {
+      return;
+    }
+    if (wasUndone) {
+      undoButton.disabled = true;
+      try {
+        await onUndo?.();
+      } catch (error) {
+        showToast(error?.message || 'Could not undo that change.', 'error');
+      }
+    } else {
+      try {
+        await onExpire?.();
+      } catch (error) {
+        console.warn('[CallCanvas] undo expiry cleanup failed', error);
+      }
+    }
+    clearUndoActionState();
+  };
+
+  undoButton.addEventListener('click', () => {
+    void finish(true);
+  });
+  renderCountdown();
+  undoState.intervalId = window.setInterval(() => {
+    if (appState.undoAction !== undoState) {
+      return;
+    }
+    undoState.remainingSeconds = Math.max(0, undoState.remainingSeconds - 1);
+    renderCountdown();
+  }, 1000);
+  undoState.timeoutId = window.setTimeout(() => {
+    void finish(false);
+  }, MODULE_MEDIA_UNDO_SECONDS * 1000);
+  appState.undoAction = undoState;
+}
+
+async function removeModuleImage(moduleId, imageId) {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    return;
+  }
+  const media = ensureModuleMedia(module);
+  const imageIndex = media.images.findIndex((image) => image?.id === imageId);
+  if (imageIndex < 0) {
+    return;
+  }
+
+  const [image] = media.images.splice(imageIndex, 1);
+  module.updatedAt = nowIso();
+  markSessionDirty();
+  saveSessionNow();
+  await renderFocused({ useSwipe: false, revealMode: true });
+  startAdvisorUndoToast('Image removed.', async () => {
+    media.images.splice(imageIndex, 0, image);
+    module.updatedAt = nowIso();
+    markSessionDirty();
+    saveSessionNow();
+    await renderFocused({ useSwipe: false, revealMode: true });
+  }, async () => {
+    await deleteDraftModuleAsset(image.assetId);
+  });
+}
+
+async function hideModuleCard(moduleId, cardId) {
+  if (runtimeConfig.readOnly || !cardId) {
+    return;
+  }
+  const module = getModuleById(appState.session, moduleId);
+  const uiState = ensureModuleUi(module);
+  if (!uiState || uiState.hiddenCardIds.includes(cardId)) {
+    return;
+  }
+
+  uiState.hiddenCardIds.push(cardId);
+  module.updatedAt = nowIso();
+  markSessionDirty();
+  saveSessionNow();
+  await renderFocused({ useSwipe: false, revealMode: true });
+  startAdvisorUndoToast('Section removed.', async () => {
+    uiState.hiddenCardIds = uiState.hiddenCardIds.filter((value) => value !== cardId);
+    module.updatedAt = nowIso();
+    markSessionDirty();
+    saveSessionNow();
+    await renderFocused({ useSwipe: false, revealMode: true });
+  });
+}
+
+async function restoreModuleCards(moduleId) {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+  const module = getModuleById(appState.session, moduleId);
+  const uiState = ensureModuleUi(module);
+  if (!uiState || uiState.hiddenCardIds.length === 0) {
+    return;
+  }
+
+  uiState.hiddenCardIds = [];
+  module.updatedAt = nowIso();
+  markSessionDirty();
+  saveSessionNow();
+  await renderFocused({ useSwipe: false, revealMode: true });
+  showToast('Removed sections restored.');
+}
+
+async function fetchModuleAssetBlob(assetId) {
+  const published = appState.assetAccess;
+  let response;
+  if (published?.publishedId && published?.secret && published?.role) {
+    const capability = await buildPublishedCapabilityToken(published.secret, published.role);
+    const url = `${WORKER_BASE_URL}/api/published-sessions/${encodeURIComponent(published.publishedId)}/assets/${encodeURIComponent(assetId)}`;
+    const request = {
+      headers: { 'X-Published-Capability': capability }
+    };
+    response = published.role === 'advisor'
+      ? await fetchWithAdvisorAuth(url, request, { authPrompt: 'Sign in to load private module images.' })
+      : await fetch(url, request);
+  } else {
+    response = await fetchWithAdvisorAuth(getDraftAssetUrl(assetId), { method: 'GET' }, {
+      authPrompt: 'Sign in to load private module images.'
+    });
+  }
+
+  if (!response.ok) {
+    throw new Error(`Image unavailable (${response.status}).`);
+  }
+  return response.blob();
+}
+
+async function hydrateModuleMediaImages(root = ui.swipeStage) {
+  if (!root) {
+    return;
+  }
+
+  const imageElements = [...root.querySelectorAll('img[data-module-asset-id]')];
+  await Promise.all(imageElements.map(async (imageElement) => {
+    const assetId = String(imageElement.dataset.moduleAssetId || '').trim();
+    if (!assetId || imageElement.dataset.loadingAsset === assetId) {
+      return;
+    }
+    imageElement.dataset.loadingAsset = assetId;
+    const item = imageElement.closest('.module-media-item');
+    const status = item?.querySelector('.module-media-status');
+    try {
+      let objectUrl = appState.mediaObjectUrls.get(assetId);
+      if (!objectUrl) {
+        const blob = await fetchModuleAssetBlob(assetId);
+        objectUrl = URL.createObjectURL(blob);
+        appState.mediaObjectUrls.set(assetId, objectUrl);
+      }
+      if (!imageElement.isConnected) {
+        return;
+      }
+      imageElement.src = objectUrl;
+      imageElement.classList.remove('is-loading');
+      if (status) {
+        status.remove();
+      }
+    } catch (_error) {
+      if (!imageElement.isConnected) {
+        return;
+      }
+      imageElement.classList.remove('is-loading');
+      imageElement.classList.add('is-error');
+      if (status) {
+        status.textContent = 'Image unavailable.';
+      }
+    } finally {
+      delete imageElement.dataset.loadingAsset;
+    }
+  }));
+}
+
 function getFocusedPaneForModule(module, {
   readOnly = runtimeConfig.readOnly,
   showPensionToggle = runtimeConfig.showPensionToggle,
@@ -7573,6 +8035,16 @@ function getFocusedPaneForModule(module, {
     onTitleInput: (moduleId, value) => updateModule(moduleId, { title: value }),
     onNotesInput: (moduleId, value) => updateModule(moduleId, { notes: value }),
     onPatchInputs: (patch) => handleAssumptionsEditorPatch(patch),
+    onAddImage: (moduleId) => openModuleImagePicker(moduleId),
+    onRemoveImage: (imageId) => {
+      void removeModuleImage(module.id, imageId);
+    },
+    onRemoveCard: (cardId) => {
+      void hideModuleCard(module.id, cardId);
+    },
+    onRestoreRemovedCards: (moduleId) => {
+      void restoreModuleCards(moduleId);
+    },
     assumptionsEditorStatus,
     readOnly,
     showPensionToggle,
@@ -7770,6 +8242,7 @@ async function renderCompareView() {
     moduleTitle: rightTitle,
     paneKey: 'compare-right'
   });
+  void hydrateModuleMediaImages(root);
 
   return true;
 }
@@ -7836,6 +8309,8 @@ async function renderFocused({
     setMode(ui, 'focused');
     updateUiChrome();
   }
+
+  void hydrateModuleMediaImages(pane);
 
   if (!deferCharts) {
     const reason = useSwipe ? 'swipe-to-pane' : (revealMode ? 'renderFocused-visible' : 'renderFocused');
@@ -9042,7 +9517,48 @@ function bindEvents() {
     ui.swipeStage.addEventListener('click', (event) => {
       handleTableCellHighlightClick(event);
     });
+
+    ui.swipeStage.addEventListener('dragover', (event) => {
+      if (runtimeConfig.readOnly || appState.mode !== 'focused') {
+        return;
+      }
+      const files = [...(event.dataTransfer?.files || [])];
+      if (files.some((file) => MODULE_IMAGE_CONTENT_TYPES.has(String(file?.type || '').toLowerCase()))) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }
+    });
+
+    ui.swipeStage.addEventListener('drop', (event) => {
+      if (runtimeConfig.readOnly || appState.mode !== 'focused' || isTextEntryTarget(event.target)) {
+        return;
+      }
+      const files = [...(event.dataTransfer?.files || [])]
+        .filter((file) => MODULE_IMAGE_CONTENT_TYPES.has(String(file?.type || '').toLowerCase()));
+      if (files.length === 0 || !appState.session.activeModuleId) {
+        return;
+      }
+      event.preventDefault();
+      void uploadModuleImages(appState.session.activeModuleId, files)
+        .catch((error) => showToast(error?.message || 'Could not add the dropped image.', 'error'));
+    });
   }
+
+  window.addEventListener('paste', (event) => {
+    if (runtimeConfig.readOnly || appState.mode !== 'focused' || isTextEntryTarget(event.target)) {
+      return;
+    }
+    const files = [...(event.clipboardData?.items || [])]
+      .filter((item) => item.kind === 'file' && MODULE_IMAGE_CONTENT_TYPES.has(String(item.type || '').toLowerCase()))
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (files.length === 0 || !appState.session.activeModuleId) {
+      return;
+    }
+    event.preventDefault();
+    void uploadModuleImages(appState.session.activeModuleId, files)
+      .catch((error) => showToast(error?.message || 'Could not add the pasted image.', 'error'));
+  });
 
   window.addEventListener('keydown', async (event) => {
     setOverviewMultiSelectArmed(isMultiSelectModifier(event));
@@ -9205,6 +9721,7 @@ export async function initApp(options = {}) {
     applyRuntimeOptions(options);
     const workerMissing = !WORKER_BASE_URL;
     let startupPublishedAccess = null;
+    let startupAssetAccess = options.assetAccess || null;
     let startupNotice = '';
     appState.pipelineContext = getClientPipelineContextFromLocation();
     const startFreshFromPipeline = appState.pipelineContext
@@ -9247,6 +9764,7 @@ export async function initApp(options = {}) {
           if (publishedBootstrap?.session) {
             appState.session = publishedBootstrap.session;
             startupPublishedAccess = publishedBootstrap.access;
+            startupAssetAccess = publishedBootstrap.assetAccess || null;
             startupNotice = 'Opened published snapshot.';
           } else {
             if (publishedBootstrap?.error) {
@@ -9254,6 +9772,7 @@ export async function initApp(options = {}) {
               startupNotice = recovery.notice;
               appState.session = recovery.session;
               startupPublishedAccess = recovery.access;
+              startupAssetAccess = recovery.assetAccess || null;
             } else {
               appState.session = startFreshFromPipeline
                 ? newSession(appState.pipelineContext?.clientName || 'Client')
@@ -9265,6 +9784,7 @@ export async function initApp(options = {}) {
           startupNotice = recovery.notice;
           appState.session = recovery.session;
           startupPublishedAccess = recovery.access;
+          startupAssetAccess = recovery.assetAccess || null;
         }
       } else {
         appState.session = startFreshFromPipeline
@@ -9276,6 +9796,7 @@ export async function initApp(options = {}) {
     applyClientPipelineContextToSession();
     ensureActiveModule(appState.session);
     appState.publishedAccess = startupPublishedAccess;
+    appState.assetAccess = startupAssetAccess;
     const startInOverview = hasModules() && (
       options.startInOverview === true
       || getLocationViewMode() === 'overview'

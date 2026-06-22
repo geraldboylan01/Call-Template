@@ -147,6 +147,27 @@ async function requestJson(baseUrl, path, options = {}) {
   throw new Error(`${retryLabel} exhausted retries.`);
 }
 
+async function requestBytes(baseUrl, path, options = {}) {
+  const {
+    method = 'GET',
+    headers = {},
+    body,
+    expectedStatus,
+    retryLabel = `${method} ${path}`,
+    cookieJar = null
+  } = options;
+  const response = await fetch(new URL(path, `${baseUrl}/`).toString(), {
+    method,
+    headers: cookieJar ? cookieJar.apply(headers) : headers,
+    body
+  });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (typeof expectedStatus === 'number' && response.status !== expectedStatus) {
+    throw new Error(`${retryLabel} returned ${response.status} instead of ${expectedStatus}.`);
+  }
+  return { status: response.status, bytes, headers: response.headers };
+}
+
 async function ensureAdvisorSession(baseUrl, originHeaders, cookieJar) {
   const sessionResult = await requestJson(baseUrl, '/api/auth/session', {
     headers: originHeaders,
@@ -191,7 +212,7 @@ async function ensureAdvisorSession(baseUrl, originHeaders, cookieJar) {
   };
 }
 
-async function buildPublishedSessionPayload(cryptoHelpers) {
+async function buildPublishedSessionPayload(cryptoHelpers, assetRef = null) {
   const clientSessionJson = JSON.stringify({
     version: 1,
     clientName: 'Smoke Test Client',
@@ -202,6 +223,18 @@ async function buildPublishedSessionPayload(cryptoHelpers) {
         title: 'Protection review',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        ...(assetRef ? {
+          media: {
+            images: [{
+              id: 'smoke-image',
+              assetId: assetRef.assetId,
+              contentType: 'image/png',
+              width: 1,
+              height: 1,
+              alt: 'Smoke image'
+            }]
+          }
+        } : {}),
         generated: {
           summaryHtml: '<p>Smoke test summary.</p>'
         }
@@ -220,6 +253,18 @@ async function buildPublishedSessionPayload(cryptoHelpers) {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         notes: 'Advisor-only note',
+        ...(assetRef ? {
+          media: {
+            images: [{
+              id: 'smoke-image',
+              assetId: assetRef.assetId,
+              contentType: 'image/png',
+              width: 1,
+              height: 1,
+              alt: 'Smoke image'
+            }]
+          }
+        } : {}),
         generated: {
           summaryHtml: '<p>Smoke test summary.</p>'
         }
@@ -233,9 +278,16 @@ async function buildPublishedSessionPayload(cryptoHelpers) {
     clientEmail: '',
     expiresInDays: 7
   });
+  if (assetRef) {
+    encrypted.requestBody.assetRefs = {
+      draftSessionId: assetRef.draftSessionId,
+      assetIds: [assetRef.assetId]
+    };
+  }
 
   return {
     ...encrypted,
+    assetRef,
     clientSessionJson,
     advisorSessionJson,
     clientCapabilityToken: await cryptoHelpers.buildPublishedCapabilityToken(encrypted.clientSecretB64u, 'client'),
@@ -338,7 +390,41 @@ async function main() {
     ? { 'X-Advisor-CSRF': advisorSession.csrfToken }
     : {};
 
-  const payload = await buildPublishedSessionPayload(cryptoHelpers);
+  const mediaAsset = {
+    draftSessionId: `session-smoke-media-${randomBase64Url(12)}`,
+    assetId: `asset-smoke-media-${randomBase64Url(12)}`
+  };
+  const smokePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9lQAAAABJRU5ErkJggg==', 'base64');
+  const draftAssetPath = `/api/advisor/module-assets/${encodeURIComponent(mediaAsset.draftSessionId)}/${encodeURIComponent(mediaAsset.assetId)}`;
+  const draftUpload = await requestJson(workerBaseUrl, draftAssetPath, {
+    method: 'PUT',
+    headers: {
+      ...originHeaders,
+      ...advisorCsrfHeaders,
+      'Content-Type': 'image/png'
+    },
+    body: smokePng,
+    expectedStatus: 201,
+    retryLabel: 'upload smoke module image',
+    cookieJar
+  });
+  assert(draftUpload.data?.assetId === mediaAsset.assetId, 'Draft image upload did not return the asset id.');
+  const draftImageFetch = await requestBytes(workerBaseUrl, draftAssetPath, {
+    headers: originHeaders,
+    expectedStatus: 200,
+    retryLabel: 'fetch advisor draft image',
+    cookieJar
+  });
+  assert(Buffer.from(draftImageFetch.bytes).equals(smokePng), 'Draft image bytes did not match the uploaded image.');
+  if (advisorSession.authEnabled) {
+    await requestJson(workerBaseUrl, draftAssetPath, {
+      headers: originHeaders,
+      expectedStatus: 401,
+      retryLabel: 'reject unauthenticated draft image fetch'
+    });
+  }
+
+  const payload = await buildPublishedSessionPayload(cryptoHelpers, mediaAsset);
   const detachedPayload = await buildDetachedSharePayload(cryptoHelpers);
   let publishedId = '';
   let detachedPublishedId = '';
@@ -463,6 +549,27 @@ async function main() {
     assert(advisorFetch.data?.meta?.clientName === 'Smoke Test Client', 'Advisor meta clientName mismatch.');
     assert(advisorFetch.data?.meta?.clientPinState === 'pending', 'Advisor meta pin state mismatch.');
     assert(advisorFetch.data?.meta?.clientAccessRevision === 1, 'Advisor meta revision mismatch.');
+
+    const publishedAssetPath = `/api/published-sessions/${encodeURIComponent(publishedId)}/assets/${encodeURIComponent(mediaAsset.assetId)}`;
+    await requestBytes(workerBaseUrl, publishedAssetPath, {
+      headers: originHeaders,
+      expectedStatus: 404,
+      retryLabel: 'reject unauthenticated published image fetch'
+    });
+    const clientImageFetch = await requestBytes(workerBaseUrl, publishedAssetPath, {
+      headers: clientHeaders,
+      expectedStatus: 200,
+      retryLabel: 'fetch client published image'
+    });
+    assert(Buffer.from(clientImageFetch.bytes).equals(smokePng), 'Client published image bytes did not match the uploaded image.');
+    assert(clientImageFetch.headers.get('content-type') === 'image/png', 'Client published image content type mismatch.');
+    const advisorImageFetch = await requestBytes(workerBaseUrl, publishedAssetPath, {
+      headers: advisorHeaders,
+      expectedStatus: 200,
+      retryLabel: 'fetch advisor published image',
+      cookieJar
+    });
+    assert(Buffer.from(advisorImageFetch.bytes).equals(smokePng), 'Advisor published image bytes did not match the uploaded image.');
 
     const finalizedClientAccess = await cryptoHelpers.finalizePublishedClientPinV4(
       payload.clientSecretB64u,
@@ -638,6 +745,11 @@ async function main() {
       expectedStatus: 410,
       retryLabel: 'fetch revoked client bundle'
     });
+    await requestBytes(workerBaseUrl, publishedAssetPath, {
+      headers: rotatedClientHeaders,
+      expectedStatus: 410,
+      retryLabel: 'fetch revoked published image'
+    });
 
     const detachedRevokeResult = await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(detachedPublishedId)}/revoke`, {
       method: 'POST',
@@ -655,6 +767,20 @@ async function main() {
 
     console.log(`Worker published-session smoke checks passed for ${workerBaseUrl}`);
   } finally {
+    try {
+      await requestJson(workerBaseUrl, draftAssetPath, {
+        method: 'DELETE',
+        headers: {
+          ...originHeaders,
+          ...advisorCsrfHeaders
+        },
+        expectedStatus: 200,
+        retryLabel: 'cleanup draft image',
+        cookieJar
+      });
+    } catch (_error) {
+      // Cleanup is best-effort only.
+    }
     if (detachedPublishedId) {
       try {
         await requestJson(workerBaseUrl, `/api/published-sessions/${encodeURIComponent(detachedPublishedId)}/revoke`, {

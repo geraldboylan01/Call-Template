@@ -363,8 +363,16 @@ async function submitPublishedClientPinSetup(publishedId, clientSecretB64u, expe
 async function openReadonlySession(sessionInput) {
   const importedSession = importPublishedSession(sessionInput);
   const { initApp } = await import('./app.js');
+  const publishedId = getPublishedIdFromUrl();
   await initApp({
     initialSession: importedSession,
+    assetAccess: publishedId && publishedClientSecret
+      ? {
+        publishedId,
+        secret: publishedClientSecret,
+        role: 'client'
+      }
+      : null,
     readOnly: true,
     allowDevPanel: false,
     allowPublish: false,

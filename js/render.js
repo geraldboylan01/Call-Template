@@ -6523,6 +6523,123 @@ function buildSummaryCard(summaryHtml, {
   return card;
 }
 
+function buildModuleMediaCard(module, {
+  readOnly = false,
+  onRemoveImage = null
+} = {}) {
+  const images = Array.isArray(module?.media?.images) ? module.media.images : [];
+  if (images.length === 0) {
+    return null;
+  }
+
+  const card = document.createElement('section');
+  card.className = 'generated-card module-media-card';
+  card.dataset.generatedCard = 'media';
+
+  const { header } = buildGeneratedCardHeader(images.length === 1 ? 'Media' : `Media (${images.length})`);
+  card.appendChild(header);
+
+  const grid = document.createElement('div');
+  grid.className = 'module-media-grid';
+  images.forEach((image) => {
+    const figure = document.createElement('figure');
+    figure.className = 'module-media-item';
+    figure.dataset.moduleImageId = image.id;
+
+    const imageElement = document.createElement('img');
+    imageElement.className = 'module-media-image is-loading';
+    imageElement.dataset.moduleAssetId = image.assetId;
+    imageElement.alt = image.alt || 'Module image';
+    imageElement.loading = 'lazy';
+    imageElement.decoding = 'async';
+    if (Number.isInteger(image.width) && image.width > 0) {
+      imageElement.width = image.width;
+    }
+    if (Number.isInteger(image.height) && image.height > 0) {
+      imageElement.height = image.height;
+    }
+    figure.appendChild(imageElement);
+
+    const status = document.createElement('span');
+    status.className = 'module-media-status';
+    status.textContent = 'Loading image…';
+    figure.appendChild(status);
+
+    if (!readOnly && typeof onRemoveImage === 'function') {
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'module-media-remove-btn';
+      removeButton.textContent = '×';
+      removeButton.setAttribute('aria-label', `Remove ${image.alt || 'module image'}`);
+      removeButton.title = 'Remove image';
+      removeButton.addEventListener('click', () => onRemoveImage(image.id));
+      figure.appendChild(removeButton);
+    }
+
+    grid.appendChild(figure);
+  });
+  card.appendChild(grid);
+  return card;
+}
+
+function getGeneratedCardId(card, index) {
+  const reportBlockId = typeof card?.dataset?.reportBlockId === 'string' ? card.dataset.reportBlockId.trim() : '';
+  if (reportBlockId) {
+    return `report:${reportBlockId}`;
+  }
+
+  const generatedCard = typeof card?.dataset?.generatedCard === 'string' ? card.dataset.generatedCard.trim() : '';
+  if (generatedCard) {
+    return generatedCard;
+  }
+
+  return `card:${index + 1}`;
+}
+
+function getGeneratedCardLabel(card) {
+  const heading = card.querySelector('.generated-card-title, .report-block-title, h3, h4');
+  return heading?.textContent?.trim() || 'section';
+}
+
+function applyGeneratedCardControls(section, module, {
+  readOnly = false,
+  onRemoveCard = null
+} = {}) {
+  if (!section || !module) {
+    return section;
+  }
+
+  const hiddenCardIds = new Set(Array.isArray(module?.ui?.hiddenCardIds) ? module.ui.hiddenCardIds : []);
+  const cards = [...section.querySelectorAll('.generated-card, .report-block')]
+    .filter((card) => !card.parentElement?.closest('.generated-card, .report-block'));
+
+  cards.forEach((card, index) => {
+    const cardId = getGeneratedCardId(card, index);
+    card.dataset.moduleCardId = cardId;
+    if (hiddenCardIds.has(cardId)) {
+      card.remove();
+      return;
+    }
+
+    if (readOnly || typeof onRemoveCard !== 'function') {
+      return;
+    }
+
+    const actions = card.querySelector(':scope > .generated-card-header .generated-card-header-actions, :scope > .report-block-header .generated-card-header-actions');
+    const controlHost = actions || card;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'generated-card-remove-btn';
+    button.textContent = '×';
+    button.title = `Remove ${getGeneratedCardLabel(card)}`;
+    button.setAttribute('aria-label', `Remove ${getGeneratedCardLabel(card)}`);
+    button.addEventListener('click', () => onRemoveCard(cardId));
+    controlHost.appendChild(button);
+  });
+
+  return section;
+}
+
 function formatRetirementCurrency(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) {
@@ -7132,6 +7249,7 @@ function copySvgVisual(svgElement, statusElement = null) {
 function buildEducationTopicCard(module, education) {
   const card = document.createElement('section');
   card.className = 'generated-card education-topic-card';
+  card.dataset.generatedCard = 'education-topic';
 
   const { header } = buildGeneratedCardHeader('Topic');
   card.appendChild(header);
@@ -7166,6 +7284,7 @@ function buildEducationMetricsCard(education) {
 
   const card = document.createElement('section');
   card.className = 'generated-card education-metrics-card';
+  card.dataset.generatedCard = 'education-metrics';
 
   const { header } = buildGeneratedCardHeader('Key ideas');
   card.appendChild(header);
@@ -7185,6 +7304,7 @@ function buildEducationStepsCard(education) {
 
   const card = document.createElement('section');
   card.className = 'generated-card education-steps-card';
+  card.dataset.generatedCard = 'education-steps';
 
   const { header } = buildGeneratedCardHeader('Walkthrough');
   card.appendChild(header);
@@ -7320,6 +7440,7 @@ function buildEducationStepsCard(education) {
 function buildEducationSectionsCard(education) {
   const card = document.createElement('section');
   card.className = 'generated-card education-sections-card';
+  card.dataset.generatedCard = 'education-sections';
 
   const { header } = buildGeneratedCardHeader('Sections');
   card.appendChild(header);
@@ -7961,6 +8082,7 @@ function buildEducationReferencesCard(education) {
 
   const card = document.createElement('section');
   card.className = 'generated-card education-references-card';
+  card.dataset.generatedCard = 'education-references';
 
   const { header } = buildGeneratedCardHeader('Sources / where to verify');
   card.appendChild(header);
@@ -8577,7 +8699,7 @@ function renderReportBlock(module, block, context) {
   }
 }
 
-function renderReportModule(module) {
+function renderReportModule(module, options = {}) {
   const report = module?.generated?.report || {};
   const displayContext = getPlaybookDisplayContext(module);
   const section = document.createElement('section');
@@ -8620,8 +8742,12 @@ function renderReportModule(module) {
       content.appendChild(empty);
     }
 
+    const mediaCard = buildModuleMediaCard(module, options);
+    if (mediaCard) {
+      content.appendChild(mediaCard);
+    }
     section.appendChild(content);
-    return section;
+    return applyGeneratedCardControls(section, module, options);
   }
 
   blocks.forEach((block, blockIndex) => {
@@ -8631,11 +8757,15 @@ function renderReportModule(module) {
     }));
   });
 
+  const mediaCard = buildModuleMediaCard(module, options);
+  if (mediaCard) {
+    content.appendChild(mediaCard);
+  }
   section.appendChild(content);
-  return section;
+  return applyGeneratedCardControls(section, module, options);
 }
 
-function renderEducationModule(module) {
+function renderEducationModule(module, options = {}) {
   const education = module?.generated?.education || {};
   const displayContext = getPlaybookDisplayContext(module);
 
@@ -8669,9 +8799,14 @@ function renderEducationModule(module) {
     grid.appendChild(referencesCard);
   }
 
+  const mediaCard = buildModuleMediaCard(module, options);
+  if (mediaCard) {
+    grid.appendChild(mediaCard);
+  }
+
   section.appendChild(heading);
   section.appendChild(grid);
-  return section;
+  return applyGeneratedCardControls(section, module, options);
 }
 
 function getCollegeProjection(module) {
@@ -8825,7 +8960,9 @@ function renderCollegeFundingModule(module, {
   showPensionToggle = true,
   readOnly = false,
   onPatchInputs = null,
-  assumptionsEditorStatus = null
+  assumptionsEditorStatus = null,
+  onRemoveCard = null,
+  onRemoveImage = null
 } = {}) {
   const projection = getCollegeProjection(module);
   const generatedOutputs = module?.generated?.outputs;
@@ -8886,16 +9023,23 @@ function renderCollegeFundingModule(module, {
     readOnly
   }));
 
+  const mediaCard = buildModuleMediaCard(module, { readOnly, onRemoveImage });
+  if (mediaCard) {
+    grid.appendChild(mediaCard);
+  }
+
   section.appendChild(heading);
   section.appendChild(grid);
-  return section;
+  return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard });
 }
 
 function buildGeneratedSection(module, {
   showPensionToggle = true,
   readOnly = false,
   onPatchInputs = null,
-  assumptionsEditorStatus = null
+  assumptionsEditorStatus = null,
+  onRemoveCard = null,
+  onRemoveImage = null
 } = {}) {
   const displayModule = getCalculatedDisplayModule(module);
   const generated = displayModule.generated || {
@@ -8913,11 +9057,11 @@ function buildGeneratedSection(module, {
   };
 
   if (isReportModule(displayModule)) {
-    return renderReportModule(displayModule);
+    return renderReportModule(displayModule, { readOnly, onRemoveCard, onRemoveImage });
   }
 
   if (isEducationModule(displayModule)) {
-    return renderEducationModule(displayModule);
+    return renderEducationModule(displayModule, { readOnly, onRemoveCard, onRemoveImage });
   }
 
   if (isCollegeFundingModule(displayModule)) {
@@ -8925,7 +9069,9 @@ function buildGeneratedSection(module, {
       showPensionToggle,
       readOnly,
       onPatchInputs,
-      assumptionsEditorStatus
+      assumptionsEditorStatus,
+      onRemoveCard,
+      onRemoveImage
     });
   }
 
@@ -9001,7 +9147,9 @@ function buildGeneratedSection(module, {
       const title = typeof table?.title === 'string' && table.title.trim()
         ? table.title
         : `Table ${tableIndex + 1}`;
-      grid.appendChild(buildTableCard(title, table));
+      grid.appendChild(buildTableCard(title, table, {
+        dataGeneratedCard: `table:${tableIndex}`
+      }));
     });
   }
   if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule)) {
@@ -9011,10 +9159,15 @@ function buildGeneratedSection(module, {
     grid.appendChild(buildChartsCard(displayModule, chartsForDisplay, { showPensionToggle, readOnly }));
   }
 
+  const mediaCard = buildModuleMediaCard(module, { readOnly, onRemoveImage });
+  if (mediaCard) {
+    grid.appendChild(mediaCard);
+  }
+
   section.appendChild(heading);
   section.appendChild(grid);
 
-  return section;
+  return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard });
 }
 
 function replaceGeneratedCard({
@@ -9035,6 +9188,8 @@ export function patchFocusedGeneratedCards({
   focusedCard,
   module,
   onPatchInputs = null,
+  onRemoveCard = null,
+  onRemoveImage = null,
   assumptionsEditorStatus = null,
   readOnly = false,
   patchSummary = true,
@@ -9054,6 +9209,8 @@ export function patchFocusedGeneratedCards({
 
     generatedSection.replaceWith(buildGeneratedSection(module, {
       onPatchInputs,
+      onRemoveCard,
+      onRemoveImage,
       assumptionsEditorStatus,
       readOnly
     }));
@@ -9069,6 +9226,8 @@ export function patchFocusedGeneratedCards({
   ) {
     generatedSection.replaceWith(buildGeneratedSection(module, {
       onPatchInputs,
+      onRemoveCard,
+      onRemoveImage,
       assumptionsEditorStatus,
       readOnly
     }));
@@ -9159,6 +9318,8 @@ export function patchFocusedGeneratedCards({
       )
     });
   }
+
+  applyGeneratedCardControls(generatedSection, module, { readOnly, onRemoveCard });
 }
 
 export function getUiElements() {
@@ -9268,6 +9429,10 @@ export function buildFocusedPane({
   onTitleInput,
   onNotesInput,
   onPatchInputs = null,
+  onAddImage = null,
+  onRemoveImage = null,
+  onRemoveCard = null,
+  onRestoreRemovedCards = null,
   assumptionsEditorStatus = null,
   readOnly = false,
   showPensionToggle = true,
@@ -9329,6 +9494,32 @@ export function buildFocusedPane({
 
   header.appendChild(titleShell);
 
+  if (!readOnly && (typeof onAddImage === 'function' || typeof onRestoreRemovedCards === 'function')) {
+    const moduleActions = document.createElement('div');
+    moduleActions.className = 'module-advisor-actions';
+
+    if (typeof onAddImage === 'function') {
+      const addImageButton = document.createElement('button');
+      addImageButton.type = 'button';
+      addImageButton.className = 'module-media-add-btn';
+      addImageButton.textContent = 'Add image';
+      addImageButton.addEventListener('click', () => onAddImage(module.id));
+      moduleActions.appendChild(addImageButton);
+    }
+
+    const hiddenCount = Array.isArray(module?.ui?.hiddenCardIds) ? module.ui.hiddenCardIds.length : 0;
+    if (hiddenCount > 0 && typeof onRestoreRemovedCards === 'function') {
+      const restoreButton = document.createElement('button');
+      restoreButton.type = 'button';
+      restoreButton.className = 'module-media-add-btn module-restore-cards-btn';
+      restoreButton.textContent = `Restore removed (${hiddenCount})`;
+      restoreButton.addEventListener('click', () => onRestoreRemovedCards(module.id));
+      moduleActions.appendChild(restoreButton);
+    }
+
+    header.appendChild(moduleActions);
+  }
+
   const notesInput = document.createElement('textarea');
   notesInput.className = 'module-notes-input';
   notesInput.placeholder = 'Type notes for this module...';
@@ -9377,7 +9568,9 @@ export function buildFocusedPane({
     showPensionToggle,
     readOnly,
     onPatchInputs,
-    assumptionsEditorStatus
+    assumptionsEditorStatus,
+    onRemoveCard,
+    onRemoveImage
   }));
   pane.appendChild(card);
 

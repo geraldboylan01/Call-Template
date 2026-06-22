@@ -9,6 +9,8 @@ const PUBLISHED_KEY_LENGTH = 32;
 const PUBLISHED_SESSION_KEY_PREFIX = 'published/v2/';
 const PUBLISHED_CLIENT_KEY_PREFIX = 'published/client/';
 const PUBLISHED_ADVISOR_KEY_PREFIX = 'published/advisor/';
+const MODULE_ASSET_DRAFT_KEY_PREFIX = 'module-assets/draft/';
+const MODULE_ASSET_PUBLISHED_KEY_PREFIX = 'published/assets/';
 const PUBLISHED_SESSION_KIND = 'published-session';
 const PUBLISHED_CLIENT_KIND = 'published-client-session';
 const PUBLISHED_ADVISOR_KIND = 'published-advisor-session';
@@ -20,6 +22,9 @@ const MAX_AUTH_HASH_B64U_LENGTH = 128;
 const MAX_CAPABILITY_TOKEN_B64U_LENGTH = 128;
 const MAX_PUBLISHED_RECOVERY_SECRET_B64U_LENGTH = 128;
 const MAX_PUBLISHED_RECOVERY_PAYLOAD_B64U_LENGTH = 4_096;
+const MAX_MODULE_ASSET_BYTES = 10 * 1024 * 1024;
+const MAX_MODULE_ASSETS_PER_SESSION = 20;
+const MODULE_ASSET_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 80;
 const PUBLISHED_DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -199,6 +204,12 @@ function getRouteConfig(pathname) {
     };
   }
 
+  if (/^\/api\/advisor\/module-assets\/[^/]+\/[^/]+$/.test(pathname)) {
+    return {
+      methods: 'GET,PUT,DELETE,OPTIONS'
+    };
+  }
+
   if (pathname === '/api/advisor/clients') {
     return {
       methods: 'GET,OPTIONS'
@@ -260,6 +271,12 @@ function getRouteConfig(pathname) {
   }
 
   if (/^\/api\/published-sessions\/[^/]+\/(?:client|advisor)$/.test(pathname)) {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/published-sessions\/[^/]+\/assets\/[^/]+$/.test(pathname)) {
     return {
       methods: 'GET,OPTIONS'
     };
@@ -401,6 +418,17 @@ function assetResponse(body, status, contentType, extraHeaders = {}) {
     status,
     headers: {
       'Content-Type': contentType,
+      ...securityHeaders(extraHeaders)
+    }
+  });
+}
+
+function protectedAssetResponse(body, status, contentType, origin, methods, requestHeaders, extraHeaders = {}) {
+  return new Response(body, {
+    status,
+    headers: {
+      'Content-Type': contentType,
+      ...corsHeaders(origin, methods, requestHeaders),
       ...securityHeaders(extraHeaders)
     }
   });
@@ -3269,6 +3297,53 @@ function getPublishedAdvisorKey(publishedId) {
   return `${PUBLISHED_ADVISOR_KEY_PREFIX}${publishedId}${SESSION_KEY_SUFFIX}`;
 }
 
+function getDraftModuleAssetKey(sessionId, assetId) {
+  return `${MODULE_ASSET_DRAFT_KEY_PREFIX}${sessionId}/${assetId}`;
+}
+
+function getPublishedModuleAssetKey(publishedId, assetId) {
+  return `${MODULE_ASSET_PUBLISHED_KEY_PREFIX}${publishedId}/${assetId}`;
+}
+
+function detectModuleAssetContentType(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (
+    data.length >= 8
+    && data[0] === 0x89
+    && data[1] === 0x50
+    && data[2] === 0x4e
+    && data[3] === 0x47
+    && data[4] === 0x0d
+    && data[5] === 0x0a
+    && data[6] === 0x1a
+    && data[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  if (
+    data.length >= 12
+    && data[0] === 0x52
+    && data[1] === 0x49
+    && data[2] === 0x46
+    && data[3] === 0x46
+    && data[8] === 0x57
+    && data[9] === 0x45
+    && data[10] === 0x42
+    && data[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return '';
+}
+
+function getStoredModuleAssetContentType(object) {
+  const contentType = String(object?.httpMetadata?.contentType || '').trim().toLowerCase();
+  return MODULE_ASSET_CONTENT_TYPES.has(contentType) ? contentType : '';
+}
+
 function normalizePublishedEmail(value) {
   const normalized = normalizeLeadValue(value).toLowerCase();
   if (!normalized) {
@@ -3884,6 +3959,32 @@ function validatePublishedBundlePayload(payload, expectedKind, accessKey) {
   return validated;
 }
 
+function validatePublishedAssetRefs(payload) {
+  if (typeof payload === 'undefined' || payload === null) {
+    return null;
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Published asset references are invalid.');
+  }
+
+  const draftSessionId = typeof payload.draftSessionId === 'string' ? payload.draftSessionId.trim() : '';
+  if (!isSafeSessionId(draftSessionId)) {
+    throw new Error('Published asset draft session is invalid.');
+  }
+  if (!Array.isArray(payload.assetIds) || payload.assetIds.length === 0 || payload.assetIds.length > MAX_MODULE_ASSETS_PER_SESSION) {
+    throw new Error('Published asset references must include between 1 and 20 images.');
+  }
+
+  const assetIds = [...new Set(payload.assetIds.map((value) => (
+    typeof value === 'string' ? value.trim() : ''
+  )))];
+  if (assetIds.length !== payload.assetIds.length || assetIds.some((assetId) => !isSafeSessionId(assetId))) {
+    throw new Error('Published asset reference is invalid.');
+  }
+
+  return { draftSessionId, assetIds };
+}
+
 function validatePublishedSessionCreatePayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Payload must be a JSON object.');
@@ -3918,6 +4019,7 @@ function validatePublishedSessionCreatePayload(payload) {
 
   const clientBundle = validatePublishedBundlePayload(payload.clientBundle, PUBLISHED_CLIENT_KIND, 'clientAccess');
   const advisorBundle = validatePublishedBundlePayload(payload.advisorBundle, PUBLISHED_ADVISOR_KIND, 'advisorAccess');
+  const assetRefs = validatePublishedAssetRefs(payload.assetRefs);
   if (version === PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION) {
     if (clientBundle.clientAccess.pinState !== 'pending') {
       throw new Error('New v4 client access must start pending.');
@@ -3942,7 +4044,8 @@ function validatePublishedSessionCreatePayload(payload) {
         advisorAuthHashB64u: auth.advisorAuthHashB64u
       },
       clientBundle,
-      advisorBundle
+      advisorBundle,
+      assetRefs
     }
   };
 }
@@ -5578,6 +5681,12 @@ async function handleCreatePublishedSession(request, env, origin) {
     return jsonResponse({ error: 'Detached share links must use direct no-PIN client access.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
 
+  try {
+    await validateDraftModuleAssets(env, validated.data.assetRefs);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || 'Could not prepare module images for publishing.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
   const requestedClientId = isDetachedShare ? null : validateClientId(body?.clientId);
   const sourceLeadId = isDetachedShare ? null : validateLeadId(body?.sourceLeadId);
   let linkedClientId = requestedClientId || null;
@@ -5611,6 +5720,17 @@ async function handleCreatePublishedSession(request, env, origin) {
       timestamp: createdAt
     });
     linkedClientId = client?.id || null;
+  }
+
+  try {
+    await copyPublishedModuleAssets(env, publishedId, validated.data.assetRefs);
+  } catch (error) {
+    await deletePublishedModuleAssets(env, publishedId, validated.data.assetRefs);
+    console.error('Failed to copy published module assets', {
+      publishedId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: error?.message || 'Could not prepare module images for publishing.' }, 500, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
 
   try {
@@ -6056,6 +6176,176 @@ async function handleGetPublishedSession(request, env, origin, publishedId, role
   }
 
   return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+}
+
+async function handleDraftModuleAsset(request, env, origin, sessionId, assetId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, `${request.method},OPTIONS`, {
+    requireCsrf: request.method !== 'GET',
+    rateScope: 'advisor-module-assets'
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const objectKey = getDraftModuleAssetKey(sessionId, assetId);
+  if (request.method === 'GET') {
+    const object = await env.SESSIONS_BUCKET.get(objectKey);
+    if (!object) {
+      return jsonResponse({ error: 'Image not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+    }
+    const contentType = getStoredModuleAssetContentType(object);
+    if (!contentType) {
+      return jsonResponse({ error: 'Image not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+    }
+    return protectedAssetResponse(object.body, 200, contentType, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  if (request.method === 'DELETE') {
+    await env.SESSIONS_BUCKET.delete(objectKey);
+    return jsonResponse({ ok: true }, 200, origin, 'DELETE,OPTIONS', null, noStoreHeaders());
+  }
+
+  const declaredContentType = String(request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+  const contentLength = Number(request.headers.get('Content-Length') || 0);
+  if (!MODULE_ASSET_CONTENT_TYPES.has(declaredContentType)) {
+    return jsonResponse({ error: 'Only JPEG, PNG, and WebP images are supported.' }, 415, origin, 'PUT,OPTIONS', null, noStoreHeaders());
+  }
+  if (Number.isFinite(contentLength) && contentLength > MAX_MODULE_ASSET_BYTES) {
+    return jsonResponse({ error: 'Image must be 10 MB or smaller.' }, 413, origin, 'PUT,OPTIONS', null, noStoreHeaders());
+  }
+
+  let imageBytes;
+  try {
+    imageBytes = new Uint8Array(await request.arrayBuffer());
+  } catch (_error) {
+    return jsonResponse({ error: 'Image upload could not be read.' }, 400, origin, 'PUT,OPTIONS', null, noStoreHeaders());
+  }
+  if (imageBytes.length === 0 || imageBytes.length > MAX_MODULE_ASSET_BYTES) {
+    return jsonResponse({ error: 'Image must be between 1 byte and 10 MB.' }, 413, origin, 'PUT,OPTIONS', null, noStoreHeaders());
+  }
+  const detectedContentType = detectModuleAssetContentType(imageBytes);
+  if (!detectedContentType || detectedContentType !== declaredContentType) {
+    return jsonResponse({ error: 'Image data does not match its declared file type.' }, 415, origin, 'PUT,OPTIONS', null, noStoreHeaders());
+  }
+
+  await env.SESSIONS_BUCKET.put(objectKey, imageBytes, {
+    httpMetadata: {
+      contentType: detectedContentType,
+      cacheControl: 'no-store, max-age=0'
+    },
+    customMetadata: {
+      kind: 'module-image',
+      draftSessionId: sessionId
+    }
+  });
+  return jsonResponse({ ok: true, assetId, contentType: detectedContentType }, 201, origin, 'PUT,OPTIONS', null, noStoreHeaders());
+}
+
+async function copyPublishedModuleAssets(env, publishedId, assetRefs) {
+  if (!assetRefs) {
+    return [];
+  }
+
+  const copiedKeys = [];
+  for (const assetId of assetRefs.assetIds) {
+    const draftObject = await env.SESSIONS_BUCKET.get(getDraftModuleAssetKey(assetRefs.draftSessionId, assetId));
+    if (!draftObject) {
+      throw new Error('A module image is no longer available. Re-add it before publishing.');
+    }
+    const contentType = getStoredModuleAssetContentType(draftObject);
+    if (!contentType) {
+      throw new Error('A module image has an unsupported file type.');
+    }
+    const bytes = new Uint8Array(await draftObject.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > MAX_MODULE_ASSET_BYTES || detectModuleAssetContentType(bytes) !== contentType) {
+      throw new Error('A module image could not be validated. Re-add it before publishing.');
+    }
+
+    const publishedKey = getPublishedModuleAssetKey(publishedId, assetId);
+    await env.SESSIONS_BUCKET.put(publishedKey, bytes, {
+      httpMetadata: {
+        contentType,
+        cacheControl: 'no-store, max-age=0'
+      },
+      customMetadata: {
+        kind: 'published-module-image',
+        publishedId
+      }
+    });
+    copiedKeys.push(publishedKey);
+  }
+  return copiedKeys;
+}
+
+async function validateDraftModuleAssets(env, assetRefs) {
+  if (!assetRefs) {
+    return;
+  }
+
+  for (const assetId of assetRefs.assetIds) {
+    const draftObject = await env.SESSIONS_BUCKET.get(getDraftModuleAssetKey(assetRefs.draftSessionId, assetId));
+    if (!draftObject) {
+      throw new Error('A module image is no longer available. Re-add it before publishing.');
+    }
+    const contentType = getStoredModuleAssetContentType(draftObject);
+    if (!contentType) {
+      throw new Error('A module image has an unsupported file type.');
+    }
+    await draftObject.body?.cancel?.();
+  }
+}
+
+async function deletePublishedModuleAssets(env, publishedId, assetRefs) {
+  if (!assetRefs?.assetIds) {
+    return;
+  }
+  await Promise.allSettled(assetRefs.assetIds.map((assetId) => (
+    env.SESSIONS_BUCKET.delete(getPublishedModuleAssetKey(publishedId, assetId))
+  )));
+}
+
+async function handleGetPublishedModuleAsset(request, env, origin, publishedId, assetId) {
+  const clientIp = getClientIp(request);
+  if (!checkRateLimit(clientIp)) {
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  let row = await getPublishedSessionRow(env, publishedId);
+  if (!row) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+  row = await markPublishedExpiredIfNeeded(env, row);
+
+  let role = '';
+  if (await verifyPublishedCapability(request, row, 'client')) {
+    role = 'client';
+  } else if (await verifyPublishedCapability(request, row, 'advisor')) {
+    const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS', {
+      requireCsrf: false,
+      rateScope: 'advisor-module-assets'
+    });
+    if (advisorAccess.response) {
+      return advisorAccess.response;
+    }
+    role = 'advisor';
+  }
+
+  if (!role) {
+    return jsonResponse({ error: 'Not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+  if (row.status === 'revoked' || row.status === 'expired') {
+    return jsonResponse({ error: 'This secure session is no longer available.' }, 410, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  const object = await env.SESSIONS_BUCKET.get(getPublishedModuleAssetKey(publishedId, assetId));
+  if (!object) {
+    return jsonResponse({ error: 'Image not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+  const contentType = getStoredModuleAssetContentType(object);
+  if (!contentType) {
+    return jsonResponse({ error: 'Image not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+  return protectedAssetResponse(object.body, 200, contentType, origin, 'GET,OPTIONS', null, noStoreHeaders());
 }
 
 async function handleRevokePublishedSession(request, env, origin, publishedId) {
@@ -6693,6 +6983,15 @@ export default {
       return handleAdvisorLogout(request, env, origin);
     }
 
+    const draftModuleAssetMatch = /^\/api\/advisor\/module-assets\/([^/]+)\/([^/]+)$/.exec(pathname);
+    if ((request.method === 'GET' || request.method === 'PUT' || request.method === 'DELETE') && draftModuleAssetMatch) {
+      const [, sessionId, assetId] = draftModuleAssetMatch;
+      if (!isSafeSessionId(sessionId) || !isSafeSessionId(assetId)) {
+        return jsonResponse({ error: 'Image not found.' }, 404, origin, `${request.method},OPTIONS`, requestHeaders, noStoreHeaders());
+      }
+      return handleDraftModuleAsset(request, env, origin, sessionId, assetId);
+    }
+
     const getMatch = /^\/api\/session\/([^/]+)$/.exec(pathname);
     if (request.method === 'GET' && getMatch) {
       const sessionId = getMatch[1];
@@ -6712,6 +7011,15 @@ export default {
       }
 
       return handleGetPublishedSession(request, env, origin, publishedId, role);
+    }
+
+    const getPublishedAssetMatch = /^\/api\/published-sessions\/([^/]+)\/assets\/([^/]+)$/.exec(pathname);
+    if (request.method === 'GET' && getPublishedAssetMatch) {
+      const [, publishedId, assetId] = getPublishedAssetMatch;
+      if (!isSafeSessionId(publishedId) || !isSafeSessionId(assetId)) {
+        return jsonResponse({ error: 'Image not found.' }, 404, origin, 'GET,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+      return handleGetPublishedModuleAsset(request, env, origin, publishedId, assetId);
     }
 
     const getAdvisorPublishedMatch = /^\/api\/advisor\/published-sessions\/([^/]+)$/.exec(pathname);
