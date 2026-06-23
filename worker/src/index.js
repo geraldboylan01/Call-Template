@@ -216,6 +216,12 @@ function getRouteConfig(pathname) {
     };
   }
 
+  if (/^\/api\/advisor\/clients\/\d+\/codex-video-context$/.test(pathname)) {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
   if (/^\/api\/advisor\/clients\/\d+$/.test(pathname)) {
     return {
       methods: 'GET,PATCH,OPTIONS'
@@ -4959,6 +4965,74 @@ function buildClientManagerDetail(client, leads = [], sessions = [], timeline = 
   };
 }
 
+function buildCodexVideoClientContext(client, leads = [], timeline = []) {
+  return {
+    source: 'client-pipeline',
+    client: {
+      fullName: client.fullName,
+      pipelineStage: client.pipelineStage,
+      pipelineStageLabel: client.pipelineStageLabel || formatClientPipelineStage(client.pipelineStage),
+      advisorNotes: client.advisorNotes,
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt
+    },
+    leads: leads.map((lead) => ({
+      createdAt: lead.createdAt,
+      updatedAt: lead.updatedAt,
+      reason: lead.reason,
+      availabilityNotes: lead.availabilityNotes,
+      advisorNotes: lead.advisorNotes,
+      stage: lead.stage,
+      callOutcome: lead.callOutcome,
+      status: lead.status,
+      understandsRecordedCall: lead.understandsRecordedCall,
+      understandsEducationalOnly: lead.understandsEducationalOnly,
+      understandsEducationalContent: lead.understandsEducationalContent,
+      source: lead.source
+    })),
+    timeline: timeline.map((event) => ({
+      sourceType: event.sourceType,
+      actorType: event.actorType,
+      eventType: event.eventType,
+      createdAt: event.createdAt
+    }))
+  };
+}
+
+async function handleAdvisorClientCodexVideoContext(request, env, origin, clientId) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const client = await getClientRow(env, clientId);
+  if (!client) {
+    return jsonResponse({ error: 'Client not found.' }, 404, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  const [leads, timeline] = await Promise.all([
+    listClientLeadRows(env, clientId).catch((error) => {
+      console.error('Failed to load client leads for Codex video context', {
+        clientId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return [];
+    }),
+    listClientTimeline(env, clientId).catch((error) => {
+      console.error('Failed to load client timeline for Codex video context', {
+        clientId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return [];
+    })
+  ]);
+
+  return jsonResponse({
+    ok: true,
+    context: buildCodexVideoClientContext(client, leads, timeline)
+  }, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
+}
+
 function validateAdvisorClientUpdatePayload(payload, currentClient) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Payload must be a JSON object.');
@@ -7030,6 +7104,15 @@ export default {
       }
 
       return handleAdvisorPublishedSessionDetail(request, env, origin, publishedId);
+    }
+
+    const advisorClientCodexVideoContextMatch = /^\/api\/advisor\/clients\/(\d+)\/codex-video-context$/.exec(pathname);
+    if (request.method === 'GET' && advisorClientCodexVideoContextMatch) {
+      const clientId = validateClientId(advisorClientCodexVideoContextMatch[1]);
+      if (!clientId) {
+        return jsonResponse({ error: 'Client not found.' }, 404, origin, 'GET,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+      return handleAdvisorClientCodexVideoContext(request, env, origin, clientId);
     }
 
     const advisorClientMatch = /^\/api\/advisor\/clients\/(\d+)$/.exec(pathname);

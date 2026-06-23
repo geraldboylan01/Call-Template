@@ -6378,7 +6378,10 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
   const contentHost = document.createElement('div');
   contentHost.className = 'pbs-scenario-content-host';
 
-  let selectedIndex = 0;
+  const selectedScenarioId = typeof window.__getPbsScenarioForModule === 'function'
+    ? window.__getPbsScenarioForModule(module.id)
+    : PBS_CURRENT_SCENARIO_ID;
+  let selectedIndex = Math.max(0, cases.findIndex((pbsCase) => pbsCase.id === selectedScenarioId));
   let switcher = null;
 
   const renderCase = (nextIndex, { animate = false } = {}) => {
@@ -6433,12 +6436,15 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
       }
 
       closeActivePbsInfoPopover();
+      if (typeof window.__setPbsScenario === 'function') {
+        window.__setPbsScenario(module.id, cases[index].id);
+      }
       renderCase(index, { animate: true });
     });
     shell.appendChild(switcher.element);
   }
 
-  renderCase(0);
+  renderCase(selectedIndex);
   shell.appendChild(contentHost);
   return shell;
 }
@@ -9364,10 +9370,21 @@ export function getUiElements() {
     mobileOverflowBackdrop: document.getElementById('mobileOverflowBackdrop'),
     mobileOverflowPanel: document.getElementById('mobileOverflowPanel'),
     mobileOverflowNewModuleButton: document.getElementById('mobileOverflowNewModuleBtn'),
+    mobileOverflowCodexVideoBriefButton: document.getElementById('mobileOverflowCodexVideoBriefBtn'),
     mobileOverflowPublishButton: document.getElementById('mobileOverflowPublishBtn'),
     mobileOverflowClientAccessButton: document.getElementById('mobileOverflowClientAccessBtn'),
     mobileOverflowResetButton: document.getElementById('mobileOverflowResetBtn'),
     publishSessionButton: document.getElementById('publishSessionBtn'),
+    codexVideoBriefButton: document.getElementById('codexVideoBriefBtn'),
+    codexVideoBriefModal: document.getElementById('codexVideoBriefModal'),
+    codexVideoBriefCloseButton: document.getElementById('codexVideoBriefCloseBtn'),
+    codexVideoBriefCancelButton: document.getElementById('codexVideoBriefCancelBtn'),
+    codexVideoBriefCopyButton: document.getElementById('codexVideoBriefCopyBtn'),
+    codexVideoBriefDownloadButton: document.getElementById('codexVideoBriefDownloadBtn'),
+    codexVideoBriefError: document.getElementById('codexVideoBriefError'),
+    codexVideoBriefClient: document.getElementById('codexVideoBriefClient'),
+    codexVideoBriefModules: document.getElementById('codexVideoBriefModules'),
+    codexVideoBriefAssets: document.getElementById('codexVideoBriefAssets'),
     openClientAccessButton: document.getElementById('openClientAccessBtn'),
     publishModal: document.getElementById('publishModal'),
     publishCloseButton: document.getElementById('publishCloseBtn'),

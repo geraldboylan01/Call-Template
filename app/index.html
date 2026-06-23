@@ -49,6 +49,7 @@
         <div class="topbar-right">
           <button id="newCallBtn" class="ui-button" type="button">New Call</button>
           <a class="ui-button" href="./clients.html">Client Pipeline</a>
+          <button id="codexVideoBriefBtn" class="ui-button" type="button">Copy Call for Codex</button>
           <button id="publishSessionBtn" class="ui-button" type="button">Publish</button>
           <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
           <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
@@ -226,6 +227,7 @@
           <div class="mobile-overflow-content">
             <a class="ui-button mobile-overflow-btn" href="./clients.html">Client pipeline</a>
             <button id="mobileOverflowNewModuleBtn" class="ui-button mobile-overflow-btn" type="button">New Module</button>
+            <button id="mobileOverflowCodexVideoBriefBtn" class="ui-button mobile-overflow-btn" type="button">Copy Call for Codex</button>
             <button id="mobileOverflowPublishBtn" class="ui-button mobile-overflow-btn" type="button">Publish</button>
             <button id="mobileOverflowClientAccessBtn" class="ui-button mobile-overflow-btn" type="button">Client pipeline</button>
             <button id="mobileOverflowResetBtn" class="ui-button mobile-overflow-btn" type="button">Reset</button>
@@ -339,6 +341,36 @@
         <p class="publish-email-status">
           Need to recover, extend, revoke, or email a published link later? Use Published Links.
         </p>
+      </div>
+    </div>
+
+    <div id="codexVideoBriefModal" class="publish-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="codexVideoBriefTitle">
+      <div class="publish-modal-card codex-video-brief-modal-card">
+        <div class="publish-modal-header">
+          <h2 id="codexVideoBriefTitle" class="publish-modal-title">Copy full call for Codex video</h2>
+          <button id="codexVideoBriefCloseBtn" class="ui-button publish-close-btn" type="button">Close</button>
+        </div>
+        <p class="publish-modal-subtitle">This packet stays in this browser until you manually paste it into your authenticated Codex conversation.</p>
+        <p id="codexVideoBriefError" class="publish-error" aria-live="polite"></p>
+        <section class="codex-video-brief-review" aria-label="Codex video brief review">
+          <div class="publish-meta-row">
+            <div class="publish-meta-label">Client</div>
+            <div id="codexVideoBriefClient" class="publish-meta-value">Client</div>
+          </div>
+          <div class="codex-video-brief-notice">
+            This brief contains approved real client and call data. It excludes contact details, access links, credentials, PINs, tokens, Zoom details, and recovery data.
+          </div>
+          <div>
+            <div class="publish-meta-label">Included modules</div>
+            <ol id="codexVideoBriefModules" class="codex-video-brief-modules"></ol>
+          </div>
+          <p id="codexVideoBriefAssets" class="publish-email-status"></p>
+        </section>
+        <div class="publish-modal-actions">
+          <button id="codexVideoBriefCopyBtn" class="ui-button" type="button">Copy Brief to Clipboard</button>
+          <button id="codexVideoBriefDownloadBtn" class="ui-button" type="button">Download Brief JSON</button>
+          <button id="codexVideoBriefCancelBtn" class="ui-button" type="button">Cancel</button>
+        </div>
       </div>
     </div>
 

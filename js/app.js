@@ -75,6 +75,11 @@ import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
 import { createSuccessTakeover } from './success_takeover.js';
 import { buildVideoSceneManifest, saveVideoSceneManifest } from './video_scene.js';
+import {
+  buildCodexVideoBrief,
+  buildCodexVideoInstruction,
+  getCodexVideoBriefFilename
+} from './codex_video_brief.js';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
@@ -203,13 +208,15 @@ const appState = {
   pensionShowMaxByModuleId: new Map(),
   pensionScenarioByModuleId: new Map(),
   netRetirementScenarioByModuleId: new Map(),
+  pbsScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
   publishedAccess: null,
   assetAccess: null,
   mediaObjectUrls: new Map(),
-  pipelineContext: null
+  pipelineContext: null,
+  codexVideoBrief: null
 };
 
 const advisorAuthState = {
@@ -2014,6 +2021,12 @@ function ensureModuleUi(module) {
       .filter(Boolean))];
   }
 
+  if (typeof module.ui.pbsScenarioId !== 'string') {
+    module.ui.pbsScenarioId = '';
+  } else {
+    module.ui.pbsScenarioId = module.ui.pbsScenarioId.trim();
+  }
+
   return module.ui;
 }
 
@@ -3562,6 +3575,7 @@ function syncMobileActionState() {
   syncButton(ui.mobileActionNewModuleButton, ui.newModuleButton);
   syncButton(ui.mobileActionZoomButton, ui.zoomButton);
   syncButton(ui.mobileOverflowNewModuleButton, ui.newModuleButton);
+  syncButton(ui.mobileOverflowCodexVideoBriefButton, ui.codexVideoBriefButton);
   syncButton(ui.mobileOverflowPublishButton, ui.publishSessionButton);
   syncButton(ui.mobileOverflowClientAccessButton, ui.openClientAccessButton);
   syncButton(ui.mobileOverflowResetButton, ui.resetButton);
@@ -3578,6 +3592,7 @@ function syncMobileActionState() {
 
   const hasOverflowAction = Boolean(
     (ui.mobileOverflowNewModuleButton && !ui.mobileOverflowNewModuleButton.classList.contains('is-hidden'))
+    || (ui.mobileOverflowCodexVideoBriefButton && !ui.mobileOverflowCodexVideoBriefButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowClientAccessButton && !ui.mobileOverflowClientAccessButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowResetButton && !ui.mobileOverflowResetButton.classList.contains('is-hidden'))
@@ -4786,6 +4801,159 @@ async function copyToClipboard(value) {
   return copied;
 }
 
+function setCodexVideoBriefError(message) {
+  if (!ui.codexVideoBriefError) {
+    return;
+  }
+  ui.codexVideoBriefError.textContent = String(message || '');
+  ui.codexVideoBriefError.classList.toggle('is-visible', Boolean(message));
+}
+
+function setCodexVideoBriefModalOpen(isOpen) {
+  if (!ui.codexVideoBriefModal) {
+    return;
+  }
+  ui.codexVideoBriefModal.classList.toggle('is-hidden', !isOpen);
+  if (isOpen) {
+    ui.codexVideoBriefCopyButton?.focus();
+  }
+}
+
+function getCodexVideoActiveScenarios() {
+  const activeScenarios = {
+    pbsScenarioId: {},
+    pensionScenarioId: {},
+    netRetirementScenarioId: {}
+  };
+  getOrderedModules(appState.session).forEach((module) => {
+    activeScenarios.pbsScenarioId[module.id] = getPbsScenarioForModule(module.id);
+    activeScenarios.pensionScenarioId[module.id] = getPensionScenarioForModule(module.id);
+    activeScenarios.netRetirementScenarioId[module.id] = getNetRetirementScenarioForModule(module.id);
+  });
+  return activeScenarios;
+}
+
+function renderCodexVideoBriefReview(brief) {
+  if (ui.codexVideoBriefClient) {
+    ui.codexVideoBriefClient.textContent = brief?.clientContext?.client?.fullName || brief?.call?.clientName || 'Client';
+  }
+
+  if (ui.codexVideoBriefModules) {
+    ui.codexVideoBriefModules.replaceChildren();
+    const modules = Array.isArray(brief?.call?.modules) ? brief.call.modules : [];
+    modules.forEach((module) => {
+      const item = document.createElement('li');
+      const scenario = module?.activeScenario?.title ? ` — ${module.activeScenario.title}` : '';
+      item.textContent = `${module.order}. ${module.title} (${module.moduleKindLabel})${scenario}`;
+      ui.codexVideoBriefModules.appendChild(item);
+    });
+  }
+
+  if (ui.codexVideoBriefAssets) {
+    const count = Array.isArray(brief?.visualAssets?.imagesToAttachSeparately)
+      ? brief.visualAssets.imagesToAttachSeparately.length
+      : 0;
+    ui.codexVideoBriefAssets.textContent = count > 0
+      ? `${count} module image${count === 1 ? '' : 's'} must be attached separately in Codex; no asset URL or private identifier is copied.`
+      : 'No module images need to be attached separately.';
+  }
+}
+
+function downloadCodexVideoBrief(brief) {
+  const blob = new Blob([JSON.stringify(brief, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = getCodexVideoBriefFilename(brief);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function loadCodexVideoClientContext() {
+  const clientId = String(appState.pipelineContext?.clientId || '').trim();
+  if (!clientId) {
+    return {
+      source: 'advisor-session',
+      client: { fullName: appState.session.clientName },
+      leads: [],
+      timeline: []
+    };
+  }
+
+  if (!WORKER_BASE_URL) {
+    throw new Error('The linked client record cannot be loaded because the advisor worker is not configured.');
+  }
+
+  await ensureAdvisorAuthenticated('Sign in to include the approved client pipeline context in the Codex video brief.');
+  const response = await fetchWithAdvisorAuth(
+    `${WORKER_BASE_URL}/api/advisor/clients/${encodeURIComponent(clientId)}/codex-video-context`,
+    { method: 'GET' },
+    { authPrompt: 'Sign in to include the approved client pipeline context in the Codex video brief.' }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Could not load the approved client context (${response.status}).`);
+  }
+  if (!payload?.context || typeof payload.context !== 'object') {
+    throw new Error('The linked client record did not return an approved video context.');
+  }
+  return payload.context;
+}
+
+async function openCodexVideoBriefReview() {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+  if (!hasModules()) {
+    showToast('Add at least one module before creating a Codex video brief.', 'error');
+    return;
+  }
+
+  setCodexVideoBriefError('');
+  if (ui.codexVideoBriefButton) {
+    ui.codexVideoBriefButton.disabled = true;
+  }
+
+  try {
+    const clientContext = await loadCodexVideoClientContext();
+    const brief = buildCodexVideoBrief({
+      session: appState.session,
+      clientContext,
+      activeScenarios: getCodexVideoActiveScenarios()
+    });
+    appState.codexVideoBrief = brief;
+    renderCodexVideoBriefReview(brief);
+    setCodexVideoBriefModalOpen(true);
+  } catch (error) {
+    showToast(error?.message || 'Could not prepare the Codex video brief.', 'error');
+  } finally {
+    if (ui.codexVideoBriefButton) {
+      ui.codexVideoBriefButton.disabled = false;
+    }
+  }
+}
+
+async function handleCopyCodexVideoBrief() {
+  if (!appState.codexVideoBrief) {
+    setCodexVideoBriefError('Prepare the brief before copying it.');
+    return;
+  }
+  try {
+    const copied = await copyToClipboard(buildCodexVideoInstruction(appState.codexVideoBrief));
+    if (!copied) {
+      throw new Error('The browser did not allow clipboard access. Download the JSON brief instead.');
+    }
+    setCodexVideoBriefError('');
+    showToast('Codex video brief copied. Paste it into this Codex project.');
+    setCodexVideoBriefModalOpen(false);
+  } catch (error) {
+    setCodexVideoBriefError(error?.message || 'Could not copy the brief. Download the JSON brief instead.');
+  }
+}
+
 function setPublishError(message) {
   if (!ui.publishError) {
     return;
@@ -5488,7 +5656,7 @@ function applyRuntimeChrome() {
       ui.clientNameInput.readOnly = true;
       ui.clientNameInput.setAttribute('aria-readonly', 'true');
     }
-    [ui.newCallButton, ui.openClientAccessButton, ui.newModuleButton, ui.resetButton].forEach((element) => {
+    [ui.newCallButton, ui.openClientAccessButton, ui.newModuleButton, ui.resetButton, ui.codexVideoBriefButton].forEach((element) => {
       if (!element) {
         return;
       }
@@ -5979,6 +6147,7 @@ async function replaceSession(nextSession, options = {}) {
   appState.pensionShowMaxByModuleId = new Map();
   appState.pensionScenarioByModuleId = new Map();
   appState.netRetirementScenarioByModuleId = new Map();
+  appState.pbsScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -7320,6 +7489,74 @@ async function setNetRetirementScenarioForModule(moduleId, scenarioId) {
   }
 }
 
+function getPbsScenarioCasesForModule(module) {
+  const scenarios = Array.isArray(module?.generated?.outputsBucketed?.scenarios)
+    ? module.generated.outputsBucketed.scenarios
+    : [];
+  return [
+    { id: 'current', title: 'Current position' },
+    ...scenarios
+      .filter((scenario) => scenario && typeof scenario === 'object' && typeof scenario.id === 'string' && scenario.id.trim())
+      .map((scenario) => ({
+        id: scenario.id.trim(),
+        title: typeof scenario.title === 'string' ? scenario.title.trim() : 'Alternative position'
+      }))
+  ];
+}
+
+function getPbsScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return 'current';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getPbsScenarioCasesForModule(module);
+  const validIds = new Set(cases.map((pbsCase) => pbsCase.id));
+  const fromMemory = appState.pbsScenarioByModuleId.get(moduleId);
+  if (validIds.has(fromMemory)) {
+    return fromMemory;
+  }
+
+  const fromModule = ensureModuleUi(module)?.pbsScenarioId || '';
+  if (validIds.has(fromModule)) {
+    appState.pbsScenarioByModuleId.set(moduleId, fromModule);
+    return fromModule;
+  }
+
+  appState.pbsScenarioByModuleId.delete(moduleId);
+  return 'current';
+}
+
+function setPbsScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getPbsScenarioCasesForModule(module);
+  const nextCase = cases.find((pbsCase) => pbsCase.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  const currentId = getPbsScenarioForModule(moduleId);
+  if (currentId === nextCase.id) {
+    return;
+  }
+
+  appState.pbsScenarioByModuleId.set(moduleId, nextCase.id);
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (uiState) {
+    uiState.pbsScenarioId = nextCase.id;
+  }
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+}
+
 function getPensionShowMaxForModule(moduleId) {
   if (typeof moduleId !== 'string' || !moduleId) {
     return false;
@@ -7587,6 +7824,11 @@ function updateUiChrome() {
   document.body.classList.toggle('overview-has-selection', appState.mode === 'overview' && appState.overviewSelection.length > 0);
   setOverviewMultiSelectArmed(appState.overviewMultiSelectArmed);
   renderGreeting(ui, appState.session.clientName);
+
+  if (ui.codexVideoBriefButton) {
+    ui.codexVideoBriefButton.disabled = runtimeConfig.readOnly || !hasModules();
+  }
+
   syncMobileActionState();
   syncMobileFocusedNavState();
 
@@ -8072,6 +8314,7 @@ function openVideoScene(moduleId) {
       session: appState.session,
       module,
       activeScenario: {
+        pbsScenarioId: getPbsScenarioForModule(module.id),
         pensionScenarioId: appState.pensionScenarioByModuleId.get(module.id) || '',
         netRetirementScenarioId: appState.netRetirementScenarioByModuleId.get(module.id) || ''
       }
@@ -9259,6 +9502,44 @@ function bindEvents() {
     });
   }
 
+  if (!runtimeConfig.readOnly && ui.codexVideoBriefButton) {
+    ui.codexVideoBriefButton.addEventListener('click', async () => {
+      await openCodexVideoBriefReview();
+    });
+  }
+
+  [ui.codexVideoBriefCloseButton, ui.codexVideoBriefCancelButton].forEach((button) => {
+    button?.addEventListener('click', () => {
+      setCodexVideoBriefModalOpen(false);
+    });
+  });
+
+  if (ui.codexVideoBriefModal) {
+    ui.codexVideoBriefModal.addEventListener('click', (event) => {
+      if (event.target === ui.codexVideoBriefModal) {
+        setCodexVideoBriefModalOpen(false);
+      }
+    });
+  }
+
+  if (ui.codexVideoBriefCopyButton) {
+    ui.codexVideoBriefCopyButton.addEventListener('click', async () => {
+      await handleCopyCodexVideoBrief();
+    });
+  }
+
+  if (ui.codexVideoBriefDownloadButton) {
+    ui.codexVideoBriefDownloadButton.addEventListener('click', () => {
+      if (!appState.codexVideoBrief) {
+        setCodexVideoBriefError('Prepare the brief before downloading it.');
+        return;
+      }
+      downloadCodexVideoBrief(appState.codexVideoBrief);
+      setCodexVideoBriefError('');
+      showToast('Codex video brief downloaded.');
+    });
+  }
+
   if (ui.publishCloseButton) {
     ui.publishCloseButton.addEventListener('click', () => {
       setPublishModalOpen(false);
@@ -9442,6 +9723,13 @@ function bindEvents() {
     });
   }
 
+  if (ui.mobileOverflowCodexVideoBriefButton) {
+    ui.mobileOverflowCodexVideoBriefButton.addEventListener('click', async () => {
+      closeMobileOverflowSheet({ restoreFocus: false });
+      await openCodexVideoBriefReview();
+    });
+  }
+
   if (ui.mobileOverflowNewModuleButton) {
     ui.mobileOverflowNewModuleButton.addEventListener('click', () => {
       triggerDesktopAction(ui.newModuleButton, { closeOverflow: true });
@@ -9621,6 +9909,12 @@ function bindEvents() {
     if (key === 'Escape' && isMobileOverflowOpen()) {
       event.preventDefault();
       closeMobileOverflowSheet();
+      return;
+    }
+
+    if (key === 'Escape' && ui.codexVideoBriefModal && !ui.codexVideoBriefModal.classList.contains('is-hidden')) {
+      event.preventDefault();
+      setCodexVideoBriefModalOpen(false);
       return;
     }
 
@@ -9896,6 +10190,10 @@ export async function initApp(options = {}) {
       void setNetRetirementScenarioForModule(moduleId, scenarioId);
     };
     window.__getNetRetirementScenarioForModule = (moduleId) => getNetRetirementScenarioForModule(moduleId);
+    window.__setPbsScenario = (moduleId, scenarioId) => {
+      setPbsScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getPbsScenarioForModule = (moduleId) => getPbsScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
     window.__runCollegeFundingMathTests = () => runCollegeFundingMathTests();

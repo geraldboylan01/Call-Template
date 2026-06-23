@@ -1275,7 +1275,10 @@ function normalizeModuleUi(ui) {
       ? [...new Set(ui.hiddenCardIds
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
         .filter(Boolean))]
-      : []
+      : [],
+    pbsScenarioId: ui && typeof ui === 'object' && !Array.isArray(ui) && typeof ui.pbsScenarioId === 'string'
+      ? ui.pbsScenarioId.trim()
+      : ''
   };
 }
 

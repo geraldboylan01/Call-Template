@@ -34,6 +34,22 @@ Open a module in the advisor workspace and choose **Create video scene**. The ap
 
 The scene manifest is held in same-origin session storage in the local browser session. It is not added to a URL, published with a client session, or sent to a service. Use **Presenter left** to mirror the layout and `Escape` to leave capture mode.
 
+### Subscription-Only Codex Video Director
+
+Use **Copy Call for Codex** in the advisor workspace to prepare a complete local `CodexVideoBrief v1` for the current call. The review dialog identifies the client, lists every included module in session order, warns that approved real client data is present, and offers clipboard copy plus JSON download.
+
+The app does not call an AI API, send a Worker-to-model request, require an OpenAI API key, or create a per-token API charge. Copying is a manual hand-off: paste the packet into an authenticated Codex conversation included with your ChatGPT/Codex plan, then Codex creates the bespoke recording page locally.
+
+For a linked pipeline client, the advisor-only `GET /api/advisor/clients/:id/codex-video-context` endpoint returns only the allowlisted narrative context: identity, stated reason, advisor notes, consent state, and safe timeline events. The packet always excludes email/phone, schedule response and invite values, Zoom details, credentials, PINs, capability/auth/recovery/R2 values, and secure links. Calculator modules are re-resolved from the active scenario; PBS includes the currently selected case and all available PBS cases. Module image entries are metadata only, so attach the named images separately in Codex when needed.
+
+The copied instruction directs bespoke work to a local, git-ignored directory:
+
+```text
+private/video-calls/<date>-<client-slug>/
+```
+
+Codex should create `index.html`, its scoped CSS/JS, `storyboard.md`, and `source-brief.json` there. That directory is neither built nor deployed. Open the resulting `index.html` locally and capture it in OBS or Screen Studio.
+
 ## Lead Capture
 
 The landing page form posts to the existing Cloudflare Worker:
@@ -256,10 +272,12 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 - `js/landing.js` landing page interactions and lead form submission
 - `js/app.js` advisor app logic
 - `js/video_scene.js` resolved module-to-video manifest adapter
+- `js/codex_video_brief.js` full-call, copy-and-paste Codex video brief adapter
 - `js/video_composer.js` local video scene renderer and review gate
 - `js/session_viewer.js` client viewer logic
 - `scripts/check-pages-versioned-assets.sh` post-deploy verification for the live Pages site
 - `scripts/check-video-scene.mjs` manifest regression checks across module types
+- `scripts/check-codex-video-brief.mjs` brief order, scenario, privacy, and output-path checks
 - `worker/src/index.js` Worker API for sessions and leads
 
 ## Prompt Pack

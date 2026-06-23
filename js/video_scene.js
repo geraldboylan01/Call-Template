@@ -75,7 +75,7 @@ function inferMetricFormat(label, value) {
   return typeof value === 'number' ? 'number' : '';
 }
 
-function getModuleKind(module) {
+export function getVideoModuleKind(module) {
   const generated = asObject(module?.generated);
   if (generated.report) {
     return { id: 'report', label: 'Report' };
@@ -134,10 +134,10 @@ function getSelectedPbsScenario(generated, requestedId = '') {
   };
 }
 
-function resolveModuleForVideo(module, activeScenario = {}) {
+export function resolveModuleForVideo(module, activeScenario = {}) {
   const source = cloneJson(module || {});
   const generated = asObject(source.generated);
-  const kind = getModuleKind(source);
+  const kind = getVideoModuleKind(source);
   const resolved = {
     ...source,
     generated: {
@@ -474,7 +474,7 @@ export function buildVideoSceneManifest({
     throw new Error('A module is required to create a video scene.');
   }
 
-  const kind = getModuleKind(module);
+  const kind = getVideoModuleKind(module);
   const resolved = resolveModuleForVideo(module, activeScenario);
   const resolvedModule = resolved.module;
   const title = asTrimmedText(resolvedModule.title, 'Planning conversation');

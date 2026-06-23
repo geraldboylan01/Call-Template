@@ -4,3 +4,4 @@ node_modules/
 worker/.dev.vars
 .env
 worker/.env
+private/video-calls/

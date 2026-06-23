@@ -5939,6 +5939,36 @@ body.overview-has-selection .toast-host {
   justify-content: center;
 }
 
+.codex-video-brief-modal-card {
+  max-width: 640px;
+}
+
+.codex-video-brief-review {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.codex-video-brief-notice {
+  padding: 11px 12px;
+  border: 1px solid rgba(122, 182, 223, 0.28);
+  border-radius: 12px;
+  background: rgba(12, 37, 61, 0.46);
+  color: #d4eaff;
+  font-size: 0.84rem;
+  line-height: 1.48;
+}
+
+.codex-video-brief-modules {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0 0 0 24px;
+  color: #dceeff;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
 @media (max-width: 680px) {
   .publish-mode-group,
   .publish-form-grid {
