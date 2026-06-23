@@ -9433,6 +9433,7 @@ export function buildFocusedPane({
   onRemoveImage = null,
   onRemoveCard = null,
   onRestoreRemovedCards = null,
+  onCreateVideoScene = null,
   assumptionsEditorStatus = null,
   readOnly = false,
   showPensionToggle = true,
@@ -9494,7 +9495,11 @@ export function buildFocusedPane({
 
   header.appendChild(titleShell);
 
-  if (!readOnly && (typeof onAddImage === 'function' || typeof onRestoreRemovedCards === 'function')) {
+  if (!readOnly && (
+    typeof onAddImage === 'function'
+    || typeof onRestoreRemovedCards === 'function'
+    || typeof onCreateVideoScene === 'function'
+  )) {
     const moduleActions = document.createElement('div');
     moduleActions.className = 'module-advisor-actions';
 
@@ -9505,6 +9510,16 @@ export function buildFocusedPane({
       addImageButton.textContent = 'Add image';
       addImageButton.addEventListener('click', () => onAddImage(module.id));
       moduleActions.appendChild(addImageButton);
+    }
+
+    if (typeof onCreateVideoScene === 'function') {
+      const videoButton = document.createElement('button');
+      videoButton.type = 'button';
+      videoButton.className = 'module-media-add-btn module-video-scene-btn';
+      videoButton.textContent = 'Create video scene';
+      videoButton.setAttribute('aria-label', 'Create a video-safe scene from this module');
+      videoButton.addEventListener('click', () => onCreateVideoScene(module.id));
+      moduleActions.appendChild(videoButton);
     }
 
     const hiddenCount = Array.isArray(module?.ui?.hiddenCardIds) ? module.ui.hiddenCardIds.length : 0;

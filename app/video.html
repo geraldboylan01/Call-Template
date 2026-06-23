@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    />
+    <meta
+      name="description"
+      content="Planeir local video scene composer for advisor capture."
+    />
+    <title>Planeir Video Scene</title>
+    <link rel="icon" type="image/png" href="../favicon.png" />
+    <link rel="stylesheet" href="../styles/video_scene.css" />
+  </head>
+  <body class="video-scene-page">
+    <main id="videoComposerApp" class="video-composer-app">
+      <header class="video-composer-header">
+        <div>
+          <p class="video-composer-eyebrow">Local capture composition</p>
+          <h1 id="videoComposerTitle" class="video-composer-title">Video scene</h1>
+        </div>
+        <div class="video-composer-header-actions">
+          <button id="videoMirrorBtn" class="video-control-button" type="button">Presenter left</button>
+          <button id="videoFullscreenBtn" class="video-control-button" type="button">Full screen</button>
+          <a class="video-control-button" href="./index.html">Back to session</a>
+        </div>
+      </header>
+
+      <section id="videoEmptyState" class="video-empty-state is-hidden" aria-live="polite">
+        <h2>No video scene is available</h2>
+        <p>Open a module in the advisor workspace and choose <strong>Create video scene</strong>. The scene is prepared locally in this browser session.</p>
+        <a class="video-control-button" href="./index.html">Open advisor workspace</a>
+      </section>
+
+      <section id="videoSceneShell" class="video-scene-shell is-hidden" aria-label="Video scene preview">
+        <div id="videoStageFrame" class="video-stage-frame">
+          <div id="videoStage" class="video-stage" data-beat="review" data-presenter-position="right" aria-label="Planeir video scene">
+            <div class="video-stage-backdrop" aria-hidden="true"></div>
+            <div class="video-stage-vignette" aria-hidden="true"></div>
+            <div id="videoPresenterSafeZone" class="video-presenter-safe-zone" aria-hidden="true">
+              <span>Presenter-safe zone</span>
+            </div>
+            <section class="video-story" aria-live="polite">
+              <p id="videoStoryKind" class="video-story-kind"></p>
+              <div class="video-story-intro video-story-beat">
+                <p class="video-story-label">The question</p>
+                <h2 id="videoStoryTitle" class="video-story-title"></h2>
+                <p id="videoStorySummary" class="video-story-summary"></p>
+              </div>
+              <div id="videoStoryMetrics" class="video-story-metrics video-story-beat"></div>
+              <div id="videoStoryVisual" class="video-story-visual video-story-beat"></div>
+              <div class="video-story-takeaway video-story-beat">
+                <p class="video-story-label">What it means</p>
+                <p id="videoStoryTakeaway" class="video-story-takeaway-text"></p>
+              </div>
+            </section>
+            <div class="video-stage-corner-copy" aria-hidden="true">planeir.ie</div>
+          </div>
+        </div>
+
+        <aside id="videoReviewPanel" class="video-review-panel" aria-labelledby="videoReviewTitle">
+          <div class="video-review-heading">
+            <p class="video-composer-eyebrow">Required before capture</p>
+            <h2 id="videoReviewTitle">Review visible client data</h2>
+            <p>Nothing on this page is sent anywhere. Confirm the values that will appear in the captured scene before recording.</p>
+          </div>
+          <dl id="videoReviewSource" class="video-review-source"></dl>
+          <div>
+            <h3 class="video-review-subheading">Visible metrics</h3>
+            <ul id="videoReviewMetrics" class="video-review-metrics"></ul>
+          </div>
+          <p id="videoCalculationNotice" class="video-calculation-notice is-hidden"></p>
+          <div class="video-review-actions">
+            <button id="videoReviewCompleteBtn" class="video-control-button is-primary" type="button">Mark review complete</button>
+            <button id="videoStartCaptureBtn" class="video-control-button" type="button" disabled>Start capture sequence</button>
+            <button id="videoRestartBtn" class="video-control-button" type="button">Restart sequence</button>
+          </div>
+          <p id="videoReviewStatus" class="video-review-status" aria-live="polite">Review is required before capture controls unlock.</p>
+        </aside>
+      </section>
+    </main>
+    <script type="module" src="../js/video_composer.js"></script>
+  </body>
+</html>

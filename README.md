@@ -5,6 +5,7 @@ Planeir now ships as two connected experiences:
 - `/` is the public landing page for first-time visitors.
 - `/app/` is the existing advisor workspace. The public landing page includes an "Admin Login" link to `/app/?login=1&return=home`; after sign-in, the advisor returns to `/` and sees the separate "Open app" link. Unauthenticated `/app/` visits redirect back to the request form.
 - `/app/clients.html` is the advisor-only client pipeline for reviewing leads, choosing call times, managing published sessions, and sending post-session emails from one client record.
+- `/app/video.html` is the local-only capture composer opened from an advisor module. It does not fetch or transmit client data.
 - `/app/session.html?id=...` is the client session viewer used by published links.
 - `/session.html?id=...` remains as a compatibility redirect to `/app/session.html?id=...`.
 
@@ -26,6 +27,12 @@ Worker:
 cd worker
 npx wrangler d1 migrations apply planeir-leads --local
 ```
+
+### Video Scene Capture
+
+Open a module in the advisor workspace and choose **Create video scene**. The app resolves the active calculator scenario into a versioned local scene manifest, opens a 1920×1080 browser composition, and reserves the right third for the presenter. The composer lists the client identity, session/module identifiers, and every visible metric; **Start capture sequence** remains disabled until the review is marked complete.
+
+The scene manifest is held in same-origin session storage in the local browser session. It is not added to a URL, published with a client session, or sent to a service. Use **Presenter left** to mirror the layout and `Escape` to leave capture mode.
 
 ## Lead Capture
 
@@ -236,6 +243,7 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 - `index.html` public landing page
 - `app/index.html` advisor app
 - `app/clients.html` advisor-only client pipeline
+- `app/video.html` local 16:9 video capture composer
 - `app/access.html` compatibility redirect to the client pipeline
 - `app/session.html` client viewer
 - `session.html` compatibility redirect for older links
@@ -244,10 +252,14 @@ The deploy workflow now includes a smoke check that fetches `/` and `/app/` from
 - `docs/artifact-module-upgrade.md` notes for the upgraded structured artifact module capabilities
 - `styles/landing.css` landing page styling
 - `styles/base.css` advisor app styling
+- `styles/video_scene.css` video composer styling and capture-safe layout
 - `js/landing.js` landing page interactions and lead form submission
 - `js/app.js` advisor app logic
+- `js/video_scene.js` resolved module-to-video manifest adapter
+- `js/video_composer.js` local video scene renderer and review gate
 - `js/session_viewer.js` client viewer logic
 - `scripts/check-pages-versioned-assets.sh` post-deploy verification for the live Pages site
+- `scripts/check-video-scene.mjs` manifest regression checks across module types
 - `worker/src/index.js` Worker API for sessions and leads
 
 ## Prompt Pack

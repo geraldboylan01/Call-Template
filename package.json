@@ -6,6 +6,7 @@
     "build": "node ./scripts/build-pages.mjs",
     "generate:advisor-auth": "node ./scripts/generate-advisor-auth.mjs",
     "smoke:worker": "node ./scripts/check-worker-published-session-routes.mjs",
-    "check:module-media": "node ./scripts/check-module-media-state.mjs"
+    "check:module-media": "node ./scripts/check-module-media-state.mjs",
+    "check:video-scene": "node ./scripts/check-video-scene.mjs"
   }
 }

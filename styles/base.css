@@ -396,6 +396,17 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   color: #bfe8cf;
 }
 
+.module-video-scene-btn {
+  color: #f5dfad;
+  border-color: rgba(212, 166, 79, 0.46);
+}
+
+.module-video-scene-btn:hover,
+.module-video-scene-btn:focus-visible {
+  border-color: rgba(237, 195, 111, 0.78);
+  background: rgba(62, 46, 18, 0.68);
+}
+
 .module-meta {
   display: inline-flex;
   align-items: center;

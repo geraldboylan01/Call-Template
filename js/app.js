@@ -74,6 +74,7 @@ import {
 import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
 import { createSuccessTakeover } from './success_takeover.js';
+import { buildVideoSceneManifest, saveVideoSceneManifest } from './video_scene.js';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
@@ -8045,11 +8046,48 @@ function getFocusedPaneForModule(module, {
     onRestoreRemovedCards: (moduleId) => {
       void restoreModuleCards(moduleId);
     },
+    onCreateVideoScene: (moduleId) => {
+      openVideoScene(moduleId);
+    },
     assumptionsEditorStatus,
     readOnly,
     showPensionToggle,
     cardId
   });
+}
+
+function openVideoScene(moduleId) {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    showToast('Select a module before creating a video scene.', 'error');
+    return;
+  }
+
+  try {
+    const manifest = buildVideoSceneManifest({
+      session: appState.session,
+      module,
+      activeScenario: {
+        pensionScenarioId: appState.pensionScenarioByModuleId.get(module.id) || '',
+        netRetirementScenarioId: appState.netRetirementScenarioByModuleId.get(module.id) || ''
+      }
+    });
+    saveVideoSceneManifest(manifest);
+
+    const destination = new URL('./video.html', window.location.href);
+    const sceneWindow = window.open(destination.toString(), '_blank');
+    if (!sceneWindow) {
+      showToast('The video scene was prepared. Allow pop-ups, then try again.', 'error');
+      return;
+    }
+    sceneWindow.focus();
+  } catch (error) {
+    showToast(error?.message || 'Could not create the video scene.', 'error');
+  }
 }
 
 function getComparePairModules() {
