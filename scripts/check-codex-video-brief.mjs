@@ -157,6 +157,8 @@ assert(instruction.includes('static dead time'), 'Instruction must enforce conti
 assert(instruction.includes('manually navigable scenes'), 'Instruction must allow presenter-led manual scene navigation.');
 assert(instruction.includes('metric rows and narrative copy sharing the same visual area'), 'Instruction must reject intra-card layout collisions.');
 assert(instruction.includes('fixed/risk-free rates'), 'Instruction must preserve nuanced return-study comparisons.');
+assert(instruction.includes('derived figure'), 'Instruction must require formula/rationale for derived figures.');
+assert(instruction.includes('progress indicators including the last scene'), 'Instruction must enforce progress indicator QA.');
 assert(instruction.includes('define the two endpoints from the real client decision'), 'Instruction must prevent arbitrary middle-ground framing.');
 
 const workerSource = await readFile(new URL('../worker/src/index.js', import.meta.url), 'utf8');
