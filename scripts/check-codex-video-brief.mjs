@@ -134,6 +134,7 @@ const brief = buildCodexVideoBrief({
 
 assert(brief.version === CODEX_VIDEO_BRIEF_VERSION, 'Brief version mismatch.');
 assert(brief.reviewRequired === true, 'Brief must require review.');
+assert(brief.delivery.requiredFiles.includes('quality-review.md'), 'Brief must require a quality review file.');
 assert(brief.call.modules.map((module) => module.id).join(',') === 'education,pbs', 'Brief must preserve session module order.');
 assert(brief.call.modules[1].activeScenario.id === 'clear-debt', 'Brief must preserve the selected PBS scenario.');
 assert(brief.call.modules[1].availablePbsScenarios.length === 2, 'Brief must include all PBS scenarios.');
@@ -150,6 +151,9 @@ secretValues.forEach((value) => {
 const instruction = buildCodexVideoInstruction(brief);
 assert(instruction.includes('private/video-calls/2026-06-23-aisling-example/'), 'Instruction output directory mismatch.');
 assert(instruction.includes('single multi-scene 16:9'), 'Instruction must request one multi-scene page.');
+assert(instruction.includes('quality-review.md'), 'Instruction must request a quality review file.');
+assert(instruction.includes('duplicate or colliding Planeir marks'), 'Instruction must enforce visual QA for brand collisions.');
+assert(instruction.includes('static dead time'), 'Instruction must enforce continuous-motion review.');
 
 const workerSource = await readFile(new URL('../worker/src/index.js', import.meta.url), 'utf8');
 assert(workerSource.includes('buildCodexVideoClientContext'), 'Worker allowlisted video-context mapper is missing.');

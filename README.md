@@ -48,7 +48,7 @@ The copied instruction directs bespoke work to a local, git-ignored directory:
 private/video-calls/<date>-<client-slug>/
 ```
 
-Codex should create `index.html`, its scoped CSS/JS, `storyboard.md`, and `source-brief.json` there. That directory is neither built nor deployed. Open the resulting `index.html` locally and capture it in OBS or Screen Studio.
+Codex should create `index.html`, its scoped CSS/JS, `storyboard.md`, `source-brief.json`, and `quality-review.md` there. The quality review is part of the output contract: every bespoke scene should be checked for duplicate branding, text/chart overlaps, presenter-zone intrusions, small-screen legibility, static dead time, and whether the opening seconds match the promised topic. That directory is neither built nor deployed. Open the resulting `index.html` locally and capture it in OBS or Screen Studio.
 
 ## Lead Capture
 
