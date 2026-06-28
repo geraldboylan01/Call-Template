@@ -159,6 +159,7 @@ assert(instruction.includes('metric rows and narrative copy sharing the same vis
 assert(instruction.includes('fixed/risk-free rates'), 'Instruction must preserve nuanced return-study comparisons.');
 assert(instruction.includes('derived figure'), 'Instruction must require formula/rationale for derived figures.');
 assert(instruction.includes('progress indicators including the last scene'), 'Instruction must enforce progress indicator QA.');
+assert(instruction.includes('show that decision before derived implementation mechanics'), 'Instruction must enforce decision-first scene sequencing.');
 assert(instruction.includes('define the two endpoints from the real client decision'), 'Instruction must prevent arbitrary middle-ground framing.');
 
 const workerSource = await readFile(new URL('../worker/src/index.js', import.meta.url), 'utf8');
