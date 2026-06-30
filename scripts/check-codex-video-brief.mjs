@@ -160,6 +160,7 @@ assert(instruction.includes('small reusable visual system'), 'Instruction must r
 assert(instruction.includes('visible handoff'), 'Instruction must require visual handoffs between connected scenes.');
 assert(instruction.includes('scene-to-scene continuity'), 'Instruction must enforce continuity review for adjacent scenes.');
 assert(instruction.includes('reuse of moving visual elements'), 'Instruction must enforce moving-element reuse in QA.');
+assert(instruction.includes('ambiguous decorative marks'), 'Instruction must reject ambiguous decorative marks.');
 assert(instruction.includes('metric rows and narrative copy sharing the same visual area'), 'Instruction must reject intra-card layout collisions.');
 assert(instruction.includes('fixed/risk-free rates'), 'Instruction must preserve nuanced return-study comparisons.');
 assert(instruction.includes('derived figure'), 'Instruction must require formula/rationale for derived figures.');
