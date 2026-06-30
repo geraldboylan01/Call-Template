@@ -137,6 +137,7 @@ assert(brief.reviewRequired === true, 'Brief must require review.');
 assert(brief.delivery.requiredFiles.includes('quality-review.md'), 'Brief must require a quality review file.');
 assert(brief.delivery.presenterRecorder?.mode === 'browser-native local presenter recording', 'Brief must require local presenter recording.');
 assert(brief.delivery.presenterRecorder?.saveFormat === 'local WebM download', 'Brief must require local WebM recorder output.');
+assert(brief.delivery.presenterRecorder?.stopControls?.includes('S and Escape stop recording'), 'Brief must require keyboard stop controls.');
 assert(brief.delivery.presenterRecorder?.hideControlsDuringCapture === true, 'Brief must require hidden controls during capture.');
 assert(brief.call.modules.map((module) => module.id).join(',') === 'education,pbs', 'Brief must preserve session module order.');
 assert(brief.call.modules[1].activeScenario.id === 'clear-debt', 'Brief must preserve the selected PBS scenario.');
@@ -159,6 +160,9 @@ assert(instruction.includes('local-only presenter recorder mode'), 'Instruction 
 assert(instruction.includes('getUserMedia'), 'Instruction must require local camera/mic capture.');
 assert(instruction.includes('getDisplayMedia plus MediaRecorder'), 'Instruction must require browser-native capture and recording.');
 assert(instruction.includes('local WebM download'), 'Instruction must require a local WebM save path.');
+assert(instruction.includes('S and Escape must stop recording'), 'Instruction must require fullscreen keyboard stop controls.');
+assert(instruction.includes('browser stop-sharing must also finish cleanly'), 'Instruction must support browser stop-sharing as a stop path.');
+assert(instruction.includes('hide itself before stopping'), 'Instruction must prevent emergency stop UI from remaining in capture.');
 assert(instruction.includes('duplicate or colliding Planeir marks'), 'Instruction must enforce visual QA for brand collisions.');
 assert(instruction.includes('static dead time'), 'Instruction must enforce continuous-motion review.');
 assert(instruction.includes('manually navigable scenes'), 'Instruction must allow presenter-led manual scene navigation.');
@@ -170,6 +174,7 @@ assert(instruction.includes('reuse of moving visual elements'), 'Instruction mus
 assert(instruction.includes('ambiguous decorative marks'), 'Instruction must reject ambiguous decorative marks.');
 assert(instruction.includes('presenter camera fit inside the safe zone'), 'Instruction must enforce presenter camera fit QA.');
 assert(instruction.includes('recorder/setup controls hidden during capture'), 'Instruction must enforce clean recorder capture QA.');
+assert(instruction.includes('fullscreen stop controls work without forcing visible UI into the recording'), 'Instruction must enforce fullscreen stop-control QA.');
 assert(instruction.includes('metric rows and narrative copy sharing the same visual area'), 'Instruction must reject intra-card layout collisions.');
 assert(instruction.includes('fixed/risk-free rates'), 'Instruction must preserve nuanced return-study comparisons.');
 assert(instruction.includes('derived figure'), 'Instruction must require formula/rationale for derived figures.');
