@@ -155,8 +155,11 @@ assert(instruction.includes('quality-review.md'), 'Instruction must request a qu
 assert(instruction.includes('duplicate or colliding Planeir marks'), 'Instruction must enforce visual QA for brand collisions.');
 assert(instruction.includes('static dead time'), 'Instruction must enforce continuous-motion review.');
 assert(instruction.includes('manually navigable scenes'), 'Instruction must allow presenter-led manual scene navigation.');
+assert(instruction.includes('Avoid the feel of a PowerPoint with animated bullets'), 'Instruction must reject slide-deck-style animation.');
+assert(instruction.includes('small reusable visual system'), 'Instruction must require a reusable visual system.');
 assert(instruction.includes('visible handoff'), 'Instruction must require visual handoffs between connected scenes.');
 assert(instruction.includes('scene-to-scene continuity'), 'Instruction must enforce continuity review for adjacent scenes.');
+assert(instruction.includes('reuse of moving visual elements'), 'Instruction must enforce moving-element reuse in QA.');
 assert(instruction.includes('metric rows and narrative copy sharing the same visual area'), 'Instruction must reject intra-card layout collisions.');
 assert(instruction.includes('fixed/risk-free rates'), 'Instruction must preserve nuanced return-study comparisons.');
 assert(instruction.includes('derived figure'), 'Instruction must require formula/rationale for derived figures.');
