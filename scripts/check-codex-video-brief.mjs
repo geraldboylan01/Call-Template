@@ -159,6 +159,8 @@ assert(instruction.includes('metric rows and narrative copy sharing the same vis
 assert(instruction.includes('fixed/risk-free rates'), 'Instruction must preserve nuanced return-study comparisons.');
 assert(instruction.includes('derived figure'), 'Instruction must require formula/rationale for derived figures.');
 assert(instruction.includes('progress indicators including the last scene'), 'Instruction must enforce progress indicator QA.');
+assert(instruction.includes('Identify the underlying problem before presenting the route'), 'Instruction must require problem diagnosis before solution route.');
+assert(instruction.includes('separate those problems visually'), 'Instruction must require visual separation of bundled problems.');
 assert(instruction.includes('show that decision before derived implementation mechanics'), 'Instruction must enforce decision-first scene sequencing.');
 assert(instruction.includes('define the two endpoints from the real client decision'), 'Instruction must prevent arbitrary middle-ground framing.');
 
