@@ -2049,6 +2049,13 @@ function collectOverviewSignalCounts(module) {
 }
 
 function inferOverviewModuleKind(module) {
+  if (isVideoSummaryModule(module)) {
+    return {
+      label: 'Video Summary',
+      token: 'video-summary'
+    };
+  }
+
   if (isEducationModule(module)) {
     return {
       label: 'Education',
@@ -2121,6 +2128,11 @@ function inferOverviewModuleKind(module) {
 function buildOverviewMetaItems(module, signalCounts) {
   const items = [];
   const moduleKind = inferOverviewModuleKind(module);
+
+  if (moduleKind.token === 'video-summary') {
+    items.push('YouTube', 'Summary');
+    return uniqueOverviewItems(items, 3, 22);
+  }
 
   if (moduleKind.token === 'education') {
     const audience = toTrimmedString(module?.generated?.education?.audience);
@@ -2234,9 +2246,22 @@ function buildOverviewMetaItems(module, signalCounts) {
   return uniqueOverviewItems(items, 3, 22);
 }
 
-function buildOverviewPreviewDescriptor(module) {
+export function buildOverviewPreviewDescriptor(module) {
   const moduleKind = inferOverviewModuleKind(module);
   const signalCounts = collectOverviewSignalCounts(module);
+
+  if (moduleKind.token === 'video-summary') {
+    const videoSummary = module?.generated?.videoSummary || {};
+    return {
+      moduleKind,
+      signalCounts,
+      previewKind: 'video-summary',
+      previewLabel: 'Video summary',
+      videoSummary,
+      metaItems: buildOverviewMetaItems(module, signalCounts)
+    };
+  }
+
   const visualCandidates = collectOverviewVisualCandidates(module);
   const kpiItems = collectOverviewKpiItems(module, 4);
   const insightLines = collectOverviewInsightLines(module, 3);
@@ -2376,6 +2401,35 @@ function buildOverviewInsightPreview(lines) {
   return list;
 }
 
+function buildOverviewVideoSummaryPreview(videoSummary) {
+  const host = document.createElement('div');
+  host.className = 'overview-video-summary-preview';
+
+  if (videoSummary?.thumbnailUrl) {
+    const image = document.createElement('img');
+    image.className = 'overview-video-summary-thumbnail';
+    image.src = videoSummary.thumbnailUrl;
+    image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.referrerPolicy = 'no-referrer';
+    host.appendChild(image);
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'overview-preview-empty';
+    empty.textContent = 'Video thumbnail';
+    host.appendChild(empty);
+  }
+
+  const play = document.createElement('span');
+  play.className = 'overview-video-summary-play';
+  play.textContent = '▶';
+  play.setAttribute('aria-hidden', 'true');
+  host.appendChild(play);
+
+  return host;
+}
+
 function buildOverviewPreviewSurface(descriptor) {
   const surface = document.createElement('div');
   surface.className = 'overview-preview';
@@ -2400,6 +2454,9 @@ function buildOverviewPreviewSurface(descriptor) {
   } else if (descriptor.previewKind === 'kpi') {
     body.classList.add('is-kpi');
     body.appendChild(buildOverviewKpiPreview(descriptor.kpiItems || []));
+  } else if (descriptor.previewKind === 'video-summary') {
+    body.classList.add('is-video-summary');
+    body.appendChild(buildOverviewVideoSummaryPreview(descriptor.videoSummary || {}));
   } else {
     body.classList.add('is-insight');
     body.appendChild(buildOverviewInsightPreview(descriptor.insightLines || []));
@@ -2869,6 +2926,18 @@ function getLoanEngineInputs(module) {
 
 function isMortgageModule(module) {
   return Boolean(getLoanEngineInputs(module));
+}
+
+function isVideoSummaryModule(module) {
+  const videoSummary = module?.generated?.videoSummary;
+  return Boolean(
+    videoSummary
+    && typeof videoSummary === 'object'
+    && !Array.isArray(videoSummary)
+    && videoSummary.provider === 'youtube'
+    && typeof videoSummary.videoId === 'string'
+    && videoSummary.videoId.trim()
+  );
 }
 
 function isEducationModule(module) {
@@ -8705,6 +8774,74 @@ function renderReportBlock(module, block, context) {
   }
 }
 
+function renderVideoSummaryModule(module, options = {}) {
+  const videoSummary = module?.generated?.videoSummary || {};
+  const section = document.createElement('section');
+  section.className = 'generated-section video-summary-generated-section';
+
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = 'Video Summary';
+  section.appendChild(heading);
+
+  const grid = document.createElement('div');
+  grid.className = 'generated-grid video-summary-generated-grid';
+
+  const card = document.createElement('section');
+  card.className = 'generated-card video-summary-card';
+  card.dataset.generatedCard = 'video-summary';
+
+  const { header } = buildGeneratedCardHeader(videoSummary.title || module?.title || 'Call video summary');
+  card.appendChild(header);
+
+  const content = document.createElement('div');
+  content.className = 'video-summary-content';
+
+  const embedWrap = document.createElement('div');
+  embedWrap.className = 'video-summary-embed-wrap';
+
+  if (videoSummary.embedUrl) {
+    const iframe = document.createElement('iframe');
+    iframe.className = 'video-summary-embed';
+    iframe.src = videoSummary.embedUrl;
+    iframe.title = videoSummary.title || 'YouTube video summary';
+    iframe.loading = 'lazy';
+    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+    iframe.allowFullscreen = true;
+    iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+    embedWrap.appendChild(iframe);
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'video-summary-empty';
+    empty.textContent = 'Video embed unavailable.';
+    embedWrap.appendChild(empty);
+  }
+  content.appendChild(embedWrap);
+
+  if (videoSummary.description) {
+    const description = document.createElement('p');
+    description.className = 'video-summary-description';
+    description.textContent = videoSummary.description;
+    content.appendChild(description);
+  }
+
+  if (videoSummary.url) {
+    const link = document.createElement('a');
+    link.className = 'video-summary-link';
+    link.href = videoSummary.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Open on YouTube';
+    content.appendChild(link);
+  }
+
+  card.appendChild(content);
+  grid.appendChild(card);
+  section.appendChild(grid);
+
+  return applyGeneratedCardControls(section, module, options);
+}
+
 function renderReportModule(module, options = {}) {
   const report = module?.generated?.report || {};
   const displayContext = getPlaybookDisplayContext(module);
@@ -9059,8 +9196,13 @@ function buildGeneratedSection(module, {
     outputsBucketed: null,
     education: null,
     report: null,
+    videoSummary: null,
     charts: []
   };
+
+  if (isVideoSummaryModule(displayModule)) {
+    return renderVideoSummaryModule(displayModule, { readOnly, onRemoveCard });
+  }
 
   if (isReportModule(displayModule)) {
     return renderReportModule(displayModule, { readOnly, onRemoveCard, onRemoveImage });

@@ -73,6 +73,7 @@ import {
 } from './crypto_session.js';
 import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
+import { normalizeVideoSummary, extractYouTubeVideoId, buildYouTubeThumbnailUrl } from './video_summary.js';
 import { createSuccessTakeover } from './success_takeover.js';
 import { buildVideoSceneManifest, saveVideoSceneManifest } from './video_scene.js';
 import {
@@ -9027,6 +9028,34 @@ async function createNewModule() {
   return module.id;
 }
 
+function clearGeneratedForVideoSummary(module) {
+  module.generated.assumptions = {
+    columns: [],
+    rows: []
+  };
+  module.generated.outputs = {
+    columns: [],
+    rows: []
+  };
+  module.generated.tables = [];
+  module.generated.pbsInputs = null;
+  module.generated.pensionInputs = null;
+  module.generated.mortgageInputs = null;
+  module.generated.loanInputs = null;
+  module.generated.collegeFundingInputs = null;
+  module.generated.netRetirementInputs = null;
+  module.generated.education = null;
+  module.generated.report = null;
+  module.generated.outputsBucketed = null;
+  module.generated.charts = [];
+}
+
+function clearVideoSummaryForGeneratedModule(module) {
+  if (module?.generated) {
+    module.generated.videoSummary = null;
+  }
+}
+
 function mergeGeneratedPatch(module, generatedPatch) {
   ensureGenerated(module);
 
@@ -9042,6 +9071,13 @@ function mergeGeneratedPatch(module, generatedPatch) {
     module.generated.outputs = generatedPatch.outputs;
   }
 
+  if ('videoSummary' in generatedPatch) {
+    module.generated.videoSummary = generatedPatch.videoSummary;
+    if (generatedPatch.videoSummary) {
+      clearGeneratedForVideoSummary(module);
+    }
+  }
+
   if ('pensionInputs' in generatedPatch) {
     module.generated.pensionInputs = generatedPatch.pensionInputs;
     if (generatedPatch.pensionInputs) {
@@ -9051,6 +9087,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
+      clearVideoSummaryForGeneratedModule(module);
     }
   }
 
@@ -9063,6 +9100,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
+      clearVideoSummaryForGeneratedModule(module);
     }
   }
 
@@ -9075,6 +9113,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.education = null;
       module.generated.report = null;
+      clearVideoSummaryForGeneratedModule(module);
     }
   }
 
@@ -9087,6 +9126,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
+      clearVideoSummaryForGeneratedModule(module);
     }
   }
 
@@ -9099,6 +9139,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
+      clearVideoSummaryForGeneratedModule(module);
     }
   }
 
@@ -9111,6 +9152,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.report = null;
+      clearVideoSummaryForGeneratedModule(module);
     }
   }
 
@@ -9123,6 +9165,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
+      clearVideoSummaryForGeneratedModule(module);
     }
   }
 

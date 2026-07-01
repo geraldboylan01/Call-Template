@@ -8,7 +8,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://call-canvas-session-worker.geraldboylan.workers.dev; frame-src https://www.youtube-nocookie.com https://www.youtube.com; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
     />
     <meta
       name="call-canvas-worker-base-url"
@@ -50,6 +50,7 @@
           <button id="newCallBtn" class="ui-button" type="button">New Call</button>
           <a class="ui-button" href="./clients.html">Client Pipeline</a>
           <button id="codexVideoBriefBtn" class="ui-button" type="button">Copy Call for Codex</button>
+          <button id="videoSummaryBtn" class="ui-button" type="button">Add video summary</button>
           <button id="publishSessionBtn" class="ui-button" type="button">Publish</button>
           <button id="zoomToggleBtn" class="ui-button" type="button">Zoom Out</button>
           <button id="newModuleBtn" class="ui-button" type="button">New Module</button>
@@ -228,6 +229,7 @@
             <a class="ui-button mobile-overflow-btn" href="./clients.html">Client pipeline</a>
             <button id="mobileOverflowNewModuleBtn" class="ui-button mobile-overflow-btn" type="button">New Module</button>
             <button id="mobileOverflowCodexVideoBriefBtn" class="ui-button mobile-overflow-btn" type="button">Copy Call for Codex</button>
+            <button id="mobileOverflowVideoSummaryBtn" class="ui-button mobile-overflow-btn" type="button">Add video summary</button>
             <button id="mobileOverflowPublishBtn" class="ui-button mobile-overflow-btn" type="button">Publish</button>
             <button id="mobileOverflowClientAccessBtn" class="ui-button mobile-overflow-btn" type="button">Client pipeline</button>
             <button id="mobileOverflowResetBtn" class="ui-button mobile-overflow-btn" type="button">Reset</button>
@@ -371,6 +373,42 @@
           <button id="codexVideoBriefDownloadBtn" class="ui-button" type="button">Download Brief JSON</button>
           <button id="codexVideoBriefCancelBtn" class="ui-button" type="button">Cancel</button>
         </div>
+      </div>
+    </div>
+
+    <div id="videoSummaryModal" class="publish-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="videoSummaryTitle">
+      <div class="publish-modal-card video-summary-modal-card">
+        <div class="publish-modal-header">
+          <h2 id="videoSummaryTitle" class="publish-modal-title">Add video summary</h2>
+          <button id="videoSummaryCloseBtn" class="ui-button publish-close-btn" type="button">Close</button>
+        </div>
+        <p class="publish-modal-subtitle">Paste the public or unlisted YouTube link for this call summary. It will become its own module on the client page.</p>
+        <p id="videoSummaryError" class="publish-error" aria-live="polite"></p>
+        <form id="videoSummaryForm" class="video-summary-form">
+          <label class="video-summary-field" for="videoSummaryUrlInput">
+            <span>YouTube link</span>
+            <input id="videoSummaryUrlInput" class="publish-link-value video-summary-input" type="url" inputmode="url" autocomplete="off" placeholder="https://youtu.be/..." />
+          </label>
+          <label class="video-summary-field" for="videoSummaryTitleInput">
+            <span>Title</span>
+            <input id="videoSummaryTitleInput" class="publish-link-value video-summary-input" type="text" autocomplete="off" placeholder="Call video summary" />
+          </label>
+          <label class="video-summary-field" for="videoSummaryDescriptionInput">
+            <span>Description</span>
+            <textarea id="videoSummaryDescriptionInput" class="video-summary-textarea" rows="3" placeholder="Optional short note for the client"></textarea>
+          </label>
+          <div id="videoSummaryPreview" class="video-summary-preview is-empty" aria-live="polite">
+            <div class="video-summary-preview-thumb" aria-hidden="true"></div>
+            <div>
+              <div id="videoSummaryPreviewTitle" class="video-summary-preview-title">Paste a YouTube link</div>
+              <div id="videoSummaryPreviewMeta" class="video-summary-preview-meta">The thumbnail preview will appear here.</div>
+            </div>
+          </div>
+          <div class="publish-modal-actions">
+            <button id="videoSummarySaveBtn" class="ui-button" type="submit">Add to client page</button>
+            <button id="videoSummaryCancelBtn" class="ui-button" type="button">Cancel</button>
+          </div>
+        </form>
       </div>
     </div>
 

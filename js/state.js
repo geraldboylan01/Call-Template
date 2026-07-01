@@ -1,5 +1,7 @@
 import { normalizeReport } from './report.js';
 
+import { normalizeVideoSummary } from './video_summary.js';
+
 const STORAGE_KEY = 'call_canvas_session_current';
 const LEGACY_STORAGE_KEY = 'call-template-session-v1';
 const SESSION_VERSION = 1;
@@ -1113,6 +1115,7 @@ export function createEmptyGenerated() {
     loanInputs: null,
     education: null,
     report: null,
+    videoSummary: null,
     outputsBucketed: null,
     charts: []
   };
@@ -1136,11 +1139,32 @@ export function normalizeGenerated(generated) {
     loanInputs: normalizeMortgageInputs(generated.loanInputs, { defaultLoanKind: 'loan' }),
     education: normalizeEducation(generated.education),
     report: normalizeReport(generated.report),
+    videoSummary: normalizeVideoSummary(generated.videoSummary),
     outputsBucketed: normalizeOutputsBucketed(generated.outputsBucketed),
     charts: normalizeCharts(generated.charts)
   };
 
-  if (normalized.report) {
+  if (normalized.videoSummary) {
+    normalized.pbsInputs = null;
+    normalized.pensionInputs = null;
+    normalized.collegeFundingInputs = null;
+    normalized.netRetirementInputs = null;
+    normalized.mortgageInputs = null;
+    normalized.loanInputs = null;
+    normalized.education = null;
+    normalized.report = null;
+    normalized.outputsBucketed = null;
+    normalized.charts = [];
+    normalized.assumptions = {
+      columns: [],
+      rows: []
+    };
+    normalized.outputs = {
+      columns: [],
+      rows: []
+    };
+    normalized.tables = [];
+  } else if (normalized.report) {
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
     normalized.netRetirementInputs = null;
