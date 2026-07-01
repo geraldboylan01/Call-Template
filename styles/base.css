@@ -7045,6 +7045,7 @@ body.overview-has-selection .toast-host {
 
   .topbar-right > a.ui-button[href="./clients.html"],
   .topbar-right > #newModuleBtn,
+  .topbar-right > #videoSummaryBtn,
   .topbar-right > #resetBtn,
   .topbar-right > #advisorAuthStatus {
     display: none;

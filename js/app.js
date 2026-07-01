@@ -3577,6 +3577,7 @@ function syncMobileActionState() {
   syncButton(ui.mobileActionZoomButton, ui.zoomButton);
   syncButton(ui.mobileOverflowNewModuleButton, ui.newModuleButton);
   syncButton(ui.mobileOverflowCodexVideoBriefButton, ui.codexVideoBriefButton);
+  syncButton(ui.mobileOverflowVideoSummaryButton, ui.videoSummaryButton);
   syncButton(ui.mobileOverflowPublishButton, ui.publishSessionButton);
   syncButton(ui.mobileOverflowClientAccessButton, ui.openClientAccessButton);
   syncButton(ui.mobileOverflowResetButton, ui.resetButton);
@@ -3594,6 +3595,7 @@ function syncMobileActionState() {
   const hasOverflowAction = Boolean(
     (ui.mobileOverflowNewModuleButton && !ui.mobileOverflowNewModuleButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowCodexVideoBriefButton && !ui.mobileOverflowCodexVideoBriefButton.classList.contains('is-hidden'))
+    || (ui.mobileOverflowVideoSummaryButton && !ui.mobileOverflowVideoSummaryButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowClientAccessButton && !ui.mobileOverflowClientAccessButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowResetButton && !ui.mobileOverflowResetButton.classList.contains('is-hidden'))
@@ -4820,6 +4822,148 @@ function setCodexVideoBriefModalOpen(isOpen) {
   }
 }
 
+function findVideoSummaryModule() {
+  return getOrderedModules(appState.session).find((module) => module?.generated?.videoSummary?.provider === 'youtube') || null;
+}
+
+function setVideoSummaryError(message) {
+  if (!ui.videoSummaryError) {
+    return;
+  }
+  ui.videoSummaryError.textContent = String(message || '');
+  ui.videoSummaryError.classList.toggle('is-visible', Boolean(message));
+}
+
+function setVideoSummaryModalOpen(isOpen) {
+  if (!ui.videoSummaryModal) {
+    return;
+  }
+  ui.videoSummaryModal.classList.toggle('is-hidden', !isOpen);
+  if (isOpen) {
+    ui.videoSummaryUrlInput?.focus();
+  }
+}
+
+function updateVideoSummaryPreview() {
+  if (!ui.videoSummaryPreview) {
+    return;
+  }
+  const rawUrl = String(ui.videoSummaryUrlInput?.value || '').trim();
+  const videoId = extractYouTubeVideoId(rawUrl);
+  const title = String(ui.videoSummaryTitleInput?.value || '').trim() || 'Call video summary';
+  const thumb = ui.videoSummaryPreview.querySelector('.video-summary-preview-thumb');
+
+  ui.videoSummaryPreview.classList.toggle('is-empty', !videoId);
+  if (thumb) {
+    thumb.style.backgroundImage = videoId ? `url("${buildYouTubeThumbnailUrl(videoId)}")` : '';
+  }
+  if (ui.videoSummaryPreviewTitle) {
+    ui.videoSummaryPreviewTitle.textContent = videoId ? title : 'Paste a YouTube link';
+  }
+  if (ui.videoSummaryPreviewMeta) {
+    ui.videoSummaryPreviewMeta.textContent = videoId
+      ? `YouTube video ${videoId}`
+      : 'The thumbnail preview will appear here.';
+  }
+}
+
+function openVideoSummaryModal() {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+  const existing = findVideoSummaryModule();
+  const videoSummary = existing?.generated?.videoSummary || null;
+
+  if (ui.videoSummaryTitle) {
+    ui.videoSummaryTitle.textContent = existing ? 'Update video summary' : 'Add video summary';
+  }
+  if (ui.videoSummarySaveButton) {
+    ui.videoSummarySaveButton.textContent = existing ? 'Update video summary' : 'Add to client page';
+  }
+  if (ui.videoSummaryUrlInput) {
+    ui.videoSummaryUrlInput.value = videoSummary?.url || '';
+  }
+  if (ui.videoSummaryTitleInput) {
+    ui.videoSummaryTitleInput.value = videoSummary?.title || 'Call video summary';
+  }
+  if (ui.videoSummaryDescriptionInput) {
+    ui.videoSummaryDescriptionInput.value = videoSummary?.description || '';
+  }
+  setVideoSummaryError('');
+  updateVideoSummaryPreview();
+  setVideoSummaryModalOpen(true);
+}
+
+function buildVideoSummaryModulePayload() {
+  const normalized = normalizeVideoSummary({
+    url: ui.videoSummaryUrlInput?.value || '',
+    title: ui.videoSummaryTitleInput?.value || 'Call video summary',
+    description: ui.videoSummaryDescriptionInput?.value || '',
+    addedAt: findVideoSummaryModule()?.generated?.videoSummary?.addedAt || nowIso()
+  });
+
+  if (!normalized) {
+    throw new Error('Paste a valid YouTube link, for example https://youtu.be/VIDEO_ID.');
+  }
+
+  return normalized;
+}
+
+async function saveVideoSummaryModuleFromModal() {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  let videoSummary;
+  try {
+    videoSummary = buildVideoSummaryModulePayload();
+  } catch (error) {
+    setVideoSummaryError(error?.message || 'Could not read that YouTube link.');
+    return;
+  }
+
+  let module = findVideoSummaryModule();
+  const wasExisting = Boolean(module);
+  const now = nowIso();
+  if (!module) {
+    module = createBlankModule();
+    module.createdAt = now;
+    module.title = videoSummary.title || 'Call video summary';
+    module.generated.videoSummary = videoSummary;
+    clearGeneratedForVideoSummary(module);
+    appState.session.modules.unshift(module);
+  } else {
+    module.title = videoSummary.title || module.title || 'Call video summary';
+    module.generated.videoSummary = videoSummary;
+    clearGeneratedForVideoSummary(module);
+  }
+
+  module.updatedAt = now;
+  appState.session.order = [
+    module.id,
+    ...appState.session.order.filter((moduleId) => moduleId !== module.id)
+  ];
+  appState.session.activeModuleId = module.id;
+
+  markSessionDirty();
+  saveSessionNow();
+  setVideoSummaryModalOpen(false);
+  showToast(wasExisting ? 'Video summary saved.' : 'Video summary added.');
+
+  if (appState.mode === 'overview') {
+    refreshOverview({ enableSortable: true });
+    await nextFrame();
+    const sourceCardEl = getOverviewCardElement(ui, module.id)
+      || ui.overviewGrid.querySelector(`.overview-card[data-module-id="${module.id}"]`);
+    await zoomIntoModuleFromOverview(module.id, sourceCardEl);
+    return;
+  }
+
+  appState.mode = 'focused';
+  setMode(ui, 'focused');
+  await renderFocused({ useSwipe: false, revealMode: true });
+}
+
 function getCodexVideoActiveScenarios() {
   const activeScenarios = {
     pbsScenarioId: {},
@@ -5657,7 +5801,7 @@ function applyRuntimeChrome() {
       ui.clientNameInput.readOnly = true;
       ui.clientNameInput.setAttribute('aria-readonly', 'true');
     }
-    [ui.newCallButton, ui.openClientAccessButton, ui.newModuleButton, ui.resetButton, ui.codexVideoBriefButton].forEach((element) => {
+    [ui.newCallButton, ui.openClientAccessButton, ui.newModuleButton, ui.resetButton, ui.codexVideoBriefButton, ui.videoSummaryButton].forEach((element) => {
       if (!element) {
         return;
       }
@@ -9029,6 +9173,7 @@ async function createNewModule() {
 }
 
 function clearGeneratedForVideoSummary(module) {
+  module.generated.summaryHtml = '';
   module.generated.assumptions = {
     columns: [],
     rows: []
@@ -9551,6 +9696,42 @@ function bindEvents() {
     });
   }
 
+  if (!runtimeConfig.readOnly && ui.videoSummaryButton) {
+    ui.videoSummaryButton.addEventListener('click', () => {
+      openVideoSummaryModal();
+    });
+  }
+
+  [ui.videoSummaryCloseButton, ui.videoSummaryCancelButton].forEach((button) => {
+    button?.addEventListener('click', () => {
+      setVideoSummaryModalOpen(false);
+    });
+  });
+
+  if (ui.videoSummaryModal) {
+    ui.videoSummaryModal.addEventListener('click', (event) => {
+      if (event.target === ui.videoSummaryModal) {
+        setVideoSummaryModalOpen(false);
+      }
+    });
+  }
+
+  [ui.videoSummaryUrlInput, ui.videoSummaryTitleInput].forEach((input) => {
+    input?.addEventListener('input', () => {
+      setVideoSummaryError('');
+      updateVideoSummaryPreview();
+    });
+  });
+
+  ui.videoSummaryDescriptionInput?.addEventListener('input', () => {
+    setVideoSummaryError('');
+  });
+
+  ui.videoSummaryForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await saveVideoSummaryModuleFromModal();
+  });
+
   [ui.codexVideoBriefCloseButton, ui.codexVideoBriefCancelButton].forEach((button) => {
     button?.addEventListener('click', () => {
       setCodexVideoBriefModalOpen(false);
@@ -9773,6 +9954,13 @@ function bindEvents() {
     });
   }
 
+  if (ui.mobileOverflowVideoSummaryButton) {
+    ui.mobileOverflowVideoSummaryButton.addEventListener('click', () => {
+      closeMobileOverflowSheet({ restoreFocus: false });
+      openVideoSummaryModal();
+    });
+  }
+
   if (ui.mobileOverflowNewModuleButton) {
     ui.mobileOverflowNewModuleButton.addEventListener('click', () => {
       triggerDesktopAction(ui.newModuleButton, { closeOverflow: true });
@@ -9958,6 +10146,12 @@ function bindEvents() {
     if (key === 'Escape' && ui.codexVideoBriefModal && !ui.codexVideoBriefModal.classList.contains('is-hidden')) {
       event.preventDefault();
       setCodexVideoBriefModalOpen(false);
+      return;
+    }
+
+    if (key === 'Escape' && ui.videoSummaryModal && !ui.videoSummaryModal.classList.contains('is-hidden')) {
+      event.preventDefault();
+      setVideoSummaryModalOpen(false);
       return;
     }
 

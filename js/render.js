@@ -9350,7 +9350,7 @@ export function patchFocusedGeneratedCards({
   }
 
   const generatedSection = focusedCard.querySelector('.generated-section');
-  if (isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module) || isNetRetirementModule(module)) {
+  if (isVideoSummaryModule(module) || isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module) || isNetRetirementModule(module)) {
     if (!generatedSection) {
       return;
     }
@@ -9513,10 +9513,25 @@ export function getUiElements() {
     mobileOverflowPanel: document.getElementById('mobileOverflowPanel'),
     mobileOverflowNewModuleButton: document.getElementById('mobileOverflowNewModuleBtn'),
     mobileOverflowCodexVideoBriefButton: document.getElementById('mobileOverflowCodexVideoBriefBtn'),
+    mobileOverflowVideoSummaryButton: document.getElementById('mobileOverflowVideoSummaryBtn'),
     mobileOverflowPublishButton: document.getElementById('mobileOverflowPublishBtn'),
     mobileOverflowClientAccessButton: document.getElementById('mobileOverflowClientAccessBtn'),
     mobileOverflowResetButton: document.getElementById('mobileOverflowResetBtn'),
     publishSessionButton: document.getElementById('publishSessionBtn'),
+    videoSummaryButton: document.getElementById('videoSummaryBtn'),
+    videoSummaryModal: document.getElementById('videoSummaryModal'),
+    videoSummaryTitle: document.getElementById('videoSummaryTitle'),
+    videoSummaryCloseButton: document.getElementById('videoSummaryCloseBtn'),
+    videoSummaryCancelButton: document.getElementById('videoSummaryCancelBtn'),
+    videoSummaryForm: document.getElementById('videoSummaryForm'),
+    videoSummaryUrlInput: document.getElementById('videoSummaryUrlInput'),
+    videoSummaryTitleInput: document.getElementById('videoSummaryTitleInput'),
+    videoSummaryDescriptionInput: document.getElementById('videoSummaryDescriptionInput'),
+    videoSummaryError: document.getElementById('videoSummaryError'),
+    videoSummarySaveButton: document.getElementById('videoSummarySaveBtn'),
+    videoSummaryPreview: document.getElementById('videoSummaryPreview'),
+    videoSummaryPreviewTitle: document.getElementById('videoSummaryPreviewTitle'),
+    videoSummaryPreviewMeta: document.getElementById('videoSummaryPreviewMeta'),
     codexVideoBriefButton: document.getElementById('codexVideoBriefBtn'),
     codexVideoBriefModal: document.getElementById('codexVideoBriefModal'),
     codexVideoBriefCloseButton: document.getElementById('codexVideoBriefCloseBtn'),
@@ -10074,6 +10089,10 @@ export function updateControls(ui, {
 
   if (ui.newModuleButton) {
     ui.newModuleButton.disabled = readOnly || mode === 'compare';
+  }
+
+  if (ui.videoSummaryButton) {
+    ui.videoSummaryButton.disabled = readOnly || mode === 'compare';
   }
 
   if (ui.prevArrowButton) {

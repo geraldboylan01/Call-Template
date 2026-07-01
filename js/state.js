@@ -1145,6 +1145,7 @@ export function normalizeGenerated(generated) {
   };
 
   if (normalized.videoSummary) {
+    normalized.summaryHtml = '';
     normalized.pbsInputs = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;

@@ -70,6 +70,10 @@ export function buildYouTubeThumbnailUrl(videoId) {
 }
 
 export function normalizeVideoSummary(input = {}) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return null;
+  }
+
   const videoId = sanitizeVideoId(input.videoId) || extractYouTubeVideoId(input.url);
   if (!videoId) {
     return null;
