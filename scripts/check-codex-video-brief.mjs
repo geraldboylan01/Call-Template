@@ -141,6 +141,8 @@ assert(brief.delivery.presenterRecorder?.stopControls?.includes('S and Escape st
 assert(brief.delivery.presenterRecorder?.mirrorCameraByDefault === true, 'Brief must mirror the presenter camera by default.');
 assert(brief.delivery.presenterRecorder?.faceTracking?.includes('local MediaPipe BlazeFace'), 'Brief must require local MediaPipe face tracking.');
 assert(brief.delivery.presenterRecorder?.faceTrackingFallback?.includes('mirrored centred crop'), 'Brief must require mirrored centred crop fallback.');
+assert(brief.delivery.presenterRecorder?.microphoneRequired === true, 'Brief must require microphone audio.');
+assert(brief.delivery.presenterRecorder?.microphoneCapture?.includes('live getUserMedia microphone track'), 'Brief must require live microphone verification.');
 assert(brief.delivery.presenterRecorder?.hideControlsDuringCapture === true, 'Brief must require hidden controls during capture.');
 assert(brief.call.modules.map((module) => module.id).join(',') === 'education,pbs', 'Brief must preserve session module order.');
 assert(brief.call.modules[1].activeScenario.id === 'clear-debt', 'Brief must preserve the selected PBS scenario.');
@@ -168,6 +170,9 @@ assert(instruction.includes('MediaPipe BlazeFace'), 'Instruction must require lo
 assert(instruction.includes('8-12fps'), 'Instruction must require throttled real-time face tracking.');
 assert(instruction.includes('adapt zoom'), 'Instruction must require adaptive zoom.');
 assert(instruction.includes('mirrored centred crop'), 'Instruction must require fallback mirrored crop.');
+assert(instruction.includes('Verify a live microphone track from getUserMedia before recording'), 'Instruction must require live microphone verification before recording.');
+assert(instruction.includes('do not create a silent recording'), 'Instruction must reject silent recordings.');
+assert(instruction.includes('Mix microphone audio into the final MediaRecorder stream'), 'Instruction must require microphone audio in final recording.');
 assert(instruction.includes('S and Escape must stop recording'), 'Instruction must require fullscreen keyboard stop controls.');
 assert(instruction.includes('browser stop-sharing must also finish cleanly'), 'Instruction must support browser stop-sharing as a stop path.');
 assert(instruction.includes('hide itself before stopping'), 'Instruction must prevent emergency stop UI from remaining in capture.');
@@ -186,6 +191,8 @@ assert(instruction.includes('face remains centred'), 'Instruction must enforce f
 assert(instruction.includes('adaptive zoom remains stable'), 'Instruction must enforce adaptive zoom QA.');
 assert(instruction.includes('lost-face fallback'), 'Instruction must enforce lost-face fallback QA.');
 assert(instruction.includes('no external AI/API calls for camera tracking'), 'Instruction must enforce local-only tracking QA.');
+assert(instruction.includes('live microphone track is present before recording'), 'Instruction must enforce live microphone QA.');
+assert(instruction.includes('recorded WebM contains microphone audio'), 'Instruction must enforce recorded audio QA.');
 assert(instruction.includes('recorder/setup controls hidden during capture'), 'Instruction must enforce clean recorder capture QA.');
 assert(instruction.includes('fullscreen stop controls work without forcing visible UI into the recording'), 'Instruction must enforce fullscreen stop-control QA.');
 assert(instruction.includes('metric rows and narrative copy sharing the same visual area'), 'Instruction must reject intra-card layout collisions.');
