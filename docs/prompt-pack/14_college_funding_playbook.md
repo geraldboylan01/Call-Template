@@ -10,7 +10,7 @@ The browser app owns the repeatable college funding maths after the payload is a
 ## Gerry's Live Prompt Can Stay Short
 This style should work:
 
-`Use the college funding playbook. Twins age 13. College starts at 18. Four years. Inflation 2 percent. At home 5000 per child per year. Away from home 15000 per child per year. Car support 10000 each.`
+`Use the college funding playbook. Eldest child age 2 and newborn twins. College starts at 18 for each child. Four years each. Inflation 2 percent. At home 5000 per child per year. Away from home 15000 per child per year. Car support 10000 each.`
 
 ## Output Contract
 - SECTION 1 - NOTES (FOR GERRY ONLY)
@@ -29,10 +29,29 @@ This style should work:
     "summaryHtml": "<p>This module compares college funding targets in today's money and future nominal terms. It helps decide how much liquidity should be ring-fenced before moving surplus cash into longer-term assets.</p>",
     "collegeFundingInputs": {
       "currentYear": 2026,
-      "childrenCount": 2,
-      "childCurrentAge": 13,
-      "collegeStartAge": 18,
-      "collegeDurationYears": 4,
+      "children": [
+        {
+          "id": "eldest",
+          "title": "Eldest child",
+          "currentAge": 2,
+          "collegeStartAge": 18,
+          "collegeDurationYears": 4
+        },
+        {
+          "id": "twin-1",
+          "title": "Twin 1",
+          "currentAge": 0,
+          "collegeStartAge": 18,
+          "collegeDurationYears": 4
+        },
+        {
+          "id": "twin-2",
+          "title": "Twin 2",
+          "currentAge": 0,
+          "collegeStartAge": 18,
+          "collegeDurationYears": 4
+        }
+      ],
       "inflationRate": 0.02,
       "planningNote": "Education costs are modelled separately from normal household spending because they may overlap with early retirement.",
       "scenarios": [
@@ -76,12 +95,21 @@ This style should work:
 ```
 
 ## Required Inputs
-- `childrenCount`
-- `childCurrentAge`
-- `collegeStartAge`
-- `collegeDurationYears`
+- `children[]` when children have different current ages, different college start ages, or different course durations
+- legacy shared-age timing fields may be used where all children have identical timing:
+  - `childrenCount`
+  - `childCurrentAge`
+  - `collegeStartAge`
+  - `collegeDurationYears`
 - `inflationRate`
 - `scenarios`
+
+Each child needs:
+- `id`
+- `title`
+- `currentAge`
+- `collegeStartAge`
+- `collegeDurationYears`
 
 Each scenario needs:
 - `id`
@@ -104,12 +132,29 @@ If Gerry gives only the common at-home / away-from-home / car support pattern, y
 
 The app will create four standard scenarios from those values.
 
+## Child Timing Rules
+- Use `children[]` whenever children have different current ages, different college start ages, or different course durations.
+- The legacy shared-age fields may continue to be used where all children have identical timing.
+- If `children[]` is present and contains valid children, the app uses `children[]` and derives `childrenCount` from `children.length`.
+- Do not combine `children[]` with `childrenCount` to create additional children.
+- Every child id must be unique.
+- `currentAge` must be zero or greater.
+- `collegeStartAge` must be greater than `currentAge`.
+- `collegeDurationYears` must be greater than zero.
+
 ## Calculation Rules
 - Treat annual costs as per child, per academic year, in today's money.
-- Treat one-off support as per child and paid in the first college year.
+- Treat one-off support as per child and paid only in that child's first college year.
 - Future nominal cost is inflation-indexed from today into each college year.
+- The annual timeline runs from the earliest child college start year through the latest child college final year.
+- For each year, the app sums inflation-adjusted costs for every child attending in that year.
 - Do not include tax, grants, investment returns, loan funding, or deposit interest unless Gerry explicitly asks for a separate report-style module.
 - If costs may overlap with retirement or a planned career change, state that in `summaryHtml` and `planningNote`.
+
+## Runtime Outputs
+- The app generates total cost in today's money, total future nominal cost, first college year, final college year, overall family funding period, peak annual cost, and peak number of children attending at the same time.
+- The app generates annual profile tables with one column per child, children attending, and annual family cost.
+- The primary chart is a stacked annual funding profile by child, with separate scenario stacks.
 
 ## Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.

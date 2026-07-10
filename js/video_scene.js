@@ -189,6 +189,7 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       const projection = computeCollegeFundingProjection(generated.collegeFundingInputs);
       resolved.generated.assumptions = projection.assumptionsTable;
       resolved.generated.outputs = projection.outputsTable;
+      resolved.generated.tables = projection.tables;
       resolved.generated.charts = projection.charts;
       return {
         module: resolved,

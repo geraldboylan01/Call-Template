@@ -152,6 +152,7 @@ Playbooks should only emit the subset they are responsible for.
 - Use `generated.collegeFundingInputs`.
 - Runtime-supported keys:
   - `currentYear`
+  - `children`
   - `childrenCount`
   - `childCurrentAge`
   - `collegeStartAge`
@@ -160,6 +161,14 @@ Playbooks should only emit the subset they are responsible for.
   - `currencySymbol` (`€` for Irish euro planning, not `EUR`)
   - `planningNote`
   - `scenarios`
+- Use `children[]` whenever children have different current ages, different college start ages, or different course durations. Legacy shared-age fields may continue to be used where all children have identical timing.
+- When valid `children[]` is present, the runtime uses it, derives `childrenCount` from `children.length`, and does not combine it with `childrenCount`.
+- Each child supports:
+  - `id`
+  - `title`
+  - `currentAge`
+  - `collegeStartAge`
+  - `collegeDurationYears`
 - Each scenario supports:
   - `id`
   - `title`
@@ -169,7 +178,8 @@ Playbooks should only emit the subset they are responsible for.
   - `interpretation`
   - `tone`
 - Shorthand at-home/away inputs are also supported: `atHomeAnnualCostTodayPerChild`, `awayAnnualCostTodayPerChild`, and `carSupportTodayPerChild`.
-- The runtime calculates `generated.assumptions`, `generated.outputs`, and `generated.charts`; the playbook should not hand-build those fields.
+- The runtime validates unique child ids, non-negative current ages, start age greater than current age, positive durations, non-negative inflation, and plain numeric money inputs.
+- The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables`, and `generated.charts`; the playbook should not hand-build those fields.
 
 ## Mortgage Support
 - Use `generated.mortgageInputs`

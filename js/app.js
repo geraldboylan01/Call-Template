@@ -3090,6 +3090,7 @@ function applyCollegeFundingProjectionToModule(module) {
   module.generated.assumptions = projection.assumptionsTable;
   module.generated.outputs = projection.outputsTable;
   module.generated.outputsBucketed = null;
+  module.generated.tables = projection.tables;
   module.generated.charts = projection.charts.map((chart, index) => ({
     ...chart,
     id: chart.id || makeChartId(module.id, chart.title, index)

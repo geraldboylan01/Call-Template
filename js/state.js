@@ -553,6 +553,37 @@ function normalizeCollegeFundingInputs(collegeFundingInputs) {
     normalized.planningNote = collegeFundingInputs.planningNote.trim();
   }
 
+  if (Array.isArray(collegeFundingInputs.children)) {
+    const children = collegeFundingInputs.children
+      .filter((child) => child && typeof child === 'object' && !Array.isArray(child))
+      .map((child, index) => {
+        const normalizedChild = {
+          id: typeof child.id === 'string' && child.id.trim()
+            ? child.id.trim()
+            : `child-${index + 1}`,
+          title: typeof child.title === 'string' && child.title.trim()
+            ? child.title.trim()
+            : `Child ${index + 1}`
+        };
+
+        [
+          'currentAge',
+          'collegeStartAge',
+          'collegeDurationYears'
+        ].forEach((key) => {
+          if (typeof child[key] === 'number' && Number.isFinite(child[key])) {
+            normalizedChild[key] = child[key];
+          }
+        });
+
+        return normalizedChild;
+      });
+
+    if (children.length > 0) {
+      normalized.children = children;
+    }
+  }
+
   if (Array.isArray(collegeFundingInputs.scenarios)) {
     const scenarios = collegeFundingInputs.scenarios
       .filter((scenario) => scenario && typeof scenario === 'object' && !Array.isArray(scenario))

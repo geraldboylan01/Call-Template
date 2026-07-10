@@ -302,15 +302,34 @@ PBS examples should keep the summary contract exact: the summary section uses `k
 
 ```json
 {
-  "title": "College Funding - Twins",
+  "title": "College Funding - Children",
   "generated": {
-    "summaryHtml": "<p>This module compares possible college funding targets for two children, showing living at home versus going away and the effect of one-off car support. The key planning decision is how much liquidity to ring-fence for education before deciding what can be moved into longer-term retirement assets.</p>",
+    "summaryHtml": "<p>This module compares possible college funding targets for three children with staggered college timing, showing living at home versus going away and the effect of one-off car support. The key planning decision is how much liquidity to ring-fence for education before deciding what can be moved into longer-term retirement assets.</p>",
     "collegeFundingInputs": {
       "currentYear": 2026,
-      "childrenCount": 2,
-      "childCurrentAge": 13,
-      "collegeStartAge": 18,
-      "collegeDurationYears": 4,
+      "children": [
+        {
+          "id": "eldest",
+          "title": "Eldest child",
+          "currentAge": 2,
+          "collegeStartAge": 18,
+          "collegeDurationYears": 4
+        },
+        {
+          "id": "twin-1",
+          "title": "Twin 1",
+          "currentAge": 0,
+          "collegeStartAge": 18,
+          "collegeDurationYears": 4
+        },
+        {
+          "id": "twin-2",
+          "title": "Twin 2",
+          "currentAge": 0,
+          "collegeStartAge": 18,
+          "collegeDurationYears": 4
+        }
+      ],
       "inflationRate": 0.02,
       "atHomeAnnualCostTodayPerChild": 5000,
       "awayAnnualCostTodayPerChild": 15000,

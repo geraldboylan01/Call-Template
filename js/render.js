@@ -463,6 +463,13 @@ function isCurrencyTableContext({
     return true;
   }
 
+  if (titleToken.includes('annualfundingprofile')
+    && !isRowLabelCell
+    && !columnToken.includes('year')
+    && !columnToken.includes('attending')) {
+    return true;
+  }
+
   return (titleToken.includes('outputs') || titleToken.includes('scenario'))
     && isMoneyLabelToken(rowToken);
 }
@@ -2198,7 +2205,9 @@ function buildOverviewMetaItems(module, signalCounts) {
 
   if (moduleKind.token === 'college-funding') {
     const inputs = module?.generated?.collegeFundingInputs || {};
-    const childCount = Number(inputs.childrenCount || inputs.numberOfChildren);
+    const childCount = Array.isArray(inputs.children) && inputs.children.length > 0
+      ? inputs.children.length
+      : Number(inputs.childrenCount || inputs.numberOfChildren);
     if (Number.isFinite(childCount) && childCount > 0) {
       items.push(pluralizeOverview(childCount, 'child', 'children'));
     }
@@ -9076,12 +9085,12 @@ function buildCollegeFundingScenarioCard(projection) {
     values.appendChild(buildCollegeHeroMetric(
       'Today’s terms',
       formatDisplayCurrency(scenario.costToday),
-      `${formatDisplayCurrency(scenario.annualTodayTotal)} annual family cost`
+      `${scenario.fundingPeriodYears || 0} family funding ${scenario.fundingPeriodYears === 1 ? 'year' : 'years'}`
     ));
     values.appendChild(buildCollegeHeroMetric(
       'Future nominal',
       formatDisplayCurrency(scenario.nominalCost),
-      `${formatDisplayCurrency(scenario.inflationImpact)} inflation impact`
+      `${formatDisplayCurrency(scenario.peakAnnualCost || 0)} peak annual cost`
     ));
     item.appendChild(values);
 
@@ -9110,6 +9119,7 @@ function renderCollegeFundingModule(module, {
   const projection = getCollegeProjection(module);
   const generatedOutputs = module?.generated?.outputs;
   const generatedAssumptions = module?.generated?.assumptions;
+  const generatedTables = Array.isArray(module?.generated?.tables) ? module.generated.tables : [];
   const generatedCharts = Array.isArray(module?.generated?.charts) ? module.generated.charts : [];
   const hasGeneratedOutputs = Array.isArray(generatedOutputs?.rows) && generatedOutputs.rows.length > 0;
   const hasGeneratedAssumptions = Array.isArray(generatedAssumptions?.rows) && generatedAssumptions.rows.length > 0;
@@ -9120,6 +9130,7 @@ function renderCollegeFundingModule(module, {
         ...(module.generated || {}),
         assumptions: hasGeneratedAssumptions ? generatedAssumptions : projection.assumptionsTable,
         outputs: hasGeneratedOutputs ? generatedOutputs : projection.outputsTable,
+        tables: generatedTables.length > 0 ? generatedTables : projection.tables,
         charts: generatedCharts.length > 0 ? generatedCharts : projection.charts
       }
     }
@@ -9159,6 +9170,16 @@ function renderCollegeFundingModule(module, {
     module: displayModule,
     tableKind: 'outputs'
   }));
+
+  const annualTables = Array.isArray(displayModule?.generated?.tables) ? displayModule.generated.tables : [];
+  annualTables.forEach((table, tableIndex) => {
+    const title = typeof table?.title === 'string' && table.title.trim()
+      ? table.title
+      : `Annual Funding Profile ${tableIndex + 1}`;
+    grid.appendChild(buildTableCard(title, table, {
+      dataGeneratedCard: `table:${tableIndex}`
+    }));
+  });
 
   grid.appendChild(buildAssumptionsTableCard(displayModule, {
     onPatchInputs,
