@@ -94,6 +94,7 @@ const PBS_BUCKET_DEFINITIONS = Object.freeze({
 });
 const CLIENT_GUIDE_COPY = Object.freeze({
   pbs: 'Start with net worth, then read the buckets as jobs for your money: spending reserves, retirement funding, concentrated assets, and debts.',
+  liquidity: 'Start with current cash versus the target reserve, then decide whether the priority is building the emergency fund or assigning surplus cash to a job.',
   pension: 'Start with the required pension pot and chart, then use the assumptions table to see which facts drive the retirement projection.',
   netRetirement: 'Start with the annual net shortfall, then read the required net investment fund as an after-tax funding target.',
   collegeFunding: 'Start with the funding range, then compare today’s-money and future nominal costs before deciding what to ring-fence.',
@@ -2077,6 +2078,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isLiquidityPlanModule(module)) {
+    return {
+      label: 'Liquidity',
+      token: 'liquidity'
+    };
+  }
+
   if (isPensionModule(module)) {
     return {
       label: 'Pension',
@@ -2173,6 +2181,23 @@ function buildOverviewMetaItems(module, signalCounts) {
     }
     if (signalCounts.blocks > 0) {
       items.push(pluralizeOverview(signalCounts.blocks, 'block'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'liquidity') {
+    const plan = module?.generated?.liquidityPlan || {};
+    const assessment = computeLiquidityAssessment(plan);
+    if (assessment?.clientLabel) {
+      items.push(assessment.clientLabel);
+    }
+    if (assessment?.monthsLabel) {
+      items.push(assessment.monthsLabel);
+    }
+    if (assessment?.actionMode === 'deploy' && assessment.surplusCash > 0) {
+      items.push('Surplus cash');
+    } else if ((assessment?.actionMode === 'build' || assessment?.actionMode === 'top-up') && assessment.shortfallCash > 0) {
+      items.push('Build reserve');
     }
     return uniqueOverviewItems(items, 3, 22);
   }
@@ -2501,6 +2526,10 @@ function isCollegeFundingModule(module) {
   return Boolean(module?.generated?.collegeFundingInputs);
 }
 
+function isLiquidityPlanModule(module) {
+  return Boolean(module?.generated?.liquidityPlan);
+}
+
 function isNetRetirementModule(module) {
   return Boolean(module?.generated?.netRetirementInputs);
 }
@@ -2534,6 +2563,14 @@ function isProtectionReportModule(module) {
 }
 
 function getPlaybookDisplayContext(module) {
+  if (isLiquidityPlanModule(module)) {
+    return {
+      key: 'liquidity',
+      heading: 'Liquidity Plan',
+      guide: CLIENT_GUIDE_COPY.liquidity
+    };
+  }
+
   if (isPersonalBalanceSheetModule(module)) {
     return {
       key: 'pbs',
@@ -2935,6 +2972,15 @@ function getLoanEngineInputs(module) {
 
 function isMortgageModule(module) {
   return Boolean(getLoanEngineInputs(module));
+}
+
+function blocksGeneratedTableEditing(module) {
+  return Boolean(
+    isPensionModule(module)
+    || isNetRetirementModule(module)
+    || isCollegeFundingModule(module)
+    || isMortgageModule(module)
+  );
 }
 
 function isVideoSummaryModule(module) {
@@ -3408,6 +3454,204 @@ function buildGeneratedCardHeader(titleText) {
   };
 }
 
+function canEditGeneratedText(editContext) {
+  return Boolean(
+    editContext
+    && !editContext.readOnly
+    && editContext.module?.id
+    && typeof editContext.onEditGeneratedText === 'function'
+  );
+}
+
+function normalizeEditableTextValue(value, { html = false } = {}) {
+  const text = html ? sanitizeSummaryHtml(String(value ?? '')) : String(value ?? '');
+  return html ? text : text.replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
+}
+
+function setEditableElementValue(element, value, { html = false } = {}) {
+  if (html) {
+    element.innerHTML = sanitizeSummaryHtml(value);
+    return;
+  }
+  element.textContent = value;
+}
+
+function decorateInlineGeneratedEdit(element, editContext, path, {
+  html = false,
+  multiline = false,
+  valueType = 'string',
+  label = 'Edit text'
+} = {}) {
+  if (!(element instanceof HTMLElement) || !Array.isArray(path) || !canEditGeneratedText(editContext)) {
+    return element;
+  }
+
+  element.classList.add('generated-inline-editable');
+  element.contentEditable = 'true';
+  element.spellcheck = true;
+  element.dataset.generatedEditPath = path.join('.');
+  element.dataset.generatedEditMode = html ? 'html' : 'text';
+  element.dataset.generatedEditLabel = label;
+  element.setAttribute('role', 'textbox');
+  element.setAttribute('aria-label', label);
+  if (multiline) {
+    element.setAttribute('aria-multiline', 'true');
+  }
+  if (element.tabIndex < 0) {
+    element.tabIndex = 0;
+  }
+
+  let originalValue = '';
+  let canceled = false;
+  const getCurrentValue = () => normalizeEditableTextValue(html ? element.innerHTML : element.textContent, { html });
+
+  element.addEventListener('focus', () => {
+    canceled = false;
+    originalValue = getCurrentValue();
+  });
+
+  element.addEventListener('paste', (event) => {
+    if (html) {
+      return;
+    }
+    const text = event.clipboardData?.getData('text/plain') || '';
+    if (!text) {
+      return;
+    }
+    event.preventDefault();
+    document.execCommand('insertText', false, text);
+  });
+
+  element.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      canceled = true;
+      setEditableElementValue(element, originalValue, { html });
+      element.blur();
+      return;
+    }
+
+    const shouldCommit = event.key === 'Enter' && (!multiline || event.metaKey || event.ctrlKey);
+    if (shouldCommit) {
+      event.preventDefault();
+      element.blur();
+    }
+  });
+
+  element.addEventListener('blur', () => {
+    if (canceled) {
+      return;
+    }
+
+    const value = getCurrentValue();
+    if (value === originalValue) {
+      return;
+    }
+
+    Promise.resolve(editContext.onEditGeneratedText({
+      moduleId: editContext.module.id,
+      path,
+      value,
+      valueType,
+      html
+    })).catch(() => {
+      setEditableElementValue(element, originalValue, { html });
+    });
+  });
+
+  return element;
+}
+
+function getTopLevelGeneratedCards(section) {
+  if (!section) {
+    return [];
+  }
+
+  return [...section.querySelectorAll('.generated-card, .report-block')]
+    .filter((card) => !card.parentElement?.closest('.generated-card, .report-block'));
+}
+
+function orderGeneratedCards(section, module) {
+  const order = Array.isArray(module?.ui?.cardOrder) ? module.ui.cardOrder : [];
+  if (order.length === 0) {
+    return;
+  }
+
+  const ranks = new Map(order.map((cardId, index) => [cardId, index]));
+  const grouped = new Map();
+  getTopLevelGeneratedCards(section).forEach((card, index) => {
+    const parent = card.parentElement;
+    if (!parent) {
+      return;
+    }
+    if (!grouped.has(parent)) {
+      grouped.set(parent, []);
+    }
+    grouped.get(parent).push({ card, index });
+  });
+
+  grouped.forEach((items, parent) => {
+    const sorted = [...items].sort((left, right) => {
+      const leftRank = ranks.has(left.card.dataset.moduleCardId)
+        ? ranks.get(left.card.dataset.moduleCardId)
+        : Number.POSITIVE_INFINITY;
+      const rightRank = ranks.has(right.card.dataset.moduleCardId)
+        ? ranks.get(right.card.dataset.moduleCardId)
+        : Number.POSITIVE_INFINITY;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return left.index - right.index;
+    });
+    sorted.forEach(({ card }) => parent.appendChild(card));
+  });
+}
+
+function getVisibleGeneratedCardOrder(section) {
+  return getTopLevelGeneratedCards(section)
+    .map((card) => card.dataset.moduleCardId || '')
+    .filter(Boolean);
+}
+
+function addGeneratedCardDragHandle(card, label = 'section') {
+  const actions = card.querySelector(':scope > .generated-card-header .generated-card-header-actions, :scope > .report-block-header .generated-card-header-actions');
+  const controlHost = actions || card;
+  const handle = document.createElement('button');
+  handle.type = 'button';
+  handle.className = 'generated-card-drag-handle';
+  handle.textContent = '::';
+  handle.title = `Move ${label}`;
+  handle.setAttribute('aria-label', `Move ${label}`);
+  controlHost.prepend(handle);
+}
+
+function enableGeneratedCardSorting(section, {
+  onReorderCards = null
+} = {}) {
+  if (!section || typeof onReorderCards !== 'function' || typeof window.Sortable === 'undefined') {
+    return;
+  }
+
+  const parents = new Set(getTopLevelGeneratedCards(section).map((card) => card.parentElement).filter(Boolean));
+  parents.forEach((parent) => {
+    if (parent.dataset.generatedSortableReady === 'true') {
+      return;
+    }
+    parent.dataset.generatedSortableReady = 'true';
+    window.Sortable.create(parent, {
+      animation: 160,
+      draggable: '.is-reorderable-generated-card',
+      handle: '.generated-card-drag-handle',
+      ghostClass: 'generated-card-drag-ghost',
+      chosenClass: 'generated-card-drag-chosen',
+      dragClass: 'generated-card-dragging',
+      onEnd: () => {
+        onReorderCards(getVisibleGeneratedCardOrder(section));
+      }
+    });
+  });
+}
+
 function buildInlineAssumptionInputCell({
   module,
   calculator,
@@ -3817,7 +4061,8 @@ function createEditableAssumptionCell({
 function buildAssumptionsTableCard(module, {
   onPatchInputs = null,
   status = null,
-  readOnly = false
+  readOnly = false,
+  onEditGeneratedText = null
 } = {}) {
   const generated = module.generated || { assumptions: { columns: [], rows: [] } };
   const assumptions = generated.assumptions || { columns: [], rows: [] };
@@ -3831,6 +4076,7 @@ function buildAssumptionsTableCard(module, {
     && typeof onPatchInputs === 'function'
     && isInlineAssumptionsEditableModule(module);
   const editMode = Boolean(status?.isEditing);
+  const allowGenericTableEdit = !hasInlineEditor && !blocksGeneratedTableEditing(module);
 
   if (hasInlineEditor) {
     const statusEl = document.createElement('span');
@@ -3883,9 +4129,19 @@ function buildAssumptionsTableCard(module, {
 
   const thead = document.createElement('thead');
   const headerRow = document.createElement('tr');
-  columns.forEach((column) => {
+  columns.forEach((column, columnIndex) => {
     const th = document.createElement('th');
     th.textContent = normalizeCurrencyLabelText(column);
+    if (allowGenericTableEdit) {
+      decorateInlineGeneratedEdit(th, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'assumptions', 'columns', columnIndex], {
+        valueType: 'string',
+        label: 'Edit assumption column'
+      });
+    }
     headerRow.appendChild(th);
   });
   thead.appendChild(headerRow);
@@ -3929,6 +4185,16 @@ function buildAssumptionsTableCard(module, {
         }
       } else {
         td.textContent = cellText;
+        if (allowGenericTableEdit) {
+          decorateInlineGeneratedEdit(td, {
+            module,
+            readOnly,
+            onEditGeneratedText
+          }, ['generated', 'assumptions', 'rows', rowIndex, index], {
+            valueType: typeof safeRow[index] === 'number' ? 'number' : 'string',
+            label: 'Edit assumption cell'
+          });
+        }
       }
 
       if (isCurrencyTableContext({
@@ -3984,7 +4250,11 @@ function hideLayer(layer) {
 function buildTableCard(cardTitle, tableData, {
   dataGeneratedCard = '',
   module = null,
-  tableKind = ''
+  tableKind = '',
+  editBasePath = null,
+  editTitlePath = null,
+  readOnly = false,
+  onEditGeneratedText = null
 } = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-table-card';
@@ -3993,6 +4263,15 @@ function buildTableCard(cardTitle, tableData, {
   }
 
   const { header } = buildGeneratedCardHeader(cardTitle);
+  const titleEl = header.querySelector('.generated-card-title');
+  decorateInlineGeneratedEdit(titleEl, {
+    module,
+    readOnly,
+    onEditGeneratedText
+  }, editTitlePath, {
+    valueType: 'string',
+    label: `Edit ${cardTitle} title`
+  });
   card.appendChild(header);
 
   const columns = Array.isArray(tableData?.columns) ? tableData.columns : [];
@@ -4017,9 +4296,17 @@ function buildTableCard(cardTitle, tableData, {
   const thead = document.createElement('thead');
   const headerRow = document.createElement('tr');
 
-  columns.forEach((column) => {
+  columns.forEach((column, columnIndex) => {
     const th = document.createElement('th');
     th.textContent = normalizeCurrencyLabelText(column);
+    decorateInlineGeneratedEdit(th, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, Array.isArray(editBasePath) ? [...editBasePath, 'columns', columnIndex] : null, {
+      valueType: 'string',
+      label: `Edit ${cardTitle} column`
+    });
     headerRow.appendChild(th);
   });
 
@@ -4040,6 +4327,14 @@ function buildTableCard(cardTitle, tableData, {
         rowLabel: safeRow[0],
         columnLabel: column,
         isRowLabelCell
+      });
+      decorateInlineGeneratedEdit(td, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, Array.isArray(editBasePath) ? [...editBasePath, 'rows', rowIndex, index] : null, {
+        valueType: typeof safeRow[index] === 'number' ? 'number' : 'string',
+        label: `Edit ${cardTitle} cell`
       });
 
       if (isCurrencyTableContext({
@@ -5340,7 +5635,11 @@ function buildPbsBalanceHeader(outputsBucketed, currencySymbol) {
 function buildPbsBucketCard(section, {
   fallbackKey,
   sectionEnhancements = {},
-  currencySymbol = '€'
+  currencySymbol = '€',
+  module = null,
+  sectionIndex = -1,
+  readOnly = false,
+  onEditGeneratedText = null
 } = {}) {
   const sectionToken = normalizeSectionToken(section?.key || section?.title || fallbackKey);
   const indicator = sectionEnhancements[sectionToken]?.indicator || null;
@@ -5368,7 +5667,17 @@ function buildPbsBucketCard(section, {
 
   const headingCopy = document.createElement('div');
   headingCopy.className = 'pbs-bucket-heading-copy';
-  headingCopy.appendChild(buildPbsBucketTitleLine(title, sectionToken));
+  const titleLine = buildPbsBucketTitleLine(title, sectionToken);
+  const titleElement = titleLine.querySelector('.pbs-bucket-card-title');
+  decorateInlineGeneratedEdit(titleElement, {
+    module,
+    readOnly,
+    onEditGeneratedText
+  }, sectionIndex >= 0 ? ['generated', 'outputsBucketed', 'sections', sectionIndex, 'title'] : null, {
+    valueType: 'string',
+    label: 'Edit bucket title'
+  });
+  headingCopy.appendChild(titleLine);
 
   if (indicator?.supportText) {
     const supportText = document.createElement('span');
@@ -5391,7 +5700,7 @@ function buildPbsBucketCard(section, {
     empty.textContent = 'No assets listed.';
     rowList.appendChild(empty);
   } else {
-    rows.forEach(([label, amount]) => {
+    rows.forEach(([label, amount], rowIndex) => {
       const row = document.createElement('div');
       row.className = 'pbs-bucket-row';
       row.dataset.pbsSectionKey = sectionKey;
@@ -5401,11 +5710,27 @@ function buildPbsBucketCard(section, {
       const labelEl = document.createElement('span');
       labelEl.className = 'pbs-bucket-row-label';
       labelEl.textContent = label;
+      decorateInlineGeneratedEdit(labelEl, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, sectionIndex >= 0 ? ['generated', 'outputsBucketed', 'sections', sectionIndex, 'rows', rowIndex, 0] : null, {
+        valueType: 'string',
+        label: 'Edit bucket row label'
+      });
       row.appendChild(labelEl);
 
       const amountEl = document.createElement('span');
       amountEl.className = 'pbs-bucket-row-amount';
       amountEl.textContent = formatBucketedCurrency(amount, currencySymbol);
+      decorateInlineGeneratedEdit(amountEl, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, sectionIndex >= 0 ? ['generated', 'outputsBucketed', 'sections', sectionIndex, 'rows', rowIndex, 1] : null, {
+        valueType: 'number',
+        label: 'Edit bucket amount'
+      });
       setPbsValueDataset(amountEl, {
         key: `bucket:${sectionKey}:row:${normalizeSectionToken(label)}`,
         value: amount,
@@ -5753,7 +6078,11 @@ function shouldHideSummarySubtotal(section, rows, isSummary) {
   ));
 }
 
-function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements = {}) {
+function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements = {}, {
+  module = null,
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'pbs-bucket-tables';
 
@@ -5796,7 +6125,19 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     titleRow.className = 'pbs-bucket-title-row';
     const titleCell = document.createElement('th');
     titleCell.colSpan = 2;
-    titleCell.appendChild(buildOutputsBucketedSectionHeading(title, indicator));
+    const headingContent = buildOutputsBucketedSectionHeading(title, indicator);
+    titleCell.appendChild(headingContent);
+    const editableHeading = headingContent instanceof HTMLElement
+      ? (headingContent.querySelector('.pbs-section-heading-text') || headingContent)
+      : titleCell;
+    decorateInlineGeneratedEdit(editableHeading, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'outputsBucketed', 'sections', sectionIndex, 'title'], {
+      valueType: 'string',
+      label: 'Edit output section title'
+    });
     titleRow.appendChild(titleCell);
     thead.appendChild(titleRow);
 
@@ -5804,6 +6145,14 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     columns.forEach((column, columnIndex) => {
       const th = document.createElement('th');
       th.textContent = normalizeCurrencyLabelText(column);
+      decorateInlineGeneratedEdit(th, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'outputsBucketed', 'sections', sectionIndex, 'columns', columnIndex], {
+        valueType: 'string',
+        label: 'Edit output column'
+      });
       if (columnIndex === 1) {
         th.classList.add('pbs-amount-col');
       }
@@ -5813,18 +6162,34 @@ function buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhanceme
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    rows.forEach((row) => {
+    rows.forEach((row, rowIndex) => {
       const tr = document.createElement('tr');
       const label = row[0];
       const amount = row[1];
 
       const labelCell = document.createElement('td');
       labelCell.textContent = label;
+      decorateInlineGeneratedEdit(labelCell, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'outputsBucketed', 'sections', sectionIndex, 'rows', rowIndex, 0], {
+        valueType: 'string',
+        label: 'Edit output row label'
+      });
       tr.appendChild(labelCell);
 
       const amountCell = document.createElement('td');
       amountCell.className = 'pbs-amount-col';
       amountCell.textContent = formatBucketedCurrency(amount, currencySymbol);
+      decorateInlineGeneratedEdit(amountCell, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'outputsBucketed', 'sections', sectionIndex, 'rows', rowIndex, 1], {
+        valueType: 'number',
+        label: 'Edit output amount'
+      });
       tr.appendChild(amountCell);
 
       const isNetWorthRow = isSummary && isPbsNetWorthSummaryLabel(label);
@@ -5880,7 +6245,11 @@ function buildOutputsBucketedDetailCard(section, {
   highlightNetWorth = false,
   netWorthContext = null,
   sectionKey = '',
-  currencySymbol = '€'
+  currencySymbol = '€',
+  module = null,
+  sectionIndex = -1,
+  readOnly = false,
+  onEditGeneratedText = null
 } = {}) {
   const card = document.createElement('section');
   card.className = 'pbs-stacked-card';
@@ -5906,6 +6275,14 @@ function buildOutputsBucketedDetailCard(section, {
   const heading = document.createElement('h4');
   heading.className = 'generated-card-title pbs-stacked-title';
   heading.textContent = title;
+  decorateInlineGeneratedEdit(heading, {
+    module,
+    readOnly,
+    onEditGeneratedText
+  }, sectionIndex >= 0 ? ['generated', 'outputsBucketed', 'sections', sectionIndex, 'title'] : null, {
+    valueType: 'string',
+    label: 'Edit output section title'
+  });
   card.appendChild(heading);
 
   const table = document.createElement('table');
@@ -5916,6 +6293,14 @@ function buildOutputsBucketedDetailCard(section, {
   columns.forEach((column, index) => {
     const th = document.createElement('th');
     th.textContent = normalizeCurrencyLabelText(column);
+    decorateInlineGeneratedEdit(th, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, sectionIndex >= 0 ? ['generated', 'outputsBucketed', 'sections', sectionIndex, 'columns', index] : null, {
+      valueType: 'string',
+      label: 'Edit output column'
+    });
     if (index === 1) {
       th.classList.add('pbs-amount-col');
     }
@@ -5925,7 +6310,7 @@ function buildOutputsBucketedDetailCard(section, {
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  rows.forEach((row) => {
+  rows.forEach((row, rowIndex) => {
     const tr = document.createElement('tr');
     const label = row[0];
     if (normalizedSectionKey) {
@@ -5936,11 +6321,27 @@ function buildOutputsBucketedDetailCard(section, {
 
     const labelCell = document.createElement('td');
     labelCell.textContent = label;
+    decorateInlineGeneratedEdit(labelCell, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, sectionIndex >= 0 ? ['generated', 'outputsBucketed', 'sections', sectionIndex, 'rows', rowIndex, 0] : null, {
+      valueType: 'string',
+      label: 'Edit output row label'
+    });
     tr.appendChild(labelCell);
 
     const amountCell = document.createElement('td');
     amountCell.className = 'pbs-amount-col';
     amountCell.textContent = formatBucketedCurrency(row[1], currencySymbol);
+    decorateInlineGeneratedEdit(amountCell, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, sectionIndex >= 0 ? ['generated', 'outputsBucketed', 'sections', sectionIndex, 'rows', rowIndex, 1] : null, {
+      valueType: 'number',
+      label: 'Edit output amount'
+    });
     if (normalizedSectionKey) {
       setPbsValueDataset(amountCell, {
         key: `detail:${normalizedSectionKey}:row:${normalizeSectionToken(label)}`,
@@ -5993,7 +6394,10 @@ function buildOutputsBucketedDetailCard(section, {
 
 function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements = {}, {
   summaryHtml = '',
-  guideText = ''
+  guideText = '',
+  module = null,
+  readOnly = false,
+  onEditGeneratedText = null
 } = {}) {
   const sections = outputsBucketed.sections;
   const assetSections = PBS_ASSET_SECTION_KEYS.map((key) => (
@@ -6030,7 +6434,11 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
     bucketGrid.appendChild(buildPbsBucketCard(section, {
       fallbackKey: PBS_ASSET_SECTION_KEYS[index],
       sectionEnhancements,
-      currencySymbol
+      currencySymbol,
+      module,
+      sectionIndex: sections.indexOf(section),
+      readOnly,
+      onEditGeneratedText
     }));
   });
 
@@ -6045,7 +6453,11 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
       defaultTitle: 'Liabilities',
       defaultColumns: ['Liability', `Amount (${currencySymbol})`],
       sectionKey: 'liabilities',
-      currencySymbol
+      currencySymbol,
+      module,
+      sectionIndex: sections.indexOf(liabilitiesSection),
+      readOnly,
+      onEditGeneratedText
     }));
   }
 
@@ -6063,7 +6475,11 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
         defaultColumns: ['Metric', `Amount (${currencySymbol})`],
         highlightNetWorth: true,
         sectionKey: 'summary',
-        currencySymbol
+        currencySymbol,
+        module,
+        sectionIndex: sections.indexOf(summarySection),
+        readOnly,
+        onEditGeneratedText
       }));
     }
   }
@@ -6437,7 +6853,9 @@ function buildPbsScenarioSwitcher(cases, onSelect) {
 }
 
 function buildPbsScenarioMatrixContent(module, outputsBucketed, {
-  summaryHtml = ''
+  summaryHtml = '',
+  readOnly = false,
+  onEditGeneratedText = null
 } = {}) {
   const displayContext = getPlaybookDisplayContext(module);
   const cases = getPbsScenarioCases(outputsBucketed, summaryHtml)
@@ -6474,7 +6892,10 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
     const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, selectedOutputsBucketed);
     const nextContent = buildOutputsBucketedMatrixContent(selectedOutputsBucketed, sectionEnhancements, {
       summaryHtml: nextCase.summaryHtml,
-      guideText: displayContext.guide
+      guideText: displayContext.guide,
+      module,
+      readOnly,
+      onEditGeneratedText: nextCase.id === PBS_CURRENT_SCENARIO_ID ? onEditGeneratedText : null
     });
 
     if (!nextContent) {
@@ -6528,7 +6949,9 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
 }
 
 function buildOutputsBucketedCard(module, outputsBucketed, {
-  summaryHtml = ''
+  summaryHtml = '',
+  readOnly = false,
+  onEditGeneratedText = null
 } = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-table-card generated-outputs-bucketed-card';
@@ -6552,9 +6975,12 @@ function buildOutputsBucketedCard(module, outputsBucketed, {
 
   const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, outputsBucketed);
   const matrixContent = isPbsModule
-    ? buildPbsScenarioMatrixContent(module, outputsBucketed, { summaryHtml })
+    ? buildPbsScenarioMatrixContent(module, outputsBucketed, { summaryHtml, readOnly, onEditGeneratedText })
     : buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements, {
-      summaryHtml: ''
+      summaryHtml: '',
+      module,
+      readOnly,
+      onEditGeneratedText
     });
   if (matrixContent) {
     card.appendChild(matrixContent);
@@ -6567,12 +6993,20 @@ function buildOutputsBucketedCard(module, outputsBucketed, {
       card.appendChild(leadCopy);
     }
   }
-  card.appendChild(buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements));
+  card.appendChild(buildOutputsBucketedMiniTablesContent(outputsBucketed, sectionEnhancements, {
+    module,
+    readOnly,
+    onEditGeneratedText
+  }));
   return card;
 }
 
 function buildSummaryCard(summaryHtml, {
-  guideText = ''
+  guideText = '',
+  module = null,
+  readOnly = false,
+  onEditGeneratedText = null,
+  path = ['generated', 'summaryHtml']
 } = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card generated-summary-card';
@@ -6599,6 +7033,16 @@ function buildSummaryCard(summaryHtml, {
     const summary = document.createElement('div');
     summary.className = 'generated-summary-copy';
     summary.innerHTML = safeHtml;
+    decorateInlineGeneratedEdit(summary, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, path, {
+      html: true,
+      multiline: true,
+      valueType: 'html',
+      label: 'Edit client guide'
+    });
     content.appendChild(summary);
   }
 
@@ -6607,25 +7051,29 @@ function buildSummaryCard(summaryHtml, {
   return card;
 }
 
-function buildModuleMediaCard(module, {
+function buildModuleMediaCards(module, {
   readOnly = false,
   onRemoveImage = null
 } = {}) {
   const images = Array.isArray(module?.media?.images) ? module.media.images : [];
   if (images.length === 0) {
-    return null;
+    return [];
   }
 
-  const card = document.createElement('section');
-  card.className = 'generated-card module-media-card';
-  card.dataset.generatedCard = 'media';
+  return images.map((image, imageIndex) => {
+    const card = document.createElement('section');
+    card.className = 'generated-card module-media-card';
+    card.dataset.generatedCard = `image:${image.id || `image-${imageIndex + 1}`}`;
 
-  const { header } = buildGeneratedCardHeader(images.length === 1 ? 'Media' : `Media (${images.length})`);
-  card.appendChild(header);
+    const title = image.alt && image.alt !== 'Module image'
+      ? image.alt
+      : `Image ${imageIndex + 1}`;
+    const { header } = buildGeneratedCardHeader(title);
+    card.appendChild(header);
 
-  const grid = document.createElement('div');
-  grid.className = 'module-media-grid';
-  images.forEach((image) => {
+    const grid = document.createElement('div');
+    grid.className = 'module-media-grid module-media-single-grid';
+
     const figure = document.createElement('figure');
     figure.className = 'module-media-item';
     figure.dataset.moduleImageId = image.id;
@@ -6661,9 +7109,13 @@ function buildModuleMediaCard(module, {
     }
 
     grid.appendChild(figure);
+    card.appendChild(grid);
+    return card;
   });
-  card.appendChild(grid);
-  return card;
+}
+
+function appendModuleMediaCards(host, module, options = {}) {
+  buildModuleMediaCards(module, options).forEach((card) => host.appendChild(card));
 }
 
 function getGeneratedCardId(card, index) {
@@ -6687,15 +7139,16 @@ function getGeneratedCardLabel(card) {
 
 function applyGeneratedCardControls(section, module, {
   readOnly = false,
-  onRemoveCard = null
+  onRemoveCard = null,
+  onReorderCards = null
 } = {}) {
   if (!section || !module) {
     return section;
   }
 
   const hiddenCardIds = new Set(Array.isArray(module?.ui?.hiddenCardIds) ? module.ui.hiddenCardIds : []);
-  const cards = [...section.querySelectorAll('.generated-card, .report-block')]
-    .filter((card) => !card.parentElement?.closest('.generated-card, .report-block'));
+  section.querySelectorAll('.generated-card-remove-btn, .generated-card-drag-handle').forEach((control) => control.remove());
+  let cards = getTopLevelGeneratedCards(section);
 
   cards.forEach((card, index) => {
     const cardId = getGeneratedCardId(card, index);
@@ -6703,6 +7156,17 @@ function applyGeneratedCardControls(section, module, {
     if (hiddenCardIds.has(cardId)) {
       card.remove();
       return;
+    }
+  });
+
+  orderGeneratedCards(section, module);
+  cards = getTopLevelGeneratedCards(section);
+  const canReorder = !readOnly && typeof onReorderCards === 'function' && cards.length > 1;
+
+  cards.forEach((card) => {
+    card.classList.toggle('is-reorderable-generated-card', canReorder);
+    if (canReorder) {
+      addGeneratedCardDragHandle(card, getGeneratedCardLabel(card));
     }
 
     if (readOnly || typeof onRemoveCard !== 'function') {
@@ -6717,9 +7181,13 @@ function applyGeneratedCardControls(section, module, {
     button.textContent = '×';
     button.title = `Remove ${getGeneratedCardLabel(card)}`;
     button.setAttribute('aria-label', `Remove ${getGeneratedCardLabel(card)}`);
-    button.addEventListener('click', () => onRemoveCard(cardId));
+    button.addEventListener('click', () => onRemoveCard(card.dataset.moduleCardId));
     controlHost.appendChild(button);
   });
+
+  if (canReorder) {
+    enableGeneratedCardSorting(section, { onReorderCards });
+  }
 
   return section;
 }
@@ -7330,7 +7798,10 @@ function copySvgVisual(svgElement, statusElement = null) {
   });
 }
 
-function buildEducationTopicCard(module, education) {
+function buildEducationTopicCard(module, education, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card education-topic-card';
   card.dataset.generatedCard = 'education-topic';
@@ -7348,12 +7819,31 @@ function buildEducationTopicCard(module, education) {
   const topicLine = document.createElement('p');
   topicLine.className = 'education-topic-line';
   topicLine.textContent = topic;
+  decorateInlineGeneratedEdit(topicLine, {
+    module,
+    readOnly,
+    onEditGeneratedText
+  }, ['generated', 'education', 'topic'], {
+    valueType: 'string',
+    label: 'Edit education topic'
+  });
   card.appendChild(topicLine);
 
   if (audience) {
     const audienceLine = document.createElement('p');
     audienceLine.className = 'education-audience-line';
-    audienceLine.textContent = `Audience: ${audience}`;
+    audienceLine.append('Audience: ');
+    const audienceText = document.createElement('span');
+    audienceText.textContent = audience;
+    decorateInlineGeneratedEdit(audienceText, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'education', 'audience'], {
+      valueType: 'string',
+      label: 'Edit education audience'
+    });
+    audienceLine.appendChild(audienceText);
     card.appendChild(audienceLine);
   }
 
@@ -7380,7 +7870,10 @@ function buildEducationMetricsCard(education) {
   return card;
 }
 
-function buildEducationStepsCard(education) {
+function buildEducationStepsCard(module, education, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
   const steps = Array.isArray(education?.steps) ? education.steps : [];
   if (steps.length === 0) {
     return null;
@@ -7467,12 +7960,28 @@ function buildEducationStepsCard(education) {
       const kicker = document.createElement('p');
       kicker.className = 'education-step-kicker';
       kicker.textContent = step.kicker.trim();
+      decorateInlineGeneratedEdit(kicker, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'education', 'steps', index, 'kicker'], {
+        valueType: 'string',
+        label: 'Edit step kicker'
+      });
       panel.appendChild(kicker);
     }
 
     const title = document.createElement('h4');
     title.className = 'education-step-title';
     title.textContent = step?.title || `Step ${index + 1}`;
+    decorateInlineGeneratedEdit(title, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'education', 'steps', index, 'title'], {
+      valueType: 'string',
+      label: 'Edit step title'
+    });
     panel.appendChild(title);
 
     const safeBodyHtml = sanitizeSummaryHtml(step?.bodyHtml || '');
@@ -7480,6 +7989,16 @@ function buildEducationStepsCard(education) {
       const body = document.createElement('div');
       body.className = 'education-section-body-content';
       body.innerHTML = safeBodyHtml;
+      decorateInlineGeneratedEdit(body, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'education', 'steps', index, 'bodyHtml'], {
+        html: true,
+        multiline: true,
+        valueType: 'html',
+        label: 'Edit step body'
+      });
       panel.appendChild(body);
     }
 
@@ -7492,6 +8011,14 @@ function buildEducationStepsCard(education) {
       bullets.forEach((bullet) => {
         const item = document.createElement('li');
         item.textContent = bullet;
+        decorateInlineGeneratedEdit(item, {
+          module,
+          readOnly,
+          onEditGeneratedText
+        }, ['generated', 'education', 'steps', index, 'bullets', [...list.children].length], {
+          valueType: 'string',
+          label: 'Edit step bullet'
+        });
         list.appendChild(item);
       });
       panel.appendChild(list);
@@ -7501,6 +8028,14 @@ function buildEducationStepsCard(education) {
       const focus = document.createElement('p');
       focus.className = 'education-step-focus';
       focus.textContent = step.focus.trim();
+      decorateInlineGeneratedEdit(focus, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'education', 'steps', index, 'focus'], {
+        valueType: 'string',
+        label: 'Edit step focus'
+      });
       panel.appendChild(focus);
     }
 
@@ -7521,7 +8056,10 @@ function buildEducationStepsCard(education) {
   return card;
 }
 
-function buildEducationSectionsCard(education) {
+function buildEducationSectionsCard(module, education, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
   const card = document.createElement('section');
   card.className = 'generated-card education-sections-card';
   card.dataset.generatedCard = 'education-sections';
@@ -7548,7 +8086,17 @@ function buildEducationSectionsCard(education) {
 
     const summary = document.createElement('summary');
     summary.className = 'education-section-summary';
-    summary.textContent = section?.title || `Section ${index + 1}`;
+    const summaryTitle = document.createElement('span');
+    summaryTitle.textContent = section?.title || `Section ${index + 1}`;
+    decorateInlineGeneratedEdit(summaryTitle, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'education', 'sections', index, 'title'], {
+      valueType: 'string',
+      label: 'Edit section title'
+    });
+    summary.appendChild(summaryTitle);
     details.appendChild(summary);
 
     const bodyWrap = document.createElement('div');
@@ -7559,6 +8107,16 @@ function buildEducationSectionsCard(education) {
       const bodyContent = document.createElement('div');
       bodyContent.className = 'education-section-body-content';
       bodyContent.innerHTML = safeBodyHtml;
+      decorateInlineGeneratedEdit(bodyContent, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'education', 'sections', index, 'bodyHtml'], {
+        html: true,
+        multiline: true,
+        valueType: 'html',
+        label: 'Edit section body'
+      });
       bodyWrap.appendChild(bodyContent);
     }
 
@@ -7571,6 +8129,14 @@ function buildEducationSectionsCard(education) {
       bullets.forEach((bullet) => {
         const li = document.createElement('li');
         li.textContent = bullet;
+        decorateInlineGeneratedEdit(li, {
+          module,
+          readOnly,
+          onEditGeneratedText
+        }, ['generated', 'education', 'sections', index, 'bullets', [...ul.children].length], {
+          valueType: 'string',
+          label: 'Edit section bullet'
+        });
         ul.appendChild(li);
       });
       bodyWrap.appendChild(ul);
@@ -7588,6 +8154,14 @@ function buildEducationSectionsCard(education) {
       const body = document.createElement('p');
       body.className = 'education-why-body';
       body.textContent = section.whyItMatters.trim();
+      decorateInlineGeneratedEdit(body, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'education', 'sections', index, 'whyItMatters'], {
+        valueType: 'string',
+        label: 'Edit why this matters'
+      });
       why.appendChild(body);
 
       bodyWrap.appendChild(why);
@@ -8158,7 +8732,10 @@ function buildEducationVisualsCard(module, education) {
   return card;
 }
 
-function buildEducationReferencesCard(education) {
+function buildEducationReferencesCard(module, education, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
   const references = Array.isArray(education?.references) ? education.references : [];
   if (references.length === 0) {
     return null;
@@ -8182,21 +8759,38 @@ function buildEducationReferencesCard(education) {
       ? reference.label.trim()
       : `Reference ${index + 1}`;
     const safeHref = sanitizeExternalUrl(reference?.url);
-    const titleLine = document.createElement(safeHref ? 'a' : 'span');
+    const canEditReference = canEditGeneratedText({ module, readOnly, onEditGeneratedText });
+    const titleLine = document.createElement(safeHref && !canEditReference ? 'a' : 'span');
     titleLine.className = 'report-source-label';
     titleLine.textContent = label;
-    if (safeHref) {
+    if (safeHref && titleLine.tagName === 'A') {
       titleLine.href = safeHref;
       titleLine.target = '_blank';
       titleLine.rel = 'noreferrer noopener';
       titleLine.title = 'Open source';
     }
+    decorateInlineGeneratedEdit(titleLine, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'education', 'references', index, 'label'], {
+      valueType: 'string',
+      label: 'Edit reference label'
+    });
     item.appendChild(titleLine);
 
     if (typeof reference?.kind === 'string' && reference.kind.trim()) {
       const kind = document.createElement('span');
       kind.className = 'report-source-kind';
       kind.textContent = reference.kind.trim();
+      decorateInlineGeneratedEdit(kind, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'education', 'references', index, 'kind'], {
+        valueType: 'string',
+        label: 'Edit reference kind'
+      });
       item.appendChild(kind);
     }
 
@@ -8204,6 +8798,14 @@ function buildEducationReferencesCard(education) {
       const note = document.createElement('p');
       note.className = 'report-source-note';
       note.textContent = reference.note.trim();
+      decorateInlineGeneratedEdit(note, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'education', 'references', index, 'note'], {
+        valueType: 'string',
+        label: 'Edit reference note'
+      });
       item.appendChild(note);
     }
 
@@ -8514,9 +9116,15 @@ function renderReportSourceListBlock(block) {
   return card;
 }
 
-function renderReportSummaryCard(summaryHtml, module) {
+function renderReportSummaryCard(summaryHtml, module, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
   const card = buildSummaryCard(summaryHtml || '', {
-    guideText: getPlaybookDisplayContext(module).guide
+    guideText: getPlaybookDisplayContext(module).guide,
+    module,
+    readOnly,
+    onEditGeneratedText
   });
   card.classList.add('report-block', 'report-summary-block');
   card.dataset.reportBlockType = 'summary';
@@ -8739,48 +9347,964 @@ function renderReportAccordionBlock(block) {
   return card;
 }
 
+function decorateReportBlockTextEdits(card, module, block, context = {}) {
+  if (!(card instanceof HTMLElement) || !Number.isInteger(context.blockIndex)) {
+    return card;
+  }
+
+  const editContext = {
+    module,
+    readOnly: context.readOnly,
+    onEditGeneratedText: context.onEditGeneratedText
+  };
+  const basePath = ['generated', 'report', 'blocks', context.blockIndex];
+  const decorate = (element, path, options = {}) => decorateInlineGeneratedEdit(element, editContext, path, options);
+
+  decorate(card.querySelector(':scope > .report-block-header .report-block-title'), [...basePath, 'title'], {
+    valueType: 'string',
+    label: 'Edit report block title'
+  });
+  decorate(card.querySelector(':scope > .report-block-header .report-block-subtitle'), [...basePath, 'subtitle'], {
+    valueType: 'string',
+    label: 'Edit report block subtitle'
+  });
+
+  switch (block?.type) {
+    case 'callout': {
+      const body = card.querySelector(':scope .report-callout-body');
+      if (body) {
+        decorate(body, [...basePath, block.bodyHtml ? 'bodyHtml' : 'markdown'], {
+          html: Boolean(block.bodyHtml),
+          multiline: true,
+          valueType: block.bodyHtml ? 'html' : 'string',
+          label: 'Edit callout body'
+        });
+      }
+      card.querySelectorAll(':scope > .report-callout-content > .report-callout-bullets > li').forEach((item, index) => {
+        decorate(item, [...basePath, 'bullets', index], {
+          valueType: 'string',
+          label: 'Edit callout bullet'
+        });
+      });
+      break;
+    }
+    case 'markdown': {
+      decorate(card.querySelector(':scope > .report-markdown-content'), [...basePath, 'markdown'], {
+        multiline: true,
+        valueType: 'string',
+        label: 'Edit markdown copy'
+      });
+      break;
+    }
+    case 'table': {
+      card.querySelectorAll(':scope .generated-table thead th').forEach((cell, index) => {
+        decorate(cell, [...basePath, 'table', 'columns', index], {
+          valueType: 'string',
+          label: 'Edit table column'
+        });
+      });
+      card.querySelectorAll(':scope .generated-table tbody tr').forEach((row, rowIndex) => {
+        row.querySelectorAll('td').forEach((cell, colIndex) => {
+          const current = block?.table?.rows?.[rowIndex]?.[colIndex];
+          decorate(cell, [...basePath, 'table', 'rows', rowIndex, colIndex], {
+            valueType: typeof current === 'number' ? 'number' : 'string',
+            label: 'Edit table cell'
+          });
+        });
+      });
+      break;
+    }
+    case 'checklist': {
+      card.querySelectorAll(':scope .report-checklist-item').forEach((item, index) => {
+        decorate(item.querySelector('.report-checklist-label'), [...basePath, 'items', index, 'label'], {
+          valueType: 'string',
+          label: 'Edit checklist label'
+        });
+        decorate(item.querySelector('.report-checklist-note'), [...basePath, 'items', index, 'note'], {
+          valueType: 'string',
+          label: 'Edit checklist note'
+        });
+      });
+      break;
+    }
+    case 'sourceList': {
+      card.querySelectorAll(':scope .report-source-item').forEach((item, index) => {
+        decorate(item.querySelector('.report-source-label'), [...basePath, 'items', index, 'label'], {
+          valueType: 'string',
+          label: 'Edit source label'
+        });
+        decorate(item.querySelector('.report-source-kind'), [...basePath, 'items', index, 'kind'], {
+          valueType: 'string',
+          label: 'Edit source kind'
+        });
+        decorate(item.querySelector('.report-source-note'), [...basePath, 'items', index, 'note'], {
+          valueType: 'string',
+          label: 'Edit source note'
+        });
+      });
+      break;
+    }
+    case 'kpiRow': {
+      card.querySelectorAll(':scope .report-kpi-item').forEach((item, index) => {
+        decorate(item.querySelector('.report-kpi-label'), [...basePath, 'items', index, 'label'], {
+          valueType: 'string',
+          label: 'Edit KPI label'
+        });
+        decorate(item.querySelector('.report-kpi-value'), [...basePath, 'items', index, 'value'], {
+          valueType: 'string',
+          label: 'Edit KPI value'
+        });
+        decorate(item.querySelector('.report-kpi-detail'), [...basePath, 'items', index, 'detail'], {
+          valueType: 'string',
+          label: 'Edit KPI detail'
+        });
+      });
+      break;
+    }
+    case 'insightGrid': {
+      card.querySelectorAll(':scope .report-insight-card').forEach((item, index) => {
+        decorate(item.querySelector('.report-insight-label'), [...basePath, 'items', index, 'label'], {
+          valueType: 'string',
+          label: 'Edit insight label'
+        });
+        decorate(item.querySelector('.report-insight-value'), [...basePath, 'items', index, 'value'], {
+          valueType: 'string',
+          label: 'Edit insight value'
+        });
+        decorate(item.querySelector('.report-insight-detail'), [...basePath, 'items', index, 'detail'], {
+          valueType: 'string',
+          label: 'Edit insight detail'
+        });
+      });
+      break;
+    }
+    case 'scenarioCompare': {
+      card.querySelectorAll(':scope .report-scenario-card').forEach((item, index) => {
+        decorate(item.querySelector('.report-scenario-title'), [...basePath, 'scenarios', index, 'label'], {
+          valueType: 'string',
+          label: 'Edit scenario label'
+        });
+        decorate(item.querySelector('.report-scenario-summary'), [...basePath, 'scenarios', index, 'summary'], {
+          valueType: 'string',
+          label: 'Edit scenario summary'
+        });
+        decorate(item.querySelector('.report-scenario-callout'), [...basePath, 'scenarios', index, 'callout'], {
+          valueType: 'string',
+          label: 'Edit scenario callout'
+        });
+      });
+      break;
+    }
+    case 'accordion': {
+      card.querySelectorAll(':scope .report-accordion-item').forEach((item, index) => {
+        decorate(item.querySelector('.report-accordion-summary'), [...basePath, 'items', index, 'title'], {
+          valueType: 'string',
+          label: 'Edit accordion title'
+        });
+        const body = item.querySelector('.report-accordion-body > .report-markdown-content');
+        if (body) {
+          const source = block?.items?.[index] || {};
+          decorate(body, [...basePath, 'items', index, source.bodyHtml ? 'bodyHtml' : 'markdown'], {
+            html: Boolean(source.bodyHtml),
+            multiline: true,
+            valueType: source.bodyHtml ? 'html' : 'string',
+            label: 'Edit accordion body'
+          });
+        }
+        item.querySelectorAll('.report-accordion-body > .report-callout-bullets > li').forEach((bullet, bulletIndex) => {
+          decorate(bullet, [...basePath, 'items', index, 'bullets', bulletIndex], {
+            valueType: 'string',
+            label: 'Edit accordion bullet'
+          });
+        });
+      });
+      break;
+    }
+    default:
+      break;
+  }
+
+  return card;
+}
+
 function renderReportBlock(module, block, context) {
   if (block?.errorMessage) {
-    return buildReportBlockErrorCard(block, block.errorMessage);
+    return decorateReportBlockTextEdits(buildReportBlockErrorCard(block, block.errorMessage), module, block, context);
   }
 
   try {
+    let card;
     switch (block?.type) {
       case 'callout':
-        return renderReportCalloutBlock(block);
+        card = renderReportCalloutBlock(block);
+        break;
       case 'markdown':
-        return renderReportMarkdownBlock(block);
+        card = renderReportMarkdownBlock(block);
+        break;
       case 'table':
-        return renderReportTableBlock(block);
+        card = renderReportTableBlock(block);
+        break;
       case 'chart': {
         const chartIndex = context.chartIndexByBlockId.get(block.id);
         if (!Number.isFinite(chartIndex)) {
-          return buildReportBlockErrorCard(block, 'Could not resolve chart hydration index for this report block.');
+          card = buildReportBlockErrorCard(block, 'Could not resolve chart hydration index for this report block.');
+          break;
         }
-        return renderReportChartBlock(block, chartIndex);
+        card = renderReportChartBlock(block, chartIndex);
+        break;
       }
       case 'svg':
-        return renderReportSvgBlock(module, block, context.blockIndex);
+        card = renderReportSvgBlock(module, block, context.blockIndex);
+        break;
       case 'timeline':
-        return renderReportTimelineBlock(module, block, context.blockIndex);
+        card = renderReportTimelineBlock(module, block, context.blockIndex);
+        break;
       case 'checklist':
-        return renderReportChecklistBlock(block);
+        card = renderReportChecklistBlock(block);
+        break;
       case 'sourceList':
-        return renderReportSourceListBlock(block);
+        card = renderReportSourceListBlock(block);
+        break;
       case 'kpiRow':
-        return renderReportKpiRowBlock(block);
+        card = renderReportKpiRowBlock(block);
+        break;
       case 'insightGrid':
-        return renderReportInsightGridBlock(block);
+        card = renderReportInsightGridBlock(block);
+        break;
       case 'scenarioCompare':
-        return renderReportScenarioCompareBlock(block);
+        card = renderReportScenarioCompareBlock(block);
+        break;
       case 'accordion':
-        return renderReportAccordionBlock(block);
+        card = renderReportAccordionBlock(block);
+        break;
       default:
-        return buildReportBlockErrorCard(block, `Unsupported report block type \"${block?.type || 'unknown'}\".`);
+        card = buildReportBlockErrorCard(block, `Unsupported report block type \"${block?.type || 'unknown'}\".`);
+        break;
     }
+    return decorateReportBlockTextEdits(card, module, block, context);
   } catch (error) {
-    return buildReportBlockErrorCard(block, error?.message || 'This block could not be rendered.');
+    return decorateReportBlockTextEdits(
+      buildReportBlockErrorCard(block, error?.message || 'This block could not be rendered.'),
+      module,
+      block,
+      context
+    );
   }
+}
+
+function getLiquidityCashItems(plan = {}) {
+  return Array.isArray(plan.cashItems)
+    ? plan.cashItems.filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+    : [];
+}
+
+function getLiquidityClientStatus(plan = {}) {
+  const status = typeof plan.clientStatus === 'string'
+    ? plan.clientStatus.trim().toLowerCase()
+    : '';
+  if (status === 'retired') {
+    return 'retired';
+  }
+  return 'not-retired';
+}
+
+function formatLiquidityMonths(value, { suffix = 'months' } = {}) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return '';
+  }
+  const formatted = Number.isInteger(parsed)
+    ? String(parsed)
+    : parsed.toLocaleString(undefined, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    });
+  return suffix ? `${formatted} ${suffix}` : formatted;
+}
+
+function formatLiquidityCurrency(value, currencySymbol = '€') {
+  if (value === null || value === undefined || value === '') {
+    return '';
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return '';
+  }
+  return formatDisplayCurrency(parsed, currencySymbol);
+}
+
+function clampLiquidityRatio(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, parsed));
+}
+
+function getLiquidityMonthlyExpenditure(plan = {}) {
+  const monthlyExpenditure = getPositiveFiniteNumber(plan.monthlyExpenditure);
+  if (monthlyExpenditure !== null) {
+    return monthlyExpenditure;
+  }
+
+  const annualExpenditure = getPositiveFiniteNumber(plan.annualExpenditure);
+  return annualExpenditure !== null ? annualExpenditure / 12 : null;
+}
+
+function computeLiquidityAssessment(plan = {}) {
+  const currencySymbol = normalizeDisplayCurrencySymbol(plan.currencySymbol, '€');
+  const clientStatus = getLiquidityClientStatus(plan);
+  const retired = clientStatus === 'retired';
+  const minimumBufferMonths = getPositiveFiniteNumber(plan.minimumBufferMonths) ?? (retired ? 12 : 3);
+  const rawTargetMonths = getPositiveFiniteNumber(plan.targetBufferMonths) ?? (retired ? 24 : 6);
+  const targetBufferMonths = Math.max(rawTargetMonths, minimumBufferMonths);
+  const currentCash = getFiniteNumber(plan.currentCash);
+  const monthlyExpenditure = getLiquidityMonthlyExpenditure(plan);
+  const annualExpenditure = monthlyExpenditure !== null ? monthlyExpenditure * 12 : null;
+  const targetCash = monthlyExpenditure !== null ? monthlyExpenditure * targetBufferMonths : null;
+  const minimumCash = monthlyExpenditure !== null ? monthlyExpenditure * minimumBufferMonths : null;
+  const months = currentCash !== null && monthlyExpenditure !== null && monthlyExpenditure > 0
+    ? currentCash / monthlyExpenditure
+    : null;
+  const surplusCash = currentCash !== null && targetCash !== null
+    ? Math.max(0, currentCash - targetCash)
+    : 0;
+  const shortfallCash = currentCash !== null && targetCash !== null
+    ? Math.max(0, targetCash - currentCash)
+    : 0;
+  const surplusMonths = monthlyExpenditure !== null && surplusCash > 0
+    ? surplusCash / monthlyExpenditure
+    : 0;
+
+  let tone = 'neutral';
+  let actionMode = 'unknown';
+  let statusLabel = 'Needs cash data';
+  if (months !== null) {
+    if (months < minimumBufferMonths) {
+      tone = 'negative';
+      actionMode = 'build';
+      statusLabel = 'Below safety floor';
+    } else if (months < targetBufferMonths) {
+      tone = 'warning';
+      actionMode = 'top-up';
+      statusLabel = 'Building reserve';
+    } else if (surplusCash > 0) {
+      tone = 'positive';
+      actionMode = 'deploy';
+      statusLabel = 'Surplus cash ready';
+    } else {
+      tone = 'positive';
+      actionMode = 'hold';
+      statusLabel = 'Target covered';
+    }
+  }
+
+  const defaultHeadline = {
+    build: 'Build the emergency fund before anything else.',
+    'top-up': 'The reserve is started, but not yet at the gold-standard buffer.',
+    deploy: 'The safety buffer is protected. The extra cash needs a job.',
+    hold: 'The cash reserve is on target.',
+    unknown: 'Add cash and spending figures to size the reserve.'
+  }[actionMode];
+
+  const defaultActionLabel = {
+    build: 'Cash still to build',
+    'top-up': 'Cash still to build',
+    deploy: 'Cash to put to work',
+    hold: 'Protected reserve',
+    unknown: 'Target reserve'
+  }[actionMode];
+
+  const actionAmount = actionMode === 'deploy'
+    ? surplusCash
+    : (actionMode === 'build' || actionMode === 'top-up'
+      ? shortfallCash
+      : targetCash);
+
+  const targetLabel = plan.targetLabel
+    || (retired
+      ? `${formatLiquidityMonths(targetBufferMonths)} retired reserve`
+      : `${formatLiquidityMonths(targetBufferMonths)} emergency fund`);
+  const primaryActionDetail = plan.primaryActionDetail || ({
+    build: 'Direct free cash flow here first. Return-seeking investments can wait until the household has breathing room.',
+    'top-up': 'Keep topping up until the full target reserve is visible, then future cash can be assigned elsewhere.',
+    deploy: 'Keep the target reserve accessible, then discuss where surplus cash belongs: debt, pension, investments, or planned spending.',
+    hold: 'Maintain the reserve and route new surplus cash toward the next highest-value objective.',
+    unknown: 'The module needs current cash and spending to calculate the buffer.'
+  }[actionMode]);
+
+  const progressRatio = months !== null ? clampLiquidityRatio(months / targetBufferMonths) : 0;
+  const floorRatio = clampLiquidityRatio(minimumBufferMonths / targetBufferMonths);
+
+  return {
+    actionAmount,
+    actionMode,
+    annualExpenditure,
+    clientLabel: retired ? 'Retired reserve' : 'Working reserve',
+    clientStatus,
+    currencySymbol,
+    currentCash,
+    floorRatio,
+    headline: plan.headline || defaultHeadline,
+    minimumBufferMonths,
+    minimumCash,
+    monthlyExpenditure,
+    months,
+    monthsLabel: months !== null ? `${formatLiquidityMonths(months)} cash` : '',
+    primaryActionDetail,
+    primaryActionLabel: plan.primaryActionLabel || defaultActionLabel,
+    progressRatio,
+    shortfallCash,
+    statusLabel,
+    surplusCash,
+    surplusMonths,
+    targetBufferMonths,
+    targetCash,
+    targetLabel,
+    tone
+  };
+}
+
+function buildLiquidityStat(label, value, detail = '', tone = '') {
+  const item = document.createElement('div');
+  item.className = 'liquidity-stat';
+  if (tone) {
+    item.dataset.tone = tone;
+  }
+
+  const labelEl = document.createElement('span');
+  labelEl.className = 'liquidity-stat-label';
+  labelEl.textContent = label;
+  item.appendChild(labelEl);
+
+  const valueEl = document.createElement('strong');
+  valueEl.className = 'liquidity-stat-value';
+  valueEl.textContent = value || '--';
+  item.appendChild(valueEl);
+
+  if (detail) {
+    const detailEl = document.createElement('span');
+    detailEl.className = 'liquidity-stat-detail';
+    detailEl.textContent = detail;
+    item.appendChild(detailEl);
+  }
+
+  return item;
+}
+
+function buildLiquidityMeter(assessment) {
+  const meter = document.createElement('div');
+  meter.className = 'liquidity-meter';
+  meter.dataset.tone = assessment.tone;
+  meter.style.setProperty('--liquidity-progress', `${Math.round(assessment.progressRatio * 1000) / 10}%`);
+  meter.style.setProperty('--liquidity-floor', `${Math.round(assessment.floorRatio * 1000) / 10}%`);
+
+  const track = document.createElement('div');
+  track.className = 'liquidity-meter-track';
+
+  const fill = document.createElement('div');
+  fill.className = 'liquidity-meter-fill';
+  track.appendChild(fill);
+
+  const floorMarker = document.createElement('span');
+  floorMarker.className = 'liquidity-meter-marker liquidity-meter-marker-floor';
+  floorMarker.textContent = formatLiquidityMonths(assessment.minimumBufferMonths, { suffix: 'mo' });
+  track.appendChild(floorMarker);
+
+  const targetMarker = document.createElement('span');
+  targetMarker.className = 'liquidity-meter-marker liquidity-meter-marker-target';
+  targetMarker.textContent = formatLiquidityMonths(assessment.targetBufferMonths, { suffix: 'mo' });
+  track.appendChild(targetMarker);
+
+  meter.appendChild(track);
+
+  const labels = document.createElement('div');
+  labels.className = 'liquidity-meter-labels';
+  [
+    { label: 'Safety floor', value: formatLiquidityMonths(assessment.minimumBufferMonths) },
+    { label: 'Target buffer', value: assessment.targetLabel }
+  ].forEach((item) => {
+    const label = document.createElement('span');
+    label.textContent = `${item.label}: ${item.value}`;
+    labels.appendChild(label);
+  });
+  meter.appendChild(labels);
+
+  if (assessment.surplusMonths > 0) {
+    const surplus = document.createElement('div');
+    surplus.className = 'liquidity-surplus-ribbon';
+    surplus.textContent = `+${formatLiquidityMonths(assessment.surplusMonths)} above target`;
+    meter.appendChild(surplus);
+  }
+
+  return meter;
+}
+
+function buildLiquidityHeroCard(module, assessment, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
+  const card = document.createElement('section');
+  card.className = 'generated-card liquidity-hero-card';
+  card.dataset.generatedCard = 'liquidity-hero';
+  card.dataset.tone = assessment.tone;
+
+  const { header } = buildGeneratedCardHeader('Cash Control Panel');
+  card.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'liquidity-hero-body';
+
+  const command = document.createElement('div');
+  command.className = 'liquidity-command';
+
+  const status = document.createElement('span');
+  status.className = 'liquidity-status-pill';
+  status.dataset.tone = assessment.tone;
+  status.textContent = assessment.statusLabel;
+  command.appendChild(status);
+
+  const title = document.createElement('h3');
+  title.className = 'liquidity-hero-title';
+  title.textContent = assessment.headline;
+  decorateInlineGeneratedEdit(title, {
+    module,
+    readOnly,
+    onEditGeneratedText
+  }, ['generated', 'liquidityPlan', 'headline'], {
+    valueType: 'string',
+    label: 'Edit liquidity headline'
+  });
+  command.appendChild(title);
+
+  const safeHtml = sanitizeSummaryHtml(module?.generated?.summaryHtml || '');
+  if (safeHtml) {
+    const summary = document.createElement('div');
+    summary.className = 'liquidity-hero-summary generated-summary-copy';
+    summary.innerHTML = safeHtml;
+    decorateInlineGeneratedEdit(summary, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'summaryHtml'], {
+      html: true,
+      multiline: true,
+      valueType: 'html',
+      label: 'Edit liquidity summary'
+    });
+    command.appendChild(summary);
+  } else {
+    const detail = document.createElement('p');
+    detail.className = 'liquidity-hero-summary';
+    detail.textContent = assessment.primaryActionDetail;
+    decorateInlineGeneratedEdit(detail, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'liquidityPlan', 'primaryActionDetail'], {
+      valueType: 'string',
+      label: 'Edit liquidity detail'
+    });
+    command.appendChild(detail);
+  }
+
+  const readout = document.createElement('div');
+  readout.className = 'liquidity-readout';
+
+  const readoutLabel = document.createElement('span');
+  readoutLabel.className = 'liquidity-readout-label';
+  readoutLabel.textContent = assessment.clientLabel;
+  readout.appendChild(readoutLabel);
+
+  const readoutValue = document.createElement('strong');
+  readoutValue.className = 'liquidity-readout-value';
+  readoutValue.textContent = assessment.months !== null
+    ? formatLiquidityMonths(assessment.months, { suffix: '' })
+    : '--';
+  readout.appendChild(readoutValue);
+
+  const readoutUnit = document.createElement('span');
+  readoutUnit.className = 'liquidity-readout-unit';
+  readoutUnit.textContent = 'months cash';
+  readout.appendChild(readoutUnit);
+
+  command.appendChild(readout);
+  body.appendChild(command);
+
+  const cockpit = document.createElement('div');
+  cockpit.className = 'liquidity-cockpit';
+  cockpit.appendChild(buildLiquidityMeter(assessment));
+
+  const stats = document.createElement('div');
+  stats.className = 'liquidity-stat-grid';
+  stats.appendChild(buildLiquidityStat(
+    'Current cash',
+    formatLiquidityCurrency(assessment.currentCash, assessment.currencySymbol),
+    assessment.monthsLabel
+  ));
+  stats.appendChild(buildLiquidityStat(
+    'Target reserve',
+    formatLiquidityCurrency(assessment.targetCash, assessment.currencySymbol),
+    assessment.targetLabel
+  ));
+  stats.appendChild(buildLiquidityStat(
+    assessment.primaryActionLabel,
+    formatLiquidityCurrency(assessment.actionAmount, assessment.currencySymbol),
+    assessment.primaryActionDetail,
+    assessment.tone
+  ));
+  cockpit.appendChild(stats);
+  body.appendChild(cockpit);
+
+  card.appendChild(body);
+  return card;
+}
+
+function getDefaultLiquiditySteps(assessment) {
+  if (assessment.actionMode === 'build') {
+    return [
+      {
+        label: 'Build the safety floor',
+        detail: `Get to ${formatLiquidityMonths(assessment.minimumBufferMonths)} first so an emergency does not force borrowing or asset sales.`
+      },
+      {
+        label: 'Then reach gold standard',
+        detail: `Keep going until the reserve reaches ${formatLiquidityMonths(assessment.targetBufferMonths)} of spending.`
+      },
+      {
+        label: 'Invest only after protection',
+        detail: 'Once the reserve is funded, future surplus can be put to work with more confidence.'
+      }
+    ];
+  }
+
+  if (assessment.actionMode === 'top-up') {
+    return [
+      {
+        label: 'Finish the reserve',
+        detail: `The next milestone is ${formatLiquidityCurrency(assessment.shortfallCash, assessment.currencySymbol)} more cash.`
+      },
+      {
+        label: 'Keep access simple',
+        detail: 'Use accessible cash or deposits for the emergency fund, not volatile long-term assets.'
+      },
+      {
+        label: 'Pre-commit future surplus',
+        detail: 'Once the target is hit, route extra cash away from idle deposits.'
+      }
+    ];
+  }
+
+  if (assessment.actionMode === 'deploy') {
+    return [
+      {
+        label: 'Keep the reserve intact',
+        detail: `Hold about ${formatLiquidityCurrency(assessment.targetCash, assessment.currencySymbol)} as the accessible buffer.`
+      },
+      {
+        label: 'Give surplus cash a job',
+        detail: `The visible surplus is about ${formatLiquidityCurrency(assessment.surplusCash, assessment.currencySymbol)}. Discuss debt, pension, investments, or known spending.`
+      },
+      {
+        label: 'Stage the move if needed',
+        detail: 'If the client is nervous, phase implementation instead of letting all excess cash sit idle indefinitely.'
+      }
+    ];
+  }
+
+  return [
+    {
+      label: 'Maintain the buffer',
+      detail: 'Keep the target reserve accessible and review it when spending changes.'
+    },
+    {
+      label: 'Assign future surplus',
+      detail: 'New cash above the target should have a planned destination.'
+    }
+  ];
+}
+
+function buildLiquidityActionCard(plan, assessment, module, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
+  const card = document.createElement('section');
+  card.className = 'generated-card liquidity-action-card';
+  card.dataset.generatedCard = 'liquidity-action';
+  card.dataset.tone = assessment.tone;
+
+  const { header } = buildGeneratedCardHeader('Priority Move');
+  card.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'liquidity-action-body';
+
+  const actionTop = document.createElement('div');
+  actionTop.className = 'liquidity-action-top';
+
+  const label = document.createElement('span');
+  label.className = 'liquidity-action-label';
+  label.textContent = assessment.primaryActionLabel;
+  decorateInlineGeneratedEdit(label, {
+    module,
+    readOnly,
+    onEditGeneratedText
+  }, ['generated', 'liquidityPlan', 'primaryActionLabel'], {
+    valueType: 'string',
+    label: 'Edit liquidity action label'
+  });
+  actionTop.appendChild(label);
+
+  const amount = document.createElement('strong');
+  amount.className = 'liquidity-action-amount';
+  amount.textContent = formatLiquidityCurrency(assessment.actionAmount, assessment.currencySymbol) || '--';
+  actionTop.appendChild(amount);
+
+  const detail = document.createElement('p');
+  detail.className = 'liquidity-action-detail';
+  detail.textContent = assessment.primaryActionDetail;
+  decorateInlineGeneratedEdit(detail, {
+    module,
+    readOnly,
+    onEditGeneratedText
+  }, ['generated', 'liquidityPlan', 'primaryActionDetail'], {
+    valueType: 'string',
+    label: 'Edit liquidity action detail'
+  });
+  actionTop.appendChild(detail);
+  body.appendChild(actionTop);
+
+  const hasCustomSteps = Array.isArray(plan.nextSteps) && plan.nextSteps.length > 0;
+  const steps = hasCustomSteps
+    ? plan.nextSteps
+    : getDefaultLiquiditySteps(assessment);
+  const list = document.createElement('ol');
+  list.className = 'liquidity-step-list';
+  steps.slice(0, 4).forEach((step, stepIndex) => {
+    const item = document.createElement('li');
+    item.className = 'liquidity-step-item';
+    const title = document.createElement('strong');
+    title.textContent = step.label || 'Next step';
+    if (hasCustomSteps) {
+      decorateInlineGeneratedEdit(title, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'liquidityPlan', 'nextSteps', stepIndex, 'label'], {
+        valueType: 'string',
+        label: 'Edit liquidity step label'
+      });
+    }
+    item.appendChild(title);
+    if (step.detail || step.body) {
+      const stepDetail = document.createElement('span');
+      stepDetail.textContent = step.detail || step.body;
+      if (hasCustomSteps) {
+        decorateInlineGeneratedEdit(stepDetail, {
+          module,
+          readOnly,
+          onEditGeneratedText
+        }, ['generated', 'liquidityPlan', 'nextSteps', stepIndex, step.detail ? 'detail' : 'body'], {
+          valueType: 'string',
+          label: 'Edit liquidity step detail'
+        });
+      }
+      item.appendChild(stepDetail);
+    }
+    list.appendChild(item);
+  });
+  body.appendChild(list);
+
+  card.appendChild(body);
+  return card;
+}
+
+function buildLiquidityCashCard(plan, assessment, module, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
+  const card = document.createElement('section');
+  card.className = 'generated-card liquidity-cash-card';
+  card.dataset.generatedCard = 'liquidity-cash';
+
+  const { header } = buildGeneratedCardHeader('Cash Position');
+  card.appendChild(header);
+
+  const cashItems = getLiquidityCashItems(plan);
+  if (cashItems.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = assessment.currentCash !== null
+      ? 'Total cash was supplied without an account breakdown.'
+      : 'No cash position supplied yet.';
+    card.appendChild(empty);
+    return card;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'liquidity-cash-list';
+  cashItems.forEach((cashItem, cashIndex) => {
+    const row = document.createElement('div');
+    row.className = 'liquidity-cash-row';
+
+    const label = document.createElement('span');
+    label.textContent = cashItem.label || 'Cash';
+    decorateInlineGeneratedEdit(label, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'liquidityPlan', 'cashItems', cashIndex, 'label'], {
+      valueType: 'string',
+      label: 'Edit cash label'
+    });
+    row.appendChild(label);
+
+    const amount = document.createElement('strong');
+    amount.textContent = formatLiquidityCurrency(cashItem.amount, assessment.currencySymbol) || '--';
+    decorateInlineGeneratedEdit(amount, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'liquidityPlan', 'cashItems', cashIndex, 'amount'], {
+      valueType: 'number',
+      label: 'Edit cash amount'
+    });
+    row.appendChild(amount);
+
+    list.appendChild(row);
+  });
+  card.appendChild(list);
+  return card;
+}
+
+function buildLiquidityEvidenceCard(plan, module, {
+  readOnly = false,
+  onEditGeneratedText = null
+} = {}) {
+  const evidenceCards = Array.isArray(plan.evidenceCards) ? plan.evidenceCards : [];
+  if (evidenceCards.length === 0) {
+    return null;
+  }
+
+  const card = document.createElement('section');
+  card.className = 'generated-card liquidity-evidence-card';
+  card.dataset.generatedCard = 'liquidity-evidence';
+
+  const { header } = buildGeneratedCardHeader('Irish Cash Context');
+  card.appendChild(header);
+
+  const grid = document.createElement('div');
+  grid.className = 'liquidity-evidence-grid';
+  evidenceCards.slice(0, 4).forEach((item, evidenceIndex) => {
+    const evidence = document.createElement('article');
+    evidence.className = 'liquidity-evidence-item';
+    if (item.tone) {
+      evidence.dataset.tone = item.tone;
+    }
+
+    const label = document.createElement('span');
+    label.className = 'liquidity-evidence-label';
+    label.textContent = item.label || 'Evidence';
+    decorateInlineGeneratedEdit(label, {
+      module,
+      readOnly,
+      onEditGeneratedText
+    }, ['generated', 'liquidityPlan', 'evidenceCards', evidenceIndex, 'label'], {
+      valueType: 'string',
+      label: 'Edit evidence label'
+    });
+    evidence.appendChild(label);
+
+    if (item.value) {
+      const value = document.createElement('strong');
+      value.className = 'liquidity-evidence-value';
+      value.textContent = item.value;
+      decorateInlineGeneratedEdit(value, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'liquidityPlan', 'evidenceCards', evidenceIndex, 'value'], {
+        valueType: 'string',
+        label: 'Edit evidence value'
+      });
+      evidence.appendChild(value);
+    }
+
+    if (item.detail || item.body) {
+      const detail = document.createElement('p');
+      detail.className = 'liquidity-evidence-detail';
+      detail.textContent = item.detail || item.body;
+      decorateInlineGeneratedEdit(detail, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'liquidityPlan', 'evidenceCards', evidenceIndex, item.detail ? 'detail' : 'body'], {
+        valueType: 'string',
+        label: 'Edit evidence detail'
+      });
+      evidence.appendChild(detail);
+    }
+
+    const safeHref = sanitizeExternalUrl(item.sourceUrl);
+    if (safeHref || item.sourceLabel) {
+      const source = safeHref ? document.createElement('a') : document.createElement('span');
+      source.className = 'liquidity-evidence-source';
+      source.textContent = item.sourceLabel || 'Source';
+      if (safeHref) {
+        source.href = safeHref;
+        source.target = '_blank';
+        source.rel = 'noreferrer noopener';
+      }
+      decorateInlineGeneratedEdit(source, {
+        module,
+        readOnly,
+        onEditGeneratedText
+      }, ['generated', 'liquidityPlan', 'evidenceCards', evidenceIndex, 'sourceLabel'], {
+        valueType: 'string',
+        label: 'Edit evidence source'
+      });
+      evidence.appendChild(source);
+    }
+
+    grid.appendChild(evidence);
+  });
+  card.appendChild(grid);
+  return card;
+}
+
+function renderLiquidityPlanModule(module, {
+  readOnly = false,
+  onRemoveCard = null,
+  onRemoveImage = null,
+  onReorderCards = null,
+  onEditGeneratedText = null
+} = {}) {
+  const plan = module?.generated?.liquidityPlan || {};
+  const assessment = computeLiquidityAssessment(plan);
+  const displayContext = getPlaybookDisplayContext(module);
+  const section = document.createElement('section');
+  section.className = 'generated-section liquidity-generated-section';
+
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = displayContext.heading;
+
+  const grid = document.createElement('div');
+  grid.className = 'generated-grid liquidity-generated-grid';
+  grid.appendChild(buildLiquidityHeroCard(module, assessment, { readOnly, onEditGeneratedText }));
+  grid.appendChild(buildLiquidityActionCard(plan, assessment, module, { readOnly, onEditGeneratedText }));
+  grid.appendChild(buildLiquidityCashCard(plan, assessment, module, { readOnly, onEditGeneratedText }));
+
+  const evidenceCard = buildLiquidityEvidenceCard(plan, module, { readOnly, onEditGeneratedText });
+  if (evidenceCard) {
+    grid.appendChild(evidenceCard);
+  }
+
+  appendModuleMediaCards(grid, module, { readOnly, onRemoveImage });
+
+  section.appendChild(heading);
+  section.appendChild(grid);
+  return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard, onReorderCards });
 }
 
 function renderVideoSummaryModule(module, options = {}) {
@@ -8854,6 +10378,7 @@ function renderVideoSummaryModule(module, options = {}) {
 function renderReportModule(module, options = {}) {
   const report = module?.generated?.report || {};
   const displayContext = getPlaybookDisplayContext(module);
+  const { readOnly = false, onEditGeneratedText = null } = options;
   const section = document.createElement('section');
   section.className = 'generated-section report-generated-section';
 
@@ -8867,7 +10392,7 @@ function renderReportModule(module, options = {}) {
   const safeSummaryHtml = sanitizeSummaryHtml(module?.generated?.summaryHtml || '');
 
   if (safeSummaryHtml && htmlToPlainText(safeSummaryHtml)) {
-    content.appendChild(renderReportSummaryCard(safeSummaryHtml, module));
+    content.appendChild(renderReportSummaryCard(safeSummaryHtml, module, { readOnly, onEditGeneratedText }));
   }
 
   const blocks = Array.isArray(report?.blocks) ? report.blocks : [];
@@ -8894,10 +10419,7 @@ function renderReportModule(module, options = {}) {
       content.appendChild(empty);
     }
 
-    const mediaCard = buildModuleMediaCard(module, options);
-    if (mediaCard) {
-      content.appendChild(mediaCard);
-    }
+    appendModuleMediaCards(content, module, options);
     section.appendChild(content);
     return applyGeneratedCardControls(section, module, options);
   }
@@ -8905,14 +10427,13 @@ function renderReportModule(module, options = {}) {
   blocks.forEach((block, blockIndex) => {
     content.appendChild(renderReportBlock(module, block, {
       blockIndex,
-      chartIndexByBlockId
+      chartIndexByBlockId,
+      readOnly,
+      onEditGeneratedText
     }));
   });
 
-  const mediaCard = buildModuleMediaCard(module, options);
-  if (mediaCard) {
-    content.appendChild(mediaCard);
-  }
+  appendModuleMediaCards(content, module, options);
   section.appendChild(content);
   return applyGeneratedCardControls(section, module, options);
 }
@@ -8920,6 +10441,7 @@ function renderReportModule(module, options = {}) {
 function renderEducationModule(module, options = {}) {
   const education = module?.generated?.education || {};
   const displayContext = getPlaybookDisplayContext(module);
+  const { readOnly = false, onEditGeneratedText = null } = options;
 
   const section = document.createElement('section');
   section.className = 'generated-section education-generated-section';
@@ -8931,30 +10453,30 @@ function renderEducationModule(module, options = {}) {
   const grid = document.createElement('div');
   grid.className = 'generated-grid education-generated-grid';
 
-  grid.appendChild(buildEducationTopicCard(module, education));
+  grid.appendChild(buildEducationTopicCard(module, education, { readOnly, onEditGeneratedText }));
   grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || '', {
-    guideText: displayContext.guide
+    guideText: displayContext.guide,
+    module,
+    readOnly,
+    onEditGeneratedText
   }));
   grid.appendChild(buildEducationVisualsCard(module, education));
   const metricsCard = buildEducationMetricsCard(education);
   if (metricsCard) {
     grid.appendChild(metricsCard);
   }
-  const stepsCard = buildEducationStepsCard(education);
+  const stepsCard = buildEducationStepsCard(module, education, { readOnly, onEditGeneratedText });
   if (stepsCard) {
     grid.appendChild(stepsCard);
   }
-  grid.appendChild(buildEducationSectionsCard(education));
+  grid.appendChild(buildEducationSectionsCard(module, education, { readOnly, onEditGeneratedText }));
 
-  const referencesCard = buildEducationReferencesCard(education);
+  const referencesCard = buildEducationReferencesCard(module, education, { readOnly, onEditGeneratedText });
   if (referencesCard) {
     grid.appendChild(referencesCard);
   }
 
-  const mediaCard = buildModuleMediaCard(module, options);
-  if (mediaCard) {
-    grid.appendChild(mediaCard);
-  }
+  appendModuleMediaCards(grid, module, options);
 
   section.appendChild(heading);
   section.appendChild(grid);
@@ -9114,7 +10636,9 @@ function renderCollegeFundingModule(module, {
   onPatchInputs = null,
   assumptionsEditorStatus = null,
   onRemoveCard = null,
-  onRemoveImage = null
+  onRemoveImage = null,
+  onReorderCards = null,
+  onEditGeneratedText = null
 } = {}) {
   const projection = getCollegeProjection(module);
   const generatedOutputs = module?.generated?.outputs;
@@ -9151,7 +10675,10 @@ function renderCollegeFundingModule(module, {
   }
 
   grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || '', {
-    guideText: displayContext.guide
+    guideText: displayContext.guide,
+    module,
+    readOnly,
+    onEditGeneratedText
   }));
 
   if (projection) {
@@ -9168,7 +10695,9 @@ function renderCollegeFundingModule(module, {
   grid.appendChild(buildTableCard('Scenario Outputs', displayModule?.generated?.outputs || {}, {
     dataGeneratedCard: 'outputs',
     module: displayModule,
-    tableKind: 'outputs'
+    tableKind: 'outputs',
+    readOnly,
+    onEditGeneratedText
   }));
 
   const annualTables = Array.isArray(displayModule?.generated?.tables) ? displayModule.generated.tables : [];
@@ -9184,17 +10713,15 @@ function renderCollegeFundingModule(module, {
   grid.appendChild(buildAssumptionsTableCard(displayModule, {
     onPatchInputs,
     status: assumptionsEditorStatus,
-    readOnly
+    readOnly,
+    onEditGeneratedText
   }));
 
-  const mediaCard = buildModuleMediaCard(module, { readOnly, onRemoveImage });
-  if (mediaCard) {
-    grid.appendChild(mediaCard);
-  }
+  appendModuleMediaCards(grid, module, { readOnly, onRemoveImage });
 
   section.appendChild(heading);
   section.appendChild(grid);
-  return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard });
+  return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard, onReorderCards });
 }
 
 function buildGeneratedSection(module, {
@@ -9203,7 +10730,9 @@ function buildGeneratedSection(module, {
   onPatchInputs = null,
   assumptionsEditorStatus = null,
   onRemoveCard = null,
-  onRemoveImage = null
+  onRemoveImage = null,
+  onReorderCards = null,
+  onEditGeneratedText = null
 } = {}) {
   const displayModule = getCalculatedDisplayModule(module);
   const generated = displayModule.generated || {
@@ -9212,6 +10741,7 @@ function buildGeneratedSection(module, {
     outputs: { columns: [], rows: [] },
     tables: [],
     pbsInputs: null,
+    liquidityPlan: null,
     collegeFundingInputs: null,
     netRetirementInputs: null,
     outputsBucketed: null,
@@ -9222,15 +10752,19 @@ function buildGeneratedSection(module, {
   };
 
   if (isVideoSummaryModule(displayModule)) {
-    return renderVideoSummaryModule(displayModule, { readOnly, onRemoveCard });
+    return renderVideoSummaryModule(displayModule, { readOnly, onRemoveCard, onReorderCards });
+  }
+
+  if (isLiquidityPlanModule(displayModule)) {
+    return renderLiquidityPlanModule(displayModule, { readOnly, onRemoveCard, onRemoveImage, onReorderCards, onEditGeneratedText });
   }
 
   if (isReportModule(displayModule)) {
-    return renderReportModule(displayModule, { readOnly, onRemoveCard, onRemoveImage });
+    return renderReportModule(displayModule, { readOnly, onRemoveCard, onRemoveImage, onReorderCards, onEditGeneratedText });
   }
 
   if (isEducationModule(displayModule)) {
-    return renderEducationModule(displayModule, { readOnly, onRemoveCard, onRemoveImage });
+    return renderEducationModule(displayModule, { readOnly, onRemoveCard, onRemoveImage, onReorderCards, onEditGeneratedText });
   }
 
   if (isCollegeFundingModule(displayModule)) {
@@ -9240,7 +10774,9 @@ function buildGeneratedSection(module, {
       onPatchInputs,
       assumptionsEditorStatus,
       onRemoveCard,
-      onRemoveImage
+      onRemoveImage,
+      onReorderCards,
+      onEditGeneratedText
     });
   }
 
@@ -9266,11 +10802,16 @@ function buildGeneratedSection(module, {
 
   if (isPbsBucketedModule) {
     grid.appendChild(buildOutputsBucketedCard(displayModule, generated.outputsBucketed, {
-      summaryHtml: generated.summaryHtml || ''
+      summaryHtml: generated.summaryHtml || '',
+      readOnly,
+      onEditGeneratedText
     }));
   } else {
     grid.appendChild(buildSummaryCard(generated.summaryHtml, {
-      guideText: displayContext.guide
+      guideText: displayContext.guide,
+      module,
+      readOnly,
+      onEditGeneratedText
     }));
   }
 
@@ -9296,19 +10837,27 @@ function buildGeneratedSection(module, {
   grid.appendChild(buildAssumptionsTableCard(displayModule, {
     onPatchInputs,
     status: assumptionsEditorStatus,
-    readOnly
+    readOnly,
+    onEditGeneratedText
   }));
 
   if (!isPbsBucketedModule && hasBucketedOutputs) {
     grid.appendChild(buildOutputsBucketedCard(displayModule, generated.outputsBucketed, {
-      summaryHtml: generated.summaryHtml || ''
+      summaryHtml: generated.summaryHtml || '',
+      readOnly,
+      onEditGeneratedText
     }));
   } else if (!isPbsBucketedModule) {
     const outputsForDisplay = filterOutputsRowsForPensionToggle(displayModule, generated.outputs);
     grid.appendChild(buildTableCard('Outputs', outputsForDisplay, {
       dataGeneratedCard: 'outputs',
       module: displayModule,
-      tableKind: 'outputs'
+      tableKind: 'outputs',
+      editBasePath: blocksGeneratedTableEditing(displayModule)
+        ? null
+        : ['generated', 'outputs'],
+      readOnly,
+      onEditGeneratedText
     }));
   }
   if (Array.isArray(generated.tables) && generated.tables.length > 0) {
@@ -9317,7 +10866,16 @@ function buildGeneratedSection(module, {
         ? table.title
         : `Table ${tableIndex + 1}`;
       grid.appendChild(buildTableCard(title, table, {
-        dataGeneratedCard: `table:${tableIndex}`
+        dataGeneratedCard: `table:${tableIndex}`,
+        module,
+        editBasePath: blocksGeneratedTableEditing(displayModule)
+          ? null
+          : ['generated', 'tables', tableIndex],
+        editTitlePath: blocksGeneratedTableEditing(displayModule)
+          ? null
+          : ['generated', 'tables', tableIndex, 'title'],
+        readOnly,
+        onEditGeneratedText
       }));
     });
   }
@@ -9328,15 +10886,12 @@ function buildGeneratedSection(module, {
     grid.appendChild(buildChartsCard(displayModule, chartsForDisplay, { showPensionToggle, readOnly }));
   }
 
-  const mediaCard = buildModuleMediaCard(module, { readOnly, onRemoveImage });
-  if (mediaCard) {
-    grid.appendChild(mediaCard);
-  }
+  appendModuleMediaCards(grid, module, { readOnly, onRemoveImage });
 
   section.appendChild(heading);
   section.appendChild(grid);
 
-  return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard });
+  return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard, onReorderCards });
 }
 
 function replaceGeneratedCard({
@@ -9359,6 +10914,8 @@ export function patchFocusedGeneratedCards({
   onPatchInputs = null,
   onRemoveCard = null,
   onRemoveImage = null,
+  onReorderCards = null,
+  onEditGeneratedText = null,
   assumptionsEditorStatus = null,
   readOnly = false,
   patchSummary = true,
@@ -9371,7 +10928,7 @@ export function patchFocusedGeneratedCards({
   }
 
   const generatedSection = focusedCard.querySelector('.generated-section');
-  if (isVideoSummaryModule(module) || isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module) || isNetRetirementModule(module)) {
+  if (isVideoSummaryModule(module) || isLiquidityPlanModule(module) || isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module) || isNetRetirementModule(module)) {
     if (!generatedSection) {
       return;
     }
@@ -9380,6 +10937,8 @@ export function patchFocusedGeneratedCards({
       onPatchInputs,
       onRemoveCard,
       onRemoveImage,
+      onReorderCards,
+      onEditGeneratedText,
       assumptionsEditorStatus,
       readOnly
     }));
@@ -9397,6 +10956,8 @@ export function patchFocusedGeneratedCards({
       onPatchInputs,
       onRemoveCard,
       onRemoveImage,
+      onReorderCards,
+      onEditGeneratedText,
       assumptionsEditorStatus,
       readOnly
     }));
@@ -9415,7 +10976,10 @@ export function patchFocusedGeneratedCards({
       grid,
       selector: '[data-generated-card="summary"]',
       replacement: buildSummaryCard(cardModule.generated?.summaryHtml || '', {
-        guideText: getPlaybookDisplayContext(cardModule).guide
+        guideText: getPlaybookDisplayContext(cardModule).guide,
+        module: cardModule,
+        readOnly,
+        onEditGeneratedText
       })
     });
 
@@ -9446,7 +11010,8 @@ export function patchFocusedGeneratedCards({
       replacement: buildAssumptionsTableCard(cardModule, {
         onPatchInputs,
         status: assumptionsEditorStatus,
-        readOnly
+        readOnly,
+        onEditGeneratedText
       })
     });
   }
@@ -9455,7 +11020,9 @@ export function patchFocusedGeneratedCards({
     const displayGenerated = cardModule.generated || generated;
     const outputCard = isOutputsBucketedPresent(displayGenerated.outputsBucketed)
       ? buildOutputsBucketedCard(cardModule, displayGenerated.outputsBucketed, {
-        summaryHtml: displayGenerated.summaryHtml || ''
+        summaryHtml: displayGenerated.summaryHtml || '',
+        readOnly,
+        onEditGeneratedText
       })
       : buildTableCard(
         'Outputs',
@@ -9463,7 +11030,12 @@ export function patchFocusedGeneratedCards({
         {
           dataGeneratedCard: 'outputs',
           module: cardModule,
-          tableKind: 'outputs'
+          tableKind: 'outputs',
+          editBasePath: blocksGeneratedTableEditing(cardModule)
+            ? null
+            : ['generated', 'outputs'],
+          readOnly,
+          onEditGeneratedText
         }
       );
     replaceGeneratedCard({
@@ -9488,7 +11060,7 @@ export function patchFocusedGeneratedCards({
     });
   }
 
-  applyGeneratedCardControls(generatedSection, module, { readOnly, onRemoveCard });
+  applyGeneratedCardControls(generatedSection, module, { readOnly, onRemoveCard, onReorderCards });
 }
 
 export function getUiElements() {
@@ -9627,6 +11199,8 @@ export function buildFocusedPane({
   onAddImage = null,
   onRemoveImage = null,
   onRemoveCard = null,
+  onReorderCards = null,
+  onEditGeneratedText = null,
   onRestoreRemovedCards = null,
   onCreateVideoScene = null,
   assumptionsEditorStatus = null,
@@ -9780,7 +11354,9 @@ export function buildFocusedPane({
     onPatchInputs,
     assumptionsEditorStatus,
     onRemoveCard,
-    onRemoveImage
+    onRemoveImage,
+    onReorderCards,
+    onEditGeneratedText
   }));
   pane.appendChild(card);
 

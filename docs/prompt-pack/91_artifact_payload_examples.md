@@ -158,6 +158,47 @@ PBS examples should keep the summary contract exact: the summary section uses `k
 }
 ```
 
+## Liquidity Plan
+
+Liquidity examples must stay cash-only. They should use `generated.liquidityPlan`, not PBS `outputsBucketed`.
+
+```json
+{
+  "title": "Liquidity Plan - Client",
+  "generated": {
+    "summaryHtml": "<p>This module focuses only on cash. The reserve target is six months of spending; anything above that should have a clear job rather than sitting idle and being eroded by inflation.</p>",
+    "liquidityPlan": {
+      "currencySymbol": "€",
+      "clientStatus": "not-retired",
+      "annualExpenditure": 48000,
+      "currentCash": 110000,
+      "cashItems": [
+        { "label": "Current account", "amount": 18000 },
+        { "label": "Deposit account", "amount": 72000 },
+        { "label": "Prize bonds / instant-access cash", "amount": 20000 }
+      ],
+      "headline": "The emergency fund is covered. The excess cash now needs a job.",
+      "primaryActionLabel": "Cash to put to work",
+      "primaryActionDetail": "Keep six months accessible, then decide where the surplus belongs: debt reduction, pension, long-term investment, or known spending.",
+      "evidenceCards": [
+        {
+          "label": "Emergency fund guide",
+          "value": "3-6 months",
+          "detail": "Use official consumer guidance or current source facts where verified.",
+          "sourceLabel": "CCPC",
+          "sourceUrl": "https://www.ccpc.ie/manage-your-money/jargon-buster"
+        }
+      ],
+      "nextSteps": [
+        { "label": "Lock the reserve", "detail": "Keep the six-month emergency fund accessible and separate from investment decisions." },
+        { "label": "Name the surplus", "detail": "Show the cash amount above target so the client can see what is available to put to work." },
+        { "label": "Choose the destination", "detail": "Agree whether surplus cash should clear expensive debt, fund pension, invest gradually, or cover a known near-term cost." }
+      ]
+    }
+  }
+}
+```
+
 ## Retirement Projection
 
 ```json

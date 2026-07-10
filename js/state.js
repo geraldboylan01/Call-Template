@@ -276,6 +276,140 @@ function normalizeInsightItems(items, fallbackPrefix = 'insight') {
     });
 }
 
+function normalizeLiquidityNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeLiquidityPositiveNumber(value) {
+  const parsed = normalizeLiquidityNumber(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
+}
+
+function normalizeLiquidityItems(items, fallbackPrefix = 'liquidity-item') {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+    .map((item, index) => {
+      const label = typeof item.label === 'string' && item.label.trim()
+        ? item.label.trim()
+        : (typeof item.title === 'string' && item.title.trim()
+          ? item.title.trim()
+          : `${fallbackPrefix}-${index + 1}`);
+      const normalized = {
+        id: typeof item.id === 'string' && item.id.trim()
+          ? item.id.trim()
+          : `${fallbackPrefix}-${index + 1}`,
+        label
+      };
+
+      const amount = normalizeLiquidityNumber(item.amount ?? item.value);
+      if (amount !== null) {
+        normalized.amount = amount;
+      }
+
+      ['value', 'detail', 'sourceLabel', 'sourceUrl', 'tone', 'body'].forEach((key) => {
+        if (typeof item[key] === 'string' && item[key].trim()) {
+          normalized[key] = item[key].trim();
+        }
+      });
+
+      return normalized;
+    });
+}
+
+export function normalizeLiquidityPlan(liquidityPlan) {
+  if (!liquidityPlan || typeof liquidityPlan !== 'object' || Array.isArray(liquidityPlan)) {
+    return null;
+  }
+
+  const cashItems = normalizeLiquidityItems(
+    liquidityPlan.cashItems || liquidityPlan.cashAccounts || liquidityPlan.accounts,
+    'cash-item'
+  );
+  const currentCash = normalizeLiquidityNumber(
+    liquidityPlan.currentCash
+      ?? liquidityPlan.totalCash
+      ?? liquidityPlan.cash
+      ?? liquidityPlan.liquidCash
+  );
+  const derivedCash = cashItems.reduce((sum, item) => (
+    Number.isFinite(item.amount) ? sum + item.amount : sum
+  ), 0);
+
+  const normalized = {
+    currencySymbol: normalizeCurrencySymbol(liquidityPlan.currencySymbol)
+  };
+
+  if (currentCash !== null) {
+    normalized.currentCash = currentCash;
+  } else if (cashItems.length > 0 && Number.isFinite(derivedCash)) {
+    normalized.currentCash = derivedCash;
+  }
+
+  if (cashItems.length > 0) {
+    normalized.cashItems = cashItems;
+  }
+
+  [
+    ['annualExpenditure', liquidityPlan.annualExpenditure ?? liquidityPlan.annualSpend],
+    ['monthlyExpenditure', liquidityPlan.monthlyExpenditure ?? liquidityPlan.monthlySpend],
+    ['minimumBufferMonths', liquidityPlan.minimumBufferMonths ?? liquidityPlan.floorBufferMonths],
+    ['targetBufferMonths', liquidityPlan.targetBufferMonths ?? liquidityPlan.goldStandardMonths],
+    ['inflationRate', liquidityPlan.inflationRate],
+    ['depositRate', liquidityPlan.depositRate]
+  ].forEach(([key, value]) => {
+    const parsed = normalizeLiquidityPositiveNumber(value);
+    if (parsed !== null) {
+      normalized[key] = parsed;
+    }
+  });
+
+  const statusRaw = typeof liquidityPlan.clientStatus === 'string' && liquidityPlan.clientStatus.trim()
+    ? liquidityPlan.clientStatus
+    : liquidityPlan.retirementStatus;
+  if (typeof statusRaw === 'string' && statusRaw.trim()) {
+    const status = statusRaw.trim().toLowerCase();
+    if (status === 'retired' || status === 'not-retired' || status === 'working') {
+      normalized.clientStatus = status === 'working' ? 'not-retired' : status;
+    }
+  } else if (liquidityPlan.retired === true) {
+    normalized.clientStatus = 'retired';
+  }
+
+  [
+    'headline',
+    'primaryActionLabel',
+    'primaryActionDetail',
+    'shortfallLabel',
+    'surplusLabel',
+    'targetLabel',
+    'contextLabel'
+  ].forEach((key) => {
+    if (typeof liquidityPlan[key] === 'string' && liquidityPlan[key].trim()) {
+      normalized[key] = liquidityPlan[key].trim();
+    }
+  });
+
+  const nextSteps = normalizeLiquidityItems(liquidityPlan.nextSteps || liquidityPlan.actions, 'liquidity-step');
+  if (nextSteps.length > 0) {
+    normalized.nextSteps = nextSteps;
+  }
+
+  const evidenceCards = normalizeLiquidityItems(
+    liquidityPlan.evidenceCards || liquidityPlan.evidence || liquidityPlan.research,
+    'liquidity-evidence'
+  );
+  if (evidenceCards.length > 0) {
+    normalized.evidenceCards = evidenceCards;
+  }
+
+  return Object.keys(normalized).length > 1 ? normalized : null;
+}
+
 function normalizeCharts(charts) {
   if (!Array.isArray(charts)) {
     return [];
@@ -1139,6 +1273,7 @@ export function createEmptyGenerated() {
     },
     tables: [],
     pbsInputs: null,
+    liquidityPlan: null,
     pensionInputs: null,
     collegeFundingInputs: null,
     netRetirementInputs: null,
@@ -1163,6 +1298,7 @@ export function normalizeGenerated(generated) {
     outputs: normalizeTable(generated.outputs),
     tables: normalizeGeneratedTables(generated.tables),
     pbsInputs: normalizePbsInputs(generated.pbsInputs || generated.personalBalanceSheetInputs),
+    liquidityPlan: normalizeLiquidityPlan(generated.liquidityPlan || generated.liquidity),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
     collegeFundingInputs: normalizeCollegeFundingInputs(generated.collegeFundingInputs || generated.collegeFunding),
     netRetirementInputs: normalizeNetRetirementInputs(generated.netRetirementInputs || generated.netCashflowInputs),
@@ -1178,6 +1314,7 @@ export function normalizeGenerated(generated) {
   if (normalized.videoSummary) {
     normalized.summaryHtml = '';
     normalized.pbsInputs = null;
+    normalized.liquidityPlan = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
     normalized.netRetirementInputs = null;
@@ -1197,23 +1334,37 @@ export function normalizeGenerated(generated) {
     };
     normalized.tables = [];
   } else if (normalized.report) {
+    normalized.liquidityPlan = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
     normalized.loanInputs = null;
     normalized.education = null;
+  } else if (normalized.liquidityPlan) {
+    normalized.pbsInputs = null;
+    normalized.pensionInputs = null;
+    normalized.collegeFundingInputs = null;
+    normalized.netRetirementInputs = null;
+    normalized.mortgageInputs = null;
+    normalized.loanInputs = null;
+    normalized.education = null;
+    normalized.report = null;
+    normalized.outputsBucketed = null;
   } else if (normalized.netRetirementInputs) {
+    normalized.liquidityPlan = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
     normalized.mortgageInputs = null;
     normalized.loanInputs = null;
     normalized.education = null;
   } else if (normalized.pensionInputs || normalized.mortgageInputs || normalized.loanInputs) {
+    normalized.liquidityPlan = null;
     normalized.collegeFundingInputs = null;
     normalized.netRetirementInputs = null;
     normalized.education = null;
   } else if (normalized.collegeFundingInputs) {
+    normalized.liquidityPlan = null;
     normalized.netRetirementInputs = null;
     normalized.education = null;
   }
@@ -1322,6 +1473,12 @@ function normalizeModuleUi(ui) {
     ? ui.tableHighlights
     : {};
 
+  const cardOrder = ui && typeof ui === 'object' && !Array.isArray(ui) && Array.isArray(ui.cardOrder)
+    ? [...new Set(ui.cardOrder
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean))]
+    : [];
+
   return {
     tableHighlights: {
       assumptions: normalizeTableHighlightState(tableHighlights.assumptions),
@@ -1332,6 +1489,7 @@ function normalizeModuleUi(ui) {
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
         .filter(Boolean))]
       : [],
+    cardOrder,
     pbsScenarioId: ui && typeof ui === 'object' && !Array.isArray(ui) && typeof ui.pbsScenarioId === 'string'
       ? ui.pbsScenarioId.trim()
       : ''
@@ -1464,7 +1622,8 @@ export function exportPublishedSession(session) {
     generated: module.generated,
     media: module.media,
     ui: {
-      hiddenCardIds: module.ui.hiddenCardIds
+      hiddenCardIds: module.ui.hiddenCardIds,
+      cardOrder: module.ui.cardOrder
     }
   }));
   return JSON.stringify(normalized, null, 2);

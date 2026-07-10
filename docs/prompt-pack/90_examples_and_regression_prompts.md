@@ -293,6 +293,29 @@ Checks:
 - may use `accordion` for verification detail if the source has caveats or assumptions
 - next steps included only if useful
 
+## Liquidity Regression Prompts
+
+### LIQ-1
+Prompt:
+`Use the liquidity playbook. Working client. Cash 110000. Annual spend 48000. Focus on the cash issue only because they are holding too much cash.`
+
+Checks:
+- uses `generated.liquidityPlan`
+- does not use `generated.outputsBucketed` or `generated.pbsInputs`
+- does not show net worth, property, pensions, or other PBS buckets
+- calculates six-month target as 24000 and surplus cash as 86000
+- frames surplus as cash to put to work while keeping the emergency fund accessible
+
+### LIQ-2
+Prompt:
+`Use the liquidity playbook. Retired client. Cash 50000. Annual spend 72000.`
+
+Checks:
+- uses retired thresholds, not working thresholds
+- red under 12 months, yellow 12 to under 24, green 24+
+- focuses on building the reserve first because the client is below one year
+- avoids generic investment language while the reserve is underfunded
+
 ## Protection Regression Prompts
 
 ### PROT-1

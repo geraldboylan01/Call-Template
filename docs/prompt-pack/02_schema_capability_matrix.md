@@ -23,6 +23,7 @@ This file is a reference source of truth for the prompt pack. It mirrors the cur
 - `outputsBucketed`
 - `tables`
 - `pbsInputs`
+- `liquidityPlan`
 - `charts`
 - `pensionInputs`
 - `netRetirementInputs`
@@ -147,6 +148,29 @@ Playbooks should only emit the subset they are responsible for.
 - Scenario switching is supported through `scenarios[]`. Each scenario supports `id`, `title`, optional `description`, optional `availableInvestmentFundToday`, optional `annualExpenditureToday`, `excludedIncomeSourceIds[]`, `incomeSourceOverrides[]`, and `additionalIncomeSources[]`.
 - The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables`, and `generated.charts`; the playbook should not hand-build those fields.
 - Required fund outputs are after-tax net figures. Do not compare them directly with pension balances or gross pension withdrawals unless pension withdrawal tax has been allowed for separately.
+
+## Liquidity Support
+- Use `generated.liquidityPlan`.
+- This is a cash-only module. Do not use PBS `outputsBucketed`, net worth, or broader asset sections for this playbook.
+- Runtime-supported keys:
+  - `currencySymbol`
+  - `clientStatus` (`"not-retired"` or `"retired"`)
+  - `annualExpenditure`
+  - `monthlyExpenditure`
+  - `currentCash`
+  - `cashItems`
+  - `minimumBufferMonths`
+  - `targetBufferMonths`
+  - `headline`
+  - `primaryActionLabel`
+  - `primaryActionDetail`
+  - `evidenceCards`
+  - `nextSteps`
+- `cashItems[]` supports `{ "label": string, "amount": number }`; the runtime can derive `currentCash` from those rows if `currentCash` is omitted.
+- Working threshold defaults are red under 3 months, yellow from 3 to under 6 months, and green at 6+ months.
+- Retired threshold defaults are red under 12 months, yellow from 12 to under 24 months, and green at 24+ months.
+- Above target, the renderer names the excess as surplus cash to assign, rather than showing a broad PBS-style green bucket.
+- `evidenceCards[]` supports `label`, `value`, `detail`, `sourceLabel`, `sourceUrl`, and optional `tone`.
 
 ## College Funding Support
 - Use `generated.collegeFundingInputs`.

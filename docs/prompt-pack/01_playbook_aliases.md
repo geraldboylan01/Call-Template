@@ -30,6 +30,16 @@ Use `15_net_retirement_cashflow_playbook.md` when Gerry says things like:
 - compare keeping or losing rental income
 - pension tax is too uncertain to model directly
 
+### Liquidity Playbook
+Use `16_liquidity_playbook.md` when Gerry says things like:
+- use the liquidity playbook
+- liquidity module
+- cash buffer
+- emergency fund
+- too much cash
+- cash getting eaten by inflation
+- put cash to work
+
 ### Mortgage Playbook
 Use `12_mortgage_playbook.md` when Gerry says things like:
 - use the mortgage playbook
@@ -79,6 +89,7 @@ Use `22_protection_playbook.md` when Gerry says things like:
   - structured net worth classification -> PBS
   - pension accumulation, pension drawdown, or gross pension income maths -> Retirement
   - net cash-flow shortfall and required after-tax investment fund maths -> Net Retirement Cash Flow
+  - cash-only buffer, emergency fund, too little cash, or too much cash -> Liquidity
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
   - children’s college cost scenarios -> College Funding

@@ -7,6 +7,7 @@ import {
   ensureActiveModule,
   createEmptyGenerated,
   normalizeGenerated,
+  normalizeLiquidityPlan,
   normalizePbsInputs,
   exportSession,
   exportPublishedSession,
@@ -672,6 +673,74 @@ const EXAMPLE_PAYLOADS = [
             ]
           }
         ]
+      }
+    }
+  },
+  {
+    id: 'liquidity-plan-surplus-demo',
+    label: 'Liquidity Plan: Cash Surplus Demo',
+    payload: {
+      title: 'Liquidity Plan - Cash Buffer',
+      generated: {
+        summaryHtml: '<p>This module focuses only on cash. The reserve target is six months of spending; anything above that should have a clear job rather than sitting idle and being eroded by inflation.</p>',
+        liquidityPlan: {
+          currencySymbol: '€',
+          clientStatus: 'not-retired',
+          annualExpenditure: 48000,
+          currentCash: 110000,
+          cashItems: [
+            { label: 'Current account', amount: 18000 },
+            { label: 'Deposit account', amount: 72000 },
+            { label: 'Prize bonds / instant-access cash', amount: 20000 }
+          ],
+          headline: 'The emergency fund is covered. The excess cash now needs a job.',
+          primaryActionLabel: 'Cash to put to work',
+          primaryActionDetail: 'Keep six months accessible, then decide where the surplus belongs: debt reduction, pension, long-term investment, or known spending.',
+          evidenceCards: [
+            {
+              label: 'Irish household deposits',
+              value: '€175bn',
+              detail: 'Household deposit stock at end-May 2026.',
+              sourceLabel: 'Central Bank of Ireland',
+              sourceUrl: 'https://www.centralbank.ie/statistics/data-and-analysis/credit-and-banking-statistics/bank-balance-sheets'
+            },
+            {
+              label: 'Overnight deposit rate',
+              value: '0.14%',
+              detail: 'Weighted average Irish household overnight deposit rate in May 2026.',
+              sourceLabel: 'Central Bank of Ireland',
+              sourceUrl: 'https://www.centralbank.ie/statistics/data-and-analysis/credit-and-banking-statistics/retail-interest-rates'
+            },
+            {
+              label: 'CPI inflation',
+              value: '3.4%',
+              detail: 'Irish CPI annual change for June 2026.',
+              sourceLabel: 'CSO',
+              sourceUrl: 'https://www.cso.ie/en/releasesandpublications/ep/p-cpi/consumerpriceindexjune2026/'
+            },
+            {
+              label: 'Emergency fund guide',
+              value: '3-6 months',
+              detail: 'CCPC describes three to six months of basic living costs as the emergency-fund range.',
+              sourceLabel: 'CCPC',
+              sourceUrl: 'https://www.ccpc.ie/manage-your-money/jargon-buster'
+            }
+          ],
+          nextSteps: [
+            {
+              label: 'Lock the reserve',
+              detail: 'Keep the six-month emergency fund accessible and separate from investment decisions.'
+            },
+            {
+              label: 'Name the surplus',
+              detail: 'Show the cash amount above target so the client can see what is available to put to work.'
+            },
+            {
+              label: 'Choose the destination',
+              detail: 'Agree whether surplus cash should clear expensive debt, fund pension, invest gradually, or cover a known near-term cost.'
+            }
+          ]
+        }
       }
     }
   },
@@ -2022,6 +2091,14 @@ function ensureModuleUi(module) {
       .filter(Boolean))];
   }
 
+  if (!Array.isArray(module.ui.cardOrder)) {
+    module.ui.cardOrder = [];
+  } else {
+    module.ui.cardOrder = [...new Set(module.ui.cardOrder
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean))];
+  }
+
   if (typeof module.ui.pbsScenarioId !== 'string') {
     module.ui.pbsScenarioId = '';
   } else {
@@ -2029,6 +2106,297 @@ function ensureModuleUi(module) {
   }
 
   return module.ui;
+}
+
+function sanitizeEditableGeneratedHtml(rawHtml) {
+  const template = document.createElement('template');
+  template.innerHTML = String(rawHtml ?? '');
+
+  template.content
+    .querySelectorAll('script, style, iframe, object, embed, link, meta, form, button, input, textarea')
+    .forEach((element) => element.remove());
+
+  template.content.querySelectorAll('*').forEach((element) => {
+    [...element.attributes].forEach((attribute) => {
+      const attrName = attribute.name.toLowerCase();
+      const attrValue = attribute.value;
+      if (attrName.startsWith('on')) {
+        element.removeAttribute(attribute.name);
+        return;
+      }
+      if ((attrName === 'href' || attrName === 'src') && /^\s*javascript:/i.test(attrValue)) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+
+  return template.innerHTML.trim();
+}
+
+function parseEditableNumber(value) {
+  const cleaned = String(value ?? '')
+    .replace(/[€£$,\s]/g, '')
+    .replace(/^\((.+)\)$/, '-$1')
+    .trim();
+  const parsed = Number(cleaned);
+  if (!cleaned || !Number.isFinite(parsed)) {
+    throw new Error('Enter a valid number for this cell.');
+  }
+  return parsed;
+}
+
+function getEditableIndex(value, label) {
+  const index = Number(value);
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`${label} is unavailable.`);
+  }
+  return index;
+}
+
+function hasCalculatedGeneratedOutputs(module) {
+  const generated = module?.generated || {};
+  return Boolean(
+    generated.pensionInputs
+    || generated.mortgageInputs
+    || generated.loanInputs
+    || generated.collegeFundingInputs
+    || generated.netRetirementInputs
+  );
+}
+
+function coerceEditableGeneratedValue(currentValue, rawValue, valueType) {
+  if (valueType === 'html') {
+    return sanitizeEditableGeneratedHtml(rawValue);
+  }
+  if (valueType === 'number' || typeof currentValue === 'number') {
+    return parseEditableNumber(rawValue);
+  }
+  return String(rawValue ?? '').trim();
+}
+
+function setEditableTableValue(table, pathRest, rawValue, valueType, label) {
+  if (!table || typeof table !== 'object' || Array.isArray(table)) {
+    throw new Error(`${label} is unavailable.`);
+  }
+
+  if (pathRest[0] === 'columns') {
+    const columnIndex = getEditableIndex(pathRest[1], 'Column');
+    if (!Array.isArray(table.columns) || columnIndex >= table.columns.length) {
+      throw new Error('Column is unavailable.');
+    }
+    table.columns[columnIndex] = coerceEditableGeneratedValue(table.columns[columnIndex], rawValue, valueType);
+    return;
+  }
+
+  if (pathRest[0] === 'rows') {
+    const rowIndex = getEditableIndex(pathRest[1], 'Row');
+    const columnIndex = getEditableIndex(pathRest[2], 'Cell');
+    if (!Array.isArray(table.rows) || !Array.isArray(table.rows[rowIndex]) || columnIndex >= table.rows[rowIndex].length) {
+      throw new Error('Cell is unavailable.');
+    }
+    table.rows[rowIndex][columnIndex] = coerceEditableGeneratedValue(table.rows[rowIndex][columnIndex], rawValue, valueType);
+    return;
+  }
+
+  throw new Error(`${label} path is not editable.`);
+}
+
+function refreshOutputsBucketedSubtotal(section) {
+  if (!section || typeof section !== 'object' || !Array.isArray(section.rows)) {
+    return;
+  }
+  section.subtotalValue = section.rows.reduce((sum, row) => (
+    Array.isArray(row) && Number.isFinite(row[1]) ? sum + row[1] : sum
+  ), 0);
+}
+
+function setEditableOutputsBucketedValue(outputsBucketed, pathRest, rawValue, valueType) {
+  if (!outputsBucketed || typeof outputsBucketed !== 'object' || Array.isArray(outputsBucketed)) {
+    throw new Error('Outputs are unavailable.');
+  }
+  if (pathRest[0] !== 'sections') {
+    throw new Error('Only output sections are editable.');
+  }
+
+  const sectionIndex = getEditableIndex(pathRest[1], 'Output section');
+  const section = Array.isArray(outputsBucketed.sections) ? outputsBucketed.sections[sectionIndex] : null;
+  if (!section || typeof section !== 'object' || Array.isArray(section)) {
+    throw new Error('Output section is unavailable.');
+  }
+
+  const field = pathRest[2];
+  if (field === 'title') {
+    section.title = coerceEditableGeneratedValue(section.title, rawValue, valueType);
+    return;
+  }
+
+  if (field === 'columns') {
+    const columnIndex = getEditableIndex(pathRest[3], 'Output column');
+    if (!Array.isArray(section.columns) || columnIndex >= section.columns.length) {
+      throw new Error('Output column is unavailable.');
+    }
+    section.columns[columnIndex] = coerceEditableGeneratedValue(section.columns[columnIndex], rawValue, valueType);
+    return;
+  }
+
+  if (field === 'rows') {
+    const rowIndex = getEditableIndex(pathRest[3], 'Output row');
+    const columnIndex = getEditableIndex(pathRest[4], 'Output cell');
+    if (!Array.isArray(section.rows) || !Array.isArray(section.rows[rowIndex]) || columnIndex > 1) {
+      throw new Error('Output cell is unavailable.');
+    }
+    section.rows[rowIndex][columnIndex] = columnIndex === 1
+      ? parseEditableNumber(rawValue)
+      : coerceEditableGeneratedValue(section.rows[rowIndex][columnIndex], rawValue, valueType);
+    refreshOutputsBucketedSubtotal(section);
+    return;
+  }
+
+  throw new Error('Output path is not editable.');
+}
+
+function setEditableNestedString(root, pathRest, rawValue, valueType, htmlFields = new Set()) {
+  let target = root;
+  for (let index = 0; index < pathRest.length - 1; index += 1) {
+    const key = pathRest[index];
+    if (Array.isArray(target)) {
+      const itemIndex = getEditableIndex(key, 'Item');
+      target = target[itemIndex];
+    } else if (target && typeof target === 'object') {
+      target = target[key];
+    } else {
+      target = null;
+    }
+
+    if (!target || (typeof target !== 'object' && !Array.isArray(target))) {
+      throw new Error('That text is no longer available.');
+    }
+  }
+
+  const finalKey = pathRest[pathRest.length - 1];
+  if (Array.isArray(target)) {
+    const itemIndex = getEditableIndex(finalKey, 'Item');
+    if (itemIndex >= target.length) {
+      throw new Error('That text is no longer available.');
+    }
+    target[itemIndex] = coerceEditableGeneratedValue(target[itemIndex], rawValue, valueType);
+    return;
+  }
+
+  if (!target || typeof target !== 'object') {
+    throw new Error('That text is no longer available.');
+  }
+
+  target[finalKey] = coerceEditableGeneratedValue(
+    target[finalKey],
+    rawValue,
+    htmlFields.has(finalKey) ? 'html' : valueType
+  );
+}
+
+function applyEditableGeneratedPatch(module, patch) {
+  ensureGenerated(module);
+  const path = Array.isArray(patch?.path) ? patch.path : [];
+  if (path[0] !== 'generated') {
+    throw new Error('Only generated module text can be edited here.');
+  }
+
+  const root = path[1];
+  if (root === 'summaryHtml' && path.length === 2) {
+    module.generated.summaryHtml = sanitizeEditableGeneratedHtml(patch.value);
+    return;
+  }
+
+  if ((root === 'assumptions' || root === 'outputs') && hasCalculatedGeneratedOutputs(module)) {
+    throw new Error('Use the assumptions editor for calculated module values.');
+  }
+
+  if ((root === 'assumptions' || root === 'outputs') && (path[2] === 'columns' || path[2] === 'rows')) {
+    setEditableTableValue(module.generated[root], path.slice(2), patch.value, patch.valueType, `generated.${root}`);
+    return;
+  }
+
+  if (root === 'tables') {
+    if (hasCalculatedGeneratedOutputs(module)) {
+      throw new Error('Calculated module tables are controlled by their inputs.');
+    }
+    const tableIndex = getEditableIndex(path[2], 'Table');
+    const table = Array.isArray(module.generated.tables) ? module.generated.tables[tableIndex] : null;
+    if (!table) {
+      throw new Error('Table is unavailable.');
+    }
+    if (path[3] === 'title') {
+      table.title = coerceEditableGeneratedValue(table.title, patch.value, patch.valueType);
+      return;
+    }
+    setEditableTableValue(table, path.slice(3), patch.value, patch.valueType, 'generated.tables');
+    return;
+  }
+
+  if (root === 'outputsBucketed') {
+    setEditableOutputsBucketedValue(module.generated.outputsBucketed, path.slice(2), patch.value, patch.valueType);
+    return;
+  }
+
+  if (root === 'education') {
+    setEditableNestedString(module.generated.education, path.slice(2), patch.value, patch.valueType, new Set(['bodyHtml']));
+    return;
+  }
+
+  if (root === 'liquidityPlan') {
+    setEditableNestedString(module.generated.liquidityPlan, path.slice(2), patch.value, patch.valueType);
+    if (path[2] === 'cashItems' && path[4] === 'amount' && Array.isArray(module.generated.liquidityPlan?.cashItems)) {
+      module.generated.liquidityPlan.currentCash = module.generated.liquidityPlan.cashItems.reduce((sum, item) => (
+        Number.isFinite(item?.amount) ? sum + item.amount : sum
+      ), 0);
+    }
+    return;
+  }
+
+  if (root === 'report') {
+    setEditableNestedString(module.generated.report, path.slice(2), patch.value, patch.valueType, new Set(['bodyHtml']));
+    return;
+  }
+
+  throw new Error('That generated text is not editable yet.');
+}
+
+function updateModuleCardOrder(moduleId, cardOrder) {
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+  const module = getModuleById(appState.session, moduleId);
+  const uiState = ensureModuleUi(module);
+  if (!uiState) {
+    return;
+  }
+  uiState.cardOrder = [...new Set((Array.isArray(cardOrder) ? cardOrder : [])
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean))];
+  module.updatedAt = nowIso();
+  markSessionDirty();
+  saveSessionNow();
+}
+
+async function handleGeneratedTextEdit(patch) {
+  if (runtimeConfig.readOnly) {
+    throw new Error('This session is read only.');
+  }
+  const moduleId = String(patch?.moduleId || '').trim();
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    throw new Error('The module is unavailable.');
+  }
+
+  try {
+    applyEditableGeneratedPatch(module, patch);
+    module.updatedAt = nowIso();
+    markSessionDirty();
+    saveSessionNow();
+  } catch (error) {
+    showToast(error?.message || 'Could not save that edit.', 'error');
+    throw error;
+  }
 }
 
 function getModuleTableHighlightState(module, tableKind) {
@@ -2313,6 +2681,10 @@ function patchFocusedModuleGeneratedContent(moduleId, {
     onRemoveImage: (imageId) => {
       void removeModuleImage(moduleId, imageId);
     },
+    onReorderCards: (cardOrder) => {
+      updateModuleCardOrder(moduleId, cardOrder);
+    },
+    onEditGeneratedText: (patch) => handleGeneratedTextEdit(patch),
     assumptionsEditorStatus: getAssumptionsEditorRenderStatus(moduleId),
     readOnly: runtimeConfig.readOnly,
     patchSummary,
@@ -7213,6 +7585,14 @@ function validatePbsInputsPayload(pbsInputs) {
   return normalizePbsInputs(pbsInputs);
 }
 
+function validateLiquidityPlanPayload(liquidityPlan) {
+  const normalized = normalizeLiquidityPlan(liquidityPlan);
+  if (!normalized) {
+    throw new Error('generated.liquidityPlan must include liquidity planning data.');
+  }
+  return normalized;
+}
+
 function normalizePayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Payload must be a JSON object.');
@@ -7272,6 +7652,14 @@ function normalizePayload(payload) {
 
     if ('personalBalanceSheetInputs' in payload.generated && !('pbsInputs' in payload.generated)) {
       generatedPatch.pbsInputs = validatePbsInputsPayload(payload.generated.personalBalanceSheetInputs);
+    }
+
+    if ('liquidityPlan' in payload.generated) {
+      generatedPatch.liquidityPlan = validateLiquidityPlanPayload(payload.generated.liquidityPlan);
+    }
+
+    if ('liquidity' in payload.generated && !('liquidityPlan' in payload.generated)) {
+      generatedPatch.liquidityPlan = validateLiquidityPlanPayload(payload.generated.liquidity);
     }
 
     if ('charts' in payload.generated) {
@@ -8431,6 +8819,10 @@ function getFocusedPaneForModule(module, {
     onRemoveCard: (cardId) => {
       void hideModuleCard(module.id, cardId);
     },
+    onReorderCards: (cardOrder) => {
+      updateModuleCardOrder(module.id, cardOrder);
+    },
+    onEditGeneratedText: (patch) => handleGeneratedTextEdit(patch),
     onRestoreRemovedCards: (moduleId) => {
       void restoreModuleCards(moduleId);
     },
@@ -9185,6 +9577,7 @@ function clearGeneratedForVideoSummary(module) {
   };
   module.generated.tables = [];
   module.generated.pbsInputs = null;
+  module.generated.liquidityPlan = null;
   module.generated.pensionInputs = null;
   module.generated.mortgageInputs = null;
   module.generated.loanInputs = null;
@@ -9224,9 +9617,30 @@ function mergeGeneratedPatch(module, generatedPatch) {
     }
   }
 
+  if ('liquidityPlan' in generatedPatch) {
+    module.generated.liquidityPlan = generatedPatch.liquidityPlan;
+    if (generatedPatch.liquidityPlan) {
+      module.generated.pbsInputs = null;
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
+      module.generated.netRetirementInputs = null;
+      module.generated.education = null;
+      module.generated.report = null;
+      module.generated.outputsBucketed = null;
+      module.generated.outputs = { columns: [], rows: [] };
+      module.generated.assumptions = { columns: [], rows: [] };
+      module.generated.tables = [];
+      module.generated.charts = [];
+      clearVideoSummaryForGeneratedModule(module);
+    }
+  }
+
   if ('pensionInputs' in generatedPatch) {
     module.generated.pensionInputs = generatedPatch.pensionInputs;
     if (generatedPatch.pensionInputs) {
+      module.generated.liquidityPlan = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
@@ -9240,6 +9654,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
   if ('collegeFundingInputs' in generatedPatch) {
     module.generated.collegeFundingInputs = generatedPatch.collegeFundingInputs;
     if (generatedPatch.collegeFundingInputs) {
+      module.generated.liquidityPlan = null;
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
@@ -9253,6 +9668,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
   if ('netRetirementInputs' in generatedPatch) {
     module.generated.netRetirementInputs = generatedPatch.netRetirementInputs;
     if (generatedPatch.netRetirementInputs) {
+      module.generated.liquidityPlan = null;
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
@@ -9266,6 +9682,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
   if ('mortgageInputs' in generatedPatch) {
     module.generated.mortgageInputs = generatedPatch.mortgageInputs;
     if (generatedPatch.mortgageInputs) {
+      module.generated.liquidityPlan = null;
       module.generated.pensionInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
@@ -9279,6 +9696,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
   if ('loanInputs' in generatedPatch) {
     module.generated.loanInputs = generatedPatch.loanInputs;
     if (generatedPatch.loanInputs) {
+      module.generated.liquidityPlan = null;
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.collegeFundingInputs = null;
@@ -9292,6 +9710,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
   if ('education' in generatedPatch) {
     module.generated.education = generatedPatch.education;
     if (generatedPatch.education) {
+      module.generated.liquidityPlan = null;
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
@@ -9305,6 +9724,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
   if ('report' in generatedPatch) {
     module.generated.report = generatedPatch.report;
     if (generatedPatch.report) {
+      module.generated.liquidityPlan = null;
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
@@ -9330,7 +9750,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
     module.generated.tables = generatedPatch.tables;
   }
 
-  if ('pbsInputs' in generatedPatch) {
+  if ('pbsInputs' in generatedPatch && !module.generated.liquidityPlan) {
     module.generated.pbsInputs = generatedPatch.pbsInputs;
   }
 

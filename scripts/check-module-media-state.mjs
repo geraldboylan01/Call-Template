@@ -31,6 +31,7 @@ const legacy = importSession({
 });
 assert(legacy.modules[0].media.images.length === 0, 'Legacy modules must receive an empty media list.');
 assert(legacy.modules[0].ui.hiddenCardIds.length === 0, 'Legacy modules must receive an empty hidden-card list.');
+assert(legacy.modules[0].ui.cardOrder.length === 0, 'Legacy modules must receive an empty generated-card order.');
 
 const withMedia = importSession({
   version: 1,
@@ -58,7 +59,8 @@ const withMedia = importSession({
       ]
     },
     ui: {
-      hiddenCardIds: ['summary', 'summary', 'charts']
+      hiddenCardIds: ['summary', 'summary', 'charts'],
+      cardOrder: ['summary', 'image:image-1', 'summary', '', 'outputs']
     }
   }]
 });
@@ -66,9 +68,11 @@ const withMedia = importSession({
 assert(withMedia.modules[0].media.images.length === 1, 'Unsupported module media must be ignored.');
 assert(withMedia.modules[0].media.images[0].alt === 'Planning diagram', 'Image alt text must be preserved.');
 assert(withMedia.modules[0].ui.hiddenCardIds.join(',') === 'summary,charts', 'Hidden cards must be de-duplicated.');
+assert(withMedia.modules[0].ui.cardOrder.join(',') === 'summary,image:image-1,outputs', 'Generated-card order must be normalized and de-duplicated.');
 
 const published = importPublishedSession(exportPublishedSession(withMedia));
 assert(published.modules[0].media.images[0].assetId === 'asset-12345678', 'Published snapshots must retain media references.');
 assert(published.modules[0].ui.hiddenCardIds.includes('summary'), 'Published snapshots must retain hidden-card presentation state.');
+assert(published.modules[0].ui.cardOrder.includes('image:image-1'), 'Published snapshots must retain generated-card order.');
 
 console.log('Module media state checks passed.');

@@ -584,6 +584,7 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 }
 
 .generated-card-remove-btn,
+.generated-card-drag-handle,
 .module-media-remove-btn {
   display: inline-grid;
   width: 25px;
@@ -605,6 +606,8 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 
 [data-module-card-id]:hover .generated-card-remove-btn,
 [data-module-card-id]:focus-within .generated-card-remove-btn,
+[data-module-card-id]:hover .generated-card-drag-handle,
+[data-module-card-id]:focus-within .generated-card-drag-handle,
 .module-media-item:hover .module-media-remove-btn,
 .module-media-item:focus-within .module-media-remove-btn {
   opacity: 1;
@@ -613,11 +616,69 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 
 .generated-card-remove-btn:hover,
 .generated-card-remove-btn:focus-visible,
+.generated-card-drag-handle:hover,
+.generated-card-drag-handle:focus-visible,
 .module-media-remove-btn:hover,
 .module-media-remove-btn:focus-visible {
   border-color: rgba(255, 180, 193, 0.78);
   background: rgba(82, 22, 41, 0.88);
   outline: none;
+}
+
+.generated-card-drag-handle {
+  border-color: rgba(143, 212, 255, 0.24);
+  background: rgba(6, 18, 31, 0.66);
+  color: #a8d9ff;
+  cursor: grab;
+  font-size: 0.78rem;
+  font-weight: 820;
+  letter-spacing: 0;
+}
+
+.generated-card-drag-handle:hover,
+.generated-card-drag-handle:focus-visible {
+  border-color: rgba(143, 212, 255, 0.62);
+  background: rgba(16, 44, 68, 0.88);
+}
+
+.generated-card-drag-handle:active,
+.generated-card-dragging .generated-card-drag-handle {
+  cursor: grabbing;
+}
+
+.generated-card-drag-ghost {
+  opacity: 0.42;
+}
+
+.generated-card-drag-chosen {
+  box-shadow: 0 18px 44px rgba(3, 10, 18, 0.34);
+}
+
+.generated-card-dragging {
+  transform: scale(0.995);
+}
+
+.generated-inline-editable {
+  border-radius: 5px;
+  outline: 1px solid transparent;
+  outline-offset: 3px;
+  transition: background 160ms ease, outline-color 160ms ease, box-shadow 160ms ease;
+}
+
+.generated-inline-editable:hover {
+  background: rgba(143, 212, 255, 0.06);
+  outline-color: rgba(143, 212, 255, 0.22);
+}
+
+.generated-inline-editable:focus {
+  background: rgba(8, 24, 38, 0.68);
+  box-shadow: 0 0 0 3px rgba(143, 212, 255, 0.12);
+  outline-color: rgba(143, 212, 255, 0.62);
+}
+
+.generated-inline-editable[contenteditable="true"]:empty::before {
+  content: attr(aria-label);
+  color: rgba(184, 205, 225, 0.5);
 }
 
 .video-summary-generated-grid {
@@ -690,6 +751,10 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
+}
+
+.module-media-single-grid {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .module-media-item {
@@ -2560,7 +2625,494 @@ button.pbs-health-badge {
   }
 }
 
+.liquidity-generated-grid {
+  grid-template-columns: minmax(0, 1.04fr) minmax(280px, 0.96fr);
+  align-items: start;
+}
+
+.liquidity-hero-card {
+  position: relative;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  min-height: 360px;
+  border-color: rgba(123, 255, 191, 0.28);
+  background:
+    linear-gradient(90deg, rgba(123, 255, 191, 0.08), transparent 42%, rgba(255, 209, 102, 0.07)),
+    repeating-linear-gradient(90deg, rgba(207, 231, 255, 0.045) 0 1px, transparent 1px 58px),
+    linear-gradient(180deg, rgba(17, 32, 39, 0.94), rgba(7, 16, 21, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 42px rgba(2, 10, 18, 0.28);
+}
+
+.liquidity-hero-card::before {
+  content: '';
+  position: absolute;
+  inset: 48px 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(143, 212, 255, 0.42), transparent);
+  pointer-events: none;
+}
+
+.liquidity-hero-card .generated-card-header,
+.liquidity-hero-body {
+  position: relative;
+  z-index: 1;
+}
+
+.liquidity-hero-body {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(320px, 1.08fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.liquidity-command {
+  display: grid;
+  align-content: start;
+  gap: 13px;
+  min-width: 0;
+  padding: 8px 4px 4px 0;
+}
+
+.liquidity-status-pill {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(190, 202, 207, 0.18);
+  border-radius: 999px;
+  background: rgba(5, 14, 20, 0.58);
+  color: #dcecff;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1;
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-status-pill[data-tone="positive"] {
+  border-color: rgba(123, 255, 191, 0.42);
+  color: #bdffdf;
+}
+
+.liquidity-status-pill[data-tone="warning"] {
+  border-color: rgba(255, 209, 102, 0.44);
+  color: #ffe2a0;
+}
+
+.liquidity-status-pill[data-tone="negative"] {
+  border-color: rgba(255, 159, 179, 0.42);
+  color: #ffc3cf;
+}
+
+.liquidity-hero-title {
+  max-width: 720px;
+  margin: 0;
+  color: #f7fbff;
+  font-size: 1.72rem;
+  font-weight: 820;
+  letter-spacing: 0;
+  line-height: 1.04;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-hero-summary {
+  max-width: 68ch;
+  margin: 0;
+  color: #c7d8e8;
+  font-size: 0.91rem;
+  line-height: 1.5;
+}
+
+.liquidity-hero-summary p:last-child {
+  margin-bottom: 0;
+}
+
+.liquidity-readout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  align-items: end;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(143, 212, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(4, 12, 18, 0.62);
+}
+
+.liquidity-readout-label {
+  grid-column: 1 / -1;
+  color: rgba(216, 234, 255, 0.72);
+  font-size: 0.68rem;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.liquidity-readout-value {
+  color: #f8fcff;
+  font-size: 3.4rem;
+  font-weight: 840;
+  letter-spacing: 0;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-readout-unit {
+  align-self: end;
+  color: #9fc2df;
+  font-size: 0.86rem;
+  font-weight: 720;
+  line-height: 1.15;
+  padding-bottom: 5px;
+}
+
+.liquidity-cockpit {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(143, 212, 255, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(11, 28, 35, 0.82), rgba(5, 15, 22, 0.76)),
+    rgba(5, 15, 22, 0.76);
+}
+
+.liquidity-meter {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.liquidity-meter-track {
+  position: relative;
+  height: 46px;
+  overflow: visible;
+  border: 1px solid rgba(143, 212, 255, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(255, 159, 179, 0.2), rgba(255, 209, 102, 0.16) var(--liquidity-floor), rgba(123, 255, 191, 0.2)),
+    rgba(3, 11, 17, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.liquidity-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--liquidity-progress);
+  border-radius: 7px;
+  background:
+    linear-gradient(90deg, rgba(143, 212, 255, 0.34), rgba(123, 255, 191, 0.38)),
+    rgba(123, 255, 191, 0.2);
+  box-shadow: 0 0 20px rgba(123, 255, 191, 0.18);
+}
+
+.liquidity-meter[data-tone="warning"] .liquidity-meter-fill {
+  background:
+    linear-gradient(90deg, rgba(143, 212, 255, 0.22), rgba(255, 209, 102, 0.42)),
+    rgba(255, 209, 102, 0.18);
+  box-shadow: 0 0 20px rgba(255, 209, 102, 0.14);
+}
+
+.liquidity-meter[data-tone="negative"] .liquidity-meter-fill {
+  background:
+    linear-gradient(90deg, rgba(255, 159, 179, 0.36), rgba(255, 209, 102, 0.2)),
+    rgba(255, 159, 179, 0.18);
+  box-shadow: 0 0 20px rgba(255, 159, 179, 0.14);
+}
+
+.liquidity-meter-marker {
+  position: absolute;
+  top: -8px;
+  display: inline-grid;
+  min-width: 42px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid rgba(216, 234, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(4, 12, 18, 0.9);
+  color: #e7f3ff;
+  font-size: 0.66rem;
+  font-weight: 780;
+  line-height: 1;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.liquidity-meter-marker-floor {
+  left: var(--liquidity-floor);
+}
+
+.liquidity-meter-marker-target {
+  left: auto;
+  right: 4px;
+  transform: none;
+}
+
+.liquidity-meter-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: rgba(216, 234, 255, 0.72);
+  font-size: 0.74rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.liquidity-surplus-ribbon {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(123, 255, 191, 0.34);
+  border-radius: 999px;
+  background: rgba(20, 65, 49, 0.36);
+  color: #bdffdf;
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.15;
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.liquidity-stat {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  min-height: 116px;
+  border: 1px solid rgba(190, 202, 207, 0.14);
+  border-radius: 8px;
+  background: rgba(6, 18, 24, 0.62);
+  padding: 11px;
+}
+
+.liquidity-stat[data-tone="positive"] {
+  border-color: rgba(123, 255, 191, 0.28);
+}
+
+.liquidity-stat[data-tone="warning"] {
+  border-color: rgba(255, 209, 102, 0.28);
+}
+
+.liquidity-stat[data-tone="negative"] {
+  border-color: rgba(255, 159, 179, 0.28);
+}
+
+.liquidity-stat-label,
+.liquidity-action-label,
+.liquidity-evidence-label {
+  color: rgba(216, 234, 255, 0.72);
+  font-size: 0.66rem;
+  font-weight: 780;
+  letter-spacing: 0;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.liquidity-stat-value {
+  color: #f5fbff;
+  font-size: 1.14rem;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1.02;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-stat-detail {
+  color: #a9bfd5;
+  font-size: 0.73rem;
+  font-weight: 620;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-action-card,
+.liquidity-cash-card,
+.liquidity-evidence-card {
+  min-height: 230px;
+}
+
+.liquidity-action-card {
+  border-color: rgba(143, 212, 255, 0.2);
+  background:
+    linear-gradient(180deg, rgba(18, 34, 42, 0.84), rgba(8, 17, 24, 0.78)),
+    rgba(8, 17, 24, 0.78);
+}
+
+.liquidity-action-body {
+  display: grid;
+  gap: 13px;
+}
+
+.liquidity-action-top {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.liquidity-action-amount {
+  color: #f8fcff;
+  font-size: 2rem;
+  font-weight: 840;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-action-detail {
+  margin: 0;
+  color: #c6d8e8;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.liquidity-step-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.liquidity-step-item {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-left: 24px;
+  color: #dcecff;
+}
+
+.liquidity-step-item::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(123, 255, 191, 0.5);
+  border-radius: 50%;
+  background: rgba(123, 255, 191, 0.16);
+}
+
+.liquidity-step-item strong {
+  color: #f6fbff;
+  font-size: 0.83rem;
+  font-weight: 780;
+  line-height: 1.25;
+}
+
+.liquidity-step-item span {
+  color: #acc1d5;
+  font-size: 0.76rem;
+  line-height: 1.36;
+}
+
+.liquidity-cash-list {
+  display: grid;
+  gap: 0;
+}
+
+.liquidity-cash-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 42px;
+  border-bottom: 1px solid rgba(143, 174, 205, 0.14);
+  color: #dcecff;
+  font-size: 0.84rem;
+}
+
+.liquidity-cash-row:last-child {
+  border-bottom: 0;
+}
+
+.liquidity-cash-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-cash-row strong {
+  color: #f4faff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.liquidity-evidence-card {
+  grid-column: 1 / -1;
+}
+
+.liquidity-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.liquidity-evidence-item {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  min-height: 148px;
+  border: 1px solid rgba(143, 212, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(6, 18, 24, 0.55);
+  padding: 12px;
+}
+
+.liquidity-evidence-value {
+  color: #f8fcff;
+  font-size: 1.25rem;
+  font-weight: 830;
+  letter-spacing: 0;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.liquidity-evidence-detail {
+  margin: 0;
+  color: #adc2d6;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.liquidity-evidence-source {
+  align-self: end;
+  width: fit-content;
+  color: #8fd4ff;
+  font-size: 0.72rem;
+  font-weight: 730;
+  text-decoration: none;
+}
+
+a.liquidity-evidence-source:hover,
+a.liquidity-evidence-source:focus-visible {
+  color: #f3f9ff;
+  text-decoration: underline;
+  outline: none;
+}
+
 @media (max-width: 1180px) {
+  .liquidity-hero-body {
+    grid-template-columns: 1fr;
+  }
+
+  .liquidity-evidence-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .pbs-balance-header {
     grid-template-columns: 1fr;
   }
@@ -2580,6 +3132,50 @@ button.pbs-health-badge {
 }
 
 @media (max-width: 720px) {
+  .liquidity-generated-grid,
+  .liquidity-stat-grid,
+  .liquidity-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .liquidity-hero-card {
+    min-height: 0;
+  }
+
+  .liquidity-hero-title {
+    font-size: 1.32rem;
+    line-height: 1.12;
+  }
+
+  .liquidity-readout {
+    width: 100%;
+  }
+
+  .liquidity-readout-value {
+    font-size: 2.6rem;
+  }
+
+  .liquidity-cockpit {
+    padding: 10px;
+  }
+
+  .liquidity-meter-track {
+    height: 52px;
+  }
+
+  .liquidity-meter-marker {
+    top: -6px;
+    min-width: 36px;
+  }
+
+  .liquidity-meter-labels {
+    display: grid;
+  }
+
+  .liquidity-action-amount {
+    font-size: 1.62rem;
+  }
+
   .pbs-main-event-card {
     padding: 12px;
   }
