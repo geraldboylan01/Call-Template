@@ -7,7 +7,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>Planeir Success Animation Preview</title>
     <link rel="stylesheet" href="../styles/base.css" />
-    <link rel="stylesheet" href="../styles/success_takeover.css?v=harp-character-qa" />
+    <link rel="stylesheet" href="../styles/success_takeover.css?v=resonant-halo-qa" />
     <style>
       body {
         min-height: 100vh;
@@ -65,7 +65,7 @@
 
       .success-preview-controls {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: minmax(0, 1fr);
         gap: 12px;
       }
 
@@ -136,20 +136,9 @@
       <main class="success-preview-main">
         <section class="success-preview-panel" aria-labelledby="successPreviewHeading">
           <h1 id="successPreviewHeading">Success animation preview</h1>
-          <p>Local-only controls for reviewing every harp trick without calling any production API.</p>
+          <p>Local-only controls for reviewing the Resonant Halo without calling any production API.</p>
 
           <div class="success-preview-controls">
-            <label class="success-preview-field" for="successPreviewTrick">
-              Trick
-              <select id="successPreviewTrick" data-testid="preview-trick">
-                <option value="random">Random</option>
-                <option value="backflip">Backflip</option>
-                <option value="spin">Spin</option>
-                <option value="flex">Flex</option>
-                <option value="selfie">Selfie</option>
-              </select>
-            </label>
-
             <label class="success-preview-field" for="successPreviewVariant">
               Copy variant
               <select id="successPreviewVariant" data-testid="preview-variant">
@@ -166,6 +155,7 @@
 
           <div class="success-preview-actions">
             <button id="successPreviewPlay" class="ui-button" type="button" data-testid="preview-play">Play</button>
+            <button id="successPreviewReplay" class="ui-button" type="button" data-testid="preview-replay">Replay</button>
             <button id="successPreviewCancel" class="ui-button" type="button" data-testid="preview-cancel">Cancel and reset</button>
           </div>
 
@@ -178,26 +168,8 @@
       <div class="lead-success-stage">
         <div id="successPreviewTarget" class="lead-success-lockup" aria-hidden="true">
           <div class="lead-success-wordmark-shell">
-            <img
-              class="lead-success-stage-logo"
-              src="../assets/brand/planeir-wordmark-no-harp-light.svg"
-              alt=""
-              width="1330"
-              height="384"
-            />
-            <span class="lead-success-harp-character" aria-hidden="true">
-              <span class="lead-success-harp-scale">
-                <span class="lead-success-harp-motion">
-                  <img
-                    class="lead-success-harp-body"
-                    src="../assets/brand/planeir-harp-light.svg"
-                    alt=""
-                    width="140"
-                    height="136"
-                  />
-                </span>
-              </span>
-            </span>
+            <span class="lead-success-stage-logo lead-success-stage-wordmark" aria-hidden="true"></span>
+            <span class="lead-success-harp-resonance" aria-hidden="true"></span>
           </div>
         </div>
 

@@ -7,10 +7,10 @@ const ui = {
   target: document.getElementById('successPreviewTarget'),
   title: document.getElementById('successPreviewTitle'),
   body: document.getElementById('successPreviewBody'),
-  trick: document.getElementById('successPreviewTrick'),
   variant: document.getElementById('successPreviewVariant'),
   reducedMotion: document.getElementById('successPreviewReducedMotion'),
   play: document.getElementById('successPreviewPlay'),
+  replay: document.getElementById('successPreviewReplay'),
   cancel: document.getElementById('successPreviewCancel'),
   status: document.getElementById('successPreviewStatus')
 };
@@ -49,18 +49,16 @@ function getCopy() {
   };
 }
 
-async function playSelectedTrick() {
+async function playResonantHalo() {
   const currentRunId = ++previewRunId;
-  const harpTrick = ui.trick?.value || 'random';
   const copy = getCopy();
 
   if (ui.status) {
-    ui.status.textContent = `Playing ${harpTrick}${motionQuery.matches ? ' with reduced motion' : ''}.`;
+    ui.status.textContent = `Playing Resonant Halo${motionQuery.matches ? ' with reduced motion' : ''}.`;
   }
 
-  const playedTrick = await takeover.play({
+  const playedEffect = await takeover.play({
     ...copy,
-    harpTrick,
     restoreFocusTo: ui.play
   });
 
@@ -69,15 +67,20 @@ async function playSelectedTrick() {
   }
 
   if (ui.status) {
-    const result = playedTrick ? `Played ${playedTrick}. ` : '';
+    const result = playedEffect ? 'Played Resonant Halo. ' : '';
     ui.status.textContent = `${result}Finished and restored to the neutral logo.`;
   }
 
-  return playedTrick;
+  return playedEffect;
 }
 
 ui.play?.addEventListener('click', () => {
-  void playSelectedTrick();
+  void playResonantHalo();
+});
+
+ui.replay?.addEventListener('click', () => {
+  takeover.reset();
+  void playResonantHalo();
 });
 
 ui.cancel?.addEventListener('click', () => {
@@ -89,7 +92,7 @@ ui.cancel?.addEventListener('click', () => {
 });
 
 window.__successTakeoverPreview = {
-  play: playSelectedTrick,
+  play: playResonantHalo,
   reset: () => {
     previewRunId += 1;
     takeover.reset();

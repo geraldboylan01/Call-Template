@@ -105,6 +105,17 @@ body.is-lead-success-active .landing-shell > :not(.lead-success-overlay) {
   object-fit: contain;
 }
 
+.lead-success-stage-wordmark {
+  color: #f3f8ff;
+}
+
+.lead-success-stage-wordmark-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
 .lead-success-overlay.is-active .lead-success-lockup,
 .lead-success-overlay.is-entering .lead-success-lockup,
 .lead-success-overlay.is-settling .lead-success-lockup,
@@ -112,170 +123,79 @@ body.is-lead-success-active .landing-shell > :not(.lead-success-overlay) {
   opacity: 1;
 }
 
-/* The character occupies the harp's exact 974,6 / 140x136 wordmark bounds. */
-.lead-success-harp-character {
+/* The inline harp occupies the logo's exact 974,6 / 140x136 artwork bounds. */
+.lead-success-harp-resonance {
   position: absolute;
   left: 73.2330827068%;
   top: 1.5625%;
   width: 10.5263157895%;
   height: 35.4166666667%;
+  display: block;
   overflow: visible;
   pointer-events: none;
+  color: #f3f8ff;
   transform-origin: 50% 100%;
-  --lead-success-harp-character-scale: 1;
-  --lead-success-harp-mobile-min-height: 44px;
-  --lead-success-harp-mobile-max-scale: 1.55;
+  --lead-success-harp-active-scale: 1.08;
+  --lead-success-harp-mobile-min-height: 48px;
+  --lead-success-harp-mobile-max-scale: 1.75;
   --lead-success-harp-ink: #f3f8ff;
   --lead-success-harp-accent: #8fd0ff;
-  --lead-success-harp-accent-deep: #4d9ddd;
 }
 
-.lead-success-harp-scale,
-.lead-success-harp-motion {
+.lead-success-harp-resonance .planeir-harp-svg {
   position: absolute;
   inset: 0;
   display: block;
+  width: 100%;
+  height: 100%;
   overflow: visible;
+  shape-rendering: geometricPrecision;
+}
+
+.lead-success-harp-resonance [data-harp-stage] {
+  transform-box: fill-box;
   transform-origin: 50% 100%;
 }
 
-.lead-success-harp-scale {
-  transform: scale(var(--lead-success-harp-character-scale));
-}
-
-.lead-success-harp-motion {
-  transform: none;
-}
-
-.lead-success-harp-character[data-harp-trick] .lead-success-harp-scale,
-.lead-success-harp-character[data-harp-trick] .lead-success-harp-motion {
-  will-change: transform;
-}
-
-.lead-success-harp-body {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.lead-success-harp-rig-back,
-.lead-success-harp-rig-front {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-  color: var(--lead-success-harp-ink);
-}
-
-.lead-success-harp-rig-back {
-  z-index: 1;
-}
-
-.lead-success-harp-rig-front {
-  z-index: 3;
-}
-
-.lead-success-harp-trick,
-[class*="lead-success-harp-trick-"] {
-  opacity: 0;
-}
-
-.lead-success-harp-character[data-harp-trick="backflip"] .lead-success-harp-trick-backflip,
-.lead-success-harp-character[data-harp-trick="spin"] .lead-success-harp-trick-spin,
-.lead-success-harp-character[data-harp-trick="flex"] .lead-success-harp-trick-flex,
-.lead-success-harp-character[data-harp-trick="selfie"] .lead-success-harp-trick-selfie {
-  opacity: 1;
-}
-
-.lead-success-harp-limb,
-.lead-success-harp-arm,
-.lead-success-harp-leg,
-.lead-success-harp-limb-path {
-  fill: none;
-  stroke: var(--lead-success-harp-ink);
-  stroke-width: 9.25;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  opacity: 0;
-}
-
-.lead-success-harp-upper-limb {
-  stroke-width: 10.25;
-}
-
-.lead-success-harp-lower-limb {
-  stroke-width: 8.75;
-}
-
-.lead-success-harp-limb-accent,
-.lead-success-harp-arm-accent,
-.lead-success-harp-leg-accent {
-  fill: none;
-  stroke: var(--lead-success-harp-accent);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  opacity: 0;
-}
-
-.lead-success-harp-hand,
-.lead-success-harp-foot,
-.lead-success-harp-joint {
-  opacity: 0;
-}
-
-.lead-success-harp-prop,
-.lead-success-harp-phone,
-.lead-success-harp-flash {
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.lead-success-harp-hand,
-.lead-success-harp-foot,
-.lead-success-harp-joint,
-.lead-success-harp-bicep {
+.lead-success-harp-resonance [data-harp-frame] {
   fill: var(--lead-success-harp-ink);
+}
+
+.lead-success-harp-resonance [data-harp-string] {
+  fill: none;
   stroke: var(--lead-success-harp-ink);
-  stroke-width: 1.5;
+  stroke-width: 1.55;
   stroke-linecap: round;
   stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
-.lead-success-harp-bicep {
-  paint-order: stroke fill;
+.lead-success-harp-resonance [data-harp-effects] {
+  pointer-events: none;
 }
 
-.lead-success-harp-phone {
-  fill: #091425;
-  stroke: var(--lead-success-harp-ink);
-  stroke-width: 3;
-  stroke-linejoin: round;
-}
-
-.lead-success-harp-phone-screen {
-  fill: var(--lead-success-harp-accent-deep);
-  opacity: 0.72;
-}
-
-.lead-success-harp-flash {
+.lead-success-harp-resonance [data-harp-arc] {
   fill: none;
   stroke: var(--lead-success-harp-accent);
-  stroke-width: 3;
+  stroke-width: 1.35;
   stroke-linecap: round;
   stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+}
+
+.lead-success-harp-resonance [data-harp-bead] {
+  fill: var(--lead-success-harp-accent);
+  opacity: 0;
+}
+
+.lead-success-harp-resonance [data-harp-glint] {
+  fill: none;
+  stroke: var(--lead-success-harp-ink);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
 }
 
 .lead-success-copy {
@@ -356,13 +276,11 @@ body.is-lead-success-active .landing-shell > :not(.lead-success-overlay) {
   }
 }
 
-.lead-success-overlay.is-reduced-motion .lead-success-harp-rig-back,
-.lead-success-overlay.is-reduced-motion .lead-success-harp-rig-front {
+.lead-success-overlay.is-reduced-motion [data-harp-effects] {
   display: none;
 }
 
-.lead-success-overlay.is-reduced-motion .lead-success-harp-scale,
-.lead-success-overlay.is-reduced-motion .lead-success-harp-motion,
+.lead-success-overlay.is-reduced-motion [data-harp-stage],
 .lead-success-overlay.is-reduced-motion .lead-success-lockup,
 .lead-success-overlay.is-reduced-motion .lead-success-copy {
   transform: none;
@@ -382,41 +300,22 @@ body.is-lead-success-active .landing-shell > :not(.lead-success-overlay) {
 }
 
 @media (max-width: 540px) {
-  .lead-success-harp-character {
-    --lead-success-harp-mobile-min-height: 44px;
-    --lead-success-harp-mobile-max-scale: 1.55;
+  .lead-success-harp-resonance {
+    --lead-success-harp-mobile-min-height: 48px;
+    --lead-success-harp-mobile-max-scale: 1.75;
   }
 
-  .lead-success-harp-limb,
-  .lead-success-harp-arm,
-  .lead-success-harp-leg,
-  .lead-success-harp-limb-path {
-    stroke-width: 9.75;
-  }
-
-  .lead-success-harp-upper-limb {
-    stroke-width: 10.75;
-  }
-
-  .lead-success-harp-lower-limb {
-    stroke-width: 9.25;
-  }
-
-  .lead-success-harp-limb-accent,
-  .lead-success-harp-arm-accent,
-  .lead-success-harp-leg-accent {
-    stroke-width: 2;
+  .lead-success-harp-resonance [data-harp-arc="secondary"] {
+    display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lead-success-harp-rig-back,
-  .lead-success-harp-rig-front {
+  .lead-success-harp-resonance [data-harp-effects] {
     display: none !important;
   }
 
-  .lead-success-harp-scale,
-  .lead-success-harp-motion {
+  .lead-success-harp-resonance [data-harp-stage] {
     transform: none !important;
   }
 }

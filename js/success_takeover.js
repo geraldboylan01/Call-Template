@@ -1,4 +1,5 @@
-import { createSuccessHarpCharacter } from './success_harp_character.js';
+import { createSuccessHarpResonance } from './success_harp_resonance.js';
+import { createPlaneirWordmarkLettersMarkup } from './planeir_harp_artwork.js';
 
 const SUCCESS_CLASSES = ['is-measuring', 'is-active', 'is-entering', 'is-settling', 'is-showing-copy', 'is-exiting', 'is-reduced-motion'];
 const DEFAULT_WORDMARK_RATIO = 1330 / 384;
@@ -191,18 +192,22 @@ export function createSuccessTakeover(options = {}) {
     reducedExitMs = DEFAULT_REDUCED_EXIT_MS,
     wordmarkRatio = DEFAULT_WORDMARK_RATIO,
     activeBodyClass = 'is-lead-success-active',
-    lockTargets = [],
-    randomSource = Math.random
+    lockTargets = []
   } = options;
 
   let runId = 0;
   let activeFlight = null;
   let imageReadyPromise = null;
   let originInlineVisibility = null;
-  const harpCharacter = createSuccessHarpCharacter({
-    root: target?.querySelector?.('.lead-success-harp-character') || null,
-    motionQuery,
-    randomSource
+  const inlineWordmark = target?.querySelector?.('.lead-success-stage-wordmark') || null;
+  if (inlineWordmark) {
+    inlineWordmark.innerHTML = createPlaneirWordmarkLettersMarkup({
+      className: 'lead-success-stage-wordmark-svg'
+    });
+  }
+  const harpResonance = createSuccessHarpResonance({
+    root: target?.querySelector?.('.lead-success-harp-resonance') || null,
+    motionQuery
   });
 
   function setInteractionLock(isLocked) {
@@ -270,7 +275,7 @@ export function createSuccessTakeover(options = {}) {
       activeFlight.cancel();
       activeFlight = null;
     }
-    harpCharacter.reset();
+    harpResonance.reset();
 
     overlay.classList.remove(...SUCCESS_CLASSES);
     overlay.setAttribute('aria-hidden', 'true');
@@ -349,7 +354,6 @@ export function createSuccessTakeover(options = {}) {
     const {
       titleText = '',
       bodyText = '',
-      harpTrick = 'random',
       restoreFocusIfContainedIn = null,
       restoreFocusTo = null
     } = playOptions;
@@ -424,15 +428,20 @@ export function createSuccessTakeover(options = {}) {
       if (currentRunId !== runId) {
         return;
       }
+
+      await waitForNextFrame();
+      await waitForNextFrame();
+      if (currentRunId !== runId) {
+        return;
+      }
     }
 
     overlay.classList.add('is-settling');
-    const playedHarpTrick = prefersReducedMotion
-      ? null
-      : await harpCharacter.play({ trickName: harpTrick });
+    const playedHarpResonance = await harpResonance.play();
     if (currentRunId !== runId) {
       return null;
     }
+    harpResonance.reset();
 
     await delay(prefersReducedMotion ? 80 : settleLeadMs);
     if (currentRunId !== runId) {
@@ -457,7 +466,7 @@ export function createSuccessTakeover(options = {}) {
       restoreFocusTo.focus({ preventScroll: true });
     }
 
-    return playedHarpTrick;
+    return playedHarpResonance;
   }
 
   return {

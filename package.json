@@ -2,14 +2,16 @@
   "name": "call-template",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "node ./scripts/build-pages.mjs",
+    "generate:brand-harp": "node ./scripts/generate-planeir-harp-assets.mjs --png",
     "generate:advisor-auth": "node ./scripts/generate-advisor-auth.mjs",
     "smoke:worker": "node ./scripts/check-worker-published-session-routes.mjs",
     "check:module-media": "node ./scripts/check-module-media-state.mjs",
     "check:video-summary": "node ./scripts/check-video-summary-module.mjs",
     "check:video-scene": "node ./scripts/check-video-scene.mjs",
     "check:codex-video-brief": "node ./scripts/check-codex-video-brief.mjs",
-    "check:success-animation": "node ./scripts/check-success-harp-tricks.mjs"
+    "check:success-animation": "node ./scripts/check-success-harp-resonance.mjs"
   }
 }
