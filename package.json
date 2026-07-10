@@ -9,6 +9,7 @@
     "check:module-media": "node ./scripts/check-module-media-state.mjs",
     "check:video-summary": "node ./scripts/check-video-summary-module.mjs",
     "check:video-scene": "node ./scripts/check-video-scene.mjs",
-    "check:codex-video-brief": "node ./scripts/check-codex-video-brief.mjs"
+    "check:codex-video-brief": "node ./scripts/check-codex-video-brief.mjs",
+    "check:success-animation": "node ./scripts/check-success-harp-tricks.mjs"
   }
 }
