@@ -30,8 +30,10 @@ const takeover = createSuccessTakeover({
   motionQuery,
   holdMs: 3500,
   reducedHoldMs: 1200,
-  lockTargets: [ui.shell].filter(Boolean)
+  lockTargets: []
 });
+
+let previewRunId = 0;
 
 function getCopy() {
   if (ui.variant?.value === 'request') {
@@ -48,6 +50,7 @@ function getCopy() {
 }
 
 async function playSelectedTrick() {
+  const currentRunId = ++previewRunId;
   const harpTrick = ui.trick?.value || 'random';
   const copy = getCopy();
 
@@ -61,10 +64,16 @@ async function playSelectedTrick() {
     restoreFocusTo: ui.play
   });
 
+  if (currentRunId !== previewRunId) {
+    return null;
+  }
+
   if (ui.status) {
     const result = playedTrick ? `Played ${playedTrick}. ` : '';
     ui.status.textContent = `${result}Finished and restored to the neutral logo.`;
   }
+
+  return playedTrick;
 }
 
 ui.play?.addEventListener('click', () => {
@@ -72,6 +81,7 @@ ui.play?.addEventListener('click', () => {
 });
 
 ui.cancel?.addEventListener('click', () => {
+  previewRunId += 1;
   takeover.reset();
   if (ui.status) {
     ui.status.textContent = 'Cancelled and reset.';
@@ -80,5 +90,8 @@ ui.cancel?.addEventListener('click', () => {
 
 window.__successTakeoverPreview = {
   play: playSelectedTrick,
-  reset: () => takeover.reset()
+  reset: () => {
+    previewRunId += 1;
+    takeover.reset();
+  }
 };

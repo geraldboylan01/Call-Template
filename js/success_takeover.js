@@ -1,7 +1,9 @@
+import { createSuccessHarpCharacter } from './success_harp_character.js';
+
 const SUCCESS_CLASSES = ['is-measuring', 'is-active', 'is-entering', 'is-settling', 'is-showing-copy', 'is-exiting', 'is-reduced-motion'];
 const DEFAULT_WORDMARK_RATIO = 1330 / 384;
 const DEFAULT_FLIGHT_MS = 960;
-const DEFAULT_SETTLE_LEAD_MS = 600;
+const DEFAULT_SETTLE_LEAD_MS = 120;
 const DEFAULT_REDUCED_HOLD_MS = 3000;
 const DEFAULT_EXIT_MS = 400;
 const DEFAULT_REDUCED_EXIT_MS = 220;
@@ -189,13 +191,19 @@ export function createSuccessTakeover(options = {}) {
     reducedExitMs = DEFAULT_REDUCED_EXIT_MS,
     wordmarkRatio = DEFAULT_WORDMARK_RATIO,
     activeBodyClass = 'is-lead-success-active',
-    lockTargets = []
+    lockTargets = [],
+    randomSource = Math.random
   } = options;
 
   let runId = 0;
   let activeFlight = null;
   let imageReadyPromise = null;
   let originInlineVisibility = null;
+  const harpCharacter = createSuccessHarpCharacter({
+    root: target?.querySelector?.('.lead-success-harp-character') || null,
+    motionQuery,
+    randomSource
+  });
 
   function setInteractionLock(isLocked) {
     document.body.classList.toggle(activeBodyClass, isLocked);
@@ -216,12 +224,12 @@ export function createSuccessTakeover(options = {}) {
       return imageReadyPromise;
     }
 
-    const images = [
+    const images = new Set([
       origin instanceof HTMLImageElement ? origin : origin?.querySelector?.('img'),
-      target?.querySelector?.('.lead-success-stage-logo')
-    ].filter(Boolean);
+      ...Array.from(target?.querySelectorAll?.('img') || [])
+    ].filter(Boolean));
 
-    imageReadyPromise = Promise.allSettled(images.map((image) => {
+    imageReadyPromise = Promise.allSettled(Array.from(images).map((image) => {
       if (typeof image.decode === 'function') {
         return image.decode();
       }
@@ -262,6 +270,7 @@ export function createSuccessTakeover(options = {}) {
       activeFlight.cancel();
       activeFlight = null;
     }
+    harpCharacter.reset();
 
     overlay.classList.remove(...SUCCESS_CLASSES);
     overlay.setAttribute('aria-hidden', 'true');
@@ -285,6 +294,9 @@ export function createSuccessTakeover(options = {}) {
     runId += 1;
     clear();
   }
+
+  window.addEventListener('pagehide', reset);
+  window.addEventListener('popstate', reset);
 
   async function runFlight(fromTransform, duration) {
     target.style.opacity = '1';
@@ -337,6 +349,7 @@ export function createSuccessTakeover(options = {}) {
     const {
       titleText = '',
       bodyText = '',
+      harpTrick = 'random',
       restoreFocusIfContainedIn = null,
       restoreFocusTo = null
     } = playOptions;
@@ -414,6 +427,13 @@ export function createSuccessTakeover(options = {}) {
     }
 
     overlay.classList.add('is-settling');
+    const playedHarpTrick = prefersReducedMotion
+      ? null
+      : await harpCharacter.play({ trickName: harpTrick });
+    if (currentRunId !== runId) {
+      return null;
+    }
+
     await delay(prefersReducedMotion ? 80 : settleLeadMs);
     if (currentRunId !== runId) {
       return;
@@ -436,6 +456,8 @@ export function createSuccessTakeover(options = {}) {
     if (shouldRestoreFocus && restoreFocusTo && typeof restoreFocusTo.focus === 'function') {
       restoreFocusTo.focus({ preventScroll: true });
     }
+
+    return playedHarpTrick;
   }
 
   return {

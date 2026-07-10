@@ -13,78 +13,78 @@ export const HARP_TRICK_NAMES = Object.freeze([
 
 const BACK_RIG_MARKUP = `
   <g class="lead-success-harp-trick-backflip" data-trick="backflip" data-part="backflip-back-parts" opacity="0" visibility="hidden" hidden>
-    <g data-part="left-arm" data-origin="37px 58px">
-      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M37 58 C27 61 17 70 11 83" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="11" cy="83" r="3.8" />
+    <g data-part="left-arm" data-origin="26px 66px">
+      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M26 66 C10 68 -8 78 -24 94" pathLength="1" />
+      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="-24" cy="94" r="4.6" />
     </g>
-    <g data-part="right-arm" data-origin="104px 57px">
-      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M104 57 C117 60 126 70 131 82" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="131" cy="82" r="3.8" />
+    <g data-part="right-arm" data-origin="112px 65px">
+      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M112 65 C130 69 148 80 163 94" pathLength="1" />
+      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="163" cy="94" r="4.6" />
     </g>
-    <g data-part="left-leg" data-origin="51px 122px">
-      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M51 122 C49 132 43 139 35 145" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="33" cy="145" rx="5.2" ry="3.2" transform="rotate(-8 33 145)" />
+    <g data-part="left-leg" data-origin="52px 120px">
+      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M52 120 C47 140 34 157 16 167" pathLength="1" />
+      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="13" cy="168" rx="6.5" ry="3.8" transform="rotate(-10 13 168)" />
     </g>
-    <g data-part="right-leg" data-origin="76px 124px">
-      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M76 124 C80 133 87 140 96 144" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="98" cy="144" rx="5.2" ry="3.2" transform="rotate(8 98 144)" />
+    <g data-part="right-leg" data-origin="78px 121px">
+      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M78 121 C87 141 103 157 119 164" pathLength="1" />
+      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="122" cy="165" rx="6.5" ry="3.8" transform="rotate(10 122 165)" />
     </g>
   </g>
 
   <g class="lead-success-harp-trick-spin" data-trick="spin" data-part="spin-back-parts" opacity="0" visibility="hidden" hidden>
-    <g data-part="left-arm" data-origin="37px 58px">
-      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M37 58 C25 53 10 53 -6 59" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="-6" cy="59" r="3.8" />
+    <g data-part="left-arm" data-origin="26px 65px">
+      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M26 65 C5 53 -20 52 -44 63" pathLength="1" />
+      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="-44" cy="63" r="4.6" />
     </g>
-    <g data-part="right-arm" data-origin="104px 57px">
-      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M104 57 C118 52 133 53 147 59" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="147" cy="59" r="3.8" />
+    <g data-part="right-arm" data-origin="112px 65px">
+      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M112 65 C137 52 160 54 184 65" pathLength="1" />
+      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="184" cy="65" r="4.6" />
     </g>
-    <g data-part="left-leg" data-origin="51px 122px">
-      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M51 122 C48 132 45 139 40 145" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="38" cy="145" rx="5.2" ry="3.2" transform="rotate(-5 38 145)" />
+    <g data-part="left-leg" data-origin="52px 120px">
+      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M52 120 C48 141 39 155 27 165" pathLength="1" />
+      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="24" cy="166" rx="6.5" ry="3.8" transform="rotate(-7 24 166)" />
     </g>
-    <g data-part="right-leg" data-origin="76px 124px">
-      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M76 124 C80 133 84 140 90 145" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="92" cy="145" rx="5.2" ry="3.2" transform="rotate(5 92 145)" />
+    <g data-part="right-leg" data-origin="78px 121px">
+      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M78 121 C85 141 95 155 108 164" pathLength="1" />
+      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="111" cy="165" rx="6.5" ry="3.8" transform="rotate(7 111 165)" />
     </g>
   </g>
 
   <g class="lead-success-harp-trick-flex" data-trick="flex" data-part="flex-back-parts" opacity="0" visibility="hidden" hidden>
-    <g data-part="left-arm" data-origin="37px 58px">
-      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M37 58 C27 61 17 57 15 48 C13 40 18 33 25 34 C31 35 34 40 32 46" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="32" cy="46" r="4" />
+    <g data-part="left-arm" data-origin="27px 66px">
+      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M27 66 C8 72 -13 65 -20 48 C-27 31 -17 17 -3 17 C9 17 17 27 14 40" pathLength="1" />
+      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="14" cy="40" r="4.8" />
     </g>
-    <g data-part="right-arm" data-origin="104px 57px">
-      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M104 57 C115 60 125 56 127 47 C129 39 124 32 117 34 C111 35 108 40 110 46" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="110" cy="46" r="4" />
+    <g data-part="right-arm" data-origin="112px 66px">
+      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M112 66 C131 72 153 64 160 47 C167 30 157 16 143 17 C131 18 124 28 127 41" pathLength="1" />
+      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="127" cy="41" r="4.8" />
     </g>
-    <g data-part="left-leg" data-origin="51px 122px">
-      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M51 122 C48 132 43 139 36 145" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="34" cy="145" rx="5.2" ry="3.2" transform="rotate(-7 34 145)" />
+    <g data-part="left-leg" data-origin="52px 120px">
+      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M52 120 C45 141 29 157 12 164" pathLength="1" />
+      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="9" cy="165" rx="6.8" ry="4" transform="rotate(-9 9 165)" />
     </g>
-    <g data-part="right-leg" data-origin="76px 124px">
-      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M76 124 C81 133 87 140 95 145" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="97" cy="145" rx="5.2" ry="3.2" transform="rotate(7 97 145)" />
+    <g data-part="right-leg" data-origin="78px 121px">
+      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M78 121 C89 141 106 156 123 162" pathLength="1" />
+      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="126" cy="163" rx="6.8" ry="4" transform="rotate(9 126 163)" />
     </g>
   </g>
 
   <g class="lead-success-harp-trick-selfie" data-trick="selfie" data-part="selfie-back-parts" opacity="0" visibility="hidden" hidden>
-    <g data-part="left-arm" data-origin="37px 59px">
-      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M37 59 C25 58 16 49 9 38" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="9" cy="38" r="3.8" />
+    <g data-part="left-arm" data-origin="26px 66px">
+      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M26 66 C6 62 -12 49 -24 35" pathLength="1" />
+      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="-24" cy="35" r="4.6" />
     </g>
-    <g data-part="right-arm" data-origin="104px 57px">
-      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M104 57 C117 51 126 39 134 27" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="134" cy="27" r="3.8" />
+    <g data-part="right-arm" data-origin="112px 65px">
+      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M112 65 C134 53 151 34 164 18" pathLength="1" />
+      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="164" cy="18" r="4.6" />
     </g>
-    <g data-part="left-leg" data-origin="51px 122px">
-      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M51 122 C47 132 42 140 36 145" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="34" cy="145" rx="5.2" ry="3.2" transform="rotate(-6 34 145)" />
+    <g data-part="left-leg" data-origin="52px 120px">
+      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M52 120 C45 140 34 155 20 164" pathLength="1" />
+      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="17" cy="165" rx="6.5" ry="3.8" transform="rotate(-8 17 165)" />
     </g>
-    <g data-part="right-leg" data-origin="76px 124px">
-      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M76 124 C82 133 89 139 97 142" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="99" cy="142" rx="5.2" ry="3.2" transform="rotate(8 99 142)" />
+    <g data-part="right-leg" data-origin="78px 121px">
+      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M78 121 C90 138 106 149 122 151" pathLength="1" />
+      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="125" cy="151" rx="6.5" ry="3.8" transform="rotate(11 125 151)" />
     </g>
   </g>
 `;
@@ -94,21 +94,21 @@ const FRONT_RIG_MARKUP = `
   <g class="lead-success-harp-trick-spin" data-trick="spin" data-part="spin-front-parts" opacity="0" visibility="hidden" hidden></g>
 
   <g class="lead-success-harp-trick-flex" data-trick="flex" data-part="flex-front-parts" opacity="0" visibility="hidden" hidden>
-    <path class="lead-success-harp-muscle-accent lead-success-harp-limb-accent" data-part="left-bicep-accent" data-origin="22px 43px" d="M14 47 C16 37 23 31 31 36" pathLength="1" opacity="0" />
-    <path class="lead-success-harp-muscle-accent lead-success-harp-limb-accent" data-part="right-bicep-accent" data-origin="120px 42px" d="M128 46 C126 36 119 30 111 36" pathLength="1" opacity="0" />
+    <path class="lead-success-harp-muscle-accent lead-success-harp-limb-accent" data-part="left-bicep-accent" data-origin="-5px 31px" d="M-21 48 C-18 27 -4 16 11 25" pathLength="1" opacity="0" />
+    <path class="lead-success-harp-muscle-accent lead-success-harp-limb-accent" data-part="right-bicep-accent" data-origin="145px 31px" d="M161 47 C158 26 144 15 129 25" pathLength="1" opacity="0" />
   </g>
 
   <g class="lead-success-harp-trick-selfie" data-trick="selfie" data-part="selfie-front-parts" opacity="0" visibility="hidden" hidden>
-    <g class="lead-success-harp-prop lead-success-harp-peace-sign" data-part="peace-sign" data-origin="9px 38px" opacity="0">
-      <path data-part="peace-finger-left" d="M9 38 L1 27" pathLength="1" fill="none" stroke="#f3f8ff" stroke-width="4" stroke-linecap="round" />
-      <path data-part="peace-finger-right" d="M9 38 L12 25" pathLength="1" fill="none" stroke="#f3f8ff" stroke-width="4" stroke-linecap="round" />
+    <g class="lead-success-harp-prop lead-success-harp-peace-sign" data-part="peace-sign" data-origin="-24px 35px" opacity="0">
+      <path data-part="peace-finger-left" d="M-24 35 L-42 18" pathLength="1" fill="none" stroke="#f3f8ff" stroke-width="4" stroke-linecap="round" />
+      <path data-part="peace-finger-right" d="M-24 35 L-27 12" pathLength="1" fill="none" stroke="#f3f8ff" stroke-width="4" stroke-linecap="round" />
     </g>
-    <g class="lead-success-harp-phone" data-part="phone" data-origin="140px 21px" opacity="0">
-      <rect data-part="phone-body" x="131" y="5" width="18" height="30" rx="4.5" fill="#091425" stroke="#f3f8ff" stroke-width="3" />
-      <circle data-part="phone-lens" cx="143.5" cy="10.5" r="2.1" fill="#8fd0ff" />
-      <path class="lead-success-harp-phone-screen" data-part="phone-screen-glint" d="M135 29 L141 29" pathLength="1" fill="none" stroke="#8fd0ff" stroke-width="2" stroke-linecap="round" />
+    <g class="lead-success-harp-phone" data-part="phone" data-origin="168px 11px" opacity="0">
+      <rect data-part="phone-body" x="156" y="-8" width="24" height="38" rx="5" fill="#091425" stroke="#f3f8ff" stroke-width="3" />
+      <circle data-part="phone-lens" cx="174" cy="-1" r="2.4" fill="#8fd0ff" />
+      <path class="lead-success-harp-phone-screen" data-part="phone-screen-glint" d="M161 23 L169 23" pathLength="1" fill="none" stroke="#8fd0ff" stroke-width="2" stroke-linecap="round" />
     </g>
-    <circle class="lead-success-harp-flash lead-success-harp-camera-flash" data-part="camera-flash" data-origin="140px 12px" cx="140" cy="12" r="11" opacity="0" />
+    <circle class="lead-success-harp-flash lead-success-harp-camera-flash" data-part="camera-flash" data-origin="174px -2px" cx="174" cy="-2" r="13" opacity="0" />
   </g>
 `;
 
@@ -150,6 +150,10 @@ export function createHarpTrickSelector(randomSource = Math.random) {
 
   return function selectHarpTrick(requested = 'random') {
     if (HARP_TRICK_NAMES.includes(requested)) {
+      const pendingIndex = bag.indexOf(requested);
+      if (pendingIndex >= 0) {
+        bag.splice(pendingIndex, 1);
+      }
       lastTrick = requested;
       return requested;
     }

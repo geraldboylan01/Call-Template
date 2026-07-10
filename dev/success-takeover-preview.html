@@ -7,7 +7,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>Planeir Success Animation Preview</title>
     <link rel="stylesheet" href="../styles/base.css" />
-    <link rel="stylesheet" href="../styles/success_takeover.css" />
+    <link rel="stylesheet" href="../styles/success_takeover.css?v=harp-character-qa" />
     <style>
       body {
         min-height: 100vh;
@@ -97,6 +97,19 @@
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
+      }
+
+      body.is-lead-success-active .success-preview-actions {
+        position: fixed;
+        z-index: 200;
+        top: 16px;
+        right: 16px;
+        padding: 8px;
+        border: 1px solid rgba(143, 208, 255, 0.24);
+        border-radius: 14px;
+        background: rgba(6, 13, 25, 0.9);
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+        backdrop-filter: blur(12px);
       }
 
       .success-preview-status {

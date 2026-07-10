@@ -199,7 +199,7 @@ body.is-lead-success-active .landing-shell > :not(.lead-success-overlay) {
 .lead-success-harp-leg,
 .lead-success-harp-limb-path {
   fill: none;
-  stroke: var(--lead-success-harp-ink);
+  stroke: var(--lead-success-harp-accent);
   stroke-width: 7;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -212,7 +212,7 @@ body.is-lead-success-active .landing-shell > :not(.lead-success-overlay) {
 .lead-success-harp-arm-accent,
 .lead-success-harp-leg-accent {
   fill: none;
-  stroke: var(--lead-success-harp-accent);
+  stroke: var(--lead-success-harp-ink);
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;

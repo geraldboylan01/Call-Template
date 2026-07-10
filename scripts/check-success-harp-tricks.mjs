@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import {
+  HARP_TRICKS,
   HARP_TRICK_NAMES,
-  createHarpTrickSelector
+  createHarpTrickSelector,
+  createSuccessHarpCharacter
 } from '../js/success_harp_character.js';
 
 const EXPECTED_TRICKS = Object.freeze(['backflip', 'spin', 'flex', 'selfie']);
@@ -36,6 +38,300 @@ function createSeededRandom(seed) {
 
 function countOccurrences(source, value) {
   return source.split(value).length - 1;
+}
+
+class FakeStyle {
+  constructor() {
+    this.values = new Map();
+  }
+
+  setProperty(name, value) {
+    this.values.set(name, String(value));
+  }
+
+  removeProperty(name) {
+    const previous = this.values.get(name) || '';
+    this.values.delete(name);
+    return previous;
+  }
+
+  getPropertyValue(name) {
+    return this.values.get(name) || '';
+  }
+}
+
+class FakeClassList {
+  constructor(classNames = []) {
+    this.values = new Set(classNames);
+  }
+
+  add(...classNames) {
+    classNames.forEach((className) => this.values.add(className));
+  }
+
+  remove(...classNames) {
+    classNames.forEach((className) => this.values.delete(className));
+  }
+
+  contains(className) {
+    return this.values.has(className);
+  }
+}
+
+class FakeAnimation {
+  constructor(runtime) {
+    this.runtime = runtime;
+    this.settled = false;
+    this.finished = new Promise((resolve, reject) => {
+      this.resolve = resolve;
+      this.reject = reject;
+    });
+    queueMicrotask(() => {
+      if (!this.settled) {
+        this.settled = true;
+        this.resolve();
+      }
+    });
+  }
+
+  cancel() {
+    if (this.settled) {
+      return;
+    }
+    this.settled = true;
+    this.runtime.animationCancels += 1;
+    this.reject(new Error('Animation cancelled by lifecycle check.'));
+  }
+}
+
+function matchesFakeSelector(element, selector) {
+  if (selector.startsWith('.')) {
+    return element.classList.contains(selector.slice(1));
+  }
+
+  const tagAndClass = selector.match(/^([a-z]+)\.([\w-]+)$/i);
+  if (tagAndClass) {
+    return element.tagName === tagAndClass[1].toLowerCase()
+      && element.classList.contains(tagAndClass[2]);
+  }
+
+  const attribute = selector.match(/^\[([\w-]+)(?:="([^"]*)")?\]$/);
+  if (attribute) {
+    return element.attributes.has(attribute[1])
+      && (attribute[2] === undefined || element.getAttribute(attribute[1]) === attribute[2]);
+  }
+
+  return false;
+}
+
+class FakeElement {
+  constructor(runtime, options = {}) {
+    const {
+      tagName = 'span',
+      classNames = [],
+      attributes = {},
+      height = 32
+    } = options;
+    this.runtime = runtime;
+    this.tagName = tagName.toLowerCase();
+    this.classList = new FakeClassList(classNames);
+    this.attributes = new Map(Object.entries(attributes).map(([name, value]) => [name, String(value)]));
+    this.dataset = {};
+    this.style = new FakeStyle();
+    this.children = [];
+    this.parentNode = null;
+    this.ownerDocument = runtime.documentObject;
+    this.height = height;
+    this.offsetHeight = height;
+  }
+
+  get nextSibling() {
+    if (!this.parentNode) {
+      return null;
+    }
+    const index = this.parentNode.children.indexOf(this);
+    return this.parentNode.children[index + 1] || null;
+  }
+
+  get previousSibling() {
+    if (!this.parentNode) {
+      return null;
+    }
+    const index = this.parentNode.children.indexOf(this);
+    return index > 0 ? this.parentNode.children[index - 1] : null;
+  }
+
+  appendChild(child) {
+    child.parentNode = this;
+    this.children.push(child);
+    return child;
+  }
+
+  insertBefore(child, reference) {
+    if (child.parentNode) {
+      const previousIndex = child.parentNode.children.indexOf(child);
+      if (previousIndex >= 0) {
+        child.parentNode.children.splice(previousIndex, 1);
+      }
+    }
+    child.parentNode = this;
+    const referenceIndex = reference ? this.children.indexOf(reference) : -1;
+    if (referenceIndex >= 0) {
+      this.children.splice(referenceIndex, 0, child);
+    } else {
+      this.children.push(child);
+    }
+    return child;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  toggleAttribute(name, force) {
+    const shouldSet = force === undefined ? !this.attributes.has(name) : Boolean(force);
+    if (shouldSet) {
+      this.attributes.set(name, '');
+    } else {
+      this.attributes.delete(name);
+    }
+    return shouldSet;
+  }
+
+  querySelectorAll(selector) {
+    const matches = [];
+    const visit = (node) => {
+      node.children.forEach((child) => {
+        if (matchesFakeSelector(child, selector)) {
+          matches.push(child);
+        }
+        visit(child);
+      });
+    };
+    visit(this);
+    return matches;
+  }
+
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+
+  getBoundingClientRect() {
+    return { height: this.height };
+  }
+
+  animate() {
+    this.runtime.animationStarts += 1;
+    const animation = new FakeAnimation(this.runtime);
+    this.runtime.animations.push(animation);
+    return animation;
+  }
+}
+
+function createFakeCharacter(options = {}) {
+  const runtime = {
+    animationStarts: 0,
+    animationCancels: 0,
+    animations: [],
+    documentObject: {}
+  };
+  const element = (elementOptions) => new FakeElement(runtime, elementOptions);
+  const root = element({ classNames: ['lead-success-harp-character'] });
+  const scale = element({ classNames: ['lead-success-harp-scale'] });
+  const motion = element({ classNames: ['lead-success-harp-motion'] });
+  const backRig = element({ tagName: 'svg', classNames: ['lead-success-harp-rig', 'lead-success-harp-rig-back'] });
+  const body = element({
+    tagName: 'img',
+    classNames: ['lead-success-harp-body'],
+    height: options.height || 32
+  });
+  const frontRig = element({ tagName: 'svg', classNames: ['lead-success-harp-rig', 'lead-success-harp-rig-front'] });
+
+  root.appendChild(scale);
+  scale.appendChild(motion);
+  motion.appendChild(backRig);
+  motion.appendChild(body);
+  motion.appendChild(frontRig);
+
+  const addPart = (group, partName, extraAttribute = null) => {
+    const attributes = {
+      'data-part': partName,
+      'data-origin': '50px 50px'
+    };
+    if (extraAttribute) {
+      attributes[extraAttribute] = '';
+    }
+    const part = element({ tagName: 'g', attributes });
+    group.appendChild(part);
+    return part;
+  };
+
+  HARP_TRICK_NAMES.forEach((trickName) => {
+    const backGroup = element({
+      tagName: 'g',
+      attributes: {
+        'data-trick': trickName,
+        'data-part': `${trickName}-back-parts`,
+        hidden: '',
+        visibility: 'hidden'
+      }
+    });
+    ['left-arm', 'right-arm', 'left-leg', 'right-leg'].forEach((partName) => {
+      const part = addPart(backGroup, partName);
+      part.appendChild(element({ tagName: 'path', attributes: { 'data-limb': '' } }));
+      part.appendChild(element({ tagName: 'circle', attributes: { 'data-extremity': '' } }));
+    });
+    backRig.appendChild(backGroup);
+
+    const frontGroup = element({
+      tagName: 'g',
+      attributes: {
+        'data-trick': trickName,
+        'data-part': `${trickName}-front-parts`,
+        hidden: '',
+        visibility: 'hidden'
+      }
+    });
+    if (trickName === 'flex') {
+      addPart(frontGroup, 'left-bicep-accent');
+      addPart(frontGroup, 'right-bicep-accent');
+    }
+    if (trickName === 'selfie') {
+      addPart(frontGroup, 'phone');
+      addPart(frontGroup, 'peace-sign');
+      addPart(frontGroup, 'camera-flash');
+    }
+    frontRig.appendChild(frontGroup);
+  });
+
+  if (options.waapi === false) {
+    motion.animate = undefined;
+    scale.animate = undefined;
+  }
+
+  return { runtime, root, scale, motion, backRig, frontRig };
+}
+
+function assertCharacterIsNeutral(character, label) {
+  assert(!character.root.classList.contains('is-harp-character-active'), `${label}: active character class remains.`);
+  assert(!Object.hasOwn(character.root.dataset, 'harpTrick'), `${label}: selected trick dataset remains.`);
+  [...character.backRig.querySelectorAll('[data-trick]'), ...character.frontRig.querySelectorAll('[data-trick]')]
+    .forEach((group) => {
+      assert(group.attributes.has('hidden'), `${label}: a trick group is still exposed.`);
+      assert(group.getAttribute('visibility') === 'hidden', `${label}: a trick group remains visible.`);
+    });
+  [character.scale, character.motion].forEach((node) => {
+    assert(node.style.getPropertyValue('transform') === '', `${label}: an inline transform remains.`);
+    assert(node.style.getPropertyValue('will-change') === '', `${label}: will-change remains.`);
+  });
 }
 
 function verifyWordmarkAssets(fullSvg, noHarpSvg) {
@@ -108,6 +404,14 @@ function verifyTrickSelector() {
     JSON.stringify(HARP_TRICK_NAMES) === JSON.stringify(EXPECTED_TRICKS),
     `Expected exported tricks ${EXPECTED_TRICKS.join(', ')}; received ${Array.from(HARP_TRICK_NAMES || []).join(', ')}.`
   );
+  assert(
+    JSON.stringify(Object.keys(HARP_TRICKS)) === JSON.stringify(EXPECTED_TRICKS),
+    `HARP_TRICKS must register exactly ${EXPECTED_TRICKS.join(', ')}.`
+  );
+  EXPECTED_TRICKS.forEach((trick) => {
+    assert(typeof HARP_TRICKS[trick]?.play === 'function', `${trick} must register a playable routine.`);
+    assert(Number(HARP_TRICKS[trick]?.duration) > 0, `${trick} must register a positive duration.`);
+  });
   assert(typeof createHarpTrickSelector === 'function', 'createHarpTrickSelector must be exported for deterministic checks.');
 
   const forcedSelector = createHarpTrickSelector(createSeededRandom(0x504c414e));
@@ -147,6 +451,69 @@ function verifyTrickSelector() {
   const forcedBoundarySelector = createHarpTrickSelector(createSeededRandom(0xfacefeed));
   assert(forcedBoundarySelector('flex') === 'flex', 'Forced boundary setup failed.');
   assert(forcedBoundarySelector('random') !== 'flex', 'Random selection must not immediately repeat a forced trick.');
+
+  const boundarySeed = 0x504c414e;
+  const boundaryMirror = createHarpTrickSelector(createSeededRandom(boundarySeed));
+  const boundaryBag = Array.from({ length: EXPECTED_TRICKS.length }, () => boundaryMirror('random'));
+  const nearExhaustionSelector = createHarpTrickSelector(createSeededRandom(boundarySeed));
+  const consumed = Array.from({ length: EXPECTED_TRICKS.length - 1 }, () => nearExhaustionSelector('random'));
+  assert(
+    JSON.stringify(consumed) === JSON.stringify(boundaryBag.slice(0, -1)),
+    'Forced near-exhaustion setup must consume the first three deterministic bag entries.'
+  );
+  const forcedLastEntry = nearExhaustionSelector(boundaryBag.at(-1));
+  const afterForcedLastEntry = nearExhaustionSelector('random');
+  assert(
+    afterForcedLastEntry !== forcedLastEntry,
+    `Random selection repeated forced final bag entry ${forcedLastEntry}.`
+  );
+}
+
+async function verifyCharacterLifecycle() {
+  const reducedCharacter = createFakeCharacter();
+  const reducedController = createSuccessHarpCharacter({
+    root: reducedCharacter.root,
+    motionQuery: { matches: true }
+  });
+  assert(
+    await reducedController.play({ trickName: 'selfie' }) === null,
+    'Reduced motion must skip the requested trick.'
+  );
+  assert(reducedCharacter.runtime.animationStarts === 0, 'Reduced motion must not start limb, prop, scale, or flash animations.');
+  assertCharacterIsNeutral(reducedCharacter, 'Reduced-motion cleanup');
+
+  const unsupportedCharacter = createFakeCharacter({ waapi: false });
+  const unsupportedController = createSuccessHarpCharacter({
+    root: unsupportedCharacter.root,
+    motionQuery: { matches: false }
+  });
+  assert(
+    await unsupportedController.play({ trickName: 'backflip' }) === null,
+    'Missing Web Animations support must skip the requested trick.'
+  );
+  assert(unsupportedCharacter.runtime.animationStarts === 0, 'No-WAAPI fallback must remain completely static.');
+  assertCharacterIsNeutral(unsupportedCharacter, 'No-WAAPI cleanup');
+
+  const character = createFakeCharacter();
+  const controller = createSuccessHarpCharacter({
+    root: character.root,
+    motionQuery: { matches: false },
+    randomSource: createSeededRandom(0xdecafbad)
+  });
+  const cancelledPlay = controller.play({ trickName: 'backflip' });
+  assert(character.root.dataset.harpTrick === 'backflip', 'Forced backflip must activate synchronously.');
+  controller.reset();
+  assertCharacterIsNeutral(character, 'Synchronous reset');
+  assert(character.runtime.animationCancels > 0, 'Reset must synchronously cancel active Web Animation handles.');
+  assert(await cancelledPlay === null, 'Cancelled playback must resolve without reporting a completed trick.');
+
+  const supersededPlay = controller.play({ trickName: 'backflip' });
+  const winningPlay = controller.play({ trickName: 'spin' });
+  assert(character.root.dataset.harpTrick === 'spin', 'Reentrant playback must synchronously replace the active trick.');
+  const [supersededResult, winningResult] = await Promise.all([supersededPlay, winningPlay]);
+  assert(supersededResult === null, 'Superseded playback must not report completion.');
+  assert(winningResult === 'spin', 'The latest reentrant playback must complete deterministically.');
+  assertCharacterIsNeutral(character, 'Completed reentrant playback');
 }
 
 const [fullSvg, noHarpSvg, landingHtml, appHtml, takeoverSource] = await Promise.all([
@@ -181,6 +548,16 @@ verifySuccessMarkup(appHtml, {
 console.info('[SuccessHarpCheck] PASS: landing and app success markup');
 
 assert(/\bharpTrick\b/.test(takeoverSource), 'Success takeover play options must include the harpTrick override.');
+assert(
+  /window\.addEventListener\(['"]pagehide['"],\s*reset\)/.test(takeoverSource),
+  'Success takeover must reset on pagehide navigation.'
+);
+assert(
+  /window\.addEventListener\(['"]popstate['"],\s*reset\)/.test(takeoverSource),
+  'Success takeover must reset on same-document history navigation.'
+);
 verifyTrickSelector();
 console.info('[SuccessHarpCheck] PASS: trick registry, overrides, shuffle bags, and repeat prevention');
-console.info('[SuccessHarpCheck] 3/3 success animation checks passed.');
+await verifyCharacterLifecycle();
+console.info('[SuccessHarpCheck] PASS: reduced motion, no-WAAPI fallback, cancellation, reentrancy, and neutral cleanup');
+console.info('[SuccessHarpCheck] 4/4 success animation checks passed.');
