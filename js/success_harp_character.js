@@ -1,6 +1,6 @@
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
-const EMERGENCE_MS = 210;
-const RETRACTION_MS = 235;
+const EMERGENCE_MS = 245;
+const RETRACTION_MS = 245;
 const MIN_MOBILE_HEIGHT_PX = 44;
 const MAX_CHARACTER_SCALE = 1.55;
 
@@ -11,81 +11,147 @@ export const HARP_TRICK_NAMES = Object.freeze([
   'selfie'
 ]);
 
+const ARTICULATED_LIMB_PARTS = Object.freeze([
+  'left-arm',
+  'left-elbow',
+  'left-forearm',
+  'left-hand',
+  'right-arm',
+  'right-elbow',
+  'right-forearm',
+  'right-hand',
+  'left-leg',
+  'left-knee',
+  'left-shin',
+  'left-foot',
+  'right-leg',
+  'right-knee',
+  'right-shin',
+  'right-foot'
+]);
+
+export const HARP_TRICK_REQUIRED_PARTS = Object.freeze({
+  backflip: ARTICULATED_LIMB_PARTS,
+  spin: ARTICULATED_LIMB_PARTS,
+  flex: Object.freeze([
+    ...ARTICULATED_LIMB_PARTS,
+    'left-bicep',
+    'right-bicep',
+    'left-bicep-crease',
+    'right-bicep-crease'
+  ]),
+  selfie: Object.freeze([
+    ...ARTICULATED_LIMB_PARTS,
+    'phone',
+    'peace-sign',
+    'camera-flash'
+  ])
+});
+
+function point([x, y]) {
+  return `${x} ${y}`;
+}
+
+function origin([x, y]) {
+  return `${x}px ${y}px`;
+}
+
+function createArmMarkup(options) {
+  const {
+    side,
+    shoulder,
+    elbow,
+    wrist,
+    handAngle = 0,
+    bicep = null
+  } = options;
+  const [shoulderX, shoulderY] = shoulder;
+  const [elbowX, elbowY] = elbow;
+  const [wristX, wristY] = wrist;
+  const upperControl = [
+    shoulderX + ((elbowX - shoulderX) * 0.48),
+    shoulderY + ((elbowY - shoulderY) * 0.42)
+  ];
+  const lowerControl = [
+    elbowX + ((wristX - elbowX) * 0.52),
+    elbowY + ((wristY - elbowY) * 0.46)
+  ];
+  const bicepMarkup = bicep
+    ? `<g data-part="${side}-bicep" data-origin="${origin(bicep.center)}" data-extremity data-growth-order="1">
+        <ellipse class="lead-success-harp-bicep" cx="${bicep.center[0]}" cy="${bicep.center[1]}" rx="${bicep.rx}" ry="${bicep.ry}" transform="rotate(${bicep.angle} ${point(bicep.center)})" />
+      </g>`
+    : '';
+
+  return `
+    <g data-part="${side}-arm" data-origin="${origin(shoulder)}">
+      <path class="lead-success-harp-limb lead-success-harp-upper-limb" data-part="${side}-upper-arm-line" data-limb data-growth-order="0" d="M${point(shoulder)} Q${point(upperControl)} ${point(elbow)}" pathLength="1" />
+      ${bicepMarkup}
+      <circle class="lead-success-harp-joint" data-part="${side}-elbow" data-extremity data-growth-order="1" cx="${elbowX}" cy="${elbowY}" r="4.7" />
+      <g data-part="${side}-forearm" data-origin="${origin(elbow)}">
+        <path class="lead-success-harp-limb lead-success-harp-lower-limb" data-part="${side}-forearm-line" data-limb data-growth-order="1" d="M${point(elbow)} Q${point(lowerControl)} ${point(wrist)}" pathLength="1" />
+        <ellipse class="lead-success-harp-hand" data-part="${side}-hand" data-extremity data-growth-order="2" cx="${wristX}" cy="${wristY}" rx="6.1" ry="4.8" transform="rotate(${handAngle} ${wristX} ${wristY})" />
+      </g>
+    </g>`;
+}
+
+function createLegMarkup(options) {
+  const {
+    side,
+    hip,
+    knee,
+    ankle,
+    footAngle = 0
+  } = options;
+  const [hipX, hipY] = hip;
+  const [kneeX, kneeY] = knee;
+  const [ankleX, ankleY] = ankle;
+  const thighControl = [
+    hipX + ((kneeX - hipX) * 0.5),
+    hipY + ((kneeY - hipY) * 0.46)
+  ];
+  const shinControl = [
+    kneeX + ((ankleX - kneeX) * 0.52),
+    kneeY + ((ankleY - kneeY) * 0.48)
+  ];
+
+  return `
+    <g data-part="${side}-leg" data-origin="${origin(hip)}">
+      <path class="lead-success-harp-limb lead-success-harp-upper-limb" data-part="${side}-thigh-line" data-limb data-growth-order="0" d="M${point(hip)} Q${point(thighControl)} ${point(knee)}" pathLength="1" />
+      <circle class="lead-success-harp-joint" data-part="${side}-knee" data-extremity data-growth-order="1" cx="${kneeX}" cy="${kneeY}" r="4.9" />
+      <g data-part="${side}-shin" data-origin="${origin(knee)}">
+        <path class="lead-success-harp-limb lead-success-harp-lower-limb" data-part="${side}-shin-line" data-limb data-growth-order="1" d="M${point(knee)} Q${point(shinControl)} ${point(ankle)}" pathLength="1" />
+        <ellipse class="lead-success-harp-foot" data-part="${side}-foot" data-extremity data-growth-order="2" cx="${ankleX}" cy="${ankleY}" rx="7.2" ry="4.2" transform="rotate(${footAngle} ${ankleX} ${ankleY})" />
+      </g>
+    </g>`;
+}
+
 const BACK_RIG_MARKUP = `
   <g class="lead-success-harp-trick-backflip" data-trick="backflip" data-part="backflip-back-parts" opacity="0" visibility="hidden" hidden>
-    <g data-part="left-arm" data-origin="26px 66px">
-      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M26 66 C10 68 -8 78 -24 94" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="-24" cy="94" r="4.6" />
-    </g>
-    <g data-part="right-arm" data-origin="112px 65px">
-      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M112 65 C130 69 148 80 163 94" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="163" cy="94" r="4.6" />
-    </g>
-    <g data-part="left-leg" data-origin="52px 120px">
-      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M52 120 C47 140 34 157 16 167" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="13" cy="168" rx="6.5" ry="3.8" transform="rotate(-10 13 168)" />
-    </g>
-    <g data-part="right-leg" data-origin="78px 121px">
-      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M78 121 C87 141 103 157 119 164" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="122" cy="165" rx="6.5" ry="3.8" transform="rotate(10 122 165)" />
-    </g>
+    ${createArmMarkup({ side: 'left', shoulder: [26, 68], elbow: [-2, 82], wrist: [-22, 102], handAngle: -32 })}
+    ${createArmMarkup({ side: 'right', shoulder: [112, 67], elbow: [140, 82], wrist: [160, 102], handAngle: 32 })}
+    ${createLegMarkup({ side: 'left', hip: [52, 120], knee: [45, 143], ankle: [26, 163], footAngle: -10 })}
+    ${createLegMarkup({ side: 'right', hip: [78, 121], knee: [88, 143], ankle: [108, 162], footAngle: 10 })}
   </g>
 
   <g class="lead-success-harp-trick-spin" data-trick="spin" data-part="spin-back-parts" opacity="0" visibility="hidden" hidden>
-    <g data-part="left-arm" data-origin="26px 65px">
-      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M26 65 C5 53 -20 52 -44 63" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="-44" cy="63" r="4.6" />
-    </g>
-    <g data-part="right-arm" data-origin="112px 65px">
-      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M112 65 C137 52 160 54 184 65" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="184" cy="65" r="4.6" />
-    </g>
-    <g data-part="left-leg" data-origin="52px 120px">
-      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M52 120 C48 141 39 155 27 165" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="24" cy="166" rx="6.5" ry="3.8" transform="rotate(-7 24 166)" />
-    </g>
-    <g data-part="right-leg" data-origin="78px 121px">
-      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M78 121 C85 141 95 155 108 164" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="111" cy="165" rx="6.5" ry="3.8" transform="rotate(7 111 165)" />
-    </g>
+    ${createArmMarkup({ side: 'left', shoulder: [26, 66], elbow: [-8, 60], wrist: [-42, 64], handAngle: -6 })}
+    ${createArmMarkup({ side: 'right', shoulder: [112, 65], elbow: [148, 60], wrist: [182, 65], handAngle: 6 })}
+    ${createLegMarkup({ side: 'left', hip: [52, 120], knee: [45, 143], ankle: [27, 164], footAngle: -7 })}
+    ${createLegMarkup({ side: 'right', hip: [78, 121], knee: [88, 143], ankle: [108, 163], footAngle: 7 })}
   </g>
 
   <g class="lead-success-harp-trick-flex" data-trick="flex" data-part="flex-back-parts" opacity="0" visibility="hidden" hidden>
-    <g data-part="left-arm" data-origin="27px 66px">
-      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M27 66 C8 72 -13 65 -20 48 C-27 31 -17 17 -3 17 C9 17 17 27 14 40" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="14" cy="40" r="4.8" />
-    </g>
-    <g data-part="right-arm" data-origin="112px 66px">
-      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M112 66 C131 72 153 64 160 47 C167 30 157 16 143 17 C131 18 124 28 127 41" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="127" cy="41" r="4.8" />
-    </g>
-    <g data-part="left-leg" data-origin="52px 120px">
-      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M52 120 C45 141 29 157 12 164" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="9" cy="165" rx="6.8" ry="4" transform="rotate(-9 9 165)" />
-    </g>
-    <g data-part="right-leg" data-origin="78px 121px">
-      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M78 121 C89 141 106 156 123 162" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="126" cy="163" rx="6.8" ry="4" transform="rotate(9 126 163)" />
-    </g>
+    ${createArmMarkup({ side: 'left', shoulder: [25, 70], elbow: [-14, 53], wrist: [0, 26], handAngle: 28, bicep: { center: [4, 61], rx: 12.5, ry: 7.4, angle: 22 } })}
+    ${createArmMarkup({ side: 'right', shoulder: [114, 70], elbow: [154, 53], wrist: [140, 26], handAngle: -28, bicep: { center: [136, 61], rx: 12.5, ry: 7.4, angle: -22 } })}
+    ${createLegMarkup({ side: 'left', hip: [52, 120], knee: [38, 143], ankle: [14, 163], footAngle: -9 })}
+    ${createLegMarkup({ side: 'right', hip: [78, 121], knee: [99, 143], ankle: [126, 161], footAngle: 9 })}
   </g>
 
   <g class="lead-success-harp-trick-selfie" data-trick="selfie" data-part="selfie-back-parts" opacity="0" visibility="hidden" hidden>
-    <g data-part="left-arm" data-origin="26px 66px">
-      <path class="lead-success-harp-limb" data-part="left-arm-line" data-limb d="M26 66 C6 62 -12 49 -24 35" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="left-hand" data-extremity cx="-24" cy="35" r="4.6" />
-    </g>
-    <g data-part="right-arm" data-origin="112px 65px">
-      <path class="lead-success-harp-limb" data-part="right-arm-line" data-limb d="M112 65 C134 53 151 34 164 18" pathLength="1" />
-      <circle class="lead-success-harp-hand" data-part="right-hand" data-extremity cx="164" cy="18" r="4.6" />
-    </g>
-    <g data-part="left-leg" data-origin="52px 120px">
-      <path class="lead-success-harp-limb" data-part="left-leg-line" data-limb d="M52 120 C45 140 34 155 20 164" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="left-foot" data-extremity cx="17" cy="165" rx="6.5" ry="3.8" transform="rotate(-8 17 165)" />
-    </g>
-    <g data-part="right-leg" data-origin="78px 121px">
-      <path class="lead-success-harp-limb" data-part="right-leg-line" data-limb d="M78 121 C90 138 106 149 122 151" pathLength="1" />
-      <ellipse class="lead-success-harp-foot" data-part="right-foot" data-extremity cx="125" cy="151" rx="6.5" ry="3.8" transform="rotate(11 125 151)" />
-    </g>
+    ${createArmMarkup({ side: 'left', shoulder: [26, 66], elbow: [0, 55], wrist: [-24, 36], handAngle: -32 })}
+    ${createArmMarkup({ side: 'right', shoulder: [112, 65], elbow: [142, 48], wrist: [164, 18], handAngle: 32 })}
+    ${createLegMarkup({ side: 'left', hip: [52, 120], knee: [43, 143], ankle: [20, 163], footAngle: -8 })}
+    ${createLegMarkup({ side: 'right', hip: [78, 121], knee: [99, 139], ankle: [123, 151], footAngle: 11 })}
   </g>
 `;
 
@@ -94,8 +160,8 @@ const FRONT_RIG_MARKUP = `
   <g class="lead-success-harp-trick-spin" data-trick="spin" data-part="spin-front-parts" opacity="0" visibility="hidden" hidden></g>
 
   <g class="lead-success-harp-trick-flex" data-trick="flex" data-part="flex-front-parts" opacity="0" visibility="hidden" hidden>
-    <path class="lead-success-harp-muscle-accent lead-success-harp-limb-accent" data-part="left-bicep-accent" data-origin="-5px 31px" d="M-21 48 C-18 27 -4 16 11 25" pathLength="1" opacity="0" />
-    <path class="lead-success-harp-muscle-accent lead-success-harp-limb-accent" data-part="right-bicep-accent" data-origin="145px 31px" d="M161 47 C158 26 144 15 129 25" pathLength="1" opacity="0" />
+    <path class="lead-success-harp-muscle-crease lead-success-harp-limb-accent" data-part="left-bicep-crease" data-origin="4px 61px" d="M-5 59 Q4 51 13 59" pathLength="1" opacity="0" />
+    <path class="lead-success-harp-muscle-crease lead-success-harp-limb-accent" data-part="right-bicep-crease" data-origin="136px 61px" d="M127 59 Q136 51 145 59" pathLength="1" opacity="0" />
   </g>
 
   <g class="lead-success-harp-trick-selfie" data-trick="selfie" data-part="selfie-front-parts" opacity="0" visibility="hidden" hidden>
@@ -219,183 +285,365 @@ function getApparentCharacterScale(body) {
 
 function playBackflip(context) {
   const { motion, animatePart } = context;
+  const duration = 1160;
+  const animateJoint = (partName, values) => animatePart(partName, values, {
+    duration,
+    easing: 'linear'
+  });
+
   return [
     context.animate(motion, [
       { offset: 0, transform: 'translate3d(0, 0, 0) rotate(0deg)' },
-      { offset: 0.12, transform: 'translate3d(0, 4px, 0) rotate(0deg) scaleY(0.96)', easing: 'cubic-bezier(0.5, 0, 0.8, 0.35)' },
-      { offset: 0.34, transform: 'translate3d(-2px, -22px, 0) rotate(-118deg)', easing: 'linear' },
-      { offset: 0.58, transform: 'translate3d(1px, -31px, 0) rotate(-238deg)', easing: 'linear' },
-      { offset: 0.8, transform: 'translate3d(2px, -13px, 0) rotate(-344deg)', easing: 'cubic-bezier(0.2, 0.72, 0.3, 1)' },
-      { offset: 0.93, transform: 'translate3d(0, 2px, 0) rotate(-360deg) scaleY(0.97)' },
+      { offset: 0.16, transform: 'translate3d(0, 6%, 0) rotate(0deg)', easing: 'cubic-bezier(0.55, 0, 0.75, 0.35)' },
+      { offset: 0.24, transform: 'translate3d(-1%, -4%, 0) rotate(-8deg)', easing: 'cubic-bezier(0.16, 0.72, 0.22, 1)' },
+      { offset: 0.36, transform: 'translate3d(-2%, -29%, 0) rotate(-92deg)' },
+      { offset: 0.49, transform: 'translate3d(0, -44%, 0) rotate(-182deg)' },
+      { offset: 0.58, transform: 'translate3d(1%, -47%, 0) rotate(-230deg)' },
+      { offset: 0.7, transform: 'translate3d(2%, -36%, 0) rotate(-310deg)' },
+      { offset: 0.8, transform: 'translate3d(1%, -18%, 0) rotate(-348deg)', easing: 'cubic-bezier(0.18, 0.72, 0.24, 1)' },
+      { offset: 0.87, transform: 'translate3d(0, 0, 0) rotate(-360deg)' },
+      { offset: 0.91, transform: 'translate3d(0, 5%, 0) rotate(-360deg)', easing: 'cubic-bezier(0.2, 0, 0.35, 1)' },
+      { offset: 0.96, transform: 'translate3d(0, -1%, 0) rotate(-360deg)' },
       { offset: 1, transform: 'translate3d(0, 0, 0) rotate(-360deg)' }
-    ], { duration: 1080, easing: 'linear' }),
-    animatePart('left-arm', [
+    ], { duration, easing: 'linear' }),
+    animateJoint('left-arm', [
       { offset: 0, transform: 'rotate(0deg)' },
-      { offset: 0.16, transform: 'rotate(-34deg)' },
-      { offset: 0.36, transform: 'translate3d(13px, -5px, 0) rotate(66deg)' },
-      { offset: 0.7, transform: 'translate3d(11px, -3px, 0) rotate(58deg)' },
+      { offset: 0.16, transform: 'rotate(28deg)' },
+      { offset: 0.25, transform: 'rotate(-48deg)' },
+      { offset: 0.42, transform: 'rotate(66deg)' },
+      { offset: 0.66, transform: 'rotate(58deg)' },
+      { offset: 0.8, transform: 'rotate(-18deg)' },
+      { offset: 0.91, transform: 'rotate(16deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 1080, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }),
-    animatePart('right-arm', [
+    ]),
+    animateJoint('right-arm', [
       { offset: 0, transform: 'rotate(0deg)' },
-      { offset: 0.16, transform: 'rotate(34deg)' },
-      { offset: 0.36, transform: 'translate3d(-13px, -5px, 0) rotate(-66deg)' },
-      { offset: 0.7, transform: 'translate3d(-11px, -3px, 0) rotate(-58deg)' },
+      { offset: 0.16, transform: 'rotate(-28deg)' },
+      { offset: 0.25, transform: 'rotate(48deg)' },
+      { offset: 0.42, transform: 'rotate(-66deg)' },
+      { offset: 0.66, transform: 'rotate(-58deg)' },
+      { offset: 0.8, transform: 'rotate(18deg)' },
+      { offset: 0.91, transform: 'rotate(-16deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 1080, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }),
-    animatePart('left-leg', [
+    ]),
+    animateJoint('left-forearm', [
       { offset: 0, transform: 'rotate(0deg)' },
-      { offset: 0.13, transform: 'rotate(-13deg) scaleY(0.9)' },
-      { offset: 0.36, transform: 'translate3d(14px, -8px, 0) rotate(66deg) scaleY(0.82)' },
-      { offset: 0.7, transform: 'translate3d(11px, -6px, 0) rotate(54deg) scaleY(0.86)' },
-      { offset: 0.94, transform: 'rotate(-5deg) scaleY(0.94)' },
+      { offset: 0.16, transform: 'rotate(-18deg)' },
+      { offset: 0.25, transform: 'rotate(8deg)' },
+      { offset: 0.42, transform: 'rotate(102deg)' },
+      { offset: 0.66, transform: 'rotate(92deg)' },
+      { offset: 0.8, transform: 'rotate(12deg)' },
+      { offset: 0.91, transform: 'rotate(-18deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 1080, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }),
-    animatePart('right-leg', [
+    ]),
+    animateJoint('right-forearm', [
       { offset: 0, transform: 'rotate(0deg)' },
-      { offset: 0.13, transform: 'rotate(13deg) scaleY(0.9)' },
-      { offset: 0.36, transform: 'translate3d(-14px, -8px, 0) rotate(-66deg) scaleY(0.82)' },
-      { offset: 0.7, transform: 'translate3d(-11px, -6px, 0) rotate(-54deg) scaleY(0.86)' },
-      { offset: 0.94, transform: 'rotate(5deg) scaleY(0.94)' },
+      { offset: 0.16, transform: 'rotate(18deg)' },
+      { offset: 0.25, transform: 'rotate(-8deg)' },
+      { offset: 0.42, transform: 'rotate(-102deg)' },
+      { offset: 0.66, transform: 'rotate(-92deg)' },
+      { offset: 0.8, transform: 'rotate(-12deg)' },
+      { offset: 0.91, transform: 'rotate(18deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 1080, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' })
+    ]),
+    animateJoint('left-leg', [
+      { offset: 0, transform: 'rotate(0deg)' },
+      { offset: 0.16, transform: 'rotate(-22deg)' },
+      { offset: 0.25, transform: 'rotate(-4deg)' },
+      { offset: 0.42, transform: 'rotate(88deg)' },
+      { offset: 0.62, transform: 'rotate(88deg)' },
+      { offset: 0.8, transform: 'rotate(-6deg)' },
+      { offset: 0.87, transform: 'rotate(-10deg)' },
+      { offset: 0.91, transform: 'rotate(-18deg)' },
+      { offset: 0.96, transform: 'rotate(-4deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ]),
+    animateJoint('right-leg', [
+      { offset: 0, transform: 'rotate(0deg)' },
+      { offset: 0.16, transform: 'rotate(22deg)' },
+      { offset: 0.25, transform: 'rotate(4deg)' },
+      { offset: 0.42, transform: 'rotate(-88deg)' },
+      { offset: 0.62, transform: 'rotate(-88deg)' },
+      { offset: 0.8, transform: 'rotate(6deg)' },
+      { offset: 0.87, transform: 'rotate(10deg)' },
+      { offset: 0.91, transform: 'rotate(18deg)' },
+      { offset: 0.96, transform: 'rotate(4deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ]),
+    animateJoint('left-shin', [
+      { offset: 0, transform: 'rotate(0deg)' },
+      { offset: 0.16, transform: 'rotate(46deg)' },
+      { offset: 0.25, transform: 'rotate(8deg)' },
+      { offset: 0.42, transform: 'rotate(-120deg)' },
+      { offset: 0.62, transform: 'rotate(-120deg)' },
+      { offset: 0.8, transform: 'rotate(8deg)' },
+      { offset: 0.87, transform: 'rotate(18deg)' },
+      { offset: 0.91, transform: 'rotate(38deg)' },
+      { offset: 0.96, transform: 'rotate(8deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ]),
+    animateJoint('right-shin', [
+      { offset: 0, transform: 'rotate(0deg)' },
+      { offset: 0.16, transform: 'rotate(-46deg)' },
+      { offset: 0.25, transform: 'rotate(-8deg)' },
+      { offset: 0.42, transform: 'rotate(120deg)' },
+      { offset: 0.62, transform: 'rotate(120deg)' },
+      { offset: 0.8, transform: 'rotate(-8deg)' },
+      { offset: 0.87, transform: 'rotate(-18deg)' },
+      { offset: 0.91, transform: 'rotate(-38deg)' },
+      { offset: 0.96, transform: 'rotate(-8deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ])
   ].filter(Boolean);
 }
 
 function playSpin(context) {
   const { motion, animatePart } = context;
+  const duration = 1020;
+  const animatePose = (partName, keyframes) => animatePart(partName, keyframes, {
+    duration,
+    easing: 'cubic-bezier(0.4, 0, 0.2, 1)'
+  });
+
   return [
     context.animate(motion, [
       { offset: 0, transform: 'translate3d(0, 0, 0) rotate(0deg)' },
-      { offset: 0.12, transform: 'translate3d(0, -3px, 0) rotate(0deg)' },
-      { offset: 0.78, transform: 'translate3d(0, -4px, 0) rotate(360deg)', easing: 'cubic-bezier(0.18, 0.72, 0.26, 1)' },
-      { offset: 0.91, transform: 'translate3d(0, -1px, 0) rotate(365deg)' },
+      { offset: 0.12, transform: 'translate3d(0, 2%, 0) rotate(-4deg)' },
+      { offset: 0.22, transform: 'translate3d(0, -5%, 0) rotate(8deg)' },
+      { offset: 0.78, transform: 'translate3d(0, -6%, 0) rotate(360deg)', easing: 'cubic-bezier(0.18, 0.72, 0.26, 1)' },
+      { offset: 0.91, transform: 'translate3d(0, -1%, 0) rotate(365deg)' },
       { offset: 1, transform: 'translate3d(0, 0, 0) rotate(360deg)' }
-    ], { duration: 990, easing: 'cubic-bezier(0.38, 0, 0.2, 1)' }),
-    animatePart('left-arm', [
+    ], { duration, easing: 'cubic-bezier(0.38, 0, 0.2, 1)' }),
+    animatePose('left-arm', [
       { offset: 0, transform: 'rotate(0deg)' },
-      { offset: 0.35, transform: 'rotate(-6deg)' },
-      { offset: 0.76, transform: 'rotate(5deg)' },
+      { offset: 0.22, transform: 'rotate(4deg)' },
+      { offset: 0.38, transform: 'rotate(16deg)' },
+      { offset: 0.7, transform: 'rotate(16deg)' },
+      { offset: 0.86, transform: 'rotate(-3deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 990, easing: 'ease-in-out' }),
-    animatePart('right-arm', [
+    ]),
+    animatePose('right-arm', [
       { offset: 0, transform: 'rotate(0deg)' },
-      { offset: 0.35, transform: 'rotate(6deg)' },
-      { offset: 0.76, transform: 'rotate(-5deg)' },
+      { offset: 0.22, transform: 'rotate(-4deg)' },
+      { offset: 0.38, transform: 'rotate(-16deg)' },
+      { offset: 0.7, transform: 'rotate(-16deg)' },
+      { offset: 0.86, transform: 'rotate(3deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 990, easing: 'ease-in-out' }),
-    animatePart('left-leg', [
+    ]),
+    animatePose('left-forearm', [
       { offset: 0, transform: 'rotate(0deg)' },
-      { offset: 0.42, transform: 'rotate(8deg)' },
-      { offset: 0.82, transform: 'rotate(-4deg)' },
+      { offset: 0.34, transform: 'rotate(38deg)' },
+      { offset: 0.7, transform: 'rotate(38deg)' },
+      { offset: 0.86, transform: 'rotate(0deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 990, easing: 'ease-in-out' }),
-    animatePart('right-leg', [
+    ]),
+    animatePose('right-forearm', [
       { offset: 0, transform: 'rotate(0deg)' },
-      { offset: 0.42, transform: 'rotate(-8deg)' },
-      { offset: 0.82, transform: 'rotate(4deg)' },
+      { offset: 0.34, transform: 'rotate(-38deg)' },
+      { offset: 0.7, transform: 'rotate(-38deg)' },
+      { offset: 0.86, transform: 'rotate(0deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 990, easing: 'ease-in-out' })
+    ]),
+    animatePose('left-leg', [
+      { offset: 0, transform: 'rotate(0deg)' },
+      { offset: 0.25, transform: 'rotate(6deg)' },
+      { offset: 0.68, transform: 'rotate(10deg)' },
+      { offset: 0.84, transform: 'rotate(-5deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ]),
+    animatePose('right-leg', [
+      { offset: 0, transform: 'rotate(0deg)' },
+      { offset: 0.25, transform: 'rotate(-6deg)' },
+      { offset: 0.68, transform: 'rotate(-10deg)' },
+      { offset: 0.84, transform: 'rotate(5deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ]),
+    animatePose('left-shin', [
+      { offset: 0, transform: 'rotate(0deg)' },
+      { offset: 0.25, transform: 'rotate(-12deg)' },
+      { offset: 0.68, transform: 'rotate(-18deg)' },
+      { offset: 0.86, transform: 'rotate(4deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ]),
+    animatePose('right-shin', [
+      { offset: 0, transform: 'rotate(0deg)' },
+      { offset: 0.25, transform: 'rotate(12deg)' },
+      { offset: 0.68, transform: 'rotate(18deg)' },
+      { offset: 0.86, transform: 'rotate(-4deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ])
   ].filter(Boolean);
 }
 
 function playFlex(context) {
   const { motion, animatePart } = context;
+  const duration = 1120;
   const musclePulse = [
-    { offset: 0, transform: 'scale(1)' },
-    { offset: 0.2, transform: 'scale(1)' },
-    { offset: 0.34, transform: 'scale(1.075)' },
-    { offset: 0.45, transform: 'scale(1)' },
-    { offset: 0.61, transform: 'scale(1.06)' },
-    { offset: 0.72, transform: 'scale(1)' },
+    { offset: 0, opacity: 0.88, transform: 'scale(0.92)' },
+    { offset: 0.28, opacity: 1, transform: 'scale(1)' },
+    { offset: 0.41, opacity: 1, transform: 'scale(1.12)' },
+    { offset: 0.51, opacity: 1, transform: 'scale(1.03)' },
+    { offset: 0.64, opacity: 1, transform: 'scale(1.1)' },
+    { offset: 0.74, opacity: 1, transform: 'scale(1.03)' },
+    { offset: 0.88, opacity: 1, transform: 'scale(1.05)' },
     { offset: 1, transform: 'scale(1)' }
   ];
-  const accentPulse = [
+  const creasePulse = [
     { offset: 0, opacity: 0, strokeDasharray: '1', strokeDashoffset: '1' },
-    { offset: 0.2, opacity: 0, strokeDasharray: '1', strokeDashoffset: '1' },
-    { offset: 0.34, opacity: 0.9, strokeDasharray: '1', strokeDashoffset: '0' },
-    { offset: 0.48, opacity: 0.48, strokeDasharray: '1', strokeDashoffset: '0' },
-    { offset: 0.61, opacity: 0.82, strokeDasharray: '1', strokeDashoffset: '0' },
-    { offset: 0.78, opacity: 0.4, strokeDasharray: '1', strokeDashoffset: '0' },
+    { offset: 0.3, opacity: 0, strokeDasharray: '1', strokeDashoffset: '1' },
+    { offset: 0.41, opacity: 0.94, strokeDasharray: '1', strokeDashoffset: '0' },
+    { offset: 0.52, opacity: 0.42, strokeDasharray: '1', strokeDashoffset: '0' },
+    { offset: 0.64, opacity: 0.86, strokeDasharray: '1', strokeDashoffset: '0' },
+    { offset: 0.76, opacity: 0.44, strokeDasharray: '1', strokeDashoffset: '0' },
+    { offset: 0.88, opacity: 0.52, strokeDasharray: '1', strokeDashoffset: '0' },
     { offset: 1, opacity: 0, strokeDasharray: '1', strokeDashoffset: '1' }
   ];
 
   return [
     context.animate(motion, [
       { offset: 0, transform: 'translate3d(0, 0, 0)' },
-      { offset: 0.18, transform: 'translate3d(0, 2px, 0) scaleY(0.985)' },
-      { offset: 0.34, transform: 'translate3d(0, -2px, 0)' },
-      { offset: 0.72, transform: 'translate3d(0, -2px, 0)' },
+      { offset: 0.16, transform: 'translate3d(0, 2%, 0)' },
+      { offset: 0.3, transform: 'translate3d(0, -2%, 0)' },
+      { offset: 0.88, transform: 'translate3d(0, -2%, 0)' },
       { offset: 1, transform: 'translate3d(0, 0, 0)' }
-    ], { duration: 1060, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
-    animatePart('left-arm', musclePulse, { duration: 1060, easing: 'ease-in-out' }),
-    animatePart('right-arm', musclePulse, { duration: 1060, easing: 'ease-in-out' }),
-    animatePart('left-bicep-accent', accentPulse, { duration: 1060, easing: 'ease-in-out' }),
-    animatePart('right-bicep-accent', accentPulse, { duration: 1060, easing: 'ease-in-out' }),
+    ], { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
+    animatePart('left-arm', [
+      { offset: 0, transform: 'rotate(12deg)' },
+      { offset: 0.28, transform: 'rotate(0deg)' },
+      { offset: 0.88, transform: 'rotate(0deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ], { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
+    animatePart('right-arm', [
+      { offset: 0, transform: 'rotate(-12deg)' },
+      { offset: 0.28, transform: 'rotate(0deg)' },
+      { offset: 0.88, transform: 'rotate(0deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ], { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
+    animatePart('left-forearm', [
+      { offset: 0, transform: 'rotate(-22deg)' },
+      { offset: 0.3, transform: 'rotate(0deg)' },
+      { offset: 0.88, transform: 'rotate(0deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ], { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
+    animatePart('right-forearm', [
+      { offset: 0, transform: 'rotate(22deg)' },
+      { offset: 0.3, transform: 'rotate(0deg)' },
+      { offset: 0.88, transform: 'rotate(0deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ], { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
+    animatePart('left-bicep', musclePulse, { duration, easing: 'ease-in-out' }),
+    animatePart('right-bicep', musclePulse, { duration, easing: 'ease-in-out' }),
+    animatePart('left-bicep-crease', creasePulse, { duration, easing: 'ease-in-out' }),
+    animatePart('right-bicep-crease', creasePulse, { duration, easing: 'ease-in-out' }),
     animatePart('left-leg', [
       { transform: 'rotate(0deg)' },
-      { offset: 0.2, transform: 'rotate(-7deg)' },
-      { offset: 0.78, transform: 'rotate(-7deg)' },
+      { offset: 0.2, transform: 'rotate(-6deg)' },
+      { offset: 0.88, transform: 'rotate(-6deg)' },
       { transform: 'rotate(0deg)' }
-    ], { duration: 1060, easing: 'ease-in-out' }),
+    ], { duration, easing: 'ease-in-out' }),
     animatePart('right-leg', [
       { transform: 'rotate(0deg)' },
-      { offset: 0.2, transform: 'rotate(7deg)' },
-      { offset: 0.78, transform: 'rotate(7deg)' },
+      { offset: 0.2, transform: 'rotate(6deg)' },
+      { offset: 0.88, transform: 'rotate(6deg)' },
       { transform: 'rotate(0deg)' }
-    ], { duration: 1060, easing: 'ease-in-out' })
+    ], { duration, easing: 'ease-in-out' }),
+    animatePart('left-shin', [
+      { transform: 'rotate(0deg)' },
+      { offset: 0.2, transform: 'rotate(8deg)' },
+      { offset: 0.88, transform: 'rotate(8deg)' },
+      { transform: 'rotate(0deg)' }
+    ], { duration, easing: 'ease-in-out' }),
+    animatePart('right-shin', [
+      { transform: 'rotate(0deg)' },
+      { offset: 0.2, transform: 'rotate(-8deg)' },
+      { offset: 0.88, transform: 'rotate(-8deg)' },
+      { transform: 'rotate(0deg)' }
+    ], { duration, easing: 'ease-in-out' })
   ].filter(Boolean);
 }
 
 function playSelfie(context) {
   const { motion, animatePart } = context;
+  const duration = 1120;
   return [
     context.animate(motion, [
       { offset: 0, transform: 'translate3d(0, 0, 0) rotate(0deg)' },
-      { offset: 0.22, transform: 'translate3d(3px, -2px, 0) rotate(3deg)' },
-      { offset: 0.78, transform: 'translate3d(3px, -2px, 0) rotate(3deg)' },
+      { offset: 0.22, transform: 'translate3d(3%, -2%, 0) rotate(3deg)' },
+      { offset: 0.78, transform: 'translate3d(3%, -2%, 0) rotate(3deg)' },
       { offset: 1, transform: 'translate3d(0, 0, 0) rotate(0deg)' }
-    ], { duration: 1100, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
+    ], { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
     animatePart('right-arm', [
-      { offset: 0, transform: 'rotate(8deg)' },
+      { offset: 0, transform: 'rotate(12deg)' },
       { offset: 0.24, transform: 'rotate(-3deg)' },
       { offset: 0.78, transform: 'rotate(-3deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 1100, easing: 'ease-in-out' }),
+    ], { duration, easing: 'ease-in-out' }),
+    animatePart('right-forearm', [
+      { offset: 0, transform: 'rotate(18deg)' },
+      { offset: 0.24, transform: 'rotate(0deg)' },
+      { offset: 0.78, transform: 'rotate(0deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ], { duration, easing: 'ease-in-out' }),
     animatePart('left-arm', [
-      { offset: 0, transform: 'rotate(-7deg)' },
+      { offset: 0, transform: 'rotate(-12deg)' },
       { offset: 0.28, transform: 'rotate(3deg)' },
       { offset: 0.78, transform: 'rotate(3deg)' },
       { offset: 1, transform: 'rotate(0deg)' }
-    ], { duration: 1100, easing: 'ease-in-out' }),
+    ], { duration, easing: 'ease-in-out' }),
+    animatePart('left-forearm', [
+      { offset: 0, transform: 'rotate(-14deg)' },
+      { offset: 0.28, transform: 'rotate(0deg)' },
+      { offset: 0.78, transform: 'rotate(0deg)' },
+      { offset: 1, transform: 'rotate(0deg)' }
+    ], { duration, easing: 'ease-in-out' }),
     animatePart('phone', [
       { offset: 0, opacity: 0, transform: 'translate3d(-6px, 8px, 0) rotate(-14deg) scale(0.84)' },
       { offset: 0.2, opacity: 1, transform: 'translate3d(0, 0, 0) rotate(0deg) scale(1)' },
       { offset: 0.8, opacity: 1, transform: 'translate3d(0, 0, 0) rotate(0deg) scale(1)' },
       { offset: 1, opacity: 0, transform: 'translate3d(-3px, 4px, 0) rotate(-7deg) scale(0.92)' }
-    ], { duration: 1100, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
+    ], { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
     animatePart('peace-sign', [
       { offset: 0, opacity: 0, transform: 'scale(0.7) rotate(-12deg)' },
       { offset: 0.26, opacity: 0, transform: 'scale(0.7) rotate(-12deg)' },
       { offset: 0.38, opacity: 1, transform: 'scale(1) rotate(0deg)' },
       { offset: 0.8, opacity: 1, transform: 'scale(1) rotate(0deg)' },
       { offset: 1, opacity: 0, transform: 'scale(0.82) rotate(-7deg)' }
-    ], { duration: 1100, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
+    ], { duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }),
     animatePart('camera-flash', [
       { offset: 0, opacity: 0, transform: 'scale(0.42)' },
       { offset: 0.51, opacity: 0, transform: 'scale(0.42)' },
       { offset: 0.58, opacity: 0.72, transform: 'scale(0.72)' },
       { offset: 0.72, opacity: 0, transform: 'scale(1.65)' },
       { offset: 1, opacity: 0, transform: 'scale(1.65)' }
-    ], { duration: 1100, easing: 'ease-out' })
+    ], { duration, easing: 'ease-out' })
   ].filter(Boolean);
 }
 
 export const HARP_TRICKS = Object.freeze({
-  backflip: Object.freeze({ duration: 1080, play: playBackflip }),
-  spin: Object.freeze({ duration: 990, play: playSpin }),
-  flex: Object.freeze({ duration: 1060, play: playFlex }),
-  selfie: Object.freeze({ duration: 1100, play: playSelfie })
+  backflip: Object.freeze({
+    duration: 1160,
+    motionOrigin: '48% 54%',
+    requiredParts: HARP_TRICK_REQUIRED_PARTS.backflip,
+    play: playBackflip
+  }),
+  spin: Object.freeze({
+    duration: 1020,
+    motionOrigin: '50% 60%',
+    requiredParts: HARP_TRICK_REQUIRED_PARTS.spin,
+    play: playSpin
+  }),
+  flex: Object.freeze({
+    duration: 1120,
+    motionOrigin: '50% 66%',
+    requiredParts: HARP_TRICK_REQUIRED_PARTS.flex,
+    play: playFlex
+  }),
+  selfie: Object.freeze({
+    duration: 1120,
+    motionOrigin: '50% 66%',
+    requiredParts: HARP_TRICK_REQUIRED_PARTS.selfie,
+    play: playSelfie
+  })
 });
 
 export function createSuccessHarpCharacter(options = {}) {
@@ -451,8 +699,10 @@ export function createSuccessHarpCharacter(options = {}) {
     root?.classList?.remove('is-harp-character-active');
     if (root?.dataset) {
       delete root.dataset.harpTrick;
+      delete root.dataset.harpPhase;
     } else {
       root?.removeAttribute?.('data-harp-trick');
+      root?.removeAttribute?.('data-harp-phase');
     }
   }
 
@@ -490,6 +740,7 @@ export function createSuccessHarpCharacter(options = {}) {
   }
 
   function prepareTrick(trickName) {
+    const trickDefinition = HARP_TRICKS[trickName];
     const groups = getTrickGroups(trickName);
     groups.forEach((group) => {
       setTrickGroupVisibility(group, true);
@@ -501,9 +752,10 @@ export function createSuccessHarpCharacter(options = {}) {
 
     root.classList.add('is-harp-character-active');
     root.dataset.harpTrick = trickName;
+    root.dataset.harpPhase = 'emergence';
     scale.style.setProperty('transform-origin', '50% 100%');
     scale.style.setProperty('will-change', 'transform');
-    motion.style.setProperty('transform-origin', '50% 66%');
+    motion.style.setProperty('transform-origin', trickDefinition?.motionOrigin || '50% 60%');
     motion.style.setProperty('will-change', 'transform');
     return groups;
   }
@@ -525,31 +777,38 @@ export function createSuccessHarpCharacter(options = {}) {
     const records = groups.map((group) => startAnimation(group, [
       { opacity: 0 },
       { opacity: 1 }
-    ], { duration: 155, easing: 'ease-out' }));
+    ], { duration: 130, easing: 'ease-out' }));
 
-    const limbPaths = groups.flatMap((group) => Array.from(group.querySelectorAll('[data-limb]')));
-    limbPaths.forEach((limb, index) => {
+    const limbPaths = groups
+      .flatMap((group) => Array.from(group.querySelectorAll('[data-limb]')))
+      .sort((left, right) => Number(left.getAttribute('data-growth-order') || 0) - Number(right.getAttribute('data-growth-order') || 0));
+    limbPaths.forEach((limb) => {
+      const growthOrder = Number(limb.getAttribute('data-growth-order') || 0);
       records.push(startAnimation(limb, [
         { opacity: 0.25, strokeDasharray: '1', strokeDashoffset: '1' },
         { opacity: 1, strokeDasharray: '1', strokeDashoffset: '0' }
       ], {
-        delay: index * 4,
-        duration: EMERGENCE_MS - (index * 4),
+        delay: growthOrder * 48,
+        duration: growthOrder === 0 ? 178 : 188,
         easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
       }));
     });
 
-    groups.flatMap((group) => Array.from(group.querySelectorAll('[data-extremity]'))).forEach((extremity, index) => {
-      records.push(startAnimation(extremity, [
-        { opacity: 0 },
-        { offset: 0.46, opacity: 0 },
-        { opacity: 1 }
-      ], {
-        delay: index * 4,
-        duration: EMERGENCE_MS - (index * 4),
-        easing: 'ease-out'
-      }));
-    });
+    groups
+      .flatMap((group) => Array.from(group.querySelectorAll('[data-extremity]')))
+      .sort((left, right) => Number(left.getAttribute('data-growth-order') || 0) - Number(right.getAttribute('data-growth-order') || 0))
+      .forEach((extremity) => {
+        const growthOrder = Number(extremity.getAttribute('data-growth-order') || 0);
+        records.push(startAnimation(extremity, [
+          { opacity: 0 },
+          { offset: 0.38, opacity: 0 },
+          { opacity: 1 }
+        ], {
+          delay: growthOrder === 2 ? 124 : 70,
+          duration: growthOrder === 2 ? 110 : 142,
+          easing: 'ease-out'
+        }));
+      });
 
     records.push(startAnimation(scale, [
       { transform: 'scale(1)' },
@@ -562,30 +821,38 @@ export function createSuccessHarpCharacter(options = {}) {
     const records = groups.map((group) => startAnimation(group, [
       { opacity: 1 },
       { opacity: 0 }
-    ], { duration: RETRACTION_MS, easing: 'ease-in' }));
+    ], { delay: 112, duration: 133, easing: 'ease-in' }));
 
-    groups.flatMap((group) => Array.from(group.querySelectorAll('[data-limb]'))).forEach((limb, index) => {
-      records.push(startAnimation(limb, [
-        { opacity: 1, strokeDasharray: '1', strokeDashoffset: '0' },
-        { opacity: 0.2, strokeDasharray: '1', strokeDashoffset: '1' }
-      ], {
-        delay: index * 3,
-        duration: RETRACTION_MS - (index * 3),
-        easing: 'cubic-bezier(0.4, 0, 1, 1)'
-      }));
-    });
+    groups
+      .flatMap((group) => Array.from(group.querySelectorAll('[data-limb]')))
+      .sort((left, right) => Number(right.getAttribute('data-growth-order') || 0) - Number(left.getAttribute('data-growth-order') || 0))
+      .forEach((limb) => {
+        const growthOrder = Number(limb.getAttribute('data-growth-order') || 0);
+        records.push(startAnimation(limb, [
+          { opacity: 1, strokeDasharray: '1', strokeDashoffset: '0' },
+          { opacity: 0.2, strokeDasharray: '1', strokeDashoffset: '1' }
+        ], {
+          delay: growthOrder === 1 ? 0 : 48,
+          duration: growthOrder === 1 ? 174 : 188,
+          easing: 'cubic-bezier(0.4, 0, 1, 1)'
+        }));
+      });
 
-    groups.flatMap((group) => Array.from(group.querySelectorAll('[data-extremity]'))).forEach((extremity, index) => {
-      records.push(startAnimation(extremity, [
-        { opacity: 1 },
-        { offset: 0.48, opacity: 1 },
-        { opacity: 0 }
-      ], {
-        delay: index * 3,
-        duration: RETRACTION_MS - (index * 3),
-        easing: 'ease-in'
-      }));
-    });
+    groups
+      .flatMap((group) => Array.from(group.querySelectorAll('[data-extremity]')))
+      .sort((left, right) => Number(right.getAttribute('data-growth-order') || 0) - Number(left.getAttribute('data-growth-order') || 0))
+      .forEach((extremity) => {
+        const growthOrder = Number(extremity.getAttribute('data-growth-order') || 0);
+        records.push(startAnimation(extremity, [
+          { opacity: 1 },
+          { offset: 0.38, opacity: 1 },
+          { opacity: 0 }
+        ], {
+          delay: growthOrder === 2 ? 0 : 34,
+          duration: growthOrder === 2 ? 104 : 126,
+          easing: 'ease-in'
+        }));
+      });
 
     records.push(startAnimation(scale, [
       { transform: `scale(${characterScale})` },
@@ -607,6 +874,12 @@ export function createSuccessHarpCharacter(options = {}) {
 
     const selectedTrick = selectTrick(playOptions.trickName ?? 'random');
     const groups = prepareTrick(selectedTrick);
+    const trickDefinition = HARP_TRICKS[selectedTrick];
+    const hasCompleteRig = trickDefinition.requiredParts.every((partName) => findPart(groups, partName));
+    if (!hasCompleteRig) {
+      neutralize();
+      return null;
+    }
     const characterScale = getApparentCharacterScale(body);
     const animatePart = (partName, keyframes, animationOptions) => startAnimation(
       findPart(groups, partName),
@@ -625,11 +898,13 @@ export function createSuccessHarpCharacter(options = {}) {
         return null;
       }
 
-      const performed = await waitForAnimations(HARP_TRICKS[selectedTrick].play(context));
+      root.dataset.harpPhase = 'choreography';
+      const performed = await waitForAnimations(trickDefinition.play(context));
       if (!performed || currentRunId !== runId) {
         return null;
       }
 
+      root.dataset.harpPhase = 'retraction';
       const retracted = await waitForAnimations(animateRetraction(groups, characterScale));
       if (!retracted || currentRunId !== runId) {
         return null;
