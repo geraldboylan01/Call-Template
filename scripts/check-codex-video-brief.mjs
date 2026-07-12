@@ -5,6 +5,7 @@ import {
   CODEX_VIDEO_BRIEF_VERSION
 } from '../js/codex_video_brief.js';
 import { importSession } from '../js/state.js';
+import { createDefaultHousePurchaseInputs } from '../js/house_purchase/engine.js';
 
 function assert(condition, message) {
   if (!condition) {
@@ -131,6 +132,75 @@ const brief = buildCodexVideoBrief({
   activeScenarios: { pbsScenarioId: { pbs: 'clear-debt' } },
   now: '2026-06-23T12:00:00.000Z'
 });
+
+const housePurchaseInputs = {
+  ...createDefaultHousePurchaseInputs('2026-07-12'),
+  lendingCategory: 'first_time_buyer',
+  applicants: [{
+    id: 'applicant-1', label: 'Applicant', age: 34, employmentStatus: 'employee',
+    grossAnnualIncome: 90000, variableAnnualIncome: 0, lenderRecognisedVariableAnnualIncome: 0,
+    incomeReliability: 'stable', existingMonthlyDebtPayments: 0,
+    schemeBuyerStatus: 'first_time_buyer', freshStartReason: '',
+    previouslyOwnedPropertyAnywhere: false, retainedInterestInPreviousProperty: false,
+    rightToResideInIreland: true
+  }],
+  currentCashSavings: 60000,
+  cashSavingsContributions: [{ ownerId: 'applicant-1', amount: 60000 }],
+  amountRingfencedForOtherGoals: 5000,
+  emergencyReserveMode: 'custom',
+  emergencyReserveTarget: 10000,
+  currentMonthlySavings: 1000,
+  plannedMonthlySavings: 1200,
+  monthlyNetHouseholdIncome: 6000,
+  monthlyEssentialExpensesExcludingHousingDebtAndRent: 2500,
+  currentMonthlyRent: 1800,
+  estimatedMonthlyOwnershipCosts: 350,
+  targetPropertyPrice: 400000,
+  targetPurchaseDate: '2029-07-01',
+  acquisitionType: 'new_build',
+  dwellingType: 'house',
+  intendedUse: 'principal_private_residence',
+  localAuthorityCode: 'dublin_city',
+  lenderCapacity: {
+    status: 'confirmed', amount: 360000, lenderId: 'bank_of_ireland',
+    isMaximumAvailable: true, macroPrudentialException: false, htbQualifyingLender: true
+  },
+  helpToBuy: {
+    taxCompliant: true, revenueApprovedDeveloperOrApprover: true,
+    expectedIncomeTaxAndDirtPaidPriorFourYears: 30000, confirmedClaimAmount: 0
+  }
+};
+
+const housePurchaseBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'House Purchase Client',
+    order: ['house'],
+    modules: [{
+      id: 'house',
+      title: 'Route to home',
+      generated: {
+        housePurchaseInputs,
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+        outputsBucketed: { sections: [{ key: 'summary', rows: [['MODEL-SUPPLIED', 999999999]] }] },
+        charts: [{ id: 'model-chart', title: 'MODEL-SUPPLIED', labels: ['Bad'], datasets: [{ label: 'Bad', data: [999] }] }]
+      }
+    }]
+  },
+  activeScenarios: {
+    housePurchaseScenarioOverrides: new Map([
+      ['house', { targetPropertyPrice: 375000, supportCase: 'none' }]
+    ])
+  },
+  now: '2026-07-12T12:00:00.000Z'
+});
+
+const housePurchaseBriefModule = housePurchaseBrief.call.modules[0];
+assert(housePurchaseBriefModule.moduleKind === 'house-purchase', 'Codex brief must recognize a house-purchase module.');
+assert(housePurchaseBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the house-purchase projection.');
+assert(housePurchaseBriefModule.activeScenario.id === 'what-if-none', 'Codex brief must identify the active house-purchase what-if.');
+assert(housePurchaseBriefModule.activeScenario.housePurchaseScenarioOverrides.targetPropertyPrice === 375000, 'Codex brief must carry the ephemeral house-purchase scenario object.');
+assert(housePurchaseBriefModule.generated.housePurchaseResult, 'Codex brief must include the runtime semantic house-purchase result.');
+assert(!JSON.stringify(housePurchaseBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied house-purchase calculations.');
 
 assert(brief.version === CODEX_VIDEO_BRIEF_VERSION, 'Brief version mismatch.');
 assert(brief.reviewRequired === true, 'Brief must require review.');

@@ -24,6 +24,8 @@ For each prompt below:
 - Pass only if client-facing JSON avoids internal words such as `browser app`, `payload`, `engine`, `runtime`, `JSON`, validators, and schemas.
 - Pass only if SECTION 2 starts with `{` and ends with `}` as one complete top-level object.
 - PBS outputs pass only if the summary section uses `key: "summary"`, the exact row label `Net worth`, and `subtotalLabel: "Net worth"`.
+- House Purchase outputs pass only if `generated` contains exactly `summaryHtml` and `housePurchaseInputs`; all results remain runtime-owned.
+- Fresh-start House Purchase outputs pass only when `lendingCategory` and each applicant's `schemeBuyerStatus` remain separate.
 - Fail if the model asks unnecessary questions instead of using a safe best guess.
 - Fail if the visual playbooks become generic or repetitive.
 
@@ -194,6 +196,66 @@ Checks:
 - uses placeholder start date and term if needed
 - flags placeholders in NOTES
 - still emits valid JSON
+
+## House Purchase Regression Prompts
+
+### HOUSE-1
+Prompt:
+`Use the house purchase playbook. Single first-time buyer, age 31, employee earning 72000 with no variable income or debt. Cash savings 45000, protect 6000 for other goals, use the suggested emergency reserve, currently saving 1400 a month. Net income 4100, essentials excluding rent 1550, rent 1450, no dependants, other commitments 100. Target a 390000 second-hand house in Cork City in September 2028. No AIP. Use standard assumptions.`
+
+Checks:
+- `generated` contains exactly `summaryHtml` and `housePurchaseInputs`
+- uses `lendingCategory: "first_time_buyer"` separately from the applicant's `schemeBuyerStatus`
+- uses `acquisitionType: "second_hand"` and `dwellingType: "house"`
+- keeps lender capacity unconfirmed and does not invent an AIP
+- does not emit outputs, tables, charts, scheme results, bottlenecks, actions, or calculated results
+- does not calculate or describe a Help to Buy result for a second-hand property
+
+### HOUSE-2
+Prompt:
+`Use the house purchase playbook. Joint buyers. Emma earns 80000 and has never owned a property. Daniel earns 55000 and previously owned an apartment abroad which he sold. Combined cash explicitly available is 90000, split 60000 Emma and 30000 Daniel. They save 2200 monthly and target a 520000 new-build apartment in Dublin City. Record the buyer facts without deciding scheme eligibility.`
+
+Checks:
+- uses exactly two applicants with unique ids
+- contribution rows total exactly 90000 and reference the applicant ids
+- Emma is `schemeBuyerStatus: "first_time_buyer"` and Daniel is `schemeBuyerStatus: "previous_owner"`
+- does not collapse joint buyer facts into one all-purchasers flag
+- does not infer `lendingCategory` from either applicant's scheme status when the lending category is not stated
+- keeps HTB and FHS results runtime-owned
+
+### HOUSE-3
+Prompt:
+`Use the house purchase playbook. Single applicant under an explicitly confirmed fresh-start classification after relationship breakdown. For the Central Bank illustration use the confirmed first-time-buyer lending category. They previously owned a home and retain no interest in it. They are considering a 360000 new-build house. Do not treat fresh-start status as Help to Buy first-time-purchaser status.`
+
+Checks:
+- uses `lendingCategory: "first_time_buyer"`
+- preserves `schemeBuyerStatus: "fresh_start"`
+- preserves the fresh-start reason and previous ownership fact
+- does not rewrite the applicant as `schemeBuyerStatus: "first_time_buyer"`
+- does not state that Help to Buy is available
+- emits no model-authored scheme status, amount, eligibility result, or action
+
+### HOUSE-4
+Prompt:
+`House purchase planner. Couple targeting a 475000 new-build house in June 2028. Base salaries 68000 and 52000. One applicant also receives 12000 variable income, but the lender has recognised only 5000. Cash 70000, with 10000 ringfenced. Current and planned monthly house saving 1800. AIP amount 430000 from Bank of Ireland, explicitly the maximum available, with no macro-prudential exception. HTB tax paid is not known and no HTB or FHS amount is confirmed.`
+
+Checks:
+- stores raw variable income separately from lender-recognised variable income
+- records the supplied AIP facts without calling the amount an approval or recalculating it
+- keeps unknown tax paid as `null` and confirmed scheme amounts at zero
+- does not use potential HTB or FHS support as confirmed funding
+- uses standard planning assumptions only when explicitly requested or safely flagged in NOTES
+- `summaryHtml` tells the client what confirmations matter without inventing the result
+
+### HOUSE-5
+Prompt:
+`Client has an existing mortgage balance of 285000 at 4.1 percent with 24 years remaining and wants to compare a 3000 annual overpayment. Choose the right playbook.`
+
+Checks:
+- selects the Mortgage playbook, not House Purchase
+- uses `generated.mortgageInputs`
+- does not emit `generated.housePurchaseInputs`
+- keeps the distinction between an existing-loan repayment path and a future-purchase plan
 
 ## Loan Regression Prompts
 

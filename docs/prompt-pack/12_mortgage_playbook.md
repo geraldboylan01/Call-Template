@@ -2,10 +2,18 @@
 
 Use this playbook when Gerry says `use the mortgage playbook`, wants a mortgage projection, or wants to test repayment and overpayment scenarios on a housing loan.
 
+This playbook is for an existing housing loan with a balance, rate, and repayment path. Use the House Purchase playbook for a future purchase, buying capacity, deposit target, purchase date, household affordability, or Help to Buy / First Home Scheme screen.
+
 ## Job
 Parse the dictated mortgage details into `generated.mortgageInputs` and write a short client-facing summary.
 
 The browser app owns the repeatable mortgage maths after the payload is applied.
+
+## Boundary With House Purchase
+- Existing mortgage balance, repayment, term, payoff, or overpayment -> `generated.mortgageInputs`.
+- Future target home, borrowing capacity, protected cash, buying costs, deposit timing, or Irish purchase-support screening -> `generated.housePurchaseInputs`.
+- Do not combine both contracts in one module.
+- Do not use a mortgage projection as a substitute for the House Purchase planner's affordability and scheme screens.
 
 ## Gerry's Live Prompt Can Stay Short
 This style should still work:
@@ -78,6 +86,7 @@ For this playbook, do not emit:
 - `generated.charts`
 - `generated.report`
 - `generated.education`
+- `generated.housePurchaseInputs`
 - `generated.loanInputs`
 
 The app computes the repeatable mortgage outputs after apply.

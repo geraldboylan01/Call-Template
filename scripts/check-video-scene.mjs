@@ -1,4 +1,5 @@
 import { buildVideoSceneManifest, VIDEO_SCENE_MANIFEST_VERSION } from '../js/video_scene.js';
+import { createDefaultHousePurchaseInputs } from '../js/house_purchase/engine.js';
 
 function assert(condition, message) {
   if (!condition) {
@@ -67,7 +68,97 @@ const collegeFundingInputs = {
   ]
 };
 
+function makeHousePurchaseInputs() {
+  return {
+    ...createDefaultHousePurchaseInputs('2026-07-12'),
+    lendingCategory: 'first_time_buyer',
+    applicants: [{
+      id: 'applicant-1',
+      label: 'Applicant',
+      age: 34,
+      employmentStatus: 'employee',
+      grossAnnualIncome: 90000,
+      variableAnnualIncome: 5000,
+      lenderRecognisedVariableAnnualIncome: 0,
+      incomeReliability: 'stable',
+      existingMonthlyDebtPayments: 0,
+      schemeBuyerStatus: 'first_time_buyer',
+      freshStartReason: '',
+      previouslyOwnedPropertyAnywhere: false,
+      retainedInterestInPreviousProperty: false,
+      rightToResideInIreland: true
+    }],
+    currentCashSavings: 60000,
+    cashSavingsContributions: [{ ownerId: 'applicant-1', amount: 60000 }],
+    amountRingfencedForOtherGoals: 5000,
+    emergencyReserveMode: 'custom',
+    emergencyReserveTarget: 10000,
+    currentMonthlySavings: 1000,
+    plannedMonthlySavings: 1200,
+    monthlyNetHouseholdIncome: 6000,
+    monthlyEssentialExpensesExcludingHousingDebtAndRent: 2500,
+    currentMonthlyRent: 1800,
+    estimatedMonthlyOwnershipCosts: 350,
+    targetPropertyPrice: 400000,
+    targetPurchaseDate: '2029-07-01',
+    acquisitionType: 'new_build',
+    dwellingType: 'house',
+    intendedUse: 'principal_private_residence',
+    localAuthorityCode: 'dublin_city',
+    lenderCapacity: {
+      status: 'confirmed',
+      amount: 360000,
+      lenderId: 'bank_of_ireland',
+      isMaximumAvailable: true,
+      macroPrudentialException: false,
+      htbQualifyingLender: true
+    },
+    helpToBuy: {
+      taxCompliant: true,
+      revenueApprovedDeveloperOrApprover: true,
+      expectedIncomeTaxAndDirtPaidPriorFourYears: 30000,
+      confirmedClaimAmount: 0
+    }
+  };
+}
+
 const cases = [
+  {
+    name: 'House purchase recomputes the active local what-if',
+    module: baseModule('house-1', 'Route to home', {
+      summaryHtml: '<p>House purchase plan.</p>',
+      housePurchaseInputs: makeHousePurchaseInputs(),
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      outputsBucketed: { sections: [{ key: 'summary', rows: [['MODEL-SUPPLIED', 999999999]] }] },
+      charts: [{ id: 'model-chart', title: 'MODEL-SUPPLIED', labels: ['Bad'], datasets: [{ label: 'Bad', data: [999] }] }]
+    }),
+    activeScenario: {
+      housePurchaseScenarioOverrides: { targetPropertyPrice: 375000, supportCase: 'none' }
+    },
+    verify(manifest) {
+      assert(manifest.source.moduleKind === 'house-purchase', 'Expected house-purchase module kind');
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected house-purchase projection to resolve');
+      assert(manifest.source.activeScenario.id === 'what-if-none', 'Expected house-purchase what-if scenario');
+      assert(manifest.source.activeScenario.housePurchaseScenarioOverrides.targetPropertyPrice === 375000, 'Expected local house-purchase overrides to survive scene resolution');
+      assert(manifest.story.metrics.length > 0, 'Expected runtime house-purchase output metrics');
+      assert(manifest.story.charts.length > 0, 'Expected runtime house-purchase chart');
+      assert(!JSON.stringify(manifest.story).includes('MODEL-SUPPLIED'), 'Runtime house-purchase calculations must replace supplied outputs and charts');
+    }
+  },
+  {
+    name: 'Invalid house purchase inputs never fall back to supplied calculations',
+    module: baseModule('house-invalid', 'Incomplete route to home', {
+      summaryHtml: '<p>More information is required.</p>',
+      housePurchaseInputs: createDefaultHousePurchaseInputs('2026-07-12'),
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      charts: [{ id: 'model-chart', title: 'MODEL-SUPPLIED', labels: ['Bad'], datasets: [{ label: 'Bad', data: [999] }] }]
+    }),
+    verify(manifest) {
+      assert(manifest.source.moduleKind === 'house-purchase', 'Expected incomplete house-purchase module kind');
+      assert(manifest.source.calculationStatus === 'source-fallback', 'Expected an explicit source fallback for incomplete inputs');
+      assert(!JSON.stringify(manifest.story).includes('MODEL-SUPPLIED'), 'Incomplete inputs must not expose supplied house-purchase calculations');
+    }
+  },
   {
     name: 'PBS alternative uses selected structured scenario',
     module: baseModule('pbs-1', 'Balance sheet', {

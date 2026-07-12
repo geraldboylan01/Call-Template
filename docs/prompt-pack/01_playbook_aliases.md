@@ -40,6 +40,16 @@ Use `16_liquidity_playbook.md` when Gerry says things like:
 - cash getting eaten by inflation
 - put cash to work
 
+### House Purchase Playbook
+Use `17_house_purchase_playbook.md` when Gerry says things like:
+- use the house purchase playbook
+- house purchase planner
+- first-home plan
+- what can they afford to buy
+- when could they buy
+- deposit and purchase-cost plan
+- Help to Buy and First Home Scheme screening for a target purchase
+
 ### Mortgage Playbook
 Use `12_mortgage_playbook.md` when Gerry says things like:
 - use the mortgage playbook
@@ -90,6 +100,7 @@ Use `22_protection_playbook.md` when Gerry says things like:
   - pension accumulation, pension drawdown, or gross pension income maths -> Retirement
   - net cash-flow shortfall and required after-tax investment fund maths -> Net Retirement Cash Flow
   - cash-only buffer, emergency fund, too little cash, or too much cash -> Liquidity
+  - future home capacity, target price, deposit path, purchase date, or Irish purchase-support screening -> House Purchase
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
   - children’s college cost scenarios -> College Funding
@@ -101,3 +112,4 @@ Use `22_protection_playbook.md` when Gerry says things like:
 - If Gerry asks for a JS-engine module and a separate explainer, prefer the JS-engine playbook first.
 - If Gerry later says `turn that into a report` or `make an education module from this`, switch to the named visual playbook.
 - Keep one module contract per response unless Gerry clearly asks for multiple outputs.
+- Use House Purchase for planning a future purchase. Use Mortgage for an existing housing loan's payment, term, payoff, or overpayment path.

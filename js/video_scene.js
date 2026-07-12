@@ -2,6 +2,7 @@ import { computePensionProjection } from './pension_math.js';
 import { computeCollegeFundingProjection } from './college_funding_math.js';
 import { computeNetRetirementProjection } from './net_retirement_math.js';
 import { computeMortgageProjection } from './mortgage_math.js';
+import { computeHousePurchaseProjection } from './house_purchase/engine.js';
 
 export const VIDEO_SCENE_MANIFEST_VERSION = 1;
 export const VIDEO_SCENE_STORAGE_KEY = 'call_canvas_video_scene_current';
@@ -77,6 +78,9 @@ function inferMetricFormat(label, value) {
 
 export function getVideoModuleKind(module) {
   const generated = asObject(module?.generated);
+  if (generated.housePurchaseInputs) {
+    return { id: 'house-purchase', label: 'House purchase planner' };
+  }
   if (generated.report) {
     return { id: 'report', label: 'Report' };
   }
@@ -150,6 +154,32 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
   };
 
   try {
+    if (kind.id === 'house-purchase') {
+      const scenarioOverrides = asObject(activeScenario?.housePurchaseScenarioOverrides);
+      const projection = computeHousePurchaseProjection(generated.housePurchaseInputs, { scenarioOverrides });
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = projection.outputsTable;
+      resolved.generated.outputsBucketed = null;
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = projection.charts;
+      resolved.generated.summaryHtml = generated.summaryHtml || projection.summaryHtml;
+      resolved.generated.housePurchaseResult = projection.result;
+
+      const supportCase = asTrimmedText(scenarioOverrides.supportCase, 'none');
+      const isWhatIf = Object.keys(scenarioOverrides).length > 0;
+      return {
+        module: resolved,
+        activeScenario: {
+          id: isWhatIf ? `what-if-${supportCase}` : 'base',
+          title: isWhatIf ? 'House purchase what-if illustration' : 'Published base plan',
+          housePurchaseScenarioOverrides: cloneJson(scenarioOverrides)
+        },
+        projectionDebug: projection.debug,
+        projectionResult: projection.result,
+        calculationStatus: 'resolved'
+      };
+    }
+
     if (kind.id === 'pension') {
       const scenarioId = asTrimmedText(activeScenario.pensionScenarioId);
       const projection = computePensionProjection(generated.pensionInputs, scenarioId ? { scenarioId } : {});
@@ -229,6 +259,14 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       };
     }
   } catch (error) {
+    if (kind.id === 'house-purchase') {
+      resolved.generated.assumptions = {};
+      resolved.generated.outputs = {};
+      resolved.generated.outputsBucketed = null;
+      resolved.generated.tables = [];
+      resolved.generated.charts = [];
+      delete resolved.generated.housePurchaseResult;
+    }
     return {
       module: resolved,
       activeScenario: { id: 'source', title: 'Source module data' },
@@ -411,6 +449,10 @@ function extractFlowNodes(module, kind, pbsMovements = []) {
     source = Array.isArray(generated.report?.blocks) ? generated.report.blocks : [];
   } else if (kind.id === 'balance-sheet' && Array.isArray(pbsMovements) && pbsMovements.length > 0) {
     source = pbsMovements;
+  } else if (kind.id === 'house-purchase') {
+    source = Array.isArray(generated.housePurchaseResult?.actions)
+      ? generated.housePurchaseResult.actions
+      : [];
   }
 
   return source.slice(0, MAX_FLOW_NODES).map((item, index) => ({

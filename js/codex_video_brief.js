@@ -86,6 +86,12 @@ function normalizeScenarioSelection(activeScenarios, moduleId) {
     }
     selected[key] = asTrimmedText(asObject(values)[moduleId]);
   });
+
+  const housePurchaseValues = byModule.housePurchaseScenarioOverrides;
+  const housePurchaseScenario = housePurchaseValues instanceof Map
+    ? housePurchaseValues.get(moduleId)
+    : asObject(housePurchaseValues)[moduleId];
+  selected.housePurchaseScenarioOverrides = cloneJson(asObject(housePurchaseScenario));
   return selected;
 }
 

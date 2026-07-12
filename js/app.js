@@ -54,6 +54,11 @@ import {
   computeCollegeFundingProjection
 } from './college_funding_math.js';
 import {
+  createDefaultHousePurchaseInputs,
+  normalizeHousePurchaseInputs,
+  computeHousePurchaseProjection
+} from './house_purchase/engine.js';
+import {
   normalizeNetRetirementInputs,
   computeNetRetirementProjection,
   getDefaultNetRetirementScenarioId,
@@ -210,6 +215,7 @@ const appState = {
   pensionShowMaxByModuleId: new Map(),
   pensionScenarioByModuleId: new Map(),
   netRetirementScenarioByModuleId: new Map(),
+  housePurchaseScenarioByModuleId: new Map(),
   pbsScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
@@ -1875,7 +1881,8 @@ function createBlankModule() {
           anchor: null
         }
       },
-      hiddenCardIds: []
+      hiddenCardIds: [],
+      housePurchaseEditor: null
     }
   };
 }
@@ -2024,6 +2031,13 @@ function ensureGenerated(module) {
 
   module.generated = normalizeGenerated(module.generated);
   ensureModuleUi(module);
+  if (module.generated.housePurchaseInputs) {
+    try {
+      applyHousePurchaseProjectionToModule(module);
+    } catch (error) {
+      console.warn('[CallCanvas] house purchase projection could not be refreshed', error);
+    }
+  }
 }
 
 function createEmptyTableHighlightState() {
@@ -2105,6 +2119,21 @@ function ensureModuleUi(module) {
     module.ui.pbsScenarioId = module.ui.pbsScenarioId.trim();
   }
 
+  if (!module.ui.housePurchaseEditor || typeof module.ui.housePurchaseEditor !== 'object' || Array.isArray(module.ui.housePurchaseEditor)) {
+    module.ui.housePurchaseEditor = null;
+  } else {
+    const editor = module.ui.housePurchaseEditor;
+    module.ui.housePurchaseEditor = {
+      active: editor.active === true,
+      stepIndex: Number.isInteger(Number(editor.stepIndex))
+        ? Math.min(8, Math.max(0, Number(editor.stepIndex)))
+        : 0,
+      draft: editor.draft && typeof editor.draft === 'object' && !Array.isArray(editor.draft)
+        ? editor.draft
+        : null
+    };
+  }
+
   return module.ui;
 }
 
@@ -2160,6 +2189,7 @@ function hasCalculatedGeneratedOutputs(module) {
     || generated.mortgageInputs
     || generated.loanInputs
     || generated.collegeFundingInputs
+    || generated.housePurchaseInputs
     || generated.netRetirementInputs
   );
 }
@@ -2685,6 +2715,15 @@ function patchFocusedModuleGeneratedContent(moduleId, {
       updateModuleCardOrder(moduleId, cardOrder);
     },
     onEditGeneratedText: (patch) => handleGeneratedTextEdit(patch),
+    onStartHousePurchase: (targetModuleId) => {
+      void startHousePurchaseEditor(targetModuleId);
+    },
+    onEditHousePurchase: (targetModuleId, payload) => {
+      void handleHousePurchaseEditor(targetModuleId, payload);
+    },
+    onHousePurchaseScenarioChange: (targetModuleId, patch) => {
+      void setHousePurchaseScenarioOverrides(targetModuleId, patch);
+    },
     assumptionsEditorStatus: getAssumptionsEditorRenderStatus(moduleId),
     readOnly: runtimeConfig.readOnly,
     patchSummary,
@@ -3479,6 +3518,28 @@ function applyCollegeFundingProjectionToModule(module) {
   appState.lastValidProjectionByModuleId.set(module.id, {
     calculator: 'collegeFunding',
     inputs: { ...module.generated.collegeFundingInputs },
+    debug: projection.debug
+  });
+
+  return projection;
+}
+
+function applyHousePurchaseProjectionToModule(module) {
+  const projection = computeHousePurchaseProjection(module.generated.housePurchaseInputs);
+
+  module.generated.assumptions = projection.assumptionsTable;
+  module.generated.outputs = projection.outputsTable;
+  module.generated.outputsBucketed = null;
+  module.generated.tables = projection.tables;
+  module.generated.charts = projection.charts.map((chart, index) => ({
+    ...chart,
+    id: chart.id || makeChartId(module.id, chart.title, index)
+  }));
+
+  appState.lastValidProjectionByModuleId.set(module.id, {
+    calculator: 'housePurchase',
+    inputs: cloneSessionValue(module.generated.housePurchaseInputs),
+    result: projection.result,
     debug: projection.debug
   });
 
@@ -5341,12 +5402,14 @@ function getCodexVideoActiveScenarios() {
   const activeScenarios = {
     pbsScenarioId: {},
     pensionScenarioId: {},
-    netRetirementScenarioId: {}
+    netRetirementScenarioId: {},
+    housePurchaseScenarioOverrides: {}
   };
   getOrderedModules(appState.session).forEach((module) => {
     activeScenarios.pbsScenarioId[module.id] = getPbsScenarioForModule(module.id);
     activeScenarios.pensionScenarioId[module.id] = getPensionScenarioForModule(module.id);
     activeScenarios.netRetirementScenarioId[module.id] = getNetRetirementScenarioForModule(module.id);
+    activeScenarios.housePurchaseScenarioOverrides[module.id] = getHousePurchaseScenarioOverrides(module.id);
   });
   return activeScenarios;
 }
@@ -6006,6 +6069,7 @@ async function resolvePublishedStartupRecovery(message) {
 }
 
 async function publishCurrentSession() {
+  appState.session.modules.forEach((module) => ensureGenerated(module));
   const clientPlaintext = exportPublishedSession(appState.session);
   const advisorPlaintext = exportSession(appState.session);
   const mode = getPublishMode();
@@ -6499,6 +6563,7 @@ async function resetPublishedClientAccess(access) {
   const currentBundle = await fetchPublishedAdvisorBundle(publishedId, advisorSecretB64u);
   const decrypted = await decryptPublishedSessionV2ForAdvisor(advisorSecretB64u, currentBundle);
   const sourceSession = importPublishedSession(decrypted.plaintext);
+  sourceSession.modules.forEach((module) => ensureGenerated(module));
   const clientPlaintext = exportPublishedSession(sourceSession);
   const advisorPlaintext = exportSession(sourceSession);
   const currentRevision = Number(
@@ -6665,6 +6730,7 @@ async function replaceSession(nextSession, options = {}) {
   appState.pensionShowMaxByModuleId = new Map();
   appState.pensionScenarioByModuleId = new Map();
   appState.netRetirementScenarioByModuleId = new Map();
+  appState.housePurchaseScenarioByModuleId = new Map();
   appState.pbsScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
@@ -7569,6 +7635,10 @@ function validateCollegeFundingInputsPayload(collegeFundingInputs) {
   return normalizeCollegeFundingInputs(collegeFundingInputs);
 }
 
+function validateHousePurchaseInputsPayload(housePurchaseInputs) {
+  return normalizeHousePurchaseInputs(housePurchaseInputs);
+}
+
 function validateNetRetirementInputsPayload(netRetirementInputs) {
   return normalizeNetRetirementInputs(netRetirementInputs);
 }
@@ -7676,6 +7746,10 @@ function normalizePayload(payload) {
 
     if ('collegeFunding' in payload.generated && !('collegeFundingInputs' in payload.generated)) {
       generatedPatch.collegeFundingInputs = validateCollegeFundingInputsPayload(payload.generated.collegeFunding);
+    }
+
+    if ('housePurchaseInputs' in payload.generated) {
+      generatedPatch.housePurchaseInputs = validateHousePurchaseInputsPayload(payload.generated.housePurchaseInputs);
     }
 
     if ('netRetirementInputs' in payload.generated) {
@@ -8020,6 +8094,188 @@ async function setNetRetirementScenarioForModule(moduleId, scenarioId) {
     refreshOverview({ enableSortable: !runtimeConfig.readOnly });
   } else if (appState.mode === 'compare') {
     await renderCompareView();
+  }
+}
+
+const HOUSE_PURCHASE_SCENARIO_OVERRIDE_KEYS = new Set([
+  'targetPropertyPrice',
+  'targetPurchaseDate',
+  'plannedMonthlySavings',
+  'applicantIncomeById',
+  'depositSavingsGrossAer',
+  'mortgageIllustrationRate',
+  'mortgageTermYears',
+  'emergencyReserveTarget',
+  'supportCase',
+  'includeVariableIncome'
+]);
+
+function getHousePurchaseScenarioOverrides(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return {};
+  }
+  const module = getModuleById(appState.session, moduleId);
+  if (!module?.generated?.housePurchaseInputs) {
+    appState.housePurchaseScenarioByModuleId.delete(moduleId);
+    return {};
+  }
+  return cloneSessionValue(appState.housePurchaseScenarioByModuleId.get(moduleId) || {});
+}
+
+async function setHousePurchaseScenarioOverrides(moduleId, patch = {}) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+  const module = getModuleById(appState.session, moduleId);
+  if (!module?.generated?.housePurchaseInputs || !patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    return;
+  }
+
+  if (patch.reset === true) {
+    appState.housePurchaseScenarioByModuleId.delete(moduleId);
+  } else {
+    const next = {
+      ...(appState.housePurchaseScenarioByModuleId.get(moduleId) || {})
+    };
+    Object.entries(patch).forEach(([key, value]) => {
+      if (!HOUSE_PURCHASE_SCENARIO_OVERRIDE_KEYS.has(key)) {
+        return;
+      }
+      if (value === null || value === undefined || value === '') {
+        delete next[key];
+        return;
+      }
+      next[key] = cloneSessionValue(value);
+    });
+    if (Object.keys(next).length > 0) {
+      appState.housePurchaseScenarioByModuleId.set(moduleId, next);
+    } else {
+      appState.housePurchaseScenarioByModuleId.delete(moduleId);
+    }
+  }
+
+  if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
+    await renderFocused({ useSwipe: false, revealMode: false });
+  } else if (appState.mode === 'overview') {
+    refreshOverview({ enableSortable: !runtimeConfig.readOnly });
+  } else if (appState.mode === 'compare') {
+    await renderCompareView();
+  }
+}
+
+function createHousePurchaseDraft(module) {
+  const editor = ensureModuleUi(module)?.housePurchaseEditor;
+  if (editor?.draft) {
+    return cloneSessionValue(editor.draft);
+  }
+  if (module?.generated?.housePurchaseInputs) {
+    return cloneSessionValue(module.generated.housePurchaseInputs);
+  }
+  return createDefaultHousePurchaseInputs(nowIso().slice(0, 10));
+}
+
+async function startHousePurchaseEditor(moduleId) {
+  if (runtimeConfig.readOnly || typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+  const module = getModuleById(appState.session, moduleId);
+  if (!module) {
+    return;
+  }
+  const uiState = ensureModuleUi(module);
+  const existing = uiState.housePurchaseEditor;
+  uiState.housePurchaseEditor = {
+    active: true,
+    stepIndex: existing?.stepIndex || 0,
+    draft: createHousePurchaseDraft(module)
+  };
+  if (!module.title?.trim()) {
+    module.title = 'House Purchase Planner';
+  }
+  module.updatedAt = nowIso();
+  markSessionDirty();
+  scheduleSessionSave();
+  await renderFocused({ useSwipe: false, revealMode: false });
+}
+
+async function handleHousePurchaseEditor(moduleId, payload = {}) {
+  if (runtimeConfig.readOnly || typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+  const module = getModuleById(appState.session, moduleId);
+  if (!module || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return;
+  }
+  const uiState = ensureModuleUi(module);
+  const previousEditor = uiState.housePurchaseEditor;
+  const action = typeof payload.action === 'string' ? payload.action : 'draft';
+
+  if (action === 'cancel') {
+    if (previousEditor) {
+      previousEditor.active = false;
+    }
+    module.updatedAt = nowIso();
+    markSessionDirty();
+    scheduleSessionSave();
+    await renderFocused({ useSwipe: false, revealMode: false });
+    return;
+  }
+
+  if (action === 'commit') {
+    try {
+      const candidate = payload.draft && typeof payload.draft === 'object'
+        ? payload.draft
+        : previousEditor?.draft;
+      const normalizedInputs = normalizeHousePurchaseInputs(candidate);
+      computeHousePurchaseProjection(normalizedInputs);
+      module.generated.housePurchaseInputs = normalizedInputs;
+      module.generated.pbsInputs = null;
+      module.generated.liquidityPlan = null;
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
+      module.generated.netRetirementInputs = null;
+      module.generated.education = null;
+      module.generated.report = null;
+      module.generated.outputsBucketed = null;
+      if (!module.generated.summaryHtml?.trim()) {
+        module.generated.summaryHtml = '<p>This planning illustration maps the household’s route to buying a home, protecting essential reserves before testing mortgage capacity, cash readiness and relevant Irish supports.</p>';
+      }
+      applyHousePurchaseProjectionToModule(module);
+      uiState.housePurchaseEditor = null;
+      appState.housePurchaseScenarioByModuleId.delete(moduleId);
+      module.title = module.title?.trim() || 'House Purchase Planner';
+      module.updatedAt = nowIso();
+      markSessionDirty();
+      saveSessionNow();
+      await renderFocused({ useSwipe: false, revealMode: false });
+      showToast('House purchase plan saved.');
+    } catch (error) {
+      showToast(error?.message || 'Complete the required plan details before saving.', 'error');
+    }
+    return;
+  }
+
+  const nextStep = Number.isInteger(Number(payload.stepIndex))
+    ? Math.min(8, Math.max(0, Number(payload.stepIndex)))
+    : (previousEditor?.stepIndex || 0);
+  const shouldRender = !previousEditor
+    || previousEditor.active !== true
+    || previousEditor.stepIndex !== nextStep
+    || payload.requestRender === true;
+  uiState.housePurchaseEditor = {
+    active: true,
+    stepIndex: nextStep,
+    draft: payload.draft && typeof payload.draft === 'object' && !Array.isArray(payload.draft)
+      ? cloneSessionValue(payload.draft)
+      : createHousePurchaseDraft(module)
+  };
+  module.updatedAt = nowIso();
+  markSessionDirty();
+  scheduleSessionSave();
+  if (shouldRender) {
+    await renderFocused({ useSwipe: false, revealMode: false });
   }
 }
 
@@ -8829,6 +9085,15 @@ function getFocusedPaneForModule(module, {
     onCreateVideoScene: (moduleId) => {
       openVideoScene(moduleId);
     },
+    onStartHousePurchase: (moduleId) => {
+      void startHousePurchaseEditor(moduleId);
+    },
+    onEditHousePurchase: (moduleId, payload) => {
+      void handleHousePurchaseEditor(moduleId, payload);
+    },
+    onHousePurchaseScenarioChange: (moduleId, patch) => {
+      void setHousePurchaseScenarioOverrides(moduleId, patch);
+    },
     assumptionsEditorStatus,
     readOnly,
     showPensionToggle,
@@ -8854,7 +9119,8 @@ function openVideoScene(moduleId) {
       activeScenario: {
         pbsScenarioId: getPbsScenarioForModule(module.id),
         pensionScenarioId: appState.pensionScenarioByModuleId.get(module.id) || '',
-        netRetirementScenarioId: appState.netRetirementScenarioByModuleId.get(module.id) || ''
+        netRetirementScenarioId: appState.netRetirementScenarioByModuleId.get(module.id) || '',
+        housePurchaseScenarioOverrides: getHousePurchaseScenarioOverrides(module.id)
       }
     });
     saveVideoSceneManifest(manifest);
@@ -9582,6 +9848,7 @@ function clearGeneratedForVideoSummary(module) {
   module.generated.mortgageInputs = null;
   module.generated.loanInputs = null;
   module.generated.collegeFundingInputs = null;
+  module.generated.housePurchaseInputs = null;
   module.generated.netRetirementInputs = null;
   module.generated.education = null;
   module.generated.report = null;
@@ -9625,6 +9892,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -9644,6 +9912,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -9659,8 +9928,26 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.netRetirementInputs = null;
+      module.generated.housePurchaseInputs = null;
       module.generated.education = null;
       module.generated.report = null;
+      clearVideoSummaryForGeneratedModule(module);
+    }
+  }
+
+  if ('housePurchaseInputs' in generatedPatch) {
+    module.generated.housePurchaseInputs = generatedPatch.housePurchaseInputs;
+    if (generatedPatch.housePurchaseInputs) {
+      module.generated.pbsInputs = null;
+      module.generated.liquidityPlan = null;
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
+      module.generated.netRetirementInputs = null;
+      module.generated.education = null;
+      module.generated.report = null;
+      module.generated.outputsBucketed = null;
       clearVideoSummaryForGeneratedModule(module);
     }
   }
@@ -9673,6 +9960,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.housePurchaseInputs = null;
       module.generated.education = null;
       module.generated.report = null;
       clearVideoSummaryForGeneratedModule(module);
@@ -9686,6 +9974,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -9700,6 +9989,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.pensionInputs = null;
       module.generated.mortgageInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -9715,6 +10005,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.report = null;
       clearVideoSummaryForGeneratedModule(module);
@@ -9729,6 +10020,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       clearVideoSummaryForGeneratedModule(module);
@@ -9779,6 +10071,7 @@ function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditor
 
     const hasPensionInputsPatch = 'pensionInputs' in normalizedPayload.generated;
     const hasCollegeFundingInputsPatch = 'collegeFundingInputs' in normalizedPayload.generated;
+    const hasHousePurchaseInputsPatch = 'housePurchaseInputs' in normalizedPayload.generated;
     const hasNetRetirementInputsPatch = 'netRetirementInputs' in normalizedPayload.generated;
     const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
     const hasLoanInputsPatch = 'loanInputs' in normalizedPayload.generated;
@@ -9805,6 +10098,9 @@ function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditor
       }
     } else if (hasCollegeFundingInputsPatch && module.generated.collegeFundingInputs) {
       applyCollegeFundingProjectionToModule(module);
+    } else if (hasHousePurchaseInputsPatch && module.generated.housePurchaseInputs) {
+      applyHousePurchaseProjectionToModule(module);
+      module.ui.housePurchaseEditor = null;
     }
   }
 }
@@ -10848,6 +11144,10 @@ export async function initApp(options = {}) {
       void setNetRetirementScenarioForModule(moduleId, scenarioId);
     };
     window.__getNetRetirementScenarioForModule = (moduleId) => getNetRetirementScenarioForModule(moduleId);
+    window.__setHousePurchaseScenarioOverrides = (moduleId, patch) => {
+      void setHousePurchaseScenarioOverrides(moduleId, patch);
+    };
+    window.__getHousePurchaseScenarioOverrides = (moduleId) => getHousePurchaseScenarioOverrides(moduleId);
     window.__setPbsScenario = (moduleId, scenarioId) => {
       setPbsScenarioForModule(moduleId, scenarioId);
     };

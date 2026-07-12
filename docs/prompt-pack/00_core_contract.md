@@ -100,9 +100,10 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 
 ## Runtime-Safe Module Boundaries
-- `generated.pensionInputs`, `generated.netRetirementInputs`, `generated.collegeFundingInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
+- `generated.pensionInputs`, `generated.netRetirementInputs`, `generated.collegeFundingInputs`, `generated.housePurchaseInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
   - The AI's job is to parse inputs, choose the right mode, and write a short summary.
   - Do not invent the engine's outputs, tables, or charts unless Gerry explicitly asks for a separate explanatory module.
+- The House Purchase playbook is stricter: `generated` must contain only `summaryHtml` and `housePurchaseInputs`. The runtime owns capacity, purchase costs, deposit timing, mortgage illustrations, household affordability, scheme screens, bottlenecks, actions, tables, and charts.
 - `generated.outputsBucketed` is used by the PBS playbook.
   - The AI must classify items and calculate the displayed totals for PBS.
 - `generated.education` is for structured explainer modules with optional metrics, steps, SVG scenes, and charts.
@@ -138,11 +139,14 @@ If he does not, infer the playbook from the topic and requested output:
 - balance sheet or net worth classification -> PBS
 - pension accumulation, pension drawdown, or gross pension income maths -> Retirement
 - net retirement shortfall from net income and net expenditure -> Net Retirement Cash Flow
+- future home affordability, deposit path, purchase timing, or Irish buyer-support screening -> House Purchase
 - mortgage scenario -> Mortgage
 - non-housing amortising borrowing scenario -> Loan
 - explain a topic visually -> Education
 - transform long text or research into a module -> Report
 - protection planning, income protection, or serious illness -> Protection
+
+Use House Purchase for planning a future purchase. Use Mortgage for an existing housing loan's repayment, term, payoff, or overpayment path.
 
 ## Start
 Gerry will dictate:

@@ -27,6 +27,7 @@ This file is a reference source of truth for the prompt pack. It mirrors the cur
 - `charts`
 - `pensionInputs`
 - `netRetirementInputs`
+- `housePurchaseInputs`
 - `mortgageInputs`
 - `loanInputs`
 - `education`
@@ -205,8 +206,64 @@ Playbooks should only emit the subset they are responsible for.
 - The runtime validates unique child ids, non-negative current ages, start age greater than current age, positive durations, non-negative inflation, and plain numeric money inputs.
 - The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables`, and `generated.charts`; the playbook should not hand-build those fields.
 
+## House Purchase Support
+- Use `generated.housePurchaseInputs`.
+- The only other supported `generated` key for this playbook is `summaryHtml`.
+- Do not combine it with `generated.assumptions`, `generated.outputs`, `generated.outputsBucketed`, `generated.tables`, `generated.charts`, `generated.education`, `generated.report`, or another engine-input key.
+- Runtime-supported top-level input keys:
+  - `schemaVersion`
+  - `calculationDateIso`
+  - `lendingCategory`
+  - `applicationType`
+  - `applicants`
+  - `currentCashSavings`
+  - `cashSavingsContributions`
+  - `amountRingfencedForOtherGoals`
+  - `emergencyReserveMode`
+  - `emergencyReserveTarget`
+  - `currentMonthlySavings`
+  - `plannedMonthlySavings`
+  - `lumpSums`
+  - `monthlyNetHouseholdIncome`
+  - `monthlyEssentialExpensesExcludingHousingDebtAndRent`
+  - `currentMonthlyRent`
+  - `dependants`
+  - `otherKnownMonthlyCommitments`
+  - `estimatedMonthlyOwnershipCosts`
+  - `targetPropertyPrice`
+  - `targetPurchaseDate`
+  - `acquisitionType`
+  - `dwellingType`
+  - `intendedUse`
+  - `localAuthorityCode`
+  - `tenantNoticeReceived`
+  - `lenderCapacity`
+  - `depositSavingsGrossAer`
+  - `dirtRate`
+  - `mortgageIllustrationRate`
+  - `mortgageTermYears`
+  - `purchaseCosts`
+  - `helpToBuy`
+  - `firstHomeScheme`
+- `lendingCategory` is exactly `first_time_buyer`, `second_or_subsequent`, or `unknown`. It controls the Central Bank income-limit illustration only.
+- `applicationType` is exactly `single` or `joint`; `applicants` must contain one or two records accordingly.
+- Each applicant supports `id`, `label`, `age`, `employmentStatus`, `grossAnnualIncome`, `variableAnnualIncome`, `lenderRecognisedVariableAnnualIncome`, `incomeReliability`, `existingMonthlyDebtPayments`, `schemeBuyerStatus`, `freshStartReason`, `previouslyOwnedPropertyAnywhere`, `retainedInterestInPreviousProperty`, and `rightToResideInIreland`.
+- `schemeBuyerStatus` is exactly `first_time_buyer`, `fresh_start`, `previous_owner`, or `unknown` and must remain independent from `lendingCategory`.
+- A confirmed fresh-start case may use `lendingCategory: "first_time_buyer"` while retaining `schemeBuyerStatus: "fresh_start"`. This does not make the applicant a Help to Buy first-time purchaser.
+- `cashSavingsContributions[]` supports `{ "ownerId": string, "amount": number }`; its rows must total `currentCashSavings` and may include only cash explicitly made available.
+- `lumpSums[]` supports `id`, `amount`, `expectedDate`, and `confidence`; only `confirmed` and `estimated` confidence values are supported.
+- `acquisitionType` is `new_build`, `second_hand`, `self_build`, `tenant_purchase`, or `unknown`. `dwellingType` is separately `house`, `apartment`, `self_build`, or `unknown`.
+- `lenderCapacity` supports `status`, `amount`, `lenderId`, `isMaximumAvailable`, `macroPrudentialException`, and `htbQualifyingLender`.
+- `purchaseCosts` supports `stampDutyMode`, `customStampDuty`, `legalAndConveyancing`, `valuation`, `surveyOrEngineer`, `movingAndFurnishing`, and `contingency`.
+- `helpToBuy` supports `taxCompliant`, `revenueApprovedDeveloperOrApprover`, `expectedIncomeTaxAndDirtPaidPriorFourYears`, and `confirmedClaimAmount`.
+- `firstHomeScheme` supports `applicationStatus`, `confirmedEquityAmount`, and `siteEquity`.
+- Potential or incomplete scheme support must never be represented as a confirmed amount.
+- What-if overrides are local, non-persisting runtime state and are not part of `housePurchaseInputs`. Supported scheme cases are exactly `none`, `htb_only`, `fhs_only`, and `htb_and_fhs`.
+- The runtime replaces model-supplied calculation fields and owns assumptions/output tables, charts, capacity, funding, timing, mortgage, household-affordability, scheme-screen, bottleneck, action, and rule-version results.
+
 ## Mortgage Support
 - Use `generated.mortgageInputs`
+- This contract is for an existing housing loan's repayment and overpayment path. A future purchase plan belongs in `generated.housePurchaseInputs`.
 - Runtime-supported keys:
   - `currentBalance`
   - `annualInterestRate`

@@ -298,6 +298,8 @@ Liquidity examples must stay cash-only. They should use `generated.liquidityPlan
 
 ## Mortgage / Loan
 
+These examples model an existing borrowing balance and repayment path. Use the separate House Purchase contract below for a future target home, deposit path, purchase timing, household affordability, or Irish purchase-support screen.
+
 ```json
 {
   "title": "Mortgage Projection - Client",
@@ -334,6 +336,115 @@ Liquidity examples must stay cash-only. They should use `generated.liquidityPlan
       "oneOffOverpayment": 0,
       "annualOverpayment": 500,
       "loanKind": "loan"
+    }
+  }
+}
+```
+
+## House Purchase
+
+House Purchase examples must contain only `generated.summaryHtml` and `generated.housePurchaseInputs`. The runtime calculates all capacity, cash, timing, mortgage, affordability, scheme, bottleneck, action, table, and chart results.
+
+```json
+{
+  "title": "House Purchase Plan - Aoife and Conor",
+  "generated": {
+    "summaryHtml": "<p>This plan brings your income, protected savings, monthly saving and target new-build home into one route-to-buying view. Start with the current capacity, cash target and estimated timing, then check whether income, deposit or household headroom is the main constraint. Help to Buy and First Home Scheme indicators are screening illustrations only and should be confirmed with the relevant official body and lender before being treated as dependable funding.</p>",
+    "housePurchaseInputs": {
+      "schemaVersion": 1,
+      "calculationDateIso": "2026-07-11",
+      "lendingCategory": "first_time_buyer",
+      "applicationType": "joint",
+      "applicants": [
+        {
+          "id": "applicant-1",
+          "label": "Aoife",
+          "age": 34,
+          "employmentStatus": "employee",
+          "grossAnnualIncome": 68000,
+          "variableAnnualIncome": 0,
+          "lenderRecognisedVariableAnnualIncome": 0,
+          "incomeReliability": "stable",
+          "existingMonthlyDebtPayments": 0,
+          "schemeBuyerStatus": "first_time_buyer",
+          "freshStartReason": null,
+          "previouslyOwnedPropertyAnywhere": false,
+          "retainedInterestInPreviousProperty": false,
+          "rightToResideInIreland": true
+        },
+        {
+          "id": "applicant-2",
+          "label": "Conor",
+          "age": 35,
+          "employmentStatus": "employee",
+          "grossAnnualIncome": 52000,
+          "variableAnnualIncome": 0,
+          "lenderRecognisedVariableAnnualIncome": 0,
+          "incomeReliability": "stable",
+          "existingMonthlyDebtPayments": 0,
+          "schemeBuyerStatus": "first_time_buyer",
+          "freshStartReason": null,
+          "previouslyOwnedPropertyAnywhere": false,
+          "retainedInterestInPreviousProperty": false,
+          "rightToResideInIreland": true
+        }
+      ],
+      "currentCashSavings": 70000,
+      "cashSavingsContributions": [
+        { "ownerId": "applicant-1", "amount": 40000 },
+        { "ownerId": "applicant-2", "amount": 30000 }
+      ],
+      "amountRingfencedForOtherGoals": 10000,
+      "emergencyReserveMode": "suggested",
+      "emergencyReserveTarget": null,
+      "currentMonthlySavings": 1800,
+      "plannedMonthlySavings": 1800,
+      "lumpSums": [],
+      "monthlyNetHouseholdIncome": 6900,
+      "monthlyEssentialExpensesExcludingHousingDebtAndRent": 2700,
+      "currentMonthlyRent": 2100,
+      "dependants": 0,
+      "otherKnownMonthlyCommitments": 0,
+      "estimatedMonthlyOwnershipCosts": 350,
+      "targetPropertyPrice": 475000,
+      "targetPurchaseDate": "2028-06-30",
+      "acquisitionType": "new_build",
+      "dwellingType": "house",
+      "intendedUse": "principal_private_residence",
+      "localAuthorityCode": "dublin_city",
+      "tenantNoticeReceived": false,
+      "lenderCapacity": {
+        "status": "not_obtained",
+        "amount": null,
+        "lenderId": "unknown",
+        "isMaximumAvailable": false,
+        "macroPrudentialException": false,
+        "htbQualifyingLender": null
+      },
+      "depositSavingsGrossAer": 0.02,
+      "dirtRate": 0.33,
+      "mortgageIllustrationRate": 0.035,
+      "mortgageTermYears": 35,
+      "purchaseCosts": {
+        "stampDutyMode": "rules",
+        "customStampDuty": null,
+        "legalAndConveyancing": 3200,
+        "valuation": 200,
+        "surveyOrEngineer": 400,
+        "movingAndFurnishing": 5000,
+        "contingency": 2500
+      },
+      "helpToBuy": {
+        "taxCompliant": null,
+        "revenueApprovedDeveloperOrApprover": null,
+        "expectedIncomeTaxAndDirtPaidPriorFourYears": null,
+        "confirmedClaimAmount": 0
+      },
+      "firstHomeScheme": {
+        "applicationStatus": "not_applied",
+        "confirmedEquityAmount": 0,
+        "siteEquity": 0
+      }
     }
   }
 }

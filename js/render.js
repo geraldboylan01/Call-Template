@@ -13,6 +13,8 @@ import {
   getDefaultNetRetirementScenarioId,
   getNetRetirementScenarioCases
 } from './net_retirement_math.js';
+import { computeHousePurchaseProjection } from './house_purchase/engine.js';
+import { computeWorkingLiquidityReserve } from './liquidity_reserve.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -98,6 +100,7 @@ const CLIENT_GUIDE_COPY = Object.freeze({
   pension: 'Start with the required pension pot and chart, then use the assumptions table to see which facts drive the retirement projection.',
   netRetirement: 'Start with the annual net shortfall, then read the required net investment fund as an after-tax funding target.',
   collegeFunding: 'Start with the funding range, then compare today’s-money and future nominal costs before deciding what to ring-fence.',
+  housePurchase: 'Start with the route-to-home summary, then check the four readiness gates before exploring what-if changes.',
   mortgage: 'Start with repayment, term, and interest; the chart and outputs show how overpayments change the path.',
   loan: 'Start with payoff timing and interest cost; the assumptions show the balance, rate, payment structure, and overpayment being tested.',
   education: 'Start with the plain-English frame and hero visual, then use the steps and references for detail.',
@@ -2085,6 +2088,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isHousePurchaseModule(module)) {
+    return {
+      label: 'House Purchase',
+      token: 'house-purchase'
+    };
+  }
+
   if (isPensionModule(module)) {
     return {
       label: 'Pension',
@@ -2202,6 +2212,28 @@ function buildOverviewMetaItems(module, signalCounts) {
     return uniqueOverviewItems(items, 3, 22);
   }
 
+  if (moduleKind.token === 'house-purchase') {
+    const projection = getHousePurchaseProjection(module);
+    const result = projection?.result || {};
+    const targetFunding = result.targetFunding || {};
+    const applicationType = module?.generated?.housePurchaseInputs?.applicationType;
+    if (applicationType === 'joint') {
+      items.push('Joint plan');
+    } else if (applicationType === 'single') {
+      items.push('Single buyer');
+    }
+    if (finiteHousePurchaseNumber(targetFunding.monthsToReady) !== null) {
+      items.push(Number(targetFunding.monthsToReady) <= 0
+        ? 'Cash ready'
+        : `${Math.ceil(Number(targetFunding.monthsToReady))}m route`);
+    }
+    const status = result.bottlenecks?.primary?.label || targetFunding.status;
+    if (status) {
+      items.push(status);
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
   if (moduleKind.token === 'pension') {
     items.push(isAffordablePensionMode(module) ? 'Affordable mode' : 'Target mode');
     if (signalCounts.charts > 0) {
@@ -2292,6 +2324,40 @@ export function buildOverviewPreviewDescriptor(module) {
       previewKind: 'video-summary',
       previewLabel: 'Video summary',
       videoSummary,
+      metaItems: buildOverviewMetaItems(module, signalCounts)
+    };
+  }
+
+  if (moduleKind.token === 'house-purchase') {
+    const projection = getHousePurchaseProjection(module);
+    const result = projection?.result || {};
+    const targetFunding = result.targetFunding || {};
+    const capacities = result.capacities || {};
+    const bottleneck = result.bottlenecks?.primary || {};
+    return {
+      moduleKind,
+      signalCounts,
+      previewKind: 'kpi',
+      previewLabel: 'Route to home',
+      kpiItems: [
+        {
+          label: 'Target home',
+          value: finiteHousePurchaseNumber(targetFunding.targetPropertyPrice) !== null
+            ? DISPLAY_EURO_FORMATTER.format(Number(targetFunding.targetPropertyPrice))
+            : 'Set target'
+        },
+        {
+          label: 'Capacity now',
+          value: finiteHousePurchaseNumber(capacities.currentSupportablePrice) !== null
+            ? DISPLAY_EURO_FORMATTER.format(Number(capacities.currentSupportablePrice))
+            : 'Needs inputs'
+        },
+        {
+          label: 'Route status',
+          value: bottleneck.label || 'Build plan',
+          tone: bottleneck.status || 'neutral'
+        }
+      ],
       metaItems: buildOverviewMetaItems(module, signalCounts)
     };
   }
@@ -2526,6 +2592,37 @@ function isCollegeFundingModule(module) {
   return Boolean(module?.generated?.collegeFundingInputs);
 }
 
+function isHousePurchaseModule(module) {
+  return Boolean(module?.generated?.housePurchaseInputs);
+}
+
+function getHousePurchaseProjection(module, scenarioOverrides = {}) {
+  if (!isHousePurchaseModule(module)) {
+    return null;
+  }
+
+  try {
+    return computeHousePurchaseProjection(module.generated.housePurchaseInputs, {
+      scenarioOverrides: scenarioOverrides && typeof scenarioOverrides === 'object'
+        ? scenarioOverrides
+        : {}
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getHousePurchaseScenarioOverrides(moduleId) {
+  if (!moduleId || typeof window === 'undefined' || typeof window.__getHousePurchaseScenarioOverrides !== 'function') {
+    return {};
+  }
+
+  const overrides = window.__getHousePurchaseScenarioOverrides(moduleId);
+  return overrides && typeof overrides === 'object' && !Array.isArray(overrides)
+    ? overrides
+    : {};
+}
+
 function isLiquidityPlanModule(module) {
   return Boolean(module?.generated?.liquidityPlan);
 }
@@ -2563,6 +2660,14 @@ function isProtectionReportModule(module) {
 }
 
 function getPlaybookDisplayContext(module) {
+  if (isHousePurchaseModule(module)) {
+    return {
+      key: 'housePurchase',
+      heading: 'House Purchase Planner',
+      guide: CLIENT_GUIDE_COPY.housePurchase
+    };
+  }
+
   if (isLiquidityPlanModule(module)) {
     return {
       key: 'liquidity',
@@ -2979,6 +3084,7 @@ function blocksGeneratedTableEditing(module) {
     isPensionModule(module)
     || isNetRetirementModule(module)
     || isCollegeFundingModule(module)
+    || isHousePurchaseModule(module)
     || isMortgageModule(module)
   );
 }
@@ -9660,18 +9766,18 @@ function computeLiquidityAssessment(plan = {}) {
   const targetBufferMonths = Math.max(rawTargetMonths, minimumBufferMonths);
   const currentCash = getFiniteNumber(plan.currentCash);
   const monthlyExpenditure = getLiquidityMonthlyExpenditure(plan);
-  const annualExpenditure = monthlyExpenditure !== null ? monthlyExpenditure * 12 : null;
-  const targetCash = monthlyExpenditure !== null ? monthlyExpenditure * targetBufferMonths : null;
-  const minimumCash = monthlyExpenditure !== null ? monthlyExpenditure * minimumBufferMonths : null;
-  const months = currentCash !== null && monthlyExpenditure !== null && monthlyExpenditure > 0
-    ? currentCash / monthlyExpenditure
-    : null;
-  const surplusCash = currentCash !== null && targetCash !== null
-    ? Math.max(0, currentCash - targetCash)
-    : 0;
-  const shortfallCash = currentCash !== null && targetCash !== null
-    ? Math.max(0, targetCash - currentCash)
-    : 0;
+  const reserve = computeWorkingLiquidityReserve({
+    currentCash,
+    monthlyExpenditure,
+    minimumBufferMonths,
+    targetBufferMonths
+  });
+  const annualExpenditure = reserve.annualExpenditure;
+  const targetCash = reserve.targetCash;
+  const minimumCash = reserve.minimumCash;
+  const months = reserve.monthsCovered;
+  const surplusCash = reserve.surplusCash;
+  const shortfallCash = reserve.shortfallCash;
   const surplusMonths = monthlyExpenditure !== null && surplusCash > 0
     ? surplusCash / monthlyExpenditure
     : 0;
@@ -10272,6 +10378,1843 @@ function buildLiquidityEvidenceCard(plan, module, {
   return card;
 }
 
+const HOUSE_PURCHASE_WIZARD_STEPS = Object.freeze([
+  { title: 'Your goal', detail: 'Set the destination and the planning rule to illustrate.' },
+  { title: 'Who is buying', detail: 'Tell us whether this is a single or joint application.' },
+  { title: 'Income', detail: 'Separate dependable income from variable income.' },
+  { title: 'Savings and assets', detail: 'Protect cash that should not be used for the purchase.' },
+  { title: 'Debts and commitments', detail: 'Capture repayments and household responsibilities.' },
+  { title: 'Monthly household position', detail: 'Test the purchase against real monthly cash flow.' },
+  { title: 'Target property', detail: 'Describe the home, lender position and buying costs.' },
+  { title: 'Buyer supports', detail: 'Screen Help to Buy and the First Home Scheme.' },
+  { title: 'Results', detail: 'Review the facts that will power the plan.' }
+]);
+
+const HOUSE_PURCHASE_LOCAL_AUTHORITIES = Object.freeze([
+  ['carlow', 'Carlow County Council'],
+  ['cavan', 'Cavan County Council'],
+  ['clare', 'Clare County Council'],
+  ['cork_city', 'Cork City Council'],
+  ['cork_county', 'Cork County Council'],
+  ['donegal', 'Donegal County Council'],
+  ['dublin_city', 'Dublin City Council'],
+  ['dun_laoghaire_rathdown', 'Dún Laoghaire–Rathdown County Council'],
+  ['fingal', 'Fingal County Council'],
+  ['galway_city', 'Galway City Council'],
+  ['galway_county', 'Galway County Council'],
+  ['kerry', 'Kerry County Council'],
+  ['kildare', 'Kildare County Council'],
+  ['kilkenny', 'Kilkenny County Council'],
+  ['laois', 'Laois County Council'],
+  ['leitrim', 'Leitrim County Council'],
+  ['limerick', 'Limerick City and County Council'],
+  ['longford', 'Longford County Council'],
+  ['louth', 'Louth County Council'],
+  ['mayo', 'Mayo County Council'],
+  ['meath', 'Meath County Council'],
+  ['monaghan', 'Monaghan County Council'],
+  ['offaly', 'Offaly County Council'],
+  ['roscommon', 'Roscommon County Council'],
+  ['sligo', 'Sligo County Council'],
+  ['south_dublin', 'South Dublin County Council'],
+  ['tipperary', 'Tipperary County Council'],
+  ['waterford', 'Waterford City and County Council'],
+  ['westmeath', 'Westmeath County Council'],
+  ['wexford', 'Wexford County Council'],
+  ['wicklow', 'Wicklow County Council']
+]);
+
+function cloneHousePurchaseDraft(draft) {
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(draft || {});
+    } catch (_error) {
+      // Fall through to the plain-data clone used by legacy browsers.
+    }
+  }
+  return JSON.parse(JSON.stringify(draft || {}));
+}
+
+function setHousePurchaseDraftValue(draft, path, value) {
+  const next = cloneHousePurchaseDraft(draft);
+  let cursor = next;
+  path.forEach((segment, index) => {
+    if (index === path.length - 1) {
+      cursor[segment] = value;
+      return;
+    }
+    const nextSegment = path[index + 1];
+    if (!cursor[segment] || typeof cursor[segment] !== 'object') {
+      cursor[segment] = Number.isInteger(nextSegment) ? [] : {};
+    }
+    cursor = cursor[segment];
+  });
+  return next;
+}
+
+function makeHousePurchaseApplicant(index) {
+  return {
+    id: `applicant-${index + 1}`,
+    label: index === 0 ? 'Applicant 1' : 'Applicant 2',
+    age: null,
+    employmentStatus: 'employee',
+    grossAnnualIncome: null,
+    variableAnnualIncome: 0,
+    lenderRecognisedVariableAnnualIncome: 0,
+    incomeReliability: 'stable',
+    existingMonthlyDebtPayments: 0,
+    schemeBuyerStatus: 'unknown',
+    freshStartReason: '',
+    previouslyOwnedPropertyAnywhere: null,
+    retainedInterestInPreviousProperty: null,
+    rightToResideInIreland: null
+  };
+}
+
+function getHousePurchaseEditor(module) {
+  const editor = module?.ui?.housePurchaseEditor;
+  if (!editor || typeof editor !== 'object' || Array.isArray(editor) || editor.active === false) {
+    return null;
+  }
+  const draft = editor.draft && typeof editor.draft === 'object'
+    ? editor.draft
+    : (editor.inputs && typeof editor.inputs === 'object' ? editor.inputs : null);
+  if (!draft) {
+    return null;
+  }
+  return {
+    draft,
+    stepIndex: Math.max(0, Math.min(
+      HOUSE_PURCHASE_WIZARD_STEPS.length - 1,
+      Math.round(Number(editor.stepIndex) || 0)
+    ))
+  };
+}
+
+function parseHousePurchaseNumber(value, { nullable = false } = {}) {
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return nullable ? null : 0;
+  }
+  const parsed = Number(text.replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : (nullable ? null : 0);
+}
+
+function formatHousePurchaseInputNumber(value, multiplier = 1) {
+  if (value === null || value === undefined || value === '') {
+    return '';
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? String(Number((parsed * multiplier).toFixed(4))) : '';
+}
+
+function makeHousePurchaseField({
+  label,
+  value = '',
+  type = 'text',
+  options = null,
+  help = '',
+  prefix = '',
+  suffix = '',
+  min = null,
+  max = null,
+  step = null,
+  inputMode = null,
+  required = false,
+  wide = false,
+  onChange
+}) {
+  const field = document.createElement('label');
+  field.className = 'house-purchase-field';
+  if (wide) {
+    field.classList.add('is-wide');
+  }
+
+  const labelText = document.createElement('span');
+  labelText.className = 'house-purchase-field-label';
+  labelText.textContent = label;
+  if (required) {
+    const requiredText = document.createElement('span');
+    requiredText.className = 'house-purchase-required';
+    requiredText.textContent = ' Required';
+    labelText.appendChild(requiredText);
+  }
+  field.appendChild(labelText);
+
+  const controlWrap = document.createElement('span');
+  controlWrap.className = 'house-purchase-control-wrap';
+  if (prefix) {
+    const prefixNode = document.createElement('span');
+    prefixNode.className = 'house-purchase-control-affix';
+    prefixNode.textContent = prefix;
+    controlWrap.appendChild(prefixNode);
+  }
+
+  let control;
+  if (Array.isArray(options)) {
+    control = document.createElement('select');
+    options.forEach(([optionValue, optionLabel]) => {
+      const option = document.createElement('option');
+      option.value = String(optionValue);
+      option.textContent = optionLabel;
+      control.appendChild(option);
+    });
+  } else {
+    control = document.createElement('input');
+    control.type = type;
+  }
+  control.className = 'house-purchase-control';
+  control.value = value ?? '';
+  if (min !== null) control.min = String(min);
+  if (max !== null) control.max = String(max);
+  if (step !== null) control.step = String(step);
+  if (inputMode) control.inputMode = inputMode;
+  control.required = Boolean(required);
+  control.addEventListener('change', () => onChange?.(control.value));
+  controlWrap.appendChild(control);
+
+  if (suffix) {
+    const suffixNode = document.createElement('span');
+    suffixNode.className = 'house-purchase-control-affix';
+    suffixNode.textContent = suffix;
+    controlWrap.appendChild(suffixNode);
+  }
+  field.appendChild(controlWrap);
+
+  if (help) {
+    const helpText = document.createElement('span');
+    helpText.className = 'house-purchase-field-help';
+    helpText.textContent = help;
+    field.appendChild(helpText);
+  }
+  return field;
+}
+
+function makeHousePurchaseBooleanField({ label, value, help = '', onChange, wide = false }) {
+  return makeHousePurchaseField({
+    label,
+    value: value === true ? 'yes' : (value === false ? 'no' : ''),
+    options: [['', 'Select…'], ['yes', 'Yes'], ['no', 'No']],
+    help,
+    wide,
+    onChange: (next) => onChange(next === '' ? null : next === 'yes')
+  });
+}
+
+function makeHousePurchaseGroup(title, detail = '') {
+  const group = document.createElement('div');
+  group.className = 'house-purchase-form-group';
+  const heading = document.createElement('h4');
+  heading.textContent = title;
+  group.appendChild(heading);
+  if (detail) {
+    const copy = document.createElement('p');
+    copy.textContent = detail;
+    group.appendChild(copy);
+  }
+  return group;
+}
+
+function renderHousePurchaseWizardStep(stepIndex, draft, updateDraft) {
+  const content = document.createElement('div');
+  content.className = 'house-purchase-step-content';
+  const grid = document.createElement('div');
+  grid.className = 'house-purchase-form-grid';
+  const applicants = Array.isArray(draft.applicants) && draft.applicants.length > 0
+    ? draft.applicants
+    : [makeHousePurchaseApplicant(0)];
+  const activeApplicants = draft.applicationType === 'joint'
+    ? [applicants[0] || makeHousePurchaseApplicant(0), applicants[1] || makeHousePurchaseApplicant(1)]
+    : [applicants[0] || makeHousePurchaseApplicant(0)];
+
+  const addCurrency = (label, path, value, help = '', options = {}) => grid.appendChild(makeHousePurchaseField({
+    label,
+    value: formatHousePurchaseInputNumber(value),
+    type: 'number',
+    min: 0,
+    step: 100,
+    inputMode: 'decimal',
+    prefix: '€',
+    help,
+    onChange: (next) => updateDraft(path, parseHousePurchaseNumber(next, { nullable: options.nullable })),
+    ...options
+  }));
+
+  if (stepIndex === 0) {
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Target property price',
+      value: formatHousePurchaseInputNumber(draft.targetPropertyPrice),
+      type: 'number', min: 1, step: 5000, inputMode: 'decimal', prefix: '€', required: true,
+      help: 'Use the price you would like the plan to test.',
+      onChange: (next) => updateDraft(['targetPropertyPrice'], parseHousePurchaseNumber(next, { nullable: true }))
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Target purchase date',
+      value: draft.targetPurchaseDate || '',
+      type: 'date', required: true,
+      help: 'The planner treats this as the end of the selected month.',
+      onChange: (next) => updateDraft(['targetPurchaseDate'], next || null)
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Central Bank buyer category',
+      value: draft.lendingCategory || 'unknown',
+      options: [
+        ['unknown', 'Not confirmed'],
+        ['first_time_buyer', 'First-time buyer'],
+        ['second_or_subsequent', 'Second or subsequent buyer']
+      ],
+      required: true,
+      help: 'This sets the regulatory income-limit illustration only; it does not determine scheme status.',
+      wide: true,
+      onChange: (next) => updateDraft(['lendingCategory'], next)
+    }));
+  } else if (stepIndex === 1) {
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Application type',
+      value: draft.applicationType || 'single',
+      options: [['single', 'Buying alone'], ['joint', 'Buying together']],
+      required: true,
+      wide: true,
+      onChange: (nextType) => {
+        updateDraft([], (current) => {
+          current.applicationType = nextType;
+          const nextApplicants = Array.isArray(current.applicants) ? [...current.applicants] : [];
+          if (!nextApplicants[0]) nextApplicants[0] = makeHousePurchaseApplicant(0);
+          if (nextType === 'joint' && !nextApplicants[1]) nextApplicants[1] = makeHousePurchaseApplicant(1);
+          current.applicants = nextType === 'joint' ? nextApplicants.slice(0, 2) : nextApplicants.slice(0, 1);
+          if (nextType === 'single') {
+            current.cashSavingsContributions = [{
+              ownerId: current.applicants[0].id,
+              amount: Number(current.currentCashSavings) || 0
+            }];
+          }
+          return current;
+        }, { replace: true, requestRender: true });
+      }
+    }));
+    content.appendChild(grid);
+    activeApplicants.forEach((applicant, applicantIndex) => {
+      const group = makeHousePurchaseGroup(applicant.label || `Applicant ${applicantIndex + 1}`);
+      const applicantGrid = document.createElement('div');
+      applicantGrid.className = 'house-purchase-form-grid';
+      applicantGrid.appendChild(makeHousePurchaseField({
+        label: 'Display label', value: applicant.label || '',
+        onChange: (next) => updateDraft(['applicants', applicantIndex, 'label'], next)
+      }));
+      applicantGrid.appendChild(makeHousePurchaseField({
+        label: 'Age', value: formatHousePurchaseInputNumber(applicant.age), type: 'number', min: 19, max: 100,
+        step: 1, inputMode: 'numeric', required: true,
+        onChange: (next) => updateDraft(['applicants', applicantIndex, 'age'], parseHousePurchaseNumber(next, { nullable: true }))
+      }));
+      applicantGrid.appendChild(makeHousePurchaseField({
+        label: 'Employment', value: applicant.employmentStatus || 'employee',
+        options: [['employee', 'Employee'], ['self_employed', 'Self-employed'], ['contractor', 'Contractor'], ['student', 'Student'], ['other', 'Other']],
+        onChange: (next) => updateDraft(['applicants', applicantIndex, 'employmentStatus'], next)
+      }));
+      applicantGrid.appendChild(makeHousePurchaseField({
+        label: 'Buyer status for supports', value: applicant.schemeBuyerStatus || 'unknown',
+        options: [['unknown', 'Not confirmed'], ['first_time_buyer', 'First-time buyer'], ['fresh_start', 'Fresh-start applicant'], ['previous_owner', 'Previous owner']],
+        help: 'This remains separate from the Central Bank lending category.',
+        onChange: (next) => updateDraft(['applicants', applicantIndex, 'schemeBuyerStatus'], next, { requestRender: true })
+      }));
+      if (applicant.schemeBuyerStatus === 'fresh_start') {
+        applicantGrid.appendChild(makeHousePurchaseField({
+          label: 'Fresh-start context', value: applicant.freshStartReason || '', wide: true,
+          help: 'Use a short planning note only; do not include sensitive identifiers.',
+          onChange: (next) => updateDraft(['applicants', applicantIndex, 'freshStartReason'], next)
+        }));
+      }
+      group.appendChild(applicantGrid);
+      content.appendChild(group);
+    });
+  } else if (stepIndex === 2) {
+    activeApplicants.forEach((applicant, applicantIndex) => {
+      const group = makeHousePurchaseGroup(applicant.label || `Applicant ${applicantIndex + 1}`, 'Only lender-recognised variable income enters the base calculation.');
+      const applicantGrid = document.createElement('div');
+      applicantGrid.className = 'house-purchase-form-grid';
+      const incomeField = (label, key, help = '') => makeHousePurchaseField({
+        label, value: formatHousePurchaseInputNumber(applicant[key]), type: 'number', min: 0, step: 1000,
+        inputMode: 'decimal', prefix: '€', help,
+        onChange: (next) => updateDraft(['applicants', applicantIndex, key], parseHousePurchaseNumber(next, { nullable: key === 'grossAnnualIncome' }))
+      });
+      applicantGrid.appendChild(incomeField('Gross annual base income', 'grossAnnualIncome'));
+      applicantGrid.appendChild(incomeField('Variable annual income', 'variableAnnualIncome', 'Shown for context; excluded unless a lender-recognised amount is entered.'));
+      applicantGrid.appendChild(incomeField('Lender-recognised variable income', 'lenderRecognisedVariableAnnualIncome'));
+      applicantGrid.appendChild(makeHousePurchaseField({
+        label: 'Income reliability', value: applicant.incomeReliability || 'unknown',
+        options: [['stable', 'Stable'], ['variable', 'Variable'], ['unknown', 'Not assessed']],
+        onChange: (next) => updateDraft(['applicants', applicantIndex, 'incomeReliability'], next)
+      }));
+      group.appendChild(applicantGrid);
+      content.appendChild(group);
+    });
+  } else if (stepIndex === 3) {
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Current cash savings',
+      value: formatHousePurchaseInputNumber(draft.currentCashSavings),
+      type: 'number', min: 0, step: 100, inputMode: 'decimal', prefix: '€', required: true,
+      help: 'Include only cash explicitly available to this plan.',
+      onChange: (nextValue) => {
+        const amount = parseHousePurchaseNumber(nextValue);
+        updateDraft([], (current) => {
+          current.currentCashSavings = amount;
+          if (current.applicationType !== 'joint') {
+            const owner = Array.isArray(current.applicants) && current.applicants[0]
+              ? current.applicants[0]
+              : makeHousePurchaseApplicant(0);
+            current.cashSavingsContributions = [{ ownerId: owner.id, amount }];
+          }
+          return current;
+        }, { replace: true, requestRender: true });
+      }
+    }));
+    addCurrency('Ringfenced for other goals', ['amountRingfencedForOtherGoals'], draft.amountRingfencedForOtherGoals);
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Emergency reserve', value: draft.emergencyReserveMode || 'suggested',
+      options: [['suggested', 'Use Planéir suggested reserve'], ['custom', 'Set a custom reserve']],
+      help: 'The suggested reserve uses household essentials and retains the existing Liquidity safety floor.',
+      onChange: (next) => updateDraft(['emergencyReserveMode'], next, { requestRender: true })
+    }));
+    if (draft.emergencyReserveMode === 'custom') {
+      addCurrency('Custom emergency reserve', ['emergencyReserveTarget'], draft.emergencyReserveTarget, 'This remains protected after purchase.', { required: true });
+    }
+    addCurrency('Current monthly saving', ['currentMonthlySavings'], draft.currentMonthlySavings);
+    addCurrency('Planned monthly saving', ['plannedMonthlySavings'], draft.plannedMonthlySavings, 'Used for the base deposit journey.', { nullable: true });
+    if (draft.applicationType === 'joint') activeApplicants.forEach((applicant, applicantIndex) => {
+      const current = Array.isArray(draft.cashSavingsContributions)
+        ? draft.cashSavingsContributions.find((item) => item?.ownerId === applicant.id)?.amount
+        : null;
+      grid.appendChild(makeHousePurchaseField({
+        label: `${applicant.label || `Applicant ${applicantIndex + 1}`} contribution`,
+        value: formatHousePurchaseInputNumber(current), type: 'number', min: 0, step: 100, inputMode: 'decimal', prefix: '€',
+        help: 'Contribution display only; the total must equal current cash savings.',
+        onChange: (nextValue) => {
+          updateDraft([], (currentDraft) => {
+            const rows = Array.isArray(currentDraft.cashSavingsContributions)
+              ? [...currentDraft.cashSavingsContributions]
+              : [];
+            const rowIndex = rows.findIndex((item) => item?.ownerId === applicant.id);
+            const row = { ownerId: applicant.id, amount: parseHousePurchaseNumber(nextValue) };
+            if (rowIndex >= 0) rows[rowIndex] = row;
+            else rows.push(row);
+            currentDraft.cashSavingsContributions = rows;
+            return currentDraft;
+          }, { replace: true, requestRender: true });
+        }
+      }));
+    });
+    const contributionTotal = draft.applicationType === 'joint' && Array.isArray(draft.cashSavingsContributions)
+      ? draft.cashSavingsContributions.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0)
+      : (Number(draft.currentCashSavings) || 0);
+    const splitSummary = document.createElement('div');
+    splitSummary.className = 'house-purchase-split-summary';
+    splitSummary.dataset.tone = Math.abs(contributionTotal - (Number(draft.currentCashSavings) || 0)) <= 0.01 ? 'positive' : 'negative';
+    splitSummary.innerHTML = draft.applicationType === 'joint'
+      ? `<strong>Contribution split: ${formatHousePurchaseCurrency(contributionTotal)} of ${formatHousePurchaseCurrency(draft.currentCashSavings)}</strong><span>${Math.abs(contributionTotal - (Number(draft.currentCashSavings) || 0)) <= 0.01 ? 'Split is balanced.' : 'Adjust the two contributions so they total current cash savings.'}</span>`
+      : `<strong>${formatHousePurchaseCurrency(draft.currentCashSavings)} assigned to ${escapeSummaryText(activeApplicants[0]?.label || 'Applicant 1')}</strong><span>The single-buyer contribution stays in sync automatically.</span>`;
+    grid.appendChild(splitSummary);
+    const lumpSum = Array.isArray(draft.lumpSums) && draft.lumpSums.length > 0 ? draft.lumpSums[0] : {};
+    addCurrency('Expected lump sum', ['lumpSums', 0, 'amount'], lumpSum.amount, 'Only confirmed lump sums enter the base route.', { nullable: true });
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Lump-sum date', value: lumpSum.expectedDate || '', type: 'date',
+      onChange: (next) => updateDraft(['lumpSums', 0, 'expectedDate'], next || null)
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Lump-sum confidence', value: lumpSum.confidence || 'estimated',
+      options: [['estimated', 'Estimated'], ['confirmed', 'Confirmed']],
+      onChange: (next) => updateDraft(['lumpSums', 0, 'confidence'], next)
+    }));
+  } else if (stepIndex === 4) {
+    activeApplicants.forEach((applicant, applicantIndex) => {
+      addCurrency(`${applicant.label || `Applicant ${applicantIndex + 1}`} monthly debt repayments`, ['applicants', applicantIndex, 'existingMonthlyDebtPayments'], applicant.existingMonthlyDebtPayments);
+    });
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Dependants', value: formatHousePurchaseInputNumber(draft.dependants), type: 'number', min: 0, step: 1, inputMode: 'numeric',
+      onChange: (next) => updateDraft(['dependants'], parseHousePurchaseNumber(next))
+    }));
+    addCurrency('Other known monthly commitments', ['otherKnownMonthlyCommitments'], draft.otherKnownMonthlyCommitments, 'Exclude mortgage/rent and the debt payments already entered.');
+  } else if (stepIndex === 5) {
+    addCurrency('Monthly net household income', ['monthlyNetHouseholdIncome'], draft.monthlyNetHouseholdIncome, 'Use the household total after tax.', { nullable: true, required: true });
+    addCurrency('Essential expenses excluding housing and debt', ['monthlyEssentialExpensesExcludingHousingDebtAndRent'], draft.monthlyEssentialExpensesExcludingHousingDebtAndRent, '', { nullable: true, required: true });
+    addCurrency('Current monthly rent', ['currentMonthlyRent'], draft.currentMonthlyRent, '', { nullable: true });
+    addCurrency('Estimated monthly ownership costs', ['estimatedMonthlyOwnershipCosts'], draft.estimatedMonthlyOwnershipCosts, 'Insurance, maintenance, management fees and similar costs; exclude the mortgage.', { nullable: true });
+  } else if (stepIndex === 6) {
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Acquisition type', value: draft.acquisitionType || 'unknown',
+      options: [['unknown', 'Not chosen'], ['new_build', 'New build'], ['second_hand', 'Second-hand home'], ['self_build', 'Self-build'], ['tenant_purchase', 'Tenant purchase']],
+      required: true,
+      onChange: (next) => updateDraft([], (current) => {
+        current.acquisitionType = next;
+        const defaultsByType = { new_build: 400, second_hand: 600, self_build: 800, tenant_purchase: 600, unknown: 600 };
+        const currentSurvey = finiteHousePurchaseNumber(current.purchaseCosts?.surveyOrEngineer);
+        if (currentSurvey === null || [400, 600, 800].includes(currentSurvey)) {
+          current.purchaseCosts = {
+            ...(current.purchaseCosts || {}),
+            surveyOrEngineer: defaultsByType[next] ?? 600
+          };
+        }
+        return current;
+      }, { replace: true, requestRender: true })
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Dwelling type', value: draft.dwellingType || 'unknown',
+      options: [['unknown', 'Not chosen'], ['house', 'House'], ['apartment', 'Apartment'], ['self_build', 'Self-build']],
+      required: true,
+      onChange: (next) => updateDraft(['dwellingType'], next)
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Intended use', value: draft.intendedUse || 'principal_private_residence',
+      options: [['principal_private_residence', 'My/our principal home']],
+      onChange: (next) => updateDraft(['intendedUse'], next)
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Local authority', value: draft.localAuthorityCode || '',
+      options: [['', 'Select area…'], ...HOUSE_PURCHASE_LOCAL_AUTHORITIES],
+      help: 'Needed to screen the First Home Scheme price ceiling.',
+      onChange: (next) => updateDraft(['localAuthorityCode'], next || null)
+    }));
+    if (draft.acquisitionType === 'tenant_purchase') {
+      grid.appendChild(makeHousePurchaseBooleanField({
+        label: 'Landlord notice of termination received?', value: draft.tenantNoticeReceived,
+        onChange: (next) => updateDraft(['tenantNoticeReceived'], next)
+      }));
+    }
+    const lender = draft.lenderCapacity || {};
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Lender position', value: lender.status || 'unknown',
+      options: [['unknown', 'Not confirmed'], ['not_obtained', 'Not obtained'], ['estimated', 'Planning estimate'], ['confirmed', 'Confirmed / AIP input']],
+      onChange: (next) => updateDraft(['lenderCapacity', 'status'], next)
+    }));
+    addCurrency('Lender / AIP capacity', ['lenderCapacity', 'amount'], lender.amount, 'Shown separately from the Central Bank illustration.', { nullable: true });
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Lender', value: lender.lenderId || '',
+      options: [['', 'Not selected'], ['aib', 'AIB'], ['ebs', 'EBS'], ['haven', 'Haven'], ['bank_of_ireland', 'Bank of Ireland'], ['ptsb', 'PTSB'], ['other', 'Other lender']],
+      onChange: (next) => updateDraft(['lenderCapacity', 'lenderId'], next || null)
+    }));
+    grid.appendChild(makeHousePurchaseBooleanField({
+      label: 'Is this the maximum available?', value: lender.isMaximumAvailable,
+      onChange: (next) => updateDraft(['lenderCapacity', 'isMaximumAvailable'], next)
+    }));
+    grid.appendChild(makeHousePurchaseBooleanField({
+      label: 'Macro-prudential exception?', value: lender.macroPrudentialException,
+      help: 'Required before a lender amount above the standard ceiling can be used.',
+      onChange: (next) => updateDraft(['lenderCapacity', 'macroPrudentialException'], next)
+    }));
+    if (draft.acquisitionType === 'new_build' || draft.acquisitionType === 'self_build') {
+      grid.appendChild(makeHousePurchaseBooleanField({
+        label: 'HTB qualifying lender?', value: lender.htbQualifyingLender,
+        help: 'Use the lender / Revenue position if known; leave unanswered if it still needs confirmation.',
+        onChange: (next) => updateDraft(['lenderCapacity', 'htbQualifyingLender'], next)
+      }));
+    }
+    const costs = draft.purchaseCosts || {};
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Stamp duty', value: costs.stampDutyMode || 'rules',
+      options: [['rules', 'Calculate from dated bands'], ['custom', 'Use a custom amount']],
+      onChange: (next) => updateDraft(['purchaseCosts', 'stampDutyMode'], next, { requestRender: true })
+    }));
+    if (costs.stampDutyMode === 'custom') addCurrency('Custom stamp duty', ['purchaseCosts', 'customStampDuty'], costs.customStampDuty);
+    addCurrency('Legal and conveyancing estimate', ['purchaseCosts', 'legalAndConveyancing'], costs.legalAndConveyancing);
+    addCurrency('Valuation estimate', ['purchaseCosts', 'valuation'], costs.valuation);
+    addCurrency('Survey / engineer estimate', ['purchaseCosts', 'surveyOrEngineer'], costs.surveyOrEngineer);
+    addCurrency('Moving and furnishing allowance', ['purchaseCosts', 'movingAndFurnishing'], costs.movingAndFurnishing);
+    addCurrency('Contingency', ['purchaseCosts', 'contingency'], costs.contingency);
+  } else if (stepIndex === 7) {
+    activeApplicants.forEach((applicant, applicantIndex) => {
+      const group = makeHousePurchaseGroup(`${applicant.label || `Applicant ${applicantIndex + 1}`} scheme checks`);
+      const applicantGrid = document.createElement('div');
+      applicantGrid.className = 'house-purchase-form-grid';
+      applicantGrid.appendChild(makeHousePurchaseBooleanField({
+        label: 'Previously owned property anywhere?', value: applicant.previouslyOwnedPropertyAnywhere,
+        onChange: (next) => updateDraft(['applicants', applicantIndex, 'previouslyOwnedPropertyAnywhere'], next)
+      }));
+      applicantGrid.appendChild(makeHousePurchaseBooleanField({
+        label: 'Retains an interest in a previous property?', value: applicant.retainedInterestInPreviousProperty,
+        onChange: (next) => updateDraft(['applicants', applicantIndex, 'retainedInterestInPreviousProperty'], next)
+      }));
+      applicantGrid.appendChild(makeHousePurchaseBooleanField({
+        label: 'Right to reside in Ireland?', value: applicant.rightToResideInIreland,
+        onChange: (next) => updateDraft(['applicants', applicantIndex, 'rightToResideInIreland'], next)
+      }));
+      group.appendChild(applicantGrid);
+      content.appendChild(group);
+    });
+    const htb = draft.helpToBuy || {};
+    const htbRelevant = draft.acquisitionType === 'new_build' || draft.acquisitionType === 'self_build';
+    if (htbRelevant) {
+      grid.appendChild(makeHousePurchaseBooleanField({
+        label: 'Tax compliant for Help to Buy?', value: htb.taxCompliant,
+        onChange: (next) => updateDraft(['helpToBuy', 'taxCompliant'], next)
+      }));
+      grid.appendChild(makeHousePurchaseBooleanField({
+        label: 'Revenue-approved developer / approver?', value: htb.revenueApprovedDeveloperOrApprover,
+        help: 'Relevant for a new home or self-build.',
+        onChange: (next) => updateDraft(['helpToBuy', 'revenueApprovedDeveloperOrApprover'], next)
+      }));
+      addCurrency('Income Tax and DIRT paid in prior four years', ['helpToBuy', 'expectedIncomeTaxAndDirtPaidPriorFourYears'], htb.expectedIncomeTaxAndDirtPaidPriorFourYears, 'Leave blank to show a maximum before tax-paid verification.', { nullable: true });
+      addCurrency('Confirmed Help to Buy claim', ['helpToBuy', 'confirmedClaimAmount'], htb.confirmedClaimAmount, 'Use only an amount already confirmed through Revenue.', { nullable: true });
+    } else {
+      const notApplicable = document.createElement('div');
+      notApplicable.className = 'house-purchase-split-summary';
+      notApplicable.innerHTML = '<strong>Help to Buy is not shown for this property type</strong><span>HTB screens new homes and qualifying self-builds; the result will explain the property mismatch.</span>';
+      grid.appendChild(notApplicable);
+    }
+    const fhs = draft.firstHomeScheme || {};
+    grid.appendChild(makeHousePurchaseField({
+      label: 'First Home Scheme application', value: fhs.applicationStatus || 'unknown',
+      options: [['unknown', 'Not confirmed'], ['not_applied', 'Not applied'], ['potential', 'Worth screening'], ['confirmed', 'Confirmed'], ['declined', 'Declined']],
+      onChange: (next) => updateDraft(['firstHomeScheme', 'applicationStatus'], next, { requestRender: true })
+    }));
+    if (fhs.applicationStatus === 'confirmed') {
+      addCurrency('Confirmed FHS equity amount', ['firstHomeScheme', 'confirmedEquityAmount'], fhs.confirmedEquityAmount, '', { nullable: true });
+    }
+    if (draft.acquisitionType === 'self_build') {
+      addCurrency('Self-build site equity', ['firstHomeScheme', 'siteEquity'], fhs.siteEquity, '', { nullable: true });
+    }
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Deposit savings gross AER', value: formatHousePurchaseInputNumber(draft.depositSavingsGrossAer, 100),
+      type: 'number', min: 0, max: 20, step: 0.1, inputMode: 'decimal', suffix: '%',
+      help: 'Default base illustration: 2.0% gross.',
+      onChange: (next) => updateDraft(['depositSavingsGrossAer'], parseHousePurchaseNumber(next) / 100)
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'DIRT rate', value: formatHousePurchaseInputNumber(draft.dirtRate, 100),
+      type: 'number', min: 0, max: 100, step: 0.1, inputMode: 'decimal', suffix: '%',
+      onChange: (next) => updateDraft(['dirtRate'], parseHousePurchaseNumber(next) / 100)
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Mortgage illustration rate', value: formatHousePurchaseInputNumber(draft.mortgageIllustrationRate, 100),
+      type: 'number', min: 0, max: 30, step: 0.1, inputMode: 'decimal', suffix: '%',
+      onChange: (next) => updateDraft(['mortgageIllustrationRate'], parseHousePurchaseNumber(next) / 100)
+    }));
+    grid.appendChild(makeHousePurchaseField({
+      label: 'Mortgage term', value: formatHousePurchaseInputNumber(draft.mortgageTermYears),
+      type: 'number', min: 1, max: 35, step: 1, inputMode: 'numeric', suffix: 'years',
+      onChange: (next) => updateDraft(['mortgageTermYears'], parseHousePurchaseNumber(next))
+    }));
+  } else {
+    const reviewItems = [
+      ['Target home', formatHousePurchaseCurrency(draft.targetPropertyPrice)],
+      ['Application', draft.applicationType === 'joint' ? 'Joint applicants' : 'Single applicant'],
+      ['Cash savings', formatHousePurchaseCurrency(draft.currentCashSavings)],
+      ['Planned monthly saving', formatHousePurchaseCurrency(draft.plannedMonthlySavings ?? draft.currentMonthlySavings)],
+      ['Mortgage illustration', `${formatHousePurchasePercent(draft.mortgageIllustrationRate)} over ${draft.mortgageTermYears || '—'} years`],
+      ['Property', `${formatHousePurchaseChoice(draft.acquisitionType)} · ${formatHousePurchaseChoice(draft.dwellingType)}`]
+    ];
+    const review = document.createElement('div');
+    review.className = 'house-purchase-review-grid';
+    reviewItems.forEach(([label, value]) => review.appendChild(buildHousePurchaseMetric(label, value)));
+    content.appendChild(review);
+    const note = document.createElement('div');
+    note.className = 'house-purchase-review-note';
+    note.innerHTML = '<strong>Ready to calculate.</strong><span>The runtime—not the questionnaire—will compute capacity, dates, scheme screens and next actions.</span>';
+    content.appendChild(note);
+  }
+
+  if (grid.childElementCount > 0 && !grid.parentNode) {
+    content.appendChild(grid);
+  }
+  return content;
+}
+
+function validateHousePurchaseWizardStep(stepIndex, draft) {
+  const errors = [];
+  const applicants = Array.isArray(draft?.applicants) ? draft.applicants : [];
+  const activeApplicants = draft?.applicationType === 'joint' ? applicants.slice(0, 2) : applicants.slice(0, 1);
+  if (stepIndex === 0 || stepIndex === 8) {
+    if (!(Number(draft?.targetPropertyPrice) > 0)) errors.push('Enter a target property price.');
+    if (!draft?.targetPurchaseDate) errors.push('Choose a target purchase date.');
+    if (!['first_time_buyer', 'second_or_subsequent'].includes(draft?.lendingCategory)) errors.push('Confirm the Central Bank buyer category.');
+  }
+  if (stepIndex === 1 || stepIndex === 8) {
+    if (!['single', 'joint'].includes(draft?.applicationType)) errors.push('Choose who is buying.');
+    if (activeApplicants.length !== (draft?.applicationType === 'joint' ? 2 : 1)) errors.push('Complete the applicant details.');
+    activeApplicants.forEach((applicant, index) => {
+      if (!(Number(applicant?.age) >= 19)) errors.push(`Enter an age of 19 or older for applicant ${index + 1}.`);
+    });
+  }
+  if (stepIndex === 2 || stepIndex === 8) {
+    activeApplicants.forEach((applicant, index) => {
+      const income = finiteHousePurchaseNumber(applicant?.grossAnnualIncome);
+      if (income === null || income < 0) errors.push(`Enter gross income for applicant ${index + 1}.`);
+    });
+  }
+  if (stepIndex === 3 || stepIndex === 8) {
+    const currentCash = finiteHousePurchaseNumber(draft?.currentCashSavings);
+    if (currentCash === null || currentCash < 0) errors.push('Enter current cash savings.');
+    const split = Array.isArray(draft?.cashSavingsContributions)
+      ? draft.cashSavingsContributions.reduce((total, item) => total + (Number(item?.amount) || 0), 0)
+      : 0;
+    if (activeApplicants.length > 0 && Math.abs(split - (Number(draft?.currentCashSavings) || 0)) > 0.01) {
+      errors.push('Applicant contribution amounts must total current cash savings.');
+    }
+    const customReserve = finiteHousePurchaseNumber(draft?.emergencyReserveTarget);
+    if (draft?.emergencyReserveMode === 'custom' && (customReserve === null || customReserve < 0)) {
+      errors.push('Enter the custom emergency reserve.');
+    }
+  }
+  if (stepIndex === 5 || stepIndex === 8) {
+    if (!((finiteHousePurchaseNumber(draft?.monthlyNetHouseholdIncome) || 0) > 0)) errors.push('Enter monthly net household income.');
+    const essentials = finiteHousePurchaseNumber(draft?.monthlyEssentialExpensesExcludingHousingDebtAndRent);
+    if (essentials === null || essentials < 0) errors.push('Enter essential monthly expenses.');
+  }
+  if (stepIndex === 6 || stepIndex === 8) {
+    if (!draft?.acquisitionType || draft.acquisitionType === 'unknown') errors.push('Choose an acquisition type.');
+    if (!draft?.dwellingType || draft.dwellingType === 'unknown') errors.push('Choose a dwelling type.');
+  }
+  if (stepIndex === 7 || stepIndex === 8) {
+    if (!(Number(draft?.mortgageTermYears) > 0 && Number(draft?.mortgageTermYears) <= 35)) errors.push('Enter a mortgage term between 1 and 35 years.');
+    const mortgageRate = finiteHousePurchaseNumber(draft?.mortgageIllustrationRate);
+    if (mortgageRate === null || mortgageRate < 0) errors.push('Enter a mortgage illustration rate.');
+  }
+  return [...new Set(errors)];
+}
+
+function renderHousePurchaseWizard(module, editor, { onEditHousePurchase }) {
+  const section = document.createElement('section');
+  section.className = 'generated-section house-purchase-generated-section is-editing';
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = 'House Purchase Planner';
+  section.appendChild(heading);
+
+  const card = document.createElement('section');
+  card.className = 'generated-card house-purchase-wizard-card';
+  card.dataset.generatedCard = 'house-purchase-wizard';
+  const stepIndex = editor.stepIndex;
+  const step = HOUSE_PURCHASE_WIZARD_STEPS[stepIndex];
+
+  const progress = document.createElement('div');
+  progress.className = 'house-purchase-wizard-progress';
+  progress.setAttribute('aria-label', `Step ${stepIndex + 1} of ${HOUSE_PURCHASE_WIZARD_STEPS.length}: ${step.title}`);
+  const progressMeta = document.createElement('div');
+  progressMeta.className = 'house-purchase-progress-meta';
+  progressMeta.innerHTML = `<span>Step ${stepIndex + 1} of ${HOUSE_PURCHASE_WIZARD_STEPS.length}</span><strong>${step.title}</strong>`;
+  progress.appendChild(progressMeta);
+  const track = document.createElement('div');
+  track.className = 'house-purchase-progress-track';
+  const fill = document.createElement('span');
+  fill.style.width = `${((stepIndex + 1) / HOUSE_PURCHASE_WIZARD_STEPS.length) * 100}%`;
+  track.appendChild(fill);
+  progress.appendChild(track);
+  card.appendChild(progress);
+
+  const intro = document.createElement('div');
+  intro.className = 'house-purchase-step-intro';
+  const stepTitle = document.createElement('h3');
+  stepTitle.textContent = step.title;
+  intro.appendChild(stepTitle);
+  const stepDetail = document.createElement('p');
+  stepDetail.textContent = step.detail;
+  intro.appendChild(stepDetail);
+  card.appendChild(intro);
+
+  let workingDraft = cloneHousePurchaseDraft(editor.draft);
+  const dispatch = (nextDraft, nextStepIndex = stepIndex, { requestRender = false } = {}) => {
+    workingDraft = cloneHousePurchaseDraft(nextDraft);
+    onEditHousePurchase?.(module.id, {
+      action: 'draft',
+      stepIndex: nextStepIndex,
+      draft: workingDraft,
+      requestRender
+    });
+  };
+  const updateDraft = (path, value, { replace = false, requestRender = false } = {}) => {
+    const nextDraft = replace
+      ? (typeof value === 'function' ? value(cloneHousePurchaseDraft(workingDraft)) : value)
+      : setHousePurchaseDraftValue(workingDraft, path, value);
+    dispatch(nextDraft, stepIndex, { requestRender });
+  };
+  card.appendChild(renderHousePurchaseWizardStep(stepIndex, editor.draft, updateDraft));
+
+  const status = document.createElement('div');
+  status.className = 'house-purchase-wizard-status';
+  status.setAttribute('role', 'alert');
+  status.setAttribute('aria-live', 'polite');
+  status.tabIndex = -1;
+  card.appendChild(status);
+
+  const navigation = document.createElement('div');
+  navigation.className = 'house-purchase-wizard-navigation';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'house-purchase-secondary-btn';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => onEditHousePurchase?.(module.id, {
+    action: 'cancel', stepIndex, draft: workingDraft
+  }));
+  navigation.appendChild(cancel);
+
+  const stepActions = document.createElement('div');
+  stepActions.className = 'house-purchase-step-actions';
+  if (stepIndex > 0) {
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'house-purchase-secondary-btn';
+    back.textContent = 'Back';
+    back.addEventListener('click', () => dispatch(workingDraft, stepIndex - 1, { requestRender: true }));
+    stepActions.appendChild(back);
+  }
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.className = 'house-purchase-primary-btn';
+  next.textContent = stepIndex === HOUSE_PURCHASE_WIZARD_STEPS.length - 1 ? 'Build results' : 'Continue';
+  next.addEventListener('click', () => {
+    const errors = validateHousePurchaseWizardStep(stepIndex, workingDraft);
+    if (errors.length > 0) {
+      status.innerHTML = '';
+      const list = document.createElement('ul');
+      errors.forEach((message) => {
+        const item = document.createElement('li');
+        item.textContent = message;
+        list.appendChild(item);
+      });
+      status.appendChild(list);
+      status.focus?.();
+      return;
+    }
+    if (stepIndex === HOUSE_PURCHASE_WIZARD_STEPS.length - 1) {
+      onEditHousePurchase?.(module.id, { action: 'commit', stepIndex, draft: workingDraft });
+      return;
+    }
+    dispatch(workingDraft, stepIndex + 1, { requestRender: true });
+  });
+  stepActions.appendChild(next);
+  navigation.appendChild(stepActions);
+  card.appendChild(navigation);
+  section.appendChild(card);
+  return section;
+}
+
+function renderHousePurchaseStartCard(module, { onStartHousePurchase }) {
+  const section = document.createElement('section');
+  section.className = 'generated-section house-purchase-generated-section house-purchase-start-section';
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = 'Build a client module';
+  section.appendChild(heading);
+  const card = document.createElement('section');
+  card.className = 'generated-card house-purchase-start-card';
+  card.dataset.generatedCard = 'house-purchase-start';
+  const visual = document.createElement('div');
+  visual.className = 'house-purchase-start-visual';
+  visual.setAttribute('aria-hidden', 'true');
+  visual.innerHTML = '<span class="house-purchase-start-pin">●</span><span class="house-purchase-start-route"></span><span class="house-purchase-start-home"><i></i></span>';
+  card.appendChild(visual);
+  const copy = document.createElement('div');
+  copy.className = 'house-purchase-start-copy';
+  const eyebrow = document.createElement('span');
+  eyebrow.className = 'house-purchase-eyebrow';
+  eyebrow.textContent = 'Advisor template · Irish planning rules';
+  copy.appendChild(eyebrow);
+  const title = document.createElement('h3');
+  title.textContent = 'Plan your route to buying a home';
+  copy.appendChild(title);
+  const detail = document.createElement('p');
+  detail.textContent = 'See what the client may be able to afford, how much cash they may need, how long it could take, and which Irish buyer supports may be worth checking.';
+  copy.appendChild(detail);
+  const cta = document.createElement('button');
+  cta.type = 'button';
+  cta.className = 'house-purchase-primary-btn house-purchase-start-btn';
+  cta.textContent = 'Build house-purchase plan';
+  cta.addEventListener('click', () => onStartHousePurchase?.(module.id));
+  copy.appendChild(cta);
+  const note = document.createElement('p');
+  note.className = 'house-purchase-start-note';
+  note.textContent = 'Takes approximately 5–8 minutes. No mortgage approval is provided.';
+  copy.appendChild(note);
+  const existingFlow = document.createElement('p');
+  existingFlow.className = 'house-purchase-codex-note';
+  existingFlow.textContent = 'Prefer the existing Codex payload workflow? It remains available through the advisor Dev Panel.';
+  copy.appendChild(existingFlow);
+  card.appendChild(copy);
+  section.appendChild(card);
+  return section;
+}
+
+function finiteHousePurchaseNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatHousePurchaseCurrency(value, fallback = '—') {
+  const parsed = finiteHousePurchaseNumber(value);
+  return parsed === null ? fallback : DISPLAY_EURO_FORMATTER.format(parsed);
+}
+
+function formatHousePurchasePercent(value, fallback = '—') {
+  const parsed = finiteHousePurchaseNumber(value);
+  if (parsed === null) return fallback;
+  const percent = Math.abs(parsed) <= 1 ? parsed * 100 : parsed;
+  return `${percent.toFixed(percent % 1 === 0 ? 0 : 2)}%`;
+}
+
+function formatHousePurchaseChoice(value, fallback = 'Not provided') {
+  const text = String(value || '').trim();
+  if (!text || text === 'unknown') return fallback;
+  return text
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatHousePurchaseDate(value, fallback = 'Not yet estimated') {
+  if (typeof value !== 'string' || !value.trim()) return fallback;
+  const date = new Date(`${value.slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return new Intl.DateTimeFormat('en-IE', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(date);
+}
+
+function normalizeHousePurchaseTone(value) {
+  const token = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  if (/ready|aligned|pass|eligible|confirmed|complete|success|met/.test(token)) return 'positive';
+  if (/fail|unlikely|stretched|shortfall|gap|blocked|error|mismatch/.test(token)) return 'negative';
+  if (/potential|tighter|warning|pending|more_information|unknown|unconfirmed|review/.test(token)) return 'warning';
+  return 'neutral';
+}
+
+function buildHousePurchaseStatus(label, toneSource = '') {
+  const tone = normalizeHousePurchaseTone(toneSource || label);
+  const status = document.createElement('span');
+  status.className = 'house-purchase-status';
+  status.dataset.tone = tone;
+  const icon = document.createElement('span');
+  icon.className = 'house-purchase-status-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = tone === 'positive' ? '✓' : (tone === 'negative' ? '×' : (tone === 'warning' ? '!' : '•'));
+  status.appendChild(icon);
+  const text = document.createElement('span');
+  text.textContent = label || 'Needs review';
+  status.appendChild(text);
+  return status;
+}
+
+function createHousePurchaseCard(id, title, className = '') {
+  const card = document.createElement('section');
+  card.className = `generated-card house-purchase-card ${className}`.trim();
+  card.dataset.generatedCard = id;
+  const headerParts = buildGeneratedCardHeader(title);
+  card.appendChild(headerParts.header);
+  return { card, ...headerParts };
+}
+
+function buildHousePurchaseMetric(label, value, detail = '', tone = '') {
+  const metric = document.createElement('article');
+  metric.className = 'house-purchase-metric';
+  if (tone) metric.dataset.tone = normalizeHousePurchaseTone(tone);
+  const labelNode = document.createElement('span');
+  labelNode.className = 'house-purchase-metric-label';
+  labelNode.textContent = label;
+  metric.appendChild(labelNode);
+  const valueNode = document.createElement('strong');
+  valueNode.className = 'house-purchase-metric-value';
+  valueNode.textContent = value;
+  metric.appendChild(valueNode);
+  if (detail) {
+    const detailNode = document.createElement('span');
+    detailNode.className = 'house-purchase-metric-detail';
+    detailNode.textContent = detail;
+    metric.appendChild(detailNode);
+  }
+  return metric;
+}
+
+function getHousePurchasePrimaryBottleneck(result) {
+  const primary = result?.bottlenecks?.primary;
+  if (primary && typeof primary === 'object') return primary;
+  if (typeof primary === 'string') {
+    return { code: primary, label: formatHousePurchaseChoice(primary), detail: '' };
+  }
+  return {
+    code: 'insufficient_information',
+    label: 'More information required',
+    detail: 'Complete the plan inputs to identify the main constraint.'
+  };
+}
+
+function inferHousePurchaseSupportCase(inputs) {
+  const hasHtb = (finiteHousePurchaseNumber(inputs?.helpToBuy?.confirmedClaimAmount) || 0) > 0;
+  const hasFhs = inputs?.firstHomeScheme?.applicationStatus === 'confirmed'
+    && (finiteHousePurchaseNumber(inputs?.firstHomeScheme?.confirmedEquityAmount) || 0) > 0;
+  if (hasHtb && hasFhs) return 'htb_and_fhs';
+  if (hasHtb) return 'htb_only';
+  if (hasFhs) return 'fhs_only';
+  return 'none';
+}
+
+function buildHousePurchaseHeroCard(module, projection, { readOnly, onEditHousePurchase }) {
+  const result = projection?.result || {};
+  const capacities = result.capacities || {};
+  const target = result.targetFunding || {};
+  const bottleneck = getHousePurchasePrimaryBottleneck(result);
+  const { card, actions } = createHousePurchaseCard('house-purchase-hero', 'Route to home', 'house-purchase-hero-card');
+
+  if (!readOnly && typeof onEditHousePurchase === 'function') {
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'house-purchase-edit-btn';
+    edit.textContent = 'Edit plan';
+    edit.addEventListener('click', () => onEditHousePurchase(module.id, {
+      action: 'draft',
+      stepIndex: 0,
+      draft: cloneHousePurchaseDraft(module.generated.housePurchaseInputs)
+    }));
+    actions.appendChild(edit);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'house-purchase-hero-layout';
+  const story = document.createElement('div');
+  story.className = 'house-purchase-hero-story';
+  story.appendChild(buildHousePurchaseStatus(bottleneck.label, bottleneck.status || bottleneck.code));
+  const headline = document.createElement('h4');
+  headline.textContent = bottleneck.code === 'ready_for_next_step'
+    ? 'The route looks broadly aligned'
+    : `The main constraint is ${String(bottleneck.label || 'still being assessed').toLowerCase()}`;
+  story.appendChild(headline);
+  const detail = document.createElement('p');
+  detail.textContent = bottleneck.detail || 'The plan compares cash, regulatory capacity, household resilience and support screens.';
+  story.appendChild(detail);
+
+  const safeSummary = sanitizeSummaryHtml(module?.generated?.summaryHtml || '');
+  const guide = buildClientGuideLine(safeSummary, CLIENT_GUIDE_COPY.housePurchase);
+  if (guide) story.appendChild(guide);
+  if (safeSummary) {
+    const summary = document.createElement('div');
+    summary.className = 'house-purchase-hero-summary generated-summary-copy';
+    summary.innerHTML = safeSummary;
+    story.appendChild(summary);
+  }
+
+  const usableCash = finiteHousePurchaseNumber(target.usableCash) || 0;
+  const cashRequired = finiteHousePurchaseNumber(target.cashRequired) || 0;
+  const progressRatio = cashRequired > 0 ? Math.max(0, Math.min(1, usableCash / cashRequired)) : 0;
+  const route = document.createElement('div');
+  route.className = 'house-purchase-route-visual';
+  route.setAttribute('role', 'img');
+  route.setAttribute('aria-label', `${formatHousePurchasePercent(progressRatio)} of the current cash target is available`);
+  const routeLabels = document.createElement('div');
+  routeLabels.className = 'house-purchase-route-labels';
+  routeLabels.innerHTML = `<span>Today<br><strong>${formatHousePurchaseCurrency(usableCash)}</strong></span><span>Cash target<br><strong>${formatHousePurchaseCurrency(cashRequired)}</strong></span>`;
+  route.appendChild(routeLabels);
+  const routeTrack = document.createElement('div');
+  routeTrack.className = 'house-purchase-route-track';
+  const routeFill = document.createElement('span');
+  routeFill.style.width = `${progressRatio * 100}%`;
+  routeTrack.appendChild(routeFill);
+  const home = document.createElement('span');
+  home.className = 'house-purchase-route-home';
+  home.setAttribute('aria-hidden', 'true');
+  home.innerHTML = '<i></i>';
+  routeTrack.appendChild(home);
+  route.appendChild(routeTrack);
+  story.appendChild(route);
+  body.appendChild(story);
+
+  const metrics = document.createElement('div');
+  metrics.className = 'house-purchase-hero-metrics';
+  const routeOutOfHorizon = target.status === 'out_of_horizon'
+    || (!target.readyDateIso && finiteHousePurchaseNumber(target.monthsToReady) === null);
+  const usesPotentialSupport = projection?.result?.schemes?.usesPotentialSupport === true;
+  metrics.appendChild(buildHousePurchaseMetric('Target home', formatHousePurchaseCurrency(target.targetPropertyPrice)));
+  metrics.appendChild(buildHousePurchaseMetric('Capacity now', formatHousePurchaseCurrency(capacities.activeSupportablePrice ?? capacities.currentSupportablePrice), capacities.activeSupportablePrice !== undefined && capacities.activeSupportablePrice !== capacities.currentSupportablePrice ? 'Active what-if route; compare with the base case below' : 'Standard-rule and protected-cash illustration'));
+  metrics.appendChild(buildHousePurchaseMetric('Cash-flow-aligned capacity', formatHousePurchaseCurrency(capacities.cashFlowAlignedPropertyCapacity), 'Shown beside—not instead of—the standard-rule capacity'));
+  metrics.appendChild(buildHousePurchaseMetric(
+    'Funding-ready date',
+    routeOutOfHorizon ? 'Beyond the projection horizon' : formatHousePurchaseDate(target.readyDateIso),
+    usesPotentialSupport
+      ? 'Contingent on unconfirmed support; not a ready result'
+      : (finiteHousePurchaseNumber(target.monthsToReady) !== null ? `${Math.max(0, Math.ceil(Number(target.monthsToReady)))} months from the calculation date` : 'Projection horizon applies'),
+    routeOutOfHorizon || usesPotentialSupport ? 'warning' : ''
+  ));
+  metrics.appendChild(buildHousePurchaseMetric('Saving needed', finiteHousePurchaseNumber(target.monthlySavingNeeded) !== null ? `${formatHousePurchaseCurrency(target.monthlySavingNeeded)} / month` : 'Not yet solvable', 'To the selected target date'));
+  body.appendChild(metrics);
+  card.appendChild(body);
+  return card;
+}
+
+function buildHousePurchaseReadinessCard(module, projection, overrides) {
+  const result = projection?.result || {};
+  const capacities = result.capacities || {};
+  const target = result.targetFunding || {};
+  const mortgage = result.mortgage || {};
+  const affordability = result.householdAffordability || {};
+  const schemes = result.schemes || {};
+  const { card } = createHousePurchaseCard('house-purchase-readiness', 'Four readiness gates', 'house-purchase-readiness-card');
+  const grid = document.createElement('div');
+  grid.className = 'house-purchase-gates';
+  const requiredMortgage = finiteHousePurchaseNumber(target.mortgageRequired ?? mortgage.principal);
+  const standardCapacity = finiteHousePurchaseNumber(capacities.standardMortgageCapacity);
+  const regulatoryPass = requiredMortgage !== null && standardCapacity !== null && requiredMortgage <= standardCapacity;
+  const cashGap = finiteHousePurchaseNumber(target.currentCashGap);
+  const supportCase = result.schemes?.activeSupportCase
+    || overrides.supportCase
+    || inferHousePurchaseSupportCase(module?.generated?.housePurchaseInputs);
+  const supportStatuses = [schemes.helpToBuy?.status, schemes.firstHomeScheme?.status].filter(Boolean);
+  const gateRows = [
+    {
+      title: 'Regulatory capacity',
+      status: requiredMortgage === null || standardCapacity === null ? 'More information required' : (regulatoryPass ? 'Within illustration' : 'Above standard limit'),
+      tone: requiredMortgage === null || standardCapacity === null ? 'unknown' : (regulatoryPass ? 'passed' : 'failed'),
+      detail: standardCapacity === null ? 'Qualifying income or buyer category is incomplete.' : `${formatHousePurchaseCurrency(requiredMortgage)} required vs ${formatHousePurchaseCurrency(standardCapacity)} standard capacity.`
+    },
+    {
+      title: 'Protected cash',
+      status: cashGap === null ? 'More information required' : (cashGap <= 0 ? 'Cash gate met' : 'Cash gap remains'),
+      tone: cashGap === null ? 'unknown' : (cashGap <= 0 ? 'passed' : 'gap'),
+      detail: cashGap === null ? 'Complete savings, reserve and cost inputs.' : (cashGap <= 0 ? 'Ringfenced cash and reserve remain protected.' : `${formatHousePurchaseCurrency(cashGap)} additional usable cash is needed.`)
+    },
+    {
+      title: 'Household resilience',
+      status: formatHousePurchaseChoice(affordability.status, 'More information required'),
+      tone: affordability.status,
+      detail: affordability.baseHeadroom === null || affordability.baseHeadroom === undefined
+        ? 'Monthly household inputs are incomplete.'
+        : `${formatHousePurchaseCurrency(affordability.baseHeadroom)} estimated base monthly headroom.`
+    },
+    {
+      title: 'Support screening',
+      status: supportCase === 'none' ? 'Not relied on' : formatHousePurchaseChoice(supportStatuses.find((item) => normalizeHousePurchaseTone(item) !== 'positive') || supportStatuses[0], 'Requires confirmation'),
+      tone: supportCase === 'none' ? 'neutral' : (supportStatuses.find((item) => normalizeHousePurchaseTone(item) !== 'positive') || 'warning'),
+      detail: supportCase === 'none' ? 'The active route does not depend on HTB or FHS.' : 'Any support remains subject to Revenue, lender and/or FHS confirmation.'
+    }
+  ];
+  gateRows.forEach((gate, index) => {
+    const item = document.createElement('article');
+    item.className = 'house-purchase-gate';
+    item.dataset.tone = normalizeHousePurchaseTone(gate.tone);
+    const number = document.createElement('span');
+    number.className = 'house-purchase-gate-number';
+    number.textContent = String(index + 1);
+    item.appendChild(number);
+    const copy = document.createElement('div');
+    const title = document.createElement('h4');
+    title.textContent = gate.title;
+    copy.appendChild(title);
+    copy.appendChild(buildHousePurchaseStatus(gate.status, gate.tone));
+    const detail = document.createElement('p');
+    detail.textContent = gate.detail;
+    copy.appendChild(detail);
+    item.appendChild(copy);
+    grid.appendChild(item);
+  });
+  card.appendChild(grid);
+  return card;
+}
+
+function buildHousePurchaseFundingCard(projection) {
+  const stack = projection?.result?.fundingStack || {};
+  const target = finiteHousePurchaseNumber(stack.total ?? projection?.result?.targetFunding?.targetPropertyPrice) || 0;
+  const confirmedItems = [
+    ['Own cash', stack.ownCash, 'confirmed', 'Confirmed input'],
+    ['Estimated mortgage', stack.estimatedMortgage, 'estimated', 'Estimated'],
+    ['Help to Buy', stack.confirmedHtb, 'confirmed-support', 'Confirmed support'],
+    ['First Home Scheme', stack.confirmedFhs, 'confirmed-support', 'Confirmed support'],
+    ['Remaining gap', stack.remainingGap, 'gap', 'Funding gap']
+  ].filter(([, value, key]) => (finiteHousePurchaseNumber(value) || 0) > 0 || key === 'gap');
+  const potentialItems = [
+    ['Potential Help to Buy', stack.potentialHtb],
+    ['Potential First Home Scheme', stack.potentialFhs]
+  ].filter(([, value]) => (finiteHousePurchaseNumber(value) || 0) > 0);
+  const { card } = createHousePurchaseCard('house-purchase-funding-stack', 'How the target is funded', 'house-purchase-funding-card');
+  const header = document.createElement('div');
+  header.className = 'house-purchase-funding-total';
+  header.innerHTML = `<span>Target property</span><strong>${formatHousePurchaseCurrency(target)}</strong>`;
+  card.appendChild(header);
+  const rail = document.createElement('div');
+  rail.className = 'house-purchase-funding-rail';
+  rail.setAttribute('role', 'img');
+  rail.setAttribute('aria-label', confirmedItems.map(([label, value]) => `${label} ${formatHousePurchaseCurrency(value)}`).join(', '));
+  confirmedItems.forEach(([label, value, key]) => {
+    const amount = Math.max(0, finiteHousePurchaseNumber(value) || 0);
+    const segment = document.createElement('span');
+    segment.className = 'house-purchase-funding-segment';
+    segment.dataset.kind = key;
+    segment.style.width = `${target > 0 ? Math.max(amount > 0 ? 2 : 0, (amount / target) * 100) : 0}%`;
+    segment.title = `${label}: ${formatHousePurchaseCurrency(amount)}`;
+    rail.appendChild(segment);
+  });
+  card.appendChild(rail);
+  const legend = document.createElement('div');
+  legend.className = 'house-purchase-funding-legend';
+  confirmedItems.forEach(([label, value, key, status]) => {
+    const item = document.createElement('article');
+    item.dataset.kind = key;
+    item.innerHTML = `<i aria-hidden="true"></i><span>${label}<small>${status}</small></span><strong>${formatHousePurchaseCurrency(value)}</strong>`;
+    legend.appendChild(item);
+  });
+  card.appendChild(legend);
+  if ((finiteHousePurchaseNumber(stack.buyingCosts) || 0) > 0) {
+    const costs = document.createElement('p');
+    costs.className = 'house-purchase-inline-disclosure';
+    costs.textContent = `${formatHousePurchaseCurrency(stack.buyingCosts)} of estimated buying costs sit alongside the property funding stack and must also be covered in cash.`;
+    card.appendChild(costs);
+  }
+  if (potentialItems.length > 0) {
+    const potential = document.createElement('div');
+    potential.className = 'house-purchase-potential-support';
+    const title = document.createElement('span');
+    title.textContent = 'Unconfirmed possibilities — not included in the confirmed stack';
+    potential.appendChild(title);
+    const values = document.createElement('div');
+    potentialItems.forEach(([label, value]) => {
+      const chip = document.createElement('span');
+      chip.innerHTML = `${label} <strong>${formatHousePurchaseCurrency(value)}</strong>`;
+      values.appendChild(chip);
+    });
+    potential.appendChild(values);
+    card.appendChild(potential);
+  }
+  return card;
+}
+
+function buildHousePurchaseDepositChart(projection) {
+  const timeline = projection?.result?.depositTimeline || {};
+  const series = Array.isArray(timeline.series) ? timeline.series : [];
+  const { card } = createHousePurchaseCard('house-purchase-deposit-journey', 'Deposit journey', 'house-purchase-deposit-card');
+  if (series.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'Complete the savings and target inputs to draw the deposit journey.';
+    card.appendChild(empty);
+    return card;
+  }
+  const targetCash = Math.max(0, finiteHousePurchaseNumber(timeline.targetCash) || 0);
+  const sampleIndices = buildOverviewSampleIndices(series.length, 54);
+  const samples = sampleIndices.map((index) => ({
+    ...series[index],
+    index,
+    value: Math.max(0, finiteHousePurchaseNumber(series[index]?.closingBalance) || 0)
+  }));
+  const maxValue = Math.max(targetCash, ...samples.map((item) => item.value), 1);
+  const width = 760;
+  const height = 250;
+  const inset = { left: 18, right: 18, top: 22, bottom: 24 };
+  const plotWidth = width - inset.left - inset.right;
+  const plotHeight = height - inset.top - inset.bottom;
+  const xFor = (index) => inset.left + ((series.length <= 1 ? 0 : index / (series.length - 1)) * plotWidth);
+  const yFor = (value) => inset.top + plotHeight - ((Math.max(0, value) / maxValue) * plotHeight);
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.classList.add('house-purchase-deposit-svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('role', 'img');
+  const svgTitle = document.createElementNS(SVG_NS, 'title');
+  svgTitle.textContent = `Projected usable cash grows from ${formatHousePurchaseCurrency(series[0]?.openingBalance)} to ${formatHousePurchaseCurrency(series.at(-1)?.closingBalance)} against a ${formatHousePurchaseCurrency(targetCash)} target.`;
+  svg.appendChild(svgTitle);
+  const grid = document.createElementNS(SVG_NS, 'g');
+  grid.classList.add('house-purchase-chart-grid');
+  [0, 0.5, 1].forEach((ratio) => {
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('x1', inset.left);
+    line.setAttribute('x2', width - inset.right);
+    line.setAttribute('y1', yFor(maxValue * ratio));
+    line.setAttribute('y2', yFor(maxValue * ratio));
+    grid.appendChild(line);
+  });
+  svg.appendChild(grid);
+  if (targetCash > 0) {
+    const targetLine = document.createElementNS(SVG_NS, 'line');
+    targetLine.classList.add('house-purchase-chart-target');
+    targetLine.setAttribute('x1', inset.left);
+    targetLine.setAttribute('x2', width - inset.right);
+    targetLine.setAttribute('y1', yFor(targetCash));
+    targetLine.setAttribute('y2', yFor(targetCash));
+    svg.appendChild(targetLine);
+  }
+  const selectedTargetDate = projection?.result?.targetFunding?.targetDateIso;
+  if (selectedTargetDate) {
+    const targetIndex = series.findIndex((item) => typeof item?.dateIso === 'string' && item.dateIso >= selectedTargetDate);
+    if (targetIndex >= 0) {
+      const dateLine = document.createElementNS(SVG_NS, 'line');
+      dateLine.classList.add('house-purchase-chart-date');
+      dateLine.setAttribute('x1', xFor(targetIndex));
+      dateLine.setAttribute('x2', xFor(targetIndex));
+      dateLine.setAttribute('y1', inset.top);
+      dateLine.setAttribute('y2', height - inset.bottom);
+      svg.appendChild(dateLine);
+    }
+  }
+  const points = samples.map((item) => ({ x: xFor(item.index), y: yFor(item.value) }));
+  const linePath = buildOverviewLinePath(points);
+  const area = document.createElementNS(SVG_NS, 'path');
+  area.classList.add('house-purchase-chart-area');
+  area.setAttribute('d', `${linePath} L${points.at(-1).x} ${height - inset.bottom} L${points[0].x} ${height - inset.bottom} Z`);
+  svg.appendChild(area);
+  const line = document.createElementNS(SVG_NS, 'path');
+  line.classList.add('house-purchase-chart-line');
+  line.setAttribute('d', linePath);
+  svg.appendChild(line);
+  series.forEach((item, index) => {
+    if (!(finiteHousePurchaseNumber(item?.lumpSums) > 0)) return;
+    const marker = document.createElementNS(SVG_NS, 'circle');
+    marker.classList.add('house-purchase-chart-lump');
+    marker.setAttribute('cx', xFor(index));
+    marker.setAttribute('cy', yFor(finiteHousePurchaseNumber(item.closingBalance) || 0));
+    marker.setAttribute('r', 4);
+    svg.appendChild(marker);
+  });
+  const chartWrap = document.createElement('div');
+  chartWrap.className = 'house-purchase-chart-wrap';
+  chartWrap.appendChild(svg);
+  const chartLabels = document.createElement('div');
+  chartLabels.className = 'house-purchase-chart-labels';
+  chartLabels.innerHTML = `<span>${formatHousePurchaseDate(series[0]?.dateIso, 'Today')}</span><strong>Cash target ${formatHousePurchaseCurrency(targetCash)}${selectedTargetDate ? ` · selected ${formatHousePurchaseDate(selectedTargetDate)}` : ''}</strong><span>${formatHousePurchaseDate(series.at(-1)?.dateIso)}</span>`;
+  chartWrap.appendChild(chartLabels);
+  card.appendChild(chartWrap);
+  const interestTotal = series.reduce((sum, item) => sum + (finiteHousePurchaseNumber(item?.interest) || 0), 0);
+  const contributionTotal = series.reduce((sum, item) => sum + (finiteHousePurchaseNumber(item?.contribution) || 0), 0);
+  const lumpTotal = series.reduce((sum, item) => sum + (finiteHousePurchaseNumber(item?.lumpSums) || 0), 0);
+  const breakdown = document.createElement('div');
+  breakdown.className = 'house-purchase-journey-breakdown';
+  breakdown.appendChild(buildHousePurchaseMetric('Monthly additions', formatHousePurchaseCurrency(contributionTotal), 'Across the displayed route'));
+  breakdown.appendChild(buildHousePurchaseMetric('Net interest', formatHousePurchaseCurrency(interestTotal), `${formatHousePurchasePercent(timeline.grossAer)} gross; DIRT applied`));
+  breakdown.appendChild(buildHousePurchaseMetric('Confirmed lump sums', formatHousePurchaseCurrency(lumpTotal)));
+  breakdown.appendChild(buildHousePurchaseMetric('Projected cash', formatHousePurchaseCurrency(series.at(-1)?.closingBalance)));
+  card.appendChild(breakdown);
+  return card;
+}
+
+function formatHousePurchaseDelta(value, formatter = formatHousePurchaseCurrency) {
+  const parsed = finiteHousePurchaseNumber(value);
+  if (parsed === null || Math.abs(parsed) < 0.005) return 'No change';
+  return `${parsed > 0 ? '+' : '−'}${formatter(Math.abs(parsed))}`;
+}
+
+function addMonthsToHousePurchaseDate(dateIso, months) {
+  if (!dateIso) return '';
+  const date = new Date(`${dateIso.slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return '';
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function buildHousePurchaseScenarioCard(module, baseProjection, activeProjection, overrides, { onHousePurchaseScenarioChange }) {
+  const inputs = module?.generated?.housePurchaseInputs || {};
+  const baseResult = baseProjection?.result || {};
+  const activeResult = activeProjection?.result || {};
+  const { card, actions } = createHousePurchaseCard('house-purchase-scenario-lab', 'Scenario lab', 'house-purchase-scenario-card');
+  const activeKeys = Object.keys(overrides || {}).filter((key) => key !== 'reset');
+  actions.appendChild(buildHousePurchaseStatus(activeKeys.length > 0 ? 'What-if active' : 'Base case', activeKeys.length > 0 ? 'potential' : 'neutral'));
+  const intro = document.createElement('p');
+  intro.className = 'house-purchase-scenario-intro';
+  intro.textContent = 'What-if illustration — these controls do not change the published plan. Reloading restores the base case.';
+  card.appendChild(intro);
+  const dispatch = (patch) => onHousePurchaseScenarioChange?.(module.id, patch);
+  const controls = document.createElement('fieldset');
+  controls.className = 'house-purchase-scenario-controls';
+  const controlsLegend = document.createElement('legend');
+  controlsLegend.textContent = 'What-if illustration controls';
+  controls.appendChild(controlsLegend);
+  const scenarioField = (config) => {
+    const field = makeHousePurchaseField(config);
+    field.classList.add('house-purchase-scenario-field');
+    controls.appendChild(field);
+  };
+  scenarioField({
+    label: 'Property price', value: formatHousePurchaseInputNumber(overrides.targetPropertyPrice ?? inputs.targetPropertyPrice), type: 'number', min: 1, step: 5000, prefix: '€', inputMode: 'decimal',
+    onChange: (value) => dispatch({ targetPropertyPrice: parseHousePurchaseNumber(value) })
+  });
+  scenarioField({
+    label: 'Purchase date', value: overrides.targetPurchaseDate ?? inputs.targetPurchaseDate ?? '', type: 'date',
+    onChange: (value) => dispatch({ targetPurchaseDate: value || null })
+  });
+  scenarioField({
+    label: 'Monthly saving', value: formatHousePurchaseInputNumber(overrides.plannedMonthlySavings ?? inputs.plannedMonthlySavings ?? inputs.currentMonthlySavings), type: 'number', min: 0, step: 50, prefix: '€', inputMode: 'decimal',
+    onChange: (value) => dispatch({ plannedMonthlySavings: parseHousePurchaseNumber(value) })
+  });
+  const applicants = Array.isArray(inputs.applicants) ? inputs.applicants : [];
+  const hasUnrecognisedVariableIncome = applicants.some((applicant) => (
+    (finiteHousePurchaseNumber(applicant?.variableAnnualIncome) || 0)
+      > (finiteHousePurchaseNumber(applicant?.lenderRecognisedVariableAnnualIncome) || 0)
+  ));
+  applicants.forEach((applicant) => {
+    const applicantId = applicant.id || `applicant-${applicants.indexOf(applicant) + 1}`;
+    scenarioField({
+      label: `${applicant.label || 'Applicant'} base income`,
+      value: formatHousePurchaseInputNumber(overrides.applicantIncomeById?.[applicantId] ?? applicant.grossAnnualIncome),
+      type: 'number', min: 0, step: 1000, prefix: '€', inputMode: 'decimal',
+      onChange: (value) => {
+        const incomeMap = Object.fromEntries(applicants.map((item, index) => [
+          item.id || `applicant-${index + 1}`,
+          finiteHousePurchaseNumber(overrides.applicantIncomeById?.[item.id || `applicant-${index + 1}`] ?? item.grossAnnualIncome) || 0
+        ]));
+        incomeMap[applicantId] = parseHousePurchaseNumber(value);
+        dispatch({ applicantIncomeById: incomeMap });
+      }
+    });
+  });
+  scenarioField({
+    label: 'Deposit gross AER', value: formatHousePurchaseInputNumber(overrides.depositSavingsGrossAer ?? inputs.depositSavingsGrossAer, 100), type: 'number', min: 0, max: 20, step: 0.1, suffix: '%', inputMode: 'decimal',
+    onChange: (value) => dispatch({ depositSavingsGrossAer: parseHousePurchaseNumber(value) / 100 })
+  });
+  scenarioField({
+    label: 'Mortgage rate', value: formatHousePurchaseInputNumber(overrides.mortgageIllustrationRate ?? inputs.mortgageIllustrationRate, 100), type: 'number', min: 0, max: 30, step: 0.1, suffix: '%', inputMode: 'decimal',
+    onChange: (value) => dispatch({ mortgageIllustrationRate: parseHousePurchaseNumber(value) / 100 })
+  });
+  scenarioField({
+    label: 'Mortgage term', value: formatHousePurchaseInputNumber(overrides.mortgageTermYears ?? inputs.mortgageTermYears), type: 'number', min: 1, max: 35, step: 1, suffix: 'years', inputMode: 'numeric',
+    onChange: (value) => dispatch({ mortgageTermYears: parseHousePurchaseNumber(value) })
+  });
+  scenarioField({
+    label: 'Protected reserve', value: formatHousePurchaseInputNumber(overrides.emergencyReserveTarget ?? inputs.emergencyReserveTarget), type: 'number', min: 0, step: 500, prefix: '€', inputMode: 'decimal',
+    onChange: (value) => dispatch({ emergencyReserveTarget: parseHousePurchaseNumber(value) })
+  });
+  scenarioField({
+    label: 'Support case', value: overrides.supportCase || activeResult.schemes?.activeSupportCase || inferHousePurchaseSupportCase(inputs),
+    options: [['none', 'No scheme support'], ['htb_only', 'Help to Buy only'], ['fhs_only', 'First Home Scheme only'], ['htb_and_fhs', 'Help to Buy + FHS']],
+    onChange: (value) => dispatch({ supportCase: value })
+  });
+  if (hasUnrecognisedVariableIncome) {
+    scenarioField({
+      label: 'Variable-income what-if', value: overrides.includeVariableIncome === true ? 'include' : 'exclude',
+      options: [['exclude', 'Base: exclude unrecognised income'], ['include', 'Illustrate all variable income']],
+      help: 'This scenario is uncertain and does not change the base qualifying-income result.',
+      onChange: (value) => dispatch({ includeVariableIncome: value === 'include' })
+    });
+  }
+  card.appendChild(controls);
+
+  const presets = document.createElement('div');
+  presets.className = 'house-purchase-scenario-presets';
+  const presetData = [
+    ['€25,000 cheaper home', { targetPropertyPrice: Math.max(0, (finiteHousePurchaseNumber(overrides.targetPropertyPrice ?? inputs.targetPropertyPrice) || 0) - 25000) }],
+    ['Save €250 more', { plannedMonthlySavings: (finiteHousePurchaseNumber(overrides.plannedMonthlySavings ?? inputs.plannedMonthlySavings ?? inputs.currentMonthlySavings) || 0) + 250 }],
+    ['Wait one extra year', { targetPurchaseDate: addMonthsToHousePurchaseDate(overrides.targetPurchaseDate ?? inputs.targetPurchaseDate, 12) }],
+    ['Rates 1% higher', { mortgageIllustrationRate: (finiteHousePurchaseNumber(overrides.mortgageIllustrationRate ?? inputs.mortgageIllustrationRate) || 0) + 0.01 }]
+  ];
+  if (hasUnrecognisedVariableIncome) {
+    presetData.push(['Include all variable income', { includeVariableIncome: true }]);
+  }
+  presetData.forEach(([label, patch]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'house-purchase-preset-btn';
+    button.textContent = label;
+    button.addEventListener('click', () => dispatch(patch));
+    presets.appendChild(button);
+  });
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'house-purchase-preset-btn is-reset';
+  reset.textContent = 'Restore base';
+  reset.disabled = activeKeys.length === 0;
+  reset.addEventListener('click', () => dispatch({ reset: true }));
+  presets.appendChild(reset);
+  card.appendChild(presets);
+
+  const baseCapacity = finiteHousePurchaseNumber(baseResult.capacities?.currentSupportablePrice);
+  const activeCapacity = finiteHousePurchaseNumber(activeResult.capacities?.activeSupportablePrice ?? activeResult.capacities?.currentSupportablePrice);
+  const baseGap = finiteHousePurchaseNumber(baseResult.targetFunding?.currentCashGap);
+  const activeGap = finiteHousePurchaseNumber(activeResult.targetFunding?.currentCashGap);
+  const basePayment = finiteHousePurchaseNumber(baseResult.mortgage?.monthlyPayment);
+  const activePayment = finiteHousePurchaseNumber(activeResult.mortgage?.monthlyPayment);
+  const baseMonths = finiteHousePurchaseNumber(baseResult.targetFunding?.monthsToReady);
+  const activeMonths = finiteHousePurchaseNumber(activeResult.targetFunding?.monthsToReady);
+  const deltas = document.createElement('div');
+  deltas.className = 'house-purchase-scenario-deltas';
+  deltas.appendChild(buildHousePurchaseMetric('Capacity delta', formatHousePurchaseDelta(activeCapacity !== null && baseCapacity !== null ? activeCapacity - baseCapacity : null)));
+  deltas.appendChild(buildHousePurchaseMetric('Cash-gap delta', formatHousePurchaseDelta(activeGap !== null && baseGap !== null ? activeGap - baseGap : null), 'Lower is better'));
+  deltas.appendChild(buildHousePurchaseMetric('Repayment delta', formatHousePurchaseDelta(activePayment !== null && basePayment !== null ? activePayment - basePayment : null), 'Per month'));
+  deltas.appendChild(buildHousePurchaseMetric('Timeline delta', formatHousePurchaseDelta(activeMonths !== null && baseMonths !== null ? activeMonths - baseMonths : null, (value) => `${Math.round(value)} months`), 'Lower is sooner'));
+  card.appendChild(deltas);
+  return card;
+}
+
+function buildHousePurchaseMortgageCard(module, projection) {
+  const mortgage = projection?.result?.mortgage || {};
+  const affordability = projection?.result?.householdAffordability || {};
+  const inputs = module?.generated?.housePurchaseInputs || {};
+  const { card, actions } = createHousePurchaseCard('house-purchase-mortgage', 'Mortgage and monthly fit', 'house-purchase-mortgage-card');
+  actions.appendChild(buildHousePurchaseStatus(formatHousePurchaseChoice(affordability.status, 'Needs household inputs'), affordability.status));
+  const metrics = document.createElement('div');
+  metrics.className = 'house-purchase-mortgage-metrics';
+  metrics.appendChild(buildHousePurchaseMetric('Mortgage illustrated', formatHousePurchaseCurrency(mortgage.principal)));
+  metrics.appendChild(buildHousePurchaseMetric('Monthly repayment', formatHousePurchaseCurrency(mortgage.monthlyPayment), `${formatHousePurchasePercent(mortgage.rate)} · ${mortgage.termYears || '—'} years`));
+  metrics.appendChild(buildHousePurchaseMetric('Total interest', formatHousePurchaseCurrency(mortgage.totalInterest), 'If the rate stayed unchanged'));
+  metrics.appendChild(buildHousePurchaseMetric('Ownership costs', `${formatHousePurchaseCurrency(inputs.estimatedMonthlyOwnershipCosts)} / month`, 'Planning estimate excluding mortgage'));
+  metrics.appendChild(buildHousePurchaseMetric('Base headroom', `${formatHousePurchaseCurrency(affordability.baseHeadroom)} / month`));
+  metrics.appendChild(buildHousePurchaseMetric('+1% stressed headroom', `${formatHousePurchaseCurrency(affordability.stressedHeadroom)} / month`));
+  card.appendChild(metrics);
+  const sensitivity = Array.isArray(mortgage.sensitivity) ? mortgage.sensitivity : [];
+  if (sensitivity.length > 0) {
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'house-purchase-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'house-purchase-table';
+    table.innerHTML = '<thead><tr><th scope="col">Rate</th><th scope="col">Term</th><th scope="col">Monthly</th><th scope="col">Total interest</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    sensitivity.forEach((row) => {
+      const tr = document.createElement('tr');
+      [formatHousePurchasePercent(row.rate), `${row.termYears || '—'} years`, formatHousePurchaseCurrency(row.monthlyPayment), formatHousePurchaseCurrency(row.totalInterest)].forEach((value) => {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    card.appendChild(tableWrap);
+  }
+  const disclosure = document.createElement('p');
+  disclosure.className = 'house-purchase-inline-disclosure';
+  disclosure.textContent = 'This is a repayment illustration, not a quoted mortgage rate or lender affordability assessment.';
+  card.appendChild(disclosure);
+  return card;
+}
+
+function normalizeHousePurchaseCriteria(scheme) {
+  if (Array.isArray(scheme?.criteria)) {
+    return scheme.criteria.map((item) => ({
+      label: item?.label || item?.criterion || item?.title || 'Criterion',
+      detail: item?.detail || item?.reason || '',
+      status: item?.status || (item?.passed === true ? 'passed' : (item?.passed === false ? 'failed' : 'unanswered'))
+    }));
+  }
+  return [
+    ...(Array.isArray(scheme?.passedCriteria) ? scheme.passedCriteria.map((label) => ({ label, status: 'passed' })) : []),
+    ...(Array.isArray(scheme?.failedCriteria) ? scheme.failedCriteria.map((label) => ({ label, status: 'failed' })) : []),
+    ...(Array.isArray(scheme?.unansweredCriteria) ? scheme.unansweredCriteria.map((label) => ({ label, status: 'unanswered' })) : [])
+  ];
+}
+
+function buildHousePurchaseSchemePanel(title, scheme, kind) {
+  const panel = document.createElement('article');
+  panel.className = 'house-purchase-scheme-panel';
+  panel.dataset.scheme = kind;
+  const header = document.createElement('div');
+  header.className = 'house-purchase-scheme-header';
+  const heading = document.createElement('h4');
+  heading.textContent = title;
+  header.appendChild(heading);
+  header.appendChild(buildHousePurchaseStatus(formatHousePurchaseChoice(scheme?.status, 'More information required'), scheme?.status));
+  panel.appendChild(header);
+  const confirmedAmount = finiteHousePurchaseNumber(scheme?.confirmedAmount);
+  const potentialAmount = finiteHousePurchaseNumber(scheme?.potentialAmount);
+  const maximumAmount = finiteHousePurchaseNumber(scheme?.maximumAmount);
+  const hasConfirmedAmount = confirmedAmount !== null && confirmedAmount > 0;
+  const amount = hasConfirmedAmount
+    ? confirmedAmount
+    : (potentialAmount !== null && potentialAmount > 0 ? potentialAmount : maximumAmount);
+  if (amount !== null && amount > 0) {
+    const amountNode = document.createElement('div');
+    amountNode.className = 'house-purchase-scheme-amount';
+    amountNode.dataset.kind = hasConfirmedAmount ? 'confirmed' : 'potential';
+    amountNode.innerHTML = `<span>${hasConfirmedAmount ? 'Confirmed input' : 'Potential support — requires confirmation'}</span><strong>${formatHousePurchaseCurrency(amount)}</strong>`;
+    panel.appendChild(amountNode);
+  }
+  if (kind === 'htb' && scheme?.amountRange) {
+    const range = document.createElement('p');
+    range.className = 'house-purchase-scheme-range';
+    range.textContent = `${formatHousePurchaseCurrency(scheme.amountRange.minimum)}–${formatHousePurchaseCurrency(scheme.amountRange.maximum)} maximum before prior-four-year tax-paid verification.`;
+    panel.appendChild(range);
+  }
+  if (kind === 'fhs') {
+    const facts = document.createElement('div');
+    facts.className = 'house-purchase-scheme-facts';
+    if (finiteHousePurchaseNumber(scheme?.equityPercentage) !== null) {
+      facts.appendChild(buildHousePurchaseMetric('Illustrated equity share', formatHousePurchasePercent(scheme.equityPercentage)));
+    }
+    if (finiteHousePurchaseNumber(scheme?.maximumShare) !== null) {
+      facts.appendChild(buildHousePurchaseMetric('Encoded maximum share', formatHousePurchasePercent(scheme.maximumShare), scheme.usingHtb ? 'With Help to Buy' : 'Without Help to Buy'));
+    }
+    if (finiteHousePurchaseNumber(scheme?.priceCeiling) !== null) {
+      facts.appendChild(buildHousePurchaseMetric('Local price ceiling', formatHousePurchaseCurrency(scheme.priceCeiling), scheme.priceCeilingEntry?.localAuthority || 'Selected area'));
+    }
+    if (facts.childElementCount > 0) panel.appendChild(facts);
+  }
+  const criteria = normalizeHousePurchaseCriteria(scheme);
+  if (criteria.length > 0) {
+    const list = document.createElement('ul');
+    list.className = 'house-purchase-criteria-list';
+    criteria.forEach((criterion) => {
+      const item = document.createElement('li');
+      item.dataset.tone = normalizeHousePurchaseTone(criterion.status);
+      const icon = document.createElement('span');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = normalizeHousePurchaseTone(criterion.status) === 'positive' ? '✓' : (normalizeHousePurchaseTone(criterion.status) === 'negative' ? '×' : '?');
+      item.appendChild(icon);
+      const copy = document.createElement('div');
+      const label = document.createElement('strong');
+      label.textContent = criterion.label;
+      copy.appendChild(label);
+      if (criterion.detail) {
+        const detail = document.createElement('small');
+        detail.textContent = criterion.detail;
+        copy.appendChild(detail);
+      }
+      item.appendChild(copy);
+      list.appendChild(item);
+    });
+    panel.appendChild(list);
+  } else {
+    const empty = document.createElement('p');
+    empty.className = 'generated-empty';
+    empty.textContent = 'Complete the relevant property, lender and buyer-status questions to screen this support.';
+    panel.appendChild(empty);
+  }
+  if (kind === 'fhs') {
+    const serviceTimeline = Array.isArray(scheme?.serviceChargeTimeline) ? scheme.serviceChargeTimeline : [];
+    if (serviceTimeline.length > 0) {
+      const service = document.createElement('div');
+      service.className = 'house-purchase-service-timeline';
+      const serviceTitle = document.createElement('strong');
+      serviceTitle.textContent = 'Illustrated FHS service-charge bands';
+      service.appendChild(serviceTitle);
+      const rows = document.createElement('div');
+      serviceTimeline.forEach((band) => {
+        const row = document.createElement('span');
+        const years = band.toYear === null || band.toYear === undefined
+          ? `Year ${band.fromYear}+`
+          : `Years ${band.fromYear}–${band.toYear}`;
+        row.innerHTML = `<small>${years}</small><b>${formatHousePurchasePercent(band.rate)}</b><em>${formatHousePurchaseCurrency(band.annualAmount)} / year</em>`;
+        rows.appendChild(row);
+      });
+      service.appendChild(rows);
+      panel.appendChild(service);
+    }
+    const warning = document.createElement('p');
+    warning.className = 'house-purchase-equity-warning';
+    warning.textContent = 'FHS is an equity share, not a conventional loan. The euro redemption amount generally moves with the home’s value, and service charges can apply from year six.';
+    panel.appendChild(warning);
+  }
+  return panel;
+}
+
+function buildHousePurchaseSupportsCard(projection) {
+  const schemes = projection?.result?.schemes || {};
+  const { card } = createHousePurchaseCard('house-purchase-supports', 'Irish buyer-support screens', 'house-purchase-supports-card');
+  const intro = document.createElement('p');
+  intro.className = 'house-purchase-supports-intro';
+  intro.textContent = 'These are criterion-by-criterion educational screens. They are not approval or confirmation of eligibility.';
+  card.appendChild(intro);
+  const grid = document.createElement('div');
+  grid.className = 'house-purchase-schemes-grid';
+  grid.appendChild(buildHousePurchaseSchemePanel('Help to Buy', schemes.helpToBuy || {}, 'htb'));
+  grid.appendChild(buildHousePurchaseSchemePanel('First Home Scheme', schemes.firstHomeScheme || {}, 'fhs'));
+  card.appendChild(grid);
+  return card;
+}
+
+function buildHousePurchaseActionsCard(projection) {
+  const result = projection?.result || {};
+  const primary = getHousePurchasePrimaryBottleneck(result);
+  const sourceActions = Array.isArray(result.actions) ? result.actions.slice(0, 3) : [];
+  const actions = sourceActions.length > 0 ? sourceActions : [
+    { title: primary.label, detail: primary.detail || 'Complete the outstanding planning input.' },
+    { title: 'Protect the cash reserve', detail: 'Keep the selected emergency reserve and ringfenced goals outside the purchase fund.' },
+    { title: 'Confirm live rules', detail: 'Check lender, Revenue and First Home Scheme requirements before acting.' }
+  ];
+  const { card } = createHousePurchaseCard('house-purchase-actions', 'Your next three actions', 'house-purchase-actions-card');
+  const list = document.createElement('ol');
+  list.className = 'house-purchase-actions-list';
+  actions.forEach((action, index) => {
+    const item = document.createElement('li');
+    const number = document.createElement('span');
+    number.textContent = String(index + 1).padStart(2, '0');
+    item.appendChild(number);
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = action?.title || 'Next step';
+    copy.appendChild(title);
+    const detail = document.createElement('p');
+    detail.textContent = action?.detail || '';
+    copy.appendChild(detail);
+    item.appendChild(copy);
+    list.appendChild(item);
+  });
+  card.appendChild(list);
+  return card;
+}
+
+const HOUSE_PURCHASE_OFFICIAL_SOURCES = Object.freeze([
+  ['Central Bank mortgage measures', 'https://www.centralbank.ie/financial-system/financial-stability/macro-prudential-policy/mortgage-measures'],
+  ['Revenue Help to Buy', 'https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx'],
+  ['Revenue residential Stamp Duty', 'https://www.revenue.ie/en/property/stamp-duty/property/stamp-duty-property/rates.aspx'],
+  ['First Home Scheme eligibility', 'https://www.firsthomescheme.ie/about-the-scheme/eligibility/'],
+  ['First Home Scheme rules', 'https://www.firsthomescheme.ie/faqs/rules-and-eligibility/'],
+  ['First Home Scheme price ceilings', 'https://www.firsthomescheme.ie/about-the-scheme/property-price-ceilings/'],
+  ['First Home Scheme service charges', 'https://www.firsthomescheme.ie/about-the-scheme/service-charges/'],
+  ['First Home Scheme participating lenders', 'https://www.firsthomescheme.ie/about-the-scheme/switching-your-mortgage/'],
+  ['Revenue DIRT', 'https://www.revenue.ie/en/additional-incomes/dirt/what-dirt-rate-is-applicable.aspx'],
+  ['Bank of Ireland MortgageSaver', 'https://personalbanking.bankofireland.com/save-and-invest/savings/regular-savings-accounts/mortgagesaver/'],
+  ['AIB deposit rates', 'https://www.aib.ie/our-products/savings-and-deposits/Deposit-Rates'],
+  ['PTSB Regular Saver', 'https://www.ptsb.ie/saving-and-investing/savings-accounts/regular-saver/']
+]);
+
+function buildHousePurchaseAssumptionsCard(projection) {
+  const { card } = createHousePurchaseCard('house-purchase-assumptions', 'Assumptions, rule dates and disclosures', 'house-purchase-assumptions-card');
+  const details = document.createElement('details');
+  details.className = 'house-purchase-assumptions-details';
+  const summary = document.createElement('summary');
+  summary.textContent = 'Open the calculation basis and official sources';
+  details.appendChild(summary);
+  const assumptions = projection?.assumptionsTable || {};
+  if (Array.isArray(assumptions.rows) && assumptions.rows.length > 0) {
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'house-purchase-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'house-purchase-table';
+    if (Array.isArray(assumptions.columns) && assumptions.columns.length > 0) {
+      const thead = document.createElement('thead');
+      const tr = document.createElement('tr');
+      assumptions.columns.forEach((column) => {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = String(column ?? '');
+        tr.appendChild(th);
+      });
+      thead.appendChild(tr);
+      table.appendChild(thead);
+    }
+    const tbody = document.createElement('tbody');
+    assumptions.rows.forEach((row) => {
+      const tr = document.createElement('tr');
+      (Array.isArray(row) ? row : Object.values(row || {})).forEach((value) => {
+        const td = document.createElement('td');
+        td.textContent = String(value ?? '');
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    details.appendChild(tableWrap);
+  }
+  const versions = projection?.result?.ruleVersions;
+  const versionSources = [];
+  let requiresReleaseCheck = Boolean(versions?.requiresReleaseSourceCheck);
+  if (versions && typeof versions === 'object') {
+    const versionGrid = document.createElement('div');
+    versionGrid.className = 'house-purchase-rule-versions';
+    const versionEntries = (Array.isArray(versions)
+      ? versions.map((value, index) => [String(index + 1), value])
+      : Object.entries(versions))
+      .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value) && (
+        value.asOfDate || value.verifiedOn || value.effectiveDate || value.sourceUrl
+          || (Array.isArray(value.sources) && value.sources.length > 0)
+      ));
+    versionEntries.forEach(([key, value]) => {
+      const item = document.createElement('article');
+      const label = document.createElement('strong');
+      label.textContent = value?.label || formatHousePurchaseChoice(key);
+      item.appendChild(label);
+      const date = value?.asOfDate || value?.verifiedOn || value?.effectiveDate || (typeof value === 'string' ? value : '');
+      const detail = document.createElement('span');
+      detail.textContent = date ? `As of / verified ${date}` : 'Release-time source check required';
+      item.appendChild(detail);
+      const stale = Boolean(value?.isStale || value?.stale || value?.requiresReleaseCheck || value?.releaseCheckRequired || value?.status === 'stale' || !date);
+      if (stale) {
+        requiresReleaseCheck = true;
+        item.dataset.tone = 'warning';
+        const warning = document.createElement('em');
+        warning.textContent = 'Refresh against the live source before release.';
+        item.appendChild(warning);
+      }
+      const sources = [
+        ...(Array.isArray(value?.sources) ? value.sources : []),
+        ...(Array.isArray(value?.sourceUrls) ? value.sourceUrls : []),
+        value?.sourceUrl
+      ].filter((source) => typeof source === 'string' && source.trim());
+      sources.forEach((source) => versionSources.push([`${value?.label || formatHousePurchaseChoice(key)} source`, source]));
+      versionGrid.appendChild(item);
+    });
+    details.appendChild(versionGrid);
+  }
+  if (requiresReleaseCheck) {
+    const staleWarning = document.createElement('p');
+    staleWarning.className = 'house-purchase-rule-warning';
+    staleWarning.textContent = 'One or more dated rules need a live source check before this module is released or relied upon.';
+    details.appendChild(staleWarning);
+  }
+  const sourcesTitle = document.createElement('h4');
+  sourcesTitle.textContent = 'Official sources';
+  details.appendChild(sourcesTitle);
+  const links = document.createElement('div');
+  links.className = 'house-purchase-source-links';
+  const seenUrls = new Set();
+  [...versionSources, ...HOUSE_PURCHASE_OFFICIAL_SOURCES].forEach(([label, url]) => {
+    const safeUrl = sanitizeExternalUrl(url);
+    if (!safeUrl || seenUrls.has(safeUrl)) return;
+    seenUrls.add(safeUrl);
+    const link = document.createElement('a');
+    link.href = safeUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = label;
+    links.appendChild(link);
+  });
+  details.appendChild(links);
+  const disclosures = document.createElement('div');
+  disclosures.className = 'house-purchase-disclosures';
+  [
+    'Planéir provides educational financial-planning illustrations only. It does not provide mortgage approval, regulated financial advice, tax advice or legal advice.',
+    'Mortgage lending is subject to each lender’s underwriting, affordability assessment, lending criteria and approval.',
+    'Government-scheme rules, price ceilings, participating lenders, tax rules and interest rates can change. Confirm current eligibility with the relevant official body before acting.',
+    'Savings and mortgage rates shown are assumptions unless explicitly marked as live data.'
+  ].forEach((copy) => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = copy;
+    disclosures.appendChild(paragraph);
+  });
+  details.appendChild(disclosures);
+  card.appendChild(details);
+  return card;
+}
+
+function renderHousePurchaseModule(module, {
+  readOnly = false,
+  onRemoveCard = null,
+  onRemoveImage = null,
+  onReorderCards = null,
+  onEditHousePurchase = null,
+  onHousePurchaseScenarioChange = null
+} = {}) {
+  const overrides = getHousePurchaseScenarioOverrides(module.id);
+  const baseProjection = getHousePurchaseProjection(module, {});
+  const projection = getHousePurchaseProjection(module, overrides);
+  const section = document.createElement('section');
+  section.className = 'generated-section house-purchase-generated-section';
+  const heading = document.createElement('h2');
+  heading.className = 'generated-section-title';
+  heading.textContent = 'House Purchase Planner';
+  section.appendChild(heading);
+  const grid = document.createElement('div');
+  grid.className = 'generated-grid house-purchase-generated-grid';
+  if (!projection) {
+    const { card, actions } = createHousePurchaseCard('house-purchase-error', 'Plan needs review', 'house-purchase-error-card');
+    const copy = document.createElement('p');
+    copy.textContent = 'The house-purchase inputs could not be calculated. Reopen the plan and check the required fields.';
+    card.appendChild(copy);
+    if (!readOnly && typeof onEditHousePurchase === 'function') {
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'house-purchase-primary-btn';
+      edit.textContent = 'Review plan';
+      edit.addEventListener('click', () => onEditHousePurchase(module.id, {
+        action: 'draft', stepIndex: 0, draft: cloneHousePurchaseDraft(module.generated.housePurchaseInputs)
+      }));
+      actions.appendChild(edit);
+    }
+    grid.appendChild(card);
+  } else {
+    grid.appendChild(buildHousePurchaseHeroCard(module, projection, { readOnly, onEditHousePurchase }));
+    grid.appendChild(buildHousePurchaseReadinessCard(module, projection, overrides));
+    grid.appendChild(buildHousePurchaseFundingCard(projection));
+    grid.appendChild(buildHousePurchaseDepositChart(projection));
+    grid.appendChild(buildHousePurchaseScenarioCard(module, baseProjection || projection, projection, overrides, { onHousePurchaseScenarioChange }));
+    grid.appendChild(buildHousePurchaseMortgageCard(module, projection));
+    grid.appendChild(buildHousePurchaseSupportsCard(projection));
+    grid.appendChild(buildHousePurchaseActionsCard(projection));
+    grid.appendChild(buildHousePurchaseAssumptionsCard(projection));
+  }
+  appendModuleMediaCards(grid, module, { readOnly, onRemoveImage });
+  section.appendChild(grid);
+  return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard, onReorderCards });
+}
+
 function renderLiquidityPlanModule(module, {
   readOnly = false,
   onRemoveCard = null,
@@ -10724,6 +12667,32 @@ function renderCollegeFundingModule(module, {
   return applyGeneratedCardControls(section, module, { readOnly, onRemoveCard, onReorderCards });
 }
 
+function isBlankGeneratedModule(module) {
+  const generated = module?.generated;
+  if (!generated || typeof generated !== 'object') {
+    return true;
+  }
+  if (typeof generated.summaryHtml === 'string' && htmlToPlainText(generated.summaryHtml)) return false;
+  if (Array.isArray(generated.charts) && generated.charts.length > 0) return false;
+  if (Array.isArray(generated.tables) && generated.tables.length > 0) return false;
+  if (Array.isArray(generated.assumptions?.rows) && generated.assumptions.rows.length > 0) return false;
+  if (Array.isArray(generated.outputs?.rows) && generated.outputs.rows.length > 0) return false;
+  return ![
+    'pensionInputs',
+    'netRetirementInputs',
+    'collegeFundingInputs',
+    'liquidityPlan',
+    'housePurchaseInputs',
+    'loanInputs',
+    'mortgageInputs',
+    'pbsInputs',
+    'outputsBucketed',
+    'education',
+    'report',
+    'videoSummary'
+  ].some((key) => generated[key] && typeof generated[key] === 'object');
+}
+
 function buildGeneratedSection(module, {
   showPensionToggle = true,
   readOnly = false,
@@ -10732,8 +12701,20 @@ function buildGeneratedSection(module, {
   onRemoveCard = null,
   onRemoveImage = null,
   onReorderCards = null,
-  onEditGeneratedText = null
+  onEditGeneratedText = null,
+  onStartHousePurchase = null,
+  onEditHousePurchase = null,
+  onHousePurchaseScenarioChange = null
 } = {}) {
+  const housePurchaseEditor = !readOnly ? getHousePurchaseEditor(module) : null;
+  if (housePurchaseEditor && typeof onEditHousePurchase === 'function') {
+    return renderHousePurchaseWizard(module, housePurchaseEditor, { onEditHousePurchase });
+  }
+
+  if (!readOnly && isBlankGeneratedModule(module) && typeof onStartHousePurchase === 'function') {
+    return renderHousePurchaseStartCard(module, { onStartHousePurchase });
+  }
+
   const displayModule = getCalculatedDisplayModule(module);
   const generated = displayModule.generated || {
     summaryHtml: '',
@@ -10757,6 +12738,17 @@ function buildGeneratedSection(module, {
 
   if (isLiquidityPlanModule(displayModule)) {
     return renderLiquidityPlanModule(displayModule, { readOnly, onRemoveCard, onRemoveImage, onReorderCards, onEditGeneratedText });
+  }
+
+  if (isHousePurchaseModule(displayModule)) {
+    return renderHousePurchaseModule(displayModule, {
+      readOnly,
+      onRemoveCard,
+      onRemoveImage,
+      onReorderCards,
+      onEditHousePurchase,
+      onHousePurchaseScenarioChange
+    });
   }
 
   if (isReportModule(displayModule)) {
@@ -10916,6 +12908,9 @@ export function patchFocusedGeneratedCards({
   onRemoveImage = null,
   onReorderCards = null,
   onEditGeneratedText = null,
+  onStartHousePurchase = null,
+  onEditHousePurchase = null,
+  onHousePurchaseScenarioChange = null,
   assumptionsEditorStatus = null,
   readOnly = false,
   patchSummary = true,
@@ -10928,7 +12923,7 @@ export function patchFocusedGeneratedCards({
   }
 
   const generatedSection = focusedCard.querySelector('.generated-section');
-  if (isVideoSummaryModule(module) || isLiquidityPlanModule(module) || isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module) || isNetRetirementModule(module)) {
+  if (isVideoSummaryModule(module) || isLiquidityPlanModule(module) || isHousePurchaseModule(module) || getHousePurchaseEditor(module) || isReportModule(module) || isEducationModule(module) || isCollegeFundingModule(module) || isNetRetirementModule(module)) {
     if (!generatedSection) {
       return;
     }
@@ -10939,6 +12934,9 @@ export function patchFocusedGeneratedCards({
       onRemoveImage,
       onReorderCards,
       onEditGeneratedText,
+      onStartHousePurchase,
+      onEditHousePurchase,
+      onHousePurchaseScenarioChange,
       assumptionsEditorStatus,
       readOnly
     }));
@@ -11203,6 +13201,9 @@ export function buildFocusedPane({
   onEditGeneratedText = null,
   onRestoreRemovedCards = null,
   onCreateVideoScene = null,
+  onStartHousePurchase = null,
+  onEditHousePurchase = null,
+  onHousePurchaseScenarioChange = null,
   assumptionsEditorStatus = null,
   readOnly = false,
   showPensionToggle = true,
@@ -11356,7 +13357,10 @@ export function buildFocusedPane({
     onRemoveCard,
     onRemoveImage,
     onReorderCards,
-    onEditGeneratedText
+    onEditGeneratedText,
+    onStartHousePurchase,
+    onEditHousePurchase,
+    onHousePurchaseScenarioChange
   }));
   pane.appendChild(card);
 
