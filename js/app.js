@@ -56,7 +56,8 @@ import {
 import {
   createDefaultHousePurchaseInputs,
   normalizeHousePurchaseInputs,
-  computeHousePurchaseProjection
+  computeHousePurchaseProjection,
+  sanitizeHousePurchaseScenarioOverrides
 } from './house_purchase/engine.js';
 import {
   normalizeNetRetirementInputs,
@@ -8109,6 +8110,111 @@ const HOUSE_PURCHASE_SCENARIO_OVERRIDE_KEYS = new Set([
   'supportCase',
   'includeVariableIncome'
 ]);
+const housePurchaseScenarioRenderTokenByModuleId = new Map();
+
+function captureHousePurchaseScenarioFocus(moduleId) {
+  if (typeof document === 'undefined') return null;
+  const activeElement = document.activeElement;
+  const focusKey = activeElement?.dataset?.housePurchaseScenarioFocus;
+  if (!focusKey) return null;
+  const focusedCard = getActiveFocusedModuleCard(moduleId);
+  if (!focusedCard?.contains(activeElement)) return null;
+
+  let selectionStart = null;
+  let selectionEnd = null;
+  let selectionDirection = null;
+  try {
+    selectionStart = activeElement.selectionStart;
+    selectionEnd = activeElement.selectionEnd;
+    selectionDirection = activeElement.selectionDirection;
+  } catch (_error) {
+    // Number, date, select and button controls do not all expose a text selection.
+  }
+  return { focusKey, selectionStart, selectionEnd, selectionDirection };
+}
+
+function findHousePurchaseScenarioFocusTarget(moduleId, focusKey) {
+  const focusedCard = getActiveFocusedModuleCard(moduleId);
+  if (!focusedCard) return null;
+  return [...focusedCard.querySelectorAll('[data-house-purchase-scenario-focus]')]
+    .find((element) => element.dataset.housePurchaseScenarioFocus === focusKey) || null;
+}
+
+function formatHousePurchaseScenarioAnnouncement(module, overrides) {
+  const activeCount = Object.keys(overrides).length;
+  if (activeCount === 0) {
+    return 'Base case restored. What-if changes are not saved.';
+  }
+
+  const prefix = `What-if results updated. ${activeCount} ${activeCount === 1 ? 'adjustment' : 'adjustments'} active.`;
+  try {
+    const projection = computeHousePurchaseProjection(module.generated.housePurchaseInputs, {
+      scenarioOverrides: overrides
+    });
+    const capacity = projection.result?.capacities?.activeSupportablePrice
+      ?? projection.result?.capacities?.currentSupportablePrice;
+    const cashGap = projection.result?.targetFunding?.currentCashGap;
+    const formatter = new Intl.NumberFormat('en-IE', {
+      style: 'currency',
+      currency: 'EUR',
+      maximumFractionDigits: 0
+    });
+    const resultParts = [];
+    if (typeof capacity === 'number' && Number.isFinite(capacity)) {
+      resultParts.push(`illustrated capacity ${formatter.format(capacity)}`);
+    }
+    if (typeof cashGap === 'number' && Number.isFinite(cashGap)) {
+      resultParts.push(`cash gap ${formatter.format(cashGap)}`);
+    }
+    return `${prefix}${resultParts.length > 0 ? ` ${resultParts.join(', ')}.` : ''} These changes are not saved.`;
+  } catch (_error) {
+    return `${prefix} These changes are not saved.`;
+  }
+}
+
+function queueHousePurchaseScenarioPostRender(moduleId, module, overrides, focusState) {
+  const nextToken = (housePurchaseScenarioRenderTokenByModuleId.get(moduleId) || 0) + 1;
+  housePurchaseScenarioRenderTokenByModuleId.set(moduleId, nextToken);
+  const run = () => {
+    if (housePurchaseScenarioRenderTokenByModuleId.get(moduleId) !== nextToken) return;
+
+    if (focusState?.focusKey) {
+      const keyedTarget = findHousePurchaseScenarioFocusTarget(moduleId, focusState.focusKey);
+      const focusTarget = keyedTarget && !keyedTarget.disabled
+        ? keyedTarget
+        : findHousePurchaseScenarioFocusTarget(moduleId, 'target-property-price');
+      if (focusTarget) {
+        focusTarget.focus({ preventScroll: true });
+        if (typeof focusTarget.setSelectionRange === 'function'
+          && typeof focusState.selectionStart === 'number'
+          && typeof focusState.selectionEnd === 'number') {
+          const valueLength = String(focusTarget.value ?? '').length;
+          try {
+            focusTarget.setSelectionRange(
+              Math.min(focusState.selectionStart, valueLength),
+              Math.min(focusState.selectionEnd, valueLength),
+              focusState.selectionDirection || 'none'
+            );
+          } catch (_error) {
+            // Some input types expose setSelectionRange but reject using it.
+          }
+        }
+      }
+    }
+
+    const focusedCard = getActiveFocusedModuleCard(moduleId);
+    const liveStatus = focusedCard?.querySelector('[data-house-purchase-scenario-status]');
+    if (liveStatus) {
+      liveStatus.textContent = formatHousePurchaseScenarioAnnouncement(module, overrides);
+    }
+  };
+
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(run);
+  } else {
+    run();
+  }
+}
 
 function getHousePurchaseScenarioOverrides(moduleId) {
   if (typeof moduleId !== 'string' || !moduleId) {
@@ -8131,10 +8237,13 @@ async function setHousePurchaseScenarioOverrides(moduleId, patch = {}) {
     return;
   }
 
+  const focusState = captureHousePurchaseScenarioFocus(moduleId);
+  let next = {};
+
   if (patch.reset === true) {
     appState.housePurchaseScenarioByModuleId.delete(moduleId);
   } else {
-    const next = {
+    const candidate = {
       ...(appState.housePurchaseScenarioByModuleId.get(moduleId) || {})
     };
     Object.entries(patch).forEach(([key, value]) => {
@@ -8142,11 +8251,17 @@ async function setHousePurchaseScenarioOverrides(moduleId, patch = {}) {
         return;
       }
       if (value === null || value === undefined || value === '') {
-        delete next[key];
+        delete candidate[key];
         return;
       }
-      next[key] = cloneSessionValue(value);
+      candidate[key] = cloneSessionValue(value);
     });
+    next = sanitizeHousePurchaseScenarioOverrides(candidate, module.generated.housePurchaseInputs);
+    try {
+      computeHousePurchaseProjection(module.generated.housePurchaseInputs, { scenarioOverrides: next });
+    } catch (_error) {
+      next = {};
+    }
     if (Object.keys(next).length > 0) {
       appState.housePurchaseScenarioByModuleId.set(moduleId, next);
     } else {
@@ -8155,7 +8270,14 @@ async function setHousePurchaseScenarioOverrides(moduleId, patch = {}) {
   }
 
   if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
-    await renderFocused({ useSwipe: false, revealMode: false });
+    patchFocusedModuleGeneratedContent(moduleId, {
+      patchSummary: true,
+      patchAssumptions: true,
+      patchOutputs: true,
+      updateCharts: true,
+      replaceCharts: true
+    });
+    queueHousePurchaseScenarioPostRender(moduleId, module, next, focusState);
   } else if (appState.mode === 'overview') {
     refreshOverview({ enableSortable: !runtimeConfig.readOnly });
   } else if (appState.mode === 'compare') {

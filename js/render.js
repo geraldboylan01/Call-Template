@@ -10500,6 +10500,13 @@ function parseHousePurchaseNumber(value, { nullable = false } = {}) {
   return Number.isFinite(parsed) ? parsed : (nullable ? null : 0);
 }
 
+function parseHousePurchaseScenarioNumber(value, { divisor = 1 } = {}) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const parsed = Number(text.replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed / divisor : null;
+}
+
 function formatHousePurchaseInputNumber(value, multiplier = 1) {
   if (value === null || value === undefined || value === '') {
     return '';
@@ -11269,9 +11276,9 @@ function formatHousePurchaseDate(value, fallback = 'Not yet estimated') {
 
 function normalizeHousePurchaseTone(value) {
   const token = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  if (/ready|aligned|pass|eligible|confirmed|complete|success|met/.test(token)) return 'positive';
   if (/fail|unlikely|stretched|shortfall|gap|blocked|error|mismatch/.test(token)) return 'negative';
   if (/potential|tighter|warning|pending|more_information|unknown|unconfirmed|review/.test(token)) return 'warning';
+  if (/ready|aligned|pass|eligible|confirmed|complete|success|met/.test(token)) return 'positive';
   return 'neutral';
 }
 
@@ -11368,11 +11375,12 @@ function buildHousePurchaseHeroCard(module, projection, { readOnly, onEditHouseP
   body.className = 'house-purchase-hero-layout';
   const story = document.createElement('div');
   story.className = 'house-purchase-hero-story';
-  story.appendChild(buildHousePurchaseStatus(bottleneck.label, bottleneck.status || bottleneck.code));
+  const routeIsReady = bottleneck.code === 'ready_for_next_step';
+  story.appendChild(buildHousePurchaseStatus(routeIsReady ? 'Broadly aligned' : 'Main constraint', bottleneck.status || bottleneck.code));
   const headline = document.createElement('h4');
-  headline.textContent = bottleneck.code === 'ready_for_next_step'
+  headline.textContent = bottleneck.label || (routeIsReady
     ? 'The route looks broadly aligned'
-    : `The main constraint is ${String(bottleneck.label || 'still being assessed').toLowerCase()}`;
+    : 'The route still needs review');
   story.appendChild(headline);
   const detail = document.createElement('p');
   detail.textContent = bottleneck.detail || 'The plan compares cash, regulatory capacity, household resilience and support screens.';
@@ -11572,15 +11580,25 @@ function buildHousePurchaseFundingCard(projection) {
 
 function buildHousePurchaseDepositChart(projection) {
   const timeline = projection?.result?.depositTimeline || {};
-  const series = Array.isArray(timeline.series) ? timeline.series : [];
+  const fullSeries = Array.isArray(timeline.series) ? timeline.series : [];
   const { card } = createHousePurchaseCard('house-purchase-deposit-journey', 'Deposit journey', 'house-purchase-deposit-card');
-  if (series.length === 0) {
+  if (fullSeries.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'generated-empty';
     empty.textContent = 'Complete the savings and target inputs to draw the deposit journey.';
     card.appendChild(empty);
     return card;
   }
+  const selectedTargetDate = projection?.result?.targetFunding?.targetDateIso;
+  const selectedTargetIndex = selectedTargetDate
+    ? fullSeries.findIndex((item) => typeof item?.dateIso === 'string' && item.dateIso >= selectedTargetDate)
+    : -1;
+  const readyIndex = Number.isInteger(timeline.readyMonthIndex) ? timeline.readyMonthIndex : -1;
+  const routeEndIndex = Math.min(
+    fullSeries.length - 1,
+    Math.max(1, selectedTargetIndex, readyIndex)
+  );
+  const series = fullSeries.slice(0, routeEndIndex + 1);
   const targetCash = Math.max(0, finiteHousePurchaseNumber(timeline.targetCash) || 0);
   const sampleIndices = buildOverviewSampleIndices(series.length, 54);
   const samples = sampleIndices.map((index) => ({
@@ -11623,7 +11641,6 @@ function buildHousePurchaseDepositChart(projection) {
     targetLine.setAttribute('y2', yFor(targetCash));
     svg.appendChild(targetLine);
   }
-  const selectedTargetDate = projection?.result?.targetFunding?.targetDateIso;
   if (selectedTargetDate) {
     const targetIndex = series.findIndex((item) => typeof item?.dateIso === 'string' && item.dateIso >= selectedTargetDate);
     if (targetIndex >= 0) {
@@ -11701,28 +11718,42 @@ function buildHousePurchaseScenarioCard(module, baseProjection, activeProjection
   intro.className = 'house-purchase-scenario-intro';
   intro.textContent = 'What-if illustration — these controls do not change the published plan. Reloading restores the base case.';
   card.appendChild(intro);
+  const liveStatus = document.createElement('p');
+  liveStatus.className = 'visually-hidden';
+  liveStatus.dataset.housePurchaseScenarioStatus = 'true';
+  liveStatus.setAttribute('role', 'status');
+  liveStatus.setAttribute('aria-live', 'polite');
+  liveStatus.setAttribute('aria-atomic', 'true');
+  card.appendChild(liveStatus);
   const dispatch = (patch) => onHousePurchaseScenarioChange?.(module.id, patch);
   const controls = document.createElement('fieldset');
   controls.className = 'house-purchase-scenario-controls';
   const controlsLegend = document.createElement('legend');
   controlsLegend.textContent = 'What-if illustration controls';
   controls.appendChild(controlsLegend);
-  const scenarioField = (config) => {
+  const scenarioField = ({ scenarioKey, ...config }) => {
     const field = makeHousePurchaseField(config);
     field.classList.add('house-purchase-scenario-field');
+    const control = field.querySelector('.house-purchase-control');
+    if (control && scenarioKey) {
+      control.dataset.housePurchaseScenarioFocus = scenarioKey;
+    }
     controls.appendChild(field);
   };
   scenarioField({
+    scenarioKey: 'target-property-price',
     label: 'Property price', value: formatHousePurchaseInputNumber(overrides.targetPropertyPrice ?? inputs.targetPropertyPrice), type: 'number', min: 1, step: 5000, prefix: '€', inputMode: 'decimal',
-    onChange: (value) => dispatch({ targetPropertyPrice: parseHousePurchaseNumber(value) })
+    onChange: (value) => dispatch({ targetPropertyPrice: parseHousePurchaseScenarioNumber(value) })
   });
   scenarioField({
+    scenarioKey: 'target-purchase-date',
     label: 'Purchase date', value: overrides.targetPurchaseDate ?? inputs.targetPurchaseDate ?? '', type: 'date',
     onChange: (value) => dispatch({ targetPurchaseDate: value || null })
   });
   scenarioField({
+    scenarioKey: 'planned-monthly-savings',
     label: 'Monthly saving', value: formatHousePurchaseInputNumber(overrides.plannedMonthlySavings ?? inputs.plannedMonthlySavings ?? inputs.currentMonthlySavings), type: 'number', min: 0, step: 50, prefix: '€', inputMode: 'decimal',
-    onChange: (value) => dispatch({ plannedMonthlySavings: parseHousePurchaseNumber(value) })
+    onChange: (value) => dispatch({ plannedMonthlySavings: parseHousePurchaseScenarioNumber(value) })
   });
   const applicants = Array.isArray(inputs.applicants) ? inputs.applicants : [];
   const hasUnrecognisedVariableIncome = applicants.some((applicant) => (
@@ -11732,6 +11763,7 @@ function buildHousePurchaseScenarioCard(module, baseProjection, activeProjection
   applicants.forEach((applicant) => {
     const applicantId = applicant.id || `applicant-${applicants.indexOf(applicant) + 1}`;
     scenarioField({
+      scenarioKey: `applicant-income:${applicantId}`,
       label: `${applicant.label || 'Applicant'} base income`,
       value: formatHousePurchaseInputNumber(overrides.applicantIncomeById?.[applicantId] ?? applicant.grossAnnualIncome),
       type: 'number', min: 0, step: 1000, prefix: '€', inputMode: 'decimal',
@@ -11740,34 +11772,45 @@ function buildHousePurchaseScenarioCard(module, baseProjection, activeProjection
           item.id || `applicant-${index + 1}`,
           finiteHousePurchaseNumber(overrides.applicantIncomeById?.[item.id || `applicant-${index + 1}`] ?? item.grossAnnualIncome) || 0
         ]));
-        incomeMap[applicantId] = parseHousePurchaseNumber(value);
-        dispatch({ applicantIncomeById: incomeMap });
+        const nextIncome = parseHousePurchaseScenarioNumber(value);
+        if (nextIncome === null) {
+          delete incomeMap[applicantId];
+        } else {
+          incomeMap[applicantId] = nextIncome;
+        }
+        dispatch({ applicantIncomeById: Object.keys(incomeMap).length > 0 ? incomeMap : null });
       }
     });
   });
   scenarioField({
+    scenarioKey: 'deposit-savings-gross-aer',
     label: 'Deposit gross AER', value: formatHousePurchaseInputNumber(overrides.depositSavingsGrossAer ?? inputs.depositSavingsGrossAer, 100), type: 'number', min: 0, max: 20, step: 0.1, suffix: '%', inputMode: 'decimal',
-    onChange: (value) => dispatch({ depositSavingsGrossAer: parseHousePurchaseNumber(value) / 100 })
+    onChange: (value) => dispatch({ depositSavingsGrossAer: parseHousePurchaseScenarioNumber(value, { divisor: 100 }) })
   });
   scenarioField({
+    scenarioKey: 'mortgage-illustration-rate',
     label: 'Mortgage rate', value: formatHousePurchaseInputNumber(overrides.mortgageIllustrationRate ?? inputs.mortgageIllustrationRate, 100), type: 'number', min: 0, max: 30, step: 0.1, suffix: '%', inputMode: 'decimal',
-    onChange: (value) => dispatch({ mortgageIllustrationRate: parseHousePurchaseNumber(value) / 100 })
+    onChange: (value) => dispatch({ mortgageIllustrationRate: parseHousePurchaseScenarioNumber(value, { divisor: 100 }) })
   });
   scenarioField({
+    scenarioKey: 'mortgage-term-years',
     label: 'Mortgage term', value: formatHousePurchaseInputNumber(overrides.mortgageTermYears ?? inputs.mortgageTermYears), type: 'number', min: 1, max: 35, step: 1, suffix: 'years', inputMode: 'numeric',
-    onChange: (value) => dispatch({ mortgageTermYears: parseHousePurchaseNumber(value) })
+    onChange: (value) => dispatch({ mortgageTermYears: parseHousePurchaseScenarioNumber(value) })
   });
   scenarioField({
+    scenarioKey: 'emergency-reserve-target',
     label: 'Protected reserve', value: formatHousePurchaseInputNumber(overrides.emergencyReserveTarget ?? inputs.emergencyReserveTarget), type: 'number', min: 0, step: 500, prefix: '€', inputMode: 'decimal',
-    onChange: (value) => dispatch({ emergencyReserveTarget: parseHousePurchaseNumber(value) })
+    onChange: (value) => dispatch({ emergencyReserveTarget: parseHousePurchaseScenarioNumber(value) })
   });
   scenarioField({
+    scenarioKey: 'support-case',
     label: 'Support case', value: overrides.supportCase || activeResult.schemes?.activeSupportCase || inferHousePurchaseSupportCase(inputs),
     options: [['none', 'No scheme support'], ['htb_only', 'Help to Buy only'], ['fhs_only', 'First Home Scheme only'], ['htb_and_fhs', 'Help to Buy + FHS']],
     onChange: (value) => dispatch({ supportCase: value })
   });
   if (hasUnrecognisedVariableIncome) {
     scenarioField({
+      scenarioKey: 'include-variable-income',
       label: 'Variable-income what-if', value: overrides.includeVariableIncome === true ? 'include' : 'exclude',
       options: [['exclude', 'Base: exclude unrecognised income'], ['include', 'Illustrate all variable income']],
       help: 'This scenario is uncertain and does not change the base qualifying-income result.',
@@ -11787,10 +11830,11 @@ function buildHousePurchaseScenarioCard(module, baseProjection, activeProjection
   if (hasUnrecognisedVariableIncome) {
     presetData.push(['Include all variable income', { includeVariableIncome: true }]);
   }
-  presetData.forEach(([label, patch]) => {
+  presetData.forEach(([label, patch], index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'house-purchase-preset-btn';
+    button.dataset.housePurchaseScenarioFocus = `preset:${index}`;
     button.textContent = label;
     button.addEventListener('click', () => dispatch(patch));
     presets.appendChild(button);
@@ -11798,6 +11842,7 @@ function buildHousePurchaseScenarioCard(module, baseProjection, activeProjection
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.className = 'house-purchase-preset-btn is-reset';
+  reset.dataset.housePurchaseScenarioFocus = 'restore-base';
   reset.textContent = 'Restore base';
   reset.disabled = activeKeys.length === 0;
   reset.addEventListener('click', () => dispatch({ reset: true }));
@@ -11930,16 +11975,23 @@ function buildHousePurchaseSchemePanel(title, scheme, kind) {
     const list = document.createElement('ul');
     list.className = 'house-purchase-criteria-list';
     criteria.forEach((criterion) => {
+      const tone = normalizeHousePurchaseTone(criterion.status);
       const item = document.createElement('li');
-      item.dataset.tone = normalizeHousePurchaseTone(criterion.status);
+      item.dataset.tone = tone;
       const icon = document.createElement('span');
       icon.setAttribute('aria-hidden', 'true');
-      icon.textContent = normalizeHousePurchaseTone(criterion.status) === 'positive' ? '✓' : (normalizeHousePurchaseTone(criterion.status) === 'negative' ? '×' : '?');
+      icon.textContent = tone === 'positive' ? '✓' : (tone === 'negative' ? '×' : '?');
       item.appendChild(icon);
       const copy = document.createElement('div');
       const label = document.createElement('strong');
       label.textContent = criterion.label;
       copy.appendChild(label);
+      const status = document.createElement('span');
+      status.className = 'house-purchase-criterion-status';
+      status.textContent = tone === 'positive'
+        ? 'Criterion met'
+        : (tone === 'negative' ? 'Criterion not met' : 'More information required');
+      copy.appendChild(status);
       if (criterion.detail) {
         const detail = document.createElement('small');
         detail.textContent = criterion.detail;

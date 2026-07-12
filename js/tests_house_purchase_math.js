@@ -8,6 +8,7 @@ import {
   createDefaultHousePurchaseInputs,
   findFhsPriceCeiling,
   normalizeHousePurchaseInputs,
+  sanitizeHousePurchaseScenarioOverrides,
   screenFirstHomeScheme,
   screenHelpToBuy
 } from './house_purchase/engine.js';
@@ -166,6 +167,49 @@ export function runHousePurchaseMathTests() {
     );
   }));
 
+  cases.push(runCase('Transient scenario values restore the base and no-op overrides stay inactive', () => {
+    const inputs = makeInputs();
+    const noOps = sanitizeHousePurchaseScenarioOverrides({
+      targetPropertyPrice: inputs.targetPropertyPrice,
+      targetPurchaseDate: inputs.targetPurchaseDate,
+      plannedMonthlySavings: inputs.plannedMonthlySavings,
+      supportCase: 'none',
+      includeVariableIncome: false
+    }, inputs);
+    assertEqual(Object.keys(noOps).length, 0, 'Base-equivalent and false variable-income values should not activate a what-if');
+    assertEqual(
+      sanitizeHousePurchaseScenarioOverrides({ supportCase: 'htb_only' }).supportCase,
+      'htb_only',
+      'Sanitizer default inputs should remain null-safe'
+    );
+
+    const sanitized = sanitizeHousePurchaseScenarioOverrides({
+      targetPropertyPrice: 0,
+      targetPurchaseDate: '',
+      plannedMonthlySavings: Number.NaN,
+      mortgageIllustrationRate: Infinity,
+      mortgageTermYears: 0,
+      applicantIncomeById: {
+        'applicant-1': inputs.applicants[0].grossAnnualIncome,
+        unknown: 90000
+      },
+      supportCase: 'unsupported',
+      includeVariableIncome: false,
+      arbitraryOutput: 1
+    }, inputs);
+    assertEqual(Object.keys(sanitized).length, 0, 'Invalid and base-equivalent values should restore the base');
+    assert(computeHousePurchaseProjection(inputs, { scenarioOverrides: sanitized }).result, 'Sanitized override must remain calculable');
+
+    const active = sanitizeHousePurchaseScenarioOverrides({
+      targetPropertyPrice: inputs.targetPropertyPrice + 25000,
+      applicantIncomeById: { 'applicant-1': inputs.applicants[0].grossAnnualIncome + 5000 },
+      includeVariableIncome: true
+    }, inputs);
+    assertEqual(active.targetPropertyPrice, inputs.targetPropertyPrice + 25000, 'Valid price override should remain');
+    assertEqual(active.applicantIncomeById['applicant-1'], inputs.applicants[0].grossAnnualIncome + 5000, 'Valid income override should remain');
+    assertEqual(active.includeVariableIncome, true, 'Active variable-income scenario should remain');
+  }));
+
   cases.push(runCase('Stamp duty uses the dated progressive bands and supports custom override', () => {
     assertEqual(calculateStampDuty(1000000), 10000, 'Duty at first breakpoint');
     assertEqual(calculateStampDuty(1500000), 20000, 'Duty at second breakpoint');
@@ -229,6 +273,60 @@ export function runHousePurchaseMathTests() {
     assertEqual(screen.maximumAmount, null, 'Unknown tax should not produce exact amount');
     assertEqual(screen.amountRange.maximum, 30000, 'HTB range cap');
     assertEqual(screen.taxPaidVerificationRequired, true, 'Tax verification flag');
+  }));
+
+  cases.push(runCase('Scheme criterion details describe their pass, fail and unknown states', () => {
+    const htbPass = screenHelpToBuy(makeInputs(), { mortgageAmount: 320000 });
+    assert(htbPass.criteria.every((entry) => entry.status === 'pass'), 'Baseline HTB facts should all pass');
+    const htbPricePass = htbPass.criteria.find((entry) => entry.id === 'price_limit');
+    assert(htbPricePass.detail.includes('is within'), 'Passing HTB price detail should describe the target as within the limit');
+    assert(!htbPricePass.detail.includes('exceeds'), 'Passing HTB price detail must not describe a failure');
+
+    const htbFail = screenHelpToBuy(makeInputs({ targetPropertyPrice: 600000 }), { mortgageAmount: 420000 });
+    const htbPriceFail = htbFail.criteria.find((entry) => entry.id === 'price_limit');
+    assertEqual(htbPriceFail.status, 'fail', 'HTB price should fail above the limit');
+    assert(htbPriceFail.detail.includes('exceeds'), 'Failing HTB price detail should describe the exceeded limit');
+
+    const htbUnknown = screenHelpToBuy(makeInputs({ helpToBuy: { taxCompliant: null } }), { mortgageAmount: 320000 });
+    const htbTaxUnknown = htbUnknown.criteria.find((entry) => entry.id === 'tax_compliant');
+    assertEqual(htbTaxUnknown.status, 'unknown', 'Missing tax-compliance fact should be unknown');
+    assert(htbTaxUnknown.detail.startsWith('Confirm'), 'Unknown HTB detail should request the missing fact');
+
+    const fhsPass = screenFirstHomeScheme(makeInputs(), {
+      mortgageAmount: 300000,
+      standardMortgageCapacity: 320000,
+      ownDeposit: 40000
+    });
+    assert(fhsPass.criteria.every((entry) => entry.status === 'pass'), 'Baseline FHS facts should all pass');
+    const fhsPricePass = fhsPass.criteria.find((entry) => entry.id === 'price_ceiling');
+    assert(fhsPricePass.detail.includes('is within'), 'Passing FHS price detail should describe the target as within the ceiling');
+    assert(!fhsPricePass.detail.includes('exceeds'), 'Passing FHS price detail must not describe a failure');
+
+    const fhsFail = screenFirstHomeScheme(makeInputs({ localAuthorityCode: 'carlow' }), {
+      mortgageAmount: 320000,
+      standardMortgageCapacity: 320000,
+      ownDeposit: 40000
+    });
+    const fhsPriceFail = fhsFail.criteria.find((entry) => entry.id === 'price_ceiling');
+    assertEqual(fhsPriceFail.status, 'fail', 'FHS price should fail above the local ceiling');
+    assert(fhsPriceFail.detail.includes('exceeds'), 'Failing FHS price detail should describe the exceeded ceiling');
+
+    const tenantFail = screenFirstHomeScheme(makeInputs({
+      acquisitionType: 'tenant_purchase',
+      tenantNoticeReceived: false
+    }), { mortgageAmount: 320000, standardMortgageCapacity: 320000, ownDeposit: 40000 });
+    const tenantPropertyFail = tenantFail.criteria.find((entry) => entry.id === 'qualifying_property');
+    assertEqual(tenantPropertyFail.status, 'fail', 'Tenant route should fail when the required notice was not received');
+    assert(tenantPropertyFail.detail.includes('not received'), 'Tenant-route failure detail should reflect the negative answer');
+
+    const fhsUnknown = screenFirstHomeScheme(makeInputs({ localAuthorityCode: '' }), {
+      mortgageAmount: 320000,
+      standardMortgageCapacity: 320000,
+      ownDeposit: 40000
+    });
+    const fhsPriceUnknown = fhsUnknown.criteria.find((entry) => entry.id === 'price_ceiling');
+    assertEqual(fhsPriceUnknown.status, 'unknown', 'Missing local authority should leave the FHS ceiling unknown');
+    assert(fhsPriceUnknown.detail.includes('Select the local authority'), 'Unknown FHS price detail should request the local authority');
   }));
 
   cases.push(runCase('Fresh-start classification remains distinct between mortgage, HTB and FHS', () => {
@@ -441,6 +539,19 @@ export function runHousePurchaseMathTests() {
     assertEqual(projection.result.depositTimeline.series.length, 601, 'Projection row count');
     assertEqual(projection.result.depositTimeline.status, 'out_of_horizon', 'Projection horizon status');
     assertEqual(projection.result.targetFunding.readyDateIso, null, 'No ready date');
+  }));
+
+  cases.push(runCase('Deposit chart stays focused on the selected route while retaining the full search horizon', () => {
+    const projection = computeHousePurchaseProjection(makeInputs({
+      currentCashSavings: 200000,
+      targetPropertyPrice: 250000,
+      targetPurchaseDate: '2028-07-01',
+      applicants: [{ ...makeInputs().applicants[0], grossAnnualIncome: 100000 }]
+    }));
+    const chart = projection.charts.find((entry) => entry.id === 'house-purchase-deposit-journey');
+    assertEqual(projection.result.depositTimeline.series.length, 601, 'Full diagnostic horizon should remain available');
+    assertEqual(chart.labels.at(-1), '2028-07-31', 'Chart should end at the selected target month');
+    assert(chart.labels.length < projection.result.depositTimeline.series.length, 'Chart should not render the full 50-year horizon');
   }));
 
   cases.push(runCase('Mortgage illustration is zero-safe and includes 25/30/35-year rate sensitivity', () => {

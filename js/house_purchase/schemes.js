@@ -58,6 +58,12 @@ function criterion(id, label, state, detail) {
   return { id, label, status, detail };
 }
 
+function detailForState(state, { pass, fail, unknown }) {
+  if (state === true) return pass;
+  if (state === false) return fail;
+  return unknown;
+}
+
 function summarizeCriteria(criteria) {
   const failed = criteria.filter((entry) => entry.status === 'fail');
   const unknown = criteria.filter((entry) => entry.status === 'unknown');
@@ -117,23 +123,59 @@ export function screenHelpToBuy(rawInputs, options = {}) {
 
   const criteria = [
     criterion('all_first_time_buyers', 'Every purchaser is a first-time purchaser for HTB', allFirstTime,
-      allFirstTime === false ? 'A fresh-start or previous-owner classification does not satisfy the HTB first-time-purchaser test.' : 'Confirm every purchaser has never previously bought or built a home.'),
+      detailForState(allFirstTime, {
+        pass: 'Every purchaser is recorded as a first-time purchaser who has not previously bought or built a home.',
+        fail: 'At least one purchaser is recorded as a fresh-start or previous owner, or as having previously owned a home. HTB requires every purchaser to be a first-time purchaser.',
+        unknown: 'Confirm every purchaser\u2019s HTB buyer status and whether they have ever bought or built a home.'
+      })),
     criterion('qualifying_property', 'New-build or self-build property', propertyState,
-      propertyState === false ? 'HTB does not apply to a second-hand or tenant purchase.' : 'Select whether the purchase is a new build or self-build.'),
+      detailForState(propertyState, {
+        pass: 'The selected acquisition is a new build or self-build, which is within the encoded HTB property routes.',
+        fail: 'The selected acquisition is not a new build or self-build. HTB does not apply to second-hand or tenant purchases.',
+        unknown: 'Select whether the purchase is a new build, self-build, second-hand home or tenant purchase.'
+      })),
     criterion('principal_home', 'Property will be the principal home', mainHomeState,
-      'Confirm that the property will be occupied as the main home.'),
+      detailForState(mainHomeState, {
+        pass: 'The property is recorded as the purchaser\u2019s principal home.',
+        fail: 'The property is not recorded as the purchaser\u2019s principal home, which HTB requires.',
+        unknown: 'Confirm whether the property will be occupied as the purchaser\u2019s principal home.'
+      })),
     criterion('price_limit', `Property value is no more than \u20ac${htbRules.maximumPrice.toLocaleString('en-IE')}`, priceState,
-      targetPrice === null ? 'Enter the target property value.' : 'The target exceeds the HTB property-value limit.'),
+      detailForState(priceState, {
+        pass: `The target value of \u20ac${targetPrice?.toLocaleString('en-IE')} is within the \u20ac${htbRules.maximumPrice.toLocaleString('en-IE')} HTB limit.`,
+        fail: `The target value of \u20ac${targetPrice?.toLocaleString('en-IE')} exceeds the \u20ac${htbRules.maximumPrice.toLocaleString('en-IE')} HTB limit.`,
+        unknown: 'Enter the target property value to test the HTB limit.'
+      })),
     criterion('scheme_period', `Purchase or build falls by ${htbRules.schemeEndDateIso}`, periodState,
-      inputs.targetPurchaseDate ? 'The selected date is outside the currently encoded scheme period.' : 'Enter a target purchase date to screen the scheme period.'),
+      detailForState(periodState, {
+        pass: `The target date ${inputs.targetPurchaseDate} falls within the currently encoded scheme period ending ${htbRules.schemeEndDateIso}.`,
+        fail: `The target date ${inputs.targetPurchaseDate} falls after the currently encoded scheme period ending ${htbRules.schemeEndDateIso}.`,
+        unknown: 'Enter a target purchase date to screen the scheme period.'
+      })),
     criterion('tax_compliant', 'Purchaser is tax compliant', inputs.helpToBuy.taxCompliant,
-      'Revenue tax-compliance confirmation is required.'),
+      detailForState(inputs.helpToBuy.taxCompliant, {
+        pass: 'The purchaser is recorded as tax compliant.',
+        fail: 'The purchaser is recorded as not tax compliant; Revenue tax compliance is required for HTB.',
+        unknown: 'Confirm the purchaser\u2019s Revenue tax-compliance status.'
+      })),
     criterion('approved_developer_or_approver', 'Developer or contractor is Revenue approved', inputs.helpToBuy.revenueApprovedDeveloperOrApprover,
-      'Confirm the relevant developer or contractor approval.'),
+      detailForState(inputs.helpToBuy.revenueApprovedDeveloperOrApprover, {
+        pass: 'The relevant developer or contractor is recorded as Revenue approved.',
+        fail: 'The relevant developer or contractor is recorded as not Revenue approved.',
+        unknown: 'Confirm whether the relevant developer or contractor is Revenue approved.'
+      })),
     criterion('qualifying_lender', 'Mortgage is with a qualifying lender', lenderState,
-      'Confirm the lender is a qualifying HTB lender.'),
+      detailForState(lenderState, {
+        pass: 'The mortgage lender is recorded as a qualifying HTB lender.',
+        fail: 'The mortgage lender is recorded as not qualifying for HTB.',
+        unknown: 'Confirm whether the mortgage lender is a qualifying HTB lender.'
+      })),
     criterion('minimum_mortgage_share', `Qualifying mortgage is at least ${(htbRules.minimumQualifyingMortgageShare * 100).toFixed(0)}% of value`, mortgageShareState,
-      mortgageShare === null ? 'Enter a lender capacity or mortgage amount.' : `The illustrated qualifying-mortgage share is ${(mortgageShare * 100).toFixed(1)}%.`)
+      detailForState(mortgageShareState, {
+        pass: `The illustrated qualifying-mortgage share is ${(mortgageShare * 100).toFixed(1)}%, meeting the ${(htbRules.minimumQualifyingMortgageShare * 100).toFixed(0)}% minimum.`,
+        fail: `The illustrated qualifying-mortgage share is ${(mortgageShare * 100).toFixed(1)}%, below the ${(htbRules.minimumQualifyingMortgageShare * 100).toFixed(0)}% minimum.`,
+        unknown: 'Enter a target property value and lender capacity or mortgage amount to test the qualifying-mortgage share.'
+      }))
   ];
 
   const summary = summarizeCriteria(criteria);
@@ -264,23 +306,90 @@ export function screenFirstHomeScheme(rawInputs, options = {}) {
     : fundingGap >= minimumEquityAmount && fundingGap <= maximumEquityAmount;
 
   const criteria = [
-    criterion('applicant_age', `Every applicant is over ${fhsRules.minimumApplicantAge}`, ageState, 'Enter every applicant\u2019s age.'),
-    criterion('buyer_status', 'Every applicant is a first-time or eligible fresh-start buyer', buyerState, 'Confirm each applicant\u2019s buyer status.'),
-    criterion('right_to_reside', 'Every applicant has a right to reside in Ireland', resideState, 'Confirm each applicant\u2019s right to reside.'),
-    criterion('participating_lender', 'Mortgage is from a participating lender', lenderState, lenderKnown ? 'The selected lender is not currently encoded as participating.' : 'Select the mortgage lender.'),
-    criterion('mortgage_approval', 'Mortgage approval is confirmed', approvalState, 'A confirmed mortgage approval is required.'),
-    criterion('maximum_mortgage', 'Maximum available mortgage is being borrowed', maximumState, 'Confirm the lender amount is the maximum available under the scheme rules.'),
+    criterion('applicant_age', `Every applicant is over ${fhsRules.minimumApplicantAge}`, ageState,
+      detailForState(ageState, {
+        pass: `Every applicant is recorded as over ${fhsRules.minimumApplicantAge}.`,
+        fail: `At least one applicant is not over ${fhsRules.minimumApplicantAge}, which the FHS applicant-age rule requires.`,
+        unknown: 'Enter every applicant\u2019s age.'
+      })),
+    criterion('buyer_status', 'Every applicant is a first-time or eligible fresh-start buyer', buyerState,
+      detailForState(buyerState, {
+        pass: 'Every applicant is recorded as a first-time buyer or a fresh-start buyer with no retained interest in a previous property.',
+        fail: 'At least one applicant is recorded as a previous owner who does not meet the encoded fresh-start conditions.',
+        unknown: 'Confirm each applicant\u2019s buyer status and, for a fresh-start applicant, whether any interest in a previous property is retained.'
+      })),
+    criterion('right_to_reside', 'Every applicant has a right to reside in Ireland', resideState,
+      detailForState(resideState, {
+        pass: 'Every applicant is recorded as having a right to reside in Ireland.',
+        fail: 'At least one applicant is recorded as not having a right to reside in Ireland.',
+        unknown: 'Confirm each applicant\u2019s right to reside in Ireland.'
+      })),
+    criterion('participating_lender', 'Mortgage is from a participating lender', lenderState,
+      detailForState(lenderState, {
+        pass: 'The selected lender is encoded as an FHS participating lender.',
+        fail: 'The selected lender is not currently encoded as an FHS participating lender.',
+        unknown: 'Select the mortgage lender.'
+      })),
+    criterion('mortgage_approval', 'Mortgage approval is confirmed', approvalState,
+      detailForState(approvalState, {
+        pass: 'The mortgage approval is recorded as confirmed.',
+        fail: 'The mortgage approval is recorded as not confirmed.',
+        unknown: 'Obtain or confirm mortgage approval to complete this criterion.'
+      })),
+    criterion('maximum_mortgage', 'Maximum available mortgage is being borrowed', maximumState,
+      detailForState(maximumState, {
+        pass: 'The lender amount is recorded as the maximum mortgage available.',
+        fail: 'The lender amount is recorded as less than the maximum mortgage available under the scheme rules.',
+        unknown: 'Confirm whether the lender amount is the maximum mortgage available under the scheme rules.'
+      })),
     criterion('no_macro_prudential_exception', 'No macro-prudential exception is used', mpeState,
-      unexplainedAboveStandard ? 'The lender amount exceeds the standard income ceiling without a confirmed exception; FHS cannot be illustrated as eligible.' : 'Confirm that no macro-prudential exception applies.'),
+      detailForState(mpeState, {
+        pass: 'The mortgage is recorded as using no macro-prudential exception.',
+        fail: unexplainedAboveStandard
+          ? 'The lender amount exceeds the standard income ceiling without a confirmed exception; FHS cannot be illustrated as eligible.'
+          : 'A macro-prudential exception is recorded; the encoded FHS rules require no exception.',
+        unknown: 'Confirm whether a macro-prudential exception applies.'
+      })),
     criterion('qualifying_property', 'Property type is within the encoded FHS routes', propertyState,
-      inputs.acquisitionType === 'tenant_purchase' ? 'Confirm receipt of the required tenant notice.' : 'Select a qualifying new-build, self-build or eligible tenant purchase.'),
-    criterion('principal_home', 'Property will be the principal home', mainHomeState, 'Confirm the property will be the principal home.'),
+      detailForState(propertyState, {
+        pass: inputs.acquisitionType === 'tenant_purchase'
+          ? 'The tenant-purchase route is selected and receipt of the required tenant notice is confirmed.'
+          : 'The selected new-build or self-build acquisition is within the encoded FHS property routes.',
+        fail: inputs.acquisitionType === 'tenant_purchase'
+          ? 'The tenant-purchase route is selected but the required tenant notice is recorded as not received.'
+          : 'The selected acquisition is outside the encoded new-build, self-build and eligible tenant-purchase routes.',
+        unknown: inputs.acquisitionType === 'tenant_purchase'
+          ? 'Confirm receipt of the required tenant notice.'
+          : 'Select a qualifying new-build, self-build or eligible tenant purchase.'
+      })),
+    criterion('principal_home', 'Property will be the principal home', mainHomeState,
+      detailForState(mainHomeState, {
+        pass: 'The property is recorded as the applicant\u2019s principal home.',
+        fail: 'The property is not recorded as the applicant\u2019s principal home, which FHS requires.',
+        unknown: 'Confirm whether the property will be the applicant\u2019s principal home.'
+      })),
     criterion('price_ceiling', 'Property is within the local-authority and dwelling-type ceiling', ceilingState,
-      propertyCeiling === null ? 'Select the local authority and dwelling type.' : `The encoded ceiling is \u20ac${propertyCeiling.toLocaleString('en-IE')}.`),
+      detailForState(ceilingState, {
+        pass: `The target value of \u20ac${targetPrice?.toLocaleString('en-IE')} is within the encoded \u20ac${propertyCeiling?.toLocaleString('en-IE')} ceiling.`,
+        fail: `The target value of \u20ac${targetPrice?.toLocaleString('en-IE')} exceeds the encoded \u20ac${propertyCeiling?.toLocaleString('en-IE')} ceiling.`,
+        unknown: targetPrice === null
+          ? 'Enter the target property value to test the FHS price ceiling.'
+          : (!priceEntry
+              ? 'Select the local authority to identify the FHS price ceiling.'
+              : 'Select the dwelling type to identify the FHS price ceiling.')
+      })),
     criterion('minimum_deposit', `Deposit or eligible site equity reaches ${(fhsRules.minimumDepositRate * 100).toFixed(0)}%`, depositState,
-      targetPrice === null ? 'Enter a target price.' : `The illustrated deposit contribution is \u20ac${depositAmount.toLocaleString('en-IE')}.`),
+      detailForState(depositState, {
+        pass: `The illustrated eligible deposit contribution of \u20ac${depositAmount.toLocaleString('en-IE')} meets the \u20ac${roundHousePurchaseMoney(targetPrice * fhsRules.minimumDepositRate).toLocaleString('en-IE')} minimum.`,
+        fail: `The illustrated eligible deposit contribution of \u20ac${depositAmount.toLocaleString('en-IE')} is below the \u20ac${roundHousePurchaseMoney(targetPrice * fhsRules.minimumDepositRate).toLocaleString('en-IE')} minimum.`,
+        unknown: 'Enter a target property value to test the minimum deposit.'
+      })),
     criterion('equity_range', `Funding gap is between the minimum and ${(maximumShare * 100).toFixed(0)}% maximum equity`, gapState,
-      fundingGap === null ? 'A target price and mortgage amount are required.' : `The illustrated gap is \u20ac${fundingGap.toLocaleString('en-IE')}; encoded range \u20ac${minimumEquityAmount.toLocaleString('en-IE')}\u2013\u20ac${maximumEquityAmount.toLocaleString('en-IE')}.`)
+      detailForState(gapState, {
+        pass: `The illustrated gap of \u20ac${fundingGap?.toLocaleString('en-IE')} is within the encoded \u20ac${minimumEquityAmount.toLocaleString('en-IE')}\u2013\u20ac${maximumEquityAmount.toLocaleString('en-IE')} equity range.`,
+        fail: `The illustrated gap of \u20ac${fundingGap?.toLocaleString('en-IE')} is outside the encoded \u20ac${minimumEquityAmount.toLocaleString('en-IE')}\u2013\u20ac${maximumEquityAmount.toLocaleString('en-IE')} equity range.`,
+        unknown: 'Enter a target property value and mortgage amount to test the FHS equity range.'
+      }))
   ];
 
   const summary = summarizeCriteria(criteria);

@@ -178,10 +178,100 @@ function assertScenarioNumber(value, key, { integer = false, min = 0, max = Infi
   return value;
 }
 
-function inferBaseSupportCase(inputs) {
-  const hasHtb = inputs.helpToBuy.confirmedClaimAmount > 0;
-  const hasFhs = inputs.firstHomeScheme.applicationStatus === 'confirmed'
-    && inputs.firstHomeScheme.confirmedEquityAmount > 0;
+/**
+ * Removes transient UI values that cannot be passed to the strict scenario
+ * contract. The calculation engine remains strict; this helper is intended for
+ * browser controls where an empty or half-entered value should mean "use the
+ * published base" rather than make the whole module unrenderable.
+ *
+ * @param {Object} scenarioOverrides
+ * @param {HousePurchaseInputs|Object} baseInputs
+ * @returns {Object}
+ */
+export function sanitizeHousePurchaseScenarioOverrides(scenarioOverrides, baseInputs = {}) {
+  if (!scenarioOverrides || typeof scenarioOverrides !== 'object' || Array.isArray(scenarioOverrides)) {
+    return {};
+  }
+
+  const sanitized = {};
+  const copyNumber = (key, { integer = false, min = 0, max = Infinity } = {}) => {
+    if (!Object.hasOwn(scenarioOverrides, key)) return;
+    const value = scenarioOverrides[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    if (value < min || value > max || (integer && !Number.isInteger(value))) return;
+    sanitized[key] = value;
+  };
+
+  copyNumber('targetPropertyPrice', { min: 1 });
+  copyNumber('plannedMonthlySavings');
+  copyNumber('depositSavingsGrossAer', { max: 1 });
+  copyNumber('mortgageIllustrationRate', { max: 1 });
+  copyNumber('mortgageTermYears', { integer: true, min: 1, max: 50 });
+  copyNumber('emergencyReserveTarget');
+
+  if (Object.hasOwn(scenarioOverrides, 'targetPurchaseDate')) {
+    try {
+      sanitized.targetPurchaseDate = parseHousePurchaseIsoDate(
+        scenarioOverrides.targetPurchaseDate,
+        'scenarioOverrides.targetPurchaseDate',
+        { nullable: false }
+      );
+    } catch (_error) {
+      // A cleared or incomplete date restores the base date.
+    }
+  }
+
+  if (Object.hasOwn(scenarioOverrides, 'applicantIncomeById')) {
+    const byId = scenarioOverrides.applicantIncomeById;
+    const allowedIds = new Set(
+      (Array.isArray(baseInputs?.applicants) ? baseInputs.applicants : [])
+        .map((applicant) => applicant?.id)
+        .filter((id) => typeof id === 'string' && id)
+    );
+    if (byId && typeof byId === 'object' && !Array.isArray(byId)) {
+      const cleanIncomeById = {};
+      Object.entries(byId).forEach(([id, value]) => {
+        if (!allowedIds.has(id) || typeof value !== 'number' || !Number.isFinite(value) || value < 0) return;
+        const baseIncome = baseInputs.applicants.find((applicant) => applicant?.id === id)?.grossAnnualIncome;
+        if (typeof baseIncome === 'number' && value === baseIncome) return;
+        cleanIncomeById[id] = value;
+      });
+      if (Object.keys(cleanIncomeById).length > 0) {
+        sanitized.applicantIncomeById = cleanIncomeById;
+      }
+    }
+  }
+
+  if (SUPPORT_CASES.has(scenarioOverrides.supportCase)
+    && scenarioOverrides.supportCase !== inferBaseSupportCase(baseInputs)) {
+    sanitized.supportCase = scenarioOverrides.supportCase;
+  }
+  if (scenarioOverrides.includeVariableIncome === true) {
+    sanitized.includeVariableIncome = true;
+  }
+
+  const baseEquivalentKeys = [
+    'targetPropertyPrice',
+    'targetPurchaseDate',
+    'plannedMonthlySavings',
+    'depositSavingsGrossAer',
+    'mortgageIllustrationRate',
+    'mortgageTermYears',
+    'emergencyReserveTarget'
+  ];
+  baseEquivalentKeys.forEach((key) => {
+    if (Object.hasOwn(sanitized, key) && sanitized[key] === baseInputs?.[key]) {
+      delete sanitized[key];
+    }
+  });
+
+  return sanitized;
+}
+
+function inferBaseSupportCase(inputs = {}) {
+  const hasHtb = (inputs?.helpToBuy?.confirmedClaimAmount || 0) > 0;
+  const hasFhs = inputs?.firstHomeScheme?.applicationStatus === 'confirmed'
+    && (inputs?.firstHomeScheme?.confirmedEquityAmount || 0) > 0;
   if (hasHtb && hasFhs) return 'htb_and_fhs';
   if (hasHtb) return 'htb_only';
   if (hasFhs) return 'fhs_only';
@@ -1111,8 +1201,25 @@ export function computeHousePurchaseProjection(rawInputs, {
     tableForScheme('First Home Scheme', schemes.firstHomeScheme)
   ];
 
+  // Keep the published chart focused on the client's actual route: through the
+  // selected target month or the first cash-ready month, whichever is later.
+  // The full 600-month series remains available in result.depositTimeline for
+  // horizon checks and diagnostics without turning an ordinary two-year plan
+  // into a visually misleading 50-year chart.
+  const chartEndMonthIndex = targetMonths !== null
+    ? Math.min(
+      depositTimeline.series.length - 1,
+      Math.max(1, targetMonths, depositTimeline.readyMonthIndex ?? 0)
+    )
+    : (depositTimeline.readyMonthIndex !== null
+      ? Math.min(depositTimeline.series.length - 1, Math.max(1, depositTimeline.readyMonthIndex))
+      : depositTimeline.series.length - 1);
   const chartSeries = depositTimeline.series.filter((entry) => (
-    entry.monthIndex <= 60 || entry.monthIndex % 12 === 0 || entry.monthIndex === depositTimeline.readyMonthIndex
+    entry.monthIndex <= chartEndMonthIndex
+    && (entry.monthIndex <= 60
+      || entry.monthIndex % 12 === 0
+      || entry.monthIndex === chartEndMonthIndex
+      || entry.monthIndex === depositTimeline.readyMonthIndex)
   ));
   const charts = [
     {

@@ -9114,6 +9114,27 @@ body.overview-has-selection .toast-host {
   gap: 2px;
 }
 
+.house-purchase-criterion-status {
+  width: fit-content;
+  color: #aabcc0;
+  font-size: 0.62rem;
+  font-weight: 760;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.house-purchase-criteria-list li[data-tone="positive"] .house-purchase-criterion-status {
+  color: #9de1ca;
+}
+
+.house-purchase-criteria-list li[data-tone="negative"] .house-purchase-criterion-status {
+  color: #eeb0a7;
+}
+
+.house-purchase-criteria-list li[data-tone="warning"] .house-purchase-criterion-status {
+  color: #e6ca90;
+}
+
 .house-purchase-criteria-list small {
   color: #82979c;
   font-size: 0.65rem;
@@ -9440,8 +9461,10 @@ body.overview-has-selection .toast-host {
   }
 
   .house-purchase-control,
+  .house-purchase-edit-btn,
   .house-purchase-primary-btn,
-  .house-purchase-secondary-btn {
+  .house-purchase-secondary-btn,
+  .house-purchase-source-links a {
     min-height: 44px;
   }
 
