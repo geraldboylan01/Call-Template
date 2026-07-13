@@ -801,7 +801,8 @@ const inviteClaims = await verifyConsumerInvite(signedInvite, {
 });
 assert.equal(inviteClaims.maxUses, 1);
 assert.equal(inviteClaims.cohort, 'internal');
-const tamperedInvite = `${signedInvite.slice(0, -1)}${signedInvite.endsWith('x') ? 'y' : 'x'}`;
+const tamperedInviteSignature = `${inviteSignature.startsWith('A') ? 'B' : 'A'}${inviteSignature.slice(1)}`;
+const tamperedInvite = `ci1.${invitePayload}.${tamperedInviteSignature}`;
 await assert.rejects(() => verifyConsumerInvite(tamperedInvite, {
   CONSUMER_INVITE_SIGNING_KEY: inviteSigningKey
 }, {
