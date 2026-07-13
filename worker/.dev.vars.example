@@ -1,0 +1,64 @@
+# Copy only the entries you need into worker/.dev.vars. Never commit real keys.
+# Generate the encryption key with: npm run generate:consumer-key
+# The separate CONSUMER_DB is a Wrangler D1 binding, not a .dev.vars entry.
+# Follow docs/consumer-journey-operations.md before enabling the journey.
+
+CONSUMER_DATA_ENCRYPTION_KEY="replace-with-a-32-byte-base64url-key"
+CONSUMER_DATA_ENCRYPTION_KEY_ID="consumer-v1"
+CONSUMER_REKEY_BATCH_SIZE="25"
+# Optional read-only key ring during rotation, with at most three prior keys.
+CONSUMER_DATA_ENCRYPTION_PREVIOUS_KEYS_JSON="{}"
+
+# Start fail closed. The journey can run in deterministic rules-only mode without
+# an OpenAI key after its D1 binding, migration, policy id, and TTL are reviewed.
+CONSUMER_JOURNEY_ENABLED="false"
+CONSUMER_AI_INTAKE_ENABLED="false"
+CONSUMER_MODULE_ROUTING_ENABLED="false"
+CONSUMER_HANDOFF_ENABLED="false"
+CONSUMER_PUBLIC_ACCESS_ENABLED="false"
+CONSUMER_INVITE_SIGNING_KEY="replace-with-a-32-byte-base64url-hmac-key"
+# Used only to pseudonymise rate-limit subjects before they reach D1.
+CONSUMER_RATE_LIMIT_HASH_KEY="replace-with-a-different-32-byte-base64url-hmac-key"
+CONSUMER_INVITE_MAX_TTL_HOURS="168"
+CONSUMER_ALLOWED_MODULE_IDS="house_purchase,liquidity_analysis"
+CONSUMER_COHORT="internal"
+CONSUMER_CONSENT_POLICY_VERSION="consumer-v1"
+CONSUMER_CONSENT_MANIFEST_ID=""
+# Keep these empty until the exact, approved notices are published. Runtime
+# configuration stays fail closed when a required notice or HTTPS URL is absent.
+CONSUMER_ANALYSIS_NOTICE_ID=""
+CONSUMER_AI_NOTICE_ID=""
+CONSUMER_PRIVACY_NOTICE_URL=""
+CONSUMER_SESSION_TTL_DAYS="30"
+CONSUMER_MAX_MESSAGE_LENGTH="4000"
+CONSUMER_MAX_TURNS_PER_SESSION="80"
+
+# Enable only after adding a real secret locally or with `wrangler secret put`.
+OPENAI_API_KEY=""
+# Keep empty until an approved provider/data-processing policy id and AI notice
+# are assigned.
+CONSUMER_AI_DATA_POLICY_ID=""
+CONSUMER_AI_DEFAULT_MODEL="gpt-5.6-luna"
+CONSUMER_AI_COMPLEX_MODEL="gpt-5.6-terra"
+CONSUMER_AI_DEFAULT_REASONING_EFFORT="low"
+CONSUMER_AI_COMPLEX_REASONING_EFFORT="medium"
+CONSUMER_AI_PROMPT_VERSION="consumer-intake-v1"
+CONSUMER_AI_TIMEOUT_MS="15000"
+CONSUMER_AI_MAX_OUTPUT_TOKENS="1200"
+CONSUMER_AI_REQUEST_TOKEN_RESERVATION="8000"
+CONSUMER_AI_SESSION_REQUEST_BUDGET="24"
+CONSUMER_AI_DAILY_REQUEST_BUDGET="1000"
+CONSUMER_AI_COMPLEX_SESSION_REQUEST_BUDGET="4"
+CONSUMER_AI_COMPLEX_DAILY_REQUEST_BUDGET="100"
+CONSUMER_AI_SESSION_TOKEN_BUDGET="25000"
+CONSUMER_AI_DAILY_TOKEN_BUDGET="250000"
+
+# Handoff stays disabled until these values come from an approved policy. Do not
+# copy illustrative retention periods into production as a legal decision.
+CONSUMER_HANDOFF_POLICY_VERSION=""
+CONSUMER_HANDOFF_POLICY_URL=""
+CONSUMER_HANDOFF_RETENTION_POLICY_ID=""
+CONSUMER_HANDOFF_RETENTION_DAYS=""
+
+# Optional future booking provider. Must be an HTTPS URL.
+CONSUMER_BOOKING_URL=""

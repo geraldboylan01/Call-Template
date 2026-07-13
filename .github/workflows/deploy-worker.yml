@@ -16,13 +16,16 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL || 'https://call-canvas-session-worker.geraldboylan.workers.dev' }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
+      CONSUMER_DB_ID: ${{ vars.CONSUMER_DB_ID }}
+      CONSUMER_DB_NAME: ${{ vars.CONSUMER_DB_NAME || 'planeir-consumer' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,24 +34,182 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+
+      - name: Install project dependencies
+        run: npm ci
 
       - name: Validate deploy configuration
         run: |
+          set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is required in GitHub Settings > Secrets and variables > Actions"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is required in GitHub Settings > Secrets and variables > Actions"; exit 1; }
           test -n "$WORKER_BASE_URL" || { echo "WORKER_BASE_URL is required"; exit 1; }
           test -n "$SMOKE_ORIGIN" || { echo "SMOKE_ORIGIN is required"; exit 1; }
+          test -n "$CONSUMER_DB_NAME" || { echo "CONSUMER_DB_NAME is required"; exit 1; }
+
+      - name: Run full consumer and adviser regression gate
+        run: |
+          set -euo pipefail
+          npm run check:consumer
+          npm run check:house-purchase
+          npm run check:module-media
+          npm run check:video-summary
+          npm run check:video-scene
+          npm run check:codex-video-brief
+          npm run check:success-animation
+          npm run build
+        env:
+          ASSET_VERSION: ${{ github.sha }}
 
       - name: Install Wrangler
         run: npm install --global wrangler@4
 
-      - name: Apply remote D1 migrations
+      - name: Exercise consumer API against fresh local D1 bindings
+        run: |
+          set -euo pipefail
+          state_dir=".worker-dry-run/consumer-http-deploy"
+          rm -rf "$state_dir"
+          mkdir -p "$state_dir"
+          (
+            cd worker
+            wrangler d1 migrations apply LEADS_DB --local --config wrangler.consumer-test.toml --persist-to "../$state_dir"
+            wrangler d1 migrations apply CONSUMER_DB --local --config wrangler.consumer-test.toml --persist-to "../$state_dir"
+            wrangler dev --local --ip 127.0.0.1 --port 8788 --config wrangler.consumer-test.toml --persist-to "../$state_dir" --log-level warn --var CONSUMER_DATA_ENCRYPTION_KEY:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE --var CONSUMER_RATE_LIMIT_HASH_KEY:AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI --var CONSUMER_INVITE_SIGNING_KEY:AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM
+          ) >"$state_dir/wrangler.log" 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8788/api/consumer/bootstrap >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat "$state_dir/wrangler.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          CONSUMER_INVITE_SIGNING_KEY=AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM npm run check:consumer-http
+
+      - name: Build fail-closed production Wrangler config
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const databaseId = String(process.env.CONSUMER_DB_ID || '').trim();
+          const databaseName = String(process.env.CONSUMER_DB_NAME || '').trim();
+          if (databaseId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(databaseId)) {
+            throw new Error('CONSUMER_DB_ID must be the UUID returned by Cloudflare D1.');
+          }
+          if (!/^[a-z0-9-]{1,64}$/.test(databaseName)) {
+            throw new Error('CONSUMER_DB_NAME must contain only lowercase letters, numbers, and hyphens.');
+          }
+
+          const sourcePath = 'worker/wrangler.toml';
+          const generatedPath = 'worker/wrangler.production.generated.toml';
+          const source = fs.readFileSync(sourcePath, 'utf8');
+          const leadsBinding = source.match(
+            /\[\[d1_databases\]\]\s*\nbinding\s*=\s*"LEADS_DB"[\s\S]*?\ndatabase_id\s*=\s*"([0-9a-f-]+)"/i
+          );
+          if (!leadsBinding?.[1]) {
+            throw new Error('The committed LEADS_DB binding could not be verified.');
+          }
+          if (databaseId && databaseId.toLowerCase() === leadsBinding[1].toLowerCase()) {
+            throw new Error('CONSUMER_DB_ID must identify a different D1 database from LEADS_DB.');
+          }
+          const requiredFalseFlags = [
+            'CONSUMER_JOURNEY_ENABLED',
+            'CONSUMER_AI_INTAKE_ENABLED',
+            'CONSUMER_MODULE_ROUTING_ENABLED',
+            'CONSUMER_HANDOFF_ENABLED',
+            'CONSUMER_PUBLIC_ACCESS_ENABLED'
+          ];
+          for (const flag of requiredFalseFlags) {
+            const expression = new RegExp(`^${flag}\\s*=\\s*"false"\\s*$`, 'm');
+            if (!expression.test(source)) {
+              throw new Error(`${flag} must remain exactly false for production deployment.`);
+            }
+          }
+
+          const requiredPolicyVariables = [
+            'CONSUMER_CONSENT_MANIFEST_ID',
+            'CONSUMER_ANALYSIS_NOTICE_ID',
+            'CONSUMER_AI_NOTICE_ID',
+            'CONSUMER_PRIVACY_NOTICE_URL',
+            'CONSUMER_AI_DATA_POLICY_ID',
+            'CONSUMER_HANDOFF_POLICY_VERSION',
+            'CONSUMER_HANDOFF_POLICY_URL',
+            'CONSUMER_HANDOFF_RETENTION_POLICY_ID',
+            'CONSUMER_HANDOFF_RETENTION_DAYS'
+          ];
+          for (const variable of requiredPolicyVariables) {
+            const expression = new RegExp(`^${variable}\\s*=`, 'm');
+            if (!expression.test(source)) {
+              throw new Error(`${variable} must be explicit so the runtime can fail closed.`);
+            }
+          }
+
+          const originsMatch = source.match(/^ALLOWED_ORIGINS\s*=\s*"([^"]+)"\s*$/m);
+          if (!originsMatch) throw new Error('ALLOWED_ORIGINS must be explicit.');
+          for (const origin of originsMatch[1].split(',').map((value) => value.trim())) {
+            const parsed = new URL(origin);
+            if (parsed.protocol !== 'https:' || ['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+              throw new Error('Production ALLOWED_ORIGINS may contain only non-local HTTPS origins.');
+            }
+          }
+          if (/^ALLOW_LOCAL_DEV_ORIGINS\s*=\s*"(?:1|true|yes|on)"\s*$/mi.test(source)) {
+            throw new Error('ALLOW_LOCAL_DEV_ORIGINS must not be enabled in the production config.');
+          }
+
+          const binding = databaseId ? [
+            '',
+            '# Generated by deploy-worker.yml from the protected production environment.',
+            '[[d1_databases]]',
+            'binding = "CONSUMER_DB"',
+            `database_name = ${JSON.stringify(databaseName)}`,
+            `database_id = ${JSON.stringify(databaseId)}`,
+            'migrations_dir = "consumer-migrations"',
+            ''
+          ].join('\n') : '\n';
+          fs.writeFileSync(generatedPath, `${source.trimEnd()}\n${binding}`, { mode: 0o600 });
+          NODE
+
+      - name: Replay adviser and consumer migrations in fresh local D1 state
         working-directory: ./worker
-        run: wrangler d1 migrations apply planeir-leads --remote
+        run: |
+          set -euo pipefail
+          rm -rf ../.worker-dry-run/deploy-local-d1
+          wrangler d1 migrations apply LEADS_DB --local --config wrangler.production.generated.toml --persist-to ../.worker-dry-run/deploy-local-d1
+          if [[ -n "$CONSUMER_DB_ID" ]]; then
+            wrangler d1 migrations apply CONSUMER_DB --local --config wrangler.production.generated.toml --persist-to ../.worker-dry-run/deploy-local-d1
+          else
+            echo "CONSUMER_DB_ID is not configured; preserving the dormant, unbound consumer capability."
+          fi
+
+      - name: Bundle production Worker without deploying
+        working-directory: ./worker
+        run: wrangler deploy --dry-run --config wrangler.production.generated.toml --outdir ../.worker-dry-run/deploy-bundle
+
+      - name: Apply remote adviser D1 migrations
+        working-directory: ./worker
+        run: wrangler d1 migrations apply LEADS_DB --remote --config wrangler.production.generated.toml
+
+      - name: Apply remote consumer D1 migrations
+        working-directory: ./worker
+        run: |
+          if [[ -n "$CONSUMER_DB_ID" ]]; then
+            wrangler d1 migrations apply CONSUMER_DB --remote --config wrangler.production.generated.toml
+          else
+            echo "CONSUMER_DB_ID is not configured; skipping consumer migrations while all consumer flags are false."
+          fi
 
       - name: Deploy Worker
         working-directory: ./worker
-        run: wrangler deploy
+        run: wrangler deploy --config wrangler.production.generated.toml
 
       - name: Smoke check live published-session routes
         run: node ./scripts/check-worker-published-session-routes.mjs
+
+      - name: Remove generated deployment config
+        if: always()
+        run: rm -f worker/wrangler.production.generated.toml

@@ -25,7 +25,18 @@ const TEXT_EXTENSIONS = new Set([
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const HTML_FILES = ['index.html', 'session.html', 'app/index.html', 'app/session.html', 'app/clients.html', 'app/access.html', 'app/leads.html', 'app/video.html'];
+const HTML_FILES = [
+  'index.html',
+  'session.html',
+  'app/index.html',
+  'app/session.html',
+  'app/clients.html',
+  'app/access.html',
+  'app/leads.html',
+  'app/video.html',
+  'plan/index.html',
+  'plan/privacy.html'
+];
 const COPY_ENTRIES = [
   'styles',
   'js',
@@ -99,6 +110,12 @@ function addVersionToAssetUrls(html) {
   });
 }
 
+function removeLocalConsumerApiOrigins(html) {
+  return html
+    .replaceAll(' http://127.0.0.1:8787', '')
+    .replaceAll(' http://localhost:8787', '');
+}
+
 function addVersionToJsModuleSpecifiers(source) {
   let updated = source.replace(JS_FROM_PATTERN, (fullMatch, prefix, quote, rawUrl) => {
     if (!shouldVersionUrl(rawUrl, MODULE_EXTENSIONS)) {
@@ -140,7 +157,7 @@ function addVersionToCssAssetUrls(source) {
 function rewriteTextAssetReferences(source, extension) {
   switch (extension) {
     case '.html':
-      return addVersionToAssetUrls(source);
+      return removeLocalConsumerApiOrigins(addVersionToAssetUrls(source));
     case '.js':
       return addVersionToJsModuleSpecifiers(source);
     case '.css':

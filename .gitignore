@@ -1,5 +1,8 @@
 dist/
 node_modules/
+.worker-dry-run/
+worker/.wrangler/tmp/
+worker/wrangler.*.generated.toml
 .dev.vars
 worker/.dev.vars
 .env

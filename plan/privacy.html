@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta
+      name="description"
+      content="How the Planéir consumer planning journey handles private sessions, optional AI, deterministic calculations, deletion, and optional adviser handoff."
+    />
+    <title>Consumer journey privacy and disclosure | Planéir</title>
+    <link rel="icon" type="image/png" href="../favicon.png" />
+    <link rel="stylesheet" href="../styles/plan.css" />
+  </head>
+  <body class="privacy-page">
+    <a class="skip-link" href="#privacyMain">Skip to the disclosure</a>
+
+    <div class="plan-backdrop" aria-hidden="true">
+      <span class="plan-orb plan-orb-one"></span>
+      <span class="plan-orb plan-orb-two"></span>
+      <span class="plan-grid"></span>
+    </div>
+
+    <header class="plan-header">
+      <a class="plan-brand" href="../" aria-label="Planéir home">
+        <img
+          src="../assets/brand/planeir-wordmark-light.svg"
+          alt="Planéir"
+          width="1330"
+          height="384"
+          decoding="async"
+        />
+      </a>
+      <div class="plan-header-meta">
+        <span class="beta-badge">Consumer disclosure</span>
+      </div>
+    </header>
+
+    <main id="privacyMain" class="plan-main privacy-main" tabindex="-1">
+      <article class="privacy-shell">
+        <header class="privacy-hero">
+          <p class="section-kicker">Clear by design</p>
+          <h1>Your information, your choices.</h1>
+          <p class="privacy-lead">
+            This disclosure explains what happens when you use Planéir’s consumer planning journey.
+            The journey is for financial education: it helps you organise information, review it, and
+            run transparent illustrations. It does not provide regulated financial, mortgage, tax,
+            legal, product, or approval advice.
+          </p>
+
+          <div class="privacy-highlight-grid" aria-label="Important privacy points">
+            <div class="privacy-highlight">
+              <strong>A private browser session</strong>
+              <p>Your access credential stays in this browser tab and is not used as an adviser login.</p>
+            </div>
+            <div class="privacy-highlight">
+              <strong>AI is optional</strong>
+              <p>If offered and selected, AI can organise draft facts. It never calculates the results.</p>
+            </div>
+            <div class="privacy-highlight">
+              <strong>Sharing is a separate choice</strong>
+              <p>Nothing is sent to Gerry unless you expressly consent after reviewing your results.</p>
+            </div>
+          </div>
+        </header>
+
+        <nav class="privacy-toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <a href="#private-session">Private session</a>
+          <a href="#safe-information">Information safety</a>
+          <a href="#optional-ai">Optional AI</a>
+          <a href="#calculations">Calculations</a>
+          <a href="#handoff">Adviser handoff</a>
+          <a href="#deletion">Expiry and deletion</a>
+        </nav>
+
+        <div class="privacy-section-grid">
+          <section id="private-session" class="privacy-card">
+            <p class="section-kicker">Your planning space</p>
+            <h2>A separate, time-limited consumer session</h2>
+            <p>
+              When you begin, Planéir creates an opaque private credential. The browser keeps it in
+              <code>sessionStorage</code>, which is scoped to this tab. It is not placed in a URL,
+              adviser cookie, or browser <code>localStorage</code>. Closing the tab removes the browser’s
+              copy, so the session may no longer be recoverable from that browser.
+            </p>
+            <p>
+              The session stores the information you choose to provide, conversation exchanges,
+              reviewed profile revisions, and calculation results. Sensitive payloads are encrypted
+              before they are stored by the service.
+            </p>
+            <p>
+              The server applies the session lifetime configured for the active journey. Your actual
+              expiry is shown in the journey after the session is created; no fixed duration is assumed
+              on this page.
+            </p>
+          </section>
+
+          <section id="safe-information" class="privacy-card">
+            <p class="section-kicker">Share only what is needed</p>
+            <h2>Do not enter high-risk identifiers</h2>
+            <p>
+              Financial totals and approximate figures may be useful. Direct identity, security, and
+              account credentials are not needed for this educational journey.
+            </p>
+            <ul class="privacy-list">
+              <li>Do not enter PPS numbers, passwords, passcodes, PINs, or banking credentials.</li>
+              <li>Do not enter complete bank-account, card, or IBAN details.</li>
+              <li>Do not provide passport, driving-licence, or other identity-document details or copies.</li>
+              <li>Do not provide an exact home address or unnecessary information about another person.</li>
+            </ul>
+            <div class="privacy-callout">
+              The service applies validation and redaction safeguards, but those safeguards are not a
+              reason to submit information the journey asks you to avoid.
+            </div>
+          </section>
+
+          <section id="optional-ai" class="privacy-card is-wide">
+            <p class="section-kicker">Optional assistance</p>
+            <h2>What AI may do—and what it cannot do</h2>
+            <p>
+              AI assistance is used only when the option is available and you choose it. It may interpret
+              the words you type, propose draft profile details, and help select a clearer next question.
+              AI can make mistakes, so proposed details remain drafts until you review and confirm them.
+            </p>
+            <p>
+              Where AI assistance is active, the in-journey control lets you withdraw that choice for
+              future messages. Withdrawal applies to later messages; it does not undo processing already
+              completed. The journey then continues with structured, rules-only questions.
+            </p>
+            <p>
+              If you opt in, Planéir sends your latest message, the current question, a bounded
+              conversation summary, and the part of your planning profile relevant to that question to
+              OpenAI through its Responses API. The request disables application storage with
+              <code>store: false</code>. Any provider-side retention or abuse monitoring is governed by
+              Planéir’s approved OpenAI account data controls and processing policy; AI stays disabled
+              until that policy has been reviewed and configured.
+            </p>
+            <p>
+              AI is not allowed to calculate financial outputs, approve a mortgage or product, decide
+              eligibility, or silently write trusted facts. Those boundaries remain enforced even when AI
+              helps with the conversation.
+            </p>
+          </section>
+
+          <section id="calculations" class="privacy-card">
+            <p class="section-kicker">Code-owned outputs</p>
+            <h2>Deterministic calculations</h2>
+            <p>
+              Financial illustrations are produced by tested, versioned calculation code using the profile
+              revision you confirm. Results should show their assumptions, warnings, information gaps, and
+              calculation provenance so you can understand what shaped the figure.
+            </p>
+            <p>
+              These outputs are educational scenarios rather than personalised regulated advice, lender
+              decisions, guarantees, quotations, or product recommendations. Time-sensitive rules and
+              assumptions should be checked before acting on an illustration.
+            </p>
+          </section>
+
+          <section id="handoff" class="privacy-card">
+            <p class="section-kicker">Optional human help</p>
+            <h2>A separate handoff to Gerry</h2>
+            <p>
+              After results are available, you may separately consent to send a reviewed package to Gerry
+              Boylan. The journey tells you what will be shared before you consent: your name, email,
+              optional phone number, the help you request, and a minimal consent receipt with a
+              non-financial analysis/revision reference. Your detailed profile and calculation results are
+              not automatically copied into the adviser pipeline.
+            </p>
+            <p>
+              This handoff is not automatic. It does not opt you into hidden marketing, an adviser
+              marketplace, bidding, sponsored ranking, or product promotion. Your free results do not
+              depend on agreeing to a handoff.
+            </p>
+            <p>
+              Once delivered, the handoff becomes a separate adviser record. Its retention period is set
+              by the active handoff policy and may differ from the consumer-session lifetime. Planéir must
+              present the applicable retention wording before handoff is enabled; this page deliberately
+              does not hardcode a duration.
+            </p>
+            <p>
+              Before or after delivery, the journey’s <strong>Privacy controls</strong> let you withdraw
+              the handoff and purge the encrypted bridge copy. If it has already reached Gerry, withdrawal
+              cannot recall the separate adviser record; the control tells you to contact Planéir about
+              that record.
+            </p>
+          </section>
+
+          <section id="deletion" class="privacy-card is-wide">
+            <p class="section-kicker">Your control</p>
+            <h2>Expiry, deletion, and an already-delivered handoff</h2>
+            <p>
+              You can use <strong>Delete my session</strong> in the journey to remove the consumer
+              conversation, profile revisions, analyses, module runs, events, and private session access.
+              Undelivered pending or failed handoff data is removed with the session. Sessions also expire
+              under the lifetime configured for the active journey.
+            </p>
+            <p>
+              If you already expressly sent a handoff and delivery completed, deleting the consumer session
+              does not recall that separate adviser record. Its active handoff policy applies. You can
+              contact Planéir to ask what is held or request an appropriate correction or deletion, subject
+              to any retention obligations that apply to the delivered record.
+            </p>
+            <div class="privacy-actions">
+              <a class="primary-button" href="./">Back to my planning journey</a>
+              <a class="secondary-button" href="mailto:hello@planeir.ie">Contact hello@planeir.ie</a>
+              <a class="secondary-button" href="../">Return to Planéir.ie</a>
+            </div>
+          </section>
+        </div>
+      </article>
+    </main>
+
+    <footer class="plan-footer">
+      <p>
+        Planéir provides financial education, not regulated financial, tax, legal, mortgage, product,
+        eligibility, or approval advice.
+      </p>
+      <a href="./">Planning journey</a>
+      <a href="mailto:hello@planeir.ie">Contact</a>
+    </footer>
+  </body>
+</html>

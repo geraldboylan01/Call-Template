@@ -52,7 +52,20 @@ const MAX_CLIENT_EMAIL_LENGTH = 160;
 const MAX_USER_AGENT_LENGTH = 512;
 const MAX_ADVISOR_SESSION_TOKEN_LENGTH = 4096;
 const PREFLIGHT_MAX_AGE_SECONDS = 86_400;
-const DEFAULT_ALLOWED_REQUEST_HEADERS = 'Content-Type';
+const ALLOWED_REQUEST_HEADER_NAMES = new Set([
+  'content-type',
+  'x-advisor-csrf',
+  'x-published-capability',
+  'x-consumer-session',
+  'x-consumer-invite'
+]);
+const DEFAULT_ALLOWED_REQUEST_HEADERS = [
+  'Content-Type',
+  'X-Advisor-CSRF',
+  'X-Published-Capability',
+  'X-Consumer-Session',
+  'X-Consumer-Invite'
+].join(', ');
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
 const PLANEIR_SITE_URL = 'https://planeir.ie';
 const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-card.png`;
@@ -179,7 +192,24 @@ function normalizePathname(pathname) {
   return pathname.replace(/\/+$/, '');
 }
 
+function getConsumerRouteMethods(pathname) {
+  if (pathname === '/api/consumer/bootstrap') return 'GET,OPTIONS';
+  if (pathname === '/api/consumer/sessions') return 'POST,OPTIONS';
+  const match = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
+  if (!match) return null;
+  const child = match[1] || '';
+  if (!child) return 'GET,DELETE,OPTIONS';
+  if (child === 'profile' || child === 'consent') return 'PATCH,OPTIONS';
+  if (child === 'handoffs') return 'POST,DELETE,OPTIONS';
+  return 'POST,OPTIONS';
+}
+
 function getRouteConfig(pathname) {
+  const consumerMethods = getConsumerRouteMethods(pathname);
+  if (consumerMethods) {
+    return { methods: consumerMethods };
+  }
+
   if (pathname === '/api/leads') {
     return {
       methods: 'POST,OPTIONS'
@@ -347,7 +377,12 @@ function getRouteConfig(pathname) {
 
 function getAllowedRequestHeaders(request) {
   const requestedHeaders = request.headers.get('Access-Control-Request-Headers');
-  return requestedHeaders || DEFAULT_ALLOWED_REQUEST_HEADERS;
+  if (!requestedHeaders) return DEFAULT_ALLOWED_REQUEST_HEADERS;
+  const requested = requestedHeaders.split(',').map((value) => value.trim()).filter(Boolean);
+  if (requested.some((value) => !ALLOWED_REQUEST_HEADER_NAMES.has(value.toLowerCase()))) {
+    return DEFAULT_ALLOWED_REQUEST_HEADERS;
+  }
+  return requested.join(', ');
 }
 
 function getCorsOrigin(request, env) {
@@ -364,8 +399,12 @@ function getCorsOrigin(request, env) {
   try {
     const parsed = new URL(origin);
     const isLocalDev = parsed.protocol === 'http:' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
-
-    if (isLocalDev) {
+    const requestUrl = new URL(request.url);
+    const isLocalWorker = requestUrl.protocol === 'http:'
+      && (requestUrl.hostname === '127.0.0.1' || requestUrl.hostname === 'localhost');
+    const allowLocalDev = isLocalWorker
+      || TRUEISH_ENV_VALUES.has(String(env.ALLOW_LOCAL_DEV_ORIGINS || '').trim().toLowerCase());
+    if (isLocalDev && allowLocalDev) {
       return origin;
     }
   } catch (_error) {
@@ -444,7 +483,8 @@ function optionsResponse(request, origin, methods) {
   return new Response(null, {
     status: 204,
     headers: {
-      ...corsHeaders(origin, methods, getAllowedRequestHeaders(request))
+      ...corsHeaders(origin, methods, getAllowedRequestHeaders(request)),
+      ...securityHeaders(noStoreHeaders())
     }
   });
 }
@@ -2508,6 +2548,128 @@ async function findOrCreateClientForProfile(env, profile = {}) {
   }
 
   throw new Error('Could not create client profile.');
+}
+
+async function getConsumerHandoffDeliveryReceipt(env, handoffId) {
+  const delivery = await getPublishedSessionsDb(env).prepare(`
+    SELECT lead_id
+    FROM consumer_handoff_deliveries
+    WHERE handoff_id = ?
+    LIMIT 1
+  `).bind(handoffId).first();
+  if (delivery?.lead_id) {
+    const lead = await getPublishedSessionsDb(env).prepare(`
+      SELECT client_id FROM leads WHERE id = ? LIMIT 1
+    `).bind(delivery.lead_id).first();
+    return { leadId: delivery.lead_id, clientId: lead?.client_id || null };
+  }
+
+  const existingEvent = await getPublishedSessionsDb(env).prepare(`
+    SELECT lead_id
+    FROM lead_events
+    WHERE event_type = 'consumer-handoff-created'
+      AND json_extract(metadata_json, '$.handoffId') = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).bind(handoffId).first();
+  if (existingEvent?.lead_id) {
+    const existingLead = await getPublishedSessionsDb(env).prepare(`
+      SELECT client_id FROM leads WHERE id = ? LIMIT 1
+    `).bind(existingEvent.lead_id).first();
+    return { leadId: existingEvent.lead_id, clientId: existingLead?.client_id || null };
+  }
+  return null;
+}
+
+async function createConsumerPipelineHandoff(env, payload = {}) {
+  const timestamp = nowIso();
+  const fullName = normalizePublishedClientName(payload.fullName || 'Consumer');
+  const email = normalizeClientEmailForMatch(payload.email || '');
+  const phone = normalizeOptionalLeadValue(payload.phone || '');
+  const requestedHelp = normalizeLongText(payload.requestedHelp || '').slice(0, MAX_LEAD_REASON_LENGTH);
+  const handoffId = normalizeLeadValue(payload.handoffId);
+  if (!email || !requestedHelp || !handoffId) {
+    throw new Error('Consumer handoff contact details are incomplete.');
+  }
+
+  const existingDelivery = await getConsumerHandoffDeliveryReceipt(env, handoffId);
+  if (existingDelivery) return existingDelivery;
+
+  const eventMetadata = JSON.stringify({
+    handoffId,
+    source: 'consumer-plan',
+    educationOnlyConsent: true,
+    consentPolicyVersion: normalizeLeadValue(payload.consentPolicyVersion),
+    policyUrl: normalizeLeadValue(payload.policyUrl),
+    consentCapturedAt: normalizeLeadValue(payload.consentCapturedAt),
+    sharedDataDigestB64u: normalizeLeadValue(payload.sharedDataDigestB64u),
+    retentionPolicyId: normalizeLeadValue(payload.retentionPolicyId),
+    clientId: null
+  });
+  const leadSchema = await getPublishedSessionsDb(env).prepare('PRAGMA table_info(leads)').all();
+  const supportsEducationOnlyConsent = (leadSchema.results || [])
+    .some((column) => column.name === 'consent_education_only');
+  const insertLead = supportsEducationOnlyConsent
+    ? getPublishedSessionsDb(env).prepare(`
+      INSERT INTO leads (
+        client_id, created_at, updated_at, full_name, email, phone,
+        help_reason, stage, call_outcome, availability_notes, status,
+        consent_free_call, consent_education_only, consent_recording, source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'other', NULL, NULL, 'reviewing', 0, 1, 0, 'consumer-plan')
+    `).bind(
+      null,
+      timestamp,
+      timestamp,
+      fullName,
+      email,
+      phone,
+      requestedHelp
+    )
+    : getPublishedSessionsDb(env).prepare(`
+      INSERT INTO leads (
+        client_id, created_at, updated_at, full_name, email, phone,
+        help_reason, stage, call_outcome, availability_notes, status,
+        consent_free_call, consent_recording, source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'other', NULL, NULL, 'reviewing', 0, 0, 'consumer-plan')
+    `).bind(
+      null,
+      timestamp,
+      timestamp,
+      fullName,
+      email,
+      phone,
+      requestedHelp
+    );
+  let result;
+  try {
+    [result] = await getPublishedSessionsDb(env).batch([
+      insertLead,
+      getPublishedSessionsDb(env).prepare(`
+        INSERT INTO consumer_handoff_deliveries (
+          handoff_id, lead_id, status, created_at, updated_at
+        ) VALUES (?, last_insert_rowid(), 'completed', ?, ?)
+      `).bind(handoffId, timestamp, timestamp),
+      getPublishedSessionsDb(env).prepare(`
+        INSERT INTO lead_events (
+          lead_id, actor_type, event_type, created_at, metadata_json
+        ) VALUES (
+          (SELECT lead_id FROM consumer_handoff_deliveries WHERE handoff_id = ?),
+          'client', 'consumer-handoff-created', ?, ?
+        )
+      `).bind(handoffId, timestamp, eventMetadata)
+    ]);
+  } catch (error) {
+    const concurrent = await getPublishedSessionsDb(env).prepare(`
+      SELECT lead_id FROM consumer_handoff_deliveries WHERE handoff_id = ? LIMIT 1
+    `).bind(handoffId).first().catch(() => null);
+    if (concurrent?.lead_id) return { leadId: concurrent.lead_id, clientId: null };
+    throw error;
+  }
+  if (!result.success || !result.meta?.last_row_id) {
+    throw new Error('Could not create the consumer handoff lead.');
+  }
+  const leadId = result.meta.last_row_id;
+  return { leadId, clientId: null };
 }
 
 async function ensureClientForLead(env, lead) {
@@ -6996,6 +7158,44 @@ export default {
         });
       })
     );
+    if (env.CONSUMER_DB) {
+      ctx.waitUntil(
+        import('./consumer/router.js').then(({ cleanupExpiredConsumerSessions }) => (
+          cleanupExpiredConsumerSessions(env, {
+            lookupHandoffDelivery: (handoffId) => getConsumerHandoffDeliveryReceipt(env, handoffId)
+          })
+        )).then((result) => {
+          if (result.checked > 0
+            || result.failed > 0
+            || result.reconciledHandoffs > 0
+            || result.releasedHandoffs > 0
+            || result.purgedHandoffs > 0
+            || result.deletedHandoffTombstones > 0) {
+            console.log('Consumer session cleanup completed', result);
+          }
+        }).catch((error) => {
+          console.error('Consumer session cleanup failed', {
+            error: error instanceof Error ? error.message : String(error)
+          });
+        })
+      );
+      const previousEncryptionKeys = String(
+        env.CONSUMER_DATA_ENCRYPTION_PREVIOUS_KEYS_JSON || ''
+      ).trim();
+      if (previousEncryptionKeys && previousEncryptionKeys !== '{}') {
+        ctx.waitUntil(
+          import('./consumer/router.js').then(({ rotateConsumerEncryptionBatch }) => (
+            rotateConsumerEncryptionBatch(env)
+          )).then((result) => {
+            console.log('Consumer encryption rotation batch completed', result);
+          }).catch((error) => {
+            console.error('Consumer encryption rotation batch failed', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+          })
+        );
+      }
+    }
   },
 
   async fetch(request, env, ctx) {
@@ -7015,6 +7215,23 @@ export default {
       }
 
       return optionsResponse(request, origin, routeConfig.methods);
+    }
+
+    if (pathname.startsWith('/api/consumer/')) {
+      const { handleConsumerRequest } = await import('./consumer/router.js');
+      return handleConsumerRequest(request, env, {
+        pathname,
+        clientIp: getClientIp(request),
+        createPipelineHandoff: (payload) => createConsumerPipelineHandoff(env, payload),
+        respond: (data, status, methods, extraHeaders) => jsonResponse(
+          data,
+          status,
+          origin,
+          methods,
+          requestHeaders,
+          { ...noStoreHeaders(), ...(extraHeaders || {}) }
+        )
+      });
     }
 
     if (request.method === 'POST' && pathname === '/api/leads') {

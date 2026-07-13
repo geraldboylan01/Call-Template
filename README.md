@@ -28,6 +28,71 @@ cd worker
 npx wrangler d1 migrations apply planeir-leads --local
 ```
 
+## Consumer Planning Journey (Feature Flagged)
+
+`/plan/` is a separate consumer-facing guided planning experience. It does not
+replace, redirect, or share authentication with the advisor workspace under
+`/app/`. The consumer APIs use their own `/api/consumer/*` namespace, D1
+records, encrypted profile payloads, and opaque session credential.
+
+The production Worker configuration keeps the journey disabled by default.
+Rules-only intake and deterministic module routing can run without an AI key;
+the OpenAI-backed natural-language extractor is a separately controlled flag.
+
+For local setup:
+
+1. Run `npm run generate:consumer-key` and merge the generated
+   `CONSUMER_DATA_ENCRYPTION_KEY` into the existing uncommitted
+   `worker/.dev.vars` file.
+2. Use `worker/.dev.vars.example` as the list of consumer variables. Do not
+   overwrite existing Zoom or email secrets when merging it.
+3. Create an uncommitted local Wrangler config with a separate `CONSUMER_DB`
+   binding as described in `docs/consumer-journey-operations.md`, then replay
+   the adviser and consumer migration streams into separate local D1 databases:
+
+```bash
+cd worker
+npx wrangler d1 migrations apply LEADS_DB --local --config wrangler.consumer.local.generated.toml --persist-to ../.worker-dry-run/local-d1
+npx wrangler d1 migrations apply CONSUMER_DB --local --config wrangler.consumer.local.generated.toml --persist-to ../.worker-dry-run/local-d1
+npx wrangler dev --config wrangler.consumer.local.generated.toml --persist-to ../.worker-dry-run/local-d1
+```
+
+4. Set `CONSUMER_JOURNEY_ENABLED=true` for local testing. Leave
+   `CONSUMER_AI_INTAKE_ENABLED=false` for deterministic rules-only testing.
+5. Run `npm run generate:consumer-invite`, add its secret to `.dev.vars`, and
+   use the generated `#invite=...` fragment while
+   `CONSUMER_PUBLIC_ACCESS_ENABLED=false`. The fragment is removed immediately
+   and retained only in that browser tab.
+6. To test AI-assisted extraction, add `OPENAI_API_KEY` only to
+   `worker/.dev.vars`, then set `CONSUMER_AI_INTAKE_ENABLED=true`. The key must
+   never be placed in `/plan/`, browser storage, source control, or a public
+   environment variable.
+
+Do not enable a production capability until the exact consent manifest,
+privacy URL, AI policy, handoff policy URL/version, retention policy, and edge
+security headers in the operations runbook are approved. Every production flag
+remains `false` in source and the deploy gate enforces physical separation from
+`LEADS_DB`.
+
+The API uses the OpenAI Responses API with strict JSON-schema output. Ordinary
+field extraction defaults to the cost-conscious `gpt-5.6-luna` model at low
+reasoning effort. A separately configurable `gpt-5.6-terra`/medium path is
+reserved for materially ambiguous turns. Models interpret language only;
+all routing safeguards, readiness checks, and financial calculations remain in
+deterministic code. Model calls use bounded output, a timeout, and `store: false`.
+
+The complete flag order, endpoint inventory, retention/deletion behavior,
+encryption-key rotation procedure, incident rollback, and production checklist
+are in `docs/consumer-journey-operations.md`.
+
+Run the consumer contract checks with:
+
+```bash
+npm run check:consumer
+npm run check:consumer-http
+npm run build
+```
+
 ### Video Scene Capture
 
 Open a module in the advisor workspace and choose **Create video scene**. The app resolves the active calculator scenario into a versioned local scene manifest, opens a 1920×1080 browser composition, and reserves the right third for the presenter. The composer lists the client identity, session/module identifiers, and every visible metric; **Start capture sequence** remains disabled until the review is marked complete.

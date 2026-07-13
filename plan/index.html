@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+    <meta
+      name="planeir-consumer-api-base-url"
+      content="https://call-canvas-session-worker.geraldboylan.workers.dev"
+    />
+    <meta
+      name="description"
+      content="A private-beta Planéir journey for exploring your financial goals with clear assumptions and educational analysis."
+    />
+    <title>Planéir | Explore your next financial step</title>
+    <link rel="icon" type="image/png" href="../favicon.png" />
+    <link rel="stylesheet" href="../styles/plan.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#planMain">Skip to your plan</a>
+
+    <div class="plan-backdrop" aria-hidden="true">
+      <span class="plan-orb plan-orb-one"></span>
+      <span class="plan-orb plan-orb-two"></span>
+      <span class="plan-grid"></span>
+    </div>
+
+    <header class="plan-header">
+      <a class="plan-brand" href="../" aria-label="Planéir home">
+        <img
+          src="../assets/brand/planeir-wordmark-light.svg"
+          alt="Planéir"
+          width="1330"
+          height="384"
+          decoding="async"
+        />
+      </a>
+      <div class="plan-header-meta">
+        <span class="beta-badge">Private beta</span>
+        <span id="headerSessionStatus" class="header-session-status" hidden></span>
+        <button id="privacyControlsButton" class="quiet-button" type="button" hidden>
+          Privacy controls
+        </button>
+        <button id="deleteSessionButton" class="quiet-button danger-button" type="button" hidden>
+          Delete my session
+        </button>
+      </div>
+    </header>
+
+    <main id="planMain" class="plan-main" tabindex="-1">
+      <noscript>
+        <section class="unavailable-card">
+          <h1>JavaScript is needed for this private planning journey.</h1>
+          <p>No information has been submitted. Enable JavaScript and reload, or return to Planéir.</p>
+          <a class="secondary-button" href="../">Back to Planéir.ie</a>
+        </section>
+      </noscript>
+      <div id="appRoot" aria-busy="true">
+        <section class="loading-card" aria-label="Loading your Planéir journey">
+          <span class="loading-mark" aria-hidden="true"></span>
+          <p>Preparing your private planning space…</p>
+        </section>
+      </div>
+    </main>
+
+    <footer class="plan-footer">
+      <p>
+        Planéir provides financial education, not regulated financial, tax, legal, mortgage, or
+        product advice. Figures are illustrations based on the information and assumptions shown.
+      </p>
+      <a href="./privacy.html">Consumer journey privacy</a>
+      <a href="../">Back to Planéir.ie</a>
+    </footer>
+
+    <dialog id="deleteSessionDialog" class="plan-dialog" aria-labelledby="deleteDialogTitle">
+      <form method="dialog" class="dialog-card">
+        <p class="section-kicker">Your privacy</p>
+        <h2 id="deleteDialogTitle">Delete this planning session?</h2>
+        <p>
+          This removes your consumer journey, confirmed information, and results from this session.
+          It cannot be undone. It does not affect any separate request you already chose to send to Gerry.
+        </p>
+        <div class="dialog-actions">
+          <button class="secondary-button" value="cancel" type="submit">Keep session</button>
+          <button id="confirmDeleteButton" class="primary-button destructive" value="delete" type="button">
+            Delete permanently
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="privacyControlsDialog" class="plan-dialog" aria-labelledby="privacyControlsTitle">
+      <form method="dialog" class="dialog-card">
+        <p class="section-kicker">Your privacy</p>
+        <h2 id="privacyControlsTitle">AI assistance for this session</h2>
+        <p id="privacyControlsCopy">
+          You can stop AI assistance at any time. Future messages will use fixed questions and rules-only extraction;
+          tested code will continue to perform every calculation.
+        </p>
+        <p id="handoffPrivacyCopy" hidden></p>
+        <p id="privacyControlsError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="closePrivacyControlsButton" class="secondary-button" value="cancel" type="button">Close</button>
+          <button id="withdrawAiConsentButton" class="primary-button destructive" type="button">
+            Stop AI assistance
+          </button>
+          <button id="revokeHandoffButton" class="primary-button destructive" type="button" hidden>
+            Withdraw adviser handoff
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="removeItemDialog" class="plan-dialog" aria-labelledby="removeItemTitle">
+      <form method="dialog" class="dialog-card">
+        <p class="section-kicker">Correct your information</p>
+        <h2 id="removeItemTitle">Remove this item?</h2>
+        <p id="removeItemContext">This removes the complete item from your profile and requires a fresh confirmation and analysis.</p>
+        <p id="removeItemError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancelRemoveItemButton" class="secondary-button" value="cancel" type="button">Keep item</button>
+          <button id="confirmRemoveItemButton" class="primary-button destructive" type="button">Remove item</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="editFieldDialog" class="plan-dialog" aria-labelledby="editFieldTitle">
+      <form id="editFieldForm" class="dialog-card">
+        <p class="section-kicker">Confirm or correct</p>
+        <h2 id="editFieldTitle">Edit this detail</h2>
+        <p id="editFieldContext" class="dialog-context"></p>
+        <label class="field-label" for="editFieldInput">Your value</label>
+        <input id="editFieldInput" class="text-input" autocomplete="off" />
+        <p id="editFieldError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancelEditButton" class="secondary-button" type="button">Cancel</button>
+          <button class="primary-button" type="submit">Save and confirm</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toastRegion" class="toast-region" aria-live="assertive" aria-atomic="true"></div>
+    <script type="module" src="../js/plan/app.js"></script>
+  </body>
+</html>

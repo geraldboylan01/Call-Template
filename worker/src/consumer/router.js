@@ -1,0 +1,305 @@
+import { getAvailableConsumerModules, runStoredConsumerAnalysis } from './analysis.js';
+import { getConsumerConfig, publicConsumerConfig } from './config.js';
+import { constantTimeEqual, createConsumerCredential } from './crypto.js';
+import { describeConversationState, processTurn } from './conversation.js';
+import { ConsumerError, notFound, unavailable } from './errors.js';
+import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
+import { verifyConsumerInvite } from './invite.js';
+import {
+  checkConsumerRateLimit,
+  cleanupExpiredConsumerSessions,
+  confirmProfileRevision,
+  createSessionRecord,
+  deleteSessionData,
+  getCurrentProfile,
+  getHandoff,
+  getLatestAnalysis,
+  getSessionRow,
+  listTurns,
+  recordEvent,
+  rotateConsumerEncryptionBatch,
+  revokeHandoff,
+  saveProfileRevision,
+  toConsumerSession,
+  withdrawAiConsent
+} from './repository.js';
+import { requireConsumerSession } from './session_auth.js';
+import {
+  applyProfilePatch,
+  validateAnalysisBody,
+  validateConfirmBody,
+  validateConsentBody,
+  validateCreateSessionBody,
+  validateHandoffBody,
+  validateProfilePatchBody,
+  validateTurnBody
+} from './validators.js';
+
+const MAX_REQUEST_BODY_BYTES = 100_000;
+
+async function readJson(request, { optional = false } = {}) {
+  const contentLength = Number(request.headers.get('Content-Length') || 0);
+  if (contentLength > MAX_REQUEST_BODY_BYTES) {
+    throw new ConsumerError(413, 'request_too_large', 'Request body is too large.');
+  }
+  const text = await request.text();
+  if (!text && optional) return {};
+  if (!text || new TextEncoder().encode(text).length > MAX_REQUEST_BODY_BYTES) {
+    throw new ConsumerError(text ? 413 : 400, text ? 'request_too_large' : 'invalid_json', text ? 'Request body is too large.' : 'A JSON body is required.');
+  }
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    throw new ConsumerError(400, 'invalid_json', 'Invalid JSON body.');
+  }
+}
+
+function routeMatch(pathname) {
+  if (pathname === '/api/consumer/bootstrap') return { kind: 'bootstrap', methods: ['GET'] };
+  if (pathname === '/api/consumer/sessions') return { kind: 'create', methods: ['POST'] };
+  const match = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
+  if (!match) return null;
+  const [, sessionId, child] = match;
+  if (!child) return { kind: 'session', sessionId, methods: ['GET', 'DELETE'] };
+  const methods = { turns: ['POST'], profile: ['PATCH'], confirm: ['POST'], analyses: ['POST'], handoffs: ['POST', 'DELETE'], consent: ['PATCH'] };
+  return { kind: child, sessionId, methods: methods[child] };
+}
+
+function assertFeatureAvailability(config) {
+  if (!config.requestedJourneyEnabled) throw notFound();
+  if (!config.journeyConfigured) throw unavailable();
+  if (!config.journeyEnabled) throw unavailable();
+}
+
+function assertProcessingAvailability(config) {
+  if (!config.requestedJourneyEnabled || !config.journeyEnabled) {
+    throw new ConsumerError(503, 'consumer_processing_paused', 'Planning updates are temporarily paused. Privacy controls and deletion remain available.');
+  }
+}
+
+async function assertAudienceAccess(request, env, config) {
+  if (config.publicAccessEnabled) return null;
+  const provided = request.headers.get('X-Consumer-Invite')?.trim() || '';
+  if (!config.inviteAccessConfigured) {
+    throw new ConsumerError(503, 'consumer_audience_unavailable', 'This planning journey is not accepting new sessions right now.');
+  }
+  return verifyConsumerInvite(provided, env, config);
+}
+
+async function rateLimit(env, scope, key, windowMs, maximum) {
+  const allowed = await checkConsumerRateLimit(env, scope, key, windowMs, maximum);
+  if (!allowed) throw new ConsumerError(429, 'rate_limited', 'Too many requests. Please try again later.');
+}
+
+function errorPayload(error) {
+  if (error instanceof ConsumerError) {
+    return {
+      status: error.status,
+      body: {
+        error: error.message,
+        code: error.code,
+        ...(error.details === undefined ? {} : { details: error.details })
+      }
+    };
+  }
+  console.error('Consumer route failed', {
+    error: error instanceof Error ? error.message : String(error)
+  });
+  return {
+    status: 500,
+    body: { error: 'The planning request could not be completed.', code: 'consumer_internal_error' }
+  };
+}
+
+export function getConsumerRouteMethods(pathname) {
+  const route = routeMatch(pathname);
+  return route ? `${route.methods.join(',')},OPTIONS` : null;
+}
+
+export { cleanupExpiredConsumerSessions, rotateConsumerEncryptionBatch };
+
+export async function handleConsumerRequest(request, env, dependencies = {}) {
+  const { pathname, respond, clientIp = 'unknown', createPipelineHandoff } = dependencies;
+  const route = routeMatch(pathname);
+  if (!route) return respond({ error: 'Not found.', code: 'not_found' }, 404, 'GET,POST,PATCH,DELETE,OPTIONS');
+  const methods = `${route.methods.join(',')},OPTIONS`;
+  if (!route.methods.includes(request.method)) {
+    return respond({ error: 'Method not allowed.', code: 'method_not_allowed' }, 405, methods, { Allow: route.methods.join(', ') });
+  }
+
+  const baseConfig = getConsumerConfig(env);
+  const availableModules = baseConfig.journeyEnabled ? getAvailableConsumerModules(baseConfig) : [];
+  const config = Object.freeze({
+    ...baseConfig,
+    allowedModules: availableModules.map((module) => module.id)
+  });
+  try {
+    if (route.kind === 'bootstrap') {
+      return respond({
+        ...publicConsumerConfig(config),
+        modules: availableModules
+      }, 200, methods);
+    }
+
+    if (route.kind === 'create') {
+      assertFeatureAvailability(config);
+      await rateLimit(env, 'consumer-create-ip', clientIp, 60 * 60 * 1000, 12);
+      const consent = validateCreateSessionBody(await readJson(request), {
+        manifestId: config.consentManifestId,
+        policyVersion: config.consentPolicyVersion,
+        analysisNoticeId: config.analysisNoticeId,
+        aiNoticeId: config.aiNoticeId,
+        privacyNoticeUrl: config.privacyNoticeUrl
+      });
+      if (consent.aiProcessing && !config.aiEnabled) {
+        throw new ConsumerError(409, 'ai_consent_unavailable', 'Optional AI processing is not available for new sessions right now.');
+      }
+      const proposedCredential = request.headers.get('X-Consumer-Session')?.trim() || '';
+      const credential = await createConsumerCredential(proposedCredential);
+      const existing = proposedCredential ? await getSessionRow(env, credential.id) : null;
+      if (existing) {
+        const matches = constantTimeEqual(existing.credential_hash_b64u, credential.credentialHashB64u);
+        if (!matches || existing.deleted_at || !['active', 'completed'].includes(existing.status)) {
+          throw new ConsumerError(409, 'consumer_creation_conflict', 'Private session setup could not be resumed.');
+        }
+        return respond({
+          session: toConsumerSession(existing),
+          credential: credential.credential,
+          idempotentReplay: true
+        }, 200, methods);
+      }
+      const inviteClaims = await assertAudienceAccess(request, env, config);
+      const created = await createSessionRecord(env, credential, consent, config, inviteClaims);
+      return respond({ session: created.session, credential: credential.credential }, 201, methods);
+    }
+
+    await rateLimit(env, 'consumer-session-ip', clientIp, 60 * 1000, 120);
+    let sessionRow = await requireConsumerSession(request, env, route.sessionId);
+    await rateLimit(env, 'consumer-session-id', sessionRow.id, 60 * 1000, 80);
+
+    if (route.kind === 'session' && request.method === 'DELETE') {
+      await recordEvent(env, sessionRow.id, 'journey_deleted', {}).catch(() => {});
+      const result = await deleteSessionData(env, sessionRow.id, 'deleted');
+      return respond({ ok: true, retainedConsentedHandoff: result.retainedHandoff }, 200, methods);
+    }
+
+    if (route.kind === 'consent') {
+      validateConsentBody(await readJson(request));
+      const result = await withdrawAiConsent(env, sessionRow, config);
+      return respond({ ...result, ai: { mode: 'rules_only', status: 'rules_only' } }, 200, methods);
+    }
+
+    if (route.kind === 'handoffs' && request.method === 'DELETE') {
+      const result = await revokeHandoff(env, sessionRow.id);
+      return respond({
+        ok: true,
+        handoff: result.row ? toPublicHandoff(result.row) : null,
+        downstreamShared: result.downstreamShared,
+        adviserContactRequired: result.downstreamShared
+      }, 200, methods);
+    }
+
+    const consentRefreshRequired = sessionRow.consent_manifest_id !== config.consentManifestId
+      || sessionRow.consent_policy_version !== config.consentPolicyVersion
+      || sessionRow.consent_analysis_notice_id !== config.analysisNoticeId
+      || sessionRow.consent_ai_notice_id !== config.aiNoticeId
+      || sessionRow.consent_privacy_notice_url !== config.privacyNoticeUrl;
+    let profile = await getCurrentProfile(env, sessionRow);
+
+    if (route.kind === 'session' && request.method === 'GET') {
+      const [turns, analysis, handoffRow] = await Promise.all([
+        listTurns(env, sessionRow.id),
+        getLatestAnalysis(env, sessionRow.id, sessionRow.current_profile_revision),
+        getHandoff(env, sessionRow.id)
+      ]);
+      const state = describeConversationState(profile, config);
+      return respond({
+        session: toConsumerSession(sessionRow),
+        profile,
+        turns,
+        analysis,
+        handoff: handoffRow ? toPublicHandoff(handoffRow) : null,
+        bookingUrl: handoffRow && ['linked', 'delivered'].includes(handoffRow.status) ? config.bookingUrl : null,
+        consentRefreshRequired,
+        processingPaused: !config.journeyEnabled,
+        ...state
+      }, 200, methods);
+    }
+
+    // The master switch stops all new processing. Authenticated read access,
+    // deletion, AI withdrawal, and handoff withdrawal remain available as a
+    // narrow data-rights plane during an incident.
+    assertProcessingAvailability(config);
+
+    if (consentRefreshRequired) {
+      throw new ConsumerError(428, 'consent_refresh_required', 'The planning disclosure has changed. Start a new session or delete this saved session.');
+    }
+
+    if (route.kind === 'turns') {
+      await rateLimit(env, 'consumer-turn-session', sessionRow.id, 60 * 1000, 15);
+      const body = validateTurnBody(await readJson(request), config.maxMessageLength);
+      const result = await processTurn({ env, config, sessionRow, profile, ...body });
+      return respond(result, 200, methods);
+    }
+
+    if (route.kind === 'profile') {
+      const body = validateProfilePatchBody(await readJson(request));
+      if (body.expectedRevision !== Number(sessionRow.current_profile_revision)) {
+        throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed in another request. Refresh and try again.');
+      }
+      const nextProfile = applyProfilePatch(profile, body.patch, body.confirmedPaths, 'consumer_edit', body.removePaths);
+      const state = describeConversationState(nextProfile, config);
+      const saved = await saveProfileRevision(env, sessionRow, nextProfile, state.stage);
+      return respond({ ...saved, ...describeConversationState(saved.profile, config) }, 200, methods);
+    }
+
+    if (route.kind === 'confirm') {
+      const body = validateConfirmBody(await readJson(request));
+      if (body.expectedRevision !== Number(sessionRow.current_profile_revision)) {
+        throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed in another request. Refresh and try again.');
+      }
+      if (body.confirmedPaths.length) {
+        const marked = applyProfilePatch(profile, {}, body.confirmedPaths, 'consumer_edit');
+        const saved = await saveProfileRevision(env, sessionRow, marked, 'review');
+        sessionRow = await getSessionRow(env, sessionRow.id);
+        profile = saved.profile;
+      }
+      const confirmed = await confirmProfileRevision(env, sessionRow, profile);
+      return respond({ ...confirmed, ...describeConversationState(confirmed.profile, config) }, 200, methods);
+    }
+
+    if (route.kind === 'analyses') {
+      if (!config.moduleRoutingEnabled) throw new ConsumerError(404, 'module_routing_disabled', 'Consumer analysis is not available.');
+      await rateLimit(env, 'consumer-analysis-session', sessionRow.id, 60 * 60 * 1000, 20);
+      const body = validateAnalysisBody(await readJson(request, { optional: true }), config.allowedModules);
+      const result = await runStoredConsumerAnalysis({ env, config, sessionRow, profile, ...body });
+      return respond({ session: result.session, profile, analysis: result.analysis }, 200, methods);
+    }
+
+    if (route.kind === 'handoffs') {
+      await rateLimit(env, 'consumer-handoff-session', sessionRow.id, 60 * 60 * 1000, 6);
+      const handoff = validateHandoffBody(await readJson(request), {
+        version: config.handoffPolicyVersion,
+        url: config.handoffPolicyUrl
+      });
+      if (handoff.expectedRevision !== undefined
+        && handoff.expectedRevision !== Number(sessionRow.current_profile_revision)) {
+        throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed before the handoff was confirmed. Refresh and review it again.');
+      }
+      const result = await requestAdviserHandoff({
+        env,
+        config,
+        sessionRow,
+        profile,
+        handoff,
+        createPipelineHandoff
+      });
+      return respond({ session: toConsumerSession(await getSessionRow(env, sessionRow.id)), ...result }, 201, methods);
+    }
+
+    throw notFound();
+  } catch (error) {
+    const mapped = errorPayload(error);
+    return respond(mapped.body, mapped.status, methods);
+  }
+}

@@ -1,0 +1,63 @@
+name = "call-canvas-consumer-test-worker"
+main = "src/index.js"
+compatibility_date = "2026-02-20"
+workers_dev = false
+
+[[r2_buckets]]
+binding = "SESSIONS_BUCKET"
+bucket_name = "call-canvas-consumer-test-sessions"
+
+[[d1_databases]]
+binding = "LEADS_DB"
+database_name = "planeir-leads-consumer-test"
+database_id = "00000000-0000-4000-8000-000000000001"
+migrations_dir = "migrations"
+
+[[d1_databases]]
+binding = "CONSUMER_DB"
+database_name = "planeir-consumer-test"
+database_id = "00000000-0000-4000-8000-000000000002"
+migrations_dir = "consumer-migrations"
+
+[triggers]
+crons = ["5 * * * *"]
+
+[vars]
+ALLOWED_ORIGINS = "http://127.0.0.1:5500"
+ALLOW_LOCAL_DEV_ORIGINS = "true"
+CONSUMER_JOURNEY_ENABLED = "true"
+CONSUMER_AI_INTAKE_ENABLED = "false"
+CONSUMER_MODULE_ROUTING_ENABLED = "true"
+CONSUMER_HANDOFF_ENABLED = "true"
+CONSUMER_PUBLIC_ACCESS_ENABLED = "false"
+CONSUMER_ALLOWED_MODULE_IDS = "house_purchase,liquidity_analysis"
+CONSUMER_COHORT = "automated_test"
+CONSUMER_CONSENT_POLICY_VERSION = "consumer-test-v1"
+CONSUMER_CONSENT_MANIFEST_ID = "consumer-test-manifest-v1"
+CONSUMER_ANALYSIS_NOTICE_ID = "analysis-test-v1"
+CONSUMER_AI_NOTICE_ID = "ai-test-v1"
+CONSUMER_PRIVACY_NOTICE_URL = "https://planeir.ie/plan/privacy.html"
+CONSUMER_SESSION_TTL_DAYS = "7"
+CONSUMER_MAX_MESSAGE_LENGTH = "4000"
+CONSUMER_MAX_TURNS_PER_SESSION = "20"
+CONSUMER_INVITE_MAX_TTL_HOURS = "24"
+CONSUMER_HANDOFF_POLICY_VERSION = "handoff-test-v1"
+CONSUMER_HANDOFF_POLICY_URL = "https://planeir.ie/plan/privacy.html#handoff"
+CONSUMER_HANDOFF_RETENTION_DAYS = "7"
+CONSUMER_HANDOFF_RETENTION_POLICY_ID = "handoff-retention-test-v1"
+CONSUMER_BOOKING_URL = "https://planeir.ie/"
+CONSUMER_DATA_ENCRYPTION_KEY_ID = "consumer-test-v1"
+CONSUMER_REKEY_BATCH_SIZE = "25"
+CONSUMER_AI_DEFAULT_MODEL = "gpt-5.6-luna"
+CONSUMER_AI_COMPLEX_MODEL = "gpt-5.6-terra"
+CONSUMER_AI_DEFAULT_REASONING_EFFORT = "low"
+CONSUMER_AI_COMPLEX_REASONING_EFFORT = "medium"
+CONSUMER_AI_PROMPT_VERSION = "consumer-intake-test-v1"
+CONSUMER_AI_DATA_POLICY_ID = "openai-test-policy-v1"
+CONSUMER_AI_REQUEST_TOKEN_RESERVATION = "4000"
+CONSUMER_AI_SESSION_REQUEST_BUDGET = "8"
+CONSUMER_AI_DAILY_REQUEST_BUDGET = "100"
+CONSUMER_AI_COMPLEX_SESSION_REQUEST_BUDGET = "2"
+CONSUMER_AI_COMPLEX_DAILY_REQUEST_BUDGET = "10"
+CONSUMER_AI_SESSION_TOKEN_BUDGET = "16000"
+CONSUMER_AI_DAILY_TOKEN_BUDGET = "100000"

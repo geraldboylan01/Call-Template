@@ -1,0 +1,115 @@
+name: Consumer and advisor regression checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consumer-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Check consumer boundaries and planning contracts
+        run: npm run check:consumer
+
+      - name: Check existing calculation and presentation contracts
+        run: |
+          npm run check:house-purchase
+          npm run check:module-media
+          npm run check:video-summary
+          npm run check:video-scene
+          npm run check:codex-video-brief
+          npm run check:success-animation
+
+      - name: Replay adviser and consumer migrations in separate fresh databases
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import shutil
+          import sqlite3
+          from pathlib import Path
+
+          replay_dir = Path('.worker-dry-run/migration-replay')
+          shutil.rmtree(replay_dir, ignore_errors=True)
+          replay_dir.mkdir(parents=True)
+
+          streams = (
+              (Path('worker/migrations'), replay_dir / 'adviser.sqlite'),
+              (Path('worker/consumer-migrations'), replay_dir / 'consumer.sqlite'),
+          )
+          for migrations_dir, database_path in streams:
+              migrations = sorted(migrations_dir.glob('*.sql'))
+              if not migrations:
+                  raise SystemExit(f'No migrations found in {migrations_dir}')
+              connection = sqlite3.connect(database_path)
+              try:
+                  connection.execute('PRAGMA foreign_keys = ON')
+                  for migration in migrations:
+                      connection.executescript(migration.read_text(encoding='utf-8'))
+                  integrity = connection.execute('PRAGMA integrity_check').fetchone()[0]
+                  foreign_key_errors = connection.execute('PRAGMA foreign_key_check').fetchall()
+                  if integrity != 'ok' or foreign_key_errors:
+                      raise SystemExit(f'Migration replay failed for {migrations_dir}')
+              finally:
+                  connection.close()
+          PY
+
+      - name: Build static Pages artifact
+        run: npm run build
+        env:
+          ASSET_VERSION: ${{ github.sha }}
+
+      - name: Install Wrangler
+        run: npm install --global wrangler@4
+
+      - name: Exercise consumer API against fresh local D1 bindings
+        run: |
+          set -euo pipefail
+          state_dir=".worker-dry-run/consumer-http-ci"
+          rm -rf "$state_dir"
+          mkdir -p "$state_dir"
+          (
+            cd worker
+            wrangler d1 migrations apply LEADS_DB --local --config wrangler.consumer-test.toml --persist-to "../$state_dir"
+            wrangler d1 migrations apply CONSUMER_DB --local --config wrangler.consumer-test.toml --persist-to "../$state_dir"
+            wrangler dev --local --ip 127.0.0.1 --port 8788 --config wrangler.consumer-test.toml --persist-to "../$state_dir" --log-level warn --var CONSUMER_DATA_ENCRYPTION_KEY:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE --var CONSUMER_RATE_LIMIT_HASH_KEY:AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI --var CONSUMER_INVITE_SIGNING_KEY:AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM
+          ) >"$state_dir/wrangler.log" 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8788/api/consumer/bootstrap >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat "$state_dir/wrangler.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          CONSUMER_INVITE_SIGNING_KEY=AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM npm run check:consumer-http
+
+      - name: Bundle Worker without deploying
+        working-directory: ./worker
+        run: wrangler deploy --dry-run --outdir ../.worker-dry-run
