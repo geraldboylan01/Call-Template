@@ -30,7 +30,9 @@ jobs:
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL || 'https://call-canvas-session-worker.geraldboylan.workers.dev' }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
-      RUN_PAID_VOICE_PROVIDER_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_voice_provider_smoke == true && 'true' || 'false' }}
+      # One-shot production proof for the first push after 25a7109. The exact
+      # parent guard prevents later pushes from spending against the provider.
+      RUN_PAID_VOICE_PROVIDER_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_voice_provider_smoke == true && 'true' || github.event_name == 'push' && github.event.before == '25a71096b9dc02d4641f5b9c0d205a6a4c972cbd' && 'true' || 'false' }}
       # Explicit source approval activates only the fixed adviser-test,
       # signed-invite, voice-assisted rules-only mode. The protected override may disable it
       # immediately; it can never activate a source-unapproved mode.
