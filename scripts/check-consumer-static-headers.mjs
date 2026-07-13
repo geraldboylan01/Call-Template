@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
-const MAX_ATTEMPTS = 5;
-const RETRY_DELAY_MS = 3_000;
+// Cloudflare ruleset updates can take longer than a normal HTTP cache refresh to
+// reach every edge. Keep this gate patient enough for a first-time production
+// rule rollout while still failing closed if the reviewed headers never arrive.
+const MAX_ATTEMPTS = 25;
+const RETRY_DELAY_MS = 5_000;
 
 function headerValue(headers, name) {
   if (headers && typeof headers.get === 'function') {
