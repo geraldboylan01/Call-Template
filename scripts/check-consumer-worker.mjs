@@ -16,7 +16,20 @@ import { createInitialProfile } from '../worker/src/consumer/repository.js';
 import { describeConversationState, extractContextBoundPatch } from '../worker/src/consumer/conversation.js';
 import { extractProfilePatchWithAi } from '../worker/src/consumer/ai_provider.js';
 import { getConsumerConfig, publicConsumerConfig } from '../worker/src/consumer/config.js';
-import { verifyConsumerInvite } from '../worker/src/consumer/invite.js';
+import { createConsumerInvite, verifyConsumerInvite } from '../worker/src/consumer/invite.js';
+import {
+  createAdvisorConsumerInvite,
+  isAdvisorRulesOnlyPreviewConfig
+} from '../worker/src/consumer/router.js';
+import { validateConsumerDeploymentBootstrap } from './check-consumer-live-deployment.mjs';
+import { assertBetaBootstrap, buildProposedCredential } from './check-consumer-live-advisor-bridge.mjs';
+import { validatePlanSecurityHeaders } from './check-consumer-static-headers.mjs';
+import {
+  buildConsumerPlanHeaderRule,
+  chooseHeaderRuleMutation,
+  headerRuleMatches,
+  selectPlaneirZone
+} from './upsert-consumer-plan-headers.mjs';
 import {
   applyProfilePatch,
   redactSensitiveIdentifiers,
@@ -79,9 +92,24 @@ assert.match(indexSource, /educationOnlyConsent:\s*true/);
 assert.match(indexSource, /cleanupExpiredConsumerSessions/);
 assert.match(indexSource, /const isLocalWorker = requestUrl\.protocol === 'http:'/);
 assert.match(indexSource, /const allowLocalDev = isLocalWorker/);
+assert.match(indexSource, /\/api\/advisor\/consumer-invite/);
+assert.match(indexSource, /handleAdvisorConsumerInvite/);
+assert.match(indexSource, /requireCsrf:\s*true/);
+assert.match(indexSource, /rateScope:\s*'advisor-consumer-invite'/);
+assert.match(indexSource, /!advisorAccess\.session\?\.authEnabled \|\| !advisorAccess\.session\?\.authenticated/);
 assert.match(routerSource, /X-Consumer-Invite/);
 assert.match(routerSource, /verifyConsumerInvite\(provided, env, config\)/);
 assert.match(routerSource, /createSessionRecord\(env, credential, consent, config, inviteClaims\)/);
+assert.match(routerSource, /createAdvisorConsumerInvite/);
+assert.match(routerSource, /mode:\s*'rules_only'/);
+assert.match(routerSource, /parsed\.origin === 'https:\/\/planeir\.ie'/);
+assert.match(routerSource, /\^\\\/plan/);
+assert.match(routerSource, /isAdvisorRulesOnlyPreviewConfig/);
+assert.match(routerSource, /config\?\.aiRequested !== true/);
+assert.match(routerSource, /config\?\.handoffRequested !== true/);
+assert.match(routerSource, /config\?\.cohort === 'adviser_test'/);
+assert.match(routerSource, /allowedModules === 'house_purchase,liquidity_analysis'/);
+assert.match(routerSource, /config\.cohort === 'adviser_test' && !isAdvisorRulesOnlyPreviewConfig\(config\)/);
 assert.match(routerSource, /withdrawAiConsent/);
 assert.match(routerSource, /deleteSessionData/);
 assert.match(routerSource, /request\.method === 'DELETE'/);
@@ -99,6 +127,7 @@ assert.match(repositorySource, /CONSUMER_RATE_LIMIT_HASH_KEY/);
 assert.match(inviteSource, /HMAC/);
 assert.match(inviteSource, /planeir-consumer/);
 assert.match(inviteSource, /payload\.exp - payload\.iat <= config\.inviteMaxTtlHours/);
+assert.match(inviteSource, /crypto\.subtle\.sign\('HMAC'/);
 assert.match(configSource, /Boolean\(env\.CONSUMER_DB\)/);
 assert.match(configSource, /CONSUMER_AI_DATA_POLICY_ID/);
 assert.match(configSource, /CONSUMER_ANALYSIS_NOTICE_ID/);
@@ -193,6 +222,187 @@ assert.doesNotMatch(deployWorkflowSource, /test -n "\$CONSUMER_DB_ID"/);
 assert.match(deployWorkflowSource, /if \[\[ -n "\$CONSUMER_DB_ID" \]\]; then/);
 assert.match(deployWorkflowSource, /if \(databaseId && !\/\^\[0-9a-f\]/);
 assert.match(deployWorkflowSource, /ALLOW_LOCAL_DEV_ORIGINS must not be enabled/);
+assert.match(deployWorkflowSource, /CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"/);
+assert.match(deployWorkflowSource, /CONSUMER_ADVISER_TEST_BETA_OVERRIDE: \$\{\{ vars\.CONSUMER_ADVISER_TEST_BETA_OVERRIDE \}\}/);
+assert.match(deployWorkflowSource, /A protected override cannot activate a source-unapproved beta/);
+assert.match(deployWorkflowSource, /ADVISOR_SMOKE_PASSWORD is required for the authenticated adviser beta gate/);
+assert.match(deployWorkflowSource, /CONSUMER_ADVISER_INVITE_BETA_ENABLED=\$effective_beta/);
+assert.match(deployWorkflowSource, /CONSUMER_DB_ID is required for the protected beta/);
+assert.match(deployWorkflowSource, /CONSUMER_DB_NAME: "planeir-consumer"/);
+assert.match(deployWorkflowSource, /wrangler d1 list --json/);
+assert.match(deployWorkflowSource, /wrangler d1 create planeir-consumer --jurisdiction eu/);
+assert.doesNotMatch(deployWorkflowSource, /wrangler d1 create planeir-consumer --location/);
+assert.match(deployWorkflowSource, /jurisdiction !== "eu"/);
+assert.match(deployWorkflowSource, /must have the immutable EU jurisdiction before beta activation/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_CONSENT_MANIFEST_ID: "consumer-adviser-test-manifest-v1"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_ANALYSIS_NOTICE_ID: "analysis-adviser-test-v1"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_AI_NOTICE_ID: "ai-adviser-test-v1"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_PRIVACY_NOTICE_URL: "https:\/\/planeir\.ie\/plan\/privacy\.html"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_SESSION_TTL_DAYS: "7"/);
+assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_COHORT', 'adviser_test'\)/);
+assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_INVITE_MAX_TTL_HOURS', '24'\)/);
+assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true'\)/);
+assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true'\)/);
+assert.match(deployWorkflowSource, /CONSUMER_AI_INTAKE_ENABLED: 'false'/);
+assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: 'false'/);
+assert.match(deployWorkflowSource, /CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'/);
+assert.match(deployWorkflowSource, /wrangler secret list --config wrangler\.production\.generated\.toml --format json/);
+assert.match(deployWorkflowSource, /randomBytes\(32\)\.toString\('base64url'\)/);
+assert.match(deployWorkflowSource, /wrangler secret put "\$secret_name"/);
+assert.match(deployWorkflowSource, /upsert-consumer-plan-headers\.mjs/);
+assert.match(deployWorkflowSource, /check-consumer-live-deployment\.mjs/);
+assert.match(deployWorkflowSource, /check-consumer-live-advisor-bridge\.mjs/);
+assert.match(deployWorkflowSource, /check-consumer-static-headers\.mjs/);
+assert.doesNotMatch(deployWorkflowSource, /wrangler secret put OPENAI_API_KEY/);
+assert.doesNotMatch(deployWorkflowSource, /vars\.CONSUMER_(?:AI_INTAKE|HANDOFF|PUBLIC_ACCESS)_ENABLED/);
+
+const requiredPlanHeaders = new Headers({
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Strict-Transport-Security': 'max-age=31556952'
+});
+assert.equal(validatePlanSecurityHeaders(requiredPlanHeaders, {
+  workerOrigin: 'https://call-canvas-session-worker.geraldboylan.workers.dev'
+}), true);
+assert.throws(() => validatePlanSecurityHeaders(new Headers({
+  ...Object.fromEntries(requiredPlanHeaders.entries()),
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'"
+}), {
+  workerOrigin: 'https://call-canvas-session-worker.geraldboylan.workers.dev'
+}));
+const missingFrameProtectionHeaders = new Headers(requiredPlanHeaders);
+missingFrameProtectionHeaders.delete('X-Frame-Options');
+assert.throws(() => validatePlanSecurityHeaders(missingFrameProtectionHeaders, {
+  workerOrigin: 'https://call-canvas-session-worker.geraldboylan.workers.dev'
+}));
+
+const desiredHeaderRule = buildConsumerPlanHeaderRule('https://call-canvas-session-worker.geraldboylan.workers.dev');
+assert.equal(desiredHeaderRule.ref, 'planeir_consumer_plan_security_headers_v1');
+assert.equal(desiredHeaderRule.action, 'rewrite');
+assert.equal(desiredHeaderRule.enabled, true);
+assert.equal(desiredHeaderRule.action_parameters.headers['x-frame-options'].value, 'DENY');
+assert.equal(headerRuleMatches(desiredHeaderRule, desiredHeaderRule), true);
+const reorderedHeaderRule = {
+  ref: desiredHeaderRule.ref,
+  description: desiredHeaderRule.description,
+  expression: desiredHeaderRule.expression,
+  action_parameters: {
+    headers: Object.fromEntries(Object.entries(desiredHeaderRule.action_parameters.headers)
+      .reverse()
+      .map(([name, operation]) => [name.toUpperCase(), operation]))
+  },
+  action: desiredHeaderRule.action
+};
+assert.equal(
+  headerRuleMatches(reorderedHeaderRule, desiredHeaderRule),
+  true,
+  'Cloudflare header-name casing, object-key order, and an omitted default-enabled value must not force a rewrite.'
+);
+assert.equal(chooseHeaderRuleMutation(null, desiredHeaderRule).kind, 'create-entrypoint');
+const unrelatedHeaderRule = {
+  id: 'a'.repeat(32),
+  ref: 'unrelated_rule',
+  action: 'rewrite'
+};
+const existingHeaderRuleset = {
+  id: 'b'.repeat(32),
+  rules: [unrelatedHeaderRule]
+};
+const appendMutation = chooseHeaderRuleMutation(existingHeaderRuleset, desiredHeaderRule);
+assert.equal(appendMutation.kind, 'append-rule');
+assert.deepEqual(existingHeaderRuleset.rules, [unrelatedHeaderRule], 'Header-rule selection must not mutate unrelated rules.');
+const updateMutation = chooseHeaderRuleMutation({
+  id: 'b'.repeat(32),
+  rules: [unrelatedHeaderRule, { ...desiredHeaderRule, id: 'c'.repeat(32) }]
+}, desiredHeaderRule);
+assert.equal(updateMutation.kind, 'update-rule');
+assert.equal(updateMutation.ruleId, 'c'.repeat(32));
+assert.throws(() => chooseHeaderRuleMutation({
+  id: 'b'.repeat(32),
+  rules: [
+    { ...desiredHeaderRule, id: 'c'.repeat(32) },
+    { ...desiredHeaderRule, id: 'd'.repeat(32) }
+  ]
+}, desiredHeaderRule));
+assert.equal(selectPlaneirZone([{
+  id: 'e'.repeat(32),
+  name: 'planeir.ie',
+  status: 'active',
+  account: { id: 'f'.repeat(32) }
+}], {
+  accountId: 'f'.repeat(32),
+  zoneName: 'planeir.ie'
+}).id, 'e'.repeat(32));
+
+const dormantDeploymentBootstrap = {
+  flags: {
+    consumerJourneyEnabled: false,
+    consumerAiIntakeEnabled: false,
+    consumerModuleRoutingEnabled: false,
+    consumerHumanHandoffEnabled: false
+  },
+  access: { publicAccessEnabled: false, inviteRequired: true },
+  allowedModules: [],
+  cohort: 'internal',
+  ai: { configured: false, noticeId: null },
+  handoff: { enabled: false },
+  modules: []
+};
+assert.equal(validateConsumerDeploymentBootstrap(dormantDeploymentBootstrap, { mode: 'dormant' }), true);
+
+const betaDeploymentPolicy = {
+  consentPolicyVersion: 'consumer-adviser-test-v1',
+  consentManifestId: 'consumer-adviser-test-manifest-v1',
+  analysisNoticeId: 'analysis-adviser-test-v1',
+  aiNoticeId: 'ai-adviser-test-v1',
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html',
+  sessionTtlDays: 7
+};
+const betaDeploymentBootstrap = {
+  flags: {
+    consumerJourneyEnabled: true,
+    consumerAiIntakeEnabled: false,
+    consumerModuleRoutingEnabled: true,
+    consumerHumanHandoffEnabled: false
+  },
+  access: { publicAccessEnabled: false, inviteRequired: true },
+  allowedModules: ['house_purchase', 'liquidity_analysis'],
+  cohort: 'adviser_test',
+  consentPolicyVersion: betaDeploymentPolicy.consentPolicyVersion,
+  consentManifestId: betaDeploymentPolicy.consentManifestId,
+  analysisNoticeId: betaDeploymentPolicy.analysisNoticeId,
+  privacyNoticeUrl: betaDeploymentPolicy.privacyNoticeUrl,
+  limits: { sessionTtlDays: betaDeploymentPolicy.sessionTtlDays },
+  ai: { configured: false, noticeId: betaDeploymentPolicy.aiNoticeId },
+  handoff: { enabled: false },
+  modules: [{ id: 'house_purchase' }, { id: 'liquidity_analysis' }]
+};
+assert.equal(validateConsumerDeploymentBootstrap(betaDeploymentBootstrap, {
+  mode: 'adviser-invite-rules-only',
+  expectedPolicy: betaDeploymentPolicy
+}), true);
+assert.doesNotThrow(() => assertBetaBootstrap(betaDeploymentBootstrap));
+assert.match(buildProposedCredential(), /^cs_[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{43}$/);
+for (const unsafePayload of [
+  { ...betaDeploymentBootstrap, access: { publicAccessEnabled: true, inviteRequired: false } },
+  {
+    ...betaDeploymentBootstrap,
+    flags: { ...betaDeploymentBootstrap.flags, consumerAiIntakeEnabled: true },
+    ai: { ...betaDeploymentBootstrap.ai, configured: true }
+  },
+  { ...betaDeploymentBootstrap, cohort: 'public' },
+  { ...betaDeploymentBootstrap, allowedModules: [...betaDeploymentBootstrap.allowedModules, 'retirement'] }
+]) {
+  assert.throws(() => validateConsumerDeploymentBootstrap(unsafePayload, {
+    mode: 'adviser-invite-rules-only',
+    expectedPolicy: betaDeploymentPolicy
+  }));
+  assert.throws(() => assertBetaBootstrap(unsafePayload));
+}
 
 const disabledConfig = getConsumerConfig({});
 assert.equal(disabledConfig.journeyEnabled, false);
@@ -469,6 +679,97 @@ assert.throws(() => validateHandoffBody({
 
 const inviteKeyBytes = crypto.getRandomValues(new Uint8Array(32));
 const inviteSigningKey = Buffer.from(inviteKeyBytes).toString('base64url');
+const issuedInvite = await createConsumerInvite({
+  CONSUMER_INVITE_SIGNING_KEY: inviteSigningKey
+}, {
+  cohort: 'internal',
+  inviteMaxTtlHours: 24
+}, {
+  now: Date.UTC(2026, 6, 13, 12, 0, 0),
+  ttlHours: 4,
+  maxUses: 1
+});
+assert.match(issuedInvite.token, /^ci1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+assert.equal(issuedInvite.cohort, 'internal');
+assert.equal(issuedInvite.maxUses, 1);
+assert.equal(issuedInvite.issuedAt, '2026-07-13T12:00:00.000Z');
+assert.equal(issuedInvite.expiresAt, '2026-07-13T16:00:00.000Z');
+const issuedClaims = await verifyConsumerInvite(issuedInvite.token, {
+  CONSUMER_INVITE_SIGNING_KEY: inviteSigningKey
+}, {
+  cohort: 'internal',
+  inviteMaxTtlHours: 24
+}, Date.UTC(2026, 6, 13, 12, 0, 0));
+assert.equal(issuedClaims.jti, issuedInvite.jti);
+assert.equal(issuedClaims.maxUses, 1);
+
+const previewEnv = {
+  CONSUMER_JOURNEY_ENABLED: 'true',
+  CONSUMER_MODULE_ROUTING_ENABLED: 'true',
+  CONSUMER_PUBLIC_ACCESS_ENABLED: 'false',
+  CONSUMER_DB: {},
+  CONSUMER_DATA_ENCRYPTION_KEY: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'),
+  CONSUMER_RATE_LIMIT_HASH_KEY: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'),
+  CONSUMER_INVITE_SIGNING_KEY: inviteSigningKey,
+  CONSUMER_CONSENT_POLICY_VERSION: 'consumer-preview-v1',
+  CONSUMER_CONSENT_MANIFEST_ID: 'consumer-preview-manifest-v1',
+  CONSUMER_ANALYSIS_NOTICE_ID: 'analysis-preview-v1',
+  CONSUMER_AI_NOTICE_ID: 'ai-preview-v1',
+  CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html',
+  CONSUMER_SESSION_TTL_DAYS: '7',
+  CONSUMER_INVITE_MAX_TTL_HOURS: '24',
+  CONSUMER_ALLOWED_MODULE_IDS: 'house_purchase,liquidity_analysis',
+  CONSUMER_COHORT: 'adviser_test',
+  CONSUMER_PLAN_BASE_URL: 'https://planeir.ie/plan/'
+};
+assert.equal(isAdvisorRulesOnlyPreviewConfig(getConsumerConfig(previewEnv)), true);
+assert.equal(isAdvisorRulesOnlyPreviewConfig(getConsumerConfig({
+  ...previewEnv,
+  CONSUMER_AI_INTAKE_ENABLED: 'true'
+})), false);
+assert.equal(isAdvisorRulesOnlyPreviewConfig(getConsumerConfig({
+  ...previewEnv,
+  CONSUMER_HANDOFF_ENABLED: 'true'
+})), false);
+const previewInvite = await createAdvisorConsumerInvite(previewEnv, {
+  now: Date.UTC(2026, 6, 13, 12, 0, 0)
+});
+assert.deepEqual(Object.keys(previewInvite), ['ok', 'url', 'expiresAt', 'maxUses', 'mode']);
+assert.equal(previewInvite.ok, true);
+assert.equal(previewInvite.expiresAt, '2026-07-13T16:00:00.000Z');
+assert.equal(previewInvite.maxUses, 1);
+assert.equal(previewInvite.mode, 'rules_only');
+const previewUrl = new URL(previewInvite.url);
+assert.equal(previewUrl.origin, 'https://planeir.ie');
+assert.equal(previewUrl.pathname, '/plan/');
+assert.equal(previewUrl.search, '');
+const previewToken = new URLSearchParams(previewUrl.hash.slice(1)).get('invite');
+assert.ok(previewToken);
+await assert.doesNotReject(() => verifyConsumerInvite(previewToken, previewEnv, {
+  cohort: 'adviser_test',
+  inviteMaxTtlHours: 24
+}, Date.UTC(2026, 6, 13, 12, 0, 0)));
+await assert.rejects(() => createAdvisorConsumerInvite({
+  ...previewEnv,
+  CONSUMER_JOURNEY_ENABLED: 'false'
+}), (error) => error.status === 503 && error.code === 'consumer_adviser_preview_unavailable');
+await assert.rejects(() => createAdvisorConsumerInvite({
+  ...previewEnv,
+  CONSUMER_AI_INTAKE_ENABLED: 'true'
+}), (error) => error.status === 503 && error.code === 'consumer_adviser_preview_unavailable');
+await assert.rejects(() => createAdvisorConsumerInvite({
+  ...previewEnv,
+  CONSUMER_HANDOFF_ENABLED: 'true'
+}), (error) => error.status === 503 && error.code === 'consumer_adviser_preview_unavailable');
+await assert.rejects(() => createAdvisorConsumerInvite({
+  ...previewEnv,
+  CONSUMER_PLAN_BASE_URL: 'https://planeir.ie:8443/plan/'
+}), (error) => error.status === 503 && error.code === 'consumer_adviser_preview_unavailable');
+await assert.rejects(() => createAdvisorConsumerInvite({
+  ...previewEnv,
+  CONSUMER_PLAN_BASE_URL: 'javascript:alert(1)'
+}), (error) => error.status === 503 && error.code === 'consumer_adviser_preview_unavailable');
+
 const nowSeconds = Math.floor(Date.now() / 1_000);
 const invitePayload = Buffer.from(JSON.stringify({
   v: 1,
@@ -500,7 +801,8 @@ const inviteClaims = await verifyConsumerInvite(signedInvite, {
 });
 assert.equal(inviteClaims.maxUses, 1);
 assert.equal(inviteClaims.cohort, 'internal');
-await assert.rejects(() => verifyConsumerInvite(`${signedInvite.slice(0, -1)}x`, {
+const tamperedInvite = `${signedInvite.slice(0, -1)}${signedInvite.endsWith('x') ? 'y' : 'x'}`;
+await assert.rejects(() => verifyConsumerInvite(tamperedInvite, {
   CONSUMER_INVITE_SIGNING_KEY: inviteSigningKey
 }, {
   cohort: 'internal',

@@ -243,6 +243,8 @@ let mobileModuleSheetTouchStartY = null;
 let mobileModuleSheetTouchDeltaY = 0;
 let advisorAuthWaiters = [];
 let advisorAuthEventsBound = false;
+let consumerPlannerLaunchInFlight = false;
+let pendingConsumerPlannerUrl = '';
 
 function setAdvisorAuthVisible(visible) {
   if (!advisorAuthLayer) {
@@ -284,6 +286,16 @@ function updateAdvisorAuthChrome() {
   if (advisorLogoutButton) {
     advisorLogoutButton.classList.toggle('is-hidden', !(advisorAuthState.enabled && advisorAuthState.authenticated));
   }
+
+  if (ui.consumerPlannerTestButton) {
+    const canLaunchConsumerPlanner = !runtimeConfig.readOnly
+      && advisorAuthState.enabled
+      && advisorAuthState.authenticated;
+    ui.consumerPlannerTestButton.classList.toggle('is-hidden', !canLaunchConsumerPlanner);
+    ui.consumerPlannerTestButton.toggleAttribute('aria-hidden', !canLaunchConsumerPlanner);
+  }
+
+  syncMobileActionState();
 }
 
 function buildAdvisorRequestInit(init = {}, options = {}) {
@@ -4011,6 +4023,7 @@ function syncMobileActionState() {
   syncButton(ui.mobileActionNewModuleButton, ui.newModuleButton);
   syncButton(ui.mobileActionZoomButton, ui.zoomButton);
   syncButton(ui.mobileOverflowNewModuleButton, ui.newModuleButton);
+  syncButton(ui.mobileOverflowConsumerPlannerTestButton, ui.consumerPlannerTestButton);
   syncButton(ui.mobileOverflowCodexVideoBriefButton, ui.codexVideoBriefButton);
   syncButton(ui.mobileOverflowVideoSummaryButton, ui.videoSummaryButton);
   syncButton(ui.mobileOverflowPublishButton, ui.publishSessionButton);
@@ -4029,6 +4042,7 @@ function syncMobileActionState() {
 
   const hasOverflowAction = Boolean(
     (ui.mobileOverflowNewModuleButton && !ui.mobileOverflowNewModuleButton.classList.contains('is-hidden'))
+    || (ui.mobileOverflowConsumerPlannerTestButton && !ui.mobileOverflowConsumerPlannerTestButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowCodexVideoBriefButton && !ui.mobileOverflowCodexVideoBriefButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowVideoSummaryButton && !ui.mobileOverflowVideoSummaryButton.classList.contains('is-hidden'))
     || (ui.mobileOverflowPublishButton && !ui.mobileOverflowPublishButton.classList.contains('is-hidden'))
@@ -6239,7 +6253,7 @@ function applyRuntimeChrome() {
       ui.clientNameInput.readOnly = true;
       ui.clientNameInput.setAttribute('aria-readonly', 'true');
     }
-    [ui.newCallButton, ui.openClientAccessButton, ui.newModuleButton, ui.resetButton, ui.codexVideoBriefButton, ui.videoSummaryButton].forEach((element) => {
+    [ui.newCallButton, ui.openClientAccessButton, ui.consumerPlannerTestButton, ui.newModuleButton, ui.resetButton, ui.codexVideoBriefButton, ui.videoSummaryButton].forEach((element) => {
       if (!element) {
         return;
       }
@@ -10486,6 +10500,120 @@ async function openClientAccessManager(options = {}) {
   window.location.href = new URL('./clients.html', window.location.href).toString();
 }
 
+function readConsumerPlannerLaunchError(payload, status) {
+  const error = payload?.error;
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
+  }
+  if (error && typeof error === 'object' && typeof error.message === 'string' && error.message.trim()) {
+    return error.message.trim();
+  }
+  if (status === 503) {
+    return 'The private planner is not activated yet. Complete the protected beta setup first.';
+  }
+  return 'The private planner test could not be opened. Please try again.';
+}
+
+function validateConsumerPlannerLaunchUrl(value) {
+  const target = new URL(String(value || ''), window.location.origin);
+  const currentHost = window.location.hostname.toLowerCase();
+  const targetHost = target.hostname.toLowerCase();
+  const localTarget = ['127.0.0.1', 'localhost'].includes(currentHost)
+    && ['127.0.0.1', 'localhost'].includes(targetHost)
+    && target.protocol === 'http:';
+  const planeirTarget = ['https://planeir.ie', 'https://www.planeir.ie'].includes(target.origin);
+  const fragment = new URLSearchParams(target.hash.replace(/^#/, ''));
+  const invite = fragment.get('invite') || '';
+  if ((!planeirTarget && !localTarget)
+    || !/^\/plan\/?$/.test(target.pathname)
+    || target.username
+    || target.password
+    || target.search
+    || [...fragment.keys()].length !== 1
+    || !/^ci1\.[A-Za-z0-9_-]{20,900}\.[A-Za-z0-9_-]{43}$/.test(invite)) {
+    throw new Error('The planner returned an invalid private test link.');
+  }
+  return target.toString();
+}
+
+async function openConsumerPlannerTest({ closeOverflow = false } = {}) {
+  if (consumerPlannerLaunchInFlight) {
+    return;
+  }
+  consumerPlannerLaunchInFlight = true;
+  let plannerWindow = null;
+
+  try {
+    if (ui.consumerPlannerTestButton) {
+      ui.consumerPlannerTestButton.disabled = true;
+    }
+    syncMobileActionState();
+
+    if (pendingConsumerPlannerUrl) {
+      if (closeOverflow) {
+        closeMobileOverflowSheet({ restoreFocus: false });
+      }
+      const readyUrl = pendingConsumerPlannerUrl;
+      plannerWindow = window.open(readyUrl, '_blank');
+      if (plannerWindow) {
+        pendingConsumerPlannerUrl = '';
+        plannerWindow.opener = null;
+        showToast('Private planner opened in a new tab.', 'success');
+      } else {
+        showToast('Allow pop-ups for Planéir, then select Test Planner again.', 'error');
+      }
+      return;
+    }
+
+    plannerWindow = window.open('about:blank', '_blank');
+    if (plannerWindow) {
+      plannerWindow.opener = null;
+    }
+
+    await ensureAdvisorAuthenticated('Sign in to open the private consumer planner test.');
+    if (closeOverflow) {
+      closeMobileOverflowSheet({ restoreFocus: false });
+    }
+
+    if (!WORKER_BASE_URL) {
+      throw new Error('The planner service is not configured for this environment.');
+    }
+
+    const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/advisor/consumer-invite`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})
+    }, {
+      includeCsrf: true,
+      authPrompt: 'Sign in to open the private consumer planner test.'
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(readConsumerPlannerLaunchError(payload, response.status));
+    }
+    const privateUrl = validateConsumerPlannerLaunchUrl(payload?.url);
+    if (plannerWindow && !plannerWindow.closed) {
+      plannerWindow.location.replace(privateUrl);
+    } else {
+      pendingConsumerPlannerUrl = privateUrl;
+      showToast('Your private invite is ready. Select Test Planner again to open it.', 'success');
+    }
+  } catch (error) {
+    if (plannerWindow && !plannerWindow.closed) {
+      plannerWindow.close();
+    }
+    showToast(error instanceof Error ? error.message : 'The private planner test could not be opened.', 'error');
+  } finally {
+    consumerPlannerLaunchInFlight = false;
+    if (ui.consumerPlannerTestButton) {
+      ui.consumerPlannerTestButton.disabled = false;
+    }
+    syncMobileActionState();
+  }
+}
+
 async function openPublishedLinksManager(options = {}) {
   const { closePublish = false } = options;
   await ensureAdvisorAuthenticated('Sign in to open Published Links.');
@@ -10532,6 +10660,12 @@ function bindEvents() {
   if (!runtimeConfig.readOnly && ui.codexVideoBriefButton) {
     ui.codexVideoBriefButton.addEventListener('click', async () => {
       await openCodexVideoBriefReview();
+    });
+  }
+
+  if (!runtimeConfig.readOnly && ui.consumerPlannerTestButton) {
+    ui.consumerPlannerTestButton.addEventListener('click', async () => {
+      await openConsumerPlannerTest();
     });
   }
 
@@ -10790,6 +10924,12 @@ function bindEvents() {
     ui.mobileOverflowCodexVideoBriefButton.addEventListener('click', async () => {
       closeMobileOverflowSheet({ restoreFocus: false });
       await openCodexVideoBriefReview();
+    });
+  }
+
+  if (ui.mobileOverflowConsumerPlannerTestButton) {
+    ui.mobileOverflowConsumerPlannerTestButton.addEventListener('click', async () => {
+      await openConsumerPlannerTest({ closeOverflow: true });
     });
   }
 

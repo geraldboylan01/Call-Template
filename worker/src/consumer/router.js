@@ -4,7 +4,7 @@ import { constantTimeEqual, createConsumerCredential } from './crypto.js';
 import { describeConversationState, processTurn } from './conversation.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
 import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
-import { verifyConsumerInvite } from './invite.js';
+import { createConsumerInvite, verifyConsumerInvite } from './invite.js';
 import {
   checkConsumerRateLimit,
   cleanupExpiredConsumerSessions,
@@ -36,6 +36,68 @@ import {
 } from './validators.js';
 
 const MAX_REQUEST_BODY_BYTES = 100_000;
+const DEFAULT_CONSUMER_PLAN_BASE_URL = 'https://planeir.ie/plan/';
+
+function consumerPlanBaseUrl(env) {
+  const configured = typeof env?.CONSUMER_PLAN_BASE_URL === 'string'
+    ? env.CONSUMER_PLAN_BASE_URL.trim()
+    : '';
+  let parsed;
+  try {
+    parsed = new URL(configured || DEFAULT_CONSUMER_PLAN_BASE_URL);
+  } catch (_error) {
+    throw unavailable('The adviser planning preview is not available right now.', 'consumer_adviser_preview_unavailable');
+  }
+  const localHttp = parsed.protocol === 'http:'
+    && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+  const planeirHttps = parsed.origin === 'https://planeir.ie'
+    || parsed.origin === 'https://www.planeir.ie';
+  if ((!planeirHttps && !localHttp)
+    || !/^\/plan\/?$/.test(parsed.pathname)
+    || parsed.username
+    || parsed.password) {
+    throw unavailable('The adviser planning preview is not available right now.', 'consumer_adviser_preview_unavailable');
+  }
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed;
+}
+
+export function isAdvisorRulesOnlyPreviewConfig(config) {
+  const allowedModules = [...(config?.allowedModules || [])].sort().join(',');
+  return config?.journeyEnabled === true
+    && config?.moduleRoutingEnabled === true
+    && config?.aiRequested !== true
+    && config?.aiEnabled !== true
+    && config?.handoffRequested !== true
+    && config?.handoffEnabled !== true
+    && config?.publicAccessEnabled !== true
+    && config?.inviteAccessConfigured === true
+    && config?.cohort === 'adviser_test'
+    && allowedModules === 'house_purchase,liquidity_analysis';
+}
+
+export async function createAdvisorConsumerInvite(env, options = {}) {
+  const config = getConsumerConfig(env);
+  if (!isAdvisorRulesOnlyPreviewConfig(config)) {
+    throw unavailable('The adviser planning preview is not available right now.', 'consumer_adviser_preview_unavailable');
+  }
+
+  const invite = await createConsumerInvite(env, config, {
+    now: options.now,
+    ttlHours: Math.min(4, config.inviteMaxTtlHours),
+    maxUses: 1
+  });
+  const url = consumerPlanBaseUrl(env);
+  url.hash = new URLSearchParams({ invite: invite.token }).toString();
+  return Object.freeze({
+    ok: true,
+    url: url.toString(),
+    expiresAt: invite.expiresAt,
+    maxUses: 1,
+    mode: 'rules_only'
+  });
+}
 
 async function readJson(request, { optional = false } = {}) {
   const contentLength = Number(request.headers.get('Content-Length') || 0);
@@ -78,6 +140,9 @@ function assertProcessingAvailability(config) {
 }
 
 async function assertAudienceAccess(request, env, config) {
+  if (config.cohort === 'adviser_test' && !isAdvisorRulesOnlyPreviewConfig(config)) {
+    throw new ConsumerError(503, 'consumer_audience_unavailable', 'This planning journey is not accepting new sessions right now.');
+  }
   if (config.publicAccessEnabled) return null;
   const provided = request.headers.get('X-Consumer-Invite')?.trim() || '';
   if (!config.inviteAccessConfigured) {

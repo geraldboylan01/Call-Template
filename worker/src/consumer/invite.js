@@ -1,5 +1,5 @@
 import { ConsumerError } from './errors.js';
-import { fromBase64Url } from './crypto.js';
+import { fromBase64Url, toBase64Url } from './crypto.js';
 
 const TOKEN_PREFIX = 'ci1';
 const TOKEN_AUDIENCE = 'planeir-consumer';
@@ -18,7 +18,7 @@ export function validInviteSigningKey(value) {
   }
 }
 
-async function importSigningKey(value) {
+async function importSigningKey(value, keyUsages = ['verify']) {
   if (!validInviteSigningKey(value)) {
     throw new ConsumerError(503, 'consumer_audience_unavailable', 'This planning journey is not accepting new sessions right now.');
   }
@@ -27,8 +27,58 @@ async function importSigningKey(value) {
     fromBase64Url(cleanText(value), 128),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['verify']
+    keyUsages
   );
+}
+
+export async function createConsumerInvite(env, config, options = {}) {
+  const now = Number.isFinite(options.now) ? Number(options.now) : Date.now();
+  const nowSeconds = Math.floor(now / 1_000);
+  const maximumTtlHours = Number(config?.inviteMaxTtlHours);
+  const ttlHours = options.ttlHours === undefined
+    ? Math.min(4, maximumTtlHours)
+    : Number(options.ttlHours);
+  const maxUses = options.maxUses === undefined ? 1 : Number(options.maxUses);
+  const cohort = cleanText(config?.cohort);
+
+  if (!Number.isSafeInteger(nowSeconds)
+    || !Number.isSafeInteger(maximumTtlHours)
+    || maximumTtlHours < 1
+    || maximumTtlHours > 720
+    || !Number.isSafeInteger(ttlHours)
+    || ttlHours < 1
+    || ttlHours > maximumTtlHours
+    || !Number.isSafeInteger(maxUses)
+    || maxUses < 1
+    || maxUses > 50
+    || !/^[A-Za-z0-9._:-]{1,80}$/.test(cohort)) {
+    throw new ConsumerError(503, 'consumer_audience_unavailable', 'This planning journey is not accepting new sessions right now.');
+  }
+
+  const issuedAt = nowSeconds;
+  const expiresAt = issuedAt + ttlHours * 60 * 60;
+  const payload = {
+    v: 1,
+    aud: TOKEN_AUDIENCE,
+    jti: toBase64Url(crypto.getRandomValues(new Uint8Array(18))),
+    cohort,
+    iat: issuedAt,
+    exp: expiresAt,
+    maxUses
+  };
+  const payloadPart = toBase64Url(encoder.encode(JSON.stringify(payload)));
+  const signedValue = `${TOKEN_PREFIX}.${payloadPart}`;
+  const key = await importSigningKey(env?.CONSUMER_INVITE_SIGNING_KEY, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(signedValue));
+
+  return Object.freeze({
+    token: `${signedValue}.${toBase64Url(new Uint8Array(signature))}`,
+    jti: payload.jti,
+    cohort,
+    maxUses,
+    issuedAt: new Date(issuedAt * 1_000).toISOString(),
+    expiresAt: new Date(expiresAt * 1_000).toISOString()
+  });
 }
 
 function parsePayload(payloadPart) {
@@ -100,4 +150,3 @@ export async function verifyConsumerInvite(token, env, config, now = Date.now())
     expiresAt: new Date(payload.exp * 1_000).toISOString()
   });
 }
-

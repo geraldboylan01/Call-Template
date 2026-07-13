@@ -1,4 +1,5 @@
 import { getAiConsent, getConsumerInvite } from './store.js';
+import { isSubscriptionAssistCohort } from './subscription_assist.js';
 
 const STAGE_GROUPS = [
   {
@@ -446,6 +447,26 @@ function createConversationView(currentState) {
   send.disabled = currentState.busy;
   append(row, textarea, send);
   append(composer, label, row, element('p', 'micro-copy', 'Avoid sharing PPS numbers, bank login details, full account numbers, or identity documents. Press Ctrl/Command + Enter to send.'));
+  if (isSubscriptionAssistCohort(currentState.bootstrap?.cohort)) {
+    const assist = element('aside', 'subscription-assist');
+    append(
+      assist,
+      element('strong', '', 'Use your Codex or ChatGPT subscription (manual)'),
+      element('p', '', 'Write a draft above, then copy a bounded prompt. Nothing is sent automatically: review what is copied, paste it into your own Codex or ChatGPT task, and paste the rewritten answer back here.'),
+      element('p', 'micro-copy', 'Planéir access credentials are removed from the copied text. Your personal OpenAI workspace has its own privacy and retention settings.')
+    );
+    const actions = element('div', 'subscription-assist-actions');
+    const copy = element('button', 'secondary-button', 'Copy prompt for Codex');
+    copy.type = 'button';
+    copy.dataset.action = 'copy-subscription-prompt';
+    const open = element('a', 'quiet-button', 'Open ChatGPT');
+    open.href = 'https://chatgpt.com/';
+    open.target = '_blank';
+    open.rel = 'noopener noreferrer';
+    append(actions, copy, open);
+    assist.append(actions);
+    composer.append(assist);
+  }
   section.append(composer);
   return section;
 }

@@ -876,6 +876,51 @@ select:focus-visible,
   min-width: 116px;
 }
 
+.subscription-assist {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.2rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(223, 177, 98, 0.28);
+  border-radius: var(--plan-radius-sm);
+  color: var(--plan-muted);
+  background: rgba(223, 177, 98, 0.07);
+}
+
+.subscription-assist strong {
+  color: var(--plan-text);
+  font-size: 0.82rem;
+}
+
+.subscription-assist p {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.subscription-assist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 0.15rem;
+}
+
+.subscription-assist-actions .secondary-button,
+.subscription-assist-actions .quiet-button {
+  width: auto;
+  min-height: 44px;
+}
+
+.clipboard-fallback-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  inset: 0 auto auto 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .text-input,
 .select-input {
   min-height: 48px;
@@ -1640,13 +1685,14 @@ select:focus-visible,
   }
 
   .journey-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .journey-aside {
     position: static;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+    min-width: 0;
   }
 
   .progress-nav {
@@ -1714,8 +1760,15 @@ select:focus-visible,
     grid-template-columns: 1fr;
   }
 
+  .journey-aside > div {
+    width: 100%;
+    min-width: 0;
+  }
+
   .progress-nav {
     display: flex;
+    width: 100%;
+    min-width: 0;
     margin: 0 -0.15rem;
     padding: 0 0.15rem 0.45rem;
     overflow-x: auto;
@@ -1778,6 +1831,16 @@ select:focus-visible,
   }
 
   .composer .primary-button {
+    width: 100%;
+  }
+
+  .subscription-assist-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .subscription-assist-actions .secondary-button,
+  .subscription-assist-actions .quiet-button {
     width: 100%;
   }
 

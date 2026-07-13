@@ -59,6 +59,13 @@ Every production capability flag ships as `false`:
 | `CONSUMER_HANDOFF_ENABLED` | `false` | Consented adviser handoff |
 | `CONSUMER_PUBLIC_ACCESS_ENABLED` | `false` | Session creation without a signed invite |
 
+These committed values are an immutable dormant baseline for the current
+release workflow. Do not change them in `worker/wrangler.toml`. The protected
+production environment may generate one narrowly defined ephemeral override:
+the adviser-test, signed-invite, rules-only mode documented below. That mode can
+turn on only the master journey and deterministic module routing. AI, handoff,
+and public access remain forced off.
+
 Policy-controlled values must be supplied from approved, published text. Blank
 values are intentional and must not be replaced with guessed identifiers,
 durations, or URLs:
@@ -112,22 +119,118 @@ The numeric values above are conservative operational starting points, not
 privacy, legal, or financial-policy decisions. Review observed latency, quality,
 and cost before changing them.
 
+## Protected adviser-test activation
+
+The reviewed workflow contains the explicit source constant
+`CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED=true`. A protected GitHub
+environment variable named `CONSUMER_ADVISER_TEST_BETA_OVERRIDE` may be absent,
+`true`, or `false`. An absent or `true` override follows the source approval;
+`false` is the emergency rollback. A protected override can never turn on a
+source-unapproved mode, and any other value fails deployment.
+
+Source approval builds a disposable Wrangler configuration with this fixed
+mode and approved policy set:
+
+- `CONSUMER_JOURNEY_ENABLED=true`;
+- `CONSUMER_MODULE_ROUTING_ENABLED=true`;
+- `CONSUMER_COHORT=adviser_test`;
+- `CONSUMER_INVITE_MAX_TTL_HOURS=24`;
+- `CONSUMER_AI_INTAKE_ENABLED=false`;
+- `CONSUMER_HANDOFF_ENABLED=false`;
+- `CONSUMER_PUBLIC_ACCESS_ENABLED=false`; and
+- `CONSUMER_ALLOWED_MODULE_IDS=house_purchase,liquidity_analysis`.
+
+| Source-approved value | Fixed deployment value |
+|---|---|
+| `CONSUMER_DB_NAME` | `planeir-consumer` |
+| `CONSUMER_BETA_CONSENT_POLICY_VERSION` | `consumer-adviser-test-v1` |
+| `CONSUMER_BETA_CONSENT_MANIFEST_ID` | `consumer-adviser-test-manifest-v1` |
+| `CONSUMER_BETA_ANALYSIS_NOTICE_ID` | `analysis-adviser-test-v1` |
+| `CONSUMER_BETA_AI_NOTICE_ID` | `ai-adviser-test-v1` |
+| `CONSUMER_BETA_PRIVACY_NOTICE_URL` | `https://planeir.ie/plan/privacy.html` |
+| `CONSUMER_BETA_SESSION_TTL_DAYS` | `7` |
+
+There are no protected switches for AI, handoff, public access, the cohort,
+policy values, TTL, or module allowlist. Adding or changing one is a separate
+reviewed release. An `OPENAI_API_KEY`, if already present for another purpose,
+cannot make this mode use AI.
+
+The deployment resolves the D1 inventory by the exact name
+`planeir-consumer`. It fails on duplicates. If none exists while the effective
+mode is enabled, it creates exactly that database with Cloudflare's immutable
+EU jurisdiction restriction, re-reads the inventory, validates the UUID, and
+exports it only to the current job environment. It never commits the ID and
+never substitutes `LEADS_DB`. An existing exact-name database is accepted for
+activation only when Cloudflare reports its immutable jurisdiction as `eu`.
+An existing database without that restriction fails closed; Cloudflare does not
+permit adding or changing jurisdiction after creation.
+
+The Worker secret inventory is then checked for the exact names
+`CONSUMER_DATA_ENCRYPTION_KEY`, `CONSUMER_RATE_LIMIT_HASH_KEY`, and
+`CONSUMER_INVITE_SIGNING_KEY`. Each missing name receives a newly generated
+independent 32-byte base64url value through `wrangler secret put`. Existing
+names are never written, so a normal deployment cannot rotate an established
+key. Values are never printed or added to a file.
+
+The workflow next resolves the active `planeir.ie` zone in the configured
+Cloudflare account and upserts one response-header transform rule with stable
+reference `planeir_consumer_plan_security_headers_v1`. It updates only that
+rule or appends it to the phase ruleset; unrelated rules are not replaced. The
+live header verifier then checks `/plan/` and `/plan/privacy.html` before any
+D1 migration or Worker deployment.
+
+The existing `CLOUDFLARE_API_TOKEN` must therefore cover the configured account
+and have Workers/D1 access plus Zone Read and Zone Transform Rules Write
+permission for `planeir.ie`. Missing permission fails closed before consumer
+activation. The protected `ADVISOR_SMOKE_PASSWORD` secret must match the live
+adviser login; an effective beta fails before provisioning if that secret is
+absent, and fails its post-deploy authenticated bridge check if it is stale.
+
+Activation procedure:
+
+1. Confirm the source approval constant and fixed values above remain exact.
+2. Run the local regression, dual-D1 lifecycle, and browser acceptance gates.
+3. Confirm the adviser-authenticated invite issuer is available. A successful
+   adviser login may issue a short-lived link, but `/plan/` still creates no
+   session without the signed invite.
+4. Push the reviewed source or manually dispatch `Deploy Worker`. CI resolves
+   or provisions only the missing infrastructure described above, validates the
+   generated config, replays migrations locally, and dry-run bundles before
+   applying remote migrations or deploying.
+5. After deployment, CI verifies the live bootstrap is exactly adviser-test,
+   invite-required, and rules-only. It then authenticates as the configured
+   adviser smoke account, issues a one-use private link, consumes it to create
+   one synthetic rules-only consumer session, and requires deletion of that
+   session before running the existing adviser/published-session smoke. Invite,
+   cookie, CSRF, and session credentials are never printed.
+
+To stop processing, set the protected
+`CONSUMER_ADVISER_TEST_BETA_OVERRIDE=false` and manually dispatch the workflow.
+The next deployment restores the committed dormant flags. Existing D1 and
+secrets are retained; rollback never deletes or rotates them.
+
 ## Provision the separate consumer D1 database
 
-Provision once per Cloudflare environment from `worker/`:
+Production CI owns idempotent provisioning. It lists D1 databases, accepts only
+one exact `planeir-consumer` match, requires its jurisdiction to be `eu` before
+activation, and creates that name only when the source-approved beta is
+effective and no match exists. The resulting UUID is
+kept only in the job environment and appended to the disposable Wrangler
+config. It is not a GitHub variable and is never committed.
+
+For a manual non-production environment, provision from `worker/`:
 
 ```bash
-npx wrangler d1 create planeir-consumer
+npx wrangler d1 create planeir-consumer --jurisdiction eu
 ```
 
-Do not invent or commit a database ID. Before consumer activation, store the ID
-returned by Cloudflare as the `CONSUMER_DB_ID` variable on the protected GitHub
-`production` environment. Optionally set `CONSUMER_DB_NAME`; it defaults to
-`planeir-consumer`. The base `worker/wrangler.toml` intentionally contains only
-a commented binding template. While the value is absent and every consumer flag
-is false, the deployment workflow preserves the existing Worker deployment with
-no consumer binding or consumer migration. Once supplied, it validates the value
-and appends an active `CONSUMER_DB` binding to a disposable deploy config.
+Do not substitute `--location weur`: a location hint optimizes latency but does
+not restrict where the database can run or store data. D1 jurisdiction is
+immutable, so it cannot be retrofitted to an existing database.
+
+Do not invent, commit, or manually copy a production database ID into a
+protected variable. The base `worker/wrangler.toml` intentionally contains only
+a commented binding template.
 
 The migration streams are deliberately separate:
 
@@ -236,8 +339,11 @@ with the old key stop working immediately.
 
 ## Production secret setup
 
-Set secrets interactively; do not paste them into `wrangler.toml` or GitHub
-variables:
+On first source-approved deployment, CI creates only missing consumer secrets
+with independent random 32-byte base64url values. It never writes an existing
+secret name. For manual non-production setup or an explicitly controlled
+rotation, use Wrangler interactively; never paste values into `wrangler.toml`
+or GitHub variables:
 
 ```bash
 cd worker
@@ -254,7 +360,9 @@ npx wrangler secret put OPENAI_API_KEY
 ```
 
 Adding a database, secrets, or policy values does not enable a capability. The
-five source-controlled flags remain the release controls.
+five source-controlled flags remain the dormant baseline. Effective activation
+requires the source approval constant and no protected `false` rollback
+override.
 
 ## API model policy and intelligence level
 
@@ -282,26 +390,26 @@ mode. Do not silently invent a fact or substitute a model-generated calculation.
 
 Use this order independently in each environment:
 
-1. Provision `CONSUMER_DB`, configure its protected deployment variable, and
-   deploy with every capability flag false.
-2. Let CI replay both migration streams locally, then apply adviser migrations
-   and consumer migrations remotely. Verify existing adviser routes.
-3. Configure independent encryption, rate-limit, and invite keys. Publish and
-   approve the privacy, analysis, and optional AI notices, assign one immutable
-   consent-manifest ID to that exact set, then set all identifiers and the HTTPS URL.
-4. Enable only the master journey for the `internal` cohort. Keep public access,
-   AI, module routing, and handoff false. Test create, resume, correction,
-   consent withdrawal, expiry, and deletion in rules-only mode.
-5. Enable module routing only for the explicit initial allowlist.
-6. Configure the approved AI data-policy ID and OpenAI secret; then enable AI
-   for the internal cohort. Review schema failures, fallback rate, escalation,
-   latency, and both ordinary and complex budget counters.
-7. Publish the approved handoff policy, then configure its exact HTTPS URL,
-   version, bridge-retention policy ID, and bridge-retention days. Enable
-   handoff only after that policy also defines separate adviser-lead retention
-   and pipeline visibility, minimal sharing, revocation, purge, deletion, and
-   retry behaviour are verified.
-8. Consider public access or a wider cohort only as a separate reviewed release.
+1. Keep all source `wrangler.toml` capability flags false and validate the
+   source-approved adviser-test constants.
+2. Let CI resolve or create the exact isolated D1, replay both migration streams
+   locally, and dry-run the Worker.
+3. Let CI create only missing encryption, rate-limit, and invite keys, then
+   upsert and verify the path-scoped edge header rule.
+4. Test create, resume, correction, consent withdrawal, expiry, and deletion
+   locally with the master journey enabled but AI, public access, and handoff
+   disabled.
+5. Use the protected activation procedure to enable the `adviser_test` cohort.
+   The generated production config enables the master journey and routing
+   together only for the fixed initial allowlist and signed-invite audience.
+6. Treat AI as a later, separate reviewed release. Configuring an OpenAI secret
+   or data-policy ID does not enable it in the current production workflow.
+7. Treat handoff as a later, separate reviewed release. Its published policy
+   must define adviser-lead retention and pipeline visibility, minimal sharing,
+   revocation, purge, deletion, and retry behaviour before the workflow is
+   expanded to permit it.
+8. Consider public access, a wider cohort, or another module only as a separate
+   reviewed release; the current deployment generator has no switch for them.
 
 `CONSUMER_PUBLIC_ACCESS_ENABLED=false` is a second audience gate: creating a
 session requires a valid, unexpired, signed invite. The cohort label is
@@ -317,6 +425,7 @@ deterministic engines and dated rules are complete.
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/api/consumer/bootstrap` | Public flags, approved notices, limits, modules, and optional booking URL |
+| `POST` | `/api/advisor/consumer-invite` | Issue an adviser-authenticated, one-use private test invitation |
 | `POST` | `/api/consumer/sessions` | Create an adult, consented consumer session |
 | `GET` | `/api/consumer/sessions/:id` | Resume the owning session |
 | `POST` | `/api/consumer/sessions/:id/turns` | Process an idempotent guided turn |
@@ -332,6 +441,20 @@ and return `Cache-Control: no-store`. Turn requests require a unique idempotency
 key so retries do not double-charge or duplicate state. Authenticated deletion
 and AI-consent withdrawal remain available when the processing kill switch is
 off, preserving a narrow data-rights plane during an incident.
+
+`POST /api/advisor/consumer-invite` requires the authenticated adviser cookie
+and matching `X-Advisor-CSRF` header. It is limited to 12 attempts per hour per
+client IP and returns `Cache-Control: no-store`. Each signed invitation expires
+within four hours and can create one consumer session only. The issuer fails
+closed unless production is exactly the `adviser_test`, invite-only,
+rules-only mode with the fixed two-module allowlist.
+
+Success returns `{ "ok": true, "url": "https://planeir.ie/plan/#invite=…",
+"expiresAt": "…", "maxUses": 1, "mode": "rules_only" }`. Expected failures
+are `401` for no adviser session, `403` for a missing or stale CSRF token, `429`
+for the rate limit, and a deliberately generic `503` when any protected-beta
+invariant or signing dependency is unavailable. Never log or paste the returned
+URL because its fragment is a bearer invitation until redeemed or expired.
 
 ## Retention, deletion, and logging
 
@@ -414,6 +537,7 @@ X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 Referrer-Policy: no-referrer
 Permissions-Policy: camera=(), microphone=(), geolocation=()
+Strict-Transport-Security: max-age=31556952
 ```
 
 Configure these at the Cloudflare zone/edge (or move `/plan/*` to a host that
@@ -445,21 +569,30 @@ fresh database, then checks integrity and foreign keys. It bundles the Worker
 without deploying.
 
 The production deployment job is attached to the protected GitHub `production`
-environment. Before any remote write it:
+environment. Before any remote migration or Worker deployment it:
 
-1. validates Cloudflare configuration and any supplied consumer database binding;
+1. validates Cloudflare credentials, source approval, and the protected rollback
+   override;
 2. asserts all five consumer capability flags are exactly `false` in source;
-3. runs the full regression and build gate;
-4. creates a disposable same-directory Wrangler config, adding the protected
-   real `CONSUMER_DB_ID` only when it has been provisioned;
-5. always replays adviser migrations and, when bound, consumer migrations into
-   separate fresh local D1 state; and
-6. dry-run bundles the Worker.
+3. runs the full regression, static build, and fresh dual-D1 HTTP lifecycle;
+4. resolves the exact `planeir-consumer` D1 and creates it only if missing;
+5. creates a disposable same-directory Wrangler config with either dormant
+   flags or the fixed adviser-test rules-only overlay;
+6. replays adviser and consumer migrations into separate fresh local D1 state
+   and dry-run bundles the Worker;
+7. creates only missing consumer Worker secrets, preserving every existing
+   value; and
+8. upserts only the stable path-scoped response-header rule and verifies the
+   live static headers.
 
 Only then does it apply `LEADS_DB` migrations, conditionally apply `CONSUMER_DB`
-migrations when that binding exists, deploy, and run the existing live
-published-session smoke check. Do not run that production smoke flow during
-consumer development because it creates and revokes real remote sessions.
+migrations when that binding exists, and deploy. It next asserts that the live
+bootstrap is either fully dormant or exactly `adviser_test`, invite-required,
+rules-only, and limited to House Purchase and Liquidity. In beta mode it also
+runs the authenticated adviser-to-consumer bridge smoke and requires cleanup of
+its synthetic consumer session. The existing live published-session smoke runs
+last. Do not run those production smoke flows during consumer development
+because they create and then delete or revoke real remote records.
 
 Browser release QA must cover desktop and mobile; keyboard-only navigation;
 44-pixel touch targets; notice, adult, and consent gates; interrupted/resumed
@@ -471,11 +604,12 @@ disabled/enabled states; and a regression pass through `/app/`.
 
 For an intake, provider, or privacy incident:
 
-1. Set `CONSUMER_JOURNEY_ENABLED=false` and deploy that configuration.
-2. If only the provider path is affected, set
-   `CONSUMER_AI_INTAKE_ENABLED=false`; keep rules-only mode available only after
-   review.
-3. If handoff is affected, set `CONSUMER_HANDOFF_ENABLED=false` independently.
+1. Set the protected `CONSUMER_ADVISER_TEST_BETA_OVERRIDE` environment variable
+   to exactly `false` and manually dispatch the Worker deployment. Do not edit
+   the committed false flags.
+2. AI and handoff are already forced off in this beta. If a later release
+   permits either one, use its independently reviewed kill switch as well.
+3. Revoke outstanding signed invites if audience access is implicated.
 4. Keep authenticated deletion and AI withdrawal reachable. Preserve only the
    encrypted records and allowlisted audit metadata required for incident
    review; never print decrypted values.

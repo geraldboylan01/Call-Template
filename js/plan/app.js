@@ -12,6 +12,7 @@ import {
   runAnalyses,
   withdrawAiConsent
 } from './api.js';
+import { buildSubscriptionAssistPrompt } from './subscription_assist.js';
 import {
   canUseSessionStorage,
   clearSessionAccess,
@@ -275,6 +276,52 @@ function closeDialog(dialog) {
     dialog.removeAttribute('open');
   }
   document.body.classList.remove('dialog-open');
+}
+
+function activeConversationQuestion() {
+  const question = state.nextQuestion;
+  if (typeof question === 'string') {
+    return question;
+  }
+  if (question && typeof question === 'object') {
+    return String(firstDefined(question.prompt, question.question, question.text, question.message, '') || '');
+  }
+  return 'What financial goal or concern would you like to explore?';
+}
+
+async function copyTextToClipboard(value) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.className = 'clipboard-fallback-input';
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) {
+    throw new Error('Your browser did not allow clipboard access.');
+  }
+}
+
+async function copySubscriptionAssistPrompt() {
+  const input = document.getElementById('conversationInput');
+  try {
+    const prompt = buildSubscriptionAssistPrompt({
+      question: activeConversationQuestion(),
+      draft: input?.value
+    });
+    await copyTextToClipboard(prompt);
+    showToast('Prompt copied. Paste it into Codex or ChatGPT, then paste the rewritten answer back here.', {
+      timeout: 8000
+    });
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'The prompt could not be copied.', { error: true });
+    input?.focus();
+  }
 }
 
 // Match session-auth codes, not every HTTP 404: feature errors such as
@@ -905,6 +952,10 @@ function handleRootClick(event) {
     submitTurn(button.dataset.message || '');
     return;
   }
+  if (action === 'copy-subscription-prompt') {
+    copySubscriptionAssistPrompt();
+    return;
+  }
   if (action === 'edit-field') {
     openFieldEditor(button.dataset.path || '');
     return;
@@ -1013,7 +1064,10 @@ function bindEvents() {
 async function boot() {
   bindEvents();
   try {
-    captureInviteFromUrlFragment();
+    const capturedInvite = captureInviteFromUrlFragment();
+    if (capturedInvite) {
+      clearSessionAccess();
+    }
     const bootstrapPayload = await getBootstrap();
     const bootstrap = setBootstrap(bootstrapPayload);
     const bootstrapRoot = unwrap(bootstrapPayload);

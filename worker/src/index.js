@@ -234,6 +234,12 @@ function getRouteConfig(pathname) {
     };
   }
 
+  if (pathname === '/api/advisor/consumer-invite') {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
   if (/^\/api\/advisor\/module-assets\/[^/]+\/[^/]+$/.test(pathname)) {
     return {
       methods: 'GET,PUT,DELETE,OPTIONS'
@@ -5060,6 +5066,47 @@ async function handleAdvisorLogout(request, env, origin) {
   });
 }
 
+async function handleAdvisorConsumerInvite(request, env, origin) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+    requireCsrf: true,
+    rateScope: 'advisor-consumer-invite',
+    rateWindowMs: 60 * 60 * 1000,
+    rateLimitMax: 12
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+  if (!advisorAccess.session?.authEnabled || !advisorAccess.session?.authenticated) {
+    return jsonResponse(
+      { error: 'The adviser planning preview is not available right now.' },
+      503,
+      origin,
+      'POST,OPTIONS',
+      null,
+      noStoreHeaders()
+    );
+  }
+
+  try {
+    const { createAdvisorConsumerInvite } = await import('./consumer/router.js');
+    const result = await createAdvisorConsumerInvite(env);
+    return jsonResponse(result, 200, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  } catch (error) {
+    console.error('Adviser consumer invite creation failed', {
+      code: typeof error?.code === 'string' ? error.code : 'consumer_adviser_preview_failed',
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse(
+      { error: 'The adviser planning preview is not available right now.' },
+      503,
+      origin,
+      'POST,OPTIONS',
+      null,
+      noStoreHeaders()
+    );
+  }
+}
+
 async function handleAdvisorPublishedSessionsList(request, env, origin) {
   const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
   if (advisorAccess.response) {
@@ -7252,6 +7299,10 @@ export default {
 
     if (request.method === 'GET' && pathname === '/api/advisor/published-sessions') {
       return handleAdvisorPublishedSessionsList(request, env, origin);
+    }
+
+    if (request.method === 'POST' && pathname === '/api/advisor/consumer-invite') {
+      return handleAdvisorConsumerInvite(request, env, origin);
     }
 
     if (request.method === 'GET' && pathname === '/api/advisor/clients') {

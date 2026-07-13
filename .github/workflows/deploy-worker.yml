@@ -24,8 +24,19 @@ jobs:
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL || 'https://call-canvas-session-worker.geraldboylan.workers.dev' }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
-      CONSUMER_DB_ID: ${{ vars.CONSUMER_DB_ID }}
-      CONSUMER_DB_NAME: ${{ vars.CONSUMER_DB_NAME || 'planeir-consumer' }}
+      # Explicit source approval activates only the fixed adviser-test,
+      # signed-invite, rules-only mode. The protected override may disable it
+      # immediately; it can never activate a source-unapproved mode.
+      CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"
+      CONSUMER_ADVISER_TEST_BETA_OVERRIDE: ${{ vars.CONSUMER_ADVISER_TEST_BETA_OVERRIDE }}
+      CONSUMER_DB_NAME: "planeir-consumer"
+      CONSUMER_SITE_ZONE_NAME: "planeir.ie"
+      CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
+      CONSUMER_BETA_CONSENT_MANIFEST_ID: "consumer-adviser-test-manifest-v1"
+      CONSUMER_BETA_ANALYSIS_NOTICE_ID: "analysis-adviser-test-v1"
+      CONSUMER_BETA_AI_NOTICE_ID: "ai-adviser-test-v1"
+      CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy.html"
+      CONSUMER_BETA_SESSION_TTL_DAYS: "7"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,7 +57,29 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is required in GitHub Settings > Secrets and variables > Actions"; exit 1; }
           test -n "$WORKER_BASE_URL" || { echo "WORKER_BASE_URL is required"; exit 1; }
           test -n "$SMOKE_ORIGIN" || { echo "SMOKE_ORIGIN is required"; exit 1; }
-          test -n "$CONSUMER_DB_NAME" || { echo "CONSUMER_DB_NAME is required"; exit 1; }
+          [[ "$CONSUMER_DB_NAME" == "planeir-consumer" ]] || { echo "CONSUMER_DB_NAME must remain planeir-consumer"; exit 1; }
+          [[ "$CONSUMER_SITE_ZONE_NAME" == "planeir.ie" ]] || { echo "CONSUMER_SITE_ZONE_NAME must remain planeir.ie"; exit 1; }
+          case "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" in
+            false|true) ;;
+            *) echo "CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED must be exactly true or false"; exit 1 ;;
+          esac
+          case "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" in
+            ""|false|true) ;;
+            *) echo "CONSUMER_ADVISER_TEST_BETA_OVERRIDE must be empty, true, or false"; exit 1 ;;
+          esac
+          if [[ "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" != "true" && "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" == "true" ]]; then
+            echo "A protected override cannot activate a source-unapproved beta"
+            exit 1
+          fi
+          effective_beta="false"
+          if [[ "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" == "true" && "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" != "false" ]]; then
+            effective_beta="true"
+          fi
+          if [[ "$effective_beta" == "true" ]]; then
+            test -n "$ADVISOR_SMOKE_PASSWORD" || { echo "ADVISOR_SMOKE_PASSWORD is required for the authenticated adviser beta gate"; exit 1; }
+          fi
+          echo "CONSUMER_ADVISER_INVITE_BETA_ENABLED=$effective_beta" >> "$GITHUB_ENV"
+          echo "Effective consumer deployment mode: $([[ "$effective_beta" == "true" ]] && echo adviser-test-rules-only || echo dormant)"
 
       - name: Run full consumer and adviser regression gate
         run: |
@@ -91,13 +124,63 @@ jobs:
           done
           CONSUMER_INVITE_SIGNING_KEY=AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM npm run check:consumer-http
 
+      - name: Resolve or provision the isolated consumer D1
+        run: |
+          set -euo pipefail
+          resolve_database_id() {
+            local inventory="$1"
+            D1_INVENTORY="$inventory" node --input-type=module -e '
+              const entries = JSON.parse(process.env.D1_INVENTORY || "[]");
+              const matches = entries.filter((entry) => entry?.name === "planeir-consumer");
+              if (matches.length > 1) {
+                throw new Error("More than one D1 database has the exact name planeir-consumer.");
+              }
+              if (matches.length === 1) {
+                const activationEnabled = process.env.CONSUMER_ADVISER_INVITE_BETA_ENABLED === "true";
+                const jurisdiction = String(matches[0]?.jurisdiction || "").toLowerCase();
+                if (activationEnabled && jurisdiction !== "eu") {
+                  throw new Error("The existing planeir-consumer D1 must have the immutable EU jurisdiction before beta activation.");
+                }
+                const id = String(matches[0]?.uuid || matches[0]?.id || "");
+                if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+                  throw new Error("Cloudflare returned an invalid planeir-consumer D1 UUID.");
+                }
+                process.stdout.write(id);
+              }
+            '
+          }
+
+          inventory="$(wrangler d1 list --json)"
+          database_id="$(resolve_database_id "$inventory")"
+          if [[ -z "$database_id" && "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" ]]; then
+            wrangler d1 create planeir-consumer --jurisdiction eu
+            inventory="$(wrangler d1 list --json)"
+            database_id="$(resolve_database_id "$inventory")"
+          fi
+          if [[ "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" && -z "$database_id" ]]; then
+            echo "Cloudflare did not return the required planeir-consumer D1 after provisioning"
+            exit 1
+          fi
+          if [[ -n "$database_id" ]]; then
+            echo "CONSUMER_DB_ID=$database_id" >> "$GITHUB_ENV"
+            echo "Resolved isolated consumer D1: planeir-consumer"
+          else
+            echo "No consumer D1 exists; retaining the dormant, unbound deployment."
+          fi
+
       - name: Build fail-closed production Wrangler config
         run: |
           node <<'NODE'
           const fs = require('node:fs');
 
+          const envValue = (name) => String(process.env[name] || '').trim();
           const databaseId = String(process.env.CONSUMER_DB_ID || '').trim();
           const databaseName = String(process.env.CONSUMER_DB_NAME || '').trim();
+          const betaToggle = envValue('CONSUMER_ADVISER_INVITE_BETA_ENABLED');
+          if (!['false', 'true'].includes(betaToggle)) {
+            throw new Error('CONSUMER_ADVISER_INVITE_BETA_ENABLED must be exactly true or false.');
+          }
+          const betaEnabled = betaToggle === 'true';
           if (databaseId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(databaseId)) {
             throw new Error('CONSUMER_DB_ID must be the UUID returned by Cloudflare D1.');
           }
@@ -130,6 +213,9 @@ jobs:
               throw new Error(`${flag} must remain exactly false for production deployment.`);
             }
           }
+          if (!/^CONSUMER_ALLOWED_MODULE_IDS\s*=\s*"house_purchase,liquidity_analysis"\s*$/m.test(source)) {
+            throw new Error('The protected beta module allowlist must remain house_purchase,liquidity_analysis.');
+          }
 
           const requiredPolicyVariables = [
             'CONSUMER_CONSENT_MANIFEST_ID',
@@ -161,6 +247,83 @@ jobs:
             throw new Error('ALLOW_LOCAL_DEV_ORIGINS must not be enabled in the production config.');
           }
 
+          const replaceTomlString = (input, name, value) => {
+            const expression = new RegExp('^' + name + '\\s*=\\s*"[^"\\n]*"\\s*$', 'm');
+            if (!expression.test(input)) {
+              throw new Error(name + ' must have one explicit string value in the source config.');
+            }
+            return input.replace(expression, name + ' = ' + JSON.stringify(value));
+          };
+          let generatedSource = source;
+          if (betaEnabled) {
+            if (!databaseId) {
+              throw new Error('CONSUMER_DB_ID is required for the protected beta.');
+            }
+            const policyIds = {
+              CONSUMER_CONSENT_POLICY_VERSION: envValue('CONSUMER_BETA_CONSENT_POLICY_VERSION'),
+              CONSUMER_CONSENT_MANIFEST_ID: envValue('CONSUMER_BETA_CONSENT_MANIFEST_ID'),
+              CONSUMER_ANALYSIS_NOTICE_ID: envValue('CONSUMER_BETA_ANALYSIS_NOTICE_ID'),
+              CONSUMER_AI_NOTICE_ID: envValue('CONSUMER_BETA_AI_NOTICE_ID')
+            };
+            for (const [name, value] of Object.entries(policyIds)) {
+              if (!/^[A-Za-z0-9._:-]{1,120}$/.test(value)) {
+                throw new Error(name + ' must be a non-empty immutable policy identifier.');
+              }
+              generatedSource = replaceTomlString(generatedSource, name, value);
+            }
+
+            const privacyNoticeUrl = envValue('CONSUMER_BETA_PRIVACY_NOTICE_URL');
+            let parsedPrivacyUrl;
+            try {
+              parsedPrivacyUrl = new URL(privacyNoticeUrl);
+            } catch (_error) {
+              throw new Error('CONSUMER_BETA_PRIVACY_NOTICE_URL must be a valid HTTPS URL.');
+            }
+            if (
+              parsedPrivacyUrl.protocol !== 'https:'
+              || !['planeir.ie', 'www.planeir.ie'].includes(parsedPrivacyUrl.hostname)
+              || parsedPrivacyUrl.pathname !== '/plan/privacy.html'
+              || parsedPrivacyUrl.username
+              || parsedPrivacyUrl.password
+              || parsedPrivacyUrl.search
+              || parsedPrivacyUrl.hash
+            ) {
+              throw new Error('CONSUMER_BETA_PRIVACY_NOTICE_URL must be the canonical Planéir consumer privacy page.');
+            }
+
+            const sessionTtl = envValue('CONSUMER_BETA_SESSION_TTL_DAYS');
+            const parsedSessionTtl = Number.parseInt(sessionTtl, 10);
+            if (
+              !/^[1-9][0-9]*$/.test(sessionTtl)
+              || !Number.isInteger(parsedSessionTtl)
+              || parsedSessionTtl < 1
+              || parsedSessionTtl > 90
+            ) {
+              throw new Error('CONSUMER_BETA_SESSION_TTL_DAYS must be an integer from 1 to 90.');
+            }
+
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_PRIVACY_NOTICE_URL', parsedPrivacyUrl.toString());
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_SESSION_TTL_DAYS', String(parsedSessionTtl));
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_COHORT', 'adviser_test');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_INVITE_MAX_TTL_HOURS', '24');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true');
+          }
+
+          const expectedGeneratedFlags = {
+            CONSUMER_JOURNEY_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_AI_INTAKE_ENABLED: 'false',
+            CONSUMER_HANDOFF_ENABLED: 'false',
+            CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'
+          };
+          for (const [flag, value] of Object.entries(expectedGeneratedFlags)) {
+            const expression = new RegExp('^' + flag + '\\s*=\\s*"' + value + '"\\s*$', 'm');
+            if (!expression.test(generatedSource)) {
+              throw new Error('Generated deployment mode has an unsafe ' + flag + ' value.');
+            }
+          }
+
           const binding = databaseId ? [
             '',
             '# Generated by deploy-worker.yml from the protected production environment.',
@@ -171,7 +334,7 @@ jobs:
             'migrations_dir = "consumer-migrations"',
             ''
           ].join('\n') : '\n';
-          fs.writeFileSync(generatedPath, `${source.trimEnd()}\n${binding}`, { mode: 0o600 });
+          fs.writeFileSync(generatedPath, generatedSource.trimEnd() + '\n' + binding, { mode: 0o600 });
           NODE
 
       - name: Replay adviser and consumer migrations in fresh local D1 state
@@ -190,6 +353,55 @@ jobs:
         working-directory: ./worker
         run: wrangler deploy --dry-run --config wrangler.production.generated.toml --outdir ../.worker-dry-run/deploy-bundle
 
+      - name: Ensure protected-beta Worker secrets without rotation
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        working-directory: ./worker
+        run: |
+          set -euo pipefail
+          secret_inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
+          mapfile -t missing_secrets < <(
+            SECRET_INVENTORY="$secret_inventory" node --input-type=module -e '
+              const entries = JSON.parse(process.env.SECRET_INVENTORY || "[]");
+              const names = new Set(entries.map((entry) => String(entry?.name || "")));
+              const required = [
+                "CONSUMER_DATA_ENCRYPTION_KEY",
+                "CONSUMER_RATE_LIMIT_HASH_KEY",
+                "CONSUMER_INVITE_SIGNING_KEY"
+              ];
+              process.stdout.write(required.filter((name) => !names.has(name)).join("\n"));
+            '
+          )
+          for secret_name in "${missing_secrets[@]}"; do
+            [[ -n "$secret_name" ]] || continue
+            secret_value="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")"
+            [[ "$secret_value" =~ ^[A-Za-z0-9_-]{43}$ ]] || { echo "Generated consumer secret has an invalid format"; exit 1; }
+            printf '%s' "$secret_value" | wrangler secret put "$secret_name" --config wrangler.production.generated.toml
+            unset secret_value
+            echo "Created missing Worker secret: $secret_name"
+          done
+
+          secret_inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
+          SECRET_INVENTORY="$secret_inventory" node --input-type=module -e '
+            const entries = JSON.parse(process.env.SECRET_INVENTORY || "[]");
+            const names = new Set(entries.map((entry) => String(entry?.name || "")));
+            const required = [
+              "CONSUMER_DATA_ENCRYPTION_KEY",
+              "CONSUMER_RATE_LIMIT_HASH_KEY",
+              "CONSUMER_INVITE_SIGNING_KEY"
+            ];
+            const missing = required.filter((name) => !names.has(name));
+            if (missing.length) throw new Error(`Protected beta Worker secrets are missing: ${missing.join(", ")}`);
+            console.log("Verified required protected-beta Worker secret names without rotating existing values.");
+          '
+
+      - name: Upsert protected-beta response security headers
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        run: node ./scripts/upsert-consumer-plan-headers.mjs
+
+      - name: Verify protected-beta static security headers
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        run: node ./scripts/check-consumer-static-headers.mjs
+
       - name: Apply remote adviser D1 migrations
         working-directory: ./worker
         run: wrangler d1 migrations apply LEADS_DB --remote --config wrangler.production.generated.toml
@@ -206,6 +418,20 @@ jobs:
       - name: Deploy Worker
         working-directory: ./worker
         run: wrangler deploy --config wrangler.production.generated.toml
+
+      - name: Verify live consumer deployment mode
+        run: |
+          set -euo pipefail
+          if [[ "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" ]]; then
+            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="adviser-invite-rules-only"
+          else
+            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="dormant"
+          fi
+          node ./scripts/check-consumer-live-deployment.mjs
+
+      - name: Smoke check authenticated adviser planning bridge
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        run: node ./scripts/check-consumer-live-advisor-bridge.mjs
 
       - name: Smoke check live published-session routes
         run: node ./scripts/check-worker-published-session-routes.mjs

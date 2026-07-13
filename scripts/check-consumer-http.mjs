@@ -72,6 +72,24 @@ const preflight = await request('/api/consumer/sessions', {
 });
 assert.match(preflight.response.headers.get('access-control-allow-headers') || '', /X-Consumer-Invite/i);
 
+const advisorInvitePreflight = await request('/api/advisor/consumer-invite', {
+  method: 'OPTIONS',
+  expectedStatus: 204,
+  extraHeaders: {
+    'Access-Control-Request-Method': 'POST',
+    'Access-Control-Request-Headers': 'x-advisor-csrf'
+  }
+});
+assert.match(advisorInvitePreflight.response.headers.get('access-control-allow-headers') || '', /X-Advisor-CSRF/i);
+const unauthenticatedAdvisorInvite = (await request('/api/advisor/consumer-invite', {
+  method: 'POST',
+  expectedStatus: 503,
+  extraHeaders: {
+    'X-Advisor-CSRF': 'not-an-adviser-session'
+  }
+})).payload;
+assert.equal(unauthenticatedAdvisorInvite.error, 'The adviser planning preview is not available right now.');
+
 const bootstrap = (await request('/api/consumer/bootstrap')).payload;
 assert.equal(bootstrap.flags.consumerJourneyEnabled, true);
 assert.equal(bootstrap.flags.consumerAiIntakeEnabled, false);

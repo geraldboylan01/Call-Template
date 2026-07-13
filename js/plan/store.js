@@ -298,11 +298,13 @@ export function captureInviteFromUrlFragment() {
   if (!rawHash) return '';
   const params = new URLSearchParams(rawHash);
   const invite = String(params.get('invite') || '').trim();
-  if (invite.length >= 20 && invite.length <= 1_024) {
+  let capturedInvite = '';
+  if (/^ci1\.[A-Za-z0-9_-]{20,900}\.[A-Za-z0-9_-]{43}$/.test(invite)) {
     try {
       getSessionStorage()?.setItem(INVITE_STORAGE_KEY, invite);
+      capturedInvite = invite;
     } catch (_error) {
-      return '';
+      capturedInvite = '';
     }
   }
   if (params.has('invite')) {
@@ -310,7 +312,7 @@ export function captureInviteFromUrlFragment() {
     const remaining = params.toString();
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${remaining ? `#${remaining}` : ''}`);
   }
-  return invite;
+  return capturedInvite;
 }
 
 export function getConsumerInvite() {
