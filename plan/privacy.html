@@ -75,6 +75,7 @@
           <a href="#private-session">Private session</a>
           <a href="#safe-information">Information safety</a>
           <a href="#optional-ai">Optional AI</a>
+          <a href="#optional-voice">Optional voice</a>
           <a href="#subscription-assist">Your own Codex or ChatGPT</a>
           <a href="#calculations">Calculations</a>
           <a href="#handoff">Adviser handoff</a>
@@ -148,6 +149,48 @@
               eligibility, or silently write trusted facts. Those boundaries remain enforced even when AI
               helps with the conversation.
             </p>
+          </section>
+
+          <section id="optional-voice" class="privacy-card is-wide">
+            <p class="section-kicker">Optional adviser-test feature</p>
+            <h2>Microphone transcription and AI-generated playback</h2>
+            <p>
+              Voice is offered only when the adviser-test feature flag and its current disclosure are
+              active. It never starts automatically. You must first give versioned voice consent, then
+              deliberately press the microphone control for each recording. A recording stops when you
+              press the control again, leave or hide the page, or reach the 45-second maximum.
+            </p>
+            <p>
+              After you stop recording, Planéir sends that short audio clip through its protected service
+              to OpenAI’s transcription API. The raw clip is used to produce the transcript and is not
+              added to your planning profile, conversation history, browser storage, D1 database, R2
+              storage, or application logs. Approved OpenAI account data controls and provider-side abuse
+              monitoring or retention terms still apply while the request is processed.
+            </p>
+            <p>
+              The returned transcript appears in the ordinary answer box. It is not saved as a
+              conversation turn and does not change your financial profile until you review it, correct
+              any names or figures, and choose <strong>Continue</strong>. Speech recognition can be wrong,
+              particularly for amounts, dates, names, accents, or background speech.
+            </p>
+            <p>
+              <strong>Question playback is an AI-generated voice.</strong> The browser does not send its
+              own text for playback: the protected service derives the exact current, server-owned Planéir
+              question and converts that text to speech. The voice does not calculate, infer facts, make
+              recommendations, or replace the written question.
+            </p>
+            <p>
+              Voice processing has a server-enforced €2 app allowance per private session. Each voice
+              request uses a fixed conservative reservation rather than measuring an exact provider bill.
+              The journey shows the remaining app allowance and stops new voice calls at that allowance;
+              typed answers continue normally. You can stop future voice processing at any time through
+              <strong>Privacy controls</strong>; this does not undo audio processing already completed.
+            </p>
+            <div class="privacy-callout">
+              Spoken audio reaches transcription before text redaction can run. Do not say PPS numbers,
+              passwords, PINs, complete account, card or IBAN details, exact addresses, identity-document
+              details, or unnecessary information about another person.
+            </div>
           </section>
 
           <section id="subscription-assist" class="privacy-card is-wide">

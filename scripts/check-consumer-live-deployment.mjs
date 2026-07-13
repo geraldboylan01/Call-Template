@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
 const DORMANT_MODE = 'dormant';
-const ADVISER_INVITE_RULES_ONLY_MODE = 'adviser-invite-rules-only';
+const VOICE_ASSISTED_RULES_ONLY_MODE = 'voice_assisted_rules_only';
 const INITIAL_MODULE_IDS = Object.freeze(['house_purchase', 'liquidity_analysis']);
 const MAX_ATTEMPTS = 5;
 const RETRY_DELAY_MS = 3_000;
@@ -19,6 +19,16 @@ function expectedPolicyFromEnvironment(env) {
     consentManifestId: String(env.CONSUMER_BETA_CONSENT_MANIFEST_ID || '').trim(),
     analysisNoticeId: String(env.CONSUMER_BETA_ANALYSIS_NOTICE_ID || '').trim(),
     aiNoticeId: String(env.CONSUMER_BETA_AI_NOTICE_ID || '').trim(),
+    voiceNoticeId: String(env.CONSUMER_BETA_VOICE_NOTICE_ID || '').trim(),
+    voiceDataPolicyId: String(env.CONSUMER_BETA_VOICE_DATA_POLICY_ID || '').trim(),
+    voiceTranscriptionModel: String(env.CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL || '').trim(),
+    voiceSpeechModel: String(env.CONSUMER_BETA_VOICE_SPEECH_MODEL || '').trim(),
+    voiceName: String(env.CONSUMER_BETA_VOICE_NAME || '').trim(),
+    voicePricingVersion: String(env.CONSUMER_BETA_VOICE_PRICING_VERSION || '').trim(),
+    voiceSessionBudgetMicroEur: Number.parseInt(
+      String(env.CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS || ''),
+      10
+    ) * 10_000,
     privacyNoticeUrl: String(env.CONSUMER_BETA_PRIVACY_NOTICE_URL || '').trim(),
     sessionTtlDays: Number.parseInt(String(env.CONSUMER_BETA_SESSION_TTL_DAYS || ''), 10)
   };
@@ -30,13 +40,14 @@ export function validateConsumerDeploymentBootstrap(payload, {
 } = {}) {
   assert(payload && typeof payload === 'object', 'Consumer bootstrap must be a JSON object.');
   assert.ok(
-    [DORMANT_MODE, ADVISER_INVITE_RULES_ONLY_MODE].includes(mode),
+    [DORMANT_MODE, VOICE_ASSISTED_RULES_ONLY_MODE].includes(mode),
     `Unsupported consumer deployment mode: ${mode}`
   );
 
   const flags = payload.flags || {};
   const access = payload.access || {};
   const ai = payload.ai || {};
+  const voice = payload.voice || {};
   const handoff = payload.handoff || {};
 
   assert.equal(flags.consumerAiIntakeEnabled, false, 'AI intake must remain disabled.');
@@ -47,6 +58,8 @@ export function validateConsumerDeploymentBootstrap(payload, {
   assert.equal(handoff.enabled, false, 'The rules-only beta must not expose handoff.');
 
   if (mode === DORMANT_MODE) {
+    assert.equal(flags.consumerVoiceEnabled, false, 'The dormant deployment must keep voice disabled.');
+    assert.equal(voice.enabled, false, 'The dormant deployment must not expose configured voice.');
     assert.equal(flags.consumerJourneyEnabled, false, 'The dormant deployment must keep the journey disabled.');
     assert.equal(flags.consumerModuleRoutingEnabled, false, 'The dormant deployment must keep routing disabled.');
     assert.deepEqual(sortedStrings(payload.allowedModules), [], 'The dormant deployment must expose no modules.');
@@ -59,7 +72,9 @@ export function validateConsumerDeploymentBootstrap(payload, {
   }
 
   assert.equal(flags.consumerJourneyEnabled, true, 'The protected beta must enable the master journey.');
+  assert.equal(flags.consumerVoiceEnabled, true, 'The protected beta must enable only the reviewed voice transport.');
   assert.equal(flags.consumerModuleRoutingEnabled, true, 'The protected beta must enable deterministic module routing.');
+  assert.equal(voice.enabled, true, 'The protected beta voice transport is not configured.');
   assert.equal(payload.cohort, 'adviser_test', 'The protected beta cohort must be adviser_test.');
   assert.deepEqual(
     sortedStrings(payload.allowedModules),
@@ -83,6 +98,27 @@ export function validateConsumerDeploymentBootstrap(payload, {
   }
   assert.ok(expectedPolicy.aiNoticeId, 'Expected aiNoticeId is required for live verification.');
   assert.equal(ai.noticeId, expectedPolicy.aiNoticeId, 'Live AI notice ID does not match the protected environment.');
+  for (const [field, expectedField] of [
+    ['noticeId', 'voiceNoticeId'],
+    ['dataPolicyId', 'voiceDataPolicyId'],
+    ['transcriptionModel', 'voiceTranscriptionModel'],
+    ['speechModel', 'voiceSpeechModel'],
+    ['voice', 'voiceName'],
+    ['pricingVersion', 'voicePricingVersion']
+  ]) {
+    assert.ok(expectedPolicy[expectedField], `Expected ${expectedField} is required for live verification.`);
+    assert.equal(voice[field], expectedPolicy[expectedField], `Live voice ${field} does not match the protected environment.`);
+  }
+  assert.ok(
+    Number.isSafeInteger(expectedPolicy.voiceSessionBudgetMicroEur)
+      && expectedPolicy.voiceSessionBudgetMicroEur > 0,
+    'Expected voiceSessionBudgetMicroEur is required for live verification.'
+  );
+  assert.equal(
+    voice.sessionBudgetMicroEur,
+    expectedPolicy.voiceSessionBudgetMicroEur,
+    'Live voice session budget does not match the protected environment.'
+  );
   assert.ok(Number.isInteger(expectedPolicy.sessionTtlDays), 'Expected sessionTtlDays is required for live verification.');
   assert.equal(payload.limits?.sessionTtlDays, expectedPolicy.sessionTtlDays, 'Live session TTL does not match the protected environment.');
   return true;

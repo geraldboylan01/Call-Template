@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      run_paid_voice_provider_smoke:
+        description: Run one paid TTS-to-transcription round trip after deployment
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -24,8 +30,9 @@ jobs:
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL || 'https://call-canvas-session-worker.geraldboylan.workers.dev' }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
+      RUN_PAID_VOICE_PROVIDER_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_voice_provider_smoke == true && 'true' || 'false' }}
       # Explicit source approval activates only the fixed adviser-test,
-      # signed-invite, rules-only mode. The protected override may disable it
+      # signed-invite, voice-assisted rules-only mode. The protected override may disable it
       # immediately; it can never activate a source-unapproved mode.
       CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"
       CONSUMER_ADVISER_TEST_BETA_OVERRIDE: ${{ vars.CONSUMER_ADVISER_TEST_BETA_OVERRIDE }}
@@ -35,6 +42,16 @@ jobs:
       CONSUMER_BETA_CONSENT_MANIFEST_ID: "consumer-adviser-test-manifest-v1"
       CONSUMER_BETA_ANALYSIS_NOTICE_ID: "analysis-adviser-test-v1"
       CONSUMER_BETA_AI_NOTICE_ID: "ai-adviser-test-v1"
+      CONSUMER_BETA_VOICE_NOTICE_ID: "voice-adviser-test-v1"
+      CONSUMER_BETA_VOICE_DATA_POLICY_ID: "openai-audio-adviser-test-v1"
+      CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe"
+      CONSUMER_BETA_VOICE_SPEECH_MODEL: "tts-1-hd"
+      CONSUMER_BETA_VOICE_NAME: "nova"
+      CONSUMER_BETA_VOICE_PRICING_VERSION: "openai-audio-eur-safety-2026-07-13-v2"
+      CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS: "200"
+      CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS: "2000"
+      CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: "10"
+      CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS: "10"
       CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy.html"
       CONSUMER_BETA_SESSION_TTL_DAYS: "7"
     steps:
@@ -51,6 +68,8 @@ jobs:
         run: npm ci
 
       - name: Validate deploy configuration
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is required in GitHub Settings > Secrets and variables > Actions"; exit 1; }
@@ -67,6 +86,10 @@ jobs:
             ""|false|true) ;;
             *) echo "CONSUMER_ADVISER_TEST_BETA_OVERRIDE must be empty, true, or false"; exit 1 ;;
           esac
+          case "$RUN_PAID_VOICE_PROVIDER_SMOKE" in
+            false|true) ;;
+            *) echo "RUN_PAID_VOICE_PROVIDER_SMOKE must be exactly true or false"; exit 1 ;;
+          esac
           if [[ "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" != "true" && "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" == "true" ]]; then
             echo "A protected override cannot activate a source-unapproved beta"
             exit 1
@@ -77,9 +100,18 @@ jobs:
           fi
           if [[ "$effective_beta" == "true" ]]; then
             test -n "$ADVISOR_SMOKE_PASSWORD" || { echo "ADVISOR_SMOKE_PASSWORD is required for the authenticated adviser beta gate"; exit 1; }
+            test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY is required in the protected GitHub production environment for adviser-test voice"; exit 1; }
+            if [[ "$OPENAI_API_KEY" =~ [[:space:]] ]]; then
+              echo "OPENAI_API_KEY must not contain whitespace"
+              exit 1
+            fi
+          fi
+          if [[ "$RUN_PAID_VOICE_PROVIDER_SMOKE" == "true" && "$effective_beta" != "true" ]]; then
+            echo "The paid voice-provider smoke requires the protected adviser-test voice beta"
+            exit 1
           fi
           echo "CONSUMER_ADVISER_INVITE_BETA_ENABLED=$effective_beta" >> "$GITHUB_ENV"
-          echo "Effective consumer deployment mode: $([[ "$effective_beta" == "true" ]] && echo adviser-test-rules-only || echo dormant)"
+          echo "Effective consumer deployment mode: $([[ "$effective_beta" == "true" ]] && echo adviser-test-voice-assisted-rules-only || echo dormant)"
 
       - name: Run full consumer and adviser regression gate
         run: |
@@ -96,7 +128,7 @@ jobs:
           ASSET_VERSION: ${{ github.sha }}
 
       - name: Install Wrangler
-        run: npm install --global wrangler@4
+        run: npm install --global wrangler@4.110.0
 
       - name: Exercise consumer API against fresh local D1 bindings
         run: |
@@ -203,6 +235,7 @@ jobs:
           const requiredFalseFlags = [
             'CONSUMER_JOURNEY_ENABLED',
             'CONSUMER_AI_INTAKE_ENABLED',
+            'CONSUMER_VOICE_ENABLED',
             'CONSUMER_MODULE_ROUTING_ENABLED',
             'CONSUMER_HANDOFF_ENABLED',
             'CONSUMER_PUBLIC_ACCESS_ENABLED'
@@ -221,8 +254,18 @@ jobs:
             'CONSUMER_CONSENT_MANIFEST_ID',
             'CONSUMER_ANALYSIS_NOTICE_ID',
             'CONSUMER_AI_NOTICE_ID',
+            'CONSUMER_VOICE_NOTICE_ID',
             'CONSUMER_PRIVACY_NOTICE_URL',
             'CONSUMER_AI_DATA_POLICY_ID',
+            'CONSUMER_VOICE_DATA_POLICY_ID',
+            'CONSUMER_VOICE_TRANSCRIPTION_MODEL',
+            'CONSUMER_VOICE_SPEECH_MODEL',
+            'CONSUMER_VOICE_NAME',
+            'CONSUMER_VOICE_PRICING_VERSION',
+            'CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS',
+            'CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS',
+            'CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS',
+            'CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS',
             'CONSUMER_HANDOFF_POLICY_VERSION',
             'CONSUMER_HANDOFF_POLICY_URL',
             'CONSUMER_HANDOFF_RETENTION_POLICY_ID',
@@ -272,6 +315,26 @@ jobs:
               generatedSource = replaceTomlString(generatedSource, name, value);
             }
 
+            const fixedVoiceValues = {
+              CONSUMER_VOICE_NOTICE_ID: ['CONSUMER_BETA_VOICE_NOTICE_ID', 'voice-adviser-test-v1'],
+              CONSUMER_VOICE_DATA_POLICY_ID: ['CONSUMER_BETA_VOICE_DATA_POLICY_ID', 'openai-audio-adviser-test-v1'],
+              CONSUMER_VOICE_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
+              CONSUMER_VOICE_SPEECH_MODEL: ['CONSUMER_BETA_VOICE_SPEECH_MODEL', 'tts-1-hd'],
+              CONSUMER_VOICE_NAME: ['CONSUMER_BETA_VOICE_NAME', 'nova'],
+              CONSUMER_VOICE_PRICING_VERSION: ['CONSUMER_BETA_VOICE_PRICING_VERSION', 'openai-audio-eur-safety-2026-07-13-v2'],
+              CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS: ['CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS', '200'],
+              CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS: ['CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS', '2000'],
+              CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: ['CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS', '10'],
+              CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS: ['CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS', '10']
+            };
+            for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedVoiceValues)) {
+              const value = envValue(sourceName);
+              if (value !== approvedValue) {
+                throw new Error(`${sourceName} must remain exactly ${approvedValue} for the protected adviser-test voice beta.`);
+              }
+              generatedSource = replaceTomlString(generatedSource, runtimeName, value);
+            }
+
             const privacyNoticeUrl = envValue('CONSUMER_BETA_PRIVACY_NOTICE_URL');
             let parsedPrivacyUrl;
             try {
@@ -307,11 +370,13 @@ jobs:
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_COHORT', 'adviser_test');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_INVITE_MAX_TTL_HOURS', '24');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_VOICE_ENABLED', 'true');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true');
           }
 
           const expectedGeneratedFlags = {
             CONSUMER_JOURNEY_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_VOICE_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_AI_INTAKE_ENABLED: 'false',
             CONSUMER_HANDOFF_ENABLED: 'false',
@@ -353,9 +418,36 @@ jobs:
         working-directory: ./worker
         run: wrangler deploy --dry-run --config wrangler.production.generated.toml --outdir ../.worker-dry-run/deploy-bundle
 
-      - name: Ensure protected-beta Worker secrets without rotation
+      - name: Upsert protected-beta response security headers
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        run: node ./scripts/upsert-consumer-plan-headers.mjs
+
+      - name: Verify protected-beta static security headers
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        run: node ./scripts/check-consumer-static-headers.mjs
+
+      - name: Apply remote adviser D1 migrations
+        working-directory: ./worker
+        run: wrangler d1 migrations apply LEADS_DB --remote --config wrangler.production.generated.toml
+
+      - name: Apply remote consumer D1 migrations
+        working-directory: ./worker
+        run: |
+          set -euo pipefail
+          if [[ -n "$CONSUMER_DB_ID" ]]; then
+            wrangler d1 migrations apply CONSUMER_DB --remote --config wrangler.production.generated.toml
+          else
+            echo "CONSUMER_DB_ID is not configured; skipping consumer migrations while all consumer flags are false."
+          fi
+
+      # Wrangler 4.110 `secret put` deploys a secret-only version immediately.
+      # Keep every such mutation after the edge and D1 release prerequisites so
+      # that the subsequent code deployment cannot outrun its infrastructure.
+      - name: Ensure protected-beta Worker secrets and provider credential
         if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
         working-directory: ./worker
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
           secret_inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
@@ -380,6 +472,11 @@ jobs:
             echo "Created missing Worker secret: $secret_name"
           done
 
+          test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY is required for adviser-test voice"; exit 1; }
+          printf '%s' "$OPENAI_API_KEY" | wrangler secret put OPENAI_API_KEY --config wrangler.production.generated.toml
+          unset OPENAI_API_KEY
+          echo "Provisioned the protected OpenAI provider credential without exposing its value."
+
           secret_inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
           SECRET_INVENTORY="$secret_inventory" node --input-type=module -e '
             const entries = JSON.parse(process.env.SECRET_INVENTORY || "[]");
@@ -387,33 +484,13 @@ jobs:
             const required = [
               "CONSUMER_DATA_ENCRYPTION_KEY",
               "CONSUMER_RATE_LIMIT_HASH_KEY",
-              "CONSUMER_INVITE_SIGNING_KEY"
+              "CONSUMER_INVITE_SIGNING_KEY",
+              "OPENAI_API_KEY"
             ];
             const missing = required.filter((name) => !names.has(name));
             if (missing.length) throw new Error(`Protected beta Worker secrets are missing: ${missing.join(", ")}`);
             console.log("Verified required protected-beta Worker secret names without rotating existing values.");
           '
-
-      - name: Upsert protected-beta response security headers
-        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
-        run: node ./scripts/upsert-consumer-plan-headers.mjs
-
-      - name: Verify protected-beta static security headers
-        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
-        run: node ./scripts/check-consumer-static-headers.mjs
-
-      - name: Apply remote adviser D1 migrations
-        working-directory: ./worker
-        run: wrangler d1 migrations apply LEADS_DB --remote --config wrangler.production.generated.toml
-
-      - name: Apply remote consumer D1 migrations
-        working-directory: ./worker
-        run: |
-          if [[ -n "$CONSUMER_DB_ID" ]]; then
-            wrangler d1 migrations apply CONSUMER_DB --remote --config wrangler.production.generated.toml
-          else
-            echo "CONSUMER_DB_ID is not configured; skipping consumer migrations while all consumer flags are false."
-          fi
 
       - name: Deploy Worker
         working-directory: ./worker
@@ -423,7 +500,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" ]]; then
-            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="adviser-invite-rules-only"
+            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="voice_assisted_rules_only"
           else
             export CONSUMER_EXPECTED_DEPLOYMENT_MODE="dormant"
           fi

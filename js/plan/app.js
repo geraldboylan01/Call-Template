@@ -21,6 +21,7 @@ import {
   getConsumerInvite,
   getSessionId,
   getStoredSessionAccess,
+  getVoiceConsent,
   mergePayload,
   preparePendingSessionAccess,
   resetJourneyState,
@@ -32,6 +33,11 @@ import {
   state,
   storeSessionAccess
 } from './store.js';
+import {
+  captureConversationDraft,
+  createVoiceController,
+  restoreConversationDraft
+} from './voice.js';
 import {
   findProfileField,
   getAvailableViews,
@@ -62,6 +68,8 @@ const closePrivacyControlsButton = document.getElementById('closePrivacyControls
 const withdrawAiConsentButton = document.getElementById('withdrawAiConsentButton');
 const revokeHandoffButton = document.getElementById('revokeHandoffButton');
 const handoffPrivacyCopy = document.getElementById('handoffPrivacyCopy');
+const withdrawVoiceConsentButton = document.getElementById('withdrawVoiceConsentButton');
+const voicePrivacyCopy = document.getElementById('voicePrivacyCopy');
 const removeItemDialog = document.getElementById('removeItemDialog');
 const removeItemTitle = document.getElementById('removeItemTitle');
 const removeItemContext = document.getElementById('removeItemContext');
@@ -73,6 +81,27 @@ const toastRegion = document.getElementById('toastRegion');
 let editingField = null;
 let removingItem = null;
 let pendingTurn = null;
+
+const voiceController = createVoiceController({
+  root: appRoot,
+  currentQuestion: () => activeConversationQuestion(),
+  onVoicePayload: (payload) => mergePayload(payload),
+  onConsentChanged: (payload) => {
+    const draft = captureConversationDraft(appRoot);
+    mergePayload(payload);
+    if (privacyControlsDialog?.open || privacyControlsDialog?.hasAttribute('open')) {
+      closeDialog(privacyControlsDialog);
+    }
+    if (state.bootstrap?.enabled) {
+      renderCurrentJourney();
+    } else {
+      renderProcessingPaused();
+    }
+    restoreConversationDraft(appRoot, draft);
+  },
+  onToast: (message, options) => showToast(message, options),
+  onSessionUnavailable: (error) => recoverUnavailableSession(error)
+});
 
 function firstDefined(...values) {
   return values.find((value) => value !== undefined && value !== null);
@@ -149,6 +178,7 @@ function focusCurrentHeading() {
 
 function renderCurrentJourney({ focus = false } = {}) {
   renderJourney(appRoot, state);
+  voiceController.afterRender();
   syncHeader();
   window.requestAnimationFrame(() => {
     appRoot.querySelector('.step-button[aria-current="step"]')?.scrollIntoView({
@@ -349,6 +379,7 @@ function renderProcessingPaused() {
   renderUnavailable(appRoot, {
     message: 'Planning updates are temporarily paused. Your private access is still available, and Privacy controls remain open for AI or adviser-handoff withdrawal and permanent deletion.'
   });
+  voiceController.afterRender();
   syncHeader();
 }
 
@@ -360,6 +391,7 @@ function resetToOnboarding({ error = '', toast = '' } = {}) {
   });
   document.body.classList.remove('dialog-open');
   clearSessionAccess();
+  voiceController.reset();
   resetJourneyState();
   editingField = null;
   removingItem = null;
@@ -482,6 +514,8 @@ async function submitTurn(message) {
   if (!cleanMessage || state.busy) {
     return;
   }
+
+  voiceController.cancelActiveVoice();
 
   setBusy(true);
   renderCurrentJourney();
@@ -677,6 +711,12 @@ function openPrivacyControls() {
     ? 'Stop AI assistance for this session. Future messages will use fixed questions and rules-only extraction; deterministic calculations remain available.'
     : 'AI assistance is off for this session. Messages use fixed questions and rules-only extraction; deterministic calculations remain available.';
   withdrawAiConsentButton.hidden = !aiActive && Boolean(state.session);
+  const voiceActive = getVoiceConsent()?.granted === true;
+  withdrawVoiceConsentButton.hidden = !voiceActive;
+  voicePrivacyCopy.hidden = !voiceActive;
+  if (voiceActive) {
+    voicePrivacyCopy.textContent = 'Voice processing is active for the current disclosure version. Turning it off stops future microphone transcription and generated playback; typed answers remain available.';
+  }
   const handoffStatus = String(state.handoff?.status || '').toLowerCase();
   const canWithdrawHandoff = ['pending', 'failed', 'linked', 'delivered'].includes(handoffStatus);
   revokeHandoffButton.hidden = !canWithdrawHandoff;
@@ -904,6 +944,7 @@ async function handleHandoff(form) {
 }
 
 async function handleDeleteSession() {
+  voiceController.cancelActiveVoice({ reason: 'deletion', refreshBudget: false });
   confirmDeleteButton.disabled = true;
   confirmDeleteButton.textContent = 'Deleting…';
   try {
@@ -912,6 +953,7 @@ async function handleDeleteSession() {
     resetJourneyState();
     pendingTurn = null;
     closeDialog(deleteSessionDialog);
+    voiceController.reset({ refreshBudget: false });
     confirmDeleteButton.disabled = false;
     confirmDeleteButton.textContent = 'Delete permanently';
     syncHeader();
@@ -935,6 +977,10 @@ function handleRootClick(event) {
     return;
   }
   const action = button.dataset.action;
+  if (voiceController.handles(action)) {
+    voiceController.handleAction(action);
+    return;
+  }
   if (action === 'navigate') {
     setView(button.dataset.view || 'conversation');
     renderCurrentJourney({ focus: true });
@@ -1025,6 +1071,7 @@ function handleRootChange(event) {
 }
 
 function bindEvents() {
+  voiceController.bind();
   appRoot.addEventListener('click', handleRootClick);
   appRoot.addEventListener('submit', handleRootSubmit);
   appRoot.addEventListener('change', handleRootChange);
@@ -1053,11 +1100,15 @@ function bindEvents() {
   privacyControlsButton.addEventListener('click', openPrivacyControls);
   closePrivacyControlsButton.addEventListener('click', () => closeDialog(privacyControlsDialog));
   withdrawAiConsentButton.addEventListener('click', handleWithdrawAiConsent);
+  withdrawVoiceConsentButton.addEventListener('click', () => voiceController.withdrawConsent());
   revokeHandoffButton.addEventListener('click', handleRevokeHandoff);
   deleteSessionDialog.addEventListener('close', () => {
     document.body.classList.remove('dialog-open');
   });
-  deleteSessionButton.addEventListener('click', () => openDialog(deleteSessionDialog));
+  deleteSessionButton.addEventListener('click', () => {
+    voiceController.cancelActiveVoice({ reason: 'deletion', refreshBudget: false });
+    openDialog(deleteSessionDialog);
+  });
   confirmDeleteButton.addEventListener('click', handleDeleteSession);
 }
 

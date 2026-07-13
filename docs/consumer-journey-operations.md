@@ -24,6 +24,10 @@ capture routes.
 - A model may propose allowlisted profile patches. Deterministic code validates
   and applies them; models do not calculate financial outputs, decide consent,
   or write trusted state directly.
+- In the adviser-test voice beta, OpenAI processes a bounded microphone recording
+  into a reviewable transcript and may synthesize only the exact deterministic
+  Planéir question. Voice is a transport layer: it does not enable model-driven
+  intake, select modules, calculate results, or advance journey state.
 - The journey is educational, for adults aged 18 or over, and is not advice,
   approval, eligibility confirmation, or a product recommendation.
 
@@ -41,7 +45,7 @@ database ID, or consumer payload to source control or browser code.
 | `CONSUMER_DATA_ENCRYPTION_PREVIOUS_KEYS_JSON` | JSON map of up to three prior key IDs to keys | A bounded rotation window is active |
 | `CONSUMER_INVITE_SIGNING_KEY` | 32-byte base64url HMAC key for signed `ci1` invites | Public access is disabled |
 | `CONSUMER_RATE_LIMIT_HASH_KEY` | Separate 32-byte base64url HMAC key for rate-limit subject hashes | Journey enabled |
-| `OPENAI_API_KEY` | Server-side Responses API key | AI intake enabled |
+| `OPENAI_API_KEY` | Server-side OpenAI API key; never exposed to browser code | AI intake or voice enabled |
 
 Do not reuse the encryption, invite-signing, and rate-limit keys for one
 another. A missing or invalid required key keeps the affected capability fail
@@ -55,6 +59,7 @@ Every production capability flag ships as `false`:
 |---|---|---|
 | `CONSUMER_JOURNEY_ENABLED` | `false` | Master processing kill switch |
 | `CONSUMER_AI_INTAKE_ENABLED` | `false` | Natural-language structured extraction |
+| `CONSUMER_VOICE_ENABLED` | `false` | Reviewed speech-to-text and exact-question speech transport |
 | `CONSUMER_MODULE_ROUTING_ENABLED` | `false` | Goal-to-module routing |
 | `CONSUMER_HANDOFF_ENABLED` | `false` | Consented adviser handoff |
 | `CONSUMER_PUBLIC_ACCESS_ENABLED` | `false` | Session creation without a signed invite |
@@ -62,9 +67,10 @@ Every production capability flag ships as `false`:
 These committed values are an immutable dormant baseline for the current
 release workflow. Do not change them in `worker/wrangler.toml`. The protected
 production environment may generate one narrowly defined ephemeral override:
-the adviser-test, signed-invite, rules-only mode documented below. That mode can
-turn on only the master journey and deterministic module routing. AI, handoff,
-and public access remain forced off.
+the adviser-test, signed-invite, voice-assisted rules-only mode documented below.
+That mode can turn on only the master journey, deterministic module routing, and
+the reviewed voice transport. Model-driven AI intake, handoff, and public access
+remain forced off.
 
 Policy-controlled values must be supplied from approved, published text. Blank
 values are intentional and must not be replaced with guessed identifiers,
@@ -76,8 +82,10 @@ durations, or URLs:
 | `CONSUMER_CONSENT_MANIFEST_ID` | empty | Immutable approved manifest binding the policy version, analysis notice, AI notice, and privacy URL shown together |
 | `CONSUMER_ANALYSIS_NOTICE_ID` | empty | Exact analysis notice accepted at session creation |
 | `CONSUMER_AI_NOTICE_ID` | empty | Exact optional AI-processing notice accepted at session creation |
+| `CONSUMER_VOICE_NOTICE_ID` | empty | Exact optional microphone, transcription, and AI-generated-voice notice |
 | `CONSUMER_PRIVACY_NOTICE_URL` | empty | Published HTTPS privacy notice |
 | `CONSUMER_AI_DATA_POLICY_ID` | empty | Approved provider/data-processing policy identifier |
+| `CONSUMER_VOICE_DATA_POLICY_ID` | empty | Approved OpenAI audio-processing policy identifier |
 | `CONSUMER_HANDOFF_POLICY_VERSION` | empty | Exact handoff consent version |
 | `CONSUMER_HANDOFF_POLICY_URL` | empty | Published HTTPS policy covering the encrypted bridge and separate adviser-record retention |
 | `CONSUMER_HANDOFF_RETENTION_POLICY_ID` | empty | Approved handoff-retention policy identifier |
@@ -113,13 +121,25 @@ feature flag alone must never bypass those checks.
 | `CONSUMER_AI_COMPLEX_DAILY_REQUEST_BUDGET` | `100` | Complex-tier daily request cap |
 | `CONSUMER_AI_SESSION_TOKEN_BUDGET` | `25000` | Token cap per session |
 | `CONSUMER_AI_DAILY_TOKEN_BUDGET` | `250000` | Daily token cap |
+| `CONSUMER_VOICE_TRANSCRIPTION_MODEL` | empty | Server-side speech-to-text model; fixed by reviewed deployment |
+| `CONSUMER_VOICE_SPEECH_MODEL` | empty | Server-side exact-question speech model; fixed by reviewed deployment |
+| `CONSUMER_VOICE_NAME` | empty | Reviewed synthetic voice name |
+| `CONSUMER_VOICE_PRICING_VERSION` | empty | Auditable conservative reservation catalogue version; not an invoice-price claim |
+| `CONSUMER_VOICE_TIMEOUT_MS` | `25000` | Abort timeout for a single provider call |
+| `CONSUMER_VOICE_MAX_AUDIO_BYTES` | `1000000` | Worker-enforced maximum uploaded recording size |
+| `CONSUMER_VOICE_MAX_DURATION_SECONDS` | `45` | Browser recording deadline and claimed-duration validation ceiling |
+| `CONSUMER_VOICE_MAX_SPEECH_CHARACTERS` | `1200` | Maximum server-owned question length sent to speech synthesis |
+| `CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS` | `0` | Conservative application voice allowance per consumer session; zero fails closed |
+| `CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS` | `0` | Conservative aggregate application voice allowance per UTC day; zero fails closed |
+| `CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS` | `0` | Atomic cost reservation before transcription; zero fails closed |
+| `CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS` | `0` | Atomic cost reservation before speech synthesis; zero fails closed |
 | `CONSUMER_BOOKING_URL` | empty | Optional HTTPS booking seam |
 
 The numeric values above are conservative operational starting points, not
 privacy, legal, or financial-policy decisions. Review observed latency, quality,
 and cost before changing them.
 
-## Protected adviser-test activation
+## Protected adviser-test voice activation
 
 The reviewed workflow contains the explicit source constant
 `CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED=true`. A protected GitHub
@@ -133,6 +153,7 @@ mode and approved policy set:
 
 - `CONSUMER_JOURNEY_ENABLED=true`;
 - `CONSUMER_MODULE_ROUTING_ENABLED=true`;
+- `CONSUMER_VOICE_ENABLED=true`;
 - `CONSUMER_COHORT=adviser_test`;
 - `CONSUMER_INVITE_MAX_TTL_HOURS=24`;
 - `CONSUMER_AI_INTAKE_ENABLED=false`;
@@ -147,13 +168,24 @@ mode and approved policy set:
 | `CONSUMER_BETA_CONSENT_MANIFEST_ID` | `consumer-adviser-test-manifest-v1` |
 | `CONSUMER_BETA_ANALYSIS_NOTICE_ID` | `analysis-adviser-test-v1` |
 | `CONSUMER_BETA_AI_NOTICE_ID` | `ai-adviser-test-v1` |
+| `CONSUMER_BETA_VOICE_NOTICE_ID` | `voice-adviser-test-v1` |
+| `CONSUMER_BETA_VOICE_DATA_POLICY_ID` | `openai-audio-adviser-test-v1` |
+| `CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL` | `gpt-4o-mini-transcribe` |
+| `CONSUMER_BETA_VOICE_SPEECH_MODEL` | `tts-1-hd` |
+| `CONSUMER_BETA_VOICE_NAME` | `nova` |
+| `CONSUMER_BETA_VOICE_PRICING_VERSION` | `openai-audio-eur-safety-2026-07-13-v2` |
+| `CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS` | `200` (€2.00 application allowance) |
+| `CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS` | `2000` (€20.00 UTC-day application allowance) |
+| `CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS` | `10` |
+| `CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS` | `10` |
 | `CONSUMER_BETA_PRIVACY_NOTICE_URL` | `https://planeir.ie/plan/privacy.html` |
 | `CONSUMER_BETA_SESSION_TTL_DAYS` | `7` |
 
-There are no protected switches for AI, handoff, public access, the cohort,
-policy values, TTL, or module allowlist. Adding or changing one is a separate
-reviewed release. An `OPENAI_API_KEY`, if already present for another purpose,
-cannot make this mode use AI.
+There are no protected switches for model-driven AI intake, handoff, public
+access, the cohort, policy values, voice models, voice name, application allowances, TTL,
+or module allowlist. Adding or changing one is a separate reviewed release. The
+OpenAI credential enables only the fixed audio routes because
+`CONSUMER_AI_INTAKE_ENABLED` remains forced `false`.
 
 The deployment resolves the D1 inventory by the exact name
 `planeir-consumer`. It fails on duplicates. If none exists while the effective
@@ -165,19 +197,26 @@ activation only when Cloudflare reports its immutable jurisdiction as `eu`.
 An existing database without that restriction fails closed; Cloudflare does not
 permit adding or changing jurisdiction after creation.
 
-The Worker secret inventory is then checked for the exact names
-`CONSUMER_DATA_ENCRYPTION_KEY`, `CONSUMER_RATE_LIMIT_HASH_KEY`, and
-`CONSUMER_INVITE_SIGNING_KEY`. Each missing name receives a newly generated
-independent 32-byte base64url value through `wrangler secret put`. Existing
-names are never written, so a normal deployment cannot rotate an established
-key. Values are never printed or added to a file.
-
 The workflow next resolves the active `planeir.ie` zone in the configured
 Cloudflare account and upserts one response-header transform rule with stable
 reference `planeir_consumer_plan_security_headers_v1`. It updates only that
 rule or appends it to the phase ruleset; unrelated rules are not replaced. The
 live header verifier then checks `/plan/` and `/plan/privacy.html` before any
-D1 migration or Worker deployment.
+remote D1 migration or Worker deployment.
+
+Only after that edge gate passes does the workflow apply both remote D1
+migration streams. It then checks the Worker secret inventory for the exact
+names `CONSUMER_DATA_ENCRYPTION_KEY`, `CONSUMER_RATE_LIMIT_HASH_KEY`, and
+`CONSUMER_INVITE_SIGNING_KEY`. Each missing name receives a newly generated
+independent 32-byte base64url value through `wrangler secret put`. Existing
+names are never written, so a normal deployment cannot rotate an established
+key. Values are never printed or added to a file. The protected GitHub
+`OPENAI_API_KEY` secret is mandatory in effective voice-beta mode and is written
+to the Worker as the server-only provider credential. Deployment fails before
+activation if it is absent or contains whitespace; its value is never printed.
+Wrangler 4.110 deploys a secret-only version when `secret put` runs, so every
+edge and D1 prerequisite deliberately completes before the first secret
+mutation; the reviewed code deployment follows immediately afterwards.
 
 The existing `CLOUDFLARE_API_TOKEN` must therefore cover the configured account
 and have Workers/D1 access plus Zone Read and Zone Transform Rules Write
@@ -198,11 +237,21 @@ Activation procedure:
    generated config, replays migrations locally, and dry-run bundles before
    applying remote migrations or deploying.
 5. After deployment, CI verifies the live bootstrap is exactly adviser-test,
-   invite-required, and rules-only. It then authenticates as the configured
+   invite-required, voice-assisted rules-only, model-driven AI intake off, and
+   limited to the fixed €2 session application allowance. It then authenticates as the configured
    adviser smoke account, issues a one-use private link, consumes it to create
-   one synthetic rules-only consumer session, and requires deletion of that
-   session before running the existing adviser/published-session smoke. Invite,
-   cookie, CSRF, and session credentials are never printed.
+   one synthetic voice-capable session with model-driven AI intake declined,
+   and requires deletion of that session before running the existing
+   adviser/published-session smoke. Invite, cookie, CSRF, session credentials,
+   and audio are never printed.
+
+Normal pushes and manual dispatches use the default-false
+`run_paid_voice_provider_smoke` input and make no provider call in that bridge
+smoke. Only a manual `workflow_dispatch` with that checkbox explicitly enabled
+spends provider allowance: it asks the protected Worker to synthesize its exact
+deterministic question, passes that bounded MP3 back through transcription,
+verifies the 10-cent-plus-10-cent reservations, and still deletes the synthetic
+session in `finally` even if either provider boundary fails.
 
 To stop processing, set the protected
 `CONSUMER_ADVISER_TEST_BETA_OVERRIDE=false` and manually dispatch the workflow.
@@ -352,15 +401,18 @@ npx wrangler secret put CONSUMER_RATE_LIMIT_HASH_KEY
 npx wrangler secret put CONSUMER_INVITE_SIGNING_KEY
 ```
 
-Add `OPENAI_API_KEY` only after the AI notice and data-processing policy are
-approved and configured:
+For the protected voice beta, store `OPENAI_API_KEY` as a GitHub Actions secret
+on the protected `production` environment. CI validates it and provisions the
+same value as a Cloudflare Worker secret without printing it. For manual
+non-production setup, add it only after the applicable voice or AI notice and
+data-processing policy are approved:
 
 ```bash
 npx wrangler secret put OPENAI_API_KEY
 ```
 
 Adding a database, secrets, or policy values does not enable a capability. The
-five source-controlled flags remain the dormant baseline. Effective activation
+six source-controlled flags remain the dormant baseline. Effective activation
 requires the source approval constant and no protected `false` rollback
 override.
 
@@ -382,6 +434,38 @@ The API uses the least intelligence needed for bounded fact extraction:
 6. Calculations, readiness gates, warnings, consent, module allowlists, and
    journey transitions remain deterministic.
 
+The adviser-test voice transport does not invoke that extraction path. It uses
+`gpt-4o-mini-transcribe` only for a recording capped at 45 seconds by the UI and
+1,000,000 audio bytes by the Worker. The browser posts the recording as a raw
+audio body with its reviewed audio media type plus bounded
+`X-Voice-Duration-Ms` and `X-Voice-Request-Id` headers. When `Content-Length` is
+present the Worker rejects an oversized declaration before reading; because
+browsers do not portably guarantee that header for generated request bodies, it
+is not required. The Worker streams and counts every body to the same hard byte
+limit before constructing the provider file. It returns the transcript for
+review and uses
+`tts-1-hd` with `nova` only
+to speak the exact server-selected deterministic question. Before either call,
+the Worker atomically reserves 10 cents from its conservative reviewed cost
+catalogue. It
+refuses the call when the reservation would exceed 200 cents for the session or
+2,000 cents across the UTC day. Every dispatched voice call currently keeps the
+full reservation because the synchronous provider response is not an auditable
+EUR invoice. This is a deliberately conservative application dispatch guard,
+not invoice reconciliation; provider pricing and foreign-exchange changes must
+be reviewed before changing the dated catalogue. A reservation may be released
+only when non-dispatch is proven. These €2 and €20 values are application-level
+voice allowances, not guarantees or invoice-level caps on actual OpenAI spend;
+provider pricing, usage accounting, currency conversion, and billing can differ.
+Keep provider-account billing limits and alerts as a separate operational
+safeguard. Budget exhaustion leaves typed rules-only operation available and
+never falls through to an unmetered provider call.
+
+The provider abort remains active while the response body is consumed. The
+Worker rejects unknown response media types, malformed declared lengths,
+transcription bodies above 256 KiB, and speech bodies above 5,000,000 bytes; a
+missing response `Content-Length` is read through the same streaming byte bound.
+
 If the provider times out, refuses a request, returns invalid structured output,
 or any budget is exhausted, processing continues in clearly labelled rules-only
 mode. Do not silently invent a fact or substitute a model-generated calculation.
@@ -392,23 +476,28 @@ Use this order independently in each environment:
 
 1. Keep all source `wrangler.toml` capability flags false and validate the
    source-approved adviser-test constants.
-2. Let CI resolve or create the exact isolated D1, replay both migration streams
-   locally, and dry-run the Worker.
-3. Let CI create only missing encryption, rate-limit, and invite keys, then
-   upsert and verify the path-scoped edge header rule.
-4. Test create, resume, correction, consent withdrawal, expiry, and deletion
+2. Test create, resume, correction, consent withdrawal, expiry, and deletion
    locally with the master journey enabled but AI, public access, and handoff
    disabled.
-5. Use the protected activation procedure to enable the `adviser_test` cohort.
-   The generated production config enables the master journey and routing
-   together only for the fixed initial allowlist and signed-invite audience.
-6. Treat AI as a later, separate reviewed release. Configuring an OpenAI secret
-   or data-policy ID does not enable it in the current production workflow.
-7. Treat handoff as a later, separate reviewed release. Its published policy
+3. Let CI resolve or create the exact isolated D1, replay both migration streams
+   locally, and dry-run the Worker.
+4. Upsert and verify the path-scoped edge header rule, then apply both remote D1
+   migration streams.
+5. Only after those prerequisites, let CI create missing encryption, rate-limit,
+   and invite keys, provision the protected OpenAI credential, and deploy.
+6. Use the protected activation procedure to enable the `adviser_test` cohort.
+   The generated production config enables the master journey, routing, and
+   bounded voice transport together only for the fixed initial allowlist and
+   signed-invite audience.
+7. Treat model-driven AI intake as a later, separate reviewed release.
+   Configuring an OpenAI secret or AI data-policy ID does not enable it in the
+   current production workflow; the voice beta sends audio only to its bounded
+   transcription and exact-question speech routes.
+8. Treat handoff as a later, separate reviewed release. Its published policy
    must define adviser-lead retention and pipeline visibility, minimal sharing,
    revocation, purge, deletion, and retry behaviour before the workflow is
    expanded to permit it.
-8. Consider public access, a wider cohort, or another module only as a separate
+9. Consider public access, a wider cohort, or another module only as a separate
    reviewed release; the current deployment generator has no switch for them.
 
 `CONSUMER_PUBLIC_ACCESS_ENABLED=false` is a second audience gate: creating a
@@ -433,6 +522,9 @@ deterministic engines and dated rules are complete.
 | `POST` | `/api/consumer/sessions/:id/confirm` | Confirm the current profile revision |
 | `POST` | `/api/consumer/sessions/:id/analyses` | Run an allowlisted deterministic analysis |
 | `PATCH` | `/api/consumer/sessions/:id/consent` | Withdraw optional AI processing for the session |
+| `PATCH` | `/api/consumer/sessions/:id/voice/consent` | Grant or withdraw the versioned optional voice-processing consent |
+| `POST` | `/api/consumer/sessions/:id/voice/transcriptions` | Transcribe one bounded microphone recording into reviewable text |
+| `POST` | `/api/consumer/sessions/:id/voice/speech` | Synthesize only the exact current deterministic Planéir question |
 | `POST` | `/api/consumer/sessions/:id/handoffs` | Create a separately consented minimal adviser handoff |
 | `DELETE` | `/api/consumer/sessions/:id` | Delete consumer session data |
 
@@ -442,15 +534,34 @@ key so retries do not double-charge or duplicate state. Authenticated deletion
 and AI-consent withdrawal remain available when the processing kill switch is
 off, preserving a narrow data-rights plane during an incident.
 
+Voice consent is independent of analysis consent and model-driven AI intake.
+Each real grant or withdrawal appends a versioned consent event while the
+current row remains the fast authorization check; both are purged by authenticated
+session deletion. Transcription accepts only an allowlisted raw audio media type,
+a bounded duration header, and an idempotency header. The Worker enforces the
+audio limit while consuming the request stream, including when the browser omits
+`Content-Length`; it never
+commits the returned text as a turn until the user reviews and sends it through
+the ordinary deterministic turn route. Speech requests contain only an
+idempotency key because the server derives the exact current question. Both
+provider routes reserve budget atomically before making an external call.
+Immediately before `fetch`, the reservation receives its one-way in-flight
+timestamp only if the exact current notice, data-policy identifier, policy
+version, privacy URL, and unwithdrawn grant still match. A withdrawal that
+commits first prevents dispatch and the reservation is released as `not_sent`.
+A withdrawal that commits after that transition applies to future and not-yet-
+in-flight operations; it cannot recall a provider request already in flight.
+
 `POST /api/advisor/consumer-invite` requires the authenticated adviser cookie
 and matching `X-Advisor-CSRF` header. It is limited to 12 attempts per hour per
 client IP and returns `Cache-Control: no-store`. Each signed invitation expires
 within four hours and can create one consumer session only. The issuer fails
 closed unless production is exactly the `adviser_test`, invite-only,
-rules-only mode with the fixed two-module allowlist.
+voice-assisted rules-only mode with the fixed two-module allowlist.
 
 Success returns `{ "ok": true, "url": "https://planeir.ie/plan/#invite=…",
-"expiresAt": "…", "maxUses": 1, "mode": "rules_only" }`. Expected failures
+"expiresAt": "…", "maxUses": 1, "mode": "voice_assisted_rules_only" }` in
+the protected voice beta. Expected failures
 are `401` for no adviser session, `403` for a missing or stale CSRF token, `429`
 for the rate limit, and a deliberately generic `503` when any protected-beta
 invariant or signing dependency is unavailable. Never log or paste the returned
@@ -536,16 +647,17 @@ Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 Referrer-Policy: no-referrer
-Permissions-Policy: camera=(), microphone=(), geolocation=()
+Permissions-Policy: camera=(), microphone=(self), geolocation=()
 Strict-Transport-Security: max-age=31556952
 ```
 
 Configure these at the Cloudflare zone/edge (or move `/plan/*` to a host that
-supports response headers) without changing headers for existing adviser pages.
-Verify both `/plan/` and `/plan/privacy.html` with `curl -sSI`. Keep
+supports response headers) without changing headers for existing adviser pages
+or any non-`/plan` route. `microphone=(self)` permits capture only in the
+same-origin Planéir planning pages; camera and geolocation remain denied. Verify
+both `/plan/` and `/plan/privacy.html` with `curl -sSI`. Keep
 `CONSUMER_JOURNEY_ENABLED=false` if any header is absent or if production HTML
-contains a localhost connection source. Voice requires a separately reviewed
-Permissions Policy change later.
+contains a localhost connection source.
 
 ## Verification and deployment gate
 
@@ -569,35 +681,43 @@ fresh database, then checks integrity and foreign keys. It bundles the Worker
 without deploying.
 
 The production deployment job is attached to the protected GitHub `production`
-environment. Before any remote migration or Worker deployment it:
+environment. It establishes the release prerequisites in this order:
 
 1. validates Cloudflare credentials, source approval, and the protected rollback
    override;
-2. asserts all five consumer capability flags are exactly `false` in source;
+2. asserts all six consumer capability flags are exactly `false` in source;
 3. runs the full regression, static build, and fresh dual-D1 HTTP lifecycle;
 4. resolves the exact `planeir-consumer` D1 and creates it only if missing;
 5. creates a disposable same-directory Wrangler config with either dormant
-   flags or the fixed adviser-test rules-only overlay;
+   flags or the fixed adviser-test voice-assisted rules-only overlay;
 6. replays adviser and consumer migrations into separate fresh local D1 state
    and dry-run bundles the Worker;
-7. creates only missing consumer Worker secrets, preserving every existing
-   value; and
-8. upserts only the stable path-scoped response-header rule and verifies the
-   live static headers.
+7. upserts only the stable path-scoped response-header rule and verifies the
+   live static headers;
+8. applies `LEADS_DB` migrations and conditionally applies `CONSUMER_DB`
+   migrations when that binding exists;
+9. creates only missing consumer data Worker secrets, preserving every existing
+   value, and provisions the protected OpenAI credential for the fixed voice
+   routes; and
+10. deploys the reviewed Worker code.
 
-Only then does it apply `LEADS_DB` migrations, conditionally apply `CONSUMER_DB`
-migrations when that binding exists, and deploy. It next asserts that the live
+It next asserts that the live
 bootstrap is either fully dormant or exactly `adviser_test`, invite-required,
-rules-only, and limited to House Purchase and Liquidity. In beta mode it also
+voice-assisted rules-only, text-AI-disabled, limited to a conservative €2
+application allowance per session, and
+limited to House Purchase and Liquidity. In beta mode it also
 runs the authenticated adviser-to-consumer bridge smoke and requires cleanup of
-its synthetic consumer session. The existing live published-session smoke runs
-last. Do not run those production smoke flows during consumer development
-because they create and then delete or revoke real remote records.
+its synthetic consumer session. That smoke remains provider-free unless a
+manual dispatch explicitly enables the default-false paid round trip. The
+existing live published-session smoke runs last. Do not run those production
+smoke flows during consumer development because they create and then delete or
+revoke real remote records.
 
 Browser release QA must cover desktop and mobile; keyboard-only navigation;
 44-pixel touch targets; notice, adult, and consent gates; interrupted/resumed
 sessions; corrections and focus retention after rerender; assumptions and
-uncertainty copy; rules-only fallback; AI withdrawal; deletion; handoff
+uncertainty copy; typed rules-only fallback; voice and AI consent withdrawal;
+deletion; handoff
 disabled/enabled states; and a regression pass through `/app/`.
 
 ## Rollback and incident response
@@ -607,8 +727,11 @@ For an intake, provider, or privacy incident:
 1. Set the protected `CONSUMER_ADVISER_TEST_BETA_OVERRIDE` environment variable
    to exactly `false` and manually dispatch the Worker deployment. Do not edit
    the committed false flags.
-2. AI and handoff are already forced off in this beta. If a later release
-   permits either one, use its independently reviewed kill switch as well.
+2. Model-driven AI intake and handoff are already forced off in this beta. A
+   voice-provider or cost-ledger incident requires the same protected `false`
+   override because voice is intentionally coupled to this narrow adviser-test
+   activation. If a later release permits a broader capability, use its
+   independently reviewed kill switch as well.
 3. Revoke outstanding signed invites if audience access is implicated.
 4. Keep authenticated deletion and AI withdrawal reachable. Preserve only the
    encrypted records and allowlisted audit metadata required for incident

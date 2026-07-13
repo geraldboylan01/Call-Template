@@ -197,6 +197,33 @@ export function validateConsentBody(body) {
   return { aiProcessing: false };
 }
 
+export function validateVoiceConsentBody(body, expected) {
+  if (!plainObject(body) || typeof body.granted !== 'boolean') {
+    throw badRequest('Voice consent must be explicitly granted or withdrawn.', 'invalid_voice_consent');
+  }
+  const noticeId = cleanText(body.noticeId, 'Voice notice id', 120);
+  const policyVersion = cleanText(body.policyVersion, 'Voice policy version', 120);
+  const privacyNoticeUrl = cleanText(body.privacyNoticeUrl, 'Voice privacy notice URL', 500);
+  if (body.granted && (noticeId !== expected.noticeId
+    || policyVersion !== expected.policyVersion
+    || privacyNoticeUrl !== expected.privacyNoticeUrl)) {
+    throw badRequest('The voice disclosure is no longer current. Reload before continuing.', 'voice_policy_outdated');
+  }
+  return { granted: body.granted, noticeId, policyVersion, privacyNoticeUrl };
+}
+
+export function validateVoiceSpeechBody(body) {
+  if (!plainObject(body)) throw badRequest('Voice speech request must be an object.');
+  const idempotencyKey = cleanText(body.idempotencyKey, 'Voice request id', 120);
+  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) {
+    throw badRequest('Voice request id is invalid.', 'voice_idempotency_key_invalid');
+  }
+  if (Object.keys(body).some((key) => key !== 'idempotencyKey')) {
+    throw badRequest('The spoken question is selected by the planning service.', 'voice_speech_text_not_allowed');
+  }
+  return { idempotencyKey };
+}
+
 export function validateAnalysisBody(body, allowedModules) {
   const value = body === undefined || body === null ? {} : body;
   if (!plainObject(value)) throw badRequest('Analysis body must be an object.');

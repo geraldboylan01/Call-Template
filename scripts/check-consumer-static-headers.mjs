@@ -68,9 +68,14 @@ export function validatePlanSecurityHeaders(headers, { workerOrigin } = {}) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
-  for (const deniedCapability of ['camera=()', 'microphone=()', 'geolocation=()']) {
+  for (const deniedCapability of ['camera=()', 'geolocation=()']) {
     assert.ok(permissions.includes(deniedCapability), `Permissions-Policy must contain ${deniedCapability}.`);
   }
+  assert.ok(
+    permissions.includes('microphone=(self)'),
+    'Permissions-Policy must allow microphone capture only from the Planéir /plan origin.'
+  );
+  assert.ok(!permissions.includes('microphone=()'), 'Permissions-Policy must not disable the reviewed /plan microphone flow.');
   return true;
 }
 

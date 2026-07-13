@@ -38,6 +38,7 @@ TRUSTPILOT_AFS_EMAIL = "planeir.ie+c36359b3d5@invite.trustpilot.com"
 # approved policies, and required secrets are present.
 CONSUMER_JOURNEY_ENABLED = "false"
 CONSUMER_AI_INTAKE_ENABLED = "false"
+CONSUMER_VOICE_ENABLED = "false"
 CONSUMER_MODULE_ROUTING_ENABLED = "false"
 CONSUMER_HANDOFF_ENABLED = "false"
 CONSUMER_PUBLIC_ACCESS_ENABLED = "false"
@@ -49,6 +50,7 @@ CONSUMER_CONSENT_MANIFEST_ID = ""
 # processing fail closed until the exact published notices are approved.
 CONSUMER_ANALYSIS_NOTICE_ID = ""
 CONSUMER_AI_NOTICE_ID = ""
+CONSUMER_VOICE_NOTICE_ID = ""
 CONSUMER_PRIVACY_NOTICE_URL = ""
 # This duration is not a legal-policy decision. Keep the journey disabled until
 # the value and the consent-policy version have been explicitly approved.
@@ -61,6 +63,21 @@ CONSUMER_INVITE_MAX_TTL_HOURS = "168"
 # Empty policy identifiers deliberately keep AI and handoff fail closed even if
 # their feature flags are accidentally changed.
 CONSUMER_AI_DATA_POLICY_ID = ""
+CONSUMER_VOICE_DATA_POLICY_ID = ""
+CONSUMER_VOICE_TRANSCRIPTION_MODEL = ""
+CONSUMER_VOICE_SPEECH_MODEL = ""
+CONSUMER_VOICE_NAME = ""
+CONSUMER_VOICE_PRICING_VERSION = ""
+CONSUMER_VOICE_TIMEOUT_MS = "25000"
+CONSUMER_VOICE_MAX_AUDIO_BYTES = "1000000"
+CONSUMER_VOICE_MAX_DURATION_SECONDS = "45"
+CONSUMER_VOICE_MAX_SPEECH_CHARACTERS = "1200"
+# Voice budgets are integer euro cents. Zero is the fail-closed dormant value;
+# the production workflow supplies the reviewed adviser-test limits ephemerally.
+CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS = "0"
+CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS = "0"
+CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS = "0"
+CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS = "0"
 CONSUMER_AI_DEFAULT_MODEL = "gpt-5.6-luna"
 CONSUMER_AI_COMPLEX_MODEL = "gpt-5.6-terra"
 CONSUMER_AI_DEFAULT_REASONING_EFFORT = "low"
@@ -83,4 +100,5 @@ CONSUMER_BOOKING_URL = ""
 # Set with `wrangler secret put`: CONSUMER_DATA_ENCRYPTION_KEY,
 # CONSUMER_DATA_ENCRYPTION_PREVIOUS_KEYS_JSON (during rotations),
 # CONSUMER_INVITE_SIGNING_KEY (for private cohorts),
-# CONSUMER_RATE_LIMIT_HASH_KEY (a separate 32-byte base64url key), OPENAI_API_KEY.
+# CONSUMER_RATE_LIMIT_HASH_KEY (a separate 32-byte base64url key), OPENAI_API_KEY
+# (server-side AI or voice provider credential only).

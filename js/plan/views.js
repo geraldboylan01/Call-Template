@@ -1,4 +1,4 @@
-import { getAiConsent, getConsumerInvite } from './store.js';
+import { getAiConsent, getConsumerInvite, hasCurrentVoiceConsent } from './store.js';
 import { isSubscriptionAssistCohort } from './subscription_assist.js';
 
 const STAGE_GROUPS = [
@@ -361,6 +361,124 @@ function normaliseQuestion(question) {
   };
 }
 
+function formatVoiceEuro(microEur) {
+  const value = Number(microEur);
+  if (!Number.isFinite(value) || value < 0) return '—';
+  return new Intl.NumberFormat('en-IE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value / 1_000_000);
+}
+
+function createVoicePanel(currentState, question) {
+  const voice = currentState.voice || {};
+  const configuredBudget = voice.budget || currentState.bootstrap?.voiceBudget || {};
+  const limitMicroEur = Math.max(0, Number(firstDefined(configuredBudget.limitMicroEur, 2_000_000)) || 0);
+  const spentMicroEur = Math.max(0, Number(firstDefined(configuredBudget.spentMicroEur, 0)) || 0);
+  const remainingMicroEur = Math.max(0, Number(firstDefined(
+    configuredBudget.remainingMicroEur,
+    limitMicroEur - spentMicroEur
+  )) || 0);
+  const consentGranted = hasCurrentVoiceConsent();
+  const configured = Boolean(
+    currentState.bootstrap?.voiceNoticeId
+    && currentState.bootstrap?.voicePolicyVersion
+    && currentState.bootstrap?.voicePrivacyNoticeUrl
+  );
+  const panel = element('aside', 'voice-panel');
+  panel.dataset.voicePanel = '';
+  panel.setAttribute('aria-labelledby', 'voicePanelTitle');
+
+  const heading = element('div', 'voice-panel-heading');
+  const headingCopy = element('div');
+  append(
+    headingCopy,
+    element('p', 'section-kicker', 'Adviser test · voice'),
+    element('h3', '', 'Talk, review, then send')
+  );
+  headingCopy.querySelector('h3').id = 'voicePanelTitle';
+  const aiBadge = element('span', 'voice-ai-badge', 'AI-generated voice');
+  append(heading, headingCopy, aiBadge);
+  panel.append(heading);
+  panel.append(element(
+    'p',
+    'voice-intro',
+    'Tap to record up to 45 seconds. Planéir adds the transcript to the same answer box so you can correct every word and figure before choosing Continue.'
+  ));
+
+  const budget = element('div', 'voice-budget');
+  const budgetRow = element('div', 'voice-budget-row');
+  append(
+    budgetRow,
+    element('strong', '', 'App voice allowance'),
+    element('span', '', `${formatVoiceEuro(limitMicroEur)} app allowance · ${formatVoiceEuro(remainingMicroEur)} remaining`)
+  );
+  budgetRow.lastElementChild.dataset.voiceBudgetText = '';
+  const meter = element('meter', 'voice-budget-meter');
+  meter.dataset.voiceBudgetMeter = '';
+  meter.min = 0;
+  meter.max = Math.max(1, limitMicroEur);
+  meter.low = Math.max(1, limitMicroEur * 0.2);
+  meter.optimum = Math.max(1, limitMicroEur);
+  meter.value = Math.min(limitMicroEur, remainingMicroEur);
+  meter.setAttribute('aria-label', 'App voice allowance remaining');
+  meter.setAttribute('aria-valuetext', `${formatVoiceEuro(remainingMicroEur)} app voice allowance remaining`);
+  append(budget, budgetRow, meter, element('small', '', 'Each voice call uses a fixed conservative reservation. The app stops new voice calls at this allowance; typed answers remain available.'));
+  panel.append(budget);
+
+  const actions = element('div', 'voice-actions');
+  const record = element('button', 'voice-record-button', consentGranted ? 'Tap to talk' : 'Set up voice');
+  record.type = 'button';
+  record.dataset.action = consentGranted ? 'voice-record' : 'voice-consent';
+  record.disabled = currentState.busy || !configured || remainingMicroEur <= 0;
+  record.setAttribute('aria-describedby', 'voiceStatus voiceDisclosure');
+  record.setAttribute('aria-pressed', 'false');
+  const speak = element('button', 'secondary-button voice-speak-button', 'Hear this question');
+  speak.type = 'button';
+  speak.dataset.action = consentGranted ? 'voice-speak' : 'voice-consent';
+  speak.disabled = currentState.busy || !configured || remainingMicroEur <= 0 || !question.prompt;
+  speak.setAttribute('aria-describedby', 'voiceDisclosure');
+  speak.setAttribute('aria-pressed', 'false');
+  append(actions, record, speak);
+  const timer = element('span', 'voice-recording-timer', '0:45 remaining');
+  timer.dataset.voiceTimer = '';
+  timer.hidden = true;
+  timer.setAttribute('aria-hidden', 'true');
+  actions.append(timer);
+  panel.append(actions);
+
+  const status = element(
+    'p',
+    'voice-status',
+    configured
+      ? 'Voice never starts automatically. Your transcript stays in the text box until you choose Continue.'
+      : 'Voice is temporarily unavailable because its disclosure configuration is incomplete. You can continue by typing.'
+  );
+  status.id = 'voiceStatus';
+  status.dataset.voiceStatus = '';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  status.setAttribute('aria-atomic', 'true');
+  panel.append(status);
+
+  const disclosure = element('p', 'voice-disclosure');
+  disclosure.id = 'voiceDisclosure';
+  disclosure.append(
+    `${currentState.bootstrap?.voiceAiGeneratedDisclosure || 'The playback voice is AI-generated.'} It reads the current server-owned Planéir question; it does not create financial calculations or advice. `
+  );
+  const privacy = element('a', '', 'Voice privacy details');
+  privacy.href = /^https:\/\//i.test(String(currentState.bootstrap?.voicePrivacyNoticeUrl || ''))
+    ? currentState.bootstrap.voicePrivacyNoticeUrl
+    : './privacy.html#optional-voice';
+  privacy.target = '_blank';
+  privacy.rel = 'noopener noreferrer';
+  disclosure.append(privacy, '.');
+  panel.append(disclosure);
+  return panel;
+}
+
 function createConversationView(currentState) {
   const section = element('section');
   append(
@@ -424,6 +542,11 @@ function createConversationView(currentState) {
       questionCard.append(choices);
     }
     section.append(questionCard);
+  }
+
+  if (currentState.bootstrap?.voiceEnabled === true
+    && String(currentState.bootstrap?.cohort || '').toLowerCase() === 'adviser_test') {
+    section.append(createVoicePanel(currentState, question));
   }
 
   const composer = element('form', 'composer');

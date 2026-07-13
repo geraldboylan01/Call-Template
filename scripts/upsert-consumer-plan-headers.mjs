@@ -30,7 +30,7 @@ export function buildConsumerPlanHeaderRule(workerOrigin) {
         'x-frame-options': set('DENY'),
         'x-content-type-options': set('nosniff'),
         'referrer-policy': set('no-referrer'),
-        'permissions-policy': set('camera=(), microphone=(), geolocation=()'),
+        'permissions-policy': set('camera=(), microphone=(self), geolocation=()'),
         'strict-transport-security': set('max-age=31556952')
       }
     },

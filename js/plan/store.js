@@ -57,6 +57,10 @@ export const state = {
   handoff: null,
   consentRefreshRequired: false,
   ai: null,
+  voice: {
+    consent: null,
+    budget: null
+  },
   selectedModuleIds: [],
   knownRecommendationIds: [],
   view: 'conversation',
@@ -70,6 +74,19 @@ export function normaliseBootstrap(payload) {
   const links = asObject(root.links) || {};
   const access = asObject(root.access) || {};
   const disclosures = asObject(firstDefined(root.disclosures, root.disclosureVersions)) || {};
+  const voice = asObject(root.voice) || {};
+  const voiceBudget = normaliseVoiceBudget(firstDefined(
+    voice.budget,
+    root.voiceBudget,
+    root.consumerVoiceBudget,
+    voice.sessionBudgetMicroEur !== undefined
+      ? {
+          limitMicroEur: voice.sessionBudgetMicroEur,
+          spentMicroEur: 0,
+          remainingMicroEur: voice.sessionBudgetMicroEur
+        }
+      : null
+  ));
   const rawAllowedModules = asArray(firstDefined(
     flags.consumerAllowedModuleIds,
     root.allowedModules,
@@ -95,7 +112,45 @@ export function normaliseBootstrap(payload) {
     aiNoticeId: String(firstDefined(root.ai?.noticeId, '') || ''),
     privacyNoticeUrl: String(firstDefined(root.privacyNoticeUrl, '') || ''),
     inviteRequired: access.inviteRequired === true,
-    voiceEnabled: flags.consumerVoiceEnabled === true,
+    voiceEnabled: flags.consumerVoiceEnabled === true || voice.enabled === true,
+    voiceNoticeId: String(firstDefined(
+      voice.noticeId,
+      root.voiceNoticeId,
+      disclosures.voiceNoticeId,
+      ''
+    ) || ''),
+    voicePolicyVersion: String(firstDefined(
+      voice.policyVersion,
+      root.voicePolicyVersion,
+      disclosures.voicePolicyVersion,
+      disclosures.consumerPolicyVersion,
+      root.consentPolicyVersion,
+      root.policyVersion,
+      ''
+    ) || ''),
+    voicePrivacyNoticeUrl: String(firstDefined(
+      voice.privacyNoticeUrl,
+      root.voicePrivacyNoticeUrl,
+      root.privacyNoticeUrl,
+      ''
+    ) || ''),
+    voiceDataPolicyId: String(firstDefined(voice.dataPolicyId, root.voiceDataPolicyId, '') || ''),
+    voicePricingVersion: String(firstDefined(voice.pricingVersion, root.voicePricingVersion, '') || ''),
+    voiceAiGeneratedDisclosure: String(firstDefined(
+      voice.aiGeneratedDisclosure,
+      root.voiceAiGeneratedDisclosure,
+      'The playback voice is AI-generated.'
+    ) || ''),
+    voiceTranscriptionModel: String(firstDefined(voice.transcriptionModel, '') || ''),
+    voiceSpeechModel: String(firstDefined(voice.speechModel, '') || ''),
+    voiceName: String(firstDefined(voice.voice, '') || ''),
+    voiceMaxRecordingSeconds: Math.min(45, Math.max(1, Number(firstDefined(
+      voice.maxRecordingSeconds,
+      voice.maxDurationSeconds,
+      root.voiceMaxRecordingSeconds,
+      45
+    )) || 45)),
+    voiceBudget,
     allowedModuleIds,
     cohort: String(firstDefined(flags.cohort, root.cohort, 'private_beta')),
     bookingUrl: String(firstDefined(root.bookingUrl, links.bookingUrl, '') || '').trim(),
@@ -113,7 +168,67 @@ export function normaliseBootstrap(payload) {
 
 export function setBootstrap(payload) {
   state.bootstrap = normaliseBootstrap(payload);
+  if (state.bootstrap.voiceBudget) {
+    state.voice.budget = state.bootstrap.voiceBudget;
+  }
   return state.bootstrap;
+}
+
+function normaliseMicroEur(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount) : null;
+}
+
+export function normaliseVoiceBudget(value) {
+  const budget = asObject(value);
+  if (!budget) return null;
+  const limitMicroEur = normaliseMicroEur(firstDefined(
+    budget.limitMicroEur,
+    budget.sessionLimitMicroEur
+  ));
+  const spentMicroEur = normaliseMicroEur(firstDefined(budget.spentMicroEur, 0));
+  let remainingMicroEur = normaliseMicroEur(budget.remainingMicroEur);
+  if (remainingMicroEur === null && limitMicroEur !== null && spentMicroEur !== null) {
+    remainingMicroEur = Math.max(0, limitMicroEur - spentMicroEur);
+  }
+  if (limitMicroEur === null && spentMicroEur === null && remainingMicroEur === null) {
+    return null;
+  }
+  return {
+    limitMicroEur,
+    spentMicroEur,
+    remainingMicroEur
+  };
+}
+
+export function mergeVoicePayload(payload) {
+  const root = unwrap(payload);
+  const voice = asObject(root.voice) || {};
+  const session = asObject(root.session) || {};
+  const consent = asObject(firstDefined(
+    root.voiceConsent,
+    voice.consent,
+    session.voiceConsent
+  ));
+  if (consent) {
+    state.voice.consent = {
+      ...(state.voice.consent || {}),
+      ...consent,
+      granted: consent.granted === true
+    };
+  }
+  const budget = normaliseVoiceBudget(firstDefined(
+    root.voiceBudget,
+    voice.budget,
+    session.voiceBudget
+  ));
+  if (budget) {
+    state.voice.budget = {
+      ...(state.voice.budget || {}),
+      ...budget
+    };
+  }
+  return state.voice;
 }
 
 export function mergePayload(payload) {
@@ -262,6 +377,8 @@ export function mergePayload(payload) {
     };
   }
 
+  mergeVoicePayload(payload);
+
   return state;
 }
 
@@ -395,6 +512,42 @@ export function getAiConsent() {
   return false;
 }
 
+export function getVoiceConsent() {
+  if (state.voice?.consent && typeof state.voice.consent === 'object') {
+    return state.voice.consent;
+  }
+
+  const direct = state.session?.voiceConsent;
+  if (direct && typeof direct === 'object') {
+    return direct;
+  }
+
+  const consent = state.session?.consent;
+  if (Array.isArray(consent)) {
+    return consent.find((item) => item?.purpose === 'voice_processing') || null;
+  }
+  if (consent && typeof consent === 'object' && Object.hasOwn(consent, 'voiceProcessing')) {
+    return {
+      granted: consent.voiceProcessing === true,
+      noticeId: consent.voiceNoticeId,
+      policyVersion: consent.voicePolicyVersion
+    };
+  }
+  return null;
+}
+
+export function hasCurrentVoiceConsent() {
+  const consent = getVoiceConsent();
+  if (consent?.granted !== true) return false;
+  const expectedNoticeId = String(state.bootstrap?.voiceNoticeId || '');
+  const expectedPolicyVersion = String(state.bootstrap?.voicePolicyVersion || '');
+  const actualNoticeId = String(consent.noticeId || '');
+  const actualPolicyVersion = String(consent.policyVersion || '');
+  if (expectedNoticeId && actualNoticeId !== expectedNoticeId) return false;
+  if (expectedPolicyVersion && actualPolicyVersion !== expectedPolicyVersion) return false;
+  return true;
+}
+
 export function clearSessionAccess() {
   Object.values(STORAGE_KEYS).forEach(storageRemove);
 }
@@ -409,6 +562,10 @@ export function resetJourneyState() {
   state.handoff = null;
   state.consentRefreshRequired = false;
   state.ai = null;
+  state.voice = {
+    consent: null,
+    budget: state.bootstrap?.voiceBudget || null
+  };
   state.selectedModuleIds = [];
   state.knownRecommendationIds = [];
   state.view = 'conversation';

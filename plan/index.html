@@ -98,11 +98,12 @@
     <dialog id="privacyControlsDialog" class="plan-dialog" aria-labelledby="privacyControlsTitle">
       <form method="dialog" class="dialog-card">
         <p class="section-kicker">Your privacy</p>
-        <h2 id="privacyControlsTitle">AI assistance for this session</h2>
+        <h2 id="privacyControlsTitle">Privacy controls for this session</h2>
         <p id="privacyControlsCopy">
           You can stop AI assistance at any time. Future messages will use fixed questions and rules-only extraction;
           tested code will continue to perform every calculation.
         </p>
+        <p id="voicePrivacyCopy" hidden></p>
         <p id="handoffPrivacyCopy" hidden></p>
         <p id="privacyControlsError" class="field-error" role="alert" hidden></p>
         <div class="dialog-actions">
@@ -110,9 +111,49 @@
           <button id="withdrawAiConsentButton" class="primary-button destructive" type="button">
             Stop AI assistance
           </button>
+          <button id="withdrawVoiceConsentButton" class="primary-button destructive" type="button" hidden>
+            Stop voice processing
+          </button>
           <button id="revokeHandoffButton" class="primary-button destructive" type="button" hidden>
             Withdraw adviser handoff
           </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="voiceConsentDialog" class="plan-dialog" aria-labelledby="voiceConsentTitle">
+      <form id="voiceConsentForm" class="dialog-card voice-consent-card">
+        <p class="section-kicker">Optional adviser-test feature</p>
+        <h2 id="voiceConsentTitle">Enable voice for this session?</h2>
+        <p>
+          Voice is optional. Recording starts only when you press the microphone button and stops when
+          you press it again or after 45 seconds. You can always continue by typing.
+        </p>
+        <ul class="voice-consent-facts">
+          <li>Your recording is sent securely for AI transcription after you stop it.</li>
+          <li>The transcript is placed in the answer box for you to review and edit; it is never submitted automatically.</li>
+          <li>Question playback uses an AI-generated voice, but reads the server-owned Planéir question exactly.</li>
+          <li>Do not speak PPS numbers, passwords, PINs, full account or card numbers, exact addresses, or identity-document details.</li>
+        </ul>
+        <div class="voice-consent-budget">
+          <strong id="voiceConsentBudget">€2.00 app voice allowance for this session.</strong>
+          <span>Each voice call uses a fixed conservative reservation. The app stops new voice calls at this allowance.</span>
+        </div>
+        <label class="check-row" for="voiceConsentAcknowledgement">
+          <input id="voiceConsentAcknowledgement" name="voiceConsentAcknowledgement" type="checkbox" required />
+          <span>
+            <strong>I choose to enable microphone transcription and AI-generated voice</strong>
+            <small>I understand that audio I deliberately record will be processed to create a transcript, and that I must review it before continuing.</small>
+          </span>
+        </label>
+        <p class="consent-detail">
+          Read the <a id="voiceConsentPrivacyLink" href="./privacy.html#optional-voice" target="_blank" rel="noopener noreferrer">voice privacy details</a>.
+          <span id="voiceConsentPolicy"></span>
+        </p>
+        <p id="voiceConsentError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancelVoiceConsentButton" class="secondary-button" type="button">Keep using text</button>
+          <button class="primary-button" type="submit">Agree and enable voice</button>
         </div>
       </form>
     </dialog>

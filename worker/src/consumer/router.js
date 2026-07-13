@@ -14,6 +14,7 @@ import {
   getCurrentProfile,
   getHandoff,
   getLatestAnalysis,
+  getConsumerProviderBudget,
   getSessionRow,
   listTurns,
   recordEvent,
@@ -25,6 +26,13 @@ import {
 } from './repository.js';
 import { requireConsumerSession } from './session_auth.js';
 import {
+  getVoiceConsent,
+  setVoiceConsent,
+  toPublicVoiceConsent,
+  voiceConsentIsCurrent
+} from './voice_repository.js';
+import { speakConsumerQuestion, transcribeConsumerVoice } from './voice_provider.js';
+import {
   applyProfilePatch,
   validateAnalysisBody,
   validateConfirmBody,
@@ -32,7 +40,9 @@ import {
   validateCreateSessionBody,
   validateHandoffBody,
   validateProfilePatchBody,
-  validateTurnBody
+  validateTurnBody,
+  validateVoiceConsentBody,
+  validateVoiceSpeechBody
 } from './validators.js';
 
 const MAX_REQUEST_BODY_BYTES = 100_000;
@@ -69,6 +79,8 @@ export function isAdvisorRulesOnlyPreviewConfig(config) {
     && config?.moduleRoutingEnabled === true
     && config?.aiRequested !== true
     && config?.aiEnabled !== true
+    && config?.voiceRequested !== true
+    && config?.voiceEnabled !== true
     && config?.handoffRequested !== true
     && config?.handoffEnabled !== true
     && config?.publicAccessEnabled !== true
@@ -77,9 +89,43 @@ export function isAdvisorRulesOnlyPreviewConfig(config) {
     && allowedModules === 'house_purchase,liquidity_analysis';
 }
 
+export function isAdvisorVoicePreviewConfig(config) {
+  const allowedModules = [...(config?.allowedModules || [])].sort().join(',');
+  return config?.journeyEnabled === true
+    && config?.moduleRoutingEnabled === true
+    && config?.aiRequested !== true
+    && config?.aiEnabled !== true
+    && config?.voiceRequested === true
+    && config?.voiceConfigured === true
+    && config?.voiceEnabled === true
+    && config?.handoffRequested !== true
+    && config?.handoffEnabled !== true
+    && config?.publicAccessEnabled !== true
+    && config?.inviteAccessConfigured === true
+    && config?.cohort === 'adviser_test'
+    && config?.voiceNoticeId === 'voice-adviser-test-v1'
+    && config?.voiceDataPolicyId === 'openai-audio-adviser-test-v1'
+    && config?.voiceTranscriptionModel === 'gpt-4o-mini-transcribe'
+    && config?.voiceSpeechModel === 'tts-1-hd'
+    && config?.voiceName === 'nova'
+    && config?.voicePricingVersion === 'openai-audio-eur-safety-2026-07-13-v2'
+    && config?.voiceSessionBudgetMicroEur === 2_000_000
+    && config?.voiceDailyBudgetMicroEur === 20_000_000
+    && config?.voiceTranscriptionReservationMicroEur === 100_000
+    && config?.voiceSpeechReservationMicroEur === 100_000
+    && config?.voiceMaxAudioBytes === 1_000_000
+    && config?.voiceMaxDurationSeconds === 45
+    && config?.voiceMaxSpeechCharacters === 1_200
+    && allowedModules === 'house_purchase,liquidity_analysis';
+}
+
+export function isAdvisorProtectedPreviewConfig(config) {
+  return isAdvisorRulesOnlyPreviewConfig(config) || isAdvisorVoicePreviewConfig(config);
+}
+
 export async function createAdvisorConsumerInvite(env, options = {}) {
   const config = getConsumerConfig(env);
-  if (!isAdvisorRulesOnlyPreviewConfig(config)) {
+  if (!isAdvisorProtectedPreviewConfig(config)) {
     throw unavailable('The adviser planning preview is not available right now.', 'consumer_adviser_preview_unavailable');
   }
 
@@ -95,7 +141,7 @@ export async function createAdvisorConsumerInvite(env, options = {}) {
     url: url.toString(),
     expiresAt: invite.expiresAt,
     maxUses: 1,
-    mode: 'rules_only'
+    mode: config.voiceEnabled ? 'voice_assisted_rules_only' : 'rules_only'
   });
 }
 
@@ -119,6 +165,12 @@ async function readJson(request, { optional = false } = {}) {
 function routeMatch(pathname) {
   if (pathname === '/api/consumer/bootstrap') return { kind: 'bootstrap', methods: ['GET'] };
   if (pathname === '/api/consumer/sessions') return { kind: 'create', methods: ['POST'] };
+  const voiceMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/(consent|transcriptions|speech)$/.exec(pathname);
+  if (voiceMatch) {
+    const [, sessionId, operation] = voiceMatch;
+    const voiceMethods = { consent: ['PATCH'], transcriptions: ['POST'], speech: ['POST'] };
+    return { kind: `voice_${operation}`, sessionId, methods: voiceMethods[operation] };
+  }
   const match = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
   if (!match) return null;
   const [, sessionId, child] = match;
@@ -140,7 +192,7 @@ function assertProcessingAvailability(config) {
 }
 
 async function assertAudienceAccess(request, env, config) {
-  if (config.cohort === 'adviser_test' && !isAdvisorRulesOnlyPreviewConfig(config)) {
+  if (config.cohort === 'adviser_test' && !isAdvisorProtectedPreviewConfig(config)) {
     throw new ConsumerError(503, 'consumer_audience_unavailable', 'This planning journey is not accepting new sessions right now.');
   }
   if (config.publicAccessEnabled) return null;
@@ -149,6 +201,27 @@ async function assertAudienceAccess(request, env, config) {
     throw new ConsumerError(503, 'consumer_audience_unavailable', 'This planning journey is not accepting new sessions right now.');
   }
   return verifyConsumerInvite(provided, env, config);
+}
+
+function assertVoiceAvailability(config) {
+  if (!config.voiceEnabled || !isAdvisorVoicePreviewConfig(config)) {
+    throw new ConsumerError(503, 'consumer_voice_unavailable', 'Voice is not available right now. You can continue by typing.');
+  }
+}
+
+function voiceBudgetPayload(value, config) {
+  const limitMicroEur = Number(value?.limitMicroEur ?? value?.limitEurMicros ?? config.voiceSessionBudgetMicroEur ?? 0) || 0;
+  const spentMicroEur = Number(value?.spentMicroEur ?? value?.spentEurMicros ?? 0) || 0;
+  const remainingMicroEur = Number(
+    value?.remainingMicroEur ?? value?.remainingEurMicros ?? Math.max(0, limitMicroEur - spentMicroEur)
+  ) || 0;
+  return { limitMicroEur, spentMicroEur, remainingMicroEur };
+}
+
+function questionText(question) {
+  if (typeof question === 'string') return question.trim();
+  if (!question || typeof question !== 'object') return '';
+  return String(question.prompt || question.question || question.text || question.message || '').trim();
 }
 
 async function rateLimit(env, scope, key, windowMs, maximum) {
@@ -184,7 +257,7 @@ export function getConsumerRouteMethods(pathname) {
 export { cleanupExpiredConsumerSessions, rotateConsumerEncryptionBatch };
 
 export async function handleConsumerRequest(request, env, dependencies = {}) {
-  const { pathname, respond, clientIp = 'unknown', createPipelineHandoff } = dependencies;
+  const { pathname, respond, respondBinary, clientIp = 'unknown', createPipelineHandoff } = dependencies;
   const route = routeMatch(pathname);
   if (!route) return respond({ error: 'Not found.', code: 'not_found' }, 404, 'GET,POST,PATCH,DELETE,OPTIONS');
   const methods = `${route.methods.join(',')},OPTIONS`;
@@ -254,6 +327,24 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       return respond({ ...result, ai: { mode: 'rules_only', status: 'rules_only' } }, 200, methods);
     }
 
+    if (route.kind === 'voice_consent') {
+      const body = validateVoiceConsentBody(await readJson(request), {
+        noticeId: config.voiceNoticeId,
+        policyVersion: config.consentPolicyVersion,
+        privacyNoticeUrl: config.privacyNoticeUrl
+      });
+      if (body.granted) {
+        assertProcessingAvailability(config);
+        assertVoiceAvailability(config);
+      }
+      const voiceConsent = await setVoiceConsent(env, sessionRow, config, body.granted);
+      const budget = await getConsumerProviderBudget(env, sessionRow.id);
+      return respond({
+        voiceConsent: toPublicVoiceConsent(voiceConsent),
+        voiceBudget: voiceBudgetPayload(budget, config)
+      }, 200, methods);
+    }
+
     if (route.kind === 'handoffs' && request.method === 'DELETE') {
       const result = await revokeHandoff(env, sessionRow.id);
       return respond({
@@ -272,10 +363,12 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
     let profile = await getCurrentProfile(env, sessionRow);
 
     if (route.kind === 'session' && request.method === 'GET') {
-      const [turns, analysis, handoffRow] = await Promise.all([
+      const [turns, analysis, handoffRow, voiceConsent, voiceBudget] = await Promise.all([
         listTurns(env, sessionRow.id),
         getLatestAnalysis(env, sessionRow.id, sessionRow.current_profile_revision),
-        getHandoff(env, sessionRow.id)
+        getHandoff(env, sessionRow.id),
+        getVoiceConsent(env, sessionRow.id),
+        config.voiceEnabled ? getConsumerProviderBudget(env, sessionRow.id) : null
       ]);
       const state = describeConversationState(profile, config);
       return respond({
@@ -287,6 +380,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         bookingUrl: handoffRow && ['linked', 'delivered'].includes(handoffRow.status) ? config.bookingUrl : null,
         consentRefreshRequired,
         processingPaused: !config.journeyEnabled,
+        voiceConsent: toPublicVoiceConsent(voiceConsent),
+        voiceBudget: voiceBudgetPayload(voiceBudget, config),
         ...state
       }, 200, methods);
     }
@@ -298,6 +393,40 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
 
     if (consentRefreshRequired) {
       throw new ConsumerError(428, 'consent_refresh_required', 'The planning disclosure has changed. Start a new session or delete this saved session.');
+    }
+
+
+    if (route.kind === 'voice_transcriptions' || route.kind === 'voice_speech') {
+      assertVoiceAvailability(config);
+      const voiceConsent = await getVoiceConsent(env, sessionRow.id);
+      if (!voiceConsentIsCurrent(voiceConsent, config)) {
+        throw new ConsumerError(403, 'voice_consent_required', 'Review and accept the current microphone disclosure before using voice.');
+      }
+      await rateLimit(env, 'consumer-voice-session', sessionRow.id, 60 * 1000, 12);
+      if (route.kind === 'voice_transcriptions') {
+        const result = await transcribeConsumerVoice({ env, config, sessionRow, request });
+        return respond(result, 200, methods);
+      }
+      const body = validateVoiceSpeechBody(await readJson(request));
+      const state = describeConversationState(profile, config);
+      const result = await speakConsumerQuestion({
+        env,
+        config,
+        sessionRow,
+        idempotencyKey: body.idempotencyKey,
+        text: questionText(state.nextQuestion)
+      });
+      if (typeof respondBinary !== 'function') {
+        throw new ConsumerError(503, 'voice_response_unavailable', 'Spoken playback is not available. You can read the question on screen.');
+      }
+      return respondBinary(result.audio, 200, methods, {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': String(result.audio.byteLength),
+        'X-Voice-Limit-Micro-Eur': String(result.voiceBudget.limitMicroEur),
+        'X-Voice-Spent-Micro-Eur': String(result.voiceBudget.spentMicroEur),
+        'X-Voice-Remaining-Micro-Eur': String(result.voiceBudget.remainingMicroEur),
+        'Access-Control-Expose-Headers': 'X-Voice-Limit-Micro-Eur, X-Voice-Spent-Micro-Eur, X-Voice-Remaining-Micro-Eur'
+      });
     }
 
     if (route.kind === 'turns') {

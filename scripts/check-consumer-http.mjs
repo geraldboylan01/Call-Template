@@ -72,6 +72,19 @@ const preflight = await request('/api/consumer/sessions', {
 });
 assert.match(preflight.response.headers.get('access-control-allow-headers') || '', /X-Consumer-Invite/i);
 
+const voiceUploadPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/transcriptions', {
+  method: 'OPTIONS',
+  expectedStatus: 204,
+  extraHeaders: {
+    'Access-Control-Request-Method': 'POST',
+    'Access-Control-Request-Headers': 'content-type,x-consumer-session,x-voice-duration-ms,x-voice-request-id'
+  }
+});
+const voiceAllowedHeaders = voiceUploadPreflight.response.headers.get('access-control-allow-headers') || '';
+assert.match(voiceAllowedHeaders, /X-Consumer-Session/i);
+assert.match(voiceAllowedHeaders, /X-Voice-Duration-Ms/i);
+assert.match(voiceAllowedHeaders, /X-Voice-Request-Id/i);
+
 const advisorInvitePreflight = await request('/api/advisor/consumer-invite', {
   method: 'OPTIONS',
   expectedStatus: 204,

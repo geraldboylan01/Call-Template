@@ -57,14 +57,18 @@ const ALLOWED_REQUEST_HEADER_NAMES = new Set([
   'x-advisor-csrf',
   'x-published-capability',
   'x-consumer-session',
-  'x-consumer-invite'
+  'x-consumer-invite',
+  'x-voice-duration-ms',
+  'x-voice-request-id'
 ]);
 const DEFAULT_ALLOWED_REQUEST_HEADERS = [
   'Content-Type',
   'X-Advisor-CSRF',
   'X-Published-Capability',
   'X-Consumer-Session',
-  'X-Consumer-Invite'
+  'X-Consumer-Invite',
+  'X-Voice-Duration-Ms',
+  'X-Voice-Request-Id'
 ].join(', ');
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
 const PLANEIR_SITE_URL = 'https://planeir.ie';
@@ -195,6 +199,8 @@ function normalizePathname(pathname) {
 function getConsumerRouteMethods(pathname) {
   if (pathname === '/api/consumer/bootstrap') return 'GET,OPTIONS';
   if (pathname === '/api/consumer/sessions') return 'POST,OPTIONS';
+  const voiceMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/(consent|transcriptions|speech)$/.exec(pathname);
+  if (voiceMatch) return voiceMatch[1] === 'consent' ? 'PATCH,OPTIONS' : 'POST,OPTIONS';
   const match = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
   if (!match) return null;
   const child = match[1] || '';
@@ -3824,7 +3830,10 @@ function describePublishedClientPinFlow(row) {
 }
 
 function isSafeSessionId(rawId) {
-  return typeof rawId === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(rawId);
+  // IDs elsewhere in this Worker use Base64URL, whose safe alphabet includes
+  // both '-' and '_'. Rejecting '_' made the production media smoke test
+  // randomly fail depending on the generated identifier.
+  return typeof rawId === 'string' && /^[a-zA-Z0-9_-]{8,80}$/.test(rawId);
 }
 
 function getSessionKey(sessionId) {
@@ -7277,7 +7286,14 @@ export default {
           methods,
           requestHeaders,
           { ...noStoreHeaders(), ...(extraHeaders || {}) }
-        )
+        ),
+        respondBinary: (body, status, methods, extraHeaders) => new Response(body, {
+          status,
+          headers: {
+            ...corsHeaders(origin, methods, requestHeaders),
+            ...securityHeaders({ ...noStoreHeaders(), ...(extraHeaders || {}) })
+          }
+        })
       });
     }
 

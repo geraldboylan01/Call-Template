@@ -14,6 +14,11 @@ import {
   createHouseholdProfile,
   normalizeHouseholdProfile
 } from '../../../js/planning/profile.js';
+import {
+  chargedProviderCostEurMicros,
+  failClosedEurMicros,
+  requireEurMicros
+} from './cost_budget.js';
 
 const ALLOWED_EVENT_NAMES = new Set([
   'consumer_journey_started', 'goal_identified', 'profile_section_completed',
@@ -43,6 +48,18 @@ const EVENT_METADATA_FIELDS = Object.freeze({
   handoff_revoked: new Set(['handoffId', 'downstreamShared']),
   handoff_package_purged: new Set(['handoffId'])
 });
+
+const SAFE_PROVIDER_COST_TOKEN = /^[A-Za-z0-9._:-]+$/;
+
+function providerCostChargeSql(alias = '') {
+  const prefix = alias ? `${alias}.` : '';
+  return `CASE
+    WHEN ${prefix}status = 'known'
+      THEN COALESCE(${prefix}actual_cost_eur_micros, ${prefix}reserved_cost_eur_micros)
+    WHEN ${prefix}status = 'not_sent' THEN 0
+    ELSE ${prefix}reserved_cost_eur_micros
+  END`;
+}
 
 function db(env) {
   if (!env.CONSUMER_DB) {
@@ -146,6 +163,122 @@ export function toConsumerSession(row) {
   };
 }
 
+function requiredProviderCostToken(value, label, maximumLength) {
+  const result = typeof value === 'string' ? value.trim() : '';
+  if (!result || result.length > maximumLength || !SAFE_PROVIDER_COST_TOKEN.test(result)) {
+    throw new ConsumerError(400, 'invalid_provider_cost_request', `${label} is invalid.`);
+  }
+  return result;
+}
+
+function optionalProviderCostToken(value, label, maximumLength) {
+  if (value === null || value === undefined || value === '') return null;
+  return requiredProviderCostToken(value, label, maximumLength);
+}
+
+function requiredProviderCostHttpsUrl(value, label, maximumLength = 2048) {
+  const result = typeof value === 'string' ? value.trim() : '';
+  if (!result || result.length > maximumLength) {
+    throw new ConsumerError(400, 'invalid_provider_cost_request', `${label} is invalid.`);
+  }
+  try {
+    const parsed = new URL(result);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new Error('invalid');
+    return parsed.toString();
+  } catch (_error) {
+    throw new ConsumerError(400, 'invalid_provider_cost_request', `${label} is invalid.`);
+  }
+}
+
+function providerCostAmount(value, label, { allowZero = true } = {}) {
+  try {
+    return requireEurMicros(value, label, { allowZero });
+  } catch (_error) {
+    throw new ConsumerError(
+      400,
+      'invalid_provider_cost_request',
+      `${label} must be ${allowZero ? 'a non-negative' : 'a positive'} integer in micro-euros.`
+    );
+  }
+}
+
+function providerCostAggregate(value, label) {
+  const result = Number(value || 0);
+  if (!Number.isSafeInteger(result) || result < 0) {
+    throw new ConsumerError(503, 'provider_budget_unavailable', `${label} could not be read safely.`);
+  }
+  return result;
+}
+
+function utcDayBounds(timestamp = nowIso()) {
+  const current = new Date(timestamp);
+  if (Number.isNaN(current.getTime())) {
+    throw new ConsumerError(500, 'provider_budget_clock_invalid', 'The provider budget clock is unavailable.');
+  }
+  const start = new Date(current);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function toProviderBudget(limitEurMicros, row, period = {}) {
+  const limit = failClosedEurMicros(limitEurMicros);
+  const spent = providerCostAggregate(row?.spent_eur_micros, 'Provider budget spend');
+  const knownActual = providerCostAggregate(row?.known_actual_eur_micros, 'Known provider spend');
+  const reservedOrUnknown = providerCostAggregate(
+    row?.reserved_or_unknown_eur_micros,
+    'Reserved provider spend'
+  );
+  const released = providerCostAggregate(row?.released_eur_micros, 'Released provider spend');
+  return Object.freeze({
+    currency: 'EUR',
+    unit: 'micro-euro',
+    limitEurMicros: limit,
+    // "spent" is deliberately conservative: active reservations and unknown
+    // outcomes count until provider billing is known or non-delivery is proven.
+    spentEurMicros: spent,
+    knownActualEurMicros: knownActual,
+    reservedOrUnknownEurMicros: reservedOrUnknown,
+    releasedEurMicros: released,
+    remainingEurMicros: Math.max(0, limit - spent),
+    overLimitEurMicros: Math.max(0, spent - limit),
+    exhausted: limit === 0 || spent >= limit,
+    failClosed: limit === 0,
+    ...period
+  });
+}
+
+export function toConsumerProviderCost(row) {
+  if (!row) return null;
+  const entry = {
+    id: row.id,
+    sessionId: row.session_id,
+    operation: row.operation,
+    idempotencyKey: row.idempotency_key,
+    provider: row.provider,
+    model: row.model || null,
+    pricingVersion: row.pricing_version,
+    status: row.status,
+    reservedCostEurMicros: providerCostAggregate(
+      row.reserved_cost_eur_micros,
+      'Provider cost reservation'
+    ),
+    actualCostEurMicros: row.actual_cost_eur_micros === null || row.actual_cost_eur_micros === undefined
+      ? null
+      : providerCostAggregate(row.actual_cost_eur_micros, 'Actual provider cost'),
+    errorCode: row.error_code || null,
+    dispatchedAt: row.dispatched_at || null,
+    createdAt: row.created_at,
+    completedAt: row.completed_at || null
+  };
+  return Object.freeze({
+    ...entry,
+    inFlight: entry.status === 'reserved' && Boolean(entry.dispatchedAt),
+    chargedCostEurMicros: chargedProviderCostEurMicros(entry)
+  });
+}
+
 export function createInitialProfile(sessionId, consent, timestamp) {
   const profile = createHouseholdProfile({
     profileId: `profile_${sessionId.slice(3)}`,
@@ -178,6 +311,7 @@ export function createInitialProfile(sessionId, consent, timestamp) {
 export async function createSessionRecord(env, credential, consent, config, inviteClaims = null) {
   const timestamp = nowIso();
   const expiresAt = new Date(Date.now() + config.sessionTtlDays * 24 * 60 * 60 * 1000).toISOString();
+  const providerCostLimitEurMicros = failClosedEurMicros(config.providerCostLimitEurMicros);
   const profile = createInitialProfile(credential.id, consent, timestamp);
   const [encryptedProfile, encryptedSummary] = await Promise.all([
     encryptJson(env, profile, `consumer/profile/${credential.id}/1`),
@@ -245,13 +379,13 @@ export async function createSessionRecord(env, credential, consent, config, invi
     db(env).prepare(`
       INSERT INTO consumer_sessions (
         id, credential_hash_b64u, schema_version, status, stage,
-        current_profile_revision, confirmed_profile_revision, feature_cohort,
+        current_profile_revision, confirmed_profile_revision, feature_cohort, provider_cost_limit_eur_micros,
         consent_analysis, consent_ai_processing, consent_adult_confirmed, consent_education_only,
         consent_manifest_id, consent_policy_version, consent_analysis_notice_id, consent_ai_notice_id,
         consent_privacy_notice_url, consent_captured_at, ai_consent_withdrawn_at, rolling_summary_encrypted,
         created_at, last_active_at, expires_at, deleted_at
       )
-      SELECT ?, ?, 1, 'active', 'goal_discovery', 1, NULL, ?, 1, ?, 1, 1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL
+      SELECT ?, ?, 1, 'active', 'goal_discovery', 1, NULL, ?, ?, 1, ?, 1, 1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL
       WHERE ? = 1 OR EXISTS (
         SELECT 1 FROM consumer_invite_uses
         WHERE jti_hash_b64u = ? AND session_id = ?
@@ -260,6 +394,7 @@ export async function createSessionRecord(env, credential, consent, config, invi
       credential.id,
       credential.credentialHashB64u,
       config.cohort,
+      providerCostLimitEurMicros,
       consent.aiProcessing ? 1 : 0,
       consent.manifestId,
       consent.policyVersion,
@@ -824,6 +959,434 @@ export async function finalizeAiAttempt(env, attemptId, metadata = {}, errorCode
   ).run();
 }
 
+export async function getConsumerProviderCost(env, entryId) {
+  const safeEntryId = requiredProviderCostToken(entryId, 'Provider cost entry id', 160);
+  const row = await db(env).prepare(`
+    SELECT *
+    FROM consumer_provider_costs
+    WHERE id = ?
+    LIMIT 1
+  `).bind(safeEntryId).first();
+  return toConsumerProviderCost(row);
+}
+
+export async function getConsumerProviderBudget(env, sessionId) {
+  const safeSessionId = requiredProviderCostToken(sessionId, 'Session id', 160);
+  const row = await db(env).prepare(`
+    SELECT
+      sessions.provider_cost_limit_eur_micros,
+      COALESCE(SUM(${providerCostChargeSql('costs')}), 0) AS spent_eur_micros,
+      COALESCE(SUM(CASE
+        WHEN costs.status = 'known' THEN costs.actual_cost_eur_micros
+        ELSE 0
+      END), 0) AS known_actual_eur_micros,
+      COALESCE(SUM(CASE
+        WHEN costs.status IN ('reserved', 'unknown') THEN costs.reserved_cost_eur_micros
+        ELSE 0
+      END), 0) AS reserved_or_unknown_eur_micros,
+      COALESCE(SUM(CASE
+        WHEN costs.status = 'not_sent' THEN costs.reserved_cost_eur_micros
+        ELSE 0
+      END), 0) AS released_eur_micros
+    FROM consumer_sessions AS sessions
+    LEFT JOIN consumer_provider_costs AS costs ON costs.session_id = sessions.id
+    WHERE sessions.id = ? AND sessions.deleted_at IS NULL
+    GROUP BY sessions.id, sessions.provider_cost_limit_eur_micros
+  `).bind(safeSessionId).first();
+  if (!row) throw notFound('This planning session could not be found.');
+  const limit = providerCostAggregate(
+    row.provider_cost_limit_eur_micros,
+    'Provider cost limit'
+  );
+  return toProviderBudget(limit, row);
+}
+
+export async function getConsumerProviderDailyBudget(env, dailyCostLimitEurMicros) {
+  const limit = failClosedEurMicros(dailyCostLimitEurMicros);
+  const period = utcDayBounds();
+  const dayUtc = period.start.slice(0, 10);
+  const row = await db(env).prepare(`
+    SELECT
+      COALESCE(SUM(${providerCostChargeSql('costs')}), 0) + COALESCE((
+        SELECT archived.spent_eur_micros
+        FROM consumer_provider_daily_cost_totals AS archived
+        WHERE archived.day_utc = ?
+      ), 0) AS spent_eur_micros,
+      COALESCE(SUM(CASE
+        WHEN costs.status = 'known' THEN costs.actual_cost_eur_micros
+        ELSE 0
+      END), 0) + COALESCE((
+        SELECT archived.known_actual_eur_micros
+        FROM consumer_provider_daily_cost_totals AS archived
+        WHERE archived.day_utc = ?
+      ), 0) AS known_actual_eur_micros,
+      COALESCE(SUM(CASE
+        WHEN costs.status IN ('reserved', 'unknown') THEN costs.reserved_cost_eur_micros
+        ELSE 0
+      END), 0) + COALESCE((
+        SELECT archived.reserved_or_unknown_eur_micros
+        FROM consumer_provider_daily_cost_totals AS archived
+        WHERE archived.day_utc = ?
+      ), 0) AS reserved_or_unknown_eur_micros,
+      COALESCE(SUM(CASE
+        WHEN costs.status = 'not_sent' THEN costs.reserved_cost_eur_micros
+        ELSE 0
+      END), 0) + COALESCE((
+        SELECT archived.released_eur_micros
+        FROM consumer_provider_daily_cost_totals AS archived
+        WHERE archived.day_utc = ?
+      ), 0) AS released_eur_micros
+    FROM consumer_provider_costs AS costs
+    WHERE costs.created_at >= ? AND costs.created_at < ?
+  `).bind(dayUtc, dayUtc, dayUtc, dayUtc, period.start, period.end).first();
+  return toProviderBudget(limit, row, {
+    periodStart: period.start,
+    periodEnd: period.end
+  });
+}
+
+async function providerCostBudgets(env, sessionId, dailyCostLimitEurMicros) {
+  const [sessionBudget, dailyBudget] = await Promise.all([
+    getConsumerProviderBudget(env, sessionId),
+    getConsumerProviderDailyBudget(env, dailyCostLimitEurMicros)
+  ]);
+  return { sessionBudget, dailyBudget };
+}
+
+function providerCostReservationMatches(row, expected) {
+  return row.session_id === expected.sessionId
+    && row.operation === expected.operation
+    && row.idempotency_key === expected.idempotencyKey
+    && row.provider === expected.provider
+    && (row.model || null) === expected.model
+    && row.pricing_version === expected.pricingVersion
+    && Number(row.reserved_cost_eur_micros) === expected.reservedCostEurMicros;
+}
+
+export async function reserveConsumerProviderCost(env, request = {}) {
+  const sessionId = requiredProviderCostToken(request.sessionId, 'Session id', 160);
+  const operation = requiredProviderCostToken(request.operation, 'Provider operation', 80);
+  const idempotencyKey = requiredProviderCostToken(request.idempotencyKey, 'Idempotency key', 160);
+  const provider = requiredProviderCostToken(request.provider, 'Provider', 80);
+  const model = optionalProviderCostToken(request.model, 'Provider model', 120);
+  const pricingVersion = requiredProviderCostToken(request.pricingVersion, 'Pricing version', 120);
+  const reservedCostEurMicros = providerCostAmount(
+    request.reservedCostEurMicros,
+    'Provider cost reservation',
+    { allowZero: false }
+  );
+  // Invalid or omitted daily configuration resolves to zero. The INSERT then
+  // denies the reservation, preserving fail-closed behavior.
+  const dailyCostLimitEurMicros = failClosedEurMicros(request.dailyCostLimitEurMicros);
+  const timestamp = nowIso();
+  const period = utcDayBounds(timestamp);
+  const id = randomId('cost');
+  const expected = {
+    sessionId,
+    operation,
+    idempotencyKey,
+    provider,
+    model,
+    pricingVersion,
+    reservedCostEurMicros
+  };
+
+  let inserted = null;
+  let existing = null;
+  try {
+    inserted = await db(env).prepare(`
+      INSERT INTO consumer_provider_costs (
+        id, session_id, operation, idempotency_key, provider, model,
+        pricing_version, status, reserved_cost_eur_micros,
+        actual_cost_eur_micros, error_code, created_at, completed_at
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, 'reserved', ?, NULL, NULL, ?, NULL
+      FROM consumer_sessions AS sessions
+      WHERE sessions.id = ? AND sessions.deleted_at IS NULL
+        AND sessions.provider_cost_limit_eur_micros > 0
+        AND ? > 0
+        AND COALESCE((
+          SELECT SUM(${providerCostChargeSql('session_costs')})
+          FROM consumer_provider_costs AS session_costs
+          WHERE session_costs.session_id = sessions.id
+        ), 0) + ? <= sessions.provider_cost_limit_eur_micros
+        AND COALESCE((
+          SELECT SUM(${providerCostChargeSql('daily_costs')})
+          FROM consumer_provider_costs AS daily_costs
+          WHERE daily_costs.created_at >= ? AND daily_costs.created_at < ?
+        ), 0) + COALESCE((
+          SELECT archived.spent_eur_micros
+          FROM consumer_provider_daily_cost_totals AS archived
+          WHERE archived.day_utc = ?
+        ), 0) + ? <= ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM consumer_provider_costs AS duplicate_costs
+          WHERE duplicate_costs.session_id = ?
+            AND duplicate_costs.operation = ?
+            AND duplicate_costs.idempotency_key = ?
+        )
+      RETURNING *
+    `).bind(
+      id,
+      sessionId,
+      operation,
+      idempotencyKey,
+      provider,
+      model,
+      pricingVersion,
+      reservedCostEurMicros,
+      timestamp,
+      sessionId,
+      dailyCostLimitEurMicros,
+      reservedCostEurMicros,
+      period.start,
+      period.end,
+      period.start.slice(0, 10),
+      reservedCostEurMicros,
+      dailyCostLimitEurMicros,
+      sessionId,
+      operation,
+      idempotencyKey
+    ).first();
+  } catch (error) {
+    // A racing reservation can still reach the UNIQUE constraint after the
+    // NOT EXISTS check. Treat the matching immutable tuple idempotently.
+    existing = await db(env).prepare(`
+      SELECT *
+      FROM consumer_provider_costs
+      WHERE session_id = ? AND operation = ? AND idempotency_key = ?
+      LIMIT 1
+    `).bind(sessionId, operation, idempotencyKey).first().catch(() => null);
+    if (!existing) throw error;
+  }
+
+  if (!inserted && !existing) {
+    existing = await db(env).prepare(`
+      SELECT *
+      FROM consumer_provider_costs
+      WHERE session_id = ? AND operation = ? AND idempotency_key = ?
+      LIMIT 1
+    `).bind(sessionId, operation, idempotencyKey).first();
+  }
+
+  if (existing) {
+    if (!providerCostReservationMatches(existing, expected)) {
+      throw new ConsumerError(
+        409,
+        'provider_cost_idempotency_conflict',
+        'This idempotency key was already used for a different provider operation.'
+      );
+    }
+    const budgets = await providerCostBudgets(env, sessionId, dailyCostLimitEurMicros);
+    return Object.freeze({
+      outcome: 'existing',
+      status: 'existing',
+      reserved: false,
+      existing: true,
+      denied: false,
+      reason: null,
+      entry: toConsumerProviderCost(existing),
+      ...budgets
+    });
+  }
+
+  const budgets = await providerCostBudgets(env, sessionId, dailyCostLimitEurMicros);
+  if (inserted) {
+    return Object.freeze({
+      outcome: 'reserved',
+      status: 'reserved',
+      reserved: true,
+      existing: false,
+      denied: false,
+      reason: null,
+      entry: toConsumerProviderCost(inserted),
+      ...budgets
+    });
+  }
+
+  let reason = 'provider_budget_denied';
+  if (budgets.sessionBudget.failClosed) reason = 'session_budget_unavailable';
+  else if (budgets.dailyBudget.failClosed) reason = 'daily_budget_unavailable';
+  else if (budgets.sessionBudget.remainingEurMicros < reservedCostEurMicros) reason = 'session_budget_exceeded';
+  else if (budgets.dailyBudget.remainingEurMicros < reservedCostEurMicros) reason = 'daily_budget_exceeded';
+  return Object.freeze({
+    outcome: 'denied',
+    status: 'denied',
+    reserved: false,
+    existing: false,
+    denied: true,
+    reason,
+    entry: null,
+    ...budgets
+  });
+}
+
+export async function markConsumerProviderCostInFlight(env, entryId, request = {}) {
+  const safeEntryId = requiredProviderCostToken(entryId, 'Provider cost entry id', 160);
+  const sessionId = requiredProviderCostToken(request.sessionId, 'Session id', 160);
+  const noticeId = requiredProviderCostToken(request.noticeId, 'Voice notice id', 120);
+  const dataPolicyId = requiredProviderCostToken(request.dataPolicyId, 'Voice data policy id', 120);
+  const policyVersion = requiredProviderCostToken(request.policyVersion, 'Voice policy version', 120);
+  const privacyNoticeUrl = requiredProviderCostHttpsUrl(
+    request.privacyNoticeUrl,
+    'Voice privacy notice URL'
+  );
+  const timestamp = nowIso();
+
+  const updated = await db(env).prepare(`
+    UPDATE consumer_provider_costs
+    SET dispatched_at = ?
+    WHERE id = ? AND session_id = ?
+      AND status = 'reserved' AND dispatched_at IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM consumer_sessions AS sessions
+        INNER JOIN consumer_voice_consents AS voice_consent
+          ON voice_consent.session_id = sessions.id
+        WHERE sessions.id = consumer_provider_costs.session_id
+          AND sessions.deleted_at IS NULL
+          AND sessions.status IN ('active', 'completed')
+          AND voice_consent.granted = 1
+          AND voice_consent.notice_id = ?
+          AND voice_consent.data_policy_id = ?
+          AND voice_consent.policy_version = ?
+          AND voice_consent.privacy_notice_url = ?
+          AND voice_consent.withdrawn_at IS NULL
+      )
+    RETURNING *
+  `).bind(
+    timestamp,
+    safeEntryId,
+    sessionId,
+    noticeId,
+    dataPolicyId,
+    policyVersion,
+    privacyNoticeUrl
+  ).first();
+
+  if (updated) {
+    return Object.freeze({
+      outcome: 'in_flight',
+      changed: true,
+      entry: toConsumerProviderCost(updated)
+    });
+  }
+
+  const row = await db(env).prepare(`
+    SELECT *
+    FROM consumer_provider_costs
+    WHERE id = ?
+    LIMIT 1
+  `).bind(safeEntryId).first();
+  if (!row) throw notFound('This provider cost reservation could not be found.');
+  if (row.session_id !== sessionId) {
+    throw new ConsumerError(
+      409,
+      'provider_cost_dispatch_conflict',
+      'This provider cost reservation belongs to a different session.'
+    );
+  }
+  if (row.status === 'reserved' && row.dispatched_at) {
+    return Object.freeze({
+      outcome: 'already_in_flight',
+      changed: false,
+      entry: toConsumerProviderCost(row)
+    });
+  }
+  if (row.status === 'reserved') {
+    return Object.freeze({
+      outcome: 'voice_consent_required',
+      changed: false,
+      entry: toConsumerProviderCost(row)
+    });
+  }
+  throw new ConsumerError(
+    409,
+    'provider_cost_dispatch_conflict',
+    'This provider cost reservation has already been settled.'
+  );
+}
+
+async function settleConsumerProviderCost(env, entryId, targetStatus, options = {}) {
+  const safeEntryId = requiredProviderCostToken(entryId, 'Provider cost entry id', 160);
+  const errorCode = optionalProviderCostToken(options.errorCode, 'Provider error code', 120);
+  const actualCostEurMicros = targetStatus === 'known'
+    ? providerCostAmount(options.actualCostEurMicros, 'Actual provider cost')
+    : null;
+  const timestamp = nowIso();
+  const sourcePredicate = targetStatus === 'unknown'
+    ? "status = 'reserved' AND dispatched_at IS NOT NULL"
+    : targetStatus === 'not_sent'
+      ? "status = 'reserved' AND dispatched_at IS NULL"
+      : "(status = 'unknown' OR (status = 'reserved' AND dispatched_at IS NOT NULL))";
+
+  const updated = await db(env).prepare(`
+    UPDATE consumer_provider_costs
+    SET status = ?, actual_cost_eur_micros = ?, error_code = ?, completed_at = ?
+    WHERE id = ? AND ${sourcePredicate}
+    RETURNING *
+  `).bind(
+    targetStatus,
+    actualCostEurMicros,
+    errorCode,
+    timestamp,
+    safeEntryId
+  ).first();
+
+  let row = updated;
+  if (!row) {
+    row = await db(env).prepare(`
+      SELECT *
+      FROM consumer_provider_costs
+      WHERE id = ?
+      LIMIT 1
+    `).bind(safeEntryId).first();
+    if (!row) throw notFound('This provider cost reservation could not be found.');
+    const idempotent = row.status === targetStatus
+      && (targetStatus !== 'known' || Number(row.actual_cost_eur_micros) === actualCostEurMicros);
+    if (!idempotent) {
+      throw new ConsumerError(
+        409,
+        'provider_cost_settlement_conflict',
+        'This provider cost reservation already has a conflicting settlement.'
+      );
+    }
+  }
+
+  const entry = toConsumerProviderCost(row);
+  const sessionBudget = await getConsumerProviderBudget(env, entry.sessionId);
+  return Object.freeze({
+    changed: Boolean(updated),
+    entry,
+    sessionBudget,
+    overReservationEurMicros: Math.max(
+      0,
+      entry.chargedCostEurMicros - entry.reservedCostEurMicros
+    )
+  });
+}
+
+export async function settleConsumerProviderCostKnown(
+  env,
+  entryId,
+  actualCostEurMicros,
+  options = {}
+) {
+  return settleConsumerProviderCost(env, entryId, 'known', {
+    ...options,
+    actualCostEurMicros
+  });
+}
+
+export async function settleConsumerProviderCostUnknown(env, entryId, options = {}) {
+  return settleConsumerProviderCost(env, entryId, 'unknown', options);
+}
+
+export async function releaseConsumerProviderCostNotSent(env, entryId, options = {}) {
+  return settleConsumerProviderCost(env, entryId, 'not_sent', options);
+}
+
 export async function createAnalysisRun(env, sessionRow, profile, moduleIds) {
   const id = randomId('analysis');
   const timestamp = nowIso();
@@ -1375,6 +1938,49 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
     db(env).prepare(`DELETE FROM consumer_module_runs WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_analysis_runs WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_voice_consent_events WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_voice_consents WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    // Move only date-level cost totals out of the linkable ledger before it is
+    // deleted. This prevents delete-and-recreate from reopening the daily cap.
+    db(env).prepare(`
+      INSERT INTO consumer_provider_daily_cost_totals (
+        day_utc, spent_eur_micros, known_actual_eur_micros,
+        reserved_or_unknown_eur_micros, released_eur_micros, updated_at
+      )
+      SELECT
+        substr(costs.created_at, 1, 10),
+        COALESCE(SUM(${providerCostChargeSql('costs')}), 0),
+        COALESCE(SUM(CASE
+          WHEN costs.status = 'known' THEN costs.actual_cost_eur_micros
+          ELSE 0
+        END), 0),
+        COALESCE(SUM(CASE
+          WHEN costs.status IN ('reserved', 'unknown') THEN costs.reserved_cost_eur_micros
+          ELSE 0
+        END), 0),
+        COALESCE(SUM(CASE
+          WHEN costs.status = 'not_sent' THEN costs.reserved_cost_eur_micros
+          ELSE 0
+        END), 0),
+        ?
+      FROM consumer_provider_costs AS costs
+      WHERE costs.session_id = ? AND ${lockedSessionExists}
+      GROUP BY substr(costs.created_at, 1, 10)
+      ON CONFLICT(day_utc) DO UPDATE SET
+        spent_eur_micros = consumer_provider_daily_cost_totals.spent_eur_micros
+          + excluded.spent_eur_micros,
+        known_actual_eur_micros = consumer_provider_daily_cost_totals.known_actual_eur_micros
+          + excluded.known_actual_eur_micros,
+        reserved_or_unknown_eur_micros = consumer_provider_daily_cost_totals.reserved_or_unknown_eur_micros
+          + excluded.reserved_or_unknown_eur_micros,
+        released_eur_micros = consumer_provider_daily_cost_totals.released_eur_micros
+          + excluded.released_eur_micros,
+        updated_at = excluded.updated_at
+    `).bind(timestamp, sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_provider_costs WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_ai_attempts WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),

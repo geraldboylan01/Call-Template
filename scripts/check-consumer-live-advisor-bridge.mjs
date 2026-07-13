@@ -43,8 +43,53 @@ function randomBase64Url(byteLength) {
   return randomBytes(byteLength).toString('base64url');
 }
 
+export function paidVoiceProviderSmokeEnabled(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized || normalized === 'false') return false;
+  if (normalized === 'true') return true;
+  throw new Error('RUN_PAID_VOICE_PROVIDER_SMOKE must be exactly true or false.');
+}
+
+export function voiceBudgetFromHeaders(headers) {
+  const read = (name) => {
+    const raw = String(headers?.get?.(name) || '').trim();
+    assert.match(raw, /^(?:0|[1-9][0-9]*)$/, `${name} must be a non-negative integer.`);
+    const value = Number(raw);
+    assert.ok(Number.isSafeInteger(value), `${name} exceeds the safe integer range.`);
+    return value;
+  };
+  return {
+    limitMicroEur: read('x-voice-limit-micro-eur'),
+    spentMicroEur: read('x-voice-spent-micro-eur'),
+    remainingMicroEur: read('x-voice-remaining-micro-eur')
+  };
+}
+
+export function assertVoiceBudgetSnapshot(value, expectedSpentMicroEur) {
+  assert.equal(value?.limitMicroEur, 2_000_000, 'The paid smoke session must retain the €2 voice ceiling.');
+  assert.equal(value?.spentMicroEur, expectedSpentMicroEur, 'The paid smoke reservation total changed unexpectedly.');
+  assert.equal(
+    value?.remainingMicroEur,
+    2_000_000 - expectedSpentMicroEur,
+    'The paid smoke remaining allowance changed unexpectedly.'
+  );
+}
+
 export function buildProposedCredential() {
   return `cs_${randomBase64Url(18)}.${randomBase64Url(32)}`;
+}
+
+function assertLiveResponse(response, origin, method, diagnosticPath) {
+  assert.equal(
+    response.headers.get('access-control-allow-origin'),
+    origin,
+    `${method} ${diagnosticPath} did not return the expected CORS origin.`
+  );
+  assert.match(
+    response.headers.get('cache-control') || '',
+    /^no-store(?:,|$)/,
+    `${method} ${diagnosticPath} must not be cached.`
+  );
 }
 
 async function requestJson(baseUrl, pathname, {
@@ -92,24 +137,75 @@ async function requestJson(baseUrl, pathname, {
       acceptedStatuses.includes(response.status),
       `${method} ${diagnosticPath} returned ${response.status}; expected ${acceptedStatuses.join(' or ')}.`
     );
-    assert.equal(
-      response.headers.get('access-control-allow-origin'),
-      origin,
-      `${method} ${diagnosticPath} did not return the expected CORS origin.`
-    );
-    assert.match(
-      response.headers.get('cache-control') || '',
-      /^no-store(?:,|$)/,
-      `${method} ${diagnosticPath} must not be cached.`
-    );
+    assertLiveResponse(response, origin, method, diagnosticPath);
     return { payload, status: response.status };
   }
   throw lastError || new Error(`${method} ${diagnosticPath} failed.`);
 }
 
+async function requestBinaryOnce(baseUrl, pathname, {
+  method = 'POST',
+  origin,
+  headers = {},
+  body,
+  cookieJar,
+  diagnosticPath = pathname
+} = {}) {
+  const requestHeaders = cookieJar
+    ? cookieJar.apply({ Origin: origin, Accept: 'audio/mpeg', ...headers })
+    : new Headers({ Origin: origin, Accept: 'audio/mpeg', ...headers });
+  requestHeaders.set('Content-Type', 'application/json');
+  const response = await fetch(new URL(pathname, `${baseUrl}/`), {
+    method,
+    headers: requestHeaders,
+    body: JSON.stringify(body)
+  });
+  cookieJar?.capture(response.headers);
+  const bytes = await response.arrayBuffer();
+  assert.equal(response.status, 200, `${method} ${diagnosticPath} returned ${response.status}; expected 200.`);
+  assertLiveResponse(response, origin, method, diagnosticPath);
+  return { bytes, headers: response.headers };
+}
+
+async function requestRawAudioJsonOnce(baseUrl, pathname, {
+  origin,
+  headers = {},
+  audio,
+  contentType,
+  durationMs,
+  idempotencyKey,
+  cookieJar,
+  diagnosticPath = pathname
+} = {}) {
+  const method = 'POST';
+  const requestHeaders = cookieJar
+    ? cookieJar.apply({ Origin: origin, Accept: 'application/json', ...headers })
+    : new Headers({ Origin: origin, Accept: 'application/json', ...headers });
+  requestHeaders.set('Content-Type', contentType);
+  requestHeaders.set('X-Voice-Duration-Ms', String(durationMs));
+  requestHeaders.set('X-Voice-Request-Id', idempotencyKey);
+  const response = await fetch(new URL(pathname, `${baseUrl}/`), {
+    method,
+    headers: requestHeaders,
+    body: audio
+  });
+  cookieJar?.capture(response.headers);
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch (_error) {
+    throw new Error(`${method} ${diagnosticPath} returned invalid JSON.`);
+  }
+  assert.equal(response.status, 200, `${method} ${diagnosticPath} returned ${response.status}; expected 200.`);
+  assertLiveResponse(response, origin, method, diagnosticPath);
+  return payload;
+}
+
 export function assertBetaBootstrap(payload) {
   assert.equal(payload?.flags?.consumerJourneyEnabled, true, 'Consumer journey is not live.');
   assert.equal(payload?.flags?.consumerAiIntakeEnabled, false, 'AI must remain disabled.');
+  assert.equal(payload?.flags?.consumerVoiceEnabled, true, 'Reviewed voice transport is not live.');
   assert.equal(payload?.flags?.consumerModuleRoutingEnabled, true, 'Rules-only routing is not live.');
   assert.equal(payload?.flags?.consumerHumanHandoffEnabled, false, 'Handoff must remain disabled.');
   assert.equal(payload?.access?.publicAccessEnabled, false, 'Public access must remain disabled.');
@@ -129,12 +225,23 @@ export function assertBetaBootstrap(payload) {
   ]) {
     assert.ok(typeof value === 'string' && value.length > 0, 'The live disclosure contract is incomplete.');
   }
+  assert.equal(payload?.voice?.enabled, true, 'Voice is not configured in the protected bootstrap.');
+  assert.equal(payload?.voice?.noticeId, 'voice-adviser-test-v1', 'The voice notice changed unexpectedly.');
+  assert.equal(payload?.voice?.dataPolicyId, 'openai-audio-adviser-test-v1', 'The voice data policy changed unexpectedly.');
+  assert.equal(payload?.voice?.transcriptionModel, 'gpt-4o-mini-transcribe', 'The transcription model changed unexpectedly.');
+  assert.equal(payload?.voice?.speechModel, 'tts-1-hd', 'The speech model changed unexpectedly.');
+  assert.equal(payload?.voice?.voice, 'nova', 'The reviewed voice changed unexpectedly.');
+  assert.equal(payload?.voice?.pricingVersion, 'openai-audio-eur-safety-2026-07-13-v2', 'The voice pricing catalogue changed unexpectedly.');
+  assert.equal(payload?.voice?.sessionBudgetMicroEur, 2_000_000, 'The €2 session voice ceiling changed unexpectedly.');
+  assert.ok(typeof payload?.voice?.privacyNoticeUrl === 'string' && payload.voice.privacyNoticeUrl.length > 0);
+  assert.ok(typeof payload?.voice?.policyVersion === 'string' && payload.voice.policyVersion.length > 0);
 }
 
 async function main() {
   const workerBaseUrl = String(process.env.WORKER_BASE_URL || '').trim().replace(/\/+$/, '');
   const smokeOrigin = String(process.env.SMOKE_ORIGIN || '').trim();
   const password = String(process.env.ADVISOR_SMOKE_PASSWORD || '').trim();
+  const runPaidProviderSmoke = paidVoiceProviderSmokeEnabled(process.env.RUN_PAID_VOICE_PROVIDER_SMOKE);
   const workerUrl = new URL(workerBaseUrl);
   const smokeOriginUrl = new URL(smokeOrigin);
   assert.equal(workerUrl.protocol, 'https:', 'WORKER_BASE_URL must use HTTPS.');
@@ -172,7 +279,7 @@ async function main() {
   });
   assert.equal(inviteResult.payload?.ok, true, 'The adviser bridge did not issue a planning invite.');
   assert.equal(inviteResult.payload?.maxUses, 1, 'The adviser bridge invite must be one-use.');
-  assert.equal(inviteResult.payload?.mode, 'rules_only', 'The adviser bridge must remain rules-only.');
+  assert.equal(inviteResult.payload?.mode, 'voice_assisted_rules_only', 'The adviser bridge must remain voice-assisted rules-only.');
   const inviteUrl = new URL(String(inviteResult.payload?.url || ''));
   assert.equal(inviteUrl.origin, 'https://planeir.ie', 'The adviser bridge returned an unapproved site origin.');
   assert.equal(inviteUrl.pathname, '/plan/', 'The adviser bridge returned an unapproved path.');
@@ -221,6 +328,79 @@ async function main() {
     assert.equal(created.payload?.credential, credential, 'The bridge session credential changed unexpectedly.');
     assert.equal(created.payload?.session?.aiProcessingConsented, false, 'The bridge smoke must remain rules-only.');
     assert.equal(created.payload?.session?.consent?.aiProcessing, false, 'The bridge smoke must decline AI processing.');
+
+    const consentPayload = {
+      noticeId: bootstrap.voice.noticeId,
+      policyVersion: bootstrap.voice.policyVersion,
+      privacyNoticeUrl: bootstrap.voice.privacyNoticeUrl
+    };
+    const voiceGranted = await requestJson(
+      workerBaseUrl,
+      `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/consent`,
+      {
+        method: 'PATCH',
+        origin: smokeOrigin,
+        headers: { 'X-Consumer-Session': credential },
+        body: { granted: true, ...consentPayload },
+        diagnosticPath: '/api/consumer/sessions/[synthetic]/voice/consent'
+      }
+    );
+    assert.equal(voiceGranted.payload?.voiceConsent?.granted, true, 'Voice consent could not be granted.');
+    assert.equal(voiceGranted.payload?.voiceBudget?.limitMicroEur, 2_000_000, 'The live session does not have the €2 voice ceiling.');
+    assert.equal(voiceGranted.payload?.voiceBudget?.spentMicroEur, 0, 'A new smoke session unexpectedly has provider spend.');
+
+    if (runPaidProviderSmoke) {
+      const speechResult = await requestBinaryOnce(
+        workerBaseUrl,
+        `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/speech`,
+        {
+          origin: smokeOrigin,
+          headers: { 'X-Consumer-Session': credential },
+          body: { idempotencyKey: `voice-smoke-speech-${randomBase64Url(12)}` },
+          diagnosticPath: '/api/consumer/sessions/[synthetic]/voice/speech'
+        }
+      );
+      assert.match(
+        String(speechResult.headers.get('content-type') || '').toLowerCase(),
+        /^audio\/mpeg(?:;|$)/,
+        'The paid speech smoke did not return MP3 audio.'
+      );
+      assert.ok(speechResult.bytes.byteLength > 0, 'The paid speech smoke returned no audio.');
+      assert.ok(speechResult.bytes.byteLength <= 1_000_000, 'The paid speech smoke audio is too large for the bounded transcription route.');
+      assertVoiceBudgetSnapshot(voiceBudgetFromHeaders(speechResult.headers), 100_000);
+
+      const transcription = await requestRawAudioJsonOnce(
+        workerBaseUrl,
+        `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/transcriptions`,
+        {
+          origin: smokeOrigin,
+          headers: { 'X-Consumer-Session': credential },
+          audio: speechResult.bytes,
+          contentType: 'audio/mpeg',
+          durationMs: 15_000,
+          idempotencyKey: `voice-smoke-transcription-${randomBase64Url(12)}`,
+          diagnosticPath: '/api/consumer/sessions/[synthetic]/voice/transcriptions'
+        }
+      );
+      assert.ok(
+        typeof transcription?.transcript === 'string' && transcription.transcript.trim().length > 0,
+        'The paid transcription smoke returned no reviewable transcript.'
+      );
+      assertVoiceBudgetSnapshot(transcription.voiceBudget, 200_000);
+    }
+
+    const voiceWithdrawn = await requestJson(
+      workerBaseUrl,
+      `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/consent`,
+      {
+        method: 'PATCH',
+        origin: smokeOrigin,
+        headers: { 'X-Consumer-Session': credential },
+        body: { granted: false, ...consentPayload },
+        diagnosticPath: '/api/consumer/sessions/[synthetic]/voice/consent'
+      }
+    );
+    assert.equal(voiceWithdrawn.payload?.voiceConsent?.granted, false, 'Voice consent could not be withdrawn.');
   } catch (error) {
     primaryError = error;
   } finally {
@@ -251,7 +431,11 @@ async function main() {
   }
   if (primaryError) throw primaryError;
   if (cleanupError) throw cleanupError;
-  console.log('Authenticated adviser-to-consumer bridge smoke passed; the synthetic session was deleted.');
+  console.log(
+    runPaidProviderSmoke
+      ? 'Authenticated adviser bridge and paid TTS-to-transcription round trip passed; the synthetic session was deleted.'
+      : 'Authenticated adviser-to-consumer voice-consent bridge smoke passed without provider spend; the synthetic session was deleted.'
+  );
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';

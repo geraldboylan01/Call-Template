@@ -19,10 +19,18 @@ import { getConsumerConfig, publicConsumerConfig } from '../worker/src/consumer/
 import { createConsumerInvite, verifyConsumerInvite } from '../worker/src/consumer/invite.js';
 import {
   createAdvisorConsumerInvite,
-  isAdvisorRulesOnlyPreviewConfig
+  isAdvisorProtectedPreviewConfig,
+  isAdvisorRulesOnlyPreviewConfig,
+  isAdvisorVoicePreviewConfig
 } from '../worker/src/consumer/router.js';
 import { validateConsumerDeploymentBootstrap } from './check-consumer-live-deployment.mjs';
-import { assertBetaBootstrap, buildProposedCredential } from './check-consumer-live-advisor-bridge.mjs';
+import {
+  assertBetaBootstrap,
+  assertVoiceBudgetSnapshot,
+  buildProposedCredential,
+  paidVoiceProviderSmokeEnabled,
+  voiceBudgetFromHeaders
+} from './check-consumer-live-advisor-bridge.mjs';
 import { validatePlanSecurityHeaders } from './check-consumer-static-headers.mjs';
 import {
   buildConsumerPlanHeaderRule,
@@ -38,7 +46,9 @@ import {
   validateCreateSessionBody,
   validateHandoffBody,
   validateProfilePatchBody,
-  validateTurnBody
+  validateTurnBody,
+  validateVoiceConsentBody,
+  validateVoiceSpeechBody
 } from '../worker/src/consumer/validators.js';
 
 const root = new URL('../', import.meta.url);
@@ -55,9 +65,15 @@ const [
   configSource,
   inviteSource,
   migrationSource,
+  providerBudgetMigrationSource,
+  voiceConsentMigrationSource,
+  voiceHardeningMigrationSource,
+  costBudgetSource,
+  voiceProviderSource,
   adviserMigrationSource,
   wranglerSource,
-  deployWorkflowSource
+  deployWorkflowSource,
+  liveAdvisorBridgeSource
 ] = await Promise.all([
   source('worker/src/index.js'),
   source('worker/src/consumer/router.js'),
@@ -70,9 +86,15 @@ const [
   source('worker/src/consumer/config.js'),
   source('worker/src/consumer/invite.js'),
   source('worker/consumer-migrations/0001_create_consumer_journey.sql'),
+  source('worker/consumer-migrations/0002_add_consumer_provider_budget.sql'),
+  source('worker/consumer-migrations/0003_add_consumer_voice_consent.sql'),
+  source('worker/consumer-migrations/0004_add_consumer_voice_dispatch_and_events.sql'),
+  source('worker/src/consumer/cost_budget.js'),
+  source('worker/src/consumer/voice_provider.js'),
   source('worker/migrations/0014_create_consumer_handoff_deliveries.sql'),
   source('worker/wrangler.toml'),
-  source('.github/workflows/deploy-worker.yml')
+  source('.github/workflows/deploy-worker.yml'),
+  source('scripts/check-consumer-live-advisor-bridge.mjs')
 ]);
 
 for (const route of [
@@ -102,14 +124,21 @@ assert.match(routerSource, /verifyConsumerInvite\(provided, env, config\)/);
 assert.match(routerSource, /createSessionRecord\(env, credential, consent, config, inviteClaims\)/);
 assert.match(routerSource, /createAdvisorConsumerInvite/);
 assert.match(routerSource, /mode:\s*'rules_only'/);
+assert.match(routerSource, /mode:\s*config\.voiceEnabled \? 'voice_assisted_rules_only' : 'rules_only'/);
 assert.match(routerSource, /parsed\.origin === 'https:\/\/planeir\.ie'/);
 assert.match(routerSource, /\^\\\/plan/);
 assert.match(routerSource, /isAdvisorRulesOnlyPreviewConfig/);
+assert.match(routerSource, /isAdvisorVoicePreviewConfig/);
+assert.match(routerSource, /isAdvisorProtectedPreviewConfig/);
 assert.match(routerSource, /config\?\.aiRequested !== true/);
 assert.match(routerSource, /config\?\.handoffRequested !== true/);
 assert.match(routerSource, /config\?\.cohort === 'adviser_test'/);
 assert.match(routerSource, /allowedModules === 'house_purchase,liquidity_analysis'/);
-assert.match(routerSource, /config\.cohort === 'adviser_test' && !isAdvisorRulesOnlyPreviewConfig\(config\)/);
+assert.match(routerSource, /config\.cohort === 'adviser_test' && !isAdvisorProtectedPreviewConfig\(config\)/);
+assert.ok(routerSource.includes('voice\\/(consent|transcriptions|speech)'));
+assert.match(routerSource, /voiceConsentIsCurrent/);
+assert.match(routerSource, /describeConversationState\(profile, config\)/);
+assert.match(routerSource, /speakConsumerQuestion/);
 assert.match(routerSource, /withdrawAiConsent/);
 assert.match(routerSource, /deleteSessionData/);
 assert.match(routerSource, /request\.method === 'DELETE'/);
@@ -137,6 +166,9 @@ assert.match(configSource, /CONSUMER_PRIVACY_NOTICE_URL/);
 assert.match(configSource, /CONSUMER_AI_COMPLEX_SESSION_REQUEST_BUDGET/);
 assert.match(configSource, /CONSUMER_HANDOFF_RETENTION_POLICY_ID/);
 assert.match(configSource, /CONSUMER_HANDOFF_POLICY_URL/);
+assert.match(configSource, /CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS/);
+assert.match(configSource, /voiceSessionBudgetCents \* 10_000/);
+assert.match(configSource, /\^\(\?:0\|\[1-9\]\\d\*\)\$/);
 
 assert.match(aiSource, /https:\/\/api\.openai\.com\/v1\/responses/);
 assert.match(aiSource, /store:\s*false/);
@@ -150,6 +182,15 @@ assert.match(aiSource, /Do not calculate/);
 assert.match(aiSource, /Do not make approval/);
 assert.match(aiSource, /Do not recommend a financial product/);
 assert.match(aiSource, /only propose an allowlisted draft patch/);
+assert.match(voiceProviderSource, /https:\/\/api\.openai\.com\/v1\/audio\/transcriptions/);
+assert.match(voiceProviderSource, /https:\/\/api\.openai\.com\/v1\/audio\/speech/);
+assert.doesNotMatch(voiceProviderSource, /\/v1\/realtime|previous_response_id/);
+assert.match(voiceProviderSource, /settleConsumerProviderCostUnknown/);
+assert.match(voiceProviderSource, /request\.body\.getReader\(\)/);
+assert.match(voiceProviderSource, /total > maximumBytes/);
+assert.doesNotMatch(voiceProviderSource, /requireBoundedMultipartLength|request\.formData\(\)/);
+assert.match(indexSource, /'x-voice-duration-ms'/);
+assert.match(indexSource, /'x-voice-request-id'/);
 assert.match(conversationSource, /const assistantMessage = question\.prompt/);
 assert.match(conversationSource, /suggestion_only_deterministic_rules_authoritative/);
 assert.match(conversationSource, /candidateGoalPatch/);
@@ -170,6 +211,19 @@ assert.match(migrationSource, /ai_consent_withdrawn_at/);
 assert.match(migrationSource, /consent_analysis_notice_id/);
 assert.match(migrationSource, /consent_ai_notice_id/);
 assert.match(migrationSource, /retention_policy_id TEXT NOT NULL/);
+assert.match(providerBudgetMigrationSource, /ALTER TABLE consumer_sessions/);
+assert.match(providerBudgetMigrationSource, /CREATE TABLE IF NOT EXISTS consumer_provider_costs/);
+assert.match(providerBudgetMigrationSource, /UNIQUE \(session_id, operation, idempotency_key\)/);
+assert.match(providerBudgetMigrationSource, /CREATE TABLE IF NOT EXISTS consumer_provider_daily_cost_totals/);
+assert.match(voiceConsentMigrationSource, /CREATE TABLE IF NOT EXISTS consumer_voice_consents/);
+assert.match(voiceHardeningMigrationSource, /ADD COLUMN dispatched_at TEXT/);
+assert.match(voiceHardeningMigrationSource, /CREATE TABLE IF NOT EXISTS consumer_voice_consent_events/);
+assert.match(voiceHardeningMigrationSource, /action IN \('granted', 'withdrawn'\)/);
+assert.match(costBudgetSource, /summarizeProviderBudget/);
+assert.match(repositorySource, /INSERT INTO consumer_provider_costs/);
+assert.match(repositorySource, /consumer_provider_daily_cost_totals/);
+assert.match(repositorySource, /markConsumerProviderCostInFlight/);
+assert.match(repositorySource, /DELETE FROM consumer_voice_consent_events/);
 assert.match(adviserMigrationSource, /CREATE TABLE IF NOT EXISTS consumer_handoff_deliveries/);
 assert.match(adviserMigrationSource, /handoff_id TEXT PRIMARY KEY/);
 assert.match(repositorySource, /env\.CONSUMER_DB/);
@@ -205,7 +259,7 @@ assert.doesNotMatch(repositorySource, /profile:\s*context\.profile/);
 assert.doesNotMatch(repositorySource, /rollingSummary:/);
 
 for (const flag of [
-  'CONSUMER_JOURNEY_ENABLED', 'CONSUMER_AI_INTAKE_ENABLED',
+  'CONSUMER_JOURNEY_ENABLED', 'CONSUMER_AI_INTAKE_ENABLED', 'CONSUMER_VOICE_ENABLED',
   'CONSUMER_MODULE_ROUTING_ENABLED', 'CONSUMER_HANDOFF_ENABLED',
   'CONSUMER_PUBLIC_ACCESS_ENABLED'
 ]) {
@@ -245,6 +299,7 @@ assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUME
 assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true'\)/);
 assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true'\)/);
 assert.match(deployWorkflowSource, /CONSUMER_AI_INTAKE_ENABLED: 'false'/);
+assert.match(deployWorkflowSource, /CONSUMER_VOICE_ENABLED: betaEnabled \? 'true' : 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /wrangler secret list --config wrangler\.production\.generated\.toml --format json/);
@@ -254,15 +309,63 @@ assert.match(deployWorkflowSource, /upsert-consumer-plan-headers\.mjs/);
 assert.match(deployWorkflowSource, /check-consumer-live-deployment\.mjs/);
 assert.match(deployWorkflowSource, /check-consumer-live-advisor-bridge\.mjs/);
 assert.match(deployWorkflowSource, /check-consumer-static-headers\.mjs/);
-assert.doesNotMatch(deployWorkflowSource, /wrangler secret put OPENAI_API_KEY/);
+assert.match(deployWorkflowSource, /wrangler secret put OPENAI_API_KEY/);
+assert.match(
+  deployWorkflowSource,
+  /run_paid_voice_provider_smoke:[\s\S]{0,220}default:\s*false[\s\S]{0,80}type:\s*boolean/
+);
+assert.match(
+  deployWorkflowSource,
+  /RUN_PAID_VOICE_PROVIDER_SMOKE:\s*\$\{\{ github\.event_name == 'workflow_dispatch'.*inputs\.run_paid_voice_provider_smoke/
+);
+assert.match(deployWorkflowSource, /npm install --global wrangler@4\.110\.0/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_VOICE_SPEECH_MODEL: "tts-1-hd"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS: "200"/);
+assert.match(deployWorkflowSource, /CONSUMER_EXPECTED_DEPLOYMENT_MODE="voice_assisted_rules_only"/);
 assert.doesNotMatch(deployWorkflowSource, /vars\.CONSUMER_(?:AI_INTAKE|HANDOFF|PUBLIC_ACCESS)_ENABLED/);
+
+const releaseOrderMarkers = [
+  '- name: Upsert protected-beta response security headers',
+  '- name: Verify protected-beta static security headers',
+  '- name: Apply remote adviser D1 migrations',
+  '- name: Apply remote consumer D1 migrations',
+  '- name: Ensure protected-beta Worker secrets and provider credential',
+  '- name: Deploy Worker'
+];
+const releaseOrderPositions = releaseOrderMarkers.map((marker) => deployWorkflowSource.indexOf(marker));
+assert.ok(releaseOrderPositions.every((position) => position >= 0), 'The production release sequence is incomplete.');
+for (let index = 1; index < releaseOrderPositions.length; index += 1) {
+  assert.ok(
+    releaseOrderPositions[index] > releaseOrderPositions[index - 1],
+    `The production release step is out of order: ${releaseOrderMarkers[index]}`
+  );
+}
+const paidSpeechSmokePosition = liveAdvisorBridgeSource.indexOf('/voice/speech`');
+const paidTranscriptionSmokePosition = liveAdvisorBridgeSource.indexOf('/voice/transcriptions`');
+const syntheticCleanupPosition = liveAdvisorBridgeSource.indexOf('} finally {');
+assert.ok(paidSpeechSmokePosition >= 0, 'The opt-in paid smoke must call server-selected speech.');
+assert.ok(
+  paidTranscriptionSmokePosition > paidSpeechSmokePosition,
+  'The opt-in paid smoke must pass server speech through transcription.'
+);
+assert.match(liveAdvisorBridgeSource, /requestRawAudioJsonOnce/);
+assert.doesNotMatch(liveAdvisorBridgeSource, /requestMultipartJsonOnce|transcriptionForm/);
+assert.ok(
+  syntheticCleanupPosition > paidTranscriptionSmokePosition,
+  'Synthetic-session cleanup must remain in finally after the paid provider round trip.'
+);
+assert.match(
+  liveAdvisorBridgeSource.slice(syntheticCleanupPosition),
+  /method:\s*'DELETE'/,
+  'The paid smoke finally block must delete the synthetic session.'
+);
 
 const requiredPlanHeaders = new Headers({
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Permissions-Policy': 'camera=(), microphone=(self), geolocation=()',
   'Strict-Transport-Security': 'max-age=31556952'
 });
 assert.equal(validatePlanSecurityHeaders(requiredPlanHeaders, {
@@ -342,6 +445,7 @@ const dormantDeploymentBootstrap = {
   flags: {
     consumerJourneyEnabled: false,
     consumerAiIntakeEnabled: false,
+    consumerVoiceEnabled: false,
     consumerModuleRoutingEnabled: false,
     consumerHumanHandoffEnabled: false
   },
@@ -349,6 +453,7 @@ const dormantDeploymentBootstrap = {
   allowedModules: [],
   cohort: 'internal',
   ai: { configured: false, noticeId: null },
+  voice: { enabled: false },
   handoff: { enabled: false },
   modules: []
 };
@@ -359,6 +464,13 @@ const betaDeploymentPolicy = {
   consentManifestId: 'consumer-adviser-test-manifest-v1',
   analysisNoticeId: 'analysis-adviser-test-v1',
   aiNoticeId: 'ai-adviser-test-v1',
+  voiceNoticeId: 'voice-adviser-test-v1',
+  voiceDataPolicyId: 'openai-audio-adviser-test-v1',
+  voiceTranscriptionModel: 'gpt-4o-mini-transcribe',
+  voiceSpeechModel: 'tts-1-hd',
+  voiceName: 'nova',
+  voicePricingVersion: 'openai-audio-eur-safety-2026-07-13-v2',
+  voiceSessionBudgetMicroEur: 2_000_000,
   privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html',
   sessionTtlDays: 7
 };
@@ -366,6 +478,7 @@ const betaDeploymentBootstrap = {
   flags: {
     consumerJourneyEnabled: true,
     consumerAiIntakeEnabled: false,
+    consumerVoiceEnabled: true,
     consumerModuleRoutingEnabled: true,
     consumerHumanHandoffEnabled: false
   },
@@ -378,15 +491,48 @@ const betaDeploymentBootstrap = {
   privacyNoticeUrl: betaDeploymentPolicy.privacyNoticeUrl,
   limits: { sessionTtlDays: betaDeploymentPolicy.sessionTtlDays },
   ai: { configured: false, noticeId: betaDeploymentPolicy.aiNoticeId },
+  voice: {
+    enabled: true,
+    noticeId: betaDeploymentPolicy.voiceNoticeId,
+    dataPolicyId: betaDeploymentPolicy.voiceDataPolicyId,
+    policyVersion: betaDeploymentPolicy.consentPolicyVersion,
+    privacyNoticeUrl: betaDeploymentPolicy.privacyNoticeUrl,
+    transcriptionModel: betaDeploymentPolicy.voiceTranscriptionModel,
+    speechModel: betaDeploymentPolicy.voiceSpeechModel,
+    voice: betaDeploymentPolicy.voiceName,
+    pricingVersion: betaDeploymentPolicy.voicePricingVersion,
+    sessionBudgetMicroEur: betaDeploymentPolicy.voiceSessionBudgetMicroEur
+  },
   handoff: { enabled: false },
   modules: [{ id: 'house_purchase' }, { id: 'liquidity_analysis' }]
 };
 assert.equal(validateConsumerDeploymentBootstrap(betaDeploymentBootstrap, {
-  mode: 'adviser-invite-rules-only',
+  mode: 'voice_assisted_rules_only',
   expectedPolicy: betaDeploymentPolicy
 }), true);
 assert.doesNotThrow(() => assertBetaBootstrap(betaDeploymentBootstrap));
 assert.match(buildProposedCredential(), /^cs_[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{43}$/);
+assert.equal(paidVoiceProviderSmokeEnabled(undefined), false);
+assert.equal(paidVoiceProviderSmokeEnabled('false'), false);
+assert.equal(paidVoiceProviderSmokeEnabled('true'), true);
+assert.throws(() => paidVoiceProviderSmokeEnabled('yes'));
+const paidSmokeBudgetHeaders = new Headers({
+  'X-Voice-Limit-Micro-Eur': '2000000',
+  'X-Voice-Spent-Micro-Eur': '100000',
+  'X-Voice-Remaining-Micro-Eur': '1900000'
+});
+const paidSmokeBudget = voiceBudgetFromHeaders(paidSmokeBudgetHeaders);
+assert.deepEqual(paidSmokeBudget, {
+  limitMicroEur: 2_000_000,
+  spentMicroEur: 100_000,
+  remainingMicroEur: 1_900_000
+});
+assert.doesNotThrow(() => assertVoiceBudgetSnapshot(paidSmokeBudget, 100_000));
+assert.throws(() => voiceBudgetFromHeaders(new Headers({
+  'X-Voice-Limit-Micro-Eur': '2000000',
+  'X-Voice-Spent-Micro-Eur': '-1',
+  'X-Voice-Remaining-Micro-Eur': '1900000'
+})));
 for (const unsafePayload of [
   { ...betaDeploymentBootstrap, access: { publicAccessEnabled: true, inviteRequired: false } },
   {
@@ -398,7 +544,7 @@ for (const unsafePayload of [
   { ...betaDeploymentBootstrap, allowedModules: [...betaDeploymentBootstrap.allowedModules, 'retirement'] }
 ]) {
   assert.throws(() => validateConsumerDeploymentBootstrap(unsafePayload, {
-    mode: 'adviser-invite-rules-only',
+    mode: 'voice_assisted_rules_only',
     expectedPolicy: betaDeploymentPolicy
   }));
   assert.throws(() => assertBetaBootstrap(unsafePayload));
@@ -407,6 +553,8 @@ for (const unsafePayload of [
 const disabledConfig = getConsumerConfig({});
 assert.equal(disabledConfig.journeyEnabled, false);
 assert.equal(disabledConfig.aiEnabled, false);
+assert.equal(disabledConfig.voiceEnabled, false);
+assert.equal(disabledConfig.providerCostLimitEurMicros, 0);
 assert.equal(disabledConfig.handoffEnabled, false);
 
 const consent = {
@@ -430,6 +578,7 @@ const consentManifest = {
 const publicConfig = publicConsumerConfig({
   journeyEnabled: true,
   aiEnabled: false,
+  voiceEnabled: false,
   moduleRoutingEnabled: true,
   handoffEnabled: true,
   publicAccessEnabled: false,
@@ -446,6 +595,8 @@ const publicConfig = publicConsumerConfig({
   complexReasoningEffort: 'medium',
   aiPromptVersion: 'consumer-intake-v1',
   aiSchemaVersion: 'consumer-profile-patch-v1',
+  voiceMaxDurationSeconds: 45,
+  voiceSessionBudgetMicroEur: 0,
   handoffPolicyVersion: 'handoff-v1',
   handoffPolicyUrl: 'https://planeir.ie/plan/privacy.html#handoff',
   handoffRetentionPolicyId: 'handoff-retention-v1',
@@ -468,6 +619,41 @@ assert.throws(() => validateCreateSessionBody({
 }, consentManifest), (error) => error.code === 'consent_policy_outdated');
 assert.deepEqual(validateConsentBody({ aiProcessing: false }), { aiProcessing: false });
 assert.throws(() => validateConsentBody({ aiProcessing: true }));
+const voiceConsentExpectation = {
+  noticeId: 'voice-adviser-test-v1',
+  policyVersion: 'consumer-adviser-test-v1',
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html'
+};
+assert.deepEqual(validateVoiceConsentBody({
+  granted: true,
+  ...voiceConsentExpectation
+}, voiceConsentExpectation), {
+  granted: true,
+  ...voiceConsentExpectation
+});
+assert.throws(() => validateVoiceConsentBody({
+  granted: true,
+  ...voiceConsentExpectation,
+  noticeId: 'stale-notice'
+}, voiceConsentExpectation), (error) => error.code === 'voice_policy_outdated');
+assert.deepEqual(validateVoiceConsentBody({
+  granted: false,
+  noticeId: 'original-notice',
+  policyVersion: 'original-policy',
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html'
+}, voiceConsentExpectation), {
+  granted: false,
+  noticeId: 'original-notice',
+  policyVersion: 'original-policy',
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html'
+});
+assert.deepEqual(validateVoiceSpeechBody({ idempotencyKey: 'voice-speech-1234' }), {
+  idempotencyKey: 'voice-speech-1234'
+});
+assert.throws(() => validateVoiceSpeechBody({
+  idempotencyKey: 'voice-speech-1234',
+  text: 'Never accept client-supplied speech text.'
+}), (error) => error.code === 'voice_speech_text_not_allowed');
 assert.deepEqual(validateConfirmBody({ expectedRevision: 3 }), { confirmedPaths: [], expectedRevision: 3 });
 assert.throws(() => validateConfirmBody({}));
 assert.deepEqual(validateProfilePatchBody({
@@ -723,6 +909,7 @@ const previewEnv = {
   CONSUMER_PLAN_BASE_URL: 'https://planeir.ie/plan/'
 };
 assert.equal(isAdvisorRulesOnlyPreviewConfig(getConsumerConfig(previewEnv)), true);
+assert.equal(isAdvisorProtectedPreviewConfig(getConsumerConfig(previewEnv)), true);
 assert.equal(isAdvisorRulesOnlyPreviewConfig(getConsumerConfig({
   ...previewEnv,
   CONSUMER_AI_INTAKE_ENABLED: 'true'
@@ -749,6 +936,40 @@ await assert.doesNotReject(() => verifyConsumerInvite(previewToken, previewEnv, 
   cohort: 'adviser_test',
   inviteMaxTtlHours: 24
 }, Date.UTC(2026, 6, 13, 12, 0, 0)));
+
+const voicePreviewEnv = {
+  ...previewEnv,
+  OPENAI_API_KEY: 'test-only-server-secret',
+  CONSUMER_VOICE_ENABLED: 'true',
+  CONSUMER_VOICE_NOTICE_ID: 'voice-adviser-test-v1',
+  CONSUMER_VOICE_DATA_POLICY_ID: 'openai-audio-adviser-test-v1',
+  CONSUMER_VOICE_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
+  CONSUMER_VOICE_SPEECH_MODEL: 'tts-1-hd',
+  CONSUMER_VOICE_NAME: 'nova',
+  CONSUMER_VOICE_PRICING_VERSION: 'openai-audio-eur-safety-2026-07-13-v2',
+  CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS: '200',
+  CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS: '2000',
+  CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: '10',
+  CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS: '10'
+};
+const voicePreviewConfig = getConsumerConfig(voicePreviewEnv);
+assert.equal(isAdvisorRulesOnlyPreviewConfig(voicePreviewConfig), false);
+assert.equal(isAdvisorVoicePreviewConfig(voicePreviewConfig), true);
+assert.equal(isAdvisorProtectedPreviewConfig(voicePreviewConfig), true);
+assert.equal(voicePreviewConfig.providerCostLimitEurMicros, 2_000_000);
+for (const [field, malformedValue] of [
+  ['CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS', '200oops'],
+  ['CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS', '200.9'],
+  ['CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS', '02000']
+]) {
+  const malformed = getConsumerConfig({ ...voicePreviewEnv, [field]: malformedValue });
+  assert.equal(malformed.voiceEnabled, false, `${field} must reject malformed integer values.`);
+  assert.equal(malformed.providerCostLimitEurMicros, 0, `${field} must fail closed.`);
+}
+const voicePreviewInvite = await createAdvisorConsumerInvite(voicePreviewEnv, {
+  now: Date.UTC(2026, 6, 13, 12, 0, 0)
+});
+assert.equal(voicePreviewInvite.mode, 'voice_assisted_rules_only');
 await assert.rejects(() => createAdvisorConsumerInvite({
   ...previewEnv,
   CONSUMER_JOURNEY_ENABLED: 'false'

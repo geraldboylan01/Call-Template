@@ -77,9 +77,12 @@ async function parseResponse(response) {
 async function request(path, {
   method = 'GET',
   body,
+  rawBody,
+  requestHeaders,
   authenticated = false,
   signal,
-  timeoutMs = 20_000
+  timeoutMs = 20_000,
+  responseType = 'json'
 } = {}) {
   if (!API_BASE_URL) {
     throw new ConsumerApiError('The Planéir planning service is not configured.', {
@@ -88,10 +91,11 @@ async function request(path, {
   }
 
   const headers = new Headers({
-    Accept: 'application/json'
+    Accept: responseType === 'blob' ? 'audio/mpeg' : 'application/json',
+    ...(requestHeaders || {})
   });
 
-  if (body !== undefined) {
+  if (body !== undefined && rawBody === undefined) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -111,22 +115,59 @@ async function request(path, {
     if (proposedCredential) headers.set('X-Consumer-Session', proposedCredential);
   }
 
-  let response;
-  const timeoutController = signal ? null : new AbortController();
-  const timeoutId = timeoutController
-    ? window.setTimeout(() => timeoutController.abort('timeout'), timeoutMs)
-    : null;
+  const requestController = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => requestController.abort(signal?.reason || 'cancelled');
+  if (signal?.aborted) {
+    abortFromCaller();
+  } else {
+    signal?.addEventListener('abort', abortFromCaller, { once: true });
+  }
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    requestController.abort('timeout');
+  }, timeoutMs);
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: rawBody === undefined
+        ? (body === undefined ? undefined : JSON.stringify(body))
+        : rawBody,
       credentials: 'omit',
       cache: 'no-store',
-      signal: signal || timeoutController.signal
+      signal: requestController.signal
     });
+    if (!response.ok) {
+      const payload = await parseResponse(response);
+      if (requestController.signal.aborted) throw new Error('request_aborted');
+      const errorObject = payload?.error && typeof payload.error === 'object' ? payload.error : {};
+      throw new ConsumerApiError(extractErrorMessage(payload, response.status), {
+        status: response.status,
+        code: String(errorObject.code || payload?.code || ''),
+        details: payload
+      });
+    }
+
+    if (responseType === 'blob') {
+      return {
+        blob: await response.blob(),
+        headers: response.headers,
+        contentType: response.headers.get('content-type') || ''
+      };
+    }
+
+    const payload = await parseResponse(response);
+    if (requestController.signal.aborted) throw new Error('request_aborted');
+    return payload;
   } catch (error) {
-    if (error?.name === 'AbortError') {
+    if (error instanceof ConsumerApiError) throw error;
+    if (signal?.aborted) {
+      throw new ConsumerApiError('The request was cancelled.', {
+        code: 'request_aborted'
+      });
+    }
+    if (timedOut || error?.name === 'AbortError') {
       throw new ConsumerApiError('That request took too long. Your saved journey is safe; please retry.', {
         code: 'request_timeout'
       });
@@ -136,20 +177,9 @@ async function request(path, {
       details: error
     });
   } finally {
-    if (timeoutId !== null) window.clearTimeout(timeoutId);
+    window.clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
-
-  const payload = await parseResponse(response);
-  if (!response.ok) {
-    const errorObject = payload?.error && typeof payload.error === 'object' ? payload.error : {};
-    throw new ConsumerApiError(extractErrorMessage(payload, response.status), {
-      status: response.status,
-      code: String(errorObject.code || payload?.code || ''),
-      details: payload
-    });
-  }
-
-  return payload;
 }
 
 export function getBootstrap() {
@@ -220,6 +250,61 @@ export function withdrawAiConsent(sessionId) {
     method: 'PATCH',
     authenticated: true,
     body: { aiProcessing: false }
+  });
+}
+
+export function updateVoiceConsent(sessionId, {
+  granted,
+  noticeId,
+  policyVersion,
+  privacyNoticeUrl
+}) {
+  return request(pathForSession(sessionId, '/voice/consent'), {
+    method: 'PATCH',
+    authenticated: true,
+    body: {
+      granted: granted === true,
+      noticeId: String(noticeId || ''),
+      policyVersion: String(policyVersion || ''),
+      privacyNoticeUrl: String(privacyNoticeUrl || '')
+    }
+  });
+}
+
+export function transcribeVoice(sessionId, {
+  audio,
+  durationMs,
+  idempotencyKey,
+  signal
+}) {
+  if (!(audio instanceof Blob) || audio.size === 0) {
+    throw new ConsumerApiError('The recording did not contain any audio.', {
+      code: 'empty_voice_recording'
+    });
+  }
+  const boundedDurationMs = String(Math.max(0, Math.round(Number(durationMs) || 0)));
+  return request(pathForSession(sessionId, '/voice/transcriptions'), {
+    method: 'POST',
+    authenticated: true,
+    rawBody: audio,
+    requestHeaders: {
+      'Content-Type': String(audio.type || 'application/octet-stream'),
+      'X-Voice-Duration-Ms': boundedDurationMs,
+      'X-Voice-Request-Id': String(idempotencyKey || '')
+    },
+    signal,
+    timeoutMs: 60_000
+  });
+}
+
+export function speakNextQuestion(sessionId, { idempotencyKey, signal } = {}) {
+  return request(pathForSession(sessionId, '/voice/speech'), {
+    method: 'POST',
+    authenticated: true,
+    body: { idempotencyKey: String(idempotencyKey || '') },
+    signal,
+    timeoutMs: 45_000,
+    responseType: 'blob'
   });
 }
 

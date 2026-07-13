@@ -2,6 +2,9 @@ import { validInviteSigningKey } from './invite.js';
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const SAFE_MODEL_ID = /^[A-Za-z0-9._:-]{1,120}$/;
+const SAFE_VOICE_NAMES = new Set([
+  'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'marin', 'nova', 'onyx', 'sage', 'shimmer', 'verse', 'cedar'
+]);
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -20,8 +23,9 @@ function boundedInteger(value, fallback, minimum, maximum) {
 function optionalBoundedInteger(value, minimum, maximum) {
   const candidate = text(value);
   if (!candidate) return null;
-  const parsed = Number.parseInt(candidate, 10);
-  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
+  if (!/^(?:0|[1-9]\d*)$/.test(candidate)) return null;
+  const parsed = Number(candidate);
+  return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
 }
 
 function modelId(value, fallback) {
@@ -32,6 +36,11 @@ function modelId(value, fallback) {
 function reasoningEffort(value, fallback) {
   const candidate = text(value).toLowerCase();
   return ['none', 'low', 'medium', 'high', 'xhigh', 'max'].includes(candidate) ? candidate : fallback;
+}
+
+function voiceName(value, fallback = 'nova') {
+  const candidate = text(value).toLowerCase();
+  return SAFE_VOICE_NAMES.has(candidate) ? candidate : fallback;
 }
 
 function bookingUrl(value) {
@@ -88,6 +97,49 @@ export function getConsumerConfig(env) {
   const aiRequested = enabled(env.CONSUMER_AI_INTAKE_ENABLED);
   const aiDataPolicyId = policyId(env.CONSUMER_AI_DATA_POLICY_ID);
   const aiConfigured = Boolean(text(env.OPENAI_API_KEY) && aiDataPolicyId && aiNoticeId);
+  const voiceRequested = enabled(env.CONSUMER_VOICE_ENABLED);
+  const voiceNoticeId = policyId(env.CONSUMER_VOICE_NOTICE_ID);
+  const voiceDataPolicyId = policyId(env.CONSUMER_VOICE_DATA_POLICY_ID);
+  const voiceTranscriptionModel = modelId(env.CONSUMER_VOICE_TRANSCRIPTION_MODEL, '');
+  const voiceSpeechModel = modelId(env.CONSUMER_VOICE_SPEECH_MODEL, '');
+  const configuredVoiceName = voiceName(env.CONSUMER_VOICE_NAME, '');
+  const voicePricingVersion = policyId(env.CONSUMER_VOICE_PRICING_VERSION);
+  const voiceSessionBudgetCents = optionalBoundedInteger(
+    env.CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS,
+    1,
+    2_000
+  ) || 0;
+  const voiceDailyBudgetCents = optionalBoundedInteger(
+    env.CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS,
+    1,
+    100_000
+  ) || 0;
+  const voiceTranscriptionReservationCents = optionalBoundedInteger(
+    env.CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS,
+    1,
+    200
+  ) || 0;
+  const voiceSpeechReservationCents = optionalBoundedInteger(
+    env.CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS,
+    1,
+    200
+  ) || 0;
+  const voiceConfigured = Boolean(
+    text(env.OPENAI_API_KEY)
+    && voiceNoticeId
+    && voiceDataPolicyId
+    && voiceTranscriptionModel
+    && voiceSpeechModel
+    && configuredVoiceName
+    && voicePricingVersion
+    && voiceSessionBudgetCents > 0
+    && voiceDailyBudgetCents >= voiceSessionBudgetCents
+    && voiceTranscriptionReservationCents > 0
+    && voiceSpeechReservationCents > 0
+    && voiceTranscriptionReservationCents <= voiceSessionBudgetCents
+    && voiceSpeechReservationCents <= voiceSessionBudgetCents
+  );
+  const voiceEnabled = journeyEnabled && voiceRequested && voiceConfigured;
   const handoffRequested = enabled(env.CONSUMER_HANDOFF_ENABLED);
   const handoffRetentionDays = optionalBoundedInteger(env.CONSUMER_HANDOFF_RETENTION_DAYS, 1, 365);
   const handoffRetentionPolicyId = policyId(env.CONSUMER_HANDOFF_RETENTION_POLICY_ID);
@@ -112,6 +164,11 @@ export function getConsumerConfig(env) {
     aiConfigured,
     aiDataPolicyId,
     aiEnabled: journeyEnabled && aiRequested && aiConfigured,
+    voiceRequested,
+    voiceConfigured,
+    voiceEnabled,
+    voiceNoticeId,
+    voiceDataPolicyId,
     moduleRoutingEnabled: journeyEnabled && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED),
     handoffRequested,
     handoffConfigured,
@@ -149,7 +206,20 @@ export function getConsumerConfig(env) {
     aiComplexSessionRequestBudget: boundedInteger(env.CONSUMER_AI_COMPLEX_SESSION_REQUEST_BUDGET, 4, 1, 20),
     aiComplexDailyRequestBudget: boundedInteger(env.CONSUMER_AI_COMPLEX_DAILY_REQUEST_BUDGET, 100, 1, 10_000),
     aiSessionTokenBudget: boundedInteger(env.CONSUMER_AI_SESSION_TOKEN_BUDGET, 25_000, 2_000, 200_000),
-    aiDailyTokenBudget: boundedInteger(env.CONSUMER_AI_DAILY_TOKEN_BUDGET, 250_000, 10_000, 5_000_000)
+    aiDailyTokenBudget: boundedInteger(env.CONSUMER_AI_DAILY_TOKEN_BUDGET, 250_000, 10_000, 5_000_000),
+    voiceTranscriptionModel,
+    voiceSpeechModel,
+    voiceName: configuredVoiceName,
+    voiceTimeoutMs: boundedInteger(env.CONSUMER_VOICE_TIMEOUT_MS, 25_000, 5_000, 60_000),
+    voiceMaxAudioBytes: boundedInteger(env.CONSUMER_VOICE_MAX_AUDIO_BYTES, 1_000_000, 250_000, 2_000_000),
+    voiceMaxDurationSeconds: boundedInteger(env.CONSUMER_VOICE_MAX_DURATION_SECONDS, 45, 5, 60),
+    voiceMaxSpeechCharacters: boundedInteger(env.CONSUMER_VOICE_MAX_SPEECH_CHARACTERS, 1_200, 100, 2_000),
+    voiceSessionBudgetMicroEur: voiceSessionBudgetCents * 10_000,
+    voiceDailyBudgetMicroEur: voiceDailyBudgetCents * 10_000,
+    voiceTranscriptionReservationMicroEur: voiceTranscriptionReservationCents * 10_000,
+    voiceSpeechReservationMicroEur: voiceSpeechReservationCents * 10_000,
+    voicePricingVersion,
+    providerCostLimitEurMicros: voiceEnabled ? voiceSessionBudgetCents * 10_000 : 0
   });
 }
 
@@ -158,6 +228,7 @@ export function publicConsumerConfig(config) {
     flags: {
       consumerJourneyEnabled: config.journeyEnabled,
       consumerAiIntakeEnabled: config.aiEnabled,
+      consumerVoiceEnabled: config.voiceEnabled,
       consumerModuleRoutingEnabled: config.moduleRoutingEnabled,
       consumerHumanHandoffEnabled: config.handoffEnabled
     },
@@ -187,6 +258,28 @@ export function publicConsumerConfig(config) {
       complexReasoningEffort: config.complexReasoningEffort,
       promptVersion: config.aiPromptVersion,
       schemaVersion: config.aiSchemaVersion
+    },
+    voice: {
+      enabled: config.voiceEnabled,
+      noticeId: config.voiceEnabled ? config.voiceNoticeId : null,
+      dataPolicyId: config.voiceEnabled ? config.voiceDataPolicyId : null,
+      policyVersion: config.voiceEnabled ? config.consentPolicyVersion : null,
+      privacyNoticeUrl: config.voiceEnabled ? config.privacyNoticeUrl : null,
+      transcriptionModel: config.voiceEnabled ? config.voiceTranscriptionModel : null,
+      speechModel: config.voiceEnabled ? config.voiceSpeechModel : null,
+      voice: config.voiceEnabled ? config.voiceName : null,
+      pricingVersion: config.voiceEnabled ? config.voicePricingVersion : null,
+      maxDurationSeconds: config.voiceMaxDurationSeconds,
+      maxRecordingSeconds: config.voiceMaxDurationSeconds,
+      sessionBudgetMicroEur: config.voiceEnabled ? config.voiceSessionBudgetMicroEur : 0,
+      budget: {
+        limitMicroEur: config.voiceEnabled ? config.voiceSessionBudgetMicroEur : 0,
+        spentMicroEur: 0,
+        remainingMicroEur: config.voiceEnabled ? config.voiceSessionBudgetMicroEur : 0
+      },
+      aiGeneratedDisclosure: config.voiceEnabled
+        ? 'The voice you hear is AI-generated. Review each transcript before sending it.'
+        : null
     },
     handoff: {
       enabled: config.handoffEnabled,
