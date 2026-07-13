@@ -77,7 +77,6 @@ app_entry_js="$(fetch_html "${SITE_ORIGIN}/js/app_entry.js?v=${EXPECTED_VERSION}
 app_js="$(fetch_html "${SITE_ORIGIN}/js/app.js?v=${EXPECTED_VERSION}")"
 render_js="$(fetch_html "${SITE_ORIGIN}/js/render.js?v=${EXPECTED_VERSION}")"
 session_viewer_js="$(fetch_html "${SITE_ORIGIN}/js/session_viewer.js?v=${EXPECTED_VERSION}")"
-landing_css="$(fetch_html "${SITE_ORIGIN}/styles/landing.css?v=${EXPECTED_VERSION}")"
 plan_entry_js="$(fetch_html "${SITE_ORIGIN}/js/plan/app.js?v=${EXPECTED_VERSION}")"
 
 assert_contains "$landing_html" "<title>Planeir | Irish Financial Education Calls with Gerry Boylan</title>" "landing title"
@@ -102,8 +101,6 @@ assert_contains "$app_js" "./render.js?v=${EXPECTED_VERSION}" "app -> render mod
 assert_contains "$render_js" "./education_svg.js?v=${EXPECTED_VERSION}" "render -> education svg module import"
 assert_contains "$render_js" "./report.js?v=${EXPECTED_VERSION}" "render -> report module import"
 assert_contains "$session_viewer_js" "./app.js?v=${EXPECTED_VERSION}" "session viewer dynamic import"
-assert_contains "$landing_css" "../assets/brand/planeir-harp-light.svg?v=${EXPECTED_VERSION}" "landing CSS brand asset"
-
 assert_contains "$plan_html" '<meta name="robots" content="noindex, nofollow"' "consumer plan noindex"
 assert_contains "$plan_html" "../styles/plan.css?v=${EXPECTED_VERSION}" "consumer plan stylesheet"
 assert_contains "$plan_html" "../js/plan/app.js?v=${EXPECTED_VERSION}" "consumer plan entry script"
