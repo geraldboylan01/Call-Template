@@ -4,6 +4,7 @@ import { constantTimeEqual, createConsumerCredential } from './crypto.js';
 import { describeConversationState, processTurn } from './conversation.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
 import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
+import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
 import { createConsumerInvite, verifyConsumerInvite } from './invite.js';
 import {
   checkConsumerRateLimit,
@@ -18,12 +19,45 @@ import {
   getSessionRow,
   listTurns,
   recordEvent,
+  releaseConsumerProviderCostNotSent,
+  reserveConsumerProviderCost,
   rotateConsumerEncryptionBatch,
   revokeHandoff,
   saveProfileRevision,
+  settleConsumerProviderCostUnknown,
   toConsumerSession,
   withdrawAiConsent
 } from './repository.js';
+import {
+  activateRealtimeLease,
+  closeRealtimeLease,
+  completeRealtimeAnalysisPlan,
+  confirmRealtimeAnalysisPlan,
+  createRealtimeLease,
+  getActiveRealtimeLease,
+  getRealtimeControlPlaneProof,
+  getCurrentRealtimeAnalysisPlan,
+  getLatestRealtimeLease,
+  getRealtimeConsent,
+  listRealtimeFactProposalSummaries,
+  listRealtimeFinalTurns,
+  getRealtimeLease,
+  markRealtimeAnalysisPlanRunning,
+  markRealtimeProviderCostInFlight,
+  prepareRealtimeAnalysisPlan,
+  realtimeConsentIsCurrent,
+  setRealtimeConsent,
+  toPublicRealtimeAnalysisPlan,
+  toPublicRealtimeConsent,
+  toPublicRealtimeLease
+} from './realtime_repository.js';
+import { buildConfirmedRealtimeFactSummary } from './realtime_fact_mapper.js';
+import { terminateActiveRealtimeSession, terminateRealtimeLease } from './realtime_lifecycle.js';
+import {
+  createOpenAiRealtimeCall,
+  hangupOpenAiRealtimeCall,
+  readRealtimeSdpOffer
+} from './realtime_provider.js';
 import { requireConsumerSession } from './session_auth.js';
 import {
   getVoiceConsent,
@@ -40,6 +74,8 @@ import {
   validateCreateSessionBody,
   validateHandoffBody,
   validateProfilePatchBody,
+  validateRealtimeAnalysisPlanBody,
+  validateRealtimeConsentBody,
   validateTurnBody,
   validateVoiceConsentBody,
   validateVoiceSpeechBody
@@ -119,8 +155,45 @@ export function isAdvisorVoicePreviewConfig(config) {
     && allowedModules === 'house_purchase,liquidity_analysis';
 }
 
+export function isAdvisorRealtimePreviewConfig(config) {
+  const allowedModules = [...(config?.allowedModules || [])].sort().join(',');
+  return config?.journeyEnabled === true
+    && config?.moduleRoutingEnabled === true
+    && config?.aiRequested !== true
+    && config?.aiEnabled !== true
+    && config?.realtimeRequested === true
+    && config?.realtimeConfigured === true
+    && config?.realtimeEnabled === true
+    && config?.handoffRequested !== true
+    && config?.handoffEnabled !== true
+    && config?.publicAccessEnabled !== true
+    && config?.inviteAccessConfigured === true
+    && config?.cohort === 'adviser_test'
+    && config?.realtimeNoticeId === 'realtime-voice-adviser-test-v1'
+    && config?.realtimeDataPolicyId === 'openai-realtime-audio-adviser-test-v1'
+    && config?.realtimeModel === 'gpt-realtime-2.1'
+    && config?.realtimeVoice === 'marin'
+    && config?.realtimeReasoningEffort === 'low'
+    && config?.realtimeTranscriptionModel === 'gpt-4o-mini-transcribe'
+    && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v1'
+    && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v1'
+    && config?.realtimePricingVersion === 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'
+    && config?.realtimeSessionBudgetMicroEur === 2_000_000
+    && config?.realtimeDailyBudgetMicroEur === 20_000_000
+    && config?.realtimeDispatchStopMicroEur === 1_700_000
+    && config?.realtimeSafetyReserveMicroEur === 300_000
+    && config?.realtimeMaxDurationSeconds === 600
+    && config?.realtimeIdleTimeoutSeconds === 90
+    && config?.realtimeMaxSdpBytes === 32_768
+    && config?.realtimeMaxResponses === 40
+    && config?.realtimeMaxToolCalls === 24
+    && allowedModules === 'house_purchase,liquidity_analysis';
+}
+
 export function isAdvisorProtectedPreviewConfig(config) {
-  return isAdvisorRulesOnlyPreviewConfig(config) || isAdvisorVoicePreviewConfig(config);
+  return isAdvisorRulesOnlyPreviewConfig(config)
+    || isAdvisorVoicePreviewConfig(config)
+    || isAdvisorRealtimePreviewConfig(config);
 }
 
 export async function createAdvisorConsumerInvite(env, options = {}) {
@@ -141,7 +214,11 @@ export async function createAdvisorConsumerInvite(env, options = {}) {
     url: url.toString(),
     expiresAt: invite.expiresAt,
     maxUses: 1,
-    mode: config.voiceEnabled ? 'voice_assisted_rules_only' : 'rules_only'
+    mode: config.realtimeEnabled
+      ? 'realtime_voice_rules_only'
+      : config.voiceEnabled
+        ? 'voice_assisted_rules_only'
+        : 'rules_only'
   });
 }
 
@@ -165,6 +242,27 @@ async function readJson(request, { optional = false } = {}) {
 function routeMatch(pathname) {
   if (pathname === '/api/consumer/bootstrap') return { kind: 'bootstrap', methods: ['GET'] };
   if (pathname === '/api/consumer/sessions') return { kind: 'create', methods: ['POST'] };
+  const realtimeLeaseMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/calls\/(rt_[A-Za-z0-9_-]{20,80})$/.exec(pathname);
+  if (realtimeLeaseMatch) {
+    return {
+      kind: 'realtime_lease',
+      sessionId: realtimeLeaseMatch[1],
+      leaseId: realtimeLeaseMatch[2],
+      methods: ['GET', 'DELETE']
+    };
+  }
+  const realtimeMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/(consent|calls)$/.exec(pathname);
+  if (realtimeMatch) {
+    return {
+      kind: `realtime_${realtimeMatch[2]}`,
+      sessionId: realtimeMatch[1],
+      methods: realtimeMatch[2] === 'consent' ? ['PATCH'] : ['POST']
+    };
+  }
+  const analysisPlanMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/analysis-plan$/.exec(pathname);
+  if (analysisPlanMatch) {
+    return { kind: 'analysis_plan', sessionId: analysisPlanMatch[1], methods: ['PUT'] };
+  }
   const voiceMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/(consent|transcriptions|speech)$/.exec(pathname);
   if (voiceMatch) {
     const [, sessionId, operation] = voiceMatch;
@@ -209,6 +307,49 @@ function assertVoiceAvailability(config) {
   }
 }
 
+function assertRealtimeAvailability(config) {
+  if (!config.realtimeEnabled || !isAdvisorRealtimePreviewConfig(config)) {
+    throw new ConsumerError(503, 'consumer_realtime_unavailable', 'Live voice is not available right now. You can continue by typing.');
+  }
+}
+
+function realtimeRequestId(request) {
+  const value = request.headers.get('X-Voice-Request-Id')?.trim() || '';
+  if (!/^[A-Za-z0-9._:-]{8,120}$/.test(value)) {
+    throw new ConsumerError(400, 'realtime_request_id_invalid', 'A valid live voice request id is required.');
+  }
+  return value;
+}
+
+function realtimeStub(env, leaseId) {
+  if (!env.CONSUMER_REALTIME_SESSIONS
+    || typeof env.CONSUMER_REALTIME_SESSIONS.idFromName !== 'function'
+    || typeof env.CONSUMER_REALTIME_SESSIONS.get !== 'function') {
+    throw new ConsumerError(503, 'realtime_control_unavailable', 'Live voice controls are not available.');
+  }
+  return env.CONSUMER_REALTIME_SESSIONS.get(
+    env.CONSUMER_REALTIME_SESSIONS.idFromName(`consumer-realtime/${leaseId}`)
+  );
+}
+
+async function durableObjectRequest(env, leaseId, path, body, method = 'POST') {
+  const response = await realtimeStub(env, leaseId).fetch(`https://consumer-realtime.internal${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+  let payload = null;
+  try { payload = await response.json(); } catch (_error) { payload = null; }
+  if (!response.ok || payload?.ok !== true) {
+    throw new ConsumerError(503, payload?.code || 'realtime_control_unavailable', 'Live voice controls are not available.');
+  }
+  return payload;
+}
+
+async function closeRealtimeControl(env, lease, options = {}) {
+  return terminateRealtimeLease(env, lease, options);
+}
+
 function voiceBudgetPayload(value, config) {
   const limitMicroEur = Number(value?.limitMicroEur ?? value?.limitEurMicros ?? config.voiceSessionBudgetMicroEur ?? 0) || 0;
   const spentMicroEur = Number(value?.spentMicroEur ?? value?.spentEurMicros ?? 0) || 0;
@@ -222,6 +363,15 @@ function questionText(question) {
   if (typeof question === 'string') return question.trim();
   if (!question || typeof question !== 'object') return '';
   return String(question.prompt || question.question || question.text || question.message || '').trim();
+}
+
+function realtimePlanModuleIds(profile, config, requestedModuleIds) {
+  if (Array.isArray(requestedModuleIds) && requestedModuleIds.length) return requestedModuleIds;
+  return describeConversationState(profile, config).recommendations
+    .filter((item) => item?.status !== 'excluded' && config.allowedModules.includes(item?.moduleId))
+    .map((item) => item.moduleId)
+    .filter((item, index, values) => values.indexOf(item) === index)
+    .slice(0, 12);
 }
 
 async function rateLimit(env, scope, key, windowMs, maximum) {
@@ -254,7 +404,31 @@ export function getConsumerRouteMethods(pathname) {
   return route ? `${route.methods.join(',')},OPTIONS` : null;
 }
 
-export { cleanupExpiredConsumerSessions, rotateConsumerEncryptionBatch };
+export { rotateConsumerEncryptionBatch };
+
+export async function cleanupExpiredConsumerSessionsWithRealtime(env, dependencies = {}) {
+  return cleanupExpiredConsumerSessions(env, {
+    ...dependencies,
+    terminateRealtimeSession: dependencies.terminateRealtimeSession
+      || ((sessionId) => terminateActiveRealtimeSession(env, sessionId, {
+        status: 'expired',
+        reason: 'consumer_session_expired',
+        errorCode: null,
+        usageKnown: false
+      })),
+    terminateRealtimeLease: dependencies.terminateRealtimeLease
+      || ((lease) => terminateRealtimeLease(env, lease, {
+        status: 'expired',
+        reason: 'realtime_lease_expired',
+        errorCode: null,
+        usageKnown: false
+      }))
+  });
+}
+
+// Preserve the existing scheduled-import contract while adding the mandatory
+// provider termination dependency.
+export { cleanupExpiredConsumerSessionsWithRealtime as cleanupExpiredConsumerSessions };
 
 export async function handleConsumerRequest(request, env, dependencies = {}) {
   const { pathname, respond, respondBinary, clientIp = 'unknown', createPipelineHandoff } = dependencies;
@@ -316,6 +490,16 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
     await rateLimit(env, 'consumer-session-id', sessionRow.id, 60 * 1000, 80);
 
     if (route.kind === 'session' && request.method === 'DELETE') {
+      const activeRealtime = await getActiveRealtimeLease(env, sessionRow.id);
+      if (activeRealtime) {
+        await closeRealtimeControl(env, activeRealtime, {
+          status: 'deleted',
+          reason: 'consumer_deleted',
+          errorCode: null,
+          usageKnown: false,
+          required: false
+        });
+      }
       await recordEvent(env, sessionRow.id, 'journey_deleted', {}).catch(() => {});
       const result = await deleteSessionData(env, sessionRow.id, 'deleted');
       return respond({ ok: true, retainedConsentedHandoff: result.retainedHandoff }, 200, methods);
@@ -345,6 +529,108 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }, 200, methods);
     }
 
+    if (route.kind === 'realtime_consent') {
+      const body = validateRealtimeConsentBody(await readJson(request), {
+        noticeId: config.realtimeNoticeId,
+        policyVersion: config.consentPolicyVersion,
+        privacyNoticeUrl: config.privacyNoticeUrl
+      });
+      if (body.granted) {
+        assertProcessingAvailability(config);
+        assertRealtimeAvailability(config);
+      }
+      const realtimeConsent = await setRealtimeConsent(env, sessionRow, config, body.granted);
+      let realtimeLease = await getActiveRealtimeLease(env, sessionRow.id);
+      if (!body.granted && realtimeLease) {
+        realtimeLease = await closeRealtimeControl(env, realtimeLease, {
+          status: 'withdrawn',
+          reason: 'consent_withdrawn',
+          errorCode: null,
+          usageKnown: false,
+          required: false
+        });
+      }
+      return respond({
+        realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
+        realtimeLease: toPublicRealtimeLease(realtimeLease),
+        realtimeVoiceBudget: voiceBudgetPayload(
+          await getConsumerProviderBudget(env, sessionRow.id),
+          { voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur }
+        )
+      }, 200, methods);
+    }
+
+    if (route.kind === 'realtime_lease') {
+      let realtimeLease = await getRealtimeLease(env, sessionRow.id, route.leaseId);
+      if (!realtimeLease) throw notFound('This live voice lease could not be found.');
+      if (request.method === 'DELETE' && ['pending', 'active', 'closing'].includes(realtimeLease.status)) {
+        realtimeLease = await closeRealtimeControl(env, realtimeLease, {
+          status: 'complete',
+          reason: 'consumer_closed',
+          errorCode: null,
+          usageKnown: true,
+          required: false
+        });
+        if (realtimeLease?.providerHangupConfirmed !== true) {
+          throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call termination could not be confirmed. Please retry.');
+        }
+      }
+      if (request.method === 'DELETE') {
+        return respond({
+          realtimeLease: toPublicRealtimeLease(realtimeLease),
+          providerHangupConfirmed: true
+        }, 200, methods);
+      }
+      const [
+        controlPlane,
+        providerBudget,
+        realtimeTurns,
+        analysisPlan,
+        currentProfile,
+        proposedFacts
+      ] = await Promise.all([
+        getRealtimeControlPlaneProof(env, sessionRow.id, route.leaseId),
+        getConsumerProviderBudget(env, sessionRow.id),
+        listRealtimeFinalTurns(env, sessionRow.id, route.leaseId, 20),
+        getCurrentRealtimeAnalysisPlan(env, sessionRow.id),
+        getCurrentProfile(env, sessionRow),
+        listRealtimeFactProposalSummaries(env, sessionRow.id, route.leaseId)
+      ]);
+      const planningState = describeConversationState(currentProfile, config);
+      const nextQuestion = planningState.nextQuestion
+        ? {
+            questionId: planningState.nextQuestion.questionId || null,
+            factId: planningState.nextQuestion.factId || null,
+            factInstanceId: planningState.nextQuestion.factInstanceId || null,
+            prompt: planningState.nextQuestion.prompt,
+            answerType: planningState.nextQuestion.answerType,
+            confirmationPolicy: planningState.nextQuestion.confirmationPolicy || 'final_review'
+          }
+        : null;
+      return respond({
+        realtimeLease: toPublicRealtimeLease(realtimeLease),
+        realtimeVoiceBudget: voiceBudgetPayload(
+          providerBudget,
+          { voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur }
+        ),
+        controlPlane,
+        planningState: {
+          profileRevision: Number(sessionRow.current_profile_revision),
+          confirmedProfileRevision: sessionRow.confirmed_profile_revision === null
+            ? null
+            : Number(sessionRow.confirmed_profile_revision),
+          stage: planningState.stage,
+          nextQuestion,
+          facts: [
+            ...buildConfirmedRealtimeFactSummary(currentProfile),
+            ...proposedFacts
+          ].slice(0, 16)
+        },
+        analysisPlan: toPublicRealtimeAnalysisPlan(analysisPlan),
+        realtimeTurns
+      }, 200, methods);
+    }
+
     if (route.kind === 'handoffs' && request.method === 'DELETE') {
       const result = await revokeHandoff(env, sessionRow.id);
       return respond({
@@ -363,13 +649,28 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
     let profile = await getCurrentProfile(env, sessionRow);
 
     if (route.kind === 'session' && request.method === 'GET') {
-      const [turns, analysis, handoffRow, voiceConsent, voiceBudget] = await Promise.all([
+      const [
+        turns,
+        analysis,
+        handoffRow,
+        voiceConsent,
+        voiceBudget,
+        realtimeConsent,
+        realtimeLease,
+        analysisPlan
+      ] = await Promise.all([
         listTurns(env, sessionRow.id),
         getLatestAnalysis(env, sessionRow.id, sessionRow.current_profile_revision),
         getHandoff(env, sessionRow.id),
         getVoiceConsent(env, sessionRow.id),
-        config.voiceEnabled ? getConsumerProviderBudget(env, sessionRow.id) : null
+        (config.voiceEnabled || config.realtimeEnabled) ? getConsumerProviderBudget(env, sessionRow.id) : null,
+        getRealtimeConsent(env, sessionRow.id),
+        getLatestRealtimeLease(env, sessionRow.id),
+        getCurrentRealtimeAnalysisPlan(env, sessionRow.id)
       ]);
+      const realtimeTurns = realtimeLease
+        ? await listRealtimeFinalTurns(env, sessionRow.id, realtimeLease.id)
+        : [];
       const state = describeConversationState(profile, config);
       return respond({
         session: toConsumerSession(sessionRow),
@@ -382,6 +683,14 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         processingPaused: !config.journeyEnabled,
         voiceConsent: toPublicVoiceConsent(voiceConsent),
         voiceBudget: voiceBudgetPayload(voiceBudget, config),
+        realtimeVoiceBudget: voiceBudgetPayload(
+          voiceBudget,
+          { voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur }
+        ),
+        realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
+        realtimeLease: toPublicRealtimeLease(realtimeLease),
+        realtimeTurns,
+        analysisPlan: toPublicRealtimeAnalysisPlan(analysisPlan),
         ...state
       }, 200, methods);
     }
@@ -393,6 +702,198 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
 
     if (consentRefreshRequired) {
       throw new ConsumerError(428, 'consent_refresh_required', 'The planning disclosure has changed. Start a new session or delete this saved session.');
+    }
+
+    if (route.kind === 'realtime_calls') {
+      assertRealtimeAvailability(config);
+      if (typeof respondBinary !== 'function') {
+        throw new ConsumerError(503, 'realtime_response_unavailable', 'Live voice is not available in this deployment.');
+      }
+      const realtimeConsent = await getRealtimeConsent(env, sessionRow.id);
+      if (!realtimeConsentIsCurrent(realtimeConsent, config)) {
+        throw new ConsumerError(403, 'realtime_consent_required', 'Review and accept the current live voice disclosure before starting.');
+      }
+      await rateLimit(env, 'consumer-realtime-call-session', sessionRow.id, 60 * 60 * 1000, 6);
+      const requestId = realtimeRequestId(request);
+      const offerSdp = await readRealtimeSdpOffer(request, config.realtimeMaxSdpBytes);
+      const providerBudget = await getConsumerProviderBudget(env, sessionRow.id);
+      const reservationAmount = Number(providerBudget.remainingEurMicros || 0);
+      if (reservationAmount <= config.realtimeSafetyReserveMicroEur) {
+        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected €2 provider allowance is no longer large enough to start live voice. Continue by typing.');
+      }
+      const reservation = await reserveConsumerProviderCost(env, {
+        sessionId: sessionRow.id,
+        operation: 'realtime_voice_session',
+        idempotencyKey: requestId,
+        provider: 'openai',
+        model: config.realtimeModel,
+        pricingVersion: config.realtimePricingVersion,
+        reservedCostEurMicros: reservationAmount,
+        dailyCostLimitEurMicros: config.realtimeDailyBudgetMicroEur
+      });
+      if (reservation.existing) {
+        throw new ConsumerError(409, 'realtime_request_already_used', 'That live voice request id was already used. Create a new WebRTC offer.');
+      }
+      if (reservation.denied || !reservation.entry) {
+        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected €2 session or €20 UTC daily provider allowance has been reached. Continue by typing.');
+      }
+      let lease = null;
+      let dispatched = false;
+      let providerCallId = null;
+      try {
+        lease = await createRealtimeLease(env, sessionRow, config, reservation.entry);
+        await markRealtimeProviderCostInFlight(env, reservation.entry.id, sessionRow.id, config);
+        dispatched = true;
+        const state = describeConversationState(profile, config);
+        const providerCall = await createOpenAiRealtimeCall({
+          env,
+          config,
+          sessionId: sessionRow.id,
+          offerSdp,
+          state
+        });
+        providerCallId = providerCall.providerCallId;
+        lease = await activateRealtimeLease(env, sessionRow.id, lease.id, providerCallId);
+        await durableObjectRequest(env, lease.id, '/activate', {
+          sessionId: sessionRow.id,
+          leaseId: lease.id,
+          costEntryId: reservation.entry.id
+        });
+        return respondBinary(providerCall.answerSdp, 201, methods, {
+          'Content-Type': 'application/sdp',
+          'Content-Length': String(new TextEncoder().encode(providerCall.answerSdp).byteLength),
+          'X-Realtime-Lease-Id': lease.id,
+          'X-Realtime-Hard-Expires-At': lease.hard_expires_at,
+          'X-Realtime-Idle-Timeout-Seconds': String(config.realtimeIdleTimeoutSeconds),
+          'X-Realtime-Budget-Micro-Eur': String(lease.reservation_eur_micros),
+          'X-Realtime-Dispatch-Stop-Micro-Eur': String(lease.dispatch_stop_eur_micros),
+          'Access-Control-Expose-Headers': [
+            'X-Realtime-Lease-Id',
+            'X-Realtime-Hard-Expires-At',
+            'X-Realtime-Idle-Timeout-Seconds',
+            'X-Realtime-Budget-Micro-Eur',
+            'X-Realtime-Dispatch-Stop-Micro-Eur'
+          ].join(', ')
+        });
+      } catch (error) {
+        if (!providerCallId && typeof error?.providerCallId === 'string') {
+          providerCallId = error.providerCallId;
+        }
+        let hangupError = null;
+        if (providerCallId) {
+          try {
+            await hangupOpenAiRealtimeCall({ env, providerCallId });
+          } catch (providerHangupError) {
+            hangupError = providerHangupError;
+          }
+        }
+        if (hangupError) {
+          if (lease?.status === 'pending') {
+            lease = await activateRealtimeLease(env, sessionRow.id, lease.id, providerCallId)
+              .catch(() => lease);
+          }
+          throw new ConsumerError(
+            502,
+            'realtime_hangup_uncertain',
+            'Live voice did not start and provider termination is still being verified. Retry ending the returned lease.',
+            lease?.id ? { leaseId: lease.id } : undefined
+          );
+        }
+        if (lease) {
+          await closeRealtimeLease(
+            env,
+            sessionRow.id,
+            lease.id,
+            'failed',
+            'activation_failed',
+            error instanceof ConsumerError ? error.code : 'realtime_activation_failed'
+          ).catch(() => {});
+        }
+        if (dispatched) {
+          await settleConsumerProviderCostUnknown(env, reservation.entry.id, {
+            errorCode: error instanceof ConsumerError ? error.code : 'realtime_activation_failed'
+          }).catch(() => {});
+        } else {
+          await releaseConsumerProviderCostNotSent(env, reservation.entry.id, {
+            errorCode: error instanceof ConsumerError ? error.code : 'realtime_activation_failed'
+          }).catch(() => {});
+        }
+        throw error;
+      }
+    }
+
+    if (route.kind === 'analysis_plan') {
+      if (!config.moduleRoutingEnabled) {
+        throw new ConsumerError(404, 'module_routing_disabled', 'Consumer analysis is not available.');
+      }
+      await rateLimit(env, 'consumer-analysis-plan-session', sessionRow.id, 60 * 60 * 1000, 20);
+      const body = validateRealtimeAnalysisPlanBody(await readJson(request), config.allowedModules);
+      if (body.expectedRevision !== Number(sessionRow.current_profile_revision)) {
+        throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed before this analysis plan could be processed.');
+      }
+      if (body.action === 'prepare') {
+        let lease = null;
+        if (body.leaseId) {
+          lease = await getRealtimeLease(env, sessionRow.id, body.leaseId);
+          if (!lease || lease.status !== 'active') {
+            throw new ConsumerError(409, 'realtime_lease_conflict', 'The live voice lease is not active for this planning session.');
+          }
+        }
+        const moduleIds = realtimePlanModuleIds(profile, config, body.moduleIds);
+        if (!moduleIds.length) {
+          throw new ConsumerError(409, 'analysis_plan_empty', 'Choose a planning module before preparing this analysis.');
+        }
+        const prepared = await prepareRealtimeAnalysisPlan(env, {
+          sessionId: sessionRow.id,
+          leaseId: lease?.id || null,
+          idempotencyKey: body.idempotencyKey,
+          profileRevision: body.expectedRevision,
+          moduleIds,
+          scenarioOverrides: body.scenarioOverrides
+        });
+        const analysisPlan = {
+          ...toPublicRealtimeAnalysisPlan(prepared.row),
+          planNonce: prepared.planNonce
+        };
+        if (lease) {
+          await durableObjectRequest(env, lease.id, '/analysis-plan', {
+            planId: prepared.row.id,
+            status: prepared.row.status,
+            profileRevision: body.expectedRevision
+          });
+        }
+        return respond({ analysisPlan, idempotentReplay: prepared.idempotentReplay }, 200, methods);
+      }
+
+      const confirmed = await confirmAndRunRealtimeAnalysisPlan({
+        env,
+        config,
+        sessionId: sessionRow.id,
+        planId: body.planId,
+        planNonce: body.planNonce,
+        expectedRevision: body.expectedRevision
+      });
+      const leaseId = confirmed.analysisPlan?.leaseId || null;
+      if (leaseId) {
+        const lease = await getRealtimeLease(env, sessionRow.id, leaseId);
+        if (!lease) {
+          throw new ConsumerError(409, 'realtime_lease_conflict', 'The analysis plan is not linked to this planning session.');
+        }
+        if (lease.status === 'active') {
+          await durableObjectRequest(env, lease.id, '/analysis-plan', {
+            planId: confirmed.analysisPlan.planId,
+            status: confirmed.analysisPlan.status,
+            profileRevision: body.expectedRevision
+          });
+        }
+      }
+      return respond({
+        analysisPlan: confirmed.analysisPlan,
+        analysis: confirmed.analysis || null,
+        result: confirmed.result || null,
+        requiredQuestions: confirmed.requiredQuestions || [],
+        idempotentReplay: confirmed.idempotentReplay
+      }, 200, methods);
     }
 
 

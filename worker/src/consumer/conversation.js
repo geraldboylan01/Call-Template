@@ -16,6 +16,7 @@ import {
   reserveAiAttempt,
   toConsumerSession
 } from './repository.js';
+import { buildQuestionPlan, stageFromQuestionPlan } from './question_plan.js';
 
 function allowedRecommendations(profile, message, config) {
   if (!config.moduleRoutingEnabled) return [];
@@ -24,60 +25,6 @@ function allowedRecommendations(profile, message, config) {
       config.allowedModules.includes(item.moduleId)
       || ['adviser_review_required', 'unsupported'].includes(item.readiness?.status)
     ));
-}
-
-function acknowledgedMissing(profile, item) {
-  if (item?.importance === 'required') return false;
-  const path = String(item?.fieldPath || '');
-  return Boolean(path && profile.assumptions.values.completionFacts?.confirmedNonePaths?.[path]);
-}
-
-function stageFromProfile(profile, recommendations) {
-  if (!profile.goals.length) return 'goal_discovery';
-  if (recommendations.some((item) => (item.readiness?.requiredMissing || []).some((missing) => (
-    missing.importance === 'required' && !acknowledgedMissing(profile, missing)
-  )))) {
-    return 'goal_specific_questions';
-  }
-  return 'review';
-}
-
-function nextQuestion(profile, recommendations) {
-  if (!profile.goals.length) {
-    return {
-      questionId: 'goal-primary',
-      fieldPaths: ['/goals'],
-      prompt: 'What would you most like this plan to help you understand?',
-      answerType: 'text',
-      optional: false
-    };
-  }
-  const requiredMissing = recommendations
-    .flatMap((item) => item.readiness?.requiredMissing || [])
-    .filter((item) => !acknowledgedMissing(profile, item))
-    .sort((left, right) => {
-      const rank = { required: 0, recommended: 1, optional: 2 };
-      return (rank[left.importance] ?? 3) - (rank[right.importance] ?? 3);
-    });
-  if (requiredMissing[0]) {
-    const item = requiredMissing[0];
-    return {
-      questionId: `missing-${item.fieldPath.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}`,
-      fieldPaths: [item.fieldPath],
-      reason: item.reason,
-      blockingModuleIds: item.blockingModuleIds,
-      prompt: item.reason,
-      answerType: /amount|value|income|balance|expense|cash/i.test(item.fieldPath) ? 'money' : 'text',
-      optional: item.importance !== 'required'
-    };
-  }
-  return {
-    questionId: 'review-profile',
-    fieldPaths: [],
-    prompt: 'Please review the details shown and correct anything that is not right before confirming.',
-    answerType: 'text',
-    optional: false
-  };
 }
 
 const GOAL_TITLES = Object.freeze({
@@ -323,7 +270,7 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
   let aiErrorCode = null;
   let aiAttemptId = null;
   const activeRecommendations = allowedRecommendations(profile, '', config);
-  const activeQuestion = nextQuestion(profile, activeRecommendations);
+  const activeQuestion = buildQuestionPlan(profile, activeRecommendations);
   const contextualPatch = extractContextBoundPatch(profile, activeQuestion, safeMessage);
 
   if (contextualPatch) {
@@ -407,8 +354,8 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
   }
 
   const recommendations = allowedRecommendations(nextProfile, safeMessage, config);
-  const stage = stageFromProfile(nextProfile, recommendations);
-  const question = nextQuestion(nextProfile, recommendations);
+  const stage = stageFromQuestionPlan(nextProfile, recommendations);
+  const question = buildQuestionPlan(nextProfile, recommendations);
   // Model prose is never authoritative or returned. The server owns this copy.
   const assistantMessage = question.prompt;
   let committed;
@@ -489,8 +436,8 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
 export function describeConversationState(profile, config) {
   const recommendations = allowedRecommendations(profile, '', config);
   return {
-    stage: stageFromProfile(profile, recommendations),
-    nextQuestion: nextQuestion(profile, recommendations),
+    stage: stageFromQuestionPlan(profile, recommendations),
+    nextQuestion: buildQuestionPlan(profile, recommendations),
     recommendations
   };
 }

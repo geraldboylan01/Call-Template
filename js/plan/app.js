@@ -8,8 +8,8 @@ import {
   getBootstrap,
   getSession,
   patchProfile,
+  putAnalysisPlan,
   revokeHandoff,
-  runAnalyses,
   withdrawAiConsent
 } from './api.js';
 import { buildSubscriptionAssistPrompt } from './subscription_assist.js';
@@ -19,6 +19,8 @@ import {
   consumeConsumerInvite,
   captureInviteFromUrlFragment,
   getConsumerInvite,
+  getAnalysisPlanNonce,
+  getRealtimeVoiceConsent,
   getSessionId,
   getStoredSessionAccess,
   getVoiceConsent,
@@ -33,6 +35,7 @@ import {
   state,
   storeSessionAccess
 } from './store.js';
+import { createRealtimeVoiceController } from './realtime_voice.js';
 import {
   captureConversationDraft,
   createVoiceController,
@@ -70,6 +73,8 @@ const revokeHandoffButton = document.getElementById('revokeHandoffButton');
 const handoffPrivacyCopy = document.getElementById('handoffPrivacyCopy');
 const withdrawVoiceConsentButton = document.getElementById('withdrawVoiceConsentButton');
 const voicePrivacyCopy = document.getElementById('voicePrivacyCopy');
+const realtimeVoicePrivacyCopy = document.getElementById('realtimeVoicePrivacyCopy');
+const withdrawRealtimeVoiceConsentButton = document.getElementById('withdrawRealtimeVoiceConsentButton');
 const removeItemDialog = document.getElementById('removeItemDialog');
 const removeItemTitle = document.getElementById('removeItemTitle');
 const removeItemContext = document.getElementById('removeItemContext');
@@ -81,6 +86,11 @@ const toastRegion = document.getElementById('toastRegion');
 let editingField = null;
 let removingItem = null;
 let pendingTurn = null;
+let pendingPlanPrepare = null;
+let pendingPlanConfirm = null;
+let planPrepareTimer = null;
+let planPrepareGeneration = 0;
+let realtimeRenderQueued = false;
 
 const voiceController = createVoiceController({
   root: appRoot,
@@ -99,6 +109,23 @@ const voiceController = createVoiceController({
     }
     restoreConversationDraft(appRoot, draft);
   },
+  onToast: (message, options) => showToast(message, options),
+  onSessionUnavailable: (error) => recoverUnavailableSession(error)
+});
+
+const realtimeVoiceController = createRealtimeVoiceController({
+  root: document.getElementById('realtimeVoiceShell'),
+  onVoicePayload: (payload) => {
+    const previousRevision = currentProfileRevision();
+    mergePayload(payload);
+    if (currentProfileRevision() !== previousRevision) invalidatePendingAnalysisPlan();
+  },
+  onPlanningPayload: (payload) => scheduleRealtimeJourneyRender(payload),
+  onNavigate: (view) => {
+    setView(view || 'review');
+    renderCurrentJourney({ focus: true });
+  },
+  onStopBoundedVoice: () => voiceController.cancelActiveVoice(),
   onToast: (message, options) => showToast(message, options),
   onSessionUnavailable: (error) => recoverUnavailableSession(error)
 });
@@ -179,6 +206,7 @@ function focusCurrentHeading() {
 function renderCurrentJourney({ focus = false } = {}) {
   renderJourney(appRoot, state);
   voiceController.afterRender();
+  realtimeVoiceController.sync(state);
   syncHeader();
   window.requestAnimationFrame(() => {
     appRoot.querySelector('.step-button[aria-current="step"]')?.scrollIntoView({
@@ -189,6 +217,33 @@ function renderCurrentJourney({ focus = false } = {}) {
   if (focus) {
     focusCurrentHeading();
   }
+}
+
+function scheduleRealtimeJourneyRender(payload) {
+  const root = unwrap(payload);
+  const session = root.session && typeof root.session === 'object' ? root.session : {};
+  const affectsJourney = [
+    'profile',
+    'householdProfile',
+    'turns',
+    'conversationTurns',
+    'nextQuestion',
+    'question',
+    'recommendations',
+    'analysisPlan',
+    'analysis'
+  ].some((key) => Object.hasOwn(root, key))
+    || ['profile', 'turns', 'nextQuestion', 'recommendations', 'analysisPlan', 'stage']
+      .some((key) => Object.hasOwn(session, key));
+  if (!affectsJourney || realtimeRenderQueued || !state.bootstrap?.enabled) return;
+  realtimeRenderQueued = true;
+  window.requestAnimationFrame(() => {
+    realtimeRenderQueued = false;
+    if (!realtimeVoiceController.isLive() || state.view !== 'conversation') return;
+    const draft = captureConversationDraft(appRoot);
+    renderCurrentJourney();
+    restoreConversationDraft(appRoot, draft);
+  });
 }
 
 function responseIncludes(payload, field) {
@@ -253,9 +308,18 @@ function applyResponse(payload, { action = '', focus = false } = {}) {
     state.turns = mergeTurnHistory(previousTurns, state.turns);
   }
   const profileChanged = currentProfileRevision() !== previousRevision;
+  if (profileChanged) invalidatePendingAnalysisPlan();
   setView(chooseViewFromServer({ action, payload, profileChanged }));
   renderCurrentJourney({ focus });
   return { profileChanged };
+}
+
+function invalidatePendingAnalysisPlan() {
+  pendingPlanPrepare = null;
+  pendingPlanConfirm = null;
+  planPrepareGeneration += 1;
+  if (planPrepareTimer !== null) window.clearTimeout(planPrepareTimer);
+  planPrepareTimer = null;
 }
 
 function setFormBusy(form, busy, busyLabel = '') {
@@ -380,6 +444,7 @@ function renderProcessingPaused() {
     message: 'Planning updates are temporarily paused. Your private access is still available, and Privacy controls remain open for AI or adviser-handoff withdrawal and permanent deletion.'
   });
   voiceController.afterRender();
+  realtimeVoiceController.sync(state);
   syncHeader();
 }
 
@@ -392,10 +457,16 @@ function resetToOnboarding({ error = '', toast = '' } = {}) {
   document.body.classList.remove('dialog-open');
   clearSessionAccess();
   voiceController.reset();
+  realtimeVoiceController.reset({ notifyServer: false });
   resetJourneyState();
   editingField = null;
   removingItem = null;
   pendingTurn = null;
+  pendingPlanPrepare = null;
+  pendingPlanConfirm = null;
+  planPrepareGeneration += 1;
+  if (planPrepareTimer !== null) window.clearTimeout(planPrepareTimer);
+  planPrepareTimer = null;
   confirmDeleteButton.disabled = false;
   confirmDeleteButton.textContent = 'Delete permanently';
   syncHeader();
@@ -515,6 +586,9 @@ async function submitTurn(message) {
     return;
   }
 
+  if (realtimeVoiceController.isLive()) {
+    void realtimeVoiceController.end({ reason: 'typed_fallback' });
+  }
   voiceController.cancelActiveVoice();
 
   setBusy(true);
@@ -651,6 +725,7 @@ async function handleFieldEdit(event) {
       currentProfileRevision()
     );
     mergePayload(payload);
+    invalidatePendingAnalysisPlan();
     setView('review');
     closeDialog(editFieldDialog);
     editingField = null;
@@ -689,6 +764,7 @@ async function handleRemoveItem() {
       [removingItem.path]
     );
     mergePayload(payload);
+    invalidatePendingAnalysisPlan();
     setView('review');
     closeDialog(removeItemDialog);
     removingItem = null;
@@ -715,7 +791,13 @@ function openPrivacyControls() {
   withdrawVoiceConsentButton.hidden = !voiceActive;
   voicePrivacyCopy.hidden = !voiceActive;
   if (voiceActive) {
-    voicePrivacyCopy.textContent = 'Voice processing is active for the current disclosure version. Turning it off stops future microphone transcription and generated playback; typed answers remain available.';
+    voicePrivacyCopy.textContent = 'Short voice processing is active for its disclosure version. Turning it off stops future bounded microphone transcription and generated question playback; typed answers remain available.';
+  }
+  const realtimeVoiceActive = getRealtimeVoiceConsent()?.granted === true;
+  withdrawRealtimeVoiceConsentButton.hidden = !realtimeVoiceActive;
+  realtimeVoicePrivacyCopy.hidden = !realtimeVoiceActive;
+  if (realtimeVoiceActive) {
+    realtimeVoicePrivacyCopy.textContent = 'Live voice is separately active. Turning it off immediately closes any live microphone session and stops future automatic spoken turns and voice-triggered planning tools; short voice and typing remain available.';
   }
   const handoffStatus = String(state.handoff?.status || '').toLowerCase();
   const canWithdrawHandoff = ['pending', 'failed', 'linked', 'delivered'].includes(handoffStatus);
@@ -852,11 +934,118 @@ async function handleConfirmProfile() {
   }
 }
 
+function normaliseModuleIds(moduleIds = state.selectedModuleIds) {
+  return [...new Set((Array.isArray(moduleIds) ? moduleIds : [])
+    .map((moduleId) => String(moduleId || '').trim())
+    .filter(Boolean))];
+}
+
+function moduleSelectionSignature(moduleIds, revision = currentProfileRevision()) {
+  return `${Number(revision || 0)}:${normaliseModuleIds(moduleIds).sort().join('|')}`;
+}
+
+function analysisPlanFromPayload(payload) {
+  const root = unwrap(payload);
+  const plan = firstDefined(root.analysisPlan, root.session?.analysisPlan, root.plan);
+  return plan && typeof plan === 'object' && !Array.isArray(plan) ? plan : null;
+}
+
+function focusModuleToggle(moduleId) {
+  if (!moduleId) return;
+  window.requestAnimationFrame(() => {
+    appRoot.querySelector(`input[data-action="toggle-module"][data-module-id="${CSS.escape(moduleId)}"]`)?.focus();
+  });
+}
+
+async function prepareDisplayedAnalysisPlan(moduleIds, {
+  background = false,
+  focusModuleId = '',
+  generation = ++planPrepareGeneration
+} = {}) {
+  const requestedModuleIds = normaliseModuleIds(moduleIds);
+  const revision = currentProfileRevision();
+  const signature = moduleSelectionSignature(requestedModuleIds, revision);
+  if (!pendingPlanPrepare || pendingPlanPrepare.signature !== signature) {
+    pendingPlanPrepare = {
+      signature,
+      idempotencyKey: newIdempotencyKey()
+    };
+  }
+  try {
+    const payload = await putAnalysisPlan(getSessionId(), {
+      action: 'prepare',
+      idempotencyKey: pendingPlanPrepare.idempotencyKey,
+      expectedRevision: revision,
+      moduleIds: requestedModuleIds
+    });
+    if (generation !== planPrepareGeneration) return null;
+    const returnedPlan = analysisPlanFromPayload(payload);
+    const planId = String(firstDefined(returnedPlan?.planId, returnedPlan?.id, '') || '');
+    const planNonce = String(firstDefined(returnedPlan?.planNonce, returnedPlan?.nonce, '') || '');
+    const profileRevision = Number(firstDefined(
+      returnedPlan?.profileRevision,
+      returnedPlan?.expectedRevision,
+      0
+    ) || 0);
+    if (!returnedPlan || !planId || !planNonce || profileRevision !== revision) {
+      throw new Error('The service did not return a current, confirmable analysis plan.');
+    }
+    mergePayload(payload);
+    pendingPlanPrepare = null;
+    const preparedModuleIds = normaliseModuleIds(firstDefined(
+      returnedPlan.moduleIds,
+      returnedPlan.selectedModuleIds,
+      requestedModuleIds
+    ));
+    const selectionChanged = moduleSelectionSignature(preparedModuleIds, revision) !== signature;
+    if (background || selectionChanged) {
+      renderCurrentJourney();
+      focusModuleToggle(focusModuleId);
+    }
+    if (selectionChanged) {
+      showToast('The protected planning rules updated the displayed module selection. Review it before confirming and running.', {
+        timeout: 7000
+      });
+    } else if (background) {
+      showToast('Analysis selection saved for this private session.', { timeout: 2800 });
+    }
+    return { plan: state.analysisPlan || returnedPlan, selectionChanged };
+  } catch (error) {
+    if (generation !== planPrepareGeneration) return null;
+    if (recoverUnavailableSession(error)) return null;
+    if (background) {
+      showToast('Your displayed choices are still here, but the server could not save them yet. Planéir will retry before running.', {
+        error: true,
+        timeout: 6500
+      });
+      focusModuleToggle(focusModuleId);
+      return null;
+    }
+    throw error;
+  }
+}
+
+function queueAnalysisPlanPrepare(focusModuleId = '') {
+  const generation = ++planPrepareGeneration;
+  if (planPrepareTimer !== null) window.clearTimeout(planPrepareTimer);
+  planPrepareTimer = window.setTimeout(() => {
+    planPrepareTimer = null;
+    void prepareDisplayedAnalysisPlan(state.selectedModuleIds, {
+      background: true,
+      focusModuleId,
+      generation
+    });
+  }, 450);
+}
+
 async function handleRunAnalysis() {
   if (blockForConsentRefresh()) return;
   if (state.busy) {
     return;
   }
+  if (planPrepareTimer !== null) window.clearTimeout(planPrepareTimer);
+  planPrepareTimer = null;
+  const generation = ++planPrepareGeneration;
   setBusy(true);
   renderCurrentJourney();
   try {
@@ -866,7 +1055,38 @@ async function handleRunAnalysis() {
       showToast('Choose at least one available analysis before continuing.', { error: true });
       return;
     }
-    const payload = await runAnalyses(getSessionId(), state.selectedModuleIds);
+    const prepared = await prepareDisplayedAnalysisPlan(state.selectedModuleIds, { generation });
+    if (!prepared) {
+      throw new Error('The current analysis plan could not be prepared. Please try again.');
+    }
+    if (prepared.selectionChanged) {
+      setBusy(false);
+      renderCurrentJourney({ focus: true });
+      return;
+    }
+    const plan = prepared.plan || {};
+    const planId = String(firstDefined(plan.planId, plan.id, '') || '');
+    const planNonce = getAnalysisPlanNonce(planId);
+    const expectedRevision = currentProfileRevision();
+    if (!planId || !planNonce || Number(plan.profileRevision || 0) !== expectedRevision) {
+      throw new Error('The displayed analysis plan is no longer current. Review it and try again.');
+    }
+    const confirmSignature = `${planId}:${planNonce}:${expectedRevision}`;
+    if (!pendingPlanConfirm || pendingPlanConfirm.signature !== confirmSignature) {
+      pendingPlanConfirm = {
+        signature: confirmSignature,
+        idempotencyKey: newIdempotencyKey()
+      };
+    }
+    const payload = await putAnalysisPlan(getSessionId(), {
+      action: 'confirm_and_run',
+      idempotencyKey: pendingPlanConfirm.idempotencyKey,
+      expectedRevision,
+      planId,
+      planNonce,
+      confirmation: true
+    });
+    pendingPlanConfirm = null;
     setBusy(false);
     applyResponse(payload, { action: 'analysis', focus: true });
     if (state.analysis) {
@@ -944,6 +1164,7 @@ async function handleHandoff(form) {
 }
 
 async function handleDeleteSession() {
+  await realtimeVoiceController.end({ reason: 'deletion' });
   voiceController.cancelActiveVoice({ reason: 'deletion', refreshBudget: false });
   confirmDeleteButton.disabled = true;
   confirmDeleteButton.textContent = 'Deleting…';
@@ -954,6 +1175,7 @@ async function handleDeleteSession() {
     pendingTurn = null;
     closeDialog(deleteSessionDialog);
     voiceController.reset({ refreshBudget: false });
+    realtimeVoiceController.reset({ notifyServer: false });
     confirmDeleteButton.disabled = false;
     confirmDeleteButton.textContent = 'Delete permanently';
     syncHeader();
@@ -978,6 +1200,9 @@ function handleRootClick(event) {
   }
   const action = button.dataset.action;
   if (voiceController.handles(action)) {
+    if (realtimeVoiceController.isLive()) {
+      void realtimeVoiceController.end({ reason: 'bounded_fallback' });
+    }
     voiceController.handleAction(action);
     return;
   }
@@ -1065,13 +1290,13 @@ function handleRootChange(event) {
   }
   setModuleSelected(input.dataset.moduleId, input.checked);
   renderCurrentJourney();
-  window.requestAnimationFrame(() => {
-    appRoot.querySelector(`input[data-action="toggle-module"][data-module-id="${CSS.escape(input.dataset.moduleId || '')}"]`)?.focus();
-  });
+  focusModuleToggle(input.dataset.moduleId || '');
+  queueAnalysisPlanPrepare(input.dataset.moduleId || '');
 }
 
 function bindEvents() {
   voiceController.bind();
+  realtimeVoiceController.bind();
   appRoot.addEventListener('click', handleRootClick);
   appRoot.addEventListener('submit', handleRootSubmit);
   appRoot.addEventListener('change', handleRootChange);
@@ -1101,11 +1326,19 @@ function bindEvents() {
   closePrivacyControlsButton.addEventListener('click', () => closeDialog(privacyControlsDialog));
   withdrawAiConsentButton.addEventListener('click', handleWithdrawAiConsent);
   withdrawVoiceConsentButton.addEventListener('click', () => voiceController.withdrawConsent());
+  withdrawRealtimeVoiceConsentButton.addEventListener('click', async () => {
+    await realtimeVoiceController.withdrawConsent();
+    if (privacyControlsDialog?.open || privacyControlsDialog?.hasAttribute('open')) {
+      closeDialog(privacyControlsDialog);
+    }
+    renderCurrentJourney();
+  });
   revokeHandoffButton.addEventListener('click', handleRevokeHandoff);
   deleteSessionDialog.addEventListener('close', () => {
     document.body.classList.remove('dialog-open');
   });
   deleteSessionButton.addEventListener('click', () => {
+    void realtimeVoiceController.end({ reason: 'deletion' });
     voiceController.cancelActiveVoice({ reason: 'deletion', refreshBudget: false });
     openDialog(deleteSessionDialog);
   });

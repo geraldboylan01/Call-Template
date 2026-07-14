@@ -25,7 +25,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install project dependencies
@@ -82,7 +82,7 @@ jobs:
           ASSET_VERSION: ${{ github.sha }}
 
       - name: Install Wrangler
-        run: npm install --global wrangler@4
+        run: npm install --global wrangler@4.110.0
 
       - name: Exercise consumer API against fresh local D1 bindings
         run: |

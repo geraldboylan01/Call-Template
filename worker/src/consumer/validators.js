@@ -212,6 +212,21 @@ export function validateVoiceConsentBody(body, expected) {
   return { granted: body.granted, noticeId, policyVersion, privacyNoticeUrl };
 }
 
+export function validateRealtimeConsentBody(body, expected) {
+  if (!plainObject(body) || typeof body.granted !== 'boolean') {
+    throw badRequest('Live voice consent must be explicitly granted or withdrawn.', 'invalid_realtime_consent');
+  }
+  const noticeId = cleanText(body.noticeId, 'Live voice notice id', 120);
+  const policyVersion = cleanText(body.policyVersion, 'Live voice policy version', 120);
+  const privacyNoticeUrl = cleanText(body.privacyNoticeUrl, 'Live voice privacy notice URL', 500);
+  if (body.granted && (noticeId !== expected.noticeId
+    || policyVersion !== expected.policyVersion
+    || privacyNoticeUrl !== expected.privacyNoticeUrl)) {
+    throw badRequest('The live voice disclosure is no longer current. Reload before continuing.', 'realtime_policy_outdated');
+  }
+  return { granted: body.granted, noticeId, policyVersion, privacyNoticeUrl };
+}
+
 export function validateVoiceSpeechBody(body) {
   if (!plainObject(body)) throw badRequest('Voice speech request must be an object.');
   const idempotencyKey = cleanText(body.idempotencyKey, 'Voice request id', 120);
@@ -236,6 +251,57 @@ export function validateAnalysisBody(body, allowedModules) {
   const scenarioOverrides = value.scenarioOverrides === undefined ? {} : value.scenarioOverrides;
   validateProfilePatchValue(scenarioOverrides);
   return { moduleIds, scenarioOverrides };
+}
+
+export function validateRealtimeAnalysisPlanBody(body, allowedModules) {
+  if (!plainObject(body)) throw badRequest('Analysis plan body must be an object.');
+  const idempotencyKey = cleanText(body.idempotencyKey, 'Analysis plan request id', 120);
+  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) {
+    throw badRequest('Analysis plan request id is invalid.', 'analysis_plan_idempotency_key_invalid');
+  }
+  const expectedRevision = validateExpectedRevision(body.expectedRevision);
+  const action = body.action === undefined ? 'prepare' : cleanText(body.action, 'Analysis plan action', 40);
+  if (!['prepare', 'confirm_and_run'].includes(action)) {
+    throw badRequest('Analysis plan action is invalid.', 'analysis_plan_action_invalid');
+  }
+  if (action === 'confirm_and_run' && body.confirmation !== true) {
+    throw badRequest('Explicit confirmation is required before running the analysis plan.', 'analysis_plan_confirmation_required');
+  }
+  const analysis = action === 'prepare'
+    ? validateAnalysisBody({
+        moduleIds: body.moduleIds,
+        scenarioOverrides: body.scenarioOverrides
+      }, allowedModules)
+    : { moduleIds: undefined, scenarioOverrides: {} };
+  const leaseId = body.leaseId === undefined || body.leaseId === null
+    ? null
+    : cleanText(body.leaseId, 'Realtime lease id', 100);
+  if (leaseId && !/^rt_[A-Za-z0-9_-]{20,80}$/.test(leaseId)) {
+    throw badRequest('Realtime lease id is invalid.', 'realtime_lease_invalid');
+  }
+  const planId = action === 'confirm_and_run'
+    ? cleanText(body.planId, 'Analysis plan id', 100)
+    : null;
+  const planNonce = action === 'confirm_and_run'
+    ? cleanText(body.planNonce, 'Analysis confirmation nonce', 160)
+    : null;
+  if (planId && !/^realtime_plan_[A-Za-z0-9_-]{20,80}$/.test(planId)) {
+    throw badRequest('Analysis plan id is invalid.', 'analysis_plan_id_invalid');
+  }
+  if (planNonce && !/^plan_nonce_[A-Za-z0-9_-]{40,100}$/.test(planNonce)) {
+    throw badRequest('Analysis confirmation nonce is invalid.', 'analysis_plan_nonce_invalid');
+  }
+  return {
+    idempotencyKey,
+    expectedRevision,
+    action,
+    confirmed: action === 'confirm_and_run',
+    confirmation: body.confirmation === true,
+    planId,
+    planNonce,
+    leaseId,
+    ...analysis
+  };
 }
 
 export function validateHandoffBody(body, expectedPolicy) {

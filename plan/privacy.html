@@ -8,7 +8,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <meta
       name="description"
@@ -153,38 +153,75 @@
 
           <section id="optional-voice" class="privacy-card is-wide">
             <p class="section-kicker">Optional adviser-test feature</p>
-            <h2>Microphone transcription and AI-generated playback</h2>
+            <h2>Short transcription, Live voice, and AI-generated playback</h2>
             <p>
               Voice is offered only when the adviser-test feature flag and its current disclosure are
-              active. It never starts automatically. You must first give versioned voice consent, then
-              deliberately press the microphone control for each recording. A recording stops when you
-              press the control again, leave or hide the page, or reach the 45-second maximum.
+              active. It never starts automatically, and typing remains available. You must first give
+              the separate, versioned consent for the voice mode you want and then deliberately start it.
+              Enabling short recording does not itself enable Live voice or automatic spoken turns.
             </p>
             <p>
-              After you stop recording, Planéir sends that short audio clip through its protected service
-              to OpenAI’s transcription API. The raw clip is used to produce the transcript and is not
-              added to your planning profile, conversation history, browser storage, D1 database, R2
-              storage, or application logs. Approved OpenAI account data controls and provider-side abuse
-              monitoring or retention terms still apply while the request is processed.
+              <strong>Short recording</strong> starts only when you press its microphone control. It stops
+              when you press the control again, leave or hide the page, or reach the 45-second maximum.
+              Planéir then sends that bounded clip through its protected service to OpenAI’s transcription
+              API. The raw clip is used to produce the transcript and is not added to your planning profile,
+              conversation history, browser storage, D1 database, R2 storage, or application logs.
             </p>
             <p>
-              The returned transcript appears in the ordinary answer box. It is not saved as a
-              conversation turn and does not change your financial profile until you review it, correct
-              any names or figures, and choose <strong>Continue</strong>. Speech recognition can be wrong,
-              particularly for amounts, dates, names, accents, or background speech.
+              <strong>Live voice</strong> appears only when its separate server feature flag is active. It
+              starts when you press <strong>Start voice</strong> and streams microphone audio through
+              Planéir’s protected service to an OpenAI Realtime session while the on-screen Live voice
+              controls are active. It ends when you press <strong>End voice</strong>, leave the conversation
+              step, hide or leave the page, lose the protected session, or reach the server-enforced time or
+              allowance limit. Muting stops the microphone track from sending audio while keeping the live
+              session open.
             </p>
             <p>
-              <strong>Question playback is an AI-generated voice.</strong> The browser does not send its
-              own text for playback: the protected service derives the exact current, server-owned Planéir
-              question and converts that text to speech. The voice does not calculate, infer facts, make
-              recommendations, or replace the written question.
+              Short-recording transcripts remain review-only: the returned transcript is copied into the
+              ordinary answer box and is not submitted until you choose <strong>Continue</strong>. Live voice
+              works differently. Live partial captions may change as recognition resolves your words; once
+              an utterance is final, it is processed automatically as the next live turn, without a separate
+              Continue press. Speech recognition can be wrong, particularly for amounts, dates, names,
+              accents, or background speech. Partial caption streams are not retained by Planéir. A
+              finalized turn may be redacted and stored, encrypted, with the private planning session so
+              the conversation can be reviewed and its fact provenance can be explained.
+            </p>
+            <p>
+              A finalized Live voice turn may ask protected server-side tools to propose profile facts,
+              decide which approved follow-up question is needed, and propose relevant Planéir modules.
+              Client code does not execute financial tools, and the voice model does not write confirmed
+              facts directly. The interface labels proposed values as exact, approximate, or pending
+              confirmation; material amounts, dates, goals, and assumptions are read back during the
+              conversation. Before calculations run, you receive one final profile-and-module review where
+              you can correct, remove, or confirm the proposals.
+            </p>
+            <p>
+              <strong>Voice playback is AI-generated.</strong> Bounded question playback derives the exact
+              current, server-owned Planéir question through the protected service. A Live voice session may
+              also return streaming AI audio and captions. The written Planéir question, reviewed facts, and
+              deterministic module outputs remain authoritative: voice output does not calculate financial
+              results, confirm facts, approve products, or replace the written journey. Speaking while Live
+              voice is responding interrupts that response where the provider and browser support it.
             </p>
             <p>
               Voice processing has a server-enforced €2 app allowance per private session. Each voice
-              request uses a fixed conservative reservation rather than measuring an exact provider bill.
-              The journey shows the remaining app allowance and stops new voice calls at that allowance;
-              typed answers continue normally. You can stop future voice processing at any time through
-              <strong>Privacy controls</strong>; this does not undo audio processing already completed.
+              request uses a conservative application reservation rather than promising an exact provider
+              invoice. A Live call atomically reserves the remaining session envelope and reconciles
+              separately billed Realtime-response and input-transcription usage against it. Live sessions
+              also use a server-created, time-limited lease and are closed when that lease or allowance
+              ends. The journey shows the remaining app allowance and stops new voice calls at that
+              allowance; typed answers continue normally. You can stop future voice processing at any time
+              through <strong>Privacy controls</strong>; this closes an active Live voice session but does
+              not undo audio processing already completed.
+            </p>
+            <p>
+              Approved OpenAI account data controls and provider-side abuse monitoring or retention terms
+              apply while short or live audio is processed. Planéir does not place raw audio, WebRTC session
+              descriptions, ephemeral provider credentials, partial transcript streams, or unrestricted live
+              event payloads into the planning profile, browser storage, D1 database, R2 storage, or
+              application logs. Server-side cost, consent, and lease audit records exclude raw audio and
+              transcript content; only the encrypted, redacted finalized turns described above may retain
+              transcript text in the private session.
             </p>
             <div class="privacy-callout">
               Spoken audio reaches transcription before text redaction can run. Do not say PPS numbers,

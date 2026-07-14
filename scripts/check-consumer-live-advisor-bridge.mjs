@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { runRealtimeInfrastructureProof } from './run-consumer-realtime-infrastructure-proof.mjs';
 
 const MAX_ATTEMPTS = 5;
 const RETRY_DELAY_MS = 3_000;
@@ -48,6 +49,13 @@ export function paidVoiceProviderSmokeEnabled(value) {
   if (!normalized || normalized === 'false') return false;
   if (normalized === 'true') return true;
   throw new Error('RUN_PAID_VOICE_PROVIDER_SMOKE must be exactly true or false.');
+}
+
+export function paidRealtimeInfrastructureProofEnabled(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized || normalized === 'false') return false;
+  if (normalized === 'true') return true;
+  throw new Error('RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF must be exactly true or false.');
 }
 
 export function voiceBudgetFromHeaders(headers) {
@@ -202,7 +210,7 @@ async function requestRawAudioJsonOnce(baseUrl, pathname, {
   return payload;
 }
 
-export function assertBetaBootstrap(payload) {
+export function assertBetaBootstrap(payload, { realtimeExpected = false } = {}) {
   assert.equal(payload?.flags?.consumerJourneyEnabled, true, 'Consumer journey is not live.');
   assert.equal(payload?.flags?.consumerAiIntakeEnabled, false, 'AI must remain disabled.');
   assert.equal(payload?.flags?.consumerVoiceEnabled, true, 'Reviewed voice transport is not live.');
@@ -235,6 +243,30 @@ export function assertBetaBootstrap(payload) {
   assert.equal(payload?.voice?.sessionBudgetMicroEur, 2_000_000, 'The €2 session voice ceiling changed unexpectedly.');
   assert.ok(typeof payload?.voice?.privacyNoticeUrl === 'string' && payload.voice.privacyNoticeUrl.length > 0);
   assert.ok(typeof payload?.voice?.policyVersion === 'string' && payload.voice.policyVersion.length > 0);
+  assert.equal(
+    payload?.flags?.consumerRealtimeVoiceEnabled === true,
+    realtimeExpected,
+    'The realtime voice flag does not match the protected canary mode.'
+  );
+  if (realtimeExpected) {
+    assert.equal(payload?.realtimeVoice?.enabled, true, 'Realtime voice is not configured.');
+    assert.equal(payload?.realtimeVoice?.model, 'gpt-realtime-2.1', 'The realtime model changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.voice, 'marin', 'The realtime voice changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.reasoningEffort, 'low', 'The default realtime reasoning effort changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.transcriptionModel, 'gpt-4o-mini-transcribe', 'The realtime transcription model changed unexpectedly.');
+    assert.equal(
+      payload?.realtimeVoice?.pricingVersion,
+      'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
+      'The realtime pricing catalogue changed unexpectedly.'
+    );
+    assert.equal(payload?.realtimeVoice?.maxDurationSeconds, 600, 'The realtime duration limit changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.idleTimeoutSeconds, 90, 'The realtime idle timeout changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.sessionBudgetMicroEur, 2_000_000, 'The realtime €2 allowance changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.dispatchStopMicroEur, 1_700_000, 'The realtime safety stop changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.safetyReserveMicroEur, 300_000, 'The realtime delayed-usage reserve changed unexpectedly.');
+  } else {
+    assert.equal(payload?.realtimeVoice?.enabled === true, false, 'Realtime voice must fail closed outside its canary.');
+  }
 }
 
 async function main() {
@@ -242,6 +274,10 @@ async function main() {
   const smokeOrigin = String(process.env.SMOKE_ORIGIN || '').trim();
   const password = String(process.env.ADVISOR_SMOKE_PASSWORD || '').trim();
   const runPaidProviderSmoke = paidVoiceProviderSmokeEnabled(process.env.RUN_PAID_VOICE_PROVIDER_SMOKE);
+  const runPaidRealtimeProof = paidRealtimeInfrastructureProofEnabled(
+    process.env.RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF
+  );
+  const realtimeExpected = String(process.env.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED || '').trim() === 'true';
   const workerUrl = new URL(workerBaseUrl);
   const smokeOriginUrl = new URL(smokeOrigin);
   assert.equal(workerUrl.protocol, 'https:', 'WORKER_BASE_URL must use HTTPS.');
@@ -253,6 +289,11 @@ async function main() {
     'SMOKE_ORIGIN must be a Planéir production origin.'
   );
   assert.ok(password, 'ADVISOR_SMOKE_PASSWORD is required for the authenticated bridge smoke.');
+  assert.equal(
+    runPaidRealtimeProof,
+    realtimeExpected,
+    'Realtime activation and its paid infrastructure proof must be enabled together.'
+  );
 
   const cookieJar = new CookieJar();
   const session = await requestJson(workerBaseUrl, '/api/auth/session', {
@@ -279,7 +320,11 @@ async function main() {
   });
   assert.equal(inviteResult.payload?.ok, true, 'The adviser bridge did not issue a planning invite.');
   assert.equal(inviteResult.payload?.maxUses, 1, 'The adviser bridge invite must be one-use.');
-  assert.equal(inviteResult.payload?.mode, 'voice_assisted_rules_only', 'The adviser bridge must remain voice-assisted rules-only.');
+  assert.equal(
+    inviteResult.payload?.mode,
+    realtimeExpected ? 'realtime_voice_rules_only' : 'voice_assisted_rules_only',
+    'The adviser bridge returned an unexpected consumer mode.'
+  );
   const inviteUrl = new URL(String(inviteResult.payload?.url || ''));
   assert.equal(inviteUrl.origin, 'https://planeir.ie', 'The adviser bridge returned an unapproved site origin.');
   assert.equal(inviteUrl.pathname, '/plan/', 'The adviser bridge returned an unapproved path.');
@@ -293,7 +338,7 @@ async function main() {
   const bootstrap = (await requestJson(workerBaseUrl, '/api/consumer/bootstrap', {
     origin: smokeOrigin
   })).payload;
-  assertBetaBootstrap(bootstrap);
+  assertBetaBootstrap(bootstrap, { realtimeExpected });
 
   const credential = buildProposedCredential();
   const sessionId = credential.slice(0, credential.indexOf('.'));
@@ -349,6 +394,42 @@ async function main() {
     assert.equal(voiceGranted.payload?.voiceBudget?.limitMicroEur, 2_000_000, 'The live session does not have the €2 voice ceiling.');
     assert.equal(voiceGranted.payload?.voiceBudget?.spentMicroEur, 0, 'A new smoke session unexpectedly has provider spend.');
 
+    let realtimeConsentPayload = null;
+    if (runPaidRealtimeProof) {
+      realtimeConsentPayload = {
+        noticeId: bootstrap.realtimeVoice.noticeId,
+        policyVersion: bootstrap.realtimeVoice.policyVersion,
+        privacyNoticeUrl: bootstrap.realtimeVoice.privacyNoticeUrl
+      };
+      const realtimeGranted = await requestJson(
+        workerBaseUrl,
+        `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/realtime/consent`,
+        {
+          method: 'PATCH',
+          origin: smokeOrigin,
+          headers: { 'X-Consumer-Session': credential },
+          body: { granted: true, ...realtimeConsentPayload },
+          diagnosticPath: '/api/consumer/sessions/[synthetic]/voice/realtime/consent'
+        }
+      );
+      assert.equal(realtimeGranted.payload?.realtimeConsent?.granted, true, 'Realtime consent could not be granted.');
+      assert.equal(
+        realtimeGranted.payload?.providerBudget?.limitMicroEur,
+        2_000_000,
+        'The Realtime proof does not have the conservative €2 application allowance.'
+      );
+      const proof = await runRealtimeInfrastructureProof({
+        workerBaseUrl,
+        smokeOrigin,
+        sessionId,
+        credential
+      });
+      assert.equal(proof.webRtcConnected, true, 'The production WebRTC connection was not proven.');
+      assert.equal(proof.sidebandConnected, true, 'The production sideband connection was not proven.');
+      assert.equal(proof.readOnlyToolSucceeded, true, 'The production read-only planning tool was not proven.');
+      assert.equal(proof.providerHangupConfirmed, true, 'The production provider hang-up was not proven.');
+    }
+
     if (runPaidProviderSmoke) {
       const speechResult = await requestBinaryOnce(
         workerBaseUrl,
@@ -387,6 +468,21 @@ async function main() {
         'The paid transcription smoke returned no reviewable transcript.'
       );
       assertVoiceBudgetSnapshot(transcription.voiceBudget, 200_000);
+    }
+
+    if (realtimeConsentPayload) {
+      const realtimeWithdrawn = await requestJson(
+        workerBaseUrl,
+        `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/realtime/consent`,
+        {
+          method: 'PATCH',
+          origin: smokeOrigin,
+          headers: { 'X-Consumer-Session': credential },
+          body: { granted: false, ...realtimeConsentPayload },
+          diagnosticPath: '/api/consumer/sessions/[synthetic]/voice/realtime/consent'
+        }
+      );
+      assert.equal(realtimeWithdrawn.payload?.realtimeConsent?.granted, false, 'Realtime consent could not be withdrawn.');
     }
 
     const voiceWithdrawn = await requestJson(
@@ -432,9 +528,11 @@ async function main() {
   if (primaryError) throw primaryError;
   if (cleanupError) throw cleanupError;
   console.log(
-    runPaidProviderSmoke
-      ? 'Authenticated adviser bridge and paid TTS-to-transcription round trip passed; the synthetic session was deleted.'
-      : 'Authenticated adviser-to-consumer voice-consent bridge smoke passed without provider spend; the synthetic session was deleted.'
+    runPaidRealtimeProof
+      ? 'Authenticated adviser bridge and paid Realtime SDP, sideband-tool, and server-hangup proof passed; the synthetic session was deleted.'
+      : runPaidProviderSmoke
+        ? 'Authenticated adviser bridge and paid TTS-to-transcription round trip passed; the synthetic session was deleted.'
+        : 'Authenticated adviser-to-consumer voice-consent bridge smoke passed without provider spend; the synthetic session was deleted.'
   );
 }
 

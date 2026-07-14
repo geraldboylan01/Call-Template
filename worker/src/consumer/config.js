@@ -5,6 +5,13 @@ const SAFE_MODEL_ID = /^[A-Za-z0-9._:-]{1,120}$/;
 const SAFE_VOICE_NAMES = new Set([
   'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'marin', 'nova', 'onyx', 'sage', 'shimmer', 'verse', 'cedar'
 ]);
+const REALTIME_MODEL = 'gpt-realtime-2.1';
+const REALTIME_VOICE = 'marin';
+const REALTIME_REASONING_EFFORT = 'low';
+const REALTIME_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe';
+const REALTIME_SESSION_BUDGET_CENTS = 200;
+const REALTIME_DAILY_BUDGET_CENTS = 2_000;
+const REALTIME_SAFETY_RESERVE_MICRO_EUR = 300_000;
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -140,6 +147,53 @@ export function getConsumerConfig(env) {
     && voiceSpeechReservationCents <= voiceSessionBudgetCents
   );
   const voiceEnabled = journeyEnabled && voiceRequested && voiceConfigured;
+  const realtimeRequested = enabled(env.CONSUMER_REALTIME_VOICE_ENABLED);
+  const realtimeNoticeId = policyId(env.CONSUMER_REALTIME_NOTICE_ID);
+  const realtimeDataPolicyId = policyId(env.CONSUMER_REALTIME_DATA_POLICY_ID);
+  const realtimeModel = modelId(env.CONSUMER_REALTIME_MODEL, '');
+  const realtimeVoice = voiceName(env.CONSUMER_REALTIME_VOICE, '');
+  const realtimeReasoningEffort = reasoningEffort(env.CONSUMER_REALTIME_REASONING_EFFORT, '');
+  const realtimeTranscriptionModel = modelId(env.CONSUMER_REALTIME_TRANSCRIPTION_MODEL, '');
+  const realtimePromptVersion = policyId(env.CONSUMER_REALTIME_PROMPT_VERSION);
+  const realtimeToolsetVersion = policyId(env.CONSUMER_REALTIME_TOOLSET_VERSION);
+  const realtimePricingVersion = policyId(env.CONSUMER_REALTIME_PRICING_VERSION);
+  const realtimeSessionBudgetCents = optionalBoundedInteger(
+    env.CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS,
+    1,
+    REALTIME_SESSION_BUDGET_CENTS
+  ) || 0;
+  const realtimeDailyBudgetCents = optionalBoundedInteger(
+    env.CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS,
+    1,
+    100_000
+  ) || 0;
+  const realtimeUsageRates = Object.freeze({
+    textInput: optionalBoundedInteger(env.CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
+    textCachedInput: optionalBoundedInteger(env.CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
+    textOutput: optionalBoundedInteger(env.CONSUMER_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
+    audioInput: optionalBoundedInteger(env.CONSUMER_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
+    audioCachedInput: optionalBoundedInteger(env.CONSUMER_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
+    audioOutput: optionalBoundedInteger(env.CONSUMER_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
+    transcriptionInput: optionalBoundedInteger(env.CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
+    transcriptionOutput: optionalBoundedInteger(env.CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0
+  });
+  const realtimeConfigured = Boolean(
+    text(env.OPENAI_API_KEY)
+    && env.CONSUMER_REALTIME_SESSIONS
+    && realtimeNoticeId
+    && realtimeDataPolicyId
+    && realtimeModel === REALTIME_MODEL
+    && realtimeVoice === REALTIME_VOICE
+    && realtimeReasoningEffort === REALTIME_REASONING_EFFORT
+    && realtimeTranscriptionModel === REALTIME_TRANSCRIPTION_MODEL
+    && realtimePromptVersion
+    && realtimeToolsetVersion
+    && realtimePricingVersion
+    && realtimeSessionBudgetCents === REALTIME_SESSION_BUDGET_CENTS
+    && realtimeDailyBudgetCents === REALTIME_DAILY_BUDGET_CENTS
+    && Object.values(realtimeUsageRates).every((rate) => rate > 0)
+  );
+  const realtimeEnabled = journeyEnabled && realtimeRequested && realtimeConfigured;
   const handoffRequested = enabled(env.CONSUMER_HANDOFF_ENABLED);
   const handoffRetentionDays = optionalBoundedInteger(env.CONSUMER_HANDOFF_RETENTION_DAYS, 1, 365);
   const handoffRetentionPolicyId = policyId(env.CONSUMER_HANDOFF_RETENTION_POLICY_ID);
@@ -169,6 +223,11 @@ export function getConsumerConfig(env) {
     voiceEnabled,
     voiceNoticeId,
     voiceDataPolicyId,
+    realtimeRequested,
+    realtimeConfigured,
+    realtimeEnabled,
+    realtimeNoticeId,
+    realtimeDataPolicyId,
     moduleRoutingEnabled: journeyEnabled && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED),
     handoffRequested,
     handoffConfigured,
@@ -219,7 +278,30 @@ export function getConsumerConfig(env) {
     voiceTranscriptionReservationMicroEur: voiceTranscriptionReservationCents * 10_000,
     voiceSpeechReservationMicroEur: voiceSpeechReservationCents * 10_000,
     voicePricingVersion,
-    providerCostLimitEurMicros: voiceEnabled ? voiceSessionBudgetCents * 10_000 : 0
+    realtimeModel,
+    realtimeVoice,
+    realtimeReasoningEffort,
+    realtimeTranscriptionModel,
+    realtimePromptVersion,
+    realtimeToolsetVersion,
+    realtimePricingVersion,
+    realtimeSessionBudgetMicroEur: realtimeSessionBudgetCents * 10_000,
+    realtimeDailyBudgetMicroEur: realtimeDailyBudgetCents * 10_000,
+    realtimeSafetyReserveMicroEur: REALTIME_SAFETY_RESERVE_MICRO_EUR,
+    realtimeDispatchStopMicroEur: Math.max(
+      0,
+      realtimeSessionBudgetCents * 10_000 - REALTIME_SAFETY_RESERVE_MICRO_EUR
+    ),
+    realtimeMaxDurationSeconds: boundedInteger(env.CONSUMER_REALTIME_MAX_DURATION_SECONDS, 600, 60, 600),
+    realtimeIdleTimeoutSeconds: boundedInteger(env.CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS, 90, 30, 90),
+    realtimeMaxSdpBytes: boundedInteger(env.CONSUMER_REALTIME_MAX_SDP_BYTES, 32_768, 4_096, 32_768),
+    realtimeMaxResponses: boundedInteger(env.CONSUMER_REALTIME_MAX_RESPONSES, 40, 1, 40),
+    realtimeMaxToolCalls: boundedInteger(env.CONSUMER_REALTIME_MAX_TOOL_CALLS, 24, 1, 24),
+    realtimeUsageRates,
+    providerCostLimitEurMicros: Math.max(
+      voiceEnabled ? voiceSessionBudgetCents * 10_000 : 0,
+      realtimeEnabled ? realtimeSessionBudgetCents * 10_000 : 0
+    )
   });
 }
 
@@ -229,6 +311,7 @@ export function publicConsumerConfig(config) {
       consumerJourneyEnabled: config.journeyEnabled,
       consumerAiIntakeEnabled: config.aiEnabled,
       consumerVoiceEnabled: config.voiceEnabled,
+      consumerRealtimeVoiceEnabled: config.realtimeEnabled,
       consumerModuleRoutingEnabled: config.moduleRoutingEnabled,
       consumerHumanHandoffEnabled: config.handoffEnabled
     },
@@ -279,6 +362,28 @@ export function publicConsumerConfig(config) {
       },
       aiGeneratedDisclosure: config.voiceEnabled
         ? 'The voice you hear is AI-generated. Review each transcript before sending it.'
+        : null
+    },
+    realtimeVoice: {
+      enabled: config.realtimeEnabled,
+      noticeId: config.realtimeEnabled ? config.realtimeNoticeId : null,
+      dataPolicyId: config.realtimeEnabled ? config.realtimeDataPolicyId : null,
+      policyVersion: config.realtimeEnabled ? config.consentPolicyVersion : null,
+      privacyNoticeUrl: config.realtimeEnabled ? config.privacyNoticeUrl : null,
+      model: config.realtimeEnabled ? config.realtimeModel : null,
+      voice: config.realtimeEnabled ? config.realtimeVoice : null,
+      reasoningEffort: config.realtimeEnabled ? config.realtimeReasoningEffort : null,
+      transcriptionModel: config.realtimeEnabled ? config.realtimeTranscriptionModel : null,
+      promptVersion: config.realtimeEnabled ? config.realtimePromptVersion : null,
+      toolsetVersion: config.realtimeEnabled ? config.realtimeToolsetVersion : null,
+      pricingVersion: config.realtimeEnabled ? config.realtimePricingVersion : null,
+      maxDurationSeconds: config.realtimeMaxDurationSeconds,
+      idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
+      sessionBudgetMicroEur: config.realtimeEnabled ? config.realtimeSessionBudgetMicroEur : 0,
+      dispatchStopMicroEur: config.realtimeEnabled ? config.realtimeDispatchStopMicroEur : 0,
+      safetyReserveMicroEur: config.realtimeEnabled ? config.realtimeSafetyReserveMicroEur : 0,
+      aiGeneratedDisclosure: config.realtimeEnabled
+        ? 'This is a live AI-generated voice conversation. The planning service controls all saved facts and calculations.'
         : null
     },
     handoff: {

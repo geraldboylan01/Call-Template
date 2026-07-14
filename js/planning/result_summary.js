@@ -131,6 +131,20 @@ const HIGHLIGHT_BUILDERS = Object.freeze({
   college_funding: collegeHighlight
 });
 
+export const MAX_SPEAKABLE_TEXT_CHARACTERS = 2400;
+
+function buildSpeakableText(highlights) {
+  const included = [];
+  for (const highlight of highlights) {
+    if (typeof highlight.message !== 'string' || !highlight.message) continue;
+    const candidate = [...included, highlight.message].join(' ');
+    // Never cut a deterministic message mid-figure. If a future module emits
+    // an unexpectedly large message, omit that whole message and fail closed.
+    if (candidate.length <= MAX_SPEAKABLE_TEXT_CHARACTERS) included.push(highlight.message);
+  }
+  return included.join(' ');
+}
+
 /** Produce a number-preserving summary entirely from code-owned results. */
 export function summarizeAnalysisResults({ results = [], errors = [], analysisPlan } = {}) {
   const highlights = results
@@ -146,10 +160,10 @@ export function summarizeAnalysisResults({ results = [], errors = [], analysisPl
   return {
     generatedBy: 'deterministic_rules',
     headline: highlights[0]?.title || (missingCount > 0 ? 'More information is needed' : 'No consumer analysis was run'),
+    speakableText: buildSpeakableText(highlights),
     highlights,
     warnings,
     nextSteps,
     completedModuleIds: results.map((result) => result.moduleId)
   };
 }
-

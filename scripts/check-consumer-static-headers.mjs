@@ -41,6 +41,7 @@ export function validatePlanSecurityHeaders(headers, { workerOrigin } = {}) {
     ['style-src', ["'self'"]],
     ['img-src', ["'self'", 'data:']],
     ['connect-src', ["'self'", parsedWorkerOrigin.origin]],
+    ['media-src', ["'self'", 'blob:']],
     ['font-src', ["'self'"]],
     ['object-src', ["'none'"]],
     ['base-uri', ["'self'"]],

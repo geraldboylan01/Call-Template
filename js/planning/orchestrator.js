@@ -3,48 +3,18 @@ import {
   CONSUMER_PLANNING_RULES_VERSION
 } from './contracts.js';
 import {
+  getPlanningModuleRunIdentity,
   getPlanningModuleDefinition,
   getModuleReadiness,
   runPlanningModule
 } from './module_registry.js';
 import { normalizeHouseholdProfile } from './profile.js';
+import { buildQuestionPlan } from './question_plan.js';
 import { recommendModules } from './routing_rules.js';
 import { summarizeAnalysisResults } from './result_summary.js';
-import { assertIsoDate, cloneJson, createOpaqueId } from './utils.js';
+import { assertIsoDate, cloneJson, createOpaqueId, sha256Json } from './utils.js';
 
 const RUNNABLE_READINESS = new Set(['ready', 'ready_with_assumptions']);
-
-function questionFromMissing(item, index) {
-  const prompts = {
-    money: `What amount should we use for ${item.fieldPath}?`,
-    number: `What number should we use for ${item.fieldPath}?`
-  };
-  const lowerPath = item.fieldPath.toLowerCase();
-  const answerType = /amount|value|income|expenses|balance|cash|rate/.test(lowerPath) ? 'money' : 'text';
-  return {
-    questionId: `missing-${index + 1}`,
-    fieldPaths: [item.fieldPath],
-    reason: item.reason,
-    blockingModuleIds: [...item.blockingModuleIds],
-    prompt: prompts[answerType] || item.reason,
-    answerType,
-    optional: item.importance !== 'required'
-  };
-}
-
-function uniqueMissing(recommendations) {
-  const byPath = new Map();
-  recommendations.flatMap((recommendation) => recommendation.readiness.requiredMissing || []).forEach((item) => {
-    const existing = byPath.get(item.fieldPath);
-    if (!existing) {
-      byPath.set(item.fieldPath, cloneJson(item));
-      return;
-    }
-    existing.blockingModuleIds = [...new Set([...existing.blockingModuleIds, ...item.blockingModuleIds])];
-    if (item.importance === 'required') existing.importance = 'required';
-  });
-  return Array.from(byPath.values());
-}
 
 function resolvePrerequisites(moduleIds) {
   const ordered = [];
@@ -80,6 +50,8 @@ function scenarioFor(moduleId, scenarioOverrides, selectedCount) {
  * @param {string[]} [options.moduleIds] Explicit consumer modules; omitted means deterministic routing.
  * @param {string[]} [options.allowedModuleIds] Server-evaluated allowlist without user-selection semantics.
  * @param {Object} [options.scenarioOverrides] Overrides keyed by module id (or flat for one module).
+ * @param {Function} [options.resolveReusableModuleResult] Worker-owned exact-match cache lookup.
+ * @param {Function} [options.onModuleResult] Internal execution metadata callback; never part of the public result.
  * @returns {Promise<{analysisPlan:Object,plan:Object,recommendations:Object[],results:Object[],summary:Object,errors:Object[]}>}
  */
 export async function runConsumerAnalysis({
@@ -92,6 +64,8 @@ export async function runConsumerAnalysis({
   rulesVersion = CONSUMER_PLANNING_RULES_VERSION,
   calculationVersion = CONSUMER_CALCULATION_VERSION,
   calculatedAt = new Date().toISOString(),
+  resolveReusableModuleResult,
+  onModuleResult,
   signal
 } = {}) {
   let profile = normalizeHouseholdProfile(rawProfile);
@@ -177,8 +151,7 @@ export async function runConsumerAnalysis({
   const selectedRecommendations = recommendations.filter((recommendation) => (
     orderedIds.includes(recommendation.moduleId) || recommendation.readiness.status === 'adviser_review_required'
   ));
-  const missing = uniqueMissing(selectedModules.map((selected) => ({ readiness: selected.readiness })));
-  const requiredQuestions = missing.map(questionFromMissing);
+  const requiredQuestions = buildQuestionPlan(selectedModules, { profile });
   const createdAt = calculatedAt;
   const analysisPlan = {
     analysisPlanId,
@@ -202,16 +175,44 @@ export async function runConsumerAnalysis({
     }
     if (!RUNNABLE_READINESS.has(selected.readiness.status)) continue;
     try {
-      const result = await runPlanningModule(selected.moduleId, profile, {
+      const moduleContext = {
         calculationDateIso: effectiveCalculationDate,
         calculationVersion,
         calculatedAt,
         scenarioOverrides: scenarioFor(selected.moduleId, scenarioOverrides, selectedModules.length),
         signal
+      };
+      const cacheIdentity = Object.freeze({
+        ...await getPlanningModuleRunIdentity(selected.moduleId, profile, moduleContext),
+        readinessSnapshotHash: await sha256Json(selected.readiness)
       });
+      let result = null;
+      let reused = false;
+      if (typeof resolveReusableModuleResult === 'function') {
+        const candidate = await resolveReusableModuleResult(cacheIdentity);
+        if (candidate
+          && candidate.moduleId === cacheIdentity.moduleId
+          && candidate.moduleVersion === cacheIdentity.moduleVersion
+          && candidate.calculationVersion === cacheIdentity.calculationVersion
+          && candidate.inputSnapshotHash === cacheIdentity.inputSnapshotHash) {
+          result = cloneJson(candidate);
+          reused = true;
+        }
+      }
+      if (!result) {
+        result = await runPlanningModule(selected.moduleId, profile, moduleContext);
+      }
       results.push(result);
       selected.inputSnapshotHash = result.inputSnapshotHash;
       selected.runId = result.runId;
+      if (typeof onModuleResult === 'function') {
+        await onModuleResult(Object.freeze({
+          moduleId: selected.moduleId,
+          cacheIdentity,
+          result,
+          reused
+        }));
+      }
     } catch (error) {
       errors.push({
         moduleId: selected.moduleId,

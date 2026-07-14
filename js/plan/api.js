@@ -91,7 +91,9 @@ async function request(path, {
   }
 
   const headers = new Headers({
-    Accept: responseType === 'blob' ? 'audio/mpeg' : 'application/json',
+    Accept: responseType === 'blob'
+      ? 'audio/mpeg'
+      : (responseType === 'text' ? 'application/sdp, application/json' : 'application/json'),
     ...(requestHeaders || {})
   });
 
@@ -154,6 +156,15 @@ async function request(path, {
         blob: await response.blob(),
         headers: response.headers,
         contentType: response.headers.get('content-type') || ''
+      };
+    }
+
+    if (responseType === 'text') {
+      return {
+        body: await response.text(),
+        headers: response.headers,
+        contentType: response.headers.get('content-type') || '',
+        status: response.status
       };
     }
 
@@ -230,6 +241,16 @@ export function runAnalyses(sessionId, moduleIds) {
   });
 }
 
+export function putAnalysisPlan(sessionId, plan) {
+  const body = plan && typeof plan === 'object' && !Array.isArray(plan) ? plan : {};
+  return request(pathForSession(sessionId, '/analysis-plan'), {
+    method: 'PUT',
+    authenticated: true,
+    body,
+    timeoutMs: 60_000
+  });
+}
+
 export function createHandoff(sessionId, handoff) {
   return request(pathForSession(sessionId, '/handoffs'), {
     method: 'POST',
@@ -260,6 +281,24 @@ export function updateVoiceConsent(sessionId, {
   privacyNoticeUrl
 }) {
   return request(pathForSession(sessionId, '/voice/consent'), {
+    method: 'PATCH',
+    authenticated: true,
+    body: {
+      granted: granted === true,
+      noticeId: String(noticeId || ''),
+      policyVersion: String(policyVersion || ''),
+      privacyNoticeUrl: String(privacyNoticeUrl || '')
+    }
+  });
+}
+
+export function updateRealtimeVoiceConsent(sessionId, {
+  granted,
+  noticeId,
+  policyVersion,
+  privacyNoticeUrl
+}) {
+  return request(pathForSession(sessionId, '/voice/realtime/consent'), {
     method: 'PATCH',
     authenticated: true,
     body: {
@@ -305,6 +344,60 @@ export function speakNextQuestion(sessionId, { idempotencyKey, signal } = {}) {
     signal,
     timeoutMs: 45_000,
     responseType: 'blob'
+  });
+}
+
+function realtimeCallPath(sessionId, leaseId = '') {
+  const base = pathForSession(sessionId, '/voice/realtime/calls');
+  const cleanLeaseId = String(leaseId || '').trim();
+  if (!cleanLeaseId) return base;
+  if (cleanLeaseId.length > 200) {
+    throw new ConsumerApiError('The Live voice session reference is invalid.', {
+      code: 'invalid_realtime_lease'
+    });
+  }
+  return `${base}/${encodeURIComponent(cleanLeaseId)}`;
+}
+
+export function createRealtimeVoiceCall(sessionId, {
+  sdp,
+  idempotencyKey,
+  signal
+} = {}) {
+  const offerSdp = String(sdp || '');
+  if (!offerSdp.startsWith('v=0')) {
+    throw new ConsumerApiError('The browser did not create a valid Live voice connection offer.', {
+      code: 'invalid_realtime_offer'
+    });
+  }
+  return request(realtimeCallPath(sessionId), {
+    method: 'POST',
+    authenticated: true,
+    rawBody: offerSdp,
+    requestHeaders: {
+      'Content-Type': 'application/sdp',
+      'X-Voice-Request-Id': String(idempotencyKey || '')
+    },
+    signal,
+    timeoutMs: 45_000,
+    responseType: 'text'
+  });
+}
+
+export function getRealtimeVoiceCall(sessionId, leaseId, { signal } = {}) {
+  return request(realtimeCallPath(sessionId, leaseId), {
+    authenticated: true,
+    signal,
+    timeoutMs: 20_000
+  });
+}
+
+export function deleteRealtimeVoiceCall(sessionId, leaseId, { signal } = {}) {
+  return request(realtimeCallPath(sessionId, leaseId), {
+    method: 'DELETE',
+    authenticated: true,
+    signal,
+    timeoutMs: 20_000
   });
 }
 

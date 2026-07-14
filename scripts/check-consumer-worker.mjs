@@ -28,6 +28,7 @@ import {
   assertBetaBootstrap,
   assertVoiceBudgetSnapshot,
   buildProposedCredential,
+  paidRealtimeInfrastructureProofEnabled,
   paidVoiceProviderSmokeEnabled,
   voiceBudgetFromHeaders
 } from './check-consumer-live-advisor-bridge.mjs';
@@ -73,7 +74,8 @@ const [
   adviserMigrationSource,
   wranglerSource,
   deployWorkflowSource,
-  liveAdvisorBridgeSource
+  liveAdvisorBridgeSource,
+  realtimeInfrastructureProofSource
 ] = await Promise.all([
   source('worker/src/index.js'),
   source('worker/src/consumer/router.js'),
@@ -94,7 +96,8 @@ const [
   source('worker/migrations/0014_create_consumer_handoff_deliveries.sql'),
   source('worker/wrangler.toml'),
   source('.github/workflows/deploy-worker.yml'),
-  source('scripts/check-consumer-live-advisor-bridge.mjs')
+  source('scripts/check-consumer-live-advisor-bridge.mjs'),
+  source('scripts/run-consumer-realtime-infrastructure-proof.mjs')
 ]);
 
 for (const route of [
@@ -124,7 +127,10 @@ assert.match(routerSource, /verifyConsumerInvite\(provided, env, config\)/);
 assert.match(routerSource, /createSessionRecord\(env, credential, consent, config, inviteClaims\)/);
 assert.match(routerSource, /createAdvisorConsumerInvite/);
 assert.match(routerSource, /mode:\s*'rules_only'/);
-assert.match(routerSource, /mode:\s*config\.voiceEnabled \? 'voice_assisted_rules_only' : 'rules_only'/);
+assert.match(routerSource, /mode:\s*config\.realtimeEnabled/);
+assert.match(routerSource, /\? 'realtime_voice_rules_only'/);
+assert.match(routerSource, /config\.voiceEnabled/);
+assert.match(routerSource, /\? 'voice_assisted_rules_only'/);
 assert.match(routerSource, /parsed\.origin === 'https:\/\/planeir\.ie'/);
 assert.match(routerSource, /\^\\\/plan/);
 assert.match(routerSource, /isAdvisorRulesOnlyPreviewConfig/);
@@ -279,6 +285,35 @@ assert.match(deployWorkflowSource, /ALLOW_LOCAL_DEV_ORIGINS must not be enabled/
 assert.match(deployWorkflowSource, /CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"/);
 assert.match(deployWorkflowSource, /CONSUMER_ADVISER_TEST_BETA_OVERRIDE: \$\{\{ vars\.CONSUMER_ADVISER_TEST_BETA_OVERRIDE \}\}/);
 assert.match(deployWorkflowSource, /A protected override cannot activate a source-unapproved beta/);
+assert.match(
+  deployWorkflowSource,
+  /activate_realtime_adviser_canary:[\s\S]{0,240}default:\s*false[\s\S]{0,80}type:\s*boolean/
+);
+assert.match(
+  deployWorkflowSource,
+  /run_paid_realtime_infrastructure_proof:[\s\S]{0,260}default:\s*false[\s\S]{0,80}type:\s*boolean/
+);
+assert.match(
+  deployWorkflowSource,
+  /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.activate_realtime_adviser_canary == true && 'true' \|\| 'false' \}\}/
+);
+assert.doesNotMatch(deployWorkflowSource, /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*"true"/);
+assert.doesNotMatch(
+  deployWorkflowSource,
+  /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*\$\{\{ vars\./
+);
+assert.match(
+  deployWorkflowSource,
+  /RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF:\s*\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.run_paid_realtime_infrastructure_proof == true && 'true' \|\| 'false' \}\}/
+);
+assert.match(
+  deployWorkflowSource,
+  /effective_realtime" == "true" && "\$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" != "true"[\s\S]{0,220}Realtime activation requires the paid SDP, sideband-tool, and server-hangup proof/
+);
+assert.match(
+  deployWorkflowSource,
+  /RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" == "true" && "\$effective_realtime" != "true"[\s\S]{0,220}requires explicit canary activation/
+);
 assert.match(deployWorkflowSource, /ADVISOR_SMOKE_PASSWORD is required for the authenticated adviser beta gate/);
 assert.match(deployWorkflowSource, /CONSUMER_ADVISER_INVITE_BETA_ENABLED=\$effective_beta/);
 assert.match(deployWorkflowSource, /CONSUMER_DB_ID is required for the protected beta/);
@@ -302,7 +337,7 @@ assert.match(deployWorkflowSource, /CONSUMER_AI_INTAKE_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_VOICE_ENABLED: betaEnabled \? 'true' : 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'/);
-assert.match(deployWorkflowSource, /wrangler secret list --config wrangler\.production\.generated\.toml --format json/);
+assert.match(deployWorkflowSource, /wrangler secret list --config wrangler\.bootstrap\.generated\.toml --format json/);
 assert.match(deployWorkflowSource, /randomBytes\(32\)\.toString\('base64url'\)/);
 assert.match(deployWorkflowSource, /wrangler secret put "\$secret_name"/);
 assert.match(deployWorkflowSource, /upsert-consumer-plan-headers\.mjs/);
@@ -318,6 +353,30 @@ assert.match(
   deployWorkflowSource,
   /RUN_PAID_VOICE_PROVIDER_SMOKE:\s*\$\{\{ github\.event_name == 'workflow_dispatch'.*inputs\.run_paid_voice_provider_smoke/
 );
+assert.match(
+  deployWorkflowSource,
+  /Install Realtime canary browser harness[\s\S]{0,120}if:\s*env\.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'[\s\S]{0,120}playwright-core@1\.61\.1/
+);
+assert.match(
+  deployWorkflowSource,
+  /concurrency:[\s\S]{0,100}group:\s*worker-production[\s\S]{0,320}cancel-in-progress:\s*false/
+);
+assert.match(
+  deployWorkflowSource,
+  /CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED=true[\s\S]{0,180}wrangler deploy --config wrangler\.production\.generated\.toml/
+);
+assert.match(
+  deployWorkflowSource,
+  /Roll back Realtime after a failed live canary proof[\s\S]{0,180}if:\s*\(failure\(\) \|\| cancelled\(\)\) && env\.CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED == 'true'/
+);
+assert.match(
+  deployWorkflowSource,
+  /Roll back Realtime after a failed live canary proof[\s\S]{0,360}wrangler deploy --config wrangler\.bootstrap\.generated\.toml[\s\S]{0,180}CONSUMER_EXPECTED_DEPLOYMENT_MODE=voice_assisted_rules_only/
+);
+assert.match(
+  deployWorkflowSource,
+  /Remove generated deployment config[\s\S]{0,80}if:\s*always\(\)/
+);
 assert.match(deployWorkflowSource, /npm install --global wrangler@4\.110\.0/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_VOICE_SPEECH_MODEL: "tts-1-hd"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS: "200"/);
@@ -329,8 +388,12 @@ const releaseOrderMarkers = [
   '- name: Verify protected-beta static security headers',
   '- name: Apply remote adviser D1 migrations',
   '- name: Apply remote consumer D1 migrations',
+  '- name: Deploy Worker code and Durable Object bootstrap',
   '- name: Ensure protected-beta Worker secrets and provider credential',
-  '- name: Deploy Worker'
+  '- name: Deploy final Worker configuration',
+  '- name: Verify live consumer deployment mode',
+  '- name: Smoke check authenticated adviser planning bridge',
+  '- name: Roll back Realtime after a failed live canary proof'
 ];
 const releaseOrderPositions = releaseOrderMarkers.map((marker) => deployWorkflowSource.indexOf(marker));
 assert.ok(releaseOrderPositions.every((position) => position >= 0), 'The production release sequence is incomplete.');
@@ -359,9 +422,47 @@ assert.match(
   /method:\s*'DELETE'/,
   'The paid smoke finally block must delete the synthetic session.'
 );
+assert.match(
+  liveAdvisorBridgeSource,
+  /import \{ runRealtimeInfrastructureProof \} from '\.\/run-consumer-realtime-infrastructure-proof\.mjs'/
+);
+assert.match(
+  liveAdvisorBridgeSource,
+  /assert\.equal\([\s\S]{0,100}runPaidRealtimeProof,[\s\S]{0,100}realtimeExpected,[\s\S]{0,180}Realtime activation and its paid infrastructure proof must be enabled together/
+);
+assert.match(liveAdvisorBridgeSource, /await runRealtimeInfrastructureProof\(\{/);
+for (const provenBoundary of [
+  'webRtcConnected',
+  'sidebandConnected',
+  'readOnlyToolSucceeded',
+  'providerHangupConfirmed'
+]) {
+  assert.match(liveAdvisorBridgeSource, new RegExp(`proof\\.${provenBoundary}`));
+}
+
+assert.match(realtimeInfrastructureProofSource, /await import\('playwright-core'\)/);
+assert.match(realtimeInfrastructureProofSource, /--use-fake-device-for-media-stream/);
+assert.match(realtimeInfrastructureProofSource, /navigator\.mediaDevices\.getUserMedia/);
+assert.match(realtimeInfrastructureProofSource, /new RTCPeerConnection\(\)/);
+assert.match(realtimeInfrastructureProofSource, /createDataChannel\('oai-events'\)/);
+assert.match(realtimeInfrastructureProofSource, /method:\s*'POST'/);
+assert.match(realtimeInfrastructureProofSource, /'Content-Type':\s*'application\/sdp'/);
+assert.match(realtimeInfrastructureProofSource, /'X-Voice-Request-Id'/);
+assert.match(realtimeInfrastructureProofSource, /created\.status !== 201/);
+assert.match(realtimeInfrastructureProofSource, /X-Realtime-Lease-Id/);
+assert.match(realtimeInfrastructureProofSource, /setRemoteDescription/);
+assert.match(realtimeInfrastructureProofSource, /proof\.sidebandConnected !== true/);
+assert.match(realtimeInfrastructureProofSource, /proof\.readOnlyToolSucceeded !== true/);
+assert.match(realtimeInfrastructureProofSource, /method:\s*'DELETE'/);
+assert.match(realtimeInfrastructureProofSource, /closedPayload\.providerHangupConfirmed !== true/);
+assert.match(realtimeInfrastructureProofSource, /finally \{/);
+assert.match(realtimeInfrastructureProofSource, /peer\?\.close\(\)/);
+assert.match(realtimeInfrastructureProofSource, /track\.stop\(\)/);
+assert.match(realtimeInfrastructureProofSource, /await browser\.close\(\)/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /OPENAI_API_KEY|api\.openai\.com/);
 
 const requiredPlanHeaders = new Headers({
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://call-canvas-session-worker.geraldboylan.workers.dev; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
@@ -511,11 +612,60 @@ assert.equal(validateConsumerDeploymentBootstrap(betaDeploymentBootstrap, {
   expectedPolicy: betaDeploymentPolicy
 }), true);
 assert.doesNotThrow(() => assertBetaBootstrap(betaDeploymentBootstrap));
+
+const realtimeDeploymentPolicy = {
+  ...betaDeploymentPolicy,
+  realtimeNoticeId: 'realtime-voice-adviser-test-v1',
+  realtimeDataPolicyId: 'openai-realtime-audio-adviser-test-v1',
+  realtimeModel: 'gpt-realtime-2.1',
+  realtimeVoice: 'marin',
+  realtimeReasoningEffort: 'low',
+  realtimeTranscriptionModel: 'gpt-4o-mini-transcribe',
+  realtimePromptVersion: 'consumer-realtime-orchestrator-v1',
+  realtimeToolsetVersion: 'consumer-realtime-tools-v1',
+  realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
+  realtimeSessionBudgetMicroEur: 2_000_000
+};
+const realtimeDeploymentBootstrap = {
+  ...betaDeploymentBootstrap,
+  flags: {
+    ...betaDeploymentBootstrap.flags,
+    consumerRealtimeVoiceEnabled: true
+  },
+  realtimeVoice: {
+    enabled: true,
+    noticeId: realtimeDeploymentPolicy.realtimeNoticeId,
+    dataPolicyId: realtimeDeploymentPolicy.realtimeDataPolicyId,
+    policyVersion: realtimeDeploymentPolicy.consentPolicyVersion,
+    privacyNoticeUrl: realtimeDeploymentPolicy.privacyNoticeUrl,
+    model: realtimeDeploymentPolicy.realtimeModel,
+    voice: realtimeDeploymentPolicy.realtimeVoice,
+    reasoningEffort: realtimeDeploymentPolicy.realtimeReasoningEffort,
+    transcriptionModel: realtimeDeploymentPolicy.realtimeTranscriptionModel,
+    promptVersion: realtimeDeploymentPolicy.realtimePromptVersion,
+    toolsetVersion: realtimeDeploymentPolicy.realtimeToolsetVersion,
+    pricingVersion: realtimeDeploymentPolicy.realtimePricingVersion,
+    maxDurationSeconds: 600,
+    idleTimeoutSeconds: 90,
+    sessionBudgetMicroEur: 2_000_000,
+    dispatchStopMicroEur: 1_700_000,
+    safetyReserveMicroEur: 300_000
+  }
+};
+assert.equal(validateConsumerDeploymentBootstrap(realtimeDeploymentBootstrap, {
+  mode: 'realtime_voice_rules_only',
+  expectedPolicy: realtimeDeploymentPolicy
+}), true);
+assert.doesNotThrow(() => assertBetaBootstrap(realtimeDeploymentBootstrap, { realtimeExpected: true }));
 assert.match(buildProposedCredential(), /^cs_[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{43}$/);
 assert.equal(paidVoiceProviderSmokeEnabled(undefined), false);
 assert.equal(paidVoiceProviderSmokeEnabled('false'), false);
 assert.equal(paidVoiceProviderSmokeEnabled('true'), true);
 assert.throws(() => paidVoiceProviderSmokeEnabled('yes'));
+assert.equal(paidRealtimeInfrastructureProofEnabled(undefined), false);
+assert.equal(paidRealtimeInfrastructureProofEnabled('false'), false);
+assert.equal(paidRealtimeInfrastructureProofEnabled('true'), true);
+assert.throws(() => paidRealtimeInfrastructureProofEnabled('yes'));
 const paidSmokeBudgetHeaders = new Headers({
   'X-Voice-Limit-Micro-Eur': '2000000',
   'X-Voice-Spent-Micro-Eur': '100000',
@@ -687,9 +837,9 @@ const state = describeConversationState(profile, {
   moduleRoutingEnabled: true,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.equal(state.nextQuestion.fieldPaths[0], '/goals/0/targetAmount');
+assert.equal(state.nextQuestion.fieldPaths[0], '/expenses/monthlyEssential');
 assert.deepEqual(extractContextBoundPatch(profile, state.nextQuestion, '€3,000'), {
-  '/goals/0/targetAmount': { amount: 3000, currency: 'EUR' }
+  '/expenses/monthlyEssential': { amount: 3000, currency: 'EUR' }
 });
 const naturalIncomePatch = extractContextBoundPatch(
   profile,

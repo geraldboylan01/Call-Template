@@ -546,7 +546,15 @@ function createConversationView(currentState) {
 
   if (currentState.bootstrap?.voiceEnabled === true
     && String(currentState.bootstrap?.cohort || '').toLowerCase() === 'adviser_test') {
-    section.append(createVoicePanel(currentState, question));
+    const boundedPanel = createVoicePanel(currentState, question);
+    if (currentState.bootstrap?.voiceRealtimeEnabled === true) {
+      const fallback = element('details', 'voice-fallback');
+      const summary = element('summary', '', 'Prefer a short recording? Use bounded voice');
+      fallback.append(summary, boundedPanel);
+      section.append(fallback);
+    } else {
+      section.append(boundedPanel);
+    }
   }
 
   const composer = element('form', 'composer');
@@ -986,8 +994,8 @@ function createRecommendationsView(currentState) {
     createWorkspaceHeading(
       currentState,
       'Selected from your confirmed goals',
-      'The analyses that fit your situation',
-      'Recommendations decide which educational calculators are relevant. AI may suggest a module, but deterministic rules and readiness checks decide what can run.'
+      'Review and confirm your analysis plan',
+      'Recommendations decide which educational calculators are relevant. AI may suggest a module, but deterministic rules and readiness checks decide what can run. Your final button confirms the displayed profile revision and selected modules together.'
     )
   );
 
@@ -1018,6 +1026,17 @@ function createRecommendationsView(currentState) {
     : selectedNeedsInformation
       ? 'Answer the remaining questions before running the selected analyses.'
       : 'Every result will use the confirmed profile revision and versioned calculation rules shown in the result.';
+  const displayedPlan = asObject(currentState.analysisPlan) || {};
+  const displayedRevision = Number(firstDefined(
+    currentState.session?.currentProfileRevision,
+    currentState.session?.profileRevision,
+    currentState.profile?.revision,
+    0
+  ) || 0);
+  const planPrepared = String(displayedPlan.status || '') === 'prepared'
+    && Number(displayedPlan.profileRevision || 0) === displayedRevision
+    && asArray(displayedPlan.moduleIds).slice().sort().join('|')
+      === currentState.selectedModuleIds.slice().sort().join('|');
   const actions = element('div', 'recommendation-actions');
   const addGoal = element(
     'button',
@@ -1027,7 +1046,7 @@ function createRecommendationsView(currentState) {
   addGoal.type = 'button';
   addGoal.dataset.action = 'navigate';
   addGoal.dataset.view = 'conversation';
-  const run = element('button', 'primary-button', currentState.busy ? 'Running analysis…' : 'Run selected analyses');
+  const run = element('button', 'primary-button', currentState.busy ? 'Confirming and running…' : 'Confirm profile & run analyses');
   run.type = 'button';
   run.dataset.action = 'run-analysis';
   run.disabled = currentState.busy
@@ -1035,7 +1054,15 @@ function createRecommendationsView(currentState) {
     || currentState.selectedModuleIds.length === 0
     || selectedNeedsInformation;
   append(actions, addGoal, run);
-  append(toolbar, element('span', '', `${text} ${currentState.selectedModuleIds.length} selected.`), actions);
+  append(
+    toolbar,
+    element(
+      'span',
+      '',
+      `${text} ${currentState.selectedModuleIds.length} selected.${planPrepared ? ` Protected plan prepared for profile revision ${displayedRevision}.` : ' The protected plan will be refreshed before confirmation.'}`
+    ),
+    actions
+  );
   section.append(toolbar);
 
   const grid = element('div', 'recommendation-grid');

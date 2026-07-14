@@ -28,6 +28,7 @@ import {
   getCollegeFundingReadiness,
   runCollegeFundingAnalysis
 } from './adapters/college_funding.js';
+import { readJsonPointer, sha256Json } from './utils.js';
 
 const adviserReviewRequired = (moduleId, reason) => () => ({
   status: 'adviser_review_required',
@@ -300,5 +301,41 @@ export async function runPlanningModule(moduleId, rawProfile, context) {
     ...context,
     moduleVersion: definition.moduleVersion,
     baseCurrency: profile.preferences.baseCurrency
+  });
+}
+
+/**
+ * Build the deterministic identity used to decide whether a previously stored
+ * module result can be reused. It binds the registry-declared profile
+ * dependencies, normalized engine input, and effective scenario. Session
+ * scoping, readiness, and engine/module versions are bound by the Worker layer.
+ */
+export async function getPlanningModuleRunIdentity(moduleId, rawProfile, context = {}) {
+  const definition = getPlanningModuleDefinition(moduleId);
+  if (!definition) throw new Error(`Unknown planning module: ${moduleId}`);
+  if (typeof definition.run !== 'function' || typeof definition.buildInput !== 'function') {
+    throw new Error(`${moduleId} does not have a deterministic runtime engine.`);
+  }
+  const profile = normalizeHouseholdProfile(rawProfile);
+  const input = definition.buildInput(profile);
+  const scenarioOverrides = context.scenarioOverrides || {};
+  const dependencyPaths = [...new Set([
+    ...definition.requiredProfilePaths,
+    ...definition.optionalProfilePaths
+  ])].sort();
+  const dependencySnapshot = dependencyPaths.map((path) => {
+    const value = readJsonPointer(profile, path);
+    return typeof value === 'undefined'
+      ? { path, present: false }
+      : { path, present: true, value };
+  });
+  return Object.freeze({
+    moduleId,
+    moduleVersion: definition.moduleVersion,
+    calculationVersion: context.calculationVersion,
+    calculationDateIso: context.calculationDateIso || profile.assumptions.calculationDateIso,
+    dependencySnapshotHash: await sha256Json(dependencySnapshot),
+    inputSnapshotHash: await sha256Json({ input, scenarioOverrides }),
+    scenarioSnapshotHash: await sha256Json(scenarioOverrides)
   });
 }

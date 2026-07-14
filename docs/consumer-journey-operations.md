@@ -5,6 +5,12 @@ This runbook covers the separately feature-flagged consumer planning journey at
 adviser authentication, published-session capabilities, or existing lead
 capture routes.
 
+The separate adviser-invite Realtime WebRTC canary is covered by
+`docs/consumer-realtime-voice-operations.md`. Where that runbook is stricter
+for continuous streaming, sideband tools, or realtime cost reconciliation, its
+realtime-specific controls apply while the existing typed and bounded voice
+contracts remain unchanged.
+
 ## Safety and data boundary
 
 - Consumer profiles, conversations, analyses, consent receipts, invite
@@ -24,7 +30,7 @@ capture routes.
 - A model may propose allowlisted profile patches. Deterministic code validates
   and applies them; models do not calculate financial outputs, decide consent,
   or write trusted state directly.
-- In the adviser-test voice beta, OpenAI processes a bounded microphone recording
+- In the bounded adviser-test voice flow, OpenAI processes a bounded microphone recording
   into a reviewable transcript and may synthesize only the exact deterministic
   Planéir question. Voice is a transport layer: it does not enable model-driven
   intake, select modules, calculate results, or advance journey state.
@@ -60,6 +66,7 @@ Every production capability flag ships as `false`:
 | `CONSUMER_JOURNEY_ENABLED` | `false` | Master processing kill switch |
 | `CONSUMER_AI_INTAKE_ENABLED` | `false` | Natural-language structured extraction |
 | `CONSUMER_VOICE_ENABLED` | `false` | Reviewed speech-to-text and exact-question speech transport |
+| `CONSUMER_REALTIME_VOICE_ENABLED` | `false` | Continuous WebRTC voice with authoritative Durable Object sideband |
 | `CONSUMER_MODULE_ROUTING_ENABLED` | `false` | Goal-to-module routing |
 | `CONSUMER_HANDOFF_ENABLED` | `false` | Consented adviser handoff |
 | `CONSUMER_PUBLIC_ACCESS_ENABLED` | `false` | Session creation without a signed invite |
@@ -205,7 +212,9 @@ live header verifier then checks `/plan/` and `/plan/privacy.html` before any
 remote D1 migration or Worker deployment.
 
 Only after that edge gate passes does the workflow apply both remote D1
-migration streams. It then checks the Worker secret inventory for the exact
+migration streams and deploy the reviewed Worker and Durable Object code with
+Realtime explicitly held `false` in a generated bootstrap configuration. It
+then checks the Worker secret inventory for the exact
 names `CONSUMER_DATA_ENCRYPTION_KEY`, `CONSUMER_RATE_LIMIT_HASH_KEY`, and
 `CONSUMER_INVITE_SIGNING_KEY`. Each missing name receives a newly generated
 independent 32-byte base64url value through `wrangler secret put`. Existing
@@ -214,9 +223,17 @@ key. Values are never printed or added to a file. The protected GitHub
 `OPENAI_API_KEY` secret is mandatory in effective voice-beta mode and is written
 to the Worker as the server-only provider credential. Deployment fails before
 activation if it is absent or contains whitespace; its value is never printed.
-Wrangler 4.110 deploys a secret-only version when `secret put` runs, so every
-edge and D1 prerequisite deliberately completes before the first secret
-mutation; the reviewed code deployment follows immediately afterwards.
+Wrangler 4.110 deploys a secret-only version when `secret put` runs. The
+bootstrap deployment therefore completes before the first secret mutation, and
+every secret command uses that same Realtime-disabled configuration. Only the
+final reviewed deployment may apply the protected Realtime canary overlay. An
+ordinary push keeps that overlay source-false. A protected manual dispatch must
+select both `activate_realtime_adviser_canary` and
+`run_paid_realtime_infrastructure_proof`; if its SDP, sideband tool, hang-up, or
+later live check fails, CI redeploys the Realtime-disabled bootstrap config.
+Production Worker deployments are non-cancellable by later runs, and the
+activation-attempt marker is written before the external deploy begins so a
+failure or cancellation cannot silently skip the compensating rollback.
 
 The existing `CLOUDFLARE_API_TOKEN` must therefore cover the configured account
 and have Workers/D1 access plus Zone Read and Zone Transform Rules Write
@@ -412,7 +429,7 @@ npx wrangler secret put OPENAI_API_KEY
 ```
 
 Adding a database, secrets, or policy values does not enable a capability. The
-six source-controlled flags remain the dormant baseline. Effective activation
+seven source-controlled flags remain the dormant baseline. Effective activation
 requires the source approval constant and no protected `false` rollback
 override.
 
@@ -643,7 +660,7 @@ enforced from a meta tag. Before enabling the journey, the edge serving
 `/plan/*` must add response headers equivalent to:
 
 ```text
-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://call-canvas-session-worker.geraldboylan.workers.dev; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 Referrer-Policy: no-referrer
@@ -685,7 +702,7 @@ environment. It establishes the release prerequisites in this order:
 
 1. validates Cloudflare credentials, source approval, and the protected rollback
    override;
-2. asserts all six consumer capability flags are exactly `false` in source;
+2. asserts all seven consumer capability flags are exactly `false` in source;
 3. runs the full regression, static build, and fresh dual-D1 HTTP lifecycle;
 4. resolves the exact `planeir-consumer` D1 and creates it only if missing;
 5. creates a disposable same-directory Wrangler config with either dormant
@@ -696,10 +713,16 @@ environment. It establishes the release prerequisites in this order:
    live static headers;
 8. applies `LEADS_DB` migrations and conditionally applies `CONSUMER_DB`
    migrations when that binding exists;
-9. creates only missing consumer data Worker secrets, preserving every existing
-   value, and provisions the protected OpenAI credential for the fixed voice
-   routes; and
-10. deploys the reviewed Worker code.
+9. deploys the reviewed Worker and Durable Object bootstrap with Realtime held
+   false;
+10. creates only missing consumer data Worker secrets, preserving every
+    existing value, and provisions the protected OpenAI credential while still
+    using the Realtime-disabled bootstrap configuration; and
+11. deploys the final reviewed configuration, which may activate Realtime only
+    for the explicit protected manual canary; and
+12. for that canary, proves a real WebRTC SDP exchange, authenticated sideband,
+    forced read-only planning tool, and confirmed server-side provider hang-up,
+    with an automatic Realtime-only rollback on any subsequent failure.
 
 It next asserts that the live
 bootstrap is either fully dormant or exactly `adviser_test`, invite-required,
@@ -707,8 +730,10 @@ voice-assisted rules-only, text-AI-disabled, limited to a conservative €2
 application allowance per session, and
 limited to House Purchase and Liquidity. In beta mode it also
 runs the authenticated adviser-to-consumer bridge smoke and requires cleanup of
-its synthetic consumer session. That smoke remains provider-free unless a
-manual dispatch explicitly enables the default-false paid round trip. The
+its synthetic consumer session. Ordinary pushes remain Realtime source-false.
+The legacy bounded-voice smoke remains provider-free unless its separate manual
+input is enabled; a Realtime activation always requires its paid infrastructure
+proof in the same protected manual dispatch. The
 existing live published-session smoke runs last. Do not run those production
 smoke flows during consumer development because they create and then delete or
 revoke real remote records.

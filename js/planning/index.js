@@ -1,8 +1,9 @@
 export * from './contracts.js';
 export * from './profile.js';
+export * from './semantic_facts.js';
+export * from './question_plan.js';
 export * from './rules_only_extraction.js';
 export * from './routing_rules.js';
 export * from './module_registry.js';
 export * from './orchestrator.js';
 export * from './result_summary.js';
-

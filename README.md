@@ -85,6 +85,12 @@ The complete flag order, endpoint inventory, retention/deletion behavior,
 encryption-key rotation procedure, incident rollback, and production checklist
 are in `docs/consumer-journey-operations.md`.
 
+The adviser-invite-only conversational WebRTC canary has a separate consent,
+kill switch, Durable Object sideband, semantic-fact/tool boundary, and cost
+gate. Its fixed production contract and proof/rollback steps are documented in
+`docs/consumer-realtime-voice-operations.md`. The original typed journey and
+bounded recording flow remain available when realtime is disabled or ends.
+
 Run the consumer contract checks with:
 
 ```bash

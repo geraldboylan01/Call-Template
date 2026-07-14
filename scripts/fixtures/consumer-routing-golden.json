@@ -1,0 +1,310 @@
+{
+  "fixtureVersion": 1,
+  "capturedAt": "2026-07-14T10:00:00.000Z",
+  "calculationDateIso": "2026-07-14",
+  "cases": [
+    {
+      "id": "first_home_complete",
+      "coverage": ["first_home"],
+      "turns": [
+        "I'm 34, earn €80k a year and have €50k in savings. We spend €2,500 per month and pay €1,500 rent. I'm a first-time buyer and want to buy a house for about €400k by 2028."
+      ],
+      "expected": {
+        "goalTypes": ["buy_home"],
+        "modules": [
+          {
+            "moduleId": "house_purchase",
+            "selectionStatus": "required",
+            "routeRuleId": "route.buy_home.v1",
+            "readinessStatus": "ready_with_assumptions",
+            "releaseStatus": "beta",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          },
+          {
+            "moduleId": "liquidity_analysis",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.buy_home.reserve.v1",
+            "readinessStatus": "ready_with_assumptions",
+            "releaseStatus": "active",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          }
+        ],
+        "profileValues": {
+          "/goals/0/targetAmount/amount": 400000,
+          "/assets/0/currentValue/amount": 50000,
+          "/assumptions/values/housePurchase/lendingCategory": "first_time_buyer"
+        }
+      }
+    },
+    {
+      "id": "retirement_complete_inputs",
+      "coverage": ["retirement"],
+      "turns": [
+        "I'm 45 and want to retire at 62. I earn €90k a year. My pension pot is €220k, I contribute 8% and my employer contributes 6%. My retirement income target is €50k a year. We spend €3,500 per month."
+      ],
+      "expected": {
+        "goalTypes": ["retire", "improve_pension"],
+        "modules": [
+          {
+            "moduleId": "pension_projection",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.retire.pension.v1",
+            "readinessStatus": "ready_with_assumptions",
+            "releaseStatus": "beta",
+            "consumerAvailable": false,
+            "releaseGate": "consumer_gated"
+          },
+          {
+            "moduleId": "net_retirement_cashflow",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.retire.net.v1",
+            "readinessStatus": "ready_with_assumptions",
+            "releaseStatus": "beta",
+            "consumerAvailable": false,
+            "releaseGate": "consumer_gated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mortgage_complete_inputs",
+      "coverage": ["mortgage"],
+      "turns": [
+        "I want to overpay my mortgage. My mortgage is €180k at 3.5% with 18 years remaining."
+      ],
+      "expected": {
+        "goalTypes": ["optimise_mortgage"],
+        "modules": [
+          {
+            "moduleId": "mortgage_analysis",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.mortgage.v1",
+            "readinessStatus": "ready_with_assumptions",
+            "releaseStatus": "beta",
+            "consumerAvailable": false,
+            "releaseGate": "consumer_gated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "college_unknown_costs",
+      "coverage": ["college", "unknown_figures"],
+      "turns": [
+        "I want to plan for university and college funding, but I have not chosen cost figures yet."
+      ],
+      "expected": {
+        "goalTypes": ["assess_decision"],
+        "modules": [
+          {
+            "moduleId": "college_funding",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.education.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "beta",
+            "consumerAvailable": false,
+            "releaseGate": "consumer_gated"
+          }
+        ],
+        "absentProfilePaths": [
+          "/dependants/0",
+          "/assumptions/values/collegeFunding/scenarios/0"
+        ]
+      }
+    },
+    {
+      "id": "multi_goal_home_retirement_college",
+      "coverage": ["multi_goal"],
+      "turns": [
+        "We want to buy our first home and retire early, and we also want to plan for university costs."
+      ],
+      "expected": {
+        "goalTypes": ["buy_home", "retire_early", "assess_decision"],
+        "modules": [
+          {
+            "moduleId": "house_purchase",
+            "selectionStatus": "required",
+            "routeRuleId": "route.buy_home.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "beta",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          },
+          {
+            "moduleId": "net_retirement_cashflow",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.retire_early.net.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "beta",
+            "consumerAvailable": false,
+            "releaseGate": "consumer_gated"
+          },
+          {
+            "moduleId": "pension_projection",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.retire_early.pension.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "beta",
+            "consumerAvailable": false,
+            "releaseGate": "consumer_gated"
+          },
+          {
+            "moduleId": "liquidity_analysis",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.buy_home.reserve.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "active",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          },
+          {
+            "moduleId": "college_funding",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.education.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "beta",
+            "consumerAvailable": false,
+            "releaseGate": "consumer_gated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "correction_replaces_prior_figures",
+      "coverage": ["corrections"],
+      "turns": [
+        "I want to buy a house for about €350k. I have €40k in savings.",
+        "Correction: I want to buy the house for €420k and my savings are €55k."
+      ],
+      "expected": {
+        "goalTypes": ["buy_home"],
+        "modules": [
+          {
+            "moduleId": "house_purchase",
+            "selectionStatus": "required",
+            "routeRuleId": "route.buy_home.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "beta",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          },
+          {
+            "moduleId": "liquidity_analysis",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.buy_home.reserve.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "active",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          }
+        ],
+        "profileValues": {
+          "/goals/0/targetAmount/amount": 420000,
+          "/assets/0/currentValue/amount": 55000
+        }
+      }
+    },
+    {
+      "id": "unknown_home_figures_are_not_invented",
+      "coverage": ["unknown_figures"],
+      "turns": [
+        "I want to buy my first home, but I do not know my target price, income, savings, or monthly spending yet."
+      ],
+      "expected": {
+        "goalTypes": ["buy_home"],
+        "modules": [
+          {
+            "moduleId": "house_purchase",
+            "selectionStatus": "required",
+            "routeRuleId": "route.buy_home.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "beta",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          },
+          {
+            "moduleId": "liquidity_analysis",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.buy_home.reserve.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "active",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          }
+        ],
+        "absentProfilePaths": [
+          "/goals/0/targetAmount",
+          "/incomeSources/0",
+          "/assets/0",
+          "/expenses/monthlyEssential",
+          "/expenses/annualTotal"
+        ]
+      }
+    },
+    {
+      "id": "inheritance_is_adviser_only",
+      "coverage": ["unsupported_adviser_only"],
+      "turns": [
+        "I need inheritance planning for gifts to my children."
+      ],
+      "expected": {
+        "goalTypes": ["transfer_wealth"],
+        "modules": [
+          {
+            "moduleId": "cat_analysis",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.transfer.adviser.v1",
+            "readinessStatus": "adviser_review_required",
+            "releaseStatus": "adviser_only",
+            "consumerAvailable": false,
+            "releaseGate": "adviser_only"
+          }
+        ]
+      }
+    },
+    {
+      "id": "business_succession_is_adviser_only",
+      "coverage": ["unsupported_adviser_only"],
+      "turns": [
+        "I need business succession planning for my company shares."
+      ],
+      "expected": {
+        "goalTypes": ["business_planning"],
+        "modules": [
+          {
+            "moduleId": "business_owner_relief",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.business.adviser.v1",
+            "readinessStatus": "adviser_review_required",
+            "releaseStatus": "adviser_only",
+            "consumerAvailable": false,
+            "releaseGate": "adviser_only"
+          }
+        ]
+      }
+    },
+    {
+      "id": "agricultural_succession_is_adviser_only",
+      "coverage": ["unsupported_adviser_only"],
+      "turns": [
+        "I need farm succession and agricultural relief planning for farmland."
+      ],
+      "expected": {
+        "goalTypes": ["agricultural_planning"],
+        "modules": [
+          {
+            "moduleId": "agricultural_relief",
+            "selectionStatus": "recommended",
+            "routeRuleId": "route.agricultural.adviser.v1",
+            "readinessStatus": "adviser_review_required",
+            "releaseStatus": "adviser_only",
+            "consumerAvailable": false,
+            "releaseGate": "adviser_only"
+          }
+        ]
+      }
+    }
+  ]
+}

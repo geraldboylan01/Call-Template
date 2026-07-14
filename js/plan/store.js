@@ -1,7 +1,9 @@
 const STORAGE_KEYS = Object.freeze({
   sessionId: 'planeir.consumer.session-id.v1',
   credential: 'planeir.consumer.credential.v1',
-  aiConsent: 'planeir.consumer.ai-consent.v1'
+  aiConsent: 'planeir.consumer.ai-consent.v1',
+  analysisPlanId: 'planeir.consumer.analysis-plan-id.v1',
+  analysisPlanNonce: 'planeir.consumer.analysis-plan-nonce.v1'
 });
 const INVITE_STORAGE_KEY = 'planeir.consumer.invite.v1';
 
@@ -53,13 +55,16 @@ export const state = {
   turns: [],
   nextQuestion: null,
   recommendations: [],
+  analysisPlan: null,
   analysis: null,
   handoff: null,
   consentRefreshRequired: false,
   ai: null,
   voice: {
     consent: null,
-    budget: null
+    realtimeConsent: null,
+    budget: null,
+    realtimeBudget: null
   },
   selectedModuleIds: [],
   knownRecommendationIds: [],
@@ -75,6 +80,11 @@ export function normaliseBootstrap(payload) {
   const access = asObject(root.access) || {};
   const disclosures = asObject(firstDefined(root.disclosures, root.disclosureVersions)) || {};
   const voice = asObject(root.voice) || {};
+  const realtimeVoice = asObject(firstDefined(
+    voice.realtime,
+    root.realtimeVoice,
+    root.voiceRealtime
+  )) || {};
   const voiceBudget = normaliseVoiceBudget(firstDefined(
     voice.budget,
     root.voiceBudget,
@@ -84,6 +94,18 @@ export function normaliseBootstrap(payload) {
           limitMicroEur: voice.sessionBudgetMicroEur,
           spentMicroEur: 0,
           remainingMicroEur: voice.sessionBudgetMicroEur
+        }
+      : null
+  ));
+  const realtimeVoiceBudget = normaliseVoiceBudget(firstDefined(
+    realtimeVoice.budget,
+    root.realtimeVoiceBudget,
+    root.voiceRealtimeBudget,
+    realtimeVoice.sessionBudgetMicroEur !== undefined
+      ? {
+          limitMicroEur: realtimeVoice.sessionBudgetMicroEur,
+          spentMicroEur: 0,
+          remainingMicroEur: realtimeVoice.sessionBudgetMicroEur
         }
       : null
   ));
@@ -113,6 +135,33 @@ export function normaliseBootstrap(payload) {
     privacyNoticeUrl: String(firstDefined(root.privacyNoticeUrl, '') || ''),
     inviteRequired: access.inviteRequired === true,
     voiceEnabled: flags.consumerVoiceEnabled === true || voice.enabled === true,
+    voiceRealtimeEnabled: flags.consumerVoiceRealtimeEnabled === true
+      || flags.consumerRealtimeVoiceEnabled === true
+      || voice.realtimeEnabled === true
+      || realtimeVoice.enabled === true,
+    voiceRealtimeNoticeId: String(firstDefined(
+      realtimeVoice.noticeId,
+      root.voiceRealtimeNoticeId,
+      disclosures.voiceRealtimeNoticeId,
+      ''
+    ) || ''),
+    voiceRealtimePolicyVersion: String(firstDefined(
+      realtimeVoice.policyVersion,
+      root.voiceRealtimePolicyVersion,
+      disclosures.voiceRealtimePolicyVersion,
+      ''
+    ) || ''),
+    voiceRealtimePrivacyNoticeUrl: String(firstDefined(
+      realtimeVoice.privacyNoticeUrl,
+      root.voiceRealtimePrivacyNoticeUrl,
+      root.privacyNoticeUrl,
+      ''
+    ) || ''),
+    voiceRealtimeDataPolicyId: String(firstDefined(
+      realtimeVoice.dataPolicyId,
+      root.voiceRealtimeDataPolicyId,
+      ''
+    ) || ''),
     voiceNoticeId: String(firstDefined(
       voice.noticeId,
       root.voiceNoticeId,
@@ -144,6 +193,25 @@ export function normaliseBootstrap(payload) {
     voiceTranscriptionModel: String(firstDefined(voice.transcriptionModel, '') || ''),
     voiceSpeechModel: String(firstDefined(voice.speechModel, '') || ''),
     voiceName: String(firstDefined(voice.voice, '') || ''),
+    voiceRealtimeModel: String(firstDefined(
+      realtimeVoice.model,
+      voice.realtimeModel,
+      root.voiceRealtimeModel,
+      ''
+    ) || ''),
+    voiceRealtimeMaxSeconds: Math.min(900, Math.max(15, Number(firstDefined(
+      realtimeVoice.maxSessionSeconds,
+      realtimeVoice.maxDurationSeconds,
+      voice.realtimeMaxSeconds,
+      root.voiceRealtimeMaxSeconds,
+      300
+    )) || 300)),
+    voiceRealtimePollSeconds: Math.min(60, Math.max(10, Number(firstDefined(
+      realtimeVoice.leasePollSeconds,
+      voice.realtimePollSeconds,
+      root.voiceRealtimePollSeconds,
+      20
+    )) || 20)),
     voiceMaxRecordingSeconds: Math.min(45, Math.max(1, Number(firstDefined(
       voice.maxRecordingSeconds,
       voice.maxDurationSeconds,
@@ -151,6 +219,7 @@ export function normaliseBootstrap(payload) {
       45
     )) || 45)),
     voiceBudget,
+    realtimeVoiceBudget,
     allowedModuleIds,
     cohort: String(firstDefined(flags.cohort, root.cohort, 'private_beta')),
     bookingUrl: String(firstDefined(root.bookingUrl, links.bookingUrl, '') || '').trim(),
@@ -170,6 +239,9 @@ export function setBootstrap(payload) {
   state.bootstrap = normaliseBootstrap(payload);
   if (state.bootstrap.voiceBudget) {
     state.voice.budget = state.bootstrap.voiceBudget;
+  }
+  if (state.bootstrap.realtimeVoiceBudget) {
+    state.voice.realtimeBudget = state.bootstrap.realtimeVoiceBudget;
   }
   return state.bootstrap;
 }
@@ -205,6 +277,11 @@ export function mergeVoicePayload(payload) {
   const root = unwrap(payload);
   const voice = asObject(root.voice) || {};
   const session = asObject(root.session) || {};
+  const realtimeVoice = asObject(firstDefined(
+    root.realtimeVoice,
+    root.voiceRealtime,
+    voice.realtime
+  )) || {};
   const consent = asObject(firstDefined(
     root.voiceConsent,
     voice.consent,
@@ -217,6 +294,20 @@ export function mergeVoicePayload(payload) {
       granted: consent.granted === true
     };
   }
+  const realtimeConsent = asObject(firstDefined(
+    root.realtimeVoiceConsent,
+    root.voiceRealtimeConsent,
+    voice.realtimeConsent,
+    asObject(session.voice)?.realtimeConsent,
+    session.realtimeVoiceConsent
+  ));
+  if (realtimeConsent) {
+    state.voice.realtimeConsent = {
+      ...(state.voice.realtimeConsent || {}),
+      ...realtimeConsent,
+      granted: realtimeConsent.granted === true
+    };
+  }
   const budget = normaliseVoiceBudget(firstDefined(
     root.voiceBudget,
     voice.budget,
@@ -226,6 +317,19 @@ export function mergeVoicePayload(payload) {
     state.voice.budget = {
       ...(state.voice.budget || {}),
       ...budget
+    };
+  }
+  const realtimeBudget = normaliseVoiceBudget(firstDefined(
+    root.realtimeVoiceBudget,
+    root.voiceRealtimeBudget,
+    realtimeVoice.budget,
+    voice.realtimeBudget,
+    session.realtimeVoiceBudget
+  ));
+  if (realtimeBudget) {
+    state.voice.realtimeBudget = {
+      ...(state.voice.realtimeBudget || {}),
+      ...realtimeBudget
     };
   }
   return state.voice;
@@ -272,6 +376,15 @@ export function mergePayload(payload) {
   ) || 0);
   if (previousRevision > 0 && currentRevision > 0 && previousRevision !== currentRevision) {
     state.analysis = null;
+    if (state.analysisPlan) {
+      state.analysisPlan = {
+        ...state.analysisPlan,
+        planNonce: '',
+        profileRevision: currentRevision,
+        status: 'stale'
+      };
+      clearAnalysisPlanNonce();
+    }
   }
 
   const turns = asArray(firstDefined(
@@ -296,10 +409,11 @@ export function mergePayload(payload) {
     state.nextQuestion = null;
   }
 
-  const analysisPlan = asObject(firstDefined(root.analysisPlan, root.plan, incomingSession?.analysisPlan));
+  const persistedAnalysisPlan = asObject(firstDefined(root.analysisPlan, incomingSession?.analysisPlan));
+  const recommendationPlan = asObject(firstDefined(root.analysisPlan, root.plan, incomingSession?.analysisPlan));
   const recommendations = asArray(firstDefined(
     root.recommendations,
-    analysisPlan?.recommendations,
+    recommendationPlan?.recommendations,
     incomingSession?.recommendations
   ));
   if (recommendations) {
@@ -325,6 +439,46 @@ export function mergePayload(payload) {
     state.selectedModuleIds = [...nextSelection];
     state.knownRecommendationIds = nextKnown;
     state.recommendations = recommendations;
+  }
+  if (persistedAnalysisPlan) {
+    const rawPlanModuleIds = asArray(firstDefined(
+      persistedAnalysisPlan.moduleIds,
+      persistedAnalysisPlan.selectedModuleIds,
+      persistedAnalysisPlan.modules
+    ));
+    const planId = String(firstDefined(
+      persistedAnalysisPlan.planId,
+      persistedAnalysisPlan.id,
+      ''
+    ) || '');
+    const planNonce = String(firstDefined(
+      persistedAnalysisPlan.planNonce,
+      persistedAnalysisPlan.nonce,
+      ''
+    ) || '');
+    state.analysisPlan = {
+      ...persistedAnalysisPlan,
+      planId,
+      planNonce,
+      moduleIds: (rawPlanModuleIds || [])
+        .map((item) => String(firstDefined(item?.moduleId, item?.id, item, '') || ''))
+        .filter(Boolean),
+      profileRevision: Number(firstDefined(
+        persistedAnalysisPlan.profileRevision,
+        persistedAnalysisPlan.expectedRevision,
+        currentRevision,
+        0
+      ) || 0),
+      status: String(firstDefined(persistedAnalysisPlan.status, '') || '')
+    };
+    if (rawPlanModuleIds) {
+      state.selectedModuleIds = [...new Set(state.analysisPlan.moduleIds)];
+    }
+    if (planId && planNonce) {
+      storeAnalysisPlanNonce(planId, planNonce);
+    } else {
+      clearAnalysisPlanNonce();
+    }
   }
 
   const analysis = firstDefined(
@@ -393,6 +547,42 @@ export function getSessionId() {
 
 export function getSessionCredential() {
   return storageGet(STORAGE_KEYS.credential).trim();
+}
+
+export function storeAnalysisPlanNonce(planId, planNonce) {
+  const cleanPlanId = String(planId || '').trim();
+  const cleanNonce = String(planNonce || '').trim();
+  if (!cleanPlanId || !cleanNonce) {
+    clearAnalysisPlanNonce();
+    return;
+  }
+  try {
+    const storage = getSessionStorage();
+    storage?.setItem(STORAGE_KEYS.analysisPlanId, cleanPlanId);
+    storage?.setItem(STORAGE_KEYS.analysisPlanNonce, cleanNonce);
+  } catch (_error) {
+    // State remains available for this page even when session storage is blocked.
+  }
+}
+
+export function getAnalysisPlanNonce(planId = state.analysisPlan?.planId) {
+  const cleanPlanId = String(planId || '').trim();
+  if (!cleanPlanId) return '';
+  const liveNonce = String(state.analysisPlan?.planId || '') === cleanPlanId
+    ? String(state.analysisPlan?.planNonce || '')
+    : '';
+  if (liveNonce) return liveNonce;
+  return storageGet(STORAGE_KEYS.analysisPlanId) === cleanPlanId
+    ? storageGet(STORAGE_KEYS.analysisPlanNonce).trim()
+    : '';
+}
+
+export function clearAnalysisPlanNonce() {
+  storageRemove(STORAGE_KEYS.analysisPlanId);
+  storageRemove(STORAGE_KEYS.analysisPlanNonce);
+  if (state.analysisPlan && typeof state.analysisPlan === 'object') {
+    state.analysisPlan.planNonce = '';
+  }
 }
 
 export function canUseSessionStorage() {
@@ -548,6 +738,24 @@ export function hasCurrentVoiceConsent() {
   return true;
 }
 
+export function getRealtimeVoiceConsent() {
+  if (state.voice?.realtimeConsent && typeof state.voice.realtimeConsent === 'object') {
+    return state.voice.realtimeConsent;
+  }
+  const direct = state.session?.realtimeVoiceConsent || state.session?.voiceRealtimeConsent;
+  return direct && typeof direct === 'object' ? direct : null;
+}
+
+export function hasCurrentRealtimeVoiceConsent() {
+  const consent = getRealtimeVoiceConsent();
+  if (consent?.granted !== true) return false;
+  const expectedNoticeId = String(state.bootstrap?.voiceRealtimeNoticeId || '');
+  const expectedPolicyVersion = String(state.bootstrap?.voiceRealtimePolicyVersion || '');
+  if (!expectedNoticeId || !expectedPolicyVersion) return false;
+  return String(consent.noticeId || '') === expectedNoticeId
+    && String(consent.policyVersion || '') === expectedPolicyVersion;
+}
+
 export function clearSessionAccess() {
   Object.values(STORAGE_KEYS).forEach(storageRemove);
 }
@@ -558,13 +766,16 @@ export function resetJourneyState() {
   state.turns = [];
   state.nextQuestion = null;
   state.recommendations = [];
+  state.analysisPlan = null;
   state.analysis = null;
   state.handoff = null;
   state.consentRefreshRequired = false;
   state.ai = null;
   state.voice = {
     consent: null,
-    budget: state.bootstrap?.voiceBudget || null
+    realtimeConsent: null,
+    budget: state.bootstrap?.voiceBudget || null,
+    realtimeBudget: state.bootstrap?.realtimeVoiceBudget || null
   };
   state.selectedModuleIds = [];
   state.knownRecommendationIds = [];

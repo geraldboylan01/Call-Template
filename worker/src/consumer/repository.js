@@ -114,6 +114,69 @@ const ENCRYPTED_PAYLOAD_SPECS = Object.freeze([
     keys: ['id'],
     select: 'id, session_id',
     aad: (row) => `consumer/handoff/${row.session_id}/${row.id}`
+  },
+  {
+    table: 'consumer_realtime_sessions',
+    column: 'provider_call_id_encrypted',
+    keys: ['id'],
+    select: 'id, session_id',
+    aad: (row) => `consumer/realtime/session/${row.session_id}/${row.id}/provider-call`
+  },
+  {
+    table: 'consumer_realtime_events',
+    column: 'payload_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id, sequence',
+    aad: (row) => `consumer/realtime/event/${row.session_id}/${row.realtime_session_id}/${row.sequence}`
+  },
+  {
+    table: 'consumer_realtime_tool_attempts',
+    column: 'arguments_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/realtime/tool/${row.session_id}/${row.realtime_session_id}/${row.id}/arguments`
+  },
+  {
+    table: 'consumer_realtime_tool_attempts',
+    column: 'result_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/realtime/tool/${row.session_id}/${row.realtime_session_id}/${row.id}/result`
+  },
+  {
+    table: 'consumer_realtime_final_turns',
+    column: 'transcript_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/realtime/final-turn/${row.session_id}/${row.realtime_session_id}/${row.id}`
+  },
+  {
+    table: 'consumer_realtime_fact_proposals',
+    column: 'value_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/realtime/fact-proposal/${row.session_id}/${row.realtime_session_id}/${row.id}/value`
+  },
+  {
+    table: 'consumer_realtime_fact_proposals',
+    column: 'patch_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/realtime/fact-proposal/${row.session_id}/${row.realtime_session_id}/${row.id}/patch`
+  },
+  {
+    table: 'consumer_realtime_analysis_plans',
+    column: 'input_encrypted',
+    keys: ['id'],
+    select: 'id, session_id',
+    aad: (row) => `consumer/realtime/analysis-plan/${row.session_id}/${row.id}/input`
+  },
+  {
+    table: 'consumer_realtime_analysis_plans',
+    column: 'result_encrypted',
+    keys: ['id'],
+    select: 'id, session_id',
+    aad: (row) => `consumer/realtime/analysis-plan/${row.session_id}/${row.id}/result`
   }
 ]);
 
@@ -1387,6 +1450,114 @@ export async function releaseConsumerProviderCostNotSent(env, entryId, options =
   return settleConsumerProviderCost(env, entryId, 'not_sent', options);
 }
 
+const MODULE_CACHE_PAYLOAD_SCHEMA_VERSION = 1;
+
+function normalizeConsumerModuleCacheIdentity(identity) {
+  const normalized = {
+    schemaVersion: MODULE_CACHE_PAYLOAD_SCHEMA_VERSION,
+    moduleId: String(identity?.moduleId || ''),
+    moduleVersion: String(identity?.moduleVersion || ''),
+    calculationVersion: String(identity?.calculationVersion || ''),
+    calculationDateIso: String(identity?.calculationDateIso || ''),
+    dependencySnapshotHash: String(identity?.dependencySnapshotHash || ''),
+    inputSnapshotHash: String(identity?.inputSnapshotHash || ''),
+    scenarioSnapshotHash: String(identity?.scenarioSnapshotHash || ''),
+    readinessSnapshotHash: String(identity?.readinessSnapshotHash || '')
+  };
+  if (!normalized.moduleId
+    || !normalized.moduleVersion
+    || !normalized.calculationVersion
+    || !/^\d{4}-\d{2}-\d{2}$/.test(normalized.calculationDateIso)
+    || !normalized.dependencySnapshotHash
+    || !normalized.inputSnapshotHash
+    || !normalized.scenarioSnapshotHash
+    || !normalized.readinessSnapshotHash) {
+    throw new ConsumerError(500, 'module_cache_identity_invalid', 'The deterministic module cache identity is incomplete.');
+  }
+  return normalized;
+}
+
+export async function buildConsumerModuleCacheKey(identity) {
+  return sha256Base64Url(stableStringify(normalizeConsumerModuleCacheIdentity(identity)));
+}
+
+export function createConsumerModuleCachePayload(identity, result) {
+  return {
+    schemaVersion: MODULE_CACHE_PAYLOAD_SCHEMA_VERSION,
+    cacheIdentity: normalizeConsumerModuleCacheIdentity(identity),
+    result
+  };
+}
+
+export function readConsumerModuleCachePayload(payload, expectedIdentity) {
+  const expected = normalizeConsumerModuleCacheIdentity(expectedIdentity);
+  if (!payload
+    || payload.schemaVersion !== MODULE_CACHE_PAYLOAD_SCHEMA_VERSION
+    || stableStringify(payload.cacheIdentity) !== stableStringify(expected)) {
+    return null;
+  }
+  const result = payload.result;
+  if (!result
+    || result.moduleId !== expected.moduleId
+    || result.moduleVersion !== expected.moduleVersion
+    || result.calculationVersion !== expected.calculationVersion
+    || result.inputSnapshotHash !== expected.inputSnapshotHash) {
+    return null;
+  }
+  return result;
+}
+
+export async function findReusableConsumerModuleRun(env, sessionId, identity) {
+  const expected = normalizeConsumerModuleCacheIdentity(identity);
+  const cacheKey = await buildConsumerModuleCacheKey(expected);
+  const query = await db(env).prepare(`
+    SELECT mr.id, mr.session_id, mr.module_id, mr.module_version,
+      mr.calculation_version, mr.input_snapshot_hash_b64u,
+      mr.payload_encrypted, mr.created_at
+    FROM consumer_module_runs mr
+    INNER JOIN consumer_analysis_runs ar
+      ON ar.id = mr.analysis_run_id AND ar.session_id = mr.session_id
+    WHERE mr.session_id = ?
+      AND mr.module_id = ?
+      AND mr.module_version = ?
+      AND mr.calculation_version = ?
+      AND mr.input_snapshot_hash_b64u = ?
+      AND mr.status = 'complete'
+      AND mr.payload_encrypted IS NOT NULL
+      AND ar.status IN ('complete', 'partial')
+      AND EXISTS (
+        SELECT 1 FROM consumer_sessions session
+        WHERE session.id = mr.session_id AND session.deleted_at IS NULL
+      )
+    ORDER BY mr.created_at DESC
+    LIMIT 5
+  `).bind(
+    String(sessionId || ''),
+    expected.moduleId,
+    expected.moduleVersion,
+    expected.calculationVersion,
+    cacheKey
+  ).all();
+  for (const row of query?.results || []) {
+    if (row.session_id !== sessionId
+      || row.module_id !== expected.moduleId
+      || row.module_version !== expected.moduleVersion
+      || row.calculation_version !== expected.calculationVersion
+      || row.input_snapshot_hash_b64u !== cacheKey) {
+      continue;
+    }
+    try {
+      const payload = await decryptJson(env, row.payload_encrypted, `consumer/module/${sessionId}/${row.id}`);
+      const result = readConsumerModuleCachePayload(payload, expected);
+      if (result) return result;
+    } catch {
+      // Corrupt, stale-key, or metadata-tampered rows are never reused. A fresh
+      // deterministic run is safer than failing the consumer's whole analysis.
+    }
+  }
+  return null;
+}
+
 export async function createAnalysisRun(env, sessionRow, profile, moduleIds) {
   const id = randomId('analysis');
   const timestamp = nowIso();
@@ -1424,7 +1595,7 @@ export async function createAnalysisRun(env, sessionRow, profile, moduleIds) {
   return { id, profileRevision, inputSnapshotHashB64u, createdAt: timestamp };
 }
 
-export async function completeAnalysisRun(env, run, sessionId, result, moduleIds) {
+export async function completeAnalysisRun(env, run, sessionId, result, moduleIds, moduleExecutions = []) {
   const timestamp = nowIso();
   const status = Array.isArray(result?.errors) && result.errors.length ? 'partial' : 'complete';
   const encrypted = await encryptJson(env, result, `consumer/analysis/${sessionId}/${run.id}`);
@@ -1435,12 +1606,24 @@ export async function completeAnalysisRun(env, run, sessionId, result, moduleIds
       WHERE id = ? AND session_id = ? AND status = 'running'
     `).bind(status, encrypted, timestamp, run.id, sessionId)
   ];
+  const executionByModuleId = new Map(
+    (moduleExecutions || []).map((execution) => [execution?.moduleId, execution])
+  );
   for (const moduleId of moduleIds || []) {
     const moduleResult = (result?.results || []).find((item) => item?.moduleId === moduleId);
+    const execution = executionByModuleId.get(moduleId);
     const moduleRunId = randomId('module');
+    const cacheIdentity = moduleResult && execution?.cacheIdentity
+      ? normalizeConsumerModuleCacheIdentity(execution.cacheIdentity)
+      : null;
+    const cacheKey = cacheIdentity
+      ? await buildConsumerModuleCacheKey(cacheIdentity)
+      : run.inputSnapshotHashB64u;
     const modulePayload = await encryptJson(
       env,
-      moduleResult || { moduleId, status: 'not_ready' },
+      moduleResult && cacheIdentity
+        ? createConsumerModuleCachePayload(cacheIdentity, moduleResult)
+        : (moduleResult || { moduleId, status: 'not_ready' }),
       `consumer/module/${sessionId}/${moduleRunId}`
     );
     statements.push(db(env).prepare(`
@@ -1454,9 +1637,9 @@ export async function completeAnalysisRun(env, run, sessionId, result, moduleIds
       run.id,
       sessionId,
       moduleId,
-      moduleResult?.moduleVersion || null,
-      moduleResult?.calculationVersion || null,
-      run.inputSnapshotHashB64u,
+      cacheIdentity?.moduleVersion || moduleResult?.moduleVersion || null,
+      cacheIdentity?.calculationVersion || moduleResult?.calculationVersion || null,
+      cacheKey,
       moduleResult ? 'complete' : 'not_ready',
       modulePayload,
       Number(moduleResult?.durationMs || 0),
@@ -1921,6 +2104,11 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
       SET status = ?, deleted_at = ?, credential_hash_b64u = ?,
           rolling_summary_encrypted = NULL, last_active_at = ?
       WHERE id = ? AND deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM consumer_realtime_sessions
+          WHERE session_id = consumer_sessions.id
+            AND status IN ('pending', 'active', 'closing')
+        )
     `).bind(
       reason === 'expired' ? 'expired' : 'deleted',
       timestamp,
@@ -1942,6 +2130,29 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
     db(env).prepare(`DELETE FROM consumer_voice_consent_events WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_voice_consents WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    // Realtime rows are purged in strict child-before-parent order. Active
+    // leases are excluded by the session lock above and must be terminated by
+    // the lifecycle coordinator before deletion can begin.
+    db(env).prepare(`DELETE FROM consumer_realtime_run_provenance WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_fact_proposals WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_final_turns WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_usage WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_events WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_tool_attempts WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_analysis_plans WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_consent_events WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_consents WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_sessions WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     // Move only date-level cost totals out of the linkable ledger before it is
     // deleted. This prevents delete-and-recreate from reopening the daily cap.
@@ -2027,12 +2238,37 @@ export async function cleanupExpiredConsumerSessions(env, dependencies = {}) {
     return {
       checked: 0,
       deleted: 0,
+      closedRealtime: 0,
       reconciledHandoffs: 0,
       releasedHandoffs: 0,
       purgedHandoffs: 0,
       deletedHandoffTombstones: 0,
       failed: 0
     };
+  }
+  let closedRealtime = 0;
+  let failed = 0;
+  const realtimeExpiry = await db(env).prepare(`
+    SELECT * FROM consumer_realtime_sessions
+    WHERE status IN ('pending', 'active', 'closing')
+      AND (hard_expires_at <= ? OR idle_expires_at <= ?)
+    ORDER BY hard_expires_at ASC
+    LIMIT 50
+  `).bind(nowIso(), nowIso()).all();
+  for (const lease of realtimeExpiry.results || []) {
+    try {
+      if (typeof dependencies.terminateRealtimeLease !== 'function') {
+        throw new Error('realtime_termination_dependency_missing');
+      }
+      await dependencies.terminateRealtimeLease(lease);
+      closedRealtime += 1;
+    } catch (error) {
+      failed += 1;
+      console.error('Consumer realtime lease expiry cleanup failed', {
+        sessionId: lease.session_id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
   const result = await db(env).prepare(`
     SELECT id
@@ -2043,9 +2279,25 @@ export async function cleanupExpiredConsumerSessions(env, dependencies = {}) {
     LIMIT 100
   `).bind(nowIso()).all();
   let deleted = 0;
-  let failed = 0;
   for (const row of result.results || []) {
     try {
+      const activeRealtime = await db(env).prepare(`
+        SELECT id FROM consumer_realtime_sessions
+        WHERE session_id = ? AND status IN ('pending', 'active', 'closing')
+        LIMIT 1
+      `).bind(row.id).first();
+      if (activeRealtime) {
+        if (typeof dependencies.terminateRealtimeSession !== 'function') {
+          throw new Error('realtime_termination_dependency_missing');
+        }
+        await dependencies.terminateRealtimeSession(row.id);
+        const stillActive = await db(env).prepare(`
+          SELECT id FROM consumer_realtime_sessions
+          WHERE session_id = ? AND status IN ('pending', 'active', 'closing')
+          LIMIT 1
+        `).bind(row.id).first();
+        if (stillActive) throw new Error('realtime_termination_unconfirmed');
+      }
       await recordEvent(env, row.id, 'journey_expired', {}).catch(() => {});
       await deleteSessionData(env, row.id, 'expired');
       deleted += 1;
@@ -2241,6 +2493,7 @@ export async function cleanupExpiredConsumerSessions(env, dependencies = {}) {
   return {
     checked: (result.results || []).length,
     deleted,
+    closedRealtime,
     reconciledHandoffs,
     releasedHandoffs,
     purgedHandoffs,

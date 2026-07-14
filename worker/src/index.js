@@ -199,6 +199,14 @@ function normalizePathname(pathname) {
 function getConsumerRouteMethods(pathname) {
   if (pathname === '/api/consumer/bootstrap') return 'GET,OPTIONS';
   if (pathname === '/api/consumer/sessions') return 'POST,OPTIONS';
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/calls\/rt_[A-Za-z0-9_-]{20,80}$/.test(pathname)) {
+    return 'GET,DELETE,OPTIONS';
+  }
+  const realtimeMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/(consent|calls)$/.exec(pathname);
+  if (realtimeMatch) return realtimeMatch[1] === 'consent' ? 'PATCH,OPTIONS' : 'POST,OPTIONS';
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/analysis-plan$/.test(pathname)) {
+    return 'PUT,OPTIONS';
+  }
   const voiceMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/(consent|transcriptions|speech)$/.exec(pathname);
   if (voiceMatch) return voiceMatch[1] === 'consent' ? 'PATCH,OPTIONS' : 'POST,OPTIONS';
   const match = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
@@ -209,6 +217,8 @@ function getConsumerRouteMethods(pathname) {
   if (child === 'handoffs') return 'POST,DELETE,OPTIONS';
   return 'POST,OPTIONS';
 }
+
+export { ConsumerRealtimeSession } from './consumer/realtime_session.js';
 
 function getRouteConfig(pathname) {
   const consumerMethods = getConsumerRouteMethods(pathname);

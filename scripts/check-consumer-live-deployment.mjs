@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 const DORMANT_MODE = 'dormant';
 const VOICE_ASSISTED_RULES_ONLY_MODE = 'voice_assisted_rules_only';
+const REALTIME_VOICE_RULES_ONLY_MODE = 'realtime_voice_rules_only';
 const INITIAL_MODULE_IDS = Object.freeze(['house_purchase', 'liquidity_analysis']);
 const MAX_ATTEMPTS = 5;
 const RETRY_DELAY_MS = 3_000;
@@ -29,6 +30,19 @@ function expectedPolicyFromEnvironment(env) {
       String(env.CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS || ''),
       10
     ) * 10_000,
+    realtimeNoticeId: String(env.CONSUMER_BETA_REALTIME_NOTICE_ID || '').trim(),
+    realtimeDataPolicyId: String(env.CONSUMER_BETA_REALTIME_DATA_POLICY_ID || '').trim(),
+    realtimeModel: String(env.CONSUMER_BETA_REALTIME_MODEL || '').trim(),
+    realtimeVoice: String(env.CONSUMER_BETA_REALTIME_VOICE || '').trim(),
+    realtimeReasoningEffort: String(env.CONSUMER_BETA_REALTIME_REASONING_EFFORT || '').trim(),
+    realtimeTranscriptionModel: String(env.CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL || '').trim(),
+    realtimePromptVersion: String(env.CONSUMER_BETA_REALTIME_PROMPT_VERSION || '').trim(),
+    realtimeToolsetVersion: String(env.CONSUMER_BETA_REALTIME_TOOLSET_VERSION || '').trim(),
+    realtimePricingVersion: String(env.CONSUMER_BETA_REALTIME_PRICING_VERSION || '').trim(),
+    realtimeSessionBudgetMicroEur: Number.parseInt(
+      String(env.CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS || ''),
+      10
+    ) * 10_000,
     privacyNoticeUrl: String(env.CONSUMER_BETA_PRIVACY_NOTICE_URL || '').trim(),
     sessionTtlDays: Number.parseInt(String(env.CONSUMER_BETA_SESSION_TTL_DAYS || ''), 10)
   };
@@ -40,7 +54,7 @@ export function validateConsumerDeploymentBootstrap(payload, {
 } = {}) {
   assert(payload && typeof payload === 'object', 'Consumer bootstrap must be a JSON object.');
   assert.ok(
-    [DORMANT_MODE, VOICE_ASSISTED_RULES_ONLY_MODE].includes(mode),
+    [DORMANT_MODE, VOICE_ASSISTED_RULES_ONLY_MODE, REALTIME_VOICE_RULES_ONLY_MODE].includes(mode),
     `Unsupported consumer deployment mode: ${mode}`
   );
 
@@ -48,6 +62,7 @@ export function validateConsumerDeploymentBootstrap(payload, {
   const access = payload.access || {};
   const ai = payload.ai || {};
   const voice = payload.voice || {};
+  const realtimeVoice = payload.realtimeVoice || {};
   const handoff = payload.handoff || {};
 
   assert.equal(flags.consumerAiIntakeEnabled, false, 'AI intake must remain disabled.');
@@ -59,6 +74,7 @@ export function validateConsumerDeploymentBootstrap(payload, {
 
   if (mode === DORMANT_MODE) {
     assert.equal(flags.consumerVoiceEnabled, false, 'The dormant deployment must keep voice disabled.');
+    assert.equal(flags.consumerRealtimeVoiceEnabled === true, false, 'The dormant deployment must keep realtime voice disabled.');
     assert.equal(voice.enabled, false, 'The dormant deployment must not expose configured voice.');
     assert.equal(flags.consumerJourneyEnabled, false, 'The dormant deployment must keep the journey disabled.');
     assert.equal(flags.consumerModuleRoutingEnabled, false, 'The dormant deployment must keep routing disabled.');
@@ -121,6 +137,41 @@ export function validateConsumerDeploymentBootstrap(payload, {
   );
   assert.ok(Number.isInteger(expectedPolicy.sessionTtlDays), 'Expected sessionTtlDays is required for live verification.');
   assert.equal(payload.limits?.sessionTtlDays, expectedPolicy.sessionTtlDays, 'Live session TTL does not match the protected environment.');
+
+  if (mode === REALTIME_VOICE_RULES_ONLY_MODE) {
+    assert.equal(flags.consumerRealtimeVoiceEnabled, true, 'The realtime adviser canary is not enabled.');
+    assert.equal(realtimeVoice.enabled, true, 'The realtime adviser canary is not configured.');
+    for (const [field, expectedField] of [
+      ['noticeId', 'realtimeNoticeId'],
+      ['dataPolicyId', 'realtimeDataPolicyId'],
+      ['model', 'realtimeModel'],
+      ['voice', 'realtimeVoice'],
+      ['reasoningEffort', 'realtimeReasoningEffort'],
+      ['transcriptionModel', 'realtimeTranscriptionModel'],
+      ['promptVersion', 'realtimePromptVersion'],
+      ['toolsetVersion', 'realtimeToolsetVersion'],
+      ['pricingVersion', 'realtimePricingVersion']
+    ]) {
+      assert.ok(expectedPolicy[expectedField], `Expected ${expectedField} is required for live verification.`);
+      assert.equal(
+        realtimeVoice[field],
+        expectedPolicy[expectedField],
+        `Live realtime voice ${field} does not match the protected environment.`
+      );
+    }
+    assert.equal(
+      realtimeVoice.sessionBudgetMicroEur,
+      expectedPolicy.realtimeSessionBudgetMicroEur,
+      'Live realtime voice session budget changed.'
+    );
+    assert.equal(realtimeVoice.maxDurationSeconds, 600, 'Live realtime duration limit changed.');
+    assert.equal(realtimeVoice.idleTimeoutSeconds, 90, 'Live realtime idle timeout changed.');
+    assert.equal(realtimeVoice.dispatchStopMicroEur, 1_700_000, 'Live realtime dispatch stop changed.');
+    assert.equal(realtimeVoice.safetyReserveMicroEur, 300_000, 'Live realtime safety reserve changed.');
+  } else {
+    assert.equal(flags.consumerRealtimeVoiceEnabled === true, false, 'Realtime voice must remain disabled outside its canary.');
+    assert.equal(realtimeVoice.enabled === true, false, 'Realtime voice must fail closed outside its canary.');
+  }
   return true;
 }
 

@@ -6,6 +6,16 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      activate_realtime_adviser_canary:
+        description: Activate the invite-only Realtime adviser canary for this reviewed deployment
+        required: false
+        default: false
+        type: boolean
+      run_paid_realtime_infrastructure_proof:
+        description: Prove real SDP, sideband tool execution, and server hang-up (required for activation)
+        required: false
+        default: false
+        type: boolean
       run_paid_voice_provider_smoke:
         description: Run one paid TTS-to-transcription round trip after deployment
         required: false
@@ -17,7 +27,10 @@ permissions:
 
 concurrency:
   group: worker-production
-  cancel-in-progress: true
+  # Never cancel a production activation run after it may have changed the
+  # Worker configuration. A later run queues until the paid proof or the
+  # compensating Realtime-only rollback has completed.
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -31,11 +44,20 @@ jobs:
       WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL || 'https://call-canvas-session-worker.geraldboylan.workers.dev' }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
       RUN_PAID_VOICE_PROVIDER_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_voice_provider_smoke == true && 'true' || 'false' }}
+      RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_realtime_infrastructure_proof == true && 'true' || 'false' }}
       # Explicit source approval activates only the fixed adviser-test,
       # signed-invite, voice-assisted rules-only mode. The protected override may disable it
       # immediately; it can never activate a source-unapproved mode.
       CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"
       CONSUMER_ADVISER_TEST_BETA_OVERRIDE: ${{ vars.CONSUMER_ADVISER_TEST_BETA_OVERRIDE }}
+      # Realtime is a separately kill-switchable adviser canary layered on the
+      # signed-invite beta. The committed Wrangler flag must remain false.
+      # Ordinary pushes and default manual runs remain source-false. Realtime
+      # can be source-approved only by an explicit protected manual dispatch,
+      # and the validation step below then requires the paid infrastructure
+      # proof in the same run.
+      CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED: ${{ github.event_name == 'workflow_dispatch' && inputs.activate_realtime_adviser_canary == true && 'true' || 'false' }}
+      CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE: ${{ vars.CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE }}
       CONSUMER_DB_NAME: "planeir-consumer"
       CONSUMER_SITE_ZONE_NAME: "planeir.ie"
       CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
@@ -52,6 +74,34 @@ jobs:
       CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS: "2000"
       CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: "10"
       CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS: "10"
+      CONSUMER_BETA_REALTIME_NOTICE_ID: "realtime-voice-adviser-test-v1"
+      CONSUMER_BETA_REALTIME_DATA_POLICY_ID: "openai-realtime-audio-adviser-test-v1"
+      CONSUMER_BETA_REALTIME_MODEL: "gpt-realtime-2.1"
+      CONSUMER_BETA_REALTIME_VOICE: "marin"
+      CONSUMER_BETA_REALTIME_REASONING_EFFORT: "low"
+      CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe"
+      CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v1"
+      CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v1"
+      CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
+      CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS: "200"
+      CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS: "2000"
+      CONSUMER_BETA_REALTIME_MAX_DURATION_SECONDS: "600"
+      CONSUMER_BETA_REALTIME_IDLE_TIMEOUT_SECONDS: "90"
+      CONSUMER_BETA_REALTIME_MAX_SDP_BYTES: "32768"
+      CONSUMER_BETA_REALTIME_MAX_RESPONSES: "40"
+      CONSUMER_BETA_REALTIME_MAX_TOOL_CALLS: "24"
+      # Current GPT-Realtime-2.1 USD prices are treated as equal euro amounts,
+      # which is deliberately conservative for the application allowance.
+      CONSUMER_BETA_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION: "4000000"
+      CONSUMER_BETA_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION: "400000"
+      CONSUMER_BETA_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION: "24000000"
+      CONSUMER_BETA_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION: "32000000"
+      CONSUMER_BETA_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION: "400000"
+      CONSUMER_BETA_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION: "64000000"
+      # Realtime input transcription is a separately billed model call and is
+      # reconciled inside the same session/day application allowance.
+      CONSUMER_BETA_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION: "1250000"
+      CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: "5000000"
       CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy.html"
       CONSUMER_BETA_SESSION_TTL_DAYS: "7"
     steps:
@@ -86,17 +136,37 @@ jobs:
             ""|false|true) ;;
             *) echo "CONSUMER_ADVISER_TEST_BETA_OVERRIDE must be empty, true, or false"; exit 1 ;;
           esac
+          case "$CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED" in
+            false|true) ;;
+            *) echo "CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED must be exactly true or false"; exit 1 ;;
+          esac
+          case "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" in
+            ""|false|true) ;;
+            *) echo "CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE must be empty, true, or false"; exit 1 ;;
+          esac
           case "$RUN_PAID_VOICE_PROVIDER_SMOKE" in
             false|true) ;;
             *) echo "RUN_PAID_VOICE_PROVIDER_SMOKE must be exactly true or false"; exit 1 ;;
+          esac
+          case "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" in
+            false|true) ;;
+            *) echo "RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF must be exactly true or false"; exit 1 ;;
           esac
           if [[ "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" != "true" && "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" == "true" ]]; then
             echo "A protected override cannot activate a source-unapproved beta"
             exit 1
           fi
+          if [[ "$CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED" != "true" && "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" == "true" ]]; then
+            echo "A protected override cannot activate a source-unapproved realtime canary"
+            exit 1
+          fi
           effective_beta="false"
           if [[ "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" == "true" && "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" != "false" ]]; then
             effective_beta="true"
+          fi
+          effective_realtime="false"
+          if [[ "$effective_beta" == "true" && "$CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED" == "true" && "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" != "false" ]]; then
+            effective_realtime="true"
           fi
           if [[ "$effective_beta" == "true" ]]; then
             test -n "$ADVISOR_SMOKE_PASSWORD" || { echo "ADVISOR_SMOKE_PASSWORD is required for the authenticated adviser beta gate"; exit 1; }
@@ -110,8 +180,31 @@ jobs:
             echo "The paid voice-provider smoke requires the protected adviser-test voice beta"
             exit 1
           fi
+          if [[ "$effective_realtime" == "true" && "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" != "true" ]]; then
+            echo "Realtime activation requires the paid SDP, sideband-tool, and server-hangup proof in the same manual deployment"
+            exit 1
+          fi
+          if [[ "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" == "true" && "$effective_realtime" != "true" ]]; then
+            echo "The paid Realtime infrastructure proof requires explicit canary activation in the same manual deployment"
+            exit 1
+          fi
+          if [[ "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" == "true" && "$RUN_PAID_VOICE_PROVIDER_SMOKE" == "true" ]]; then
+            echo "Run the Realtime infrastructure proof and the legacy bounded-voice provider smoke in separate disposable sessions"
+            exit 1
+          fi
           echo "CONSUMER_ADVISER_INVITE_BETA_ENABLED=$effective_beta" >> "$GITHUB_ENV"
-          echo "Effective consumer deployment mode: $([[ "$effective_beta" == "true" ]] && echo adviser-test-voice-assisted-rules-only || echo dormant)"
+          echo "CONSUMER_REALTIME_ADVISER_CANARY_ENABLED=$effective_realtime" >> "$GITHUB_ENV"
+          if [[ "$effective_realtime" == "true" ]]; then
+            echo "Effective consumer deployment mode: adviser-test-realtime-orchestrated-rules-only"
+          elif [[ "$effective_beta" == "true" ]]; then
+            echo "Effective consumer deployment mode: adviser-test-voice-assisted-rules-only"
+          else
+            echo "Effective consumer deployment mode: dormant"
+          fi
+
+      - name: Install Realtime canary browser harness
+        if: env.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'
+        run: npm install --no-package-lock --no-save --ignore-scripts playwright-core@1.61.1
 
       - name: Run full consumer and adviser regression gate
         run: |
@@ -213,6 +306,14 @@ jobs:
             throw new Error('CONSUMER_ADVISER_INVITE_BETA_ENABLED must be exactly true or false.');
           }
           const betaEnabled = betaToggle === 'true';
+          const realtimeToggle = envValue('CONSUMER_REALTIME_ADVISER_CANARY_ENABLED');
+          if (!['false', 'true'].includes(realtimeToggle)) {
+            throw new Error('CONSUMER_REALTIME_ADVISER_CANARY_ENABLED must be exactly true or false.');
+          }
+          const realtimeEnabled = realtimeToggle === 'true';
+          if (realtimeEnabled && !betaEnabled) {
+            throw new Error('Realtime cannot be enabled outside the signed-invite adviser beta.');
+          }
           if (databaseId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(databaseId)) {
             throw new Error('CONSUMER_DB_ID must be the UUID returned by Cloudflare D1.');
           }
@@ -222,6 +323,7 @@ jobs:
 
           const sourcePath = 'worker/wrangler.toml';
           const generatedPath = 'worker/wrangler.production.generated.toml';
+          const bootstrapPath = 'worker/wrangler.bootstrap.generated.toml';
           const source = fs.readFileSync(sourcePath, 'utf8');
           const leadsBinding = source.match(
             /\[\[d1_databases\]\]\s*\nbinding\s*=\s*"LEADS_DB"[\s\S]*?\ndatabase_id\s*=\s*"([0-9a-f-]+)"/i
@@ -236,6 +338,7 @@ jobs:
             'CONSUMER_JOURNEY_ENABLED',
             'CONSUMER_AI_INTAKE_ENABLED',
             'CONSUMER_VOICE_ENABLED',
+            'CONSUMER_REALTIME_VOICE_ENABLED',
             'CONSUMER_MODULE_ROUTING_ENABLED',
             'CONSUMER_HANDOFF_ENABLED',
             'CONSUMER_PUBLIC_ACCESS_ENABLED'
@@ -248,6 +351,12 @@ jobs:
           }
           if (!/^CONSUMER_ALLOWED_MODULE_IDS\s*=\s*"house_purchase,liquidity_analysis"\s*$/m.test(source)) {
             throw new Error('The protected beta module allowlist must remain house_purchase,liquidity_analysis.');
+          }
+          if (!/^bindings\s*=\s*\[\s*\{\s*name\s*=\s*"CONSUMER_REALTIME_SESSIONS",\s*class_name\s*=\s*"ConsumerRealtimeSession"\s*\}\s*\]\s*$/m.test(source)) {
+            throw new Error('The ConsumerRealtimeSession Durable Object binding must remain explicit.');
+          }
+          if (!/\[\[migrations\]\]\s*\ntag\s*=\s*"consumer_realtime_sessions_v1"\s*\nnew_sqlite_classes\s*=\s*\["ConsumerRealtimeSession"\]/m.test(source)) {
+            throw new Error('The ConsumerRealtimeSession SQLite migration must remain explicit.');
           }
 
           const requiredPolicyVariables = [
@@ -266,6 +375,30 @@ jobs:
             'CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS',
             'CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS',
             'CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS',
+            'CONSUMER_REALTIME_NOTICE_ID',
+            'CONSUMER_REALTIME_DATA_POLICY_ID',
+            'CONSUMER_REALTIME_MODEL',
+            'CONSUMER_REALTIME_VOICE',
+            'CONSUMER_REALTIME_REASONING_EFFORT',
+            'CONSUMER_REALTIME_TRANSCRIPTION_MODEL',
+            'CONSUMER_REALTIME_PROMPT_VERSION',
+            'CONSUMER_REALTIME_TOOLSET_VERSION',
+            'CONSUMER_REALTIME_PRICING_VERSION',
+            'CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS',
+            'CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS',
+            'CONSUMER_REALTIME_MAX_DURATION_SECONDS',
+            'CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS',
+            'CONSUMER_REALTIME_MAX_SDP_BYTES',
+            'CONSUMER_REALTIME_MAX_RESPONSES',
+            'CONSUMER_REALTIME_MAX_TOOL_CALLS',
+            'CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION',
             'CONSUMER_HANDOFF_POLICY_VERSION',
             'CONSUMER_HANDOFF_POLICY_URL',
             'CONSUMER_HANDOFF_RETENTION_POLICY_ID',
@@ -291,9 +424,10 @@ jobs:
           }
 
           const replaceTomlString = (input, name, value) => {
-            const expression = new RegExp('^' + name + '\\s*=\\s*"[^"\\n]*"\\s*$', 'm');
-            if (!expression.test(input)) {
-              throw new Error(name + ' must have one explicit string value in the source config.');
+            const expression = new RegExp('^' + name + '\\s*=\\s*"[^"\\n]*"\\s*$', 'gm');
+            const matches = input.match(expression) || [];
+            if (matches.length !== 1) {
+              throw new Error(name + ' must have exactly one explicit string value in the source config.');
             }
             return input.replace(expression, name + ' = ' + JSON.stringify(value));
           };
@@ -372,11 +506,49 @@ jobs:
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_VOICE_ENABLED', 'true');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true');
+
+            if (realtimeEnabled) {
+              const fixedRealtimeValues = {
+                CONSUMER_REALTIME_NOTICE_ID: ['CONSUMER_BETA_REALTIME_NOTICE_ID', 'realtime-voice-adviser-test-v1'],
+                CONSUMER_REALTIME_DATA_POLICY_ID: ['CONSUMER_BETA_REALTIME_DATA_POLICY_ID', 'openai-realtime-audio-adviser-test-v1'],
+                CONSUMER_REALTIME_MODEL: ['CONSUMER_BETA_REALTIME_MODEL', 'gpt-realtime-2.1'],
+                CONSUMER_REALTIME_VOICE: ['CONSUMER_BETA_REALTIME_VOICE', 'marin'],
+                CONSUMER_REALTIME_REASONING_EFFORT: ['CONSUMER_BETA_REALTIME_REASONING_EFFORT', 'low'],
+                CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
+                CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_REALTIME_PROMPT_VERSION', 'consumer-realtime-orchestrator-v1'],
+                CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_REALTIME_TOOLSET_VERSION', 'consumer-realtime-tools-v1'],
+                CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
+                CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS', '200'],
+                CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS', '2000'],
+                CONSUMER_REALTIME_MAX_DURATION_SECONDS: ['CONSUMER_BETA_REALTIME_MAX_DURATION_SECONDS', '600'],
+                CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: ['CONSUMER_BETA_REALTIME_IDLE_TIMEOUT_SECONDS', '90'],
+                CONSUMER_REALTIME_MAX_SDP_BYTES: ['CONSUMER_BETA_REALTIME_MAX_SDP_BYTES', '32768'],
+                CONSUMER_REALTIME_MAX_RESPONSES: ['CONSUMER_BETA_REALTIME_MAX_RESPONSES', '40'],
+                CONSUMER_REALTIME_MAX_TOOL_CALLS: ['CONSUMER_BETA_REALTIME_MAX_TOOL_CALLS', '24'],
+                CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION', '4000000'],
+                CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION', '400000'],
+                CONSUMER_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION', '24000000'],
+                CONSUMER_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION', '32000000'],
+                CONSUMER_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION', '400000'],
+                CONSUMER_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION', '64000000'],
+                CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION', '1250000'],
+                CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION', '5000000']
+              };
+              for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedRealtimeValues)) {
+                const value = envValue(sourceName);
+                if (value !== approvedValue) {
+                  throw new Error(`${sourceName} must remain exactly ${approvedValue} for the protected realtime canary.`);
+                }
+                generatedSource = replaceTomlString(generatedSource, runtimeName, value);
+              }
+              generatedSource = replaceTomlString(generatedSource, 'CONSUMER_REALTIME_VOICE_ENABLED', 'true');
+            }
           }
 
           const expectedGeneratedFlags = {
             CONSUMER_JOURNEY_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_VOICE_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_AI_INTAKE_ENABLED: 'false',
             CONSUMER_HANDOFF_ENABLED: 'false',
@@ -400,6 +572,15 @@ jobs:
             ''
           ].join('\n') : '\n';
           fs.writeFileSync(generatedPath, generatedSource.trimEnd() + '\n' + binding, { mode: 0o600 });
+          const bootstrapSource = replaceTomlString(
+            generatedSource,
+            'CONSUMER_REALTIME_VOICE_ENABLED',
+            'false'
+          );
+          if (!/^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep realtime voice disabled.');
+          }
+          fs.writeFileSync(bootstrapPath, bootstrapSource.trimEnd() + '\n' + binding, { mode: 0o600 });
           NODE
 
       - name: Replay adviser and consumer migrations in fresh local D1 state
@@ -416,7 +597,10 @@ jobs:
 
       - name: Bundle production Worker without deploying
         working-directory: ./worker
-        run: wrangler deploy --dry-run --config wrangler.production.generated.toml --outdir ../.worker-dry-run/deploy-bundle
+        run: |
+          set -euo pipefail
+          wrangler deploy --dry-run --config wrangler.bootstrap.generated.toml --outdir ../.worker-dry-run/deploy-bootstrap-bundle
+          wrangler deploy --dry-run --config wrangler.production.generated.toml --outdir ../.worker-dry-run/deploy-bundle
 
       - name: Upsert protected-beta response security headers
         if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
@@ -440,9 +624,19 @@ jobs:
             echo "CONSUMER_DB_ID is not configured; skipping consumer migrations while all consumer flags are false."
           fi
 
+      # The first realtime release introduces a new Durable Object class and
+      # migration. Deploy the reviewed code with only realtime held false before
+      # any `secret put`; a failed bootstrap prevents every secret mutation and
+      # the final activation. Existing bounded voice and invite controls retain
+      # their generated values in this bootstrap config.
+      - name: Deploy Worker code and Durable Object bootstrap
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        working-directory: ./worker
+        run: wrangler deploy --config wrangler.bootstrap.generated.toml
+
       # Wrangler 4.110 `secret put` deploys a secret-only version immediately.
-      # Keep every such mutation after the edge and D1 release prerequisites so
-      # that the subsequent code deployment cannot outrun its infrastructure.
+      # Use the bootstrap config so realtime stays disabled throughout secret
+      # reconciliation; only the final production deploy may activate it.
       - name: Ensure protected-beta Worker secrets and provider credential
         if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
         working-directory: ./worker
@@ -450,7 +644,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
-          secret_inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
+          secret_inventory="$(wrangler secret list --config wrangler.bootstrap.generated.toml --format json)"
           mapfile -t missing_secrets < <(
             SECRET_INVENTORY="$secret_inventory" node --input-type=module -e '
               const entries = JSON.parse(process.env.SECRET_INVENTORY || "[]");
@@ -467,17 +661,17 @@ jobs:
             [[ -n "$secret_name" ]] || continue
             secret_value="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")"
             [[ "$secret_value" =~ ^[A-Za-z0-9_-]{43}$ ]] || { echo "Generated consumer secret has an invalid format"; exit 1; }
-            printf '%s' "$secret_value" | wrangler secret put "$secret_name" --config wrangler.production.generated.toml
+            printf '%s' "$secret_value" | wrangler secret put "$secret_name" --config wrangler.bootstrap.generated.toml
             unset secret_value
             echo "Created missing Worker secret: $secret_name"
           done
 
           test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY is required for adviser-test voice"; exit 1; }
-          printf '%s' "$OPENAI_API_KEY" | wrangler secret put OPENAI_API_KEY --config wrangler.production.generated.toml
+          printf '%s' "$OPENAI_API_KEY" | wrangler secret put OPENAI_API_KEY --config wrangler.bootstrap.generated.toml
           unset OPENAI_API_KEY
           echo "Provisioned the protected OpenAI provider credential without exposing its value."
 
-          secret_inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
+          secret_inventory="$(wrangler secret list --config wrangler.bootstrap.generated.toml --format json)"
           SECRET_INVENTORY="$secret_inventory" node --input-type=module -e '
             const entries = JSON.parse(process.env.SECRET_INVENTORY || "[]");
             const names = new Set(entries.map((entry) => String(entry?.name || "")));
@@ -492,14 +686,25 @@ jobs:
             console.log("Verified required protected-beta Worker secret names without rotating existing values.");
           '
 
-      - name: Deploy Worker
+      - name: Deploy final Worker configuration
         working-directory: ./worker
-        run: wrangler deploy --config wrangler.production.generated.toml
+        run: |
+          set -euo pipefail
+          if [[ "$CONSUMER_REALTIME_ADVISER_CANARY_ENABLED" == "true" ]]; then
+            # Record the activation attempt before the external deploy starts.
+            # If Wrangler fails or this job is cancelled after Cloudflare has
+            # accepted the config, the compensating step must assume Realtime
+            # may be live and restore the source-false bootstrap config.
+            echo "CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED=true" >> "$GITHUB_ENV"
+          fi
+          wrangler deploy --config wrangler.production.generated.toml
 
       - name: Verify live consumer deployment mode
         run: |
           set -euo pipefail
-          if [[ "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" ]]; then
+          if [[ "$CONSUMER_REALTIME_ADVISER_CANARY_ENABLED" == "true" ]]; then
+            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="realtime_voice_rules_only"
+          elif [[ "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" ]]; then
             export CONSUMER_EXPECTED_DEPLOYMENT_MODE="voice_assisted_rules_only"
           else
             export CONSUMER_EXPECTED_DEPLOYMENT_MODE="dormant"
@@ -513,6 +718,18 @@ jobs:
       - name: Smoke check live published-session routes
         run: node ./scripts/check-worker-published-session-routes.mjs
 
+      # A canary that cannot prove the real provider boundary must not remain
+      # active. This compensating deploy preserves the existing adviser beta,
+      # D1 data, and secrets while restoring only Realtime to source-false.
+      - name: Roll back Realtime after a failed live canary proof
+        if: (failure() || cancelled()) && env.CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED == 'true'
+        working-directory: ./worker
+        run: |
+          set -euo pipefail
+          wrangler deploy --config wrangler.bootstrap.generated.toml
+          CONSUMER_EXPECTED_DEPLOYMENT_MODE=voice_assisted_rules_only \
+            node ../scripts/check-consumer-live-deployment.mjs
+
       - name: Remove generated deployment config
         if: always()
-        run: rm -f worker/wrangler.production.generated.toml
+        run: rm -f worker/wrangler.bootstrap.generated.toml worker/wrangler.production.generated.toml

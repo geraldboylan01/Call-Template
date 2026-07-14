@@ -126,7 +126,8 @@ const migrationSql = [
   'worker/consumer-migrations/0001_create_consumer_journey.sql',
   'worker/consumer-migrations/0002_add_consumer_provider_budget.sql',
   'worker/consumer-migrations/0003_add_consumer_voice_consent.sql',
-  'worker/consumer-migrations/0004_add_consumer_voice_dispatch_and_events.sql'
+  'worker/consumer-migrations/0004_add_consumer_voice_dispatch_and_events.sql',
+  'worker/consumer-migrations/0005_add_consumer_realtime_voice.sql'
 ].map((migration) => readFileSync(`${root}/${migration}`, 'utf8')).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 

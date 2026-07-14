@@ -5,6 +5,7 @@ import {
   completeAnalysisRun,
   createAnalysisRun,
   failAnalysisRun,
+  findReusableConsumerModuleRun,
   getSessionRow,
   recordEvent,
   saveAnalysisNeedsInformation,
@@ -25,13 +26,22 @@ export async function runStoredConsumerAnalysis({ env, config, sessionRow, profi
   }
   const run = await createAnalysisRun(env, sessionRow, profile, moduleIds);
   try {
+    const moduleExecutions = [];
     const result = await runConsumerAnalysis({
       profile,
       moduleIds,
       allowedModuleIds: config.allowedModules,
       scenarioOverrides,
       analysisPlanId: `plan_${run.id}`,
-      calculationDateIso: profile.assumptions.calculationDateIso
+      calculationDateIso: profile.assumptions.calculationDateIso,
+      resolveReusableModuleResult: (identity) => findReusableConsumerModuleRun(
+        env,
+        sessionRow.id,
+        identity
+      ).catch(() => null),
+      onModuleResult: (execution) => {
+        moduleExecutions.push(execution);
+      }
     });
     if (result.analysisPlan?.status !== 'complete' || !Array.isArray(result.results) || result.results.length === 0) {
       const pending = await saveAnalysisNeedsInformation(env, run, sessionRow.id, result);
@@ -47,12 +57,22 @@ export async function runStoredConsumerAnalysis({ env, config, sessionRow, profi
       );
     }
     const effectiveIds = result.analysisPlan?.selectedModules?.map((item) => item.moduleId) || moduleIds || [];
-    const stored = await completeAnalysisRun(env, run, sessionRow.id, result, effectiveIds);
+    const stored = await completeAnalysisRun(
+      env,
+      run,
+      sessionRow.id,
+      result,
+      effectiveIds,
+      moduleExecutions
+    );
     for (const selected of result.analysisPlan?.selectedModules || []) {
       const moduleResult = result.results?.find((item) => item.moduleId === selected.moduleId);
+      const execution = moduleExecutions.find((item) => item.moduleId === selected.moduleId);
       await recordEvent(env, sessionRow.id, 'module_run', {
         moduleId: selected.moduleId,
-        status: moduleResult ? 'complete' : selected.readiness?.status || 'not_ready'
+        status: moduleResult
+          ? (execution?.reused ? 'reused' : 'complete')
+          : selected.readiness?.status || 'not_ready'
       }).catch(() => {});
     }
     if (Object.keys(scenarioOverrides || {}).length) {

@@ -116,6 +116,15 @@ export function detectRulesOnlyGoalCandidates(text) {
   if (/\b(?:college|university|third[- ]level|education fund)\b/i.test(normalized)) {
     add('assess_decision', 75, 'text.college.v1', 'The message asks about education funding.');
   }
+  if (/\b(?:inheritance planning|estate planning|transfer(?:ring)? wealth|capital acquisitions tax|cat planning|gift(?:ing)? assets?)\b/i.test(normalized)) {
+    add('transfer_wealth', 80, 'text.transfer_wealth.v1', 'The message explicitly asks about a gift, estate or wealth transfer.');
+  }
+  if (/\b(?:business succession|business planning|business relief|company succession|company shares?|shareholding)\b/i.test(normalized)) {
+    add('business_planning', 80, 'text.business_planning.v1', 'The message explicitly asks about planning around a business interest.');
+  }
+  if (/\b(?:farm succession|farm planning|agricultural planning|agricultural relief|agricultural assets?|farmland)\b/i.test(normalized)) {
+    add('agricultural_planning', 80, 'text.agricultural_planning.v1', 'The message explicitly asks about agricultural assets or succession.');
+  }
   return candidates.sort((left, right) => right.priority - left.priority || left.type.localeCompare(right.type));
 }
 
@@ -161,7 +170,10 @@ export function extractRulesOnlyProfilePatch(text, {
       retire_early: 'Explore early retirement',
       improve_pension: 'Improve pension readiness',
       optimise_mortgage: 'Optimise the mortgage',
-      assess_decision: /college|university|education/i.test(normalized) ? 'Plan for college funding' : 'Assess a financial decision'
+      assess_decision: /college|university|education/i.test(normalized) ? 'Plan for college funding' : 'Assess a financial decision',
+      transfer_wealth: 'Plan a wealth transfer',
+      business_planning: 'Plan around a business interest',
+      agricultural_planning: 'Plan around agricultural assets'
     };
     addGoalOperation(profile, operations, candidate.type, titles[candidate.type], candidate.priority >= 90 ? 'high' : 'medium');
   });

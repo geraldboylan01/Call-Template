@@ -1,6 +1,7 @@
 import { constantTimeEqual, parseConsumerCredential, sha256Base64Url } from './crypto.js';
 import { ConsumerError, notFound } from './errors.js';
 import { deleteSessionData, getSessionRow } from './repository.js';
+import { terminateActiveRealtimeSession } from './realtime_lifecycle.js';
 
 export async function requireConsumerSession(request, env, routeSessionId) {
   const parsed = parseConsumerCredential(request.headers.get('X-Consumer-Session'));
@@ -11,6 +12,12 @@ export async function requireConsumerSession(request, env, routeSessionId) {
   const actualHash = await sha256Base64Url(parsed.secret);
   if (!constantTimeEqual(row.credential_hash_b64u, actualHash)) throw notFound();
   if (Date.parse(row.expires_at) <= Date.now()) {
+    await terminateActiveRealtimeSession(env, row.id, {
+      status: 'expired',
+      reason: 'consumer_session_expired',
+      errorCode: null,
+      usageKnown: false
+    });
     await deleteSessionData(env, row.id, 'expired').catch(() => {});
     throw new ConsumerError(410, 'consumer_session_expired', 'This planning session has expired.');
   }
