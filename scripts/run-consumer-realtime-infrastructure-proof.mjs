@@ -224,7 +224,50 @@ export async function runRealtimeInfrastructureProof({
       assert.equal(proof.readOnlyToolSucceeded, true, 'The forced get_planning_state tool did not succeed.');
 
       const controlledSpeechOutcome = await controlledSpeechPromise;
-      if (controlledSpeechOutcome.error) throw controlledSpeechOutcome.error;
+      if (controlledSpeechOutcome.error) {
+        const leaseDiagnostic = await page.evaluate(async ({
+          workerOriginValue,
+          endpointPathValue,
+          leaseIdValue,
+          credentialValue,
+          controlCapabilityValue
+        }) => {
+          const response = await fetch(`${workerOriginValue}${endpointPathValue}/${encodeURIComponent(leaseIdValue)}`, {
+            headers: {
+              Accept: 'application/json',
+              'X-Consumer-Session': credentialValue,
+              'X-Realtime-Control-Capability': controlCapabilityValue
+            }
+          });
+          const payload = response.ok ? await response.json() : {};
+          const lease = payload.realtimeLease || {};
+          return {
+            httpStatus: response.status,
+            status: String(lease.status || 'unknown').slice(0, 40),
+            closeReason: String(lease.closeReason || 'unknown').slice(0, 100),
+            errorCode: String(lease.errorCode || 'none').slice(0, 120),
+            controlPresent: Boolean(payload.realtimeControl)
+          };
+        }, {
+          workerOriginValue: workerOrigin,
+          endpointPathValue: endpointPath,
+          leaseIdValue: leaseId,
+          credentialValue: credential,
+          controlCapabilityValue: controlCapability
+        }).catch(() => ({
+          httpStatus: 0,
+          status: 'unavailable',
+          closeReason: 'unavailable',
+          errorCode: 'unavailable',
+          controlPresent: false
+        }));
+        throw new Error(
+          `${controlledSpeechOutcome.error.message} `
+          + `(lease HTTP ${leaseDiagnostic.httpStatus}; ${leaseDiagnostic.status}; `
+          + `${leaseDiagnostic.closeReason}; ${leaseDiagnostic.errorCode}; `
+          + `control present: ${leaseDiagnostic.controlPresent}).`
+        );
+      }
       const controlledSpeech = controlledSpeechOutcome.response;
       assert.equal(controlledSpeech.status(), 200, 'The Worker-owned greeting speech request failed.');
       assert.match(
