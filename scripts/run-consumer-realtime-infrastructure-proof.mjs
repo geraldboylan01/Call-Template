@@ -154,7 +154,7 @@ export async function runRealtimeInfrastructureProof({
           providerDetails.providerRequestId ? `request ${providerDetails.providerRequestId}` : ''
         ].filter(Boolean).join(', ');
         const safePropagationRetry = created.status() === 503
-          && errorCode === 'consumer_realtime_unavailable'
+          && ['consumer_realtime_unavailable', 'realtime_unavailable'].includes(errorCode)
           && attempt < MAX_PROPAGATION_ATTEMPTS;
         if (!safePropagationRetry) {
           throw new Error(
