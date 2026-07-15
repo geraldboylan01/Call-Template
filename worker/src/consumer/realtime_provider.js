@@ -302,17 +302,29 @@ function providerCallIdFromLocation(value) {
     if (parsed.origin !== 'https://api.openai.com') return '';
     const callId = parsed.pathname.split('/').filter(Boolean).at(-1) || '';
     return /^[A-Za-z0-9._:-]{1,160}$/.test(callId) ? callId : '';
-  } catch (_error) {
+  } catch (error) {
     return '';
   }
 }
 
 async function readBoundedSdpAnswer(response) {
   const contentType = String(response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-  if (contentType !== 'application/sdp') throw new Error('provider_sdp_type_invalid');
   const text = await response.text();
-  if (!text || new TextEncoder().encode(text).byteLength > MAX_PROVIDER_SDP_BYTES || !/^v=0(?:\r?\n)/.test(text)) {
-    throw new Error('provider_sdp_invalid');
+  const byteLength = new TextEncoder().encode(text).byteLength;
+  const diagnostic = {
+    providerContentType: contentType || null,
+    providerBodyBytes: byteLength,
+    providerBodyStartsWithV0: text.startsWith('v=0')
+  };
+  if (contentType !== 'application/sdp') {
+    const error = new Error('provider_sdp_type_invalid');
+    error.diagnostic = diagnostic;
+    throw error;
+  }
+  if (!text || byteLength > MAX_PROVIDER_SDP_BYTES || !/^v=0(?:\r?\n)/.test(text)) {
+    const error = new Error('provider_sdp_invalid');
+    error.diagnostic = diagnostic;
+    throw error;
   }
   return text;
 }
@@ -338,7 +350,7 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
       },
       body: multipart
     });
-  } catch (_error) {
+  } catch (error) {
     throw new ConsumerError(502, 'realtime_provider_unavailable', 'Live voice could not be started. Continue by typing.');
   }
   if (!response.ok) {
@@ -365,7 +377,7 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
   let answerSdp;
   try {
     answerSdp = await readBoundedSdpAnswer(response);
-  } catch (_error) {
+  } catch (error) {
     try {
       await hangupOpenAiRealtimeCall({ env, providerCallId });
     } catch (hangupError) {
@@ -374,7 +386,19 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
       hangupError.providerCallId = providerCallId;
       throw hangupError;
     }
-    throw new ConsumerError(502, 'realtime_provider_sdp_invalid', 'Live voice returned an invalid connection response. Continue by typing.');
+    throw new ConsumerError(
+      502,
+      'realtime_provider_sdp_invalid',
+      'Live voice returned an invalid connection response. Continue by typing.',
+      {
+        providerRequestId: boundedDiagnosticValue(response.headers.get('x-request-id')),
+        providerContentType: error?.diagnostic?.providerContentType || null,
+        providerBodyBytes: Number.isInteger(error?.diagnostic?.providerBodyBytes)
+          ? error.diagnostic.providerBodyBytes
+          : null,
+        providerBodyStartsWithV0: error?.diagnostic?.providerBodyStartsWithV0 === true
+      }
+    );
   }
   return { answerSdp, providerCallId };
 }
