@@ -530,6 +530,33 @@ try {
 } finally {
   console.warn = originalConsoleWarn;
 }
+globalThis.fetch = async (url) => {
+  if (String(url).endsWith('/hangup')) return new Response('', { status: 200 });
+  return new Response(validSdp, {
+    status: 201,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      Location: 'https://api.openai.com/v1/realtime/calls/call_sdp_diagnostic_test',
+      'x-request-id': 'req_realtime_sdp_test'
+    }
+  });
+};
+await assert.rejects(createOpenAiRealtimeCall({
+  env,
+  config,
+  sessionId: 'cs_provider_sdp_diagnostic_test',
+  offerSdp: validSdp,
+  state: { stage: 'goal_discovery' }
+}), (error) => {
+  assert.equal(error.code, 'realtime_provider_sdp_invalid');
+  assert.deepEqual(error.details, {
+    providerRequestId: 'req_realtime_sdp_test',
+    providerContentType: 'text/plain',
+    providerBodyBytes: new TextEncoder().encode(validSdp).byteLength,
+    providerBodyStartsWithV0: true
+  });
+  return true;
+});
 globalThis.fetch = originalFetch;
 
 assert.deepEqual(realtimeUsageFromResponse({
