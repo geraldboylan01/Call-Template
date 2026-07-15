@@ -203,6 +203,12 @@ export async function runRealtimeInfrastructureProof({
           const payload = await response.json();
           const control = payload.controlPlane || payload.infrastructureProof || {};
           if (control.sidebandConnected === true && control.readOnlyToolSucceeded === true) return control;
+          const lease = payload.realtimeLease || {};
+          if (lease.status && !['pending', 'active'].includes(lease.status)) {
+            const reason = String(lease.closeReason || 'unknown').slice(0, 100);
+            const code = String(lease.errorCode || 'none').slice(0, 120);
+            throw new Error(`The Realtime control plane closed before proof completion (${lease.status}; ${reason}; ${code}).`);
+          }
           await new Promise((resolve) => window.setTimeout(resolve, 500));
         }
         throw new Error('The authenticated sideband tool proof did not complete in time.');
