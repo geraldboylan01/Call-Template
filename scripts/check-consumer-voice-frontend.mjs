@@ -55,6 +55,7 @@ const {
   normaliseBootstrap,
   state: journeyState
 } = await import('../js/plan/store.js');
+const { getAvailableViews } = await import('../js/plan/views.js');
 
 class WebmRecorder {
   static isTypeSupported(type) {
@@ -222,7 +223,9 @@ assert.match(appSource, /deleteSessionButton\.addEventListener\('click',[\s\S]*r
 assert.match(viewsSource, /app allowance/);
 assert.match(viewsSource, /fixed conservative reservation/);
 assert.match(privacySource, /conservative application reservation rather than promising an exact provider/);
-assert.match(privacySource, /separately billed Realtime-response and input-transcription usage/);
+assert.match(privacySource, /Realtime-response, input-transcription, and character-priced approved speech/);
+assert.match(privacySource, /direct\s+model audio is disabled and never attached for\s+playback/);
+assert.match(privacySource, /content-bound\s+by a signed\s+authorization/);
 assert.match(privacySource, /Partial caption streams are not retained/);
 assert.match(privacySource, /final, it is processed automatically as the next live turn/);
 assert.match(privacySource, /one final profile-and-module review/);
@@ -231,10 +234,40 @@ assert.ok(
   planIndexSource.indexOf('id="realtimeVoiceShell"') > planIndexSource.indexOf('id="appRoot"'),
   'The persistent realtime shell must live after and outside the rerendered appRoot.'
 );
+assert.match(planIndexSource, /id="realtimeVoiceCompanion"/);
+assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*Talk to Planéir/);
+assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*aria-controls="realtimeVoiceShell"/);
+assert.match(planIndexSource, /id="realtimeVoiceShell"[\s\S]*role="dialog"[\s\S]*aria-modal="true"/);
+assert.match(planIndexSource, /id="realtimeVoiceCollapseButton"/);
+assert.match(planIndexSource, /id="realtimeVoiceMuteButton"[\s\S]*id="realtimeVoiceEndButton"[\s\S]*id="realtimeVoiceFocusComposerButton"[\s\S]*id="realtimeVoiceReviewButton"/);
+assert.match(planIndexSource, /id="realtimeVoiceBoundedFallbackButton"/);
+assert.equal(
+  [...planIndexSource.matchAll(/class="is-empty is-module-slot"/g)].length,
+  3,
+  'The unopened companion must reserve exactly three visible analysis slots.'
+);
 assert.match(planIndexSource, /id="realtimeVoiceTranscriptHistory"[\s\S]*aria-live="polite"/);
 assert.match(planIndexSource, /id="realtimeVoiceFactsList"/);
 assert.match(planIndexSource, /id="realtimeVoiceModulesList"/);
 assert.match(planIndexSource, /id="realtimeVoiceConsentDialog"/);
+assert.match(appSource, /root:\s*document\.getElementById\('realtimeVoiceCompanion'\)/);
+assert.match(realtimeSource, /openCompanion\(\{ focus = true \} = \{\}\)/);
+assert.match(realtimeSource, /collapseCompanion\(\{ restoreFocus = true \} = \{\}\)/);
+const collapseCompanionSource = realtimeSource.slice(
+  realtimeSource.indexOf('collapseCompanion({ restoreFocus = true } = {})'),
+  realtimeSource.indexOf('trapFocus(event)')
+);
+assert.doesNotMatch(collapseCompanionSource, /this\.end\(/, 'Minimising the drawer must not stop an active microphone session.');
+const reviewAndConfirmSource = realtimeSource.slice(
+  realtimeSource.indexOf('\n  reviewAndConfirm() {'),
+  realtimeSource.indexOf('configureLeaseExpiry(')
+);
+assert.doesNotMatch(reviewAndConfirmSource, /this\.end\(/, 'Opening the profile-and-module review must not stop an active voice session.');
+assert.match(realtimeSource, /if \(event\.key === 'Escape'\)[\s\S]*this\.collapseCompanion\(\)/);
+assert.match(realtimeSource, /if \(event\.key === 'Tab'\) this\.trapFocus\(event\)/);
+assert.match(realtimeSource, /if \(document\.hidden\)[\s\S]*this\.end\(\{ reason: 'hidden' \}\)[\s\S]*this\.collapseCompanion/);
+assert.match(realtimeSource, /modules\.slice\(0, 3\)/);
+assert.match(realtimeSource, /for \(let index = 0; index < 3; index \+= 1\)/);
 assert.doesNotMatch(realtimeSource, /appendTranscriptForReview|\/turns/);
 assert.doesNotMatch(realtimeSource, /sendEvent\(\{\s*type:\s*'response\.cancel'/);
 assert.match(realtimeSource, /input_audio_buffer\.speech_started/);
@@ -242,6 +275,13 @@ assert.match(realtimeSource, /MAX_TRANSCRIPT_ITEMS/);
 assert.match(realtimeSource, /classList\.toggle\('is-budget-low', budgetLow\)/);
 assert.match(realtimeSource, /setPhase\('interrupted', 'Planéir stopped speaking\./);
 assert.match(planCssSource, /\.realtime-voice-shell\.is-budget-low \.realtime-budget-card/);
+assert.match(planCssSource, /\.realtime-voice-launcher\s*\{/);
+assert.match(planCssSource, /body\.realtime-companion-open/);
+assert.match(planCssSource, /\.realtime-voice-shell\s*\{[\s\S]*width:\s*min\(33rem/);
+assert.match(planCssSource, /@media \(max-width: 720px\)[\s\S]*\.realtime-voice-shell\s*\{[\s\S]*max-height:\s*100dvh/);
+assert.match(planCssSource, /env\(safe-area-inset-bottom/);
+assert.match(planCssSource, /min-height:\s*44px/);
+assert.match(planCssSource, /@media \(prefers-reduced-motion: reduce\)/);
 const outboundRealtimeEventTypes = [...realtimeSource.matchAll(/sendEvent\(\{\s*type:\s*'([^']+)'/g)]
   .map((match) => match[1])
   .sort();
@@ -259,6 +299,9 @@ const confirmPlanRequestSource = appSource.slice(
 );
 assert.doesNotMatch(confirmPlanRequestSource, /moduleIds|scenarioOverrides/);
 assert.doesNotMatch(appSource, /planNonce:\s*newIdempotencyKey|planNonce:\s*crypto\./);
+assert.match(appSource, /state\.selectedModuleIds\.length === 0 && state\.recommendations\.length !== 3/);
+assert.match(viewsSource, /Confirm profile & save review plan/);
+assert.match(viewsSource, /Your authoritative three-analysis plan is shown below/);
 assert.match(storeSource, /state\.selectedModuleIds = \[\.\.\.new Set\(state\.analysisPlan\.moduleIds\)\]/);
 const transcriptionApiSource = apiSource.slice(
   apiSource.indexOf('export function transcribeVoice'),
@@ -342,6 +385,87 @@ assert.equal(planningContext.facts[0].badge.label, 'Approximate');
 assert.equal(planningContext.modules[0].label, 'House purchase');
 assert.equal(planningContext.readyForReview, true);
 
+const workerFactContext = extractRealtimePlanningContext({
+  planningState: {
+    facts: [{
+      factId: 'gross_household_income',
+      value: { amount: 65000, currency: 'EUR' },
+      certainty: 'approximate',
+      status: 'saved_draft'
+    }]
+  }
+}, { profile: null, recommendations: [] });
+assert.equal(workerFactContext.facts[0].factId, 'gross_household_income');
+assert.equal(workerFactContext.facts[0].label, 'Gross household income');
+assert.equal(workerFactContext.facts[0].value, '€65,000');
+assert.equal(workerFactContext.facts[0].badge.label, 'Approximate');
+assert.doesNotMatch(workerFactContext.facts[0].value, /\[object Object\]/);
+
+const authoritativeSlots = extractRealtimePlanningContext({
+  planningState: {
+    moduleSlots: [
+      {
+        slot: 1,
+        moduleId: 'personal_balance_sheet',
+        availability: 'adviser_review_required',
+        reasons: ['This deterministic analysis is waiting for its consumer release gate.']
+      },
+      {
+        slot: 2,
+        moduleId: 'house_purchase',
+        availability: 'ready',
+        reasons: ['The immediate home-purchase goal requires this analysis.']
+      },
+      {
+        slot: 3,
+        moduleId: 'liquidity_analysis',
+        availability: 'needs_facts',
+        reasons: ['More confirmed information is required.']
+      }
+    ],
+    recommendations: [
+      { moduleId: 'mortgage_analysis', status: 'recommended' },
+      { moduleId: 'college_funding', status: 'recommended' }
+    ]
+  }
+}, { profile: null, recommendations: [] });
+assert.deepEqual(
+  authoritativeSlots.modules.map((item) => item.moduleId),
+  ['personal_balance_sheet', 'house_purchase', 'liquidity_analysis'],
+  'The companion must render the Worker-authoritative three slots, not the broader recommendation list.'
+);
+assert.equal(authoritativeSlots.modules[0].badge.label, 'Gerry review');
+assert.equal(authoritativeSlots.modules[1].badge.label, 'Released');
+assert.equal(authoritativeSlots.modules[2].badge.label, 'Needs information');
+
+const pristineProfileContext = extractRealtimePlanningContext({}, {
+  profile: {
+    primaryPerson: { personId: 'primary', role: 'primary', employmentStatus: 'unknown' },
+    preferences: { baseCurrency: 'EUR', riskDiscussionCompleted: false },
+    assumptions: { calculationDateIso: '2026-07-14', values: { persona: {} } },
+    fieldMetadata: {}
+  },
+  recommendations: []
+});
+assert.equal(
+  pristineProfileContext.facts.length,
+  0,
+  'System identifiers and default policy/calculation values must not appear as facts Planéir understood.'
+);
+const userSuppliedProfileContext = extractRealtimePlanningContext({}, {
+  profile: {
+    primaryPerson: { age: 38 },
+    fieldMetadata: {
+      '/primaryPerson/age': {
+        source: 'consumer_edit', certainty: 'exact', confirmedByUser: false
+      }
+    }
+  },
+  recommendations: []
+});
+assert.equal(userSuppliedProfileContext.facts.length, 1);
+assert.equal(userSuppliedProfileContext.facts[0].label, 'Age');
+
 const independentRealtimeBootstrap = normaliseBootstrap({
   flags: {
     consumerJourneyEnabled: true,
@@ -390,6 +514,25 @@ mergePayload({
 });
 assert.equal(getAnalysisPlanNonce('realtime_plan_restored'), 'plan_nonce_server_issued_only');
 
+const gatedViewAvailability = getAvailableViews({
+  session: { currentProfileRevision: 7, confirmedProfileRevision: 7 },
+  profile: { revision: 7 },
+  analysis: null,
+  analysisPlan: {
+    profileRevision: 7,
+    status: 'complete',
+    moduleIds: [],
+    moduleSlots: [
+      { slot: 1, moduleId: 'personal_balance_sheet', availability: 'adviser_review_required' },
+      { slot: 2, moduleId: 'business_owner_analysis', availability: 'adviser_review_required' },
+      { slot: 3, moduleId: 'business_relief_analysis', availability: 'adviser_review_required' }
+    ]
+  },
+  bootstrap: { handoffEnabled: true }
+});
+assert.equal(gatedViewAvailability.results, true, 'a completed all-gated plan has a deterministic review outcome');
+assert.equal(gatedViewAvailability.handoff, true, 'the explicit consented handoff remains reachable after an all-gated plan');
+
 const realtimeClassStates = new Map();
 const realtimeControllerRoot = {
   dataset: {},
@@ -419,6 +562,43 @@ realtimeController.updateUi();
 assert.equal(realtimeClassStates.get('is-budget-low'), false);
 assert.equal(realtimeControllerRoot.dataset.budgetState, 'available');
 
+storage.set('planeir.consumer.session-id.v1', 'cs_frontend_voice_contract');
+journeyState.view = 'review';
+realtimeController.sync(journeyState);
+assert.equal(
+  realtimeControllerRoot.hidden,
+  false,
+  'The floating companion must remain available while the consumer reviews their information.'
+);
+journeyState.view = 'results';
+realtimeController.sync(journeyState);
+assert.equal(
+  realtimeControllerRoot.hidden,
+  false,
+  'The floating companion must remain available to present verified results.'
+);
+journeyState.view = 'conversation';
+
+const remoteAudioElement = { srcObject: 'worker-controlled-audio-only' };
+const remotePeerListeners = new Map();
+const remoteTrackController = new RealtimeVoiceController({
+  root: {
+    querySelector: (selector) => selector === '#realtimeVoiceAudio' ? remoteAudioElement : null
+  }
+});
+const remotePeer = {
+  addEventListener: (type, listener) => remotePeerListeners.set(type, listener)
+};
+remoteTrackController.bindPeerConnection(remotePeer, remoteTrackController.generation);
+const providerAudioTrack = { enabled: true };
+remotePeerListeners.get('track')?.({ track: providerAudioTrack, streams: [{ id: 'provider-stream' }] });
+assert.equal(providerAudioTrack.enabled, false, 'A provider audio track must be disabled before it can become audible.');
+assert.equal(
+  remoteAudioElement.srcObject,
+  'worker-controlled-audio-only',
+  'The provider media stream must never be assigned to the companion audio element.'
+);
+
 const sentRealtimeEvents = [];
 realtimeController.active = true;
 realtimeController.responseInProgress = true;
@@ -436,6 +616,48 @@ realtimeController.handleRealtimeEvent({ type: 'input_audio_buffer.speech_stoppe
 assert.equal(realtimeController.interruptTimer, null);
 assert.equal(realtimeController.phase, 'thinking');
 realtimeController.cleanupLocal();
+
+const floatingPanel = { hidden: true };
+const floatingBackdrop = { hidden: true };
+const floatingLauncherAttributes = new Map();
+const floatingLauncher = {
+  setAttribute: (name, value) => floatingLauncherAttributes.set(name, value),
+  focus: () => {}
+};
+const floatingElements = new Map([
+  ['#realtimeVoiceShell', floatingPanel],
+  ['#realtimeVoiceBackdrop', floatingBackdrop],
+  ['#realtimeVoiceLauncher', floatingLauncher]
+]);
+const floatingRoot = {
+  hidden: false,
+  classList: { toggle: () => {} },
+  querySelector: (selector) => floatingElements.get(selector) || null
+};
+const floatingController = new RealtimeVoiceController({ root: floatingRoot });
+floatingController.active = true;
+floatingController.openCompanion({ focus: false });
+assert.equal(floatingController.expanded, true);
+assert.equal(floatingPanel.hidden, false);
+assert.equal(floatingBackdrop.hidden, false);
+assert.equal(floatingLauncherAttributes.get('aria-expanded'), 'true');
+floatingController.collapseCompanion({ restoreFocus: false });
+assert.equal(floatingController.expanded, false);
+assert.equal(floatingPanel.hidden, true);
+assert.equal(floatingBackdrop.hidden, true);
+assert.equal(floatingLauncherAttributes.get('aria-expanded'), 'false');
+assert.equal(floatingController.active, true, 'Minimising the companion must keep the active microphone lifecycle intact.');
+
+let fallbackView = '';
+const fallbackController = new RealtimeVoiceController({
+  root: floatingRoot,
+  onNavigate: (view) => { fallbackView = view; }
+});
+fallbackController.focusComposer();
+assert.equal(fallbackView, 'conversation', 'Type instead must return to the written conversation from review or results.');
+fallbackView = '';
+fallbackController.focusBoundedVoice();
+assert.equal(fallbackView, 'conversation', 'The bounded voice fallback must return to the conversation before focusing its controls.');
 
 storage.set('planeir.consumer.credential.v1', 'cs_frontend_voice_contract.test-secret');
 const { transcribeVoice } = await import('../js/plan/api.js');
@@ -472,12 +694,22 @@ try {
 const {
   createRealtimeVoiceCall,
   deleteRealtimeVoiceCall,
-  getRealtimeVoiceCall
+  getRealtimeVoiceCall,
+  speakRealtimeAuthorized
 } = await import('../js/plan/api.js');
 const realtimeRequests = [];
 try {
   globalThis.fetch = async (url, init) => {
     realtimeRequests.push({ url: String(url), init });
+    if (String(url).endsWith('/speech')) {
+      return new Response(new Uint8Array([73, 68, 51]), {
+        status: 200,
+        headers: {
+          'Content-Type': 'audio/mpeg',
+          'X-Realtime-Speech-Id': 'speech_api_contract_1234567890'
+        }
+      });
+    }
     if (init.method === 'POST') {
       return new Response('v=0\r\no=- 4 5 IN IP4 127.0.0.1\r\n', {
         status: 200,
@@ -500,6 +732,20 @@ try {
   assert.match(created.body, /^v=0/);
   await getRealtimeVoiceCall('cs_frontend_voice_contract', 'rt_api_contract_001');
   await deleteRealtimeVoiceCall('cs_frontend_voice_contract', 'rt_api_contract_001');
+  const speechAuthorization = {
+    speechId: 'speech_api_contract_1234567890',
+    kind: 'question',
+    profileRevision: 7,
+    bindingId: 'tool_attempt_api_contract_001',
+    text: 'What would you like help planning first?',
+    token: 'signed_api_contract_token_1234567890'
+  };
+  const speechResponse = await speakRealtimeAuthorized(
+    'cs_frontend_voice_contract',
+    'rt_api_contract_001',
+    speechAuthorization
+  );
+  assert.equal(speechResponse.contentType, 'audio/mpeg');
   assert.equal(realtimeRequests[0].url, 'http://127.0.0.1:8787/api/consumer/sessions/cs_frontend_voice_contract/voice/realtime/calls');
   assert.equal(realtimeRequests[0].init.body, offerSdp);
   const realtimeHeaders = new Headers(realtimeRequests[0].init.headers);
@@ -508,8 +754,108 @@ try {
   assert.equal(realtimeRequests[1].url, 'http://127.0.0.1:8787/api/consumer/sessions/cs_frontend_voice_contract/voice/realtime/calls/rt_api_contract_001');
   assert.equal(realtimeRequests[1].init.method, 'GET');
   assert.equal(realtimeRequests[2].init.method, 'DELETE');
+  assert.equal(
+    realtimeRequests[3].url,
+    'http://127.0.0.1:8787/api/consumer/sessions/cs_frontend_voice_contract/voice/realtime/calls/rt_api_contract_001/speech'
+  );
+  assert.equal(realtimeRequests[3].init.method, 'POST');
+  assert.deepEqual(JSON.parse(realtimeRequests[3].init.body), speechAuthorization);
 } finally {
   globalThis.fetch = originalFetch;
 }
 
-console.log('Consumer bounded and realtime voice lifecycle, SDP, consent, transcript, planning-context, and accessibility checks passed.');
+const approvedAudio = {
+  dataset: {},
+  muted: true,
+  paused: true,
+  src: '',
+  srcObject: 'must-be-cleared-before-playback',
+  onended: null,
+  onerror: null,
+  playCalls: 0,
+  pauseCalls: 0,
+  async play() {
+    this.playCalls += 1;
+    this.paused = false;
+  },
+  pause() {
+    this.pauseCalls += 1;
+    this.paused = true;
+  },
+  removeAttribute(name) {
+    if (name === 'src') this.src = '';
+  }
+};
+const approvedCaption = { textContent: '' };
+const approvedResumeButton = { hidden: true };
+const approvedElements = new Map([
+  ['#realtimeVoiceAudio', approvedAudio],
+  ['#realtimeVoiceAssistantCaption', approvedCaption],
+  ['#realtimeVoiceResumeAudioButton', approvedResumeButton]
+]);
+const approvedRoot = {
+  dataset: {},
+  classList: { toggle: () => {} },
+  querySelector: (selector) => approvedElements.get(selector) || null
+};
+const approvedController = new RealtimeVoiceController({ root: approvedRoot });
+approvedController.active = true;
+approvedController.sessionId = 'cs_frontend_voice_contract';
+approvedController.leaseId = 'rt_api_contract_001';
+const approvedSpeech = {
+  speechId: 'speech_frontend_playback_123456',
+  kind: 'question',
+  profileRevision: 7,
+  bindingId: 'tool_attempt_frontend_001',
+  text: 'What would you like help planning first?',
+  token: 'signed_frontend_contract_token_1234567890'
+};
+const originalWindowUrl = window.URL;
+const controlledSpeechRequests = [];
+const revokedSpeechUrls = [];
+try {
+  window.URL = {
+    createObjectURL: (blob) => {
+      assert.ok(blob instanceof Blob);
+      return 'blob:worker-controlled-speech';
+    },
+    revokeObjectURL: (url) => revokedSpeechUrls.push(url)
+  };
+  globalThis.fetch = async (url, init) => {
+    controlledSpeechRequests.push({ url: String(url), init });
+    return new Response(new Uint8Array([73, 68, 51]), {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'X-Realtime-Speech-Id': approvedSpeech.speechId
+      }
+    });
+  };
+  await approvedController.playWorkerSpeechFromPayload({ assistantSpeech: approvedSpeech });
+  assert.equal(controlledSpeechRequests.length, 1);
+  assert.match(controlledSpeechRequests[0].url, /\/rt_api_contract_001\/speech$/);
+  assert.deepEqual(JSON.parse(controlledSpeechRequests[0].init.body), approvedSpeech);
+  assert.equal(approvedAudio.srcObject, null);
+  assert.equal(approvedAudio.src, 'blob:worker-controlled-speech');
+  assert.equal(approvedAudio.muted, false);
+  assert.equal(approvedAudio.playCalls, 1);
+  assert.equal(approvedAudio.dataset.controlledSpeechId, approvedSpeech.speechId);
+  assert.equal(approvedAudio.dataset.controlledSpeechPlayed, 'true');
+  assert.equal(approvedCaption.textContent, approvedSpeech.text);
+  assert.deepEqual(approvedController.transcriptHistory, [{ role: 'assistant', text: approvedSpeech.text }]);
+  assert.equal(approvedController.phase, 'assistant_speaking');
+
+  approvedController.handleRealtimeEvent({ type: 'input_audio_buffer.speech_started' });
+  assert.equal(approvedAudio.paused, true, 'Barge-in must stop the separately generated speech audio.');
+  assert.equal(approvedAudio.src, '');
+  assert.equal(approvedAudio.srcObject, null);
+  assert.equal(approvedController.currentControlledSpeech, null);
+  assert.equal(approvedController.phase, 'interrupted');
+  assert.deepEqual(revokedSpeechUrls, ['blob:worker-controlled-speech']);
+} finally {
+  approvedController.cleanupLocal();
+  window.URL = originalWindowUrl;
+  globalThis.fetch = originalFetch;
+}
+
+console.log('Consumer bounded and controlled-realtime voice lifecycle, SDP, speech authorization, transcript, planning-context, and accessibility checks passed.');

@@ -122,7 +122,30 @@ function collegeHighlight(result) {
   };
 }
 
+function personalBalanceSheetHighlight(result) {
+  const semantic = result.semanticResult;
+  const reserveText = typeof semantic.reserveMonths === 'number'
+    ? ` Spendable reserves cover ${formatMonths(semantic.reserveMonths)} of current spending.`
+    : '';
+  return {
+    id: 'personal-balance-sheet-position',
+    moduleId: result.moduleId,
+    title: semantic.netWorth < 0 ? 'Liabilities exceed recorded assets' : 'Personal balance sheet reconciled',
+    message: `The deterministic balance sheet records gross assets of ${formatMoney(semantic.grossAssets, semantic.currency)}, liabilities of ${formatMoney(semantic.totalLiabilities, semantic.currency)}, and net worth of ${formatMoney(semantic.netWorth, semantic.currency)}.${reserveText}`,
+    tone: semantic.netWorth < 0 ? 'attention' : 'neutral',
+    priority: 90,
+    numericFacts: {
+      grossAssets: semantic.grossAssets,
+      totalLiabilities: semantic.totalLiabilities,
+      netWorth: semantic.netWorth,
+      spendableReserves: semantic.spendableReserves,
+      reserveMonths: semantic.reserveMonths
+    }
+  };
+}
+
 const HIGHLIGHT_BUILDERS = Object.freeze({
+  personal_balance_sheet: personalBalanceSheetHighlight,
   liquidity_analysis: liquidityHighlight,
   house_purchase: houseHighlight,
   pension_projection: pensionHighlight,

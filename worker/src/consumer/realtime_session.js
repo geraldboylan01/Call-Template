@@ -1,7 +1,11 @@
 import { getConsumerConfig } from './config.js';
-import { resolveSemanticFact } from '../../../js/planning/semantic_facts.js';
+import {
+  getSemanticFactDefinition,
+  resolveSemanticFact
+} from '../../../js/planning/semantic_facts.js';
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
+import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import { recommendModules } from '../../../js/planning/routing_rules.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
@@ -26,6 +30,7 @@ import {
   getRealtimeConsent,
   getRealtimeLease,
   getRealtimeProviderCallId,
+  hasUnsettledRealtimeSpeechUsage,
   listRealtimeFactProposalSummaries,
   realtimeConsentIsCurrent,
   recordRealtimeFinalTurn,
@@ -35,6 +40,7 @@ import {
 } from './realtime_repository.js';
 import {
   buildConfirmedRealtimeFactSummary,
+  buildRealtimeFactReadBack,
   mapRealtimeFact,
   modulesEnabledByFacts,
   realtimeFactAllowed
@@ -46,6 +52,7 @@ import {
   realtimeJourneyPhase,
   realtimeToolsForState
 } from './realtime_provider.js';
+import { issueRealtimeSpeechAuthorization } from './realtime_speech.js';
 import {
   applyProfilePatch
 } from './validators.js';
@@ -174,11 +181,126 @@ function isAudioOnlyUserItem(item) {
 
 function boundedProposalRange(value) {
   const source = value?.range && typeof value.range === 'object' ? value.range : value;
-  const min = Number(source?.min);
-  const max = Number(source?.max);
-  return Number.isFinite(min) && Number.isFinite(max) && min <= max
-    ? { min, max }
+  const comparable = (item) => (
+    item && typeof item === 'object' && !Array.isArray(item)
+      ? Number(item.amount)
+      : Number(item)
+  );
+  const min = comparable(source?.min);
+  const max = comparable(source?.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) return null;
+  return { min: source.min, max: source.max };
+}
+
+function controlledQuestionText(state = {}) {
+  const text = typeof state.nextQuestion?.prompt === 'string'
+    ? state.nextQuestion.prompt.trim()
+    : '';
+  return text && text.length <= 500 ? text : '';
+}
+
+function controlledModuleList(moduleSlots = []) {
+  const labels = moduleSlots.slice(0, 3).map((slot) => (
+    getPlanningModuleDefinition(slot?.moduleId)?.label
+    || String(slot?.moduleId || '').replace(/_/g, ' ')
+  )).filter(Boolean);
+  if (labels.length < 1) return '';
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+}
+
+function completionFactMapping(profile, fact, normalizedRange = null) {
+  const definition = getSemanticFactDefinition(fact.factId);
+  if (!definition || !['money', 'number'].includes(definition.valueType)) {
+    throw new ConsumerError(
+      400,
+      'realtime_fact_certainty_invalid',
+      'Only a numerical or monetary fact may be recorded as unknown or as a range.'
+    );
+  }
+  const completionFacts = {
+    ...(profile.assumptions?.values?.completionFacts || {}),
+    unknownFactIds: {
+      ...(profile.assumptions?.values?.completionFacts?.unknownFactIds || {})
+    },
+    rangedFactValues: {
+      ...(profile.assumptions?.values?.completionFacts?.rangedFactValues || {})
+    }
+  };
+  if (fact.certainty === 'unknown') {
+    completionFacts.unknownFactIds[fact.factId] = true;
+    delete completionFacts.rangedFactValues[fact.factId];
+    return {
+      fieldPath: '/assumptions/values/completionFacts',
+      metadataPath: `/assumptions/values/completionFacts/unknownFactIds/${fact.factId}`,
+      canonicalValue: completionFacts,
+      displayValue: 'Unknown'
+    };
+  }
+  delete completionFacts.unknownFactIds[fact.factId];
+  completionFacts.rangedFactValues[fact.factId] = normalizedRange;
+  return {
+    fieldPath: '/assumptions/values/completionFacts',
+    metadataPath: `/assumptions/values/completionFacts/rangedFactValues/${fact.factId}`,
+    canonicalValue: completionFacts,
+    displayValue: normalizedRange
+  };
+}
+
+function mapRealtimeProposalFact(profile, fact) {
+  if (fact.certainty === 'unknown') return completionFactMapping(profile, fact);
+  if (fact.certainty !== 'range') return mapRealtimeFact(profile, fact);
+  const range = boundedProposalRange(fact.value);
+  if (!range) {
+    throw new ConsumerError(400, 'realtime_fact_range_invalid', 'A ranged fact requires finite minimum and maximum values.');
+  }
+  const minimum = mapRealtimeFact(profile, { ...fact, certainty: 'exact', value: range.min });
+  const maximum = mapRealtimeFact(profile, { ...fact, certainty: 'exact', value: range.max });
+  if (minimum.fieldPath !== maximum.fieldPath) {
+    throw new ConsumerError(409, 'realtime_fact_range_invalid', 'The ranged fact does not map to one stable profile field.');
+  }
+  const normalizedRange = { min: minimum.displayValue, max: maximum.displayValue };
+  const checked = boundedProposalRange(normalizedRange);
+  if (!checked) {
+    throw new ConsumerError(400, 'realtime_fact_range_invalid', 'The ranged fact minimum must not exceed its maximum.');
+  }
+  return completionFactMapping(profile, fact, normalizedRange);
+}
+
+function clearCompletionFactMarker(profile, factId) {
+  const completionFacts = profile.assumptions?.values?.completionFacts;
+  if (!completionFacts) return profile;
+  if (completionFacts.unknownFactIds) delete completionFacts.unknownFactIds[factId];
+  if (completionFacts.rangedFactValues) delete completionFacts.rangedFactValues[factId];
+  return profile;
+}
+
+function applyMappedRealtimeFact(profile, fact, mapped) {
+  const patch = { [mapped.fieldPath]: mapped.canonicalValue };
+  let nextProfile = applyProfilePatch(profile, patch, [], 'consumer_edit');
+  const metadataPath = mapped.metadataPath || mapped.fieldPath;
+  const certainty = String(fact.certainty || 'unknown');
+  const storedRange = certainty === 'range' ? boundedProposalRange(mapped.displayValue) : null;
+  const rangeNumber = (value) => Number(value && typeof value === 'object' ? value.amount : value);
+  const range = storedRange
+    ? { min: rangeNumber(storedRange.min), max: rangeNumber(storedRange.max) }
     : null;
+  Object.keys(nextProfile.fieldMetadata || {})
+    .filter((path) => path === metadataPath || path.startsWith(`${metadataPath}/`))
+    .forEach((path) => {
+      nextProfile.fieldMetadata[path] = {
+        ...nextProfile.fieldMetadata[path],
+        source: 'user_statement',
+        confidence: certainty === 'exact' ? 'high' : certainty === 'unknown' ? 'low' : 'medium',
+        certainty,
+        confirmedByUser: false,
+        ...(range ? { range } : {})
+      };
+    });
+  if (!['unknown', 'range'].includes(certainty)) {
+    clearCompletionFactMarker(nextProfile, fact.factId);
+  }
+  return normalizeHouseholdProfile(nextProfile);
 }
 
 function parseTokenCount(value) {
@@ -240,25 +362,38 @@ export function realtimeTranscriptionUsageFromEvent(event = {}) {
   };
 }
 
-function complexJourney(profile, state) {
-  const contradictions = Array.isArray(profile?.assumptions?.values?.unresolvedContradictions)
-    && profile.assumptions.values.unresolvedContradictions.length > 0;
+export function complexJourney(profile, state = {}) {
+  const values = profile?.assumptions?.values || {};
+  const persona = values.persona || {};
+  const contradictions = (
+    Array.isArray(values.unresolvedContradictions) && values.unresolvedContradictions.length > 0
+  ) || (
+    Array.isArray(persona.unresolvedContradictions) && persona.unresolvedContradictions.length > 0
+  );
   const multipleGoals = Array.isArray(profile?.goals) && profile.goals.length > 1;
+  const complexBusiness = (profile?.businesses?.length || 0) > 0
+    || ['company_director', 'owner_manager', 'business_owner', 'farmer'].includes(persona.businessContext)
+    || ['company_director', 'owner_manager', 'business_owner'].includes(persona.employmentContext)
+    || persona.companyDirector === true
+    || persona.ownerManager === true
+    || persona.businessExit === true
+    || persona.agriculturalAssets === true;
   const complexHousehold = Boolean(profile?.partner)
     || (profile?.dependants?.length || 0) > 1
     || (profile?.properties?.length || 0) > 1
-    || (profile?.businesses?.length || 0) > 0
     || (profile?.incomeSources?.length || 0) > 2;
   return {
-    requested: contradictions || multipleGoals || complexHousehold,
-    applied: contradictions || multipleGoals || complexHousehold,
+    requested: contradictions || multipleGoals || complexBusiness || complexHousehold,
+    applied: contradictions || multipleGoals || complexBusiness || complexHousehold,
     reason: contradictions
       ? 'contradictory_facts'
       : multipleGoals
         ? 'multiple_goals'
-        : complexHousehold
-          ? 'complex_household'
-          : 'not_required',
+        : complexBusiness
+          ? 'complex_business'
+          : complexHousehold
+            ? 'complex_household'
+            : 'not_required',
     stage: state.stage
   };
 }
@@ -285,15 +420,17 @@ export class ConsumerRealtimeSession {
     this.currentPhase = null;
     this.lastTouchAt = 0;
     this.turnFinalAt = 0;
-    this.speechStartedAt = 0;
+    this.bargeInStartedAt = 0;
     this.firstOutputRecorded = false;
     this.eventChain = Promise.resolve();
     this.pendingResponseAuthorization = null;
     this.currentAuthorizedResponseId = null;
+    this.currentResponseReason = null;
+    this.currentResponseToolCalls = 0;
     this.toolContinuationPending = false;
     this.pendingSessionPolicyHash = null;
     this.pendingSessionPolicySnapshot = null;
-    this.deferredResponseAuthorization = null;
+    this.queuedResponseAuthorization = null;
     this.initialProbePending = false;
     this.committedAudioItemIds = new Set();
     this.serverFunctionOutputs = new Map();
@@ -307,6 +444,7 @@ export class ConsumerRealtimeSession {
       this.pendingSessionPolicyHash = await this.state.storage.get('pendingSessionPolicyHash') || null;
       this.pendingSessionPolicySnapshot = await this.state.storage.get('pendingSessionPolicySnapshot') || null;
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
+      this.queuedResponseAuthorization = await this.state.storage.get('queuedResponseAuthorization') || null;
     });
   }
 
@@ -335,8 +473,12 @@ export class ConsumerRealtimeSession {
       }
       if (path === '/analysis-plan' && request.method === 'POST') {
         const body = await readInternalJson(request);
-        await this.setAnalysisPhase(body);
-        return json({ ok: true, phase: this.currentPhase });
+        const update = await this.setAnalysisPhase(body);
+        return json({
+          ok: true,
+          phase: this.currentPhase,
+          ...(update?.assistantSpeech ? { assistantSpeech: update.assistantSpeech } : {})
+        });
       }
       return json({ error: 'Not found.' }, 404);
     } catch (error) {
@@ -539,8 +681,7 @@ export class ConsumerRealtimeSession {
         await this.touch();
         return;
       }
-      const responseOwned = this.inResponse
-        && (item.role === 'assistant' || item.type === 'function_call');
+      const responseOwned = this.inResponse && item.type === 'function_call';
       if (!responseOwned) {
         await this.terminalize('failed', 'conversation_item_injected', 'realtime_conversation_item_injected', false);
       }
@@ -555,42 +696,14 @@ export class ConsumerRealtimeSession {
       await this.touch();
       return;
     }
-    if (type === 'response.output_audio_transcript.done') {
-      const itemId = String(event.item_id || event.response_id || '');
-      const responseId = String(event.response_id || '');
-      const transcript = typeof event.transcript === 'string' ? event.transcript : '';
-      if (!this.inResponse
-        || !this.currentAuthorizedResponseId
-        || !constantTimeTextEqual(responseId, this.currentAuthorizedResponseId)) {
-        await this.terminalize('failed', 'assistant_transcript_unauthorized', 'realtime_assistant_transcript_unauthorized', false);
-        return;
-      }
-      if (validProviderId(itemId) && transcript) {
-        await recordRealtimeFinalTurn(this.env, {
-          sessionId: this.meta.sessionId,
-          leaseId: this.meta.leaseId,
-          providerItemId: itemId,
-          role: 'assistant',
-          transcript
-        });
-      }
+    if (/^response\.(?:output_audio|audio|output_text|audio_transcript)(?:\.|$)/.test(type)) {
+      try { this.sendProvider({ type: 'response.cancel', response_id: this.currentAuthorizedResponseId || undefined }); } catch (_error) { /* terminal path owns loss */ }
+      await this.terminalize('failed', 'assistant_output_unauthorized', 'realtime_assistant_output_unauthorized', false);
       return;
     }
     if (type === 'input_audio_buffer.speech_started') {
-      this.speechStartedAt = Date.now();
+      this.bargeInStartedAt = this.inResponse ? Date.now() : 0;
       await this.touch();
-      return;
-    }
-    if ((type === 'response.audio.delta' || type === 'response.output_audio.delta')
-      && this.turnFinalAt && !this.firstOutputRecorded) {
-      this.firstOutputRecorded = true;
-      await appendRealtimeEvent(this.env, {
-        sessionId: this.meta.sessionId,
-        leaseId: this.meta.leaseId,
-        direction: 'provider_in',
-        eventType: 'realtime.response.first_output',
-        payload: { latencyMs: Math.max(0, Date.now() - this.turnFinalAt) }
-      });
       return;
     }
     if (type === 'response.created') {
@@ -610,6 +723,8 @@ export class ConsumerRealtimeSession {
       }
       this.pendingResponseAuthorization = null;
       this.currentAuthorizedResponseId = responseId;
+      this.currentResponseReason = pending.reason;
+      this.currentResponseToolCalls = 0;
       this.inResponse = true;
       await this.state.storage.delete('pendingResponseAuthorization');
       await this.state.storage.put('currentAuthorizedResponseId', responseId);
@@ -628,7 +743,8 @@ export class ConsumerRealtimeSession {
         await this.terminalize('failed', 'response_id_mismatch', 'realtime_response_id_mismatch', false);
         return;
       }
-      const wasInterrupted = this.speechStartedAt > 0 && this.inResponse;
+      const interruptionStartedAt = this.bargeInStartedAt;
+      const wasInterrupted = interruptionStartedAt > 0 && this.inResponse;
       this.inResponse = false;
       this.currentAuthorizedResponseId = null;
       await this.state.storage.delete('currentAuthorizedResponseId');
@@ -638,10 +754,10 @@ export class ConsumerRealtimeSession {
           leaseId: this.meta.leaseId,
           direction: 'provider_in',
           eventType: 'realtime.response.interrupted',
-          payload: { latencyMs: Math.max(0, Date.now() - this.speechStartedAt) }
+          payload: { latencyMs: Math.max(0, Date.now() - interruptionStartedAt) }
         });
       }
-      this.speechStartedAt = 0;
+      this.bargeInStartedAt = 0;
       const responseStatus = String(event.response?.status || '');
       if (!['completed', 'cancelled'].includes(responseStatus)) {
         await this.terminalize(
@@ -652,11 +768,19 @@ export class ConsumerRealtimeSession {
         );
         return;
       }
-      const continued = await this.handleUsage(event.response || {});
-      if (continued && this.toolContinuationPending) {
-        this.toolContinuationPending = false;
-        await this.authorizeResponse('tool_output');
+      const responseOutput = Array.isArray(event.response?.output) ? event.response.output : [];
+      if (responseStatus === 'completed' && (
+        this.currentResponseToolCalls < 1
+        || responseOutput.some((item) => item?.type !== 'function_call')
+      )) {
+        await this.terminalize('failed', 'response_without_required_tool', 'realtime_response_without_required_tool', false);
+        return;
       }
+      const continued = await this.handleUsage(event.response || {});
+      this.currentResponseReason = null;
+      this.currentResponseToolCalls = 0;
+      this.toolContinuationPending = false;
+      if (continued) await this.drainResponseAuthorization();
       return;
     }
     if (type === 'response.function_call_arguments.done') {
@@ -685,11 +809,8 @@ export class ConsumerRealtimeSession {
       if (this.initialProbePending) {
         this.initialProbePending = false;
         await this.authorizeResponse('initial_state_probe', { forceTool: 'get_planning_state' });
-      } else if (this.deferredResponseAuthorization) {
-        const deferred = this.deferredResponseAuthorization;
-        this.deferredResponseAuthorization = null;
-        await this.authorizeResponse(deferred.reason, deferred.options);
       }
+      await this.drainResponseAuthorization();
       return;
     }
     if (type === 'error') {
@@ -728,15 +849,55 @@ export class ConsumerRealtimeSession {
       );
   }
 
-  async authorizeResponse(reason, options = {}) {
-    if (this.closing || this.inResponse || this.pendingResponseAuthorization) return false;
-    if (this.pendingSessionPolicyHash) {
-      this.deferredResponseAuthorization = {
-        reason: String(reason || 'server_authorized').slice(0, 80),
-        options: { ...(options || {}) }
+  responseAuthorizationPriority(reason) {
+    if (reason === 'finalized_user_item') return 5;
+    if (reason === 'tool_output') return 4;
+    if (reason === 'initial_state_probe') return 3;
+    return 1;
+  }
+
+  async queueResponseAuthorization(reason, options = {}) {
+    if (this.closing) return false;
+    const candidate = {
+      reason: String(reason || 'server_authorized').slice(0, 80),
+      options: { ...(options || {}) }
+    };
+    const current = this.queuedResponseAuthorization;
+    if (!current || this.responseAuthorizationPriority(candidate.reason) >= this.responseAuthorizationPriority(current.reason)) {
+      this.queuedResponseAuthorization = {
+        ...candidate,
+        options: {
+          ...(current?.options || {}),
+          ...candidate.options,
+          ...((current?.options?.forceTool || candidate.options.forceTool)
+            ? { forceTool: candidate.options.forceTool || current.options.forceTool }
+            : {})
+        }
       };
-      return true;
+    } else if (candidate.options.forceTool && !current.options?.forceTool) {
+      this.queuedResponseAuthorization = {
+        ...current,
+        options: { ...(current.options || {}), forceTool: candidate.options.forceTool }
+      };
     }
+    await this.state.storage.put('queuedResponseAuthorization', this.queuedResponseAuthorization);
+    return true;
+  }
+
+  async authorizeResponse(reason, options = {}) {
+    const queued = await this.queueResponseAuthorization(reason, options);
+    if (!queued) return false;
+    await this.drainResponseAuthorization();
+    return true;
+  }
+
+  async drainResponseAuthorization() {
+    if (this.closing
+      || this.inResponse
+      || this.pendingResponseAuthorization
+      || this.pendingSessionPolicyHash
+      || !this.queuedResponseAuthorization) return false;
+    const authorization = this.queuedResponseAuthorization;
     const context = await this.planningContext();
     const lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId);
     if (!lease || lease.status !== 'active') {
@@ -752,12 +913,12 @@ export class ConsumerRealtimeSession {
       await this.terminalize('budget_exhausted', 'dispatch_stop_reached', null, true);
       return false;
     }
-    const authorizationReason = String(reason || 'server_authorized').slice(0, 80);
+    const authorizationReason = authorization.reason;
     const nonce = randomNonce();
     this.pendingResponseAuthorization = { nonce, reason: authorizationReason };
     await this.state.storage.put('pendingResponseAuthorization', this.pendingResponseAuthorization);
     try {
-      const forceTool = options?.forceTool === 'get_planning_state'
+      const forceTool = authorization.options?.forceTool === 'get_planning_state'
         ? 'get_planning_state'
         : null;
       this.sendProvider({
@@ -770,12 +931,17 @@ export class ConsumerRealtimeSession {
           },
           ...(forceTool
             ? {
-                instructions: `Before speaking, call get_planning_state with expectedRevision ${Number(context.sessionRow.current_profile_revision)}. Do not infer or announce planning state before the tool result.`,
+                instructions: `Call get_planning_state with expectedRevision ${Number(context.sessionRow.current_profile_revision)}. Emit no assistant text or audio.`,
                 tool_choice: { type: 'function', name: forceTool }
               }
-            : {})
+            : {
+                instructions: 'Call exactly one supplied planning tool. Emit no assistant text or audio; Worker-owned speech is delivered separately.',
+                tool_choice: 'required'
+              })
         }
       });
+      this.queuedResponseAuthorization = null;
+      await this.state.storage.delete('queuedResponseAuthorization');
       return true;
     } catch (_error) {
       this.pendingResponseAuthorization = null;
@@ -846,7 +1012,21 @@ export class ConsumerRealtimeSession {
       this.meta.sessionId,
       this.meta.leaseId
     );
-    const realtimePhase = this.currentPhase || realtimeJourneyPhase(state);
+    const pendingFacts = proposedFacts.map((proposal) => ({
+      ...proposal,
+      readBackText: buildRealtimeFactReadBack(
+        proposal.factId,
+        proposal.value,
+        proposal.certainty,
+        profile.preferences?.baseCurrency || 'EUR'
+      )
+    }));
+    const retainedTerminalPhase = ['analysis', 'results'].includes(this.currentPhase)
+      ? this.currentPhase
+      : null;
+    const realtimePhase = pendingFacts.length
+      ? 'confirmation'
+      : retainedTerminalPhase || realtimeJourneyPhase({ stage: state.stage });
     const reasoningEscalation = complexJourney(profile, state);
     const publicState = {
       profileRevision: Number(sessionRow.current_profile_revision),
@@ -865,15 +1045,20 @@ export class ConsumerRealtimeSession {
           }
         : null,
       facts: [
-        ...buildConfirmedRealtimeFactSummary(profile),
-        ...proposedFacts
+        ...pendingFacts,
+        ...buildConfirmedRealtimeFactSummary(profile)
       ].slice(0, 16),
-      likelyModules: (state.recommendations || [])
+      currentPendingProposal: pendingFacts[0] || null,
+      personaAssessment: toPublicPersonaAssessment(state.personaAssessment),
+      moduleSlots: (state.moduleSlots || []).slice(0, 3),
+      overrides: (state.overrides || []).slice(0, 6),
+      requiresGoalPriorityQuestion: state.requiresGoalPriorityQuestion === true,
+      requiresDecisionTopicQuestion: state.requiresDecisionTopicQuestion === true,
+      requiresPersonaScan: state.requiresPersonaScan === true,
+      deferredGoalTypes: (state.deferredGoalTypes || []).slice(0, 8),
+      likelyModules: (state.moduleSlots || [])
         .map((item) => item.moduleId)
-        .filter((moduleId, index, values) => (
-          ['house_purchase', 'liquidity_analysis'].includes(moduleId)
-          && values.indexOf(moduleId) === index
-        )),
+        .slice(0, 3),
       recommendations: (state.recommendations || []).slice(0, 12).map((item) => ({
         moduleId: item.moduleId,
         status: item.readiness?.status || item.status || 'unknown',
@@ -911,7 +1096,7 @@ export class ConsumerRealtimeSession {
     }
     const context = await this.planningContext();
     if (overridePhase) this.currentPhase = overridePhase;
-    else if (!this.currentPhase) this.currentPhase = realtimeJourneyPhase(context.state);
+    else this.currentPhase = context.state.realtimePhase;
     await this.state.storage.put('phase', this.currentPhase);
     const state = { ...context.state, realtimePhase: this.currentPhase };
     const safetyIdentifier = await hmacSha256Base64Url(
@@ -980,6 +1165,7 @@ export class ConsumerRealtimeSession {
     let toolName = 'invalid';
     let attempt = null;
     let output;
+    let speechContext = null;
     let status = 'succeeded';
     let errorCode = null;
     let fatalToolError = false;
@@ -989,8 +1175,8 @@ export class ConsumerRealtimeSession {
       }
       toolName = assertRealtimeToolName(event.name);
       const context = await this.planningContext();
-      const stateWithPhase = { ...context.state, realtimePhase: this.currentPhase };
-      const allowedNames = new Set(realtimeToolsForState(stateWithPhase).map((tool) => tool.name));
+      speechContext = context;
+      const allowedNames = new Set(realtimeToolsForState(context.state).map((tool) => tool.name));
       if (!allowedNames.has(toolName)) {
         throw new ConsumerError(409, 'realtime_tool_state_invalid', 'That planning action is not available at the current journey stage.');
       }
@@ -1005,12 +1191,27 @@ export class ConsumerRealtimeSession {
         maxToolCalls: getConsumerConfig(this.env).realtimeMaxToolCalls
       });
       if (attempt.replayed && attempt.result) output = attempt.result;
-      else output = await this.executeTool(toolName, args, context, attempt.row.id);
+      else {
+        output = await this.executeTool(toolName, args, context, attempt.row.id);
+        output = await this.attachWorkerSpeech(toolName, output, context);
+      }
     } catch (error) {
       status = error instanceof ConsumerError && error.status < 500 ? 'rejected' : 'failed';
       errorCode = error instanceof ConsumerError ? error.code : 'realtime_tool_failed';
       fatalToolError = ['realtime_tool_replay_conflict', 'realtime_tool_replay_incomplete'].includes(errorCode);
       output = { ok: false, errorCode, message: 'The planning service could not complete that action.' };
+    }
+    if (!attempt?.replayed && toolName !== 'invalid' && !output?.assistantSpeech) {
+      try {
+        output = await this.attachWorkerSpeech(
+          toolName,
+          output,
+          speechContext || await this.planningContext()
+        );
+      } catch (_error) {
+        // If code-owned speech cannot be authorized, return the bounded tool
+        // error without allowing any model-owned continuation.
+      }
     }
     if (attempt && !attempt.replayed) {
       await completeRealtimeToolAttempt(this.env, {
@@ -1056,14 +1257,111 @@ export class ConsumerRealtimeSession {
           output: serializedOutput
         }
       });
-      this.toolContinuationPending = true;
-      if (!this.inResponse) {
-        this.toolContinuationPending = false;
-        await this.authorizeResponse('tool_output');
+      this.currentResponseToolCalls += 1;
+      this.toolContinuationPending = false;
+      if (this.turnFinalAt && !this.firstOutputRecorded) {
+        this.firstOutputRecorded = true;
+        await appendRealtimeEvent(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          direction: 'server',
+          eventType: 'realtime.response.first_output',
+          payload: { latencyMs: Math.max(0, Date.now() - this.turnFinalAt) }
+        });
       }
     } catch (_error) {
       await this.terminalize('failed', 'sideband_lost', 'realtime_sideband_lost', false);
     }
+  }
+
+  async attachWorkerSpeech(toolName, output, originalContext) {
+    const safeOutput = output && typeof output === 'object' && !Array.isArray(output)
+      ? output
+      : { ok: false, errorCode: 'realtime_tool_failed' };
+    if (toolName === 'wait_for_user' && safeOutput.ok === true) {
+      return { ...safeOutput, response_text: '', require_repeat_verbatim: false };
+    }
+    const context = safeOutput.ok === true
+      ? await this.planningContext()
+      : originalContext;
+    const state = context?.state || {};
+    const question = controlledQuestionText(state);
+    let kind = 'status';
+    let text = '';
+
+    if (safeOutput.ok !== true) {
+      text = 'I could not complete that planning step. Please review the information on screen or continue by typing.';
+    } else if (toolName === 'get_result_summary' || (
+      toolName === 'confirm_and_run_plan' && typeof safeOutput.speakableText === 'string' && safeOutput.speakableText
+    )) {
+      kind = 'result';
+      text = safeOutput.speakableText;
+    } else if (toolName === 'propose_facts') {
+      const readBack = safeOutput.currentPendingProposal?.readBackText
+        || safeOutput.currentReadBackText
+        || '';
+      if (safeOutput.readBackRequired && readBack) {
+        kind = 'read_back';
+        text = readBack;
+      } else {
+        kind = 'acknowledgement';
+        text = question
+          ? `Thanks. I’ve added that to the information you can review. ${question}`
+          : 'Thanks. I’ve added that to the information you can review. Please review the three analyses shown on screen.';
+      }
+    } else if (toolName === 'resolve_fact_confirmation') {
+      const nextReadBack = safeOutput.currentPendingProposal?.readBackText || '';
+      if (nextReadBack) {
+        kind = 'read_back';
+        text = nextReadBack;
+      } else {
+        kind = 'acknowledgement';
+        const prefix = safeOutput.status === 'confirmed'
+          ? 'Thanks, that read-back is confirmed.'
+          : 'Thanks, I won’t use that figure.';
+        text = question
+          ? `${prefix} ${question}`
+          : `${prefix} Please review the information and three analyses shown on screen.`;
+      }
+    } else if (toolName === 'get_module_plan') {
+      kind = 'plan';
+      const modules = controlledModuleList(state.moduleSlots || safeOutput.moduleSlots || []);
+      text = modules
+        ? `Based on what you told me, the three analyses most relevant to you are ${modules}. ${question || 'Please review them on screen before anything runs.'}`
+        : (question || 'I need one more detail before I can show the three most relevant analyses.');
+    } else if (toolName === 'get_planning_state') {
+      kind = this.currentResponseReason === 'initial_state_probe' ? 'greeting' : 'question';
+      const next = question || 'Please review the information and three analyses shown on screen before anything runs.';
+      text = kind === 'greeting'
+        ? `Hello, I’m Planéir, an AI planning companion for financial education. ${next}`
+        : next;
+    } else if (toolName === 'confirm_and_run_plan') {
+      kind = 'status';
+      text = 'The confirmed plan has been processed. I’ll read the verified result when it is ready.';
+    } else {
+      kind = 'question';
+      text = question || 'Please continue with the visible planning step.';
+    }
+
+    const profileRevision = Number(
+      safeOutput.profileRevision
+      || context?.sessionRow?.current_profile_revision
+      || originalContext?.sessionRow?.current_profile_revision
+    );
+    const assistantSpeech = await issueRealtimeSpeechAuthorization({
+      env: this.env,
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      kind,
+      profileRevision,
+      text
+    });
+    return {
+      ...safeOutput,
+      response_text: text,
+      require_repeat_verbatim: true,
+      assistantSpeech
+    };
   }
 
   requireExpectedRevision(args, context) {
@@ -1091,6 +1389,19 @@ export class ConsumerRealtimeSession {
       }
       const seenFactIds = new Set();
       const evidenceItems = new Set();
+      args.facts.forEach((fact) => {
+        if (!['exact', 'approximate', 'range', 'unknown'].includes(fact?.certainty)) {
+          throw new ConsumerError(400, 'realtime_fact_certainty_invalid', 'Fact certainty is invalid.');
+        }
+        if (['range', 'unknown'].includes(fact.certainty)
+          && !['money', 'number'].includes(getSemanticFactDefinition(fact.factId)?.valueType)) {
+          throw new ConsumerError(
+            400,
+            'realtime_fact_certainty_invalid',
+            'Only a numerical or monetary fact may be recorded as unknown or as a range.'
+          );
+        }
+      });
       const enabledModules = modulesEnabledByFacts(context.state.recommendations, args.facts);
       const orderedFacts = [...args.facts].sort((left, right) => (
         Number(right.factId === 'primary_goal') - Number(left.factId === 'primary_goal')
@@ -1109,34 +1420,92 @@ export class ConsumerRealtimeSession {
         if (!['exact', 'approximate', 'range', 'unknown'].includes(fact.certainty)) {
           throw new ConsumerError(400, 'realtime_fact_certainty_invalid', 'Fact certainty is invalid.');
         }
-        const mapped = mapRealtimeFact(projectedProfile, fact);
+        const mapped = mapRealtimeProposalFact(projectedProfile, fact);
         const patch = { [mapped.fieldPath]: mapped.canonicalValue };
         projectedProfile = applyProfilePatch(projectedProfile, patch, [], 'ai_extraction');
-        return { fact, mapped, patch };
+        const confirmationPolicy = getSemanticFactDefinition(fact.factId)?.confirmationPolicy || 'final_review';
+        const readBackText = confirmationPolicy === 'read_back'
+          ? buildRealtimeFactReadBack(
+              fact.factId,
+              mapped.displayValue,
+              fact.certainty,
+              context.profile.preferences?.baseCurrency || 'EUR'
+            )
+          : null;
+        return { fact, mapped, patch, confirmationPolicy, readBackText };
       });
       if (evidenceItems.size !== 1) {
         throw new ConsumerError(409, 'realtime_fact_evidence_mixed', 'Facts in one proposal batch must come from the same finalized consumer answer.');
       }
       const proposals = [];
-      for (const { fact, mapped, patch } of normalized) {
-        const range = fact.certainty === 'range' ? boundedProposalRange(fact.value) : null;
-        if (fact.certainty === 'range' && !range) {
-          throw new ConsumerError(400, 'realtime_fact_range_invalid', 'A ranged fact requires finite minimum and maximum values.');
-        }
-        proposals.push(await createRealtimeFactProposal(this.env, {
+      for (const { fact, mapped, patch, confirmationPolicy, readBackText } of normalized) {
+        const created = await createRealtimeFactProposal(this.env, {
           sessionId: this.meta.sessionId,
           leaseId: this.meta.leaseId,
           toolAttemptId,
           factId: fact.factId,
-          value: range ? { value: mapped.displayValue, range } : mapped.displayValue,
+          value: mapped.displayValue,
+          readBackText,
           patch,
           baseProfileRevision: Number(context.sessionRow.current_profile_revision),
           evidenceItemId: fact.evidenceItemId,
           confidence: fact.certainty === 'exact' ? 'medium' : 'low',
           certainty: fact.certainty
-        }));
+        });
+        proposals.push({
+          ...created,
+          factId: fact.factId,
+          value: mapped.displayValue,
+          certainty: fact.certainty,
+          confirmationPolicy,
+          readBackText
+        });
       }
-      return { ok: true, proposals, currentProposalId: proposals[0]?.id || null, readBackRequired: true };
+      let currentProfile = context.profile;
+      let currentSessionRow = context.sessionRow;
+      for (const proposal of proposals.filter((item) => item.confirmationPolicy !== 'read_back')) {
+        const fact = {
+          factId: proposal.factId,
+          value: proposal.value,
+          certainty: proposal.certainty
+        };
+        const mapped = mapRealtimeProposalFact(currentProfile, fact);
+        const nextProfile = applyMappedRealtimeFact(currentProfile, fact, mapped);
+        const nextState = describeConversationState(nextProfile, context.config);
+        const committed = await commitRealtimeFactConfirmation(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          proposalId: proposal.id,
+          confirmationEvidenceItemId: orderedFacts[0].evidenceItemId,
+          sessionRow: currentSessionRow,
+          profile: nextProfile,
+          stage: nextState.stage
+        });
+        currentProfile = committed.profile;
+        currentSessionRow = committed.sessionRow;
+        proposal.status = 'saved_draft';
+        proposal.profileRevision = committed.revision;
+      }
+      const pending = proposals.filter((proposal) => proposal.confirmationPolicy === 'read_back');
+      const refreshed = await this.refreshJourneyState();
+      const currentPendingProposal = refreshed.state.currentPendingProposal || null;
+      return {
+        ok: true,
+        proposals,
+        savedDrafts: proposals.filter((proposal) => proposal.confirmationPolicy !== 'read_back'),
+        // The database order is authoritative. Several read-back facts from
+        // one answer can share a timestamp, so a local insertion-order choice
+        // could disagree with the stable database tie-break and make the very
+        // next confirmation fail as out of order.
+        currentProposalId: currentPendingProposal?.proposalId || null,
+        currentReadBackText: currentPendingProposal?.readBackText || null,
+        currentPendingProposal,
+        profileRevision: Number(currentSessionRow.current_profile_revision),
+        readBackRequired: pending.length > 0,
+        instruction: pending.length
+          ? 'Speak currentReadBackText verbatim, then wait for a separate consumer answer.'
+          : 'Continue with the exact next server-selected question; do not ask for a separate spoken confirmation.'
+      };
     }
     if (toolName === 'resolve_fact_confirmation') {
       this.requireExpectedRevision(args, context);
@@ -1156,6 +1525,12 @@ export class ConsumerRealtimeSession {
       if (proposal.row.evidence_item_id === args.evidenceItemId) {
         throw new ConsumerError(409, 'realtime_confirmation_evidence_reused', 'A separate finalized consumer confirmation is required.');
       }
+      const readBackText = proposal.readBackText || buildRealtimeFactReadBack(
+        proposal.factId,
+        proposal.value,
+        proposal.row.certainty,
+        context.profile.preferences?.baseCurrency || 'EUR'
+      );
       if (args.decision === 'rejected') {
         const rejected = await rejectRealtimeFactProposal(
           this.env,
@@ -1164,33 +1539,24 @@ export class ConsumerRealtimeSession {
           args.proposalId,
           args.evidenceItemId
         );
-        return { ok: true, proposal: rejected };
+        const refreshed = await this.refreshJourneyState();
+        return {
+          ok: true,
+          proposal: rejected,
+          readBackText,
+          currentPendingProposal: refreshed.state.currentPendingProposal,
+          instruction: refreshed.state.currentPendingProposal
+            ? 'Speak currentPendingProposal.readBackText verbatim.'
+            : 'Continue with the exact next server-selected question.'
+        };
       }
       if (args.decision !== 'confirmed') {
         throw new ConsumerError(400, 'realtime_confirmation_decision_invalid', 'Fact confirmation decision is invalid.');
       }
-      const paths = Object.keys(proposal.patch);
-      if (paths.length !== 1) throw new ConsumerError(409, 'realtime_fact_proposal_invalid', 'The fact proposal is invalid.');
-      const fieldPath = paths[0];
-      let nextProfile = applyProfilePatch(context.profile, proposal.patch, [], 'consumer_edit');
       const certainty = String(proposal.row.certainty || 'unknown');
-      const range = certainty === 'range' ? boundedProposalRange(proposal.value) : null;
-      if (certainty === 'range' && !range) {
-        throw new ConsumerError(409, 'realtime_fact_proposal_invalid', 'The ranged fact proposal is invalid.');
-      }
-      Object.keys(nextProfile.fieldMetadata || {})
-        .filter((path) => path === fieldPath || path.startsWith(`${fieldPath}/`))
-        .forEach((path) => {
-          nextProfile.fieldMetadata[path] = {
-            ...nextProfile.fieldMetadata[path],
-            source: 'user_statement',
-            confidence: certainty === 'exact' ? 'high' : certainty === 'unknown' ? 'low' : 'medium',
-            certainty,
-            confirmedByUser: false,
-            ...(range ? { range } : {})
-          };
-        });
-      nextProfile = normalizeHouseholdProfile(nextProfile);
+      const fact = { factId: proposal.factId, value: proposal.value, certainty };
+      const mapped = mapRealtimeProposalFact(context.profile, fact);
+      const nextProfile = applyMappedRealtimeFact(context.profile, fact, mapped);
       const nextState = describeConversationState(nextProfile, context.config);
       const committed = await commitRealtimeFactConfirmation(this.env, {
         sessionId: this.meta.sessionId,
@@ -1201,8 +1567,18 @@ export class ConsumerRealtimeSession {
         profile: nextProfile,
         stage: nextState.stage
       });
-      await this.refreshJourneyState();
-      return { ok: true, proposalId: args.proposalId, status: 'confirmed', profileRevision: committed.revision };
+      const refreshed = await this.refreshJourneyState();
+      return {
+        ok: true,
+        proposalId: args.proposalId,
+        status: 'confirmed',
+        readBackText,
+        profileRevision: committed.revision,
+        currentPendingProposal: refreshed.state.currentPendingProposal,
+        instruction: refreshed.state.currentPendingProposal
+          ? 'Speak currentPendingProposal.readBackText verbatim.'
+          : 'Continue with the exact next server-selected question.'
+      };
     }
     if (toolName === 'get_module_plan') {
       this.requireExpectedRevision(args, context);
@@ -1212,6 +1588,13 @@ export class ConsumerRealtimeSession {
         confirmedProfileRevision: context.sessionRow.confirmed_profile_revision === null
           ? null
           : Number(context.sessionRow.confirmed_profile_revision),
+        personaAssessment: context.state.personaAssessment,
+        moduleSlots: context.state.moduleSlots,
+        overrides: context.state.overrides,
+        requiresGoalPriorityQuestion: context.state.requiresGoalPriorityQuestion,
+        requiresDecisionTopicQuestion: context.state.requiresDecisionTopicQuestion,
+        requiresPersonaScan: context.state.requiresPersonaScan,
+        deferredGoalTypes: context.state.deferredGoalTypes,
         recommendations: context.state.recommendations,
         nextQuestion: context.state.nextQuestion
       };
@@ -1286,7 +1669,24 @@ export class ConsumerRealtimeSession {
       : status === 'prepared' || status === 'confirmed' || status === 'running'
         ? 'analysis'
         : 'confirmation';
-    await this.refreshJourneyState(phase);
+    const context = await this.refreshJourneyState(phase);
+    let assistantSpeech = null;
+    const speakableText = typeof body.speakableText === 'string'
+      ? body.speakableText
+      : '';
+    if (phase === 'results' && speakableText) {
+      assistantSpeech = await issueRealtimeSpeechAuthorization({
+        env: this.env,
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        kind: 'result',
+        profileRevision: Number(
+          body.profileRevision
+          || context?.sessionRow?.current_profile_revision
+        ),
+        text: speakableText
+      });
+    }
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
@@ -1298,6 +1698,7 @@ export class ConsumerRealtimeSession {
         profileRevision: Number(body.profileRevision || 0)
       }
     });
+    return { assistantSpeech };
   }
 
   async touch(force = false) {
@@ -1429,7 +1830,19 @@ export class ConsumerRealtimeSession {
       await this.state.storage.setAlarm(Date.now() + 5_000).catch(() => {});
       throw new ConsumerError(503, 'realtime_close_failed', 'The live voice session could not be closed safely.');
     }
-    const noUnmeteredWork = !this.inResponse
+    let speechUsageSettled = false;
+    try {
+      speechUsageSettled = !(await hasUnsettledRealtimeSpeechUsage(
+        this.env,
+        this.meta.sessionId,
+        this.meta.leaseId
+      ));
+    } catch (_error) {
+      // Fail closed: if the speech ledger cannot prove settlement, retain the full reservation.
+      speechUsageSettled = false;
+    }
+    const noUnmeteredWork = speechUsageSettled
+      && !this.inResponse
       && !this.pendingResponseAuthorization
       && !this.toolContinuationPending
       && this.activeToolCallCount === 0

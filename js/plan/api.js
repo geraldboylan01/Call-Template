@@ -401,6 +401,27 @@ export function deleteRealtimeVoiceCall(sessionId, leaseId, { signal } = {}) {
   });
 }
 
+export function speakRealtimeAuthorized(sessionId, leaseId, authorization, { signal } = {}) {
+  const value = authorization && typeof authorization === 'object' && !Array.isArray(authorization)
+    ? authorization
+    : {};
+  return request(`${realtimeCallPath(sessionId, leaseId)}/speech`, {
+    method: 'POST',
+    authenticated: true,
+    body: {
+      speechId: String(value.speechId || ''),
+      kind: String(value.kind || ''),
+      profileRevision: Number(value.profileRevision),
+      bindingId: String(value.bindingId || ''),
+      text: String(value.text || ''),
+      token: String(value.token || '')
+    },
+    signal,
+    timeoutMs: 45_000,
+    responseType: 'blob'
+  });
+}
+
 export function deleteSession(sessionId) {
   return request(pathForSession(sessionId), {
     method: 'DELETE',

@@ -297,7 +297,9 @@ function normalizePreferences(value) {
 
 function normalizeAssumptions(value) {
   if (!isPlainObject(value)) throw new Error('assumptions must be an object.');
-  const assumptionValues = isPlainObject(value.values) ? value.values : {};
+  const assumptionValues = isPlainObject(value.values) ? cloneJson(value.values) : {};
+  if (typeof assumptionValues.persona === 'undefined') assumptionValues.persona = {};
+  if (!isPlainObject(assumptionValues.persona)) throw new Error('assumptions.values.persona must be an object.');
   assertJsonCompatible(assumptionValues, 'assumptions.values');
   const assumptions = {
     calculationDateIso: assertIsoDate(value.calculationDateIso, 'assumptions.calculationDateIso'),

@@ -1,0 +1,26 @@
+{
+  "fixtureVersion": 1,
+  "catalogueVersion": "planeir-persona-1.0.0",
+  "cases": [
+    { "personaId": "student_early_adult", "selfDescription": "student", "modules": ["liquidity_analysis", "personal_balance_sheet", "pension_projection"] },
+    { "personaId": "graduate_young_employee", "selfDescription": "graduate", "modules": ["personal_balance_sheet", "pension_projection", "liquidity_analysis"] },
+    { "personaId": "first_time_buyer", "selfDescription": "first_time_buyer", "modules": ["personal_balance_sheet", "house_purchase", "liquidity_analysis"] },
+    { "personaId": "young_professional_delaying_purchase", "selfDescription": "young_professional", "circumstances": { "delayingPurchase": true }, "modules": ["personal_balance_sheet", "house_purchase", "pension_projection"] },
+    { "personaId": "couple_combining_finances", "selfDescription": "combining_finances", "circumstances": { "financeCombining": true, "householdStructure": "couple" }, "modules": ["personal_balance_sheet", "house_purchase", "pension_projection"] },
+    { "personaId": "new_parent_young_family", "selfDescription": "new_parent", "circumstances": { "newParent": true, "dependantCount": 1 }, "modules": ["personal_balance_sheet", "college_funding", "pension_projection"] },
+    { "personaId": "established_professional", "selfDescription": "established_professional", "modules": ["personal_balance_sheet", "retirement_goal_analysis", "pension_projection"] },
+    { "personaId": "mid_career_behind_retirement", "selfDescription": "behind_on_retirement", "circumstances": { "retirementBehind": true }, "modules": ["personal_balance_sheet", "retirement_goal_analysis", "pension_projection"] },
+    { "personaId": "self_employed_professional", "selfDescription": "self_employed", "circumstances": { "employmentContext": "self_employed", "variableIncome": true }, "modules": ["personal_balance_sheet", "pension_projection", "liquidity_analysis"] },
+    { "personaId": "company_director_owner_manager", "selfDescription": "company_director", "circumstances": { "companyDirector": true, "employmentContext": "company_director" }, "modules": ["personal_balance_sheet", "business_owner_analysis", "retirement_goal_analysis"] },
+    { "personaId": "business_owner_approaching_exit", "selfDescription": "business_exit", "circumstances": { "businessContext": "business_owner", "businessExit": true }, "modules": ["personal_balance_sheet", "business_owner_analysis", "business_relief_analysis"] },
+    { "personaId": "farmer_agricultural_business_owner", "selfDescription": "farmer", "circumstances": { "businessContext": "farmer", "agriculturalAssets": true }, "modules": ["personal_balance_sheet", "agricultural_relief", "business_relief_analysis"] },
+    { "personaId": "pre_retiree", "selfDescription": "pre_retiree", "circumstances": { "retirementStatus": "approaching_retirement", "hasPension": true }, "modules": ["personal_balance_sheet", "retirement_goal_analysis", "pension_projection"] },
+    { "personaId": "newly_retired", "selfDescription": "newly_retired", "circumstances": { "retirementStatus": "newly_retired" }, "modules": ["personal_balance_sheet", "retirement_goal_analysis", "cat_analysis"] },
+    { "personaId": "older_retiree", "selfDescription": "older_retiree", "circumstances": { "retirementStatus": "older_retiree" }, "modules": ["personal_balance_sheet", "cat_analysis", "liquidity_analysis"] },
+    { "personaId": "high_net_worth_family", "selfDescription": "high_net_worth_family", "circumstances": { "highNetWorth": true, "householdStructure": "family" }, "modules": ["personal_balance_sheet", "retirement_goal_analysis", "cat_analysis"] },
+    { "personaId": "parent_funding_education", "selfDescription": "funding_education", "circumstances": { "educationFunding": true, "dependantCount": 2 }, "modules": ["personal_balance_sheet", "college_funding", "retirement_goal_analysis"] },
+    { "personaId": "parent_grandparent_transferring_wealth", "selfDescription": "transferring_wealth", "circumstances": { "wealthTransfer": true, "parentOrGrandparent": true }, "modules": ["personal_balance_sheet", "cat_analysis", "retirement_goal_analysis"] },
+    { "personaId": "lump_sum_recipient", "selfDescription": "lump_sum_recipient", "circumstances": { "lumpSumRecipient": true }, "modules": ["personal_balance_sheet", "retirement_goal_analysis", "liquidity_analysis"] },
+    { "personaId": "immediate_financial_decision_user", "selfDescription": "immediate_decision", "circumstances": { "immediateDecision": true }, "goal": "optimise_mortgage", "modules": ["personal_balance_sheet", "mortgage_analysis", "liquidity_analysis"] }
+  ]
+}

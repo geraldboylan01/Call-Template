@@ -68,141 +68,192 @@
         </section>
       </div>
 
-      <aside
-        id="realtimeVoiceShell"
-        class="realtime-voice-shell"
+      <div
+        id="realtimeVoiceCompanion"
+        class="realtime-voice-companion"
         data-realtime-phase="off"
-        aria-labelledby="realtimeVoiceTitle"
         hidden
       >
-        <div class="realtime-voice-heading">
-          <div>
-            <p class="section-kicker">Adviser test · live voice</p>
-            <h2 id="realtimeVoiceTitle">A natural conversation, with you in control.</h2>
+        <button
+          id="realtimeVoiceLauncher"
+          class="realtime-voice-launcher"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="realtimeVoiceShell"
+        >
+          <span class="realtime-launcher-orb" aria-hidden="true">
+            <span></span>
+          </span>
+          <span class="realtime-launcher-copy">
+            <strong>Talk to Planéir</strong>
+            <span id="realtimeVoiceLauncherStatus">Private AI planning companion</span>
+          </span>
+        </button>
+
+        <div id="realtimeVoiceBackdrop" class="realtime-voice-backdrop" aria-hidden="true" hidden></div>
+
+        <aside
+          id="realtimeVoiceShell"
+          class="realtime-voice-shell"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="realtimeVoiceTitle"
+          tabindex="-1"
+          hidden
+        >
+          <div class="realtime-voice-heading">
+            <div>
+              <p class="section-kicker">Planéir · AI planning companion</p>
+              <h2 id="realtimeVoiceTitle">Let’s work out what matters most.</h2>
+            </div>
+            <button
+              id="realtimeVoiceCollapseButton"
+              class="realtime-collapse-button"
+              type="button"
+              aria-label="Minimise Talk to Planéir"
+            >
+              <span aria-hidden="true">−</span>
+            </button>
           </div>
+
           <div class="realtime-trust-badges" aria-label="Live voice safeguards">
             <span><span class="realtime-dot" aria-hidden="true"></span><span id="realtimeMicBadge">Mic off</span></span>
             <span>AI-generated voice</span>
             <span>Education, not advice</span>
           </div>
-        </div>
 
-        <div class="realtime-voice-layout">
-          <div class="realtime-orb-stage">
-            <button
-              id="realtimeVoiceStartButton"
-              class="realtime-voice-orb"
-              type="button"
-              aria-describedby="realtimeVoiceStatus realtimeVoiceTrustCopy"
-              aria-pressed="false"
-            >
-              <span class="realtime-orb-ring realtime-orb-ring-one" aria-hidden="true"></span>
-              <span class="realtime-orb-ring realtime-orb-ring-two" aria-hidden="true"></span>
-              <span class="realtime-orb-core" aria-hidden="true">
-                <span class="realtime-orb-wave"></span>
-              </span>
-              <span id="realtimeVoiceOrbLabel" class="realtime-orb-label">Start voice</span>
-            </button>
-            <p
-              id="realtimeVoiceStatus"
-              class="realtime-voice-status"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-            >
-              Voice starts only when you press Start voice.
-            </p>
-            <p id="realtimeVoiceError" class="field-error realtime-voice-error" role="alert" hidden></p>
-          </div>
-
-          <section class="realtime-caption-card" aria-labelledby="realtimeCaptionTitle">
-            <div class="realtime-caption-heading">
-              <div>
-                <span class="realtime-caption-eyebrow">Live captions</span>
-                <h3 id="realtimeCaptionTitle">Conversation transcript</h3>
-              </div>
-              <span id="realtimeVoiceLeaseTime" class="realtime-lease-time" hidden></span>
-            </div>
-            <ol
-              id="realtimeVoiceTranscriptHistory"
-              class="realtime-caption-history"
-              role="log"
-              aria-live="polite"
-              aria-relevant="additions"
-              aria-label="Finalized Live voice transcript"
-            ></ol>
-            <div class="realtime-caption-stream" aria-label="Current Live voice captions">
-              <div class="realtime-caption-row is-user">
-                <span>You · live</span>
-                <p id="realtimeVoiceUserCaption">Your words will appear here while you speak.</p>
-              </div>
-              <div class="realtime-caption-row is-assistant">
-                <span>Planéir voice · AI · live</span>
-                <p id="realtimeVoiceAssistantCaption">The written Planéir journey remains authoritative.</p>
+          <div class="realtime-voice-layout">
+            <div class="realtime-orb-stage">
+              <button
+                id="realtimeVoiceStartButton"
+                class="realtime-voice-orb"
+                type="button"
+                aria-describedby="realtimeVoiceStatus realtimeVoiceTrustCopy"
+                aria-pressed="false"
+              >
+                <span class="realtime-orb-ring realtime-orb-ring-one" aria-hidden="true"></span>
+                <span class="realtime-orb-ring realtime-orb-ring-two" aria-hidden="true"></span>
+                <span class="realtime-orb-core" aria-hidden="true">
+                  <span class="realtime-orb-wave"></span>
+                </span>
+                <span id="realtimeVoiceOrbLabel" class="realtime-orb-label">Start voice</span>
+              </button>
+              <div class="realtime-orb-copy">
+                <p
+                  id="realtimeVoiceStatus"
+                  class="realtime-voice-status"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  Voice starts only when you press Start voice.
+                </p>
+                <p id="realtimeVoiceError" class="field-error realtime-voice-error" role="alert" hidden></p>
               </div>
             </div>
-            <button id="realtimeVoiceFocusComposerButton" class="quiet-button realtime-review-button" type="button" hidden>
-              Continue by typing instead
-            </button>
-          </section>
 
-          <div class="realtime-context-grid" aria-label="Live planning context">
-            <section class="realtime-context-card realtime-budget-card">
-              <span>Voice allowance</span>
-              <strong id="realtimeVoiceBudgetValue">—</strong>
-              <meter
-                id="realtimeVoiceBudgetMeter"
-                min="0"
-                max="1"
-                value="0"
-                aria-label="Voice allowance remaining"
-              ></meter>
-            </section>
-            <section class="realtime-context-card realtime-understanding-card" aria-labelledby="realtimeFactsTitle">
-              <div class="realtime-context-heading">
-                <span id="realtimeFactsTitle">What I’ve understood</span>
-                <strong id="realtimeVoiceFactsValue">0</strong>
+            <section class="realtime-caption-card" aria-labelledby="realtimeCaptionTitle">
+              <div class="realtime-caption-heading">
+                <div>
+                  <span class="realtime-caption-eyebrow">Live captions</span>
+                  <h3 id="realtimeCaptionTitle">Your conversation</h3>
+                </div>
+                <span id="realtimeVoiceLeaseTime" class="realtime-lease-time" hidden></span>
               </div>
-              <ul id="realtimeVoiceFactsList" class="realtime-context-list">
-                <li class="is-empty">Proposed facts will appear here as we talk.</li>
-              </ul>
-            </section>
-            <section class="realtime-context-card realtime-analyses-card" aria-labelledby="realtimeModulesTitle">
-              <div class="realtime-context-heading">
-                <span id="realtimeModulesTitle">Likely analyses</span>
-                <strong id="realtimeVoiceModulesValue">0</strong>
+              <ol
+                id="realtimeVoiceTranscriptHistory"
+                class="realtime-caption-history"
+                role="log"
+                aria-live="polite"
+                aria-relevant="additions"
+                aria-label="Finalized Live voice transcript"
+              ></ol>
+              <div class="realtime-caption-stream" aria-label="Current Live voice captions">
+                <div class="realtime-caption-row is-user">
+                  <span>You · live</span>
+                  <p id="realtimeVoiceUserCaption">Your words will appear here while you speak.</p>
+                </div>
+                <div class="realtime-caption-row is-assistant">
+                  <span>Planéir · AI · live</span>
+                  <p id="realtimeVoiceAssistantCaption">I’ll ask one useful question at a time.</p>
+                </div>
               </div>
-              <ul id="realtimeVoiceModulesList" class="realtime-context-list">
-                <li class="is-empty">Relevant Planéir analyses will appear here.</li>
-              </ul>
             </section>
+
+            <div class="realtime-context-grid" aria-label="Live planning context">
+              <section class="realtime-context-card realtime-budget-card">
+                <span>Voice allowance</span>
+                <strong id="realtimeVoiceBudgetValue">—</strong>
+                <meter
+                  id="realtimeVoiceBudgetMeter"
+                  min="0"
+                  max="1"
+                  value="0"
+                  aria-label="Voice allowance remaining"
+                ></meter>
+              </section>
+
+              <details class="realtime-context-card realtime-understanding-card" open>
+                <summary class="realtime-context-heading">
+                  <span id="realtimeFactsTitle">What I’ve understood</span>
+                  <strong id="realtimeVoiceFactsValue">0</strong>
+                </summary>
+                <ul id="realtimeVoiceFactsList" class="realtime-context-list" aria-labelledby="realtimeFactsTitle">
+                  <li class="is-empty">Proposed facts will appear here as we talk.</li>
+                </ul>
+              </details>
+
+              <details class="realtime-context-card realtime-analyses-card" open>
+                <summary class="realtime-context-heading">
+                  <span id="realtimeModulesTitle">Your three likely analyses</span>
+                  <strong id="realtimeVoiceModulesValue">0/3</strong>
+                </summary>
+                <ol id="realtimeVoiceModulesList" class="realtime-context-list realtime-module-slots" aria-labelledby="realtimeModulesTitle">
+                  <li class="is-empty is-module-slot"><span class="realtime-module-slot-number">1</span><span>Listening for your goals…</span></li>
+                  <li class="is-empty is-module-slot"><span class="realtime-module-slot-number">2</span><span>Listening for your life stage…</span></li>
+                  <li class="is-empty is-module-slot"><span class="realtime-module-slot-number">3</span><span>Listening for your priorities…</span></li>
+                </ol>
+              </details>
+            </div>
           </div>
-        </div>
 
-        <div class="realtime-voice-controls" aria-label="Live voice controls">
-          <button id="realtimeVoiceMuteButton" class="secondary-button" type="button" disabled>
-            Mute microphone
-          </button>
-          <button id="realtimeVoiceEndButton" class="secondary-button realtime-end-button" type="button" disabled>
-            End voice
-          </button>
-          <button id="realtimeVoiceResumeAudioButton" class="quiet-button" type="button" hidden>
-            Play voice audio
-          </button>
-          <button id="realtimeVoiceReviewButton" class="primary-button" type="button" hidden>
-            Review and confirm
-          </button>
-        </div>
+          <div class="realtime-voice-controls" aria-label="Live voice controls">
+            <button id="realtimeVoiceMuteButton" class="secondary-button" type="button" disabled>
+              Mute
+            </button>
+            <button id="realtimeVoiceEndButton" class="secondary-button realtime-end-button" type="button" disabled>
+              End voice
+            </button>
+            <button id="realtimeVoiceFocusComposerButton" class="quiet-button" type="button">
+              Type instead
+            </button>
+            <button id="realtimeVoiceResumeAudioButton" class="quiet-button" type="button" hidden>
+              Play voice audio
+            </button>
+            <button id="realtimeVoiceReviewButton" class="primary-button" type="button" disabled>
+              Review information
+            </button>
+          </div>
 
-        <p id="realtimeVoiceTrustCopy" class="realtime-voice-trust-copy">
-          The microphone closes when you end voice, leave this step, hide the tab, or reach the server limit.
-          Completed spoken turns are processed automatically so the protected service can propose facts and
-          relevant analyses. Proposed information is not confirmed until material details are read back and
-          you complete the final review.
-          <a href="./privacy.html#optional-voice" target="_blank" rel="noopener noreferrer">Voice privacy details</a>.
-        </p>
-        <audio id="realtimeVoiceAudio" autoplay playsinline aria-hidden="true"></audio>
-      </aside>
+          <details class="realtime-companion-fallback">
+            <summary>Prefer another way?</summary>
+            <p>You can continue with the written journey or use the optional 45-second recording flow.</p>
+            <button id="realtimeVoiceBoundedFallbackButton" class="quiet-button" type="button">
+              Use 45-second voice
+            </button>
+          </details>
+
+          <p id="realtimeVoiceTrustCopy" class="realtime-voice-trust-copy">
+            Planéir is an AI companion, not a person. Realtime AI interprets completed speech; only separate,
+            code-owned Planéir copy is played aloud. The microphone closes when you end voice, hide the tab,
+            leave this journey, or reach the server limit. Proposed information is not confirmed until material
+            details are read back and you complete the final review.
+            <a href="./privacy.html#optional-voice" target="_blank" rel="noopener noreferrer">Voice privacy details</a>.
+          </p>
+          <audio id="realtimeVoiceAudio" autoplay playsinline aria-hidden="true"></audio>
+        </aside>
+      </div>
     </main>
 
     <footer class="plan-footer">
@@ -308,8 +359,8 @@
           time—so Planéir can keep the conversation moving.
         </p>
         <ul class="voice-consent-facts">
-          <li>The microphone streams securely until you mute, end voice, leave the step, hide the tab, or reach the server lease limit.</li>
-          <li>OpenAI provides live transcription and an AI-generated voice; speaking over it interrupts the response where supported.</li>
+          <li>The live conversation can continue while you move between planning steps. Streaming stops when you end voice, withdraw consent, delete or leave the journey, hide the tab, lose the private session, or reach the server lease limit; Mute pauses microphone audio without ending the lease.</li>
+          <li>OpenAI Realtime interprets completed speech and calls protected tools, but its direct audio is blocked. A separate authenticated speech service reads only exact, code-owned Planéir copy.</li>
           <li>Final spoken turns may invoke protected server-side tools that propose profile facts, follow-up questions, and relevant Planéir modules.</li>
           <li>Proposals are not confirmed facts. Planéir reads back material amounts, dates, goals, and assumptions, then asks for one final profile-and-module confirmation.</li>
           <li>Financial calculations still run only in tested Planéir code. The voice model cannot approve products or provide regulated advice.</li>
@@ -322,8 +373,8 @@
         <label class="check-row" for="realtimeVoiceConsentAcknowledgement">
           <input id="realtimeVoiceConsentAcknowledgement" name="realtimeVoiceConsentAcknowledgement" type="checkbox" required />
           <span>
-            <strong>I choose to enable automatic Live voice turns and protected planning tools</strong>
-            <small>I understand the microphone remains active while clearly marked, completed turns are processed automatically, and I will review the final proposed profile and analyses before confirming.</small>
+            <strong>I choose to enable automatic Live voice turns, protected planning tools, and code-owned AI playback</strong>
+            <small>I understand the microphone remains active while clearly marked, completed turns are interpreted automatically, and only separately authorized Planéir copy is spoken back before my final review.</small>
           </span>
         </label>
         <p class="consent-detail">

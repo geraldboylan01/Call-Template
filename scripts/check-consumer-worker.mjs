@@ -335,7 +335,12 @@ assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUME
 assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true'\)/);
 assert.match(deployWorkflowSource, /CONSUMER_AI_INTAKE_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_VOICE_ENABLED: betaEnabled \? 'true' : 'false'/);
-assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: 'false'/);
+assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: realtimeEnabled \? 'true' : 'false'/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_POLICY_VERSION: "consumer-adviser-handoff-v1"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_POLICY_URL: "https:\/\/planeir\.ie\/plan\/privacy\.html#handoff"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID: "consumer-handoff-bridge-30d-v1"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_RETENTION_DAYS: "30"/);
+assert.match(deployWorkflowSource, /bootstrap config must keep the realtime handoff disabled/);
 assert.match(deployWorkflowSource, /CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /wrangler secret list --config wrangler\.bootstrap\.generated\.toml --format json/);
 assert.match(deployWorkflowSource, /randomBytes\(32\)\.toString\('base64url'\)/);
@@ -442,22 +447,23 @@ for (const provenBoundary of [
 
 assert.match(realtimeInfrastructureProofSource, /await import\('playwright-core'\)/);
 assert.match(realtimeInfrastructureProofSource, /--use-fake-device-for-media-stream/);
-assert.match(realtimeInfrastructureProofSource, /navigator\.mediaDevices\.getUserMedia/);
-assert.match(realtimeInfrastructureProofSource, /new RTCPeerConnection\(\)/);
-assert.match(realtimeInfrastructureProofSource, /createDataChannel\('oai-events'\)/);
-assert.match(realtimeInfrastructureProofSource, /method:\s*'POST'/);
-assert.match(realtimeInfrastructureProofSource, /'Content-Type':\s*'application\/sdp'/);
-assert.match(realtimeInfrastructureProofSource, /'X-Voice-Request-Id'/);
-assert.match(realtimeInfrastructureProofSource, /created\.status !== 201/);
-assert.match(realtimeInfrastructureProofSource, /X-Realtime-Lease-Id/);
-assert.match(realtimeInfrastructureProofSource, /setRemoteDescription/);
-assert.match(realtimeInfrastructureProofSource, /proof\.sidebandConnected !== true/);
-assert.match(realtimeInfrastructureProofSource, /proof\.readOnlyToolSucceeded !== true/);
-assert.match(realtimeInfrastructureProofSource, /method:\s*'DELETE'/);
-assert.match(realtimeInfrastructureProofSource, /closedPayload\.providerHangupConfirmed !== true/);
+assert.match(realtimeInfrastructureProofSource, /controlledSpeechPromise/);
+assert.match(realtimeInfrastructureProofSource, /x-realtime-speech-id/);
+assert.match(realtimeInfrastructureProofSource, /audio\.srcObject === null/);
+assert.match(realtimeInfrastructureProofSource, /controlledSpeechPlayed/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /srcObject instanceof MediaStream/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /new RTCPeerConnection\(\)/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /createDataChannel\('oai-events'\)/);
+assert.match(realtimeInfrastructureProofSource, /await launcher\.click\(\)/);
+assert.match(realtimeInfrastructureProofSource, /await start\.click\(\)/);
+assert.match(realtimeInfrastructureProofSource, /response\.request\(\)\.method\(\) === 'POST'/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(created\.status\(\), 201/);
+assert.match(realtimeInfrastructureProofSource, /x-realtime-lease-id/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.sidebandConnected, true/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.readOnlyToolSucceeded, true/);
+assert.match(realtimeInfrastructureProofSource, /response\.request\(\)\.method\(\) === 'DELETE'/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(closedPayload\.providerHangupConfirmed, true/);
 assert.match(realtimeInfrastructureProofSource, /finally \{/);
-assert.match(realtimeInfrastructureProofSource, /peer\?\.close\(\)/);
-assert.match(realtimeInfrastructureProofSource, /track\.stop\(\)/);
 assert.match(realtimeInfrastructureProofSource, /await browser\.close\(\)/);
 assert.doesNotMatch(realtimeInfrastructureProofSource, /OPENAI_API_KEY|api\.openai\.com/);
 
@@ -621,16 +627,21 @@ const realtimeDeploymentPolicy = {
   realtimeVoice: 'marin',
   realtimeReasoningEffort: 'low',
   realtimeTranscriptionModel: 'gpt-4o-mini-transcribe',
-  realtimePromptVersion: 'consumer-realtime-orchestrator-v1',
-  realtimeToolsetVersion: 'consumer-realtime-tools-v1',
+  realtimePromptVersion: 'consumer-realtime-orchestrator-v2',
+  realtimeToolsetVersion: 'consumer-realtime-tools-v2',
   realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
-  realtimeSessionBudgetMicroEur: 2_000_000
+  realtimeSessionBudgetMicroEur: 2_000_000,
+  handoffPolicyVersion: 'consumer-adviser-handoff-v1',
+  handoffPolicyUrl: 'https://planeir.ie/plan/privacy.html#handoff',
+  handoffRetentionPolicyId: 'consumer-handoff-bridge-30d-v1',
+  handoffRetentionDays: 30
 };
 const realtimeDeploymentBootstrap = {
   ...betaDeploymentBootstrap,
   flags: {
     ...betaDeploymentBootstrap.flags,
-    consumerRealtimeVoiceEnabled: true
+    consumerRealtimeVoiceEnabled: true,
+    consumerHumanHandoffEnabled: true
   },
   realtimeVoice: {
     enabled: true,
@@ -650,6 +661,13 @@ const realtimeDeploymentBootstrap = {
     sessionBudgetMicroEur: 2_000_000,
     dispatchStopMicroEur: 1_700_000,
     safetyReserveMicroEur: 300_000
+  },
+  handoff: {
+    enabled: true,
+    policyVersion: realtimeDeploymentPolicy.handoffPolicyVersion,
+    policyUrl: realtimeDeploymentPolicy.handoffPolicyUrl,
+    retentionPolicyId: realtimeDeploymentPolicy.handoffRetentionPolicyId,
+    packageRetentionDays: realtimeDeploymentPolicy.handoffRetentionDays
   }
 };
 assert.equal(validateConsumerDeploymentBootstrap(realtimeDeploymentBootstrap, {
@@ -833,7 +851,37 @@ assert.equal(profile.fieldMetadata['/goals/0/type'].source, 'user_statement');
 assert.equal(profile.fieldMetadata['/goals/0/type'].confidence, 'high');
 assert.equal(profile.fieldMetadata['/goals/0/type'].confirmedByUser, false);
 assert.deepEqual(recommendModules(profile).slice(0, 2).map((item) => item.moduleId), ['house_purchase', 'liquidity_analysis']);
-const state = describeConversationState(profile, {
+let state = describeConversationState(profile, {
+  moduleRoutingEnabled: true,
+  allowedModules: ['house_purchase', 'liquidity_analysis']
+});
+assert.equal(state.stage, 'life_stage_scan');
+assert.equal(state.nextQuestion.fieldPaths[0], '/assumptions/values/persona/selfDescription');
+const personaPatch = extractContextBoundPatch(profile, state.nextQuestion, 'I am a first-time buyer');
+assert.deepEqual(personaPatch, {
+  '/assumptions/values/persona/selfDescription': 'first_time_buyer'
+});
+profile = applyProfilePatch(profile, personaPatch, [], 'consumer_edit');
+state = describeConversationState(profile, {
+  moduleRoutingEnabled: true,
+  allowedModules: ['house_purchase', 'liquidity_analysis']
+});
+assert.equal(state.nextQuestion.fieldPaths[0], '/assumptions/values/persona/householdStructure');
+const multiFactScanPatch = extractContextBoundPatch(
+  profile,
+  state.nextQuestion,
+  'This plan is for me and my partner. I am employed, we rent, have no children, do not own a business, and I am still working.'
+);
+assert.deepEqual(multiFactScanPatch, {
+  '/assumptions/values/persona/dependantCount': 0,
+  '/assumptions/values/persona/householdStructure': 'couple',
+  '/assumptions/values/persona/employmentContext': 'employee',
+  '/assumptions/values/persona/propertyStatus': 'renter',
+  '/assumptions/values/persona/businessContext': 'no_business_interest',
+  '/assumptions/values/persona/retirementStatus': 'working'
+});
+profile = applyProfilePatch(profile, multiFactScanPatch, [], 'consumer_edit');
+state = describeConversationState(profile, {
   moduleRoutingEnabled: true,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });

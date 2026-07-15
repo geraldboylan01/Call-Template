@@ -1,9 +1,16 @@
 import { buildQuestionPlan as buildCanonicalQuestionPlan } from '../../../js/planning/question_plan.js';
+import { resolveSemanticFact } from '../../../js/planning/semantic_facts.js';
 
 function acknowledgedMissing(profile, item) {
+  const completionFacts = profile?.assumptions?.values?.completionFacts || {};
+  const factId = resolveSemanticFact(item, { profile }).factId;
+  if (completionFacts.unknownFactIds?.[factId] === true
+    || completionFacts.rangedFactValues?.[factId]) {
+    return true;
+  }
   if (item?.importance === 'required') return false;
   const path = String(item?.fieldPath || '');
-  return Boolean(path && profile?.assumptions?.values?.completionFacts?.confirmedNonePaths?.[path]);
+  return Boolean(path && completionFacts.confirmedNonePaths?.[path]);
 }
 
 function unacknowledgedRecommendations(profile, recommendations) {

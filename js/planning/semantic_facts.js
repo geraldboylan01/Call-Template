@@ -90,7 +90,8 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
         MODULE_IDS.MORTGAGE,
         MODULE_IDS.COLLEGE_FUNDING,
         MODULE_IDS.CAT,
-        MODULE_IDS.BUSINESS_RELIEF,
+        MODULE_IDS.BUSINESS_OWNER_ANALYSIS,
+        MODULE_IDS.BUSINESS_RELIEF_ANALYSIS,
         MODULE_IDS.AGRICULTURAL_RELIEF
       ]
     }],
@@ -436,6 +437,179 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     materiality: 5,
     ambiguity: 5,
     userEffort: 4
+  }),
+  defineFact({
+    factId: 'self_description',
+    valueType: 'choice',
+    label: 'Current situation',
+    description: 'The consumer’s own plain-language description of their present situation; it is a signal, not an authoritative persona assignment.',
+    mappings: [{
+      pathPattern: '/assumptions/values/persona/selfDescription',
+      moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Which best describes your situation right now—for example first-time buyer, new parent, self-employed, company director, pre-retiree, retired, or something else?',
+    answerType: 'text', materiality: 3, ambiguity: 5, userEffort: 1
+  }),
+  defineFact({
+    factId: 'primary_goal_focus', valueType: 'choice', label: 'First planning focus',
+    description: 'The consumer-selected first goal when more than two explicit goal modules cannot fit into one three-analysis plan.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/primaryGoalType', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Which of your goals should this first three-analysis plan address first?',
+    answerType: 'text', materiality: 5, ambiguity: 5, userEffort: 1
+  }),
+  defineFact({
+    factId: 'life_stage', valueType: 'choice', label: 'Life stage',
+    description: 'A broad life-stage signal used only by deterministic persona routing.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/lifeStage', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'What life or career stage would you say you are at?',
+    answerType: 'text', materiality: 3, ambiguity: 4, userEffort: 1
+  }),
+  defineFact({
+    factId: 'household_structure', valueType: 'choice', label: 'Household structure',
+    description: 'Whether planning is for one person, a couple, or a wider family context.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/householdStructure', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.COLLEGE_FUNDING] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Is this plan for you alone, for you and a partner, or for a wider family?',
+    answerType: 'text', materiality: 4, ambiguity: 3, userEffort: 1
+  }),
+  defineFact({
+    factId: 'career_stage', valueType: 'choice', label: 'Career stage',
+    description: 'The consumer’s confirmed broad career stage.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/careerStage', moduleIds: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.RETIREMENT_ROUTER] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Are you early in your career, established, mid-career, approaching retirement, or retired?',
+    answerType: 'text', materiality: 3, ambiguity: 4, userEffort: 1
+  }),
+  defineFact({
+    factId: 'property_status', valueType: 'choice', label: 'Property status',
+    description: 'Current property position and whether a purchase is immediate or being delayed.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/propertyStatus', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.MORTGAGE] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Do you currently rent, own a home, plan to buy soon, or expect to delay buying?',
+    answerType: 'text', materiality: 4, ambiguity: 4, userEffort: 1
+  }),
+  defineFact({
+    factId: 'employment_context', valueType: 'choice', label: 'Employment context',
+    description: 'Whether income comes from employment, self-employment, contracting, a company-director role, or retirement.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/employmentContext', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.LIQUIDITY, MODULE_IDS.BUSINESS_OWNER_ANALYSIS] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Are you employed, self-employed, contracting, a company director or owner-manager, or retired?',
+    answerType: 'text', materiality: 4, ambiguity: 4, userEffort: 1
+  }),
+  defineFact({
+    factId: 'retirement_status', valueType: 'choice', label: 'Retirement status',
+    description: 'Whether the consumer is working, approaching retirement, newly retired, or later in retirement.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/retirementStatus', moduleIds: [MODULE_IDS.RETIREMENT_ROUTER, MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.CAT, MODULE_IDS.LIQUIDITY] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Are you still working, approaching retirement, newly retired, or later in retirement?',
+    answerType: 'text', materiality: 4, ambiguity: 4, userEffort: 1
+  }),
+  defineFact({
+    factId: 'dependant_count', valueType: 'number', label: 'Number of dependants',
+    description: 'A bounded count used for family and education-routing context.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/dependantCount', moduleIds: [MODULE_IDS.COLLEGE_FUNDING, MODULE_IDS.PERSONAL_BALANCE_SHEET] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'How many children or other dependants should this plan consider?',
+    answerType: 'number', materiality: 4, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'has_pension', valueType: 'boolean', label: 'Existing pension',
+    description: 'Whether at least one pension position exists; detailed pension values remain separate facts.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/hasPension', moduleIds: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.RETIREMENT_ROUTER] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Do you currently have a pension or retirement account?',
+    answerType: 'boolean', materiality: 3, ambiguity: 1, userEffort: 1
+  }),
+  defineFact({
+    factId: 'finance_combining', valueType: 'boolean', label: 'Combining finances',
+    description: 'Whether a couple is bringing finances together for this plan.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/financeCombining', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.HOUSE_PURCHASE] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Are you and a partner combining finances for this plan?',
+    answerType: 'boolean', materiality: 3, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'new_parent_status', valueType: 'boolean', label: 'New parent',
+    description: 'Whether the household has recently become a parent or is planning around a young family.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/newParent', moduleIds: [MODULE_IDS.COLLEGE_FUNDING, MODULE_IDS.PENSION_PROJECTION] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Have you recently become a parent or are you planning around a young family?',
+    answerType: 'boolean', materiality: 3, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'retirement_readiness', valueType: 'choice', label: 'Retirement readiness',
+    description: 'The consumer’s stated view of whether retirement saving is behind their goal.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/retirementReadiness', moduleIds: [MODULE_IDS.RETIREMENT_ROUTER, MODULE_IDS.PENSION_PROJECTION] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Do you feel broadly on track for retirement, behind, or unsure?',
+    answerType: 'text', materiality: 4, ambiguity: 3, userEffort: 1
+  }),
+  defineFact({
+    factId: 'business_context', valueType: 'choice', label: 'Business context',
+    description: 'A bounded business role such as self-employed, company director, owner-manager, or business owner.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/businessContext', moduleIds: [MODULE_IDS.BUSINESS_OWNER_ANALYSIS, MODULE_IDS.BUSINESS_RELIEF_ANALYSIS, MODULE_IDS.PERSONAL_BALANCE_SHEET] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Do you own a business, act as a company director or owner-manager, or have no business interest?',
+    answerType: 'text', materiality: 4, ambiguity: 4, userEffort: 1
+  }),
+  defineFact({
+    factId: 'business_exit_intent', valueType: 'boolean', label: 'Business exit intention',
+    description: 'Whether an owner is actively approaching a sale, succession, or exit.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/businessExit', moduleIds: [MODULE_IDS.BUSINESS_OWNER_ANALYSIS, MODULE_IDS.BUSINESS_RELIEF_ANALYSIS] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Are you actively approaching a sale, succession, or exit from the business?',
+    answerType: 'boolean', materiality: 4, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'agricultural_assets', valueType: 'boolean', label: 'Agricultural assets',
+    description: 'Whether the household owns or operates a farm or other agricultural assets.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/agriculturalAssets', moduleIds: [MODULE_IDS.AGRICULTURAL_RELIEF, MODULE_IDS.BUSINESS_RELIEF_ANALYSIS, MODULE_IDS.PERSONAL_BALANCE_SHEET] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Do you own or operate a farm or other agricultural assets?',
+    answerType: 'boolean', materiality: 4, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'education_funding_intent', valueType: 'boolean', label: 'Education funding goal',
+    description: 'Whether education funding is an explicit planning priority.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/educationFunding', moduleIds: [MODULE_IDS.COLLEGE_FUNDING] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Is funding a child’s or dependant’s education an explicit priority?',
+    answerType: 'boolean', materiality: 4, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'wealth_transfer_intent', valueType: 'boolean', label: 'Wealth transfer intention',
+    description: 'Whether gifts, inheritance, or transfer planning is an explicit priority.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/wealthTransfer', moduleIds: [MODULE_IDS.CAT, MODULE_IDS.RETIREMENT_ROUTER] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Are gifts, inheritance, or transferring wealth an explicit planning priority?',
+    answerType: 'boolean', materiality: 4, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'high_net_worth_context', valueType: 'boolean', label: 'Complex family wealth context',
+    description: 'An explicit consumer signal that family wealth and legacy planning are material; no threshold is inferred.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/highNetWorth', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.RETIREMENT_ROUTER, MODULE_IDS.CAT] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Would you describe family wealth and legacy planning as a material part of this plan?',
+    answerType: 'boolean', materiality: 4, ambiguity: 3, userEffort: 1
+  }),
+  defineFact({
+    factId: 'lump_sum_status', valueType: 'boolean', label: 'Lump-sum event',
+    description: 'Whether a recent or expected lump sum is driving the planning request.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/lumpSumRecipient', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.RETIREMENT_ROUTER, MODULE_IDS.LIQUIDITY] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'Is a recent or expected lump sum driving this planning request?',
+    answerType: 'boolean', materiality: 4, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'immediate_decision_context', valueType: 'boolean', label: 'Immediate decision',
+    description: 'Whether the consumer has a time-sensitive financial decision to assess.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/immediateDecision', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.LIQUIDITY] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Is there a particular financial decision you need to address first?',
+    answerType: 'boolean', materiality: 4, ambiguity: 3, userEffort: 1
   })
 ]);
 

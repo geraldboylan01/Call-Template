@@ -1,5 +1,6 @@
 import { ConsumerError, notFound } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
+import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import {
   decryptJson,
   encryptJson,
@@ -492,6 +493,227 @@ export function estimateRealtimeUsageMicroEur(tokens, rates) {
   ), 0);
 }
 
+export function estimateRealtimeSpeechMicroEur(characterCount, rateMicroEurPerMillionCharacters) {
+  const characters = safeInteger(characterCount);
+  const rate = safeInteger(rateMicroEurPerMillionCharacters);
+  if (characters < 1 || characters > 2_400 || rate < 1) {
+    throw new ConsumerError(400, 'realtime_speech_cost_invalid', 'The approved spoken response could not be priced safely.');
+  }
+  return Math.ceil((characters * rate) / 1_000_000);
+}
+
+async function refreshRealtimeLeaseEstimatedCost(env, sessionId, leaseId) {
+  const timestamp = nowIso();
+  return db(env).prepare(`
+    UPDATE consumer_realtime_sessions
+    SET estimated_cost_eur_micros =
+          COALESCE((
+            SELECT SUM(estimated_cost_eur_micros)
+            FROM consumer_realtime_usage
+            WHERE realtime_session_id = ?
+          ), 0)
+          + COALESCE((
+            SELECT SUM(estimated_cost_eur_micros)
+            FROM consumer_realtime_speech_usage
+            WHERE realtime_session_id = ? AND status <> 'not_sent'
+          ), 0),
+        last_active_at = ?
+    WHERE id = ? AND session_id = ? AND status IN ('active', 'closing')
+    RETURNING *
+  `).bind(leaseId, leaseId, timestamp, leaseId, sessionId).first();
+}
+
+async function realtimeSpeechHashes(env, speechId, bindingId, text) {
+  return Promise.all([
+    hmacSha256Base64Url(
+      env.CONSUMER_RATE_LIMIT_HASH_KEY,
+      `consumer/realtime/speech/id/v1/${String(speechId)}`
+    ),
+    hmacSha256Base64Url(
+      env.CONSUMER_RATE_LIMIT_HASH_KEY,
+      `consumer/realtime/speech/binding/v1/${String(bindingId)}`
+    ),
+    sha256Base64Url(String(text))
+  ]);
+}
+
+export async function reserveRealtimeSpeechUsage(env, request) {
+  const [speechHash, bindingHash, contentHash] = await realtimeSpeechHashes(
+    env,
+    request.speechId,
+    request.bindingId,
+    request.text
+  );
+  const estimatedCost = estimateRealtimeSpeechMicroEur(
+    String(request.text).length,
+    request.rateMicroEurPerMillionCharacters
+  );
+  const id = randomId('realtime_speech_usage');
+  const timestamp = nowIso();
+  await db(env).prepare(`
+    INSERT OR IGNORE INTO consumer_realtime_speech_usage (
+      id, realtime_session_id, session_id, speech_id_hash_b64u,
+      binding_id_hash_b64u, content_hash_b64u, speech_kind,
+      profile_revision, character_count, estimated_cost_eur_micros,
+      pricing_version, status, provider_request_id_hash_b64u,
+      error_code, created_at, dispatched_at, completed_at
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved', NULL, NULL, ?, NULL, NULL
+    WHERE EXISTS (
+      SELECT 1
+      FROM consumer_realtime_sessions AS realtime
+      INNER JOIN consumer_sessions AS sessions ON sessions.id = realtime.session_id
+      INNER JOIN consumer_realtime_consents AS consent ON consent.session_id = sessions.id
+      WHERE realtime.id = ? AND realtime.session_id = ? AND realtime.status = 'active'
+        AND sessions.deleted_at IS NULL AND sessions.status IN ('active', 'completed')
+        AND sessions.current_profile_revision = ?
+        AND realtime.latest_profile_revision = ?
+        AND consent.granted = 1 AND consent.notice_id = ?
+        AND consent.data_policy_id = ? AND consent.policy_version = ?
+        AND consent.privacy_notice_url = ? AND consent.withdrawn_at IS NULL
+        AND (
+          COALESCE((
+            SELECT SUM(estimated_cost_eur_micros)
+            FROM consumer_realtime_usage
+            WHERE realtime_session_id = realtime.id
+          ), 0)
+          + COALESCE((
+            SELECT SUM(estimated_cost_eur_micros)
+            FROM consumer_realtime_speech_usage
+            WHERE realtime_session_id = realtime.id AND status <> 'not_sent'
+          ), 0)
+          + ?
+        ) <= realtime.dispatch_stop_eur_micros
+    )
+  `).bind(
+    id,
+    request.leaseId,
+    request.sessionId,
+    speechHash,
+    bindingHash,
+    contentHash,
+    request.kind,
+    request.profileRevision,
+    String(request.text).length,
+    estimatedCost,
+    request.pricingVersion,
+    timestamp,
+    request.leaseId,
+    request.sessionId,
+    request.profileRevision,
+    request.profileRevision,
+    request.noticeId,
+    request.dataPolicyId,
+    request.policyVersion,
+    request.privacyNoticeUrl,
+    estimatedCost
+  ).run();
+  const row = await db(env).prepare(`
+    SELECT * FROM consumer_realtime_speech_usage
+    WHERE realtime_session_id = ? AND speech_id_hash_b64u = ?
+    LIMIT 1
+  `).bind(request.leaseId, speechHash).first();
+  if (!row) return { row: null, existing: false, denied: true, estimatedCostMicroEur: estimatedCost };
+  if (row.id !== id) {
+    if (row.session_id !== request.sessionId
+      || row.binding_id_hash_b64u !== bindingHash
+      || row.content_hash_b64u !== contentHash
+      || row.speech_kind !== request.kind
+      || Number(row.profile_revision) !== Number(request.profileRevision)
+      || Number(row.estimated_cost_eur_micros) !== estimatedCost
+      || row.pricing_version !== request.pricingVersion) {
+      throw new ConsumerError(409, 'realtime_speech_replay_conflict', 'The approved speech reference was reused with different content.');
+    }
+    return { row, existing: true, denied: false, estimatedCostMicroEur: estimatedCost };
+  }
+  await refreshRealtimeLeaseEstimatedCost(env, request.sessionId, request.leaseId);
+  return { row, existing: false, denied: false, estimatedCostMicroEur: estimatedCost };
+}
+
+export async function markRealtimeSpeechDispatched(env, request) {
+  const timestamp = nowIso();
+  const row = await db(env).prepare(`
+    UPDATE consumer_realtime_speech_usage
+    SET status = 'dispatched', dispatched_at = ?
+    WHERE id = ? AND realtime_session_id = ? AND session_id = ? AND status = 'reserved'
+      AND EXISTS (
+        SELECT 1
+        FROM consumer_realtime_sessions AS realtime
+        INNER JOIN consumer_sessions AS sessions ON sessions.id = realtime.session_id
+        INNER JOIN consumer_realtime_consents AS consent ON consent.session_id = sessions.id
+        WHERE realtime.id = consumer_realtime_speech_usage.realtime_session_id
+          AND realtime.session_id = consumer_realtime_speech_usage.session_id
+          AND realtime.status = 'active'
+          AND sessions.deleted_at IS NULL AND sessions.status IN ('active', 'completed')
+          AND sessions.current_profile_revision = consumer_realtime_speech_usage.profile_revision
+          AND realtime.latest_profile_revision = consumer_realtime_speech_usage.profile_revision
+          AND consent.granted = 1 AND consent.notice_id = ?
+          AND consent.data_policy_id = ? AND consent.policy_version = ?
+          AND consent.privacy_notice_url = ? AND consent.withdrawn_at IS NULL
+          AND realtime.estimated_cost_eur_micros <= realtime.dispatch_stop_eur_micros
+      )
+    RETURNING *
+  `).bind(
+    timestamp,
+    request.usageId,
+    request.leaseId,
+    request.sessionId,
+    request.noticeId,
+    request.dataPolicyId,
+    request.policyVersion,
+    request.privacyNoticeUrl
+  ).first();
+  if (!row) {
+    throw new ConsumerError(409, 'realtime_speech_dispatch_denied', 'The live voice lease changed before approved speech could be generated.');
+  }
+  return row;
+}
+
+export async function finalizeRealtimeSpeechUsage(env, request) {
+  const status = request.status === 'known'
+    ? 'known'
+    : request.status === 'not_sent'
+      ? 'not_sent'
+      : 'unknown';
+  const timestamp = nowIso();
+  const providerRequestHash = request.providerRequestId
+    ? await sha256Base64Url(String(request.providerRequestId))
+    : null;
+  const errorCode = typeof request.errorCode === 'string'
+    && /^[A-Za-z0-9._:-]{1,120}$/.test(request.errorCode)
+    ? request.errorCode
+    : null;
+  const requiredPriorStatus = status === 'not_sent' ? 'reserved' : 'dispatched';
+  const row = await db(env).prepare(`
+    UPDATE consumer_realtime_speech_usage
+    SET status = ?, provider_request_id_hash_b64u = ?, error_code = ?, completed_at = ?
+    WHERE id = ? AND realtime_session_id = ? AND session_id = ? AND status = ?
+    RETURNING *
+  `).bind(
+    status,
+    providerRequestHash,
+    errorCode,
+    timestamp,
+    request.usageId,
+    request.leaseId,
+    request.sessionId,
+    requiredPriorStatus
+  ).first();
+  await refreshRealtimeLeaseEstimatedCost(env, request.sessionId, request.leaseId);
+  return row;
+}
+
+export async function hasUnsettledRealtimeSpeechUsage(env, sessionId, leaseId) {
+  const row = await db(env).prepare(`
+    SELECT 1 AS present
+    FROM consumer_realtime_speech_usage
+    WHERE session_id = ? AND realtime_session_id = ?
+      AND status IN ('reserved', 'dispatched', 'unknown')
+    LIMIT 1
+  `).bind(sessionId, leaseId).first();
+  return Number(row?.present || 0) === 1;
+}
+
 export async function recordRealtimeUsage(env, request) {
   const responseHash = await sha256Base64Url(String(request.providerResponseId));
   const tokens = {
@@ -543,10 +765,13 @@ export async function recordRealtimeUsage(env, request) {
           estimated_cost_eur_micros = COALESCE((
             SELECT SUM(estimated_cost_eur_micros) FROM consumer_realtime_usage
             WHERE realtime_session_id = ?
+          ), 0) + COALESCE((
+            SELECT SUM(estimated_cost_eur_micros) FROM consumer_realtime_speech_usage
+            WHERE realtime_session_id = ? AND status <> 'not_sent'
           ), 0),
           last_active_at = ?
       WHERE id = ? AND session_id = ? AND status IN ('active', 'closing')
-    `).bind(request.leaseId, request.leaseId, timestamp, request.leaseId, request.sessionId)
+    `).bind(request.leaseId, request.leaseId, request.leaseId, timestamp, request.leaseId, request.sessionId)
   ]);
   const row = await getRealtimeLease(env, request.sessionId, request.leaseId);
   return {
@@ -751,10 +976,15 @@ export async function completeRealtimeToolAttempt(env, request) {
 export async function createRealtimeFactProposal(env, request) {
   const id = randomId('fact_proposal');
   const patchHash = await sha256Base64Url(stableStringify(request.patch));
-  const [valueEncrypted, patchEncrypted] = await Promise.all([
+  const [factStorageId, valueEncrypted, patchEncrypted] = await Promise.all([
+    realtimeFactStorageId(env, request.factId),
     encryptJson(
       env,
-      request.value,
+      {
+        factId: request.factId,
+        value: request.value,
+        readBackText: typeof request.readBackText === 'string' ? request.readBackText : null
+      },
       `consumer/realtime/fact-proposal/${request.sessionId}/${request.leaseId}/${id}/value`
     ),
     encryptJson(
@@ -776,7 +1006,7 @@ export async function createRealtimeFactProposal(env, request) {
     request.leaseId,
     request.sessionId,
     request.toolAttemptId,
-    request.factId,
+    factStorageId,
     request.baseProfileRevision,
     valueEncrypted,
     patchEncrypted,
@@ -787,6 +1017,29 @@ export async function createRealtimeFactProposal(env, request) {
     nowIso()
   ).first();
   return { id: row.id, status: row.status, baseProfileRevision: Number(row.base_profile_revision) };
+}
+
+async function realtimeFactStorageId(env, factId) {
+  const digest = await hmacSha256Base64Url(
+    env.CONSUMER_RATE_LIMIT_HASH_KEY,
+    `consumer/realtime/fact-id/v2/${String(factId || '')}`
+  );
+  return `fact_h_${digest}`;
+}
+
+function unpackRealtimeFactValue(row, decrypted) {
+  if (decrypted && typeof decrypted === 'object' && !Array.isArray(decrypted)
+    && typeof decrypted.factId === 'string' && Object.hasOwn(decrypted, 'value')) {
+    return {
+      factId: decrypted.factId,
+      value: decrypted.value,
+      readBackText: typeof decrypted.readBackText === 'string' ? decrypted.readBackText : null
+    };
+  }
+  // Compatibility is limited to rows created before the encrypted semantic-ID
+  // migration. The migration terminalizes pending legacy rows before scrubbing
+  // their plaintext ID, so this branch is never used for a confirmable change.
+  return { factId: row.fact_id, value: decrypted, readBackText: null };
 }
 
 export async function listRealtimeFactProposalSummaries(env, sessionId, leaseId) {
@@ -801,15 +1054,17 @@ export async function listRealtimeFactProposalSummaries(env, sessionId, leaseId)
   `).bind(sessionId, leaseId).all();
   const summaries = [];
   for (const row of result.results || []) {
-    const value = await decryptJson(
+    const decrypted = await decryptJson(
       env,
       row.value_encrypted,
       `consumer/realtime/fact-proposal/${sessionId}/${row.realtime_session_id}/${row.id}/value`
     );
+    const fact = unpackRealtimeFactValue(row, decrypted);
     summaries.push({
       proposalId: row.id,
-      factId: row.fact_id,
-      value,
+      factId: fact.factId,
+      value: fact.value,
+      readBackText: fact.readBackText,
       certainty: row.certainty,
       status: row.status,
       revision: Number(row.base_profile_revision)
@@ -837,13 +1092,16 @@ export async function getPendingRealtimeFactProposal(env, sessionId, leaseId, pr
     LIMIT 1
   `).bind(proposalId, sessionId, leaseId).first();
   if (!row) throw notFound('This proposed fact change could not be found.');
-  const [value, patch] = await Promise.all([
+  const [decrypted, patch] = await Promise.all([
     decryptJson(env, row.value_encrypted, `consumer/realtime/fact-proposal/${sessionId}/${leaseId}/${row.id}/value`),
     decryptJson(env, row.patch_encrypted, `consumer/realtime/fact-proposal/${sessionId}/${leaseId}/${row.id}/patch`)
   ]);
+  const fact = unpackRealtimeFactValue(row, decrypted);
   return {
     row,
-    value,
+    factId: fact.factId,
+    value: fact.value,
+    readBackText: fact.readBackText,
     patch,
     pendingCount: Number(row.pending_count || 0),
     currentPendingId: row.current_pending_id || null
@@ -851,6 +1109,10 @@ export async function getPendingRealtimeFactProposal(env, sessionId, leaseId, pr
 }
 
 export async function rejectRealtimeFactProposal(env, sessionId, leaseId, proposalId, evidenceItemId) {
+  const [primaryGoalStorageId, targetHomePriceStorageId] = await Promise.all([
+    realtimeFactStorageId(env, 'primary_goal'),
+    realtimeFactStorageId(env, 'target_home_price')
+  ]);
   const row = await db(env).prepare(`
     UPDATE consumer_realtime_fact_proposals
     SET status = 'rejected', confirmation_evidence_item_id = ?, reviewed_at = ?
@@ -859,13 +1121,13 @@ export async function rejectRealtimeFactProposal(env, sessionId, leaseId, propos
     RETURNING id, fact_id, status, base_profile_revision
   `).bind(evidenceItemId, nowIso(), proposalId, sessionId, leaseId).first();
   if (!row) throw notFound('This proposed fact change could not be found.');
-  if (row.fact_id === 'primary_goal') {
+  if (row.fact_id === primaryGoalStorageId) {
     await db(env).prepare(`
       UPDATE consumer_realtime_fact_proposals
       SET status = 'conflicted', confirmation_evidence_item_id = ?, reviewed_at = ?
       WHERE session_id = ? AND realtime_session_id = ?
-        AND status = 'proposed' AND fact_id = 'target_home_price'
-    `).bind(evidenceItemId, nowIso(), sessionId, leaseId).run();
+        AND status = 'proposed' AND fact_id = ?
+    `).bind(evidenceItemId, nowIso(), sessionId, leaseId, targetHomePriceStorageId).run();
   }
   return { id: row.id, status: row.status, baseProfileRevision: Number(row.base_profile_revision) };
 }
@@ -988,7 +1250,12 @@ export async function prepareRealtimeAnalysisPlan(env, request) {
   ]);
   const input = {
     moduleIds: request.moduleIds || null,
-    scenarioOverrides: request.scenarioOverrides || {}
+    scenarioOverrides: request.scenarioOverrides || {},
+    personaAssessment: request.personaAssessment || null,
+    moduleSlots: request.moduleSlots || [],
+    overrides: request.overrides || [],
+    requiresGoalPriorityQuestion: request.requiresGoalPriorityQuestion === true,
+    deferredGoalTypes: request.deferredGoalTypes || []
   };
   const inputHash = await sha256Base64Url(stableStringify(input));
   const inputEncrypted = await encryptJson(
@@ -1014,7 +1281,11 @@ export async function prepareRealtimeAnalysisPlan(env, request) {
       nonceHash,
       idempotencyHash,
       request.profileRevision,
-      JSON.stringify(request.moduleIds || []),
+      // Keep the legacy NOT NULL column deliberately opaque. The authenticated
+      // display contract and the execution contract are both reconstructed
+      // from the same encrypted snapshot below, so there is no sensitive
+      // plaintext index and no second source of truth to drift from execution.
+      JSON.stringify({ schemaVersion: 2, encryptedInput: true }),
       inputEncrypted,
       inputHash,
       timestamp
@@ -1079,7 +1350,12 @@ export async function confirmRealtimeAnalysisPlan(env, request) {
     const result = row.result_encrypted
       ? await decryptJson(env, row.result_encrypted, `consumer/realtime/analysis-plan/${request.sessionId}/${row.id}/result`)
       : null;
-    return { row, input: null, result, idempotentReplay: true };
+    const input = await decryptJson(
+      env,
+      row.input_encrypted,
+      `consumer/realtime/analysis-plan/${request.sessionId}/${row.id}/input`
+    );
+    return { row, input, result, idempotentReplay: true };
   }
   if (row.status !== 'prepared') {
     throw new ConsumerError(409, 'analysis_plan_state_conflict', 'The analysis plan is already being processed or is no longer current.');
@@ -1157,27 +1433,78 @@ export async function getRealtimeAnalysisPlanResult(env, sessionId, planId = nul
   return { row, result };
 }
 
-export function toPublicRealtimeAnalysisPlan(row) {
+function toPublicModuleSlot(slot) {
+  if (!slot || typeof slot !== 'object') return null;
+  const slotNumber = Number(slot.slot);
+  if (![1, 2, 3].includes(slotNumber) || typeof slot.moduleId !== 'string') return null;
+  return {
+    slot: slotNumber,
+    moduleId: slot.moduleId,
+    source: typeof slot.source === 'string' ? slot.source : 'persona_default',
+    availability: typeof slot.availability === 'string' ? slot.availability : 'unsupported',
+    reasons: Array.isArray(slot.reasons)
+      ? slot.reasons.filter((value) => typeof value === 'string').slice(0, 8)
+      : [],
+    missingFactIds: Array.isArray(slot.missingFactIds)
+      ? slot.missingFactIds.filter((value) => typeof value === 'string').slice(0, 24)
+      : []
+  };
+}
+
+function toPublicPlanOverride(override) {
+  if (!override || typeof override !== 'object') return null;
+  return {
+    ruleId: typeof override.ruleId === 'string' ? override.ruleId : null,
+    goalType: typeof override.goalType === 'string' ? override.goalType : null,
+    replacedModuleId: typeof override.replacedModuleId === 'string' ? override.replacedModuleId : null,
+    moduleId: typeof override.moduleId === 'string' ? override.moduleId : null
+  };
+}
+
+export function toPublicRealtimeAnalysisPlan(row, decryptedInput = null) {
   if (!row) return null;
-  let moduleIds = [];
-  try {
-    const parsed = JSON.parse(row.module_ids_json || '[]');
-    if (Array.isArray(parsed)) moduleIds = parsed.filter((item) => typeof item === 'string').slice(0, 12);
-  } catch (_error) {
-    moduleIds = [];
-  }
+  const input = decryptedInput && typeof decryptedInput === 'object' ? decryptedInput : {};
+  const moduleIds = Array.isArray(input.moduleIds)
+    ? input.moduleIds.filter((item) => typeof item === 'string').slice(0, 12)
+    : [];
+  const personaAssessment = toPublicPersonaAssessment(input.personaAssessment);
+  const moduleSlots = Array.isArray(input.moduleSlots)
+    ? input.moduleSlots.map(toPublicModuleSlot).filter(Boolean).slice(0, 3)
+    : [];
+  const overrides = Array.isArray(input.overrides)
+    ? input.overrides.map(toPublicPlanOverride).filter(Boolean).slice(0, 6)
+    : [];
+  const requiresGoalPriorityQuestion = input.requiresGoalPriorityQuestion === true;
+  const deferredGoalTypes = Array.isArray(input.deferredGoalTypes)
+    ? input.deferredGoalTypes.filter((item) => typeof item === 'string').slice(0, 8)
+    : [];
   return {
     planId: row.id,
     leaseId: row.realtime_session_id || null,
     profileRevision: Number(row.profile_revision),
     status: row.status,
     moduleIds,
+    personaAssessment,
+    moduleSlots,
+    overrides,
+    requiresGoalPriorityQuestion,
+    deferredGoalTypes,
     analysisRunId: row.analysis_run_id || null,
     errorCode: row.error_code || null,
     createdAt: row.created_at,
     confirmedAt: row.confirmed_at || null,
     completedAt: row.completed_at || null
   };
+}
+
+export async function getPublicRealtimeAnalysisPlan(env, row) {
+  if (!row) return null;
+  const input = await decryptJson(
+    env,
+    row.input_encrypted,
+    `consumer/realtime/analysis-plan/${row.session_id}/${row.id}/input`
+  );
+  return toPublicRealtimeAnalysisPlan(row, input);
 }
 
 export async function getCurrentRealtimeAnalysisPlan(env, sessionId) {

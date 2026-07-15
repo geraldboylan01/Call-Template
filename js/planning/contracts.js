@@ -4,7 +4,7 @@
  */
 
 export const HOUSEHOLD_PROFILE_SCHEMA_VERSION = 1;
-export const CONSUMER_PLANNING_RULES_VERSION = 'consumer-routing-1.0.0';
+export const CONSUMER_PLANNING_RULES_VERSION = 'consumer-routing-2.0.0';
 export const CONSUMER_CALCULATION_VERSION = 'consumer-calculation-1.0.0';
 
 export const CURRENCY_CODES = Object.freeze(['EUR', 'GBP', 'USD']);
@@ -84,7 +84,9 @@ export const MODULE_IDS = Object.freeze({
   SCENARIO_ANALYSIS: 'scenario_analysis',
   PERSONAL_BALANCE_SHEET: 'personal_balance_sheet',
   CAT: 'cat_analysis',
+  BUSINESS_OWNER_ANALYSIS: 'business_owner_analysis',
+  BUSINESS_RELIEF_ANALYSIS: 'business_relief_analysis',
+  // Backward-compatible id used by existing adviser modules and saved plans.
   BUSINESS_RELIEF: 'business_owner_relief',
   AGRICULTURAL_RELIEF: 'agricultural_relief'
 });
-

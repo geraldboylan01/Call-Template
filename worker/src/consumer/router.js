@@ -2,6 +2,7 @@ import { getAvailableConsumerModules, runStoredConsumerAnalysis } from './analys
 import { getConsumerConfig, publicConsumerConfig } from './config.js';
 import { constantTimeEqual, createConsumerCredential } from './crypto.js';
 import { describeConversationState, processTurn } from './conversation.js';
+import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
 import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
@@ -37,6 +38,7 @@ import {
   getActiveRealtimeLease,
   getRealtimeControlPlaneProof,
   getCurrentRealtimeAnalysisPlan,
+  getPublicRealtimeAnalysisPlan,
   getLatestRealtimeLease,
   getRealtimeConsent,
   listRealtimeFactProposalSummaries,
@@ -51,13 +53,17 @@ import {
   toPublicRealtimeConsent,
   toPublicRealtimeLease
 } from './realtime_repository.js';
-import { buildConfirmedRealtimeFactSummary } from './realtime_fact_mapper.js';
+import {
+  buildConfirmedRealtimeFactSummary,
+  buildRealtimeFactReadBack
+} from './realtime_fact_mapper.js';
 import { terminateActiveRealtimeSession, terminateRealtimeLease } from './realtime_lifecycle.js';
 import {
   createOpenAiRealtimeCall,
   hangupOpenAiRealtimeCall,
   readRealtimeSdpOffer
 } from './realtime_provider.js';
+import { renderAuthorizedRealtimeSpeech } from './realtime_speech.js';
 import { requireConsumerSession } from './session_auth.js';
 import {
   getVoiceConsent,
@@ -164,8 +170,13 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeRequested === true
     && config?.realtimeConfigured === true
     && config?.realtimeEnabled === true
-    && config?.handoffRequested !== true
-    && config?.handoffEnabled !== true
+    && config?.handoffRequested === true
+    && config?.handoffConfigured === true
+    && config?.handoffEnabled === true
+    && config?.handoffPolicyVersion === 'consumer-adviser-handoff-v1'
+    && config?.handoffPolicyUrl === 'https://planeir.ie/plan/privacy.html#handoff'
+    && config?.handoffRetentionPolicyId === 'consumer-handoff-bridge-30d-v1'
+    && config?.handoffRetentionDays === 30
     && config?.publicAccessEnabled !== true
     && config?.inviteAccessConfigured === true
     && config?.cohort === 'adviser_test'
@@ -175,9 +186,12 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeVoice === 'marin'
     && config?.realtimeReasoningEffort === 'low'
     && config?.realtimeTranscriptionModel === 'gpt-4o-mini-transcribe'
-    && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v1'
-    && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v1'
+    && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v2'
+    && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v2'
     && config?.realtimePricingVersion === 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'
+    && config?.realtimeSpeechModel === 'tts-1-hd'
+    && config?.realtimeSpeechVoice === 'nova'
+    && config?.realtimeSpeechRateMicroEurPerMillionCharacters === 30_000_000
     && config?.realtimeSessionBudgetMicroEur === 2_000_000
     && config?.realtimeDailyBudgetMicroEur === 20_000_000
     && config?.realtimeDispatchStopMicroEur === 1_700_000
@@ -242,6 +256,15 @@ async function readJson(request, { optional = false } = {}) {
 function routeMatch(pathname) {
   if (pathname === '/api/consumer/bootstrap') return { kind: 'bootstrap', methods: ['GET'] };
   if (pathname === '/api/consumer/sessions') return { kind: 'create', methods: ['POST'] };
+  const realtimeSpeechMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/calls\/(rt_[A-Za-z0-9_-]{20,80})\/speech$/.exec(pathname);
+  if (realtimeSpeechMatch) {
+    return {
+      kind: 'realtime_speech',
+      sessionId: realtimeSpeechMatch[1],
+      leaseId: realtimeSpeechMatch[2],
+      methods: ['POST']
+    };
+  }
   const realtimeLeaseMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/calls\/(rt_[A-Za-z0-9_-]{20,80})$/.exec(pathname);
   if (realtimeLeaseMatch) {
     return {
@@ -365,13 +388,19 @@ function questionText(question) {
   return String(question.prompt || question.question || question.text || question.message || '').trim();
 }
 
-function realtimePlanModuleIds(profile, config, requestedModuleIds) {
-  if (Array.isArray(requestedModuleIds) && requestedModuleIds.length) return requestedModuleIds;
-  return describeConversationState(profile, config).recommendations
-    .filter((item) => item?.status !== 'excluded' && config.allowedModules.includes(item?.moduleId))
-    .map((item) => item.moduleId)
-    .filter((item, index, values) => values.indexOf(item) === index)
-    .slice(0, 12);
+function publicConversationState(state) {
+  return {
+    ...state,
+    personaAssessment: toPublicPersonaAssessment(state?.personaAssessment)
+  };
+}
+
+function realtimePlanModuleIds(profile, config, _requestedModuleIds) {
+  const planningState = describeConversationState(profile, config);
+  return (planningState.moduleSlots || [])
+    .filter((slot) => ['ready', 'needs_facts'].includes(slot.availability))
+    .map((slot) => slot.moduleId)
+    .filter((moduleId) => config.allowedModules.includes(moduleId));
 }
 
 async function rateLimit(env, scope, key, windowMs, maximum) {
@@ -560,6 +589,36 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }, 200, methods);
     }
 
+    if (route.kind === 'realtime_speech') {
+      assertProcessingAvailability(config);
+      assertRealtimeAvailability(config);
+      if (typeof respondBinary !== 'function') {
+        throw new ConsumerError(503, 'realtime_speech_unavailable', 'Approved voice playback is not available. Continue with the visible caption.');
+      }
+      await rateLimit(env, 'consumer-realtime-speech-session', sessionRow.id, 60 * 1000, 30);
+      const result = await renderAuthorizedRealtimeSpeech({
+        env,
+        config,
+        sessionRow,
+        leaseId: route.leaseId,
+        body: await readJson(request)
+      });
+      return respondBinary(result.audio, 200, methods, {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': String(result.audio.byteLength),
+        'X-Realtime-Speech-Id': result.speechId,
+        'X-Realtime-Voice-Limit-Micro-Eur': String(result.budget.limitMicroEur),
+        'X-Realtime-Voice-Spent-Micro-Eur': String(result.budget.spentMicroEur),
+        'X-Realtime-Voice-Remaining-Micro-Eur': String(result.budget.remainingMicroEur),
+        'Access-Control-Expose-Headers': [
+          'X-Realtime-Speech-Id',
+          'X-Realtime-Voice-Limit-Micro-Eur',
+          'X-Realtime-Voice-Spent-Micro-Eur',
+          'X-Realtime-Voice-Remaining-Micro-Eur'
+        ].join(', ')
+      });
+    }
+
     if (route.kind === 'realtime_lease') {
       let realtimeLease = await getRealtimeLease(env, sessionRow.id, route.leaseId);
       if (!realtimeLease) throw notFound('This live voice lease could not be found.');
@@ -597,6 +656,15 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         listRealtimeFactProposalSummaries(env, sessionRow.id, route.leaseId)
       ]);
       const planningState = describeConversationState(currentProfile, config);
+      const pendingFacts = proposedFacts.map((proposal) => ({
+        ...proposal,
+        readBackText: proposal.readBackText || buildRealtimeFactReadBack(
+          proposal.factId,
+          proposal.value,
+          proposal.certainty,
+          currentProfile.preferences?.baseCurrency || 'EUR'
+        )
+      }));
       const nextQuestion = planningState.nextQuestion
         ? {
             questionId: planningState.nextQuestion.questionId || null,
@@ -621,12 +689,20 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
             : Number(sessionRow.confirmed_profile_revision),
           stage: planningState.stage,
           nextQuestion,
+          personaAssessment: toPublicPersonaAssessment(planningState.personaAssessment),
+          moduleSlots: (planningState.moduleSlots || []).slice(0, 3),
+          overrides: (planningState.overrides || []).slice(0, 6),
+          requiresGoalPriorityQuestion: planningState.requiresGoalPriorityQuestion === true,
+          requiresDecisionTopicQuestion: planningState.requiresDecisionTopicQuestion === true,
+          requiresPersonaScan: planningState.requiresPersonaScan === true,
+          deferredGoalTypes: (planningState.deferredGoalTypes || []).slice(0, 8),
           facts: [
-            ...buildConfirmedRealtimeFactSummary(currentProfile),
-            ...proposedFacts
-          ].slice(0, 16)
+            ...pendingFacts,
+            ...buildConfirmedRealtimeFactSummary(currentProfile)
+          ].slice(0, 16),
+          currentPendingProposal: pendingFacts[0] || null
         },
-        analysisPlan: toPublicRealtimeAnalysisPlan(analysisPlan),
+        analysisPlan: await getPublicRealtimeAnalysisPlan(env, analysisPlan),
         realtimeTurns
       }, 200, methods);
     }
@@ -690,8 +766,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
         realtimeLease: toPublicRealtimeLease(realtimeLease),
         realtimeTurns,
-        analysisPlan: toPublicRealtimeAnalysisPlan(analysisPlan),
-        ...state
+        analysisPlan: await getPublicRealtimeAnalysisPlan(env, analysisPlan),
+        ...publicConversationState(state)
       }, 200, methods);
     }
 
@@ -839,20 +915,41 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
             throw new ConsumerError(409, 'realtime_lease_conflict', 'The live voice lease is not active for this planning session.');
           }
         }
-        const moduleIds = realtimePlanModuleIds(profile, config, body.moduleIds);
-        if (!moduleIds.length) {
-          throw new ConsumerError(409, 'analysis_plan_empty', 'Choose a planning module before preparing this analysis.');
+        const planningState = describeConversationState(profile, config);
+        if (planningState.personaAssessment?.needsDisambiguation) {
+          throw new ConsumerError(409, 'persona_disambiguation_required', 'Answer the current situation question before confirming the three-analysis plan.');
         }
+        if (planningState.requiresDecisionTopicQuestion) {
+          throw new ConsumerError(409, 'decision_topic_required', 'Name the specific financial decision before confirming the three-analysis plan.');
+        }
+        if (planningState.requiresPersonaScan) {
+          throw new ConsumerError(409, 'persona_scan_required', 'Complete the brief household and life-stage scan before confirming the three-analysis plan.');
+        }
+        if (planningState.requiresGoalPriorityQuestion) {
+          throw new ConsumerError(409, 'goal_priority_required', 'Choose which explicit goal this first three-analysis plan should address.');
+        }
+        const moduleIds = realtimePlanModuleIds(profile, config, body.moduleIds);
+        if (!(planningState.moduleSlots || []).length) {
+          throw new ConsumerError(409, 'analysis_plan_empty', 'Complete the goal and life-stage scan before preparing this analysis.');
+        }
+        const planInput = {
+          moduleIds,
+          scenarioOverrides: body.scenarioOverrides,
+          personaAssessment: planningState.personaAssessment,
+          moduleSlots: planningState.moduleSlots,
+          overrides: planningState.overrides,
+          requiresGoalPriorityQuestion: planningState.requiresGoalPriorityQuestion,
+          deferredGoalTypes: planningState.deferredGoalTypes
+        };
         const prepared = await prepareRealtimeAnalysisPlan(env, {
           sessionId: sessionRow.id,
           leaseId: lease?.id || null,
           idempotencyKey: body.idempotencyKey,
           profileRevision: body.expectedRevision,
-          moduleIds,
-          scenarioOverrides: body.scenarioOverrides
+          ...planInput
         });
         const analysisPlan = {
-          ...toPublicRealtimeAnalysisPlan(prepared.row),
+          ...toPublicRealtimeAnalysisPlan(prepared.row, planInput),
           planNonce: prepared.planNonce
         };
         if (lease) {
@@ -874,17 +971,20 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         expectedRevision: body.expectedRevision
       });
       const leaseId = confirmed.analysisPlan?.leaseId || null;
+      let assistantSpeech = null;
       if (leaseId) {
         const lease = await getRealtimeLease(env, sessionRow.id, leaseId);
         if (!lease) {
           throw new ConsumerError(409, 'realtime_lease_conflict', 'The analysis plan is not linked to this planning session.');
         }
         if (lease.status === 'active') {
-          await durableObjectRequest(env, lease.id, '/analysis-plan', {
+          const realtimeUpdate = await durableObjectRequest(env, lease.id, '/analysis-plan', {
             planId: confirmed.analysisPlan.planId,
             status: confirmed.analysisPlan.status,
-            profileRevision: body.expectedRevision
+            profileRevision: body.expectedRevision,
+            speakableText: confirmed.result?.speakableText || ''
           });
+          assistantSpeech = realtimeUpdate.assistantSpeech || null;
         }
       }
       return respond({
@@ -892,7 +992,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         analysis: confirmed.analysis || null,
         result: confirmed.result || null,
         requiredQuestions: confirmed.requiredQuestions || [],
-        idempotentReplay: confirmed.idempotentReplay
+        idempotentReplay: confirmed.idempotentReplay,
+        ...(assistantSpeech ? { assistantSpeech } : {})
       }, 200, methods);
     }
 
@@ -945,7 +1046,10 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const nextProfile = applyProfilePatch(profile, body.patch, body.confirmedPaths, 'consumer_edit', body.removePaths);
       const state = describeConversationState(nextProfile, config);
       const saved = await saveProfileRevision(env, sessionRow, nextProfile, state.stage);
-      return respond({ ...saved, ...describeConversationState(saved.profile, config) }, 200, methods);
+      return respond({
+        ...saved,
+        ...publicConversationState(describeConversationState(saved.profile, config))
+      }, 200, methods);
     }
 
     if (route.kind === 'confirm') {
@@ -960,7 +1064,10 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         profile = saved.profile;
       }
       const confirmed = await confirmProfileRevision(env, sessionRow, profile);
-      return respond({ ...confirmed, ...describeConversationState(confirmed.profile, config) }, 200, methods);
+      return respond({
+        ...confirmed,
+        ...publicConversationState(describeConversationState(confirmed.profile, config))
+      }, 200, methods);
     }
 
     if (route.kind === 'analyses') {

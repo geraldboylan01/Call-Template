@@ -488,3 +488,51 @@ export async function speakConsumerQuestion({ env, config, sessionRow, idempoten
     throw error;
   }
 }
+
+// Realtime speech is deliberately provider-only here. Its authorization,
+// idempotency, consent checks and character-priced accounting live in the
+// Realtime lease ledger so this call cannot create a second cost reservation.
+export async function synthesizeRealtimeControlledSpeech({ env, config, text }) {
+  const input = String(text || '');
+  if (!input || input !== input.trim() || input.length > 2_400) {
+    throw new ConsumerError(400, 'realtime_speech_text_invalid', 'The approved spoken response is invalid.');
+  }
+  const providerKey = requireProviderKey(env);
+  const { response, body } = await providerFetch(config, 'https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${providerKey}`,
+      'Content-Type': 'application/json',
+      'X-Client-Request-Id': crypto.randomUUID()
+    },
+    body: JSON.stringify({
+      model: config.realtimeSpeechModel,
+      voice: config.realtimeSpeechVoice,
+      input,
+      response_format: 'mp3'
+    })
+  }, {
+    maximumBytes: MAX_SPEECH_RESPONSE_BYTES,
+    acceptsContentType: (value) => String(value || '').toLowerCase().startsWith('audio/'),
+    invalidResponse: () => new ConsumerError(
+      502,
+      'realtime_speech_invalid',
+      'The approved spoken response was incomplete. Continue with the visible caption.'
+    )
+  });
+  const providerRequestId = safeProviderRequestId(response.headers.get('x-request-id'));
+  if (!response.ok) {
+    console.error('Consumer controlled Realtime speech provider request failed', {
+      status: response.status,
+      providerRequestId
+    });
+    const error = new ConsumerError(
+      502,
+      'realtime_speech_failed',
+      'The approved spoken response could not be played. Continue with the visible caption.'
+    );
+    error.providerRequestId = providerRequestId;
+    throw error;
+  }
+  return { audio: body.buffer, providerRequestId };
+}

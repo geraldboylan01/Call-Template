@@ -30,7 +30,6 @@ import {
   setAiConsent,
   setBootstrap,
   setBusy,
-  setModuleSelected,
   setView,
   state,
   storeSessionAccess
@@ -88,7 +87,6 @@ let removingItem = null;
 let pendingTurn = null;
 let pendingPlanPrepare = null;
 let pendingPlanConfirm = null;
-let planPrepareTimer = null;
 let planPrepareGeneration = 0;
 let realtimeRenderQueued = false;
 
@@ -114,7 +112,7 @@ const voiceController = createVoiceController({
 });
 
 const realtimeVoiceController = createRealtimeVoiceController({
-  root: document.getElementById('realtimeVoiceShell'),
+  root: document.getElementById('realtimeVoiceCompanion'),
   onVoicePayload: (payload) => {
     const previousRevision = currentProfileRevision();
     mergePayload(payload);
@@ -318,8 +316,6 @@ function invalidatePendingAnalysisPlan() {
   pendingPlanPrepare = null;
   pendingPlanConfirm = null;
   planPrepareGeneration += 1;
-  if (planPrepareTimer !== null) window.clearTimeout(planPrepareTimer);
-  planPrepareTimer = null;
 }
 
 function setFormBusy(form, busy, busyLabel = '') {
@@ -465,8 +461,6 @@ function resetToOnboarding({ error = '', toast = '' } = {}) {
   pendingPlanPrepare = null;
   pendingPlanConfirm = null;
   planPrepareGeneration += 1;
-  if (planPrepareTimer !== null) window.clearTimeout(planPrepareTimer);
-  planPrepareTimer = null;
   confirmDeleteButton.disabled = false;
   confirmDeleteButton.textContent = 'Delete permanently';
   syncHeader();
@@ -950,16 +944,8 @@ function analysisPlanFromPayload(payload) {
   return plan && typeof plan === 'object' && !Array.isArray(plan) ? plan : null;
 }
 
-function focusModuleToggle(moduleId) {
-  if (!moduleId) return;
-  window.requestAnimationFrame(() => {
-    appRoot.querySelector(`input[data-action="toggle-module"][data-module-id="${CSS.escape(moduleId)}"]`)?.focus();
-  });
-}
-
 async function prepareDisplayedAnalysisPlan(moduleIds, {
   background = false,
-  focusModuleId = '',
   generation = ++planPrepareGeneration
 } = {}) {
   const requestedModuleIds = normaliseModuleIds(moduleIds);
@@ -1000,7 +986,6 @@ async function prepareDisplayedAnalysisPlan(moduleIds, {
     const selectionChanged = moduleSelectionSignature(preparedModuleIds, revision) !== signature;
     if (background || selectionChanged) {
       renderCurrentJourney();
-      focusModuleToggle(focusModuleId);
     }
     if (selectionChanged) {
       showToast('The protected planning rules updated the displayed module selection. Review it before confirming and running.', {
@@ -1018,24 +1003,10 @@ async function prepareDisplayedAnalysisPlan(moduleIds, {
         error: true,
         timeout: 6500
       });
-      focusModuleToggle(focusModuleId);
       return null;
     }
     throw error;
   }
-}
-
-function queueAnalysisPlanPrepare(focusModuleId = '') {
-  const generation = ++planPrepareGeneration;
-  if (planPrepareTimer !== null) window.clearTimeout(planPrepareTimer);
-  planPrepareTimer = window.setTimeout(() => {
-    planPrepareTimer = null;
-    void prepareDisplayedAnalysisPlan(state.selectedModuleIds, {
-      background: true,
-      focusModuleId,
-      generation
-    });
-  }, 450);
 }
 
 async function handleRunAnalysis() {
@@ -1043,16 +1014,14 @@ async function handleRunAnalysis() {
   if (state.busy) {
     return;
   }
-  if (planPrepareTimer !== null) window.clearTimeout(planPrepareTimer);
-  planPrepareTimer = null;
   const generation = ++planPrepareGeneration;
   setBusy(true);
   renderCurrentJourney();
   try {
-    if (state.selectedModuleIds.length === 0) {
+    if (state.selectedModuleIds.length === 0 && state.recommendations.length !== 3) {
       setBusy(false);
       renderCurrentJourney();
-      showToast('Choose at least one available analysis before continuing.', { error: true });
+      showToast('A complete three-analysis plan is required before continuing.', { error: true });
       return;
     }
     const prepared = await prepareDisplayedAnalysisPlan(state.selectedModuleIds, { generation });
@@ -1089,6 +1058,10 @@ async function handleRunAnalysis() {
     pendingPlanConfirm = null;
     setBusy(false);
     applyResponse(payload, { action: 'analysis', focus: true });
+    // A completed REST confirmation can finish while the Realtime model is
+    // silent. Play the exact Worker-issued result authorization immediately;
+    // the controller ignores it when no live lease is active.
+    void realtimeVoiceController.playWorkerSpeechFromPayload(payload);
     if (state.analysis) {
       showToast('Your educational analysis is ready.');
     }
@@ -1283,23 +1256,11 @@ function handleComposerShortcut(event) {
   }
 }
 
-function handleRootChange(event) {
-  const input = event.target.closest('input[data-action="toggle-module"]');
-  if (!input || !appRoot.contains(input)) {
-    return;
-  }
-  setModuleSelected(input.dataset.moduleId, input.checked);
-  renderCurrentJourney();
-  focusModuleToggle(input.dataset.moduleId || '');
-  queueAnalysisPlanPrepare(input.dataset.moduleId || '');
-}
-
 function bindEvents() {
   voiceController.bind();
   realtimeVoiceController.bind();
   appRoot.addEventListener('click', handleRootClick);
   appRoot.addEventListener('submit', handleRootSubmit);
-  appRoot.addEventListener('change', handleRootChange);
   appRoot.addEventListener('keydown', handleComposerShortcut);
   editFieldForm.addEventListener('submit', handleFieldEdit);
   cancelEditButton.addEventListener('click', () => {

@@ -215,7 +215,11 @@ export function assertBetaBootstrap(payload, { realtimeExpected = false } = {}) 
   assert.equal(payload?.flags?.consumerAiIntakeEnabled, false, 'AI must remain disabled.');
   assert.equal(payload?.flags?.consumerVoiceEnabled, true, 'Reviewed voice transport is not live.');
   assert.equal(payload?.flags?.consumerModuleRoutingEnabled, true, 'Rules-only routing is not live.');
-  assert.equal(payload?.flags?.consumerHumanHandoffEnabled, false, 'Handoff must remain disabled.');
+  assert.equal(
+    payload?.flags?.consumerHumanHandoffEnabled === true,
+    realtimeExpected,
+    'Handoff must be enabled only with the protected realtime canary.'
+  );
   assert.equal(payload?.access?.publicAccessEnabled, false, 'Public access must remain disabled.');
   assert.equal(payload?.access?.inviteRequired, true, 'Signed invites must remain required.');
   assert.equal(payload?.cohort, 'adviser_test', 'The live cohort must be adviser_test.');
@@ -264,8 +268,14 @@ export function assertBetaBootstrap(payload, { realtimeExpected = false } = {}) 
     assert.equal(payload?.realtimeVoice?.sessionBudgetMicroEur, 2_000_000, 'The realtime €2 allowance changed unexpectedly.');
     assert.equal(payload?.realtimeVoice?.dispatchStopMicroEur, 1_700_000, 'The realtime safety stop changed unexpectedly.');
     assert.equal(payload?.realtimeVoice?.safetyReserveMicroEur, 300_000, 'The realtime delayed-usage reserve changed unexpectedly.');
+    assert.equal(payload?.handoff?.enabled, true, 'The consented Gerry handoff is not enabled for the realtime canary.');
+    assert.equal(payload?.handoff?.policyVersion, 'consumer-adviser-handoff-v1', 'The handoff policy changed unexpectedly.');
+    assert.equal(payload?.handoff?.policyUrl, 'https://planeir.ie/plan/privacy.html#handoff', 'The handoff disclosure URL changed unexpectedly.');
+    assert.equal(payload?.handoff?.retentionPolicyId, 'consumer-handoff-bridge-30d-v1', 'The handoff retention policy changed unexpectedly.');
+    assert.equal(payload?.handoff?.packageRetentionDays, 30, 'The handoff bridge retention period changed unexpectedly.');
   } else {
     assert.equal(payload?.realtimeVoice?.enabled === true, false, 'Realtime voice must fail closed outside its canary.');
+    assert.equal(payload?.handoff?.enabled === true, false, 'Handoff must fail closed outside the realtime canary.');
   }
 }
 
@@ -424,6 +434,9 @@ async function main() {
         sessionId,
         credential
       });
+      assert.equal(proof.launcherVisible, true, 'The production Talk to Planéir launcher was not proven.');
+      assert.equal(proof.companionStartWired, true, 'The production Start voice control was not proven.');
+      assert.equal(proof.audibleGreetingObserved, true, 'The production companion greeting was not proven.');
       assert.equal(proof.webRtcConnected, true, 'The production WebRTC connection was not proven.');
       assert.equal(proof.sidebandConnected, true, 'The production sideband connection was not proven.');
       assert.equal(proof.readOnlyToolSucceeded, true, 'The production read-only planning tool was not proven.');

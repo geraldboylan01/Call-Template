@@ -1,6 +1,7 @@
 import { runStoredConsumerAnalysis } from './analysis.js';
 import { ConsumerError } from './errors.js';
 import { getCurrentProfile, getSessionRow } from './repository.js';
+import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
 import {
   completeRealtimeAnalysisPlan,
   confirmRealtimeAnalysisPlan,
@@ -9,10 +10,42 @@ import {
   toPublicRealtimeAnalysisPlan
 } from './realtime_repository.js';
 
-function boundedSpeakableResult(analysis, config) {
-  const speakableText = typeof analysis?.summary?.speakableText === 'string'
+function adviserReviewModules(moduleSlots) {
+  return (Array.isArray(moduleSlots) ? moduleSlots : [])
+    .filter((slot) => slot?.availability === 'adviser_review_required')
+    .map((slot) => ({
+      moduleId: slot.moduleId,
+      name: getPlanningModuleDefinition(slot.moduleId)?.name || slot.moduleId
+    }))
+    .filter((item) => typeof item.moduleId === 'string' && typeof item.name === 'string')
+    .slice(0, 3);
+}
+
+function joinedNames(names) {
+  if (names.length <= 1) return names[0] || '';
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
+}
+
+export function buildGatedModuleDisclosure(moduleSlots, { allGated = false } = {}) {
+  const modules = adviserReviewModules(moduleSlots);
+  const names = modules.map((item) => item.name);
+  if (names.length === 0) {
+    return { moduleIds: [], speakableText: '' };
+  }
+  const subject = joinedNames(names);
+  const speakableText = allGated
+    ? `Your three-analysis plan is saved. ${subject} ${names.length === 1 ? 'requires' : 'require'} Gerry’s review, so no automated financial result has been produced for ${names.length === 1 ? 'that analysis' : 'those analyses'}.`
+    : `${subject} ${names.length === 1 ? 'remains' : 'remain'} in your three-analysis plan and ${names.length === 1 ? 'requires' : 'require'} Gerry’s review; no automated result was produced for ${names.length === 1 ? 'that analysis' : 'those analyses'}.`;
+  return { moduleIds: modules.map((item) => item.moduleId), speakableText };
+}
+
+function boundedSpeakableResult(analysis, config, moduleSlots = []) {
+  const deterministicSummary = typeof analysis?.summary?.speakableText === 'string'
     ? analysis.summary.speakableText
     : '';
+  const disclosure = buildGatedModuleDisclosure(moduleSlots);
+  const speakableText = [deterministicSummary, disclosure.speakableText].filter(Boolean).join(' ');
   if (!speakableText || speakableText !== speakableText.trim() || speakableText.length > 2_400) {
     throw new ConsumerError(409, 'analysis_speakable_summary_invalid', 'The deterministic spoken summary is unavailable or exceeds its safe bound.');
   }
@@ -29,7 +62,8 @@ function boundedSpeakableResult(analysis, config) {
     completedModuleIds: (analysis?.results || [])
       .map((result) => result?.moduleId)
       .filter((value) => typeof value === 'string')
-      .slice(0, 12)
+      .slice(0, 12),
+    gatedModuleIds: disclosure.moduleIds
   };
 }
 
@@ -49,7 +83,7 @@ export async function confirmAndRunRealtimeAnalysisPlan({
   });
   if (confirmed.idempotentReplay) {
     return {
-      analysisPlan: toPublicRealtimeAnalysisPlan(confirmed.row),
+      analysisPlan: toPublicRealtimeAnalysisPlan(confirmed.row, confirmed.input),
       result: confirmed.result,
       idempotentReplay: true
     };
@@ -63,6 +97,32 @@ export async function confirmAndRunRealtimeAnalysisPlan({
       throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed before the analysis started.');
     }
     const profile = await getCurrentProfile(env, sessionRow);
+    if (!Array.isArray(confirmed.input.moduleIds) || confirmed.input.moduleIds.length === 0) {
+      const disclosure = buildGatedModuleDisclosure(confirmed.input.moduleSlots, { allGated: true });
+      const result = {
+        speakableText: disclosure.speakableText
+          ? disclosure.speakableText
+          : 'Your three-analysis plan is saved, but no analysis in it is released for automated calculation yet.',
+        promptVersion: config.realtimePromptVersion,
+        toolsetVersion: config.realtimeToolsetVersion,
+        calculationVersion: null,
+        completedModuleIds: [],
+        gatedModuleIds: disclosure.moduleIds
+      };
+      const completed = await completeRealtimeAnalysisPlan(env, {
+        sessionId,
+        planId,
+        status: 'complete',
+        result,
+        analysisRunId: null
+      });
+      return {
+        analysisPlan: toPublicRealtimeAnalysisPlan(completed, confirmed.input),
+        analysis: null,
+        result,
+        idempotentReplay: false
+      };
+    }
     const run = await runStoredConsumerAnalysis({
       env,
       config,
@@ -71,7 +131,7 @@ export async function confirmAndRunRealtimeAnalysisPlan({
       moduleIds: confirmed.input.moduleIds,
       scenarioOverrides: confirmed.input.scenarioOverrides
     });
-    const result = boundedSpeakableResult(run.analysis, config);
+    const result = boundedSpeakableResult(run.analysis, config, confirmed.input.moduleSlots);
     const completed = await completeRealtimeAnalysisPlan(env, {
       sessionId,
       planId,
@@ -90,7 +150,7 @@ export async function confirmAndRunRealtimeAnalysisPlan({
       });
     }
     return {
-      analysisPlan: toPublicRealtimeAnalysisPlan(completed),
+      analysisPlan: toPublicRealtimeAnalysisPlan(completed, confirmed.input),
       analysis: run.analysis,
       result,
       idempotentReplay: false
@@ -113,7 +173,7 @@ export async function confirmAndRunRealtimeAnalysisPlan({
         errorCode: error.code
       });
       return {
-        analysisPlan: toPublicRealtimeAnalysisPlan(pending),
+        analysisPlan: toPublicRealtimeAnalysisPlan(pending, confirmed.input),
         analysis: error.details?.analysis || null,
         requiredQuestions: error.details?.requiredQuestions || [],
         result,

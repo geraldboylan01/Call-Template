@@ -274,9 +274,9 @@
         "goalTypes": ["business_planning"],
         "modules": [
           {
-            "moduleId": "business_owner_relief",
+            "moduleId": "business_owner_analysis",
             "selectionStatus": "recommended",
-            "routeRuleId": "route.business.adviser.v1",
+            "routeRuleId": "route.business_owner.adviser.v1",
             "readinessStatus": "adviser_review_required",
             "releaseStatus": "adviser_only",
             "consumerAvailable": false,

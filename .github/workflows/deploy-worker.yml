@@ -80,8 +80,8 @@ jobs:
       CONSUMER_BETA_REALTIME_VOICE: "marin"
       CONSUMER_BETA_REALTIME_REASONING_EFFORT: "low"
       CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe"
-      CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v1"
-      CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v1"
+      CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v2"
+      CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v2"
       CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
       CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS: "200"
       CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS: "2000"
@@ -102,6 +102,11 @@ jobs:
       # reconciled inside the same session/day application allowance.
       CONSUMER_BETA_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION: "1250000"
       CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: "5000000"
+      CONSUMER_BETA_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS: "30000000"
+      CONSUMER_BETA_HANDOFF_POLICY_VERSION: "consumer-adviser-handoff-v1"
+      CONSUMER_BETA_HANDOFF_POLICY_URL: "https://planeir.ie/plan/privacy.html#handoff"
+      CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID: "consumer-handoff-bridge-30d-v1"
+      CONSUMER_BETA_HANDOFF_RETENTION_DAYS: "30"
       CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy.html"
       CONSUMER_BETA_SESSION_TTL_DAYS: "7"
     steps:
@@ -399,6 +404,7 @@ jobs:
             'CONSUMER_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION',
             'CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION',
             'CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS',
             'CONSUMER_HANDOFF_POLICY_VERSION',
             'CONSUMER_HANDOFF_POLICY_URL',
             'CONSUMER_HANDOFF_RETENTION_POLICY_ID',
@@ -515,8 +521,8 @@ jobs:
                 CONSUMER_REALTIME_VOICE: ['CONSUMER_BETA_REALTIME_VOICE', 'marin'],
                 CONSUMER_REALTIME_REASONING_EFFORT: ['CONSUMER_BETA_REALTIME_REASONING_EFFORT', 'low'],
                 CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
-                CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_REALTIME_PROMPT_VERSION', 'consumer-realtime-orchestrator-v1'],
-                CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_REALTIME_TOOLSET_VERSION', 'consumer-realtime-tools-v1'],
+                CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_REALTIME_PROMPT_VERSION', 'consumer-realtime-orchestrator-v2'],
+                CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_REALTIME_TOOLSET_VERSION', 'consumer-realtime-tools-v2'],
                 CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
                 CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS', '200'],
                 CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS', '2000'],
@@ -532,7 +538,8 @@ jobs:
                 CONSUMER_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION', '400000'],
                 CONSUMER_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION', '64000000'],
                 CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION', '1250000'],
-                CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION', '5000000']
+                CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION', '5000000'],
+                CONSUMER_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS: ['CONSUMER_BETA_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS', '30000000']
               };
               for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedRealtimeValues)) {
                 const value = envValue(sourceName);
@@ -541,7 +548,21 @@ jobs:
                 }
                 generatedSource = replaceTomlString(generatedSource, runtimeName, value);
               }
+              const fixedHandoffValues = {
+                CONSUMER_HANDOFF_POLICY_VERSION: ['CONSUMER_BETA_HANDOFF_POLICY_VERSION', 'consumer-adviser-handoff-v1'],
+                CONSUMER_HANDOFF_POLICY_URL: ['CONSUMER_BETA_HANDOFF_POLICY_URL', 'https://planeir.ie/plan/privacy.html#handoff'],
+                CONSUMER_HANDOFF_RETENTION_POLICY_ID: ['CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID', 'consumer-handoff-bridge-30d-v1'],
+                CONSUMER_HANDOFF_RETENTION_DAYS: ['CONSUMER_BETA_HANDOFF_RETENTION_DAYS', '30']
+              };
+              for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedHandoffValues)) {
+                const value = envValue(sourceName);
+                if (value !== approvedValue) {
+                  throw new Error(`${sourceName} must remain exactly ${approvedValue} for the protected realtime handoff canary.`);
+                }
+                generatedSource = replaceTomlString(generatedSource, runtimeName, value);
+              }
               generatedSource = replaceTomlString(generatedSource, 'CONSUMER_REALTIME_VOICE_ENABLED', 'true');
+              generatedSource = replaceTomlString(generatedSource, 'CONSUMER_HANDOFF_ENABLED', 'true');
             }
           }
 
@@ -551,7 +572,7 @@ jobs:
             CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_AI_INTAKE_ENABLED: 'false',
-            CONSUMER_HANDOFF_ENABLED: 'false',
+            CONSUMER_HANDOFF_ENABLED: realtimeEnabled ? 'true' : 'false',
             CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'
           };
           for (const [flag, value] of Object.entries(expectedGeneratedFlags)) {
@@ -573,12 +594,19 @@ jobs:
           ].join('\n') : '\n';
           fs.writeFileSync(generatedPath, generatedSource.trimEnd() + '\n' + binding, { mode: 0o600 });
           const bootstrapSource = replaceTomlString(
-            generatedSource,
-            'CONSUMER_REALTIME_VOICE_ENABLED',
+            replaceTomlString(
+              generatedSource,
+              'CONSUMER_REALTIME_VOICE_ENABLED',
+              'false'
+            ),
+            'CONSUMER_HANDOFF_ENABLED',
             'false'
           );
           if (!/^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep realtime voice disabled.');
+          }
+          if (!/^CONSUMER_HANDOFF_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep the realtime handoff disabled.');
           }
           fs.writeFileSync(bootstrapPath, bootstrapSource.trimEnd() + '\n' + binding, { mode: 0o600 });
           NODE

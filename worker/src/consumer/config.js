@@ -12,6 +12,7 @@ const REALTIME_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe';
 const REALTIME_SESSION_BUDGET_CENTS = 200;
 const REALTIME_DAILY_BUDGET_CENTS = 2_000;
 const REALTIME_SAFETY_RESERVE_MICRO_EUR = 300_000;
+const REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS = 30_000_000;
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -177,6 +178,11 @@ export function getConsumerConfig(env) {
     transcriptionInput: optionalBoundedInteger(env.CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
     transcriptionOutput: optionalBoundedInteger(env.CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0
   });
+  const realtimeSpeechRateMicroEurPerMillionCharacters = optionalBoundedInteger(
+    env.CONSUMER_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS,
+    1,
+    1_000_000_000
+  ) || 0;
   const realtimeConfigured = Boolean(
     text(env.OPENAI_API_KEY)
     && env.CONSUMER_REALTIME_SESSIONS
@@ -191,6 +197,9 @@ export function getConsumerConfig(env) {
     && realtimePricingVersion
     && realtimeSessionBudgetCents === REALTIME_SESSION_BUDGET_CENTS
     && realtimeDailyBudgetCents === REALTIME_DAILY_BUDGET_CENTS
+    && voiceSpeechModel === 'tts-1-hd'
+    && configuredVoiceName === 'nova'
+    && realtimeSpeechRateMicroEurPerMillionCharacters === REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS
     && Object.values(realtimeUsageRates).every((rate) => rate > 0)
   );
   const realtimeEnabled = journeyEnabled && realtimeRequested && realtimeConfigured;
@@ -298,6 +307,10 @@ export function getConsumerConfig(env) {
     realtimeMaxResponses: boundedInteger(env.CONSUMER_REALTIME_MAX_RESPONSES, 40, 1, 40),
     realtimeMaxToolCalls: boundedInteger(env.CONSUMER_REALTIME_MAX_TOOL_CALLS, 24, 1, 24),
     realtimeUsageRates,
+    realtimeSpeechModel: voiceSpeechModel,
+    realtimeSpeechVoice: configuredVoiceName,
+    realtimeSpeechRateMicroEurPerMillionCharacters,
+    realtimeSpeechPricingVersion: `${realtimePricingVersion}:tts-1-hd-nova-char-v1`,
     providerCostLimitEurMicros: Math.max(
       voiceEnabled ? voiceSessionBudgetCents * 10_000 : 0,
       realtimeEnabled ? realtimeSessionBudgetCents * 10_000 : 0
@@ -377,13 +390,16 @@ export function publicConsumerConfig(config) {
       promptVersion: config.realtimeEnabled ? config.realtimePromptVersion : null,
       toolsetVersion: config.realtimeEnabled ? config.realtimeToolsetVersion : null,
       pricingVersion: config.realtimeEnabled ? config.realtimePricingVersion : null,
+      speechModel: config.realtimeEnabled ? config.realtimeSpeechModel : null,
+      speechVoice: config.realtimeEnabled ? config.realtimeSpeechVoice : null,
+      speechPricingVersion: config.realtimeEnabled ? config.realtimeSpeechPricingVersion : null,
       maxDurationSeconds: config.realtimeMaxDurationSeconds,
       idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
       sessionBudgetMicroEur: config.realtimeEnabled ? config.realtimeSessionBudgetMicroEur : 0,
       dispatchStopMicroEur: config.realtimeEnabled ? config.realtimeDispatchStopMicroEur : 0,
       safetyReserveMicroEur: config.realtimeEnabled ? config.realtimeSafetyReserveMicroEur : 0,
       aiGeneratedDisclosure: config.realtimeEnabled
-        ? 'This is a live AI-generated voice conversation. The planning service controls all saved facts and calculations.'
+        ? 'Realtime AI interprets your completed speech and calls protected planning tools. Separate code-owned AI speech reads only Worker-approved copy; the planning service controls all saved facts and calculations.'
         : null
     },
     handoff: {

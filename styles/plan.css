@@ -2928,3 +2928,487 @@ body.realtime-voice-open {
     border-width: 2px;
   }
 }
+
+/* Floating conversational companion. These rules intentionally follow the
+   original canary shell so the launcher/drawer presentation wins at every
+   breakpoint without changing the underlying voice-state contract. */
+body.realtime-companion-open {
+  overflow: hidden;
+}
+
+.realtime-voice-companion {
+  position: relative;
+  z-index: 60;
+}
+
+.realtime-voice-launcher {
+  position: fixed;
+  z-index: 62;
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  gap: 0.78rem;
+  width: min(19rem, calc(100vw - 2rem));
+  min-height: 68px;
+  padding: 0.62rem 1rem 0.62rem 0.68rem;
+  border: 1px solid rgba(146, 210, 250, 0.38);
+  border-radius: 999px;
+  color: var(--plan-text);
+  background:
+    linear-gradient(135deg, rgba(16, 42, 68, 0.985), rgba(6, 18, 32, 0.99)),
+    var(--plan-navy);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, opacity 120ms ease;
+}
+
+.realtime-voice-launcher:hover {
+  border-color: rgba(146, 210, 250, 0.68);
+  transform: translateY(-2px);
+}
+
+.realtime-voice-launcher:focus-visible,
+.realtime-collapse-button:focus-visible {
+  outline: 3px solid rgba(141, 211, 255, 0.72);
+  outline-offset: 3px;
+}
+
+.realtime-voice-companion.is-expanded .realtime-voice-launcher {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.realtime-launcher-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(147, 217, 255, 0.4);
+  border-radius: 999px;
+  background: radial-gradient(circle at 36% 27%, #dff5ff 0 8%, #5bbdf5 10% 35%, #1d6395 68%, #123a5a 100%);
+  box-shadow: 0 8px 24px rgba(53, 159, 225, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.46);
+}
+
+.realtime-launcher-orb::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 1px solid rgba(141, 211, 255, 0.2);
+  border-radius: inherit;
+}
+
+.realtime-launcher-orb > span {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  border-radius: 42% 58% 48% 52%;
+}
+
+.realtime-voice-companion.is-live .realtime-launcher-orb::before {
+  animation: realtime-orb-breathe 2.1s ease-in-out infinite;
+}
+
+.realtime-voice-companion[data-realtime-phase="assistant_speaking"] .realtime-launcher-orb {
+  background: radial-gradient(circle at 36% 27%, #e3fff5 0 8%, #64d9b3 10% 35%, #207b66 68%, #12473d 100%);
+}
+
+.realtime-voice-companion.is-muted .realtime-launcher-orb,
+.realtime-voice-companion[data-realtime-phase="interrupted"] .realtime-launcher-orb {
+  background: radial-gradient(circle at 36% 27%, #fff5da 0 8%, #e3bd72 10% 35%, #946523 68%, #553a19 100%);
+}
+
+.realtime-launcher-copy {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.realtime-launcher-copy strong {
+  font-size: 0.86rem;
+  letter-spacing: 0.01em;
+}
+
+.realtime-launcher-copy > span {
+  overflow: hidden;
+  color: var(--plan-muted);
+  font-size: 0.68rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.realtime-voice-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  background: rgba(1, 7, 14, 0.64);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.realtime-voice-shell {
+  position: fixed;
+  z-index: 61;
+  inset: 1rem max(1rem, env(safe-area-inset-right, 0px)) 1rem auto;
+  left: auto;
+  bottom: 1rem;
+  display: grid;
+  grid-template-rows: repeat(6, auto);
+  align-content: start;
+  gap: 0.78rem;
+  width: min(33rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 1rem;
+  overflow: auto;
+  border: 1px solid rgba(141, 211, 255, 0.34);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(76, 178, 244, 0.18), transparent 30%),
+    radial-gradient(circle at 95% 100%, rgba(226, 183, 101, 0.1), transparent 30%),
+    linear-gradient(150deg, rgba(12, 30, 49, 0.995), rgba(4, 12, 22, 0.995));
+  box-shadow: 0 32px 96px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: none;
+  overscroll-behavior: contain;
+  animation: realtime-drawer-in 180ms ease both;
+}
+
+.realtime-voice-heading {
+  align-items: flex-start;
+}
+
+.realtime-voice-heading > div:first-child {
+  min-width: 0;
+}
+
+.realtime-voice-heading h2 {
+  max-width: 24rem;
+  font-size: clamp(1.12rem, 3vw, 1.42rem);
+  line-height: 1.18;
+}
+
+.realtime-collapse-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--plan-border);
+  border-radius: 999px;
+  color: var(--plan-text);
+  background: rgba(4, 12, 22, 0.6);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.realtime-trust-badges {
+  justify-content: flex-start;
+}
+
+.realtime-voice-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 0.7rem;
+  min-width: 0;
+  overflow: visible;
+}
+
+.realtime-orb-stage {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  place-items: center start;
+  align-content: center;
+  gap: 0.9rem;
+  min-height: 140px;
+  padding: 0.8rem 0.9rem;
+  text-align: left;
+}
+
+.realtime-voice-orb {
+  width: 104px;
+  min-width: 104px;
+  height: 104px;
+  min-height: 104px;
+}
+
+.realtime-orb-copy {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.realtime-voice-status,
+.realtime-voice-error {
+  min-height: 0;
+  font-size: 0.73rem;
+}
+
+.realtime-caption-card {
+  grid-template-rows: auto auto auto;
+  padding: 0.78rem;
+}
+
+.realtime-caption-history {
+  max-height: 210px;
+}
+
+.realtime-caption-stream {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.realtime-context-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.55rem;
+}
+
+.realtime-budget-card {
+  grid-column: auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.realtime-budget-card meter {
+  grid-column: 1 / -1;
+}
+
+details.realtime-context-card {
+  display: block;
+}
+
+.realtime-context-card > summary {
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.realtime-context-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.realtime-context-card > summary::after {
+  content: "+";
+  order: 3;
+  color: var(--plan-blue);
+  font-size: 1rem;
+}
+
+.realtime-context-card[open] > summary::after {
+  content: "−";
+}
+
+.realtime-context-card[open] > .realtime-context-list {
+  margin-top: 0.5rem;
+}
+
+.realtime-context-list {
+  max-height: none;
+}
+
+.realtime-module-slots {
+  counter-reset: realtime-module;
+  gap: 0.45rem;
+}
+
+.realtime-context-list li.is-module-slot,
+.realtime-context-list li.is-module-slot.is-empty {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 54px;
+  padding: 0.5rem;
+  border: 1px solid rgba(149, 188, 225, 0.13);
+  border-radius: 12px;
+  background: rgba(10, 27, 45, 0.42);
+}
+
+.realtime-context-list li.is-module-slot.is-empty {
+  border-style: dashed;
+  opacity: 0.72;
+}
+
+.realtime-module-slot-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(141, 211, 255, 0.27);
+  border-radius: 999px;
+  color: var(--plan-blue);
+  background: var(--plan-blue-wash);
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.realtime-context-list li.is-module-slot.is-empty > div > strong {
+  color: var(--plan-soft);
+  font-weight: 650;
+}
+
+.realtime-voice-controls {
+  position: sticky;
+  z-index: 2;
+  bottom: -1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0 -1rem;
+  padding: 0.7rem 1rem 1rem;
+  border-top: 1px solid rgba(149, 188, 225, 0.13);
+  background: linear-gradient(to bottom, rgba(5, 14, 25, 0.94), rgba(5, 14, 25, 0.995));
+}
+
+.realtime-voice-controls .primary-button,
+.realtime-voice-controls .secondary-button,
+.realtime-voice-controls .quiet-button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.realtime-voice-controls #realtimeVoiceResumeAudioButton:not([hidden]) {
+  grid-column: 1 / -1;
+}
+
+.realtime-companion-fallback {
+  padding: 0.72rem 0.8rem;
+  border: 1px solid rgba(149, 188, 225, 0.13);
+  border-radius: 13px;
+  color: var(--plan-muted);
+  background: rgba(3, 11, 20, 0.36);
+  font-size: 0.7rem;
+}
+
+.realtime-companion-fallback > summary {
+  min-height: 44px;
+  color: var(--plan-text);
+  font-weight: 760;
+  line-height: 44px;
+  cursor: pointer;
+}
+
+.realtime-companion-fallback p {
+  margin: 0 0 0.6rem;
+  line-height: 1.5;
+}
+
+.realtime-companion-fallback .quiet-button {
+  min-height: 44px;
+}
+
+.realtime-voice-trust-copy {
+  font-size: 0.66rem;
+}
+
+@keyframes realtime-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+@media (max-width: 720px) {
+  .realtime-voice-launcher {
+    right: max(0.7rem, env(safe-area-inset-right, 0px));
+    bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
+    width: min(18rem, calc(100vw - 1.4rem));
+  }
+
+  .realtime-voice-shell {
+    inset: 0;
+    width: 100%;
+    max-height: 100dvh;
+    padding:
+      calc(0.75rem + env(safe-area-inset-top, 0px))
+      max(0.75rem, env(safe-area-inset-right, 0px))
+      calc(0.75rem + env(safe-area-inset-bottom, 0px))
+      max(0.75rem, env(safe-area-inset-left, 0px));
+    border: 0;
+    border-radius: 0;
+  }
+
+  .realtime-orb-stage {
+    grid-template-columns: 104px minmax(0, 1fr);
+    min-height: 128px;
+  }
+
+  .realtime-voice-orb {
+    grid-row: auto;
+    width: 96px;
+    min-width: 96px;
+    height: 96px;
+    min-height: 96px;
+  }
+
+  .realtime-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .realtime-voice-controls {
+    bottom: calc(-0.75rem - env(safe-area-inset-bottom, 0px));
+    margin-inline:
+      calc(-1 * max(0.75rem, env(safe-area-inset-left, 0px)))
+      calc(-1 * max(0.75rem, env(safe-area-inset-right, 0px)));
+    padding:
+      0.7rem
+      max(0.75rem, env(safe-area-inset-right, 0px))
+      calc(0.75rem + env(safe-area-inset-bottom, 0px))
+      max(0.75rem, env(safe-area-inset-left, 0px));
+  }
+}
+
+@media (max-width: 430px) {
+  .realtime-launcher-copy > span {
+    font-size: 0.64rem;
+  }
+
+  .realtime-orb-stage {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+
+  .realtime-voice-orb {
+    width: 84px;
+    min-width: 84px;
+    height: 84px;
+    min-height: 84px;
+  }
+
+  .realtime-caption-stream {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .realtime-voice-shell {
+    animation: none !important;
+  }
+
+  .realtime-voice-companion.is-live .realtime-launcher-orb::before {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .realtime-voice-launcher,
+  .realtime-voice-shell,
+  .realtime-orb-stage,
+  .realtime-caption-card,
+  .realtime-context-card,
+  .realtime-history-item,
+  .realtime-caption-row,
+  .realtime-context-list li.is-module-slot {
+    border-width: 2px;
+  }
+}

@@ -28,6 +28,11 @@ import {
   getCollegeFundingReadiness,
   runCollegeFundingAnalysis
 } from './adapters/college_funding.js';
+import {
+  buildPersonalBalanceSheetInput,
+  getPersonalBalanceSheetReadiness,
+  runPersonalBalanceSheet
+} from './adapters/personal_balance_sheet.js';
 import { readJsonPointer, sha256Json } from './utils.js';
 
 const adviserReviewRequired = (moduleId, reason) => () => ({
@@ -173,15 +178,49 @@ register({
 register({
   id: MODULE_IDS.RETIREMENT_ROUTER,
   kind: 'composition',
-  name: 'Retirement goal routing',
-  description: 'Routing label that selects pension projection, net retirement cash flow, or both; it is not a calculator.',
-  status: 'unsupported',
+  name: 'Retirement Goal Analysis',
+  description: 'User-facing composition of pension projection and net-retirement cash flow.',
+  status: 'beta',
   moduleVersion: '1.0.0',
   applicableGoals: ['improve_pension', 'retire', 'retire_early'],
-  adviserAvailable: false,
+  adviserAvailable: true,
   consumerAvailable: false,
-  canRun: unsupported('retirement_goal_analysis is a routing label, not an independently runnable engine.'),
-  explainSelection: () => []
+  canRun: adviserReviewRequired(
+    MODULE_IDS.RETIREMENT_ROUTER,
+    'Consumer use waits for the pension and net-retirement calculation and wording gates.'
+  ),
+  explainSelection: () => ['Retirement Goal Analysis brings the pension and after-tax retirement views together.']
+});
+
+register({
+  id: MODULE_IDS.PERSONAL_BALANCE_SHEET,
+  kind: 'calculation',
+  name: 'Personal balance sheet',
+  description: 'Reconciles household assets and liabilities into code-owned net-worth and purpose buckets.',
+  status: 'beta',
+  moduleVersion: '1.1.0',
+  applicableGoals: [
+    'understand_position',
+    'maintain_liquidity',
+    'buy_home',
+    'build_wealth',
+    'improve_pension',
+    'retire',
+    'retire_early',
+    'optimise_mortgage',
+    'assess_decision',
+    'transfer_wealth',
+    'business_planning',
+    'agricultural_planning'
+  ],
+  requiredProfilePaths: ['/assets', '/liabilities'],
+  optionalProfilePaths: ['/properties', '/pensions', '/businesses', '/expenses'],
+  adviserAvailable: true,
+  consumerAvailable: true,
+  canRun: getPersonalBalanceSheetReadiness,
+  explainSelection: () => ['A reconciled personal balance sheet provides the foundation for the three-analysis plan.'],
+  buildInput: buildPersonalBalanceSheetInput,
+  run: runPersonalBalanceSheet
 });
 
 register({
@@ -200,13 +239,6 @@ register({
 
 [
   {
-    id: MODULE_IDS.PERSONAL_BALANCE_SHEET,
-    name: 'Personal balance sheet',
-    description: 'Adviser-composed balance sheet; classification and reconciliation are not yet fully code-owned.',
-    goals: ['understand_position'],
-    reason: 'Consumer use waits for deterministic classification, totals, reconciliation and scenario movements.'
-  },
-  {
     id: MODULE_IDS.CAT,
     name: 'Capital Acquisitions Tax analysis',
     description: 'Adviser-only CAT planning.',
@@ -214,9 +246,23 @@ register({
     reason: 'Consumer use waits for deterministic, date-versioned rules and tests.'
   },
   {
+    id: MODULE_IDS.BUSINESS_OWNER_ANALYSIS,
+    name: 'Business Owner Analysis',
+    description: 'Adviser-reviewed planning around the household business interest.',
+    goals: ['business_planning'],
+    reason: 'Consumer use waits for a code-owned general business-owner analysis.'
+  },
+  {
+    id: MODULE_IDS.BUSINESS_RELIEF_ANALYSIS,
+    name: 'Business Relief Analysis',
+    description: 'Adviser-reviewed, date-versioned business relief analysis.',
+    goals: ['business_planning', 'transfer_wealth'],
+    reason: 'Consumer use waits for deterministic, date-versioned business relief rules and tests.'
+  },
+  {
     id: MODULE_IDS.BUSINESS_RELIEF,
-    name: 'Business owner relief',
-    description: 'Adviser-only business succession and relief planning.',
+    name: 'Business owner relief (legacy)',
+    description: 'Backward-compatible adviser-only business succession and relief module id.',
     goals: ['business_planning'],
     reason: 'Consumer use waits for deterministic, date-versioned rules and tests.'
   },

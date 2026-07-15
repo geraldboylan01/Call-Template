@@ -213,15 +213,17 @@ await runCase('rules-only fallback returns no invented values for unbounded pros
 
 await runCase('registry exposes only active consumer candidates to bootstrap', () => {
   const consumer = getConsumerModuleDescriptors();
-  assert.deepEqual(consumer.map((entry) => entry.id), ['liquidity_analysis', 'house_purchase']);
+  assert.deepEqual(consumer.map((entry) => entry.id), ['liquidity_analysis', 'house_purchase', 'personal_balance_sheet']);
   assert.ok(consumer.every((entry) => entry.consumerAvailable));
   assert.ok(consumer.every((entry) => !Object.values(entry).some((value) => typeof value === 'function')));
   const all = getPlanningModuleDescriptors();
   for (const id of [
     'pension_projection', 'net_retirement_cashflow', 'mortgage_analysis', 'college_funding',
-    'personal_balance_sheet', 'cat_analysis', 'business_owner_relief', 'agricultural_relief'
+    'personal_balance_sheet', 'cat_analysis', 'business_owner_analysis', 'business_relief_analysis',
+    'business_owner_relief', 'agricultural_relief'
   ]) assert.ok(all.some((entry) => entry.id === id), `missing registry entry ${id}`);
-  assert.equal(all.find((entry) => entry.id === 'personal_balance_sheet').status, 'adviser_only');
+  assert.equal(all.find((entry) => entry.id === 'personal_balance_sheet').status, 'beta');
+  assert.equal(all.find((entry) => entry.id === 'personal_balance_sheet').consumerAvailable, true);
   assert.equal(all.find((entry) => entry.id === 'cat_analysis').consumerAvailable, false);
 });
 
@@ -347,7 +349,7 @@ await runCase('future deterministic engines have readiness but remain consumer-g
 await runCase('adviser-only and unsupported modules cannot be run by consumer orchestration', async () => {
   const result = await runConsumerAnalysis({
     profile: homeProfile(),
-    moduleIds: ['personal_balance_sheet', 'retirement_goal_analysis', 'missing_module'],
+    moduleIds: ['cat_analysis', 'retirement_goal_analysis', 'missing_module'],
     calculatedAt: NOW
   });
   assert.deepEqual(result.results, []);

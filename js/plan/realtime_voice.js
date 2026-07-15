@@ -3,6 +3,7 @@ import {
   createRealtimeVoiceCall,
   deleteRealtimeVoiceCall,
   getRealtimeVoiceCall,
+  speakRealtimeAuthorized,
   updateRealtimeVoiceConsent
 } from './api.js';
 import {
@@ -12,6 +13,7 @@ import {
   mergeVoicePayload,
   state
 } from './store.js';
+import { getSemanticFactDefinition } from '../planning/semantic_facts.js';
 
 const ADVISER_TEST_COHORT = 'adviser_test';
 const DEFAULT_SESSION_LIMIT_MICRO_EUR = 2_000_000;
@@ -266,6 +268,28 @@ function humanise(value) {
 
 function formatFactValue(value, path = '') {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  const objectValue = asObject(value);
+  if (objectValue) {
+    if (typeof objectValue.amount === 'number' && Number.isFinite(objectValue.amount)) {
+      const currency = /^[A-Z]{3}$/.test(String(objectValue.currency || '').toUpperCase())
+        ? String(objectValue.currency).toUpperCase()
+        : 'EUR';
+      return new Intl.NumberFormat('en-IE', {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: objectValue.amount % 1 === 0 ? 0 : 2
+      }).format(objectValue.amount);
+    }
+    const minimum = firstDefined(objectValue.min, objectValue.minimum);
+    const maximum = firstDefined(objectValue.max, objectValue.maximum);
+    if (Number.isFinite(Number(minimum)) && Number.isFinite(Number(maximum))) {
+      return `${formatFactValue(Number(minimum), path)}–${formatFactValue(Number(maximum), path)}`;
+    }
+    return cleanText(firstDefined(objectValue.label, objectValue.name, objectValue.text, '—'), 120);
+  }
+  if (Array.isArray(value)) {
+    return cleanText(value.map((item) => formatFactValue(item, path)).filter(Boolean).join(', '), 120);
+  }
   if (typeof value === 'number' && Number.isFinite(value)) {
     if (/(?:amount|balance|cost|debt|deposit|expense|income|price|salary|saving|value)/i.test(path)) {
       return new Intl.NumberFormat('en-IE', {
@@ -276,7 +300,8 @@ function formatFactValue(value, path = '') {
     }
     return new Intl.NumberFormat('en-IE', { maximumFractionDigits: 2 }).format(value);
   }
-  return cleanText(value, 120);
+  const cleaned = cleanText(value, 120);
+  return /[_-]/.test(cleaned) ? humanise(cleaned) : cleaned;
 }
 
 function factBadge(metadata = {}) {
@@ -312,7 +337,10 @@ function collectProfileFacts(value, profile, path = '', output = [], depth = 0) 
   }
   if (typeof value === 'object') {
     Object.entries(value).forEach(([key, item]) => {
-      if (!PROFILE_KEYS_TO_SKIP.has(key)) {
+      // Collection identifiers are implementation details, not information a
+      // consumer meaningfully told Planéir. Keep them out of the visible
+      // understanding panel while retaining the associated labelled values.
+      if (!PROFILE_KEYS_TO_SKIP.has(key) && !/Id$/.test(key)) {
         collectProfileFacts(item, profile, `${path}/${key}`, output, depth + 1);
       }
     });
@@ -320,9 +348,17 @@ function collectProfileFacts(value, profile, path = '', output = [], depth = 0) 
   }
   const cleanValue = formatFactValue(value, path);
   if (!cleanValue) return output;
+  const metadataEntry = Object.entries(profile?.fieldMetadata || {})
+    .filter(([metadataPath]) => path === metadataPath || path.startsWith(`${metadataPath}/`))
+    .sort(([left], [right]) => right.length - left.length)[0];
+  const metadata = asObject(metadataEntry?.[1]);
+  // A pristine canonical profile contains identifiers, defaults and policy
+  // settings that Planéir did not learn from the consumer. Only show values
+  // carrying explicit provenance; live tool facts use the server `facts`
+  // collection above and therefore do not rely on this fallback.
+  if (!metadata) return output;
   const segments = path.split('/').filter(Boolean);
   const key = segments.filter((segment) => !/^\d+$/.test(segment)).at(-1) || 'Detail';
-  const metadata = asObject(profile?.fieldMetadata?.[path]) || {};
   output.push({
     path,
     label: humanise(key),
@@ -334,17 +370,33 @@ function collectProfileFacts(value, profile, path = '', output = [], depth = 0) 
 
 function normaliseProposedFact(item, index) {
   const value = asObject(item) || { value: item };
-  const path = cleanText(firstDefined(value.path, value.key, `proposed-${index}`), 200);
+  const factId = cleanText(firstDefined(value.factId, value.id, ''), 120);
+  const definition = factId ? getSemanticFactDefinition(factId) : null;
+  const path = cleanText(firstDefined(value.path, value.key, factId, `proposed-${index}`), 200);
   return {
     path,
-    label: cleanText(firstDefined(value.label, value.name, humanise(path.split('/').filter(Boolean).at(-1)), 'Proposed detail'), 100),
-    value: formatFactValue(firstDefined(value.displayValue, value.value, value.text, '—'), path),
+    factId: factId || null,
+    label: cleanText(firstDefined(value.label, value.name, definition?.label, humanise(path.split('/').filter(Boolean).at(-1)), 'Proposed detail'), 100),
+    value: formatFactValue(firstDefined(value.displayValue, value.value, value.text, '—'), factId || path),
     badge: factBadge(value)
   };
 }
 
 function moduleBadge(item) {
   const value = asObject(item) || {};
+  const availability = String(firstDefined(value.availability, value.readiness?.status, '') || '').toLowerCase();
+  if (availability === 'adviser_review_required') {
+    return { key: 'pending', label: 'Gerry review' };
+  }
+  if (availability === 'unsupported') {
+    return { key: 'pending', label: 'Not automated' };
+  }
+  if (availability === 'needs_facts') {
+    return { key: 'pending', label: 'Needs information' };
+  }
+  if (availability === 'ready' || availability === 'ready_with_assumptions') {
+    return { key: 'exact', label: 'Released' };
+  }
   const certainty = String(firstDefined(value.certainty, value.confidence, '') || '').toLowerCase();
   const status = String(firstDefined(value.status, value.selectionStatus, '') || '').toLowerCase();
   if (certainty.includes('approx') || certainty === 'likely') {
@@ -359,6 +411,9 @@ function moduleBadge(item) {
 function normaliseModule(item, index) {
   const value = asObject(item) || { moduleId: item };
   const moduleId = cleanText(firstDefined(value.moduleId, value.id, value.module?.id, `module-${index}`), 120);
+  const reasons = Array.isArray(value.reasons)
+    ? value.reasons.filter((reason) => typeof reason === 'string' && reason.trim())
+    : [];
   return {
     moduleId,
     label: cleanText(firstDefined(
@@ -369,7 +424,13 @@ function normaliseModule(item, index) {
       MODULE_LABELS[moduleId],
       humanise(moduleId)
     ), 100),
-    reason: cleanText(firstDefined(value.reason, value.description, value.rationale, ''), 160),
+    reason: cleanText(firstDefined(
+      value.reason,
+      reasons[0],
+      value.description,
+      Array.isArray(value.rationale) ? value.rationale[0] : value.rationale,
+      ''
+    ), 220),
     badge: moduleBadge(value)
   };
 }
@@ -393,6 +454,9 @@ export function extractRealtimePlanningContext(payload, currentState = state) {
     root.toolState?.facts
   );
   const proposedModules = firstDefined(
+    root.moduleSlots,
+    realtime.moduleSlots,
+    root.analysisPlan?.moduleSlots,
     root.proposedModules,
     root.modules,
     root.recommendations,
@@ -570,12 +634,19 @@ export class RealtimeVoiceController {
     this.generation = 0;
     this.bound = false;
     this.responseInProgress = false;
+    this.controlledSpeechController = null;
+    this.controlledSpeechUrl = '';
+    this.currentControlledSpeech = null;
+    this.playedSpeechIds = new Set();
     this.userDeltas = new Map();
     this.assistantDeltas = new Map();
     this.seenFinalItems = new Set();
     this.transcriptHistory = [];
     this.planningContext = null;
     this.lastState = state;
+    this.expanded = false;
+    this.lastFocusedElement = null;
+    this.backgroundInertStates = new Map();
   }
 
   element(id) {
@@ -589,11 +660,15 @@ export class RealtimeVoiceController {
   bind() {
     if (this.bound || !this.root) return;
     this.bound = true;
+    this.element('realtimeVoiceLauncher')?.addEventListener('click', () => this.openCompanion());
+    this.element('realtimeVoiceCollapseButton')?.addEventListener('click', () => this.collapseCompanion());
+    this.element('realtimeVoiceBackdrop')?.addEventListener('click', () => this.collapseCompanion());
     this.element('realtimeVoiceStartButton')?.addEventListener('click', () => this.start());
     this.element('realtimeVoiceMuteButton')?.addEventListener('click', () => this.toggleMute());
     this.element('realtimeVoiceEndButton')?.addEventListener('click', () => this.end({ reason: 'user' }));
     this.element('realtimeVoiceResumeAudioButton')?.addEventListener('click', () => this.resumeAudio());
     this.element('realtimeVoiceFocusComposerButton')?.addEventListener('click', () => this.focusComposer());
+    this.element('realtimeVoiceBoundedFallbackButton')?.addEventListener('click', () => this.focusBoundedVoice());
     this.element('realtimeVoiceReviewButton')?.addEventListener('click', () => this.reviewAndConfirm());
 
     const form = document.getElementById('realtimeVoiceConsentForm');
@@ -613,13 +688,113 @@ export class RealtimeVoiceController {
       this.end({ reason: 'pagehide', announce: false });
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.end({ reason: 'hidden' });
+      if (document.hidden) {
+        this.end({ reason: 'hidden' });
+        this.collapseCompanion({ restoreFocus: false });
+      }
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !this.active || document.querySelector('dialog[open]')) return;
-      event.preventDefault();
-      this.end({ reason: 'user' });
+      if (!this.expanded || document.querySelector('dialog[open]')) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.collapseCompanion();
+        return;
+      }
+      if (event.key === 'Tab') this.trapFocus(event);
     });
+  }
+
+  openCompanion({ focus = true } = {}) {
+    if (!this.root || this.root.hidden) return;
+    this.expanded = true;
+    this.lastFocusedElement = document.activeElement || this.element('realtimeVoiceLauncher');
+    const panel = this.element('realtimeVoiceShell');
+    const backdrop = this.element('realtimeVoiceBackdrop');
+    const launcher = this.element('realtimeVoiceLauncher');
+    if (panel) panel.hidden = false;
+    if (backdrop) backdrop.hidden = false;
+    if (launcher) launcher.setAttribute('aria-expanded', 'true');
+    this.root.classList?.toggle?.('is-expanded', true);
+    document.body?.classList?.toggle?.('realtime-companion-open', true);
+    this.setBackgroundInert(true);
+    if (focus) {
+      window.requestAnimationFrame(() => {
+        this.element('realtimeVoiceCollapseButton')?.focus?.({ preventScroll: true });
+      });
+    }
+  }
+
+  collapseCompanion({ restoreFocus = true } = {}) {
+    if (!this.root) return;
+    this.expanded = false;
+    const panel = this.element('realtimeVoiceShell');
+    const backdrop = this.element('realtimeVoiceBackdrop');
+    const launcher = this.element('realtimeVoiceLauncher');
+    if (panel) panel.hidden = true;
+    if (backdrop) backdrop.hidden = true;
+    if (launcher) launcher.setAttribute('aria-expanded', 'false');
+    this.root.classList?.toggle?.('is-expanded', false);
+    document.body?.classList?.toggle?.('realtime-companion-open', false);
+    this.setBackgroundInert(false);
+    if (restoreFocus) {
+      const target = this.lastFocusedElement?.isConnected === false
+        ? launcher
+        : (this.lastFocusedElement || launcher);
+      window.requestAnimationFrame(() => target?.focus?.({ preventScroll: true }));
+    }
+  }
+
+  setBackgroundInert(enabled) {
+    if (enabled) {
+      if (this.backgroundInertStates.size > 0) return;
+      const targets = [
+        document.querySelector?.('.plan-header'),
+        document.getElementById?.('appRoot'),
+        document.querySelector?.('.plan-footer'),
+        this.element('realtimeVoiceLauncher')
+      ].filter(Boolean);
+      targets.forEach((target) => {
+        const wasInert = target.inert === true || target.hasAttribute?.('inert') === true;
+        this.backgroundInertStates.set(target, wasInert);
+        target.inert = true;
+        target.setAttribute?.('inert', '');
+      });
+      return;
+    }
+    this.backgroundInertStates.forEach((wasInert, target) => {
+      target.inert = wasInert;
+      if (!wasInert) target.removeAttribute?.('inert');
+    });
+    this.backgroundInertStates.clear();
+  }
+
+  trapFocus(event) {
+    const panel = this.element('realtimeVoiceShell');
+    if (!panel?.querySelectorAll) return;
+    const focusable = [...panel.querySelectorAll(
+      'button:not([disabled]):not([hidden]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), details > summary, [tabindex]:not([tabindex="-1"])'
+    )].filter((element) => {
+      if (element.hidden || element.getAttribute?.('aria-hidden') === 'true') return false;
+      const closedDetails = element.closest?.('details:not([open])');
+      if (closedDetails && element !== closedDetails.querySelector?.(':scope > summary')) return false;
+      if (typeof element.getClientRects === 'function' && element.getClientRects().length === 0) return false;
+      return true;
+    });
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (typeof panel.contains === 'function' && !panel.contains(document.activeElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+      return;
+    }
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   sync(currentState = state) {
@@ -627,13 +802,12 @@ export class RealtimeVoiceController {
     const context = realtimeContext();
     const shouldShow = context.eligible
       && Boolean(context.sessionId)
-      && currentState.view === 'conversation'
       && !context.consentRefreshRequired;
     if (this.root) this.root.hidden = !shouldShow;
-    document.body?.classList?.toggle('realtime-voice-open', shouldShow);
     if (!shouldShow && this.active) {
       this.end({ reason: 'navigation', announce: false });
     }
+    if (!shouldShow && this.expanded) this.collapseCompanion({ restoreFocus: false });
     this.updatePlanningContext(null, currentState);
     if (context.budget.remainingMicroEur <= 0 && this.active) {
       this.end({ reason: 'budget' });
@@ -678,12 +852,17 @@ export class RealtimeVoiceController {
     const micBadge = this.element('realtimeMicBadge');
     const status = this.element('realtimeVoiceStatus');
     const review = this.element('realtimeVoiceReviewButton');
+    const launcher = this.element('realtimeVoiceLauncher');
+    const launcherStatus = this.element('realtimeVoiceLauncherStatus');
+    const panel = this.element('realtimeVoiceShell');
 
-    this.root.dataset.realtimePhase = this.phase;
-    this.root.dataset.budgetState = exhausted ? 'exhausted' : (budgetLow ? 'low' : 'available');
-    this.root.classList.toggle('is-live', this.active);
-    this.root.classList.toggle('is-muted', this.muted);
-    this.root.classList.toggle('is-budget-low', budgetLow);
+    [this.root, panel].filter(Boolean).forEach((element) => {
+      element.dataset.realtimePhase = this.phase;
+      element.dataset.budgetState = exhausted ? 'exhausted' : (budgetLow ? 'low' : 'available');
+      element.classList.toggle('is-live', this.active);
+      element.classList.toggle('is-muted', this.muted);
+      element.classList.toggle('is-budget-low', budgetLow);
+    });
     if (start) {
       start.disabled = this.active
         || context.journeyBusy
@@ -716,13 +895,34 @@ export class RealtimeVoiceController {
     }
     if (end) end.disabled = !this.active;
     if (resume && !this.active) resume.hidden = true;
-    if (typedFallback) typedFallback.hidden = !this.active;
+    if (typedFallback) typedFallback.hidden = false;
     if (micBadge) micBadge.textContent = this.active ? (this.muted ? 'Mic muted' : 'Mic on') : 'Mic off';
     if (status) status.textContent = this.statusText || 'Voice starts only when you press Start voice.';
+    if (launcher) {
+      launcher.setAttribute('aria-label', this.active
+        ? `Talk to Planéir, ${this.muted ? 'microphone muted' : 'voice active'}`
+        : 'Talk to Planéir, private AI planning companion');
+    }
+    if (launcherStatus) {
+      const launcherLabels = {
+        connecting: 'Connecting securely…',
+        listening: 'Listening',
+        user_speaking: 'Listening to you',
+        thinking: 'Thinking',
+        assistant_speaking: 'Planéir is speaking',
+        interrupted: 'Response interrupted',
+        reconnecting: 'Reconnecting…',
+        muted: 'Microphone muted',
+        budget_exhausted: 'Voice allowance used',
+        error: 'Voice needs attention'
+      };
+      launcherStatus.textContent = launcherLabels[this.phase] || 'Private AI planning companion';
+    }
     if (review) {
       const hasContext = (this.planningContext?.facts?.length || 0) > 0
         || (this.planningContext?.modules?.length || 0) > 0;
-      review.hidden = !(this.planningContext?.readyForReview || hasContext);
+      review.hidden = false;
+      review.disabled = !(this.planningContext?.readyForReview || hasContext);
     }
 
     const budgetValue = this.element('realtimeVoiceBudgetValue');
@@ -768,6 +968,7 @@ export class RealtimeVoiceController {
     this.userDeltas.clear();
     this.assistantDeltas.clear();
     this.seenFinalItems.clear();
+    this.playedSpeechIds.clear();
     this.transcriptHistory = [];
     this.renderTranscriptHistory();
     this.setCaption('user', 'Listening for your first thought…');
@@ -844,21 +1045,10 @@ export class RealtimeVoiceController {
   bindPeerConnection(peer, generation) {
     peer.addEventListener('track', (event) => {
       if (generation !== this.generation) return;
-      const audio = this.element('realtimeVoiceAudio');
-      if (!audio) return;
-      const remoteStream = event.streams?.[0]
-        || (typeof window.MediaStream === 'function' ? new window.MediaStream([event.track]) : null);
-      if (!remoteStream) return;
-      audio.srcObject = remoteStream;
-      audio.play().then(() => {
-        const resume = this.element('realtimeVoiceResumeAudioButton');
-        if (resume) resume.hidden = true;
-      }).catch(() => {
-        const resume = this.element('realtimeVoiceResumeAudioButton');
-        if (resume) resume.hidden = false;
-        this.statusText = 'Voice is connected. Press Play voice audio if your browser has paused sound.';
-        this.updateUi();
-      });
+      // Provider media is never an audible assistant channel. Disable the
+      // remote track before it can be attached; only authenticated Worker-
+      // generated MP3 responses are ever assigned to the audio element.
+      if (event.track) event.track.enabled = false;
     });
     peer.addEventListener('connectionstatechange', () => {
       if (generation !== this.generation || !this.active) return;
@@ -913,7 +1103,10 @@ export class RealtimeVoiceController {
     const event = classifyRealtimeEvent(rawEvent);
     switch (event.kind) {
       case 'speech_started':
-        if (this.responseInProgress) {
+        {
+          const wasSpeaking = Boolean(this.currentControlledSpeech);
+          if (wasSpeaking) this.stopControlledSpeech({ interrupted: true });
+          if (this.responseInProgress || wasSpeaking) {
           // The reviewed provider session owns interruption through semantic
           // VAD (`interrupt_response: true`). Sending a second browser-side
           // cancel races the sideband event stream and can turn a normal
@@ -927,7 +1120,8 @@ export class RealtimeVoiceController {
               this.setPhase('user_speaking', 'Listening to you…');
             }
           }, 650);
-          return;
+            return;
+          }
         }
         this.setPhase('user_speaking', 'Listening to you…');
         return;
@@ -950,28 +1144,29 @@ export class RealtimeVoiceController {
         this.setPhase('thinking', 'Planéir is preparing the next step…');
         return;
       case 'assistant_delta':
-        this.responseInProgress = true;
-        this.appendCaptionDelta('assistant', event.itemId, event.text);
+        this.handleUnauthorizedProviderOutput();
         return;
       case 'assistant_audio':
-        this.responseInProgress = true;
-        this.setPhase('assistant_speaking', 'Planéir is speaking. Start talking to interrupt.');
+        this.handleUnauthorizedProviderOutput();
         return;
       case 'assistant_final':
-        this.finalizeCaption('assistant', event.itemId, event.text);
+        this.handleUnauthorizedProviderOutput();
         return;
       case 'tool_running':
         this.setPhase('thinking', 'Protected planning tools are updating proposed facts and likely analyses…');
         return;
       case 'planning_update':
         this.updatePlanningContext(event.payload, this.lastState);
+        this.playWorkerSpeechFromPayload(event.payload);
         this.scheduleLeasePoll(0);
         return;
       case 'response_done':
         this.responseInProgress = false;
-        this.setPhase(this.muted ? 'muted' : 'listening', this.muted
-          ? 'Response complete. The microphone remains muted.'
-          : 'Listening for your next thought.');
+        if (!this.currentControlledSpeech) {
+          this.setPhase(this.muted ? 'muted' : 'listening', this.muted
+            ? 'Response complete. The microphone remains muted.'
+            : 'Listening for your next thought.');
+        }
         this.scheduleLeasePoll(0);
         return;
       case 'error':
@@ -980,6 +1175,136 @@ export class RealtimeVoiceController {
       default:
         return;
     }
+  }
+
+  handleUnauthorizedProviderOutput() {
+    if (!this.active) return;
+    this.stopControlledSpeech();
+    this.end({ reason: 'unauthorized_output', announce: false }).finally(() => {
+      this.setPhase('error', 'Live voice closed because an unapproved provider response was blocked.', {
+        error: 'Only Worker-approved Planéir speech can be played.'
+      });
+    });
+  }
+
+  async playWorkerSpeechFromPayload(payload) {
+    const root = unwrap(payload);
+    const speech = asObject(firstDefined(
+      root.assistantSpeech,
+      root.speech,
+      root.planning?.assistantSpeech,
+      root.context?.assistantSpeech
+    ));
+    if (!speech || !this.active || !this.sessionId || !this.leaseId) return;
+    const speechId = cleanText(speech.speechId, 100);
+    const text = typeof speech.text === 'string' ? speech.text : '';
+    if (!/^speech_[A-Za-z0-9_-]{20,80}$/.test(speechId)
+      || !text
+      || text !== text.trim()
+      || text.length > 2_400
+      || this.playedSpeechIds.has(speechId)) return;
+    this.playedSpeechIds.add(speechId);
+    this.stopControlledSpeech();
+    const controller = new AbortController();
+    const generation = this.generation;
+    const leaseId = this.leaseId;
+    this.controlledSpeechController = controller;
+    this.currentControlledSpeech = { speechId, text, loading: true };
+    this.setPhase('thinking', 'Preparing the approved Planéir response…');
+    try {
+      const result = await speakRealtimeAuthorized(
+        this.sessionId,
+        leaseId,
+        speech,
+        { signal: controller.signal }
+      );
+      if (controller.signal.aborted
+        || generation !== this.generation
+        || !this.active
+        || leaseId !== this.leaseId) return;
+      const returnedSpeechId = headerValue(result.headers, ['X-Realtime-Speech-Id']);
+      if (returnedSpeechId !== speechId
+        || !String(result.contentType || '').toLowerCase().startsWith('audio/')) {
+        throw new Error('The approved speech response could not be verified.');
+      }
+      const budget = budgetFromHeaders(result.headers);
+      if (budget) this.onVoicePayload({ realtimeVoiceBudget: budget });
+      const audio = this.element('realtimeVoiceAudio');
+      if (!audio || typeof window.URL?.createObjectURL !== 'function') {
+        throw new Error('Approved voice playback is unavailable in this browser.');
+      }
+      this.controlledSpeechUrl = window.URL.createObjectURL(result.blob);
+      audio.srcObject = null;
+      audio.muted = false;
+      audio.src = this.controlledSpeechUrl;
+      audio.onended = () => this.finishControlledSpeech(speechId);
+      audio.onerror = () => this.finishControlledSpeech(speechId, { error: true });
+      this.currentControlledSpeech = { speechId, text, loading: false };
+      this.finalizeWorkerSpeech(speechId, text);
+      this.setPhase('assistant_speaking', 'Planéir is reading the approved response. Start talking to interrupt.');
+      try {
+        await audio.play();
+        audio.dataset.controlledSpeechId = speechId;
+        audio.dataset.controlledSpeechPlayed = 'true';
+        const resume = this.element('realtimeVoiceResumeAudioButton');
+        if (resume) resume.hidden = true;
+      } catch (_error) {
+        const resume = this.element('realtimeVoiceResumeAudioButton');
+        if (resume) resume.hidden = false;
+        this.statusText = 'The approved caption is ready. Press Play voice audio if your browser paused it.';
+        this.updateUi();
+      }
+    } catch (error) {
+      if (controller.signal.aborted || generation !== this.generation) return;
+      this.currentControlledSpeech = null;
+      const message = error instanceof ConsumerApiError
+        ? error.message
+        : 'The approved spoken response could not be played. Continue with the visible journey.';
+      this.setPhase('error', message, { error: message });
+    } finally {
+      if (this.controlledSpeechController === controller) this.controlledSpeechController = null;
+    }
+  }
+
+  finishControlledSpeech(speechId, { error = false } = {}) {
+    if (this.currentControlledSpeech?.speechId !== speechId) return;
+    this.currentControlledSpeech = null;
+    this.releaseControlledSpeechUrl();
+    this.setCaption('assistant', 'Waiting for the next Planéir response…');
+    if (error) {
+      this.setPhase('error', 'The approved audio stopped unexpectedly. Continue with the written journey.', {
+        error: 'Approved voice playback stopped.'
+      });
+      return;
+    }
+    this.setPhase(this.muted ? 'muted' : 'listening', this.muted
+      ? 'The approved response is complete. The microphone remains muted.'
+      : 'Listening for your next thought.');
+  }
+
+  releaseControlledSpeechUrl() {
+    if (this.controlledSpeechUrl && typeof window.URL?.revokeObjectURL === 'function') {
+      window.URL.revokeObjectURL(this.controlledSpeechUrl);
+    }
+    this.controlledSpeechUrl = '';
+  }
+
+  stopControlledSpeech({ interrupted = false } = {}) {
+    this.controlledSpeechController?.abort('controlled_speech_stopped');
+    this.controlledSpeechController = null;
+    const audio = this.element('realtimeVoiceAudio');
+    if (audio) {
+      try { audio.pause(); } catch (_error) { /* noop */ }
+      audio.onended = null;
+      audio.onerror = null;
+      audio.removeAttribute?.('src');
+      delete audio.dataset?.controlledSpeechId;
+      delete audio.dataset?.controlledSpeechPlayed;
+      audio.srcObject = null;
+    }
+    this.releaseControlledSpeechUrl();
+    this.currentControlledSpeech = null;
+    if (interrupted) this.setCaption('assistant', 'Interrupted. Listening to you…');
   }
 
   appendCaptionDelta(role, itemId, delta) {
@@ -1010,6 +1335,18 @@ export class RealtimeVoiceController {
     this.setCaption(role, role === 'user'
       ? 'Listening for your next thought…'
       : 'Waiting for the next Planéir response…');
+  }
+
+  finalizeWorkerSpeech(speechId, text) {
+    const key = `assistant:${speechId}:${text}`;
+    if (this.seenFinalItems.has(key)) return;
+    this.seenFinalItems.add(key);
+    this.transcriptHistory.push({ role: 'assistant', text });
+    const removed = Math.max(0, this.transcriptHistory.length - MAX_TRANSCRIPT_ITEMS);
+    if (removed > 0) this.transcriptHistory.splice(0, removed);
+    this.appendTranscriptHistoryItem({ role: 'assistant', text }, removed);
+    const caption = this.element('realtimeVoiceAssistantCaption');
+    if (caption) caption.textContent = text;
   }
 
   setCaption(role, text) {
@@ -1064,12 +1401,12 @@ export class RealtimeVoiceController {
     const factCount = this.element('realtimeVoiceFactsValue');
     const moduleCount = this.element('realtimeVoiceModulesValue');
     if (factCount) factCount.textContent = String(facts.length);
-    if (moduleCount) moduleCount.textContent = String(modules.length);
-    this.renderContextList(this.element('realtimeVoiceFactsList'), facts.slice(0, 5), {
+    if (moduleCount) moduleCount.textContent = `${Math.min(modules.length, 3)}/3`;
+    this.renderContextList(this.element('realtimeVoiceFactsList'), facts.slice(0, 6), {
       empty: 'Proposed facts will appear here as we talk.',
       type: 'fact'
     });
-    this.renderContextList(this.element('realtimeVoiceModulesList'), modules.slice(0, 4), {
+    this.renderContextList(this.element('realtimeVoiceModulesList'), modules.slice(0, 3), {
       empty: 'Relevant Planéir analyses will appear here.',
       type: 'module'
     });
@@ -1078,6 +1415,10 @@ export class RealtimeVoiceController {
 
   renderContextList(list, items, { empty, type }) {
     if (!list) return;
+    if (type === 'module') {
+      this.renderModuleSlots(list, items);
+      return;
+    }
     const doc = list.ownerDocument || document;
     const fragment = doc.createDocumentFragment();
     if (items.length === 0) {
@@ -1104,6 +1445,42 @@ export class RealtimeVoiceController {
         row.append(copy, badge);
         fragment.append(row);
       });
+    }
+    list.replaceChildren(fragment);
+  }
+
+  renderModuleSlots(list, items) {
+    const doc = list.ownerDocument || document;
+    const fragment = doc.createDocumentFragment();
+    const placeholders = [
+      'Listening for your goals…',
+      'Listening for your life stage…',
+      'Listening for your priorities…'
+    ];
+    for (let index = 0; index < 3; index += 1) {
+      const item = items[index];
+      const row = doc.createElement('li');
+      row.className = `is-module-slot${item ? '' : ' is-empty'}`;
+      const slot = doc.createElement('span');
+      slot.className = 'realtime-module-slot-number';
+      slot.textContent = String(index + 1);
+      const copy = doc.createElement('div');
+      const label = doc.createElement('strong');
+      label.textContent = item?.label || placeholders[index];
+      copy.append(label);
+      if (item?.reason) {
+        const detail = doc.createElement('span');
+        detail.textContent = item.reason;
+        copy.append(detail);
+      }
+      row.append(slot, copy);
+      if (item?.badge) {
+        const badge = doc.createElement('span');
+        badge.className = `realtime-context-badge is-${item.badge.key}`;
+        badge.textContent = item.badge.label;
+        row.append(badge);
+      }
+      fragment.append(row);
     }
     list.replaceChildren(fragment);
   }
@@ -1152,7 +1529,9 @@ export class RealtimeVoiceController {
       await audio.play();
       const resume = this.element('realtimeVoiceResumeAudioButton');
       if (resume) resume.hidden = true;
-      this.statusText = this.muted ? 'Voice audio is on. The microphone remains muted.' : 'Voice audio is on. Listening.';
+      this.statusText = this.muted
+        ? 'Approved Planéir audio is playing. The microphone remains muted.'
+        : 'Approved Planéir audio is playing. Start talking to interrupt.';
       this.updateUi();
     } catch (_error) {
       this.setPhase('error', 'Your browser is still blocking audio. The captions and written journey remain available.', {
@@ -1163,6 +1542,8 @@ export class RealtimeVoiceController {
 
   focusComposer() {
     if (this.active) this.end({ reason: 'typed_fallback' });
+    this.collapseCompanion({ restoreFocus: false });
+    this.onNavigate('conversation');
     window.requestAnimationFrame(() => {
       const input = document.getElementById('conversationInput');
       input?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
@@ -1170,8 +1551,21 @@ export class RealtimeVoiceController {
     });
   }
 
+  focusBoundedVoice() {
+    if (this.active) this.end({ reason: 'typed_fallback' });
+    this.collapseCompanion({ restoreFocus: false });
+    this.onNavigate('conversation');
+    window.requestAnimationFrame(() => {
+      const fallback = document.querySelector('.voice-fallback');
+      if (fallback && 'open' in fallback) fallback.open = true;
+      const target = fallback?.querySelector?.('summary') || fallback;
+      target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      target?.focus?.({ preventScroll: true });
+    });
+  }
+
   reviewAndConfirm() {
-    this.end({ reason: 'review' });
+    this.collapseCompanion({ restoreFocus: false });
     this.onNavigate('review');
   }
 
@@ -1302,6 +1696,7 @@ export class RealtimeVoiceController {
     this.active = false;
     this.muted = false;
     this.responseInProgress = false;
+    this.stopControlledSpeech();
     this.startController?.abort('realtime_voice_ended');
     this.pollController?.abort('realtime_voice_ended');
     this.startController = null;
@@ -1322,11 +1717,7 @@ export class RealtimeVoiceController {
     this.peerConnection = null;
     stopTracks(this.localStream);
     this.localStream = null;
-    const audio = this.element('realtimeVoiceAudio');
-    if (audio) {
-      try { audio.pause(); } catch (_error) { /* noop */ }
-      audio.srcObject = null;
-    }
+    this.playedSpeechIds.clear();
     this.leaseId = '';
     this.leaseExpiresAtMs = null;
     this.sessionId = '';
@@ -1463,6 +1854,7 @@ export class RealtimeVoiceController {
 
   reset({ notifyServer = false } = {}) {
     this.end({ reason: 'reset', notifyServer, announce: false });
+    this.collapseCompanion({ restoreFocus: false });
     this.closeConsentDialog();
     this.transcriptHistory = [];
     this.planningContext = null;
@@ -1470,7 +1862,7 @@ export class RealtimeVoiceController {
     this.statusText = '';
     this.renderTranscriptHistory();
     if (this.root) this.root.hidden = true;
-    document.body?.classList?.remove('realtime-voice-open');
+    document.body?.classList?.remove('realtime-companion-open');
   }
 }
 

@@ -19,7 +19,7 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
   {
     type: 'function',
     name: 'propose_facts',
-    description: 'Propose unconfirmed facts only for server-approved semantic fact IDs in the active question. This never confirms or directly saves trusted facts.',
+    description: 'Propose explicit facts only for server-approved semantic fact IDs. The server returns exact readBackText for material read-back facts and saves ordinary facts only as editable drafts for final visual confirmation.',
     parameters: {
       type: 'object', additionalProperties: false,
       required: ['expectedRevision', 'facts'],
@@ -44,7 +44,7 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
   {
     type: 'function',
     name: 'resolve_fact_confirmation',
-    description: 'Resolve the one current spoken read-back using a separate finalized consumer confirmation item. Final profile and module execution still require the authenticated plan confirmation.',
+    description: 'Resolve only the current server-owned readBackText using a separate finalized consumer confirmation item. Final profile and module execution still require the authenticated visual plan confirmation.',
     parameters: {
       type: 'object', additionalProperties: false,
       required: ['proposalId', 'decision', 'expectedRevision', 'evidenceItemId'],
@@ -116,18 +116,39 @@ export function buildRealtimeInstructions(state = {}) {
     ? state.nextQuestion.prompt.slice(0, 500)
     : 'Ask the planning service for the next question.';
   const stage = typeof state.stage === 'string' ? state.stage.slice(0, 80) : 'goal_discovery';
+  const selectedAnalyses = Array.isArray(state.moduleSlots)
+    ? state.moduleSlots
+      .slice(0, 3)
+      .map((slot) => String(slot?.moduleId || '').slice(0, 80))
+      .filter(Boolean)
+      .join(', ')
+    : '';
+  const pendingReadBack = typeof state.currentPendingProposal?.readBackText === 'string'
+    ? state.currentPendingProposal.readBackText.slice(0, 500)
+    : '';
   return [
-    'You are the live conversational guide for Planeir financial education.',
+    'You are Planéir, a clearly disclosed AI conversational companion for financial education. Never pretend to be a human adviser.',
+    'Interpret the consumer calmly and precisely. You are a silent tool interpreter: never emit assistant audio or assistant prose.',
     'You are not a financial adviser. Never calculate, recommend products, decide eligibility, or invent a saved fact.',
     'The Worker and deterministic module runtime are authoritative. Use only the versioned tools supplied by the server.',
     'Do not treat speech, tool arguments, or prior model text as confirmed data.',
-    'Read deterministic amounts exactly as supplied. If a trusted result is unavailable, say it is not ready.',
+    'Every authorized response must call exactly one supplied tool. The Worker returns signed assistantSpeech for separate playback; do not repeat it in model output.',
+    'Treat response_text and require_repeat_verbatim in tool output as context only. Never produce a continuation after receiving a tool result.',
+    'Do not reveal an internal persona label, invent a fourth module, reorder modules, or substitute your own selection.',
+    'The Worker owns all explanations when the analyses change after a correction or priority choice.',
+    'Never transform deterministic amounts or result text; return only the required tool call.',
     'Batch facts only when the consumer explicitly states them in the same finalized answer; never repeat a fact already shown as saved.',
-    'Ask exactly one concise server-selected next question at a time. Use wait_for_user whenever the consumer is still speaking, reviewing, correcting, or confirming.',
-    'When a tool returns speakableText, speak it verbatim without adding, rounding, comparing, or recalculating figures.',
-    'For deferred, unsupported, regulated, or adviser-only topics, explain the bounded availability status and that Gerry can review it; do not create a handoff, promise contact, run analysis, or invent results.',
+    'Use semantic fact IDs only. Never send a JSON pointer, profile path, calculation, inference, or value that the consumer did not explicitly state.',
+    'For a pending material fact, use the confirmation tool on the consumer’s next finalized answer. Never compose, shorten, or paraphrase factual copy.',
+    'Use wait_for_user whenever the consumer is still speaking, reviewing, correcting, or confirming.',
+    'When the planning service requests disambiguation or goal priority, use the applicable tool and let Worker-owned speech ask the approved question.',
+    'Only the separate authenticated UI confirmation can confirm and run the plan.',
+    'When a tool returns speakableText, treat it as immutable Worker-owned context. Never add, round, compare, recalculate or emit it yourself.',
+    'For deferred, unsupported, regulated, or adviser-only topics, use planning-state tools. Never create a handoff, promise contact, run a gated analysis, or invent results.',
     'Never request PPS numbers, account/card numbers, passwords, credentials, documents, or an exact address.',
     `Current journey stage: ${stage}.`,
+    `Current authoritative three-analysis focus: ${selectedAnalyses || 'not yet classified; continue the goal and life-stage scan'}.`,
+    `Current server-owned read-back: ${pendingReadBack || 'none'}.`,
     `Current server-selected question: ${nextQuestion}`
   ].join('\n');
 }
@@ -162,7 +183,7 @@ export function buildRealtimeSessionConfig(config, state = {}, safetyIdentifier 
         ? 'medium'
         : config.realtimeReasoningEffort
     },
-    output_modalities: ['audio'],
+    output_modalities: ['text'],
     audio: {
       input: {
         format: { type: 'audio/pcm', rate: 24_000 },
@@ -185,10 +206,14 @@ export function buildRealtimeSessionConfig(config, state = {}, safetyIdentifier 
       }
     },
     tools: realtimeToolsForState(state),
-    tool_choice: 'auto',
+    tool_choice: 'required',
     parallel_tool_calls: false,
     max_output_tokens: 800,
-    truncation: { type: 'retention_ratio', retention_ratio: 0.8 }
+    truncation: {
+      type: 'retention_ratio',
+      retention_ratio: 0.8,
+      token_limits: { post_instructions: 8_000 }
+    }
   };
 }
 

@@ -1771,6 +1771,11 @@ export async function createHandoff(env, sessionRow, handoff, profile, context =
   }
   const contact = { fullName: handoff.fullName, email: handoff.email, phone: handoff.phone };
   const selectedModuleIds = context.analysis?.analysisPlan?.selectedModules?.map((item) => item.moduleId) || [];
+  const calculationPerformed = context.analysis?.calculationPerformed !== false
+    && context.analysis?.analysisPlan?.calculationPerformed !== false;
+  const analysisOutcome = calculationPerformed
+    ? 'calculated_analysis'
+    : context.analysis?.outcome || context.analysis?.analysisPlan?.outcome || 'adviser_review_required';
   const sharedDataDigestB64u = await sha256Base64Url(stableStringify({
     recipient: 'gerry',
     purpose: 'adviser_handoff',
@@ -1790,8 +1795,11 @@ export async function createHandoff(env, sessionRow, handoff, profile, context =
     sharedDataCategories: ['full_name', 'email', ...(handoff.phone ? ['phone'] : []), 'requested_help'],
     analysisReceipt: {
       analysisRunId: context.analysis?.id || null,
+      analysisPlanId: context.analysis?.analysisPlan?.id || null,
       profileRevision: context.analysis?.profileRevision || null,
-      selectedModuleIds
+      selectedModuleIds,
+      calculationPerformed,
+      outcome: analysisOutcome
     },
     versions: {
       profileRevision: Number(sessionRow.confirmed_profile_revision),
@@ -2139,6 +2147,8 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
     db(env).prepare(`DELETE FROM consumer_realtime_fact_proposals WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_final_turns WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_speech_usage WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_usage WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),

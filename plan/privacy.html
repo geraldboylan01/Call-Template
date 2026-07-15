@@ -171,9 +171,11 @@
               <strong>Live voice</strong> appears only when its separate server feature flag is active. It
               starts when you press <strong>Start voice</strong> and streams microphone audio through
               Planéir’s protected service to an OpenAI Realtime session while the on-screen Live voice
-              controls are active. It ends when you press <strong>End voice</strong>, leave the conversation
-              step, hide or leave the page, lose the protected session, or reach the server-enforced time or
-              allowance limit. Muting stops the microphone track from sending audio while keeping the live
+              controls are active. It may remain active while you move between the conversation, review,
+              analysis-plan, and results steps so the companion can continue the same disclosed session. It
+              ends when you press <strong>End voice</strong>, withdraw Live voice consent, delete the planning
+              session, hide or leave the page, lose the protected session, or reach the server-enforced time
+              or allowance limit. Muting stops the microphone track from sending audio while keeping the live
               session open.
             </p>
             <p>
@@ -196,18 +198,21 @@
               you can correct, remove, or confirm the proposals.
             </p>
             <p>
-              <strong>Voice playback is AI-generated.</strong> Bounded question playback derives the exact
-              current, server-owned Planéir question through the protected service. A Live voice session may
-              also return streaming AI audio and captions. The written Planéir question, reviewed facts, and
-              deterministic module outputs remain authoritative: voice output does not calculate financial
-              results, confirm facts, approve products, or replace the written journey. Speaking while Live
-              voice is responding interrupts that response where the provider and browser support it.
+              <strong>Voice playback is AI-generated from code-owned copy.</strong> Bounded question playback
+              derives the exact current, server-owned Planéir question through the protected service. In Live
+              voice, OpenAI Realtime is used for microphone streaming, speech recognition, turn detection, and
+              protected tool interpretation. Its direct model audio is disabled and never attached for
+              playback. Each audible Planéir response is exact Worker-approved text, content-bound by a signed
+              authorization, and generated separately through the protected speech service. The visible final
+              caption is that same approved text. Speaking while it plays stops the controlled audio and returns
+              the companion to listening.
             </p>
             <p>
               Voice processing has a server-enforced €2 app allowance per private session. Each voice
               request uses a conservative application reservation rather than promising an exact provider
               invoice. A Live call atomically reserves the remaining session envelope and reconciles
-              separately billed Realtime-response and input-transcription usage against it. Live sessions
+              separately billed Realtime-response, input-transcription, and character-priced approved speech
+              usage against that same reservation. Live sessions
               also use a server-created, time-limited lease and are closed when that lease or allowance
               ends. The journey shows the remaining app allowance and stops new voice calls at that
               allowance; typed answers continue normally. You can stop future voice processing at any time

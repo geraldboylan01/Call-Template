@@ -1,9 +1,15 @@
 import { applyProfilePatch as applyCanonicalProfilePatch } from '../../../js/planning/profile.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import { recommendModules } from '../../../js/planning/routing_rules.js';
+import {
+  buildPersonaModulePlan,
+  personaPlanRecommendations
+} from '../../../js/planning/persona_catalogue.js';
 import { extractRulesOnlyProfilePatch } from '../../../js/planning/rules_only_extraction.js';
+import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
 import { extractProfilePatchWithAi, selectAiRequestPolicy } from './ai_provider.js';
 import { ConsumerError } from './errors.js';
+import { mapRealtimeFact } from './realtime_fact_mapper.js';
 import { applyProfilePatch as applyApiProfilePatch, redactSensitiveIdentifiers } from './validators.js';
 import {
   countSessionTurns,
@@ -20,6 +26,10 @@ import { buildQuestionPlan, stageFromQuestionPlan } from './question_plan.js';
 
 function allowedRecommendations(profile, message, config) {
   if (!config.moduleRoutingEnabled) return [];
+  if (profile?.goals?.length) {
+    const plan = buildPersonaModulePlan(profile, { allowedModuleIds: config.allowedModules });
+    return personaPlanRecommendations(plan, profile);
+  }
   return recommendModules(profile, { text: message })
     .filter((item) => (
       config.allowedModules.includes(item.moduleId)
@@ -56,6 +66,196 @@ const GOAL_EVIDENCE = Object.freeze({
   business_planning: /\b(?:business|company|shareholding)\b/i,
   agricultural_planning: /\b(?:farm|agricultural|farmland)\b/i
 });
+
+const SELF_DESCRIPTION_EVIDENCE = Object.freeze({
+  student: /\bstudent\b/i,
+  graduate: /\b(?:graduate|recently graduated)\b/i,
+  first_time_buyer: /\bfirst[- ]time buyer\b/i,
+  young_professional: /\byoung professional\b/i,
+  combining_finances: /\b(?:combining|joining|merging) (?:our )?finances\b/i,
+  new_parent: /\b(?:new parent|new baby|just had (?:a )?(?:baby|child))\b/i,
+  established_professional: /\bestablished professional\b/i,
+  behind_on_retirement: /\bbehind (?:on|with) (?:my |our )?(?:pension|retirement)\b/i,
+  self_employed: /\bself[- ]employed\b/i,
+  company_director: /\bcompany director\b/i,
+  owner_manager: /\bowner[- ]manager\b/i,
+  business_owner: /\bbusiness owner\b/i,
+  farmer: /\b(?:farmer|farming)\b/i,
+  pre_retiree: /\b(?:pre[- ]retiree|approaching retirement)\b/i,
+  newly_retired: /\b(?:newly|recently|just) retired\b/i,
+  older_retiree: /\b(?:older retiree|later in retirement)\b/i,
+  high_net_worth_family: /\bhigh[- ]net[- ]worth (?:family|household)\b/i,
+  funding_education: /\b(?:funding|paying for).{0,20}(?:college|university|education)\b/i,
+  transferring_wealth: /\b(?:transferring wealth|gifts? to (?:my |our )?(?:children|family)|inheritance planning)\b/i,
+  lump_sum_recipient: /\b(?:received|receiving|expecting).{0,20}\blump sum\b/i,
+  immediate_decision: /\b(?:urgent|immediate|time[- ]sensitive).{0,20}\bdecision\b/i
+});
+
+// A short, deterministic scan runs after a primary goal is known and before
+// module-specific fact finding. Each item is a semantic fact already shared by
+// typed and Realtime intake; facts volunteered earlier are skipped.
+const PERSONA_SCAN_FACT_IDS = Object.freeze([
+  'household_structure',
+  'employment_context',
+  'property_status',
+  'dependant_count',
+  'business_context',
+  'retirement_status'
+]);
+
+const NUMBER_WORDS = Object.freeze({
+  no: 0, none: 0, zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5,
+  six: 6, seven: 7, eight: 8, nine: 9, ten: 10
+});
+
+function personaValues(profile) {
+  const values = profile?.assumptions?.values?.persona;
+  return values && typeof values === 'object' && !Array.isArray(values) ? values : {};
+}
+
+function scanFactAlreadyKnown(profile, factId) {
+  const data = personaValues(profile);
+  const skipped = profile?.assumptions?.values?.completionFacts?.personaScanSkipped || {};
+  if (skipped[factId] === true) return true;
+  if (factId === 'household_structure') {
+    return typeof data.householdStructure === 'string'
+      || Boolean(profile.partner)
+      || profile.dependants.length > 0;
+  }
+  if (factId === 'employment_context') {
+    return typeof data.employmentContext === 'string'
+      || (typeof profile.primaryPerson?.employmentStatus === 'string'
+        && profile.primaryPerson.employmentStatus !== 'unknown');
+  }
+  if (factId === 'property_status') {
+    return typeof data.propertyStatus === 'string' || profile.properties.length > 0;
+  }
+  if (factId === 'dependant_count') {
+    return Number.isInteger(data.dependantCount)
+      || typeof data.hasDependants === 'boolean'
+      || profile.dependants.length > 0;
+  }
+  if (factId === 'business_context') {
+    return typeof data.businessContext === 'string'
+      || data.companyDirector === true
+      || data.ownerManager === true
+      || data.agriculturalAssets === true
+      || profile.businesses.length > 0;
+  }
+  if (factId === 'retirement_status') {
+    return typeof data.retirementStatus === 'string'
+      || profile.primaryPerson?.employmentStatus === 'retired';
+  }
+  return false;
+}
+
+function nextPersonaScanFact(profile) {
+  return PERSONA_SCAN_FACT_IDS.find((factId) => !scanFactAlreadyKnown(profile, factId)) || null;
+}
+
+function personaScanQuestion(profile) {
+  const factId = nextPersonaScanFact(profile);
+  if (!factId) return null;
+  const definition = getSemanticFactDefinition(factId);
+  const path = definition?.mappings?.[0]?.pathPattern || null;
+  if (!definition || !path || path.includes('*')) return null;
+  return {
+    questionId: `question-persona-scan-${factId}-${profile.revision}`,
+    factId,
+    factInstanceId: factId,
+    factIds: [factId],
+    facts: [{ factId, factInstanceId: factId, fieldPath: path }],
+    fieldPaths: [path],
+    relatedFieldPaths: [path],
+    prompt: definition.questionPrompt,
+    answerType: definition.answerType,
+    confirmationPolicy: definition.confirmationPolicy,
+    optional: false
+  };
+}
+
+function firstMatchingValue(message, choices) {
+  for (const [value, pattern] of choices) {
+    if (pattern.test(message)) return value;
+  }
+  return null;
+}
+
+function dependantCountFromMessage(message) {
+  if (/\b(?:no|without)\s+(?:children|kids|dependants?|people depending on (?:me|us))\b/i.test(message)) return 0;
+  const numeric = message.match(/\b(\d{1,2})\s+(?:children|kids|dependants?)\b/i);
+  if (numeric) return Number(numeric[1]);
+  const word = message.match(/\b(no|none|zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:children|kids|dependants?)\b/i);
+  return word ? NUMBER_WORDS[word[1].toLowerCase()] : null;
+}
+
+function personaScanValuesFromMessage(message) {
+  const values = {};
+  const dependantCount = dependantCountFromMessage(message);
+  if (dependantCount !== null) values.dependant_count = dependantCount;
+  values.household_structure = dependantCount > 0
+    ? 'family'
+    : firstMatchingValue(message, [
+        ['parent_or_grandparent', /\b(?:grandparent|grandmother|grandfather)\b/i],
+        ['couple', /\b(?:couple|partner|spouse|wife|husband|married|civil partner)\b/i],
+        ['single', /\b(?:just me|for me alone|single household|on my own|live alone)\b/i],
+        ['family', /\bfamily\b/i]
+      ]);
+  values.employment_context = firstMatchingValue(message, [
+    ['company_director', /\bcompany director\b/i],
+    ['owner_manager', /\bowner[- ]manager\b/i],
+    ['business_owner', /\bbusiness owner\b/i],
+    ['self_employed', /\bself[- ]employed\b/i],
+    ['contractor', /\bcontract(?:or|ing)\b/i],
+    ['retired', /\bretired\b/i],
+    ['employee', /\b(?:employee|employed|salaried)\b/i],
+    ['other', /\bother employment\b/i]
+  ]);
+  values.property_status = firstMatchingValue(message, [
+    ['first_time_buyer', /\bfirst[- ]time buyer\b/i],
+    ['delaying_purchase', /\b(?:delay|delaying|not ready).{0,20}\b(?:buy|purchase)\b/i],
+    ['buying_soon', /\b(?:buy|buying|purchase|purchasing).{0,20}\b(?:soon|now|home|house|property)\b/i],
+    ['homeowner', /\b(?:homeowner|home owner|own (?:my|our|a) (?:home|house|property))\b/i],
+    ['renter', /\b(?:rent|renter|renting)\b/i],
+    ['no_property', /\b(?:no property|do not own property|don't own property)\b/i]
+  ]);
+  values.business_context = firstMatchingValue(message, [
+    ['no_business_interest', /\b(?:no|without) (?:business|company) (?:interest|ownership)|\bdo not own (?:a )?business\b|\bdon't own (?:a )?business\b/i],
+    ['farmer', /\b(?:farmer|farming|farm business)\b/i],
+    ['company_director', /\bcompany director\b/i],
+    ['owner_manager', /\bowner[- ]manager\b/i],
+    ['business_owner', /\b(?:business owner|own (?:a|my|our) business)\b/i],
+    ['self_employed', /\bself[- ]employed\b/i]
+  ]);
+  values.retirement_status = firstMatchingValue(message, [
+    ['older_retiree', /\b(?:later in retirement|older retiree)\b/i],
+    ['newly_retired', /\b(?:newly|recently|just) retired\b/i],
+    ['approaching_retirement', /\b(?:approaching|near|close to) retirement\b|\bpre[- ]retiree\b/i],
+    ['retired', /\bretired\b/i],
+    ['working', /\b(?:still working|working|employee|employed|self[- ]employed|contractor|company director|owner[- ]manager|business owner)\b/i]
+  ]);
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== null));
+}
+
+function personaScanPatch(profile, question, message) {
+  if (!PERSONA_SCAN_FACT_IDS.includes(question?.factId)) return null;
+  if (/^\s*(?:prefer not to say|rather not say|not sure|unsure|unknown)\s*[.!]?\s*$/i.test(message)) {
+    const completionFacts = { ...(profile.assumptions.values.completionFacts || {}) };
+    completionFacts.personaScanSkipped = {
+      ...(completionFacts.personaScanSkipped || {}),
+      [question.factId]: true
+    };
+    return { '/assumptions/values/completionFacts': completionFacts };
+  }
+  const values = personaScanValuesFromMessage(message);
+  if (!Object.hasOwn(values, question.factId)) return null;
+  const patch = {};
+  for (const [factId, value] of Object.entries(values)) {
+    const mapped = mapRealtimeFact(profile, { factId, value });
+    patch[mapped.fieldPath] = mapped.canonicalValue;
+  }
+  return patch;
+}
 
 function candidateGoalPatch(profile, candidates, message) {
   const existing = new Set(profile.goals.map((goal) => goal.type));
@@ -126,7 +326,21 @@ function contextMoneyForPath(money, path) {
 
 export function extractContextBoundPatch(profile, question, message) {
   if (!question || question.fieldPaths?.length !== 1) return null;
+  const scanPatch = personaScanPatch(profile, question, message);
+  if (scanPatch) return scanPatch;
   const path = question.fieldPaths[0];
+  if (path === '/assumptions/values/persona/selfDescription') {
+    const matches = Object.entries(SELF_DESCRIPTION_EVIDENCE)
+      .filter(([, pattern]) => pattern.test(message))
+      .map(([value]) => value);
+    if (matches.length === 1) return { [path]: matches[0] };
+  }
+  if (path === '/assumptions/values/persona/primaryGoalType') {
+    const matches = Object.entries(GOAL_EVIDENCE)
+      .filter(([, pattern]) => pattern.test(message))
+      .map(([value]) => value);
+    if (matches.length === 1) return { [path]: matches[0] };
+  }
   if (path === '/assumptions/values/housePurchase/lendingCategory') {
     const current = { ...(profile.assumptions.values.housePurchase || {}) };
     if (/\bfirst[- ]time(?: buyer)?\b/i.test(message)) {
@@ -269,8 +483,7 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
   let nextProfile = profile;
   let aiErrorCode = null;
   let aiAttemptId = null;
-  const activeRecommendations = allowedRecommendations(profile, '', config);
-  const activeQuestion = buildQuestionPlan(profile, activeRecommendations);
+  const activeQuestion = describeConversationState(profile, config).nextQuestion;
   const contextualPatch = extractContextBoundPatch(profile, activeQuestion, safeMessage);
 
   if (contextualPatch) {
@@ -353,9 +566,10 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
     }
   }
 
-  const recommendations = allowedRecommendations(nextProfile, safeMessage, config);
-  const stage = stageFromQuestionPlan(nextProfile, recommendations);
-  const question = buildQuestionPlan(nextProfile, recommendations);
+  const conversationState = describeConversationState(nextProfile, config);
+  const recommendations = conversationState.recommendations;
+  const stage = conversationState.stage;
+  const question = conversationState.nextQuestion;
   // Model prose is never authoritative or returned. The server owns this copy.
   const assistantMessage = question.prompt;
   let committed;
@@ -434,10 +648,88 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
 }
 
 export function describeConversationState(profile, config) {
-  const recommendations = allowedRecommendations(profile, '', config);
+  const personaPlan = buildPersonaModulePlan(profile, { allowedModuleIds: config.allowedModules });
+  const hasGoal = Boolean(profile?.goals?.length);
+  const plannedRecommendations = hasGoal
+    ? personaPlanRecommendations(personaPlan, profile)
+    : allowedRecommendations(profile, '', config);
+  const scanQuestion = hasGoal ? personaScanQuestion(profile) : null;
+  const recommendations = hasGoal && personaPlan.requiresDecisionTopicQuestion
+    ? []
+    : plannedRecommendations;
+  let nextQuestion = buildQuestionPlan(profile, plannedRecommendations);
+  let stage = stageFromQuestionPlan(profile, plannedRecommendations);
+  if (hasGoal && personaPlan.personaAssessment.needsDisambiguation) {
+    nextQuestion = {
+      questionId: `question-persona-disambiguation-${personaPlan.personaAssessment.profileRevision}`,
+      factId: 'self_description',
+      factInstanceId: 'self_description',
+      factIds: ['self_description'],
+      facts: [{
+        factId: 'self_description',
+        factInstanceId: 'self_description',
+        fieldPath: '/assumptions/values/persona/selfDescription'
+      }],
+      fieldPaths: ['/assumptions/values/persona/selfDescription'],
+      relatedFieldPaths: ['/assumptions/values/persona/selfDescription'],
+      prompt: 'Which best describes your situation right now—for example first-time buyer, new parent, self-employed, company director, pre-retiree, retired, or something else?',
+      answerType: 'text',
+      confirmationPolicy: 'final_review',
+      optional: false
+    };
+    stage = 'life_stage_scan';
+  } else if (personaPlan.requiresDecisionTopicQuestion) {
+    nextQuestion = {
+      questionId: `question-specific-decision-${personaPlan.profileRevision}`,
+      factId: 'primary_goal',
+      factInstanceId: 'primary_goal',
+      factIds: ['primary_goal'],
+      facts: [{
+        factId: 'primary_goal',
+        factInstanceId: 'primary_goal',
+        fieldPath: '/goals'
+      }],
+      fieldPaths: ['/goals'],
+      relatedFieldPaths: ['/goals'],
+      prompt: 'What specific financial decision should we address first—for example buying a home, reviewing a mortgage, funding education, transferring wealth, or planning around a business?',
+      answerType: 'text',
+      confirmationPolicy: 'final_review',
+      optional: false
+    };
+    stage = 'goal_discovery';
+  } else if (scanQuestion) {
+    nextQuestion = scanQuestion;
+    stage = 'life_stage_scan';
+  } else if (personaPlan.requiresGoalPriorityQuestion) {
+    nextQuestion = {
+      questionId: `question-primary-goal-focus-${personaPlan.profileRevision}`,
+      factId: 'primary_goal_focus',
+      factInstanceId: 'primary_goal_focus',
+      factIds: ['primary_goal_focus'],
+      facts: [{
+        factId: 'primary_goal_focus',
+        factInstanceId: 'primary_goal_focus',
+        fieldPath: '/assumptions/values/persona/primaryGoalType'
+      }],
+      fieldPaths: ['/assumptions/values/persona/primaryGoalType'],
+      relatedFieldPaths: ['/goals'],
+      prompt: 'You have several important goals. Which one should this first three-analysis plan address first?',
+      answerType: 'text',
+      confirmationPolicy: 'final_review',
+      optional: false
+    };
+    stage = 'goal_priority';
+  }
   return {
-    stage: stageFromQuestionPlan(profile, recommendations),
-    nextQuestion: buildQuestionPlan(profile, recommendations),
-    recommendations
+    stage,
+    nextQuestion,
+    recommendations,
+    personaAssessment: personaPlan.personaAssessment,
+    moduleSlots: hasGoal && !personaPlan.requiresDecisionTopicQuestion ? personaPlan.moduleSlots : [],
+    overrides: hasGoal && !personaPlan.requiresDecisionTopicQuestion ? personaPlan.overrides : [],
+    requiresGoalPriorityQuestion: hasGoal && personaPlan.requiresGoalPriorityQuestion,
+    requiresDecisionTopicQuestion: hasGoal && personaPlan.requiresDecisionTopicQuestion,
+    requiresPersonaScan: Boolean(hasGoal && scanQuestion),
+    deferredGoalTypes: hasGoal ? personaPlan.deferredGoalTypes : []
   };
 }

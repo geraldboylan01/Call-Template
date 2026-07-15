@@ -188,13 +188,21 @@ export function getAvailableViews(currentState) {
     && analysisRevision === currentRevision
     && ['complete', 'partial'].includes(String(currentState.analysis?.status || ''))
     && getResultItems(currentState.analysis).length > 0;
+  const planSlots = asArray(currentState.analysisPlan?.moduleSlots);
+  const hasCompletedAdviserReviewPlan = currentRevision > 0
+    && Number(currentState.analysisPlan?.profileRevision || 0) === currentRevision
+    && String(currentState.analysisPlan?.status || '') === 'complete'
+    && asArray(currentState.analysisPlan?.moduleIds).length === 0
+    && planSlots.length === 3
+    && planSlots.every((slot) => slot?.availability === 'adviser_review_required');
+  const hasCompletedOutcome = hasCompletedResults || hasCompletedAdviserReviewPlan;
   const profileConfirmed = currentRevision > 0 && confirmedRevision === currentRevision;
   return {
     conversation: true,
     review: Boolean(currentState.profile),
     recommendations: profileConfirmed,
-    results: hasCompletedResults,
-    handoff: hasCompletedResults && currentState.bootstrap?.handoffEnabled === true
+    results: hasCompletedOutcome,
+    handoff: hasCompletedOutcome && currentState.bootstrap?.handoffEnabled === true
   };
 }
 
@@ -920,35 +928,27 @@ function createRecommendationCard(item, currentState) {
   const adviserOnly = readiness === 'adviser_review_required';
   const excluded = recommendationStatus === 'excluded'
     || ['adviser_review_required', 'unsupported', 'not_relevant'].includes(readiness);
-  const selected = required || currentState.selectedModuleIds.includes(moduleId);
-  const selectionLabel = element('label', 'module-select-row');
-  const checkbox = element('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = selected && !excluded;
-  checkbox.disabled = required || excluded;
-  checkbox.dataset.action = 'toggle-module';
-  checkbox.dataset.moduleId = moduleId;
+  const selectionLabel = element('div', 'module-select-row');
+  selectionLabel.dataset.moduleId = moduleId;
   const selectionCopy = element('span');
   append(
     selectionCopy,
     element('strong', '', adviserOnly
-        ? 'Discuss with an adviser'
+        ? 'Included · Gerry review'
         : excluded
-          ? 'Not available for this run'
+          ? 'Included · not automated'
           : required
-            ? 'Required for this goal'
-          : selected
-            ? 'Included in this run'
-            : 'Not included'),
+            ? 'Included · required for this goal'
+            : 'Included in this three-analysis plan'),
     element('small', '', adviserOnly
-        ? 'This topic is shown for context but cannot run in the consumer journey.'
+        ? 'This analysis remains in your plan, but Gerry must review it before any result is produced.'
       : excluded
-        ? 'The readiness rules prevent this analysis from running with the current information.'
+        ? 'This analysis remains visible, but the current readiness rules do not permit an automated result.'
       : required
-        ? 'This analysis is required by the deterministic planning rules and cannot be removed.'
-        : 'This is a recommended or optional analysis. You can include or remove it.')
+        ? 'Deterministic planning rules require this slot and it cannot be removed here.'
+        : 'This slot was selected by the confirmed persona and goal rules and cannot be removed here.')
   );
-  append(selectionLabel, checkbox, selectionCopy);
+  selectionLabel.append(selectionCopy);
   card.append(selectionLabel);
 
   const description = String(firstDefined(item?.description, item?.module?.description, '') || '');
@@ -1046,20 +1046,34 @@ function createRecommendationsView(currentState) {
   addGoal.type = 'button';
   addGoal.dataset.action = 'navigate';
   addGoal.dataset.view = 'conversation';
-  const run = element('button', 'primary-button', currentState.busy ? 'Confirming and running…' : 'Confirm profile & run analyses');
+  const hasAuthoritativeThreeSlotPlan = currentState.recommendations.length === 3;
+  const runnableCount = currentState.selectedModuleIds.length;
+  const run = element(
+    'button',
+    'primary-button',
+    currentState.busy
+      ? 'Confirming…'
+      : runnableCount > 0 ? 'Confirm profile & run analyses' : 'Confirm profile & save review plan'
+  );
   run.type = 'button';
   run.dataset.action = 'run-analysis';
   run.disabled = currentState.busy
     || currentState.bootstrap?.routingEnabled === false
-    || currentState.selectedModuleIds.length === 0
+    || !hasAuthoritativeThreeSlotPlan
     || selectedNeedsInformation;
+  const adviserReviewCount = currentState.recommendations.filter((item) => (
+    normaliseReadiness(item) === 'adviser_review_required'
+  )).length;
+  const selectionSummary = hasAuthoritativeThreeSlotPlan
+    ? `Your authoritative three-analysis plan is shown below. ${runnableCount} ${runnableCount === 1 ? 'analysis will' : 'analyses will'} run automatically.${adviserReviewCount > 0 ? ` ${adviserReviewCount} ${adviserReviewCount === 1 ? 'analysis remains' : 'analyses remain'} included and require${adviserReviewCount === 1 ? 's' : ''} Gerry’s review.` : ''}`
+    : `${currentState.selectedModuleIds.length} selected.`;
   append(actions, addGoal, run);
   append(
     toolbar,
     element(
       'span',
       '',
-      `${text} ${currentState.selectedModuleIds.length} selected.${planPrepared ? ` Protected plan prepared for profile revision ${displayedRevision}.` : ' The protected plan will be refreshed before confirmation.'}`
+      `${text} ${selectionSummary}${planPrepared ? ` Protected plan prepared for profile revision ${displayedRevision}.` : ' The protected plan will be refreshed before confirmation.'}`
     ),
     actions
   );
@@ -1418,20 +1432,65 @@ function createAnalysisErrors(analysis) {
   return panel;
 }
 
+function adviserReviewModuleSlots(currentState) {
+  const persisted = asArray(currentState.analysisPlan?.moduleSlots)
+    .filter((slot) => slot?.availability === 'adviser_review_required');
+  if (persisted.length > 0) return persisted.slice(0, 3);
+  return asArray(currentState.recommendations)
+    .filter((item) => normaliseReadiness(item) === 'adviser_review_required')
+    .map((item, index) => ({
+      slot: Number(item?.slot || index + 1),
+      moduleId: String(firstDefined(item?.moduleId, item?.id, item?.module?.id, '') || ''),
+      availability: 'adviser_review_required'
+    }))
+    .filter((slot) => slot.moduleId)
+    .slice(0, 3);
+}
+
+function createAdviserReviewOutcome(currentState) {
+  const slots = adviserReviewModuleSlots(currentState);
+  if (slots.length === 0) return null;
+  const panel = element('section', 'uncertainty-panel adviser-review-outcome');
+  append(
+    panel,
+    element('h2', '', slots.length === 3 ? 'Three-analysis plan saved for review' : 'Part of this plan requires Gerry’s review'),
+    element(
+      'p',
+      '',
+      slots.length === 3
+        ? 'No automated financial result was produced for these analyses. They remain in your confirmed plan and can be shared with Gerry only if you separately choose and consent.'
+        : 'The released analyses were calculated above. The analyses below remain in the same confirmed three-analysis plan, but no automated result was produced for them.'
+    )
+  );
+  const list = element('ul', 'plain-list');
+  slots.forEach((slot) => {
+    const definition = { moduleId: slot.moduleId };
+    list.append(element('li', '', `${moduleName(definition)} — Gerry review required`));
+  });
+  panel.append(list);
+  return panel;
+}
+
 function createResultsView(currentState) {
+  const adviserReviewSlots = adviserReviewModuleSlots(currentState);
+  const gatedOnly = adviserReviewSlots.length === 3 && getResultItems(currentState.analysis).length === 0;
   const section = element('section');
   append(
     section,
     createWorkspaceHeading(
       currentState,
-      'Calculated from your confirmed information',
-      'Your educational analysis',
-      'These results are illustrations, not approvals or recommendations. Check the assumptions and uncertainties before relying on any figure.'
+      gatedOnly ? 'Confirmed three-analysis plan' : 'Calculated from your confirmed information',
+      gatedOnly ? 'Your plan is ready for adviser review' : 'Your educational analysis',
+      gatedOnly
+        ? 'These analyses are not released for automated calculation. Nothing has been calculated or shared with Gerry.'
+        : 'These results are illustrations, not approvals or recommendations. Check the assumptions and uncertainties before relying on any figure.'
     )
   );
 
   const toolbar = element('div', 'results-toolbar');
-  const text = element('span', '', 'AI does not calculate or change these numbers. Versioned deterministic engines produce the outputs shown below.');
+  const text = element('span', '', gatedOnly
+    ? 'Your authoritative three-module selection is saved. You decide whether to send the reviewed package to Gerry.'
+    : 'AI does not calculate or change these numbers. Versioned deterministic engines produce the outputs shown below.');
   const next = element('button', 'primary-button', currentState.bootstrap?.handoffEnabled ? 'Discuss this with Gerry' : 'Review my information');
   next.type = 'button';
   next.dataset.action = 'navigate';
@@ -1441,23 +1500,32 @@ function createResultsView(currentState) {
 
   const resultItems = getResultItems(currentState.analysis);
   if (resultItems.length === 0) {
-    const empty = element('section', 'empty-state');
-    append(
-      empty,
-      element('h2', '', 'No completed result was returned'),
-      element('p', '', 'Your profile remains safe. Return to your analysis plan and try the calculation again.')
-    );
-    const retry = element('button', 'secondary-button', 'Return to analysis plan');
-    retry.type = 'button';
-    retry.dataset.action = 'navigate';
-    retry.dataset.view = 'recommendations';
-    empty.append(retry);
-    append(section, createAnalysisErrors(currentState.analysis), empty);
+    if (gatedOnly) {
+      append(section, createAdviserReviewOutcome(currentState));
+    } else {
+      const empty = element('section', 'empty-state');
+      append(
+        empty,
+        element('h2', '', 'No completed result was returned'),
+        element('p', '', 'Your profile remains safe. Return to your analysis plan and try the calculation again.')
+      );
+      const retry = element('button', 'secondary-button', 'Return to analysis plan');
+      retry.type = 'button';
+      retry.dataset.action = 'navigate';
+      retry.dataset.view = 'recommendations';
+      empty.append(retry);
+      append(section, createAnalysisErrors(currentState.analysis), empty);
+    }
     return section;
   }
 
   const stack = element('div', 'result-stack');
-  append(stack, createOverallSummary(currentState.analysis), createAnalysisErrors(currentState.analysis));
+  append(
+    stack,
+    createOverallSummary(currentState.analysis),
+    createAnalysisErrors(currentState.analysis),
+    createAdviserReviewOutcome(currentState)
+  );
   resultItems.forEach((item) => stack.append(createResultCard(item)));
   append(stack, createAssumptionsSection(currentState.analysis, resultItems), createUncertaintyPanel(currentState, resultItems));
   section.append(stack);

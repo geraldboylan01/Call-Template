@@ -96,7 +96,10 @@ export function recommendModules(rawProfile, {
   route('optimise_mortgage', MODULE_IDS.MORTGAGE, 10, 'recommended', 'route.mortgage.v1', 'The goal maps to deterministic mortgage amortisation.');
   route('assess_decision', MODULE_IDS.COLLEGE_FUNDING, 0, 'recommended', 'route.education.v1', 'An education-funding decision maps to child-level college funding.');
   route('transfer_wealth', MODULE_IDS.CAT, 0, 'recommended', 'route.transfer.adviser.v1', 'Wealth transfer remains adviser-only until dated CAT rules are code-owned.');
-  route('business_planning', MODULE_IDS.BUSINESS_RELIEF, 0, 'recommended', 'route.business.adviser.v1', 'Business relief remains adviser-only.');
+  route('business_planning', MODULE_IDS.BUSINESS_OWNER_ANALYSIS, 0, 'recommended', 'route.business_owner.adviser.v1', 'General business-owner analysis remains adviser-reviewed.');
+  if (profile.assumptions?.values?.persona?.businessExit === true) {
+    route('business_planning', MODULE_IDS.BUSINESS_RELIEF_ANALYSIS, 5, 'recommended', 'route.business_relief.adviser.v1', 'A confirmed business-exit intention also requires date-versioned business relief review.');
+  }
   route('agricultural_planning', MODULE_IDS.AGRICULTURAL_RELIEF, 0, 'recommended', 'route.agricultural.adviser.v1', 'Agricultural relief remains adviser-only.');
 
   userSelectedModuleIds.forEach((moduleId) => addRecommendation(byId, moduleId, {
@@ -122,4 +125,3 @@ export function recommendModules(rawProfile, {
 export function getRoutingRulesVersion() {
   return CONSUMER_PLANNING_RULES_VERSION;
 }
-

@@ -8,6 +8,42 @@ import {
   markHandoffFailed,
   readHandoffPackage
 } from './repository.js';
+import { getRealtimeAnalysisPlanResult } from './realtime_repository.js';
+
+async function getCurrentAdviserReviewOutcome(env, sessionRow) {
+  const stored = await getRealtimeAnalysisPlanResult(env, sessionRow.id);
+  if (!stored || stored.row.status !== 'complete'
+    || Number(stored.row.profile_revision) !== Number(sessionRow.current_profile_revision)
+    || Number(stored.row.profile_revision) !== Number(sessionRow.confirmed_profile_revision)) {
+    return null;
+  }
+  const completedModuleIds = stored.result?.completedModuleIds;
+  const gatedModuleIds = stored.result?.gatedModuleIds;
+  if (!Array.isArray(completedModuleIds) || completedModuleIds.length !== 0
+    || !Array.isArray(gatedModuleIds) || gatedModuleIds.length !== 3
+    || gatedModuleIds.some((moduleId) => typeof moduleId !== 'string' || !moduleId)
+    || new Set(gatedModuleIds).size !== 3) {
+    return null;
+  }
+  return {
+    id: null,
+    profileRevision: Number(stored.row.profile_revision),
+    status: 'complete',
+    calculationPerformed: false,
+    outcome: 'adviser_review_required',
+    analysisPlan: {
+      id: stored.row.id,
+      status: 'complete',
+      rulesVersion: null,
+      calculationPerformed: false,
+      outcome: 'adviser_review_required',
+      selectedModules: gatedModuleIds.map((moduleId) => ({
+        moduleId,
+        status: 'adviser_review_required'
+      }))
+    }
+  };
+}
 
 export function toPublicHandoff(row) {
   return {
@@ -37,6 +73,9 @@ export async function requestAdviserHandoff({
   if (!config.handoffEnabled) {
     throw new ConsumerError(404, 'handoff_disabled', 'Adviser handoff is not available.');
   }
+  if (handoff?.consent !== true) {
+    throw new ConsumerError(400, 'handoff_consent_required', 'Explicit adviser handoff consent is required.');
+  }
   if (!sessionRow.confirmed_profile_revision
     || Number(sessionRow.confirmed_profile_revision) !== Number(sessionRow.current_profile_revision)) {
     throw new ConsumerError(409, 'profile_confirmation_required', 'Confirm the current profile before requesting an adviser handoff.');
@@ -56,14 +95,15 @@ export async function requestAdviserHandoff({
     if (handoff.retry) {
       throw new ConsumerError(409, 'handoff_retry_unavailable', 'There is no saved adviser handoff to retry.');
     }
-    const analysis = await getLatestAnalysis(
+    const calculatedAnalysis = await getLatestAnalysis(
       env,
       sessionRow.id,
       sessionRow.confirmed_profile_revision,
       { completedOnly: true }
     );
+    const analysis = calculatedAnalysis || await getCurrentAdviserReviewOutcome(env, sessionRow);
     if (!analysis) {
-      throw new ConsumerError(409, 'current_analysis_required', 'Run the analysis for this confirmed profile before sending it to an adviser.');
+      throw new ConsumerError(409, 'current_analysis_required', 'Complete the confirmed analysis plan before sending it to an adviser.');
     }
     row = await createHandoff(env, sessionRow, handoff, profile, { analysis }, config);
   }

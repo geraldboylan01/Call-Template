@@ -46,147 +46,154 @@ export async function runRealtimeInfrastructureProof({
     const context = await browser.newContext({ baseURL: siteOrigin });
     await context.grantPermissions(['microphone'], { origin: siteOrigin });
     const page = await context.newPage();
+    await page.addInitScript(({ sessionIdValue, credentialValue }) => {
+      window.sessionStorage.setItem('planeir.consumer.session-id.v1', sessionIdValue);
+      window.sessionStorage.setItem('planeir.consumer.credential.v1', credentialValue);
+    }, { sessionIdValue: sessionId, credentialValue: credential });
     await page.goto(new URL('/plan/', `${siteOrigin}/`).href, {
       waitUntil: 'domcontentloaded',
       timeout: PROOF_TIMEOUT_MS
     });
+    const endpointPath = `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/realtime/calls`;
+    const launcher = page.locator('#realtimeVoiceLauncher');
+    await launcher.waitFor({ state: 'visible', timeout: PROOF_TIMEOUT_MS });
+    await launcher.click();
+    await page.locator('#realtimeVoiceShell').waitFor({ state: 'visible', timeout: 5_000 });
+    const start = page.locator('#realtimeVoiceStartButton');
+    await start.waitFor({ state: 'visible', timeout: 5_000 });
+    await page.waitForFunction(() => {
+      const button = document.getElementById('realtimeVoiceStartButton');
+      return button instanceof HTMLButtonElement && button.disabled === false;
+    }, null, { timeout: PROOF_TIMEOUT_MS });
 
-    const result = await page.evaluate(async ({ workerOrigin, sessionId, credential, timeoutMs }) => {
-      const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-      const deadline = Date.now() + timeoutMs;
-      const endpoint = `${workerOrigin}/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/realtime/calls`;
-      const tracks = [];
-      let peer = null;
-      let leaseId = '';
-      let dataChannelOpened = false;
+    let leaseId = '';
+    try {
+      const createdPromise = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return response.request().method() === 'POST' && url.pathname === endpointPath;
+      }, { timeout: PROOF_TIMEOUT_MS });
+      const controlledSpeechPromise = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return response.request().method() === 'POST'
+          && url.pathname.startsWith(`${endpointPath}/rt_`)
+          && url.pathname.endsWith('/speech');
+      }, { timeout: PROOF_TIMEOUT_MS });
+      await start.click();
+      const created = await createdPromise;
+      assert.equal(created.status(), 201, 'The companion Start voice action did not create a Realtime call.');
+      assert.match(
+        String(created.headers()['content-type'] || ''),
+        /^application\/sdp(?:;|$)/i,
+        'The companion did not receive a WebRTC SDP answer.'
+      );
+      leaseId = String(created.headers()['x-realtime-lease-id'] || '');
+      assert.match(leaseId, /^rt_[A-Za-z0-9_-]{20,80}$/, 'The companion received no opaque Realtime lease.');
 
-      const credentialHeaders = (extra = {}) => ({
-        'X-Consumer-Session': credential,
-        ...extra
-      });
-      const readJson = async (response, action) => {
-        const text = await response.text();
-        let payload = null;
-        try { payload = text ? JSON.parse(text) : null; } catch (_error) { /* bounded error below */ }
-        if (!response.ok || !payload) {
-          throw new Error(`${action} returned HTTP ${response.status}.`);
-        }
-        return payload;
-      };
-      const waitFor = async (predicate, message) => {
+      const proof = await page.evaluate(async ({ workerOriginValue, endpointPathValue, leaseIdValue, credentialValue, timeoutMs }) => {
+        const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
-          if (predicate()) return;
-          await sleep(100);
-        }
-        throw new Error(message);
-      };
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: false,
-          audio: {
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
-        tracks.push(...stream.getTracks());
-        peer = new RTCPeerConnection();
-        tracks.forEach((track) => peer.addTrack(track, stream));
-        const dataChannel = peer.createDataChannel('oai-events');
-        dataChannel.addEventListener('open', () => { dataChannelOpened = true; });
-
-        const offer = await peer.createOffer({ offerToReceiveAudio: true });
-        await peer.setLocalDescription(offer);
-        if (peer.iceGatheringState !== 'complete') {
-          await Promise.race([
-            new Promise((resolve) => {
-              const listener = () => {
-                if (peer.iceGatheringState === 'complete') {
-                  peer.removeEventListener('icegatheringstatechange', listener);
-                  resolve();
-                }
-              };
-              peer.addEventListener('icegatheringstatechange', listener);
-            }),
-            sleep(8_000)
-          ]);
-        }
-        const offerSdp = String(peer.localDescription?.sdp || offer.sdp || '');
-        if (!offerSdp.startsWith('v=0')) throw new Error('The browser produced no SDP offer.');
-
-        const created = await fetch(endpoint, {
-          method: 'POST',
-          headers: credentialHeaders({
-            'Content-Type': 'application/sdp',
-            'X-Voice-Request-Id': `realtime-proof-${crypto.randomUUID()}`
-          }),
-          body: offerSdp
-        });
-        const answerSdp = await created.text();
-        if (created.status !== 201 || !answerSdp.startsWith('v=0')) {
-          throw new Error(`Realtime call creation returned HTTP ${created.status}.`);
-        }
-        leaseId = String(created.headers.get('X-Realtime-Lease-Id') || '');
-        if (!/^rt_[A-Za-z0-9_-]{20,80}$/.test(leaseId)) {
-          throw new Error('Realtime call creation returned no opaque lease.');
-        }
-        await peer.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-        await waitFor(
-          () => peer.connectionState === 'connected' && dataChannelOpened,
-          'The production WebRTC peer or event channel did not connect.'
-        );
-
-        let leasePayload = null;
-        while (Date.now() < deadline) {
-          const response = await fetch(`${endpoint}/${encodeURIComponent(leaseId)}`, {
-            headers: credentialHeaders({ Accept: 'application/json' })
+          const response = await fetch(`${workerOriginValue}${endpointPathValue}/${encodeURIComponent(leaseIdValue)}`, {
+            headers: {
+              Accept: 'application/json',
+              'X-Consumer-Session': credentialValue
+            }
           });
-          leasePayload = await readJson(response, 'Realtime proof status');
-          const proof = leasePayload.controlPlane || leasePayload.infrastructureProof || {};
-          if (proof.sidebandConnected === true && proof.readOnlyToolSucceeded === true) break;
-          await sleep(500);
+          if (!response.ok) throw new Error(`Realtime proof status returned HTTP ${response.status}.`);
+          const payload = await response.json();
+          const control = payload.controlPlane || payload.infrastructureProof || {};
+          if (control.sidebandConnected === true && control.readOnlyToolSucceeded === true) return control;
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
         }
-        const proof = leasePayload?.controlPlane || leasePayload?.infrastructureProof || {};
-        if (proof.sidebandConnected !== true) throw new Error('The authenticated provider sideband was not proven.');
-        if (proof.readOnlyToolSucceeded !== true) throw new Error('The forced get_planning_state tool did not succeed.');
+        throw new Error('The authenticated sideband tool proof did not complete in time.');
+      }, {
+        workerOriginValue: workerOrigin,
+        endpointPathValue: endpointPath,
+        leaseIdValue: leaseId,
+        credentialValue: credential,
+        timeoutMs: PROOF_TIMEOUT_MS
+      });
+      assert.equal(proof.sidebandConnected, true, 'The authenticated provider sideband was not proven.');
+      assert.equal(proof.readOnlyToolSucceeded, true, 'The forced get_planning_state tool did not succeed.');
 
-        const closed = await fetch(`${endpoint}/${encodeURIComponent(leaseId)}`, {
-          method: 'DELETE',
-          headers: credentialHeaders({ Accept: 'application/json' })
-        });
-        const closedPayload = await readJson(closed, 'Realtime server hang-up');
-        if (closedPayload.providerHangupConfirmed !== true) {
-          throw new Error('The provider did not confirm server-side hang-up.');
-        }
-        leaseId = '';
-        return {
-          webRtcConnected: true,
-          sidebandConnected: true,
-          readOnlyToolSucceeded: true,
-          providerHangupConfirmed: true
-        };
-      } finally {
-        if (leaseId) {
-          await fetch(`${endpoint}/${encodeURIComponent(leaseId)}`, {
+      const controlledSpeech = await controlledSpeechPromise;
+      assert.equal(controlledSpeech.status(), 200, 'The Worker-owned greeting speech request failed.');
+      assert.match(
+        String(controlledSpeech.headers()['content-type'] || ''),
+        /^audio\/mpeg(?:;|$)/i,
+        'The Worker-owned greeting did not return MP3 audio.'
+      );
+      assert.match(
+        String(controlledSpeech.headers()['x-realtime-speech-id'] || ''),
+        /^speech_[A-Za-z0-9_-]{20,80}$/,
+        'The greeting response was not bound to a Worker-issued speech ID.'
+      );
+
+      await page.locator('#realtimeVoiceTranscriptHistory .is-assistant').first().waitFor({
+        state: 'visible',
+        timeout: PROOF_TIMEOUT_MS
+      });
+      const assistantGreeting = String(await page.locator('#realtimeVoiceTranscriptHistory .is-assistant p').first().textContent() || '').trim();
+      assert.match(
+        assistantGreeting,
+        /^Hello, I’m Planéir, an AI planning companion for financial education\./,
+        'The companion did not show the exact server-owned greeting caption.'
+      );
+      const audioReady = await page.evaluate(() => {
+        const audio = document.getElementById('realtimeVoiceAudio');
+        return Boolean(
+          audio
+          && audio.srcObject === null
+          && /^speech_[A-Za-z0-9_-]{20,80}$/.test(String(audio.dataset.controlledSpeechId || ''))
+          && audio.dataset.controlledSpeechPlayed === 'true'
+          && String(audio.currentSrc || audio.src || '').startsWith('blob:')
+        );
+      });
+      assert.equal(audioReady, true, 'The separately generated greeting MP3 was not played in the companion.');
+
+      const closedPromise = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return response.request().method() === 'DELETE'
+          && url.pathname === `${endpointPath}/${encodeURIComponent(leaseId)}`;
+      }, { timeout: PROOF_TIMEOUT_MS });
+      await page.locator('#realtimeVoiceEndButton').click();
+      const closed = await closedPromise;
+      assert.equal(closed.status(), 200, 'The companion End voice control did not close the lease.');
+      const closedPayload = await closed.json();
+      assert.equal(closedPayload.providerHangupConfirmed, true, 'The provider did not confirm server-side hang-up.');
+      leaseId = '';
+    } finally {
+      if (leaseId) {
+        await page.evaluate(async ({ workerOriginValue, endpointPathValue, leaseIdValue, credentialValue }) => {
+          await fetch(`${workerOriginValue}${endpointPathValue}/${encodeURIComponent(leaseIdValue)}`, {
             method: 'DELETE',
-            headers: credentialHeaders({ Accept: 'application/json' })
+            headers: { Accept: 'application/json', 'X-Consumer-Session': credentialValue }
           }).catch(() => {});
-        }
-        try { peer?.close(); } catch (_error) { /* best effort */ }
-        tracks.forEach((track) => {
-          try { track.stop(); } catch (_error) { /* best effort */ }
-        });
+        }, {
+          workerOriginValue: workerOrigin,
+          endpointPathValue: endpointPath,
+          leaseIdValue: leaseId,
+          credentialValue: credential
+        }).catch(() => {});
       }
-    }, {
-      workerOrigin,
-      sessionId,
-      credential,
-      timeoutMs: PROOF_TIMEOUT_MS
-    });
+    }
 
+    const result = {
+      launcherVisible: true,
+      companionStartWired: true,
+      audibleGreetingObserved: true,
+      controlledSpeechObserved: true,
+      directProviderAudioAttached: false,
+      webRtcConnected: true,
+      sidebandConnected: true,
+      readOnlyToolSucceeded: true,
+      providerHangupConfirmed: true
+    };
     assert.deepEqual(result, {
+      launcherVisible: true,
+      companionStartWired: true,
+      audibleGreetingObserved: true,
+      controlledSpeechObserved: true,
+      directProviderAudioAttached: false,
       webRtcConnected: true,
       sidebandConnected: true,
       readOnlyToolSucceeded: true,
