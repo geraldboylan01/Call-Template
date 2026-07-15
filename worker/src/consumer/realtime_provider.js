@@ -172,11 +172,10 @@ export function realtimeToolsForState(state = {}) {
   return REALTIME_TOOL_DEFINITIONS.filter((tool) => names.includes(tool.name));
 }
 
-export function buildRealtimeSessionConfig(config, state = {}, safetyIdentifier = '') {
+export function buildRealtimeSessionConfig(config, state = {}) {
   return {
     type: 'realtime',
     model: config.realtimeModel,
-    ...(safetyIdentifier ? { safety_identifier: safetyIdentifier } : {}),
     instructions: buildRealtimeInstructions(state),
     reasoning: {
       effort: state.reasoningEscalation?.requested
@@ -214,6 +213,55 @@ export function buildRealtimeSessionConfig(config, state = {}, safetyIdentifier 
       retention_ratio: 0.8,
       token_limits: { post_instructions: 8_000 }
     }
+  };
+}
+
+function boundedDiagnosticValue(value, maximumLength = 160) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text || text.length > maximumLength || /[\u0000-\u001f\u007f]/.test(text)) return null;
+  return text;
+}
+
+async function readProviderRejectionMetadata(response) {
+  const maximumBytes = 8_192;
+  const reader = response.body?.getReader();
+  let received = 0;
+  const chunks = [];
+  if (reader) {
+    try {
+      while (received <= maximumBytes) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > maximumBytes) break;
+        chunks.push(value);
+      }
+    } catch (_error) {
+      // Diagnostics must never interfere with the fail-closed provider path.
+    } finally {
+      reader.cancel().catch(() => {});
+    }
+  }
+  let providerError = {};
+  if (received <= maximumBytes && chunks.length) {
+    try {
+      const bytes = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      providerError = JSON.parse(new TextDecoder().decode(bytes))?.error || {};
+    } catch (_error) {
+      providerError = {};
+    }
+  }
+  return {
+    status: response.status,
+    providerRequestId: boundedDiagnosticValue(response.headers.get('x-request-id')),
+    providerErrorType: boundedDiagnosticValue(providerError.type),
+    providerErrorCode: boundedDiagnosticValue(providerError.code),
+    providerErrorParam: boundedDiagnosticValue(providerError.param)
   };
 }
 
@@ -278,7 +326,7 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
   multipart.set('sdp', new Blob([offerSdp], { type: 'application/sdp' }), 'offer.sdp');
   multipart.set(
     'session',
-    new Blob([JSON.stringify(buildRealtimeSessionConfig(config, state, safetyIdentifier))], { type: 'application/json' }),
+    new Blob([JSON.stringify(buildRealtimeSessionConfig(config, state))], { type: 'application/json' }),
     'session.json'
   );
   let response;
@@ -296,7 +344,8 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
     throw new ConsumerError(502, 'realtime_provider_unavailable', 'Live voice could not be started. Continue by typing.');
   }
   if (!response.ok) {
-    response.body?.cancel().catch(() => {});
+    const diagnostic = await readProviderRejectionMetadata(response);
+    console.warn('OpenAI Realtime call rejected', diagnostic);
     throw new ConsumerError(502, 'realtime_provider_rejected', 'Live voice could not be started. Continue by typing.');
   }
   const providerCallId = providerCallIdFromLocation(response.headers.get('Location'));
