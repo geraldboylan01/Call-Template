@@ -498,13 +498,24 @@ try {
       'x-request-id': 'req_realtime_schema_test'
     }
   });
-  await rejectsCode(createOpenAiRealtimeCall({
+  await assert.rejects(createOpenAiRealtimeCall({
     env,
     config,
     sessionId: 'cs_provider_rejection_test',
     offerSdp: validSdp,
     state: { stage: 'goal_discovery' }
-  }), 'realtime_provider_rejected');
+  }), (error) => {
+    assert.equal(error.code, 'realtime_provider_rejected');
+    assert.deepEqual(error.details, {
+      providerStatus: 400,
+      providerRequestId: 'req_realtime_schema_test',
+      providerErrorType: 'invalid_request_error',
+      providerErrorCode: 'invalid_parameter',
+      providerErrorParam: 'session.unsupported_field'
+    });
+    assert.doesNotMatch(JSON.stringify(error.details), /raw provider message/);
+    return true;
+  });
   assert.equal(providerRejectionWarning[0], 'OpenAI Realtime call rejected');
   assert.deepEqual(providerRejectionWarning[1], {
     status: 400,
