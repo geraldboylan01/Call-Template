@@ -316,7 +316,7 @@ async function readBoundedSdpAnswer(response) {
     providerBodyBytes: byteLength,
     providerBodyStartsWithV0: text.startsWith('v=0')
   };
-  if (contentType !== 'application/sdp') {
+  if (!['application/sdp', 'text/plain'].includes(contentType)) {
     const error = new Error('provider_sdp_type_invalid');
     error.diagnostic = diagnostic;
     throw error;
