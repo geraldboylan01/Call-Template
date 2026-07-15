@@ -128,11 +128,21 @@ export async function runRealtimeInfrastructureProof({
         if (created.status() === 201) break;
         const errorPayload = await created.json().catch(() => null);
         const errorCode = String(errorPayload?.error?.code || errorPayload?.code || 'unknown_error');
+        const providerDetails = errorPayload?.error?.details || errorPayload?.details || {};
+        const providerDiagnostic = [
+          providerDetails.providerStatus ? `provider HTTP ${providerDetails.providerStatus}` : '',
+          providerDetails.providerErrorType ? `type ${providerDetails.providerErrorType}` : '',
+          providerDetails.providerErrorCode ? `code ${providerDetails.providerErrorCode}` : '',
+          providerDetails.providerErrorParam ? `parameter ${providerDetails.providerErrorParam}` : '',
+          providerDetails.providerRequestId ? `request ${providerDetails.providerRequestId}` : ''
+        ].filter(Boolean).join(', ');
         const safePropagationRetry = created.status() === 503
           && errorCode === 'consumer_realtime_unavailable'
           && attempt < MAX_PROPAGATION_ATTEMPTS;
         if (!safePropagationRetry) {
-          throw new Error(`The companion Start voice action returned HTTP ${created.status()} (${errorCode}).`);
+          throw new Error(
+            `The companion Start voice action returned HTTP ${created.status()} (${errorCode})${providerDiagnostic ? ` [${providerDiagnostic}]` : ''}.`
+          );
         }
         await page.waitForTimeout(PROPAGATION_RETRY_MS);
         await page.waitForFunction(() => {
