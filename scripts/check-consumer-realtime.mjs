@@ -409,7 +409,29 @@ assert.equal(sessionConfig.audio.input.turn_detection.type, 'semantic_vad');
 assert.equal(sessionConfig.audio.input.turn_detection.create_response, false);
 assert.equal(sessionConfig.audio.input.turn_detection.interrupt_response, true);
 assert.equal(sessionConfig.parallel_tool_calls, false);
-assert.equal(realtimeSessionPolicySnapshot(sessionConfig).temperature, null);
+const requestedPolicySnapshot = realtimeSessionPolicySnapshot(sessionConfig);
+assert.equal(Object.hasOwn(requestedPolicySnapshot, 'temperature'), false);
+const providerEffectiveSession = structuredClone(sessionConfig);
+providerEffectiveSession.object = 'realtime.session';
+providerEffectiveSession.id = 'sess_provider_effective_001';
+providerEffectiveSession.reasoning.summary = 'auto';
+providerEffectiveSession.tools = providerEffectiveSession.tools.map((tool) => ({
+  ...tool,
+  strict: false
+}));
+providerEffectiveSession.temperature = 0.8;
+providerEffectiveSession.tracing = null;
+assert.deepEqual(
+  realtimeSessionPolicySnapshot(providerEffectiveSession),
+  requestedPolicySnapshot,
+  'Provider-owned effective-session defaults must not block a Worker-authorized tool call.'
+);
+providerEffectiveSession.instructions = 'Untrusted browser policy override.';
+assert.notDeepEqual(
+  realtimeSessionPolicySnapshot(providerEffectiveSession),
+  requestedPolicySnapshot,
+  'A security-relevant effective-session change must still fail policy verification.'
+);
 assert.equal(
   buildRealtimeSessionConfig(config, { reasoningEscalation: { requested: true } }).reasoning.effort,
   'medium'
@@ -1858,6 +1880,7 @@ const wranglerSource = source('worker/wrangler.toml');
 const workflowSource = source('.github/workflows/deploy-worker.yml');
 const routerSource = source('worker/src/consumer/router.js');
 const lifecycleSource = source('worker/src/consumer/realtime_lifecycle.js');
+const realtimeSessionSource = source('worker/src/consumer/realtime_session.js');
 const realtimeMigrationSource = source('worker/consumer-migrations/0005_add_consumer_realtime_voice.sql');
 const realtimeControlMigrationSource = source('worker/consumer-migrations/0007_add_realtime_control_inbox.sql');
 const liveBridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
@@ -1883,6 +1906,11 @@ assert.match(routerSource, /const reservationAmount = Number\(providerBudget\.re
 assert.match(routerSource, /realtimeSafetyReserveMicroEur/);
 assert.match(routerSource, /terminateRealtimeLease|closeRealtimeControl/);
 assert.match(lifecycleSource, /hangupOpenAiRealtimeCall/);
+assert.match(
+  realtimeSessionSource,
+  /await this\.authorizeResponse\('initial_state_probe', \{ forceTool: 'get_planning_state' \}\)/,
+  'Sideband activation must issue the read-only probe directly from Worker-owned call policy.'
+);
 assert.match(lifecycleSource, /settleConsumerProviderCostUnknown/);
 assert.match(realtimeMigrationSource, /idx_consumer_realtime_one_active_session/);
 assert.match(realtimeMigrationSource, /reservation_eur_micros BETWEEN 1 AND 2000000/);
