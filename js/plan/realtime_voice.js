@@ -249,7 +249,7 @@ export function classifyRealtimeEvent(event) {
   if (type.startsWith('planeir.') && (value.planning || value.context || value.facts || value.modules)) {
     return { ...base, kind: 'planning_update', payload: firstDefined(value.planning, value.context, value) };
   }
-  if (['conversation.item.created', 'conversation.item.added'].includes(type)
+  if (['conversation.item.created', 'conversation.item.added', 'conversation.item.done'].includes(type)
     && value.item?.type === 'function_call_output') {
     const output = parseJson(value.item.output);
     return output

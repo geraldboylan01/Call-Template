@@ -373,7 +373,7 @@ assert.deepEqual(
 );
 assert.equal(classifyRealtimeEvent({ type: 'input_audio_buffer.speech_started' }).kind, 'speech_started');
 assert.equal(classifyRealtimeEvent({ type: 'response.output_audio.delta' }).kind, 'assistant_audio');
-for (const type of ['conversation.item.created', 'conversation.item.added']) {
+for (const type of ['conversation.item.created', 'conversation.item.added', 'conversation.item.done']) {
   const planningUpdate = classifyRealtimeEvent({
     type,
     item: {

@@ -8,7 +8,7 @@ const INITIAL_MODULE_IDS = Object.freeze(['house_purchase', 'liquidity_analysis'
 // Cloudflare may serve the previous Worker version briefly after a successful
 // deploy. Keep rollback verification fail-closed, but allow enough time to
 // observe the newly deployed kill-switch state at every edge.
-const MAX_ATTEMPTS = 20;
+const MAX_ATTEMPTS = 40;
 const RETRY_DELAY_MS = 3_000;
 
 function sortedStrings(values) {
