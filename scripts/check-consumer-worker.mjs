@@ -458,7 +458,11 @@ assert.doesNotMatch(realtimeInfrastructureProofSource, /createDataChannel\('oai-
 assert.match(realtimeInfrastructureProofSource, /await launcher\.click\(\)/);
 assert.match(realtimeInfrastructureProofSource, /await start\.click\(\)/);
 assert.match(realtimeInfrastructureProofSource, /response\.request\(\)\.method\(\) === 'POST'/);
-assert.match(realtimeInfrastructureProofSource, /created\.status\(\) !== 201/);
+assert.match(realtimeInfrastructureProofSource, /MAX_PROPAGATION_ATTEMPTS = 5/);
+assert.match(realtimeInfrastructureProofSource, /created\.status\(\) === 201/);
+assert.match(realtimeInfrastructureProofSource, /created\.status\(\) === 503/);
+assert.match(realtimeInfrastructureProofSource, /errorCode === 'consumer_realtime_unavailable'/);
+assert.match(realtimeInfrastructureProofSource, /The Realtime call route did not converge after bounded propagation retries/);
 assert.match(realtimeInfrastructureProofSource, /errorPayload\?\.error\?\.code/);
 assert.match(realtimeInfrastructureProofSource, /x-realtime-lease-id/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.sidebandConnected, true/);
