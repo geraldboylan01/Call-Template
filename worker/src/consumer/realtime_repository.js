@@ -2,6 +2,7 @@ import { ConsumerError, notFound } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import {
+  constantTimeEqual,
   decryptJson,
   encryptJson,
   hmacSha256Base64Url,
@@ -198,11 +199,23 @@ export async function setRealtimeConsent(env, sessionRow, config, granted) {
   return row;
 }
 
-export async function createRealtimeLease(env, sessionRow, config, providerCostEntry) {
+export async function createRealtimeLease(env, sessionRow, config, providerCostEntry, controlTokenHashB64u = null) {
   const timestamp = nowIso();
   const hardExpiresAt = new Date(Date.now() + config.realtimeMaxDurationSeconds * 1_000).toISOString();
   const idleExpiresAt = new Date(Date.now() + config.realtimeIdleTimeoutSeconds * 1_000).toISOString();
   const id = randomId('rt');
+  const invite = await db(env).prepare(`
+    SELECT uses.jti_hash_b64u
+    FROM consumer_invite_uses AS uses
+    INNER JOIN consumer_invite_redemptions AS redemptions
+      ON redemptions.jti_hash_b64u = uses.jti_hash_b64u
+    WHERE uses.session_id = ? AND redemptions.revoked_at IS NULL
+      AND redemptions.expires_at > ?
+    LIMIT 1
+  `).bind(sessionRow.id, timestamp).first();
+  if (!invite?.jti_hash_b64u) {
+    throw new ConsumerError(403, 'realtime_invite_required', 'This protected live voice invitation is no longer active.');
+  }
   try {
     const row = await db(env).prepare(`
       INSERT INTO consumer_realtime_sessions (
@@ -214,10 +227,11 @@ export async function createRealtimeLease(env, sessionRow, config, providerCostE
         hard_expires_at, idle_expires_at, last_event_sequence,
         response_count, tool_call_count, estimated_cost_eur_micros,
         close_reason, error_code, created_at, activated_at,
-        last_active_at, ended_at
+        last_active_at, ended_at, control_token_hash_b64u,
+        invite_jti_hash_b64u
       )
       SELECT ?, ?, ?, 'openai', NULL, NULL, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-             ?, ?, 0, 0, 0, 0, NULL, NULL, ?, NULL, ?, NULL
+             ?, ?, 0, 0, 0, 0, NULL, NULL, ?, NULL, ?, NULL, ?, ?
       WHERE EXISTS (
         SELECT 1
         FROM consumer_sessions AS sessions
@@ -234,6 +248,16 @@ export async function createRealtimeLease(env, sessionRow, config, providerCostE
           AND consent.privacy_notice_url = ?
           AND consent.withdrawn_at IS NULL
           AND costs.status = 'reserved' AND costs.dispatched_at IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM consumer_invite_uses AS uses
+            INNER JOIN consumer_invite_redemptions AS redemptions
+              ON redemptions.jti_hash_b64u = uses.jti_hash_b64u
+            WHERE uses.session_id = sessions.id
+              AND uses.jti_hash_b64u = ?
+              AND redemptions.revoked_at IS NULL
+              AND redemptions.expires_at > ?
+          )
       )
       RETURNING *
     `).bind(
@@ -254,12 +278,16 @@ export async function createRealtimeLease(env, sessionRow, config, providerCostE
       idleExpiresAt,
       timestamp,
       timestamp,
+      controlTokenHashB64u,
+      invite.jti_hash_b64u,
       providerCostEntry.id,
       sessionRow.id,
       config.realtimeNoticeId,
       config.realtimeDataPolicyId,
       config.consentPolicyVersion,
-      config.privacyNoticeUrl
+      config.privacyNoticeUrl,
+      invite.jti_hash_b64u,
+      timestamp
     ).first();
     if (!row) {
       throw new ConsumerError(403, 'realtime_consent_required', 'Review and accept the current live voice disclosure before starting.');
@@ -397,7 +425,269 @@ export async function closeRealtimeLease(env, sessionId, leaseId, status, reason
     WHERE id = ? AND session_id = ? AND status IN ('pending', 'active', 'closing')
     RETURNING *
   `).bind(status, reason, errorCode, timestamp, timestamp, leaseId, sessionId).first();
+  await db(env).prepare(`
+    UPDATE consumer_realtime_control_messages
+    SET status = 'cancelled', consumed_at = ?, error_code = ?
+    WHERE realtime_session_id = ? AND session_id = ?
+      AND status IN ('pending', 'delivered', 'processing')
+  `).bind(timestamp, errorCode || reason || 'realtime_lease_closed', leaseId, sessionId).run().catch(() => {});
   return row || getRealtimeLease(env, sessionId, leaseId);
+}
+
+export async function verifyRealtimeControlCapability(env, sessionId, leaseId, token, {
+  requireActive = true,
+  requireInviteActive = requireActive
+} = {}) {
+  const value = typeof token === 'string' ? token.trim() : '';
+  if (!/^rt_control_[A-Za-z0-9_-]{20,80}$/.test(value)) return null;
+  const row = await getRealtimeLease(env, sessionId, leaseId);
+  if (!row?.control_token_hash_b64u) return null;
+  if (!row.invite_jti_hash_b64u) return null;
+  if (requireActive && !['pending', 'active', 'closing'].includes(row.status)) return null;
+  if (requireInviteActive) {
+    const binding = await db(env).prepare(`
+      SELECT 1 AS bound
+      FROM consumer_invite_uses AS uses
+      INNER JOIN consumer_invite_redemptions AS redemptions
+        ON redemptions.jti_hash_b64u = uses.jti_hash_b64u
+      WHERE uses.session_id = ? AND uses.jti_hash_b64u = ?
+        AND redemptions.revoked_at IS NULL AND redemptions.expires_at > ?
+      LIMIT 1
+    `).bind(sessionId, row.invite_jti_hash_b64u, nowIso()).first();
+    if (!binding) return null;
+  }
+  const actual = await sha256Base64Url(value);
+  return constantTimeEqual(row.control_token_hash_b64u, actual) ? row : null;
+}
+
+function realtimeControlAad(sessionId, leaseId, messageId) {
+  return `consumer/realtime/control/${sessionId}/${leaseId}/${messageId}`;
+}
+
+export async function enqueueRealtimeControlMessage(env, {
+  sessionId,
+  leaseId,
+  authorization
+}) {
+  const timestamp = nowIso();
+  const id = randomId('realtime_control_message');
+  const payloadHash = await sha256Base64Url(stableStringify(authorization));
+  const [payloadEncrypted, speechIdHash] = await Promise.all([
+    encryptJson(env, authorization, realtimeControlAad(sessionId, leaseId, id)),
+    sha256Base64Url(authorization.speechId)
+  ]);
+  const row = await db(env).prepare(`
+    INSERT INTO consumer_realtime_control_messages (
+      id, realtime_session_id, session_id, control_id, speech_id_hash_b64u,
+      payload_encrypted, payload_hash_b64u, profile_revision, status,
+      created_at, expires_at, first_delivered_at, last_delivered_at,
+      delivery_count, consumed_at, error_code
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULL, NULL, 0, NULL, NULL
+    WHERE EXISTS (
+      SELECT 1 FROM consumer_realtime_sessions
+      WHERE id = ? AND session_id = ? AND status = 'active'
+        AND control_token_hash_b64u IS NOT NULL
+        AND invite_jti_hash_b64u IS NOT NULL
+        AND latest_profile_revision = ?
+        AND hard_expires_at > ?
+        AND EXISTS (
+          SELECT 1
+          FROM consumer_invite_uses AS uses
+          INNER JOIN consumer_invite_redemptions AS redemptions
+            ON redemptions.jti_hash_b64u = uses.jti_hash_b64u
+          WHERE uses.session_id = consumer_realtime_sessions.session_id
+            AND uses.jti_hash_b64u = consumer_realtime_sessions.invite_jti_hash_b64u
+            AND redemptions.revoked_at IS NULL AND redemptions.expires_at > ?
+        )
+    )
+    RETURNING *
+  `).bind(
+    id,
+    leaseId,
+    sessionId,
+    authorization.controlId,
+    speechIdHash,
+    payloadEncrypted,
+    payloadHash,
+    authorization.profileRevision,
+    timestamp,
+    authorization.expiresAt,
+    leaseId,
+    sessionId,
+    authorization.profileRevision,
+    timestamp,
+    timestamp
+  ).first();
+  if (!row) {
+    throw new ConsumerError(409, 'realtime_lease_conflict', 'The live voice lease cannot accept an approved response.');
+  }
+  return row;
+}
+
+export async function getNextRealtimeControlMessage(env, sessionId, leaseId) {
+  const timestamp = nowIso();
+  await db(env).prepare(`
+    UPDATE consumer_realtime_control_messages
+    SET status = 'expired', consumed_at = ?, error_code = 'realtime_control_expired'
+    WHERE realtime_session_id = ? AND session_id = ?
+      AND status IN ('pending', 'delivered') AND expires_at <= ?
+  `).bind(timestamp, leaseId, sessionId, timestamp).run();
+  const row = await db(env).prepare(`
+    SELECT messages.*
+    FROM consumer_realtime_control_messages AS messages
+    INNER JOIN consumer_realtime_sessions AS leases
+      ON leases.id = messages.realtime_session_id
+      AND leases.session_id = messages.session_id
+    INNER JOIN consumer_invite_uses AS invite_uses
+      ON invite_uses.session_id = leases.session_id
+      AND invite_uses.jti_hash_b64u = leases.invite_jti_hash_b64u
+    INNER JOIN consumer_invite_redemptions AS invite_redemptions
+      ON invite_redemptions.jti_hash_b64u = invite_uses.jti_hash_b64u
+    WHERE messages.realtime_session_id = ? AND messages.session_id = ?
+      AND messages.status IN ('pending', 'delivered')
+      AND messages.expires_at > ?
+      AND leases.status = 'active'
+      AND invite_redemptions.revoked_at IS NULL
+      AND invite_redemptions.expires_at > ?
+    ORDER BY messages.created_at ASC
+    LIMIT 1
+  `).bind(leaseId, sessionId, timestamp, timestamp).first();
+  if (!row) return null;
+  const authorization = await decryptJson(
+    env,
+    row.payload_encrypted,
+    realtimeControlAad(sessionId, leaseId, row.id)
+  );
+  const actualHash = await sha256Base64Url(stableStringify(authorization));
+  if (!constantTimeEqual(actualHash, row.payload_hash_b64u)
+    || authorization.controlId !== row.control_id
+    || authorization.expiresAt !== row.expires_at) {
+    await finalizeRealtimeControlMessage(env, {
+      sessionId,
+      leaseId,
+      controlId: row.control_id,
+      status: 'failed',
+      errorCode: 'realtime_control_payload_invalid'
+    });
+    throw new ConsumerError(500, 'realtime_control_payload_invalid', 'The approved voice command could not be verified.');
+  }
+  const delivered = await db(env).prepare(`
+    UPDATE consumer_realtime_control_messages
+    SET status = 'delivered',
+        first_delivered_at = COALESCE(first_delivered_at, ?),
+        last_delivered_at = ?, delivery_count = delivery_count + 1
+    WHERE id = ? AND realtime_session_id = ? AND session_id = ?
+      AND status IN ('pending', 'delivered') AND expires_at > ?
+    RETURNING delivery_count
+  `).bind(timestamp, timestamp, row.id, leaseId, sessionId, timestamp).first();
+  if (!delivered) return null;
+  return {
+    type: 'authorized_speech',
+    controlId: row.control_id,
+    expiresAt: row.expires_at,
+    deliveryAttempt: Number(delivered.delivery_count || 1),
+    assistantSpeech: authorization
+  };
+}
+
+export async function assertRealtimeControlMessage(env, {
+  sessionId,
+  leaseId,
+  authorization
+}) {
+  const timestamp = nowIso();
+  const controlId = typeof authorization?.controlId === 'string' ? authorization.controlId : '';
+  const row = await db(env).prepare(`
+    SELECT * FROM consumer_realtime_control_messages
+    WHERE realtime_session_id = ? AND session_id = ? AND control_id = ?
+    LIMIT 1
+  `).bind(leaseId, sessionId, controlId).first();
+  if (!row) throw new ConsumerError(403, 'realtime_control_mismatch', 'The approved voice command is not bound to this call.');
+  if (['processing', 'consumed', 'failed'].includes(row.status)) {
+    throw new ConsumerError(409, 'realtime_control_replayed', 'That approved voice command was already processed.');
+  }
+  if (!['pending', 'delivered'].includes(row.status) || row.expires_at <= timestamp) {
+    if (['pending', 'delivered'].includes(row.status)) {
+      await finalizeRealtimeControlMessage(env, {
+        sessionId,
+        leaseId,
+        controlId,
+        status: 'expired',
+        errorCode: 'realtime_control_expired'
+      });
+    }
+    throw new ConsumerError(410, 'realtime_control_expired', 'That approved voice command has expired.');
+  }
+  const payloadHash = await sha256Base64Url(stableStringify(authorization));
+  if (!constantTimeEqual(payloadHash, row.payload_hash_b64u)) {
+    throw new ConsumerError(403, 'realtime_control_mismatch', 'The approved voice command does not match this call.');
+  }
+  return row;
+}
+
+export async function claimRealtimeControlMessage(env, {
+  sessionId,
+  leaseId,
+  controlId
+}) {
+  const timestamp = nowIso();
+  const row = await db(env).prepare(`
+    UPDATE consumer_realtime_control_messages
+    SET status = 'processing',
+        first_delivered_at = COALESCE(first_delivered_at, ?),
+        last_delivered_at = COALESCE(last_delivered_at, ?)
+    WHERE realtime_session_id = ? AND session_id = ? AND control_id = ?
+      AND status IN ('pending', 'delivered') AND expires_at > ?
+      AND EXISTS (
+        SELECT 1 FROM consumer_realtime_sessions
+        WHERE id = ? AND session_id = ? AND status = 'active'
+          AND EXISTS (
+            SELECT 1
+            FROM consumer_invite_uses AS uses
+            INNER JOIN consumer_invite_redemptions AS redemptions
+              ON redemptions.jti_hash_b64u = uses.jti_hash_b64u
+            WHERE uses.session_id = consumer_realtime_sessions.session_id
+              AND uses.jti_hash_b64u = consumer_realtime_sessions.invite_jti_hash_b64u
+              AND redemptions.revoked_at IS NULL AND redemptions.expires_at > ?
+          )
+      )
+    RETURNING *
+  `).bind(
+    timestamp,
+    timestamp,
+    leaseId,
+    sessionId,
+    controlId,
+    timestamp,
+    leaseId,
+    sessionId,
+    timestamp
+  ).first();
+  if (!row) {
+    throw new ConsumerError(409, 'realtime_control_replayed', 'That approved voice command is already being processed.');
+  }
+  return row;
+}
+
+export async function finalizeRealtimeControlMessage(env, {
+  sessionId,
+  leaseId,
+  controlId,
+  status,
+  errorCode = null
+}) {
+  if (!['consumed', 'expired', 'cancelled', 'failed'].includes(status)) {
+    throw new Error('Invalid realtime control terminal status.');
+  }
+  const timestamp = nowIso();
+  return db(env).prepare(`
+    UPDATE consumer_realtime_control_messages
+    SET status = ?, consumed_at = ?, error_code = ?
+    WHERE realtime_session_id = ? AND session_id = ? AND control_id = ?
+      AND status IN ('pending', 'delivered', 'processing')
+    RETURNING *
+  `).bind(status, timestamp, errorCode, leaseId, sessionId, controlId).first();
 }
 
 export async function touchRealtimeLease(env, sessionId, leaseId, idleTimeoutSeconds) {

@@ -318,13 +318,15 @@ const rawRealtimeCall = normaliseRealtimeCallResponse({
   headers: new Headers({
     'X-Realtime-Lease-Id': 'rt_lease_frontend_001',
     'X-Realtime-Hard-Expires-At': '2030-01-01T00:00:00.000Z',
-    'X-Realtime-Budget-Micro-Eur': '1750000'
+    'X-Realtime-Budget-Micro-Eur': '1750000',
+    'X-Realtime-Control-Capability': `rt_control_${'C'.repeat(24)}`
   })
 });
 assert.match(rawRealtimeCall.sdp, /^v=0/);
 assert.equal(rawRealtimeCall.leaseId, 'rt_lease_frontend_001');
 assert.equal(rawRealtimeCall.expiresAt, '2030-01-01T00:00:00.000Z');
 assert.equal(rawRealtimeCall.budget.remainingMicroEur, 1_750_000);
+assert.equal(rawRealtimeCall.controlCapability, `rt_control_${'C'.repeat(24)}`);
 assert.deepEqual(rawRealtimeCall.payload, {
   realtimeVoiceBudget: {
     limitMicroEur: null,
@@ -709,6 +711,7 @@ const {
   speakRealtimeAuthorized
 } = await import('../js/plan/api.js');
 const realtimeRequests = [];
+const apiControlCapability = `rt_control_${'A'.repeat(24)}`;
 try {
   globalThis.fetch = async (url, init) => {
     realtimeRequests.push({ url: String(url), init });
@@ -741,20 +744,27 @@ try {
     idempotencyKey: 'voice-realtime-contract-0001'
   });
   assert.match(created.body, /^v=0/);
-  await getRealtimeVoiceCall('cs_frontend_voice_contract', 'rt_api_contract_001');
-  await deleteRealtimeVoiceCall('cs_frontend_voice_contract', 'rt_api_contract_001');
+  await getRealtimeVoiceCall('cs_frontend_voice_contract', 'rt_api_contract_001', {
+    controlCapability: apiControlCapability
+  });
+  await deleteRealtimeVoiceCall('cs_frontend_voice_contract', 'rt_api_contract_001', {
+    controlCapability: apiControlCapability
+  });
   const speechAuthorization = {
     speechId: 'speech_api_contract_1234567890',
     kind: 'question',
     profileRevision: 7,
     bindingId: 'tool_attempt_api_contract_001',
     text: 'What would you like help planning first?',
-    token: 'signed_api_contract_token_1234567890'
+    token: 'signed_api_contract_token_1234567890',
+    controlId: `realtime_control_${'D'.repeat(24)}`,
+    expiresAt: '2030-01-01T00:00:00.000Z'
   };
   const speechResponse = await speakRealtimeAuthorized(
     'cs_frontend_voice_contract',
     'rt_api_contract_001',
-    speechAuthorization
+    speechAuthorization,
+    { controlCapability: apiControlCapability }
   );
   assert.equal(speechResponse.contentType, 'audio/mpeg');
   assert.equal(realtimeRequests[0].url, 'http://127.0.0.1:8787/api/consumer/sessions/cs_frontend_voice_contract/voice/realtime/calls');
@@ -764,6 +774,7 @@ try {
   assert.equal(realtimeHeaders.get('x-consumer-session'), 'cs_frontend_voice_contract.test-secret');
   assert.equal(realtimeRequests[1].url, 'http://127.0.0.1:8787/api/consumer/sessions/cs_frontend_voice_contract/voice/realtime/calls/rt_api_contract_001');
   assert.equal(realtimeRequests[1].init.method, 'GET');
+  assert.equal(new Headers(realtimeRequests[1].init.headers).get('x-realtime-control-capability'), apiControlCapability);
   assert.equal(realtimeRequests[2].init.method, 'DELETE');
   assert.equal(
     realtimeRequests[3].url,
@@ -813,13 +824,16 @@ const approvedController = new RealtimeVoiceController({ root: approvedRoot });
 approvedController.active = true;
 approvedController.sessionId = 'cs_frontend_voice_contract';
 approvedController.leaseId = 'rt_api_contract_001';
+approvedController.controlCapability = `rt_control_${'P'.repeat(24)}`;
 const approvedSpeech = {
   speechId: 'speech_frontend_playback_123456',
   kind: 'question',
   profileRevision: 7,
   bindingId: 'tool_attempt_frontend_001',
   text: 'What would you like help planning first?',
-  token: 'signed_frontend_contract_token_1234567890'
+  token: 'signed_frontend_contract_token_1234567890',
+  controlId: `realtime_control_${'F'.repeat(24)}`,
+  expiresAt: '2030-01-01T00:00:00.000Z'
 };
 const originalWindowUrl = window.URL;
 const controlledSpeechRequests = [];
@@ -843,6 +857,14 @@ try {
     });
   };
   await approvedController.playWorkerSpeechFromPayload({ assistantSpeech: approvedSpeech });
+  assert.equal(
+    controlledSpeechRequests.length,
+    0,
+    'A provider-mirrored sideband payload must never authorize browser speech.'
+  );
+  await approvedController.playWorkerSpeechFromPayload({
+    realtimeControl: { type: 'authorized_speech', assistantSpeech: approvedSpeech }
+  });
   assert.equal(controlledSpeechRequests.length, 1);
   assert.match(controlledSpeechRequests[0].url, /\/rt_api_contract_001\/speech$/);
   assert.deepEqual(JSON.parse(controlledSpeechRequests[0].init.body), approvedSpeech);

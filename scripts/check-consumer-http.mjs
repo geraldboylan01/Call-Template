@@ -85,6 +85,19 @@ assert.match(voiceAllowedHeaders, /X-Consumer-Session/i);
 assert.match(voiceAllowedHeaders, /X-Voice-Duration-Ms/i);
 assert.match(voiceAllowedHeaders, /X-Voice-Request-Id/i);
 
+const realtimeControlPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/realtime/calls/rt_AAAAAAAAAAAAAAAAAAAA', {
+  method: 'OPTIONS',
+  expectedStatus: 204,
+  extraHeaders: {
+    'Access-Control-Request-Method': 'GET',
+    'Access-Control-Request-Headers': 'x-consumer-session,x-realtime-control-capability'
+  }
+});
+assert.match(
+  realtimeControlPreflight.response.headers.get('access-control-allow-headers') || '',
+  /X-Realtime-Control-Capability/i
+);
+
 const advisorInvitePreflight = await request('/api/advisor/consumer-invite', {
   method: 'OPTIONS',
   expectedStatus: 204,

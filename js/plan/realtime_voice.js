@@ -179,6 +179,9 @@ export function normaliseRealtimeCallResponse(response) {
     0
   )) || 0;
   const headerBudget = budgetFromHeaders(response?.headers);
+  const controlCapability = cleanText(headerValue(response?.headers, [
+    'X-Realtime-Control-Capability'
+  ]), 120);
   const payload = parsed || (headerBudget ? { realtimeVoiceBudget: headerBudget } : null);
   return {
     sdp,
@@ -186,7 +189,8 @@ export function normaliseRealtimeCallResponse(response) {
     expiresAt,
     maxDurationMs,
     payload,
-    budget: headerBudget
+    budget: headerBudget,
+    controlCapability
   };
 }
 
@@ -623,6 +627,7 @@ export class RealtimeVoiceController {
     this.dataChannel = null;
     this.localStream = null;
     this.leaseId = '';
+    this.controlCapability = '';
     this.leaseExpiresAtMs = null;
     this.sessionId = '';
     this.startController = null;
@@ -1016,8 +1021,12 @@ export class RealtimeVoiceController {
       const call = normaliseRealtimeCallResponse(response);
       if (!call.sdp.startsWith('v=0')) throw new Error('The service returned no valid Live voice answer.');
       if (!call.leaseId) throw new Error('The service returned no controllable Live voice lease.');
+      if (!/^rt_control_[A-Za-z0-9_-]{20,80}$/.test(call.controlCapability)) {
+        throw new Error('The service returned no authenticated Live voice control channel.');
+      }
       leaseId = call.leaseId;
       this.leaseId = call.leaseId;
+      this.controlCapability = call.controlCapability;
       if (call.payload) this.acceptServerPayload(call.payload);
       this.configureLeaseExpiry(call, context);
       await peer.setRemoteDescription({ type: 'answer', sdp: call.sdp });
@@ -1029,9 +1038,12 @@ export class RealtimeVoiceController {
       const message = connectionErrorMessage(error);
       const sessionId = this.sessionId;
       const cleanupLeaseId = leaseId || this.leaseId;
+      const cleanupControlCapability = this.controlCapability;
       this.cleanupLocal();
       if (cleanupLeaseId && sessionId) {
-        deleteRealtimeVoiceCall(sessionId, cleanupLeaseId).then((payload) => {
+        deleteRealtimeVoiceCall(sessionId, cleanupLeaseId, {
+          controlCapability: cleanupControlCapability
+        }).then((payload) => {
           this.acceptServerPayload(payload);
         }).catch(() => {});
       }
@@ -1158,7 +1170,6 @@ export class RealtimeVoiceController {
         return;
       case 'planning_update':
         this.updatePlanningContext(event.payload, this.lastState);
-        this.playWorkerSpeechFromPayload(event.payload);
         this.scheduleLeasePoll(0);
         return;
       case 'response_done':
@@ -1190,12 +1201,10 @@ export class RealtimeVoiceController {
 
   async playWorkerSpeechFromPayload(payload) {
     const root = unwrap(payload);
-    const speech = asObject(firstDefined(
-      root.assistantSpeech,
-      root.speech,
-      root.planning?.assistantSpeech,
-      root.context?.assistantSpeech
-    ));
+    const control = asObject(root.realtimeControl);
+    const speech = control?.type === 'authorized_speech'
+      ? asObject(control.assistantSpeech)
+      : null;
     if (!speech || !this.active || !this.sessionId || !this.leaseId) return;
     const speechId = cleanText(speech.speechId, 100);
     const text = typeof speech.text === 'string' ? speech.text : '';
@@ -1217,7 +1226,10 @@ export class RealtimeVoiceController {
         this.sessionId,
         leaseId,
         speech,
-        { signal: controller.signal }
+        {
+          signal: controller.signal,
+          controlCapability: this.controlCapability
+        }
       );
       if (controller.signal.aborted
         || generation !== this.generation
@@ -1615,7 +1627,10 @@ export class RealtimeVoiceController {
     const controller = new AbortController();
     this.pollController = controller;
     try {
-      const payload = await getRealtimeVoiceCall(sessionId, leaseId, { signal: controller.signal });
+      const payload = await getRealtimeVoiceCall(sessionId, leaseId, {
+        signal: controller.signal,
+        controlCapability: this.controlCapability
+      });
       if (!this.active || leaseId !== this.leaseId || sessionId !== this.sessionId) return;
       this.acceptServerPayload(payload);
       const status = leaseStatus(payload);
@@ -1649,6 +1664,7 @@ export class RealtimeVoiceController {
     this.onVoicePayload(payload);
     this.updatePlanningContext(payload, this.lastState);
     this.onPlanningPayload(payload);
+    this.playWorkerSpeechFromPayload(payload);
     this.updateUi();
   }
 
@@ -1656,6 +1672,7 @@ export class RealtimeVoiceController {
     const hadLiveState = this.active || Boolean(this.leaseId);
     const leaseId = this.leaseId;
     const sessionId = this.sessionId;
+    const controlCapability = this.controlCapability;
     ++this.generation;
     this.cleanupLocal();
     const messages = {
@@ -1680,7 +1697,7 @@ export class RealtimeVoiceController {
     }
     if (notifyServer && leaseId && sessionId) {
       try {
-        const payload = await deleteRealtimeVoiceCall(sessionId, leaseId);
+        const payload = await deleteRealtimeVoiceCall(sessionId, leaseId, { controlCapability });
         this.acceptServerPayload(payload);
       } catch (error) {
         if (!this.onSessionUnavailable(error) && reason === 'user') {
@@ -1720,6 +1737,7 @@ export class RealtimeVoiceController {
     this.localStream = null;
     this.playedSpeechIds.clear();
     this.leaseId = '';
+    this.controlCapability = '';
     this.leaseExpiresAtMs = null;
     this.sessionId = '';
     this.updateUi();

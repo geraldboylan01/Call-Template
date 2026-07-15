@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
+import { randomId, sha256Base64Url } from '../worker/src/consumer/crypto.js';
 import { ConsumerError } from '../worker/src/consumer/errors.js';
 import {
   createSessionRecord,
@@ -25,6 +26,8 @@ import {
 } from '../worker/src/consumer/realtime_fact_mapper.js';
 import {
   activateRealtimeLease,
+  assertRealtimeControlMessage,
+  claimRealtimeControlMessage,
   appendRealtimeEvent,
   beginRealtimeToolAttempt,
   completeRealtimeAnalysisPlan,
@@ -36,6 +39,7 @@ import {
   getActiveRealtimeLease,
   getCurrentRealtimeAnalysisPlan,
   getRealtimeLease,
+  getNextRealtimeControlMessage,
   hasUnsettledRealtimeSpeechUsage,
   listExpiredRealtimeLeases,
   listRealtimeFinalTurns,
@@ -45,6 +49,8 @@ import {
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
   setRealtimeConsent,
+  finalizeRealtimeControlMessage,
+  verifyRealtimeControlCapability,
   toPublicRealtimeAnalysisPlan
 } from '../worker/src/consumer/realtime_repository.js';
 import {
@@ -276,7 +282,8 @@ const migrationSql = [
   'worker/consumer-migrations/0003_add_consumer_voice_consent.sql',
   'worker/consumer-migrations/0004_add_consumer_voice_dispatch_and_events.sql',
   'worker/consumer-migrations/0005_add_consumer_realtime_voice.sql',
-  'worker/consumer-migrations/0006_encrypt_realtime_plan_display.sql'
+  'worker/consumer-migrations/0006_encrypt_realtime_plan_display.sql',
+  'worker/consumer-migrations/0007_add_realtime_control_inbox.sql'
 ].map(source).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 
@@ -513,13 +520,23 @@ const consent = {
   aiNoticeId: config.aiNoticeId,
   privacyNoticeUrl: config.privacyNoticeUrl
 };
+const inviteClaimsFor = (id) => ({
+  jti: `realtime-test-${id}`,
+  cohort: 'adviser_test',
+  expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+  maxUses: 1
+});
 const sessionId = `cs_${'R'.repeat(24)}`;
 await createSessionRecord(env, {
   id: sessionId,
   credentialHashB64u: `hash_${'C'.repeat(30)}`
-}, consent, config);
+}, consent, config, inviteClaimsFor(sessionId));
 const sessionRow = await getSessionRow(env, sessionId);
 await setRealtimeConsent(env, sessionRow, config, true);
+const newControlCapability = async () => {
+  const token = randomId('rt_control');
+  return { token, hash: await sha256Base64Url(token) };
+};
 
 const reserve = (idempotencyKey, amount = 1_000_000) => reserveConsumerProviderCost(env, {
   sessionId,
@@ -533,11 +550,36 @@ const reserve = (idempotencyKey, amount = 1_000_000) => reserveConsumerProviderC
 });
 const firstReservation = await reserve('realtime-adversarial-lease-one');
 assert.ok(firstReservation.entry);
-let lease = await createRealtimeLease(env, sessionRow, config, firstReservation.entry);
+const primaryControl = await newControlCapability();
+let lease = await createRealtimeLease(env, sessionRow, config, firstReservation.entry, primaryControl.hash);
+assert.equal((await verifyRealtimeControlCapability(env, sessionId, lease.id, primaryControl.token))?.id, lease.id);
+assert.equal(await verifyRealtimeControlCapability(env, sessionId, lease.id, randomId('rt_control')), null);
+sqliteCommand(databasePath, 'run', {
+  sql: 'UPDATE consumer_invite_redemptions SET revoked_at = ? WHERE jti_hash_b64u = ?',
+  values: [new Date().toISOString(), lease.invite_jti_hash_b64u]
+});
+assert.equal(
+  await verifyRealtimeControlCapability(env, sessionId, lease.id, primaryControl.token),
+  null,
+  'An active control channel must remain bound to its adviser invitation.'
+);
+assert.equal(
+  (await verifyRealtimeControlCapability(env, sessionId, lease.id, primaryControl.token, {
+    requireActive: false
+  }))?.id,
+  lease.id,
+  'A revoked invitation must not prevent authenticated server hang-up.'
+);
+sqliteCommand(databasePath, 'run', {
+  sql: 'UPDATE consumer_invite_redemptions SET revoked_at = NULL WHERE jti_hash_b64u = ?',
+  values: [lease.invite_jti_hash_b64u]
+});
+assert.equal(await getNextRealtimeControlMessage(env, sessionId, lease.id), null, 'A lease with no command must poll empty.');
 const secondReservation = await reserve('realtime-adversarial-lease-two');
 assert.ok(secondReservation.entry);
+const secondControl = await newControlCapability();
 await rejectsCode(
-  createRealtimeLease(env, sessionRow, config, secondReservation.entry),
+  createRealtimeLease(env, sessionRow, config, secondReservation.entry, secondControl.hash),
   'realtime_call_active'
 );
 await markRealtimeProviderCostInFlight(env, firstReservation.entry.id, sessionId, config);
@@ -557,7 +599,7 @@ const speechSessionId = `cs_${'S'.repeat(24)}`;
 await createSessionRecord(env, {
   id: speechSessionId,
   credentialHashB64u: `hash_${'S'.repeat(30)}`
-}, consent, config);
+}, consent, config, inviteClaimsFor(speechSessionId));
 const speechSessionRow = await getSessionRow(env, speechSessionId);
 await setRealtimeConsent(env, speechSessionRow, config, true);
 const speechReservation = await reserveConsumerProviderCost(env, {
@@ -570,7 +612,8 @@ const speechReservation = await reserveConsumerProviderCost(env, {
   reservedCostEurMicros: 1_000_000,
   dailyCostLimitEurMicros: config.realtimeDailyBudgetMicroEur
 });
-let speechLease = await createRealtimeLease(env, speechSessionRow, config, speechReservation.entry);
+const speechControl = await newControlCapability();
+let speechLease = await createRealtimeLease(env, speechSessionRow, config, speechReservation.entry, speechControl.hash);
 await markRealtimeProviderCostInFlight(env, speechReservation.entry.id, speechSessionId, config);
 speechLease = await activateRealtimeLease(env, speechSessionId, speechLease.id, 'call_controlled_speech_test');
 const greetingText = 'Hello, I’m Planéir. What would you most like help planning?';
@@ -582,6 +625,33 @@ const greetingAuthorization = await issueRealtimeSpeechAuthorization({
   profileRevision: 1,
   text: greetingText
 });
+const delayedGreeting = await getNextRealtimeControlMessage(env, speechSessionId, speechLease.id);
+assert.equal(delayedGreeting.type, 'authorized_speech');
+assert.deepEqual(delayedGreeting.assistantSpeech, greetingAuthorization);
+assert.equal(delayedGreeting.deliveryAttempt, 1);
+const duplicateGreeting = await getNextRealtimeControlMessage(env, speechSessionId, speechLease.id);
+assert.deepEqual(duplicateGreeting.assistantSpeech, greetingAuthorization);
+assert.equal(duplicateGreeting.deliveryAttempt, 2, 'Polling repeats the same unconsumed command idempotently.');
+await assertRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  authorization: greetingAuthorization
+});
+await rejectsCode(assertRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  authorization: { ...greetingAuthorization, text: `${greetingText} Mismatch.` }
+}), 'realtime_control_mismatch');
+await claimRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  controlId: greetingAuthorization.controlId
+});
+await rejectsCode(claimRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  controlId: greetingAuthorization.controlId
+}), 'realtime_control_replayed');
 let controlledProviderCalls = 0;
 const controlledResult = await renderAuthorizedRealtimeSpeech({
   env,
@@ -601,6 +671,17 @@ const controlledResult = await renderAuthorizedRealtimeSpeech({
 assert.equal(controlledProviderCalls, 1);
 assert.equal(controlledResult.text, greetingText);
 assert.equal(controlledResult.audio.byteLength, 3);
+await finalizeRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  controlId: greetingAuthorization.controlId,
+  status: 'consumed'
+});
+await rejectsCode(assertRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  authorization: greetingAuthorization
+}), 'realtime_control_replayed');
 const expectedGreetingCost = greetingText.length * 30;
 assert.equal(controlledResult.budget.spentMicroEur, expectedGreetingCost);
 const speechLedgerColumns = sqliteCommand(databasePath, 'all', {
@@ -656,25 +737,14 @@ for (const [name, body, leaseId, expectedCode] of [
   }), expectedCode);
   assert.equal(controlledProviderCalls, 1, `${name} reached the provider.`);
 }
-const wrongRevisionAuthorization = await issueRealtimeSpeechAuthorization({
+await rejectsCode(issueRealtimeSpeechAuthorization({
   env,
   sessionId: speechSessionId,
   leaseId: speechLease.id,
   kind: 'question',
   profileRevision: 2,
   text: 'What is the current figure?'
-});
-await rejectsCode(renderAuthorizedRealtimeSpeech({
-  env,
-  config,
-  sessionRow: speechSessionRow,
-  leaseId: speechLease.id,
-  body: wrongRevisionAuthorization,
-  synthesize: async () => {
-    controlledProviderCalls += 1;
-    return { audio: new ArrayBuffer(1), providerRequestId: null };
-  }
-}), 'profile_revision_conflict');
+}), 'realtime_lease_conflict');
 assert.equal(controlledProviderCalls, 1);
 
 sqliteCommand(databasePath, 'run', {
@@ -701,10 +771,36 @@ await rejectsCode(renderAuthorizedRealtimeSpeech({
   }
 }), 'realtime_budget_exceeded');
 assert.equal(controlledProviderCalls, 1);
+await finalizeRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  controlId: budgetStoppedAuthorization.controlId,
+  status: 'failed',
+  errorCode: 'realtime_budget_exceeded'
+});
 sqliteCommand(databasePath, 'run', {
   sql: 'UPDATE consumer_realtime_sessions SET dispatch_stop_eur_micros = 1700000 WHERE id = ?',
   values: [speechLease.id]
 });
+
+const expiredAuthorization = await issueRealtimeSpeechAuthorization({
+  env,
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  kind: 'status',
+  profileRevision: 1,
+  text: 'This delayed command must expire before browser delivery.'
+});
+sqliteCommand(databasePath, 'run', {
+  sql: `UPDATE consumer_realtime_control_messages
+        SET expires_at = ? WHERE realtime_session_id = ? AND control_id = ?`,
+  values: [new Date(Date.now() - 1_000).toISOString(), speechLease.id, expiredAuthorization.controlId]
+});
+assert.equal(await getNextRealtimeControlMessage(env, speechSessionId, speechLease.id), null);
+assert.equal(sqliteCommand(databasePath, 'first', {
+  sql: 'SELECT status FROM consumer_realtime_control_messages WHERE realtime_session_id = ? AND control_id = ?',
+  values: [speechLease.id, expiredAuthorization.controlId]
+}).status, 'expired');
 
 const unknownAuthorization = await issueRealtimeSpeechAuthorization({
   env,
@@ -761,7 +857,7 @@ const factSessionId = `cs_${'F'.repeat(24)}`;
 await createSessionRecord(env, {
   id: factSessionId,
   credentialHashB64u: `hash_${'F'.repeat(30)}`
-}, consent, config);
+}, consent, config, inviteClaimsFor(factSessionId));
 let factSessionRow = await getSessionRow(env, factSessionId);
 await setRealtimeConsent(env, factSessionRow, config, true);
 const factReservation = await reserveConsumerProviderCost(env, {
@@ -774,7 +870,8 @@ const factReservation = await reserveConsumerProviderCost(env, {
   reservedCostEurMicros: 1_000_000,
   dailyCostLimitEurMicros: config.realtimeDailyBudgetMicroEur
 });
-let factLease = await createRealtimeLease(env, factSessionRow, config, factReservation.entry);
+const factControl = await newControlCapability();
+let factLease = await createRealtimeLease(env, factSessionRow, config, factReservation.entry, factControl.hash);
 await markRealtimeProviderCostInFlight(env, factReservation.entry.id, factSessionId, config);
 factLease = await activateRealtimeLease(env, factSessionId, factLease.id, 'call_fact_control_plane_test');
 const factState = new TestDurableObjectState();
@@ -1643,7 +1740,8 @@ assert.equal(deleted.retainedHandoff, false);
 assert.equal(await getSessionRow(env, sessionId), null);
 for (const table of [
   'consumer_realtime_sessions', 'consumer_realtime_events', 'consumer_realtime_tool_attempts',
-  'consumer_realtime_usage', 'consumer_realtime_speech_usage', 'consumer_realtime_final_turns', 'consumer_realtime_fact_proposals',
+  'consumer_realtime_usage', 'consumer_realtime_speech_usage', 'consumer_realtime_control_messages',
+  'consumer_realtime_final_turns', 'consumer_realtime_fact_proposals',
   'consumer_realtime_analysis_plans', 'consumer_realtime_run_provenance',
   'consumer_realtime_consents', 'consumer_realtime_consent_events'
 ]) {
@@ -1661,6 +1759,7 @@ const workflowSource = source('.github/workflows/deploy-worker.yml');
 const routerSource = source('worker/src/consumer/router.js');
 const lifecycleSource = source('worker/src/consumer/realtime_lifecycle.js');
 const realtimeMigrationSource = source('worker/consumer-migrations/0005_add_consumer_realtime_voice.sql');
+const realtimeControlMigrationSource = source('worker/consumer-migrations/0007_add_realtime_control_inbox.sql');
 const liveBridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
 assert.match(wranglerSource, /^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m);
 assert.match(wranglerSource, /CONSUMER_REALTIME_SESSIONS[^\n]*ConsumerRealtimeSession/);
@@ -1673,6 +1772,8 @@ assert.match(workflowSource, /if:\s*\(failure\(\) \|\| cancelled\(\)\) && env\.C
 assert.match(workflowSource, /wrangler deploy --config wrangler\.bootstrap\.generated\.toml/);
 assert.match(liveBridgeSource, /runRealtimeInfrastructureProof/);
 assert.match(liveBridgeSource, /providerHangupConfirmed/);
+assert.match(realtimeControlMigrationSource, /consumer_realtime_control_messages/);
+assert.match(realtimeControlMigrationSource, /control_token_hash_b64u/);
 assert.match(liveBridgeSource, /realtimeGranted\.payload\?\.realtimeVoiceBudget\?\.limitMicroEur/);
 assert.doesNotMatch(liveBridgeSource, /realtimeGranted\.payload\?\.providerBudget/);
 assert.match(routerSource, /const reservationAmount = Number\(providerBudget\.remainingEurMicros \|\| 0\)/);

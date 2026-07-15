@@ -1,6 +1,11 @@
 import { getAvailableConsumerModules, runStoredConsumerAnalysis } from './analysis.js';
 import { getConsumerConfig, publicConsumerConfig } from './config.js';
-import { constantTimeEqual, createConsumerCredential } from './crypto.js';
+import {
+  constantTimeEqual,
+  createConsumerCredential,
+  randomId,
+  sha256Base64Url
+} from './crypto.js';
 import { describeConversationState, processTurn } from './conversation.js';
 import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
@@ -35,8 +40,12 @@ import {
   completeRealtimeAnalysisPlan,
   confirmRealtimeAnalysisPlan,
   createRealtimeLease,
+  assertRealtimeControlMessage,
+  claimRealtimeControlMessage,
+  finalizeRealtimeControlMessage,
   getActiveRealtimeLease,
   getRealtimeControlPlaneProof,
+  getNextRealtimeControlMessage,
   getCurrentRealtimeAnalysisPlan,
   getPublicRealtimeAnalysisPlan,
   getLatestRealtimeLease,
@@ -51,7 +60,8 @@ import {
   setRealtimeConsent,
   toPublicRealtimeAnalysisPlan,
   toPublicRealtimeConsent,
-  toPublicRealtimeLease
+  toPublicRealtimeLease,
+  verifyRealtimeControlCapability
 } from './realtime_repository.js';
 import {
   buildConfirmedRealtimeFactSummary,
@@ -343,6 +353,13 @@ function realtimeRequestId(request) {
   return value;
 }
 
+async function requireRealtimeControlCapability(request, env, sessionId, leaseId, options) {
+  const token = request.headers.get('X-Realtime-Control-Capability')?.trim() || '';
+  const lease = await verifyRealtimeControlCapability(env, sessionId, leaseId, token, options);
+  if (!lease) throw notFound('This live voice control channel could not be found.');
+  return lease;
+}
+
 function realtimeStub(env, leaseId) {
   if (!env.CONSUMER_REALTIME_SESSIONS
     || typeof env.CONSUMER_REALTIME_SESSIONS.idFromName !== 'function'
@@ -594,14 +611,47 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       if (typeof respondBinary !== 'function') {
         throw new ConsumerError(503, 'realtime_speech_unavailable', 'Approved voice playback is not available. Continue with the visible caption.');
       }
+      await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId);
       await rateLimit(env, 'consumer-realtime-speech-session', sessionRow.id, 60 * 1000, 30);
-      const result = await renderAuthorizedRealtimeSpeech({
-        env,
-        config,
-        sessionRow,
+      const body = await readJson(request);
+      await assertRealtimeControlMessage(env, {
+        sessionId: sessionRow.id,
         leaseId: route.leaseId,
-        body: await readJson(request)
+        authorization: body
       });
+      await claimRealtimeControlMessage(env, {
+        sessionId: sessionRow.id,
+        leaseId: route.leaseId,
+        controlId: body.controlId
+      });
+      let result;
+      try {
+        result = await renderAuthorizedRealtimeSpeech({
+          env,
+          config,
+          sessionRow,
+          leaseId: route.leaseId,
+          body
+        });
+        const consumed = await finalizeRealtimeControlMessage(env, {
+          sessionId: sessionRow.id,
+          leaseId: route.leaseId,
+          controlId: body.controlId,
+          status: 'consumed'
+        });
+        if (!consumed) {
+          throw new ConsumerError(409, 'realtime_control_replayed', 'That approved voice command was already processed.');
+        }
+      } catch (error) {
+        await finalizeRealtimeControlMessage(env, {
+          sessionId: sessionRow.id,
+          leaseId: route.leaseId,
+          controlId: body.controlId,
+          status: 'failed',
+          errorCode: error instanceof ConsumerError ? error.code : 'realtime_speech_failed'
+        }).catch(() => {});
+        throw error;
+      }
       return respondBinary(result.audio, 200, methods, {
         'Content-Type': 'audio/mpeg',
         'Content-Length': String(result.audio.byteLength),
@@ -619,7 +669,13 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
     }
 
     if (route.kind === 'realtime_lease') {
-      let realtimeLease = await getRealtimeLease(env, sessionRow.id, route.leaseId);
+      let realtimeLease = await requireRealtimeControlCapability(
+        request,
+        env,
+        sessionRow.id,
+        route.leaseId,
+        { requireActive: false }
+      );
       if (!realtimeLease) throw notFound('This live voice lease could not be found.');
       if (request.method === 'DELETE' && ['pending', 'active', 'closing'].includes(realtimeLease.status)) {
         realtimeLease = await closeRealtimeControl(env, realtimeLease, {
@@ -645,14 +701,16 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         realtimeTurns,
         analysisPlan,
         currentProfile,
-        proposedFacts
+        proposedFacts,
+        realtimeControl
       ] = await Promise.all([
         getRealtimeControlPlaneProof(env, sessionRow.id, route.leaseId),
         getConsumerProviderBudget(env, sessionRow.id),
         listRealtimeFinalTurns(env, sessionRow.id, route.leaseId, 20),
         getCurrentRealtimeAnalysisPlan(env, sessionRow.id),
         getCurrentProfile(env, sessionRow),
-        listRealtimeFactProposalSummaries(env, sessionRow.id, route.leaseId)
+        listRealtimeFactProposalSummaries(env, sessionRow.id, route.leaseId),
+        getNextRealtimeControlMessage(env, sessionRow.id, route.leaseId)
       ]);
       const planningState = describeConversationState(currentProfile, config);
       const pendingFacts = proposedFacts.map((proposal) => ({
@@ -702,7 +760,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           currentPendingProposal: pendingFacts[0] || null
         },
         analysisPlan: await getPublicRealtimeAnalysisPlan(env, analysisPlan),
-        realtimeTurns
+        realtimeTurns,
+        ...(realtimeControl ? { realtimeControl } : {})
       }, 200, methods);
     }
 
@@ -815,8 +874,16 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       let lease = null;
       let dispatched = false;
       let providerCallId = null;
+      const controlCapability = randomId('rt_control');
+      const controlCapabilityHash = await sha256Base64Url(controlCapability);
       try {
-        lease = await createRealtimeLease(env, sessionRow, config, reservation.entry);
+        lease = await createRealtimeLease(
+          env,
+          sessionRow,
+          config,
+          reservation.entry,
+          controlCapabilityHash
+        );
         await markRealtimeProviderCostInFlight(env, reservation.entry.id, sessionRow.id, config);
         dispatched = true;
         const state = describeConversationState(profile, config);
@@ -842,12 +909,14 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           'X-Realtime-Idle-Timeout-Seconds': String(config.realtimeIdleTimeoutSeconds),
           'X-Realtime-Budget-Micro-Eur': String(lease.reservation_eur_micros),
           'X-Realtime-Dispatch-Stop-Micro-Eur': String(lease.dispatch_stop_eur_micros),
+          'X-Realtime-Control-Capability': controlCapability,
           'Access-Control-Expose-Headers': [
             'X-Realtime-Lease-Id',
             'X-Realtime-Hard-Expires-At',
             'X-Realtime-Idle-Timeout-Seconds',
             'X-Realtime-Budget-Micro-Eur',
-            'X-Realtime-Dispatch-Stop-Micro-Eur'
+            'X-Realtime-Dispatch-Stop-Micro-Eur',
+            'X-Realtime-Control-Capability'
           ].join(', ')
         });
       } catch (error) {

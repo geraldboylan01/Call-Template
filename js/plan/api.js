@@ -384,24 +384,39 @@ export function createRealtimeVoiceCall(sessionId, {
   });
 }
 
-export function getRealtimeVoiceCall(sessionId, leaseId, { signal } = {}) {
+function realtimeControlHeaders(controlCapability) {
+  const value = String(controlCapability || '').trim();
+  if (!/^rt_control_[A-Za-z0-9_-]{20,80}$/.test(value)) {
+    throw new ConsumerApiError('The Live voice control channel is unavailable.', {
+      code: 'invalid_realtime_control_capability'
+    });
+  }
+  return { 'X-Realtime-Control-Capability': value };
+}
+
+export function getRealtimeVoiceCall(sessionId, leaseId, { signal, controlCapability } = {}) {
   return request(realtimeCallPath(sessionId, leaseId), {
     authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability),
     signal,
     timeoutMs: 20_000
   });
 }
 
-export function deleteRealtimeVoiceCall(sessionId, leaseId, { signal } = {}) {
+export function deleteRealtimeVoiceCall(sessionId, leaseId, { signal, controlCapability } = {}) {
   return request(realtimeCallPath(sessionId, leaseId), {
     method: 'DELETE',
     authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability),
     signal,
     timeoutMs: 20_000
   });
 }
 
-export function speakRealtimeAuthorized(sessionId, leaseId, authorization, { signal } = {}) {
+export function speakRealtimeAuthorized(sessionId, leaseId, authorization, {
+  signal,
+  controlCapability
+} = {}) {
   const value = authorization && typeof authorization === 'object' && !Array.isArray(authorization)
     ? authorization
     : {};
@@ -414,8 +429,11 @@ export function speakRealtimeAuthorized(sessionId, leaseId, authorization, { sig
       profileRevision: Number(value.profileRevision),
       bindingId: String(value.bindingId || ''),
       text: String(value.text || ''),
-      token: String(value.token || '')
+      token: String(value.token || ''),
+      controlId: String(value.controlId || ''),
+      expiresAt: String(value.expiresAt || '')
     },
+    requestHeaders: realtimeControlHeaders(controlCapability),
     signal,
     timeoutMs: 45_000,
     responseType: 'blob'

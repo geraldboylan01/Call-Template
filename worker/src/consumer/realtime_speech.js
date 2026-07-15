@@ -8,6 +8,7 @@ import {
 import { ConsumerError, badRequest } from './errors.js';
 import {
   finalizeRealtimeSpeechUsage,
+  enqueueRealtimeControlMessage,
   getRealtimeConsent,
   getRealtimeLease,
   markRealtimeSpeechDispatched,
@@ -38,16 +39,28 @@ function assertExactText(value) {
   return text;
 }
 
-async function contentBinding({ sessionId, leaseId, speechId, kind, profileRevision, bindingId, text }) {
+async function contentBinding({
+  sessionId,
+  leaseId,
+  speechId,
+  kind,
+  profileRevision,
+  bindingId,
+  text,
+  controlId,
+  expiresAt
+}) {
   return stableStringify({
-    version: 'consumer-realtime-speech-v1',
+    version: 'consumer-realtime-speech-v2',
     sessionId,
     leaseId,
     speechId,
     kind,
     profileRevision,
     bindingId,
-    textHashB64u: await sha256Base64Url(text)
+    textHashB64u: await sha256Base64Url(text),
+    controlId,
+    expiresAt
   });
 }
 
@@ -69,6 +82,12 @@ export async function issueRealtimeSpeechAuthorization({
   }
   const speechId = randomId('speech');
   const bindingId = randomId('speech_binding');
+  const controlId = randomId('realtime_control');
+  const lease = await getRealtimeLease(env, sessionId, leaseId);
+  const expiresAt = new Date(Math.min(
+    Date.now() + 75_000,
+    Date.parse(lease?.hard_expires_at || '') || Date.now() + 75_000
+  )).toISOString();
   const binding = await contentBinding({
     sessionId,
     leaseId,
@@ -76,34 +95,42 @@ export async function issueRealtimeSpeechAuthorization({
     kind,
     profileRevision,
     bindingId,
-    text: approvedText
+    text: approvedText,
+    controlId,
+    expiresAt
   });
   const token = await hmacSha256Base64Url(
     env.CONSUMER_RATE_LIMIT_HASH_KEY,
     `consumer/realtime/speech/authorization/v1/${binding}`
   );
-  return {
+  const authorization = {
     speechId,
     kind,
     profileRevision,
     bindingId,
     text: approvedText,
-    token
+    token,
+    controlId,
+    expiresAt
   };
+  await enqueueRealtimeControlMessage(env, { sessionId, leaseId, authorization });
+  return authorization;
 }
 
 export function validateRealtimeSpeechBody(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw badRequest('An approved speech authorization is required.', 'realtime_speech_authorization_invalid');
   }
-  const allowed = new Set(['speechId', 'kind', 'profileRevision', 'bindingId', 'text', 'token']);
+  const allowed = new Set(['speechId', 'kind', 'profileRevision', 'bindingId', 'text', 'token', 'controlId', 'expiresAt']);
   if (Object.keys(body).some((key) => !allowed.has(key))
     || !SPEECH_ID.test(String(body.speechId || ''))
     || !SPEECH_KINDS.has(body.kind)
     || !Number.isSafeInteger(body.profileRevision)
     || body.profileRevision < 1
     || !BINDING_ID.test(String(body.bindingId || ''))
-    || !TOKEN.test(String(body.token || ''))) {
+    || !TOKEN.test(String(body.token || ''))
+    || !/^realtime_control_[A-Za-z0-9_-]{20,80}$/.test(String(body.controlId || ''))
+    || !Number.isFinite(Date.parse(String(body.expiresAt || '')))) {
     throw badRequest('The approved speech authorization is invalid.', 'realtime_speech_authorization_invalid');
   }
   return {
@@ -112,7 +139,9 @@ export function validateRealtimeSpeechBody(body) {
     profileRevision: body.profileRevision,
     bindingId: body.bindingId,
     text: assertExactText(body.text),
-    token: body.token
+    token: body.token,
+    controlId: body.controlId,
+    expiresAt: body.expiresAt
   };
 }
 
@@ -136,6 +165,9 @@ export async function renderAuthorizedRealtimeSpeech({
   synthesize = synthesizeRealtimeControlledSpeech
 }) {
   const authorization = validateRealtimeSpeechBody(body);
+  if (Date.parse(authorization.expiresAt) <= Date.now()) {
+    throw new ConsumerError(410, 'realtime_control_expired', 'That approved voice command has expired.');
+  }
   await verifyAuthorization(env, sessionRow.id, leaseId, authorization);
   if (Number(sessionRow.current_profile_revision) !== authorization.profileRevision) {
     throw new ConsumerError(409, 'profile_revision_conflict', 'The planning profile changed before this approved speech could be played.');
@@ -226,4 +258,3 @@ export async function renderAuthorizedRealtimeSpeech({
     throw error;
   }
 }
-

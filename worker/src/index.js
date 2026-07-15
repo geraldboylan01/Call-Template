@@ -59,7 +59,8 @@ const ALLOWED_REQUEST_HEADER_NAMES = new Set([
   'x-consumer-session',
   'x-consumer-invite',
   'x-voice-duration-ms',
-  'x-voice-request-id'
+  'x-voice-request-id',
+  'x-realtime-control-capability'
 ]);
 const DEFAULT_ALLOWED_REQUEST_HEADERS = [
   'Content-Type',
@@ -68,7 +69,8 @@ const DEFAULT_ALLOWED_REQUEST_HEADERS = [
   'X-Consumer-Session',
   'X-Consumer-Invite',
   'X-Voice-Duration-Ms',
-  'X-Voice-Request-Id'
+  'X-Voice-Request-Id',
+  'X-Realtime-Control-Capability'
 ].join(', ');
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
 const PLANEIR_SITE_URL = 'https://planeir.ie';

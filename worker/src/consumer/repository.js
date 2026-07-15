@@ -116,6 +116,13 @@ const ENCRYPTED_PAYLOAD_SPECS = Object.freeze([
     aad: (row) => `consumer/handoff/${row.session_id}/${row.id}`
   },
   {
+    table: 'consumer_realtime_control_messages',
+    column: 'payload_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/realtime/control/${row.session_id}/${row.realtime_session_id}/${row.id}`
+  },
+  {
     table: 'consumer_realtime_sessions',
     column: 'provider_call_id_encrypted',
     keys: ['id'],
@@ -2149,6 +2156,8 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
     db(env).prepare(`DELETE FROM consumer_realtime_final_turns WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_speech_usage WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_control_messages WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_usage WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
