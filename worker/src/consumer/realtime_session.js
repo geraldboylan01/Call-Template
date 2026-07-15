@@ -116,40 +116,64 @@ function normalizedTools(value) {
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
-    ...(tool.strict === undefined ? {} : { strict: tool.strict })
+    // The provider may materialize its default `strict: false` in the
+    // effective session even when the client omitted it.
+    strict: tool.strict === true
   }));
+}
+
+function normalizedAudioFormat(value) {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    type: value.type ?? null,
+    ...(value.rate === undefined ? {} : { rate: value.rate })
+  };
+}
+
+function normalizedToolChoice(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value ?? null;
+  return {
+    type: value.type ?? null,
+    name: value.name ?? null
+  };
 }
 
 export function realtimeSessionPolicySnapshot(session = {}) {
   return {
     type: session.type,
     model: session.model,
-    safety_identifier: session.safety_identifier,
     instructions: session.instructions,
-    reasoning: session.reasoning,
+    // Realtime reasoning sessions can add provider-owned accounting/default
+    // fields. Effort is the Worker-controlled policy field.
+    reasoning: { effort: session.reasoning?.effort ?? null },
     output_modalities: session.output_modalities,
     audio: {
       input: {
-        format: session.audio?.input?.format,
-        noise_reduction: session.audio?.input?.noise_reduction,
-        transcription: session.audio?.input?.transcription,
-        turn_detection: session.audio?.input?.turn_detection
+        format: normalizedAudioFormat(session.audio?.input?.format),
+        noise_reduction: { type: session.audio?.input?.noise_reduction?.type ?? null },
+        transcription: {
+          model: session.audio?.input?.transcription?.model ?? null,
+          language: session.audio?.input?.transcription?.language ?? null
+        },
+        turn_detection: {
+          type: session.audio?.input?.turn_detection?.type ?? null,
+          eagerness: session.audio?.input?.turn_detection?.eagerness ?? null,
+          create_response: session.audio?.input?.turn_detection?.create_response ?? null,
+          interrupt_response: session.audio?.input?.turn_detection?.interrupt_response ?? null
+        }
       },
       output: {
-        format: session.audio?.output?.format,
-        speed: session.audio?.output?.speed,
-        voice: session.audio?.output?.voice
+        format: normalizedAudioFormat(session.audio?.output?.format),
+        speed: session.audio?.output?.speed ?? null,
+        voice: session.audio?.output?.voice ?? null
       }
     },
     tools: normalizedTools(session.tools),
-    tool_choice: session.tool_choice,
+    tool_choice: normalizedToolChoice(session.tool_choice),
     parallel_tool_calls: session.parallel_tool_calls,
     max_output_tokens: session.max_output_tokens,
     truncation: session.truncation,
-    include: Array.isArray(session.include) ? session.include : [],
-    prompt: session.prompt ?? null,
-    tracing: session.tracing ?? null,
-    temperature: session.temperature ?? null
+    include: Array.isArray(session.include) ? session.include : []
   };
 }
 
@@ -526,8 +550,17 @@ export class ConsumerRealtimeSession {
         toolsetVersion: lease.toolset_version
       }
     });
-    this.initialProbePending = true;
-    await this.refreshJourneyState();
+    // The call was created moments ago with the Worker-owned session policy.
+    // Do not send a redundant full session.update here: OpenAI returns the
+    // effective session (including provider-normalized defaults), and waiting
+    // for a byte-equivalent echo can deadlock the first server-authorized tool
+    // call. Dynamic journey changes still use refreshJourneyState() and its
+    // normalized policy acknowledgement below.
+    const context = await this.planningContext();
+    this.currentPhase = context.state.realtimePhase;
+    this.initialProbePending = false;
+    await this.state.storage.put('phase', this.currentPhase);
+    await this.authorizeResponse('initial_state_probe', { forceTool: 'get_planning_state' });
   }
 
   async connectSideband(providerCallId) {
