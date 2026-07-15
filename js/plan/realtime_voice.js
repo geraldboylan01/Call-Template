@@ -7,6 +7,7 @@ import {
   updateRealtimeVoiceConsent
 } from './api.js';
 import {
+  clearRealtimeVoiceConsent,
   getRealtimeVoiceConsent,
   getSessionId,
   hasCurrentRealtimeVoiceConsent,
@@ -549,6 +550,11 @@ function realtimeContext() {
     || savedConsent.privacyNoticeUrl
     || ''
   );
+  // A locally stored credential can outlive a failed session creation (5xx
+  // responses deliberately keep it for retry). The meeting must only appear
+  // for a session the server has actually confirmed, otherwise every voice
+  // route would fail against a session that does not exist.
+  const serverSessionConfirmed = Boolean(state.session?.id || state.session?.sessionId);
   return {
     eligible: bootstrap.enabled === true
       && bootstrap.voiceRealtimeEnabled === true
@@ -558,7 +564,7 @@ function realtimeContext() {
     policyVersion,
     privacyNoticeUrl,
     consentGranted: hasCurrentRealtimeVoiceConsent(),
-    sessionId: getSessionId(),
+    sessionId: serverSessionConfirmed ? getSessionId() : '',
     journeyBusy: state.busy === true,
     consentRefreshRequired: state.consentRefreshRequired === true,
     maxDurationMs: Math.min(900_000, Math.max(15_000, Number(
@@ -1060,7 +1066,16 @@ export class RealtimeVoiceController {
         }).catch(() => {});
       }
       if (this.onSessionUnavailable(error)) return;
-      this.setPhase('error', `${message} Short voice and typing remain available.`, { error: message });
+      // A stale voice disclosure must not dead-end the meeting. Clear the
+      // outdated local consent and reopen the current disclosure so one tap
+      // re-agrees and reconnects.
+      if (error instanceof ConsumerApiError && error.code === 'realtime_consent_required') {
+        clearRealtimeVoiceConsent();
+        this.setPhase('off', 'The meeting notice was updated. Please review it again to continue.');
+        this.openConsentDialog();
+        return;
+      }
+      this.setPhase('error', `${message} You can try again or continue by typing.`, { error: message });
       this.onToast(message, { error: true, timeout: 7000 });
     } finally {
       if (this.startController === controller) this.startController = null;

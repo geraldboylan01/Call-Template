@@ -218,8 +218,8 @@ function createConsentRefreshBanner(currentState) {
       'p',
       '',
       needsNewInvite
-        ? 'Your saved information and any matching results remain read-only. You may delete this session, but a new valid invitation link is required to start another. AI withdrawal and adviser-handoff withdrawal remain available under Privacy controls.'
-        : 'Your saved information and any matching results remain read-only. Start again under the current disclosure or delete this session. AI withdrawal and adviser-handoff withdrawal remain available under Privacy controls.'
+        ? 'Your saved information and any matching results remain read-only, and the live Planéir meeting is paused. You may delete this session, but a new valid invitation link is required to start another. AI withdrawal and adviser-handoff withdrawal remain available under Privacy controls.'
+        : 'Your saved information and any matching results remain read-only, and the live Planéir meeting is paused. Start again under the current disclosure or delete this session. AI withdrawal and adviser-handoff withdrawal remain available under Privacy controls.'
     )
   );
   const remove = element(

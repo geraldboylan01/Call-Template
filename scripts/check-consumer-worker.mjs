@@ -1198,16 +1198,28 @@ const realtimeVoicePreviewConfig = {
   realtimeSpeechModel: 'tts-1-hd',
   realtimeSpeechVoice: 'nova',
   realtimeSpeechRateMicroEurPerMillionCharacters: 30_000_000,
-  realtimeSessionBudgetMicroEur: 2_000_000,
+  realtimeSessionBudgetMicroEur: 10_000_000,
+  realtimeSessionWarnMicroEur: 7_500_000,
   realtimeDailyBudgetMicroEur: 50_000_000,
-  realtimeDispatchStopMicroEur: 1_700_000,
+  realtimeDispatchStopMicroEur: 9_700_000,
   realtimeSafetyReserveMicroEur: 300_000,
-  realtimeMaxDurationSeconds: 600,
-  realtimeIdleTimeoutSeconds: 90,
+  realtimeMaxDurationSeconds: 900,
+  realtimeIdleTimeoutSeconds: 180,
+  realtimeSilencePromptSeconds: 45,
   realtimeMaxSdpBytes: 32_768,
   realtimeMaxResponses: 40,
   realtimeMaxToolCalls: 24
 };
+// The previous €2/600s/90s adviser envelope is no longer the approved
+// fingerprint; a worker still deployed with it must refuse adviser sessions
+// rather than silently running with the outdated limits.
+assert.equal(isAdvisorRealtimePreviewConfig({
+  ...realtimeVoicePreviewConfig,
+  realtimeSessionBudgetMicroEur: 2_000_000,
+  realtimeDispatchStopMicroEur: 1_700_000,
+  realtimeMaxDurationSeconds: 600,
+  realtimeIdleTimeoutSeconds: 90
+}), false);
 assert.equal(isAdvisorVoicePreviewConfig(realtimeVoicePreviewConfig), false);
 assert.equal(isAdvisorRealtimePreviewConfig(realtimeVoicePreviewConfig), true);
 assert.equal(isAdvisorProtectedPreviewConfig(realtimeVoicePreviewConfig), true);

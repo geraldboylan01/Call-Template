@@ -196,12 +196,17 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeSpeechModel === 'tts-1-hd'
     && config?.realtimeSpeechVoice === 'nova'
     && config?.realtimeSpeechRateMicroEurPerMillionCharacters === 30_000_000
-    && config?.realtimeSessionBudgetMicroEur === 2_000_000
+    // Approved adviser-demo envelope: €10 session allowance (warn €7.50,
+    // dispatch stop €9.70) inside the €50 UTC-day ceiling, 15-minute meetings,
+    // 3-minute silence timeout with a spoken warning 45 seconds beforehand.
+    && config?.realtimeSessionBudgetMicroEur === 10_000_000
+    && config?.realtimeSessionWarnMicroEur === 7_500_000
     && config?.realtimeDailyBudgetMicroEur === 50_000_000
-    && config?.realtimeDispatchStopMicroEur === 1_700_000
+    && config?.realtimeDispatchStopMicroEur === 9_700_000
     && config?.realtimeSafetyReserveMicroEur === 300_000
-    && config?.realtimeMaxDurationSeconds === 600
-    && config?.realtimeIdleTimeoutSeconds === 90
+    && config?.realtimeMaxDurationSeconds === 900
+    && config?.realtimeIdleTimeoutSeconds === 180
+    && config?.realtimeSilencePromptSeconds === 45
     && config?.realtimeMaxSdpBytes === 32_768
     && config?.realtimeMaxResponses === 40
     && config?.realtimeMaxToolCalls === 24;

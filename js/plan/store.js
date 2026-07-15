@@ -752,6 +752,10 @@ export function getRealtimeVoiceConsent() {
   return direct && typeof direct === 'object' ? direct : null;
 }
 
+export function clearRealtimeVoiceConsent() {
+  state.voice.realtimeConsent = null;
+}
+
 export function hasCurrentRealtimeVoiceConsent() {
   const consent = getRealtimeVoiceConsent();
   if (consent?.granted !== true) return false;

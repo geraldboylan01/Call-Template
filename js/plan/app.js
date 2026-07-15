@@ -201,17 +201,20 @@ function focusCurrentHeading() {
   });
 }
 
-let realtimeMeetingAutoOpened = false;
+let realtimeMeetingAutoOpenedForSession = '';
 
 // An adviser invitation with the live meeting enabled should land on the
 // calm meeting screen, not the typed journey. Open the meeting surface once
-// as soon as the session is eligible; collapsing it reveals the typed
-// journey, and the launcher reopens it at any time.
+// per session as soon as it is eligible; collapsing it reveals the typed
+// journey, and the launcher reopens it at any time. Keying on the session id
+// (not a per-page-load flag) means a fresh session started after a consent
+// refresh or deletion lands back on the meeting screen without a reload.
 function maybeAutoOpenRealtimeMeeting() {
-  if (realtimeMeetingAutoOpened) return;
+  const sessionId = getSessionId();
+  if (!sessionId || realtimeMeetingAutoOpenedForSession === sessionId) return;
   const companion = document.getElementById('realtimeVoiceCompanion');
   if (!companion || companion.hidden) return;
-  realtimeMeetingAutoOpened = true;
+  realtimeMeetingAutoOpenedForSession = sessionId;
   realtimeVoiceController.openCompanion({ focus: false });
 }
 
