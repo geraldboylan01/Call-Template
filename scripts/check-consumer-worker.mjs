@@ -20,6 +20,7 @@ import { createConsumerInvite, verifyConsumerInvite } from '../worker/src/consum
 import {
   createAdvisorConsumerInvite,
   isAdvisorProtectedPreviewConfig,
+  isAdvisorRealtimePreviewConfig,
   isAdvisorRulesOnlyPreviewConfig,
   isAdvisorVoicePreviewConfig
 } from '../worker/src/consumer/router.js';
@@ -1168,6 +1169,49 @@ const voicePreviewInvite = await createAdvisorConsumerInvite(voicePreviewEnv, {
   now: Date.UTC(2026, 6, 13, 12, 0, 0)
 });
 assert.equal(voicePreviewInvite.mode, 'voice_assisted_rules_only');
+
+const realtimeVoicePreviewConfig = {
+  ...voicePreviewConfig,
+  realtimeRequested: true,
+  realtimeConfigured: true,
+  realtimeEnabled: true,
+  handoffRequested: true,
+  handoffConfigured: true,
+  handoffEnabled: true,
+  handoffPolicyVersion: 'consumer-adviser-handoff-v1',
+  handoffPolicyUrl: 'https://planeir.ie/plan/privacy.html#handoff',
+  handoffRetentionPolicyId: 'consumer-handoff-bridge-30d-v1',
+  handoffRetentionDays: 30,
+  realtimeNoticeId: 'realtime-voice-adviser-test-v1',
+  realtimeDataPolicyId: 'openai-realtime-audio-adviser-test-v1',
+  realtimeModel: 'gpt-realtime-2.1',
+  realtimeVoice: 'marin',
+  realtimeReasoningEffort: 'low',
+  realtimeTranscriptionModel: 'gpt-4o-mini-transcribe',
+  realtimePromptVersion: 'consumer-realtime-orchestrator-v2',
+  realtimeToolsetVersion: 'consumer-realtime-tools-v2',
+  realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
+  realtimeSpeechModel: 'tts-1-hd',
+  realtimeSpeechVoice: 'nova',
+  realtimeSpeechRateMicroEurPerMillionCharacters: 30_000_000,
+  realtimeSessionBudgetMicroEur: 2_000_000,
+  realtimeDailyBudgetMicroEur: 20_000_000,
+  realtimeDispatchStopMicroEur: 1_700_000,
+  realtimeSafetyReserveMicroEur: 300_000,
+  realtimeMaxDurationSeconds: 600,
+  realtimeIdleTimeoutSeconds: 90,
+  realtimeMaxSdpBytes: 32_768,
+  realtimeMaxResponses: 40,
+  realtimeMaxToolCalls: 24
+};
+assert.equal(isAdvisorVoicePreviewConfig(realtimeVoicePreviewConfig), false);
+assert.equal(isAdvisorRealtimePreviewConfig(realtimeVoicePreviewConfig), true);
+assert.equal(isAdvisorProtectedPreviewConfig(realtimeVoicePreviewConfig), true);
+assert.match(
+  routerSource,
+  /isAdvisorVoicePreviewConfig\(config\) \|\| isAdvisorRealtimePreviewConfig\(config\)/,
+  'The retained bounded voice fallback must remain authorized inside the approved Realtime canary.'
+);
 await assert.rejects(() => createAdvisorConsumerInvite({
   ...previewEnv,
   CONSUMER_JOURNEY_ENABLED: 'false'

@@ -131,7 +131,7 @@ export function isAdvisorRulesOnlyPreviewConfig(config) {
     && allowedModules === 'house_purchase,liquidity_analysis';
 }
 
-export function isAdvisorVoicePreviewConfig(config) {
+function hasApprovedAdvisorVoiceTransport(config) {
   const allowedModules = [...(config?.allowedModules || [])].sort().join(',');
   return config?.journeyEnabled === true
     && config?.moduleRoutingEnabled === true
@@ -140,8 +140,6 @@ export function isAdvisorVoicePreviewConfig(config) {
     && config?.voiceRequested === true
     && config?.voiceConfigured === true
     && config?.voiceEnabled === true
-    && config?.handoffRequested !== true
-    && config?.handoffEnabled !== true
     && config?.publicAccessEnabled !== true
     && config?.inviteAccessConfigured === true
     && config?.cohort === 'adviser_test'
@@ -161,12 +159,16 @@ export function isAdvisorVoicePreviewConfig(config) {
     && allowedModules === 'house_purchase,liquidity_analysis';
 }
 
+export function isAdvisorVoicePreviewConfig(config) {
+  return hasApprovedAdvisorVoiceTransport(config)
+    && config?.realtimeRequested !== true
+    && config?.realtimeEnabled !== true
+    && config?.handoffRequested !== true
+    && config?.handoffEnabled !== true;
+}
+
 export function isAdvisorRealtimePreviewConfig(config) {
-  const allowedModules = [...(config?.allowedModules || [])].sort().join(',');
-  return config?.journeyEnabled === true
-    && config?.moduleRoutingEnabled === true
-    && config?.aiRequested !== true
-    && config?.aiEnabled !== true
+  return hasApprovedAdvisorVoiceTransport(config)
     && config?.realtimeRequested === true
     && config?.realtimeConfigured === true
     && config?.realtimeEnabled === true
@@ -177,9 +179,6 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.handoffPolicyUrl === 'https://planeir.ie/plan/privacy.html#handoff'
     && config?.handoffRetentionPolicyId === 'consumer-handoff-bridge-30d-v1'
     && config?.handoffRetentionDays === 30
-    && config?.publicAccessEnabled !== true
-    && config?.inviteAccessConfigured === true
-    && config?.cohort === 'adviser_test'
     && config?.realtimeNoticeId === 'realtime-voice-adviser-test-v1'
     && config?.realtimeDataPolicyId === 'openai-realtime-audio-adviser-test-v1'
     && config?.realtimeModel === 'gpt-realtime-2.1'
@@ -200,8 +199,7 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeIdleTimeoutSeconds === 90
     && config?.realtimeMaxSdpBytes === 32_768
     && config?.realtimeMaxResponses === 40
-    && config?.realtimeMaxToolCalls === 24
-    && allowedModules === 'house_purchase,liquidity_analysis';
+    && config?.realtimeMaxToolCalls === 24;
 }
 
 export function isAdvisorProtectedPreviewConfig(config) {
@@ -325,7 +323,8 @@ async function assertAudienceAccess(request, env, config) {
 }
 
 function assertVoiceAvailability(config) {
-  if (!config.voiceEnabled || !isAdvisorVoicePreviewConfig(config)) {
+  if (!config.voiceEnabled
+    || !(isAdvisorVoicePreviewConfig(config) || isAdvisorRealtimePreviewConfig(config))) {
     throw new ConsumerError(503, 'consumer_voice_unavailable', 'Voice is not available right now. You can continue by typing.');
   }
 }
