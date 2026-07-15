@@ -55,6 +55,17 @@ export async function runRealtimeInfrastructureProof({
       timeout: PROOF_TIMEOUT_MS
     });
     const endpointPath = `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/realtime/calls`;
+    const requestDiagnostics = [];
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      if (!url.pathname.startsWith(endpointPath)) return;
+      requestDiagnostics.push(`${response.request().method()} ${url.pathname.slice(endpointPath.length) || '/'} -> ${response.status()}`);
+    });
+    page.on('requestfailed', (request) => {
+      const url = new URL(request.url());
+      if (!url.pathname.startsWith(endpointPath)) return;
+      requestDiagnostics.push(`${request.method()} ${url.pathname.slice(endpointPath.length) || '/'} -> ${request.failure()?.errorText || 'request failed'}`);
+    });
     const launcher = page.locator('#realtimeVoiceLauncher');
     await launcher.waitFor({ state: 'visible', timeout: PROOF_TIMEOUT_MS });
     await launcher.click();
@@ -67,6 +78,7 @@ export async function runRealtimeInfrastructureProof({
     }, null, { timeout: PROOF_TIMEOUT_MS });
 
     let leaseId = '';
+    let controlCapability = '';
     try {
       const createdPromise = page.waitForResponse((response) => {
         const url = new URL(response.url());
@@ -91,14 +103,28 @@ export async function runRealtimeInfrastructureProof({
       );
       leaseId = String(created.headers()['x-realtime-lease-id'] || '');
       assert.match(leaseId, /^rt_[A-Za-z0-9_-]{20,80}$/, 'The companion received no opaque Realtime lease.');
+      controlCapability = String(created.headers()['x-realtime-control-capability'] || '');
+      assert.match(
+        controlCapability,
+        /^rt_control_[A-Za-z0-9_-]{20,80}$/,
+        'The companion received no authenticated Realtime control capability.'
+      );
 
-      const proof = await page.evaluate(async ({ workerOriginValue, endpointPathValue, leaseIdValue, credentialValue, timeoutMs }) => {
+      const proof = await page.evaluate(async ({
+        workerOriginValue,
+        endpointPathValue,
+        leaseIdValue,
+        credentialValue,
+        controlCapabilityValue,
+        timeoutMs
+      }) => {
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
           const response = await fetch(`${workerOriginValue}${endpointPathValue}/${encodeURIComponent(leaseIdValue)}`, {
             headers: {
               Accept: 'application/json',
-              'X-Consumer-Session': credentialValue
+              'X-Consumer-Session': credentialValue,
+              'X-Realtime-Control-Capability': controlCapabilityValue
             }
           });
           if (!response.ok) throw new Error(`Realtime proof status returned HTTP ${response.status}.`);
@@ -113,6 +139,7 @@ export async function runRealtimeInfrastructureProof({
         endpointPathValue: endpointPath,
         leaseIdValue: leaseId,
         credentialValue: credential,
+        controlCapabilityValue: controlCapability,
         timeoutMs: PROOF_TIMEOUT_MS
       });
       assert.equal(proof.sidebandConnected, true, 'The authenticated provider sideband was not proven.');
@@ -166,18 +193,42 @@ export async function runRealtimeInfrastructureProof({
       const closedPayload = await closed.json();
       assert.equal(closedPayload.providerHangupConfirmed, true, 'The provider did not confirm server-side hang-up.');
       leaseId = '';
+    } catch (error) {
+      const uiDiagnostic = await page.evaluate(() => ({
+        phase: String(document.getElementById('realtimeVoiceShell')?.dataset?.realtimePhase || ''),
+        status: String(document.getElementById('realtimeVoiceStatus')?.textContent || '').trim(),
+        error: String(document.getElementById('realtimeVoiceError')?.textContent || '').trim()
+      })).catch(() => ({ phase: '', status: '', error: '' }));
+      const diagnosticSuffix = [
+        requestDiagnostics.length ? `requests: ${requestDiagnostics.join('; ')}` : 'requests: none',
+        uiDiagnostic.phase ? `phase: ${uiDiagnostic.phase}` : '',
+        uiDiagnostic.status ? `status: ${uiDiagnostic.status}` : '',
+        uiDiagnostic.error ? `ui error: ${uiDiagnostic.error}` : ''
+      ].filter(Boolean).join(' | ');
+      throw new Error(`${error instanceof Error ? error.message : String(error)} (${diagnosticSuffix})`);
     } finally {
       if (leaseId) {
-        await page.evaluate(async ({ workerOriginValue, endpointPathValue, leaseIdValue, credentialValue }) => {
+        await page.evaluate(async ({
+          workerOriginValue,
+          endpointPathValue,
+          leaseIdValue,
+          credentialValue,
+          controlCapabilityValue
+        }) => {
           await fetch(`${workerOriginValue}${endpointPathValue}/${encodeURIComponent(leaseIdValue)}`, {
             method: 'DELETE',
-            headers: { Accept: 'application/json', 'X-Consumer-Session': credentialValue }
+            headers: {
+              Accept: 'application/json',
+              'X-Consumer-Session': credentialValue,
+              'X-Realtime-Control-Capability': controlCapabilityValue
+            }
           }).catch(() => {});
         }, {
           workerOriginValue: workerOrigin,
           endpointPathValue: endpointPath,
           leaseIdValue: leaseId,
-          credentialValue: credential
+          credentialValue: credential,
+          controlCapabilityValue: controlCapability
         }).catch(() => {});
       }
     }
