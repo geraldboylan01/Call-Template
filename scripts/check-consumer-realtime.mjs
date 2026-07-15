@@ -1679,6 +1679,18 @@ await durable.handleProviderMessage(JSON.stringify({
   }
 }));
 assert.equal(terminalEvents.pop()[1], 'unsolicited_response');
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'error',
+  error: {
+    code: 'string_above_max_length',
+    param: 'item.id',
+    message: 'This provider message must never be persisted or exposed.'
+  }
+}));
+assert.deepEqual(terminalEvents.pop().slice(1, 3), [
+  'provider_error',
+  'string_above_max_length:item.id'
+]);
 await rejectsCode(durable.executeTool('get_planning_state', { expectedRevision: 0 }, {
   sessionRow: { current_profile_revision: 1 },
   state: { profileRevision: 1 }
@@ -1700,6 +1712,37 @@ await durable.handleToolCall({
 });
 assert.equal(durable.toolContinuationPending, false);
 assert.equal(controlSocket.sent.filter((event) => event.type === 'response.create').length, 0);
+const waitFunctionOutput = controlSocket.sent.find((event) => (
+  event.type === 'conversation.item.create'
+  && event.item?.type === 'function_call_output'
+  && event.item?.call_id === 'tool_wait_for_user_001'
+));
+assert.ok(waitFunctionOutput);
+assert.equal(Object.hasOwn(waitFunctionOutput.item, 'id'), false);
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.created',
+  item: {
+    id: 'item_provider_generated_001',
+    ...waitFunctionOutput.item
+  }
+}));
+assert.equal(terminalEvents.length, 0);
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.added',
+  item: {
+    id: 'item_provider_generated_001',
+    ...waitFunctionOutput.item
+  }
+}));
+assert.equal(terminalEvents.length, 0);
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.created',
+  item: {
+    id: 'item_provider_replay_mismatch_001',
+    ...waitFunctionOutput.item
+  }
+}));
+assert.equal(terminalEvents.pop()[1], 'conversation_item_injected');
 await durable.handleProviderMessage(JSON.stringify({
   type: 'response.done',
   response: {

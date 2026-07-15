@@ -189,6 +189,11 @@ function cleanProviderCode(value) {
   return /^[A-Za-z0-9._:-]{1,120}$/.test(candidate) ? candidate : 'provider_error';
 }
 
+function cleanProviderParam(value) {
+  const candidate = typeof value === 'string' ? value : '';
+  return /^[A-Za-z0-9._:\[\]-]{1,120}$/.test(candidate) ? candidate : null;
+}
+
 function validProviderId(value) {
   return /^[A-Za-z0-9._:-]{1,160}$/.test(String(value || ''));
 }
@@ -697,13 +702,21 @@ export class ConsumerRealtimeSession {
     if (type === 'conversation.item.created' || type === 'conversation.item.added') {
       const item = event.item || {};
       if (item.type === 'function_call_output') {
-        const expected = this.serverFunctionOutputs.get(String(item.id || ''));
+        const providerItemId = String(item.id || '');
+        const providerToolCallId = String(item.call_id || '');
+        const expected = this.serverFunctionOutputs.get(providerToolCallId);
         if (!expected
+          || !validProviderId(providerItemId)
           || !constantTimeTextEqual(expected.callId, item.call_id)
+          || (expected.itemId && !constantTimeTextEqual(expected.itemId, providerItemId))
           || !constantTimeTextEqual(expected.output, item.output)) {
           await this.terminalize('failed', 'conversation_item_injected', 'realtime_conversation_item_injected', false);
           return;
         }
+        // OpenAI owns this optional item identifier. Bind the first echoed ID
+        // to the Worker-authorized call so duplicate provider envelopes remain
+        // idempotent while a mismatched replay still fails closed.
+        expected.itemId ||= providerItemId;
         return;
       }
       if (item.role === 'user') {
@@ -848,15 +861,17 @@ export class ConsumerRealtimeSession {
     }
     if (type === 'error') {
       const code = cleanProviderCode(event.error?.code);
+      const param = cleanProviderParam(event.error?.param);
+      const diagnosticCode = param ? cleanProviderCode(`${code}:${param}`) : code;
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
         direction: 'provider_in',
         eventType: 'realtime.provider.error',
-        payload: { code }
+        payload: { code, param }
       });
       try { this.sendProvider({ type: 'response.cancel' }); } catch (_error) { /* best effort */ }
-      await this.terminalize('failed', 'provider_error', code, false);
+      await this.terminalize('failed', 'provider_error', diagnosticCode, false);
     }
   }
 
@@ -1275,16 +1290,15 @@ export class ConsumerRealtimeSession {
     }
     this.activeToolCallCount = Math.max(0, this.activeToolCallCount - 1);
     try {
-      const functionOutputId = `item_${randomNonce()}`;
       const serializedOutput = JSON.stringify(output);
-      this.serverFunctionOutputs.set(functionOutputId, {
+      this.serverFunctionOutputs.set(providerToolCallId, {
         callId: providerToolCallId,
+        itemId: null,
         output: serializedOutput
       });
       this.sendProvider({
         type: 'conversation.item.create',
         item: {
-          id: functionOutputId,
           type: 'function_call_output',
           call_id: providerToolCallId,
           output: serializedOutput

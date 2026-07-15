@@ -16,7 +16,7 @@ const REALTIME_EVENT_FIELDS = Object.freeze({
   'realtime.call.closed': new Set(['reason', 'status']),
   'realtime.provider.connected': new Set([]),
   'realtime.provider.disconnected': new Set(['code']),
-  'realtime.provider.error': new Set(['code']),
+  'realtime.provider.error': new Set(['code', 'param']),
   'realtime.response.started': new Set([]),
   'realtime.response.first_output': new Set(['latencyMs']),
   'realtime.response.interrupted': new Set(['latencyMs']),
