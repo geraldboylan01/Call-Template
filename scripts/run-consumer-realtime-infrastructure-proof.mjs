@@ -121,7 +121,11 @@ export async function runRealtimeInfrastructureProof({
       );
       await start.click();
       const created = await createdPromise;
-      assert.equal(created.status(), 201, 'The companion Start voice action did not create a Realtime call.');
+      if (created.status() !== 201) {
+        const errorPayload = await created.clone().json().catch(() => null);
+        const errorCode = String(errorPayload?.error?.code || errorPayload?.code || 'unknown_error');
+        throw new Error(`The companion Start voice action returned HTTP ${created.status()} (${errorCode}).`);
+      }
       assert.match(
         String(created.headers()['content-type'] || ''),
         /^application\/sdp(?:;|$)/i,
