@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { runRealtimeInfrastructureProof } from './run-consumer-realtime-infrastructure-proof.mjs';
 
 const MAX_ATTEMPTS = 5;
+const MAX_INVITE_PROPAGATION_ATTEMPTS = 12;
 const RETRY_DELAY_MS = 3_000;
 
 class CookieJar {
@@ -324,7 +325,7 @@ async function main() {
 
   const expectedInviteMode = realtimeExpected ? 'realtime_voice_rules_only' : 'voice_assisted_rules_only';
   let inviteResult = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= MAX_INVITE_PROPAGATION_ATTEMPTS; attempt += 1) {
     inviteResult = await requestJson(workerBaseUrl, '/api/advisor/consumer-invite', {
       method: 'POST',
       origin: smokeOrigin,
@@ -332,7 +333,7 @@ async function main() {
       headers: { 'X-Advisor-CSRF': csrfToken }
     });
     if (inviteResult.payload?.mode === expectedInviteMode) break;
-    if (attempt < MAX_ATTEMPTS) await sleep(RETRY_DELAY_MS);
+    if (attempt < MAX_INVITE_PROPAGATION_ATTEMPTS) await sleep(RETRY_DELAY_MS);
   }
   assert.equal(inviteResult.payload?.ok, true, 'The adviser bridge did not issue a planning invite.');
   assert.equal(inviteResult.payload?.maxUses, 1, 'The adviser bridge invite must be one-use.');
