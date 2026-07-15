@@ -295,6 +295,7 @@ export function mergeVoicePayload(payload) {
     };
   }
   const realtimeConsent = asObject(firstDefined(
+    root.realtimeConsent,
     root.realtimeVoiceConsent,
     root.voiceRealtimeConsent,
     voice.realtimeConsent,

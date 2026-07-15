@@ -77,6 +77,27 @@ export async function runRealtimeInfrastructureProof({
       return button instanceof HTMLButtonElement && button.disabled === false;
     }, null, { timeout: PROOF_TIMEOUT_MS });
 
+    await start.click();
+    const consentDialog = page.locator('#realtimeVoiceConsentDialog');
+    await consentDialog.waitFor({ state: 'visible', timeout: 5_000 });
+    await page.locator('#realtimeVoiceConsentAcknowledgement').check();
+    const consentEndpointPath = `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/realtime/consent`;
+    const consentSavedPromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'PATCH' && url.pathname === consentEndpointPath;
+    }, { timeout: PROOF_TIMEOUT_MS });
+    await page.locator('#realtimeVoiceConsentForm button[type="submit"]').click();
+    const consentSaved = await consentSavedPromise;
+    assert.equal(consentSaved.status(), 200, 'The visible Realtime disclosure could not be accepted.');
+    await consentDialog.waitFor({ state: 'hidden', timeout: 5_000 });
+    await page.waitForFunction(() => {
+      const button = document.getElementById('realtimeVoiceStartButton');
+      const status = String(document.getElementById('realtimeVoiceStatus')?.textContent || '');
+      return button instanceof HTMLButtonElement
+        && button.disabled === false
+        && status.includes('Live voice is ready');
+    }, null, { timeout: PROOF_TIMEOUT_MS });
+
     let leaseId = '';
     let controlCapability = '';
     try {

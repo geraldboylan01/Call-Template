@@ -52,6 +52,7 @@ const {
 const {
   getAnalysisPlanNonce,
   mergePayload,
+  mergeVoicePayload,
   normaliseBootstrap,
   state: journeyState
 } = await import('../js/plan/store.js');
@@ -890,5 +891,18 @@ try {
   window.URL = originalWindowUrl;
   globalThis.fetch = originalFetch;
 }
+
+mergeVoicePayload({
+  realtimeConsent: {
+    granted: true,
+    noticeId: 'realtime-voice-adviser-test-v1',
+    policyVersion: 'consumer-adviser-test-v1'
+  }
+});
+assert.deepEqual(journeyState.voice.realtimeConsent, {
+  granted: true,
+  noticeId: 'realtime-voice-adviser-test-v1',
+  policyVersion: 'consumer-adviser-test-v1'
+}, 'The Worker realtimeConsent response must immediately unlock the visible Live voice flow.');
 
 console.log('Consumer bounded and controlled-realtime voice lifecycle, SDP, speech authorization, transcript, planning-context, and accessibility checks passed.');
