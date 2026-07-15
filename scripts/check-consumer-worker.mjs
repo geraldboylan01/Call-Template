@@ -458,7 +458,8 @@ assert.doesNotMatch(realtimeInfrastructureProofSource, /createDataChannel\('oai-
 assert.match(realtimeInfrastructureProofSource, /await launcher\.click\(\)/);
 assert.match(realtimeInfrastructureProofSource, /await start\.click\(\)/);
 assert.match(realtimeInfrastructureProofSource, /response\.request\(\)\.method\(\) === 'POST'/);
-assert.match(realtimeInfrastructureProofSource, /assert\.equal\(created\.status\(\), 201/);
+assert.match(realtimeInfrastructureProofSource, /created\.status\(\) !== 201/);
+assert.match(realtimeInfrastructureProofSource, /errorPayload\?\.error\?\.code/);
 assert.match(realtimeInfrastructureProofSource, /x-realtime-lease-id/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.sidebandConnected, true/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.readOnlyToolSucceeded, true/);
