@@ -201,10 +201,25 @@ function focusCurrentHeading() {
   });
 }
 
+let realtimeMeetingAutoOpened = false;
+
+// An adviser invitation with the live meeting enabled should land on the
+// calm meeting screen, not the typed journey. Open the meeting surface once
+// as soon as the session is eligible; collapsing it reveals the typed
+// journey, and the launcher reopens it at any time.
+function maybeAutoOpenRealtimeMeeting() {
+  if (realtimeMeetingAutoOpened) return;
+  const companion = document.getElementById('realtimeVoiceCompanion');
+  if (!companion || companion.hidden) return;
+  realtimeMeetingAutoOpened = true;
+  realtimeVoiceController.openCompanion({ focus: false });
+}
+
 function renderCurrentJourney({ focus = false } = {}) {
   renderJourney(appRoot, state);
   voiceController.afterRender();
   realtimeVoiceController.sync(state);
+  maybeAutoOpenRealtimeMeeting();
   syncHeader();
   window.requestAnimationFrame(() => {
     appRoot.querySelector('.step-button[aria-current="step"]')?.scrollIntoView({

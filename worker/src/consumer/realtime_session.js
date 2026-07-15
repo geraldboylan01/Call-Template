@@ -465,6 +465,7 @@ export class ConsumerRealtimeSession {
     this.serverFunctionOutputs = new Map();
     this.activeToolCallCount = 0;
     this.pendingTerminalization = null;
+    this.silencePromptIssuedForIdleExpiresAt = null;
     this.state.blockConcurrencyWhile(async () => {
       this.meta = await this.state.storage.get('lease') || null;
       this.currentPhase = await this.state.storage.get('phase') || null;
@@ -749,6 +750,25 @@ export class ConsumerRealtimeSession {
     }
     if (type === 'input_audio_buffer.speech_started') {
       this.bargeInStartedAt = this.inResponse ? Date.now() : 0;
+      this.silencePromptIssuedForIdleExpiresAt = null;
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'provider_in',
+        eventType: 'realtime.vad.speech_started',
+        payload: { duringResponse: this.inResponse === true }
+      }).catch(() => {});
+      await this.touch();
+      return;
+    }
+    if (type === 'input_audio_buffer.speech_stopped') {
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'provider_in',
+        eventType: 'realtime.vad.speech_stopped',
+        payload: {}
+      }).catch(() => {});
       await this.touch();
       return;
     }
@@ -1380,7 +1400,10 @@ export class ConsumerRealtimeSession {
       kind = this.currentResponseReason === 'initial_state_probe' ? 'greeting' : 'question';
       const next = question || 'Please review the information and three analyses shown on screen before anything runs.';
       text = kind === 'greeting'
-        ? `Hello, I’m Planéir, an AI planning companion for financial education. ${next}`
+        ? 'Hi, I’m Planéir, an AI planning companion for financial education. '
+          + 'I’m going to ask you a few questions about where you are now and what you’d like your money to help you achieve. '
+          + 'There are no perfect answers — we’ll take it one step at a time, and you can say “skip that” or correct me whenever you like. '
+          + `To begin: ${next}`
         : next;
     } else if (toolName === 'confirm_and_run_plan') {
       kind = 'status';
@@ -1403,6 +1426,15 @@ export class ConsumerRealtimeSession {
       profileRevision,
       text
     });
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      direction: 'server',
+      eventType: kind === 'greeting'
+        ? 'realtime.greeting.authorized'
+        : 'realtime.speech.authorized',
+      payload: { kind, characterCount: text.length }
+    }).catch(() => {});
     return {
       ...safeOutput,
       response_text: text,
@@ -1778,6 +1810,41 @@ export class ConsumerRealtimeSession {
     if (Number.isFinite(deadline)) await this.state.storage.setAlarm(deadline);
   }
 
+  // A quiet consumer is usually thinking, not gone. Before the idle timeout
+  // can end the meeting, issue one code-owned reassurance so the consumer is
+  // warned first; only continued silence then expires the lease.
+  async maybeIssueSilencePrompt(now, idleExpiresAtMs) {
+    const config = getConsumerConfig(this.env);
+    const windowMs = Number(config.realtimeSilencePromptSeconds || 0) * 1_000;
+    if (windowMs <= 0
+      || this.inResponse
+      || now < idleExpiresAtMs - windowMs
+      || this.silencePromptIssuedForIdleExpiresAt === this.meta.idleExpiresAt) return;
+    this.silencePromptIssuedForIdleExpiresAt = this.meta.idleExpiresAt;
+    try {
+      const lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId);
+      const profileRevision = Number(lease?.latest_profile_revision || 0);
+      if (!lease || lease.status !== 'active' || profileRevision < 1) return;
+      await issueRealtimeSpeechAuthorization({
+        env: this.env,
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        kind: 'status',
+        profileRevision,
+        text: 'Take your time — there’s no rush. Would it help if I asked that in a different way? If you’re finished for now, you can end the meeting whenever you like.'
+      });
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.silence.prompt_authorized',
+        payload: { idleExpiresAt: this.meta.idleExpiresAt }
+      });
+    } catch (_error) {
+      // The gentle prompt is best-effort; the idle timeout remains authoritative.
+    }
+  }
+
   async alarm() {
     if (!this.meta || this.closing) return;
     if (this.pendingTerminalization) {
@@ -1800,6 +1867,7 @@ export class ConsumerRealtimeSession {
     if (now >= hard || now >= idle) {
       await this.terminalize('expired', now >= hard ? 'hard_timeout' : 'idle_timeout', null, true);
     } else {
+      await this.maybeIssueSilencePrompt(now, idle);
       await this.scheduleAlarm();
     }
   }
@@ -1850,12 +1918,21 @@ export class ConsumerRealtimeSession {
     if (this.webSocket && this.webSocket.readyState === 1) {
       try { this.webSocket.close(1000, String(reason).slice(0, 100)); } catch (_error) { /* best effort */ }
     }
+    const activatedAtMs = Date.parse(lease?.activated_at || '');
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
       direction: 'server',
       eventType: 'realtime.call.closed',
-      payload: { reason, status }
+      payload: {
+        reason,
+        status,
+        errorCode: errorCode || null,
+        durationMs: Number.isFinite(activatedAtMs) ? Math.max(0, Date.now() - activatedAtMs) : null,
+        estimatedCostEurMicros: Number(lease?.estimated_cost_eur_micros || 0),
+        responseCount: Number(lease?.response_count || 0),
+        toolCallCount: Number(lease?.tool_call_count || 0)
+      }
     }).catch(() => {});
     let row;
     try {

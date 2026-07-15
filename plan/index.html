@@ -104,8 +104,11 @@
         >
           <div class="realtime-voice-heading">
             <div>
-              <p class="section-kicker">Planéir · AI planning companion</p>
-              <h2 id="realtimeVoiceTitle">Let’s work out what matters most.</h2>
+              <p class="section-kicker">Planéir</p>
+              <h2 id="realtimeVoiceTitle">Let’s talk about what matters to you.</h2>
+              <p class="realtime-meeting-sub">
+                Planéir will ask you a few questions and create a personalised starting point.
+              </p>
             </div>
             <button
               id="realtimeVoiceCollapseButton"
@@ -117,10 +120,9 @@
             </button>
           </div>
 
-          <div class="realtime-trust-badges" aria-label="Live voice safeguards">
+          <div class="realtime-trust-badges" aria-label="Meeting status">
             <span><span class="realtime-dot" aria-hidden="true"></span><span id="realtimeMicBadge">Mic off</span></span>
-            <span>AI-generated voice</span>
-            <span>Education, not advice</span>
+            <span id="realtimeVoiceLeaseTime" class="realtime-lease-time" hidden></span>
           </div>
 
           <div class="realtime-voice-layout">
@@ -137,7 +139,7 @@
                 <span class="realtime-orb-core" aria-hidden="true">
                   <span class="realtime-orb-wave"></span>
                 </span>
-                <span id="realtimeVoiceOrbLabel" class="realtime-orb-label">Start voice</span>
+                <span id="realtimeVoiceOrbLabel" class="realtime-orb-label">Start your Planéir meeting</span>
               </button>
               <div class="realtime-orb-copy">
                 <p
@@ -147,19 +149,23 @@
                   aria-live="polite"
                   aria-atomic="true"
                 >
-                  Voice starts only when you press Start voice.
+                  Press the button when you’re ready to begin.
                 </p>
                 <p id="realtimeVoiceError" class="field-error realtime-voice-error" role="alert" hidden></p>
               </div>
             </div>
 
-            <section class="realtime-caption-card" aria-labelledby="realtimeCaptionTitle">
+            <section
+              id="realtimeVoiceCaptionCard"
+              class="realtime-caption-card"
+              aria-labelledby="realtimeCaptionTitle"
+              hidden
+            >
               <div class="realtime-caption-heading">
                 <div>
-                  <span class="realtime-caption-eyebrow">Live captions</span>
+                  <span class="realtime-caption-eyebrow">Transcript</span>
                   <h3 id="realtimeCaptionTitle">Your conversation</h3>
                 </div>
-                <span id="realtimeVoiceLeaseTime" class="realtime-lease-time" hidden></span>
               </div>
               <ol
                 id="realtimeVoiceTranscriptHistory"
@@ -183,30 +189,30 @@
 
             <div class="realtime-context-grid" aria-label="Live planning context">
               <section class="realtime-context-card realtime-budget-card">
-                <span>Voice allowance</span>
+                <span>Meeting allowance</span>
                 <strong id="realtimeVoiceBudgetValue">—</strong>
                 <meter
                   id="realtimeVoiceBudgetMeter"
                   min="0"
                   max="1"
                   value="0"
-                  aria-label="Voice allowance remaining"
+                  aria-label="Meeting allowance remaining"
                 ></meter>
               </section>
 
-              <details class="realtime-context-card realtime-understanding-card" open>
+              <details class="realtime-context-card realtime-understanding-card">
                 <summary class="realtime-context-heading">
                   <span id="realtimeFactsTitle">What I’ve understood</span>
                   <strong id="realtimeVoiceFactsValue">0</strong>
                 </summary>
                 <ul id="realtimeVoiceFactsList" class="realtime-context-list" aria-labelledby="realtimeFactsTitle">
-                  <li class="is-empty">Proposed facts will appear here as we talk.</li>
+                  <li class="is-empty">What you tell me will appear here as we talk.</li>
                 </ul>
               </details>
 
-              <details class="realtime-context-card realtime-analyses-card" open>
+              <details class="realtime-context-card realtime-analyses-card">
                 <summary class="realtime-context-heading">
-                  <span id="realtimeModulesTitle">Your three likely analyses</span>
+                  <span id="realtimeModulesTitle">Your three focus areas</span>
                   <strong id="realtimeVoiceModulesValue">0/3</strong>
                 </summary>
                 <ol id="realtimeVoiceModulesList" class="realtime-context-list realtime-module-slots" aria-labelledby="realtimeModulesTitle">
@@ -218,12 +224,21 @@
             </div>
           </div>
 
-          <div class="realtime-voice-controls" aria-label="Live voice controls">
+          <div class="realtime-voice-controls" aria-label="Meeting controls">
             <button id="realtimeVoiceMuteButton" class="secondary-button" type="button" disabled>
               Mute
             </button>
             <button id="realtimeVoiceEndButton" class="secondary-button realtime-end-button" type="button" disabled>
-              End voice
+              End meeting
+            </button>
+            <button
+              id="realtimeVoiceTranscriptToggle"
+              class="quiet-button"
+              type="button"
+              aria-pressed="false"
+              aria-controls="realtimeVoiceCaptionCard"
+            >
+              Show transcript
             </button>
             <button id="realtimeVoiceFocusComposerButton" class="quiet-button" type="button">
               Type instead
@@ -245,11 +260,9 @@
           </details>
 
           <p id="realtimeVoiceTrustCopy" class="realtime-voice-trust-copy">
-            Planéir is an AI companion, not a person. Realtime AI interprets completed speech; only separate,
-            code-owned Planéir copy is played aloud. The microphone closes when you end voice, hide the tab,
-            leave this journey, or reach the server limit. Proposed information is not confirmed until material
-            details are read back and you complete the final review.
-            <a href="./privacy.html#optional-voice" target="_blank" rel="noopener noreferrer">Voice privacy details</a>.
+            Planéir is an AI companion for financial education, not a person or a regulated adviser.
+            Your microphone is on only during the meeting, and nothing is confirmed until you review it.
+            <a href="./privacy.html#optional-voice" target="_blank" rel="noopener noreferrer">Privacy details</a>.
           </p>
           <audio id="realtimeVoiceAudio" autoplay playsinline aria-hidden="true"></audio>
         </aside>
@@ -351,12 +364,11 @@
 
     <dialog id="realtimeVoiceConsentDialog" class="plan-dialog" aria-labelledby="realtimeVoiceConsentTitle">
       <form id="realtimeVoiceConsentForm" class="dialog-card voice-consent-card">
-        <p class="section-kicker">Optional adviser-test feature</p>
-        <h2 id="realtimeVoiceConsentTitle">Start a Live voice planning conversation?</h2>
+        <p class="section-kicker">Before your meeting begins</p>
+        <h2 id="realtimeVoiceConsentTitle">A quick word before we start</h2>
         <p>
-          Live voice is a distinct hands-free mode. It starts only when you press Start voice. While it is
-          visibly active, completed spoken turns are processed automatically—without pressing Continue each
-          time—so Planéir can keep the conversation moving.
+          Your Planéir meeting is a live, hands-free conversation. Once you begin, your completed spoken
+          answers are processed automatically so the conversation can flow naturally.
         </p>
         <ul class="voice-consent-facts">
           <li>The live conversation can continue while you move between planning steps. Streaming stops when you end voice, withdraw consent, delete or leave the journey, hide the tab, lose the private session, or reach the server lease limit; Mute pauses microphone audio without ending the lease.</li>
@@ -367,8 +379,8 @@
           <li>Do not say PPS numbers, passwords, PINs, full account or card numbers, exact addresses, or identity-document details.</li>
         </ul>
         <div class="voice-consent-budget">
-          <strong id="realtimeVoiceConsentBudget">€2.00 app voice allowance for this session.</strong>
-          <span>Every live call uses a server-created, time-limited lease and the shared server-enforced allowance.</span>
+          <strong id="realtimeVoiceConsentBudget">A per-session meeting allowance applies.</strong>
+          <span>Each meeting is time-limited and covered by a server-enforced allowance.</span>
         </div>
         <label class="check-row" for="realtimeVoiceConsentAcknowledgement">
           <input id="realtimeVoiceConsentAcknowledgement" name="realtimeVoiceConsentAcknowledgement" type="checkbox" required />
@@ -384,7 +396,7 @@
         <p id="realtimeVoiceConsentError" class="field-error" role="alert" hidden></p>
         <div class="dialog-actions">
           <button id="cancelRealtimeVoiceConsentButton" class="secondary-button" type="button">Keep using text</button>
-          <button class="primary-button" type="submit">Agree and enable Live voice</button>
+          <button class="primary-button" type="submit">Agree and start my meeting</button>
         </div>
       </form>
     </dialog>

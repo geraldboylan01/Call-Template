@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
+import { realtimeVoiceBudgetPayload } from '../worker/src/consumer/router.js';
 import { randomId, sha256Base64Url } from '../worker/src/consumer/crypto.js';
 import { ConsumerError } from '../worker/src/consumer/errors.js';
 import {
@@ -322,10 +323,12 @@ const env = {
   CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v2',
   CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v2',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
-  CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '200',
+  CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
+  CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '750',
   CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: '5000',
-  CONSUMER_REALTIME_MAX_DURATION_SECONDS: '600',
-  CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: '90',
+  CONSUMER_REALTIME_MAX_DURATION_SECONDS: '900',
+  CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: '180',
+  CONSUMER_REALTIME_SILENCE_PROMPT_SECONDS: '45',
   CONSUMER_REALTIME_MAX_SDP_BYTES: '32768',
   CONSUMER_REALTIME_MAX_RESPONSES: '40',
   CONSUMER_REALTIME_MAX_TOOL_CALLS: '24',
@@ -344,14 +347,88 @@ assert.equal(config.realtimeEnabled, true);
 assert.equal(config.realtimeModel, 'gpt-realtime-2.1');
 assert.equal(config.realtimeVoice, 'marin');
 assert.equal(config.realtimeReasoningEffort, 'low');
-assert.equal(config.realtimeSessionBudgetMicroEur, 2_000_000);
-assert.equal(config.realtimeDispatchStopMicroEur, 1_700_000);
+assert.equal(config.realtimeSessionBudgetMicroEur, 10_000_000);
+assert.equal(config.realtimeDispatchStopMicroEur, 9_700_000);
+assert.equal(config.realtimeSessionWarnMicroEur, 7_500_000);
 assert.equal(config.realtimeDailyBudgetMicroEur, 50_000_000);
-assert.equal(config.realtimeMaxDurationSeconds, 600);
-assert.equal(config.realtimeIdleTimeoutSeconds, 90);
+assert.equal(config.realtimeMaxDurationSeconds, 900);
+assert.equal(config.realtimeIdleTimeoutSeconds, 180);
+assert.equal(config.realtimeSilencePromptSeconds, 45);
 assert.equal(config.realtimeSpeechModel, 'tts-1-hd');
 assert.equal(config.realtimeSpeechVoice, 'nova');
 assert.equal(config.realtimeSpeechRateMicroEurPerMillionCharacters, 30_000_000);
+
+// Regression guard for the premature session ending: while a realtime lease
+// is open the ledger holds the entire session envelope as reserved, so the
+// raw provider budget reads as fully spent. The public budget payload must
+// report the lease's live estimated usage instead of remaining ≤ 0, which the
+// browser would otherwise treat as an exhausted allowance mid-meeting.
+{
+  const fullyReservedProviderBudget = {
+    limitEurMicros: config.realtimeSessionBudgetMicroEur,
+    spentEurMicros: config.realtimeSessionBudgetMicroEur,
+    remainingEurMicros: 0
+  };
+  const liveBudget = realtimeVoiceBudgetPayload(
+    fullyReservedProviderBudget,
+    {
+      status: 'active',
+      reservation_eur_micros: config.realtimeSessionBudgetMicroEur,
+      estimated_cost_eur_micros: 120_000
+    },
+    config
+  );
+  assert.equal(liveBudget.limitMicroEur, config.realtimeSessionBudgetMicroEur);
+  assert.equal(liveBudget.spentMicroEur, 120_000);
+  assert.equal(
+    liveBudget.remainingMicroEur,
+    config.realtimeSessionBudgetMicroEur - 120_000,
+    'An open lease must expose the live estimate, never the consumed reservation.'
+  );
+  const closedBudget = realtimeVoiceBudgetPayload(
+    fullyReservedProviderBudget,
+    { status: 'complete', reservation_eur_micros: config.realtimeSessionBudgetMicroEur, estimated_cost_eur_micros: 120_000 },
+    config
+  );
+  assert.equal(closedBudget.remainingMicroEur, 0, 'A closed lease must fall back to the conservative provider ledger.');
+  const idleBudget = realtimeVoiceBudgetPayload(
+    { limitEurMicros: config.realtimeSessionBudgetMicroEur, spentEurMicros: 0, remainingEurMicros: config.realtimeSessionBudgetMicroEur },
+    null,
+    config
+  );
+  assert.equal(idleBudget.remainingMicroEur, config.realtimeSessionBudgetMicroEur);
+}
+
+// The session envelope remains hard-capped in code: an environment cannot
+// raise a single session above €10, the day above €100, a meeting above 15
+// minutes, or the idle window above 5 minutes. The historical €2 default
+// still configures cleanly, and the warning threshold must sit below the
+// session allowance.
+{
+  const overLimitConfig = getConsumerConfig({
+    ...env,
+    CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '5000',
+    CONSUMER_REALTIME_MAX_DURATION_SECONDS: '3600',
+    CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: '900'
+  });
+  assert.equal(overLimitConfig.realtimeEnabled, false, 'A session budget above the €10 cap must fail closed.');
+  assert.equal(overLimitConfig.realtimeMaxDurationSeconds, 900);
+  assert.equal(overLimitConfig.realtimeIdleTimeoutSeconds, 300);
+  const legacyConfig = getConsumerConfig({
+    ...env,
+    CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '200',
+    CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: ''
+  });
+  assert.equal(legacyConfig.realtimeEnabled, true);
+  assert.equal(legacyConfig.realtimeSessionBudgetMicroEur, 2_000_000);
+  assert.equal(legacyConfig.realtimeDispatchStopMicroEur, 1_700_000);
+  assert.equal(legacyConfig.realtimeSessionWarnMicroEur, 1_500_000);
+  const invalidWarnConfig = getConsumerConfig({
+    ...env,
+    CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '1000'
+  });
+  assert.equal(invalidWarnConfig.realtimeEnabled, false, 'A warning threshold at or above the allowance must fail closed.');
+}
 
 // Model policy and tool surface are state-specific and never expose arbitrary
 // profile paths or a calculation tool.

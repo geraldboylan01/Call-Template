@@ -69,19 +69,23 @@ consumer adviser beta.
 | Live input transcription | `gpt-4o-mini-transcribe` |
 | Default reasoning | `low` |
 | Escalation | `medium` only for contradictions, multiple goals, or complex household structure after evaluation |
-| Maximum call | 600 seconds |
-| Idle timeout | 90 seconds |
+| Maximum call | `CONSUMER_REALTIME_MAX_DURATION_SECONDS` (adviser demo 900 s; code cap 900 s) |
+| Idle timeout | `CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS` (adviser demo 180 s; code cap 300 s) |
+| Silence warning | spoken prompt `CONSUMER_REALTIME_SILENCE_PROMPT_SECONDS` (45 s) before the idle timeout ends the meeting |
 | Concurrent calls | one per consumer session |
-| Per-session application allowance | €2.00 |
-| UTC-day circuit breaker | €20.00 |
-| Dispatch stop | €1.70 estimated usage |
+| Per-session application allowance | `CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS` (adviser demo €10.00; code cap €10.00) |
+| Allowance warning threshold | `CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS` (adviser demo €7.50; default 75% of allowance) |
+| UTC-day circuit breaker | `CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS` (adviser demo €50.00; code cap €100.00) |
+| Dispatch stop | session allowance − €0.30 reserve (adviser demo €9.70 estimated usage) |
 | Delayed-usage/FX reserve | €0.30 |
 | Response limit | 40 |
 | Tool-call limit | 24 |
 | SDP offer limit | 32,768 bytes |
 
-The €2 amount is a conservative application allowance, not an invoice
-guarantee. Before connection, the service atomically reserves the complete
+The session allowance is a conservative application allowance, not an invoice
+guarantee. It is environment-configurable within code-enforced caps so the
+protected adviser demo can hold a 10–15 minute conversation, while the public
+configuration remains disabled. Before connection, the service atomically reserves the complete
 remaining session envelope against both the session and UTC-day ledgers. Each
 `response.done` event is reconciled using the immutable pricing-version rates.
 Input transcription is billed separately by OpenAI, so each finalized

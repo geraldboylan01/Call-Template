@@ -393,6 +393,28 @@ function voiceBudgetPayload(value, config) {
   return { limitMicroEur, spentMicroEur, remainingMicroEur };
 }
 
+// While a realtime lease is open, the ledger conservatively holds the entire
+// remaining session envelope as "reserved", so the raw provider budget reads
+// as fully spent for the whole call. That pessimistic number is correct for
+// enforcement but must never be displayed as the live allowance: the browser
+// treats remaining ≤ 0 as an exhausted session. Report the lease's own
+// envelope and current estimated usage instead, matching the speech route.
+export function realtimeVoiceBudgetPayload(providerBudget, lease, config) {
+  if (lease && ['pending', 'active', 'closing'].includes(String(lease.status || ''))) {
+    const limitMicroEur = Number(lease.reservation_eur_micros || 0)
+      || config.realtimeSessionBudgetMicroEur;
+    const spentMicroEur = Math.max(0, Number(lease.estimated_cost_eur_micros || 0) || 0);
+    return {
+      limitMicroEur,
+      spentMicroEur,
+      remainingMicroEur: Math.max(0, limitMicroEur - spentMicroEur)
+    };
+  }
+  return voiceBudgetPayload(providerBudget, {
+    voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur
+  });
+}
+
 function questionText(question) {
   if (typeof question === 'string') return question.trim();
   if (!question || typeof question !== 'object') return '';
@@ -593,9 +615,10 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       return respond({
         realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
         realtimeLease: toPublicRealtimeLease(realtimeLease),
-        realtimeVoiceBudget: voiceBudgetPayload(
+        realtimeVoiceBudget: realtimeVoiceBudgetPayload(
           await getConsumerProviderBudget(env, sessionRow.id),
-          { voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur }
+          realtimeLease,
+          config
         )
       }, 200, methods);
     }
@@ -729,10 +752,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         : null;
       return respond({
         realtimeLease: toPublicRealtimeLease(realtimeLease),
-        realtimeVoiceBudget: voiceBudgetPayload(
-          providerBudget,
-          { voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur }
-        ),
+        realtimeVoiceBudget: realtimeVoiceBudgetPayload(providerBudget, realtimeLease, config),
         controlPlane,
         planningState: {
           profileRevision: Number(sessionRow.current_profile_revision),
@@ -812,10 +832,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         processingPaused: !config.journeyEnabled,
         voiceConsent: toPublicVoiceConsent(voiceConsent),
         voiceBudget: voiceBudgetPayload(voiceBudget, config),
-        realtimeVoiceBudget: voiceBudgetPayload(
-          voiceBudget,
-          { voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur }
-        ),
+        realtimeVoiceBudget: realtimeVoiceBudgetPayload(voiceBudget, realtimeLease, config),
         realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
         realtimeLease: toPublicRealtimeLease(realtimeLease),
         realtimeTurns,
@@ -848,7 +865,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const providerBudget = await getConsumerProviderBudget(env, sessionRow.id);
       const reservationAmount = Number(providerBudget.remainingEurMicros || 0);
       if (reservationAmount <= config.realtimeSafetyReserveMicroEur) {
-        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected €2 provider allowance is no longer large enough to start live voice. Continue by typing.');
+        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected session allowance is no longer large enough to start a live meeting. Continue by typing.');
       }
       const reservation = await reserveConsumerProviderCost(env, {
         sessionId: sessionRow.id,
@@ -864,7 +881,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         throw new ConsumerError(409, 'realtime_request_already_used', 'That live voice request id was already used. Create a new WebRTC offer.');
       }
       if (reservation.denied || !reservation.entry) {
-        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected €2 session or €50 UTC daily provider allowance has been reached. Continue by typing.');
+        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected session or UTC-day provider allowance has been reached. Continue by typing.');
       }
       let lease = null;
       let dispatched = false;

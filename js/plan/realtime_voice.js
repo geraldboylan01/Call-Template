@@ -567,7 +567,16 @@ function realtimeContext() {
     pollMs: Math.min(60_000, Math.max(10_000, Number(
       bootstrap.voiceRealtimePollSeconds || 20
     ) * 1_000)),
-    budget: currentBudget()
+    budget: currentBudget(),
+    // The warning threshold is expressed as spend (e.g. €7.50 of €10). The UI
+    // warns once the remaining allowance drops below limit − threshold.
+    lowBudgetMicroEur: (() => {
+      const budget = currentBudget();
+      const warnSpendMicroEur = Number(bootstrap.voiceRealtimeWarnMicroEur || 0);
+      return warnSpendMicroEur > 0 && warnSpendMicroEur < budget.limitMicroEur
+        ? Math.max(0, budget.limitMicroEur - warnSpendMicroEur)
+        : LOW_BUDGET_MICRO_EUR;
+    })()
   };
 }
 
@@ -676,6 +685,7 @@ export class RealtimeVoiceController {
     this.element('realtimeVoiceFocusComposerButton')?.addEventListener('click', () => this.focusComposer());
     this.element('realtimeVoiceBoundedFallbackButton')?.addEventListener('click', () => this.focusBoundedVoice());
     this.element('realtimeVoiceReviewButton')?.addEventListener('click', () => this.reviewAndConfirm());
+    this.element('realtimeVoiceTranscriptToggle')?.addEventListener('click', () => this.toggleTranscript());
 
     const form = document.getElementById('realtimeVoiceConsentForm');
     const cancel = document.getElementById('cancelRealtimeVoiceConsentButton');
@@ -815,18 +825,20 @@ export class RealtimeVoiceController {
     }
     if (!shouldShow && this.expanded) this.collapseCompanion({ restoreFocus: false });
     this.updatePlanningContext(null, currentState);
-    if (context.budget.remainingMicroEur <= 0 && this.active) {
-      this.end({ reason: 'budget' });
-    }
+    // The server owns the allowance while a meeting is live: it enforces the
+    // dispatch stop and reports `budget_exhausted` on the lease when spend is
+    // truly exhausted (handled in refreshLease). Never hang up an active call
+    // from merged display-budget state — the open envelope reservation can
+    // legitimately read as fully spent for the whole call.
     if (shouldShow && this.phase === 'off' && !this.statusText) {
       if (!context.configured) {
-        this.statusText = 'Live voice is waiting for its distinct disclosure configuration. Short voice and typing still work.';
+        this.statusText = 'Your meeting space is still being prepared. You can continue by typing for now.';
       } else if (!isRealtimeVoiceSupported()) {
-        this.statusText = 'This browser cannot open Live voice. Use the short recording option or continue by typing.';
+        this.statusText = 'This browser cannot join a live meeting. You can continue by typing instead.';
       } else if (!context.consentGranted) {
-        this.statusText = 'Review the Live voice disclosure, then start only when you are ready.';
+        this.statusText = 'Press the button when you’re ready — we’ll show a short note before the meeting begins.';
       } else {
-        this.statusText = 'Ready. Voice starts only when you press Start voice.';
+        this.statusText = 'Press the button when you’re ready to begin.';
       }
     }
     this.updateUi();
@@ -848,7 +860,7 @@ export class RealtimeVoiceController {
     const context = realtimeContext();
     const supported = isRealtimeVoiceSupported();
     const exhausted = context.budget.remainingMicroEur <= 0;
-    const budgetLow = !exhausted && context.budget.remainingMicroEur <= LOW_BUDGET_MICRO_EUR;
+    const budgetLow = !exhausted && context.budget.remainingMicroEur <= context.lowBudgetMicroEur;
     const start = this.element('realtimeVoiceStartButton');
     const mute = this.element('realtimeVoiceMuteButton');
     const end = this.element('realtimeVoiceEndButton');
@@ -881,18 +893,18 @@ export class RealtimeVoiceController {
     }
     if (orbLabel) {
       const labels = {
-        connecting: 'Connecting',
+        connecting: 'Connecting…',
         listening: 'Listening',
         user_speaking: 'Listening',
         thinking: 'Thinking',
-        assistant_speaking: 'Speaking',
-        interrupted: 'Interrupted',
-        reconnecting: 'Reconnecting',
-        muted: 'Muted',
-        budget_exhausted: 'Allowance used',
-        error: 'Try again'
+        assistant_speaking: 'Planéir is speaking',
+        interrupted: 'Listening',
+        reconnecting: 'Reconnecting…',
+        muted: 'Paused',
+        budget_exhausted: 'Meeting complete',
+        error: 'Connection problem'
       };
-      orbLabel.textContent = labels[this.phase] || 'Start voice';
+      orbLabel.textContent = labels[this.phase] || 'Start your Planéir meeting';
     }
     if (mute) {
       mute.disabled = !this.active;
@@ -903,7 +915,7 @@ export class RealtimeVoiceController {
     if (resume && !this.active) resume.hidden = true;
     if (typedFallback) typedFallback.hidden = false;
     if (micBadge) micBadge.textContent = this.active ? (this.muted ? 'Mic muted' : 'Mic on') : 'Mic off';
-    if (status) status.textContent = this.statusText || 'Voice starts only when you press Start voice.';
+    if (status) status.textContent = this.statusText || 'Press the button when you’re ready to begin.';
     if (launcher) {
       launcher.setAttribute('aria-label', this.active
         ? `Talk to Planéir, ${this.muted ? 'microphone muted' : 'voice active'}`
@@ -911,18 +923,18 @@ export class RealtimeVoiceController {
     }
     if (launcherStatus) {
       const launcherLabels = {
-        connecting: 'Connecting securely…',
-        listening: 'Listening',
-        user_speaking: 'Listening to you',
-        thinking: 'Thinking',
+        connecting: 'Connecting…',
+        listening: 'In a meeting · listening',
+        user_speaking: 'In a meeting · listening',
+        thinking: 'In a meeting · thinking',
         assistant_speaking: 'Planéir is speaking',
-        interrupted: 'Response interrupted',
+        interrupted: 'In a meeting · listening',
         reconnecting: 'Reconnecting…',
-        muted: 'Microphone muted',
-        budget_exhausted: 'Voice allowance used',
-        error: 'Voice needs attention'
+        muted: 'Meeting paused',
+        budget_exhausted: 'Meeting allowance used',
+        error: 'Connection problem'
       };
-      launcherStatus.textContent = launcherLabels[this.phase] || 'Private AI planning companion';
+      launcherStatus.textContent = launcherLabels[this.phase] || 'Your private planning meeting';
     }
     if (review) {
       const hasContext = (this.planningContext?.facts?.length || 0) > 0
@@ -946,8 +958,8 @@ export class RealtimeVoiceController {
     if (this.active) return;
     const context = realtimeContext();
     if (!context.eligible || !context.configured || !context.sessionId) {
-      this.setPhase('error', 'Live voice is not configured for this private session.', {
-        error: 'Live voice is unavailable. Short voice and typing remain available.'
+      this.setPhase('error', 'Your meeting space is not available right now.', {
+        error: 'The live meeting is unavailable. You can continue by typing.'
       });
       return;
     }
@@ -956,12 +968,12 @@ export class RealtimeVoiceController {
       return;
     }
     if (context.budget.remainingMicroEur <= 0) {
-      this.setPhase('budget_exhausted', 'The app voice allowance has been used. Continue by typing.');
+      this.setPhase('budget_exhausted', 'This session’s meeting allowance has been used. You can continue by typing.');
       return;
     }
     if (!isRealtimeVoiceSupported()) {
-      this.setPhase('error', 'This browser cannot open Live voice. Use short voice or continue by typing.', {
-        error: 'Live WebRTC audio is not supported in this browser.'
+      this.setPhase('error', 'This browser cannot join a live meeting. You can continue by typing.', {
+        error: 'Live audio is not supported in this browser.'
       });
       return;
     }
@@ -977,9 +989,9 @@ export class RealtimeVoiceController {
     this.playedSpeechIds.clear();
     this.transcriptHistory = [];
     this.renderTranscriptHistory();
-    this.setCaption('user', 'Listening for your first thought…');
-    this.setCaption('assistant', 'The written Planéir journey remains authoritative.');
-    this.setPhase('connecting', 'Opening a protected, time-limited Live voice session…');
+    this.setCaption('user', 'Your words will appear here while you speak.');
+    this.setCaption('assistant', 'Planéir will welcome you in a moment.');
+    this.setPhase('connecting', 'Connecting your private meeting…');
     const controller = new AbortController();
     this.startController = controller;
 
@@ -1031,7 +1043,7 @@ export class RealtimeVoiceController {
       this.configureLeaseExpiry(call, context);
       await peer.setRemoteDescription({ type: 'answer', sdp: call.sdp });
       if (generation !== this.generation || controller.signal.aborted) return;
-      this.setPhase('listening', 'Listening. Speak naturally; completed turns are processed automatically.');
+      this.setPhase('listening', 'I’m listening — take your time.');
       this.scheduleLeasePoll(1_500);
     } catch (error) {
       if (generation !== this.generation || controller.signal.aborted) return;
@@ -1071,13 +1083,13 @@ export class RealtimeVoiceController {
         this.disconnectTimer = null;
         if (this.phase === 'connecting' || this.phase === 'reconnecting') {
           this.setPhase(this.muted ? 'muted' : 'listening', this.muted
-            ? 'Live voice reconnected with the microphone muted.'
-            : 'Listening. Speak naturally; completed turns are processed automatically.');
+            ? 'Reconnected. Your microphone is still paused.'
+            : 'I’m listening — take your time.');
         }
         return;
       }
       if (connectionState === 'disconnected') {
-        this.setPhase('reconnecting', 'The connection paused. Reconnecting securely…');
+        this.setPhase('reconnecting', 'The connection paused for a moment. Reconnecting…');
         if (this.disconnectTimer !== null) window.clearTimeout(this.disconnectTimer);
         this.disconnectTimer = window.setTimeout(() => {
           if (peer.connectionState === 'disconnected' && this.active) {
@@ -1096,7 +1108,7 @@ export class RealtimeVoiceController {
     channel.addEventListener('open', () => {
       if (generation !== this.generation || !this.active) return;
       if (this.phase === 'connecting') {
-        this.setPhase('listening', 'Listening. Speak naturally; completed turns are processed automatically.');
+        this.setPhase('listening', 'I’m listening — take your time.');
       }
     });
     channel.addEventListener('message', (event) => {
@@ -1106,7 +1118,7 @@ export class RealtimeVoiceController {
     });
     channel.addEventListener('close', () => {
       if (generation === this.generation && this.active && this.peerConnection?.connectionState !== 'closed') {
-        this.setPhase('reconnecting', 'The Live voice event channel closed. Rechecking the session…');
+        this.setPhase('reconnecting', 'The connection hiccupped. Checking your meeting…');
         this.scheduleLeasePoll(0);
       }
     });
@@ -1141,20 +1153,20 @@ export class RealtimeVoiceController {
       case 'speech_stopped':
         if (this.interruptTimer !== null) window.clearTimeout(this.interruptTimer);
         this.interruptTimer = null;
-        this.setPhase('thinking', 'Finalizing your words and securely processing this turn…');
+        this.setPhase('thinking', 'Planéir is thinking…');
         return;
       case 'user_delta':
         this.appendCaptionDelta('user', event.itemId, event.text);
         return;
       case 'user_final':
         this.finalizeCaption('user', event.itemId, event.text);
-        this.setPhase('thinking', 'That turn is final. Updating proposed facts and the next question…');
+        this.setPhase('thinking', 'Planéir is thinking…');
         return;
       case 'response_started':
         this.responseInProgress = true;
         this.assistantDeltas.clear();
-        this.setCaption('assistant', 'Planéir is preparing a response…');
-        this.setPhase('thinking', 'Planéir is preparing the next step…');
+        this.setCaption('assistant', 'Planéir is thinking…');
+        this.setPhase('thinking', 'Planéir is thinking…');
         return;
       case 'assistant_delta':
         this.handleUnauthorizedProviderOutput();
@@ -1166,7 +1178,7 @@ export class RealtimeVoiceController {
         this.handleUnauthorizedProviderOutput();
         return;
       case 'tool_running':
-        this.setPhase('thinking', 'Protected planning tools are updating proposed facts and likely analyses…');
+        this.setPhase('thinking', 'Planéir is noting that down…');
         return;
       case 'planning_update':
         this.updatePlanningContext(event.payload, this.lastState);
@@ -1176,8 +1188,8 @@ export class RealtimeVoiceController {
         this.responseInProgress = false;
         if (!this.currentControlledSpeech) {
           this.setPhase(this.muted ? 'muted' : 'listening', this.muted
-            ? 'Response complete. The microphone remains muted.'
-            : 'Listening for your next thought.');
+            ? 'Your microphone is paused. Unmute when you’re ready to continue.'
+            : 'I’m listening — take your time.');
         }
         this.scheduleLeasePoll(0);
         return;
@@ -1220,7 +1232,7 @@ export class RealtimeVoiceController {
     const leaseId = this.leaseId;
     this.controlledSpeechController = controller;
     this.currentControlledSpeech = { speechId, text, loading: true };
-    this.setPhase('thinking', 'Preparing the approved Planéir response…');
+    this.setPhase('thinking', 'Planéir is about to speak…');
     try {
       const result = await speakRealtimeAuthorized(
         this.sessionId,
@@ -1254,7 +1266,7 @@ export class RealtimeVoiceController {
       audio.onerror = () => this.finishControlledSpeech(speechId, { error: true });
       this.currentControlledSpeech = { speechId, text, loading: false };
       this.finalizeWorkerSpeech(speechId, text);
-      this.setPhase('assistant_speaking', 'Planéir is reading the approved response. Start talking to interrupt.');
+      this.setPhase('assistant_speaking', 'Planéir is speaking — feel free to interrupt at any time.');
       try {
         await audio.play();
         audio.dataset.controlledSpeechId = speechId;
@@ -1283,7 +1295,7 @@ export class RealtimeVoiceController {
     if (this.currentControlledSpeech?.speechId !== speechId) return;
     this.currentControlledSpeech = null;
     this.releaseControlledSpeechUrl();
-    this.setCaption('assistant', 'Waiting for the next Planéir response…');
+    this.setCaption('assistant', '…');
     if (error) {
       this.setPhase('error', 'The approved audio stopped unexpectedly. Continue with the written journey.', {
         error: 'Approved voice playback stopped.'
@@ -1291,8 +1303,8 @@ export class RealtimeVoiceController {
       return;
     }
     this.setPhase(this.muted ? 'muted' : 'listening', this.muted
-      ? 'The approved response is complete. The microphone remains muted.'
-      : 'Listening for your next thought.');
+      ? 'Your microphone is paused. Unmute when you’re ready to continue.'
+      : 'I’m listening — take your time.');
   }
 
   releaseControlledSpeechUrl() {
@@ -1346,8 +1358,8 @@ export class RealtimeVoiceController {
     if (removed > 0) this.transcriptHistory.splice(0, removed);
     this.appendTranscriptHistoryItem({ role, text }, removed);
     this.setCaption(role, role === 'user'
-      ? 'Listening for your next thought…'
-      : 'Waiting for the next Planéir response…');
+      ? '…'
+      : '…');
   }
 
   finalizeWorkerSpeech(speechId, text) {
@@ -1529,9 +1541,9 @@ export class RealtimeVoiceController {
     });
     if (this.muted) {
       this.sendEvent({ type: 'input_audio_buffer.clear', event_id: newIdempotencyKey('mute') });
-      this.setPhase('muted', 'Microphone muted. The live lease remains open.');
+      this.setPhase('muted', 'Meeting paused. Your microphone is off until you unmute.');
     } else {
-      this.setPhase('listening', 'Microphone on. Listening for your next thought.');
+      this.setPhase('listening', 'I’m listening — take your time.');
     }
   }
 
@@ -1582,6 +1594,18 @@ export class RealtimeVoiceController {
     this.onNavigate('review');
   }
 
+  toggleTranscript() {
+    const card = this.element('realtimeVoiceCaptionCard');
+    const toggle = this.element('realtimeVoiceTranscriptToggle');
+    if (!card) return;
+    const show = card.hidden;
+    card.hidden = !show;
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+      toggle.textContent = show ? 'Hide transcript' : 'Show transcript';
+    }
+  }
+
   configureLeaseExpiry(call, context) {
     const configuredExpiry = timestampMs(call.expiresAt);
     const responseDuration = Number(call.maxDurationMs || 0);
@@ -1610,7 +1634,7 @@ export class RealtimeVoiceController {
     }
     const seconds = Math.max(0, Math.ceil((this.leaseExpiresAtMs - Date.now()) / 1_000));
     const minutes = Math.floor(seconds / 60);
-    element.textContent = `${minutes}:${String(seconds % 60).padStart(2, '0')} lease`;
+    element.textContent = `${minutes}:${String(seconds % 60).padStart(2, '0')} left`;
     element.hidden = false;
   }
 
@@ -1682,14 +1706,14 @@ export class RealtimeVoiceController {
     const preserveProviderTransport = Boolean(notifyServer && leaseId && sessionId);
     this.cleanupLocal({ preserveProviderTransport });
     const messages = {
-      budget: 'The app voice allowance has been used. Live voice is closed; typing remains available.',
-      connection_failed: 'The Live voice connection ended. Short voice and typing remain available.',
-      expired: 'The time-limited Live voice lease ended. Start a new session if allowance remains.',
-      hidden: 'Live voice ended because this tab was hidden. The microphone is off.',
-      pagehide: 'Live voice ended. The microphone is off.',
-      review: 'Live voice ended. Review and confirm the proposed profile and analyses.',
-      typed_fallback: 'Live voice ended. Continue in the typed answer box.',
-      user: 'Live voice ended. The microphone is off.'
+      budget: 'This meeting’s allowance has been used. Everything you shared is saved — you can continue by typing.',
+      connection_failed: 'The meeting connection ended. Everything you shared is saved; you can start again or continue by typing.',
+      expired: 'Your meeting time ended. Everything you shared is saved — you can start a new meeting if allowance remains.',
+      hidden: 'The meeting ended because this tab was hidden. The microphone is off.',
+      pagehide: 'The meeting ended. The microphone is off.',
+      review: 'The meeting ended. Review and confirm what Planéir understood.',
+      typed_fallback: 'The meeting ended. Continue in the typed answer box.',
+      user: 'The meeting ended. The microphone is off.'
     };
     if (reason === 'budget') {
       this.setPhase('budget_exhausted', messages.budget);
@@ -1760,7 +1784,7 @@ export class RealtimeVoiceController {
       return;
     }
     if (context.consentGranted) {
-      this.statusText = 'Live voice consent is active. Press Start voice when you are ready.';
+      this.statusText = 'You’re ready to go. Press the button to begin your meeting.';
       this.updateUi();
       return;
     }
@@ -1808,7 +1832,7 @@ export class RealtimeVoiceController {
     const checkbox = document.getElementById('realtimeVoiceConsentAcknowledgement');
     if (submit) {
       submit.disabled = true;
-      submit.textContent = 'Saving consent…';
+      submit.textContent = 'One moment…';
     }
     if (cancel) cancel.disabled = true;
     if (checkbox) checkbox.disabled = true;
@@ -1825,17 +1849,19 @@ export class RealtimeVoiceController {
         throw new Error('The service did not confirm Live voice consent for the current disclosure.');
       }
       this.closeConsentDialog();
-      this.statusText = 'Live voice is ready. Press Start voice when you are ready.';
-      this.onToast('Live voice is ready. The microphone still starts only when you press Start voice.');
+      this.statusText = 'Connecting your meeting…';
       this.sync(this.lastState);
-      window.requestAnimationFrame(() => this.element('realtimeVoiceStartButton')?.focus());
+      // The consumer pressed Start and accepted the disclosure: continue
+      // straight into the microphone permission and connection instead of
+      // asking for a second press.
+      window.requestAnimationFrame(() => this.start());
     } catch (error) {
       if (this.onSessionUnavailable(error)) return;
-      this.showConsentError(error instanceof Error ? error.message : 'Live voice consent could not be saved.');
+      this.showConsentError(error instanceof Error ? error.message : 'Your agreement could not be saved. Please try again.');
     } finally {
       if (submit) {
         submit.disabled = false;
-        submit.textContent = 'Agree and enable Live voice';
+        submit.textContent = 'Agree and start my meeting';
       }
       if (cancel) cancel.disabled = false;
       if (checkbox) checkbox.disabled = false;

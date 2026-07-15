@@ -264,6 +264,35 @@ const reviewAndConfirmSource = realtimeSource.slice(
   realtimeSource.indexOf('configureLeaseExpiry(')
 );
 assert.doesNotMatch(reviewAndConfirmSource, /this\.end\(/, 'Opening the profile-and-module review must not stop an active voice session.');
+// Meeting-experience regression guards.
+// 1. The entry screen is the calm meeting surface: reassuring heading, one
+//    supporting sentence, a single central start control, and a transcript
+//    that stays hidden until requested.
+assert.match(planIndexSource, /Let’s talk about what matters to you\./);
+assert.match(planIndexSource, /class="realtime-meeting-sub"/);
+assert.match(planIndexSource, /id="realtimeVoiceCaptionCard"[\s\S]*hidden/);
+assert.match(planIndexSource, /id="realtimeVoiceTranscriptToggle"/);
+assert.match(realtimeSource, /toggleTranscript\(\)/);
+// 2. An eligible adviser invitation lands on the meeting screen automatically.
+assert.match(appSource, /function maybeAutoOpenRealtimeMeeting\(\)[\s\S]*openCompanion\(\{ focus: false \}\)/);
+// 3. Accepting the disclosure flows straight into microphone permission and
+//    connection instead of demanding a second start press.
+const submitConsentSource = realtimeSource.slice(
+  realtimeSource.indexOf('async submitConsent(form)'),
+  realtimeSource.indexOf('showConsentError(message)')
+);
+assert.match(submitConsentSource, /this\.start\(\)/);
+// 4. The client must never hang up an active meeting from merged display
+//    budget state; the server lease status owns allowance termination.
+const syncSource = realtimeSource.slice(
+  realtimeSource.indexOf('sync(currentState = state)'),
+  realtimeSource.indexOf('setPhase(phase, statusText')
+);
+assert.doesNotMatch(
+  syncSource,
+  /end\(\{ reason: 'budget' \}\)/,
+  'sync() must not terminate an active meeting based on display budget state.'
+);
 assert.match(realtimeSource, /if \(event\.key === 'Escape'\)[\s\S]*this\.collapseCompanion\(\)/);
 assert.match(realtimeSource, /if \(event\.key === 'Tab'\) this\.trapFocus\(event\)/);
 assert.match(realtimeSource, /if \(document\.hidden\)[\s\S]*this\.end\(\{ reason: 'hidden' \}\)[\s\S]*this\.collapseCompanion/);

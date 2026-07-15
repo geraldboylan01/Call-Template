@@ -212,6 +212,11 @@ export function normaliseBootstrap(payload) {
       root.voiceRealtimePollSeconds,
       20
     )) || 20)),
+    voiceRealtimeWarnMicroEur: Math.max(0, Number(firstDefined(
+      realtimeVoice.warnThresholdMicroEur,
+      root.voiceRealtimeWarnMicroEur,
+      0
+    )) || 0),
     voiceMaxRecordingSeconds: Math.min(45, Math.max(1, Number(firstDefined(
       voice.maxRecordingSeconds,
       voice.maxDurationSeconds,

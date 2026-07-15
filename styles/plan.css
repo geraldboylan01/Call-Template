@@ -3412,3 +3412,219 @@ details.realtime-context-card {
     border-width: 2px;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Planéir meeting redesign                                            */
+/* The expanded companion is the primary consumer experience: a calm,  */
+/* full-screen private-meeting surface with one central voice orb.     */
+/* These rules intentionally override the earlier drawer layout.       */
+/* ------------------------------------------------------------------ */
+
+.realtime-voice-shell {
+  inset: 0;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  max-height: 100dvh;
+  height: 100dvh;
+  padding: clamp(1.1rem, 3vw, 2.4rem) clamp(1rem, 4vw, 3rem)
+    calc(clamp(1rem, 3vw, 2rem) + env(safe-area-inset-bottom, 0px));
+  border: 0;
+  border-radius: 0;
+  transform: none;
+  grid-template-rows: none;
+  grid-auto-rows: auto;
+  align-content: safe center;
+  justify-items: center;
+  row-gap: clamp(0.8rem, 2.2vh, 1.4rem);
+  background:
+    radial-gradient(circle at 50% -8%, rgba(76, 178, 244, 0.14), transparent 44%),
+    radial-gradient(circle at 88% 108%, rgba(80, 203, 163, 0.08), transparent 40%),
+    linear-gradient(170deg, #0a1626, #050b13 62%);
+  box-shadow: none;
+}
+
+.realtime-voice-heading {
+  width: min(100%, 44rem);
+  justify-content: center;
+  position: relative;
+  text-align: center;
+}
+
+.realtime-voice-heading > div {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: center;
+}
+
+.realtime-voice-heading h2 {
+  font-size: clamp(1.45rem, 3.6vw, 2.1rem);
+  letter-spacing: -0.015em;
+  line-height: 1.16;
+}
+
+.realtime-meeting-sub {
+  max-width: 34rem;
+  margin: 0;
+  color: var(--plan-muted);
+  font-size: clamp(0.82rem, 1.6vw, 0.95rem);
+  line-height: 1.5;
+}
+
+.realtime-collapse-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.realtime-trust-badges {
+  justify-content: center;
+}
+
+.realtime-voice-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: min(100%, 44rem);
+  gap: clamp(0.9rem, 2.4vh, 1.6rem);
+}
+
+.realtime-orb-stage {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  gap: 1rem;
+  grid-template-columns: none;
+  justify-items: center;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .realtime-orb-stage {
+    grid-template-columns: none;
+  }
+}
+
+.realtime-voice-orb {
+  width: clamp(150px, 34vmin, 220px);
+  min-width: clamp(150px, 34vmin, 220px);
+  height: clamp(150px, 34vmin, 220px);
+  min-height: clamp(150px, 34vmin, 220px);
+  margin-bottom: 1.5rem;
+}
+
+.realtime-orb-core {
+  inset: 17%;
+}
+
+.realtime-orb-ring {
+  inset: 2%;
+}
+
+.realtime-orb-ring-two {
+  inset: 9%;
+}
+
+.realtime-orb-label {
+  bottom: -1.4rem;
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+  padding: 0.42rem 0.95rem;
+  font-size: 0.78rem;
+}
+
+.realtime-voice-status {
+  max-width: 30rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--plan-muted);
+}
+
+.realtime-caption-card {
+  width: min(100%, 44rem);
+  max-height: min(38vh, 20rem);
+  overflow: auto;
+}
+
+.realtime-context-grid {
+  width: min(100%, 44rem);
+}
+
+.realtime-budget-card {
+  opacity: 0.82;
+}
+
+.realtime-voice-controls {
+  position: static;
+  width: min(100%, 44rem);
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.realtime-companion-fallback,
+.realtime-voice-trust-copy {
+  width: min(100%, 44rem);
+}
+
+.realtime-voice-trust-copy {
+  margin: 0;
+  text-align: center;
+  color: var(--plan-soft);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.realtime-companion-fallback > summary {
+  color: var(--plan-soft);
+  font-size: 0.7rem;
+}
+
+/* Orb state accents beyond the base phases. */
+.realtime-voice-shell[data-realtime-phase="connecting"] .realtime-orb-ring-one,
+.realtime-voice-shell[data-realtime-phase="reconnecting"] .realtime-orb-ring-one {
+  animation: realtime-orb-breathe 1.1s ease-in-out infinite;
+}
+
+.realtime-voice-shell[data-realtime-phase="thinking"] .realtime-orb-wave {
+  animation: realtime-orb-spin 1.15s linear infinite;
+}
+
+@keyframes realtime-orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .realtime-voice-shell {
+    height: 100dvh;
+    padding: 1rem 1rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .realtime-voice-heading {
+    padding-inline: 2.6rem;
+  }
+
+  .realtime-voice-heading h2 {
+    font-size: 1.3rem;
+  }
+
+  .realtime-voice-controls {
+    gap: 0.45rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .realtime-voice-shell[data-realtime-phase="thinking"] .realtime-orb-wave,
+  .realtime-voice-shell[data-realtime-phase="connecting"] .realtime-orb-ring-one,
+  .realtime-voice-shell[data-realtime-phase="reconnecting"] .realtime-orb-ring-one {
+    animation: none !important;
+  }
+}

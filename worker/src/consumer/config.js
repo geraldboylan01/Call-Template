@@ -9,10 +9,13 @@ const REALTIME_MODEL = 'gpt-realtime-2.1';
 const REALTIME_VOICE = 'marin';
 const REALTIME_REASONING_EFFORT = 'low';
 const REALTIME_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe';
-const REALTIME_SESSION_BUDGET_CENTS = 200;
-// Temporary protected adviser-canary ceiling. The per-session ceiling and
-// dispatch stop remain independently pinned at €2 and €1.70 respectively.
-const REALTIME_DAILY_BUDGET_CENTS = 5_000;
+// Environment-configurable per-session allowance for the protected adviser
+// canary, hard-capped in code at €10 so no deployment mistake can raise a
+// single session above that.
+const REALTIME_SESSION_BUDGET_MAX_CENTS = 1_000;
+// UTC-day circuit breaker cap: the environment may configure up to €100/day;
+// the protected adviser canary keeps €50.
+const REALTIME_DAILY_BUDGET_MAX_CENTS = 10_000;
 const REALTIME_SAFETY_RESERVE_MICRO_EUR = 300_000;
 const REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS = 30_000_000;
 
@@ -163,12 +166,17 @@ export function getConsumerConfig(env) {
   const realtimeSessionBudgetCents = optionalBoundedInteger(
     env.CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS,
     1,
-    REALTIME_SESSION_BUDGET_CENTS
+    REALTIME_SESSION_BUDGET_MAX_CENTS
   ) || 0;
   const realtimeDailyBudgetCents = optionalBoundedInteger(
     env.CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS,
     1,
-    100_000
+    REALTIME_DAILY_BUDGET_MAX_CENTS
+  ) || 0;
+  const realtimeSessionWarnCents = optionalBoundedInteger(
+    env.CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS,
+    1,
+    REALTIME_SESSION_BUDGET_MAX_CENTS
   ) || 0;
   const realtimeUsageRates = Object.freeze({
     textInput: optionalBoundedInteger(env.CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION, 1, 1_000_000_000) || 0,
@@ -197,8 +205,9 @@ export function getConsumerConfig(env) {
     && realtimePromptVersion
     && realtimeToolsetVersion
     && realtimePricingVersion
-    && realtimeSessionBudgetCents === REALTIME_SESSION_BUDGET_CENTS
-    && realtimeDailyBudgetCents === REALTIME_DAILY_BUDGET_CENTS
+    && realtimeSessionBudgetCents > 0
+    && realtimeDailyBudgetCents >= realtimeSessionBudgetCents
+    && (realtimeSessionWarnCents === 0 || realtimeSessionWarnCents < realtimeSessionBudgetCents)
     && voiceSpeechModel === 'tts-1-hd'
     && configuredVoiceName === 'nova'
     && realtimeSpeechRateMicroEurPerMillionCharacters === REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS
@@ -303,8 +312,14 @@ export function getConsumerConfig(env) {
       0,
       realtimeSessionBudgetCents * 10_000 - REALTIME_SAFETY_RESERVE_MICRO_EUR
     ),
-    realtimeMaxDurationSeconds: boundedInteger(env.CONSUMER_REALTIME_MAX_DURATION_SECONDS, 600, 60, 600),
-    realtimeIdleTimeoutSeconds: boundedInteger(env.CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS, 90, 30, 90),
+    // Optional early-warning threshold for the live allowance display; when
+    // unset the UI warns at 75% of the session allowance.
+    realtimeSessionWarnMicroEur: realtimeSessionWarnCents > 0
+      ? realtimeSessionWarnCents * 10_000
+      : Math.floor((realtimeSessionBudgetCents * 10_000 * 3) / 4),
+    realtimeMaxDurationSeconds: boundedInteger(env.CONSUMER_REALTIME_MAX_DURATION_SECONDS, 600, 60, 900),
+    realtimeIdleTimeoutSeconds: boundedInteger(env.CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS, 90, 30, 300),
+    realtimeSilencePromptSeconds: boundedInteger(env.CONSUMER_REALTIME_SILENCE_PROMPT_SECONDS, 45, 0, 120),
     realtimeMaxSdpBytes: boundedInteger(env.CONSUMER_REALTIME_MAX_SDP_BYTES, 32_768, 4_096, 32_768),
     realtimeMaxResponses: boundedInteger(env.CONSUMER_REALTIME_MAX_RESPONSES, 40, 1, 40),
     realtimeMaxToolCalls: boundedInteger(env.CONSUMER_REALTIME_MAX_TOOL_CALLS, 24, 1, 24),
@@ -398,6 +413,7 @@ export function publicConsumerConfig(config) {
       maxDurationSeconds: config.realtimeMaxDurationSeconds,
       idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
       sessionBudgetMicroEur: config.realtimeEnabled ? config.realtimeSessionBudgetMicroEur : 0,
+      warnThresholdMicroEur: config.realtimeEnabled ? config.realtimeSessionWarnMicroEur : 0,
       dispatchStopMicroEur: config.realtimeEnabled ? config.realtimeDispatchStopMicroEur : 0,
       safetyReserveMicroEur: config.realtimeEnabled ? config.realtimeSafetyReserveMicroEur : 0,
       aiGeneratedDisclosure: config.realtimeEnabled
