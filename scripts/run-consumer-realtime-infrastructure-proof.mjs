@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 
 const PROOF_TIMEOUT_MS = 45_000;
+const PROPAGATION_RETRY_MS = 3_000;
+const MAX_PROPAGATION_ATTEMPTS = 5;
 
 function requiredHttpsOrigin(value, label) {
   const parsed = new URL(String(value || ''));
@@ -106,10 +108,6 @@ export async function runRealtimeInfrastructureProof({
     let leaseId = '';
     let controlCapability = '';
     try {
-      const createdPromise = page.waitForResponse((response) => {
-        const url = new URL(response.url());
-        return response.request().method() === 'POST' && url.pathname === endpointPath;
-      }, { timeout: PROOF_TIMEOUT_MS });
       const controlledSpeechPromise = page.waitForResponse((response) => {
         const url = new URL(response.url());
         return response.request().method() === 'POST'
@@ -119,13 +117,30 @@ export async function runRealtimeInfrastructureProof({
         (response) => ({ response, error: null }),
         (error) => ({ response: null, error })
       );
-      await start.click();
-      const created = await createdPromise;
-      if (created.status() !== 201) {
+      let created = null;
+      for (let attempt = 1; attempt <= MAX_PROPAGATION_ATTEMPTS; attempt += 1) {
+        const createdPromise = page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return response.request().method() === 'POST' && url.pathname === endpointPath;
+        }, { timeout: PROOF_TIMEOUT_MS });
+        await start.click();
+        created = await createdPromise;
+        if (created.status() === 201) break;
         const errorPayload = await created.json().catch(() => null);
         const errorCode = String(errorPayload?.error?.code || errorPayload?.code || 'unknown_error');
-        throw new Error(`The companion Start voice action returned HTTP ${created.status()} (${errorCode}).`);
+        const safePropagationRetry = created.status() === 503
+          && errorCode === 'consumer_realtime_unavailable'
+          && attempt < MAX_PROPAGATION_ATTEMPTS;
+        if (!safePropagationRetry) {
+          throw new Error(`The companion Start voice action returned HTTP ${created.status()} (${errorCode}).`);
+        }
+        await page.waitForTimeout(PROPAGATION_RETRY_MS);
+        await page.waitForFunction(() => {
+          const button = document.getElementById('realtimeVoiceStartButton');
+          return button instanceof HTMLButtonElement && button.disabled === false;
+        }, null, { timeout: PROOF_TIMEOUT_MS });
       }
+      assert.equal(created?.status(), 201, 'The Realtime call route did not converge after bounded propagation retries.');
       assert.match(
         String(created.headers()['content-type'] || ''),
         /^application\/sdp(?:;|$)/i,
