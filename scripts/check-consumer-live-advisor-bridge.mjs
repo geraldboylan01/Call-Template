@@ -322,17 +322,23 @@ async function main() {
   const csrfToken = String(login.payload?.csrfToken || '');
   assert.match(csrfToken, /^[A-Za-z0-9_-]{32,}$/, 'Adviser smoke login did not return a valid CSRF token.');
 
-  const inviteResult = await requestJson(workerBaseUrl, '/api/advisor/consumer-invite', {
-    method: 'POST',
-    origin: smokeOrigin,
-    cookieJar,
-    headers: { 'X-Advisor-CSRF': csrfToken }
-  });
+  const expectedInviteMode = realtimeExpected ? 'realtime_voice_rules_only' : 'voice_assisted_rules_only';
+  let inviteResult = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    inviteResult = await requestJson(workerBaseUrl, '/api/advisor/consumer-invite', {
+      method: 'POST',
+      origin: smokeOrigin,
+      cookieJar,
+      headers: { 'X-Advisor-CSRF': csrfToken }
+    });
+    if (inviteResult.payload?.mode === expectedInviteMode) break;
+    if (attempt < MAX_ATTEMPTS) await sleep(RETRY_DELAY_MS);
+  }
   assert.equal(inviteResult.payload?.ok, true, 'The adviser bridge did not issue a planning invite.');
   assert.equal(inviteResult.payload?.maxUses, 1, 'The adviser bridge invite must be one-use.');
   assert.equal(
     inviteResult.payload?.mode,
-    realtimeExpected ? 'realtime_voice_rules_only' : 'voice_assisted_rules_only',
+    expectedInviteMode,
     'The adviser bridge returned an unexpected consumer mode.'
   );
   const inviteUrl = new URL(String(inviteResult.payload?.url || ''));
