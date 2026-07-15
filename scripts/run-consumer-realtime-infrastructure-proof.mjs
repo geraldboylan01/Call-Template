@@ -148,6 +148,9 @@ export async function runRealtimeInfrastructureProof({
           providerDetails.providerErrorType ? `type ${providerDetails.providerErrorType}` : '',
           providerDetails.providerErrorCode ? `code ${providerDetails.providerErrorCode}` : '',
           providerDetails.providerErrorParam ? `parameter ${providerDetails.providerErrorParam}` : '',
+          providerDetails.providerContentType ? `content type ${providerDetails.providerContentType}` : '',
+          Number.isInteger(providerDetails.providerBodyBytes) ? `body bytes ${providerDetails.providerBodyBytes}` : '',
+          providerDetails.providerBodyStartsWithV0 === true ? 'body starts with v=0' : '',
           providerDetails.providerRequestId ? `request ${providerDetails.providerRequestId}` : ''
         ].filter(Boolean).join(', ');
         const safePropagationRetry = created.status() === 503
