@@ -457,7 +457,9 @@ globalThis.fetch = async (url, init = {}) => {
   assert.match(String(init.headers.Authorization || ''), /^Bearer sk-test-/);
   assert.match(String(init.headers['OpenAI-Safety-Identifier'] || ''), /^[A-Za-z0-9_-]{40,60}$/);
   assert.ok(init.body instanceof FormData);
-  const providerSession = JSON.parse(await init.body.get('session').text());
+  assert.equal(init.body.get('sdp'), validSdp);
+  assert.equal(typeof init.body.get('session'), 'string');
+  const providerSession = JSON.parse(init.body.get('session'));
   assert.equal(providerSession.model, 'gpt-realtime-2.1');
   assert.equal(providerSession.safety_identifier, undefined);
   assert.doesNotMatch(JSON.stringify(providerSession), /sk-test-realtime-provider-key/);
