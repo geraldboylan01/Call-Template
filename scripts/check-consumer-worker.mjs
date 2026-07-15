@@ -463,7 +463,10 @@ assert.match(realtimeInfrastructureProofSource, /MAX_PROPAGATION_ATTEMPTS = 5/);
 assert.match(realtimeInfrastructureProofSource, /MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS = 10/);
 assert.match(realtimeInfrastructureProofSource, /created\.status\(\) === 201/);
 assert.match(realtimeInfrastructureProofSource, /created\.status\(\) === 503/);
-assert.match(realtimeInfrastructureProofSource, /errorCode === 'consumer_realtime_unavailable'/);
+assert.match(
+  realtimeInfrastructureProofSource,
+  /\['consumer_realtime_unavailable', 'realtime_unavailable'\]\.includes\(errorCode\)/
+);
 assert.match(realtimeInfrastructureProofSource, /The Realtime call route did not converge after bounded propagation retries/);
 assert.match(realtimeInfrastructureProofSource, /errorPayload\?\.error\?\.code/);
 assert.match(realtimeInfrastructureProofSource, /x-realtime-lease-id/);
