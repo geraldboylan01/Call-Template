@@ -398,8 +398,9 @@ const sessionConfig = buildRealtimeSessionConfig(config, {
   stage: 'goal_discovery',
   nextQuestion: { prompt: 'What would you most like help planning?' },
   reasoningEscalation: { requested: false }
-}, 'safe_consumer_hash');
+});
 assert.equal(sessionConfig.model, 'gpt-realtime-2.1');
+assert.equal(sessionConfig.safety_identifier, undefined);
 assert.equal(sessionConfig.reasoning.effort, 'low');
 assert.equal(sessionConfig.audio.output.voice, 'marin');
 assert.deepEqual(sessionConfig.output_modalities, ['text']);
@@ -454,9 +455,11 @@ globalThis.fetch = async (url, init = {}) => {
   if (String(url).endsWith('/hangup')) return new Response('', { status: 200 });
   assert.equal(String(url), 'https://api.openai.com/v1/realtime/calls');
   assert.match(String(init.headers.Authorization || ''), /^Bearer sk-test-/);
+  assert.match(String(init.headers['OpenAI-Safety-Identifier'] || ''), /^[A-Za-z0-9_-]{40,60}$/);
   assert.ok(init.body instanceof FormData);
   const providerSession = JSON.parse(await init.body.get('session').text());
   assert.equal(providerSession.model, 'gpt-realtime-2.1');
+  assert.equal(providerSession.safety_identifier, undefined);
   assert.doesNotMatch(JSON.stringify(providerSession), /sk-test-realtime-provider-key/);
   return new Response(validSdp, {
     status: 201,
@@ -477,6 +480,43 @@ assert.equal(providerCall.answerSdp, validSdp);
 assert.equal(providerCall.providerCallId, 'call_adversarial_test');
 assert.deepEqual(await hangupOpenAiRealtimeCall({ env, providerCallId: providerCall.providerCallId }), { confirmed: true });
 assert.equal(providerRequests.at(-1).url, 'https://api.openai.com/v1/realtime/calls/call_adversarial_test/hangup');
+const originalConsoleWarn = console.warn;
+let providerRejectionWarning;
+try {
+  console.warn = (...args) => { providerRejectionWarning = args; };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: {
+      type: 'invalid_request_error',
+      code: 'invalid_parameter',
+      param: 'session.unsupported_field',
+      message: 'A raw provider message must not be copied into diagnostics.'
+    }
+  }), {
+    status: 400,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-request-id': 'req_realtime_schema_test'
+    }
+  });
+  await rejectsCode(createOpenAiRealtimeCall({
+    env,
+    config,
+    sessionId: 'cs_provider_rejection_test',
+    offerSdp: validSdp,
+    state: { stage: 'goal_discovery' }
+  }), 'realtime_provider_rejected');
+  assert.equal(providerRejectionWarning[0], 'OpenAI Realtime call rejected');
+  assert.deepEqual(providerRejectionWarning[1], {
+    status: 400,
+    providerRequestId: 'req_realtime_schema_test',
+    providerErrorType: 'invalid_request_error',
+    providerErrorCode: 'invalid_parameter',
+    providerErrorParam: 'session.unsupported_field'
+  });
+  assert.doesNotMatch(JSON.stringify(providerRejectionWarning), /raw provider message/);
+} finally {
+  console.warn = originalConsoleWarn;
+}
 globalThis.fetch = originalFetch;
 
 assert.deepEqual(realtimeUsageFromResponse({
