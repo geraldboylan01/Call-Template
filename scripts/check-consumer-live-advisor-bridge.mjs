@@ -411,6 +411,23 @@ async function main() {
         policyVersion: bootstrap.realtimeVoice.policyVersion,
         privacyNoticeUrl: bootstrap.realtimeVoice.privacyNoticeUrl
       };
+      const realtimeGranted = await requestJson(
+        workerBaseUrl,
+        `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/realtime/consent`,
+        {
+          method: 'PATCH',
+          origin: smokeOrigin,
+          headers: { 'X-Consumer-Session': credential },
+          body: { granted: true, ...realtimeConsentPayload },
+          diagnosticPath: '/api/consumer/sessions/[synthetic]/voice/realtime/consent'
+        }
+      );
+      assert.equal(realtimeGranted.payload?.realtimeConsent?.granted, true, 'Realtime consent could not be granted.');
+      assert.equal(
+        realtimeGranted.payload?.realtimeVoiceBudget?.limitMicroEur,
+        2_000_000,
+        'The Realtime proof does not have the conservative €2 application allowance.'
+      );
       const proof = await runRealtimeInfrastructureProof({
         workerBaseUrl,
         smokeOrigin,
