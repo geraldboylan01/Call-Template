@@ -787,6 +787,50 @@ try {
   globalThis.fetch = originalFetch;
 }
 
+// End voice must make the microphone inert immediately while retaining the
+// WebRTC transport until the Worker confirms its authoritative provider
+// hangup. Closing the peer before DELETE races OpenAI's active-call endpoint.
+let resolveEndVoiceRequest;
+let endVoiceRequest = null;
+let endVoicePeerClosed = false;
+let endVoiceChannelClosed = false;
+let endVoiceTrackStopped = false;
+const endVoiceController = new RealtimeVoiceController({ root: null });
+endVoiceController.active = true;
+endVoiceController.sessionId = 'cs_frontend_voice_contract';
+endVoiceController.leaseId = 'rt_api_contract_001';
+endVoiceController.controlCapability = apiControlCapability;
+endVoiceController.peerConnection = { close: () => { endVoicePeerClosed = true; } };
+endVoiceController.dataChannel = { close: () => { endVoiceChannelClosed = true; } };
+endVoiceController.localStream = {
+  getTracks: () => [{ stop: () => { endVoiceTrackStopped = true; } }]
+};
+try {
+  globalThis.fetch = (url, init) => {
+    endVoiceRequest = { url: String(url), init };
+    return new Promise((resolve) => { resolveEndVoiceRequest = resolve; });
+  };
+  const endVoicePromise = endVoiceController.end({ reason: 'user' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(endVoiceTrackStopped, true, 'End voice must stop microphone capture before awaiting the Worker.');
+  assert.equal(endVoicePeerClosed, false, 'The peer must remain active until server hangup is confirmed.');
+  assert.equal(endVoiceChannelClosed, false, 'The event channel must remain active until server hangup is confirmed.');
+  assert.equal(endVoiceRequest?.init?.method, 'DELETE');
+  resolveEndVoiceRequest(new Response(JSON.stringify({
+    realtimeLease: { id: 'rt_api_contract_001', status: 'complete' },
+    providerHangupConfirmed: true
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  }));
+  await endVoicePromise;
+  assert.equal(endVoicePeerClosed, true, 'The peer must close after server hangup is confirmed.');
+  assert.equal(endVoiceChannelClosed, true, 'The event channel must close after server hangup is confirmed.');
+} finally {
+  globalThis.fetch = originalFetch;
+  endVoiceController.cleanupLocal();
+}
+
 const approvedAudio = {
   dataset: {},
   muted: true,

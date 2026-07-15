@@ -1674,7 +1674,13 @@ export class RealtimeVoiceController {
     const sessionId = this.sessionId;
     const controlCapability = this.controlCapability;
     ++this.generation;
-    this.cleanupLocal();
+    // Stop capture and playback immediately, but keep the WebRTC transport
+    // alive until the Worker has invoked OpenAI's server-side hangup endpoint.
+    // Closing the peer first can make the provider call cease to be "active"
+    // before the authoritative hangup is issued, which makes termination
+    // impossible to prove even though the browser microphone is already off.
+    const preserveProviderTransport = Boolean(notifyServer && leaseId && sessionId);
+    this.cleanupLocal({ preserveProviderTransport });
     const messages = {
       budget: 'The app voice allowance has been used. Live voice is closed; typing remains available.',
       connection_failed: 'The Live voice connection ended. Short voice and typing remain available.',
@@ -1706,11 +1712,13 @@ export class RealtimeVoiceController {
             timeout: 6000
           });
         }
+      } finally {
+        this.cleanupLocal();
       }
     }
   }
 
-  cleanupLocal() {
+  cleanupLocal({ preserveProviderTransport = false } = {}) {
     this.active = false;
     this.muted = false;
     this.responseInProgress = false;
@@ -1729,10 +1737,12 @@ export class RealtimeVoiceController {
       if (this[property] !== null) window[method](this[property]);
       this[property] = null;
     });
-    try { this.dataChannel?.close(); } catch (_error) { /* noop */ }
-    try { this.peerConnection?.close(); } catch (_error) { /* noop */ }
-    this.dataChannel = null;
-    this.peerConnection = null;
+    if (!preserveProviderTransport) {
+      try { this.dataChannel?.close(); } catch (_error) { /* noop */ }
+      try { this.peerConnection?.close(); } catch (_error) { /* noop */ }
+      this.dataChannel = null;
+      this.peerConnection = null;
+    }
     stopTracks(this.localStream);
     this.localStream = null;
     this.playedSpeechIds.clear();
