@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 const PROOF_TIMEOUT_MS = 45_000;
 const PROPAGATION_RETRY_MS = 3_000;
 const MAX_PROPAGATION_ATTEMPTS = 5;
+const MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS = 10;
 
 function requiredHttpsOrigin(value, label) {
   const parsed = new URL(String(value || ''));
@@ -52,7 +53,9 @@ export async function runRealtimeInfrastructureProof({
       window.sessionStorage.setItem('planeir.consumer.session-id.v1', sessionIdValue);
       window.sessionStorage.setItem('planeir.consumer.credential.v1', credentialValue);
     }, { sessionIdValue: sessionId, credentialValue: credential });
-    await page.goto(new URL('/plan/', `${siteOrigin}/`).href, {
+    const proofPageUrl = new URL('/plan/', `${siteOrigin}/`);
+    proofPageUrl.searchParams.set('realtime-proof', crypto.randomUUID());
+    await page.goto(proofPageUrl.href, {
       waitUntil: 'domcontentloaded',
       timeout: PROOF_TIMEOUT_MS
     });
@@ -69,7 +72,18 @@ export async function runRealtimeInfrastructureProof({
       requestDiagnostics.push(`${request.method()} ${url.pathname.slice(endpointPath.length) || '/'} -> ${request.failure()?.errorText || 'request failed'}`);
     });
     const launcher = page.locator('#realtimeVoiceLauncher');
-    await launcher.waitFor({ state: 'visible', timeout: PROOF_TIMEOUT_MS });
+    for (let attempt = 1; attempt <= MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS; attempt += 1) {
+      await page.waitForTimeout(PROPAGATION_RETRY_MS);
+      if (await launcher.isVisible()) break;
+      if (attempt < MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS) {
+        proofPageUrl.searchParams.set('realtime-proof', crypto.randomUUID());
+        await page.goto(proofPageUrl.href, {
+          waitUntil: 'domcontentloaded',
+          timeout: PROOF_TIMEOUT_MS
+        });
+      }
+    }
+    await launcher.waitFor({ state: 'visible', timeout: 5_000 });
     await launcher.click();
     await page.locator('#realtimeVoiceShell').waitFor({ state: 'visible', timeout: 5_000 });
     const start = page.locator('#realtimeVoiceStartButton');
