@@ -460,6 +460,7 @@ assert.match(realtimeInfrastructureProofSource, /await launcher\.click\(\)/);
 assert.match(realtimeInfrastructureProofSource, /await start\.click\(\)/);
 assert.match(realtimeInfrastructureProofSource, /response\.request\(\)\.method\(\) === 'POST'/);
 assert.match(realtimeInfrastructureProofSource, /MAX_PROPAGATION_ATTEMPTS = 5/);
+assert.match(realtimeInfrastructureProofSource, /MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS = 10/);
 assert.match(realtimeInfrastructureProofSource, /created\.status\(\) === 201/);
 assert.match(realtimeInfrastructureProofSource, /created\.status\(\) === 503/);
 assert.match(realtimeInfrastructureProofSource, /errorCode === 'consumer_realtime_unavailable'/);
