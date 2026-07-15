@@ -77,7 +77,10 @@ export async function runRealtimeInfrastructureProof({
         return response.request().method() === 'POST'
           && url.pathname.startsWith(`${endpointPath}/rt_`)
           && url.pathname.endsWith('/speech');
-      }, { timeout: PROOF_TIMEOUT_MS });
+      }, { timeout: PROOF_TIMEOUT_MS }).then(
+        (response) => ({ response, error: null }),
+        (error) => ({ response: null, error })
+      );
       await start.click();
       const created = await createdPromise;
       assert.equal(created.status(), 201, 'The companion Start voice action did not create a Realtime call.');
@@ -115,7 +118,9 @@ export async function runRealtimeInfrastructureProof({
       assert.equal(proof.sidebandConnected, true, 'The authenticated provider sideband was not proven.');
       assert.equal(proof.readOnlyToolSucceeded, true, 'The forced get_planning_state tool did not succeed.');
 
-      const controlledSpeech = await controlledSpeechPromise;
+      const controlledSpeechOutcome = await controlledSpeechPromise;
+      if (controlledSpeechOutcome.error) throw controlledSpeechOutcome.error;
+      const controlledSpeech = controlledSpeechOutcome.response;
       assert.equal(controlledSpeech.status(), 200, 'The Worker-owned greeting speech request failed.');
       assert.match(
         String(controlledSpeech.headers()['content-type'] || ''),
