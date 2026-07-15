@@ -346,7 +346,18 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
   if (!response.ok) {
     const diagnostic = await readProviderRejectionMetadata(response);
     console.warn('OpenAI Realtime call rejected', diagnostic);
-    throw new ConsumerError(502, 'realtime_provider_rejected', 'Live voice could not be started. Continue by typing.');
+    throw new ConsumerError(
+      502,
+      'realtime_provider_rejected',
+      'Live voice could not be started. Continue by typing.',
+      {
+        providerStatus: diagnostic.status,
+        providerRequestId: diagnostic.providerRequestId,
+        providerErrorType: diagnostic.providerErrorType,
+        providerErrorCode: diagnostic.providerErrorCode,
+        providerErrorParam: diagnostic.providerErrorParam
+      }
+    );
   }
   const providerCallId = providerCallIdFromLocation(response.headers.get('Location'));
   if (!providerCallId) {
