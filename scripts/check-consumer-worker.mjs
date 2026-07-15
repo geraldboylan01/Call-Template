@@ -437,6 +437,7 @@ assert.match(
   /assert\.equal\([\s\S]{0,100}runPaidRealtimeProof,[\s\S]{0,100}realtimeExpected,[\s\S]{0,180}Realtime activation and its paid infrastructure proof must be enabled together/
 );
 assert.match(liveAdvisorBridgeSource, /await runRealtimeInfrastructureProof\(\{/);
+assert.match(liveAdvisorBridgeSource, /MAX_INVITE_PROPAGATION_ATTEMPTS = 12/);
 for (const provenBoundary of [
   'webRtcConnected',
   'sidebandConnected',
