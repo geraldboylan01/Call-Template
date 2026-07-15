@@ -10,7 +10,9 @@ const REALTIME_VOICE = 'marin';
 const REALTIME_REASONING_EFFORT = 'low';
 const REALTIME_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe';
 const REALTIME_SESSION_BUDGET_CENTS = 200;
-const REALTIME_DAILY_BUDGET_CENTS = 2_000;
+// Temporary protected adviser-canary ceiling. The per-session ceiling and
+// dispatch stop remain independently pinned at €2 and €1.70 respectively.
+const REALTIME_DAILY_BUDGET_CENTS = 5_000;
 const REALTIME_SAFETY_RESERVE_MICRO_EUR = 300_000;
 const REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS = 30_000_000;
 

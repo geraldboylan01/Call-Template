@@ -336,7 +336,8 @@ assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUME
 assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true'\)/);
 assert.match(deployWorkflowSource, /CONSUMER_AI_INTAKE_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_VOICE_ENABLED: betaEnabled \? 'true' : 'false'/);
-assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: realtimeEnabled \? 'true' : 'false'/);
+assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: 'false'/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS: "5000"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_POLICY_VERSION: "consumer-adviser-handoff-v1"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_POLICY_URL: "https:\/\/planeir\.ie\/plan\/privacy\.html#handoff"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID: "consumer-handoff-bridge-30d-v1"/);
@@ -642,17 +643,14 @@ const realtimeDeploymentPolicy = {
   realtimeToolsetVersion: 'consumer-realtime-tools-v2',
   realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   realtimeSessionBudgetMicroEur: 2_000_000,
-  handoffPolicyVersion: 'consumer-adviser-handoff-v1',
-  handoffPolicyUrl: 'https://planeir.ie/plan/privacy.html#handoff',
-  handoffRetentionPolicyId: 'consumer-handoff-bridge-30d-v1',
-  handoffRetentionDays: 30
+  realtimeDailyBudgetMicroEur: 50_000_000
 };
 const realtimeDeploymentBootstrap = {
   ...betaDeploymentBootstrap,
   flags: {
     ...betaDeploymentBootstrap.flags,
     consumerRealtimeVoiceEnabled: true,
-    consumerHumanHandoffEnabled: true
+    consumerHumanHandoffEnabled: false
   },
   realtimeVoice: {
     enabled: true,
@@ -674,11 +672,11 @@ const realtimeDeploymentBootstrap = {
     safetyReserveMicroEur: 300_000
   },
   handoff: {
-    enabled: true,
-    policyVersion: realtimeDeploymentPolicy.handoffPolicyVersion,
-    policyUrl: realtimeDeploymentPolicy.handoffPolicyUrl,
-    retentionPolicyId: realtimeDeploymentPolicy.handoffRetentionPolicyId,
-    packageRetentionDays: realtimeDeploymentPolicy.handoffRetentionDays
+    enabled: false,
+    policyVersion: null,
+    policyUrl: null,
+    retentionPolicyId: null,
+    packageRetentionDays: null
   }
 };
 assert.equal(validateConsumerDeploymentBootstrap(realtimeDeploymentBootstrap, {
@@ -1185,13 +1183,9 @@ const realtimeVoicePreviewConfig = {
   realtimeRequested: true,
   realtimeConfigured: true,
   realtimeEnabled: true,
-  handoffRequested: true,
-  handoffConfigured: true,
-  handoffEnabled: true,
-  handoffPolicyVersion: 'consumer-adviser-handoff-v1',
-  handoffPolicyUrl: 'https://planeir.ie/plan/privacy.html#handoff',
-  handoffRetentionPolicyId: 'consumer-handoff-bridge-30d-v1',
-  handoffRetentionDays: 30,
+  handoffRequested: false,
+  handoffConfigured: false,
+  handoffEnabled: false,
   realtimeNoticeId: 'realtime-voice-adviser-test-v1',
   realtimeDataPolicyId: 'openai-realtime-audio-adviser-test-v1',
   realtimeModel: 'gpt-realtime-2.1',
@@ -1205,7 +1199,7 @@ const realtimeVoicePreviewConfig = {
   realtimeSpeechVoice: 'nova',
   realtimeSpeechRateMicroEurPerMillionCharacters: 30_000_000,
   realtimeSessionBudgetMicroEur: 2_000_000,
-  realtimeDailyBudgetMicroEur: 20_000_000,
+  realtimeDailyBudgetMicroEur: 50_000_000,
   realtimeDispatchStopMicroEur: 1_700_000,
   realtimeSafetyReserveMicroEur: 300_000,
   realtimeMaxDurationSeconds: 600,

@@ -73,7 +73,7 @@ export function validateConsumerDeploymentBootstrap(payload, {
   const handoff = payload.handoff || {};
 
   assert.equal(flags.consumerAiIntakeEnabled, false, 'AI intake must remain disabled.');
-  const handoffExpected = mode === REALTIME_VOICE_RULES_ONLY_MODE;
+  const handoffExpected = false;
   assert.equal(flags.consumerHumanHandoffEnabled === true, handoffExpected, 'Consumer handoff does not match the protected canary mode.');
   assert.equal(access.publicAccessEnabled, false, 'Public consumer access must remain disabled.');
   assert.equal(access.inviteRequired, true, 'A signed invite must remain required.');
@@ -176,15 +176,10 @@ export function validateConsumerDeploymentBootstrap(payload, {
     assert.equal(realtimeVoice.idleTimeoutSeconds, 90, 'Live realtime idle timeout changed.');
     assert.equal(realtimeVoice.dispatchStopMicroEur, 1_700_000, 'Live realtime dispatch stop changed.');
     assert.equal(realtimeVoice.safetyReserveMicroEur, 300_000, 'Live realtime safety reserve changed.');
-    for (const [field, expectedField] of [
-      ['policyVersion', 'handoffPolicyVersion'],
-      ['policyUrl', 'handoffPolicyUrl'],
-      ['retentionPolicyId', 'handoffRetentionPolicyId'],
-      ['packageRetentionDays', 'handoffRetentionDays']
-    ]) {
-      assert.ok(expectedPolicy[expectedField], `Expected ${expectedField} is required for the protected handoff canary.`);
-      assert.equal(handoff[field], expectedPolicy[expectedField], `Live handoff ${field} changed.`);
-    }
+    assert.equal(handoff.policyVersion, null, 'Disabled handoff must expose no policy.');
+    assert.equal(handoff.policyUrl, null, 'Disabled handoff must expose no policy URL.');
+    assert.equal(handoff.retentionPolicyId, null, 'Disabled handoff must expose no retention policy.');
+    assert.equal(handoff.packageRetentionDays, null, 'Disabled handoff must expose no retention period.');
   } else {
     assert.equal(flags.consumerRealtimeVoiceEnabled === true, false, 'Realtime voice must remain disabled outside its canary.');
     assert.equal(realtimeVoice.enabled === true, false, 'Realtime voice must fail closed outside its canary.');

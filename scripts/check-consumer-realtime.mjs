@@ -323,7 +323,7 @@ const env = {
   CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v2',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '200',
-  CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: '2000',
+  CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: '5000',
   CONSUMER_REALTIME_MAX_DURATION_SECONDS: '600',
   CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: '90',
   CONSUMER_REALTIME_MAX_SDP_BYTES: '32768',
@@ -346,7 +346,7 @@ assert.equal(config.realtimeVoice, 'marin');
 assert.equal(config.realtimeReasoningEffort, 'low');
 assert.equal(config.realtimeSessionBudgetMicroEur, 2_000_000);
 assert.equal(config.realtimeDispatchStopMicroEur, 1_700_000);
-assert.equal(config.realtimeDailyBudgetMicroEur, 20_000_000);
+assert.equal(config.realtimeDailyBudgetMicroEur, 50_000_000);
 assert.equal(config.realtimeMaxDurationSeconds, 600);
 assert.equal(config.realtimeIdleTimeoutSeconds, 90);
 assert.equal(config.realtimeSpeechModel, 'tts-1-hd');

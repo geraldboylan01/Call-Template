@@ -84,7 +84,7 @@ jobs:
       CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v2"
       CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
       CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS: "200"
-      CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS: "2000"
+      CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS: "5000"
       CONSUMER_BETA_REALTIME_MAX_DURATION_SECONDS: "600"
       CONSUMER_BETA_REALTIME_IDLE_TIMEOUT_SECONDS: "90"
       CONSUMER_BETA_REALTIME_MAX_SDP_BYTES: "32768"
@@ -525,7 +525,7 @@ jobs:
                 CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_REALTIME_TOOLSET_VERSION', 'consumer-realtime-tools-v2'],
                 CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
                 CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS', '200'],
-                CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS', '2000'],
+                CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS', '5000'],
                 CONSUMER_REALTIME_MAX_DURATION_SECONDS: ['CONSUMER_BETA_REALTIME_MAX_DURATION_SECONDS', '600'],
                 CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: ['CONSUMER_BETA_REALTIME_IDLE_TIMEOUT_SECONDS', '90'],
                 CONSUMER_REALTIME_MAX_SDP_BYTES: ['CONSUMER_BETA_REALTIME_MAX_SDP_BYTES', '32768'],
@@ -548,21 +548,8 @@ jobs:
                 }
                 generatedSource = replaceTomlString(generatedSource, runtimeName, value);
               }
-              const fixedHandoffValues = {
-                CONSUMER_HANDOFF_POLICY_VERSION: ['CONSUMER_BETA_HANDOFF_POLICY_VERSION', 'consumer-adviser-handoff-v1'],
-                CONSUMER_HANDOFF_POLICY_URL: ['CONSUMER_BETA_HANDOFF_POLICY_URL', 'https://planeir.ie/plan/privacy.html#handoff'],
-                CONSUMER_HANDOFF_RETENTION_POLICY_ID: ['CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID', 'consumer-handoff-bridge-30d-v1'],
-                CONSUMER_HANDOFF_RETENTION_DAYS: ['CONSUMER_BETA_HANDOFF_RETENTION_DAYS', '30']
-              };
-              for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedHandoffValues)) {
-                const value = envValue(sourceName);
-                if (value !== approvedValue) {
-                  throw new Error(`${sourceName} must remain exactly ${approvedValue} for the protected realtime handoff canary.`);
-                }
-                generatedSource = replaceTomlString(generatedSource, runtimeName, value);
-              }
               generatedSource = replaceTomlString(generatedSource, 'CONSUMER_REALTIME_VOICE_ENABLED', 'true');
-              generatedSource = replaceTomlString(generatedSource, 'CONSUMER_HANDOFF_ENABLED', 'true');
+              generatedSource = replaceTomlString(generatedSource, 'CONSUMER_HANDOFF_ENABLED', 'false');
             }
           }
 
@@ -572,7 +559,7 @@ jobs:
             CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_AI_INTAKE_ENABLED: 'false',
-            CONSUMER_HANDOFF_ENABLED: realtimeEnabled ? 'true' : 'false',
+            CONSUMER_HANDOFF_ENABLED: 'false',
             CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'
           };
           for (const [flag, value] of Object.entries(expectedGeneratedFlags)) {

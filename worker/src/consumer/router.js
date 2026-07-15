@@ -182,13 +182,8 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeRequested === true
     && config?.realtimeConfigured === true
     && config?.realtimeEnabled === true
-    && config?.handoffRequested === true
-    && config?.handoffConfigured === true
-    && config?.handoffEnabled === true
-    && config?.handoffPolicyVersion === 'consumer-adviser-handoff-v1'
-    && config?.handoffPolicyUrl === 'https://planeir.ie/plan/privacy.html#handoff'
-    && config?.handoffRetentionPolicyId === 'consumer-handoff-bridge-30d-v1'
-    && config?.handoffRetentionDays === 30
+    && config?.handoffRequested !== true
+    && config?.handoffEnabled !== true
     && config?.realtimeNoticeId === 'realtime-voice-adviser-test-v1'
     && config?.realtimeDataPolicyId === 'openai-realtime-audio-adviser-test-v1'
     && config?.realtimeModel === 'gpt-realtime-2.1'
@@ -202,7 +197,7 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeSpeechVoice === 'nova'
     && config?.realtimeSpeechRateMicroEurPerMillionCharacters === 30_000_000
     && config?.realtimeSessionBudgetMicroEur === 2_000_000
-    && config?.realtimeDailyBudgetMicroEur === 20_000_000
+    && config?.realtimeDailyBudgetMicroEur === 50_000_000
     && config?.realtimeDispatchStopMicroEur === 1_700_000
     && config?.realtimeSafetyReserveMicroEur === 300_000
     && config?.realtimeMaxDurationSeconds === 600
@@ -869,7 +864,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         throw new ConsumerError(409, 'realtime_request_already_used', 'That live voice request id was already used. Create a new WebRTC offer.');
       }
       if (reservation.denied || !reservation.entry) {
-        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected €2 session or €20 UTC daily provider allowance has been reached. Continue by typing.');
+        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected €2 session or €50 UTC daily provider allowance has been reached. Continue by typing.');
       }
       let lease = null;
       let dispatched = false;
