@@ -424,7 +424,7 @@ async function main() {
       );
       assert.equal(realtimeGranted.payload?.realtimeConsent?.granted, true, 'Realtime consent could not be granted.');
       assert.equal(
-        realtimeGranted.payload?.providerBudget?.limitMicroEur,
+        realtimeGranted.payload?.realtimeVoiceBudget?.limitMicroEur,
         2_000_000,
         'The Realtime proof does not have the conservative €2 application allowance.'
       );

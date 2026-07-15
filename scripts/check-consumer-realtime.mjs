@@ -1673,6 +1673,8 @@ assert.match(workflowSource, /if:\s*\(failure\(\) \|\| cancelled\(\)\) && env\.C
 assert.match(workflowSource, /wrangler deploy --config wrangler\.bootstrap\.generated\.toml/);
 assert.match(liveBridgeSource, /runRealtimeInfrastructureProof/);
 assert.match(liveBridgeSource, /providerHangupConfirmed/);
+assert.match(liveBridgeSource, /realtimeGranted\.payload\?\.realtimeVoiceBudget\?\.limitMicroEur/);
+assert.doesNotMatch(liveBridgeSource, /realtimeGranted\.payload\?\.providerBudget/);
 assert.match(routerSource, /const reservationAmount = Number\(providerBudget\.remainingEurMicros \|\| 0\)/);
 assert.match(routerSource, /realtimeSafetyReserveMicroEur/);
 assert.match(routerSource, /terminateRealtimeLease|closeRealtimeControl/);
