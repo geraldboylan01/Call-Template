@@ -18,7 +18,10 @@ import {
 import { describeConversationState } from '../worker/src/consumer/conversation.js';
 import { extractContextBoundPatch } from '../worker/src/consumer/conversation.js';
 import { toPublicRealtimeAnalysisPlan } from '../worker/src/consumer/realtime_repository.js';
-import { applyProfilePatch as applyApiProfilePatch } from '../worker/src/consumer/validators.js';
+import {
+  applyProfilePatch as applyApiProfilePatch,
+  validateRealtimeAnalysisPlanBody
+} from '../worker/src/consumer/validators.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/consumer-persona-golden.json', import.meta.url), 'utf8'));
 const NOW = '2026-07-15T09:00:00.000Z';
@@ -245,12 +248,43 @@ assert.equal(tied.primaryPersonaId, 'first_time_buyer', 'specific persona wins s
 assert.equal(tied.leadMargin, 0, 'score margin, not tie-break metadata, controls disambiguation');
 assert.equal(tied.needsDisambiguation, true);
 
-const homeBuyer = fixture.cases.find((item) => item.personaId === 'first_time_buyer');
-const homePlan = buildPersonaModulePlan(profileFor(homeBuyer, { goals: [goal('buy_home')] }));
-assert.deepEqual(homePlan.moduleSlots.map((slot) => slot.moduleId), [
-  'personal_balance_sheet', 'house_purchase', 'liquidity_analysis'
-]);
-assert.ok(homePlan.moduleSlots.slice(1).every((slot) => ['persona_default', 'mandatory_rule'].includes(slot.source)));
+const unresolvedPlan = buildPersonaModulePlan(ambiguousProfile);
+assert.deepEqual(unresolvedPlan.moduleSlots, [], 'an unresolved persona has no fallback module bundle');
+assert.deepEqual(unresolvedPlan.executionModuleIds, []);
+assert.deepEqual(unresolvedPlan.overrides, []);
+const goalOnlyPlan = buildPersonaModulePlan(goalOnly);
+assert.deepEqual(goalOnlyPlan.moduleSlots, [], 'a tied goal-only classification cannot expose a provisional bundle');
+const goalOnlyState = describeConversationState(goalOnly, {
+  allowedModules: [...new Set(fixture.cases.flatMap((item) => item.modules))]
+});
+assert.deepEqual(goalOnlyState.moduleSlots, [], 'ambiguity blocks the server conversation plan');
+assert.equal(goalOnlyState.nextQuestion?.factId, 'self_description');
+
+// Goals and a saved goal focus may contribute evidence to classification, but
+// they never replace a slot after the persona is resolved. Exercise all 20
+// supplied persona rows with deliberately conflicting high-priority goals.
+for (const testCase of fixture.cases) {
+  const conflictingGoalProfile = profileFor(testCase, {
+    goals: [
+      goal('buy_home', 0),
+      goal('transfer_wealth', 1),
+      goal('optimise_mortgage', 2)
+    ],
+    persona: { primaryGoalType: 'buy_home' }
+  });
+  const plan = buildPersonaModulePlan(conflictingGoalProfile);
+  assert.equal(plan.personaAssessment.primaryPersonaId, testCase.personaId, `${testCase.personaId}: persona remains resolved`);
+  assert.deepEqual(
+    plan.moduleSlots.map((slot) => slot.moduleId),
+    testCase.modules,
+    `${testCase.personaId}: goals cannot override the authoritative bundle`
+  );
+  assert.ok(plan.moduleSlots.every((slot) => slot.source === 'persona_default'));
+  assert.deepEqual(plan.overrides, []);
+  assert.equal(plan.requiresGoalPriorityQuestion, false);
+  assert.equal(plan.requiresDecisionTopicQuestion, false);
+  assert.deepEqual(plan.deferredGoalTypes, []);
+}
 
 const overlapBase = fixture.cases.find((item) => item.personaId === 'company_director_owner_manager');
 const overlap = profileFor(overlapBase, {
@@ -265,10 +299,8 @@ const overlap = profileFor(overlapBase, {
 });
 const overlapPlan = buildPersonaModulePlan(overlap);
 assert.equal(overlapPlan.personaAssessment.primaryPersonaId, 'company_director_owner_manager');
-assert.deepEqual(overlapPlan.moduleSlots.map((slot) => slot.moduleId), [
-  'personal_balance_sheet', 'house_purchase', 'liquidity_analysis'
-]);
-assert.ok(overlapPlan.overrides.some((override) => override.ruleId === 'persona.override.buy_home_liquidity.v1'));
+assert.deepEqual(overlapPlan.moduleSlots.map((slot) => slot.moduleId), overlapBase.modules);
+assert.deepEqual(overlapPlan.overrides, [], 'a home goal cannot replace a company-director table module');
 
 const selfDescribedDirectorHomeDraft = createHouseholdProfile({
   profileId: 'persona-director-home-disambiguation',
@@ -294,92 +326,24 @@ assert.notEqual(
   'the typed journey must not ask for the same self-description again'
 );
 
-const studentBase = fixture.cases.find((item) => item.personaId === 'student_early_adult');
-const twoGoalOverridePlan = buildPersonaModulePlan(profileFor(studentBase, {
-  goals: [goal('optimise_mortgage', 0), goal('transfer_wealth', 1)]
-}));
-assert.ok(twoGoalOverridePlan.moduleSlots.some((slot) => slot.moduleId === 'mortgage_analysis'));
-assert.ok(twoGoalOverridePlan.moduleSlots.some((slot) => slot.moduleId === 'cat_analysis'));
+const clientSelectedPlan = validateRealtimeAnalysisPlanBody({
+  action: 'prepare',
+  idempotencyKey: 'analysis-plan-client-selection-001',
+  expectedRevision: 1,
+  moduleIds: ['not_a_catalogue_module'],
+  scenarioOverrides: {}
+}, [...new Set(fixture.cases.flatMap((item) => item.modules))]);
 assert.equal(
-  new Set(twoGoalOverridePlan.overrides.map((override) => override.slot)).size,
-  2,
-  'two explicit goal modules must occupy two distinct non-PBS slots'
+  clientSelectedPlan.moduleIds,
+  undefined,
+  'client module ids are discarded before server-side plan derivation'
 );
 
-const multiGoalBase = fixture.cases.find((item) => item.personaId === 'established_professional');
-const homeAndRetirement = profileFor(multiGoalBase, {
-  goals: [goal('buy_home', 0), goal('retire', 1)]
-});
-const homeAndRetirementPlan = buildPersonaModulePlan(homeAndRetirement);
-assert.equal(homeAndRetirementPlan.requiresGoalPriorityQuestion, true, 'home plus a fourth required analysis needs a goal-focus choice');
-assert.deepEqual(homeAndRetirementPlan.deferredGoalTypes, ['retire']);
-const homeFocusedPlan = buildPersonaModulePlan(profileFor(multiGoalBase, {
-  goals: homeAndRetirement.goals,
-  persona: { primaryGoalType: 'buy_home' }
-}));
-assert.equal(homeFocusedPlan.requiresGoalPriorityQuestion, false);
-assert.deepEqual(homeFocusedPlan.moduleSlots.map((slot) => slot.moduleId), [
-  'personal_balance_sheet', 'house_purchase', 'liquidity_analysis'
-]);
-assert.deepEqual(homeFocusedPlan.deferredGoalTypes, ['retire']);
-const invalidHomeFocusPlan = buildPersonaModulePlan(profileFor(multiGoalBase, {
-  goals: homeAndRetirement.goals,
-  persona: { primaryGoalType: 'transfer_wealth' }
-}));
-assert.equal(
-  invalidHomeFocusPlan.requiresGoalPriorityQuestion,
-  true,
-  'a stale focus that is not an active high-priority goal cannot bypass the multi-goal choice'
-);
+const homeBuyer = fixture.cases.find((item) => item.personaId === 'first_time_buyer');
 
-const multiGoal = profileFor(multiGoalBase, {
-  goals: [goal('buy_home', 0), goal('retire', 1), goal('assess_decision', 2)],
-  persona: { educationFunding: true }
-});
-const multiPlan = buildPersonaModulePlan(multiGoal);
-assert.equal(multiPlan.requiresGoalPriorityQuestion, true);
-assert.deepEqual(new Set(multiPlan.deferredGoalTypes), new Set(['retire', 'assess_decision']));
-const focusedPlan = buildPersonaModulePlan(profileFor(multiGoalBase, {
-  goals: multiGoal.goals,
-  persona: { educationFunding: true, primaryGoalType: 'retire' }
-}));
-assert.equal(focusedPlan.requiresGoalPriorityQuestion, false);
-assert.ok(focusedPlan.moduleSlots.some((slot) => slot.moduleId === 'retirement_goal_analysis'));
-assert.ok(focusedPlan.deferredGoalTypes.includes('buy_home'));
-
-const immediateBase = fixture.cases.find((item) => item.personaId === 'immediate_financial_decision_user');
-const vagueImmediate = profileFor(immediateBase, { goals: [goal('assess_decision')] });
-const vagueImmediatePlan = buildPersonaModulePlan(vagueImmediate);
-assert.equal(vagueImmediatePlan.requiresDecisionTopicQuestion, true);
-const vagueImmediateState = describeConversationState(vagueImmediate, {
-  allowedModules: ['house_purchase', 'liquidity_analysis']
-});
-assert.equal(vagueImmediateState.nextQuestion.factId, 'primary_goal');
-assert.match(vagueImmediateState.nextQuestion.prompt, /specific financial decision/i);
-assert.deepEqual(vagueImmediateState.moduleSlots, [], 'an unspecified decision must not expose a retirement placeholder plan');
-
-const resolvedImmediatePlan = buildPersonaModulePlan(profileFor(immediateBase, {
-  goals: [goal('optimise_mortgage')]
-}));
-assert.equal(resolvedImmediatePlan.requiresDecisionTopicQuestion, false);
-assert.deepEqual(resolvedImmediatePlan.moduleSlots.map((slot) => slot.moduleId), [
-  'personal_balance_sheet', 'mortgage_analysis', 'liquidity_analysis'
-]);
-const wealthImmediatePlan = buildPersonaModulePlan(profileFor(immediateBase, {
-  goals: [goal('build_wealth')]
-}));
-assert.deepEqual(wealthImmediatePlan.moduleSlots.map((slot) => slot.moduleId), [
-  'personal_balance_sheet', 'pension_projection', 'liquidity_analysis'
-], 'build wealth resolves through the deterministic goal registry to Pension Projection');
-const immediateMultiGoalPlan = buildPersonaModulePlan(profileFor(immediateBase, {
-  goals: [goal('optimise_mortgage'), goal('transfer_wealth', 1)]
-}));
-assert.equal(immediateMultiGoalPlan.requiresGoalPriorityQuestion, true);
-assert.equal(immediateMultiGoalPlan.deferredGoalTypes.length, 1, 'the second immediate decision is retained for a later plan');
-
-// A vague decision from an under-specified young employee is clarified before
-// any module inputs, then the bounded semantic persona scan accepts several
-// explicit context facts from one answer and does not ask them again.
+// An explicit taxonomy self-description resolves the persona immediately.
+// Once the exact table bundle is known, do not burden the client with a generic
+// six-fact persona scan before beginning the selected modules' intake.
 const youngEmployee = fixture.cases.find((item) => item.personaId === 'graduate_young_employee');
 const youngDecision = profileFor(youngEmployee, {
   goals: [goal('assess_decision'), goal('optimise_mortgage', 1)]
@@ -388,46 +352,21 @@ const youngScanState = describeConversationState(youngDecision, {
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
 assert.equal(youngScanState.requiresDecisionTopicQuestion, false);
-assert.equal(youngScanState.requiresPersonaScan, true);
-assert.equal(youngScanState.nextQuestion.factId, 'household_structure');
-const youngContextPatch = extractContextBoundPatch(
-  youngDecision,
-  youngScanState.nextQuestion,
-  'We are a family with two children. I am employed, we own our home, have no business interest, and I am still working.'
-);
-assert.equal(youngContextPatch['/assumptions/values/persona/householdStructure'], 'family');
-assert.equal(youngContextPatch['/assumptions/values/persona/dependantCount'], 2);
-assert.equal(youngContextPatch['/assumptions/values/persona/employmentContext'], 'employee');
-assert.equal(youngContextPatch['/assumptions/values/persona/propertyStatus'], 'homeowner');
-assert.equal(youngContextPatch['/assumptions/values/persona/businessContext'], 'no_business_interest');
-assert.equal(youngContextPatch['/assumptions/values/persona/retirementStatus'], 'working');
-const youngAfterScan = applyApiProfilePatch(youngDecision, youngContextPatch, [], 'consumer_edit');
-const youngAfterScanState = describeConversationState(youngAfterScan, {
-  allowedModules: ['house_purchase', 'liquidity_analysis']
-});
-assert.equal(youngAfterScanState.requiresPersonaScan, false, 'volunteered semantic scan facts are reused');
+assert.equal(youngScanState.requiresPersonaScan, false);
+assert.deepEqual(youngScanState.moduleSlots.map((slot) => slot.moduleId), youngEmployee.modules);
 assert.equal(
   ['household_structure', 'employment_context', 'property_status', 'dependant_count', 'business_context', 'retirement_status']
-    .includes(youngAfterScanState.nextQuestion?.factId),
+    .includes(youngScanState.nextQuestion?.factId),
   false,
-  'the completed bounded scan must move on rather than repeat a volunteered context fact'
+  'a resolved explicit persona must move directly to module intake'
 );
 
 const directorContext = profileFor(overlapBase, { goals: [goal('business_planning')] });
 const directorScanState = describeConversationState(directorContext, { allowedModules: [] });
-assert.equal(directorScanState.nextQuestion.factId, 'household_structure');
-const directorPatch = extractContextBoundPatch(
-  directorContext,
-  directorScanState.nextQuestion,
-  'This is for me and my partner; we have no children, rent our home, and I am a company director with a business. I am still working.'
-);
-const directorAfterScan = applyApiProfilePatch(directorContext, directorPatch, [], 'consumer_edit');
-const directorAfterScanState = describeConversationState(directorAfterScan, { allowedModules: [] });
-assert.equal(directorAfterScanState.requiresPersonaScan, false);
-assert.equal(directorAfterScanState.personaAssessment.primaryPersonaId, 'company_director_owner_manager');
-assert.equal(directorAfterScan.assumptions.values.persona.householdStructure, 'couple');
-assert.equal(directorAfterScan.assumptions.values.persona.dependantCount, 0);
-assert.equal(directorAfterScan.assumptions.values.persona.businessContext, 'company_director');
+assert.equal(directorScanState.requiresPersonaScan, false);
+assert.equal(directorScanState.personaAssessment.primaryPersonaId, 'company_director_owner_manager');
+assert.deepEqual(directorScanState.moduleSlots.map((slot) => slot.moduleId), overlapBase.modules);
+assert.notEqual(directorScanState.nextQuestion.factId, 'household_structure');
 
 const mappedProfile = profileFor(homeBuyer);
 const mapped = mapRealtimeFact(mappedProfile, { factId: 'employment_context', value: 'self-employed' });
@@ -477,4 +416,4 @@ assert.equal(persistedPlan.personaAssessment.primaryPersonaId, 'company_director
 assert.equal(persistedPlan.personaAssessment.scoredCandidates, undefined, 'internal scores must not cross the public plan boundary');
 assert.deepEqual(persistedPlan.moduleIds, ['house_purchase', 'liquidity_analysis'], 'execution ids remain separate from display slots');
 
-console.info('[ConsumerPersonaGolden] 20/20 persona bundles plus overlap, ambiguity, focus and semantic-fact controls passed.');
+console.info('[ConsumerPersonaGolden] 20/20 exact bundles plus no-override, ambiguity, client-selection and semantic-fact controls passed.');

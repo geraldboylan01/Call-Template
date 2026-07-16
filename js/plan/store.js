@@ -67,7 +67,6 @@ export const state = {
     realtimeBudget: null
   },
   selectedModuleIds: [],
-  knownRecommendationIds: [],
   view: 'conversation',
   busy: false
 };
@@ -423,27 +422,17 @@ export function mergePayload(payload) {
     incomingSession?.recommendations
   ));
   if (recommendations) {
-    const previousSelection = new Set(state.selectedModuleIds);
-    const previousKnown = new Set(state.knownRecommendationIds);
     const nextSelection = new Set();
-    const nextKnown = [];
     recommendations.forEach((item) => {
       const moduleId = String(firstDefined(item?.moduleId, item?.id, item?.module?.id, '') || '');
       if (!moduleId) {
         return;
       }
-      nextKnown.push(moduleId);
-      const recommendationStatus = String(firstDefined(item?.status, 'recommended'));
       const readinessStatus = String(firstDefined(item?.readiness?.status, '') || '');
       const consumerRunnable = !['adviser_review_required', 'unsupported', 'not_relevant'].includes(readinessStatus);
-      if (consumerRunnable && (recommendationStatus === 'required'
-          || previousSelection.has(moduleId)
-          || (!previousKnown.has(moduleId) && recommendationStatus === 'recommended'))) {
-        nextSelection.add(moduleId);
-      }
+      if (consumerRunnable) nextSelection.add(moduleId);
     });
     state.selectedModuleIds = [...nextSelection];
-    state.knownRecommendationIds = nextKnown;
     state.recommendations = recommendations;
   }
   if (persistedAnalysisPlan) {
@@ -788,7 +777,6 @@ export function resetJourneyState() {
     realtimeBudget: state.bootstrap?.realtimeVoiceBudget || null
   };
   state.selectedModuleIds = [];
-  state.knownRecommendationIds = [];
   state.view = 'conversation';
   state.busy = false;
 }
@@ -799,18 +787,4 @@ export function setView(view) {
 
 export function setBusy(busy) {
   state.busy = busy === true;
-}
-
-export function setModuleSelected(moduleId, selected) {
-  const cleanId = String(moduleId || '').trim();
-  if (!cleanId) {
-    return;
-  }
-  const selectedIds = new Set(state.selectedModuleIds);
-  if (selected) {
-    selectedIds.add(cleanId);
-  } else {
-    selectedIds.delete(cleanId);
-  }
-  state.selectedModuleIds = [...selectedIds];
 }

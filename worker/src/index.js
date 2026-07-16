@@ -60,6 +60,7 @@ const ALLOWED_REQUEST_HEADER_NAMES = new Set([
   'x-consumer-invite',
   'x-voice-duration-ms',
   'x-voice-request-id',
+  'x-realtime-activation-id',
   'x-realtime-control-capability'
 ]);
 const DEFAULT_ALLOWED_REQUEST_HEADERS = [
@@ -70,6 +71,7 @@ const DEFAULT_ALLOWED_REQUEST_HEADERS = [
   'X-Consumer-Invite',
   'X-Voice-Duration-Ms',
   'X-Voice-Request-Id',
+  'X-Realtime-Activation-Id',
   'X-Realtime-Control-Capability'
 ].join(', ');
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
@@ -201,6 +203,9 @@ function normalizePathname(pathname) {
 function getConsumerRouteMethods(pathname) {
   if (pathname === '/api/consumer/bootstrap') return 'GET,OPTIONS';
   if (pathname === '/api/consumer/sessions') return 'POST,OPTIONS';
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/activations\/rt_activation_[A-Za-z0-9_-]{20,80}$/.test(pathname)) {
+    return 'DELETE,OPTIONS';
+  }
   if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/calls\/rt_[A-Za-z0-9_-]{20,80}$/.test(pathname)) {
     return 'GET,DELETE,OPTIONS';
   }

@@ -269,7 +269,6 @@ export function validateRealtimeAnalysisPlanBody(body, allowedModules) {
   }
   const analysis = action === 'prepare'
     ? validateAnalysisBody({
-        moduleIds: body.moduleIds,
         scenarioOverrides: body.scenarioOverrides
       }, allowedModules)
     : { moduleIds: undefined, scenarioOverrides: {} };

@@ -21,6 +21,6 @@
     { "personaId": "parent_funding_education", "selfDescription": "funding_education", "circumstances": { "educationFunding": true, "dependantCount": 2 }, "modules": ["personal_balance_sheet", "college_funding", "retirement_goal_analysis"] },
     { "personaId": "parent_grandparent_transferring_wealth", "selfDescription": "transferring_wealth", "circumstances": { "wealthTransfer": true, "parentOrGrandparent": true }, "modules": ["personal_balance_sheet", "cat_analysis", "retirement_goal_analysis"] },
     { "personaId": "lump_sum_recipient", "selfDescription": "lump_sum_recipient", "circumstances": { "lumpSumRecipient": true }, "modules": ["personal_balance_sheet", "retirement_goal_analysis", "liquidity_analysis"] },
-    { "personaId": "immediate_financial_decision_user", "selfDescription": "immediate_decision", "circumstances": { "immediateDecision": true }, "goal": "optimise_mortgage", "modules": ["personal_balance_sheet", "mortgage_analysis", "liquidity_analysis"] }
+    { "personaId": "immediate_financial_decision_user", "selfDescription": "immediate_decision", "circumstances": { "immediateDecision": true }, "goal": "optimise_mortgage", "modules": ["personal_balance_sheet", "retirement_goal_analysis", "liquidity_analysis"] }
   ]
 }

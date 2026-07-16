@@ -1,5 +1,8 @@
 import { MODULE_IDS } from './contracts.js';
-import { getModuleReadiness, getPlanningModuleDefinition } from './module_registry.js';
+import {
+  getModuleIntakeReadiness,
+  getPlanningModuleDefinition
+} from './module_registry.js';
 import { normalizeHouseholdProfile } from './profile.js';
 import { resolveSemanticFact } from './semantic_facts.js';
 
@@ -212,7 +215,6 @@ export const PERSONA_CATALOGUE = Object.freeze([
 ]);
 
 const PERSONAS_BY_ID = new Map(PERSONA_CATALOGUE.map((persona, index) => [persona.personaId, { persona, index }]));
-const PRIORITY_SCORE = Object.freeze({ high: 3, medium: 2, low: 1 });
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -446,30 +448,6 @@ export function classifyPlanningPersona(rawProfile) {
   });
 }
 
-const GOAL_MODULES = Object.freeze({
-  understand_position: PBS,
-  maintain_liquidity: LIQUIDITY,
-  buy_home: HOUSE,
-  build_wealth: PENSION,
-  improve_pension: PENSION,
-  retire: RETIREMENT,
-  retire_early: RETIREMENT,
-  optimise_mortgage: MODULE_IDS.MORTGAGE,
-  transfer_wealth: CAT,
-  business_planning: BUSINESS_OWNER,
-  agricultural_planning: AGRICULTURAL
-});
-
-function goalModule(goal, signals) {
-  if (goal.type === 'assess_decision') {
-    return signals.circumstances.has('education_funding') || signals.circumstances.has('dependants')
-      ? EDUCATION
-      : null;
-  }
-  if (goal.type === 'business_planning' && signals.circumstances.has('business_exit')) return BUSINESS_RELIEF;
-  return GOAL_MODULES[goal.type] || null;
-}
-
 function availabilityFor(moduleId, profile, allowedModuleIds) {
   const definition = getPlanningModuleDefinition(moduleId);
   if (!definition) {
@@ -477,188 +455,46 @@ function availabilityFor(moduleId, profile, allowedModuleIds) {
   }
   const releaseAllowed = definition.consumerAvailable === true
     && (!allowedModuleIds || allowedModuleIds.has(moduleId));
+  const intakeReadiness = getModuleIntakeReadiness(moduleId, profile);
+  const missingFactIds = [...new Set((intakeReadiness.requiredMissing || []).map((missing) => (
+    resolveSemanticFact(missing, { profile, moduleId }).factId
+  )))];
   if (!releaseAllowed) {
     return {
       availability: 'adviser_review_required',
       reasons: [definition.status === 'adviser_only'
         ? 'This analysis requires Gerry’s review.'
-        : 'This deterministic analysis has not passed its consumer release gate.'],
-      missingFactIds: []
+        : 'This deterministic analysis has not passed its consumer release gate.',
+      ...(intakeReadiness.warnings || []).slice(0, 2)],
+      missingFactIds
     };
   }
-  const readiness = getModuleReadiness(moduleId, profile);
-  const missingFactIds = [...new Set((readiness.requiredMissing || []).map((missing) => (
-    resolveSemanticFact(missing, { profile, moduleId }).factId
-  )))];
   return {
-    availability: ['ready', 'ready_with_assumptions'].includes(readiness.status) ? 'ready' : 'needs_facts',
-    reasons: readiness.warnings?.length
-      ? readiness.warnings.slice(0, 3)
+    availability: ['ready', 'ready_with_assumptions'].includes(intakeReadiness.status) ? 'ready' : 'needs_facts',
+    reasons: intakeReadiness.warnings?.length
+      ? intakeReadiness.warnings.slice(0, 3)
       : missingFactIds.length ? ['More confirmed information is required before this analysis can run.'] : [],
     missingFactIds
   };
 }
 
-function replaceLowestPrioritySlot(moduleIds, moduleId, protectedIndexes) {
-  const existingIndex = moduleIds.indexOf(moduleId);
-  if (existingIndex >= 0) {
-    protectedIndexes.add(existingIndex);
-    return { slot: existingIndex + 1, replacedModuleId: null, moduleId, alreadyPresent: true };
-  }
-  for (let index = moduleIds.length - 1; index >= 0; index -= 1) {
-    if (moduleIds[index] !== PBS && !protectedIndexes.has(index)) {
-      const replaced = moduleIds[index];
-      moduleIds[index] = moduleId;
-      protectedIndexes.add(index);
-      return { slot: index + 1, replacedModuleId: replaced, moduleId, alreadyPresent: false };
-    }
-  }
-  return null;
-}
-
 /**
- * Build the exactly-three, user-facing analysis contract. Only `executionModuleIds`
- * may be passed to the deterministic engines; gated slots remain visible.
+ * Build the exactly-three, user-facing analysis contract from the resolved
+ * persona. `defaultModuleIds` is the sole module-selection authority: goals,
+ * preferred focuses and other profile values can help classify the persona,
+ * but can never replace one of its three modules. An unresolved or ambiguous
+ * classification deliberately has no provisional module plan.
+ *
+ * Only `executionModuleIds` may be passed to deterministic engines; gated
+ * catalogue slots remain visible in the confirmed plan.
  */
 export function buildPersonaModulePlan(rawProfile, { allowedModuleIds } = {}) {
   const profile = normalizeHouseholdProfile(rawProfile);
   const assessment = classifyPlanningPersona(profile);
-  const persona = getPersonaDefinition(assessment.primaryPersonaId)
-    || getPersonaDefinition('immediate_financial_decision_user');
-  const signals = deriveSignals(profile);
-  let moduleIds = [...persona.defaultModuleIds];
-  const sources = moduleIds.map(() => 'persona_default');
-  const reasons = moduleIds.map(() => ['Selected from the confirmed household circumstances and stated goals.']);
-  const overrides = [];
-  const activeGoals = profile.goals
-    .filter((goal) => !['completed', 'paused'].includes(goal.status))
-    .sort((left, right) => (PRIORITY_SCORE[right.priority] || 0) - (PRIORITY_SCORE[left.priority] || 0)
-      || left.goalId.localeCompare(right.goalId));
-  const highPriorityGoalModules = activeGoals
-    .filter((goal) => goal.priority === 'high')
-    .map((goal) => ({ goal, moduleId: goalModule(goal, signals) }))
-    .filter((item) => item.moduleId && item.moduleId !== PBS);
-  const seenGoalModules = new Set();
-  const distinctHighPriorityGoalModules = highPriorityGoalModules.filter(({ moduleId }) => {
-    if (seenGoalModules.has(moduleId)) return false;
-    seenGoalModules.add(moduleId);
-    return true;
-  });
-  const distinctGoalModules = distinctHighPriorityGoalModules.map((item) => item.moduleId);
-  // A saved focus is authoritative only when it names one of the active,
-  // high-priority goals that can actually contribute a module. Treat stale,
-  // mistyped or model-invented values as absent so they cannot bypass the
-  // required multi-goal choice.
-  const requestedPreferredGoalType = nonEmptyString(signals.data.primaryGoalType);
-  const preferredGoalType = distinctHighPriorityGoalModules.some(({ goal }) => (
-    goal.type === requestedPreferredGoalType
-  )) ? requestedPreferredGoalType : null;
-  const immediateDecisionPersona = persona.personaId === 'immediate_financial_decision_user';
-  const immediateRelevantGoals = distinctHighPriorityGoalModules.filter(({ moduleId }) => (
-    moduleId !== PBS && moduleId !== LIQUIDITY
-  ));
-  const preferredImmediateGoal = preferredGoalType
-    ? immediateRelevantGoals.find(({ goal }) => goal.type === preferredGoalType) || null
-    : null;
-  const selectedImmediateGoal = preferredImmediateGoal || immediateRelevantGoals[0] || null;
-  const unresolvedDecisionGoal = activeGoals.some((goal) => (
-    goal.type === 'assess_decision' && !goalModule(goal, signals)
-  ));
-  const requiresDecisionTopicQuestion = (unresolvedDecisionGoal && distinctHighPriorityGoalModules.length === 0)
-    || (immediateDecisionPersona && !selectedImmediateGoal);
-  const homeCompositionModules = new Set([PBS, HOUSE, LIQUIDITY]);
-  const homeWouldDisplaceAnotherGoal = distinctGoalModules.includes(HOUSE)
-    && distinctGoalModules.some((moduleId) => !homeCompositionModules.has(moduleId));
-  const requiresGoalPriorityQuestion = !preferredGoalType
-    && (distinctGoalModules.length > 2
-      || homeWouldDisplaceAnotherGoal
-      || (immediateDecisionPersona && immediateRelevantGoals.length > 1));
-  const deferredGoalTypes = [];
-
-  // The immediate-decision persona has a dynamic v1 bundle: balance sheet,
-  // the user's explicit decision module, and liquidity. Never let the static
-  // catalogue placeholder silently turn an unspecified decision into a
-  // retirement plan. The caller withholds the provisional bundle while
-  // requiresDecisionTopicQuestion is true.
-  if (immediateDecisionPersona && selectedImmediateGoal) {
-    moduleIds = [PBS, selectedImmediateGoal.moduleId, LIQUIDITY];
-    moduleIds.forEach((moduleId, index) => {
-      const previous = persona.defaultModuleIds[index];
-      sources[index] = index === 0 ? 'persona_default' : index === 1 ? 'goal_override' : 'mandatory_rule';
-      reasons[index] = [index === 0
-        ? 'The Personal Balance Sheet is the foundation for this three-analysis plan.'
-        : index === 1
-          ? `The explicit high-priority “${selectedImmediateGoal.goal.title}” decision adds this analysis.`
-          : 'An immediate financial decision also requires a protected-liquidity view.'];
-      if (previous !== moduleId && index > 0) {
-        overrides.push({
-          source: index === 1 ? 'goal_override' : 'mandatory_rule',
-          ruleId: index === 1
-            ? `persona.override.immediate_decision.${selectedImmediateGoal.goal.type}.v1`
-            : 'persona.override.immediate_decision_liquidity.v1',
-          slot: index + 1,
-          replacedModuleId: previous,
-          moduleId,
-          goalType: selectedImmediateGoal.goal.type
-        });
-      }
-    });
-    immediateRelevantGoals
-      .filter(({ goal }) => goal.type !== selectedImmediateGoal.goal.type)
-      .forEach(({ goal }) => deferredGoalTypes.push(goal.type));
-  }
-
-  // Home purchase is the one mandatory three-slot composition in v1.
-  const immediateHomeGoal = activeGoals.find((goal) => goal.type === 'buy_home'
-    && goal.priority === 'high'
-    && (!preferredGoalType || preferredGoalType === 'buy_home'));
-  if (immediateHomeGoal) {
-    const mandatory = [PBS, HOUSE, LIQUIDITY];
-    moduleIds = mandatory;
-    mandatory.forEach((moduleId, index) => {
-      const previous = persona.defaultModuleIds[index];
-      sources[index] = index === 0 && previous === moduleId ? 'persona_default' : 'mandatory_rule';
-      reasons[index] = [moduleId === HOUSE
-        ? 'The confirmed immediate home-purchase goal requires the House Purchase analysis.'
-        : moduleId === LIQUIDITY
-          ? 'House Purchase also requires a protected-liquidity view.'
-          : 'The Personal Balance Sheet is the foundation for this three-analysis plan.'];
-      if (previous !== moduleId) overrides.push({
-        source: 'mandatory_rule', ruleId: 'persona.override.buy_home_liquidity.v1',
-        slot: index + 1, replacedModuleId: previous, moduleId, goalType: 'buy_home'
-      });
-    });
-    distinctHighPriorityGoalModules
-      .filter(({ moduleId }) => !homeCompositionModules.has(moduleId))
-      .forEach(({ goal }) => deferredGoalTypes.push(goal.type));
-  } else if (!immediateDecisionPersona) {
-    const prioritized = preferredGoalType
-      ? distinctHighPriorityGoalModules.filter((item) => item.goal.type === preferredGoalType)
-      : distinctHighPriorityGoalModules.slice(0, 2);
-    const protectedGoalSlotIndexes = new Set();
-    for (const { goal, moduleId } of prioritized) {
-      const replacement = replaceLowestPrioritySlot(moduleIds, moduleId, protectedGoalSlotIndexes);
-      if (!replacement) continue;
-      const index = replacement.slot - 1;
-      reasons[index] = [`The explicit high-priority “${goal.title}” goal adds this analysis.`];
-      if (replacement.alreadyPresent) continue;
-      sources[index] = 'goal_override';
-      overrides.push({
-        source: 'goal_override', ruleId: `persona.override.goal.${goal.type}.v1`,
-        slot: replacement.slot,
-        replacedModuleId: replacement.replacedModuleId,
-        moduleId: replacement.moduleId,
-        goalType: goal.type
-      });
-    }
-    if (requiresGoalPriorityQuestion) {
-      distinctHighPriorityGoalModules.slice(2).forEach(({ goal }) => deferredGoalTypes.push(goal.type));
-    } else if (preferredGoalType) {
-      distinctHighPriorityGoalModules
-        .filter(({ goal }) => goal.type !== preferredGoalType)
-        .forEach(({ goal }) => deferredGoalTypes.push(goal.type));
-    }
-  }
+  const persona = assessment.needsDisambiguation
+    ? null
+    : getPersonaDefinition(assessment.primaryPersonaId);
+  const moduleIds = persona ? [...persona.defaultModuleIds] : [];
 
   const allowed = Array.isArray(allowedModuleIds) ? new Set(allowedModuleIds) : null;
   const moduleSlots = moduleIds.map((moduleId, index) => {
@@ -666,9 +502,12 @@ export function buildPersonaModulePlan(rawProfile, { allowedModuleIds } = {}) {
     return Object.freeze({
       slot: index + 1,
       moduleId,
-      source: sources[index],
+      source: 'persona_default',
       availability: availability.availability,
-      reasons: Object.freeze([...new Set([...reasons[index], ...availability.reasons])]),
+      reasons: Object.freeze([...new Set([
+        'Selected from the authoritative module table for the confirmed persona.',
+        ...availability.reasons
+      ])]),
       missingFactIds: Object.freeze(availability.missingFactIds)
     });
   });
@@ -680,23 +519,20 @@ export function buildPersonaModulePlan(rawProfile, { allowedModuleIds } = {}) {
     profileRevision: profile.revision,
     personaAssessment: assessment,
     moduleSlots: Object.freeze(moduleSlots),
-    overrides: Object.freeze(overrides.map((override) => Object.freeze({ ...override }))),
+    overrides: Object.freeze([]),
     executionModuleIds: Object.freeze(executionModuleIds),
-    requiresGoalPriorityQuestion,
-    requiresDecisionTopicQuestion,
-    deferredGoalTypes: Object.freeze([...new Set(deferredGoalTypes)])
+    requiresGoalPriorityQuestion: false,
+    requiresDecisionTopicQuestion: false,
+    deferredGoalTypes: Object.freeze([])
   });
 }
 
 export function personaPlanRecommendations(plan, rawProfile) {
   const profile = normalizeHouseholdProfile(rawProfile);
   return plan.moduleSlots.map((slot) => {
-    const definition = getPlanningModuleDefinition(slot.moduleId);
-    const readiness = slot.availability === 'adviser_review_required'
-      ? { status: 'adviser_review_required', requiredMissing: [], assumptionsUsed: [], warnings: [...slot.reasons] }
-      : slot.availability === 'unsupported'
+    const readiness = slot.availability === 'unsupported'
         ? { status: 'unsupported', requiredMissing: [], assumptionsUsed: [], warnings: [...slot.reasons] }
-        : getModuleReadiness(slot.moduleId, profile);
+        : getModuleIntakeReadiness(slot.moduleId, profile);
     return {
       slot: slot.slot,
       moduleId: slot.moduleId,

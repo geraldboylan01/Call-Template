@@ -946,7 +946,7 @@ function createRecommendationCard(item, currentState) {
         ? 'This analysis remains visible, but the current readiness rules do not permit an automated result.'
       : required
         ? 'Deterministic planning rules require this slot and it cannot be removed here.'
-        : 'This slot was selected by the confirmed persona and goal rules and cannot be removed here.')
+        : 'This slot comes from the authoritative table for the confirmed persona and cannot be changed here.')
   );
   selectionLabel.append(selectionCopy);
   card.append(selectionLabel);
@@ -993,9 +993,9 @@ function createRecommendationsView(currentState) {
     section,
     createWorkspaceHeading(
       currentState,
-      'Selected from your confirmed goals',
+      'Selected from your confirmed persona',
       'Review and confirm your analysis plan',
-      'Recommendations decide which educational calculators are relevant. AI may suggest a module, but deterministic rules and readiness checks decide what can run. Your final button confirms the displayed profile revision and selected modules together.'
+      'Your confirmed persona determines these three analyses from Planéir’s authoritative module table. Readiness checks decide which can run automatically, and your final button confirms the displayed profile revision and derived plan together.'
     )
   );
 

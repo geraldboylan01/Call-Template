@@ -1,5 +1,6 @@
 import { ConsumerError, notFound } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
+import { sanitizeRealtimeEventPayload } from './realtime_event_schema.js';
 import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import {
   constantTimeEqual,
@@ -10,23 +11,6 @@ import {
   sha256Base64Url,
   stableStringify
 } from './crypto.js';
-
-const REALTIME_EVENT_FIELDS = Object.freeze({
-  'realtime.call.activated': new Set(['model', 'promptVersion', 'toolsetVersion']),
-  'realtime.call.closed': new Set(['reason', 'status']),
-  'realtime.provider.connected': new Set([]),
-  'realtime.provider.disconnected': new Set(['code']),
-  'realtime.provider.error': new Set(['code', 'param']),
-  'realtime.response.started': new Set([]),
-  'realtime.response.first_output': new Set(['latencyMs']),
-  'realtime.response.interrupted': new Set(['latencyMs']),
-  'realtime.response.completed': new Set(['responseCount', 'estimatedCostMicroEur']),
-  'realtime.tool.received': new Set(['toolName']),
-  'realtime.tool.completed': new Set(['toolName', 'status', 'errorCode']),
-  'realtime.analysis_plan.updated': new Set(['planId', 'status', 'profileRevision']),
-  'realtime.reasoning.escalation': new Set(['requested', 'applied', 'reason'])
-});
-const FORBIDDEN_REALTIME_EVENT_TYPE = /(?:audio|delta|transcript)/i;
 
 function db(env) {
   if (!env.CONSUMER_DB) {
@@ -199,7 +183,161 @@ export async function setRealtimeConsent(env, sessionRow, config, granted) {
   return row;
 }
 
-export async function createRealtimeLease(env, sessionRow, config, providerCostEntry, controlTokenHashB64u = null) {
+export const REALTIME_CONSENT_PURPOSES = Object.freeze([
+  'live_voice_processing',
+  'automated_planning_analysis',
+  'redacted_turn_retention'
+]);
+
+export const REQUIRED_REALTIME_CONSENT_PURPOSES = Object.freeze([
+  'live_voice_processing',
+  'automated_planning_analysis'
+]);
+
+export async function getRealtimeConsentPurposes(env, sessionId) {
+  const result = await db(env).prepare(`
+    SELECT session_id, purpose, granted, notice_id, data_policy_id,
+           policy_version, privacy_notice_url, captured_at, withdrawn_at,
+           updated_at, last_event_id
+    FROM consumer_realtime_consent_purposes
+    WHERE session_id = ?
+    ORDER BY purpose ASC
+  `).bind(sessionId).all();
+  return result.results || [];
+}
+
+function realtimePurposeConsentIsCurrent(row, config) {
+  return Boolean(
+    row
+    && Number(row.granted) === 1
+    && row.notice_id === config.realtimeNoticeId
+    && row.data_policy_id === config.realtimeDataPolicyId
+    && row.policy_version === config.consentPolicyVersion
+    && row.privacy_notice_url === config.privacyNoticeUrl
+    && !row.withdrawn_at
+  );
+}
+
+export function realtimePurposeConsentsAreCurrent(rows, config) {
+  const byPurpose = new Map((rows || []).map((row) => [row.purpose, row]));
+  return REQUIRED_REALTIME_CONSENT_PURPOSES.every((purpose) => (
+    realtimePurposeConsentIsCurrent(byPurpose.get(purpose), config)
+  ));
+}
+
+export function realtimeRetentionConsentIsCurrent(rows, config) {
+  const row = (rows || []).find((candidate) => candidate.purpose === 'redacted_turn_retention');
+  return realtimePurposeConsentIsCurrent(row, config);
+}
+
+export function toPublicRealtimeConsentPurposes(rows) {
+  const byPurpose = new Map((rows || []).map((row) => [row.purpose, row]));
+  return Object.fromEntries(REALTIME_CONSENT_PURPOSES.map((purpose) => {
+    const row = byPurpose.get(purpose);
+    return [purpose, row
+      ? {
+          granted: Number(row.granted) === 1,
+          noticeId: row.notice_id,
+          policyVersion: row.policy_version,
+          privacyNoticeUrl: row.privacy_notice_url,
+          capturedAt: row.captured_at,
+          withdrawnAt: row.withdrawn_at || null,
+          updatedAt: row.updated_at
+        }
+      : { granted: false }];
+  }));
+}
+
+// This domain operation is intentionally not wired to the current bundled
+// consent endpoint. The UI must present each purpose independently before an
+// API route may call it; until then the existing receipt remains authoritative.
+export async function setRealtimeConsentPurposes(env, sessionRow, config, decisions) {
+  if (!decisions || typeof decisions !== 'object' || Array.isArray(decisions)) {
+    throw new ConsumerError(400, 'realtime_consent_purposes_invalid', 'Live voice consent purposes are invalid.');
+  }
+  const entries = Object.entries(decisions);
+  if (!entries.length || entries.some(([purpose, granted]) => (
+    !REALTIME_CONSENT_PURPOSES.includes(purpose) || typeof granted !== 'boolean'
+  ))) {
+    throw new ConsumerError(400, 'realtime_consent_purposes_invalid', 'Live voice consent purposes are invalid.');
+  }
+  const timestamp = nowIso();
+  const statements = [];
+  for (const [purpose, granted] of entries) {
+    const eventId = randomId('realtime_purpose_consent');
+    const action = granted ? 'granted' : 'withdrawn';
+    statements.push(
+      db(env).prepare(`
+        INSERT INTO consumer_realtime_consent_purposes (
+          session_id, purpose, granted, notice_id, data_policy_id,
+          policy_version, privacy_notice_url, captured_at, withdrawn_at,
+          updated_at, last_event_id
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM consumer_sessions
+          WHERE id = ? AND deleted_at IS NULL
+            AND status IN ('active', 'completed')
+        )
+        ON CONFLICT(session_id, purpose) DO UPDATE SET
+          granted = excluded.granted,
+          notice_id = excluded.notice_id,
+          data_policy_id = excluded.data_policy_id,
+          policy_version = excluded.policy_version,
+          privacy_notice_url = excluded.privacy_notice_url,
+          captured_at = CASE
+            WHEN excluded.granted = 1 THEN excluded.captured_at
+            ELSE consumer_realtime_consent_purposes.captured_at
+          END,
+          withdrawn_at = excluded.withdrawn_at,
+          updated_at = excluded.updated_at,
+          last_event_id = excluded.last_event_id
+        WHERE consumer_realtime_consent_purposes.granted <> excluded.granted
+          OR consumer_realtime_consent_purposes.notice_id <> excluded.notice_id
+          OR consumer_realtime_consent_purposes.data_policy_id <> excluded.data_policy_id
+          OR consumer_realtime_consent_purposes.policy_version <> excluded.policy_version
+          OR consumer_realtime_consent_purposes.privacy_notice_url <> excluded.privacy_notice_url
+          OR (excluded.granted = 1 AND consumer_realtime_consent_purposes.withdrawn_at IS NOT NULL)
+          OR (excluded.granted = 0 AND consumer_realtime_consent_purposes.withdrawn_at IS NULL)
+      `).bind(
+        sessionRow.id,
+        purpose,
+        granted ? 1 : 0,
+        config.realtimeNoticeId,
+        config.realtimeDataPolicyId,
+        config.consentPolicyVersion,
+        config.privacyNoticeUrl,
+        timestamp,
+        granted ? null : timestamp,
+        timestamp,
+        eventId,
+        sessionRow.id
+      ),
+      db(env).prepare(`
+        INSERT INTO consumer_realtime_consent_purpose_events (
+          id, session_id, purpose, action, notice_id, data_policy_id,
+          policy_version, privacy_notice_url, capture_method, occurred_at
+        )
+        SELECT ?, session_id, purpose, ?, notice_id, data_policy_id,
+               policy_version, privacy_notice_url,
+               'consumer_explicit_realtime_purpose_control', ?
+        FROM consumer_realtime_consent_purposes
+        WHERE session_id = ? AND purpose = ? AND last_event_id = ?
+      `).bind(eventId, action, timestamp, sessionRow.id, purpose, eventId)
+    );
+  }
+  await db(env).batch(statements);
+  return getRealtimeConsentPurposes(env, sessionRow.id);
+}
+
+export async function createRealtimeLease(
+  env,
+  sessionRow,
+  config,
+  providerCostEntry,
+  controlTokenHashB64u = null,
+  activationIdHashB64u = null
+) {
   const timestamp = nowIso();
   const hardExpiresAt = new Date(Date.now() + config.realtimeMaxDurationSeconds * 1_000).toISOString();
   const idleExpiresAt = new Date(Date.now() + config.realtimeIdleTimeoutSeconds * 1_000).toISOString();
@@ -216,6 +354,16 @@ export async function createRealtimeLease(env, sessionRow, config, providerCostE
   if (!invite?.jti_hash_b64u) {
     throw new ConsumerError(403, 'realtime_invite_required', 'This protected live voice invitation is no longer active.');
   }
+  if (activationIdHashB64u) {
+    const existingActivation = await getRealtimeLeaseByActivationHash(
+      env,
+      sessionRow.id,
+      activationIdHashB64u
+    );
+    if (existingActivation) {
+      throw new ConsumerError(409, 'realtime_activation_already_used', 'That live voice activation id was already used.');
+    }
+  }
   try {
     const row = await db(env).prepare(`
       INSERT INTO consumer_realtime_sessions (
@@ -228,10 +376,10 @@ export async function createRealtimeLease(env, sessionRow, config, providerCostE
         response_count, tool_call_count, estimated_cost_eur_micros,
         close_reason, error_code, created_at, activated_at,
         last_active_at, ended_at, control_token_hash_b64u,
-        invite_jti_hash_b64u
+        invite_jti_hash_b64u, activation_id_hash_b64u
       )
       SELECT ?, ?, ?, 'openai', NULL, NULL, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-             ?, ?, 0, 0, 0, 0, NULL, NULL, ?, NULL, ?, NULL, ?, ?
+             ?, ?, 0, 0, 0, 0, NULL, NULL, ?, NULL, ?, NULL, ?, ?, ?
       WHERE EXISTS (
         SELECT 1
         FROM consumer_sessions AS sessions
@@ -280,6 +428,7 @@ export async function createRealtimeLease(env, sessionRow, config, providerCostE
       timestamp,
       controlTokenHashB64u,
       invite.jti_hash_b64u,
+      activationIdHashB64u,
       providerCostEntry.id,
       sessionRow.id,
       config.realtimeNoticeId,
@@ -299,6 +448,12 @@ export async function createRealtimeLease(env, sessionRow, config, providerCostE
     if (active) {
       throw new ConsumerError(409, 'realtime_call_active', 'A live voice call is already active for this planning session.');
     }
+    const existingActivation = activationIdHashB64u
+      ? await getRealtimeLeaseByActivationHash(env, sessionRow.id, activationIdHashB64u).catch(() => null)
+      : null;
+    if (existingActivation) {
+      throw new ConsumerError(409, 'realtime_activation_already_used', 'That live voice activation id was already used.');
+    }
     throw error;
   }
 }
@@ -309,6 +464,16 @@ export async function getRealtimeLease(env, sessionId, leaseId) {
     WHERE id = ? AND session_id = ?
     LIMIT 1
   `).bind(leaseId, sessionId).first();
+}
+
+export async function getRealtimeLeaseByActivationHash(env, sessionId, activationIdHashB64u) {
+  const value = typeof activationIdHashB64u === 'string' ? activationIdHashB64u.trim() : '';
+  if (!value || value.length > 64 || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  return db(env).prepare(`
+    SELECT * FROM consumer_realtime_sessions
+    WHERE session_id = ? AND activation_id_hash_b64u = ?
+    LIMIT 1
+  `).bind(sessionId, value).first();
 }
 
 export async function getActiveRealtimeLease(env, sessionId) {
@@ -703,8 +868,8 @@ export async function touchRealtimeLease(env, sessionId, leaseId, idleTimeoutSec
 
 export async function appendRealtimeEvent(env, request) {
   const eventType = String(request.eventType || '').slice(0, 120);
-  const allowedFields = REALTIME_EVENT_FIELDS[eventType];
-  if (!allowedFields || FORBIDDEN_REALTIME_EVENT_TYPE.test(eventType)) return null;
+  const payload = sanitizeRealtimeEventPayload(eventType, request.payload);
+  if (payload === null) return null;
   const timestamp = nowIso();
   const sequenceRow = await db(env).prepare(`
     UPDATE consumer_realtime_sessions
@@ -717,16 +882,6 @@ export async function appendRealtimeEvent(env, request) {
   const providerEventIdHash = request.providerEventId
     ? await sha256Base64Url(String(request.providerEventId))
     : null;
-  const rawPayload = request.payload && typeof request.payload === 'object' && !Array.isArray(request.payload)
-    ? request.payload
-    : {};
-  const payload = Object.fromEntries(
-    Object.entries(rawPayload)
-      .filter(([key, value]) => allowedFields.has(key) && (
-        value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-      ))
-      .map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 160) : value])
-  );
   const hasPayload = Object.keys(payload).length > 0;
   const [payloadEncrypted, payloadHash] = !hasPayload
     ? [null, null]
@@ -977,7 +1132,8 @@ export async function finalizeRealtimeSpeechUsage(env, request) {
   const row = await db(env).prepare(`
     UPDATE consumer_realtime_speech_usage
     SET status = ?, provider_request_id_hash_b64u = ?, error_code = ?, completed_at = ?
-    WHERE id = ? AND realtime_session_id = ? AND session_id = ? AND status = ?
+    WHERE id = ? AND realtime_session_id = ? AND session_id = ?
+      AND status IN (?, ?)
     RETURNING *
   `).bind(
     status,
@@ -987,7 +1143,8 @@ export async function finalizeRealtimeSpeechUsage(env, request) {
     request.usageId,
     request.leaseId,
     request.sessionId,
-    requiredPriorStatus
+    requiredPriorStatus,
+    status
   ).first();
   await refreshRealtimeLeaseEstimatedCost(env, request.sessionId, request.leaseId);
   return row;

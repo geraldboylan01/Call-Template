@@ -6,8 +6,17 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
-import { realtimeVoiceBudgetPayload } from '../worker/src/consumer/router.js';
-import { randomId, sha256Base64Url } from '../worker/src/consumer/crypto.js';
+import {
+  handleConsumerRequest,
+  isAdvisorRealtimePreviewConfig,
+  realtimeVoiceBudgetPayload
+} from '../worker/src/consumer/router.js';
+import {
+  createConsumerCredential,
+  decryptJson,
+  randomId,
+  sha256Base64Url
+} from '../worker/src/consumer/crypto.js';
 import { ConsumerError } from '../worker/src/consumer/errors.js';
 import {
   createSessionRecord,
@@ -39,7 +48,10 @@ import {
   estimateRealtimeSpeechMicroEur,
   getActiveRealtimeLease,
   getCurrentRealtimeAnalysisPlan,
+  getRealtimeConsent,
+  getRealtimeConsentPurposes,
   getRealtimeLease,
+  getRealtimeLeaseByActivationHash,
   getNextRealtimeControlMessage,
   hasUnsettledRealtimeSpeechUsage,
   listExpiredRealtimeLeases,
@@ -49,9 +61,14 @@ import {
   prepareRealtimeAnalysisPlan,
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
+  realtimeConsentIsCurrent,
+  realtimePurposeConsentsAreCurrent,
+  realtimeRetentionConsentIsCurrent,
   setRealtimeConsent,
+  setRealtimeConsentPurposes,
   finalizeRealtimeControlMessage,
   verifyRealtimeControlCapability,
+  toPublicRealtimeConsentPurposes,
   toPublicRealtimeAnalysisPlan
 } from '../worker/src/consumer/realtime_repository.js';
 import {
@@ -60,6 +77,7 @@ import {
   validateRealtimeSpeechBody
 } from '../worker/src/consumer/realtime_speech.js';
 import { terminateRealtimeLease } from '../worker/src/consumer/realtime_lifecycle.js';
+import { getAvailableConsumerModules } from '../worker/src/consumer/analysis.js';
 import {
   buildGatedModuleDisclosure,
   confirmAndRunRealtimeAnalysisPlan
@@ -284,7 +302,10 @@ const migrationSql = [
   'worker/consumer-migrations/0004_add_consumer_voice_dispatch_and_events.sql',
   'worker/consumer-migrations/0005_add_consumer_realtime_voice.sql',
   'worker/consumer-migrations/0006_encrypt_realtime_plan_display.sql',
-  'worker/consumer-migrations/0007_add_realtime_control_inbox.sql'
+  'worker/consumer-migrations/0007_add_realtime_control_inbox.sql',
+  'worker/consumer-migrations/0008_widen_realtime_session_envelope.sql',
+  'worker/consumer-migrations/0009_add_realtime_consent_purposes.sql',
+  'worker/consumer-migrations/0010_add_realtime_activation_recovery.sql'
 ].map(source).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 
@@ -314,8 +335,8 @@ const env = {
   CONSUMER_AI_NOTICE_ID: 'ai-adviser-test-v1',
   CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html',
   CONSUMER_SESSION_TTL_DAYS: '7',
-  CONSUMER_REALTIME_NOTICE_ID: 'realtime-voice-adviser-test-v1',
-  CONSUMER_REALTIME_DATA_POLICY_ID: 'openai-realtime-audio-adviser-test-v1',
+  CONSUMER_REALTIME_NOTICE_ID: 'realtime-voice-adviser-test-v2',
+  CONSUMER_REALTIME_DATA_POLICY_ID: 'openai-realtime-audio-adviser-test-v2',
   CONSUMER_REALTIME_MODEL: 'gpt-realtime-2.1',
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
@@ -468,7 +489,13 @@ assert.match(instructions, /signed assistantSpeech for separate playback/);
 assert.match(instructions, /clearly disclosed AI conversational companion/);
 assert.match(instructions, /Every authorized response must call exactly one supplied tool/);
 assert.match(instructions, /Do not reveal an internal persona label/);
-assert.match(instructions, /personal_balance_sheet, house_purchase, liquidity_analysis/);
+assert.match(instructions, /exact three-analysis focus/);
+assert.doesNotMatch(instructions, /personal_balance_sheet, house_purchase, liquidity_analysis/);
+assert.equal(instructions, buildRealtimeInstructions({
+  stage: 'results',
+  nextQuestion: { prompt: 'This mutable question must not rewrite the cached safety prefix.' },
+  moduleSlots: [{ moduleId: 'different_module' }]
+}), 'Mutable journey state must come from tools without churning the long-lived instruction prefix.');
 assert.match(instructions, /Worker-owned speech ask the approved question/);
 assert.doesNotMatch(instructions, /OPENAI_API_KEY|sk-test/);
 const sessionConfig = buildRealtimeSessionConfig(config, {
@@ -732,6 +759,52 @@ await createSessionRecord(env, {
 }, consent, config, inviteClaimsFor(sessionId));
 const sessionRow = await getSessionRow(env, sessionId);
 await setRealtimeConsent(env, sessionRow, config, true);
+const currentRealtimeConsent = await getRealtimeConsent(env, sessionId);
+assert.equal(realtimeConsentIsCurrent(currentRealtimeConsent, config), true);
+assert.equal(realtimeConsentIsCurrent({
+  ...currentRealtimeConsent,
+  notice_id: 'realtime-voice-adviser-test-v1',
+  data_policy_id: 'openai-realtime-audio-adviser-test-v1'
+}, config), false, 'The superseded €2 disclosure receipt must not authorize a €10 Live voice meeting.');
+
+let purposeConsents = await setRealtimeConsentPurposes(env, sessionRow, config, {
+  live_voice_processing: true,
+  automated_planning_analysis: true,
+  redacted_turn_retention: false
+});
+assert.equal(realtimePurposeConsentsAreCurrent(purposeConsents, config), true);
+assert.equal(realtimeRetentionConsentIsCurrent(purposeConsents, config), false);
+assert.deepEqual(
+  Object.fromEntries(Object.entries(toPublicRealtimeConsentPurposes(purposeConsents))
+    .map(([purpose, receipt]) => [purpose, receipt.granted])),
+  {
+    live_voice_processing: true,
+    automated_planning_analysis: true,
+    redacted_turn_retention: false
+  }
+);
+assert.equal(sqliteCommand(databasePath, 'first', {
+  sql: 'SELECT COUNT(*) AS count FROM consumer_realtime_consent_purpose_events WHERE session_id = ?',
+  values: [sessionId]
+}).count, 3);
+await setRealtimeConsentPurposes(env, sessionRow, config, {
+  live_voice_processing: true,
+  automated_planning_analysis: true,
+  redacted_turn_retention: false
+});
+assert.equal(sqliteCommand(databasePath, 'first', {
+  sql: 'SELECT COUNT(*) AS count FROM consumer_realtime_consent_purpose_events WHERE session_id = ?',
+  values: [sessionId]
+}).count, 3, 'Purpose consent replays must not create duplicate audit events.');
+purposeConsents = await setRealtimeConsentPurposes(env, sessionRow, config, {
+  redacted_turn_retention: true
+});
+assert.equal(realtimeRetentionConsentIsCurrent(purposeConsents, config), true);
+assert.equal((await getRealtimeConsentPurposes(env, sessionId)).length, 3);
+assert.equal(sqliteCommand(databasePath, 'first', {
+  sql: 'SELECT COUNT(*) AS count FROM consumer_realtime_consent_purpose_events WHERE session_id = ?',
+  values: [sessionId]
+}).count, 4);
 const newControlCapability = async () => {
   const token = randomId('rt_control');
   return { token, hash: await sha256Base64Url(token) };
@@ -750,7 +823,34 @@ const reserve = (idempotencyKey, amount = 1_000_000) => reserveConsumerProviderC
 const firstReservation = await reserve('realtime-adversarial-lease-one');
 assert.ok(firstReservation.entry);
 const primaryControl = await newControlCapability();
-let lease = await createRealtimeLease(env, sessionRow, config, firstReservation.entry, primaryControl.hash);
+const primaryActivationId = randomId('rt_activation');
+const primaryActivationHash = await sha256Base64Url(primaryActivationId);
+let lease = await createRealtimeLease(
+  env,
+  sessionRow,
+  config,
+  firstReservation.entry,
+  primaryControl.hash,
+  primaryActivationHash
+);
+assert.equal(
+  (await getRealtimeLeaseByActivationHash(env, sessionId, primaryActivationHash))?.id,
+  lease.id
+);
+assert.equal(
+  await getRealtimeLeaseByActivationHash(env, `cs_${'W'.repeat(24)}`, primaryActivationHash),
+  null,
+  'An activation hash must not cross its authenticated planning-session boundary.'
+);
+const persistedActivation = sqliteCommand(databasePath, 'first', {
+  sql: `SELECT activation_id_hash_b64u, control_token_hash_b64u
+        FROM consumer_realtime_sessions WHERE id = ?`,
+  values: [lease.id]
+});
+assert.equal(persistedActivation.activation_id_hash_b64u, primaryActivationHash);
+assert.equal(persistedActivation.control_token_hash_b64u, primaryControl.hash);
+assert.notEqual(persistedActivation.activation_id_hash_b64u, primaryActivationId);
+assert.notEqual(persistedActivation.control_token_hash_b64u, primaryControl.token);
 assert.equal((await verifyRealtimeControlCapability(env, sessionId, lease.id, primaryControl.token))?.id, lease.id);
 assert.equal(await verifyRealtimeControlCapability(env, sessionId, lease.id, randomId('rt_control')), null);
 sqliteCommand(databasePath, 'run', {
@@ -785,6 +885,282 @@ await markRealtimeProviderCostInFlight(env, firstReservation.entry.id, sessionId
 lease = await activateRealtimeLease(env, sessionId, lease.id, 'call_control_plane_test');
 assert.equal(lease.status, 'active');
 assert.equal((await getActiveRealtimeLease(env, sessionId)).id, lease.id);
+
+// The activation and control values chosen before SDP dispatch must be echoed
+// unchanged in the 201 so the normal success path and the lost-201 recovery
+// path share one capability pair.
+const postCredential = await createConsumerCredential();
+await createSessionRecord(
+  env,
+  postCredential,
+  consent,
+  config,
+  inviteClaimsFor(postCredential.id)
+);
+const postSession = await getSessionRow(env, postCredential.id);
+await setRealtimeConsent(env, postSession, config, true);
+const proposedActivationId = randomId('rt_activation');
+const proposedControlCapability = randomId('rt_control');
+const postPath = `/api/consumer/sessions/${postCredential.id}/voice/realtime/calls`;
+const postEnv = {
+  ...env,
+  CONSUMER_INVITE_SIGNING_KEY: rateKey,
+  CONSUMER_VOICE_ENABLED: 'true',
+  CONSUMER_VOICE_NOTICE_ID: 'voice-adviser-test-v1',
+  CONSUMER_VOICE_DATA_POLICY_ID: 'openai-audio-adviser-test-v1',
+  CONSUMER_VOICE_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
+  CONSUMER_VOICE_PRICING_VERSION: 'openai-audio-eur-safety-2026-07-13-v2',
+  CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS: '200',
+  CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS: '2000',
+  CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: '10',
+  CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS: '10',
+  CONSUMER_REALTIME_SESSIONS: {
+    idFromName: (name) => name,
+    get: () => ({
+      fetch: async () => new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    })
+  }
+};
+const postConfig = getConsumerConfig(postEnv);
+assert.equal(postConfig.voiceEnabled, true, JSON.stringify({
+  voiceRequested: postConfig.voiceRequested,
+  voiceConfigured: postConfig.voiceConfigured,
+  voiceEnabled: postConfig.voiceEnabled
+}));
+assert.equal(postConfig.realtimeEnabled, true);
+const postRouteConfig = {
+  ...postConfig,
+  allowedModules: getAvailableConsumerModules(postConfig).map((module) => module.id)
+};
+assert.equal(
+  isAdvisorRealtimePreviewConfig(postRouteConfig),
+  true,
+  JSON.stringify({ allowedModules: postRouteConfig.allowedModules })
+);
+const postProviderRequests = [];
+globalThis.fetch = async (url, init = {}) => {
+  postProviderRequests.push(String(url));
+  if (String(url).endsWith('/hangup')) return new Response('', { status: 200 });
+  assert.equal(String(url), 'https://api.openai.com/v1/realtime/calls');
+  assert.equal(init.body.get('sdp'), validSdp);
+  return new Response(validSdp, {
+    status: 201,
+    headers: {
+      'Content-Type': 'application/sdp',
+      Location: 'https://api.openai.com/v1/realtime/calls/call_proposed_activation_test'
+    }
+  });
+};
+const postResponse = await handleConsumerRequest(new Request(`https://worker.test${postPath}`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/sdp',
+    'X-Consumer-Session': postCredential.credential,
+    'X-Voice-Request-Id': 'realtime-proposed-activation-test',
+    'X-Realtime-Activation-Id': proposedActivationId,
+    'X-Realtime-Control-Capability': proposedControlCapability
+  },
+  body: validSdp
+}), postEnv, {
+  pathname: postPath,
+  clientIp: '203.0.113.71',
+  respond: (body, status, _methods, headers = {}) => new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...headers }
+  }),
+  respondBinary: (body, status, _methods, headers = {}) => new Response(body, {
+    status,
+    headers
+  })
+});
+const postResponseBody = await postResponse.text();
+assert.equal(postResponse.status, 201, postResponseBody);
+assert.equal(postResponseBody, validSdp);
+assert.equal(postResponse.headers.get('X-Realtime-Activation-Id'), proposedActivationId);
+assert.equal(postResponse.headers.get('X-Realtime-Control-Capability'), proposedControlCapability);
+const postLease = await getRealtimeLeaseByActivationHash(
+  env,
+  postCredential.id,
+  await sha256Base64Url(proposedActivationId)
+);
+assert.ok(postLease);
+assert.equal(
+  (await verifyRealtimeControlCapability(
+    env,
+    postCredential.id,
+    postLease.id,
+    proposedControlCapability
+  ))?.id,
+  postLease.id
+);
+await terminateRealtimeLease(postEnv, postLease, {
+  status: 'complete',
+  reason: 'test_cleanup',
+  errorCode: null,
+  usageKnown: false
+});
+assert.deepEqual(postProviderRequests, [
+  'https://api.openai.com/v1/realtime/calls',
+  'https://api.openai.com/v1/realtime/calls/call_proposed_activation_test/hangup'
+]);
+globalThis.fetch = originalFetch;
+
+// A browser-selected activation id recovers an active provider call even when
+// its SDP 201 never arrived. Session auth, the activation hash and the control
+// capability must all agree; unknown/replayed activations are safe no-ops.
+const recoveryCredential = await createConsumerCredential();
+await createSessionRecord(
+  env,
+  recoveryCredential,
+  consent,
+  config,
+  inviteClaimsFor(recoveryCredential.id)
+);
+const recoverySession = await getSessionRow(env, recoveryCredential.id);
+await setRealtimeConsent(env, recoverySession, config, true);
+const recoveryReservation = await reserveConsumerProviderCost(env, {
+  sessionId: recoveryCredential.id,
+  operation: 'realtime_voice_session',
+  idempotencyKey: 'realtime-lost-201-recovery',
+  provider: 'openai',
+  model: config.realtimeModel,
+  pricingVersion: config.realtimePricingVersion,
+  reservedCostEurMicros: 1_000_000,
+  dailyCostLimitEurMicros: config.realtimeDailyBudgetMicroEur
+});
+const recoveryActivationId = randomId('rt_activation');
+const recoveryActivationHash = await sha256Base64Url(recoveryActivationId);
+const recoveryControl = await newControlCapability();
+let recoveryLease = await createRealtimeLease(
+  env,
+  recoverySession,
+  config,
+  recoveryReservation.entry,
+  recoveryControl.hash,
+  recoveryActivationHash
+);
+await markRealtimeProviderCostInFlight(
+  env,
+  recoveryReservation.entry.id,
+  recoveryCredential.id,
+  config
+);
+recoveryLease = await activateRealtimeLease(
+  env,
+  recoveryCredential.id,
+  recoveryLease.id,
+  'call_lost_201_recovery_test'
+);
+
+const otherCredential = await createConsumerCredential();
+await createSessionRecord(
+  env,
+  otherCredential,
+  consent,
+  config,
+  inviteClaimsFor(otherCredential.id)
+);
+const recoveryPath = `/api/consumer/sessions/${recoveryCredential.id}/voice/realtime/activations/${recoveryActivationId}`;
+const otherSessionPath = `/api/consumer/sessions/${otherCredential.id}/voice/realtime/activations/${recoveryActivationId}`;
+const recoveryRespond = (body, status, _methods, headers = {}) => new Response(
+  JSON.stringify(body),
+  { status, headers: { 'Content-Type': 'application/json', ...headers } }
+);
+const recover = (path, credential, capability) => handleConsumerRequest(new Request(
+  `https://worker.test${path}`,
+  {
+    method: 'DELETE',
+    headers: {
+      'X-Consumer-Session': credential,
+      ...(capability ? { 'X-Realtime-Control-Capability': capability } : {})
+    }
+  }
+), env, {
+  pathname: path,
+  clientIp: '203.0.113.72',
+  respond: recoveryRespond
+});
+
+let recoveryResponse = await recover(
+  recoveryPath,
+  recoveryCredential.credential,
+  randomId('rt_control')
+);
+assert.equal(recoveryResponse.status, 404, 'A wrong control capability must not close a matching activation.');
+assert.equal((await getRealtimeLease(env, recoveryCredential.id, recoveryLease.id)).status, 'active');
+
+recoveryResponse = await recover(
+  recoveryPath,
+  otherCredential.credential,
+  recoveryControl.token
+);
+assert.equal(recoveryResponse.status, 404, 'A credential for another session must not address the activation route.');
+assert.equal((await getRealtimeLease(env, recoveryCredential.id, recoveryLease.id)).status, 'active');
+
+recoveryResponse = await recover(
+  otherSessionPath,
+  otherCredential.credential,
+  recoveryControl.token
+);
+assert.equal(recoveryResponse.status, 200, 'An activation absent from the authenticated session is an idempotent no-op.');
+assert.deepEqual(await recoveryResponse.json(), {
+  cleanedUp: true,
+  leaseFound: false,
+  leaseClosed: false,
+  providerHangupConfirmed: true
+});
+assert.equal((await getRealtimeLease(env, recoveryCredential.id, recoveryLease.id)).status, 'active');
+
+recoveryResponse = await recover(recoveryPath, recoveryCredential.credential, '');
+assert.equal(recoveryResponse.status, 400, 'Recovery still requires a syntactically valid control capability.');
+
+const recoveryHangups = [];
+globalThis.fetch = async (url) => {
+  recoveryHangups.push(String(url));
+  assert.equal(String(url), 'https://api.openai.com/v1/realtime/calls/call_lost_201_recovery_test/hangup');
+  return new Response('', { status: 200 });
+};
+recoveryResponse = await recover(
+  recoveryPath,
+  recoveryCredential.credential,
+  recoveryControl.token
+);
+assert.equal(recoveryResponse.status, 200);
+assert.deepEqual(await recoveryResponse.json(), {
+  cleanedUp: true,
+  leaseFound: true,
+  leaseClosed: true,
+  providerHangupConfirmed: true
+});
+assert.equal(recoveryHangups.length, 1);
+assert.equal((await getRealtimeLease(env, recoveryCredential.id, recoveryLease.id)).status, 'complete');
+
+recoveryResponse = await recover(
+  recoveryPath,
+  recoveryCredential.credential,
+  recoveryControl.token
+);
+assert.equal(recoveryResponse.status, 200, 'A cleanup replay must be idempotent.');
+assert.deepEqual(await recoveryResponse.json(), {
+  cleanedUp: true,
+  leaseFound: true,
+  leaseClosed: false,
+  providerHangupConfirmed: true
+});
+assert.equal(recoveryHangups.length, 1, 'A terminal activation must not hang up the provider twice.');
+
+const missingActivationPath = `/api/consumer/sessions/${recoveryCredential.id}/voice/realtime/activations/${randomId('rt_activation')}`;
+recoveryResponse = await recover(
+  missingActivationPath,
+  recoveryCredential.credential,
+  recoveryControl.token
+);
+assert.equal(recoveryResponse.status, 200, 'An unknown activation must remain a safe no-op.');
+assert.equal((await recoveryResponse.json()).leaseFound, false);
+globalThis.fetch = originalFetch;
 
 // Audible copy is a separate, HMAC-bound, Worker-owned TTS operation charged
 // inside the already-reserved Realtime lease. It never stores plaintext copy,
@@ -945,6 +1321,102 @@ await rejectsCode(issueRealtimeSpeechAuthorization({
   text: 'What is the current figure?'
 }), 'realtime_lease_conflict');
 assert.equal(controlledProviderCalls, 1);
+
+// Production speech is streamed. Usage remains dispatched until clean EOF,
+// becomes known at EOF, and normal browser barge-in is also a known
+// character-priced request rather than poisoning the whole Realtime lease.
+const streamedText = 'This approved response is delivered from the first audio chunk.';
+const streamedAuthorization = await issueRealtimeSpeechAuthorization({
+  env,
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  kind: 'status',
+  profileRevision: 1,
+  text: streamedText
+});
+const streamedResult = await renderAuthorizedRealtimeSpeech({
+  env,
+  config,
+  sessionRow: speechSessionRow,
+  leaseId: speechLease.id,
+  body: streamedAuthorization,
+  synthesize: async () => ({
+    audioStream: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([73, 68]));
+        controller.enqueue(new Uint8Array([51, 4]));
+        controller.close();
+      }
+    }),
+    contentLength: 4,
+    contentType: 'audio/mpeg',
+    providerRequestId: 'req_controlled_stream_001'
+  })
+});
+assert.equal(streamedResult.streaming, true);
+assert.equal(streamedResult.contentType, 'audio/mpeg');
+assert.equal(sqliteCommand(databasePath, 'first', {
+  sql: `SELECT status FROM consumer_realtime_speech_usage
+        WHERE realtime_session_id = ? ORDER BY rowid DESC LIMIT 1`,
+  values: [speechLease.id]
+}).status, 'dispatched');
+assert.deepEqual(
+  [...new Uint8Array(await new Response(streamedResult.audio).arrayBuffer())],
+  [73, 68, 51, 4]
+);
+assert.equal(sqliteCommand(databasePath, 'first', {
+  sql: `SELECT status FROM consumer_realtime_speech_usage
+        WHERE realtime_session_id = ? ORDER BY rowid DESC LIMIT 1`,
+  values: [speechLease.id]
+}).status, 'known');
+await finalizeRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  controlId: streamedAuthorization.controlId,
+  status: 'consumed'
+});
+
+const interruptedText = 'This approved response is interrupted by the consumer.';
+const interruptedAuthorization = await issueRealtimeSpeechAuthorization({
+  env,
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  kind: 'status',
+  profileRevision: 1,
+  text: interruptedText
+});
+let providerStreamCancelled = false;
+const interruptedResult = await renderAuthorizedRealtimeSpeech({
+  env,
+  config,
+  sessionRow: speechSessionRow,
+  leaseId: speechLease.id,
+  body: interruptedAuthorization,
+  synthesize: async () => ({
+    audioStream: new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array([73, 68, 51])); },
+      cancel() { providerStreamCancelled = true; }
+    }),
+    contentType: 'audio/mpeg',
+    providerRequestId: 'req_controlled_stream_002'
+  })
+});
+await interruptedResult.audio.cancel('consumer_barge_in');
+assert.equal(providerStreamCancelled, true);
+const interruptedLedger = sqliteCommand(databasePath, 'first', {
+  sql: `SELECT status, error_code FROM consumer_realtime_speech_usage
+        WHERE realtime_session_id = ? ORDER BY rowid DESC LIMIT 1`,
+  values: [speechLease.id]
+});
+assert.equal(interruptedLedger.status, 'known');
+assert.equal(interruptedLedger.error_code, 'realtime_speech_playback_cancelled');
+assert.equal(await hasUnsettledRealtimeSpeechUsage(env, speechSessionId, speechLease.id), false);
+await finalizeRealtimeControlMessage(env, {
+  sessionId: speechSessionId,
+  leaseId: speechLease.id,
+  controlId: interruptedAuthorization.controlId,
+  status: 'consumed'
+});
 
 sqliteCommand(databasePath, 'run', {
   sql: 'UPDATE consumer_realtime_sessions SET dispatch_stop_eur_micros = estimated_cost_eur_micros WHERE id = ?',
@@ -1131,6 +1603,7 @@ const hybridArgs = {
   expectedRevision: 1,
   facts: [
     { factId: 'primary_goal', value: 'buy_home', certainty: 'exact', evidenceItemId: hybridEvidenceId },
+    { factId: 'self_description', value: 'first_time_buyer', certainty: 'exact', evidenceItemId: hybridEvidenceId },
     {
       factId: 'cash_savings',
       value: { amount: 65_000, currency: 'EUR' },
@@ -1145,8 +1618,9 @@ const hybridResult = await factDurable.executeTool(
   factContext,
   await startFactTool('propose_facts', hybridArgs, 1)
 );
-assert.equal(hybridResult.savedDrafts.length, 1);
+assert.equal(hybridResult.savedDrafts.length, 2);
 assert.equal(hybridResult.savedDrafts[0].factId, 'primary_goal');
+assert.equal(hybridResult.savedDrafts[1].factId, 'self_description');
 assert.equal(hybridResult.readBackRequired, true);
 assert.match(hybridResult.currentReadBackText, /available cash is approximately €65,000/);
 assert.equal(hybridResult.currentPendingProposal.factId, 'cash_savings');
@@ -1157,7 +1631,7 @@ assert.equal(
 );
 assert.equal(hybridResult.currentReadBackText, hybridResult.currentPendingProposal.readBackText);
 factSessionRow = await getSessionRow(env, factSessionId);
-assert.equal(Number(factSessionRow.current_profile_revision), 2);
+assert.equal(Number(factSessionRow.current_profile_revision), 3);
 factContext = await factDurable.planningContext();
 assert.equal(factContext.state.realtimePhase, 'confirmation');
 assert.equal(factContext.state.facts[0].factId, 'cash_savings');
@@ -1165,7 +1639,7 @@ assert.ok(realtimeToolsForState(factContext.state).some((tool) => tool.name === 
 const cashConfirmationId = 'item_fact_cash_confirm_001';
 factDurable.finalizedEvidenceItems.add(cashConfirmationId);
 const cashResolveArgs = {
-  expectedRevision: 2,
+  expectedRevision: 3,
   proposalId: hybridResult.currentProposalId,
   decision: 'confirmed',
   evidenceItemId: cashConfirmationId
@@ -1174,10 +1648,21 @@ const cashConfirmed = await factDurable.executeTool(
   'resolve_fact_confirmation',
   cashResolveArgs,
   factContext,
-  await startFactTool('resolve_fact_confirmation', cashResolveArgs, 2)
+  await startFactTool('resolve_fact_confirmation', cashResolveArgs, 3)
 );
-assert.equal(cashConfirmed.profileRevision, 3);
+assert.equal(cashConfirmed.profileRevision, 4);
 assert.match(cashConfirmed.readBackText, /€65,000/);
+
+// Module-specific intake facts are available only after persona evidence locks
+// the exact catalogue bundle. Same-turn persona evidence allows volunteered
+// facts for that bundle without reopening goal-based routing.
+factContext = await factDurable.planningContext();
+assert.equal(factContext.state.personaAssessment.primaryPersonaId, 'first_time_buyer');
+assert.deepEqual(factContext.state.moduleSlots.map((slot) => slot.moduleId), [
+  'personal_balance_sheet',
+  'house_purchase',
+  'liquidity_analysis'
+]);
 
 // Unknown and ranged numerical answers are retained as conservative completion
 // markers. They never create a made-up canonical amount and are not asked again
@@ -1186,7 +1671,7 @@ const unknownEvidenceId = 'item_fact_unknown_001';
 factDurable.finalizedEvidenceItems.add(unknownEvidenceId);
 factContext = await factDurable.planningContext();
 const unknownArgs = {
-  expectedRevision: 3,
+  expectedRevision: 4,
   facts: [{
     factId: 'monthly_spending',
     value: null,
@@ -1198,14 +1683,14 @@ const unknownResult = await factDurable.executeTool(
   'propose_facts',
   unknownArgs,
   factContext,
-  await startFactTool('propose_facts', unknownArgs, 3)
+  await startFactTool('propose_facts', unknownArgs, 4)
 );
 assert.match(unknownResult.currentReadBackText, /do not know essential monthly spending yet/);
 const unknownConfirmationId = 'item_fact_unknown_confirm_001';
 factDurable.finalizedEvidenceItems.add(unknownConfirmationId);
 factContext = await factDurable.planningContext();
 const unknownResolveArgs = {
-  expectedRevision: 3,
+  expectedRevision: 4,
   proposalId: unknownResult.currentProposalId,
   decision: 'confirmed',
   evidenceItemId: unknownConfirmationId
@@ -1214,7 +1699,7 @@ await factDurable.executeTool(
   'resolve_fact_confirmation',
   unknownResolveArgs,
   factContext,
-  await startFactTool('resolve_fact_confirmation', unknownResolveArgs, 3)
+  await startFactTool('resolve_fact_confirmation', unknownResolveArgs, 4)
 );
 let factProfile = await getCurrentProfile(env, await getSessionRow(env, factSessionId));
 assert.equal(factProfile.expenses.monthlyEssential, undefined);
@@ -1238,7 +1723,7 @@ const rangeEvidenceId = 'item_fact_range_001';
 factDurable.finalizedEvidenceItems.add(rangeEvidenceId);
 factContext = await factDurable.planningContext();
 const rangeArgs = {
-  expectedRevision: 4,
+  expectedRevision: 5,
   facts: [{
     factId: 'gross_household_income',
     value: { min: 60_000, max: 70_000 },
@@ -1250,14 +1735,14 @@ const rangeResult = await factDurable.executeTool(
   'propose_facts',
   rangeArgs,
   factContext,
-  await startFactTool('propose_facts', rangeArgs, 4)
+  await startFactTool('propose_facts', rangeArgs, 5)
 );
 assert.match(rangeResult.currentReadBackText, /between €60,000 and €70,000/);
 const rangeConfirmationId = 'item_fact_range_confirm_001';
 factDurable.finalizedEvidenceItems.add(rangeConfirmationId);
 factContext = await factDurable.planningContext();
 const rangeResolveArgs = {
-  expectedRevision: 4,
+  expectedRevision: 5,
   proposalId: rangeResult.currentProposalId,
   decision: 'confirmed',
   evidenceItemId: rangeConfirmationId
@@ -1266,7 +1751,7 @@ await factDurable.executeTool(
   'resolve_fact_confirmation',
   rangeResolveArgs,
   factContext,
-  await startFactTool('resolve_fact_confirmation', rangeResolveArgs, 4)
+  await startFactTool('resolve_fact_confirmation', rangeResolveArgs, 5)
 );
 factProfile = await getCurrentProfile(env, await getSessionRow(env, factSessionId));
 assert.equal(factProfile.incomeSources.length, 0);
@@ -1282,7 +1767,7 @@ const invalidRangeEvidenceId = 'item_fact_bad_range_001';
 factDurable.finalizedEvidenceItems.add(invalidRangeEvidenceId);
 factContext = await factDurable.planningContext();
 await rejectsCode(factDurable.executeTool('propose_facts', {
-  expectedRevision: 5,
+  expectedRevision: 6,
   facts: [{
     factId: 'gross_household_income',
     value: { min: 80_000, max: 70_000 },
@@ -1291,7 +1776,7 @@ await rejectsCode(factDurable.executeTool('propose_facts', {
   }]
 }, factContext, 'unused_bad_range_attempt'), 'realtime_fact_range_invalid');
 await rejectsCode(factDurable.executeTool('propose_facts', {
-  expectedRevision: 5,
+  expectedRevision: 6,
   facts: [{
     factId: 'primary_goal',
     value: null,
@@ -1299,6 +1784,121 @@ await rejectsCode(factDurable.executeTool('propose_facts', {
     evidenceItemId: invalidRangeEvidenceId
   }]
 }, factContext, 'unused_unknown_goal_attempt'), 'realtime_fact_certainty_invalid');
+
+// A single finalized answer may contain context, parent records and dependent
+// values in any model-generated array order. The server must establish persona,
+// partner and named entity records first so partner-owned/scalar facts never
+// fail spuriously or create default records for the wrong household person.
+const dependencyEvidenceId = 'item_fact_dependency_reverse_001';
+factDurable.finalizedEvidenceItems.add(dependencyEvidenceId);
+factContext = await factDurable.planningContext();
+const dependencyArgs = {
+  expectedRevision: 6,
+  facts: [
+    {
+      factId: 'pension_current_value',
+      value: { entityId: 'workplace', amount: 250_000, currency: 'EUR' },
+      certainty: 'exact',
+      evidenceItemId: dependencyEvidenceId
+    },
+    {
+      factId: 'person_current_age',
+      value: { owner: 'partner', value: 52 },
+      certainty: 'exact',
+      evidenceItemId: dependencyEvidenceId
+    },
+    {
+      factId: 'income_sources',
+      value: {
+        entityId: 'partner_salary',
+        owner: 'partner',
+        type: 'employment',
+        grossAnnual: { amount: 72_000, currency: 'EUR' }
+      },
+      certainty: 'exact',
+      evidenceItemId: dependencyEvidenceId
+    },
+    {
+      factId: 'pension_positions',
+      value: { entityId: 'workplace', owner: 'partner', type: 'occupational' },
+      certainty: 'exact',
+      evidenceItemId: dependencyEvidenceId
+    },
+    {
+      factId: 'partner_person',
+      value: { operation: 'upsert', employmentStatus: 'employee', displayName: 'Partner' },
+      certainty: 'exact',
+      evidenceItemId: dependencyEvidenceId
+    },
+    {
+      factId: 'self_description',
+      value: 'pre_retiree',
+      certainty: 'exact',
+      evidenceItemId: dependencyEvidenceId
+    }
+  ]
+};
+const dependencyResult = await factDurable.executeTool(
+  'propose_facts',
+  dependencyArgs,
+  factContext,
+  await startFactTool('propose_facts', dependencyArgs, 6)
+);
+assert.deepEqual(dependencyResult.proposals.map((proposal) => proposal.factId), [
+  'self_description',
+  'partner_person',
+  'income_sources',
+  'pension_positions',
+  'pension_current_value',
+  'person_current_age'
+]);
+assert.deepEqual(dependencyResult.savedDrafts.map((proposal) => proposal.factId), [
+  'self_description',
+  'partner_person',
+  'income_sources',
+  'pension_positions'
+]);
+assert.equal(dependencyResult.profileRevision, 10);
+
+let dependencyPending = dependencyResult.currentPendingProposal;
+const dependencyConfirmationOrder = [];
+for (let index = 0; index < 2; index += 1) {
+  assert.ok(dependencyPending, 'each dependent read-back remains confirmable after its parents are committed');
+  dependencyConfirmationOrder.push(dependencyPending.factId);
+  const evidenceItemId = `item_fact_dependency_confirm_${index + 1}`;
+  factDurable.finalizedEvidenceItems.add(evidenceItemId);
+  factContext = await factDurable.planningContext();
+  const expectedRevision = Number(factContext.sessionRow.current_profile_revision);
+  const resolveArgs = {
+    expectedRevision,
+    proposalId: dependencyPending.proposalId,
+    decision: 'confirmed',
+    evidenceItemId
+  };
+  const resolved = await factDurable.executeTool(
+    'resolve_fact_confirmation',
+    resolveArgs,
+    factContext,
+    await startFactTool('resolve_fact_confirmation', resolveArgs, expectedRevision)
+  );
+  dependencyPending = resolved.currentPendingProposal;
+}
+assert.deepEqual(dependencyConfirmationOrder, ['pension_current_value', 'person_current_age']);
+assert.equal(dependencyPending, null);
+
+factProfile = await getCurrentProfile(env, await getSessionRow(env, factSessionId));
+assert.equal(factProfile.partner.personId, 'partner_realtime');
+assert.equal(factProfile.partner.age, 52);
+assert.notEqual(factProfile.primaryPerson.age, 52, 'the partner age must not fall back to the primary person');
+assert.equal(factProfile.incomeSources.length, 1);
+assert.equal(factProfile.incomeSources[0].incomeId, 'income_realtime_partner_salary');
+assert.equal(factProfile.incomeSources[0].ownerId, factProfile.partner.personId);
+assert.equal(factProfile.pensions.length, 1, 'the scalar must update the named position without creating a default pension');
+assert.equal(factProfile.pensions[0].pensionId, 'pension_realtime_workplace');
+assert.equal(factProfile.pensions[0].ownerId, factProfile.partner.personId);
+assert.deepEqual(factProfile.pensions[0].currentValue, { amount: 250_000, currency: 'EUR' });
+assert.ok(!factProfile.pensions.some((pension) => pension.pensionId === 'pension_realtime_primary'));
+
 const storedFactIds = sqliteCommand(databasePath, 'all', {
   sql: 'SELECT fact_id FROM consumer_realtime_fact_proposals WHERE session_id = ?',
   values: [factSessionId]
@@ -1412,6 +2012,73 @@ const eventRow = sqliteCommand(databasePath, 'first', {
 });
 assert.ok(eventRow.payload_encrypted);
 assert.doesNotMatch(eventRow.payload_encrypted, /malicious|transcript|prompt injection/i);
+assert.deepEqual(await decryptJson(
+  env,
+  eventRow.payload_encrypted,
+  `consumer/realtime/event/${sessionId}/${lease.id}/${safeEvent.sequence}`
+), {
+  toolName: 'get_planning_state',
+  status: 'succeeded',
+  errorCode: null
+});
+for (const eventCase of [
+  {
+    eventType: 'realtime.vad.speech_started',
+    payload: { duringResponse: true, transcript: 'strip me' },
+    expected: { duringResponse: true }
+  },
+  {
+    eventType: 'realtime.greeting.authorized',
+    payload: { kind: 'greeting', characterCount: 80, text: 'strip me' },
+    expected: { kind: 'greeting', characterCount: 80 }
+  },
+  {
+    eventType: 'realtime.silence.prompt_authorized',
+    payload: { idleExpiresAt: '2026-07-16T12:00:00.000Z', prompt: 'strip me' },
+    expected: { idleExpiresAt: '2026-07-16T12:00:00.000Z' }
+  },
+  {
+    eventType: 'realtime.call.closed',
+    payload: {
+      reason: 'test_close_metric',
+      status: 'complete',
+      errorCode: null,
+      durationMs: 42_000,
+      estimatedCostEurMicros: 123_456,
+      responseCount: 4,
+      toolCallCount: 3,
+      transcript: 'strip me'
+    },
+    expected: {
+      reason: 'test_close_metric',
+      status: 'complete',
+      errorCode: null,
+      durationMs: 42_000,
+      estimatedCostEurMicros: 123_456,
+      responseCount: 4,
+      toolCallCount: 3
+    }
+  }
+]) {
+  const stored = await appendRealtimeEvent(env, {
+    sessionId,
+    leaseId: lease.id,
+    direction: 'server',
+    eventType: eventCase.eventType,
+    payload: eventCase.payload
+  });
+  assert.ok(stored?.sequence > 0, `${eventCase.eventType} was dropped by the operational schema.`);
+  const row = sqliteCommand(databasePath, 'first', {
+    sql: `SELECT payload_encrypted FROM consumer_realtime_events
+          WHERE realtime_session_id = ? AND sequence = ?`,
+    values: [lease.id, stored.sequence]
+  });
+  assert.deepEqual(await decryptJson(
+    env,
+    row.payload_encrypted,
+    `consumer/realtime/event/${sessionId}/${lease.id}/${stored.sequence}`
+  ), eventCase.expected);
+}
 const savedTurn = await recordRealtimeFinalTurn(env, {
   sessionId,
   leaseId: lease.id,
@@ -1985,7 +2652,8 @@ for (const table of [
   'consumer_realtime_usage', 'consumer_realtime_speech_usage', 'consumer_realtime_control_messages',
   'consumer_realtime_final_turns', 'consumer_realtime_fact_proposals',
   'consumer_realtime_analysis_plans', 'consumer_realtime_run_provenance',
-  'consumer_realtime_consents', 'consumer_realtime_consent_events'
+  'consumer_realtime_consents', 'consumer_realtime_consent_events',
+  'consumer_realtime_consent_purposes', 'consumer_realtime_consent_purpose_events'
 ]) {
   assert.equal(sqliteCommand(databasePath, 'first', {
     sql: `SELECT COUNT(*) AS count FROM ${table} WHERE session_id = ?`,
@@ -2003,6 +2671,7 @@ const lifecycleSource = source('worker/src/consumer/realtime_lifecycle.js');
 const realtimeSessionSource = source('worker/src/consumer/realtime_session.js');
 const realtimeMigrationSource = source('worker/consumer-migrations/0005_add_consumer_realtime_voice.sql');
 const realtimeControlMigrationSource = source('worker/consumer-migrations/0007_add_realtime_control_inbox.sql');
+const realtimePurposeConsentMigrationSource = source('worker/consumer-migrations/0009_add_realtime_consent_purposes.sql');
 const liveBridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
 const realtimeProofSource = source('scripts/run-consumer-realtime-infrastructure-proof.mjs');
 assert.match(wranglerSource, /^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m);
@@ -2018,6 +2687,13 @@ assert.match(liveBridgeSource, /runRealtimeInfrastructureProof/);
 assert.match(liveBridgeSource, /providerHangupConfirmed/);
 assert.match(realtimeControlMigrationSource, /consumer_realtime_control_messages/);
 assert.match(realtimeControlMigrationSource, /control_token_hash_b64u/);
+assert.match(realtimePurposeConsentMigrationSource, /consumer_realtime_consent_purposes/);
+assert.match(realtimePurposeConsentMigrationSource, /live_voice_processing/);
+assert.match(realtimePurposeConsentMigrationSource, /automated_planning_analysis/);
+assert.match(realtimePurposeConsentMigrationSource, /redacted_turn_retention/);
+assert.doesNotMatch(realtimePurposeConsentMigrationSource, /raw_audio|audio_blob|transcript_(?:text|encrypted)/i);
+assert.match(workflowSource, /CONSUMER_BETA_REALTIME_NOTICE_ID:\s*"realtime-voice-adviser-test-v2"/);
+assert.match(workflowSource, /CONSUMER_BETA_REALTIME_DATA_POLICY_ID:\s*"openai-realtime-audio-adviser-test-v2"/);
 assert.match(realtimeProofSource, /realtimeVoiceConsentAcknowledgement/);
 assert.match(realtimeProofSource, /realtimeVoiceConsentForm button\[type="submit"\]/);
 assert.match(realtimeProofSource, /The visible Realtime disclosure could not be accepted/);

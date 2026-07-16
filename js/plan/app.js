@@ -946,29 +946,18 @@ async function handleConfirmProfile() {
   }
 }
 
-function normaliseModuleIds(moduleIds = state.selectedModuleIds) {
-  return [...new Set((Array.isArray(moduleIds) ? moduleIds : [])
-    .map((moduleId) => String(moduleId || '').trim())
-    .filter(Boolean))];
-}
-
-function moduleSelectionSignature(moduleIds, revision = currentProfileRevision()) {
-  return `${Number(revision || 0)}:${normaliseModuleIds(moduleIds).sort().join('|')}`;
-}
-
 function analysisPlanFromPayload(payload) {
   const root = unwrap(payload);
   const plan = firstDefined(root.analysisPlan, root.session?.analysisPlan, root.plan);
   return plan && typeof plan === 'object' && !Array.isArray(plan) ? plan : null;
 }
 
-async function prepareDisplayedAnalysisPlan(moduleIds, {
+async function prepareDisplayedAnalysisPlan({
   background = false,
   generation = ++planPrepareGeneration
 } = {}) {
-  const requestedModuleIds = normaliseModuleIds(moduleIds);
   const revision = currentProfileRevision();
-  const signature = moduleSelectionSignature(requestedModuleIds, revision);
+  const signature = String(Number(revision || 0));
   if (!pendingPlanPrepare || pendingPlanPrepare.signature !== signature) {
     pendingPlanPrepare = {
       signature,
@@ -979,8 +968,7 @@ async function prepareDisplayedAnalysisPlan(moduleIds, {
     const payload = await putAnalysisPlan(getSessionId(), {
       action: 'prepare',
       idempotencyKey: pendingPlanPrepare.idempotencyKey,
-      expectedRevision: revision,
-      moduleIds: requestedModuleIds
+      expectedRevision: revision
     });
     if (generation !== planPrepareGeneration) return null;
     const returnedPlan = analysisPlanFromPayload(payload);
@@ -996,28 +984,18 @@ async function prepareDisplayedAnalysisPlan(moduleIds, {
     }
     mergePayload(payload);
     pendingPlanPrepare = null;
-    const preparedModuleIds = normaliseModuleIds(firstDefined(
-      returnedPlan.moduleIds,
-      returnedPlan.selectedModuleIds,
-      requestedModuleIds
-    ));
-    const selectionChanged = moduleSelectionSignature(preparedModuleIds, revision) !== signature;
-    if (background || selectionChanged) {
+    if (background) {
       renderCurrentJourney();
     }
-    if (selectionChanged) {
-      showToast('The protected planning rules updated the displayed module selection. Review it before confirming and running.', {
-        timeout: 7000
-      });
-    } else if (background) {
-      showToast('Analysis selection saved for this private session.', { timeout: 2800 });
+    if (background) {
+      showToast('Your authoritative analysis plan is saved for this private session.', { timeout: 2800 });
     }
-    return { plan: state.analysisPlan || returnedPlan, selectionChanged };
+    return { plan: state.analysisPlan || returnedPlan };
   } catch (error) {
     if (generation !== planPrepareGeneration) return null;
     if (recoverUnavailableSession(error)) return null;
     if (background) {
-      showToast('Your displayed choices are still here, but the server could not save them yet. Planéir will retry before running.', {
+      showToast('Your derived plan is still displayed, but the server could not save it yet. Planéir will retry before running.', {
         error: true,
         timeout: 6500
       });
@@ -1042,14 +1020,9 @@ async function handleRunAnalysis() {
       showToast('A complete three-analysis plan is required before continuing.', { error: true });
       return;
     }
-    const prepared = await prepareDisplayedAnalysisPlan(state.selectedModuleIds, { generation });
+    const prepared = await prepareDisplayedAnalysisPlan({ generation });
     if (!prepared) {
       throw new Error('The current analysis plan could not be prepared. Please try again.');
-    }
-    if (prepared.selectionChanged) {
-      setBusy(false);
-      renderCurrentJourney({ focus: true });
-      return;
     }
     const plan = prepared.plan || {};
     const planId = String(firstDefined(plan.planId, plan.id, '') || '');

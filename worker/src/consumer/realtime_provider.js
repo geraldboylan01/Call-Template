@@ -19,7 +19,7 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
   {
     type: 'function',
     name: 'propose_facts',
-    description: 'Propose explicit facts only for server-approved semantic fact IDs. The server returns exact readBackText for material read-back facts and saves ordinary facts only as editable drafts for final visual confirmation.',
+    description: 'Propose explicit facts only for server-approved semantic fact IDs. For an entity fact, send one object or {items:[...]} using operation upsert, remove or confirm_none and a stable entityId; use owner primary, partner or joint where requested. For Net Retirement, confirm no after-tax income with {operation:"confirm_none",scope:"net_retirement_income"} and no available cash/liquid investments with scope "retirement_available_assets" even when other records exist. The server returns exact readBackText for material read-back facts and saves ordinary facts only as editable drafts for final visual confirmation.',
     parameters: {
       type: 'object', additionalProperties: false,
       required: ['expectedRevision', 'facts'],
@@ -111,21 +111,7 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
   }
 ]);
 
-export function buildRealtimeInstructions(state = {}) {
-  const nextQuestion = typeof state.nextQuestion?.prompt === 'string'
-    ? state.nextQuestion.prompt.slice(0, 500)
-    : 'Ask the planning service for the next question.';
-  const stage = typeof state.stage === 'string' ? state.stage.slice(0, 80) : 'goal_discovery';
-  const selectedAnalyses = Array.isArray(state.moduleSlots)
-    ? state.moduleSlots
-      .slice(0, 3)
-      .map((slot) => String(slot?.moduleId || '').slice(0, 80))
-      .filter(Boolean)
-      .join(', ')
-    : '';
-  const pendingReadBack = typeof state.currentPendingProposal?.readBackText === 'string'
-    ? state.currentPendingProposal.readBackText.slice(0, 500)
-    : '';
+export function buildRealtimeInstructions(_state = {}) {
   return [
     'You are Planéir, a clearly disclosed AI conversational companion for financial education. Never pretend to be a human adviser.',
     'Interpret the consumer calmly and precisely. You are a silent tool interpreter: never emit assistant audio or assistant prose.',
@@ -146,10 +132,7 @@ export function buildRealtimeInstructions(state = {}) {
     'When a tool returns speakableText, treat it as immutable Worker-owned context. Never add, round, compare, recalculate or emit it yourself.',
     'For deferred, unsupported, regulated, or adviser-only topics, use planning-state tools. Never create a handoff, promise contact, run a gated analysis, or invent results.',
     'Never request PPS numbers, account/card numbers, passwords, credentials, documents, or an exact address.',
-    `Current journey stage: ${stage}.`,
-    `Current authoritative three-analysis focus: ${selectedAnalyses || 'not yet classified; continue the goal and life-stage scan'}.`,
-    `Current server-owned read-back: ${pendingReadBack || 'none'}.`,
-    `Current server-selected question: ${nextQuestion}`
+    'Get the current journey phase, exact three-analysis focus, pending read-back and next question from server tools. Never rely on an earlier instruction snapshot for mutable planning state.'
   ].join('\n');
 }
 

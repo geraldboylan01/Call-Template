@@ -74,8 +74,8 @@ jobs:
       CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS: "2000"
       CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: "10"
       CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS: "10"
-      CONSUMER_BETA_REALTIME_NOTICE_ID: "realtime-voice-adviser-test-v1"
-      CONSUMER_BETA_REALTIME_DATA_POLICY_ID: "openai-realtime-audio-adviser-test-v1"
+      CONSUMER_BETA_REALTIME_NOTICE_ID: "realtime-voice-adviser-test-v2"
+      CONSUMER_BETA_REALTIME_DATA_POLICY_ID: "openai-realtime-audio-adviser-test-v2"
       CONSUMER_BETA_REALTIME_MODEL: "gpt-realtime-2.1"
       CONSUMER_BETA_REALTIME_VOICE: "marin"
       CONSUMER_BETA_REALTIME_REASONING_EFFORT: "low"
@@ -520,8 +520,8 @@ jobs:
 
             if (realtimeEnabled) {
               const fixedRealtimeValues = {
-                CONSUMER_REALTIME_NOTICE_ID: ['CONSUMER_BETA_REALTIME_NOTICE_ID', 'realtime-voice-adviser-test-v1'],
-                CONSUMER_REALTIME_DATA_POLICY_ID: ['CONSUMER_BETA_REALTIME_DATA_POLICY_ID', 'openai-realtime-audio-adviser-test-v1'],
+                CONSUMER_REALTIME_NOTICE_ID: ['CONSUMER_BETA_REALTIME_NOTICE_ID', 'realtime-voice-adviser-test-v2'],
+                CONSUMER_REALTIME_DATA_POLICY_ID: ['CONSUMER_BETA_REALTIME_DATA_POLICY_ID', 'openai-realtime-audio-adviser-test-v2'],
                 CONSUMER_REALTIME_MODEL: ['CONSUMER_BETA_REALTIME_MODEL', 'gpt-realtime-2.1'],
                 CONSUMER_REALTIME_VOICE: ['CONSUMER_BETA_REALTIME_VOICE', 'marin'],
                 CONSUMER_REALTIME_REASONING_EFFORT: ['CONSUMER_BETA_REALTIME_REASONING_EFFORT', 'low'],

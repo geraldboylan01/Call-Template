@@ -2167,6 +2167,10 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_analysis_plans WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_consent_purpose_events WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_consent_purposes WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_consent_events WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_consents WHERE session_id = ? AND ${lockedSessionExists}`)

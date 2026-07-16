@@ -91,7 +91,7 @@ async function request(path, {
   }
 
   const headers = new Headers({
-    Accept: responseType === 'blob'
+    Accept: responseType === 'blob' || responseType === 'stream'
       ? 'audio/mpeg'
       : (responseType === 'text' ? 'application/sdp, application/json' : 'application/json'),
     ...(requestHeaders || {})
@@ -119,16 +119,26 @@ async function request(path, {
 
   const requestController = new AbortController();
   let timedOut = false;
+  let responseStreamActive = false;
   const abortFromCaller = () => requestController.abort(signal?.reason || 'cancelled');
   if (signal?.aborted) {
     abortFromCaller();
   } else {
     signal?.addEventListener('abort', abortFromCaller, { once: true });
   }
-  const timeoutId = window.setTimeout(() => {
-    timedOut = true;
-    requestController.abort('timeout');
-  }, timeoutMs);
+  let timeoutId = null;
+  const armTimeout = () => {
+    window.clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      requestController.abort('timeout');
+    }, timeoutMs);
+  };
+  armTimeout();
+  const cleanupRequest = () => {
+    window.clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromCaller);
+  };
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method,
@@ -156,6 +166,65 @@ async function request(path, {
         blob: await response.blob(),
         headers: response.headers,
         contentType: response.headers.get('content-type') || ''
+      };
+    }
+
+    if (responseType === 'stream') {
+      if (!response.body || typeof response.body.getReader !== 'function') {
+        throw new ConsumerApiError('Approved voice streaming is unavailable in this browser.', {
+          code: 'response_stream_unavailable'
+        });
+      }
+      const reader = response.body.getReader();
+      if (requestController.signal.aborted) {
+        await reader.cancel(requestController.signal.reason).catch(() => {});
+        throw new Error('request_aborted');
+      }
+      let closed = false;
+      let abortReader = null;
+      const closeStream = () => {
+        if (closed) return;
+        closed = true;
+        if (abortReader) requestController.signal.removeEventListener('abort', abortReader);
+        responseStreamActive = false;
+        cleanupRequest();
+      };
+      abortReader = () => {
+        reader.cancel(requestController.signal.reason || 'response_stream_aborted').catch(() => {});
+        closeStream();
+      };
+      requestController.signal.addEventListener('abort', abortReader, { once: true });
+      responseStreamActive = true;
+      armTimeout();
+      const stream = new ReadableStream({
+        async pull(controller) {
+          try {
+            const chunk = await reader.read();
+            if (closed) return;
+            if (chunk.done) {
+              closeStream();
+              controller.close();
+              return;
+            }
+            armTimeout();
+            controller.enqueue(chunk.value);
+          } catch (error) {
+            if (closed) return;
+            closeStream();
+            controller.error(error);
+          }
+        },
+        async cancel(reason) {
+          requestController.abort(reason || 'response_stream_cancelled');
+          await reader.cancel(reason).catch(() => {});
+          closeStream();
+        }
+      });
+      return {
+        stream,
+        headers: response.headers,
+        contentType: response.headers.get('content-type') || '',
+        contentLength: Number(response.headers.get('content-length')) || null
       };
     }
 
@@ -188,8 +257,7 @@ async function request(path, {
       details: error
     });
   } finally {
-    window.clearTimeout(timeoutId);
-    signal?.removeEventListener('abort', abortFromCaller);
+    if (!responseStreamActive) cleanupRequest();
   }
 }
 
@@ -362,6 +430,8 @@ function realtimeCallPath(sessionId, leaseId = '') {
 export function createRealtimeVoiceCall(sessionId, {
   sdp,
   idempotencyKey,
+  activationId,
+  controlCapability,
   signal
 } = {}) {
   const offerSdp = String(sdp || '');
@@ -376,11 +446,35 @@ export function createRealtimeVoiceCall(sessionId, {
     rawBody: offerSdp,
     requestHeaders: {
       'Content-Type': 'application/sdp',
-      'X-Voice-Request-Id': String(idempotencyKey || '')
+      'X-Voice-Request-Id': String(idempotencyKey || ''),
+      'X-Realtime-Activation-Id': String(activationId || ''),
+      'X-Realtime-Control-Capability': String(controlCapability || '')
     },
     signal,
     timeoutMs: 45_000,
     responseType: 'text'
+  });
+}
+
+export function deleteRealtimeVoiceActivation(sessionId, activationId, {
+  signal,
+  controlCapability
+} = {}) {
+  const value = String(activationId || '').trim();
+  if (!/^rt_activation_[A-Za-z0-9_-]{20,80}$/.test(value)) {
+    throw new ConsumerApiError('The Live voice activation reference is invalid.', {
+      code: 'invalid_realtime_activation'
+    });
+  }
+  return request(pathForSession(
+    sessionId,
+    `/voice/realtime/activations/${encodeURIComponent(value)}`
+  ), {
+    method: 'DELETE',
+    authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability),
+    signal,
+    timeoutMs: 20_000
   });
 }
 
@@ -436,7 +530,7 @@ export function speakRealtimeAuthorized(sessionId, leaseId, authorization, {
     requestHeaders: realtimeControlHeaders(controlCapability),
     signal,
     timeoutMs: 45_000,
-    responseType: 'blob'
+    responseType: 'stream'
   });
 }
 

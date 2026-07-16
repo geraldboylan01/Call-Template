@@ -1,6 +1,7 @@
 import {
   ConsumerApiError,
   createRealtimeVoiceCall,
+  deleteRealtimeVoiceActivation,
   deleteRealtimeVoiceCall,
   getRealtimeVoiceCall,
   speakRealtimeAuthorized,
@@ -69,6 +70,18 @@ function newIdempotencyKey(prefix = 'voice-realtime') {
     ? crypto.getRandomValues(new Uint32Array(4)).join('-')
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `${prefix}-${Date.now()}-${random}`;
+}
+
+function newRealtimePrivateId(prefix) {
+  if (typeof crypto?.randomUUID === 'function') {
+    return `${prefix}_${crypto.randomUUID()}`;
+  }
+  const random = crypto?.getRandomValues
+    ? [...crypto.getRandomValues(new Uint32Array(6))]
+      .map((value) => value.toString(36))
+      .join('_')
+    : `${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+  return `${prefix}_${random}`;
 }
 
 function headerValue(headers, names) {
@@ -183,6 +196,9 @@ export function normaliseRealtimeCallResponse(response) {
   const controlCapability = cleanText(headerValue(response?.headers, [
     'X-Realtime-Control-Capability'
   ]), 120);
+  const activationId = cleanText(headerValue(response?.headers, [
+    'X-Realtime-Activation-Id'
+  ]), 120);
   const payload = parsed || (headerBudget ? { realtimeVoiceBudget: headerBudget } : null);
   return {
     sdp,
@@ -191,7 +207,8 @@ export function normaliseRealtimeCallResponse(response) {
     maxDurationMs,
     payload,
     budget: headerBudget,
-    controlCapability
+    controlCapability,
+    activationId
   };
 }
 
@@ -592,6 +609,17 @@ function stopTracks(stream) {
   });
 }
 
+function microphoneConstraints(deviceId = '') {
+  const selectedDeviceId = String(deviceId || '').trim();
+  return {
+    channelCount: 1,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    ...(selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : {})
+  };
+}
+
 function connectionErrorMessage(error) {
   if (error instanceof ConsumerApiError) return error.message;
   switch (String(error?.name || '')) {
@@ -657,6 +685,9 @@ export class RealtimeVoiceController {
     this.responseInProgress = false;
     this.controlledSpeechController = null;
     this.controlledSpeechUrl = '';
+    this.controlledSpeechReader = null;
+    this.controlledSpeechMediaSource = null;
+    this.controlledSpeechStreamTask = null;
     this.currentControlledSpeech = null;
     this.playedSpeechIds = new Set();
     this.userDeltas = new Map();
@@ -668,6 +699,11 @@ export class RealtimeVoiceController {
     this.expanded = false;
     this.lastFocusedElement = null;
     this.backgroundInertStates = new Map();
+    this.microphoneDevices = [];
+    this.selectedMicrophoneId = '';
+    this.activeMicrophoneLabel = '';
+    this.deviceRefreshInFlight = false;
+    this.deviceChangeHandler = () => this.refreshMicrophones();
   }
 
   element(id) {
@@ -692,6 +728,13 @@ export class RealtimeVoiceController {
     this.element('realtimeVoiceBoundedFallbackButton')?.addEventListener('click', () => this.focusBoundedVoice());
     this.element('realtimeVoiceReviewButton')?.addEventListener('click', () => this.reviewAndConfirm());
     this.element('realtimeVoiceTranscriptToggle')?.addEventListener('click', () => this.toggleTranscript());
+    this.element('realtimeVoiceMicrophoneSelect')?.addEventListener('change', (event) => {
+      this.selectMicrophone(event.currentTarget?.value || '');
+    });
+    this.element('realtimeVoiceRefreshDevicesButton')?.addEventListener('click', () => {
+      this.refreshMicrophones();
+    });
+    navigator.mediaDevices?.addEventListener?.('devicechange', this.deviceChangeHandler);
 
     const form = document.getElementById('realtimeVoiceConsentForm');
     const cancel = document.getElementById('cancelRealtimeVoiceConsentButton');
@@ -744,6 +787,7 @@ export class RealtimeVoiceController {
         this.element('realtimeVoiceCollapseButton')?.focus?.({ preventScroll: true });
       });
     }
+    this.refreshMicrophones();
   }
 
   collapseCompanion({ restoreFocus = true } = {}) {
@@ -879,6 +923,8 @@ export class RealtimeVoiceController {
     const launcher = this.element('realtimeVoiceLauncher');
     const launcherStatus = this.element('realtimeVoiceLauncherStatus');
     const panel = this.element('realtimeVoiceShell');
+    const microphoneSelect = this.element('realtimeVoiceMicrophoneSelect');
+    const refreshDevices = this.element('realtimeVoiceRefreshDevicesButton');
 
     [this.root, panel].filter(Boolean).forEach((element) => {
       element.dataset.realtimePhase = this.phase;
@@ -948,6 +994,9 @@ export class RealtimeVoiceController {
       review.hidden = false;
       review.disabled = !(this.planningContext?.readyForReview || hasContext);
     }
+    if (microphoneSelect) microphoneSelect.disabled = this.deviceRefreshInFlight || this.phase === 'connecting';
+    if (refreshDevices) refreshDevices.disabled = this.deviceRefreshInFlight || this.phase === 'connecting';
+    this.renderMicrophoneState();
 
     const budgetValue = this.element('realtimeVoiceBudgetValue');
     const budgetMeter = this.element('realtimeVoiceBudgetMeter');
@@ -1002,21 +1051,17 @@ export class RealtimeVoiceController {
     this.startController = controller;
 
     let leaseId = '';
+    const activationId = newRealtimePrivateId('rt_activation');
+    const proposedControlCapability = newRealtimePrivateId('rt_control');
+    let activationRequestSent = false;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
+      const stream = await this.openMicrophoneStream();
       if (generation !== this.generation || controller.signal.aborted || !hasCurrentRealtimeVoiceConsent()) {
         stopTracks(stream);
         return;
       }
       this.localStream = stream;
+      await this.refreshMicrophones({ activeStream: stream });
       const PeerConnection = window.RTCPeerConnection;
       const peer = new PeerConnection();
       this.peerConnection = peer;
@@ -1030,16 +1075,22 @@ export class RealtimeVoiceController {
       const offer = await peer.createOffer({ offerToReceiveAudio: true });
       await peer.setLocalDescription(offer);
       const offerSdp = String(peer.localDescription?.sdp || offer.sdp || '');
+      activationRequestSent = true;
       const response = await createRealtimeVoiceCall(context.sessionId, {
         sdp: offerSdp,
         idempotencyKey: newIdempotencyKey(),
+        activationId,
+        controlCapability: proposedControlCapability,
         signal: controller.signal
       });
       if (generation !== this.generation || controller.signal.aborted) return;
       const call = normaliseRealtimeCallResponse(response);
       if (!call.sdp.startsWith('v=0')) throw new Error('The service returned no valid Live voice answer.');
       if (!call.leaseId) throw new Error('The service returned no controllable Live voice lease.');
-      if (!/^rt_control_[A-Za-z0-9_-]{20,80}$/.test(call.controlCapability)) {
+      if (call.activationId !== activationId) {
+        throw new Error('The service returned a mismatched Live voice activation.');
+      }
+      if (call.controlCapability !== proposedControlCapability) {
         throw new Error('The service returned no authenticated Live voice control channel.');
       }
       leaseId = call.leaseId;
@@ -1052,9 +1103,20 @@ export class RealtimeVoiceController {
       this.setPhase('listening', 'I’m listening — take your time.');
       this.scheduleLeasePoll(1_500);
     } catch (error) {
+      const sessionId = context.sessionId;
+      let activationCleanupConfirmed = true;
+      if (activationRequestSent && !leaseId && sessionId) {
+        activationCleanupConfirmed = await this.cleanupLostActivation(
+          sessionId,
+          activationId,
+          proposedControlCapability
+        );
+      }
       if (generation !== this.generation || controller.signal.aborted) return;
-      const message = connectionErrorMessage(error);
-      const sessionId = this.sessionId;
+      const baseMessage = connectionErrorMessage(error);
+      const message = activationCleanupConfirmed
+        ? baseMessage
+        : `${baseMessage} The meeting connection is still being closed automatically.`;
       const cleanupLeaseId = leaseId || this.leaseId;
       const cleanupControlCapability = this.controlCapability;
       this.cleanupLocal();
@@ -1080,6 +1142,22 @@ export class RealtimeVoiceController {
     } finally {
       if (this.startController === controller) this.startController = null;
     }
+  }
+
+  async cleanupLostActivation(sessionId, activationId, controlCapability) {
+    for (const delay of [0, 400, 1_200]) {
+      if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+      try {
+        const result = await deleteRealtimeVoiceActivation(sessionId, activationId, {
+          controlCapability
+        });
+        if (result?.cleanedUp === true && result?.providerHangupConfirmed === true) return true;
+      } catch (_error) {
+        // The cleanup route is idempotent, so an ambiguous network result can
+        // be retried with the same activation capability.
+      }
+    }
+    return false;
   }
 
   bindPeerConnection(peer, generation) {
@@ -1117,6 +1195,135 @@ export class RealtimeVoiceController {
         this.end({ reason: 'connection_failed' });
       }
     });
+  }
+
+  async openMicrophoneStream(deviceId = this.selectedMicrophoneId) {
+    const selected = String(deviceId || '').trim();
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: microphoneConstraints(selected)
+      });
+    } catch (error) {
+      if (!selected || !['OverconstrainedError', 'NotFoundError', 'DevicesNotFoundError'].includes(String(error?.name || ''))) {
+        throw error;
+      }
+      this.selectedMicrophoneId = '';
+      this.onToast('That microphone is no longer available. Planéir will use the browser default.', {
+        error: true,
+        timeout: 5000
+      });
+      return navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: microphoneConstraints()
+      });
+    }
+  }
+
+  async refreshMicrophones({ activeStream = this.localStream } = {}) {
+    if (!navigator.mediaDevices?.enumerateDevices || this.deviceRefreshInFlight) return;
+    this.deviceRefreshInFlight = true;
+    this.renderMicrophoneState();
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      this.microphoneDevices = devices.filter((device) => device.kind === 'audioinput');
+      const activeTrack = activeStream?.getAudioTracks?.()[0] || null;
+      const activeDeviceId = String(activeTrack?.getSettings?.().deviceId || '');
+      const activeDevice = this.microphoneDevices.find((device) => device.deviceId === activeDeviceId);
+      this.activeMicrophoneLabel = activeTrack
+        ? cleanText(activeTrack.label || activeDevice?.label || 'Active microphone', 120)
+        : '';
+      if (this.selectedMicrophoneId
+        && !this.microphoneDevices.some((device) => device.deviceId === this.selectedMicrophoneId)) {
+        this.selectedMicrophoneId = '';
+      }
+    } catch (_error) {
+      this.microphoneDevices = [];
+      this.activeMicrophoneLabel = activeStream?.getAudioTracks?.()[0]?.label || '';
+    } finally {
+      this.deviceRefreshInFlight = false;
+      this.renderMicrophoneState();
+    }
+  }
+
+  renderMicrophoneState() {
+    const select = this.element('realtimeVoiceMicrophoneSelect');
+    const status = this.element('realtimeVoiceDeviceStatus');
+    const summary = this.element('realtimeVoiceDeviceSummary');
+    if (select?.ownerDocument?.createElement) {
+      const doc = select.ownerDocument;
+      const options = [];
+      const fallback = doc.createElement('option');
+      fallback.value = '';
+      fallback.textContent = 'Browser default';
+      options.push(fallback);
+      this.microphoneDevices.forEach((device, index) => {
+        if (!device.deviceId || device.deviceId === 'default') return;
+        const option = doc.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = cleanText(device.label || `Microphone ${index + 1}`, 120);
+        options.push(option);
+      });
+      select.replaceChildren(...options);
+      select.value = this.selectedMicrophoneId;
+    }
+    const selectedDevice = this.microphoneDevices.find((device) => (
+      device.deviceId === this.selectedMicrophoneId
+    ));
+    const selectedLabel = cleanText(selectedDevice?.label || '', 120);
+    const displayLabel = this.activeMicrophoneLabel || selectedLabel || 'Browser default';
+    if (summary) summary.textContent = displayLabel;
+    if (status) {
+      status.textContent = this.deviceRefreshInFlight
+        ? 'Checking available microphones…'
+        : this.active
+          ? `${this.muted ? 'Muted' : 'Using'}: ${displayLabel}`
+          : selectedLabel
+            ? `Ready to use: ${selectedLabel}`
+            : this.microphoneDevices.length > 0
+              ? 'The browser default microphone will be used. Choose another source if needed.'
+              : 'Microphone names appear after browser permission is granted.';
+    }
+  }
+
+  async selectMicrophone(deviceId) {
+    const selected = String(deviceId || '').trim();
+    if (selected === this.selectedMicrophoneId && !this.active) return;
+    const previousSelectedMicrophoneId = this.selectedMicrophoneId;
+    this.selectedMicrophoneId = selected;
+    this.renderMicrophoneState();
+    if (!this.active || !this.peerConnection) return;
+    const generation = this.generation;
+    let replacementStream = null;
+    try {
+      const nextStream = await this.openMicrophoneStream(selected);
+      replacementStream = nextStream;
+      if (!this.active || generation !== this.generation) {
+        stopTracks(nextStream);
+        return;
+      }
+      const nextTrack = nextStream.getAudioTracks?.()[0];
+      const sender = this.peerConnection.getSenders?.().find((candidate) => candidate.track?.kind === 'audio');
+      if (!nextTrack || !sender?.replaceTrack) {
+        throw new Error('This browser cannot switch microphones during a meeting.');
+      }
+      nextTrack.enabled = !this.muted;
+      await sender.replaceTrack(nextTrack);
+      const previousStream = this.localStream;
+      this.localStream = nextStream;
+      replacementStream = null;
+      stopTracks(previousStream);
+      await this.refreshMicrophones({ activeStream: nextStream });
+      this.setPhase(this.muted ? 'muted' : 'listening', this.muted
+        ? `Microphone changed to ${this.activeMicrophoneLabel || 'the selected source'} and remains muted.`
+        : `Microphone changed to ${this.activeMicrophoneLabel || 'the selected source'}. I’m listening.`);
+    } catch (error) {
+      stopTracks(replacementStream);
+      this.selectedMicrophoneId = previousSelectedMicrophoneId;
+      const message = connectionErrorMessage(error);
+      this.onToast(message, { error: true, timeout: 6000 });
+      await this.refreshMicrophones();
+    }
   }
 
   bindDataChannel(channel, generation) {
@@ -1267,20 +1474,30 @@ export class RealtimeVoiceController {
         || !String(result.contentType || '').toLowerCase().startsWith('audio/')) {
         throw new Error('The approved speech response could not be verified.');
       }
+      // The Worker response authenticates the exact text independently of
+      // audio decode/playback. Keep that caption visible if audio later fails.
+      this.finalizeWorkerSpeech(speechId, text);
       const budget = budgetFromHeaders(result.headers);
       if (budget) this.onVoicePayload({ realtimeVoiceBudget: budget });
       const audio = this.element('realtimeVoiceAudio');
       if (!audio || typeof window.URL?.createObjectURL !== 'function') {
         throw new Error('Approved voice playback is unavailable in this browser.');
       }
-      this.controlledSpeechUrl = window.URL.createObjectURL(result.blob);
       audio.srcObject = null;
       audio.muted = false;
-      audio.src = this.controlledSpeechUrl;
+      await this.attachControlledSpeechAudio({ result, audio, controller, speechId });
+      if (controller.signal.aborted
+        || generation !== this.generation
+        || !this.active
+        || leaseId !== this.leaseId
+        || this.controlledSpeechController !== controller
+        || this.currentControlledSpeech?.speechId !== speechId) {
+        controller.abort('controlled_speech_stale');
+        return;
+      }
       audio.onended = () => this.finishControlledSpeech(speechId);
       audio.onerror = () => this.finishControlledSpeech(speechId, { error: true });
       this.currentControlledSpeech = { speechId, text, loading: false };
-      this.finalizeWorkerSpeech(speechId, text);
       this.setPhase('assistant_speaking', 'Planéir is speaking — feel free to interrupt at any time.');
       try {
         await audio.play();
@@ -1289,6 +1506,10 @@ export class RealtimeVoiceController {
         const resume = this.element('realtimeVoiceResumeAudioButton');
         if (resume) resume.hidden = true;
       } catch (_error) {
+        if (controller.signal.aborted
+          || generation !== this.generation
+          || leaseId !== this.leaseId
+          || this.currentControlledSpeech?.speechId !== speechId) return;
         const resume = this.element('realtimeVoiceResumeAudioButton');
         if (resume) resume.hidden = false;
         this.statusText = 'The approved caption is ready. Press Play voice audio if your browser paused it.';
@@ -1296,27 +1517,159 @@ export class RealtimeVoiceController {
       }
     } catch (error) {
       if (controller.signal.aborted || generation !== this.generation) return;
-      this.currentControlledSpeech = null;
+      this.stopControlledSpeech();
       const message = error instanceof ConsumerApiError
         ? error.message
         : 'The approved spoken response could not be played. Continue with the visible journey.';
       this.setPhase('error', message, { error: message });
     } finally {
-      if (this.controlledSpeechController === controller) this.controlledSpeechController = null;
+      if (this.controlledSpeechController === controller
+        && this.currentControlledSpeech?.speechId !== speechId) {
+        this.controlledSpeechController = null;
+      }
     }
+  }
+
+  async attachControlledSpeechAudio({ result, audio, controller, speechId }) {
+    const contentType = String(result.contentType || 'audio/mpeg').split(';')[0].trim().toLowerCase();
+    const stream = result.stream && typeof result.stream.getReader === 'function'
+      ? result.stream
+      : null;
+    const MediaSourceConstructor = window.MediaSource;
+    const canStream = stream
+      && typeof MediaSourceConstructor === 'function'
+      && typeof MediaSourceConstructor.isTypeSupported === 'function'
+      && MediaSourceConstructor.isTypeSupported(contentType);
+    if (!canStream) {
+      const blob = result.blob instanceof Blob
+        ? result.blob
+        : await new Response(stream, { headers: { 'Content-Type': contentType } }).blob();
+      if (controller.signal.aborted) throw new Error('Approved speech playback was cancelled.');
+      this.controlledSpeechUrl = window.URL.createObjectURL(blob);
+      audio.src = this.controlledSpeechUrl;
+      return;
+    }
+
+    const mediaSource = new MediaSourceConstructor();
+    this.controlledSpeechMediaSource = mediaSource;
+    this.controlledSpeechUrl = window.URL.createObjectURL(mediaSource);
+    audio.src = this.controlledSpeechUrl;
+    try {
+      await this.waitForMediaSourceOpen(mediaSource, controller.signal);
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      this.releaseControlledSpeechUrl();
+      audio.removeAttribute?.('src');
+      const blob = await new Response(stream, { headers: { 'Content-Type': contentType } }).blob();
+      if (controller.signal.aborted) throw new Error('Approved speech playback was cancelled.');
+      this.controlledSpeechUrl = window.URL.createObjectURL(blob);
+      audio.src = this.controlledSpeechUrl;
+      return;
+    }
+    if (controller.signal.aborted) throw new Error('Approved speech playback was cancelled.');
+    const sourceBuffer = mediaSource.addSourceBuffer(contentType);
+    const reader = stream.getReader();
+    this.controlledSpeechReader = reader;
+    const first = await reader.read();
+    if (first.done || !(first.value instanceof Uint8Array) || first.value.byteLength < 1) {
+      throw new Error('The approved speech response was empty.');
+    }
+    await this.appendMediaSourceChunk(sourceBuffer, first.value, controller.signal);
+    const task = (async () => {
+      try {
+        while (!controller.signal.aborted) {
+          const chunk = await reader.read();
+          if (chunk.done) {
+            if (mediaSource.readyState === 'open') mediaSource.endOfStream();
+            return;
+          }
+          await this.appendMediaSourceChunk(sourceBuffer, chunk.value, controller.signal);
+        }
+      } catch (_error) {
+        if (!controller.signal.aborted && this.currentControlledSpeech?.speechId === speechId) {
+          this.finishControlledSpeech(speechId, { error: true });
+        }
+      } finally {
+        if (this.controlledSpeechReader === reader) this.controlledSpeechReader = null;
+        if (this.controlledSpeechStreamTask === task) this.controlledSpeechStreamTask = null;
+      }
+    })();
+    this.controlledSpeechStreamTask = task;
+  }
+
+  waitForMediaSourceOpen(mediaSource, signal) {
+    if (signal.aborted) return Promise.reject(new Error('Approved speech playback was cancelled.'));
+    if (mediaSource.readyState === 'open') return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        reject(new Error('Approved speech streaming took too long to start.'));
+      }, 10_000);
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        mediaSource.removeEventListener('sourceopen', onOpen);
+        mediaSource.removeEventListener('error', onError);
+        signal.removeEventListener('abort', onAbort);
+      };
+      const onOpen = () => { cleanup(); resolve(); };
+      const onError = () => { cleanup(); reject(new Error('Approved speech streaming could not start.')); };
+      const onAbort = () => { cleanup(); reject(new Error('Approved speech playback was cancelled.')); };
+      mediaSource.addEventListener('sourceopen', onOpen, { once: true });
+      mediaSource.addEventListener('error', onError, { once: true });
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  appendMediaSourceChunk(sourceBuffer, chunk, signal) {
+    if (signal.aborted) return Promise.reject(new Error('Approved speech playback was cancelled.'));
+    if (!(chunk instanceof Uint8Array) || chunk.byteLength < 1) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        reject(new Error('Approved speech streaming stalled.'));
+      }, 10_000);
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        sourceBuffer.removeEventListener('updateend', onUpdateEnd);
+        sourceBuffer.removeEventListener('error', onError);
+        signal.removeEventListener('abort', onAbort);
+      };
+      const onUpdateEnd = () => { cleanup(); resolve(); };
+      const onError = () => { cleanup(); reject(new Error('Approved speech streaming stopped.')); };
+      const onAbort = () => { cleanup(); reject(new Error('Approved speech playback was cancelled.')); };
+      sourceBuffer.addEventListener('updateend', onUpdateEnd, { once: true });
+      sourceBuffer.addEventListener('error', onError, { once: true });
+      signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        sourceBuffer.appendBuffer(chunk);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    });
   }
 
   finishControlledSpeech(speechId, { error = false } = {}) {
     if (this.currentControlledSpeech?.speechId !== speechId) return;
+    const approvedText = this.currentControlledSpeech.text;
+    if (error) {
+      this.controlledSpeechController?.abort('controlled_speech_error');
+      this.controlledSpeechReader?.cancel('controlled_speech_error').catch(() => {});
+    }
+    this.controlledSpeechController = null;
+    this.controlledSpeechReader = null;
+    this.controlledSpeechMediaSource = null;
+    this.controlledSpeechStreamTask = null;
     this.currentControlledSpeech = null;
     this.releaseControlledSpeechUrl();
-    this.setCaption('assistant', '…');
     if (error) {
+      this.setCaption('assistant', approvedText);
       this.setPhase('error', 'The approved audio stopped unexpectedly. Continue with the written journey.', {
         error: 'Approved voice playback stopped.'
       });
       return;
     }
+    this.setCaption('assistant', '…');
     this.setPhase(this.muted ? 'muted' : 'listening', this.muted
       ? 'Your microphone is paused. Unmute when you’re ready to continue.'
       : 'I’m listening — take your time.');
@@ -1327,11 +1680,15 @@ export class RealtimeVoiceController {
       window.URL.revokeObjectURL(this.controlledSpeechUrl);
     }
     this.controlledSpeechUrl = '';
+    this.controlledSpeechMediaSource = null;
   }
 
   stopControlledSpeech({ interrupted = false } = {}) {
     this.controlledSpeechController?.abort('controlled_speech_stopped');
     this.controlledSpeechController = null;
+    this.controlledSpeechReader?.cancel('controlled_speech_stopped').catch(() => {});
+    this.controlledSpeechReader = null;
+    this.controlledSpeechStreamTask = null;
     const audio = this.element('realtimeVoiceAudio');
     if (audio) {
       try { audio.pause(); } catch (_error) { /* noop */ }
@@ -1784,6 +2141,7 @@ export class RealtimeVoiceController {
     }
     stopTracks(this.localStream);
     this.localStream = null;
+    this.activeMicrophoneLabel = '';
     this.playedSpeechIds.clear();
     this.leaseId = '';
     this.controlCapability = '';

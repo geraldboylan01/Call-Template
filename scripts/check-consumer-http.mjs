@@ -98,6 +98,32 @@ assert.match(
   /X-Realtime-Control-Capability/i
 );
 
+const realtimeActivationPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/realtime/activations/rt_activation_AAAAAAAAAAAAAAAAAAAA', {
+  method: 'OPTIONS',
+  expectedStatus: 204,
+  extraHeaders: {
+    'Access-Control-Request-Method': 'DELETE',
+    'Access-Control-Request-Headers': 'x-consumer-session,x-realtime-control-capability'
+  }
+});
+assert.match(
+  realtimeActivationPreflight.response.headers.get('access-control-allow-methods') || '',
+  /DELETE/i
+);
+
+const realtimeCallPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/realtime/calls', {
+  method: 'OPTIONS',
+  expectedStatus: 204,
+  extraHeaders: {
+    'Access-Control-Request-Method': 'POST',
+    'Access-Control-Request-Headers': 'content-type,x-consumer-session,x-voice-request-id,x-realtime-activation-id,x-realtime-control-capability'
+  }
+});
+assert.match(
+  realtimeCallPreflight.response.headers.get('access-control-allow-headers') || '',
+  /X-Realtime-Activation-Id/i
+);
+
 const advisorInvitePreflight = await request('/api/advisor/consumer-invite', {
   method: 'OPTIONS',
   expectedStatus: 204,

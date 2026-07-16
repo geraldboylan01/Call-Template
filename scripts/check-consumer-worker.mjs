@@ -633,8 +633,8 @@ assert.doesNotThrow(() => assertBetaBootstrap(betaDeploymentBootstrap));
 
 const realtimeDeploymentPolicy = {
   ...betaDeploymentPolicy,
-  realtimeNoticeId: 'realtime-voice-adviser-test-v1',
-  realtimeDataPolicyId: 'openai-realtime-audio-adviser-test-v1',
+  realtimeNoticeId: 'realtime-voice-adviser-test-v2',
+  realtimeDataPolicyId: 'openai-realtime-audio-adviser-test-v2',
   realtimeModel: 'gpt-realtime-2.1',
   realtimeVoice: 'marin',
   realtimeReasoningEffort: 'low',
@@ -876,25 +876,7 @@ state = describeConversationState(profile, {
   moduleRoutingEnabled: true,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.equal(state.nextQuestion.fieldPaths[0], '/assumptions/values/persona/householdStructure');
-const multiFactScanPatch = extractContextBoundPatch(
-  profile,
-  state.nextQuestion,
-  'This plan is for me and my partner. I am employed, we rent, have no children, do not own a business, and I am still working.'
-);
-assert.deepEqual(multiFactScanPatch, {
-  '/assumptions/values/persona/dependantCount': 0,
-  '/assumptions/values/persona/householdStructure': 'couple',
-  '/assumptions/values/persona/employmentContext': 'employee',
-  '/assumptions/values/persona/propertyStatus': 'renter',
-  '/assumptions/values/persona/businessContext': 'no_business_interest',
-  '/assumptions/values/persona/retirementStatus': 'working'
-});
-profile = applyProfilePatch(profile, multiFactScanPatch, [], 'consumer_edit');
-state = describeConversationState(profile, {
-  moduleRoutingEnabled: true,
-  allowedModules: ['house_purchase', 'liquidity_analysis']
-});
+assert.notEqual(state.stage, 'life_stage_scan');
 assert.equal(state.nextQuestion.fieldPaths[0], '/expenses/monthlyEssential');
 assert.deepEqual(extractContextBoundPatch(profile, state.nextQuestion, '€3,000'), {
   '/expenses/monthlyEssential': { amount: 3000, currency: 'EUR' }
@@ -974,6 +956,12 @@ assert.deepEqual(firstTimeBuyerPatch['/assumptions/values/housePurchase'], {
 });
 
 const preparedNoExpenseProfile = applyProfilePatch(profile, {
+  '/partner': {
+    personId: 'partner-realtime-test',
+    role: 'partner',
+    displayName: 'Partner',
+    employmentStatus: 'employee'
+  },
   '/goals/0/targetAmount': { amount: 350000, currency: 'EUR' },
   '/incomeSources/0': {
     incomeId: 'income-none-test',
@@ -1015,10 +1003,16 @@ const noExpenseState = describeConversationState(noExpenseProfile, {
   moduleRoutingEnabled: true,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.equal(noExpenseState.stage, 'review');
-assert.deepEqual(noExpenseState.nextQuestion.fieldPaths, []);
-assert.ok(noExpenseState.recommendations.every((item) => item.readiness.status === 'adviser_review_required'));
-assert.ok(noExpenseState.recommendations.every((item) => item.readiness.requiredMissing.length === 0));
+assert.equal(noExpenseState.stage, 'goal_specific_questions');
+assert.deepEqual(noExpenseState.nextQuestion.fieldPaths, ['/businesses']);
+assert.equal(
+  noExpenseState.recommendations.find((item) => item.moduleId === 'personal_balance_sheet').readiness.status,
+  'missing_information',
+  'the exact persona bundle continues gathering Personal Balance Sheet inputs'
+);
+assert.ok(noExpenseState.recommendations
+  .filter((item) => ['house_purchase', 'liquidity_analysis'].includes(item.moduleId))
+  .every((item) => item.readiness.status === 'adviser_review_required'));
 
 const siblingNoneProfile = applyProfilePatch(preparedNoExpenseProfile, {
   '/assumptions/values/completionFacts': {
@@ -1187,8 +1181,8 @@ const realtimeVoicePreviewConfig = {
   handoffRequested: false,
   handoffConfigured: false,
   handoffEnabled: false,
-  realtimeNoticeId: 'realtime-voice-adviser-test-v1',
-  realtimeDataPolicyId: 'openai-realtime-audio-adviser-test-v1',
+  realtimeNoticeId: 'realtime-voice-adviser-test-v2',
+  realtimeDataPolicyId: 'openai-realtime-audio-adviser-test-v2',
   realtimeModel: 'gpt-realtime-2.1',
   realtimeVoice: 'marin',
   realtimeReasoningEffort: 'low',

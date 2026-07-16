@@ -223,6 +223,39 @@ await runCase('uses stable entity ids instead of mutable array indexes', () => {
   assert.equal(first.identityStability, 'profile_entity_id');
 });
 
+await runCase('keeps specialist reconciliation questions distinct by category and record id', () => {
+  const fieldPaths = [
+    '/assumptions/values/completionFacts/specialistAssetReconciliation/property/shared-record',
+    '/assumptions/values/completionFacts/specialistAssetReconciliation/pension/shared-record',
+    '/assumptions/values/completionFacts/specialistAssetReconciliation/pension/second-record'
+  ];
+  const resolutions = fieldPaths.map((fieldPath) => resolveSemanticFact(fieldPath, {
+    moduleId: 'personal_balance_sheet'
+  }));
+  assert.deepEqual(
+    resolutions.map((resolution) => resolution.entityId),
+    ['property:shared-record', 'pension:shared-record', 'pension:second-record']
+  );
+  assert.ok(resolutions.every((resolution) => resolution.identityStability === 'path_entity_id'));
+  assert.equal(new Set(resolutions.map((resolution) => resolution.factInstanceId)).size, 3);
+
+  const questions = buildQuestionPlan([
+    source('personal_balance_sheet', true, fieldPaths.map((fieldPath) => (
+      missing(fieldPath, 'personal_balance_sheet')
+    )))
+  ]);
+  assert.equal(questions.length, 3, 'record-level reconciliation questions must not merge into one singleton');
+  assert.deepEqual(
+    questions.map((question) => question.factInstanceId).sort(),
+    [
+      'specialist_asset_reconciliation:pension:second-record',
+      'specialist_asset_reconciliation:pension:shared-record',
+      'specialist_asset_reconciliation:property:shared-record'
+    ]
+  );
+  assert.equal(new Set(questions.map((question) => question.questionId)).size, 3);
+});
+
 await runCase('orders required-module, shared, material, ambiguous and lower-effort questions exactly', () => {
   const requiredModuleFirst = buildQuestionPlan([
     source('liquidity_analysis', false, [missing('/assets', 'liquidity_analysis')]),

@@ -84,6 +84,70 @@ assert.equal(selectSupportedRecordingMimeType(OggRecorder), 'audio/ogg;codecs=op
 assert.equal(selectSupportedRecordingMimeType(Mp4Recorder), 'audio/mp4;codecs=mp4a.40.2');
 assert.equal(selectSupportedRecordingMimeType(UnsupportedRecorder), '');
 
+// Live meetings expose an explicit microphone source and replace only the
+// outbound audio track. A failed switch keeps the previously active source.
+{
+  const originalMediaDevices = navigator.mediaDevices;
+  const requestedConstraints = [];
+  const stoppedTracks = [];
+  const makeStream = (deviceId) => {
+    const track = {
+      kind: 'audio',
+      label: `Microphone ${deviceId}`,
+      enabled: true,
+      getSettings: () => ({ deviceId }),
+      stop: () => stoppedTracks.push(deviceId)
+    };
+    return {
+      track,
+      getAudioTracks: () => [track],
+      getTracks: () => [track]
+    };
+  };
+  const firstStream = makeStream('mic-one');
+  const replacementStream = makeStream('mic-two');
+  const failedStream = makeStream('mic-three');
+  let nextStream = replacementStream;
+  navigator.mediaDevices = {
+    getUserMedia: async (constraints) => {
+      requestedConstraints.push(constraints);
+      return nextStream;
+    },
+    enumerateDevices: async () => [
+      { kind: 'audioinput', deviceId: 'mic-one', label: 'Built-in microphone' },
+      { kind: 'audioinput', deviceId: 'mic-two', label: 'External microphone' },
+      { kind: 'audioinput', deviceId: 'mic-three', label: 'Unavailable microphone' }
+    ]
+  };
+  const replacedTracks = [];
+  const deviceController = new RealtimeVoiceController({ root: null });
+  deviceController.active = true;
+  deviceController.localStream = firstStream;
+  deviceController.selectedMicrophoneId = 'mic-one';
+  const sender = {
+    track: firstStream.track,
+    replaceTrack: async (track) => {
+      replacedTracks.push(track);
+      sender.track = track;
+    }
+  };
+  deviceController.peerConnection = { getSenders: () => [sender] };
+  await deviceController.selectMicrophone('mic-two');
+  assert.equal(requestedConstraints[0].audio.deviceId.exact, 'mic-two');
+  assert.equal(replacedTracks[0], replacementStream.track);
+  assert.deepEqual(stoppedTracks, ['mic-one']);
+  assert.equal(deviceController.localStream, replacementStream);
+  assert.equal(deviceController.selectedMicrophoneId, 'mic-two');
+
+  nextStream = failedStream;
+  sender.replaceTrack = async () => { throw new Error('replace failed'); };
+  await deviceController.selectMicrophone('mic-three');
+  assert.equal(deviceController.selectedMicrophoneId, 'mic-two');
+  assert.equal(deviceController.localStream, replacementStream);
+  assert.deepEqual(stoppedTracks, ['mic-one', 'mic-three']);
+  navigator.mediaDevices = originalMediaDevices;
+}
+
 const draftEvents = [];
 const draftInput = {
   value: 'About €40,000, but I need to check.',
@@ -224,6 +288,7 @@ assert.match(appSource, /deleteSessionButton\.addEventListener\('click',[\s\S]*r
 assert.match(viewsSource, /app allowance/);
 assert.match(viewsSource, /fixed conservative reservation/);
 assert.match(privacySource, /conservative application reservation rather than promising an exact provider/);
+assert.match(privacySource, /Short voice recording and playback[\s\S]*€2[\s\S]*Live voice feature[\s\S]*€10 per private session/);
 assert.match(privacySource, /Realtime-response, input-transcription, and character-priced approved speech/);
 assert.match(privacySource, /direct\s+model audio is disabled and never attached for\s+playback/);
 assert.match(privacySource, /content-bound\s+by a signed\s+authorization/);
@@ -320,7 +385,16 @@ assert.match(realtimeSource, /'complete'[\s\S]*'withdrawn'[\s\S]*'deleted'[\s\S]
 assert.doesNotMatch(realtimeSource, /sendEvent\(\{\s*type:\s*'(?:response\.create|session\.update)'/);
 assert.match(apiSource, /\/voice\/realtime\/consent/);
 assert.match(apiSource, /\/voice\/realtime\/calls/);
-assert.match(appSource, /action:\s*'prepare'[\s\S]*expectedRevision:[\s\S]*moduleIds:/);
+const preparePlanRequestSource = appSource.slice(
+  appSource.indexOf("action: 'prepare'"),
+  appSource.indexOf("action: 'prepare'") + 320
+);
+assert.match(preparePlanRequestSource, /expectedRevision:\s*revision/);
+assert.doesNotMatch(
+  preparePlanRequestSource,
+  /moduleIds/,
+  'The browser must let the Worker derive the exact persona bundle.'
+);
 assert.match(appSource, /action:\s*'confirm_and_run'[\s\S]*planId,[\s\S]*planNonce,[\s\S]*confirmation:\s*true/);
 assert.doesNotMatch(appSource, /runAnalyses\(/);
 const confirmPlanRequestSource = appSource.slice(
@@ -333,6 +407,11 @@ assert.match(appSource, /state\.selectedModuleIds\.length === 0 && state\.recomm
 assert.match(viewsSource, /Confirm profile & save review plan/);
 assert.match(viewsSource, /Your authoritative three-analysis plan is shown below/);
 assert.match(storeSource, /state\.selectedModuleIds = \[\.\.\.new Set\(state\.analysisPlan\.moduleIds\)\]/);
+assert.doesNotMatch(
+  storeSource,
+  /export function setModuleSelected/,
+  'The browser store must not expose a user-controlled module-selection mutator.'
+);
 const transcriptionApiSource = apiSource.slice(
   apiSource.indexOf('export function transcribeVoice'),
   apiSource.indexOf('export function speakNextQuestion')
@@ -349,6 +428,7 @@ const rawRealtimeCall = normaliseRealtimeCallResponse({
     'X-Realtime-Lease-Id': 'rt_lease_frontend_001',
     'X-Realtime-Hard-Expires-At': '2030-01-01T00:00:00.000Z',
     'X-Realtime-Budget-Micro-Eur': '1750000',
+    'X-Realtime-Activation-Id': `rt_activation_${'B'.repeat(24)}`,
     'X-Realtime-Control-Capability': `rt_control_${'C'.repeat(24)}`
   })
 });
@@ -357,6 +437,7 @@ assert.equal(rawRealtimeCall.leaseId, 'rt_lease_frontend_001');
 assert.equal(rawRealtimeCall.expiresAt, '2030-01-01T00:00:00.000Z');
 assert.equal(rawRealtimeCall.budget.remainingMicroEur, 1_750_000);
 assert.equal(rawRealtimeCall.controlCapability, `rt_control_${'C'.repeat(24)}`);
+assert.equal(rawRealtimeCall.activationId, `rt_activation_${'B'.repeat(24)}`);
 assert.deepEqual(rawRealtimeCall.payload, {
   realtimeVoiceBudget: {
     limitMicroEur: null,
@@ -736,12 +817,14 @@ try {
 
 const {
   createRealtimeVoiceCall,
+  deleteRealtimeVoiceActivation,
   deleteRealtimeVoiceCall,
   getRealtimeVoiceCall,
   speakRealtimeAuthorized
 } = await import('../js/plan/api.js');
 const realtimeRequests = [];
 const apiControlCapability = `rt_control_${'A'.repeat(24)}`;
+const apiActivationId = `rt_activation_${'B'.repeat(24)}`;
 try {
   globalThis.fetch = async (url, init) => {
     realtimeRequests.push({ url: String(url), init });
@@ -754,12 +837,22 @@ try {
         }
       });
     }
+    if (String(url).includes('/voice/realtime/activations/')) {
+      return new Response(JSON.stringify({
+        cleanedUp: true,
+        leaseFound: false,
+        leaseClosed: false,
+        providerHangupConfirmed: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
     if (init.method === 'POST') {
       return new Response('v=0\r\no=- 4 5 IN IP4 127.0.0.1\r\n', {
         status: 200,
         headers: {
           'Content-Type': 'application/sdp',
-          'X-Voice-Lease-Id': 'rt_api_contract_001'
+          'X-Voice-Lease-Id': 'rt_api_contract_001',
+          'X-Realtime-Activation-Id': apiActivationId,
+          'X-Realtime-Control-Capability': apiControlCapability
         }
       });
     }
@@ -771,7 +864,9 @@ try {
   const offerSdp = 'v=0\r\no=- 7 8 IN IP4 127.0.0.1\r\n';
   const created = await createRealtimeVoiceCall('cs_frontend_voice_contract', {
     sdp: offerSdp,
-    idempotencyKey: 'voice-realtime-contract-0001'
+    idempotencyKey: 'voice-realtime-contract-0001',
+    activationId: apiActivationId,
+    controlCapability: apiControlCapability
   });
   assert.match(created.body, /^v=0/);
   await getRealtimeVoiceCall('cs_frontend_voice_contract', 'rt_api_contract_001', {
@@ -797,11 +892,15 @@ try {
     { controlCapability: apiControlCapability }
   );
   assert.equal(speechResponse.contentType, 'audio/mpeg');
+  assert.equal(typeof speechResponse.stream?.getReader, 'function');
+  await speechResponse.stream.cancel('frontend_contract_complete');
   assert.equal(realtimeRequests[0].url, 'http://127.0.0.1:8787/api/consumer/sessions/cs_frontend_voice_contract/voice/realtime/calls');
   assert.equal(realtimeRequests[0].init.body, offerSdp);
   const realtimeHeaders = new Headers(realtimeRequests[0].init.headers);
   assert.equal(realtimeHeaders.get('content-type'), 'application/sdp');
   assert.equal(realtimeHeaders.get('x-consumer-session'), 'cs_frontend_voice_contract.test-secret');
+  assert.equal(realtimeHeaders.get('x-realtime-activation-id'), apiActivationId);
+  assert.equal(realtimeHeaders.get('x-realtime-control-capability'), apiControlCapability);
   assert.equal(realtimeRequests[1].url, 'http://127.0.0.1:8787/api/consumer/sessions/cs_frontend_voice_contract/voice/realtime/calls/rt_api_contract_001');
   assert.equal(realtimeRequests[1].init.method, 'GET');
   assert.equal(new Headers(realtimeRequests[1].init.headers).get('x-realtime-control-capability'), apiControlCapability);
@@ -812,6 +911,18 @@ try {
   );
   assert.equal(realtimeRequests[3].init.method, 'POST');
   assert.deepEqual(JSON.parse(realtimeRequests[3].init.body), speechAuthorization);
+  const activationCleanup = await deleteRealtimeVoiceActivation(
+    'cs_frontend_voice_contract',
+    apiActivationId,
+    { controlCapability: apiControlCapability }
+  );
+  assert.equal(activationCleanup.providerHangupConfirmed, true);
+  assert.match(realtimeRequests[4].url, /\/voice\/realtime\/activations\/rt_activation_/);
+  assert.equal(realtimeRequests[4].init.method, 'DELETE');
+  assert.equal(
+    new Headers(realtimeRequests[4].init.headers).get('x-realtime-control-capability'),
+    apiControlCapability
+  );
 } finally {
   globalThis.fetch = originalFetch;
 }
@@ -965,16 +1076,125 @@ try {
   globalThis.fetch = originalFetch;
 }
 
+// Barge-in while MediaSource is still appending the first chunk must cancel
+// the stale continuation before it can call play or replace newer speech.
+{
+  const originalMediaSource = window.MediaSource;
+  const originalUrl = window.URL;
+  let sourceBuffer = null;
+  class DelayedSourceBuffer extends EventTarget {
+    constructor() {
+      super();
+      this.chunks = [];
+    }
+
+    appendBuffer(chunk) {
+      this.chunks.push([...chunk]);
+    }
+  }
+  class DelayedMediaSource extends EventTarget {
+    static isTypeSupported(type) { return type === 'audio/mpeg'; }
+
+    constructor() {
+      super();
+      this.readyState = 'closed';
+      queueMicrotask(() => {
+        this.readyState = 'open';
+        this.dispatchEvent(new Event('sourceopen'));
+      });
+    }
+
+    addSourceBuffer() {
+      sourceBuffer = new DelayedSourceBuffer();
+      return sourceBuffer;
+    }
+
+    endOfStream() { this.readyState = 'ended'; }
+  }
+  const streamingAudio = {
+    dataset: {},
+    muted: true,
+    paused: true,
+    src: '',
+    srcObject: null,
+    playCalls: 0,
+    pause() { this.paused = true; },
+    async play() { this.playCalls += 1; this.paused = false; },
+    removeAttribute(name) { if (name === 'src') this.src = ''; }
+  };
+  const streamingCaption = { textContent: '' };
+  const streamingRoot = {
+    dataset: {},
+    classList: { toggle: () => {} },
+    querySelector: (selector) => new Map([
+      ['#realtimeVoiceAudio', streamingAudio],
+      ['#realtimeVoiceAssistantCaption', streamingCaption],
+      ['#realtimeVoiceResumeAudioButton', { hidden: true }]
+    ]).get(selector) || null
+  };
+  const streamingController = new RealtimeVoiceController({ root: streamingRoot });
+  streamingController.active = true;
+  streamingController.sessionId = 'cs_frontend_voice_contract';
+  streamingController.leaseId = 'rt_api_contract_001';
+  streamingController.controlCapability = `rt_control_${'M'.repeat(24)}`;
+  const streamingSpeech = {
+    ...approvedSpeech,
+    speechId: 'speech_media_source_abort_123456',
+    bindingId: 'speech_binding_media_source_abort_123456',
+    controlId: `realtime_control_${'N'.repeat(24)}`,
+    token: `${'T'.repeat(43)}`,
+    text: 'This caption remains available even when streaming playback is interrupted.'
+  };
+  try {
+    window.MediaSource = DelayedMediaSource;
+    window.URL = {
+      createObjectURL: () => 'blob:media-source-speech',
+      revokeObjectURL: () => {}
+    };
+    globalThis.fetch = async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([73, 68, 51]));
+        controller.enqueue(new Uint8Array([4, 5, 6]));
+        controller.close();
+      }
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'X-Realtime-Speech-Id': streamingSpeech.speechId
+      }
+    });
+    const playback = streamingController.playWorkerSpeechFromPayload({
+      realtimeControl: { type: 'authorized_speech', assistantSpeech: streamingSpeech }
+    });
+    for (let attempt = 0; attempt < 10 && !sourceBuffer?.chunks.length; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.deepEqual(sourceBuffer?.chunks[0], [73, 68, 51]);
+    assert.equal(streamingCaption.textContent, streamingSpeech.text);
+    streamingController.handleRealtimeEvent({ type: 'input_audio_buffer.speech_started' });
+    await playback;
+    assert.equal(streamingAudio.playCalls, 0, 'Interrupted first-chunk append must never resume stale audio.');
+    assert.equal(streamingAudio.src, '');
+    assert.equal(streamingController.currentControlledSpeech, null);
+  } finally {
+    streamingController.cleanupLocal();
+    window.MediaSource = originalMediaSource;
+    window.URL = originalUrl;
+    globalThis.fetch = originalFetch;
+  }
+}
+
 mergeVoicePayload({
   realtimeConsent: {
     granted: true,
-    noticeId: 'realtime-voice-adviser-test-v1',
+    noticeId: 'realtime-voice-adviser-test-v2',
     policyVersion: 'consumer-adviser-test-v1'
   }
 });
 assert.deepEqual(journeyState.voice.realtimeConsent, {
   granted: true,
-  noticeId: 'realtime-voice-adviser-test-v1',
+  noticeId: 'realtime-voice-adviser-test-v2',
   policyVersion: 'consumer-adviser-test-v1'
 }, 'The Worker realtimeConsent response must immediately unlock the visible Live voice flow.');
 

@@ -1,6 +1,13 @@
 import { ConsumerError } from './errors.js';
-import { GOAL_TYPES, MODULE_IDS } from '../../../js/planning/contracts.js';
+import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
+import {
+  getPlanningModulesForSemanticFact,
+  getRealtimeModuleSemanticFactIds
+} from '../../../js/planning/module_registry.js';
+import { buildPersonaModulePlan } from '../../../js/planning/persona_catalogue.js';
+import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
+import { escapeJsonPointerToken } from '../../../js/planning/utils.js';
 
 const INTAKE_FACT_PATHS = Object.freeze({
   self_description: ['selfDescription', 'choice'],
@@ -51,44 +58,25 @@ const CHOICES = Object.freeze({
   business_context: new Set(['no_business_interest', 'self_employed', 'company_director', 'owner_manager', 'business_owner', 'farmer'])
 });
 
-const FACT_MODULES = Object.freeze({
-  primary_goal: [],
-  target_home_price: [MODULE_IDS.HOUSE_PURCHASE],
-  gross_household_income: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.PENSION_PROJECTION],
-  cash_savings: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.LIQUIDITY, MODULE_IDS.PERSONAL_BALANCE_SHEET],
-  monthly_spending: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.LIQUIDITY],
-  annual_net_spending: [MODULE_IDS.NET_RETIREMENT],
-  current_monthly_rent: [MODULE_IDS.HOUSE_PURCHASE],
-  lending_category: [MODULE_IDS.HOUSE_PURCHASE],
-  person_current_age: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.NET_RETIREMENT],
-  intended_retirement_age: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.NET_RETIREMENT],
-  pension_current_value: [MODULE_IDS.PENSION_PROJECTION],
-  pension_employee_contribution_rate: [MODULE_IDS.PENSION_PROJECTION],
-  pension_employer_contribution_rate: [MODULE_IDS.PENSION_PROJECTION],
-  target_retirement_income: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.NET_RETIREMENT],
-  mortgage_current_balance: [MODULE_IDS.MORTGAGE],
-  mortgage_annual_interest_rate: [MODULE_IDS.MORTGAGE],
-  mortgage_remaining_term_months: [MODULE_IDS.MORTGAGE],
-  dependant_current_age: [MODULE_IDS.COLLEGE_FUNDING],
-  ...Object.fromEntries(Object.keys(INTAKE_FACT_PATHS).map((factId) => [factId, []]))
-});
-
 const GOAL_DEFINITIONS = Object.freeze({
-  buy_home: { title: 'Buy a home', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.LIQUIDITY] },
-  maintain_liquidity: { title: 'Maintain an emergency cash reserve', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.LIQUIDITY] },
-  understand_position: { title: 'Understand my current position', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET] },
-  build_wealth: { title: 'Build long-term wealth', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.PENSION_PROJECTION] },
-  improve_pension: { title: 'Improve pension readiness', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.PENSION_PROJECTION] },
-  retire: { title: 'Plan for retirement', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.RETIREMENT_ROUTER, MODULE_IDS.PENSION_PROJECTION] },
-  retire_early: { title: 'Explore early retirement', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.RETIREMENT_ROUTER, MODULE_IDS.PENSION_PROJECTION] },
-  optimise_mortgage: { title: 'Review the mortgage path', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.MORTGAGE, MODULE_IDS.LIQUIDITY] },
-  assess_decision: { title: 'Assess a financial decision', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.COLLEGE_FUNDING] },
-  transfer_wealth: { title: 'Plan a wealth transfer', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.CAT, MODULE_IDS.RETIREMENT_ROUTER] },
-  business_planning: { title: 'Plan around a business interest', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.BUSINESS_OWNER_ANALYSIS, MODULE_IDS.BUSINESS_RELIEF_ANALYSIS] },
-  agricultural_planning: { title: 'Plan around agricultural assets', modules: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.AGRICULTURAL_RELIEF, MODULE_IDS.BUSINESS_RELIEF_ANALYSIS] }
+  buy_home: { title: 'Buy a home' },
+  maintain_liquidity: { title: 'Maintain an emergency cash reserve' },
+  understand_position: { title: 'Understand my current position' },
+  build_wealth: { title: 'Build long-term wealth' },
+  improve_pension: { title: 'Improve pension readiness' },
+  retire: { title: 'Plan for retirement' },
+  retire_early: { title: 'Explore early retirement' },
+  optimise_mortgage: { title: 'Review the mortgage path' },
+  assess_decision: { title: 'Assess a financial decision' },
+  transfer_wealth: { title: 'Plan a wealth transfer' },
+  business_planning: { title: 'Plan around a business interest' },
+  agricultural_planning: { title: 'Plan around agricultural assets' }
 });
 
-export const REALTIME_CANARY_FACT_IDS = Object.freeze(Object.keys(FACT_MODULES));
+export const REALTIME_CANARY_FACT_IDS = Object.freeze([...new Set([
+  ...getRealtimeModuleSemanticFactIds(),
+  ...Object.keys(INTAKE_FACT_PATHS)
+])]);
 
 function money(value, currency) {
   const amount = typeof value === 'number'
@@ -114,9 +102,9 @@ function boundedNumber(value, { min = 0, max = 120, integer = false } = {}) {
   return number;
 }
 
-function percentageRate(value) {
+function percentageRate(value, { decimal = false } = {}) {
   const supplied = typeof value === 'number' ? value : Number(value);
-  const normalized = supplied > 1 && supplied <= 100 ? supplied / 100 : supplied;
+  const normalized = decimal ? supplied : supplied / 100;
   return boundedNumber(normalized, { min: 0, max: 1 });
 }
 
@@ -152,23 +140,332 @@ function stableCollectionIndex(collection, predicate) {
   return index >= 0 ? index : (collection || []).length;
 }
 
-export function modulesEnabledByFacts(recommendations, facts = []) {
-  const modules = new Set(
-    (recommendations || [])
-      .map((item) => item?.moduleId)
-      .filter((moduleId) => typeof moduleId === 'string')
+function plainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function containsProhibitedIdentifierText(value) {
+  const text = String(value || '');
+  return /[\r\n@]/.test(text)
+    || /https?:\/\//i.test(text)
+    || /(?:pps|password|passcode|iban|swift|routing|sort\s*code)\b/i.test(text)
+    || /(?:account|card)\s*(?:number|no\.?|is|:)\s*\w+/i.test(text)
+    || /\d{7,}/.test(text)
+    || /\b[A-Z]\d{2}\s?[A-Z0-9]{4}\b/i.test(text)
+    || /\b\d{1,5}\s+[A-Za-z][A-Za-z '-]{1,40}\s(?:street|st|road|rd|avenue|ave|drive|dr|lane|ln|close|court|ct|park|way)\b/i.test(text);
+}
+
+function safeLabel(value, fallback = '') {
+  const label = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : fallback;
+  if (!label || label.length > 100 || containsProhibitedIdentifierText(label)) {
+    throw new ConsumerError(400, 'realtime_fact_value_invalid', 'That position label is not valid for the planning profile.');
+  }
+  return label;
+}
+
+function canonicalEntityId(prefix, value, fallbackLabel = '') {
+  const source = String(value || fallbackLabel || '').trim();
+  if (!source || source.length > 80 || containsProhibitedIdentifierText(source)) {
+    throw new ConsumerError(400, 'realtime_entity_id_invalid', 'That position needs a safe, non-sensitive stable short name.');
+  }
+  const raw = source
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 56);
+  const unprefixed = raw.startsWith(`${prefix}_`) ? raw.slice(prefix.length + 1) : raw;
+  if (!unprefixed) {
+    throw new ConsumerError(400, 'realtime_entity_id_invalid', 'That position needs a stable short name before it can be saved.');
+  }
+  return `${prefix}_realtime_${unprefixed.replace(/^realtime_/, '')}`;
+}
+
+function collectionEntityId(collection, idKey, prefix, supplied, fallbackLabel = '') {
+  const exact = typeof supplied === 'string' ? supplied.trim() : '';
+  if (exact && collection.some((item) => item?.[idKey] === exact)) return exact;
+  return canonicalEntityId(prefix, supplied, fallbackLabel);
+}
+
+function entityOperation(value) {
+  if (!plainObject(value)) {
+    throw new ConsumerError(400, 'realtime_fact_value_invalid', 'That position must be supplied as a structured value.');
+  }
+  if (value.confirmNone === true || value.none === true) return 'confirm_none';
+  if (value.remove === true) return 'remove';
+  const operation = String(value.operation || value.action || 'upsert').trim().toLowerCase();
+  if (!['upsert', 'remove', 'confirm_none'].includes(operation)) {
+    throw new ConsumerError(400, 'realtime_entity_operation_invalid', 'That position operation is not supported.');
+  }
+  return operation;
+}
+
+function ownerId(profile, raw, { allowHousehold = false } = {}) {
+  if (raw !== null && typeof raw !== 'undefined' && (typeof raw !== 'string' || !raw.trim())) {
+    throw new ConsumerError(400, 'realtime_owner_invalid', 'That position owner is not part of the household.');
+  }
+  const candidate = String(raw ?? 'primary').trim().toLowerCase();
+  if (candidate === 'primary' || candidate === profile.primaryPerson.personId.toLowerCase()) {
+    return profile.primaryPerson.personId;
+  }
+  if (candidate === 'partner' || candidate === String(profile.partner?.personId || '').toLowerCase()) {
+    if (!profile.partner?.personId) {
+      throw new ConsumerError(409, 'realtime_partner_required', 'Add the partner to the household before assigning a position to them.');
+    }
+    return profile.partner.personId;
+  }
+  if (allowHousehold && candidate === 'household') return 'household';
+  throw new ConsumerError(400, 'realtime_owner_invalid', 'That position owner is not part of the household.');
+}
+
+function ownerIds(profile, value) {
+  const hasExplicitOwner = Object.hasOwn(value, 'ownerIds')
+    || Object.hasOwn(value, 'owners')
+    || Object.hasOwn(value, 'owner');
+  const supplied = hasExplicitOwner ? (value.ownerIds ?? value.owners ?? value.owner) : 'primary';
+  const choices = Array.isArray(supplied) ? supplied : [supplied];
+  if (choices.length < 1 || choices.some((choice) => typeof choice !== 'string' || !choice.trim())) {
+    throw new ConsumerError(400, 'realtime_owner_invalid', 'Provide at least one valid household owner.');
+  }
+  const jointChoices = choices.filter((choice) => choice.trim().toLowerCase() === 'joint');
+  if (jointChoices.length > 0) {
+    if (choices.length !== 1) {
+      throw new ConsumerError(400, 'realtime_owner_invalid', 'Use joint by itself, or list the individual owners without joint.');
+    }
+    if (!profile.partner?.personId) {
+      throw new ConsumerError(409, 'realtime_partner_required', 'Add the partner before recording joint ownership.');
+    }
+    return [profile.primaryPerson.personId, profile.partner.personId];
+  }
+  return [...new Set(choices.map((choice) => ownerId(profile, choice, { allowHousehold: true })))];
+}
+
+function optionalMoney(value, currency) {
+  return value === null || typeof value === 'undefined' ? undefined : money(value, currency);
+}
+
+function optionalRate(value, options) {
+  return value === null || typeof value === 'undefined' ? undefined : percentageRate(value, options);
+}
+
+function optionalBounded(value, options) {
+  return value === null || typeof value === 'undefined' ? undefined : boundedNumber(value, options);
+}
+
+function scalarValue(value, keys = []) {
+  if (!plainObject(value)) return value;
+  for (const key of keys) {
+    if (Object.hasOwn(value, key)) return value[key];
+  }
+  if (Object.hasOwn(value, 'value')) return value.value;
+  return value;
+}
+
+function completionNoneMapping(profile, markerPath, factId, scope = null) {
+  const completionFacts = {
+    ...(profile.assumptions?.values?.completionFacts || {}),
+    confirmedNonePaths: {
+      ...(profile.assumptions?.values?.completionFacts?.confirmedNonePaths || {}),
+      [markerPath]: true
+    }
+  };
+  return {
+    fieldPath: '/assumptions/values/completionFacts',
+    metadataPath: `/assumptions/values/completionFacts/confirmedNonePaths/${escapeJsonPointerToken(markerPath)}`,
+    canonicalValue: completionFacts,
+    displayValue: { operation: 'confirm_none', factId, ...(scope ? { scope } : {}) }
+  };
+}
+
+function confirmedNoneMapping(profile, collectionPath, factId) {
+  const collection = profile[collectionPath.slice(1)];
+  if (Array.isArray(collection) && collection.length > 0) {
+    throw new ConsumerError(409, 'realtime_entity_review_required', 'Remove the existing positions before confirming that there are none.');
+  }
+  return completionNoneMapping(profile, collectionPath, factId);
+}
+
+function scopedNoneMapping(profile, fact, expectedScope, markerPath) {
+  if (!plainObject(fact.value) || entityOperation(fact.value) !== 'confirm_none') return null;
+  if (typeof fact.value.scope === 'undefined') return null;
+  const scope = String(fact.value.scope).trim().toLowerCase();
+  if (scope !== expectedScope) {
+    throw new ConsumerError(400, 'realtime_entity_scope_invalid', 'That explicit-none scope is not valid for this planning fact.');
+  }
+  return {
+    ...completionNoneMapping(profile, markerPath, fact.factId, scope),
+    proposalValue: { operation: 'confirm_none', scope }
+  };
+}
+
+function withSpecialistReconciliationInvalidation(profile, mapped, categories) {
+  const completionFacts = profile.assumptions?.values?.completionFacts || {};
+  const current = completionFacts.specialistAssetReconciliation;
+  if (!plainObject(current)) return mapped;
+  const next = { ...current };
+  let changed = false;
+  categories.forEach((category) => {
+    if (!Object.hasOwn(next, category)) return;
+    delete next[category];
+    changed = true;
+  });
+  if (!changed) return mapped;
+  const nextCompletionFacts = { ...completionFacts };
+  if (Object.keys(next).length > 0) {
+    nextCompletionFacts.specialistAssetReconciliation = next;
+  } else {
+    delete nextCompletionFacts.specialistAssetReconciliation;
+  }
+  return {
+    ...mapped,
+    additionalPatch: {
+      ...(mapped.additionalPatch || {}),
+      '/assumptions/values/completionFacts': nextCompletionFacts
+    }
+  };
+}
+
+function mapCollectionEntity(profile, fact, {
+  collectionKey,
+  idKey,
+  idPrefix,
+  buildValue,
+  allowConfirmedNone = false
+}) {
+  const value = fact.value;
+  const items = Array.isArray(value) ? value : (Array.isArray(value?.items) ? value.items : null);
+  if (items) {
+    if (items.length < 1 || items.length > 12) {
+      throw new ConsumerError(400, 'realtime_entity_count_invalid', 'Provide between one and twelve positions in one answer.');
+    }
+    let projected = profile;
+    let last = null;
+    const proposalItems = [];
+    for (const item of items) {
+      last = mapCollectionEntity(projected, { ...fact, value: item }, {
+        collectionKey, idKey, idPrefix, buildValue, allowConfirmedNone
+      });
+      if (last.fieldPath !== `/${collectionKey}`) {
+        throw new ConsumerError(400, 'realtime_entity_operation_invalid', 'A multiple-position answer cannot mix positions with a none declaration.');
+      }
+      projected = { ...projected, [collectionKey]: last.canonicalValue };
+      proposalItems.push(last.proposalValue);
+    }
+    return {
+      fieldPath: `/${collectionKey}`,
+      canonicalValue: projected[collectionKey],
+      displayValue: { operation: 'batch', count: items.length },
+      proposalValue: { items: proposalItems }
+    };
+  }
+  const operation = entityOperation(value);
+  const collectionPath = `/${collectionKey}`;
+  if (operation === 'confirm_none') {
+    if (!allowConfirmedNone) {
+      throw new ConsumerError(409, 'realtime_entity_none_invalid', 'At least one reviewed position is required for this fact.');
+    }
+    return {
+      ...confirmedNoneMapping(profile, collectionPath, fact.factId),
+      proposalValue: { operation: 'confirm_none' }
+    };
+  }
+  const rawLabel = value.label ?? value.displayName ?? value.title;
+  const label = typeof rawLabel === 'string' ? safeLabel(rawLabel) : '';
+  const collection = [...(profile[collectionKey] || [])];
+  const entityId = collectionEntityId(
+    collection,
+    idKey,
+    idPrefix,
+    value.entityId || value.id || value[idKey],
+    label
   );
-  const primary = facts.find((fact) => fact?.factId === 'primary_goal');
-  if (primary) {
-    const type = goalType(primary.value);
-    GOAL_DEFINITIONS[type].modules.forEach((moduleId) => modules.add(moduleId));
+  const index = collection.findIndex((item) => item[idKey] === entityId);
+  if (operation === 'remove') {
+    if (index < 0) {
+      throw new ConsumerError(409, 'realtime_entity_not_found', 'That position is not present in the current profile.');
+    }
+    collection.splice(index, 1);
+    return {
+      fieldPath: collectionPath,
+      canonicalValue: collection,
+      displayValue: { operation, entityId },
+      proposalValue: { operation, entityId }
+    };
+  }
+  const existing = index >= 0 ? collection[index] : null;
+  const canonicalValue = buildValue({ value, existing, entityId, label });
+  if (index >= 0) collection[index] = canonicalValue;
+  else collection.push(canonicalValue);
+  return {
+    fieldPath: collectionPath,
+    canonicalValue: collection,
+    displayValue: { operation, entityId, label: canonicalValue.label || canonicalValue.displayName || label || undefined },
+    proposalValue: { operation, entityId, ...canonicalValue }
+  };
+}
+
+function withDecimalRateProposal(mapped) {
+  const mark = (value) => plainObject(value) ? { ...value, rateUnit: 'decimal' } : value;
+  return {
+    ...mapped,
+    proposalValue: Array.isArray(mapped.proposalValue?.items)
+      ? { ...mapped.proposalValue, items: mapped.proposalValue.items.map(mark) }
+      : mark(mapped.proposalValue)
+  };
+}
+
+function projectPersonaFacts(profile, facts) {
+  if (!profile) return null;
+  const projected = JSON.parse(JSON.stringify(profile));
+  projected.assumptions = projected.assumptions || { values: {} };
+  projected.assumptions.values = projected.assumptions.values || {};
+  projected.assumptions.values.persona = {
+    ...(projected.assumptions.values.persona || {})
+  };
+  for (const fact of facts || []) {
+    if (fact?.factId === 'primary_goal') {
+      const type = goalType(fact.value);
+      const index = stableCollectionIndex(projected.goals, (goal) => goal.type === type);
+      if (index === projected.goals.length) {
+        projected.goals.push({
+          goalId: `goal_realtime_${type}`,
+          type,
+          title: GOAL_DEFINITIONS[type].title,
+          priority: 'high',
+          status: 'active'
+        });
+      }
+      continue;
+    }
+    if (!Object.hasOwn(INTAKE_FACT_PATHS, fact?.factId)) continue;
+    const [key, kind] = INTAKE_FACT_PATHS[fact.factId];
+    projected.assumptions.values.persona[key] = kind === 'boolean'
+      ? strictBoolean(fact.value)
+      : kind === 'count'
+        ? boundedNumber(fact.value, { min: 0, max: 30, integer: true })
+        : normalizedChoice(fact.factId, fact.value);
+  }
+  return normalizeHouseholdProfile(projected);
+}
+
+export function modulesEnabledByFacts(recommendations, facts = [], profile = null) {
+  const projectedProfile = projectPersonaFacts(profile, facts);
+  const modules = new Set(projectedProfile
+    ? []
+    : (recommendations || [])
+      .map((item) => item?.moduleId)
+      .filter((moduleId) => typeof moduleId === 'string'));
+  if (projectedProfile) {
+    const plan = buildPersonaModulePlan(projectedProfile);
+    plan.moduleSlots.forEach((slot) => modules.add(slot.moduleId));
   }
   return modules;
 }
 
 export function realtimeFactAllowed(factId, enabledModules) {
   if (factId === 'primary_goal' || Object.hasOwn(INTAKE_FACT_PATHS, factId)) return true;
-  const required = FACT_MODULES[factId];
+  const required = getPlanningModulesForSemanticFact(factId);
   return Boolean(required && required.some((moduleId) => enabledModules.has(moduleId)));
 }
 
@@ -181,6 +478,9 @@ function humanise(value) {
 
 function formattedFactValue(factId, value, currency = 'EUR') {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (Object.hasOwn(value, 'value')) {
+      return formattedFactValue(factId, value.value, currency);
+    }
     if (Number.isFinite(value.amount)) {
       return new Intl.NumberFormat('en-IE', {
         style: 'currency',
@@ -232,25 +532,483 @@ function mapPersonaFact(profile, fact) {
   };
 }
 
-function pensionIndex(profile) {
-  const stableId = 'pension_realtime_primary';
+function selectedEntityId(value, prefix, collection, idKey) {
+  if (!plainObject(value)) return null;
+  const supplied = value.entityId || value.id;
+  return supplied ? collectionEntityId(collection, idKey, prefix, supplied) : null;
+}
+
+function pensionIndex(profile, value) {
+  const selectedId = selectedEntityId(value, 'pension', profile.pensions, 'pensionId');
+  const stableId = selectedId || 'pension_realtime_primary';
   const index = stableCollectionIndex(profile.pensions, (pension) => pension.pensionId === stableId);
-  if (index === profile.pensions.length && profile.pensions.length > 0) {
+  if (!selectedId && index === profile.pensions.length && profile.pensions.length > 0) {
     throw new ConsumerError(409, 'realtime_pension_review_required', 'Existing pension positions require visual review before using an aggregate spoken value.');
   }
   return { stableId, index, existing: profile.pensions[index] };
 }
 
-function mortgageIndex(profile) {
-  const stableId = 'liability_realtime_mortgage';
+function mortgageIndex(profile, value) {
+  const selectedId = selectedEntityId(value, 'liability', profile.liabilities, 'liabilityId');
+  const stableId = selectedId || 'liability_realtime_mortgage';
   const existingIndex = profile.liabilities.findIndex((liability) => liability.liabilityId === stableId);
-  const index = existingIndex >= 0
+  const index = selectedId || existingIndex >= 0
     ? existingIndex
     : profile.liabilities.findIndex((liability) => liability.type === 'mortgage');
-  if (index < 0 && profile.liabilities.length > 0) {
+  if (!selectedId && index < 0 && profile.liabilities.length > 0) {
     throw new ConsumerError(409, 'realtime_mortgage_review_required', 'Existing liabilities require visual review before adding a spoken mortgage aggregate.');
   }
   return { stableId, index: index < 0 ? profile.liabilities.length : index, existing: index < 0 ? null : profile.liabilities[index] };
+}
+
+function liabilityIndex(profile, value) {
+  const selectedId = selectedEntityId(value, 'liability', profile.liabilities, 'liabilityId');
+  if (selectedId) {
+    const index = profile.liabilities.findIndex((liability) => liability.liabilityId === selectedId);
+    if (index >= 0) return { stableId: selectedId, index, existing: profile.liabilities[index] };
+  }
+  if (!selectedId && profile.liabilities.length === 1) {
+    return {
+      stableId: profile.liabilities[0].liabilityId,
+      index: 0,
+      existing: profile.liabilities[0]
+    };
+  }
+  throw new ConsumerError(
+    409,
+    profile.liabilities.length > 0 ? 'realtime_liability_review_required' : 'realtime_liability_required',
+    profile.liabilities.length > 0
+      ? 'Identify which existing liability this monthly payment belongs to.'
+      : 'Add the liability before recording its monthly payment.'
+  );
+}
+
+function mapPartnerPerson(profile, fact) {
+  const value = fact.value;
+  const operation = entityOperation(value);
+  if (['remove', 'confirm_none'].includes(operation)) {
+    if (profile.assumptions?.values?.persona?.householdStructure === 'couple') {
+      throw new ConsumerError(
+        409,
+        'realtime_household_structure_conflict',
+        'Change the household structure from couple before removing or declining the partner record.'
+      );
+    }
+    const partnerId = profile.partner?.personId;
+    if (partnerId) {
+      const linked = [
+        ...(profile.assets || []).filter((item) => item.ownerIds?.includes(partnerId)),
+        ...(profile.liabilities || []).filter((item) => item.ownerIds?.includes(partnerId)),
+        ...(profile.incomeSources || []).filter((item) => item.ownerId === partnerId),
+        ...(profile.pensions || []).filter((item) => item.ownerId === partnerId),
+        ...(profile.properties || []).filter((item) => item.ownerIds?.includes(partnerId)),
+        ...(profile.businesses || []).filter((item) => item.ownerIds?.includes(partnerId))
+      ];
+      if (linked.length > 0) {
+        throw new ConsumerError(
+          409,
+          'realtime_partner_positions_exist',
+          'Remove or reassign the partner’s financial positions before removing the partner.'
+        );
+      }
+    }
+    return {
+      fieldPath: '/partner',
+      canonicalValue: null,
+      displayValue: { operation: 'remove' },
+      proposalValue: { operation: 'remove' }
+    };
+  }
+  const employmentStatus = String(value.employmentStatus || profile.partner?.employmentStatus || 'unknown')
+    .trim()
+    .toLowerCase();
+  if (!['employee', 'self_employed', 'contractor', 'retired', 'other', 'unknown'].includes(employmentStatus)) {
+    throw new ConsumerError(400, 'realtime_employment_status_invalid', 'That partner employment status requires visual review.');
+  }
+  const partner = {
+    ...(profile.partner || {}),
+    personId: profile.partner?.personId || 'partner_realtime',
+    role: 'partner',
+    employmentStatus
+  };
+  if (typeof value.displayName === 'string' || typeof value.label === 'string') {
+    partner.displayName = safeLabel(value.displayName ?? value.label);
+  }
+  const age = optionalBounded(value.age ?? value.currentAge, { min: 18, max: 120, integer: true });
+  const retirementAge = optionalBounded(
+    value.intendedRetirementAge ?? value.retirementAge,
+    { min: 18, max: 120, integer: true }
+  );
+  if (typeof age === 'number') partner.age = age;
+  if (typeof retirementAge === 'number') partner.intendedRetirementAge = retirementAge;
+  return {
+    fieldPath: '/partner',
+    canonicalValue: partner,
+    displayValue: { operation: 'upsert', personId: partner.personId },
+    proposalValue: { operation: 'upsert', ...partner }
+  };
+}
+
+function mapIncomeSource(profile, fact, currency) {
+  const scopedNone = scopedNoneMapping(
+    profile,
+    fact,
+    'net_retirement_income',
+    '/incomeSources/netAnnual'
+  );
+  if (scopedNone) return scopedNone;
+  return mapCollectionEntity(profile, fact, {
+    collectionKey: 'incomeSources',
+    idKey: 'incomeId',
+    idPrefix: 'income',
+    allowConfirmedNone: true,
+    buildValue: ({ value, existing, entityId, label }) => {
+      const type = String(value.type || existing?.type || '').trim().toLowerCase();
+      if (!['employment', 'self_employment', 'rental', 'pension', 'state_pension', 'other'].includes(type)) {
+        throw new ConsumerError(400, 'realtime_income_type_invalid', 'That income type requires visual review.');
+      }
+      const grossAnnual = optionalMoney(value.grossAnnual ?? value.gross, currency);
+      const netAnnual = optionalMoney(value.netAnnual ?? value.net, currency);
+      if (!existing && !grossAnnual && !netAnnual) {
+        throw new ConsumerError(400, 'realtime_income_value_required', 'A new income source needs a gross or net annual amount.');
+      }
+      const canonical = {
+        ...(existing || {}),
+        incomeId: entityId,
+        ownerId: ownerId(profile, value.owner ?? value.ownerId ?? existing?.ownerId),
+        type,
+        label: label || existing?.label || safeLabel(`${humanise(type)} income`)
+      };
+      if (grossAnnual) canonical.grossAnnual = grossAnnual;
+      if (netAnnual) canonical.netAnnual = netAnnual;
+      const startAge = optionalBounded(value.startAge, { min: 0, max: 120, integer: true });
+      const endAge = optionalBounded(value.endAge, { min: 0, max: 120, integer: true });
+      if (typeof startAge === 'number') canonical.startAge = startAge;
+      if (typeof endAge === 'number') canonical.endAge = endAge;
+      if (typeof value.inflationIndexed === 'boolean') canonical.inflationIndexed = value.inflationIndexed;
+      return canonical;
+    }
+  });
+}
+
+function mapAssetPosition(profile, fact, currency) {
+  const scopedNone = scopedNoneMapping(
+    profile,
+    fact,
+    'retirement_available_assets',
+    '/assets/retirementAvailable'
+  );
+  if (scopedNone) return scopedNone;
+  return withSpecialistReconciliationInvalidation(profile, mapCollectionEntity(profile, fact, {
+    collectionKey: 'assets',
+    idKey: 'assetId',
+    idPrefix: 'asset',
+    allowConfirmedNone: true,
+    buildValue: ({ value, existing, entityId, label }) => {
+      const type = String(value.type || existing?.type || '').trim().toLowerCase();
+      if (!['cash', 'investment', 'other'].includes(type)) {
+        throw new ConsumerError(
+          400,
+          'realtime_asset_type_invalid',
+          'Use the dedicated property, pension or business position fact for that asset type.'
+        );
+      }
+      const canonical = {
+        ...(existing || {}),
+        assetId: entityId,
+        ownerIds: Object.hasOwn(value, 'ownerIds') || Object.hasOwn(value, 'owners') || Object.hasOwn(value, 'owner')
+          ? ownerIds(profile, value)
+          : (existing?.ownerIds || ownerIds(profile, value)),
+        type,
+        label: label || existing?.label || safeLabel(humanise(type))
+      };
+      const currentValue = optionalMoney(value.currentValue ?? value.amount, currency);
+      if (currentValue) canonical.currentValue = currentValue;
+      if (typeof value.liquid === 'boolean') canonical.liquid = value.liquid;
+      else if (!existing && type === 'cash') canonical.liquid = true;
+      return canonical;
+    }
+  }), ['property', 'pension', 'business']);
+}
+
+function mapLiabilityPosition(profile, fact, currency) {
+  const mortgageOnly = fact.factId === 'mortgage_position';
+  return withDecimalRateProposal(mapCollectionEntity(profile, fact, {
+    collectionKey: 'liabilities',
+    idKey: 'liabilityId',
+    idPrefix: 'liability',
+    allowConfirmedNone: true,
+    buildValue: ({ value, existing, entityId, label }) => {
+      const type = String(value.type || existing?.type || '').trim().toLowerCase();
+      if (!['mortgage', 'loan', 'credit_card', 'other'].includes(type)) {
+        throw new ConsumerError(400, 'realtime_liability_type_invalid', 'That liability type requires visual review.');
+      }
+      if (mortgageOnly && type !== 'mortgage') {
+        throw new ConsumerError(400, 'realtime_mortgage_type_required', 'Mortgage analysis requires a mortgage liability, not another debt type.');
+      }
+      const canonical = {
+        ...(existing || {}),
+        liabilityId: entityId,
+        ownerIds: Object.hasOwn(value, 'ownerIds') || Object.hasOwn(value, 'owners') || Object.hasOwn(value, 'owner')
+          ? ownerIds(profile, value)
+          : (existing?.ownerIds || ownerIds(profile, value)),
+        type,
+        label: label || existing?.label || safeLabel(humanise(type))
+      };
+      const currentBalance = optionalMoney(value.currentBalance ?? value.amount, currency);
+      const monthlyPayment = optionalMoney(value.monthlyPayment, currency);
+      const annualInterestRate = optionalRate(
+        value.annualInterestRate ?? value.interestRate,
+        { decimal: value.rateUnit === 'decimal' }
+      );
+      const remainingTermMonths = optionalBounded(value.remainingTermMonths, { min: 1, max: 1200, integer: true });
+      if (currentBalance) canonical.currentBalance = currentBalance;
+      if (monthlyPayment) canonical.monthlyPayment = monthlyPayment;
+      if (typeof annualInterestRate === 'number') canonical.annualInterestRate = annualInterestRate;
+      if (typeof remainingTermMonths === 'number') canonical.remainingTermMonths = remainingTermMonths;
+      return canonical;
+    }
+  }));
+}
+
+function mapPropertyPosition(profile, fact, currency) {
+  return withSpecialistReconciliationInvalidation(profile, mapCollectionEntity(profile, fact, {
+    collectionKey: 'properties',
+    idKey: 'propertyId',
+    idPrefix: 'property',
+    allowConfirmedNone: true,
+    buildValue: ({ value, existing, entityId }) => {
+      const use = String(value.use || existing?.use || '').trim().toLowerCase();
+      if (!['home', 'rental', 'farm', 'business', 'other'].includes(use)) {
+        throw new ConsumerError(400, 'realtime_property_use_invalid', 'That property use requires visual review.');
+      }
+      const canonical = {
+        ...(existing || {}),
+        propertyId: entityId,
+        ownerIds: Object.hasOwn(value, 'ownerIds') || Object.hasOwn(value, 'owners') || Object.hasOwn(value, 'owner')
+          ? ownerIds(profile, value)
+          : (existing?.ownerIds || ownerIds(profile, value)),
+        use,
+        associatedLiabilityIds: existing?.associatedLiabilityIds || []
+      };
+      const currentValue = optionalMoney(value.currentValue ?? value.amount, currency);
+      if (currentValue) canonical.currentValue = currentValue;
+      return canonical;
+    }
+  }), ['property']);
+}
+
+function mapBusinessPosition(profile, fact, currency) {
+  return withSpecialistReconciliationInvalidation(profile, mapCollectionEntity(profile, fact, {
+    collectionKey: 'businesses',
+    idKey: 'businessId',
+    idPrefix: 'business',
+    allowConfirmedNone: true,
+    buildValue: ({ value, existing, entityId, label }) => {
+      if (!existing && typeof value.agricultural !== 'boolean') {
+        throw new ConsumerError(400, 'realtime_business_type_required', 'Confirm whether the business interest is agricultural.');
+      }
+      const canonical = {
+        ...(existing || {}),
+        businessId: entityId,
+        ownerIds: Object.hasOwn(value, 'ownerIds') || Object.hasOwn(value, 'owners') || Object.hasOwn(value, 'owner')
+          ? ownerIds(profile, value)
+          : (existing?.ownerIds || ownerIds(profile, value)),
+        label: label || existing?.label || safeLabel('Business interest'),
+        agricultural: typeof value.agricultural === 'boolean' ? value.agricultural : existing.agricultural
+      };
+      const estimatedValue = optionalMoney(value.estimatedValue ?? value.amount, currency);
+      if (estimatedValue) canonical.estimatedValue = estimatedValue;
+      return canonical;
+    }
+  }), ['business']);
+}
+
+function mapPensionPosition(profile, fact, currency) {
+  return withSpecialistReconciliationInvalidation(profile, withDecimalRateProposal(mapCollectionEntity(profile, fact, {
+    collectionKey: 'pensions',
+    idKey: 'pensionId',
+    idPrefix: 'pension',
+    allowConfirmedNone: true,
+    buildValue: ({ value, existing, entityId }) => {
+      const type = String(value.type || existing?.type || '').trim().toLowerCase();
+      if (!['occupational', 'prsa', 'personal', 'defined_benefit', 'other'].includes(type)) {
+        throw new ConsumerError(400, 'realtime_pension_type_invalid', 'That pension type requires visual review.');
+      }
+      const canonical = {
+        ...(existing || {}),
+        pensionId: entityId,
+        ownerId: ownerId(profile, value.owner ?? value.ownerId ?? existing?.ownerId),
+        type
+      };
+      const currentValue = optionalMoney(value.currentValue ?? value.amount, currency);
+      const rateOptions = { decimal: value.rateUnit === 'decimal' };
+      const employeeRate = value.employeeContributionRate === null || typeof value.employeeContributionRate === 'undefined'
+        ? optionalRate(value.personalContributionRate, rateOptions)
+        : optionalRate(value.employeeContributionRate, rateOptions);
+      const employerRate = optionalRate(value.employerContributionRate, rateOptions);
+      if (currentValue) canonical.currentValue = currentValue;
+      if (typeof employeeRate === 'number') canonical.employeeContributionRate = employeeRate;
+      if (typeof employerRate === 'number') canonical.employerContributionRate = employerRate;
+      return canonical;
+    }
+  })), ['pension']);
+}
+
+function mapDependantPosition(profile, fact) {
+  return mapCollectionEntity(profile, fact, {
+    collectionKey: 'dependants',
+    idKey: 'dependantId',
+    idPrefix: 'dependant',
+    allowConfirmedNone: true,
+    buildValue: ({ value, existing, entityId, label }) => {
+      const canonical = { ...(existing || {}), dependantId: entityId };
+      if (label) canonical.displayName = label;
+      const currentAge = optionalBounded(value.currentAge ?? value.age, { min: 0, max: 100, integer: true });
+      const dependencyEnd = optionalBounded(value.expectedDependencyEndAge, { min: 0, max: 100, integer: true });
+      if (typeof currentAge === 'number') canonical.currentAge = currentAge;
+      if (typeof dependencyEnd === 'number') canonical.expectedDependencyEndAge = dependencyEnd;
+      return canonical;
+    }
+  });
+}
+
+function mapCollegeCostScenario(profile, fact, currency) {
+  const value = fact.value;
+  const items = Array.isArray(value) ? value : (Array.isArray(value?.items) ? value.items : null);
+  if (items) {
+    if (items.length < 1 || items.length > 8) {
+      throw new ConsumerError(400, 'realtime_entity_count_invalid', 'Provide between one and eight college scenarios.');
+    }
+    let projected = profile;
+    let last = null;
+    const proposalItems = [];
+    for (const item of items) {
+      last = mapCollegeCostScenario(projected, { ...fact, value: item }, currency);
+      projected = {
+        ...projected,
+        assumptions: {
+          ...projected.assumptions,
+          values: {
+            ...projected.assumptions.values,
+            collegeFunding: last.canonicalValue
+          }
+        }
+      };
+      proposalItems.push(last.proposalValue);
+    }
+    return {
+      fieldPath: '/assumptions/values/collegeFunding',
+      canonicalValue: projected.assumptions.values.collegeFunding,
+      displayValue: { operation: 'batch', count: items.length },
+      proposalValue: { items: proposalItems }
+    };
+  }
+  const operation = entityOperation(value);
+  if (operation === 'confirm_none') {
+    throw new ConsumerError(409, 'realtime_college_scenario_required', 'College funding requires at least one reviewed cost scenario.');
+  }
+  const settings = { ...(profile.assumptions?.values?.collegeFunding || {}) };
+  const scenarios = [...(Array.isArray(settings.scenarios) ? settings.scenarios : [])];
+  const scenarioId = collectionEntityId(
+    scenarios,
+    'id',
+    'college_scenario',
+    value.entityId || value.scenarioId || value.id,
+    value.title
+  );
+  const index = scenarios.findIndex((scenario) => scenario.id === scenarioId);
+  if (operation === 'remove') {
+    if (index < 0) throw new ConsumerError(409, 'realtime_entity_not_found', 'That college cost scenario is not present.');
+    scenarios.splice(index, 1);
+  } else {
+    const existing = index >= 0 ? scenarios[index] : null;
+    const annual = optionalMoney(value.annualCostTodayPerChild ?? value.annualCostToday, currency);
+    const oneOff = optionalMoney(value.oneOffCostTodayPerChild ?? value.oneOffCostToday, currency);
+    const scenario = {
+      ...(existing || {}),
+      id: scenarioId,
+      title: safeLabel(value.title, existing?.title || 'College funding scenario'),
+      category: safeLabel(value.category, existing?.category || value.title || 'Reviewed scenario')
+    };
+    if (annual) scenario.annualCostTodayPerChild = annual.amount;
+    if (oneOff) scenario.oneOffCostTodayPerChild = oneOff.amount;
+    if (!Number.isFinite(scenario.annualCostTodayPerChild)) scenario.annualCostTodayPerChild = 0;
+    if (!Number.isFinite(scenario.oneOffCostTodayPerChild)) scenario.oneOffCostTodayPerChild = 0;
+    if (scenario.annualCostTodayPerChild <= 0 && scenario.oneOffCostTodayPerChild <= 0) {
+      throw new ConsumerError(400, 'realtime_college_scenario_value_required', 'A college scenario needs an annual or one-off cost.');
+    }
+    if (index >= 0) scenarios[index] = scenario;
+    else scenarios.push(scenario);
+  }
+  return {
+    fieldPath: '/assumptions/values/collegeFunding',
+    canonicalValue: { ...settings, requested: true, scenarios },
+    displayValue: { operation, scenarioId },
+    proposalValue: operation === 'remove'
+      ? { operation, scenarioId }
+      : { operation: 'upsert', scenarioId, ...scenarios.find((scenario) => scenario.id === scenarioId) }
+  };
+}
+
+const SPECIALIST_RECONCILIATION_CATEGORIES = Object.freeze({
+  property: Object.freeze({ collectionKey: 'properties', idKey: 'propertyId', idPrefix: 'property', genericTypes: ['property'] }),
+  pension: Object.freeze({ collectionKey: 'pensions', idKey: 'pensionId', idPrefix: 'pension', genericTypes: ['pension'] }),
+  business: Object.freeze({ collectionKey: 'businesses', idKey: 'businessId', idPrefix: 'business', genericTypes: ['business', 'agricultural'] })
+});
+
+function mapSpecialistAssetReconciliation(profile, fact) {
+  const value = fact.value;
+  if (!plainObject(value)) {
+    throw new ConsumerError(400, 'realtime_fact_value_invalid', 'That reconciliation must identify the record and whether it is duplicate or distinct.');
+  }
+  const category = String(value.category || value.type || '').trim().toLowerCase();
+  const definition = SPECIALIST_RECONCILIATION_CATEGORIES[category];
+  if (!definition) {
+    throw new ConsumerError(400, 'realtime_reconciliation_category_invalid', 'That reconciliation category requires visual review.');
+  }
+  const decision = String(value.decision || value.value || '').trim().toLowerCase();
+  if (!['duplicate', 'distinct'].includes(decision)) {
+    throw new ConsumerError(400, 'realtime_reconciliation_decision_invalid', 'Choose duplicate or distinct for that specialist position.');
+  }
+  if (!(profile.assets || []).some((asset) => definition.genericTypes.includes(asset.type))) {
+    throw new ConsumerError(409, 'realtime_reconciliation_not_required', 'There is no overlapping generic asset for that specialist position.');
+  }
+  const records = profile[definition.collectionKey] || [];
+  const suppliedId = typeof (value.entityId ?? value.recordId ?? value.id) === 'string'
+    ? String(value.entityId ?? value.recordId ?? value.id).trim()
+    : '';
+  let record = suppliedId
+    ? records.find((item) => item[definition.idKey] === suppliedId)
+    : records.length === 1 ? records[0] : null;
+  if (!record && suppliedId) {
+    const canonicalId = canonicalEntityId(definition.idPrefix, suppliedId);
+    record = records.find((item) => item[definition.idKey] === canonicalId);
+  }
+  if (!record) {
+    throw new ConsumerError(409, 'realtime_reconciliation_record_required', 'Identify exactly which specialist position this duplicate-or-distinct choice applies to.');
+  }
+  const recordId = record[definition.idKey];
+  const completionFacts = profile.assumptions?.values?.completionFacts || {};
+  const reconciliation = completionFacts.specialistAssetReconciliation || {};
+  const canonicalValue = {
+    ...completionFacts,
+    specialistAssetReconciliation: {
+      ...reconciliation,
+      [category]: {
+        ...(reconciliation[category] || {}),
+        [recordId]: decision
+      }
+    }
+  };
+  const proposalValue = { category, entityId: recordId, decision };
+  return {
+    fieldPath: '/assumptions/values/completionFacts',
+    metadataPath: `/assumptions/values/completionFacts/specialistAssetReconciliation/${escapeJsonPointerToken(category)}/${escapeJsonPointerToken(recordId)}`,
+    canonicalValue,
+    displayValue: proposalValue,
+    proposalValue
+  };
 }
 
 export function mapRealtimeFact(profile, fact) {
@@ -261,6 +1019,19 @@ export function mapRealtimeFact(profile, fact) {
   const currency = profile?.preferences?.baseCurrency || 'EUR';
   const primaryOwnerId = profile?.primaryPerson?.personId;
   if (!primaryOwnerId) throw new ConsumerError(409, 'realtime_profile_invalid', 'The household profile is not ready for this fact.');
+
+  if (fact.factId === 'partner_person') return mapPartnerPerson(profile, fact);
+  if (fact.factId === 'income_sources') return mapIncomeSource(profile, fact, currency);
+  if (fact.factId === 'asset_position') return mapAssetPosition(profile, fact, currency);
+  if (fact.factId === 'liability_position' || fact.factId === 'mortgage_position') {
+    return mapLiabilityPosition(profile, fact, currency);
+  }
+  if (fact.factId === 'property_position') return mapPropertyPosition(profile, fact, currency);
+  if (fact.factId === 'business_position') return mapBusinessPosition(profile, fact, currency);
+  if (fact.factId === 'pension_positions') return mapPensionPosition(profile, fact, currency);
+  if (fact.factId === 'dependants') return mapDependantPosition(profile, fact);
+  if (fact.factId === 'college_cost_scenarios') return mapCollegeCostScenario(profile, fact, currency);
+  if (fact.factId === 'specialist_asset_reconciliation') return mapSpecialistAssetReconciliation(profile, fact);
 
   if (fact.factId === 'primary_goal') {
     const type = goalType(fact.value);
@@ -287,6 +1058,13 @@ export function mapRealtimeFact(profile, fact) {
   }
 
   if (fact.factId === 'gross_household_income') {
+    if (profile.partner?.personId) {
+      throw new ConsumerError(
+        409,
+        'realtime_joint_income_breakdown_required',
+        'Joint applicants must record each person’s income separately.'
+      );
+    }
     const canonicalMoney = money(fact.value, currency);
     const stableId = 'income_realtime_household_gross';
     const index = stableCollectionIndex(profile.incomeSources, (income) => income.incomeId === stableId);
@@ -327,61 +1105,131 @@ export function mapRealtimeFact(profile, fact) {
 
   if (fact.factId === 'person_current_age' || fact.factId === 'intended_retirement_age') {
     const key = fact.factId === 'person_current_age' ? 'age' : 'intendedRetirementAge';
-    const canonicalValue = boundedNumber(fact.value, { min: fact.factId === 'person_current_age' ? 16 : 18, max: 100, integer: true });
-    return { fieldPath: `/primaryPerson/${key}`, canonicalValue, displayValue: canonicalValue };
+    const selectedOwnerId = plainObject(fact.value)
+      ? ownerId(profile, fact.value.owner ?? fact.value.ownerId ?? fact.value.personId)
+      : primaryOwnerId;
+    const canonicalValue = boundedNumber(
+      scalarValue(fact.value, [key, fact.factId === 'person_current_age' ? 'currentAge' : 'retirementAge', 'age']),
+      { min: fact.factId === 'person_current_age' ? 16 : 18, max: 100, integer: true }
+    );
+    const personPath = selectedOwnerId === profile.partner?.personId ? '/partner' : '/primaryPerson';
+    return {
+      fieldPath: `${personPath}/${key}`,
+      canonicalValue,
+      displayValue: canonicalValue,
+      ...(plainObject(fact.value) ? { proposalValue: { ownerId: selectedOwnerId, value: canonicalValue } } : {})
+    };
   }
 
   if (['pension_current_value', 'pension_employee_contribution_rate', 'pension_employer_contribution_rate'].includes(fact.factId)) {
-    const { stableId, index, existing } = pensionIndex(profile);
+    const { stableId, index, existing } = pensionIndex(profile, fact.value);
     const key = fact.factId === 'pension_current_value' ? 'currentValue'
       : fact.factId === 'pension_employee_contribution_rate' ? 'employeeContributionRate' : 'employerContributionRate';
     const canonicalValue = fact.factId === 'pension_current_value'
       ? money(fact.value, currency)
-      : percentageRate(fact.value);
+      : percentageRate(
+        scalarValue(fact.value, [key, 'rate']),
+        { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
+      );
+    const proposalValue = fact.factId === 'pension_current_value'
+      ? { entityId: stableId, ...canonicalValue }
+      : { entityId: stableId, value: canonicalValue, rateUnit: 'decimal' };
     if (existing) {
-      return { fieldPath: `/pensions/${index}/${key}`, canonicalValue, displayValue: canonicalValue };
+      return withSpecialistReconciliationInvalidation(profile, {
+        fieldPath: `/pensions/${index}/${key}`,
+        canonicalValue,
+        displayValue: canonicalValue,
+        proposalValue
+      }, ['pension']);
     }
-    const pension = { ...(existing || { pensionId: stableId, ownerId: primaryOwnerId, type: 'occupational' }), [key]: canonicalValue };
-    return { fieldPath: `/pensions/${index}`, canonicalValue: pension, displayValue: canonicalValue };
+    const pensionOwnerId = plainObject(fact.value)
+      ? ownerId(profile, fact.value.owner ?? fact.value.ownerId)
+      : primaryOwnerId;
+    const pension = { ...(existing || { pensionId: stableId, ownerId: pensionOwnerId, type: 'occupational' }), [key]: canonicalValue };
+    return withSpecialistReconciliationInvalidation(profile, {
+      fieldPath: `/pensions/${index}`,
+      canonicalValue: pension,
+      displayValue: canonicalValue,
+      proposalValue: { ...proposalValue, ownerId: pensionOwnerId }
+    }, ['pension']);
   }
 
   if (fact.factId === 'target_retirement_income') {
     const canonicalValue = money(fact.value, currency);
     return { fieldPath: '/assumptions/values/retirement', canonicalValue: {
-      ...(profile.assumptions?.values?.retirement || {}), targetIncomeToday: canonicalValue
+      ...(profile.assumptions?.values?.retirement || {}), targetIncomeToday: canonicalValue.amount
     }, displayValue: canonicalValue };
   }
 
+  if (fact.factId === 'liability_monthly_payment') {
+    const { stableId, index } = liabilityIndex(profile, fact.value);
+    const canonicalValue = money(fact.value, currency);
+    return {
+      fieldPath: `/liabilities/${index}/monthlyPayment`,
+      canonicalValue,
+      displayValue: canonicalValue,
+      proposalValue: { entityId: stableId, ...canonicalValue }
+    };
+  }
+
   if (['mortgage_current_balance', 'mortgage_annual_interest_rate', 'mortgage_remaining_term_months'].includes(fact.factId)) {
-    const { stableId, index, existing } = mortgageIndex(profile);
+    const { stableId, index, existing } = mortgageIndex(profile, fact.value);
     const key = fact.factId === 'mortgage_current_balance' ? 'currentBalance'
       : fact.factId === 'mortgage_annual_interest_rate' ? 'annualInterestRate' : 'remainingTermMonths';
     const canonicalValue = fact.factId === 'mortgage_current_balance'
       ? money(fact.value, currency)
       : fact.factId === 'mortgage_annual_interest_rate'
-        ? percentageRate(fact.value)
-        : boundedNumber(fact.value, { min: 1, max: 1200, integer: true });
+        ? percentageRate(
+          scalarValue(fact.value, [key, 'rate']),
+          { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
+        )
+        : boundedNumber(scalarValue(fact.value, [key, 'months']), { min: 1, max: 1200, integer: true });
+    const proposalValue = fact.factId === 'mortgage_current_balance'
+      ? { entityId: stableId, ...canonicalValue }
+      : {
+        entityId: stableId,
+        value: canonicalValue,
+        ...(fact.factId === 'mortgage_annual_interest_rate' ? { rateUnit: 'decimal' } : {})
+      };
     if (existing) {
-      return { fieldPath: `/liabilities/${index}/${key}`, canonicalValue, displayValue: canonicalValue };
+      return {
+        fieldPath: `/liabilities/${index}/${key}`,
+        canonicalValue,
+        displayValue: canonicalValue,
+        proposalValue
+      };
     }
     const mortgage = { ...(existing || { liabilityId: stableId, ownerIds: [primaryOwnerId], type: 'mortgage', label: 'Mortgage' }), [key]: canonicalValue };
-    return { fieldPath: `/liabilities/${index}`, canonicalValue: mortgage, displayValue: canonicalValue };
-  }
-
-  if (fact.factId === 'dependant_current_age') {
-    const stableId = 'dependant_realtime_primary';
-    const index = stableCollectionIndex(profile.dependants, (dependant) => dependant.dependantId === stableId);
-    if (index === profile.dependants.length && profile.dependants.length > 0) {
-      throw new ConsumerError(409, 'realtime_dependant_review_required', 'Existing dependant details require visual review before using an aggregate spoken age.');
-    }
-    const canonicalAge = boundedNumber(fact.value, { min: 0, max: 40, integer: true });
     return {
-      fieldPath: `/dependants/${index}`,
-      canonicalValue: { ...(profile.dependants[index] || { dependantId: stableId }), currentAge: canonicalAge },
-      displayValue: canonicalAge
+      fieldPath: `/liabilities/${index}`,
+      canonicalValue: mortgage,
+      displayValue: canonicalValue,
+      proposalValue
     };
   }
 
+  if (fact.factId === 'dependant_current_age') {
+    const selectedId = selectedEntityId(fact.value, 'dependant', profile.dependants, 'dependantId');
+    const stableId = selectedId || 'dependant_realtime_primary';
+    const index = stableCollectionIndex(profile.dependants, (dependant) => dependant.dependantId === stableId);
+    if (!selectedId && index === profile.dependants.length && profile.dependants.length > 0) {
+      throw new ConsumerError(409, 'realtime_dependant_review_required', 'Existing dependant details require visual review before using an aggregate spoken age.');
+    }
+    const canonicalAge = boundedNumber(
+      scalarValue(fact.value, ['currentAge', 'age']),
+      { min: 0, max: 40, integer: true }
+    );
+    return {
+      fieldPath: `/dependants/${index}`,
+      canonicalValue: { ...(profile.dependants[index] || { dependantId: stableId }), currentAge: canonicalAge },
+      displayValue: canonicalAge,
+      proposalValue: { entityId: stableId, value: canonicalAge }
+    };
+  }
+
+  if (fact.factId !== 'lending_category') {
+    throw new ConsumerError(409, 'realtime_fact_not_supported', 'That semantic fact does not have a writable realtime mapping.');
+  }
   const category = typeof fact.value === 'string' ? fact.value.trim().toLowerCase() : '';
   if (!['first_time_buyer', 'fresh_start', 'second_or_subsequent'].includes(category)) {
     throw new ConsumerError(400, 'realtime_lending_category_invalid', 'That lending category requires visual review.');
@@ -406,11 +1254,12 @@ function metadataFor(profile, fieldPath) {
 
 export function buildConfirmedRealtimeFactSummary(profile) {
   const facts = [];
-  const add = (factId, fieldPath, value) => {
+  const add = (factId, fieldPath, value, entityId = null) => {
     if (value === undefined || value === null) return;
     const metadata = metadataFor(profile, fieldPath);
     facts.push({
       factId, value,
+      ...(entityId ? { entityId } : {}),
       certainty: metadata?.certainty || 'unknown',
       status: metadata?.confirmedByUser ? 'confirmed' : 'saved_draft',
       revision: Number(profile.revision || 0)
@@ -420,27 +1269,98 @@ export function buildConfirmedRealtimeFactSummary(profile) {
   if (goal) add('primary_goal', `/goals/${profile.goals.indexOf(goal)}`, goal.type);
   const persona = profile.assumptions?.values?.persona || {};
   Object.entries(INTAKE_FACT_PATHS).forEach(([factId, [key]]) => add(factId, `/assumptions/values/persona/${key}`, persona[key]));
+  if (profile.partner?.personId) {
+    add('partner_person', '/partner', {
+      personId: profile.partner.personId,
+      ...(profile.partner.displayName ? { displayName: profile.partner.displayName } : {}),
+      employmentStatus: profile.partner.employmentStatus
+    }, profile.partner.personId);
+  }
   const homeGoal = profile.goals?.find((item) => item.type === 'buy_home');
   if (homeGoal?.targetAmount) add('target_home_price', `/goals/${profile.goals.indexOf(homeGoal)}/targetAmount`, homeGoal.targetAmount);
   const income = profile.incomeSources?.find((item) => item.incomeId === 'income_realtime_household_gross')
     || (profile.incomeSources?.length === 1 ? profile.incomeSources[0] : null);
   if (income?.grossAnnual) add('gross_household_income', `/incomeSources/${profile.incomeSources.indexOf(income)}`, income.grossAnnual);
+  profile.incomeSources?.forEach((item, index) => add(
+    'income_sources',
+    `/incomeSources/${index}`,
+    {
+      entityId: item.incomeId,
+      ownerId: item.ownerId,
+      type: item.type,
+      label: item.label,
+      ...(item.grossAnnual ? { grossAnnual: item.grossAnnual } : {}),
+      ...(item.netAnnual ? { netAnnual: item.netAnnual } : {})
+    },
+    item.incomeId
+  ));
+  profile.assets?.forEach((item, index) => add(
+    'asset_position',
+    `/assets/${index}`,
+    item,
+    item.assetId
+  ));
+  profile.properties?.forEach((item, index) => add(
+    'property_position',
+    `/properties/${index}`,
+    item,
+    item.propertyId
+  ));
+  profile.businesses?.forEach((item, index) => add(
+    'business_position',
+    `/businesses/${index}`,
+    item,
+    item.businessId
+  ));
+  profile.liabilities?.forEach((item, index) => {
+    add('liability_position', `/liabilities/${index}`, item, item.liabilityId);
+    add(
+      'liability_monthly_payment',
+      `/liabilities/${index}/monthlyPayment`,
+      item.monthlyPayment,
+      item.liabilityId
+    );
+  });
   const cash = profile.assets?.find((item) => item.type === 'cash' && item.currentValue);
   if (cash) add('cash_savings', `/assets/${profile.assets.indexOf(cash)}/currentValue`, cash.currentValue);
   add('monthly_spending', '/expenses/monthlyEssential', profile.expenses?.monthlyEssential);
   add('annual_net_spending', '/expenses/annualTotal', profile.expenses?.annualTotal);
   add('current_monthly_rent', '/expenses/currentMonthlyRent', profile.expenses?.currentMonthlyRent);
   add('lending_category', '/assumptions/values/housePurchase/lendingCategory', profile.assumptions?.values?.housePurchase?.lendingCategory);
-  add('person_current_age', '/primaryPerson/age', profile.primaryPerson?.age);
-  add('intended_retirement_age', '/primaryPerson/intendedRetirementAge', profile.primaryPerson?.intendedRetirementAge);
-  const pension = profile.pensions?.find((item) => item.pensionId === 'pension_realtime_primary')
-    || (profile.pensions?.length === 1 ? profile.pensions[0] : null);
-  if (pension) {
-    const pensionPath = `/pensions/${profile.pensions.indexOf(pension)}`;
-    add('pension_current_value', `${pensionPath}/currentValue`, pension.currentValue);
-    add('pension_employee_contribution_rate', `${pensionPath}/employeeContributionRate`, pension.employeeContributionRate);
-    add('pension_employer_contribution_rate', `${pensionPath}/employerContributionRate`, pension.employerContributionRate);
-  }
+  [
+    ['/primaryPerson', profile.primaryPerson],
+    ['/partner', profile.partner]
+  ].forEach(([personPath, person]) => {
+    if (!person?.personId) return;
+    add('person_current_age', `${personPath}/age`, person.age, person.personId);
+    add(
+      'intended_retirement_age',
+      `${personPath}/intendedRetirementAge`,
+      person.intendedRetirementAge,
+      person.personId
+    );
+  });
+  profile.pensions?.forEach((pension, index) => {
+    const pensionPath = `/pensions/${index}`;
+    add('pension_positions', pensionPath, {
+      entityId: pension.pensionId,
+      ownerId: pension.ownerId,
+      type: pension.type
+    }, pension.pensionId);
+    add('pension_current_value', `${pensionPath}/currentValue`, pension.currentValue, pension.pensionId);
+    add(
+      'pension_employee_contribution_rate',
+      `${pensionPath}/employeeContributionRate`,
+      pension.employeeContributionRate,
+      pension.pensionId
+    );
+    add(
+      'pension_employer_contribution_rate',
+      `${pensionPath}/employerContributionRate`,
+      pension.employerContributionRate,
+      pension.pensionId
+    );
+  });
   add(
     'target_retirement_income',
     '/assumptions/values/retirement/targetIncomeToday',
@@ -456,16 +1376,54 @@ export function buildConfirmedRealtimeFactSummary(profile) {
     add('mortgage_annual_interest_rate', `${mortgagePath}/annualInterestRate`, mortgage.annualInterestRate);
     add('mortgage_remaining_term_months', `${mortgagePath}/remainingTermMonths`, mortgage.remainingTermMonths);
   }
-  const dependant = profile.dependants?.find((item) => item.dependantId === 'dependant_realtime_primary')
-    || (profile.dependants?.length === 1 ? profile.dependants[0] : null);
-  if (dependant) {
-    add(
-      'dependant_current_age',
-      `/dependants/${profile.dependants.indexOf(dependant)}/currentAge`,
-      dependant.currentAge
-    );
-  }
+  profile.dependants?.forEach((dependant, index) => {
+    const dependantPath = `/dependants/${index}`;
+    add('dependants', dependantPath, {
+      entityId: dependant.dependantId,
+      ...(dependant.displayName ? { displayName: dependant.displayName } : {})
+    }, dependant.dependantId);
+    add('dependant_current_age', `${dependantPath}/currentAge`, dependant.currentAge, dependant.dependantId);
+  });
+  (profile.assumptions?.values?.collegeFunding?.scenarios || []).forEach((scenario, index) => add(
+    'college_cost_scenarios',
+    `/assumptions/values/collegeFunding/scenarios/${index}`,
+    scenario,
+    scenario.id
+  ));
   const completionFacts = profile.assumptions?.values?.completionFacts || {};
+  Object.entries(completionFacts.specialistAssetReconciliation || {}).forEach(([category, decisions]) => {
+    Object.entries(decisions || {}).forEach(([entityId, decision]) => add(
+      'specialist_asset_reconciliation',
+      `/assumptions/values/completionFacts/specialistAssetReconciliation/${escapeJsonPointerToken(category)}/${escapeJsonPointerToken(entityId)}`,
+      { category, entityId, decision },
+      entityId
+    ));
+  });
+  const noneFactIds = {
+    '/incomeSources': { factId: 'income_sources' },
+    '/incomeSources/netAnnual': { factId: 'income_sources', scope: 'net_retirement_income' },
+    '/assets': { factId: 'asset_position' },
+    '/assets/retirementAvailable': { factId: 'asset_position', scope: 'retirement_available_assets' },
+    '/liabilities': { factId: 'liability_position' },
+    '/properties': { factId: 'property_position' },
+    '/businesses': { factId: 'business_position' },
+    '/pensions': { factId: 'pension_positions' },
+    '/dependants': { factId: 'dependants' }
+  };
+  Object.entries(completionFacts.confirmedNonePaths || {}).forEach(([path, confirmed]) => {
+    const definition = noneFactIds[path];
+    if (confirmed !== true || !definition
+      || (!definition.scope && facts.some((fact) => fact.factId === definition.factId))) return;
+    facts.push({
+      factId: definition.factId,
+      value: definition.scope
+        ? { operation: 'confirm_none', scope: definition.scope }
+        : 'None',
+      certainty: 'exact',
+      status: 'saved_draft',
+      revision: Number(profile.revision || 0)
+    });
+  });
   Object.entries(completionFacts.unknownFactIds || {}).forEach(([factId, acknowledged]) => {
     if (acknowledged !== true || facts.some((fact) => fact.factId === factId)) return;
     facts.push({

@@ -50,6 +50,7 @@ import {
   getPublicRealtimeAnalysisPlan,
   getLatestRealtimeLease,
   getRealtimeConsent,
+  getRealtimeLeaseByActivationHash,
   listRealtimeFactProposalSummaries,
   listRealtimeFinalTurns,
   getRealtimeLease,
@@ -99,6 +100,8 @@ import {
 
 const MAX_REQUEST_BODY_BYTES = 100_000;
 const DEFAULT_CONSUMER_PLAN_BASE_URL = 'https://planeir.ie/plan/';
+const REALTIME_ACTIVATION_ID_PATTERN = /^rt_activation_[A-Za-z0-9_-]{20,80}$/;
+const REALTIME_CONTROL_CAPABILITY_PATTERN = /^rt_control_[A-Za-z0-9_-]{20,80}$/;
 
 function consumerPlanBaseUrl(env) {
   const configured = typeof env?.CONSUMER_PLAN_BASE_URL === 'string'
@@ -184,8 +187,8 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeEnabled === true
     && config?.handoffRequested !== true
     && config?.handoffEnabled !== true
-    && config?.realtimeNoticeId === 'realtime-voice-adviser-test-v1'
-    && config?.realtimeDataPolicyId === 'openai-realtime-audio-adviser-test-v1'
+    && config?.realtimeNoticeId === 'realtime-voice-adviser-test-v2'
+    && config?.realtimeDataPolicyId === 'openai-realtime-audio-adviser-test-v2'
     && config?.realtimeModel === 'gpt-realtime-2.1'
     && config?.realtimeVoice === 'marin'
     && config?.realtimeReasoningEffort === 'low'
@@ -264,6 +267,15 @@ async function readJson(request, { optional = false } = {}) {
 function routeMatch(pathname) {
   if (pathname === '/api/consumer/bootstrap') return { kind: 'bootstrap', methods: ['GET'] };
   if (pathname === '/api/consumer/sessions') return { kind: 'create', methods: ['POST'] };
+  const realtimeActivationMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/activations\/(rt_activation_[A-Za-z0-9_-]{20,80})$/.exec(pathname);
+  if (realtimeActivationMatch) {
+    return {
+      kind: 'realtime_activation',
+      sessionId: realtimeActivationMatch[1],
+      activationId: realtimeActivationMatch[2],
+      methods: ['DELETE']
+    };
+  }
   const realtimeSpeechMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/calls\/(rt_[A-Za-z0-9_-]{20,80})\/speech$/.exec(pathname);
   if (realtimeSpeechMatch) {
     return {
@@ -353,6 +365,27 @@ function realtimeRequestId(request) {
   return value;
 }
 
+function realtimeActivationCredentials(request, {
+  allowServerFallback = false,
+  activationId: suppliedActivationId = ''
+} = {}) {
+  let activationId = String(suppliedActivationId || '').trim()
+    || request.headers.get('X-Realtime-Activation-Id')?.trim()
+    || '';
+  let controlCapability = request.headers.get('X-Realtime-Control-Capability')?.trim() || '';
+  if (!activationId && !controlCapability && allowServerFallback) {
+    activationId = randomId('rt_activation');
+    controlCapability = randomId('rt_control');
+  }
+  if (!REALTIME_ACTIVATION_ID_PATTERN.test(activationId)) {
+    throw new ConsumerError(400, 'realtime_activation_id_invalid', 'A valid live voice activation id is required.');
+  }
+  if (!REALTIME_CONTROL_CAPABILITY_PATTERN.test(controlCapability)) {
+    throw new ConsumerError(400, 'realtime_control_capability_invalid', 'A valid live voice control capability is required.');
+  }
+  return { activationId, controlCapability };
+}
+
 async function requireRealtimeControlCapability(request, env, sessionId, leaseId, options) {
   const token = request.headers.get('X-Realtime-Control-Capability')?.trim() || '';
   const lease = await verifyRealtimeControlCapability(env, sessionId, leaseId, token, options);
@@ -433,7 +466,7 @@ function publicConversationState(state) {
   };
 }
 
-function realtimePlanModuleIds(profile, config, _requestedModuleIds) {
+function realtimePlanModuleIds(profile, config) {
   const planningState = describeConversationState(profile, config);
   return (planningState.moduleSlots || [])
     .filter((slot) => ['ready', 'needs_facts'].includes(slot.availability))
@@ -628,6 +661,52 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }, 200, methods);
     }
 
+    if (route.kind === 'realtime_activation') {
+      const { activationId } = realtimeActivationCredentials(request, {
+        activationId: route.activationId
+      });
+      const activationIdHash = await sha256Base64Url(activationId);
+      let realtimeLease = await getRealtimeLeaseByActivationHash(
+        env,
+        sessionRow.id,
+        activationIdHash
+      );
+      if (!realtimeLease) {
+        return respond({
+          cleanedUp: true,
+          leaseFound: false,
+          leaseClosed: false,
+          providerHangupConfirmed: true
+        }, 200, methods);
+      }
+      realtimeLease = await requireRealtimeControlCapability(
+        request,
+        env,
+        sessionRow.id,
+        realtimeLease.id,
+        { requireActive: false }
+      );
+      const wasOpen = ['pending', 'active', 'closing'].includes(realtimeLease.status);
+      if (wasOpen) {
+        realtimeLease = await closeRealtimeControl(env, realtimeLease, {
+          status: 'complete',
+          reason: 'activation_recovery',
+          errorCode: null,
+          usageKnown: false,
+          required: false
+        });
+        if (realtimeLease?.providerHangupConfirmed !== true) {
+          throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call termination could not be confirmed. Please retry.');
+        }
+      }
+      return respond({
+        cleanedUp: true,
+        leaseFound: true,
+        leaseClosed: wasOpen,
+        providerHangupConfirmed: true
+      }, 200, methods);
+    }
+
     if (route.kind === 'realtime_speech') {
       assertProcessingAvailability(config);
       assertRealtimeAvailability(config);
@@ -675,9 +754,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         }).catch(() => {});
         throw error;
       }
-      return respondBinary(result.audio, 200, methods, {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': String(result.audio.byteLength),
+      const speechHeaders = {
+        'Content-Type': result.contentType || 'audio/mpeg',
         'X-Realtime-Speech-Id': result.speechId,
         'X-Realtime-Voice-Limit-Micro-Eur': String(result.budget.limitMicroEur),
         'X-Realtime-Voice-Spent-Micro-Eur': String(result.budget.spentMicroEur),
@@ -688,7 +766,13 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           'X-Realtime-Voice-Spent-Micro-Eur',
           'X-Realtime-Voice-Remaining-Micro-Eur'
         ].join(', ')
-      });
+      };
+      if (!result.streaming
+        && Number.isSafeInteger(result.contentLength)
+        && result.contentLength > 0) {
+        speechHeaders['Content-Length'] = String(result.contentLength);
+      }
+      return respondBinary(result.audio, 200, methods, speechHeaders);
     }
 
     if (route.kind === 'realtime_lease') {
@@ -866,6 +950,13 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }
       await rateLimit(env, 'consumer-realtime-call-session', sessionRow.id, 60 * 60 * 1000, 6);
       const requestId = realtimeRequestId(request);
+      const { activationId, controlCapability } = realtimeActivationCredentials(request, {
+        allowServerFallback: true
+      });
+      const [activationIdHash, controlCapabilityHash] = await Promise.all([
+        sha256Base64Url(activationId),
+        sha256Base64Url(controlCapability)
+      ]);
       const offerSdp = await readRealtimeSdpOffer(request, config.realtimeMaxSdpBytes);
       const providerBudget = await getConsumerProviderBudget(env, sessionRow.id);
       const reservationAmount = Number(providerBudget.remainingEurMicros || 0);
@@ -891,15 +982,14 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       let lease = null;
       let dispatched = false;
       let providerCallId = null;
-      const controlCapability = randomId('rt_control');
-      const controlCapabilityHash = await sha256Base64Url(controlCapability);
       try {
         lease = await createRealtimeLease(
           env,
           sessionRow,
           config,
           reservation.entry,
-          controlCapabilityHash
+          controlCapabilityHash,
+          activationIdHash
         );
         await markRealtimeProviderCostInFlight(env, reservation.entry.id, sessionRow.id, config);
         dispatched = true;
@@ -926,6 +1016,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           'X-Realtime-Idle-Timeout-Seconds': String(config.realtimeIdleTimeoutSeconds),
           'X-Realtime-Budget-Micro-Eur': String(lease.reservation_eur_micros),
           'X-Realtime-Dispatch-Stop-Micro-Eur': String(lease.dispatch_stop_eur_micros),
+          'X-Realtime-Activation-Id': activationId,
           'X-Realtime-Control-Capability': controlCapability,
           'Access-Control-Expose-Headers': [
             'X-Realtime-Lease-Id',
@@ -933,6 +1024,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
             'X-Realtime-Idle-Timeout-Seconds',
             'X-Realtime-Budget-Micro-Eur',
             'X-Realtime-Dispatch-Stop-Micro-Eur',
+            'X-Realtime-Activation-Id',
             'X-Realtime-Control-Capability'
           ].join(', ')
         });
@@ -1013,7 +1105,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         if (planningState.requiresGoalPriorityQuestion) {
           throw new ConsumerError(409, 'goal_priority_required', 'Choose which explicit goal this first three-analysis plan should address.');
         }
-        const moduleIds = realtimePlanModuleIds(profile, config, body.moduleIds);
+        const moduleIds = realtimePlanModuleIds(profile, config);
         if (!(planningState.moduleSlots || []).length) {
           throw new ConsumerError(409, 'analysis_plan_empty', 'Complete the goal and life-stage scan before preparing this analysis.');
         }

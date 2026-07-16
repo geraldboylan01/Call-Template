@@ -156,6 +156,91 @@ async function verifyAuthorization(env, sessionId, leaseId, authorization) {
   }
 }
 
+function streamWithRealtimeUsageFinalization({
+  env,
+  sessionId,
+  leaseId,
+  usageId,
+  providerRequestId,
+  stream
+}) {
+  const reader = stream.getReader();
+  let finalized = false;
+  let finalizationPromise = null;
+  let clientCancelled = false;
+  const finalize = async (status, errorCode = null) => {
+    if (finalized) return true;
+    if (finalizationPromise) return finalizationPromise;
+    finalizationPromise = (async () => {
+      let lastError = null;
+      for (const delayMs of [0, 25, 100]) {
+        if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+        try {
+          const row = await finalizeRealtimeSpeechUsage(env, {
+            usageId,
+            sessionId,
+            leaseId,
+            status,
+            providerRequestId,
+            errorCode
+          });
+          if (row) {
+            finalized = true;
+            return true;
+          }
+          lastError = new Error('speech_usage_transition_missing');
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      console.error('Consumer Realtime speech stream finalization failed', {
+        usageId,
+        status,
+        error: lastError instanceof Error ? lastError.message : String(lastError)
+      });
+      return false;
+    })();
+    try {
+      return await finalizationPromise;
+    } finally {
+      if (!finalized) finalizationPromise = null;
+    }
+  };
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          if (!await finalize('known')) throw new Error('realtime_speech_usage_finalize_failed');
+          controller.close();
+          return;
+        }
+        controller.enqueue(chunk.value);
+      } catch (error) {
+        if (!finalized) {
+          await finalize(
+            clientCancelled ? 'known' : 'unknown',
+            clientCancelled
+              ? 'realtime_speech_playback_cancelled'
+              : 'realtime_speech_stream_failed'
+          );
+        }
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      clientCancelled = true;
+      await reader.cancel(reason).catch(() => {});
+      // The provider accepted the complete, character-priced TTS request
+      // before this stream was exposed. Barge-in changes delivery, not the
+      // known provider charge, so it must not poison the whole lease ledger.
+      if (!await finalize('known', 'realtime_speech_playback_cancelled')) {
+        throw new Error('realtime_speech_usage_finalize_failed');
+      }
+    }
+  });
+}
+
 export async function renderAuthorizedRealtimeSpeech({
   env,
   config,
@@ -222,16 +307,31 @@ export async function renderAuthorizedRealtimeSpeech({
     dispatched = true;
     const result = await synthesize({ env, config, text: authorization.text });
     providerRequestId = result.providerRequestId || null;
-    await finalizeRealtimeSpeechUsage(env, {
-      usageId: reservation.row.id,
-      sessionId: sessionRow.id,
-      leaseId,
-      status: 'known',
-      providerRequestId
-    });
+    const streaming = result.audioStream instanceof ReadableStream;
+    if (!streaming) {
+      await finalizeRealtimeSpeechUsage(env, {
+        usageId: reservation.row.id,
+        sessionId: sessionRow.id,
+        leaseId,
+        status: 'known',
+        providerRequestId
+      });
+    }
     const currentLease = await getRealtimeLease(env, sessionRow.id, leaseId);
     return {
-      audio: result.audio,
+      audio: streaming
+        ? streamWithRealtimeUsageFinalization({
+          env,
+          sessionId: sessionRow.id,
+          leaseId,
+          usageId: reservation.row.id,
+          providerRequestId,
+          stream: result.audioStream
+        })
+        : result.audio,
+      streaming,
+      contentLength: streaming ? result.contentLength : result.audio?.byteLength,
+      contentType: result.contentType || 'audio/mpeg',
       speechId: authorization.speechId,
       kind: authorization.kind,
       text: authorization.text,

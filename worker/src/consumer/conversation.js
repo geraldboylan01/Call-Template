@@ -653,7 +653,9 @@ export function describeConversationState(profile, config) {
   const plannedRecommendations = hasGoal
     ? personaPlanRecommendations(personaPlan, profile)
     : allowedRecommendations(profile, '', config);
-  const scanQuestion = hasGoal ? personaScanQuestion(profile) : null;
+  const explicitPersonaResolved = personaPlan.personaAssessment.needsDisambiguation !== true
+    && personaPlan.personaAssessment.evidenceFactIds.includes('self_description');
+  const scanQuestion = hasGoal && !explicitPersonaResolved ? personaScanQuestion(profile) : null;
   const recommendations = hasGoal && personaPlan.requiresDecisionTopicQuestion
     ? []
     : plannedRecommendations;

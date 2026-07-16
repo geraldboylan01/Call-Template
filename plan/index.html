@@ -188,6 +188,25 @@
             </section>
 
             <div class="realtime-context-grid" aria-label="Live planning context">
+              <details class="realtime-context-card realtime-device-card">
+                <summary class="realtime-context-heading">
+                  <span>Microphone</span>
+                  <strong id="realtimeVoiceDeviceSummary">Browser default</strong>
+                </summary>
+                <div class="realtime-device-controls">
+                  <label for="realtimeVoiceMicrophoneSelect">Microphone source</label>
+                  <select id="realtimeVoiceMicrophoneSelect" aria-describedby="realtimeVoiceDeviceStatus">
+                    <option value="">Browser default</option>
+                  </select>
+                  <button id="realtimeVoiceRefreshDevicesButton" class="quiet-button" type="button">
+                    Refresh microphones
+                  </button>
+                  <p id="realtimeVoiceDeviceStatus" role="status" aria-live="polite">
+                    Your browser’s default microphone will be used.
+                  </p>
+                </div>
+              </details>
+
               <section class="realtime-context-card realtime-budget-card">
                 <span>Meeting allowance</span>
                 <strong id="realtimeVoiceBudgetValue">—</strong>

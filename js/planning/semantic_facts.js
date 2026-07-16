@@ -59,7 +59,14 @@ function defineFact(definition) {
       ...mapping,
       moduleIds: Object.freeze([...(mapping.moduleIds || [])])
     }))),
-    ...(definition.entity ? { entity: Object.freeze({ ...definition.entity }) } : {})
+    ...(definition.entity ? {
+      entity: Object.freeze({
+        ...definition.entity,
+        ...(Array.isArray(definition.entity.segmentIndexes)
+          ? { segmentIndexes: Object.freeze([...definition.entity.segmentIndexes]) }
+          : {})
+      })
+    } : {})
   });
 }
 
@@ -117,6 +124,54 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     userEffort: 1
   }),
   defineFact({
+    factId: 'partner_person',
+    aliases: ['household.partner_person'],
+    valueType: 'entity',
+    sensitivity: 'restricted',
+    label: 'Partner household person',
+    description: 'The separate partner record required before joint income, pension, asset or liability positions are collected.',
+    mappings: [{
+      pathPattern: '/partner',
+      moduleIds: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    }],
+    entity: { kind: 'root_object', rootSegment: 0, idKey: 'personId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Should this plan include your partner as a separate person for joint income, pensions, assets and debts?',
+    answerType: 'text',
+    materiality: 5,
+    ambiguity: 2,
+    userEffort: 1
+  }),
+  defineFact({
+    factId: 'income_sources',
+    aliases: ['household.income_sources'],
+    valueType: 'entity',
+    sensitivity: 'restricted',
+    label: 'Household income source',
+    description: 'One owner-specific gross or net household income source, with stable identity for corrections.',
+    mappings: [
+      {
+        pathPattern: '/incomeSources',
+        moduleIds: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.NET_RETIREMENT]
+      },
+      {
+        pathPattern: '/incomeSources/*/grossAnnual',
+        moduleIds: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.PENSION_PROJECTION]
+      },
+      {
+        pathPattern: '/incomeSources/*/netAnnual',
+        moduleIds: [MODULE_IDS.NET_RETIREMENT]
+      }
+    ],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'incomeId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Please add each person’s income separately, including who receives it and whether the amount is gross or net.',
+    answerType: 'text',
+    materiality: 5,
+    ambiguity: 4,
+    userEffort: 3
+  }),
+  defineFact({
     factId: 'gross_household_income',
     aliases: ['household.gross_income_sources'],
     label: 'Gross household income',
@@ -133,6 +188,31 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     userEffort: 2
   }),
   defineFact({
+    factId: 'asset_position',
+    aliases: ['balance_sheet.asset_position'],
+    valueType: 'entity',
+    sensitivity: 'restricted',
+    label: 'Asset position',
+    description: 'One cash, investment or other asset position with stable identity for additions, corrections and removal.',
+    mappings: [
+      {
+        pathPattern: '/assets',
+        moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.NET_RETIREMENT]
+      },
+      {
+        pathPattern: '/assets/*/currentValue',
+        moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.NET_RETIREMENT]
+      }
+    ],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'assetId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Please add each cash, investment or other asset and its current value, or confirm that there are none.',
+    answerType: 'text',
+    materiality: 5,
+    ambiguity: 4,
+    userEffort: 3
+  }),
+  defineFact({
     factId: 'cash_savings',
     aliases: ['household.cash_available'],
     label: 'Available cash',
@@ -147,6 +227,87 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     materiality: 5,
     ambiguity: 3,
     userEffort: 1
+  }),
+  defineFact({
+    factId: 'liability_position',
+    aliases: ['balance_sheet.liability_position'],
+    valueType: 'entity',
+    sensitivity: 'restricted',
+    label: 'Liability position',
+    description: 'One household debt with stable identity for additions, corrections and removal.',
+    mappings: [
+      {
+        pathPattern: '/liabilities',
+        moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET, MODULE_IDS.HOUSE_PURCHASE]
+      },
+      {
+        pathPattern: '/liabilities/*/currentBalance',
+        moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET]
+      }
+    ],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'liabilityId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Please add each mortgage, loan or other debt and its current balance, or confirm that there are none.',
+    answerType: 'text',
+    materiality: 5,
+    ambiguity: 4,
+    userEffort: 3
+  }),
+  defineFact({
+    factId: 'liability_monthly_payment',
+    aliases: ['house_purchase.liability_monthly_payment'],
+    sensitivity: 'restricted',
+    label: 'Monthly debt payment',
+    description: 'The reviewed monthly repayment for one household liability, including an explicit zero.',
+    mappings: [{
+      pathPattern: '/liabilities/*/monthlyPayment',
+      moduleIds: [MODULE_IDS.HOUSE_PURCHASE]
+    }],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'liabilityId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'What is the monthly payment for this debt? Enter zero if there is no current payment.',
+    answerType: 'money',
+    materiality: 4,
+    ambiguity: 2,
+    userEffort: 1
+  }),
+  defineFact({
+    factId: 'property_position',
+    aliases: ['balance_sheet.property_position'],
+    valueType: 'entity',
+    sensitivity: 'restricted',
+    label: 'Property position',
+    description: 'One property position with stable identity and reviewed ownership and value.',
+    mappings: [
+      { pathPattern: '/properties', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET] },
+      { pathPattern: '/properties/*/currentValue', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET] }
+    ],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'propertyId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Please add each property, its use, ownership and current value.',
+    answerType: 'text',
+    materiality: 5,
+    ambiguity: 4,
+    userEffort: 3
+  }),
+  defineFact({
+    factId: 'business_position',
+    aliases: ['balance_sheet.business_position'],
+    valueType: 'entity',
+    sensitivity: 'restricted',
+    label: 'Business position',
+    description: 'One business or agricultural interest with stable identity, ownership and estimated value.',
+    mappings: [
+      { pathPattern: '/businesses', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET] },
+      { pathPattern: '/businesses/*/estimatedValue', moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET] }
+    ],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'businessId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Please add each business or agricultural interest, its ownership and estimated value.',
+    answerType: 'text',
+    materiality: 5,
+    ambiguity: 4,
+    userEffort: 3
   }),
   defineFact({
     factId: 'monthly_spending',
@@ -225,7 +386,10 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     sensitivity: 'restricted',
     label: 'Pension positions',
     description: 'The household pension positions to include in projection.',
-    mappings: [{ pathPattern: '/pensions', moduleIds: [MODULE_IDS.PENSION_PROJECTION] }],
+    mappings: [{
+      pathPattern: '/pensions',
+      moduleIds: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    }],
     confirmationPolicy: FACT_CONFIRMATION_POLICIES.EXPLICIT_VALUE_OR_NONE,
     questionPrompt: 'What pension positions should be included in the projection?',
     answerType: 'text',
@@ -276,7 +440,10 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     sensitivity: 'restricted',
     label: 'Current pension value',
     description: 'The current value of one pension position.',
-    mappings: [{ pathPattern: '/pensions/*/currentValue', moduleIds: [MODULE_IDS.PENSION_PROJECTION] }],
+    mappings: [{
+      pathPattern: '/pensions/*/currentValue',
+      moduleIds: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    }],
     entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'pensionId' },
     confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
     questionPrompt: 'What is the current value of this pension?',
@@ -424,19 +591,38 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
   defineFact({
     factId: 'college_cost_scenarios',
     aliases: ['college_funding.cost_scenarios'],
-    valueType: 'choice',
+    valueType: 'entity',
     label: 'College cost scenarios',
     description: 'Explicit annual-cost scenarios used by the college funding engine.',
     mappings: [{
       pathPattern: '/assumptions/values/collegeFunding/scenarios',
       moduleIds: [MODULE_IDS.COLLEGE_FUNDING]
     }],
-    confirmationPolicy: FACT_CONFIRMATION_POLICIES.EXPLICIT_CHOICE,
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
     questionPrompt: 'Which reviewed annual-cost scenario should be used for college funding?',
     answerType: 'text',
     materiality: 5,
     ambiguity: 5,
     userEffort: 4
+  }),
+  defineFact({
+    factId: 'specialist_asset_reconciliation',
+    aliases: ['balance_sheet.specialist_asset_reconciliation'],
+    valueType: 'choice',
+    sensitivity: 'restricted',
+    label: 'Specialist asset reconciliation',
+    description: 'A reviewed choice that a property, pension or business record is distinct from, or duplicates, a generic asset position.',
+    mappings: [{
+      pathPattern: '/assumptions/values/completionFacts/specialistAssetReconciliation/*/*',
+      moduleIds: [MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    }],
+    entity: { kind: 'path_segments', segmentIndexes: [4, 5] },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
+    questionPrompt: 'Is this specialist property, pension or business record a separate position, or does it duplicate an asset already listed?',
+    answerType: 'text',
+    materiality: 5,
+    ambiguity: 5,
+    userEffort: 1
   }),
   defineFact({
     factId: 'self_description',
@@ -671,10 +857,22 @@ function fallbackFactId(tokens) {
 }
 
 function entityIdentity(definition, pathTokens, profile, explicitEntityId) {
+  const entity = definition?.entity;
+  if (entity?.kind === 'path_segments') {
+    const segmentIndexes = Array.isArray(entity.segmentIndexes) ? entity.segmentIndexes : [];
+    const segments = segmentIndexes.map((index) => pathTokens[index]);
+    if (segments.length > 0 && segments.every((segment) => typeof segment === 'string' && segment)) {
+      const entityId = segments
+        .map((segment) => encodeURIComponent(segment).replace(/[!'()*]/g, (character) => (
+          `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+        )))
+        .join(':');
+      return { entityId, identityStability: 'path_entity_id' };
+    }
+  }
   if (typeof explicitEntityId === 'string' && explicitEntityId.trim()) {
     return { entityId: explicitEntityId.trim(), identityStability: 'explicit_entity_id' };
   }
-  const entity = definition?.entity;
   if (entity?.kind === 'indexed_collection') {
     const indexToken = pathTokens[entity.indexSegment];
     const collection = profile?.[pathTokens[0]];

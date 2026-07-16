@@ -296,16 +296,26 @@ function mapRealtimeProposalFact(profile, fact) {
   return completionFactMapping(profile, fact, normalizedRange);
 }
 
-function clearCompletionFactMarker(profile, factId) {
+function clearCompletionFactMarker(profile, factId, fieldPath = null) {
   const completionFacts = profile.assumptions?.values?.completionFacts;
   if (!completionFacts) return profile;
   if (completionFacts.unknownFactIds) delete completionFacts.unknownFactIds[factId];
   if (completionFacts.rangedFactValues) delete completionFacts.rangedFactValues[factId];
+  if (fieldPath && completionFacts.confirmedNonePaths) {
+    delete completionFacts.confirmedNonePaths[fieldPath];
+  }
   return profile;
 }
 
+function patchForMappedRealtimeFact(mapped) {
+  return {
+    ...(mapped.additionalPatch || {}),
+    [mapped.fieldPath]: mapped.canonicalValue
+  };
+}
+
 function applyMappedRealtimeFact(profile, fact, mapped) {
-  const patch = { [mapped.fieldPath]: mapped.canonicalValue };
+  const patch = patchForMappedRealtimeFact(mapped);
   let nextProfile = applyProfilePatch(profile, patch, [], 'consumer_edit');
   const metadataPath = mapped.metadataPath || mapped.fieldPath;
   const certainty = String(fact.certainty || 'unknown');
@@ -327,9 +337,38 @@ function applyMappedRealtimeFact(profile, fact, mapped) {
       };
     });
   if (!['unknown', 'range'].includes(certainty)) {
-    clearCompletionFactMarker(nextProfile, fact.factId);
+    clearCompletionFactMarker(nextProfile, fact.factId, mapped.fieldPath);
   }
   return normalizeHouseholdProfile(nextProfile);
+}
+
+function realtimeFactDependencyRank(fact) {
+  const factId = String(fact?.factId || '');
+  if (factId === 'primary_goal' || factId === 'self_description') return 0;
+
+  const definition = getSemanticFactDefinition(factId);
+  if (definition?.profilePathTemplate?.startsWith('/assumptions/values/persona/')) return 10;
+  if (factId === 'partner_person') return 20;
+
+  // Collection/root entity proposals establish stable identities and owners.
+  // They must be projected before any scalar proposal that selects or updates
+  // one of those records, regardless of the model's submitted array order.
+  if (definition?.valueType === 'entity') return 30;
+
+  // Reconciliation reads both the generic asset and specialist collection, so
+  // it is the final dependency layer rather than an ordinary scalar/choice.
+  if (factId === 'specialist_asset_reconciliation') return 50;
+  return 40;
+}
+
+function orderRealtimeFactsByDependency(facts) {
+  return [...facts].sort((left, right) => {
+    const rankDifference = realtimeFactDependencyRank(left) - realtimeFactDependencyRank(right);
+    if (rankDifference !== 0) return rankDifference;
+    const leftId = String(left?.factId || '');
+    const rightId = String(right?.factId || '');
+    return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+  });
 }
 
 function parseTokenCount(value) {
@@ -459,6 +498,7 @@ export class ConsumerRealtimeSession {
     this.toolContinuationPending = false;
     this.pendingSessionPolicyHash = null;
     this.pendingSessionPolicySnapshot = null;
+    this.currentSessionPolicyHash = null;
     this.queuedResponseAuthorization = null;
     this.initialProbePending = false;
     this.committedAudioItemIds = new Set();
@@ -473,6 +513,7 @@ export class ConsumerRealtimeSession {
       this.currentAuthorizedResponseId = await this.state.storage.get('currentAuthorizedResponseId') || null;
       this.pendingSessionPolicyHash = await this.state.storage.get('pendingSessionPolicyHash') || null;
       this.pendingSessionPolicySnapshot = await this.state.storage.get('pendingSessionPolicySnapshot') || null;
+      this.currentSessionPolicyHash = await this.state.storage.get('currentSessionPolicyHash') || null;
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
       this.queuedResponseAuthorization = await this.state.storage.get('queuedResponseAuthorization') || null;
     });
@@ -565,7 +606,18 @@ export class ConsumerRealtimeSession {
     const context = await this.planningContext();
     this.currentPhase = context.state.realtimePhase;
     this.initialProbePending = false;
-    await this.state.storage.put('phase', this.currentPhase);
+    const initialSession = buildRealtimeSessionConfig(
+      context.config,
+      describeConversationState(context.profile, context.config)
+    );
+    this.currentSessionPolicyHash = await hmacSha256Base64Url(
+      this.env.CONSUMER_RATE_LIMIT_HASH_KEY,
+      `consumer/realtime/session-policy/v1/${stableStringify(realtimeSessionPolicySnapshot(initialSession))}`
+    );
+    await this.state.storage.put({
+      phase: this.currentPhase,
+      currentSessionPolicyHash: this.currentSessionPolicyHash
+    });
     await this.authorizeResponse('initial_state_probe', { forceTool: 'get_planning_state' });
   }
 
@@ -869,8 +921,10 @@ export class ConsumerRealtimeSession {
         await this.terminalize('failed', 'session_policy_changed', 'realtime_session_policy_changed', false);
         return;
       }
+      this.currentSessionPolicyHash = this.pendingSessionPolicyHash;
       this.pendingSessionPolicyHash = null;
       this.pendingSessionPolicySnapshot = null;
+      await this.state.storage.put('currentSessionPolicyHash', this.currentSessionPolicyHash);
       await this.state.storage.delete(['pendingSessionPolicyHash', 'pendingSessionPolicySnapshot']);
       if (this.initialProbePending) {
         this.initialProbePending = false;
@@ -1177,6 +1231,10 @@ export class ConsumerRealtimeSession {
       this.env.CONSUMER_RATE_LIMIT_HASH_KEY,
       `consumer/realtime/session-policy/v1/${stableStringify(policySnapshot)}`
     );
+    if (this.currentSessionPolicyHash
+      && constantTimeTextEqual(this.currentSessionPolicyHash, policyHash)) {
+      return context;
+    }
     this.pendingSessionPolicySnapshot = policySnapshot;
     this.pendingSessionPolicyHash = policyHash;
     await this.state.storage.put({
@@ -1481,10 +1539,8 @@ export class ConsumerRealtimeSession {
           );
         }
       });
-      const enabledModules = modulesEnabledByFacts(context.state.recommendations, args.facts);
-      const orderedFacts = [...args.facts].sort((left, right) => (
-        Number(right.factId === 'primary_goal') - Number(left.factId === 'primary_goal')
-      ));
+      const enabledModules = modulesEnabledByFacts(context.state.recommendations, args.facts, context.profile);
+      const orderedFacts = orderRealtimeFactsByDependency(args.facts);
       let projectedProfile = context.profile;
       const normalized = orderedFacts.map((fact) => {
         this.requireFinalizedEvidence(fact.evidenceItemId);
@@ -1500,7 +1556,7 @@ export class ConsumerRealtimeSession {
           throw new ConsumerError(400, 'realtime_fact_certainty_invalid', 'Fact certainty is invalid.');
         }
         const mapped = mapRealtimeProposalFact(projectedProfile, fact);
-        const patch = { [mapped.fieldPath]: mapped.canonicalValue };
+        const patch = patchForMappedRealtimeFact(mapped);
         projectedProfile = applyProfilePatch(projectedProfile, patch, [], 'ai_extraction');
         const confirmationPolicy = getSemanticFactDefinition(fact.factId)?.confirmationPolicy || 'final_review';
         const readBackText = confirmationPolicy === 'read_back'
@@ -1523,7 +1579,7 @@ export class ConsumerRealtimeSession {
           leaseId: this.meta.leaseId,
           toolAttemptId,
           factId: fact.factId,
-          value: mapped.displayValue,
+          value: mapped.proposalValue ?? mapped.displayValue,
           readBackText,
           patch,
           baseProfileRevision: Number(context.sessionRow.current_profile_revision),
@@ -1534,7 +1590,7 @@ export class ConsumerRealtimeSession {
         proposals.push({
           ...created,
           factId: fact.factId,
-          value: mapped.displayValue,
+          value: mapped.proposalValue ?? mapped.displayValue,
           certainty: fact.certainty,
           confirmationPolicy,
           readBackText

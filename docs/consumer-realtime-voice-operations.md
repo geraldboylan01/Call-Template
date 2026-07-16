@@ -103,7 +103,10 @@ reviewed deployment.
 ## Consent and API contract
 
 Realtime consent is separate from bounded-recording consent and must use the
-currently published notice:
+currently published notice. The protected €10 adviser meeting uses notice
+`realtime-voice-adviser-test-v2` and data-policy identifier
+`openai-realtime-audio-adviser-test-v2`; receipts captured against the former
+v1 identifiers are stale and cannot authorize a new call.
 
 | Method | Route | Purpose |
 |---|---|---|
@@ -112,6 +115,13 @@ currently published notice:
 | `GET` | `/api/consumer/sessions/:id/voice/realtime/calls/:leaseId` | Read bounded public lease/fact/plan state |
 | `DELETE` | `/api/consumer/sessions/:id/voice/realtime/calls/:leaseId` | End the call from the server side |
 | `PUT` | `/api/consumer/sessions/:id/analysis-plan` | Save or explicitly confirm the displayed plan nonce at the current profile revision |
+
+Migration `0009_add_realtime_consent_purposes.sql` provides audited storage and
+domain operations for `live_voice_processing`,
+`automated_planning_analysis`, and `redacted_turn_retention`. The current UI
+still presents one bundled Live voice control, so these purpose rows are not
+yet an API authority. Do not wire them into call authorization until the UI
+offers independent choices and the first two purposes are required explicitly.
 
 All routes require the owning `X-Consumer-Session` credential. The server never
 accepts an adviser cookie, published-session capability, arbitrary profile

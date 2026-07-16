@@ -241,6 +241,123 @@ async function providerFetch(config, url, init, responseOptions) {
   }
 }
 
+async function providerFetchStream(config, url, init, responseOptions) {
+  const abortController = new AbortController();
+  let timeout = null;
+  const refreshTimeout = () => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => abortController.abort(), config.voiceTimeoutMs);
+  };
+  const finish = () => clearTimeout(timeout);
+  refreshTimeout();
+  try {
+    const response = await fetch(url, { ...init, signal: abortController.signal });
+    if (!response.ok) {
+      response.body?.cancel().catch(() => {});
+      finish();
+      return { response, body: null, contentLength: null };
+    }
+    if (!responseOptions.acceptsContentType(response.headers.get('content-type'))) {
+      abortController.abort();
+      finish();
+      throw responseOptions.invalidResponse();
+    }
+
+    let contentLength = null;
+    const declaredLength = response.headers.get('content-length');
+    if (declaredLength !== null) {
+      const normalized = declaredLength.trim();
+      if (!/^(?:0|[1-9]\d*)$/.test(normalized)) {
+        abortController.abort();
+        finish();
+        throw responseOptions.invalidResponse();
+      }
+      contentLength = Number(normalized);
+      if (!Number.isSafeInteger(contentLength)
+        || contentLength < 1
+        || contentLength > responseOptions.maximumBytes) {
+        abortController.abort();
+        finish();
+        throw responseOptions.invalidResponse();
+      }
+    }
+    if (!response.body || typeof response.body.getReader !== 'function') {
+      abortController.abort();
+      finish();
+      throw responseOptions.invalidResponse();
+    }
+
+    const reader = response.body.getReader();
+    const first = await readProviderChunk(reader, abortController.signal);
+    if (first.done || !(first.value instanceof Uint8Array) || first.value.byteLength < 1) {
+      abortController.abort();
+      finish();
+      throw responseOptions.invalidResponse();
+    }
+    if (first.value.byteLength > responseOptions.maximumBytes) {
+      abortController.abort();
+      finish();
+      throw responseOptions.invalidResponse();
+    }
+
+    let initial = first.value;
+    let total = first.value.byteLength;
+    refreshTimeout();
+    let closed = false;
+    const closeProvider = () => {
+      if (closed) return;
+      closed = true;
+      finish();
+      try { reader.releaseLock(); } catch (_error) { /* best effort */ }
+    };
+    const body = new ReadableStream({
+      async pull(streamController) {
+        try {
+          if (initial) {
+            const value = initial;
+            initial = null;
+            streamController.enqueue(value);
+            return;
+          }
+          const chunk = await readProviderChunk(reader, abortController.signal);
+          if (chunk.done) {
+            if (contentLength !== null && total !== contentLength) {
+              throw responseOptions.invalidResponse();
+            }
+            closeProvider();
+            streamController.close();
+            return;
+          }
+          if (!(chunk.value instanceof Uint8Array)) throw responseOptions.invalidResponse();
+          refreshTimeout();
+          total += chunk.value.byteLength;
+          if (total > responseOptions.maximumBytes) throw responseOptions.invalidResponse();
+          streamController.enqueue(chunk.value);
+        } catch (error) {
+          abortController.abort();
+          closeProvider();
+          streamController.error(error instanceof ConsumerError
+            ? error
+            : responseOptions.invalidResponse());
+        }
+      },
+      async cancel(reason) {
+        abortController.abort(reason);
+        await reader.cancel(reason).catch(() => {});
+        closeProvider();
+      }
+    });
+    return { response, body, contentLength };
+  } catch (error) {
+    finish();
+    if (error instanceof ConsumerError) throw error;
+    if (error?.name === 'AbortError') {
+      throw new ConsumerError(504, 'voice_provider_timeout', 'Voice processing took too long. You can retry or continue by typing.');
+    }
+    throw new ConsumerError(502, 'voice_provider_unavailable', 'Voice processing is temporarily unavailable. You can continue by typing.');
+  }
+}
+
 function rejectOversizedDeclaredAudio(request, maximumBytes) {
   const raw = request.headers.get('Content-Length');
   if (raw === null) return;
@@ -498,7 +615,7 @@ export async function synthesizeRealtimeControlledSpeech({ env, config, text }) 
     throw new ConsumerError(400, 'realtime_speech_text_invalid', 'The approved spoken response is invalid.');
   }
   const providerKey = requireProviderKey(env);
-  const { response, body } = await providerFetch(config, 'https://api.openai.com/v1/audio/speech', {
+  const { response, body, contentLength } = await providerFetchStream(config, 'https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${providerKey}`,
@@ -534,5 +651,10 @@ export async function synthesizeRealtimeControlledSpeech({ env, config, text }) 
     error.providerRequestId = providerRequestId;
     throw error;
   }
-  return { audio: body.buffer, providerRequestId };
+  return {
+    audioStream: body,
+    contentLength,
+    contentType: String(response.headers.get('content-type') || 'audio/mpeg').split(';')[0].trim(),
+    providerRequestId
+  };
 }

@@ -35,6 +35,208 @@ import {
 } from './adapters/personal_balance_sheet.js';
 import { readJsonPointer, sha256Json } from './utils.js';
 
+export const MODULE_INTAKE_CONTRACT_VERSION = 'consumer-module-intake-1.0.0';
+
+const MODULE_INTAKE_MODES = Object.freeze(['calculation', 'composition', 'adviser_handoff']);
+const MODULE_INTAKE_STATUSES = Object.freeze(['approved', 'incomplete']);
+
+const INTAKE_FACTS = Object.freeze({
+  [MODULE_IDS.LIQUIDITY]: Object.freeze([
+    'primary_goal', 'cash_savings', 'monthly_spending'
+  ]),
+  [MODULE_IDS.HOUSE_PURCHASE]: Object.freeze([
+    'primary_goal', 'partner_person', 'target_home_price', 'income_sources', 'gross_household_income',
+    'cash_savings', 'liability_position', 'liability_monthly_payment', 'monthly_spending',
+    'current_monthly_rent', 'lending_category',
+    'household_structure'
+  ]),
+  [MODULE_IDS.PENSION_PROJECTION]: Object.freeze([
+    'primary_goal', 'partner_person', 'pension_positions', 'person_current_age', 'intended_retirement_age',
+    'income_sources', 'gross_household_income', 'pension_current_value',
+    'pension_employee_contribution_rate', 'pension_employer_contribution_rate',
+    'target_retirement_income'
+  ]),
+  [MODULE_IDS.NET_RETIREMENT]: Object.freeze([
+    'primary_goal', 'person_current_age', 'annual_net_spending', 'income_sources',
+    'asset_position'
+  ]),
+  [MODULE_IDS.MORTGAGE]: Object.freeze([
+    'primary_goal', 'mortgage_position', 'mortgage_current_balance',
+    'mortgage_annual_interest_rate', 'mortgage_remaining_term_months'
+  ]),
+  [MODULE_IDS.COLLEGE_FUNDING]: Object.freeze([
+    'primary_goal', 'dependants', 'dependant_current_age', 'college_cost_scenarios'
+  ]),
+  [MODULE_IDS.PERSONAL_BALANCE_SHEET]: Object.freeze([
+    'primary_goal', 'partner_person', 'asset_position', 'liability_position', 'property_position',
+    'business_position', 'pension_positions', 'pension_current_value',
+    'specialist_asset_reconciliation'
+  ])
+});
+
+function approvedIntake(mode, semanticFactIds, getIntakeReadiness, composedModuleIds = []) {
+  return {
+    version: MODULE_INTAKE_CONTRACT_VERSION,
+    mode,
+    status: 'approved',
+    semanticFactIds,
+    composedModuleIds,
+    getIntakeReadiness
+  };
+}
+
+function incompleteIntake(mode, reason, semanticFactIds = []) {
+  return {
+    version: MODULE_INTAKE_CONTRACT_VERSION,
+    mode,
+    status: 'incomplete',
+    semanticFactIds,
+    composedModuleIds: [],
+    getIntakeReadiness: () => ({
+      status: 'intake_contract_incomplete',
+      requiredMissing: [],
+      assumptionsUsed: [],
+      warnings: [reason]
+    })
+  };
+}
+
+function withRequiredPartnerForCouple(getReadiness, moduleId) {
+  return (profile) => {
+    const readiness = getReadiness(profile);
+    if (['not_relevant', 'adviser_review_required', 'unsupported', 'intake_contract_incomplete'].includes(readiness.status)) {
+      return readiness;
+    }
+    const householdStructure = profile.assumptions?.values?.persona?.householdStructure;
+    if (householdStructure !== 'couple' || profile.partner?.personId) return readiness;
+    return {
+      ...readiness,
+      status: 'missing_information',
+      requiredMissing: [{
+        fieldPath: '/partner',
+        reason: 'Add the partner as a separate household person before collecting joint positions.',
+        blockingModuleIds: [moduleId],
+        importance: 'required'
+      }, ...(readiness.requiredMissing || [])]
+    };
+  };
+}
+
+function withTerminalConfirmedNone(getReadiness, moduleId, terminalPaths) {
+  return (profile) => {
+    const readiness = getReadiness(profile);
+    if (['not_relevant', 'adviser_review_required', 'unsupported', 'intake_contract_incomplete'].includes(readiness.status)) {
+      return readiness;
+    }
+    const markers = profile.assumptions?.values?.completionFacts?.confirmedNonePaths || {};
+    const terminalPath = terminalPaths.find((path) => markers[path] === true
+      && (readiness.requiredMissing || []).some((item) => (
+        item.fieldPath === path || item.fieldPath.startsWith(`${path}/`)
+      )));
+    if (!terminalPath) return readiness;
+    return {
+      status: 'adviser_review_required',
+      requiredMissing: [],
+      assumptionsUsed: readiness.assumptionsUsed || [],
+      warnings: [
+        ...(readiness.warnings || []),
+        `${moduleId} cannot calculate after the household explicitly confirmed no data at ${terminalPath}; stop intake for adviser review.`
+      ]
+    };
+  };
+}
+
+function withRequiredReviewedInputs(getReadiness, moduleId, inputs) {
+  return (profile) => {
+    const readiness = getReadiness(profile);
+    if (['not_relevant', 'adviser_review_required', 'unsupported', 'intake_contract_incomplete'].includes(readiness.status)) {
+      return readiness;
+    }
+    const markers = profile.assumptions?.values?.completionFacts?.confirmedNonePaths || {};
+    const additions = inputs
+      .filter((input) => !input.hasValue(profile)
+        && !(input.confirmedNonePaths || [input.fieldPath]).some((path) => markers[path] === true))
+      .filter((input) => !(readiness.requiredMissing || []).some((item) => item.fieldPath === input.fieldPath))
+      .map((input) => ({
+        fieldPath: input.fieldPath,
+        reason: input.reason,
+        blockingModuleIds: [moduleId],
+        importance: 'required'
+      }));
+    if (additions.length === 0) return readiness;
+    return {
+      ...readiness,
+      status: 'missing_information',
+      requiredMissing: [...(readiness.requiredMissing || []), ...additions]
+    };
+  };
+}
+
+function hasMoney(value, currency) {
+  return Boolean(value && value.currency === currency && Number.isFinite(value.amount));
+}
+
+function withReviewedLiabilityPayments(getReadiness, moduleId) {
+  return (profile) => {
+    const readiness = getReadiness(profile);
+    if (['not_relevant', 'adviser_review_required', 'unsupported', 'intake_contract_incomplete'].includes(readiness.status)) {
+      return readiness;
+    }
+    const additions = profile.liabilities.flatMap((liability, index) => (
+      hasMoney(liability.monthlyPayment, profile.preferences.baseCurrency)
+        ? []
+        : [{
+          fieldPath: `/liabilities/${index}/monthlyPayment`,
+          entityId: liability.liabilityId,
+          reason: `Add the reviewed monthly payment for ${liability.label}, including zero if there is no payment.`,
+          blockingModuleIds: [moduleId],
+          importance: 'required'
+        }]
+    ));
+    if (additions.length === 0) return readiness;
+    return {
+      ...readiness,
+      status: 'missing_information',
+      requiredMissing: [...(readiness.requiredMissing || []), ...additions]
+    };
+  };
+}
+
+function combineIntakeReadiness(readinesses) {
+  const active = readinesses.filter((item) => item?.status !== 'not_relevant');
+  if (active.length === 0) {
+    return { status: 'not_relevant', requiredMissing: [], assumptionsUsed: [], warnings: [] };
+  }
+  if (active.some((item) => item?.status === 'intake_contract_incomplete')) {
+    return {
+      status: 'intake_contract_incomplete',
+      requiredMissing: [],
+      assumptionsUsed: [],
+      warnings: active.flatMap((item) => item?.warnings || [])
+    };
+  }
+  const blocked = active.find((item) => ['adviser_review_required', 'unsupported'].includes(item?.status));
+  if (blocked) {
+    return {
+      status: blocked.status,
+      requiredMissing: active.flatMap((item) => item?.requiredMissing || []),
+      assumptionsUsed: active.flatMap((item) => item?.assumptionsUsed || []),
+      warnings: active.flatMap((item) => item?.warnings || [])
+    };
+  }
+  const requiredMissing = active.flatMap((item) => item?.requiredMissing || []);
+  const assumptionsUsed = active.flatMap((item) => item?.assumptionsUsed || []);
+  const warnings = active.flatMap((item) => item?.warnings || []);
+  return {
+    status: requiredMissing.length > 0
+      ? 'missing_information'
+      : assumptionsUsed.length > 0 ? 'ready_with_assumptions' : 'ready',
+    requiredMissing,
+    assumptionsUsed,
+    warnings
+  };
+}
+
 const adviserReviewRequired = (moduleId, reason) => () => ({
   status: 'adviser_review_required',
   requiredMissing: [],
@@ -54,8 +256,22 @@ const REGISTRY = new Map();
 
 function register(definition) {
   if (REGISTRY.has(definition.id)) throw new Error(`Duplicate planning module id: ${definition.id}`);
+  const intake = definition.intakeContract;
+  if (!intake || !MODULE_INTAKE_MODES.includes(intake.mode)
+    || !MODULE_INTAKE_STATUSES.includes(intake.status)
+    || typeof intake.version !== 'string'
+    || !Array.isArray(intake.semanticFactIds)
+    || !Array.isArray(intake.composedModuleIds)
+    || typeof intake.getIntakeReadiness !== 'function') {
+    throw new Error(`Planning module ${definition.id} requires a valid intake contract.`);
+  }
   REGISTRY.set(definition.id, Object.freeze({
     ...definition,
+    intakeContract: Object.freeze({
+      ...intake,
+      semanticFactIds: Object.freeze([...new Set(intake.semanticFactIds)]),
+      composedModuleIds: Object.freeze([...new Set(intake.composedModuleIds)])
+    }),
     applicableGoals: Object.freeze([...(definition.applicableGoals || [])]),
     exclusionRuleIds: Object.freeze([...(definition.exclusionRuleIds || [])]),
     prerequisiteModuleIds: Object.freeze([...(definition.prerequisiteModuleIds || [])]),
@@ -76,6 +292,7 @@ register({
   optionalProfilePaths: ['/assumptions/values/liquidity'],
   adviserAvailable: true,
   consumerAvailable: true,
+  intakeContract: approvedIntake('calculation', INTAKE_FACTS[MODULE_IDS.LIQUIDITY], getLiquidityReadiness),
   canRun: getLiquidityReadiness,
   explainSelection: (profile) => profile.goals.some((goal) => goal.type === 'buy_home')
     ? ['A protected cash reserve should be separated from the home deposit.']
@@ -97,6 +314,21 @@ register({
   prerequisiteModuleIds: [MODULE_IDS.LIQUIDITY],
   adviserAvailable: true,
   consumerAvailable: true,
+  intakeContract: approvedIntake(
+    'calculation',
+    INTAKE_FACTS[MODULE_IDS.HOUSE_PURCHASE],
+    withRequiredPartnerForCouple(
+      withReviewedLiabilityPayments(
+        withRequiredReviewedInputs(getHousePurchaseReadiness, MODULE_IDS.HOUSE_PURCHASE, [{
+          fieldPath: '/liabilities',
+          reason: 'Add current household debts and monthly repayments, or explicitly confirm there are none.',
+          hasValue: (profile) => profile.liabilities.length > 0
+        }]),
+        MODULE_IDS.HOUSE_PURCHASE
+      ),
+      MODULE_IDS.HOUSE_PURCHASE
+    )
+  ),
   canRun: getHousePurchaseReadiness,
   explainSelection: () => ['The household has an active home-purchase goal.', 'The planner keeps emergency cash separate from deposit capacity.'],
   buildInput: buildHousePurchaseInput,
@@ -115,6 +347,18 @@ register({
   optionalProfilePaths: ['/partner', '/assumptions/values/retirement'],
   adviserAvailable: true,
   consumerAvailable: false,
+  intakeContract: approvedIntake(
+    'calculation',
+    INTAKE_FACTS[MODULE_IDS.PENSION_PROJECTION],
+    withRequiredPartnerForCouple(
+      withTerminalConfirmedNone(
+        getPensionProjectionReadiness,
+        MODULE_IDS.PENSION_PROJECTION,
+        ['/pensions', '/incomeSources']
+      ),
+      MODULE_IDS.PENSION_PROJECTION
+    )
+  ),
   canRun: getPensionProjectionReadiness,
   explainSelection: () => ['A pension projection is relevant to the retirement goal, but remains gated for consumer release.'],
   buildInput: buildPensionProjectionInput,
@@ -133,6 +377,27 @@ register({
   optionalProfilePaths: ['/incomeSources', '/assets', '/assumptions/values/retirement'],
   adviserAvailable: true,
   consumerAvailable: false,
+  intakeContract: approvedIntake(
+    'calculation',
+    INTAKE_FACTS[MODULE_IDS.NET_RETIREMENT],
+    withRequiredReviewedInputs(getNetRetirementReadiness, MODULE_IDS.NET_RETIREMENT, [
+      {
+        fieldPath: '/incomeSources',
+        confirmedNonePaths: ['/incomeSources', '/incomeSources/netAnnual'],
+        reason: 'Add each after-tax retirement income source, or explicitly confirm there will be none.',
+        hasValue: (profile) => profile.incomeSources.some((income) => hasMoney(income.netAnnual, profile.preferences.baseCurrency))
+      },
+      {
+        fieldPath: '/assets',
+        confirmedNonePaths: ['/assets', '/assets/retirementAvailable'],
+        reason: 'Add cash or liquid investments available for retirement, or explicitly confirm there are none.',
+        hasValue: (profile) => profile.assets.some((asset) => (
+          (asset.type === 'cash' || (asset.type === 'investment' && asset.liquid === true))
+          && hasMoney(asset.currentValue, profile.preferences.baseCurrency)
+        ))
+      }
+    ])
+  ),
   canRun: getNetRetirementReadiness,
   explainSelection: () => ['Retirement spending needs a separate after-tax cash-flow view; pension balances are pre-tax.'],
   buildInput: buildNetRetirementInput,
@@ -151,6 +416,11 @@ register({
   optionalProfilePaths: ['/assumptions/values/mortgage'],
   adviserAvailable: true,
   consumerAvailable: false,
+  intakeContract: approvedIntake(
+    'calculation',
+    INTAKE_FACTS[MODULE_IDS.MORTGAGE],
+    withTerminalConfirmedNone(getMortgageReadiness, MODULE_IDS.MORTGAGE, ['/liabilities'])
+  ),
   canRun: getMortgageReadiness,
   explainSelection: () => ['An existing mortgage or mortgage-optimisation goal makes amortisation analysis relevant.'],
   buildInput: buildMortgageInput,
@@ -169,6 +439,11 @@ register({
   optionalProfilePaths: ['/assumptions/inflationRate'],
   adviserAvailable: true,
   consumerAvailable: false,
+  intakeContract: approvedIntake(
+    'calculation',
+    INTAKE_FACTS[MODULE_IDS.COLLEGE_FUNDING],
+    withTerminalConfirmedNone(getCollegeFundingReadiness, MODULE_IDS.COLLEGE_FUNDING, ['/dependants'])
+  ),
   canRun: getCollegeFundingReadiness,
   explainSelection: () => ['A stated education-funding question makes child-level timing relevant.'],
   buildInput: buildCollegeFundingInput,
@@ -185,6 +460,18 @@ register({
   applicableGoals: ['improve_pension', 'retire', 'retire_early'],
   adviserAvailable: true,
   consumerAvailable: false,
+  intakeContract: approvedIntake(
+    'composition',
+    [...new Set([
+      ...INTAKE_FACTS[MODULE_IDS.PENSION_PROJECTION],
+      ...INTAKE_FACTS[MODULE_IDS.NET_RETIREMENT]
+    ])],
+    (profile) => combineIntakeReadiness([
+      getModuleIntakeReadiness(MODULE_IDS.PENSION_PROJECTION, profile),
+      getModuleIntakeReadiness(MODULE_IDS.NET_RETIREMENT, profile)
+    ]),
+    [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.NET_RETIREMENT]
+  ),
   canRun: adviserReviewRequired(
     MODULE_IDS.RETIREMENT_ROUTER,
     'Consumer use waits for the pension and net-retirement calculation and wording gates.'
@@ -217,6 +504,35 @@ register({
   optionalProfilePaths: ['/properties', '/pensions', '/businesses', '/expenses'],
   adviserAvailable: true,
   consumerAvailable: true,
+  intakeContract: approvedIntake(
+    'calculation',
+    INTAKE_FACTS[MODULE_IDS.PERSONAL_BALANCE_SHEET],
+    withRequiredPartnerForCouple(
+      withRequiredReviewedInputs(getPersonalBalanceSheetReadiness, MODULE_IDS.PERSONAL_BALANCE_SHEET, [
+        {
+          fieldPath: '/assets',
+          reason: 'Add cash, investments and other general assets, or explicitly confirm there are none.',
+          hasValue: (profile) => profile.assets.length > 0
+        },
+        {
+          fieldPath: '/properties',
+          reason: 'Add each property position, or explicitly confirm there are none.',
+          hasValue: (profile) => profile.properties.length > 0
+        },
+        {
+          fieldPath: '/pensions',
+          reason: 'Add each pension position, or explicitly confirm there are none.',
+          hasValue: (profile) => profile.pensions.length > 0
+        },
+        {
+          fieldPath: '/businesses',
+          reason: 'Add each business or agricultural interest, or explicitly confirm there are none.',
+          hasValue: (profile) => profile.businesses.length > 0
+        }
+      ]),
+      MODULE_IDS.PERSONAL_BALANCE_SHEET
+    )
+  ),
   canRun: getPersonalBalanceSheetReadiness,
   explainSelection: () => ['A reconciled personal balance sheet provides the foundation for the three-analysis plan.'],
   buildInput: buildPersonalBalanceSheetInput,
@@ -233,6 +549,10 @@ register({
   applicableGoals: ['assess_decision'],
   adviserAvailable: false,
   consumerAvailable: false,
+  intakeContract: incompleteIntake(
+    'composition',
+    'Scenario analysis has no independent intake contract; use a scenario-aware calculation module.'
+  ),
   canRun: unsupported('scenario_analysis must be applied through a scenario-aware module.'),
   explainSelection: () => []
 });
@@ -283,6 +603,10 @@ register({
   applicableGoals: entry.goals,
   adviserAvailable: true,
   consumerAvailable: false,
+  intakeContract: incompleteIntake(
+    'adviser_handoff',
+    `${entry.id} does not yet have an adviser-approved fact-find. Intake must stop for adviser review.`
+  ),
   canRun: adviserReviewRequired(entry.id, entry.reason),
   explainSelection: () => [entry.reason]
 }));
@@ -309,7 +633,14 @@ function toDescriptor(definition) {
     exclusionRuleIds: [...definition.exclusionRuleIds],
     prerequisiteModuleIds: [...definition.prerequisiteModuleIds],
     adviserAvailable: definition.adviserAvailable,
-    consumerAvailable: definition.consumerAvailable
+    consumerAvailable: definition.consumerAvailable,
+    intakeContract: {
+      version: definition.intakeContract.version,
+      mode: definition.intakeContract.mode,
+      status: definition.intakeContract.status,
+      semanticFactIds: [...definition.intakeContract.semanticFactIds],
+      composedModuleIds: [...definition.intakeContract.composedModuleIds]
+    }
   };
 }
 
@@ -320,6 +651,38 @@ export function getPlanningModuleDescriptors() {
 /** Serializable, Worker-safe descriptors for the modules enabled in v1. */
 export function getConsumerModuleDescriptors() {
   return listPlanningModuleDefinitions().filter((definition) => definition.consumerAvailable).map(toDescriptor);
+}
+
+export function getModuleIntakeContract(moduleId) {
+  return getPlanningModuleDefinition(moduleId)?.intakeContract || null;
+}
+
+export function getModuleIntakeReadiness(moduleId, rawProfile) {
+  const contract = getModuleIntakeContract(moduleId);
+  if (!contract) {
+    return {
+      status: 'intake_contract_incomplete',
+      requiredMissing: [],
+      assumptionsUsed: [],
+      warnings: [`Unknown planning module or missing intake contract: ${moduleId}`]
+    };
+  }
+  return contract.getIntakeReadiness(normalizeHouseholdProfile(rawProfile));
+}
+
+export function getPlanningModulesForSemanticFact(factId) {
+  return listPlanningModuleDefinitions()
+    .filter((definition) => definition.intakeContract.status === 'approved'
+      && definition.intakeContract.semanticFactIds.includes(factId))
+    .map((definition) => definition.id);
+}
+
+export function getRealtimeModuleSemanticFactIds() {
+  return Object.freeze([...new Set(
+    listPlanningModuleDefinitions()
+      .filter((definition) => definition.intakeContract.status === 'approved')
+      .flatMap((definition) => definition.intakeContract.semanticFactIds)
+  )]);
 }
 
 export function getModuleReadiness(moduleId, rawProfile) {

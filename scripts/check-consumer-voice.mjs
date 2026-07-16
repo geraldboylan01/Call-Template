@@ -21,6 +21,7 @@ import {
 } from '../worker/src/consumer/voice_repository.js';
 import {
   speakConsumerQuestion,
+  synthesizeRealtimeControlledSpeech,
   transcribeConsumerVoice
 } from '../worker/src/consumer/voice_provider.js';
 
@@ -129,7 +130,8 @@ const migrationSql = [
   'worker/consumer-migrations/0004_add_consumer_voice_dispatch_and_events.sql',
   'worker/consumer-migrations/0005_add_consumer_realtime_voice.sql',
   'worker/consumer-migrations/0006_encrypt_realtime_plan_display.sql',
-  'worker/consumer-migrations/0007_add_realtime_control_inbox.sql'
+  'worker/consumer-migrations/0007_add_realtime_control_inbox.sql',
+  'worker/consumer-migrations/0009_add_realtime_consent_purposes.sql'
 ].map((migration) => readFileSync(`${root}/${migration}`, 'utf8')).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 
@@ -492,6 +494,51 @@ try {
     text: 'The timeout must remain active while the provider body is pending.'
   }), (error) => error.status === 504 && error.code === 'voice_provider_timeout');
   assert.equal((await getConsumerProviderBudget(env, boundedResponseSession.id)).spentEurMicros, 300_000);
+
+  globalThis.fetch = async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([73, 68]));
+      controller.enqueue(new Uint8Array([51, 4]));
+      controller.close();
+    }
+  }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': '4',
+      'x-request-id': 'req_realtime_stream_ok'
+    }
+  });
+  const realtimeSpeechStream = await synthesizeRealtimeControlledSpeech({
+    env,
+    config,
+    text: 'Stream this exact approved response.'
+  });
+  assert.equal(realtimeSpeechStream.contentLength, 4);
+  assert.equal(realtimeSpeechStream.contentType, 'audio/mpeg');
+  assert.deepEqual(
+    [...new Uint8Array(await new Response(realtimeSpeechStream.audioStream).arrayBuffer())],
+    [73, 68, 51, 4]
+  );
+
+  globalThis.fetch = async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([73, 68, 51]));
+      controller.close();
+    }
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'audio/mpeg', 'Content-Length': '4' }
+  });
+  const shortRealtimeSpeechStream = await synthesizeRealtimeControlledSpeech({
+    env,
+    config,
+    text: 'Reject a truncated approved response.'
+  });
+  await assert.rejects(
+    () => new Response(shortRealtimeSpeechStream.audioStream).arrayBuffer(),
+    (error) => error?.code === 'realtime_speech_invalid'
+  );
 
   const missingKeySession = insertSession('cs_voice_missing_key');
   await assert.rejects(() => transcribeConsumerVoice({
