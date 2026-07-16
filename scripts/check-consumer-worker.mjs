@@ -642,7 +642,7 @@ const realtimeDeploymentPolicy = {
   realtimePromptVersion: 'consumer-realtime-orchestrator-v2',
   realtimeToolsetVersion: 'consumer-realtime-tools-v2',
   realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
-  realtimeSessionBudgetMicroEur: 2_000_000,
+  realtimeSessionBudgetMicroEur: 10_000_000,
   realtimeDailyBudgetMicroEur: 50_000_000
 };
 const realtimeDeploymentBootstrap = {
@@ -665,10 +665,11 @@ const realtimeDeploymentBootstrap = {
     promptVersion: realtimeDeploymentPolicy.realtimePromptVersion,
     toolsetVersion: realtimeDeploymentPolicy.realtimeToolsetVersion,
     pricingVersion: realtimeDeploymentPolicy.realtimePricingVersion,
-    maxDurationSeconds: 600,
-    idleTimeoutSeconds: 90,
-    sessionBudgetMicroEur: 2_000_000,
-    dispatchStopMicroEur: 1_700_000,
+    maxDurationSeconds: 900,
+    idleTimeoutSeconds: 180,
+    sessionBudgetMicroEur: 10_000_000,
+    warnThresholdMicroEur: 7_500_000,
+    dispatchStopMicroEur: 9_700_000,
     safetyReserveMicroEur: 300_000
   },
   handoff: {

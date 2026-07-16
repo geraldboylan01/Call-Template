@@ -172,9 +172,10 @@ export function validateConsumerDeploymentBootstrap(payload, {
       expectedPolicy.realtimeSessionBudgetMicroEur,
       'Live realtime voice session budget changed.'
     );
-    assert.equal(realtimeVoice.maxDurationSeconds, 600, 'Live realtime duration limit changed.');
-    assert.equal(realtimeVoice.idleTimeoutSeconds, 90, 'Live realtime idle timeout changed.');
-    assert.equal(realtimeVoice.dispatchStopMicroEur, 1_700_000, 'Live realtime dispatch stop changed.');
+    assert.equal(realtimeVoice.maxDurationSeconds, 900, 'Live realtime duration limit changed.');
+    assert.equal(realtimeVoice.idleTimeoutSeconds, 180, 'Live realtime idle timeout changed.');
+    assert.equal(realtimeVoice.dispatchStopMicroEur, 9_700_000, 'Live realtime dispatch stop changed.');
+    assert.equal(realtimeVoice.warnThresholdMicroEur, 7_500_000, 'Live realtime warning threshold changed.');
     assert.equal(realtimeVoice.safetyReserveMicroEur, 300_000, 'Live realtime safety reserve changed.');
     assert.equal(handoff.policyVersion, null, 'Disabled handoff must expose no policy.');
     assert.equal(handoff.policyUrl, null, 'Disabled handoff must expose no policy URL.');

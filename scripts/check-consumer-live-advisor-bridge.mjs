@@ -260,10 +260,10 @@ export function assertBetaBootstrap(payload, { realtimeExpected = false } = {}) 
       'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
       'The realtime pricing catalogue changed unexpectedly.'
     );
-    assert.equal(payload?.realtimeVoice?.maxDurationSeconds, 600, 'The realtime duration limit changed unexpectedly.');
-    assert.equal(payload?.realtimeVoice?.idleTimeoutSeconds, 90, 'The realtime idle timeout changed unexpectedly.');
-    assert.equal(payload?.realtimeVoice?.sessionBudgetMicroEur, 2_000_000, 'The realtime €2 allowance changed unexpectedly.');
-    assert.equal(payload?.realtimeVoice?.dispatchStopMicroEur, 1_700_000, 'The realtime safety stop changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.maxDurationSeconds, 900, 'The realtime duration limit changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.idleTimeoutSeconds, 180, 'The realtime idle timeout changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.sessionBudgetMicroEur, 10_000_000, 'The realtime €10 allowance changed unexpectedly.');
+    assert.equal(payload?.realtimeVoice?.dispatchStopMicroEur, 9_700_000, 'The realtime safety stop changed unexpectedly.');
     assert.equal(payload?.realtimeVoice?.safetyReserveMicroEur, 300_000, 'The realtime delayed-usage reserve changed unexpectedly.');
     assert.equal(payload?.handoff?.enabled, false, 'Human handoff must remain disabled for the voice-only canary.');
     assert.equal(payload?.handoff?.policyVersion, null, 'Disabled handoff must expose no policy.');
