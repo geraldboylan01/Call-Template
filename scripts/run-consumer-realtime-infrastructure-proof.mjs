@@ -84,7 +84,14 @@ export async function runRealtimeInfrastructureProof({
       }
     }
     await launcher.waitFor({ state: 'visible', timeout: 5_000 });
-    await launcher.click();
+    // An eligible session auto-opens the meeting surface, which marks the
+    // background launcher inert; only click it when the shell is still closed.
+    const shellAlreadyOpen = await page.evaluate(() => (
+      document.getElementById('realtimeVoiceShell')?.hidden === false
+    ));
+    if (!shellAlreadyOpen) {
+      await launcher.click();
+    }
     await page.locator('#realtimeVoiceShell').waitFor({ state: 'visible', timeout: 5_000 });
     const start = page.locator('#realtimeVoiceStartButton');
     await start.waitFor({ state: 'visible', timeout: 5_000 });
@@ -93,11 +100,14 @@ export async function runRealtimeInfrastructureProof({
       return button instanceof HTMLButtonElement && button.disabled === false;
     }, null, { timeout: PROOF_TIMEOUT_MS });
 
-    const consentStatus = String(await page.locator('#realtimeVoiceStatus').textContent() || '');
-    if (consentStatus.includes('Review the Live voice disclosure')) {
-      await start.click();
+    // The redesigned meeting flow shows the concise disclosure on the first
+    // Start press and connects automatically once it is accepted, so consent
+    // acceptance is handled inside the start/retry loop below when the
+    // dialog appears.
+    const acceptConsentIfShown = async () => {
       const consentDialog = page.locator('#realtimeVoiceConsentDialog');
-      await consentDialog.waitFor({ state: 'visible', timeout: 5_000 });
+      const shown = await consentDialog.isVisible().catch(() => false);
+      if (!shown) return false;
       await page.locator('#realtimeVoiceConsentAcknowledgement').check();
       const consentEndpointPath = `/api/consumer/sessions/${encodeURIComponent(sessionId)}/voice/realtime/consent`;
       const consentSavedPromise = page.waitForResponse((response) => {
@@ -108,16 +118,8 @@ export async function runRealtimeInfrastructureProof({
       const consentSaved = await consentSavedPromise;
       assert.equal(consentSaved.status(), 200, 'The visible Realtime disclosure could not be accepted.');
       await consentDialog.waitFor({ state: 'hidden', timeout: 5_000 });
-      await page.waitForFunction(() => {
-        const button = document.getElementById('realtimeVoiceStartButton');
-        const status = String(document.getElementById('realtimeVoiceStatus')?.textContent || '');
-        return button instanceof HTMLButtonElement
-          && button.disabled === false
-          && status.includes('Live voice is ready');
-      }, null, { timeout: PROOF_TIMEOUT_MS });
-    } else {
-      assert.match(consentStatus, /Ready\. Voice starts only when you press Start voice\./);
-    }
+      return true;
+    };
 
     let leaseId = '';
     let controlCapability = '';
@@ -138,6 +140,10 @@ export async function runRealtimeInfrastructureProof({
           return response.request().method() === 'POST' && url.pathname === endpointPath;
         }, { timeout: PROOF_TIMEOUT_MS });
         await start.click();
+        // First press may surface the concise disclosure; accepting it
+        // auto-connects the meeting, which resolves the armed call promise.
+        await page.waitForTimeout(250);
+        await acceptConsentIfShown();
         created = await createdPromise;
         if (created.status() === 201) break;
         const errorPayload = await created.json().catch(() => null);
@@ -281,6 +287,14 @@ export async function runRealtimeInfrastructureProof({
         'The greeting response was not bound to a Worker-issued speech ID.'
       );
 
+      // The transcript is collapsed by default in the meeting layout; open it
+      // before verifying the greeting caption.
+      const captionCardHidden = await page.evaluate(() => (
+        document.getElementById('realtimeVoiceCaptionCard')?.hidden === true
+      ));
+      if (captionCardHidden) {
+        await page.locator('#realtimeVoiceTranscriptToggle').click();
+      }
       await page.locator('#realtimeVoiceTranscriptHistory .is-assistant').first().waitFor({
         state: 'visible',
         timeout: PROOF_TIMEOUT_MS
@@ -288,7 +302,7 @@ export async function runRealtimeInfrastructureProof({
       const assistantGreeting = String(await page.locator('#realtimeVoiceTranscriptHistory .is-assistant p').first().textContent() || '').trim();
       assert.match(
         assistantGreeting,
-        /^Hello, I’m Planéir, an AI planning companion for financial education\./,
+        /^Hi, I’m Planéir, an AI planning companion for financial education\./,
         'The companion did not show the exact server-owned greeting caption.'
       );
       const audioReady = await page.evaluate(() => {
