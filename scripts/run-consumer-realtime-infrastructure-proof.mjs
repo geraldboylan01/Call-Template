@@ -314,7 +314,7 @@ export async function runRealtimeInfrastructureProof({
       const assistantGreeting = String(await page.locator('#realtimeVoiceTranscriptHistory .is-assistant p').first().textContent() || '').trim();
       assert.match(
         assistantGreeting,
-        /^Hi, I’m Planéir, an AI planning companion for financial education\./,
+        /^Hi, I’m Planéir, your AI planning companion\./,
         'The companion did not show the exact server-owned greeting caption.'
       );
       const audioReady = await page.evaluate(() => {

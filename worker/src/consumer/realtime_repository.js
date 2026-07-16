@@ -756,6 +756,22 @@ export async function getNextRealtimeControlMessage(env, sessionId, leaseId) {
   };
 }
 
+export async function cancelPendingRealtimeControlMessages(env, {
+  sessionId,
+  leaseId,
+  errorCode = 'consumer_barge_in'
+}) {
+  const timestamp = nowIso();
+  const boundedErrorCode = String(errorCode || 'consumer_barge_in').slice(0, 120);
+  const result = await db(env).prepare(`
+    UPDATE consumer_realtime_control_messages
+    SET status = 'cancelled', consumed_at = ?, error_code = ?
+    WHERE realtime_session_id = ? AND session_id = ?
+      AND status IN ('pending', 'delivered')
+  `).bind(timestamp, boundedErrorCode, leaseId, sessionId).run();
+  return Number(result?.meta?.changes || 0);
+}
+
 export async function assertRealtimeControlMessage(env, {
   sessionId,
   leaseId,

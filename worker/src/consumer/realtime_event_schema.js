@@ -34,7 +34,9 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
   }),
   'realtime.provider.error': event({
     code: NON_CONTENT_FIELD_TYPES.STRING,
-    param: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING
+    param: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    recoverable: NON_CONTENT_FIELD_TYPES.BOOLEAN,
+    scope: NON_CONTENT_FIELD_TYPES.STRING
   }),
   'realtime.vad.speech_started': event({
     duringResponse: NON_CONTENT_FIELD_TYPES.BOOLEAN

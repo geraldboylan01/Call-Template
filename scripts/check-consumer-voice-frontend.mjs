@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootPath = fileURLToPath(new URL('..', import.meta.url));
 const storage = new Map();
+const realtimeMicrophonePreferenceKey = 'planeir.consumer.realtime-microphone.v1';
 
 globalThis.window = {
   location: {
@@ -87,6 +88,7 @@ assert.equal(selectSupportedRecordingMimeType(UnsupportedRecorder), '');
 // Live meetings expose an explicit microphone source and replace only the
 // outbound audio track. A failed switch keeps the previously active source.
 {
+  storage.delete(realtimeMicrophonePreferenceKey);
   const originalMediaDevices = navigator.mediaDevices;
   const requestedConstraints = [];
   const stoppedTracks = [];
@@ -138,6 +140,10 @@ assert.equal(selectSupportedRecordingMimeType(UnsupportedRecorder), '');
   assert.deepEqual(stoppedTracks, ['mic-one']);
   assert.equal(deviceController.localStream, replacementStream);
   assert.equal(deviceController.selectedMicrophoneId, 'mic-two');
+  assert.deepEqual(
+    JSON.parse(storage.get(realtimeMicrophonePreferenceKey)),
+    { deviceId: 'mic-two', label: 'External microphone' }
+  );
 
   nextStream = failedStream;
   sender.replaceTrack = async () => { throw new Error('replace failed'); };
@@ -145,7 +151,482 @@ assert.equal(selectSupportedRecordingMimeType(UnsupportedRecorder), '');
   assert.equal(deviceController.selectedMicrophoneId, 'mic-two');
   assert.equal(deviceController.localStream, replacementStream);
   assert.deepEqual(stoppedTracks, ['mic-one', 'mic-three']);
+  assert.deepEqual(
+    JSON.parse(storage.get(realtimeMicrophonePreferenceKey)),
+    { deviceId: 'mic-two', label: 'External microphone' },
+    'A failed live switch must retain the previous microphone preference.'
+  );
   navigator.mediaDevices = originalMediaDevices;
+  storage.delete(realtimeMicrophonePreferenceKey);
+}
+
+// Before permission, browsers can hide device labels and route a generic
+// request to Continuity Camera. The permission stream must be replaced with
+// the built-in laptop microphone before it reaches the meeting connection.
+{
+  const originalMediaDevices = navigator.mediaDevices;
+  const requests = [];
+  const stoppedTracks = [];
+  let permissionGranted = false;
+  const makeStream = (deviceId, label) => {
+    const track = {
+      kind: 'audio',
+      label,
+      enabled: true,
+      readyState: 'live',
+      getSettings: () => ({ deviceId }),
+      stop: () => stoppedTracks.push(deviceId)
+    };
+    return {
+      getAudioTracks: () => [track],
+      getTracks: () => [track]
+    };
+  };
+  navigator.mediaDevices = {
+    enumerateDevices: async () => permissionGranted
+      ? [
+          { kind: 'audioinput', deviceId: 'iphone-mic', label: 'Gerald’s iPhone Microphone' },
+          { kind: 'audioinput', deviceId: 'macbook-mic', label: 'MacBook Pro Microphone (Built-in)' }
+        ]
+      : [
+          { kind: 'audioinput', deviceId: 'iphone-mic', label: '' },
+          { kind: 'audioinput', deviceId: 'macbook-mic', label: '' }
+        ],
+    getUserMedia: async (constraints) => {
+      requests.push(constraints);
+      const exact = constraints.audio.deviceId?.exact || '';
+      if (exact === 'macbook-mic') {
+        return makeStream('macbook-mic', 'MacBook Pro Microphone (Built-in)');
+      }
+      permissionGranted = true;
+      return makeStream('iphone-mic', 'Gerald’s iPhone Microphone');
+    }
+  };
+  const controller = new RealtimeVoiceController({ root: null });
+  const stream = await controller.openMicrophoneStream();
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].audio.deviceId, undefined, 'The first request only unlocks microphone labels.');
+  assert.equal(requests[1].audio.deviceId.exact, 'macbook-mic');
+  assert.equal(stream.getAudioTracks()[0].label, 'MacBook Pro Microphone (Built-in)');
+  assert.deepEqual(stoppedTracks, ['iphone-mic'], 'The browser-selected iPhone probe must be stopped before joining.');
+  assert.equal(controller.selectedMicrophoneId, 'macbook-mic');
+  navigator.mediaDevices = originalMediaDevices;
+}
+
+// An explicit iPhone choice remains selectable, is stored for this tab, and is
+// honoured exactly instead of being overwritten by the automatic laptop rule.
+{
+  const originalMediaDevices = navigator.mediaDevices;
+  const requests = [];
+  const iphoneTrack = {
+    kind: 'audio',
+    label: 'Gerald’s iPhone Microphone',
+    enabled: true,
+    readyState: 'live',
+    getSettings: () => ({ deviceId: 'iphone-mic' }),
+    stop: () => {}
+  };
+  navigator.mediaDevices = {
+    enumerateDevices: async () => [
+      { kind: 'audioinput', deviceId: 'iphone-mic', label: 'Gerald’s iPhone Microphone' },
+      { kind: 'audioinput', deviceId: 'macbook-mic', label: 'MacBook Pro Microphone (Built-in)' }
+    ],
+    getUserMedia: async (constraints) => {
+      requests.push(constraints);
+      return {
+        getAudioTracks: () => [iphoneTrack],
+        getTracks: () => [iphoneTrack]
+      };
+    }
+  };
+  const chooser = new RealtimeVoiceController({ root: null });
+  await chooser.refreshMicrophones();
+  assert.equal(chooser.selectedMicrophoneId, 'macbook-mic');
+  await chooser.selectMicrophone('iphone-mic');
+  assert.deepEqual(
+    JSON.parse(storage.get(realtimeMicrophonePreferenceKey)),
+    { deviceId: 'iphone-mic', label: 'Gerald’s iPhone Microphone' }
+  );
+  const restored = new RealtimeVoiceController({ root: null });
+  assert.equal(restored.selectedMicrophoneId, 'iphone-mic');
+  await restored.openMicrophoneStream();
+  assert.equal(requests[0].audio.deviceId.exact, 'iphone-mic');
+  navigator.mediaDevices = originalMediaDevices;
+  storage.delete(realtimeMicrophonePreferenceKey);
+}
+
+// Origin-scoped device IDs can rotate. Recover an explicit source by its saved
+// label, and update the tab preference to the new ID.
+{
+  const originalMediaDevices = navigator.mediaDevices;
+  const requestedIds = [];
+  storage.set(realtimeMicrophonePreferenceKey, JSON.stringify({
+    deviceId: 'old-iphone-id',
+    label: 'Gerald’s iPhone Microphone'
+  }));
+  const track = {
+    kind: 'audio',
+    label: 'Gerald’s iPhone Microphone',
+    readyState: 'live',
+    getSettings: () => ({ deviceId: 'new-iphone-id' }),
+    stop: () => {}
+  };
+  navigator.mediaDevices = {
+    enumerateDevices: async () => [
+      { kind: 'audioinput', deviceId: 'new-iphone-id', label: 'Gerald’s iPhone Microphone' },
+      { kind: 'audioinput', deviceId: 'macbook-mic', label: 'MacBook Pro Microphone (Built-in)' }
+    ],
+    getUserMedia: async (constraints) => {
+      requestedIds.push(constraints.audio.deviceId?.exact || 'automatic');
+      return { getAudioTracks: () => [track], getTracks: () => [track] };
+    }
+  };
+  const controller = new RealtimeVoiceController({ root: null });
+  await controller.openMicrophoneStream();
+  assert.deepEqual(requestedIds, ['new-iphone-id']);
+  assert.deepEqual(
+    JSON.parse(storage.get(realtimeMicrophonePreferenceKey)),
+    { deviceId: 'new-iphone-id', label: 'Gerald’s iPhone Microphone' }
+  );
+  navigator.mediaDevices = originalMediaDevices;
+  storage.delete(realtimeMicrophonePreferenceKey);
+}
+
+// A definitely unavailable saved source falls back directly to the built-in
+// microphone rather than asking the browser to choose (and choosing iPhone).
+{
+  const originalMediaDevices = navigator.mediaDevices;
+  const requestedIds = [];
+  storage.set(realtimeMicrophonePreferenceKey, JSON.stringify({
+    deviceId: 'missing-iphone-id',
+    label: 'Missing iPhone Microphone'
+  }));
+  const macTrack = {
+    kind: 'audio',
+    label: 'MacBook Pro Microphone (Built-in)',
+    readyState: 'live',
+    getSettings: () => ({ deviceId: 'macbook-mic' }),
+    stop: () => {}
+  };
+  navigator.mediaDevices = {
+    enumerateDevices: async () => [
+      { kind: 'audioinput', deviceId: 'iphone-mic', label: 'Gerald’s iPhone Microphone' },
+      { kind: 'audioinput', deviceId: 'macbook-mic', label: 'MacBook Pro Microphone (Built-in)' }
+    ],
+    getUserMedia: async (constraints) => {
+      const exact = constraints.audio.deviceId?.exact || 'automatic';
+      requestedIds.push(exact);
+      if (exact === 'missing-iphone-id') {
+        const error = new Error('missing');
+        error.name = 'OverconstrainedError';
+        throw error;
+      }
+      assert.equal(exact, 'macbook-mic');
+      return { getAudioTracks: () => [macTrack], getTracks: () => [macTrack] };
+    }
+  };
+  const controller = new RealtimeVoiceController({ root: null });
+  const stream = await controller.openMicrophoneStream();
+  assert.equal(stream.getAudioTracks()[0], macTrack);
+  assert.deepEqual(requestedIds, ['missing-iphone-id', 'macbook-mic']);
+  assert.equal(storage.has(realtimeMicrophonePreferenceKey), false);
+  navigator.mediaDevices = originalMediaDevices;
+}
+
+// Cancelling setup while the post-permission exact device is opening must stop
+// the temporary browser-selected probe immediately and discard the later track.
+{
+  const originalMediaDevices = navigator.mediaDevices;
+  let permissionGranted = false;
+  let probeStopped = false;
+  let exactStopped = false;
+  let resolveExactStream;
+  let markExactStarted;
+  const exactStarted = new Promise((resolve) => { markExactStarted = resolve; });
+  const probeTrack = {
+    kind: 'audio',
+    label: 'Gerald’s iPhone Microphone',
+    readyState: 'live',
+    getSettings: () => ({ deviceId: 'iphone-mic' }),
+    stop: () => { probeStopped = true; }
+  };
+  const exactTrack = {
+    kind: 'audio',
+    label: 'MacBook Pro Microphone (Built-in)',
+    readyState: 'live',
+    getSettings: () => ({ deviceId: 'macbook-mic' }),
+    stop: () => { exactStopped = true; }
+  };
+  navigator.mediaDevices = {
+    enumerateDevices: async () => permissionGranted
+      ? [
+          { kind: 'audioinput', deviceId: 'iphone-mic', label: 'Gerald’s iPhone Microphone' },
+          { kind: 'audioinput', deviceId: 'macbook-mic', label: 'MacBook Pro Microphone (Built-in)' }
+        ]
+      : [
+          { kind: 'audioinput', deviceId: 'iphone-mic', label: '' },
+          { kind: 'audioinput', deviceId: 'macbook-mic', label: '' }
+        ],
+    getUserMedia: async (constraints) => {
+      const exact = constraints.audio.deviceId?.exact || '';
+      if (!exact) {
+        permissionGranted = true;
+        return { getAudioTracks: () => [probeTrack], getTracks: () => [probeTrack] };
+      }
+      assert.equal(exact, 'macbook-mic');
+      markExactStarted();
+      return new Promise((resolve) => { resolveExactStream = resolve; });
+    }
+  };
+  const controller = new RealtimeVoiceController({ root: null });
+  const abortController = new AbortController();
+  const opening = controller.openMicrophoneStream('', { signal: abortController.signal });
+  await exactStarted;
+  abortController.abort('test_cancelled');
+  assert.equal(probeStopped, true, 'Abort must stop the temporary browser-selected stream immediately.');
+  resolveExactStream({ getAudioTracks: () => [exactTrack], getTracks: () => [exactTrack] });
+  await assert.rejects(opening, (error) => error?.name === 'AbortError');
+  assert.equal(exactStopped, true, 'A track that resolves after cancellation must never remain live.');
+  assert.equal(controller.microphonePermissionStream, null);
+  navigator.mediaDevices = originalMediaDevices;
+}
+
+// Switching sources must preserve response/speaking phases. A later track end
+// fails closed and refreshes choices without silently activating another mic.
+{
+  storage.delete(realtimeMicrophonePreferenceKey);
+  const originalMediaDevices = navigator.mediaDevices;
+  const sentEvents = [];
+  const trackListeners = new Map();
+  let replacementStopped = false;
+  let mediaRequests = 0;
+  const oldTrack = {
+    kind: 'audio',
+    label: 'Built-in microphone',
+    enabled: true,
+    getSettings: () => ({ deviceId: 'mic-one' }),
+    stop: () => {}
+  };
+  const replacementTrack = {
+    kind: 'audio',
+    label: 'External microphone',
+    enabled: true,
+    readyState: 'live',
+    getSettings: () => ({ deviceId: 'mic-two' }),
+    addEventListener: (type, listener) => trackListeners.set(type, listener),
+    stop: () => { replacementStopped = true; }
+  };
+  const oldStream = { getAudioTracks: () => [oldTrack], getTracks: () => [oldTrack] };
+  const replacementStream = {
+    getAudioTracks: () => [replacementTrack],
+    getTracks: () => [replacementTrack]
+  };
+  const recoveryTrack = {
+    kind: 'audio',
+    label: 'Built-in microphone',
+    enabled: true,
+    readyState: 'live',
+    getSettings: () => ({ deviceId: 'mic-one' }),
+    addEventListener: () => {},
+    stop: () => {}
+  };
+  const recoveryStream = {
+    getAudioTracks: () => [recoveryTrack],
+    getTracks: () => [recoveryTrack]
+  };
+  navigator.mediaDevices = {
+    enumerateDevices: async () => [
+      { kind: 'audioinput', deviceId: 'mic-one', label: 'Built-in microphone' },
+      { kind: 'audioinput', deviceId: 'mic-two', label: 'External microphone' }
+    ],
+    getUserMedia: async (constraints) => {
+      mediaRequests += 1;
+      return constraints.audio.deviceId.exact === 'mic-one'
+        ? recoveryStream
+        : replacementStream;
+    }
+  };
+  const sender = {
+    track: oldTrack,
+    replaceTrack: async (track) => { sender.track = track; }
+  };
+  const controller = new RealtimeVoiceController({ root: null });
+  controller.active = true;
+  controller.phase = 'responding';
+  controller.localStream = oldStream;
+  controller.selectedMicrophoneId = 'mic-one';
+  controller.peerConnection = { getSenders: () => [sender] };
+  controller.dataChannel = {
+    readyState: 'open',
+    send: (value) => sentEvents.push(JSON.parse(value))
+  };
+  await controller.selectMicrophone('mic-two');
+  assert.equal(controller.phase, 'responding', 'A microphone switch must not erase the preparing-response phase.');
+  controller.toggleMute();
+  assert.equal(controller.phase, 'responding', 'Muting during response preparation must keep the response orb phase.');
+  controller.toggleMute();
+  assert.equal(controller.phase, 'responding', 'Unmuting during response preparation must keep the response orb phase.');
+  trackListeners.get('ended')?.();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(controller.muted, true);
+  assert.equal(controller.phase, 'muted');
+  assert.equal(controller.localStream, null);
+  assert.equal(replacementStopped, true);
+  assert.equal(mediaRequests, 1, 'Track-ended handling must not auto-open a fallback microphone.');
+  assert.equal(
+    controller.selectedMicrophoneId,
+    '',
+    'Recovery must leave the selector on Automatic so choosing a listed source emits a real change.'
+  );
+  assert.equal(sentEvents.at(-1)?.type, 'input_audio_buffer.clear');
+  await controller.selectMicrophone('');
+  assert.equal(mediaRequests, 2, 'The explicit automatic reconnect action must reopen a source.');
+  assert.equal(controller.localStream, recoveryStream);
+  assert.equal(controller.selectedMicrophoneId, 'mic-one');
+  assert.equal(controller.muted, true, 'Recovered capture stays fail-closed until the user unmutes.');
+  controller.active = false;
+  controller.cleanupLocal();
+  navigator.mediaDevices = originalMediaDevices;
+  storage.delete(realtimeMicrophonePreferenceKey);
+}
+
+// Device changes are serialized so a slower first selection cannot resolve
+// after and overwrite the user's newer source choice.
+{
+  storage.delete(realtimeMicrophonePreferenceKey);
+  const originalMediaDevices = navigator.mediaDevices;
+  const requestedIds = [];
+  let resolveFirstStream;
+  let markFirstRequested;
+  const firstRequested = new Promise((resolve) => { markFirstRequested = resolve; });
+  const makeStream = (deviceId) => {
+    const track = {
+      kind: 'audio',
+      label: `Microphone ${deviceId}`,
+      enabled: true,
+      readyState: 'live',
+      getSettings: () => ({ deviceId }),
+      addEventListener: () => {},
+      stop: () => {}
+    };
+    return { track, getAudioTracks: () => [track], getTracks: () => [track] };
+  };
+  const oldStream = makeStream('mic-one');
+  const firstStream = makeStream('mic-two');
+  const finalStream = makeStream('mic-three');
+  navigator.mediaDevices = {
+    enumerateDevices: async () => [
+      { kind: 'audioinput', deviceId: 'mic-one', label: 'Built-in microphone' },
+      { kind: 'audioinput', deviceId: 'mic-two', label: 'Desk microphone' },
+      { kind: 'audioinput', deviceId: 'mic-three', label: 'Headset microphone' }
+    ],
+    getUserMedia: async (constraints) => {
+      const exact = constraints.audio.deviceId.exact;
+      requestedIds.push(exact);
+      if (exact === 'mic-two') {
+        markFirstRequested();
+        return new Promise((resolve) => { resolveFirstStream = resolve; });
+      }
+      assert.equal(exact, 'mic-three');
+      return finalStream;
+    }
+  };
+  const sender = {
+    track: oldStream.track,
+    replaceTrack: async (track) => { sender.track = track; }
+  };
+  const controller = new RealtimeVoiceController({ root: null });
+  controller.active = true;
+  controller.localStream = oldStream;
+  controller.selectedMicrophoneId = 'mic-one';
+  controller.peerConnection = { getSenders: () => [sender] };
+  const firstSwitch = controller.selectMicrophone('mic-two');
+  const finalSwitch = controller.selectMicrophone('mic-three');
+  await firstRequested;
+  assert.deepEqual(requestedIds, ['mic-two'], 'The newer switch must wait instead of racing the first replace.');
+  resolveFirstStream(firstStream);
+  await Promise.all([firstSwitch, finalSwitch]);
+  assert.deepEqual(requestedIds, ['mic-two', 'mic-three']);
+  assert.equal(controller.selectedMicrophoneId, 'mic-three');
+  assert.equal(controller.localStream, finalStream);
+  assert.equal(sender.track, finalStream.track);
+  controller.active = false;
+  controller.cleanupLocal();
+  navigator.mediaDevices = originalMediaDevices;
+  storage.delete(realtimeMicrophonePreferenceKey);
+}
+
+// If the meeting ends while replaceTrack is pending, the late track is stopped
+// and detached instead of being committed onto the preserved provider peer.
+{
+  storage.set(realtimeMicrophonePreferenceKey, JSON.stringify({
+    deviceId: 'mic-one',
+    label: 'Built-in microphone'
+  }));
+  const originalMediaDevices = navigator.mediaDevices;
+  let nextTrackStopped = false;
+  let oldTrackStopped = false;
+  let resolveReplace;
+  let markReplaceStarted;
+  const replaceStarted = new Promise((resolve) => { markReplaceStarted = resolve; });
+  const oldTrack = {
+    kind: 'audio', label: 'Built-in microphone', enabled: true,
+    getSettings: () => ({ deviceId: 'mic-one' }),
+    stop: () => { oldTrackStopped = true; }
+  };
+  const nextTrack = {
+    kind: 'audio', label: 'External microphone', enabled: true, readyState: 'live',
+    getSettings: () => ({ deviceId: 'mic-two' }),
+    stop: () => { nextTrackStopped = true; }
+  };
+  const oldStream = { getAudioTracks: () => [oldTrack], getTracks: () => [oldTrack] };
+  const nextStream = { getAudioTracks: () => [nextTrack], getTracks: () => [nextTrack] };
+  navigator.mediaDevices = {
+    enumerateDevices: async () => [
+      { kind: 'audioinput', deviceId: 'mic-one', label: 'Built-in microphone' },
+      { kind: 'audioinput', deviceId: 'mic-two', label: 'External microphone' }
+    ],
+    getUserMedia: async () => nextStream
+  };
+  const replacedTracks = [];
+  const sender = {
+    track: oldTrack,
+    replaceTrack: (track) => {
+      replacedTracks.push(track);
+      if (track === null) {
+        sender.track = null;
+        return Promise.resolve();
+      }
+      sender.track = track;
+      markReplaceStarted();
+      return new Promise((resolve) => { resolveReplace = resolve; });
+    }
+  };
+  const controller = new RealtimeVoiceController({ root: null });
+  controller.active = true;
+  controller.localStream = oldStream;
+  controller.selectedMicrophoneId = 'mic-one';
+  controller.peerConnection = {
+    getSenders: () => [sender],
+    close: () => {}
+  };
+  const switching = controller.selectMicrophone('mic-two');
+  await replaceStarted;
+  await controller.end({ reason: 'user', notifyServer: false, announce: false });
+  assert.equal(oldTrackStopped, true);
+  resolveReplace();
+  await switching;
+  assert.equal(nextTrackStopped, true, 'A replacement that resolves after end must be stopped immediately.');
+  assert.deepEqual(replacedTracks, [nextTrack, null]);
+  assert.equal(controller.localStream, null);
+  assert.equal(controller.active, false);
+  assert.equal(controller.phase, 'off');
+  assert.deepEqual(
+    JSON.parse(storage.get(realtimeMicrophonePreferenceKey)),
+    { deviceId: 'mic-one', label: 'Built-in microphone' }
+  );
+  navigator.mediaDevices = originalMediaDevices;
+  storage.delete(realtimeMicrophonePreferenceKey);
 }
 
 const draftEvents = [];
@@ -358,6 +839,11 @@ assert.doesNotMatch(
   /end\(\{ reason: 'budget' \}\)/,
   'sync() must not terminate an active meeting based on display budget state.'
 );
+assert.match(
+  realtimeSource,
+  /errorElement\.hidden = !errorText \|\| errorText === this\.statusText/,
+  'An identical connection status and error must not be rendered twice.'
+);
 assert.match(realtimeSource, /if \(event\.key === 'Escape'\)[\s\S]*this\.collapseCompanion\(\)/);
 assert.match(realtimeSource, /if \(event\.key === 'Tab'\) this\.trapFocus\(event\)/);
 assert.match(realtimeSource, /if \(document\.hidden\)[\s\S]*this\.end\(\{ reason: 'hidden' \}\)[\s\S]*this\.collapseCompanion/);
@@ -377,9 +863,26 @@ assert.match(planCssSource, /@media \(max-width: 720px\)[\s\S]*\.realtime-voice-
 assert.match(planCssSource, /env\(safe-area-inset-bottom/);
 assert.match(planCssSource, /min-height:\s*44px/);
 assert.match(planCssSource, /@media \(prefers-reduced-motion: reduce\)/);
-const outboundRealtimeEventTypes = [...realtimeSource.matchAll(/sendEvent\(\{\s*type:\s*'([^']+)'/g)]
-  .map((match) => match[1])
-  .sort();
+assert.match(realtimeSource, /responding: 'Preparing to respond…'/);
+assert.match(realtimeSource, /Reconnect automatic microphone/);
+assert.match(planCssSource, /data-realtime-phase="responding"/);
+assert.match(planCssSource, /@keyframes realtime-orb-listen/);
+assert.match(planCssSource, /@keyframes realtime-orb-hearing/);
+assert.match(planCssSource, /@keyframes realtime-orb-think/);
+assert.match(planCssSource, /@keyframes realtime-orb-prepare-outer/);
+assert.match(planCssSource, /@keyframes realtime-orb-response-outer/);
+const reducedMotionOrbSource = planCssSource.slice(
+  planCssSource.lastIndexOf('@media (prefers-reduced-motion: reduce)')
+);
+assert.match(reducedMotionOrbSource, /data-realtime-phase="listening"/);
+assert.match(reducedMotionOrbSource, /data-realtime-phase="user_speaking"/);
+assert.match(reducedMotionOrbSource, /data-realtime-phase="thinking"/);
+assert.match(reducedMotionOrbSource, /data-realtime-phase="responding"/);
+assert.match(reducedMotionOrbSource, /data-realtime-phase="assistant_speaking"/);
+const outboundRealtimeEventTypes = [...new Set(
+  [...realtimeSource.matchAll(/sendEvent\(\{\s*type:\s*'([^']+)'/g)]
+    .map((match) => match[1])
+)].sort();
 assert.deepEqual(outboundRealtimeEventTypes, ['input_audio_buffer.clear']);
 assert.match(realtimeSource, /'complete'[\s\S]*'withdrawn'[\s\S]*'deleted'[\s\S]*'budget_exhausted'/);
 assert.doesNotMatch(realtimeSource, /sendEvent\(\{\s*type:\s*'(?:response\.create|session\.update)'/);
@@ -703,6 +1206,73 @@ assert.equal(
 );
 journeyState.view = 'conversation';
 
+// Ending while device enumeration is pending must not let start() resume and
+// create a peer with a stopped microphone after local privacy cleanup.
+{
+  const previousBootstrap = journeyState.bootstrap;
+  const previousConsent = journeyState.voice.realtimeConsent;
+  const previousBudget = journeyState.voice.realtimeBudget;
+  const PreviousPeerConnection = window.RTCPeerConnection;
+  let peerConstructions = 0;
+  let microphoneStopped = false;
+  let resolveRefresh;
+  let markRefreshStarted;
+  const refreshStarted = new Promise((resolve) => { markRefreshStarted = resolve; });
+  const track = {
+    kind: 'audio',
+    label: 'Built-in microphone',
+    readyState: 'live',
+    getSettings: () => ({ deviceId: 'mic-one' }),
+    addEventListener: () => {},
+    stop: () => { microphoneStopped = true; }
+  };
+  const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
+  try {
+    journeyState.bootstrap = {
+      ...previousBootstrap,
+      enabled: true,
+      voiceRealtimeEnabled: true,
+      cohort: 'adviser_test',
+      voiceRealtimeNoticeId: 'realtime-notice-start-cancel',
+      voiceRealtimePolicyVersion: 'consumer-start-cancel-v1',
+      voiceRealtimePrivacyNoticeUrl: 'https://planeir.ie/privacy'
+    };
+    journeyState.voice.realtimeConsent = {
+      granted: true,
+      noticeId: 'realtime-notice-start-cancel',
+      policyVersion: 'consumer-start-cancel-v1'
+    };
+    journeyState.voice.realtimeBudget = {
+      limitMicroEur: 2_000_000,
+      spentMicroEur: 0,
+      remainingMicroEur: 2_000_000
+    };
+    window.RTCPeerConnection = class TestCancelledPeerConnection {
+      constructor() { peerConstructions += 1; }
+    };
+    const controller = new RealtimeVoiceController({ root: null });
+    controller.openMicrophoneStream = async () => stream;
+    controller.refreshMicrophones = () => {
+      markRefreshStarted();
+      return new Promise((resolve) => { resolveRefresh = resolve; });
+    };
+    const starting = controller.start();
+    await refreshStarted;
+    await controller.end({ reason: 'user', notifyServer: false, announce: false });
+    resolveRefresh();
+    await starting;
+    assert.equal(microphoneStopped, true);
+    assert.equal(peerConstructions, 0, 'Cancelled start must not create a peer after refresh resolves.');
+    assert.equal(controller.localStream, null);
+    assert.equal(controller.active, false);
+  } finally {
+    journeyState.bootstrap = previousBootstrap;
+    journeyState.voice.realtimeConsent = previousConsent;
+    journeyState.voice.realtimeBudget = previousBudget;
+    window.RTCPeerConnection = PreviousPeerConnection;
+  }
+}
+
 const remoteAudioElement = { srcObject: 'worker-controlled-audio-only' };
 const remotePeerListeners = new Map();
 const remoteTrackController = new RealtimeVoiceController({
@@ -739,6 +1309,57 @@ assert.notEqual(realtimeController.interruptTimer, null);
 realtimeController.handleRealtimeEvent({ type: 'input_audio_buffer.speech_stopped' });
 assert.equal(realtimeController.interruptTimer, null);
 assert.equal(realtimeController.phase, 'thinking');
+realtimeController.handleRealtimeEvent({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_empty_audio',
+  transcript: ''
+});
+assert.equal(
+  realtimeController.phase,
+  'listening',
+  'An empty finalized transcript must invite a microphone retry instead of looking stuck or disconnected.'
+);
+realtimeController.handleRealtimeEvent({
+  type: 'conversation.item.input_audio_transcription.failed',
+  item_id: 'item_failed_audio',
+  error: { type: 'transcription_error', message: 'Audio was unintelligible.' }
+});
+assert.equal(
+  realtimeController.phase,
+  'listening',
+  'An item-scoped transcription failure must remain retryable instead of presenting a lost connection.'
+);
+realtimeController.handleRealtimeEvent({ type: 'response.created' });
+realtimeController.handleRealtimeEvent({ type: 'response.done' });
+assert.equal(realtimeController.phase, 'thinking');
+realtimeController.handleRealtimeEvent({
+  type: 'conversation.item.created',
+  item: {
+    type: 'function_call_output',
+    output: JSON.stringify({ ok: true, response_text: '', require_repeat_verbatim: false })
+  }
+});
+assert.equal(
+  realtimeController.phase,
+  'listening',
+  'An explicit wait_for_user result must settle without waiting for Worker speech that will not exist.'
+);
+assert.equal(realtimeController.awaitingWorkerSpeech, false);
+realtimeController.handleRealtimeEvent({ type: 'response.created' });
+realtimeController.handleRealtimeEvent({ type: 'response.done' });
+realtimeController.handleRealtimeEvent({
+  type: 'conversation.item.done',
+  item: {
+    type: 'function_call_output',
+    output: JSON.stringify({ ok: true, moduleSlots: [] })
+  }
+});
+assert.equal(
+  realtimeController.phase,
+  'listening',
+  'A final tool result whose Worker speech authorization failed must not leave the orb thinking forever.'
+);
+assert.equal(realtimeController.awaitingWorkerSpeech, false);
 realtimeController.cleanupLocal();
 
 const floatingPanel = { hidden: true };
@@ -971,6 +1592,7 @@ try {
   endVoiceController.cleanupLocal();
 }
 
+let phaseWhenApprovedPlaybackStarted = '';
 const approvedAudio = {
   dataset: {},
   muted: true,
@@ -983,6 +1605,7 @@ const approvedAudio = {
   pauseCalls: 0,
   async play() {
     this.playCalls += 1;
+    phaseWhenApprovedPlaybackStarted = approvedController.phase;
     this.paused = false;
   },
   pause() {
@@ -1010,6 +1633,7 @@ approvedController.active = true;
 approvedController.sessionId = 'cs_frontend_voice_contract';
 approvedController.leaseId = 'rt_api_contract_001';
 approvedController.controlCapability = `rt_control_${'P'.repeat(24)}`;
+approvedController.scheduleLeasePoll = () => {};
 const approvedSpeech = {
   speechId: 'speech_frontend_playback_123456',
   kind: 'question',
@@ -1033,11 +1657,12 @@ try {
   };
   globalThis.fetch = async (url, init) => {
     controlledSpeechRequests.push({ url: String(url), init });
+    const requestedSpeechId = JSON.parse(init.body).speechId;
     return new Response(new Uint8Array([73, 68, 51]), {
       status: 200,
       headers: {
         'Content-Type': 'audio/mpeg',
-        'X-Realtime-Speech-Id': approvedSpeech.speechId
+        'X-Realtime-Speech-Id': requestedSpeechId
       }
     });
   };
@@ -1047,9 +1672,23 @@ try {
     0,
     'A provider-mirrored sideband payload must never authorize browser speech.'
   );
-  await approvedController.playWorkerSpeechFromPayload({
+  approvedController.handleRealtimeEvent({ type: 'response.created' });
+  approvedController.handleRealtimeEvent({ type: 'response.done' });
+  assert.equal(
+    approvedController.phase,
+    'thinking',
+    'A silent provider response must not flash back to listening while authenticated Worker speech is pending.'
+  );
+  assert.equal(approvedController.awaitingWorkerSpeech, true);
+  const approvedPlayback = approvedController.playWorkerSpeechFromPayload({
     realtimeControl: { type: 'authorized_speech', assistantSpeech: approvedSpeech }
   });
+  assert.equal(
+    approvedController.phase,
+    'responding',
+    'Authenticated Worker speech must expose a distinct preparing-to-respond phase before playback.'
+  );
+  await approvedPlayback;
   assert.equal(controlledSpeechRequests.length, 1);
   assert.match(controlledSpeechRequests[0].url, /\/rt_api_contract_001\/speech$/);
   assert.deepEqual(JSON.parse(controlledSpeechRequests[0].init.body), approvedSpeech);
@@ -1059,6 +1698,11 @@ try {
   assert.equal(approvedAudio.playCalls, 1);
   assert.equal(approvedAudio.dataset.controlledSpeechId, approvedSpeech.speechId);
   assert.equal(approvedAudio.dataset.controlledSpeechPlayed, 'true');
+  assert.equal(
+    phaseWhenApprovedPlaybackStarted,
+    'responding',
+    'The speaking phase must not begin until audio.play() has succeeded.'
+  );
   assert.equal(approvedCaption.textContent, approvedSpeech.text);
   assert.deepEqual(approvedController.transcriptHistory, [{ role: 'assistant', text: approvedSpeech.text }]);
   assert.equal(approvedController.phase, 'assistant_speaking');
@@ -1070,6 +1714,182 @@ try {
   assert.equal(approvedController.currentControlledSpeech, null);
   assert.equal(approvedController.phase, 'interrupted');
   assert.deepEqual(revokedSpeechUrls, ['blob:worker-controlled-speech']);
+
+  const blockedResumeButton = { hidden: true };
+  const blockedAudio = {
+    dataset: {},
+    muted: true,
+    paused: true,
+    src: '',
+    srcObject: null,
+    pause() { this.paused = true; },
+    async play() { throw new Error('autoplay blocked'); },
+    removeAttribute(name) { if (name === 'src') this.src = ''; }
+  };
+  const blockedController = new RealtimeVoiceController({
+    root: {
+      dataset: {},
+      classList: { toggle: () => {} },
+      querySelector: (selector) => new Map([
+        ['#realtimeVoiceAudio', blockedAudio],
+        ['#realtimeVoiceAssistantCaption', { textContent: '' }],
+        ['#realtimeVoiceResumeAudioButton', blockedResumeButton]
+      ]).get(selector) || null
+    }
+  });
+  blockedController.active = true;
+  blockedController.sessionId = 'cs_frontend_voice_contract';
+  blockedController.leaseId = 'rt_api_contract_001';
+  blockedController.controlCapability = `rt_control_${'B'.repeat(24)}`;
+  const blockedSpeech = {
+    ...approvedSpeech,
+    speechId: 'speech_frontend_autoplay_blocked_123456',
+    bindingId: 'speech_binding_autoplay_blocked_123456',
+    controlId: `realtime_control_${'C'.repeat(24)}`,
+    token: `${'U'.repeat(43)}`
+  };
+  await blockedController.playWorkerSpeechFromPayload({
+    realtimeControl: { type: 'authorized_speech', assistantSpeech: blockedSpeech }
+  });
+  assert.equal(
+    blockedController.phase,
+    'responding',
+    'Autoplay rejection must remain ready-to-respond instead of claiming audio is playing.'
+  );
+  assert.equal(blockedResumeButton.hidden, false);
+  blockedController.cleanupLocal();
+
+  const deferredPlayback = () => {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+  };
+  const controlledPlaybackHarness = ({ speechId, play }) => {
+    const resumeButton = { hidden: true };
+    const audio = {
+      dataset: {},
+      muted: true,
+      paused: true,
+      src: '',
+      srcObject: null,
+      onended: null,
+      onerror: null,
+      playCalls: 0,
+      play() {
+        this.playCalls += 1;
+        this.paused = false;
+        return play(this.playCalls);
+      },
+      pause() { this.paused = true; },
+      removeAttribute(name) { if (name === 'src') this.src = ''; }
+    };
+    const elements = new Map([
+      ['#realtimeVoiceAudio', audio],
+      ['#realtimeVoiceAssistantCaption', { textContent: '' }],
+      ['#realtimeVoiceResumeAudioButton', resumeButton]
+    ]);
+    const controller = new RealtimeVoiceController({
+      root: {
+        dataset: {},
+        classList: { toggle: () => {} },
+        querySelector: (selector) => elements.get(selector) || null
+      }
+    });
+    controller.active = true;
+    controller.sessionId = 'cs_frontend_voice_contract';
+    controller.leaseId = 'rt_api_contract_001';
+    controller.controlCapability = `rt_control_${'R'.repeat(24)}`;
+    controller.scheduleLeasePoll = () => {};
+    return {
+      audio,
+      controller,
+      resumeButton,
+      speech: {
+        ...approvedSpeech,
+        speechId,
+        bindingId: `binding_${speechId}`,
+        controlId: `realtime_control_${'S'.repeat(24)}`,
+        token: `${'V'.repeat(43)}`
+      }
+    };
+  };
+  const waitForPlaybackAttempt = async (audio) => {
+    for (let attempt = 0; attempt < 10 && audio.playCalls === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(audio.playCalls, 1, 'The controlled audio play attempt must start before teardown.');
+  };
+
+  // A play promise may settle after barge-in. Its stale continuation must not
+  // restore the speaking phase or controlled-speech ownership markers.
+  {
+    const pendingPlay = deferredPlayback();
+    const harness = controlledPlaybackHarness({
+      speechId: 'speech_initial_play_resolve_teardown_123456',
+      play: () => pendingPlay.promise
+    });
+    const playback = harness.controller.playWorkerSpeechFromPayload({
+      realtimeControl: { type: 'authorized_speech', assistantSpeech: harness.speech }
+    });
+    await waitForPlaybackAttempt(harness.audio);
+    harness.controller.handleRealtimeEvent({ type: 'input_audio_buffer.speech_started' });
+    pendingPlay.resolve();
+    await playback;
+    assert.equal(harness.controller.phase, 'interrupted');
+    assert.equal(harness.controller.currentControlledSpeech, null);
+    assert.equal(harness.audio.dataset.controlledSpeechId, undefined);
+    assert.equal(harness.audio.dataset.controlledSpeechPlayed, undefined);
+    harness.controller.cleanupLocal();
+  }
+
+  // A late rejection after the meeting ends must not turn the settled off
+  // state back into a playback error or expose a stale resume button.
+  {
+    const pendingPlay = deferredPlayback();
+    const harness = controlledPlaybackHarness({
+      speechId: 'speech_initial_play_reject_teardown_123456',
+      play: () => pendingPlay.promise
+    });
+    const playback = harness.controller.playWorkerSpeechFromPayload({
+      realtimeControl: { type: 'authorized_speech', assistantSpeech: harness.speech }
+    });
+    await waitForPlaybackAttempt(harness.audio);
+    await harness.controller.end({ notifyServer: false, announce: false });
+    pendingPlay.reject(new Error('play rejected after teardown'));
+    await playback;
+    assert.equal(harness.controller.phase, 'off');
+    assert.equal(harness.resumeButton.hidden, true);
+  }
+
+  // Resume playback has the same asynchronous ownership boundary. Cover both
+  // late success and late rejection after the live meeting has ended.
+  for (const outcome of ['resolve', 'reject']) {
+    const pendingResume = deferredPlayback();
+    const harness = controlledPlaybackHarness({
+      speechId: `speech_resume_${outcome}_teardown_123456`,
+      play: (attempt) => (attempt === 1
+        ? Promise.reject(new Error('initial autoplay blocked'))
+        : pendingResume.promise)
+    });
+    await harness.controller.playWorkerSpeechFromPayload({
+      realtimeControl: { type: 'authorized_speech', assistantSpeech: harness.speech }
+    });
+    assert.equal(harness.controller.phase, 'responding');
+    assert.equal(harness.resumeButton.hidden, false);
+    const resumed = harness.controller.resumeAudio();
+    assert.equal(harness.audio.playCalls, 2);
+    await harness.controller.end({ notifyServer: false, announce: false });
+    if (outcome === 'resolve') pendingResume.resolve();
+    else pendingResume.reject(new Error('resume rejected after teardown'));
+    await resumed;
+    assert.equal(harness.controller.phase, 'off');
+    assert.equal(harness.resumeButton.hidden, true);
+    assert.equal(harness.audio.dataset.controlledSpeechId, undefined);
+  }
 } finally {
   approvedController.cleanupLocal();
   window.URL = originalWindowUrl;

@@ -14,8 +14,10 @@ import {
 import {
   createConsumerCredential,
   decryptJson,
+  hmacSha256Base64Url,
   randomId,
-  sha256Base64Url
+  sha256Base64Url,
+  stableStringify
 } from '../worker/src/consumer/crypto.js';
 import { ConsumerError } from '../worker/src/consumer/errors.js';
 import {
@@ -94,6 +96,7 @@ import {
 } from '../worker/src/consumer/realtime_provider.js';
 import {
   ConsumerRealtimeSession,
+  classifyRealtimeProviderError,
   complexJourney,
   realtimeSessionPolicySnapshot,
   realtimeTranscriptionUsageFromEvent,
@@ -507,12 +510,46 @@ assert.equal(sessionConfig.model, 'gpt-realtime-2.1');
 assert.equal(sessionConfig.safety_identifier, undefined);
 assert.equal(sessionConfig.reasoning.effort, 'low');
 assert.equal(sessionConfig.audio.output.voice, 'marin');
+assert.equal(sessionConfig.audio.output.format.rate, 24_000);
+assert.equal(sessionConfig.audio.input.noise_reduction.type, 'far_field');
 assert.deepEqual(sessionConfig.output_modalities, ['text']);
 assert.equal(sessionConfig.tool_choice, 'required');
 assert.equal(sessionConfig.audio.input.turn_detection.type, 'semantic_vad');
 assert.equal(sessionConfig.audio.input.turn_detection.create_response, false);
 assert.equal(sessionConfig.audio.input.turn_detection.interrupt_response, true);
 assert.equal(sessionConfig.parallel_tool_calls, false);
+assert.deepEqual(
+  classifyRealtimeProviderError({
+    type: 'error',
+    error: {
+      type: 'invalid_request_error',
+      code: 'response_cancel_not_active',
+      param: 'response.id',
+      event_id: 'cancel_request_001'
+    }
+  }),
+  {
+    code: 'response_cancel_not_active',
+    type: 'invalid_request_error',
+    param: 'response.id',
+    clientEventId: 'cancel_request_001',
+    scope: 'response',
+    recoverable: true
+  }
+);
+assert.equal(classifyRealtimeProviderError({
+  type: 'error',
+  error: {
+    type: 'invalid_request_error',
+    code: 'invalid_value',
+    param: 'session.audio.output.format.rate',
+    event_id: 'session_update_001'
+  }
+}).recoverable, false, 'A request id must not make a session-policy error recoverable.');
+assert.equal(classifyRealtimeProviderError({
+  type: 'error',
+  error: { type: 'authentication_error', code: 'invalid_api_key' }
+}).recoverable, false);
 const requestedPolicySnapshot = realtimeSessionPolicySnapshot(sessionConfig);
 assert.equal(Object.hasOwn(requestedPolicySnapshot, 'temperature'), false);
 const providerEffectiveSession = structuredClone(sessionConfig);
@@ -529,6 +566,22 @@ assert.deepEqual(
   realtimeSessionPolicySnapshot(providerEffectiveSession),
   requestedPolicySnapshot,
   'Provider-owned effective-session defaults must not block a Worker-authorized tool call.'
+);
+const omittedPcmRateSession = structuredClone(sessionConfig);
+delete omittedPcmRateSession.audio.output.format.rate;
+const materializedPcmRateSession = structuredClone(omittedPcmRateSession);
+materializedPcmRateSession.audio.output.format.rate = 24_000;
+assert.deepEqual(
+  realtimeSessionPolicySnapshot(materializedPcmRateSession),
+  realtimeSessionPolicySnapshot(omittedPcmRateSession),
+  'The provider-materialized documented PCM rate must not look like a session-policy change.'
+);
+const changedPcmRateSession = structuredClone(sessionConfig);
+changedPcmRateSession.audio.output.format.rate = 16_000;
+assert.notDeepEqual(
+  realtimeSessionPolicySnapshot(changedPcmRateSession),
+  requestedPolicySnapshot,
+  'A non-default PCM rate must still fail the session-policy comparison.'
 );
 providerEffectiveSession.instructions = 'Untrusted browser policy override.';
 assert.notDeepEqual(
@@ -2356,6 +2409,95 @@ sqliteCommand(databasePath, 'run', {
   values: [sessionId]
 });
 
+// The paid infrastructure proof exercises the initial read-only greeting, but
+// the first consumer answer is the first point where a finalized transcript
+// can authorize a response and a fact can move the journey to a new tool set.
+// Exercise that transition with a provider-style full effective-session ack so
+// documented defaults cannot turn a valid answer into a failed lease.
+const firstTurnState = new TestDurableObjectState();
+const firstTurnDurable = new ConsumerRealtimeSession(firstTurnState, env);
+await firstTurnState.ready;
+firstTurnDurable.meta = {
+  sessionId,
+  leaseId: lease.id,
+  costEntryId: firstReservation.entry.id,
+  hardExpiresAt: lease.hard_expires_at,
+  idleExpiresAt: lease.idle_expires_at
+};
+const firstTurnSocket = new FakeWebSocket();
+firstTurnDurable.webSocket = firstTurnSocket;
+const firstTurnTerminalEvents = [];
+firstTurnDurable.terminalize = async (...args) => {
+  firstTurnTerminalEvents.push(args);
+  return { providerHangupConfirmed: true };
+};
+const firstTurnContext = await firstTurnDurable.planningContext();
+firstTurnDurable.currentPhase = firstTurnContext.state.realtimePhase;
+const initialFirstTurnPolicy = buildRealtimeSessionConfig(
+  firstTurnContext.config,
+  firstTurnContext.state
+);
+firstTurnDurable.currentSessionPolicyHash = await hmacSha256Base64Url(
+  env.CONSUMER_RATE_LIMIT_HASH_KEY,
+  `consumer/realtime/session-policy/v1/${stableStringify(
+    realtimeSessionPolicySnapshot(initialFirstTurnPolicy)
+  )}`
+);
+await firstTurnDurable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_first_consumer_answer_001'
+}));
+await firstTurnDurable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_first_consumer_answer_001',
+  transcript: 'I would like help planning for a home purchase.',
+  usage: {
+    type: 'tokens',
+    total_tokens: 13,
+    input_tokens: 8,
+    input_token_details: { text_tokens: 0, audio_tokens: 8 },
+    output_tokens: 5
+  }
+}));
+const firstTurnResponseCreate = firstTurnSocket.sent.find((event) => (
+  event.type === 'response.create'
+  && event.response?.metadata?.reason === 'finalized_user_item'
+));
+assert.ok(firstTurnResponseCreate, 'A finalized first answer must authorize one server-owned response.');
+await firstTurnDurable.handleProviderMessage(JSON.stringify({
+  type: 'response.created',
+  response: {
+    id: 'response_first_consumer_answer_001',
+    metadata: firstTurnResponseCreate.response.metadata
+  }
+}));
+assert.equal(firstTurnDurable.inResponse, true);
+await firstTurnDurable.refreshJourneyState('confirmation');
+const firstTurnSessionUpdate = firstTurnSocket.sent.find((event) => event.type === 'session.update');
+assert.ok(firstTurnSessionUpdate, 'A first-turn journey transition must update the provider tool policy.');
+assert.equal(firstTurnSessionUpdate.session.audio.output.format.rate, 24_000);
+const firstTurnEffectiveSession = structuredClone(firstTurnSessionUpdate.session);
+firstTurnEffectiveSession.object = 'realtime.session';
+firstTurnEffectiveSession.id = 'sess_first_consumer_answer_001';
+firstTurnEffectiveSession.reasoning.summary = 'auto';
+firstTurnEffectiveSession.tools = firstTurnEffectiveSession.tools.map((tool) => ({
+  ...tool,
+  strict: false
+}));
+firstTurnEffectiveSession.temperature = 0.8;
+firstTurnEffectiveSession.tracing = null;
+await firstTurnDurable.handleProviderMessage(JSON.stringify({
+  type: 'session.updated',
+  session: firstTurnEffectiveSession
+}));
+assert.equal(firstTurnDurable.pendingSessionPolicyHash, null);
+assert.equal(firstTurnDurable.pendingSessionPolicySnapshot, null);
+assert.equal(
+  firstTurnTerminalEvents.length,
+  0,
+  'A valid first-turn provider policy acknowledgement must not close the connection.'
+);
+
 // Durable Object event ordering, prompt injection and response authorization
 // all fail closed before any model-authored state can be trusted.
 const state = new TestDurableObjectState();
@@ -2390,6 +2532,77 @@ await durable.handleProviderMessage(JSON.stringify({
   usage: { input_tokens: 1, output_tokens: 1 }
 }));
 assert.equal(terminalEvents.pop()[1], 'transcription_item_invalid');
+
+// Provider transcription failures are explicitly item-scoped. Clear only the
+// failed item so the consumer can retry without losing the paid live session.
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_recoverable_transcription_failure_001'
+}));
+await durable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_recoverable_transcription_failure_001',
+  type: 'conversation.item.input_audio_transcription.failed',
+  item_id: 'item_recoverable_transcription_failure_001',
+  content_index: 0,
+  error: {
+    type: 'transcription_error',
+    code: 'audio_unintelligible',
+    message: 'The audio could not be transcribed.'
+  }
+}));
+assert.equal(terminalEvents.length, 0);
+assert.equal(durable.committedAudioItemIds.has('item_recoverable_transcription_failure_001'), false);
+assert.equal((await getRealtimeLease(env, sessionId, lease.id)).status, 'active');
+
+// Empty completed transcripts still carry billable usage. Meter them once,
+// but do not create evidence or authorize a model response for silence.
+const emptyUsageBefore = Number(sqliteCommand(databasePath, 'first', {
+  sql: `SELECT COUNT(*) AS count FROM consumer_realtime_usage
+        WHERE realtime_session_id = ? AND usage_kind = 'transcription'`,
+  values: [lease.id]
+}).count || 0);
+const emptyTurnsBefore = Number(sqliteCommand(databasePath, 'first', {
+  sql: 'SELECT COUNT(*) AS count FROM consumer_realtime_final_turns WHERE realtime_session_id = ?',
+  values: [lease.id]
+}).count || 0);
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_empty_transcription_001'
+}));
+await durable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_empty_transcription_001',
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_empty_transcription_001',
+  transcript: '   ',
+  usage: { input_tokens: 2, output_tokens: 0 }
+}));
+assert.equal(terminalEvents.length, 0);
+assert.equal(durable.finalizedEvidenceItems.has('item_empty_transcription_001'), false);
+assert.equal(durable.queuedResponseAuthorization, null);
+assert.equal(Number(sqliteCommand(databasePath, 'first', {
+  sql: `SELECT COUNT(*) AS count FROM consumer_realtime_usage
+        WHERE realtime_session_id = ? AND usage_kind = 'transcription'`,
+  values: [lease.id]
+}).count || 0), emptyUsageBefore + 1);
+assert.equal(Number(sqliteCommand(databasePath, 'first', {
+  sql: 'SELECT COUNT(*) AS count FROM consumer_realtime_final_turns WHERE realtime_session_id = ?',
+  values: [lease.id]
+}).count || 0), emptyTurnsBefore);
+
+// Missing usage is not recoverable: without provider accounting the reserved
+// cost cannot be safely settled.
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_missing_transcription_usage_001'
+}));
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_missing_transcription_usage_001',
+  transcript: 'This transcript has no usage envelope.'
+}));
+assert.equal(terminalEvents.pop()[1], 'transcription_usage_missing');
+durable.committedAudioItemIds.delete('item_missing_transcription_usage_001');
+
 await durable.handleProviderMessage(JSON.stringify({
   type: 'response.done',
   response: { id: 'response_never_authorized', status: 'completed', usage: { input_tokens: 1, output_tokens: 1 } }
@@ -2424,16 +2637,60 @@ await durable.handleProviderMessage(JSON.stringify({
 }));
 assert.equal(terminalEvents.pop()[1], 'unsolicited_response');
 await durable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_recoverable_item_request_001',
   type: 'error',
   error: {
+    type: 'invalid_request_error',
     code: 'string_above_max_length',
     param: 'item.id',
+    event_id: 'item_request_001',
     message: 'This provider message must never be persisted or exposed.'
+  }
+}));
+assert.equal(terminalEvents.length, 0, 'An item/request-scoped provider error must keep the lease open.');
+durable.pendingResponseAuthorization = { nonce: 'recoverable-response-nonce', reason: 'finalized_user_item' };
+await durable.state.storage.put('pendingResponseAuthorization', durable.pendingResponseAuthorization);
+await durable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_recoverable_response_request_001',
+  type: 'error',
+  error: {
+    type: 'invalid_request_error',
+    code: 'response_cancel_not_active',
+    param: 'response.id',
+    event_id: 'response_cancel_request_001',
+    message: 'No active response existed.'
+  }
+}));
+assert.equal(terminalEvents.length, 0);
+assert.equal(durable.pendingResponseAuthorization, null);
+assert.equal(await durable.state.storage.get('pendingResponseAuthorization'), undefined);
+await durable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_fatal_session_policy_001',
+  type: 'error',
+  error: {
+    type: 'invalid_request_error',
+    code: 'invalid_value',
+    param: 'session.audio.output.format.rate',
+    event_id: 'session_update_request_001',
+    message: 'The requested session policy was rejected.'
   }
 }));
 assert.deepEqual(terminalEvents.pop().slice(1, 3), [
   'provider_error',
-  'string_above_max_length:item.id'
+  'invalid_value:session.audio.output.format.rate'
+]);
+await durable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_fatal_auth_001',
+  type: 'error',
+  error: {
+    type: 'authentication_error',
+    code: 'invalid_api_key',
+    message: 'Authentication failed.'
+  }
+}));
+assert.deepEqual(terminalEvents.pop().slice(1, 3), [
+  'provider_error',
+  'invalid_api_key'
 ]);
 await rejectsCode(durable.executeTool('get_planning_state', { expectedRevision: 0 }, {
   sessionRow: { current_profile_revision: 1 },
@@ -2536,8 +2793,37 @@ await durable.handleProviderMessage(JSON.stringify({
   type: 'input_audio_buffer.committed',
   item_id: 'item_barge_in_001'
 }));
+const bargeInProfileRevision = Number((await getSessionRow(env, sessionId)).current_profile_revision);
+const deliveredBargeInSpeech = await issueRealtimeSpeechAuthorization({
+  env,
+  sessionId,
+  leaseId: lease.id,
+  kind: 'question',
+  profileRevision: bargeInProfileRevision,
+  text: 'This delivered speech must be cancelled when the consumer starts talking.'
+});
+const deliveredBargeInCommand = await getNextRealtimeControlMessage(env, sessionId, lease.id);
+assert.equal(deliveredBargeInCommand.assistantSpeech.controlId, deliveredBargeInSpeech.controlId);
+const pendingBargeInSpeech = await issueRealtimeSpeechAuthorization({
+  env,
+  sessionId,
+  leaseId: lease.id,
+  kind: 'status',
+  profileRevision: bargeInProfileRevision,
+  text: 'This pending speech must also be cancelled before browser delivery.'
+});
 await durable.handleProviderMessage(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
 assert.ok(durable.bargeInStartedAt > 0);
+for (const controlId of [deliveredBargeInSpeech.controlId, pendingBargeInSpeech.controlId]) {
+  assert.deepEqual(sqliteCommand(databasePath, 'first', {
+    sql: `SELECT status, error_code FROM consumer_realtime_control_messages
+          WHERE realtime_session_id = ? AND control_id = ?`,
+    values: [lease.id, controlId]
+  }), {
+    status: 'cancelled',
+    error_code: 'consumer_barge_in'
+  });
+}
 await durable.handleProviderMessage(JSON.stringify({
   type: 'conversation.item.input_audio_transcription.completed',
   item_id: 'item_barge_in_001',

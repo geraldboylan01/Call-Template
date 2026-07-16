@@ -21,6 +21,7 @@ import {
 import {
   appendRealtimeEvent,
   beginRealtimeToolAttempt,
+  cancelPendingRealtimeControlMessages,
   closeRealtimeLease,
   commitRealtimeFactConfirmation,
   completeRealtimeToolAttempt,
@@ -124,9 +125,16 @@ function normalizedTools(value) {
 
 function normalizedAudioFormat(value) {
   if (!value || typeof value !== 'object') return null;
+  const type = value.type ?? null;
   return {
-    type: value.type ?? null,
-    ...(value.rate === undefined ? {} : { rate: value.rate })
+    type,
+    // A Realtime PCM stream is always 24 kHz. Treat an omitted rate and the
+    // provider-materialized documented default as the same effective policy,
+    // while preserving any explicit non-default value so it still fails the
+    // constant-time session-policy comparison.
+    ...(type === 'audio/pcm'
+      ? { rate: value.rate === undefined ? 24_000 : value.rate }
+      : (value.rate === undefined ? {} : { rate: value.rate }))
   };
 }
 
@@ -192,6 +200,38 @@ function cleanProviderCode(value) {
 function cleanProviderParam(value) {
   const candidate = typeof value === 'string' ? value : '';
   return /^[A-Za-z0-9._:\[\]-]{1,120}$/.test(candidate) ? candidate : null;
+}
+
+const FATAL_PROVIDER_ERROR_PATTERN = /(?:auth(?:entication|orization)?|unauthori[sz]ed|forbidden|permission|api[_-]?key|session(?:[_:.-](?:closed|expired|invalid|not_found|update))|connection|websocket|sideband|maximum[_:.-]?duration|rate[_:.-]?limit|quota|billing|pricing|usage|policy)/i;
+const FATAL_PROVIDER_PARAM_PATTERN = /^(?:session(?:\.|$)|model$|instructions$|reasoning(?:\.|$)|tools?(?:\.|$)|tool_choice$|parallel_tool_calls$|max_output_tokens$|truncation(?:\.|$)|output_modalities$|audio\.(?:input|output)\.(?:format|noise_reduction|transcription|turn_detection|voice|speed)(?:\.|$))/i;
+const RESPONSE_PROVIDER_SCOPE_PATTERN = /(?:^|[._:-])response(?:[._:-]|$)/i;
+const INPUT_PROVIDER_SCOPE_PATTERN = /(?:input_audio|audio_unintelligible|transcription)/i;
+const ITEM_PROVIDER_SCOPE_PATTERN = /(?:^|[._:-])(?:conversation[._:-]?)?item(?:[._:-]|$)/i;
+
+export function classifyRealtimeProviderError(event = {}) {
+  const error = event?.error && typeof event.error === 'object' && !Array.isArray(event.error)
+    ? event.error
+    : {};
+  const code = cleanProviderCode(error.code || error.type);
+  const type = cleanProviderCode(error.type);
+  const param = cleanProviderParam(error.param);
+  const clientEventId = validProviderId(error.event_id) ? String(error.event_id) : null;
+  const descriptor = [code, type, param].filter(Boolean).join(':');
+  const fatal = FATAL_PROVIDER_ERROR_PATTERN.test(descriptor)
+    || (param ? FATAL_PROVIDER_PARAM_PATTERN.test(param) : false);
+  let scope = null;
+  if (RESPONSE_PROVIDER_SCOPE_PATTERN.test(descriptor)) scope = 'response';
+  else if (INPUT_PROVIDER_SCOPE_PATTERN.test(descriptor)) scope = 'input';
+  else if (ITEM_PROVIDER_SCOPE_PATTERN.test(descriptor)) scope = 'item';
+  else if (clientEventId) scope = 'request';
+  return {
+    code,
+    type,
+    param,
+    clientEventId,
+    scope: scope || 'session',
+    recoverable: Boolean(scope) && !fatal
+  };
 }
 
 function validProviderId(value) {
@@ -708,11 +748,9 @@ export class ConsumerRealtimeSession {
         await this.terminalize('failed', 'transcription_item_invalid', 'realtime_transcription_item_invalid', false);
         return;
       }
-      this.committedAudioItemIds.delete(itemId);
-      this.finalizedEvidenceItems.add(itemId);
-      const transcript = typeof event.transcript === 'string' ? event.transcript : '';
+      const transcript = typeof event.transcript === 'string' ? event.transcript.trim() : '';
       const tokens = realtimeTranscriptionUsageFromEvent(event);
-      if (!transcript || !tokens) {
+      if (!tokens) {
         await this.terminalize('failed', 'transcription_usage_missing', 'realtime_transcription_usage_missing', false);
         return;
       }
@@ -722,13 +760,7 @@ export class ConsumerRealtimeSession {
         await this.terminalize('failed', 'pricing_version_mismatch', 'realtime_pricing_version_mismatch', false);
         return;
       }
-      await recordRealtimeFinalTurn(this.env, {
-        sessionId: this.meta.sessionId,
-        leaseId: this.meta.leaseId,
-        providerItemId: itemId,
-        role: 'user',
-        transcript
-      });
+      this.committedAudioItemIds.delete(itemId);
       const usage = await recordRealtimeUsage(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -744,12 +776,57 @@ export class ConsumerRealtimeSession {
         await this.terminalize('budget_exhausted', 'dispatch_stop_reached', null, !this.inResponse);
         return;
       }
+      if (!transcript) {
+        await appendRealtimeEvent(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          providerEventId: event.event_id,
+          direction: 'provider_in',
+          eventType: 'realtime.provider.error',
+          payload: {
+            code: 'empty_transcript',
+            param: 'item_id',
+            recoverable: true,
+            scope: 'item'
+          }
+        }).catch(() => {});
+        await this.touch();
+        return;
+      }
+      this.finalizedEvidenceItems.add(itemId);
+      await recordRealtimeFinalTurn(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        providerItemId: itemId,
+        role: 'user',
+        transcript
+      });
       await this.touch();
       await this.authorizeResponse('finalized_user_item');
       return;
     }
     if (type === 'conversation.item.input_audio_transcription.failed') {
-      await this.terminalize('failed', 'transcription_failed', 'realtime_transcription_failed', false);
+      const itemId = String(event.item_id || '');
+      if (!validProviderId(itemId)) {
+        await this.terminalize('failed', 'transcription_item_invalid', 'realtime_transcription_item_invalid', false);
+        return;
+      }
+      this.committedAudioItemIds.delete(itemId);
+      if (this.committedAudioItemIds.size === 0) {
+        this.turnFinalAt = 0;
+        this.firstOutputRecorded = false;
+      }
+      const code = cleanProviderCode(event.error?.code || event.error?.type || 'transcription_failed');
+      const param = cleanProviderParam(event.error?.param) || 'item_id';
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        providerEventId: event.event_id,
+        direction: 'provider_in',
+        eventType: 'realtime.provider.error',
+        payload: { code, param, recoverable: true, scope: 'item' }
+      }).catch(() => {});
+      await this.touch();
       return;
     }
     if (type === 'conversation.item.created' || type === 'conversation.item.added') {
@@ -801,6 +878,16 @@ export class ConsumerRealtimeSession {
       return;
     }
     if (type === 'input_audio_buffer.speech_started') {
+      try {
+        await cancelPendingRealtimeControlMessages(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          errorCode: 'consumer_barge_in'
+        });
+      } catch (_error) {
+        await this.terminalize('failed', 'control_cancel_failed', 'realtime_control_cancel_failed', false);
+        return;
+      }
       this.bargeInStartedAt = this.inResponse ? Date.now() : 0;
       this.silencePromptIssuedForIdleExpiresAt = null;
       await appendRealtimeEvent(this.env, {
@@ -934,16 +1021,30 @@ export class ConsumerRealtimeSession {
       return;
     }
     if (type === 'error') {
-      const code = cleanProviderCode(event.error?.code);
-      const param = cleanProviderParam(event.error?.param);
+      const disposition = classifyRealtimeProviderError(event);
+      const { code, param } = disposition;
       const diagnosticCode = param ? cleanProviderCode(`${code}:${param}`) : code;
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
+        providerEventId: event.event_id,
         direction: 'provider_in',
         eventType: 'realtime.provider.error',
-        payload: { code, param }
+        payload: {
+          code,
+          param,
+          recoverable: disposition.recoverable,
+          scope: disposition.scope
+        }
       });
+      if (disposition.recoverable) {
+        if (disposition.scope === 'response' && !this.inResponse && this.pendingResponseAuthorization) {
+          this.pendingResponseAuthorization = null;
+          await this.state.storage.delete('pendingResponseAuthorization');
+        }
+        await this.touch();
+        return;
+      }
       try { this.sendProvider({ type: 'response.cancel' }); } catch (_error) { /* best effort */ }
       await this.terminalize('failed', 'provider_error', diagnosticCode, false);
     }
@@ -1431,8 +1532,8 @@ export class ConsumerRealtimeSession {
       } else {
         kind = 'acknowledgement';
         text = question
-          ? `Thanks. I’ve added that to the information you can review. ${question}`
-          : 'Thanks. I’ve added that to the information you can review. Please review the three analyses shown on screen.';
+          ? `Got it — you’ll be able to review that. ${question}`
+          : 'Got it. Please review the three analyses on screen.';
       }
     } else if (toolName === 'resolve_fact_confirmation') {
       const nextReadBack = safeOutput.currentPendingProposal?.readBackText || '';
@@ -1442,8 +1543,8 @@ export class ConsumerRealtimeSession {
       } else {
         kind = 'acknowledgement';
         const prefix = safeOutput.status === 'confirmed'
-          ? 'Thanks, that read-back is confirmed.'
-          : 'Thanks, I won’t use that figure.';
+          ? 'That’s confirmed.'
+          : 'No problem — I won’t use that figure.';
         text = question
           ? `${prefix} ${question}`
           : `${prefix} Please review the information and three analyses shown on screen.`;
@@ -1458,14 +1559,13 @@ export class ConsumerRealtimeSession {
       kind = this.currentResponseReason === 'initial_state_probe' ? 'greeting' : 'question';
       const next = question || 'Please review the information and three analyses shown on screen before anything runs.';
       text = kind === 'greeting'
-        ? 'Hi, I’m Planéir, an AI planning companion for financial education. '
-          + 'I’m going to ask you a few questions about where you are now and what you’d like your money to help you achieve. '
-          + 'There are no perfect answers — we’ll take it one step at a time, and you can say “skip that” or correct me whenever you like. '
-          + `To begin: ${next}`
+        ? 'Hi, I’m Planéir, your AI planning companion. '
+          + 'I’ll ask a few questions about where you are and what matters most. '
+          + `Take your time — you can skip anything or correct me. ${next}`
         : next;
     } else if (toolName === 'confirm_and_run_plan') {
       kind = 'status';
-      text = 'The confirmed plan has been processed. I’ll read the verified result when it is ready.';
+      text = 'Your plan is running. I’ll read the verified result when it’s ready.';
     } else {
       kind = 'question';
       text = question || 'Please continue with the visible planning step.';

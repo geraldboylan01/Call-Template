@@ -169,7 +169,11 @@ export function buildRealtimeSessionConfig(config, state = {}) {
     audio: {
       input: {
         format: { type: 'audio/pcm', rate: 24_000 },
-        noise_reduction: { type: 'near_field' },
+        // The browser capture path primarily targets built-in laptop and
+        // conference-room microphones; OpenAI recommends far-field reduction
+        // for that pickup pattern. Explicitly selected phone microphones remain
+        // valid inputs and are still handled through the same WebRTC track.
+        noise_reduction: { type: 'far_field' },
         transcription: {
           model: config.realtimeTranscriptionModel,
           language: 'en'
@@ -182,7 +186,11 @@ export function buildRealtimeSessionConfig(config, state = {}) {
         }
       },
       output: {
-        format: { type: 'audio/pcm' },
+        // OpenAI documents PCM as 24 kHz and can materialize that default in
+        // the full effective session returned by `session.updated`. Send it
+        // explicitly so a journey-phase tool update cannot look like an
+        // untrusted policy change merely because the provider filled a default.
+        format: { type: 'audio/pcm', rate: 24_000 },
         speed: 1,
         voice: config.realtimeVoice
       }
