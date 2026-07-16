@@ -74,12 +74,15 @@ export function voiceBudgetFromHeaders(headers) {
   };
 }
 
-export function assertVoiceBudgetSnapshot(value, expectedSpentMicroEur) {
-  assert.equal(value?.limitMicroEur, 2_000_000, 'The paid smoke session must retain the €2 voice ceiling.');
+// The session-level provider ceiling is shared: €2 for the voice-only canary,
+// €10 when the realtime adviser canary is active (voice draws from the same
+// session envelope in that mode).
+export function assertVoiceBudgetSnapshot(value, expectedSpentMicroEur, limitMicroEur = 2_000_000) {
+  assert.equal(value?.limitMicroEur, limitMicroEur, 'The paid smoke session provider ceiling changed unexpectedly.');
   assert.equal(value?.spentMicroEur, expectedSpentMicroEur, 'The paid smoke reservation total changed unexpectedly.');
   assert.equal(
     value?.remainingMicroEur,
-    2_000_000 - expectedSpentMicroEur,
+    limitMicroEur - expectedSpentMicroEur,
     'The paid smoke remaining allowance changed unexpectedly.'
   );
 }
@@ -404,7 +407,11 @@ async function main() {
       }
     );
     assert.equal(voiceGranted.payload?.voiceConsent?.granted, true, 'Voice consent could not be granted.');
-    assert.equal(voiceGranted.payload?.voiceBudget?.limitMicroEur, 2_000_000, 'The live session does not have the €2 voice ceiling.');
+    assert.equal(
+      voiceGranted.payload?.voiceBudget?.limitMicroEur,
+      realtimeExpected ? 10_000_000 : 2_000_000,
+      'The live session does not have the expected provider ceiling.'
+    );
     assert.equal(voiceGranted.payload?.voiceBudget?.spentMicroEur, 0, 'A new smoke session unexpectedly has provider spend.');
 
     let realtimeConsentPayload = null;
@@ -428,8 +435,8 @@ async function main() {
       assert.equal(realtimeGranted.payload?.realtimeConsent?.granted, true, 'Realtime consent could not be granted.');
       assert.equal(
         realtimeGranted.payload?.realtimeVoiceBudget?.limitMicroEur,
-        2_000_000,
-        'The Realtime proof does not have the conservative €2 application allowance.'
+        10_000_000,
+        'The Realtime proof does not have the €10 adviser-demo application allowance.'
       );
       const proof = await runRealtimeInfrastructureProof({
         workerBaseUrl,
@@ -464,7 +471,11 @@ async function main() {
       );
       assert.ok(speechResult.bytes.byteLength > 0, 'The paid speech smoke returned no audio.');
       assert.ok(speechResult.bytes.byteLength <= 1_000_000, 'The paid speech smoke audio is too large for the bounded transcription route.');
-      assertVoiceBudgetSnapshot(voiceBudgetFromHeaders(speechResult.headers), 100_000);
+      assertVoiceBudgetSnapshot(
+        voiceBudgetFromHeaders(speechResult.headers),
+        100_000,
+        realtimeExpected ? 10_000_000 : 2_000_000
+      );
 
       const transcription = await requestRawAudioJsonOnce(
         workerBaseUrl,
@@ -483,7 +494,11 @@ async function main() {
         typeof transcription?.transcript === 'string' && transcription.transcript.trim().length > 0,
         'The paid transcription smoke returned no reviewable transcript.'
       );
-      assertVoiceBudgetSnapshot(transcription.voiceBudget, 200_000);
+      assertVoiceBudgetSnapshot(
+        transcription.voiceBudget,
+        200_000,
+        realtimeExpected ? 10_000_000 : 2_000_000
+      );
     }
 
     if (realtimeConsentPayload) {
