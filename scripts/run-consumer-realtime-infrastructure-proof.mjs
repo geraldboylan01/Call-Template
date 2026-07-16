@@ -71,10 +71,23 @@ export async function runRealtimeInfrastructureProof({
       if (!url.pathname.startsWith(endpointPath)) return;
       requestDiagnostics.push(`${request.method()} ${url.pathname.slice(endpointPath.length) || '/'} -> ${request.failure()?.errorText || 'request failed'}`);
     });
+    // An eligible session auto-opens the meeting surface and marks the
+    // background launcher inert (which Playwright reports as hidden), so the
+    // entry point is proven when either the meeting shell is open or the
+    // collapsed launcher is actionable.
     const launcher = page.locator('#realtimeVoiceLauncher');
+    const meetingEntryState = async () => page.evaluate(() => ({
+      shellOpen: document.getElementById('realtimeVoiceShell')?.hidden === false,
+      launcherShown: (() => {
+        const element = document.getElementById('realtimeVoiceLauncher');
+        return Boolean(element && element.closest('[hidden]') === null);
+      })()
+    }));
+    let entry = { shellOpen: false, launcherShown: false };
     for (let attempt = 1; attempt <= MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS; attempt += 1) {
       await page.waitForTimeout(PROPAGATION_RETRY_MS);
-      if (await launcher.isVisible()) break;
+      entry = await meetingEntryState();
+      if (entry.shellOpen || entry.launcherShown) break;
       if (attempt < MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS) {
         proofPageUrl.searchParams.set('realtime-proof', crypto.randomUUID());
         await page.goto(proofPageUrl.href, {
@@ -83,13 +96,12 @@ export async function runRealtimeInfrastructureProof({
         });
       }
     }
-    await launcher.waitFor({ state: 'visible', timeout: 5_000 });
-    // An eligible session auto-opens the meeting surface, which marks the
-    // background launcher inert; only click it when the shell is still closed.
-    const shellAlreadyOpen = await page.evaluate(() => (
-      document.getElementById('realtimeVoiceShell')?.hidden === false
-    ));
-    if (!shellAlreadyOpen) {
+    assert.equal(
+      entry.shellOpen || entry.launcherShown,
+      true,
+      'Neither the auto-opened meeting shell nor the Talk to Planéir launcher became available.'
+    );
+    if (!entry.shellOpen) {
       await launcher.click();
     }
     await page.locator('#realtimeVoiceShell').waitFor({ state: 'visible', timeout: 5_000 });
