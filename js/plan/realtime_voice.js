@@ -264,14 +264,18 @@ export function classifyRealtimeEvent(event) {
   ].includes(type)) return { ...base, kind: 'user_final' };
   if ([
     'response.output_audio_transcript.delta',
-    'response.audio_transcript.delta',
-    'response.output_text.delta'
+    'response.audio_transcript.delta'
   ].includes(type)) return { ...base, kind: 'assistant_delta' };
   if ([
     'response.output_audio_transcript.done',
-    'response.audio_transcript.done',
-    'response.output_text.done'
+    'response.audio_transcript.done'
   ].includes(type)) return { ...base, kind: 'assistant_final' };
+  // Stray assistant TEXT is tolerated: the Worker keeps the meeting alive (a
+  // tool call is still mandatory per response) and this text is never
+  // rendered or spoken. Only unauthorized AUDIO output hard-stops the call.
+  if (type === 'response.output_text.delta' || type === 'response.output_text.done') {
+    return { ...base, kind: 'ignored' };
+  }
   if (type === 'response.created') return { ...base, kind: 'response_started' };
   if (type === 'response.done') return { ...base, kind: 'response_done' };
   if (type === 'response.output_audio.delta' || type === 'response.audio.delta') {

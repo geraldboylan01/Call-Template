@@ -65,7 +65,8 @@ async function closeDirectly(env, lease, options) {
   if (closed.provider_cost_id) {
     if (wasDispatched) {
       await settleConsumerProviderCostUnknown(env, closed.provider_cost_id, {
-        errorCode: options.errorCode || options.reason
+        errorCode: options.errorCode || options.reason,
+        estimatedCostEurMicros: Number(closed.estimated_cost_eur_micros || 0)
       });
     } else {
       await releaseConsumerProviderCostNotSent(env, closed.provider_cost_id, {

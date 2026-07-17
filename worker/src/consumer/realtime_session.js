@@ -857,9 +857,34 @@ export class ConsumerRealtimeSession {
         await this.touch();
         return;
       }
-      const responseOwned = this.inResponse && item.type === 'function_call';
+      // GPT-Realtime intermittently adds an assistant message item alongside
+      // the mandated function call even under tool_choice "required". That
+      // text is never played or rendered (all consumer-facing speech is
+      // Worker-owned), so tolerate it inside an authorized response instead of
+      // ending the meeting. response.done still requires the tool call.
+      const toleratedAssistantMessage = this.inResponse
+        && item.type === 'message'
+        && item.role === 'assistant';
+      const responseOwned = (this.inResponse && item.type === 'function_call')
+        || toleratedAssistantMessage;
       if (!responseOwned) {
         await this.terminalize('failed', 'conversation_item_injected', 'realtime_conversation_item_injected', false);
+        return;
+      }
+      if (toleratedAssistantMessage) {
+        await appendRealtimeEvent(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          providerEventId: event.event_id,
+          direction: 'provider_in',
+          eventType: 'realtime.provider.error',
+          payload: {
+            code: 'assistant_message_tolerated',
+            param: 'item',
+            recoverable: true,
+            scope: 'item'
+          }
+        }).catch(() => {});
       }
       return;
     }
@@ -872,7 +897,12 @@ export class ConsumerRealtimeSession {
       await this.touch();
       return;
     }
-    if (/^response\.(?:output_audio|audio|output_text|audio_transcript)(?:\.|$)/.test(type)) {
+    // Unauthorized model AUDIO is an immediate hard stop: only Worker-approved
+    // TTS may reach the consumer's ears. Stray assistant TEXT deltas are
+    // tolerated noise from the same chatty-model behaviour handled above —
+    // nothing renders them, and the response-level tool requirement still
+    // gates every turn.
+    if (/^response\.(?:output_audio|output_audio_transcript|audio|audio_transcript)(?:\.|$)/.test(type)) {
       try { this.sendProvider({ type: 'response.cancel', response_id: this.currentAuthorizedResponseId || undefined }); } catch (_error) { /* terminal path owns loss */ }
       await this.terminalize('failed', 'assistant_output_unauthorized', 'realtime_assistant_output_unauthorized', false);
       return;
@@ -964,7 +994,7 @@ export class ConsumerRealtimeSession {
       }
       this.bargeInStartedAt = 0;
       const responseStatus = String(event.response?.status || '');
-      if (!['completed', 'cancelled'].includes(responseStatus)) {
+      if (!['completed', 'cancelled', 'incomplete'].includes(responseStatus)) {
         await this.terminalize(
           'failed',
           'provider_response_failed',
@@ -974,18 +1004,47 @@ export class ConsumerRealtimeSession {
         return;
       }
       const responseOutput = Array.isArray(event.response?.output) ? event.response.output : [];
+      // Assistant message and provider-internal reasoning items are tolerated
+      // (their text is never played or shown). A completed response must still
+      // contain the mandated tool call and no other output kinds.
+      const toleratedOutputTypes = new Set(['function_call', 'message', 'reasoning']);
       if (responseStatus === 'completed' && (
         this.currentResponseToolCalls < 1
-        || responseOutput.some((item) => item?.type !== 'function_call')
+        || responseOutput.some((item) => !toleratedOutputTypes.has(item?.type))
       )) {
         await this.terminalize('failed', 'response_without_required_tool', 'realtime_response_without_required_tool', false);
         return;
+      }
+      // A token-capped (incomplete) response is recoverable: usage is metered
+      // below, and when the truncation swallowed the mandated tool call the
+      // same server reason is re-authorized. realtimeMaxResponses bounds the
+      // total number of paid attempts.
+      const reauthorizeReason = responseStatus === 'incomplete' && this.currentResponseToolCalls < 1
+        ? this.currentResponseReason
+        : null;
+      if (responseStatus === 'incomplete') {
+        await appendRealtimeEvent(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          providerEventId: event.event_id,
+          direction: 'provider_in',
+          eventType: 'realtime.provider.error',
+          payload: {
+            code: 'response_incomplete',
+            param: null,
+            recoverable: true,
+            scope: 'response'
+          }
+        }).catch(() => {});
       }
       const continued = await this.handleUsage(event.response || {});
       this.currentResponseReason = null;
       this.currentResponseToolCalls = 0;
       this.toolContinuationPending = false;
-      if (continued) await this.drainResponseAuthorization();
+      if (continued) {
+        if (reauthorizeReason) await this.queueResponseAuthorization(reauthorizeReason);
+        await this.drainResponseAuthorization();
+      }
       return;
     }
     if (type === 'response.function_call_arguments.done') {
@@ -2138,7 +2197,13 @@ export class ConsumerRealtimeSession {
           { errorCode: errorCode || null }
         );
       } else {
-        await settleConsumerProviderCostUnknown(this.env, this.meta.costEntryId, { errorCode: errorCode || reason });
+        await settleConsumerProviderCostUnknown(this.env, this.meta.costEntryId, {
+          errorCode: errorCode || reason,
+          // The provider hangup is already confirmed on this path; the metered
+          // estimate bounds the uncertain remainder instead of charging the
+          // whole session envelope for a glitch.
+          estimatedCostEurMicros: Number(row.estimated_cost_eur_micros || 0)
+        });
       }
     } catch (_error) {
       // The full reservation remains charged while settlement is uncertain.

@@ -17,6 +17,7 @@ import {
 import {
   chargedProviderCostEurMicros,
   failClosedEurMicros,
+  isEurMicros,
   requireEurMicros
 } from './cost_budget.js';
 
@@ -1378,12 +1379,32 @@ export async function markConsumerProviderCostInFlight(env, entryId, request = {
   );
 }
 
+// An uncertain (unknown) settlement no longer forfeits the whole reservation
+// when the caller can bound it with the provider-metered estimate: the charge
+// becomes the estimate plus a 50% margin, never below the floor and never
+// above the original reservation. The provider hangup is always confirmed
+// before these settlements, so the only uncertainty is the final metering of
+// work already bounded by the dispatch stop.
+const UNKNOWN_SETTLEMENT_MARGIN_NUMERATOR = 3;
+const UNKNOWN_SETTLEMENT_MARGIN_DENOMINATOR = 2;
+const UNKNOWN_SETTLEMENT_FLOOR_EUR_MICROS = 500_000;
+
 async function settleConsumerProviderCost(env, entryId, targetStatus, options = {}) {
   const safeEntryId = requiredProviderCostToken(entryId, 'Provider cost entry id', 160);
   const errorCode = optionalProviderCostToken(options.errorCode, 'Provider error code', 120);
   const actualCostEurMicros = targetStatus === 'known'
     ? providerCostAmount(options.actualCostEurMicros, 'Actual provider cost')
     : null;
+  const unknownChargeCapEurMicros = targetStatus === 'unknown'
+    && isEurMicros(options.estimatedCostEurMicros)
+    ? Math.max(
+      UNKNOWN_SETTLEMENT_FLOOR_EUR_MICROS,
+      Math.ceil(
+        (options.estimatedCostEurMicros * UNKNOWN_SETTLEMENT_MARGIN_NUMERATOR)
+        / UNKNOWN_SETTLEMENT_MARGIN_DENOMINATOR
+      )
+    )
+    : Number.MAX_SAFE_INTEGER;
   const timestamp = nowIso();
   const sourcePredicate = targetStatus === 'unknown'
     ? "status = 'reserved' AND dispatched_at IS NOT NULL"
@@ -1393,7 +1414,8 @@ async function settleConsumerProviderCost(env, entryId, targetStatus, options = 
 
   const updated = await db(env).prepare(`
     UPDATE consumer_provider_costs
-    SET status = ?, actual_cost_eur_micros = ?, error_code = ?, completed_at = ?
+    SET status = ?, actual_cost_eur_micros = ?, error_code = ?, completed_at = ?,
+        reserved_cost_eur_micros = MIN(reserved_cost_eur_micros, ?)
     WHERE id = ? AND ${sourcePredicate}
     RETURNING *
   `).bind(
@@ -1401,6 +1423,7 @@ async function settleConsumerProviderCost(env, entryId, targetStatus, options = 
     actualCostEurMicros,
     errorCode,
     timestamp,
+    unknownChargeCapEurMicros,
     safeEntryId
   ).first();
 

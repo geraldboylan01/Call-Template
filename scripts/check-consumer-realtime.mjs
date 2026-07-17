@@ -2525,6 +2525,49 @@ await durable.handleProviderMessage(JSON.stringify({
   }
 }));
 assert.equal(terminalEvents.pop()[1], 'conversation_item_injected');
+
+// An assistant message item OUTSIDE any authorized response is still an
+// injection and fails closed.
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.added',
+  item: {
+    id: 'item_assistant_unsolicited_001',
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'output_text', text: 'Unsolicited assistant prose.' }]
+  }
+}));
+assert.equal(terminalEvents.pop()[1], 'conversation_item_injected');
+
+// GPT-Realtime intermittently adds assistant chatter alongside the mandated
+// tool call even under tool_choice "required". Inside an authorized response
+// it is tolerated noise: the meeting stays alive, nothing plays or renders
+// it, and response.done still demands the tool call.
+durable.inResponse = true;
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.added',
+  item: {
+    id: 'item_assistant_chatter_001',
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'output_text', text: 'Let me note that down.' }]
+  }
+}));
+assert.equal(terminalEvents.length, 0);
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'response.output_text.delta',
+  response_id: 'response_tolerated_text_001',
+  delta: 'Stray assistant text is ignored, never rendered.'
+}));
+assert.equal(terminalEvents.length, 0);
+// Unauthorized model AUDIO remains an immediate hard stop.
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'response.output_audio.delta',
+  response_id: 'response_blocked_audio_001',
+  delta: 'QUFBQQ=='
+}));
+assert.equal(terminalEvents.pop()[1], 'assistant_output_unauthorized');
+durable.inResponse = false;
 await durable.handleProviderMessage(JSON.stringify({
   type: 'conversation.item.input_audio_transcription.completed',
   item_id: 'item_out_of_order_001',
@@ -2749,10 +2792,60 @@ await durable.handleProviderMessage(JSON.stringify({
   response: {
     id: 'response_wait_for_user_001',
     status: 'completed',
-    usage: { input_tokens: 1, output_tokens: 1 }
+    usage: { input_tokens: 1, output_tokens: 1 },
+    // Reasoning and assistant-message output items are tolerated alongside
+    // the mandated function call; only unknown output kinds fail closed.
+    output: [
+      { type: 'reasoning', id: 'rs_wait_001' },
+      {
+        type: 'message',
+        id: 'item_assistant_note_001',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'Waiting while you review.' }]
+      },
+      {
+        type: 'function_call',
+        id: 'item_tool_call_wait_001',
+        call_id: 'tool_wait_for_user_001',
+        name: 'wait_for_user'
+      }
+    ]
   }
 }));
+assert.equal(terminalEvents.length, 0);
 assert.equal(controlSocket.sent.filter((event) => event.type === 'response.create').length, 0);
+
+// A token-capped (incomplete) response is recoverable: usage is metered and a
+// turn whose truncation swallowed the tool call is re-authorized instead of
+// ending the meeting. Block the drain barrier so the queued authorization is
+// observable without a paid provider round trip.
+durable.inResponse = true;
+durable.currentAuthorizedResponseId = 'response_incomplete_001';
+durable.currentResponseReason = 'finalized_user_item';
+durable.currentResponseToolCalls = 0;
+durable.pendingSessionPolicyHash = 'barrier-incomplete-test';
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'response.done',
+  response: {
+    id: 'response_incomplete_001',
+    status: 'incomplete',
+    usage: { input_tokens: 2, output_tokens: 2 },
+    output: [
+      {
+        type: 'message',
+        id: 'item_incomplete_note_001',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'Truncated before the tool call.' }]
+      }
+    ]
+  }
+}));
+assert.equal(terminalEvents.length, 0);
+assert.equal(durable.inResponse, false);
+assert.equal(durable.queuedResponseAuthorization?.reason, 'finalized_user_item');
+durable.pendingSessionPolicyHash = null;
+durable.queuedResponseAuthorization = null;
+await state.storage.delete('queuedResponseAuthorization');
 
 // A finalized turn arriving during an active response or a session-policy ack
 // is coalesced, never discarded. The authorization drains only after both the

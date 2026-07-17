@@ -58,6 +58,13 @@ jobs:
       # proof in the same run.
       CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED: ${{ github.event_name == 'workflow_dispatch' && inputs.activate_realtime_adviser_canary == true && 'true' || 'false' }}
       CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE: ${{ vars.CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE }}
+      # Standing approval: once the canary has been proof-activated by a manual
+      # dispatch, this protected repository variable lets ordinary pushes keep
+      # the LIVE activation instead of silently rolling Realtime back to false.
+      # It can never switch Realtime on by itself: the validation step only
+      # honors it when the currently deployed Worker already reports Realtime
+      # enabled, and the OVERRIDE=false kill switch still wins.
+      CONSUMER_REALTIME_KEEP_ACTIVE: ${{ vars.CONSUMER_REALTIME_KEEP_ACTIVE }}
       CONSUMER_DB_NAME: "planeir-consumer"
       CONSUMER_SITE_ZONE_NAME: "planeir.ie"
       CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
@@ -154,6 +161,10 @@ jobs:
             ""|false|true) ;;
             *) echo "CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE must be empty, true, or false"; exit 1 ;;
           esac
+          case "$CONSUMER_REALTIME_KEEP_ACTIVE" in
+            ""|false|true) ;;
+            *) echo "CONSUMER_REALTIME_KEEP_ACTIVE must be empty, true, or false"; exit 1 ;;
+          esac
           case "$RUN_PAID_VOICE_PROVIDER_SMOKE" in
             false|true) ;;
             *) echo "RUN_PAID_VOICE_PROVIDER_SMOKE must be exactly true or false"; exit 1 ;;
@@ -175,8 +186,43 @@ jobs:
             effective_beta="true"
           fi
           effective_realtime="false"
+          realtime_standing_preserved="false"
           if [[ "$effective_beta" == "true" && "$CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED" == "true" && "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" != "false" ]]; then
             effective_realtime="true"
+          fi
+          # A push must not silently roll back a proof-activated Realtime
+          # canary. When the protected repository variable grants standing
+          # approval AND the currently deployed Worker still reports Realtime
+          # enabled, this push preserves the live activation. It cannot turn
+          # Realtime on from a disabled state, and OVERRIDE=false still wins.
+          if [[ "$effective_realtime" != "true" \
+            && "$GITHUB_EVENT_NAME" == "push" \
+            && "$CONSUMER_REALTIME_KEEP_ACTIVE" == "true" \
+            && "$effective_beta" == "true" \
+            && "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" != "false" ]]; then
+            live_realtime_enabled="$(
+              curl -fsS --max-time 20 "$WORKER_BASE_URL/api/consumer/bootstrap" -H "Origin: $SMOKE_ORIGIN" \
+                | node --input-type=module -e '
+                    let raw = "";
+                    process.stdin.on("data", (chunk) => { raw += chunk; });
+                    process.stdin.on("end", () => {
+                      let enabled = false;
+                      try {
+                        enabled = JSON.parse(raw)?.flags?.consumerRealtimeVoiceEnabled === true;
+                      } catch (_error) {
+                        enabled = false;
+                      }
+                      process.stdout.write(enabled ? "true" : "false");
+                    });
+                  '
+            )" || live_realtime_enabled="false"
+            if [[ "$live_realtime_enabled" == "true" ]]; then
+              effective_realtime="true"
+              realtime_standing_preserved="true"
+              echo "Standing approval preserves the live Realtime adviser canary for this push deployment."
+            else
+              echo "Standing approval present but Realtime is not currently live; this push keeps Realtime disabled."
+            fi
           fi
           if [[ "$effective_beta" == "true" ]]; then
             test -n "$ADVISOR_SMOKE_PASSWORD" || { echo "ADVISOR_SMOKE_PASSWORD is required for the authenticated adviser beta gate"; exit 1; }
@@ -190,7 +236,7 @@ jobs:
             echo "The paid voice-provider smoke requires the protected adviser-test voice beta"
             exit 1
           fi
-          if [[ "$effective_realtime" == "true" && "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" != "true" ]]; then
+          if [[ "$effective_realtime" == "true" && "$realtime_standing_preserved" != "true" && "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" != "true" ]]; then
             echo "Realtime activation requires the paid SDP, sideband-tool, and server-hangup proof in the same manual deployment"
             exit 1
           fi

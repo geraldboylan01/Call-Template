@@ -386,4 +386,54 @@ const deleteCannotReopenDailyBudget = await reservation(
 );
 assert.equal(deleteCannotReopenDailyBudget.reason, 'daily_budget_exceeded');
 
+// An uncertain settlement bounded by the provider-metered estimate no longer
+// forfeits the whole reservation: the charge becomes the estimate plus a 50%
+// margin with a €0.50 floor, capped at the original reservation.
+insertSession('cs_estimate_settlement', 4_000_000);
+sqliteCommand(databasePath, 'run', {
+  sql: `
+    INSERT INTO consumer_voice_consents (
+      session_id, granted, notice_id, data_policy_id, policy_version,
+      privacy_notice_url, captured_at, withdrawn_at, updated_at
+    ) VALUES (?, 1, ?, ?, ?, ?, ?, NULL, ?)
+  `,
+  values: [
+    'cs_estimate_settlement',
+    voiceConsentContract.noticeId,
+    voiceConsentContract.dataPolicyId,
+    voiceConsentContract.policyVersion,
+    voiceConsentContract.privacyNoticeUrl,
+    '2026-07-13T10:00:00.000Z',
+    '2026-07-13T10:00:00.000Z'
+  ]
+});
+const flooredReservation = await reservation('cs_estimate_settlement', 'estimate-key-0001', 1_500_000, 10_000_000);
+await markConsumerProviderCostInFlight(
+  env,
+  flooredReservation.entry.id,
+  { sessionId: 'cs_estimate_settlement', ...voiceConsentContract }
+);
+const floored = await settleConsumerProviderCostUnknown(env, flooredReservation.entry.id, {
+  errorCode: 'provider_outcome_unknown',
+  estimatedCostEurMicros: 100_000
+});
+assert.equal(floored.entry.status, 'unknown');
+assert.equal(floored.entry.reservedCostEurMicros, 500_000);
+assert.equal(floored.entry.chargedCostEurMicros, 500_000);
+assert.equal(floored.sessionBudget.spentEurMicros, 500_000);
+
+const marginedReservation = await reservation('cs_estimate_settlement', 'estimate-key-0002', 1_500_000, 10_000_000);
+await markConsumerProviderCostInFlight(
+  env,
+  marginedReservation.entry.id,
+  { sessionId: 'cs_estimate_settlement', ...voiceConsentContract }
+);
+const margined = await settleConsumerProviderCostUnknown(env, marginedReservation.entry.id, {
+  errorCode: 'provider_outcome_unknown',
+  estimatedCostEurMicros: 900_000
+});
+assert.equal(margined.entry.status, 'unknown');
+assert.equal(margined.entry.chargedCostEurMicros, 1_350_000);
+assert.equal(margined.sessionBudget.spentEurMicros, 1_850_000);
+
 console.log('Consumer provider-cost budget checks passed.');

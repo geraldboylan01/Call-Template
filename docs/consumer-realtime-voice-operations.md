@@ -60,6 +60,29 @@ kill switch. The typed and bounded voice fallbacks remain available. The
 existing `CONSUMER_ADVISER_TEST_BETA_OVERRIDE=false` disables the entire
 consumer adviser beta.
 
+### Standing activation across pushes
+
+By default an ordinary push to `main` redeploys with Realtime source-false,
+silently rolling back a live canary. Setting the repository variable
+`CONSUMER_REALTIME_KEEP_ACTIVE=true` grants standing approval: a push
+deployment first reads the live `/api/consumer/bootstrap` flags, and only when
+the currently deployed Worker already reports Realtime enabled does the push
+keep the activation (without re-running the paid proof; the deployment-mode
+verification and adviser bridge smoke still gate the run, and a failure still
+triggers the Realtime-only rollback). The variable can never switch Realtime
+on from a disabled state — first activation always requires the protected
+manual dispatch with the paid infrastructure proof — and the
+`CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE=false` kill switch always wins.
+
+### Uncertain-close settlement
+
+When a live meeting ends without provider-confirmed usage, the cost entry is
+settled `unknown`. With the confirmed server-side hang-up already in place,
+the charge is bounded by the provider-metered estimate plus a 50% safety
+margin (minimum €0.50), capped at the original reservation — a transient
+glitch no longer forfeits the whole €10 session envelope or drains the €50
+UTC-day ceiling.
+
 ## Fixed adviser canary contract
 
 | Setting | Value |

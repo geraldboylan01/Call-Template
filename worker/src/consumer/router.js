@@ -1064,7 +1064,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         }
         if (dispatched) {
           await settleConsumerProviderCostUnknown(env, reservation.entry.id, {
-            errorCode: error instanceof ConsumerError ? error.code : 'realtime_activation_failed'
+            errorCode: error instanceof ConsumerError ? error.code : 'realtime_activation_failed',
+            estimatedCostEurMicros: Number(lease?.estimated_cost_eur_micros || 0)
           }).catch(() => {});
         } else {
           await releaseConsumerProviderCostNotSent(env, reservation.entry.id, {

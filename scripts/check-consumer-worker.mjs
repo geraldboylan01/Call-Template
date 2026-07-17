@@ -309,7 +309,30 @@ assert.match(
 );
 assert.match(
   deployWorkflowSource,
-  /effective_realtime" == "true" && "\$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" != "true"[\s\S]{0,220}Realtime activation requires the paid SDP, sideband-tool, and server-hangup proof/
+  /effective_realtime" == "true" && "\$realtime_standing_preserved" != "true" && "\$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" != "true"[\s\S]{0,220}Realtime activation requires the paid SDP, sideband-tool, and server-hangup proof/
+);
+// Standing approval may only PRESERVE a live activation on a push: it is
+// sourced from a protected variable, requires the deployed Worker to already
+// report Realtime enabled, and never overrides the kill switch.
+assert.match(
+  deployWorkflowSource,
+  /CONSUMER_REALTIME_KEEP_ACTIVE:\s*\$\{\{ vars\.CONSUMER_REALTIME_KEEP_ACTIVE \}\}/
+);
+assert.match(
+  deployWorkflowSource,
+  /"\$GITHUB_EVENT_NAME" == "push"[\s\S]{0,120}"\$CONSUMER_REALTIME_KEEP_ACTIVE" == "true"[\s\S]{0,200}"\$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" != "false"/
+);
+assert.match(
+  deployWorkflowSource,
+  /consumerRealtimeVoiceEnabled === true/
+);
+assert.match(
+  deployWorkflowSource,
+  /if \[\[ "\$live_realtime_enabled" == "true" \]\];[\s\S]{0,120}effective_realtime="true"[\s\S]{0,80}realtime_standing_preserved="true"/
+);
+assert.doesNotMatch(
+  deployWorkflowSource,
+  /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED[^\n]*KEEP_ACTIVE/
 );
 assert.match(
   deployWorkflowSource,
