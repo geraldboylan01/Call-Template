@@ -74,6 +74,19 @@ on from a disabled state — first activation always requires the protected
 manual dispatch with the paid infrastructure proof — and the
 `CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE=false` kill switch always wins.
 
+### Field notes (2026-07-17 activation)
+
+The 2026-07-16 canary died on every real consumer turn with
+`conversation_item_injected`: gpt-realtime-2.1 intermittently adds an
+assistant message item alongside the mandated tool call, which the strict
+conversation allowlist treated as an injected item. Assistant message items
+inside an authorized response (and stray `response.output_text` deltas) are
+now tolerated on both the Worker and the client; unauthorized AUDIO output
+and out-of-response items still fail closed. The paid activation proof also
+settles the live bootstrap flag across consecutive samples before its first
+Start press, because Cloudflare rolls Worker versions out isolate-by-isolate
+and a mid-propagation Start burned run 202's proof.
+
 ### Uncertain-close settlement
 
 When a live meeting ends without provider-confirmed usage, the cost entry is
