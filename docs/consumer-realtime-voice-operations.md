@@ -108,6 +108,12 @@ strands the consumer mid-sentence: the Worker re-speaks the cancelled line
 once ("As I was saying: …"), and the client polls immediately after an empty
 transcription so the recovery plays promptly.
 
+Turn-taking runs semantic VAD at high eagerness, and the consumer can always
+force-finish a turn the detector missed: the live orb doubles as the "I've
+finished" control (tap on mobile) and the space bar commits on desktop. The
+browser's provider-event surface stays allowlisted to clearing and
+committing its own audio buffer.
+
 ### Uncertain-close settlement
 
 When a live meeting ends without provider-confirmed usage, the cost entry is

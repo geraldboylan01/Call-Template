@@ -1747,6 +1747,7 @@ export class ConsumerRealtimeSession {
             + 'everything appears on screen, and nothing is saved without your say-so. '
             + 'Once I understand your situation, I’ll line up the analyses that fit you best. '
             + 'Interrupt me whenever you like, and ask me to repeat anything you miss. '
+            + 'And if I don’t notice you’ve finished speaking, tap the circle — or press the space bar — to send your answer. '
             + 'To start: tell me a bit about yourself and what’s brought you here today.';
     } else if (toolName === 'confirm_and_run_plan') {
       kind = 'status';

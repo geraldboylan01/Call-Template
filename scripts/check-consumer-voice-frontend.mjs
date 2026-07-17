@@ -763,6 +763,16 @@ const viewsSource = readFileSync(`${rootPath}/js/plan/views.js`, 'utf8');
 const planCssSource = readFileSync(`${rootPath}/styles/plan.css`, 'utf8');
 const privacySource = readFileSync(`${rootPath}/plan/privacy.html`, 'utf8');
 const planIndexSource = readFileSync(`${rootPath}/plan/index.html`, 'utf8');
+// The consumer can always force-finish a turn the voice-activity detector
+// missed: the live orb doubles as the commit control, space bar works on
+// desktop, and a mistimed empty commit is tolerated silently.
+assert.match(realtimeSource, /commitTurn\(\) \{/);
+assert.match(realtimeSource, /type: 'input_audio_buffer\.commit'/);
+assert.match(realtimeSource, /if \(this\.active\) this\.commitTurn\(\);\s*else this\.start\(\);/);
+assert.match(realtimeSource, /event\.code !== 'Space'/);
+assert.match(realtimeSource, /Tap the circle or press space when you’ve finished/);
+assert.match(realtimeSource, /Finish your answer and send it to Planéir/);
+assert.match(realtimeSource, /commit_empty\|buffer_too_small\|input_audio_buffer_commit/);
 assert.match(appSource, /const draft = captureConversationDraft\(appRoot\)[\s\S]*renderCurrentJourney\(\)[\s\S]*restoreConversationDraft\(appRoot, draft\)/);
 assert.match(appSource, /async function handleDeleteSession\(\) \{\s*await realtimeVoiceController\.end\(\{ reason: 'deletion' \}\);\s*voiceController\.cancelActiveVoice\(\{ reason: 'deletion', refreshBudget: false \}\)/);
 assert.match(appSource, /deleteSessionButton\.addEventListener\('click',[\s\S]*realtimeVoiceController\.end\(\{ reason: 'deletion' \}\)[\s\S]*voiceController\.cancelActiveVoice\(\{ reason: 'deletion', refreshBudget: false \}\)[\s\S]*openDialog\(deleteSessionDialog\)/);
@@ -883,7 +893,9 @@ const outboundRealtimeEventTypes = [...new Set(
   [...realtimeSource.matchAll(/sendEvent\(\{\s*type:\s*'([^']+)'/g)]
     .map((match) => match[1])
 )].sort();
-assert.deepEqual(outboundRealtimeEventTypes, ['input_audio_buffer.clear']);
+// The browser may only clear its own audio buffer (mute) and force-commit
+// its own finished turn. It must never create responses or update sessions.
+assert.deepEqual(outboundRealtimeEventTypes, ['input_audio_buffer.clear', 'input_audio_buffer.commit']);
 assert.match(realtimeSource, /'complete'[\s\S]*'withdrawn'[\s\S]*'deleted'[\s\S]*'budget_exhausted'/);
 assert.doesNotMatch(realtimeSource, /sendEvent\(\{\s*type:\s*'(?:response\.create|session\.update)'/);
 assert.match(apiSource, /\/voice\/realtime\/consent/);

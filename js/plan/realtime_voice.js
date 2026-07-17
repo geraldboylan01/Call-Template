@@ -837,7 +837,22 @@ export class RealtimeVoiceController {
     this.element('realtimeVoiceLauncher')?.addEventListener('click', () => this.openCompanion());
     this.element('realtimeVoiceCollapseButton')?.addEventListener('click', () => this.collapseCompanion());
     this.element('realtimeVoiceBackdrop')?.addEventListener('click', () => this.collapseCompanion());
-    this.element('realtimeVoiceStartButton')?.addEventListener('click', () => this.start());
+    // While a meeting is live the orb doubles as the "I've finished speaking"
+    // control; before that it starts the meeting.
+    this.element('realtimeVoiceStartButton')?.addEventListener('click', () => {
+      if (this.active) this.commitTurn();
+      else this.start();
+    });
+    this.keydownHandler = (event) => {
+      if (event.code !== 'Space' || event.repeat || !this.active) return;
+      const target = event.target;
+      const tag = String(target?.tagName || '').toLowerCase();
+      if (['input', 'textarea', 'select', 'button'].includes(tag) || target?.isContentEditable) return;
+      if (document.body.classList.contains('dialog-open')) return;
+      event.preventDefault();
+      this.commitTurn();
+    };
+    window.addEventListener('keydown', this.keydownHandler);
     this.element('realtimeVoiceMuteButton')?.addEventListener('click', () => this.toggleMute());
     this.element('realtimeVoiceEndButton')?.addEventListener('click', () => this.end({ reason: 'user' }));
     this.element('realtimeVoiceResumeAudioButton')?.addEventListener('click', () => this.resumeAudio());
@@ -1056,13 +1071,16 @@ export class RealtimeVoiceController {
     });
     if (start) {
       start.disabled = this.active
-        || context.journeyBusy
-        || context.consentRefreshRequired
-        || !context.configured
-        || !supported
-        || exhausted;
+        ? false
+        : (context.journeyBusy
+          || context.consentRefreshRequired
+          || !context.configured
+          || !supported
+          || exhausted);
       start.setAttribute('aria-pressed', this.active ? 'true' : 'false');
-      start.setAttribute('aria-label', this.active ? 'Live voice is active' : 'Start Live voice');
+      start.setAttribute('aria-label', this.active
+        ? 'Finish your answer and send it to Planéir'
+        : 'Start Live voice');
     }
     if (orbLabel) {
       const labels = {
@@ -1731,13 +1749,13 @@ export class RealtimeVoiceController {
           this.interruptTimer = window.setTimeout(() => {
             this.interruptTimer = null;
             if (this.active && this.phase === 'interrupted') {
-              this.setPhase('user_speaking', 'Listening to you…');
+              this.setPhase('user_speaking', 'Listening to you… Tap the circle or press space when you’ve finished.');
             }
           }, 650);
             return;
           }
         }
-        this.setPhase('user_speaking', 'Listening to you…');
+        this.setPhase('user_speaking', 'Listening to you… Tap the circle or press space when you’ve finished.');
         return;
       case 'speech_stopped':
         if (this.interruptTimer !== null) window.clearTimeout(this.interruptTimer);
@@ -2327,6 +2345,8 @@ export class RealtimeVoiceController {
     const error = asObject(event?.error) || event || {};
     const code = String(firstDefined(error.code, error.type, '') || '').toLowerCase();
     const message = cleanText(firstDefined(error.message, 'Live voice reported an error.'));
+    // A manual "I've finished" press with nothing captured is harmless noise.
+    if (/commit_empty|buffer_too_small|input_audio_buffer_commit/.test(code)) return;
     if (/(?:budget|expired|session_closed|lease|maximum_duration)/.test(code)) {
       this.end({ reason: code.includes('budget') ? 'budget' : 'expired' });
       return;
@@ -2344,6 +2364,22 @@ export class RealtimeVoiceController {
     } catch (_error) {
       return false;
     }
+  }
+
+  // The consumer's explicit "I've finished speaking": force-commit the audio
+  // buffer instead of waiting for voice-activity detection to decide. A
+  // mistimed press is harmless — an empty-buffer commit is a benign,
+  // recoverable provider error on both ends.
+  commitTurn() {
+    if (!this.active || this.muted) return false;
+    const sent = this.sendEvent({
+      type: 'input_audio_buffer.commit',
+      event_id: newIdempotencyKey('turn')
+    });
+    if (sent && ['user_speaking', 'interrupted', 'listening'].includes(this.phase)) {
+      this.setPhase('thinking', 'Planéir is thinking…');
+    }
+    return sent;
   }
 
   toggleMute() {

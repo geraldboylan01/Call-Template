@@ -183,7 +183,12 @@ export function buildRealtimeSessionConfig(config, state = {}) {
         },
         turn_detection: {
           type: 'semantic_vad',
-          eagerness: 'auto',
+          // High eagerness commits the consumer's turn quickly instead of
+          // waiting out ambiguous trailing silence. A too-early commit is
+          // cheap here: facts accumulate across turns, the barge-in recovery
+          // re-speaks cancelled lines, and the client's tap/space control
+          // lets the consumer force-finish a turn the detector missed.
+          eagerness: 'high',
           create_response: false,
           interrupt_response: true
         }

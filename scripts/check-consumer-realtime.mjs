@@ -516,6 +516,9 @@ assert.equal(sessionConfig.audio.input.noise_reduction.type, 'far_field');
 assert.deepEqual(sessionConfig.output_modalities, ['text']);
 assert.equal(sessionConfig.tool_choice, 'required');
 assert.equal(sessionConfig.audio.input.turn_detection.type, 'semantic_vad');
+// High eagerness keeps turn-taking snappy; the consumer's tap/space commit
+// and the barge-in recovery absorb any premature turn end.
+assert.equal(sessionConfig.audio.input.turn_detection.eagerness, 'high');
 assert.equal(sessionConfig.audio.input.turn_detection.create_response, false);
 assert.equal(sessionConfig.audio.input.turn_detection.interrupt_response, true);
 assert.equal(sessionConfig.parallel_tool_calls, false);
