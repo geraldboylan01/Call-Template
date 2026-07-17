@@ -39,6 +39,7 @@ import {
 import {
   activateRealtimeLease,
   assertRealtimeControlMessage,
+  cancelPendingRealtimeControlMessages,
   claimRealtimeControlMessage,
   appendRealtimeEvent,
   beginRealtimeToolAttempt,
@@ -344,8 +345,8 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v2',
-  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v2',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v3',
+  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v3',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
   CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '750',
@@ -2846,6 +2847,96 @@ assert.equal(durable.queuedResponseAuthorization?.reason, 'finalized_user_item')
 durable.pendingSessionPolicyHash = null;
 durable.queuedResponseAuthorization = null;
 await state.storage.delete('queuedResponseAuthorization');
+
+// A model-fixable rejection (here: a guessed goal value outside the server
+// vocabulary) gets exactly one silent correction pass: the enriched output
+// carries the allowed values, a tool_output response is queued, and no
+// failure speech interrupts the meeting. A repeat rejection in the same turn
+// speaks a conversational recovery instead of ending the interview.
+durable.finalizedEvidenceItems.add('item_reject_evidence_001');
+durable.inResponse = true;
+durable.currentAuthorizedResponseId = 'response_reject_cycle_001';
+durable.currentResponseReason = 'finalized_user_item';
+durable.pendingSessionPolicyHash = 'barrier-reject-test';
+durable.toolRejectionRetryArmed = false;
+const rejectSentBefore = controlSocket.sent.length;
+await durable.handleToolCall({
+  response_id: 'response_reject_cycle_001',
+  call_id: 'tool_reject_cycle_001',
+  name: 'propose_facts',
+  arguments: JSON.stringify({
+    expectedRevision: 1,
+    facts: [{
+      factId: 'primary_goal',
+      value: 'broad_picture',
+      certainty: 'exact',
+      evidenceItemId: 'item_reject_evidence_001'
+    }]
+  })
+});
+const rejectedOutputs = controlSocket.sent.slice(rejectSentBefore).filter((event) => (
+  event.type === 'conversation.item.create' && event.item?.type === 'function_call_output'
+));
+assert.equal(rejectedOutputs.length, 1);
+const rejectedPayload = JSON.parse(rejectedOutputs[0].item.output);
+assert.equal(rejectedPayload.ok, false);
+assert.equal(rejectedPayload.errorCode, 'realtime_goal_invalid');
+assert.ok(rejectedPayload.guidance.allowedValues.includes('understand_position'));
+assert.equal(Object.hasOwn(rejectedPayload, 'assistantSpeech'), false);
+assert.equal(durable.toolRejectionRetryArmed, true);
+assert.equal(durable.queuedResponseAuthorization?.reason, 'tool_output');
+assert.equal(terminalEvents.length, 0);
+
+durable.queuedResponseAuthorization = null;
+await state.storage.delete('queuedResponseAuthorization');
+const repeatSentBefore = controlSocket.sent.length;
+await durable.handleToolCall({
+  response_id: 'response_reject_cycle_001',
+  call_id: 'tool_reject_cycle_002',
+  name: 'propose_facts',
+  arguments: JSON.stringify({
+    expectedRevision: 1,
+    facts: [{
+      factId: 'primary_goal',
+      value: 'still_not_a_goal',
+      certainty: 'exact',
+      evidenceItemId: 'item_reject_evidence_001'
+    }]
+  })
+});
+const repeatOutputs = controlSocket.sent.slice(repeatSentBefore).filter((event) => (
+  event.type === 'conversation.item.create' && event.item?.type === 'function_call_output'
+));
+assert.equal(repeatOutputs.length, 1);
+const repeatPayload = JSON.parse(repeatOutputs[0].item.output);
+assert.equal(repeatPayload.ok, false);
+assert.match(String(repeatPayload.response_text || ''), /Sorry — I couldn’t quite record that/);
+assert.equal(durable.queuedResponseAuthorization, null);
+assert.equal(terminalEvents.length, 0);
+durable.inResponse = false;
+durable.currentAuthorizedResponseId = null;
+durable.currentResponseReason = null;
+durable.pendingSessionPolicyHash = null;
+durable.toolRejectionRetryArmed = false;
+// The recovery speech authorized above must not leak into the later
+// control-message delivery assertions.
+await cancelPendingRealtimeControlMessages(env, {
+  sessionId,
+  leaseId: lease.id,
+  errorCode: 'test_cleanup'
+});
+
+// The planning-state probe exposes the exact value vocabulary the model must
+// map free speech onto — the goal list plus any choice facts the current
+// question is asking about.
+const vocabularyState = await durable.executeTool('get_planning_state', { expectedRevision: 1 }, {
+  sessionRow: { current_profile_revision: 1 },
+  state: { profileRevision: 1, nextQuestion: { factIds: ['self_description'] } },
+  profile: {},
+  config: {}
+});
+assert.ok(vocabularyState.factValueVocabulary.primary_goal.includes('understand_position'));
+assert.ok(vocabularyState.factValueVocabulary.self_description.includes('new_parent'));
 
 // A finalized turn arriving during an active response or a session-policy ack
 // is coalesced, never discarded. The authorization drains only after both the

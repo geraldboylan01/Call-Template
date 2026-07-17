@@ -1,3 +1,4 @@
+import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import { hmacSha256Base64Url } from './crypto.js';
 import { ConsumerError, badRequest } from './errors.js';
 
@@ -19,7 +20,7 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
   {
     type: 'function',
     name: 'propose_facts',
-    description: 'Propose explicit facts only for server-approved semantic fact IDs. For an entity fact, send one object or {items:[...]} using operation upsert, remove or confirm_none and a stable entityId; use owner primary, partner or joint where requested. For Net Retirement, confirm no after-tax income with {operation:"confirm_none",scope:"net_retirement_income"} and no available cash/liquid investments with scope "retirement_available_assets" even when other records exist. The server returns exact readBackText for material read-back facts and saves ordinary facts only as editable drafts for final visual confirmation.',
+    description: `Propose explicit facts only for server-approved semantic fact IDs. For an entity fact, send one object or {items:[...]} using operation upsert, remove or confirm_none and a stable entityId; use owner primary, partner or joint where requested. For Net Retirement, confirm no after-tax income with {operation:"confirm_none",scope:"net_retirement_income"} and no available cash/liquid investments with scope "retirement_available_assets" even when other records exist. The primary_goal value must be exactly one of: ${GOAL_TYPES.join(', ')} (a broad "how am I doing" review is understand_position). Choice facts accept only the values listed in get_planning_state factValueVocabulary. The server returns exact readBackText for material read-back facts and saves ordinary facts only as editable drafts for final visual confirmation.`,
     parameters: {
       type: 'object', additionalProperties: false,
       required: ['expectedRevision', 'facts'],
@@ -127,6 +128,7 @@ export function buildRealtimeInstructions(_state = {}) {
     'Use semantic fact IDs only. Never send a JSON pointer, profile path, calculation, inference, or value that the consumer did not explicitly state.',
     'For a pending material fact, use the confirmation tool on the consumer’s next finalized answer. Never compose, shorten, or paraphrase factual copy.',
     'Use wait_for_user whenever the consumer is still speaking, reviewing, correcting, or confirming.',
+    'When a tool result returns ok:false, read its message and guidance (allowedValues, currentRevision, hints) plus get_planning_state factValueVocabulary, and submit one corrected tool call in the next authorized response. Never abandon the interview after a rejection.',
     'When the planning service requests disambiguation or goal priority, use the applicable tool and let Worker-owned speech ask the approved question.',
     'Only the separate authenticated UI confirmation can confirm and run the plan.',
     'When a tool returns speakableText, treat it as immutable Worker-owned context. Never add, round, compare, recalculate or emit it yourself.',

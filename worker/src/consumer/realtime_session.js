@@ -44,7 +44,8 @@ import {
   buildRealtimeFactReadBack,
   mapRealtimeFact,
   modulesEnabledByFacts,
-  realtimeFactAllowed
+  realtimeFactAllowed,
+  realtimeFactValueVocabulary
 } from './realtime_fact_mapper.js';
 import {
   assertRealtimeToolName,
@@ -259,6 +260,48 @@ function boundedProposalRange(value) {
   const max = comparable(source?.max);
   if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) return null;
   return { min: source.min, max: source.max };
+}
+
+// The bounded value vocabulary for the facts the interview is asking about
+// right now (plus the goal vocabulary, which anchors the whole journey). The
+// model can only map free speech onto server-owned enumerations it can see.
+function planningStateValueVocabulary(state = {}) {
+  const factIds = new Set(['primary_goal']);
+  const questionFactIds = Array.isArray(state.nextQuestion?.factIds) ? state.nextQuestion.factIds : [];
+  questionFactIds.forEach((factId) => factIds.add(String(factId || '')));
+  const vocabulary = {};
+  for (const factId of factIds) {
+    const values = realtimeFactValueVocabulary(factId);
+    if (values) vocabulary[factId] = values;
+  }
+  return vocabulary;
+}
+
+// Bounded, non-content guidance that lets the model correct a rejected call
+// instead of abandoning the interview.
+function rejectedToolGuidance(errorCode, context) {
+  if (errorCode === 'realtime_goal_invalid') {
+    return { guidance: { allowedValues: realtimeFactValueVocabulary('primary_goal') } };
+  }
+  if (errorCode === 'profile_revision_conflict') {
+    const revision = Number(context?.sessionRow?.current_profile_revision);
+    return Number.isSafeInteger(revision) ? { guidance: { currentRevision: revision } } : {};
+  }
+  if (['realtime_fact_value_invalid', 'realtime_fact_certainty_invalid'].includes(errorCode)) {
+    return {
+      guidance: {
+        hint: 'Use the exact values from get_planning_state factValueVocabulary and resubmit one corrected call.'
+      }
+    };
+  }
+  if (errorCode === 'realtime_fact_not_routed') {
+    return {
+      guidance: {
+        hint: 'Propose only the semantic facts requested by the current get_planning_state question plan.'
+      }
+    };
+  }
+  return {};
 }
 
 function controlledQuestionText(state = {}) {
@@ -536,6 +579,7 @@ export class ConsumerRealtimeSession {
     this.currentResponseReason = null;
     this.currentResponseToolCalls = 0;
     this.toolContinuationPending = false;
+    this.toolRejectionRetryArmed = false;
     this.pendingSessionPolicyHash = null;
     this.pendingSessionPolicySnapshot = null;
     this.currentSessionPolicyHash = null;
@@ -801,6 +845,8 @@ export class ConsumerRealtimeSession {
         role: 'user',
         transcript
       });
+      // A fresh consumer answer starts a fresh correction budget.
+      this.toolRejectionRetryArmed = false;
       await this.touch();
       await this.authorizeResponse('finalized_user_item');
       return;
@@ -1485,9 +1531,25 @@ export class ConsumerRealtimeSession {
       status = error instanceof ConsumerError && error.status < 500 ? 'rejected' : 'failed';
       errorCode = error instanceof ConsumerError ? error.code : 'realtime_tool_failed';
       fatalToolError = ['realtime_tool_replay_conflict', 'realtime_tool_replay_incomplete'].includes(errorCode);
-      output = { ok: false, errorCode, message: 'The planning service could not complete that action.' };
+      output = {
+        ok: false,
+        errorCode,
+        message: error instanceof ConsumerError && error.message
+          ? String(error.message).slice(0, 300)
+          : 'The planning service could not complete that action.',
+        ...rejectedToolGuidance(errorCode, speechContext)
+      };
     }
-    if (!attempt?.replayed && toolName !== 'invalid' && !output?.assistantSpeech) {
+    // A model-fixable rejection gets exactly one silent correction pass per
+    // consumer turn: the enriched tool output goes back, a follow-up response
+    // is authorized, and no failure speech interrupts the meeting unless the
+    // corrected call is rejected again.
+    const silentRetry = status === 'rejected'
+      && !fatalToolError
+      && !attempt?.replayed
+      && !this.toolRejectionRetryArmed
+      && !this.closing;
+    if (!attempt?.replayed && toolName !== 'invalid' && !output?.assistantSpeech && !silentRetry) {
       try {
         output = await this.attachWorkerSpeech(
           toolName,
@@ -1544,6 +1606,12 @@ export class ConsumerRealtimeSession {
       });
       this.currentResponseToolCalls += 1;
       this.toolContinuationPending = false;
+      if (status === 'succeeded') {
+        this.toolRejectionRetryArmed = false;
+      } else if (silentRetry) {
+        this.toolRejectionRetryArmed = true;
+        await this.queueResponseAuthorization('tool_output');
+      }
       if (this.turnFinalAt && !this.firstOutputRecorded) {
         this.firstOutputRecorded = true;
         await appendRealtimeEvent(this.env, {
@@ -1575,7 +1643,12 @@ export class ConsumerRealtimeSession {
     let text = '';
 
     if (safeOutput.ok !== true) {
-      text = 'I could not complete that planning step. Please review the information on screen or continue by typing.';
+      // Keep the interview moving after a rejection: apologise briefly and
+      // re-ask the server-owned next question instead of pushing the consumer
+      // out of the conversation and into the typed fallback.
+      text = question
+        ? `Sorry — I couldn’t quite record that. ${question}`
+        : 'Sorry — I couldn’t quite record that. Could you put it another way for me?';
     } else if (toolName === 'get_result_summary' || (
       toolName === 'confirm_and_run_plan' && typeof safeOutput.speakableText === 'string' && safeOutput.speakableText
     )) {
@@ -1676,7 +1749,11 @@ export class ConsumerRealtimeSession {
   async executeTool(toolName, args, context, toolAttemptId) {
     if (toolName === 'get_planning_state') {
       this.requireExpectedRevision(args, context);
-      return { ok: true, ...context.state };
+      return {
+        ok: true,
+        ...context.state,
+        factValueVocabulary: planningStateValueVocabulary(context.state)
+      };
     }
     if (toolName === 'propose_facts') {
       this.requireExpectedRevision(args, context);

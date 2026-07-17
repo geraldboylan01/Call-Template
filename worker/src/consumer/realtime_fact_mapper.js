@@ -73,6 +73,16 @@ const GOAL_DEFINITIONS = Object.freeze({
   agricultural_planning: { title: 'Plan around agricultural assets' }
 });
 
+// The Realtime model maps free speech onto server-owned vocabularies. It can
+// only do that surgically when the exact allowed values are visible to it, so
+// the planning-state tool and rejected-call guidance both expose this list.
+export function realtimeFactValueVocabulary(factId) {
+  const id = String(factId || '');
+  if (id === 'primary_goal') return [...GOAL_TYPES];
+  const choices = CHOICES[id];
+  return choices ? [...choices] : null;
+}
+
 export const REALTIME_CANARY_FACT_IDS = Object.freeze([...new Set([
   ...getRealtimeModuleSemanticFactIds(),
   ...Object.keys(INTAKE_FACT_PATHS)
