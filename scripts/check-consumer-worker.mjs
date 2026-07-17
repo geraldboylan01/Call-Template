@@ -336,6 +336,19 @@ assert.doesNotMatch(
 );
 assert.match(
   deployWorkflowSource,
+  /CONSUMER_REALTIME_STANDING_PRESERVED=\$realtime_standing_preserved/
+);
+const advisorBridgeSource = await source('scripts/check-consumer-live-advisor-bridge.mjs');
+assert.match(
+  advisorBridgeSource,
+  /CONSUMER_REALTIME_STANDING_PRESERVED/
+);
+assert.match(
+  advisorBridgeSource,
+  /A standing-preservation push must not re-run the paid infrastructure proof/
+);
+assert.match(
+  deployWorkflowSource,
   /RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" == "true" && "\$effective_realtime" != "true"[\s\S]{0,220}requires explicit canary activation/
 );
 assert.match(deployWorkflowSource, /ADVISOR_SMOKE_PASSWORD is required for the authenticated adviser beta gate/);

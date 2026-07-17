@@ -299,11 +299,22 @@ async function main() {
     'SMOKE_ORIGIN must be a Planéir production origin.'
   );
   assert.ok(password, 'ADVISOR_SMOKE_PASSWORD is required for the authenticated bridge smoke.');
-  assert.equal(
-    runPaidRealtimeProof,
-    realtimeExpected,
-    'Realtime activation and its paid infrastructure proof must be enabled together.'
-  );
+  const realtimeStandingPreserved = String(
+    process.env.CONSUMER_REALTIME_STANDING_PRESERVED || ''
+  ).trim() === 'true';
+  if (realtimeStandingPreserved) {
+    // A push carrying standing approval preserves an already proof-activated
+    // canary: Realtime stays enabled and the paid proof is deliberately not
+    // re-run. First activation still couples both flags below.
+    assert.equal(realtimeExpected, true, 'Standing preservation requires the Realtime canary to remain enabled.');
+    assert.equal(runPaidRealtimeProof, false, 'A standing-preservation push must not re-run the paid infrastructure proof.');
+  } else {
+    assert.equal(
+      runPaidRealtimeProof,
+      realtimeExpected,
+      'Realtime activation and its paid infrastructure proof must be enabled together.'
+    );
+  }
 
   const cookieJar = new CookieJar();
   const session = await requestJson(workerBaseUrl, '/api/auth/session', {

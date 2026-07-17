@@ -250,6 +250,7 @@ jobs:
           fi
           echo "CONSUMER_ADVISER_INVITE_BETA_ENABLED=$effective_beta" >> "$GITHUB_ENV"
           echo "CONSUMER_REALTIME_ADVISER_CANARY_ENABLED=$effective_realtime" >> "$GITHUB_ENV"
+          echo "CONSUMER_REALTIME_STANDING_PRESERVED=$realtime_standing_preserved" >> "$GITHUB_ENV"
           if [[ "$effective_realtime" == "true" ]]; then
             echo "Effective consumer deployment mode: adviser-test-realtime-orchestrated-rules-only"
           elif [[ "$effective_beta" == "true" ]]; then
