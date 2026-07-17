@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
 
 const PROOF_TIMEOUT_MS = 45_000;
-const PROPAGATION_RETRY_MS = 3_000;
+const PROPAGATION_RETRY_MS = 12_000;
 const MAX_PROPAGATION_ATTEMPTS = 5;
 const MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS = 10;
+// Cloudflare rolls a fresh Worker version out isolate-by-isolate, so the free
+// bootstrap flag must read enabled on several consecutive samples before the
+// six-per-hour Start budget is spent on a rate-limited realtime call.
+const REALTIME_FLAG_SETTLE_SAMPLES = 3;
+const REALTIME_FLAG_SETTLE_INTERVAL_MS = 5_000;
+const REALTIME_FLAG_SETTLE_MAX_ATTEMPTS = 30;
 
 function requiredHttpsOrigin(value, label) {
   const parsed = new URL(String(value || ''));
@@ -48,6 +54,33 @@ export async function runRealtimeInfrastructureProof({
   try {
     const context = await browser.newContext({ baseURL: siteOrigin });
     await context.grantPermissions(['microphone'], { origin: siteOrigin });
+
+    // The page bootstrap can observe Realtime enabled while the calls route
+    // still executes a stale pre-activation configuration on another isolate.
+    // Settle the live flag across consecutive samples before any paid, rate
+    // limited Start attempt.
+    let consecutiveEnabledSamples = 0;
+    for (let attempt = 1; attempt <= REALTIME_FLAG_SETTLE_MAX_ATTEMPTS; attempt += 1) {
+      let enabled = false;
+      try {
+        const response = await fetch(`${workerOrigin}/api/consumer/bootstrap`, {
+          headers: { Origin: siteOrigin }
+        });
+        const payload = response.ok ? await response.json() : null;
+        enabled = payload?.flags?.consumerRealtimeVoiceEnabled === true;
+      } catch (_error) {
+        enabled = false;
+      }
+      consecutiveEnabledSamples = enabled ? consecutiveEnabledSamples + 1 : 0;
+      if (consecutiveEnabledSamples >= REALTIME_FLAG_SETTLE_SAMPLES) break;
+      await new Promise((resolve) => setTimeout(resolve, REALTIME_FLAG_SETTLE_INTERVAL_MS));
+    }
+    assert.equal(
+      consecutiveEnabledSamples >= REALTIME_FLAG_SETTLE_SAMPLES,
+      true,
+      'The live Realtime flag did not settle across consecutive bootstrap samples before the paid Start attempt.'
+    );
+
     const page = await context.newPage();
     await page.addInitScript(({ sessionIdValue, credentialValue }) => {
       window.sessionStorage.setItem('planeir.consumer.session-id.v1', sessionIdValue);
