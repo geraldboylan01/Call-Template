@@ -33,6 +33,7 @@ import {
   getRealtimeProviderCallId,
   hasUnsettledRealtimeSpeechUsage,
   listRealtimeFactProposalSummaries,
+  listRealtimeFinalTurns,
   realtimeConsentIsCurrent,
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
@@ -54,6 +55,7 @@ import {
   realtimeJourneyPhase,
   realtimeToolsForState
 } from './realtime_provider.js';
+import { composeDirectedSpeech } from './realtime_director.js';
 import { issueRealtimeSpeechAuthorization } from './realtime_speech.js';
 import {
   applyProfilePatch
@@ -580,6 +582,9 @@ export class ConsumerRealtimeSession {
     this.currentResponseToolCalls = 0;
     this.toolContinuationPending = false;
     this.toolRejectionRetryArmed = false;
+    this.lastAuthorizedSpeech = null;
+    this.interruptedSpeechCandidate = null;
+    this.lastResumedSpeechText = null;
     this.pendingSessionPolicyHash = null;
     this.pendingSessionPolicySnapshot = null;
     this.currentSessionPolicyHash = null;
@@ -834,9 +839,13 @@ export class ConsumerRealtimeSession {
             scope: 'item'
           }
         }).catch(() => {});
+        await this.resumeInterruptedSpeech(lease);
         await this.touch();
         return;
       }
+      // A real utterance means the interruption was intentional; the
+      // conversation moves on rather than replaying the cancelled line.
+      this.interruptedSpeechCandidate = null;
       this.finalizedEvidenceItems.add(itemId);
       await recordRealtimeFinalTurn(this.env, {
         sessionId: this.meta.sessionId,
@@ -872,6 +881,7 @@ export class ConsumerRealtimeSession {
         eventType: 'realtime.provider.error',
         payload: { code, param, recoverable: true, scope: 'item' }
       }).catch(() => {});
+      await this.resumeInterruptedSpeech();
       await this.touch();
       return;
     }
@@ -954,6 +964,11 @@ export class ConsumerRealtimeSession {
       return;
     }
     if (type === 'input_audio_buffer.speech_started') {
+      // Semantic VAD interrupts on any sound — including coughs and background
+      // noise. Remember the line that was (or was about to be) spoken so a
+      // false interruption (an utterance that transcribes to nothing) can be
+      // re-spoken instead of leaving the consumer with half a sentence.
+      this.interruptedSpeechCandidate = this.lastAuthorizedSpeech || null;
       try {
         await cancelPendingRealtimeControlMessages(this.env, {
           sessionId: this.meta.sessionId,
@@ -1627,6 +1642,34 @@ export class ConsumerRealtimeSession {
     }
   }
 
+  // A barge-in that produced no words (a cough, a knock, room noise) cancelled
+  // a line the consumer never chose to skip. Speak it again once so the
+  // meeting does not strand them mid-question.
+  async resumeInterruptedSpeech(lease = null) {
+    const candidate = this.interruptedSpeechCandidate;
+    this.interruptedSpeechCandidate = null;
+    if (!candidate?.text || this.closing || candidate.text === this.lastResumedSpeechText) return;
+    const profileRevision = Number.isSafeInteger(candidate.profileRevision) && candidate.profileRevision >= 1
+      ? candidate.profileRevision
+      : Math.max(1, Number(lease?.latest_profile_revision || 1));
+    const text = candidate.kind === 'read_back'
+      ? candidate.text
+      : `As I was saying: ${candidate.text}`;
+    try {
+      await issueRealtimeSpeechAuthorization({
+        env: this.env,
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        kind: candidate.kind || 'status',
+        profileRevision,
+        text
+      });
+      this.lastResumedSpeechText = candidate.text;
+    } catch (_error) {
+      // Best effort — the consumer can always ask Planéir to repeat.
+    }
+  }
+
   async attachWorkerSpeech(toolName, output, originalContext) {
     const safeOutput = output && typeof output === 'object' && !Array.isArray(output)
       ? output
@@ -1690,17 +1733,68 @@ export class ConsumerRealtimeSession {
     } else if (toolName === 'get_planning_state') {
       kind = this.currentResponseReason === 'initial_state_probe' ? 'greeting' : 'question';
       const next = question || 'Please review the information and three analyses shown on screen before anything runs.';
-      text = kind === 'greeting'
-        ? 'Hi, I’m Planéir, your AI planning companion. '
-          + 'I’ll ask a few questions about where you are and what matters most. '
-          + `Take your time — you can skip anything or correct me. ${next}`
-        : next;
+      const returning = Number(
+        safeOutput.profileRevision
+        || context?.sessionRow?.current_profile_revision
+        || 1
+      ) > 1;
+      text = kind !== 'greeting'
+        ? next
+        : returning
+          ? `Welcome back — let’s pick up where we left off. ${next}`
+          : 'Hi, I’m Planéir, your AI planning companion. '
+            + 'Here’s how our chat works: you talk, I listen and note the key facts — '
+            + 'everything appears on screen, and nothing is saved without your say-so. '
+            + 'Once I understand your situation, I’ll line up the analyses that fit you best. '
+            + 'Interrupt me whenever you like, and ask me to repeat anything you miss. '
+            + 'To start: tell me a bit about yourself and what’s brought you here today.';
     } else if (toolName === 'confirm_and_run_plan') {
       kind = 'status';
       text = 'Your plan is running. I’ll read the verified result when it’s ready.';
     } else {
       kind = 'question';
       text = question || 'Please continue with the visible planning step.';
+    }
+
+    // The conversation director rephrases question/acknowledgement/status
+    // lines into natural dialogue (acknowledging context, answering repeat
+    // and clarify requests) while the deterministic template stays the
+    // guaranteed fallback. Greeting, read-back and result copy remain exact.
+    const directorConfig = context?.config || getConsumerConfig(this.env);
+    if (directorConfig.realtimeDirectorEnabled === true
+      && ['question', 'acknowledgement', 'status'].includes(kind)) {
+      const recentTurns = await listRealtimeFinalTurns(
+        this.env,
+        this.meta.sessionId,
+        this.meta.leaseId,
+        40
+      ).catch(() => []);
+      const directed = await composeDirectedSpeech({
+        env: this.env,
+        config: directorConfig,
+        kind,
+        templateText: text,
+        question,
+        journeyPhase: realtimeJourneyPhase(state),
+        toolName,
+        toolOk: safeOutput.ok === true,
+        toolErrorCode: safeOutput.errorCode || null,
+        recentTurns,
+        previousAssistantLine: this.lastAuthorizedSpeech?.text || ''
+      });
+      if (directed.directed) {
+        text = directed.text;
+        if (directed.tokens && directed.responseId) {
+          await recordRealtimeUsage(this.env, {
+            sessionId: this.meta.sessionId,
+            leaseId: this.meta.leaseId,
+            providerResponseId: directed.responseId,
+            tokens: directed.tokens,
+            rates: directorConfig.realtimeUsageRates,
+            pricingVersion: directorConfig.realtimePricingVersion
+          }).catch(() => {});
+        }
+      }
     }
 
     const profileRevision = Number(
@@ -1716,6 +1810,7 @@ export class ConsumerRealtimeSession {
       profileRevision,
       text
     });
+    this.lastAuthorizedSpeech = { kind, text, profileRevision };
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,

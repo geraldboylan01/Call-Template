@@ -193,7 +193,7 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeVoice === 'marin'
     && config?.realtimeReasoningEffort === 'low'
     && config?.realtimeTranscriptionModel === 'gpt-4o-mini-transcribe'
-    && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v3'
+    && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v4'
     && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v3'
     && config?.realtimePricingVersion === 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'
     && config?.realtimeSpeechModel === 'tts-1-hd'

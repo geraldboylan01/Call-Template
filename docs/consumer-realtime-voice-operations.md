@@ -87,6 +87,27 @@ settles the live bootstrap flag across consecutive samples before its first
 Start press, because Cloudflare rolls Worker versions out isolate-by-isolate
 and a mid-propagation Start burned run 202's proof.
 
+### Conversation director
+
+`CONSUMER_REALTIME_DIRECTOR_ENABLED` (source-false; the canary contract pins
+`true`) turns on a bounded server-side text-model pass that phrases
+Worker-owned `question`, `acknowledgement`, and `status` speech naturally:
+it acknowledges what the consumer just said, varies phrasing, and answers
+meta-requests such as "repeat that" or "what do you mean" by restating the
+pending question. The deterministic question plan remains the steering
+authority, greeting/read-back/result copy stays exact, every saved fact
+still flows through the versioned tool gates, and any director failure or
+timeout falls back to the deterministic template line. Director calls are
+metered into the same session envelope through the pinned realtime text
+rates. The realtime model is separately instructed to answer repeat and
+meta-requests by calling `get_planning_state`, which re-speaks the current
+question.
+
+A barge-in that transcribes to nothing (a cough, background noise) no longer
+strands the consumer mid-sentence: the Worker re-speaks the cancelled line
+once ("As I was saying: …"), and the client polls immediately after an empty
+transcription so the recovery plays promptly.
+
 ### Uncertain-close settlement
 
 When a live meeting ends without provider-confirmed usage, the cost entry is

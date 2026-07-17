@@ -324,6 +324,13 @@ export function getConsumerConfig(env) {
     realtimeMaxResponses: boundedInteger(env.CONSUMER_REALTIME_MAX_RESPONSES, 40, 1, 40),
     realtimeMaxToolCalls: boundedInteger(env.CONSUMER_REALTIME_MAX_TOOL_CALLS, 24, 1, 24),
     realtimeUsageRates,
+    // The conversation director is a bounded, fail-open-to-template text-model
+    // pass that phrases Worker-owned speech naturally. It never changes what
+    // may be saved or which analyses run.
+    realtimeDirectorEnabled: journeyEnabled
+      && realtimeRequested
+      && realtimeConfigured
+      && enabled(env.CONSUMER_REALTIME_DIRECTOR_ENABLED),
     realtimeSpeechModel: voiceSpeechModel,
     realtimeSpeechVoice: configuredVoiceName,
     realtimeSpeechRateMicroEurPerMillionCharacters,

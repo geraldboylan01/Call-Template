@@ -1752,7 +1752,10 @@ export class RealtimeVoiceController {
           this.awaitingWorkerSpeech = false;
           this.setPhase(this.muted ? 'muted' : 'listening', this.muted
             ? 'I didn’t catch that. Unmute or choose another microphone, then try again.'
-            : 'I didn’t catch that. Check the microphone source and try again.');
+            : 'I didn’t catch that — one moment.');
+          // The server re-speaks a line that was cancelled by a false
+          // interruption; poll immediately so the recovery plays promptly.
+          this.scheduleLeasePoll(0);
           return;
         }
         this.finalizeCaption('user', event.itemId, event.text);

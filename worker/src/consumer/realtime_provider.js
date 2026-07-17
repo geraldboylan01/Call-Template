@@ -129,6 +129,7 @@ export function buildRealtimeInstructions(_state = {}) {
     'For a pending material fact, use the confirmation tool on the consumer’s next finalized answer. Never compose, shorten, or paraphrase factual copy.',
     'Use wait_for_user whenever the consumer is still speaking, reviewing, correcting, or confirming.',
     'When a tool result returns ok:false, read its message and guidance (allowedValues, currentRevision, hints) plus get_planning_state factValueVocabulary, and submit one corrected tool call in the next authorized response. Never abandon the interview after a rejection.',
+    'If the consumer asks you to repeat, re-explain, or says they missed or did not understand the question, call get_planning_state — the server speaks the current question again. Do the same for any meta-request about the conversation itself.',
     'When the planning service requests disambiguation or goal priority, use the applicable tool and let Worker-owned speech ask the approved question.',
     'Only the separate authenticated UI confirmation can confirm and run the plan.',
     'When a tool returns speakableText, treat it as immutable Worker-owned context. Never add, round, compare, recalculate or emit it yourself.',

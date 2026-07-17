@@ -345,7 +345,7 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v3',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v4',
   CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v3',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
@@ -2937,6 +2937,143 @@ const vocabularyState = await durable.executeTool('get_planning_state', { expect
 });
 assert.ok(vocabularyState.factValueVocabulary.primary_goal.includes('understand_position'));
 assert.ok(vocabularyState.factValueVocabulary.self_description.includes('new_parent'));
+
+// The conversation director rephrases question/acknowledgement/status speech
+// through a bounded text-model pass, meters the call into the session
+// envelope, and always falls back to the deterministic template line.
+env.CONSUMER_REALTIME_DIRECTOR_ENABLED = 'true';
+const directorRealFetch = globalThis.fetch;
+const directorUsageBefore = Number(sqliteCommand(databasePath, 'first', {
+  sql: 'SELECT COUNT(*) AS count FROM consumer_realtime_usage WHERE realtime_session_id = ?',
+  values: [lease.id]
+}).count || 0);
+globalThis.fetch = async (url, options) => {
+  assert.equal(String(url), 'https://api.openai.com/v1/responses');
+  const body = JSON.parse(options.body);
+  assert.equal(body.store, false);
+  assert.ok(String(body.input[1].content).includes('Pending server question'));
+  return {
+    ok: true,
+    headers: { get: () => null },
+    json: async () => ({
+      id: 'resp_director_test_001',
+      status: 'completed',
+      usage: { input_tokens: 420, output_tokens: 28, input_tokens_details: { cached_tokens: 100 } },
+      output: [{
+        type: 'message',
+        content: [{
+          type: 'output_text',
+          text: '{"speech":"Lovely — congratulations on the new arrival! Roughly what does the household bring in each month?"}'
+        }]
+      }]
+    })
+  };
+};
+const directorLeaseRevision = Number(
+  (await getRealtimeLease(env, sessionId, lease.id)).latest_profile_revision || 1
+);
+const directedOutput = await durable.attachWorkerSpeech(
+  'propose_facts',
+  { ok: true, profileRevision: directorLeaseRevision },
+  await durable.planningContext()
+);
+assert.match(directedOutput.response_text, /congratulations on the new arrival/);
+assert.equal(Number(sqliteCommand(databasePath, 'first', {
+  sql: 'SELECT COUNT(*) AS count FROM consumer_realtime_usage WHERE realtime_session_id = ?',
+  values: [lease.id]
+}).count || 0), directorUsageBefore + 1);
+await cancelPendingRealtimeControlMessages(env, {
+  sessionId,
+  leaseId: lease.id,
+  errorCode: 'test_cleanup'
+});
+globalThis.fetch = async () => { throw new Error('director unavailable'); };
+const directorFallbackOutput = await durable.attachWorkerSpeech(
+  'propose_facts',
+  { ok: true, profileRevision: directorLeaseRevision },
+  await durable.planningContext()
+);
+assert.match(directorFallbackOutput.response_text, /Got it/);
+globalThis.fetch = directorRealFetch;
+env.CONSUMER_REALTIME_DIRECTOR_ENABLED = 'false';
+
+// A barge-in that transcribes to nothing (a cough, background noise) must
+// re-speak the interrupted line once instead of stranding the consumer.
+await cancelPendingRealtimeControlMessages(env, {
+  sessionId,
+  leaseId: lease.id,
+  errorCode: 'test_cleanup'
+});
+durable.lastAuthorizedSpeech = {
+  kind: 'question',
+  text: 'Roughly what does your household bring in each month?',
+  profileRevision: directorLeaseRevision
+};
+durable.lastResumedSpeechText = null;
+await durable.handleProviderMessage(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_false_interrupt_001'
+}));
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_false_interrupt_001',
+  transcript: '  ',
+  usage: { input_tokens: 1, output_tokens: 0 }
+}));
+const resumedCommand = await getNextRealtimeControlMessage(env, sessionId, lease.id);
+assert.ok(resumedCommand, 'A false interruption must re-issue the cancelled line.');
+assert.match(JSON.stringify(resumedCommand), /As I was saying: Roughly what does your household/);
+// The same line is never replayed twice for repeated noise.
+await cancelPendingRealtimeControlMessages(env, {
+  sessionId,
+  leaseId: lease.id,
+  errorCode: 'test_cleanup'
+});
+await durable.handleProviderMessage(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_false_interrupt_002'
+}));
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_false_interrupt_002',
+  transcript: '',
+  usage: { input_tokens: 1, output_tokens: 0 }
+}));
+assert.equal(await getNextRealtimeControlMessage(env, sessionId, lease.id), null);
+assert.equal(terminalEvents.length, 0);
+
+// The first-meeting greeting explains the conversation contract and invites
+// an open background answer; returning sessions pick up where they left off.
+// This harness session already has profile history, so the live call proves
+// the returning variant and the fresh intro copy is pinned at source level.
+durable.currentResponseReason = 'initial_state_probe';
+const greetingOutput = await durable.attachWorkerSpeech(
+  'get_planning_state',
+  { ok: true, profileRevision: directorLeaseRevision },
+  await durable.planningContext()
+);
+assert.match(
+  greetingOutput.response_text,
+  directorLeaseRevision > 1
+    ? /Welcome back — let’s pick up where we left off/
+    : /Here’s how our chat works/
+);
+const greetingSource = source('worker/src/consumer/realtime_session.js');
+assert.match(greetingSource, /Here’s how our chat works/);
+assert.match(greetingSource, /ask me to repeat anything you miss/);
+assert.match(greetingSource, /tell me a bit about yourself and what’s brought you here today/);
+assert.match(greetingSource, /Welcome back — let’s pick up where we left off/);
+durable.currentResponseReason = null;
+durable.lastAuthorizedSpeech = null;
+durable.interruptedSpeechCandidate = null;
+durable.lastResumedSpeechText = null;
+await cancelPendingRealtimeControlMessages(env, {
+  sessionId,
+  leaseId: lease.id,
+  errorCode: 'test_cleanup'
+});
 
 // A finalized turn arriving during an active response or a session-policy ack
 // is coalesced, never discarded. The authorization drains only after both the
