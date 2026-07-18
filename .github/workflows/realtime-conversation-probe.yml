@@ -1,0 +1,61 @@
+name: Realtime Conversation Probe
+
+# A manually dispatched, paid live conversation test. It mints a disposable
+# adviser-test session, drives a real spoken multi-turn meeting against the
+# deployed Worker using injected text-to-speech, prints the full transcript,
+# and asserts the meeting probes naturally instead of stalling or repeating.
+# It never changes the deployment; it only exercises the live canary.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_paid_conversation:
+        description: Run one paid real-model spoken conversation against the live canary
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: realtime-conversation-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL || 'https://call-canvas-session-worker.geraldboylan.workers.dev' }}
+      SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
+      ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Validate dispatch
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.confirm_paid_conversation }}" != "true" ]]; then
+            echo "This probe is paid and must be explicitly confirmed. Set confirm_paid_conversation=true."
+            exit 1
+          fi
+          test -n "$ADVISOR_SMOKE_PASSWORD" || { echo "ADVISOR_SMOKE_PASSWORD is required."; exit 1; }
+          test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY is required for text-to-speech."; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Install browser harness
+        run: npm install --no-package-lock --no-save --ignore-scripts playwright-core@1.61.1
+
+      - name: Run live conversation probe
+        run: node ./scripts/run-consumer-realtime-conversation-probe.mjs
