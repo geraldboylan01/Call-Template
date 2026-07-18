@@ -13,6 +13,11 @@ on:
         required: true
         default: false
         type: boolean
+      keep_probe_session:
+        description: Retain the disposable session for server-side inspection (diagnostic)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ jobs:
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      KEEP_PROBE_SESSION: ${{ inputs.keep_probe_session == true && 'true' || 'false' }}
     steps:
       - name: Validate dispatch
         run: |

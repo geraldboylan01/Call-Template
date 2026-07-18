@@ -419,11 +419,17 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
     return { transcript, serverTurns, consoleErrors, failures, sessionId };
   } finally {
     await browser.close().catch(() => {});
-    await requestJson(workerBaseUrl, `/api/consumer/sessions/${encodeURIComponent(sessionId)}`, {
-      method: 'DELETE', origin: smokeOrigin,
-      headers: { 'X-Consumer-Session': credential },
-      acceptedStatuses: [200, 404], diagnosticPath: '/api/consumer/sessions/[probe]'
-    }).catch(() => {});
+    // A diagnostic run can retain the disposable session so the server-side
+    // tool ledger is inspectable; it still auto-expires on its short TTL.
+    if (String(process.env.KEEP_PROBE_SESSION || '').trim() === 'true') {
+      console.log(`\nKEEP_PROBE_SESSION set — retained session ${sessionId} for inspection.`);
+    } else {
+      await requestJson(workerBaseUrl, `/api/consumer/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE', origin: smokeOrigin,
+        headers: { 'X-Consumer-Session': credential },
+        acceptedStatuses: [200, 404], diagnosticPath: '/api/consumer/sessions/[probe]'
+      }).catch(() => {});
+    }
   }
 }
 
