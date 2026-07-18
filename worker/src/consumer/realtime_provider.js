@@ -97,7 +97,7 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
   {
     type: 'function',
     name: 'wait_for_user',
-    description: 'Stop speaking and wait when the consumer is reviewing, correcting, confirming, or has not finished answering.',
+    description: 'Stay silent only when the consumer explicitly asks for a moment, is clearly mid-thought, or says they are reading the on-screen information. Never use this right after the consumer finishes an answer, asks a question, or expresses frustration — those always need a spoken reply through get_planning_state or propose_facts.',
     parameters: {
       type: 'object', additionalProperties: false,
       required: ['expectedRevision', 'reason'],
@@ -127,7 +127,7 @@ export function buildRealtimeInstructions(_state = {}) {
     'Batch facts only when the consumer explicitly states them in the same finalized answer; never repeat a fact already shown as saved.',
     'Use semantic fact IDs only. Never send a JSON pointer, profile path, calculation, inference, or value that the consumer did not explicitly state.',
     'For a pending material fact, use the confirmation tool on the consumer’s next finalized answer. Never compose, shorten, or paraphrase factual copy.',
-    'Use wait_for_user whenever the consumer is still speaking, reviewing, correcting, or confirming.',
+    'Use wait_for_user only when the consumer explicitly asks for a moment or is clearly still mid-thought. When they finish an answer, ask a question, or express frustration, always respond through get_planning_state or propose_facts so the server can speak.',
     'When a tool result returns ok:false, read its message and guidance (allowedValues, currentRevision, hints) plus get_planning_state factValueVocabulary, and submit one corrected tool call in the next authorized response. Never abandon the interview after a rejection.',
     'If the consumer asks you to repeat, re-explain, or says they missed or did not understand the question, call get_planning_state — the server speaks the current question again. Do the same for any meta-request about the conversation itself.',
     'When the planning service requests disambiguation or goal priority, use the applicable tool and let Worker-owned speech ask the approved question.',

@@ -585,6 +585,8 @@ export class ConsumerRealtimeSession {
     this.lastAuthorizedSpeech = null;
     this.interruptedSpeechCandidate = null;
     this.lastResumedSpeechText = null;
+    this.lastFinalizedTurnAt = 0;
+    this.cancelledTurnReason = null;
     this.pendingSessionPolicyHash = null;
     this.pendingSessionPolicySnapshot = null;
     this.currentSessionPolicyHash = null;
@@ -839,13 +841,26 @@ export class ConsumerRealtimeSession {
             scope: 'item'
           }
         }).catch(() => {});
-        await this.resumeInterruptedSpeech(lease);
+        // The interruption carried no words. Recovering the consumer's lost
+        // answer outranks re-speaking a cancelled line.
+        if (this.cancelledTurnReason) {
+          const reason = this.cancelledTurnReason;
+          this.cancelledTurnReason = null;
+          this.interruptedSpeechCandidate = null;
+          await this.queueResponseAuthorization(reason);
+          await this.drainResponseAuthorization();
+        } else {
+          await this.resumeInterruptedSpeech(lease);
+        }
         await this.touch();
         return;
       }
       // A real utterance means the interruption was intentional; the
-      // conversation moves on rather than replaying the cancelled line.
+      // conversation moves on rather than replaying the cancelled line, and
+      // the new turn supersedes any turn the barge-in cancelled.
       this.interruptedSpeechCandidate = null;
+      this.cancelledTurnReason = null;
+      this.lastFinalizedTurnAt = Date.now();
       this.finalizedEvidenceItems.add(itemId);
       await recordRealtimeFinalTurn(this.env, {
         sessionId: this.meta.sessionId,
@@ -881,7 +896,15 @@ export class ConsumerRealtimeSession {
         eventType: 'realtime.provider.error',
         payload: { code, param, recoverable: true, scope: 'item' }
       }).catch(() => {});
-      await this.resumeInterruptedSpeech();
+      if (this.cancelledTurnReason) {
+        const reason = this.cancelledTurnReason;
+        this.cancelledTurnReason = null;
+        this.interruptedSpeechCandidate = null;
+        await this.queueResponseAuthorization(reason);
+        await this.drainResponseAuthorization();
+      } else {
+        await this.resumeInterruptedSpeech();
+      }
       await this.touch();
       return;
     }
@@ -967,8 +990,15 @@ export class ConsumerRealtimeSession {
       // Semantic VAD interrupts on any sound — including coughs and background
       // noise. Remember the line that was (or was about to be) spoken so a
       // false interruption (an utterance that transcribes to nothing) can be
-      // re-spoken instead of leaving the consumer with half a sentence.
-      this.interruptedSpeechCandidate = this.lastAuthorizedSpeech || null;
+      // re-spoken — but only a line the consumer plausibly has not heard yet:
+      // it must be fresher than their last real answer and recent. A stale
+      // greeting must never resurrect mid-conversation.
+      const speech = this.lastAuthorizedSpeech;
+      this.interruptedSpeechCandidate = speech
+        && speech.authorizedAt > (this.lastFinalizedTurnAt || 0)
+        && Date.now() - speech.authorizedAt < 60_000
+        ? speech
+        : null;
       try {
         await cancelPendingRealtimeControlMessages(this.env, {
           sessionId: this.meta.sessionId,
@@ -1054,6 +1084,15 @@ export class ConsumerRealtimeSession {
         });
       }
       this.bargeInStartedAt = 0;
+      // A response that a barge-in cancelled before ANY tool ran means the
+      // consumer's finalized answer was never processed. Remember why it was
+      // authorized: if the interrupting sound transcribes to nothing, the
+      // same authorization is replayed so the answer is not silently lost.
+      if (String(event.response?.status || '') === 'cancelled'
+        && this.currentResponseToolCalls < 1
+        && ['finalized_user_item', 'tool_output'].includes(this.currentResponseReason || '')) {
+        this.cancelledTurnReason = this.currentResponseReason;
+      }
       const responseStatus = String(event.response?.status || '');
       if (!['completed', 'cancelled', 'incomplete'].includes(responseStatus)) {
         await this.terminalize(
@@ -1811,7 +1850,7 @@ export class ConsumerRealtimeSession {
       profileRevision,
       text
     });
-    this.lastAuthorizedSpeech = { kind, text, profileRevision };
+    this.lastAuthorizedSpeech = { kind, text, profileRevision, authorizedAt: Date.now() };
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,

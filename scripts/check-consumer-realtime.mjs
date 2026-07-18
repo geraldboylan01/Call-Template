@@ -345,8 +345,8 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v4',
-  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v3',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v5',
+  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v4',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
   CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '750',
@@ -3010,8 +3010,10 @@ await cancelPendingRealtimeControlMessages(env, {
 durable.lastAuthorizedSpeech = {
   kind: 'question',
   text: 'Roughly what does your household bring in each month?',
-  profileRevision: directorLeaseRevision
+  profileRevision: directorLeaseRevision,
+  authorizedAt: Date.now()
 };
+durable.lastFinalizedTurnAt = Date.now() - 5_000;
 durable.lastResumedSpeechText = null;
 await durable.handleProviderMessage(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
 await durable.handleProviderMessage(JSON.stringify({
@@ -3046,6 +3048,73 @@ await durable.handleProviderMessage(JSON.stringify({
 }));
 assert.equal(await getNextRealtimeControlMessage(env, sessionId, lease.id), null);
 assert.equal(terminalEvents.length, 0);
+
+// A stale line — one authorized BEFORE the consumer's last real answer —
+// must never resurrect on a noise tail (the "greeting from the grave" bug).
+durable.lastAuthorizedSpeech = {
+  kind: 'greeting',
+  text: 'This stale greeting must stay buried.',
+  profileRevision: directorLeaseRevision,
+  authorizedAt: Date.now() - 5_000
+};
+durable.lastFinalizedTurnAt = Date.now();
+durable.lastResumedSpeechText = null;
+await durable.handleProviderMessage(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
+assert.equal(durable.interruptedSpeechCandidate, null);
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_stale_noise_001'
+}));
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_stale_noise_001',
+  transcript: '',
+  usage: { input_tokens: 1, output_tokens: 0 }
+}));
+assert.equal(await getNextRealtimeControlMessage(env, sessionId, lease.id), null);
+
+// A barge-in that cancels a response before ANY tool ran re-drives the same
+// authorization when the interrupting sound carries no words — the
+// consumer's finalized answer is never silently dropped.
+durable.inResponse = true;
+durable.currentAuthorizedResponseId = 'response_cancelled_by_noise_001';
+durable.currentResponseReason = 'finalized_user_item';
+durable.currentResponseToolCalls = 0;
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'response.done',
+  response: {
+    id: 'response_cancelled_by_noise_001',
+    status: 'cancelled',
+    usage: { input_tokens: 1, output_tokens: 0 }
+  }
+}));
+assert.equal(durable.cancelledTurnReason, 'finalized_user_item');
+assert.equal(terminalEvents.length, 0);
+const redriveSentBefore = controlSocket.sent.length;
+await durable.handleProviderMessage(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_noise_after_cancel_001'
+}));
+await durable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_noise_after_cancel_001',
+  transcript: ' ',
+  usage: { input_tokens: 1, output_tokens: 0 }
+}));
+const redriveCreates = controlSocket.sent.slice(redriveSentBefore)
+  .filter((event) => event.type === 'response.create');
+assert.equal(redriveCreates.length, 1);
+assert.equal(redriveCreates[0].response.metadata.reason, 'finalized_user_item');
+assert.equal(durable.cancelledTurnReason, null);
+assert.equal(terminalEvents.length, 0);
+// Later tests count response.create events across the whole socket history;
+// withdraw the one this re-drive deliberately produced.
+controlSocket.sent.splice(controlSocket.sent.indexOf(redriveCreates[0]), 1);
+durable.pendingResponseAuthorization = null;
+await state.storage.delete('pendingResponseAuthorization');
+durable.lastAuthorizedSpeech = null;
+durable.lastFinalizedTurnAt = 0;
 
 // The first-meeting greeting explains the conversation contract and invites
 // an open background answer; returning sessions pick up where they left off.
