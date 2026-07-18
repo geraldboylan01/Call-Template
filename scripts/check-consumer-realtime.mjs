@@ -97,6 +97,7 @@ import {
 } from '../worker/src/consumer/realtime_provider.js';
 import {
   ConsumerRealtimeSession,
+  RETRYABLE_TOOL_ERROR_CODES,
   classifyRealtimeProviderError,
   complexJourney,
   realtimeSessionPolicySnapshot,
@@ -3025,6 +3026,31 @@ const directorFallbackOutput = await durable.attachWorkerSpeech(
 assert.match(directorFallbackOutput.response_text, /Got it/);
 globalThis.fetch = directorRealFetch;
 env.CONSUMER_REALTIME_DIRECTOR_ENABLED = 'false';
+
+// When the consumer states something the current analyses do not use
+// (realtime_fact_not_routed), the meeting must acknowledge it warmly and keep
+// going — never apologise and never fall silent.
+await cancelPendingRealtimeControlMessages(env, { sessionId, leaseId: lease.id, errorCode: 'test_cleanup' });
+const notNeededOutput = await durable.attachWorkerSpeech(
+  'propose_facts',
+  { ok: false, errorCode: 'realtime_fact_not_routed' },
+  await durable.planningContext()
+);
+assert.equal(notNeededOutput.assistantSpeech.kind, 'acknowledgement');
+assert.match(notNeededOutput.response_text, /that's useful to know|that’s useful to know/);
+assert.doesNotMatch(notNeededOutput.response_text, /Sorry/);
+// A genuine capture problem still gets a soft apology.
+await cancelPendingRealtimeControlMessages(env, { sessionId, leaseId: lease.id, errorCode: 'test_cleanup' });
+const captureProblemOutput = await durable.attachWorkerSpeech(
+  'propose_facts',
+  { ok: false, errorCode: 'realtime_tool_failed' },
+  await durable.planningContext()
+);
+assert.match(captureProblemOutput.response_text, /Sorry/);
+// The retry gating only silently retries genuinely fixable rejections.
+assert.equal(RETRYABLE_TOOL_ERROR_CODES.has('realtime_goal_invalid'), true);
+assert.equal(RETRYABLE_TOOL_ERROR_CODES.has('realtime_fact_not_routed'), false);
+await cancelPendingRealtimeControlMessages(env, { sessionId, leaseId: lease.id, errorCode: 'test_cleanup' });
 
 // A barge-in that transcribes to nothing (a cough, background noise) must
 // re-speak the interrupted line once instead of stranding the consumer.

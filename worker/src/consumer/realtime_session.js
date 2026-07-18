@@ -66,6 +66,23 @@ const MAX_PROVIDER_EVENT_BYTES = 64_000;
 const MAX_TOOL_ARGUMENT_BYTES = 20_000;
 const TOOL_VERSION = '1';
 const SIDE_BAND_URL = 'https://api.openai.com/v1/realtime';
+// propose_facts rejections that a corrected retry of the same call can
+// genuinely resolve. Everything else (a fact the routed analyses do not use,
+// a duplicate, an out-of-order confirmation) speaks immediately and advances
+// the interview instead of silently retrying.
+export const RETRYABLE_TOOL_ERROR_CODES = new Set([
+  'realtime_goal_invalid',
+  'realtime_fact_value_invalid',
+  'realtime_fact_certainty_invalid',
+  'realtime_fact_range_invalid',
+  'profile_revision_conflict'
+]);
+// Rejections where the consumer's statement was fine but the current analyses
+// simply do not need it: acknowledge warmly and move on rather than apologise.
+const INFORMATION_NOT_NEEDED_ERROR_CODES = new Set([
+  'realtime_fact_not_routed',
+  'realtime_fact_duplicate'
+]);
 const SIDE_BAND_HEARTBEAT_MS = 15_000;
 
 function randomNonce() {
@@ -1606,11 +1623,14 @@ export class ConsumerRealtimeSession {
         ...rejectedToolGuidance(errorCode, speechContext)
       };
     }
-    // A model-fixable rejection gets exactly one silent correction pass per
-    // consumer turn: the enriched tool output goes back, a follow-up response
-    // is authorized, and no failure speech interrupts the meeting unless the
-    // corrected call is rejected again.
+    // A genuinely fixable rejection (a mis-mapped value or a stale revision)
+    // gets exactly one silent correction pass: the enriched tool output goes
+    // back and a follow-up response is authorized. Rejections that re-running
+    // the same call cannot fix — a fact the current analyses do not use, a
+    // duplicate — must instead speak immediately and keep the conversation
+    // moving, never fall into a silent wait.
     const silentRetry = status === 'rejected'
+      && RETRYABLE_TOOL_ERROR_CODES.has(errorCode)
       && !fatalToolError
       && !attempt?.replayed
       && !this.toolRejectionRetryArmed
@@ -1737,12 +1757,20 @@ export class ConsumerRealtimeSession {
     let text = '';
 
     if (safeOutput.ok !== true) {
-      // Keep the interview moving after a rejection: apologise briefly and
-      // re-ask the server-owned next question instead of pushing the consumer
-      // out of the conversation and into the typed fallback.
-      text = question
-        ? `Sorry — I couldn’t quite record that. ${question}`
-        : 'Sorry — I couldn’t quite record that. Could you put it another way for me?';
+      kind = 'acknowledgement';
+      // Keep the interview moving after a rejection. When the consumer's
+      // statement was simply not needed by the current analyses, acknowledge
+      // it warmly and steer to the next question rather than apologising; only
+      // a genuine capture problem gets a soft apology.
+      if (INFORMATION_NOT_NEEDED_ERROR_CODES.has(String(safeOutput.errorCode || ''))) {
+        text = question
+          ? `Thanks — that's useful to know. ${question}`
+          : 'Thanks — that’s useful to know. Let’s keep going.';
+      } else {
+        text = question
+          ? `Sorry — I couldn’t quite record that. ${question}`
+          : 'Sorry — I couldn’t quite record that. Could you put it another way for me?';
+      }
     } else if (toolName === 'get_result_summary' || (
       toolName === 'confirm_and_run_plan' && typeof safeOutput.speakableText === 'string' && safeOutput.speakableText
     )) {
