@@ -299,22 +299,37 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
       }]);
     }, { sessionIdValue: sessionId, credentialValue: credential });
 
-    const proofPageUrl = new URL('/plan/', `${siteOrigin}/`);
-    proofPageUrl.searchParams.set('realtime-conversation-probe', crypto.randomUUID());
-    await page.goto(proofPageUrl.href, { waitUntil: 'domcontentloaded', timeout: PROBE_TIMEOUT_MS });
+    const probePageUrl = new URL('/plan/', `${siteOrigin}/`);
+    probePageUrl.searchParams.set('realtime-proof', crypto.randomUUID());
+    await page.goto(probePageUrl.href, { waitUntil: 'domcontentloaded', timeout: PROBE_TIMEOUT_MS });
 
-    // Enter the meeting shell / launcher, then Start.
-    await page.waitForFunction(() => {
-      const shell = document.getElementById('realtimeVoiceShell');
-      const launcher = document.getElementById('realtimeVoiceLauncher');
-      return (shell && !shell.hidden) || (launcher && launcher.offsetParent !== null);
-    }, null, { timeout: PROBE_TIMEOUT_MS }).catch(() => {});
+    // An eligible session auto-opens the meeting surface and marks the
+    // background launcher inert (Playwright reports it hidden), so the entry
+    // point is ready when either the shell is open or the launcher is
+    // actionable. Bootstrap propagation can lag, so retry-navigate like the
+    // infrastructure proof does.
     const launcher = page.locator('#realtimeVoiceLauncher');
-    if (await launcher.isVisible().catch(() => false)) {
-      await launcher.click().catch(() => {});
+    const meetingEntryState = async () => page.evaluate(() => ({
+      shellOpen: document.getElementById('realtimeVoiceShell')?.hidden === false,
+      launcherShown: (() => {
+        const element = document.getElementById('realtimeVoiceLauncher');
+        return Boolean(element && element.closest('[hidden]') === null);
+      })()
+    }));
+    let entry = { shellOpen: false, launcherShown: false };
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      await page.waitForTimeout(3_000);
+      entry = await meetingEntryState();
+      if (entry.shellOpen || entry.launcherShown) break;
+      if (attempt < 10) {
+        probePageUrl.searchParams.set('realtime-proof', crypto.randomUUID());
+        await page.goto(probePageUrl.href, { waitUntil: 'domcontentloaded', timeout: PROBE_TIMEOUT_MS });
+      }
     }
+    assert.ok(entry.shellOpen || entry.launcherShown, 'The meeting shell/launcher never became available.');
+    if (!entry.shellOpen) await launcher.click().catch(() => {});
     const start = page.locator('#realtimeVoiceStartButton');
-    await start.waitFor({ state: 'visible', timeout: 10_000 });
+    await start.waitFor({ state: 'visible', timeout: 15_000 });
     await page.waitForFunction(() => {
       const button = document.getElementById('realtimeVoiceStartButton');
       return button instanceof HTMLButtonElement && button.disabled === false;
