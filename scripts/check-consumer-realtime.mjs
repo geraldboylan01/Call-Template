@@ -2766,10 +2766,21 @@ assert.deepEqual(terminalEvents.pop().slice(1, 3), [
   'provider_error',
   'invalid_api_key'
 ]);
-await rejectsCode(durable.executeTool('get_planning_state', { expectedRevision: 0 }, {
+// A pure read tolerates a stale expectedRevision and returns current state so
+// the model re-syncs — it must never fail closed and strand a "repeat that".
+const staleReadState = await durable.executeTool('get_planning_state', { expectedRevision: 0 }, {
   sessionRow: { current_profile_revision: 1 },
   state: { profileRevision: 1 }
-}), 'profile_revision_conflict');
+});
+assert.equal(staleReadState.ok, true, 'get_planning_state must tolerate a stale revision.');
+// A mutating tool still guards revision strictly.
+await rejectsCode(durable.executeTool('propose_facts', {
+  expectedRevision: 0,
+  facts: [{ factId: 'primary_goal', value: 'buy_home', certainty: 'exact', evidenceItemId: 'item_x' }]
+}, {
+  sessionRow: { current_profile_revision: 1 },
+  state: { profileRevision: 1 }
+}, 'tool-stale-mutation'), 'profile_revision_conflict');
 
 // wait_for_user emits its tool result but never schedules another paid model
 // response. It remains a true server-side pause even when the function call is

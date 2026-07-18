@@ -1934,7 +1934,11 @@ export class ConsumerRealtimeSession {
 
   async executeTool(toolName, args, context, toolAttemptId) {
     if (toolName === 'get_planning_state') {
-      this.requireExpectedRevision(args, context);
+      // A pure read tolerates a stale expectedRevision: it returns the current
+      // server-authoritative state (including the live revision) so the model
+      // re-syncs, instead of failing when it echoed a revision that advanced
+      // after the last turn saved a fact. This is what makes "repeat that"
+      // reliable right after facts were recorded.
       return {
         ok: true,
         ...context.state,
@@ -2158,7 +2162,7 @@ export class ConsumerRealtimeSession {
       };
     }
     if (toolName === 'get_module_plan') {
-      this.requireExpectedRevision(args, context);
+      // Read-only: tolerate a stale revision and return current state.
       return {
         ok: true,
         profileRevision: Number(context.sessionRow.current_profile_revision),
@@ -2233,7 +2237,8 @@ export class ConsumerRealtimeSession {
       };
     }
     if (toolName === 'wait_for_user') {
-      this.requireExpectedRevision(args, context);
+      // A no-op pause never mutates state; a stale revision must not turn it
+      // into an error that strands the meeting in silence.
       return { ok: true, waiting: true, reason: String(args.reason || 'consumer_reviewing').slice(0, 80) };
     }
     throw new ConsumerError(400, 'realtime_tool_not_allowed', 'That planning tool is not available.');
