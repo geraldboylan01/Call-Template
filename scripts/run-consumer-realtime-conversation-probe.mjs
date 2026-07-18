@@ -245,6 +245,11 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
     const context = await browser.newContext({ baseURL: siteOrigin });
     await context.grantPermissions(['microphone'], { origin: siteOrigin });
     const page = await context.newPage();
+    const pageConsoleErrors = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') pageConsoleErrors.push(message.text().slice(0, 300));
+    });
+    page.on('pageerror', (error) => pageConsoleErrors.push(`pageerror: ${String(error?.message || error).slice(0, 300)}`));
 
     // Override the microphone with a Web Audio destination we can push
     // per-turn speech into, so the real model transcribes genuine words.
@@ -344,71 +349,74 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
     assert.equal(connected, true, 'The conversation probe could not start a meeting.');
 
     // The append-only transcript history is the stable record of every spoken
-    // assistant line (captions are transient). Read it after each turn.
-    const readAssistantLines = async () => page.evaluate(() => {
+    // line (captions are transient). Read both roles after each turn.
+    const readLines = async (role) => page.evaluate((r) => {
       const list = document.getElementById('realtimeVoiceTranscriptHistory');
       if (!list) return [];
-      return [...list.querySelectorAll('li.realtime-history-item.is-assistant p')]
+      return [...list.querySelectorAll(`li.realtime-history-item.is-${r} p`)]
         .map((p) => p.textContent.trim())
         .filter(Boolean);
-    });
+    }, role);
+    const readServerTurns = async () => page.evaluate(async ({ workerOriginValue, sessionIdValue, credentialValue }) => {
+      const response = await fetch(`${workerOriginValue}/api/consumer/sessions/${encodeURIComponent(sessionIdValue)}`, {
+        headers: { Accept: 'application/json', 'X-Consumer-Session': credentialValue }
+      });
+      if (!response.ok) return { ok: false, status: response.status };
+      const payload = await response.json();
+      return {
+        ok: true,
+        realtimeTurns: Array.isArray(payload.realtimeTurns)
+          ? payload.realtimeTurns.map((t) => ({ role: t.role, text: String(t.transcript || '').slice(0, 200) }))
+          : [],
+        leaseStatus: payload.realtimeLease?.status || null,
+        closeReason: payload.realtimeLease?.closeReason || null
+      };
+    }, { workerOriginValue: workerOrigin, sessionIdValue: sessionId, credentialValue: credential }).catch((e) => ({ ok: false, error: String(e) }));
 
     // Wait for the greeting line to be spoken before the first turn.
     await page.waitForFunction(() => {
       const list = document.getElementById('realtimeVoiceTranscriptHistory');
       return list && list.querySelector('li.realtime-history-item.is-assistant p');
     }, null, { timeout: PROBE_TIMEOUT_MS }).catch(() => {});
-    const greetingLines = await readAssistantLines();
-    const greeting = greetingLines[0] || '';
+    const greeting = (await readLines('assistant'))[0] || '';
     record('planéir', greeting || '(no greeting captured)');
 
-    // Drive each scripted turn: push speech into the mic, force-commit the
-    // turn (tap the orb), then wait for a NEW assistant line to appear.
+    // Diagnostic-first: never throw mid-conversation. Record everything —
+    // what the model transcribed of my speech (proves audio reached the
+    // provider), what Planéir said back, and the server's turn ledger — then
+    // assert at the very end so one run reveals the whole picture.
+    const failures = [];
     for (let index = 0; index < CONVERSATION.length; index += 1) {
       const turn = CONVERSATION[index];
-      const beforeLines = await readAssistantLines();
-      const beforeCount = beforeLines.length;
-      record('you', turn.say);
+      const beforeAssistant = (await readLines('assistant')).length;
+      const beforeUser = (await readLines('user')).length;
+      record('you (intended)', turn.say);
       const duration = await page.evaluate((wav) => window.__probe.speak(wav), turnsAudio[index]);
-      await page.waitForTimeout(Math.min(20_000, Math.ceil((duration || 3) * 1000) + 400));
-      // Explicit "I've finished speaking".
-      await start.click().catch(() => {});
+      await page.waitForTimeout(Math.min(20_000, Math.ceil((duration || 3) * 1000) + 600));
+      await start.click().catch(() => {}); // explicit "I've finished speaking"
 
-      let newLines = [];
+      let newAssistant = [];
       const replyDeadline = Date.now() + TURN_REPLY_TIMEOUT_MS;
       while (Date.now() < replyDeadline) {
         await page.waitForTimeout(1_000);
-        const current = await readAssistantLines();
-        if (current.length > beforeCount) { newLines = current.slice(beforeCount); break; }
+        const current = await readLines('assistant');
+        if (current.length > beforeAssistant) { newAssistant = current.slice(beforeAssistant); break; }
       }
-      const reply = newLines.join(' ').trim();
+      const heardUser = (await readLines('user')).slice(beforeUser);
+      if (heardUser.length) record('you (model heard)', heardUser.join(' '));
+      const reply = newAssistant.join(' ').trim();
       record('planéir', reply || '(no reply — dead air)');
-      if (turn.expectReply) {
-        assert.ok(newLines.length > 0, `Turn "${turn.label}" received no spoken reply (dead air).`);
+
+      if (turn.expectReply && newAssistant.length === 0) {
+        failures.push(`Turn "${turn.label}" received no spoken reply (dead air).`);
       }
-      if (turn.mustNotRepeatGreeting && greeting) {
-        assert.notEqual(
-          reply.slice(0, 40),
-          greeting.slice(0, 40),
-          `Turn "${turn.label}" repeated the greeting instead of responding.`
-        );
+      if (turn.mustNotRepeatGreeting && greeting && reply.slice(0, 40) === greeting.slice(0, 40)) {
+        failures.push(`Turn "${turn.label}" repeated the greeting instead of responding.`);
       }
     }
-
-    // Capture the server-side planning context to confirm facts were captured.
-    const planningContext = await page.evaluate(async ({ workerOriginValue, sessionIdValue, credentialValue }) => {
-      const response = await fetch(`${workerOriginValue}/api/consumer/sessions/${encodeURIComponent(sessionIdValue)}`, {
-        headers: { Accept: 'application/json', 'X-Consumer-Session': credentialValue }
-      });
-      if (!response.ok) return { ok: false };
-      const payload = await response.json();
-      const profile = payload.profile || {};
-      const goals = Array.isArray(profile.goals) ? profile.goals.map((g) => g.type) : [];
-      const proposals = Array.isArray(payload.realtimeFactProposals) ? payload.realtimeFactProposals.length : 0;
-      return { ok: true, goals, proposals, turns: Array.isArray(payload.realtimeTurns) ? payload.realtimeTurns.length : 0 };
-    }, { workerOriginValue: workerOrigin, sessionIdValue: sessionId, credentialValue: credential }).catch(() => ({ ok: false }));
-
-    return { transcript, planningContext, sessionId };
+    const serverTurns = await readServerTurns();
+    const consoleErrors = pageConsoleErrors.slice(-8);
+    return { transcript, serverTurns, consoleErrors, failures, sessionId };
   } finally {
     await browser.close().catch(() => {});
     await requestJson(workerBaseUrl, `/api/consumer/sessions/${encodeURIComponent(sessionId)}`, {
@@ -419,6 +427,19 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
   }
 }
 
+function printResult(result) {
+  console.log('\n===== CONVERSATION TRANSCRIPT =====');
+  for (const line of result.transcript || []) {
+    console.log(`\n[${line.role}] ${line.text}`);
+  }
+  console.log('\n===== SERVER TURN LEDGER =====');
+  console.log(JSON.stringify(result.serverTurns, null, 2));
+  if (result.consoleErrors?.length) {
+    console.log('\n===== PAGE CONSOLE ERRORS =====');
+    for (const line of result.consoleErrors) console.log(`- ${line}`);
+  }
+}
+
 async function main() {
   const result = await runRealtimeConversationProbe({
     workerBaseUrl: String(process.env.WORKER_BASE_URL || '').trim().replace(/\/+$/, ''),
@@ -426,13 +447,13 @@ async function main() {
     password: String(process.env.ADVISOR_SMOKE_PASSWORD || '').trim(),
     openaiKey: String(process.env.OPENAI_API_KEY || '').trim()
   });
-  console.log('\n===== CONVERSATION TRANSCRIPT =====');
-  for (const line of result.transcript) {
-    console.log(`\n[${line.role}] ${line.text}`);
+  printResult(result);
+  if (result.failures?.length) {
+    console.log('\n===== FAILURES =====');
+    for (const line of result.failures) console.log(`- ${line}`);
+    throw new Error(`Conversation probe found ${result.failures.length} problem(s).`);
   }
-  console.log('\n===== PLANNING CONTEXT =====');
-  console.log(JSON.stringify(result.planningContext, null, 2));
-  console.log('\nConversation probe completed.');
+  console.log('\nConversation probe passed — the meeting held a natural conversation.');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
