@@ -1691,9 +1691,25 @@ export async function commitRealtimeFactConfirmation(env, request) {
       request.proposalId,
       request.sessionId,
       revision
+    ),
+    // Advance the live lease in lockstep with the session revision. Approved
+    // speech and speech-usage settlement are pinned to the lease's
+    // latest_profile_revision, so without this the acknowledgement for a
+    // just-saved fact cannot be enqueued (realtime_lease_conflict).
+    db(env).prepare(`
+      UPDATE consumer_realtime_sessions
+      SET latest_profile_revision = ?, last_active_at = ?
+      WHERE id = ? AND session_id = ? AND status = 'active'
+        AND latest_profile_revision = ?
+    `).bind(
+      revision,
+      timestamp,
+      request.leaseId,
+      request.sessionId,
+      currentRevision
     )
   ]);
-  if (results.slice(0, 3).some((result) => Number(result?.meta?.changes || 0) !== 1)) {
+  if ([results[0], results[1], results[2], results[4]].some((result) => Number(result?.meta?.changes || 0) !== 1)) {
     throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed before the spoken confirmation was saved. Review it again.');
   }
   const sessionRow = await db(env).prepare(`SELECT * FROM consumer_sessions WHERE id = ? LIMIT 1`)
