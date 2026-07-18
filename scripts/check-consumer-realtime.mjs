@@ -345,8 +345,8 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v5',
-  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v4',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v6',
+  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v5',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
   CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '750',
@@ -1635,7 +1635,7 @@ const startFactTool = async (toolName, argumentsValue, revision) => {
 };
 
 const hybridEvidenceId = 'item_fact_hybrid_001';
-factDurable.finalizedEvidenceItems.add(hybridEvidenceId);
+factDurable.finalizedEvidenceItems.add(hybridEvidenceId); factDurable.latestFinalizedEvidenceItemId = hybridEvidenceId;
 let factContext = await factDurable.planningContext();
 const exactControlledReadBack = 'You said available cash is exactly €65,000. Is that right?';
 const controlledReadBackOutput = await factDurable.attachWorkerSpeech('propose_facts', {
@@ -1678,6 +1678,32 @@ const hybridResult = await factDurable.executeTool(
 assert.equal(hybridResult.savedDrafts.length, 2);
 assert.equal(hybridResult.savedDrafts[0].factId, 'primary_goal');
 assert.equal(hybridResult.savedDrafts[1].factId, 'self_description');
+
+// Core fix (non-mutating unit check): gpt-realtime cannot reliably echo an
+// opaque evidence item id, so the server binds facts to the authoritative
+// latest finalized turn instead of trusting the model's echoed id. Even after
+// a Durable Object eviction wipes the in-memory set, the persisted latest id
+// is restored and accepted; with no finalized turn at all it fails closed.
+factDurable.finalizedEvidenceItems.clear(); // simulate eviction
+factDurable.latestFinalizedEvidenceItemId = hybridEvidenceId;
+assert.equal(
+  factDurable.authoritativeEvidenceItemId(),
+  hybridEvidenceId,
+  'The server must bind to the persisted latest finalized turn after eviction.'
+);
+assert.equal(
+  factDurable.finalizedEvidenceItems.has(hybridEvidenceId),
+  true,
+  'Resolving authoritative evidence must restore it into the finalized set.'
+);
+factDurable.latestFinalizedEvidenceItemId = null;
+assert.equal(
+  factDurable.authoritativeEvidenceItemId(),
+  null,
+  'With no finalized consumer turn, evidence resolution must fail closed.'
+);
+factDurable.finalizedEvidenceItems.add(hybridEvidenceId);
+factDurable.latestFinalizedEvidenceItemId = hybridEvidenceId;
 assert.equal(hybridResult.readBackRequired, true);
 assert.match(hybridResult.currentReadBackText, /available cash is approximately €65,000/);
 assert.equal(hybridResult.currentPendingProposal.factId, 'cash_savings');
@@ -1694,7 +1720,7 @@ assert.equal(factContext.state.realtimePhase, 'confirmation');
 assert.equal(factContext.state.facts[0].factId, 'cash_savings');
 assert.ok(realtimeToolsForState(factContext.state).some((tool) => tool.name === 'resolve_fact_confirmation'));
 const cashConfirmationId = 'item_fact_cash_confirm_001';
-factDurable.finalizedEvidenceItems.add(cashConfirmationId);
+factDurable.finalizedEvidenceItems.add(cashConfirmationId); factDurable.latestFinalizedEvidenceItemId = cashConfirmationId;
 const cashResolveArgs = {
   expectedRevision: 3,
   proposalId: hybridResult.currentProposalId,
@@ -1725,7 +1751,7 @@ assert.deepEqual(factContext.state.moduleSlots.map((slot) => slot.moduleId), [
 // markers. They never create a made-up canonical amount and are not asked again
 // in the same plan, while deterministic readiness remains missing.
 const unknownEvidenceId = 'item_fact_unknown_001';
-factDurable.finalizedEvidenceItems.add(unknownEvidenceId);
+factDurable.finalizedEvidenceItems.add(unknownEvidenceId); factDurable.latestFinalizedEvidenceItemId = unknownEvidenceId;
 factContext = await factDurable.planningContext();
 const unknownArgs = {
   expectedRevision: 4,
@@ -1744,7 +1770,7 @@ const unknownResult = await factDurable.executeTool(
 );
 assert.match(unknownResult.currentReadBackText, /do not know essential monthly spending yet/);
 const unknownConfirmationId = 'item_fact_unknown_confirm_001';
-factDurable.finalizedEvidenceItems.add(unknownConfirmationId);
+factDurable.finalizedEvidenceItems.add(unknownConfirmationId); factDurable.latestFinalizedEvidenceItemId = unknownConfirmationId;
 factContext = await factDurable.planningContext();
 const unknownResolveArgs = {
   expectedRevision: 4,
@@ -1777,7 +1803,7 @@ assert.equal(buildWorkerQuestionPlan(factProfile, [{
 }]).factId, null);
 
 const rangeEvidenceId = 'item_fact_range_001';
-factDurable.finalizedEvidenceItems.add(rangeEvidenceId);
+factDurable.finalizedEvidenceItems.add(rangeEvidenceId); factDurable.latestFinalizedEvidenceItemId = rangeEvidenceId;
 factContext = await factDurable.planningContext();
 const rangeArgs = {
   expectedRevision: 5,
@@ -1796,7 +1822,7 @@ const rangeResult = await factDurable.executeTool(
 );
 assert.match(rangeResult.currentReadBackText, /between €60,000 and €70,000/);
 const rangeConfirmationId = 'item_fact_range_confirm_001';
-factDurable.finalizedEvidenceItems.add(rangeConfirmationId);
+factDurable.finalizedEvidenceItems.add(rangeConfirmationId); factDurable.latestFinalizedEvidenceItemId = rangeConfirmationId;
 factContext = await factDurable.planningContext();
 const rangeResolveArgs = {
   expectedRevision: 5,
@@ -1821,7 +1847,7 @@ assert.ok(buildConfirmedRealtimeFactSummary(factProfile).some((fact) => (
 )));
 
 const invalidRangeEvidenceId = 'item_fact_bad_range_001';
-factDurable.finalizedEvidenceItems.add(invalidRangeEvidenceId);
+factDurable.finalizedEvidenceItems.add(invalidRangeEvidenceId); factDurable.latestFinalizedEvidenceItemId = invalidRangeEvidenceId;
 factContext = await factDurable.planningContext();
 await rejectsCode(factDurable.executeTool('propose_facts', {
   expectedRevision: 6,
@@ -1847,7 +1873,7 @@ await rejectsCode(factDurable.executeTool('propose_facts', {
 // partner and named entity records first so partner-owned/scalar facts never
 // fail spuriously or create default records for the wrong household person.
 const dependencyEvidenceId = 'item_fact_dependency_reverse_001';
-factDurable.finalizedEvidenceItems.add(dependencyEvidenceId);
+factDurable.finalizedEvidenceItems.add(dependencyEvidenceId); factDurable.latestFinalizedEvidenceItemId = dependencyEvidenceId;
 factContext = await factDurable.planningContext();
 const dependencyArgs = {
   expectedRevision: 6,
@@ -1923,7 +1949,7 @@ for (let index = 0; index < 2; index += 1) {
   assert.ok(dependencyPending, 'each dependent read-back remains confirmable after its parents are committed');
   dependencyConfirmationOrder.push(dependencyPending.factId);
   const evidenceItemId = `item_fact_dependency_confirm_${index + 1}`;
-  factDurable.finalizedEvidenceItems.add(evidenceItemId);
+  factDurable.finalizedEvidenceItems.add(evidenceItemId); factDurable.latestFinalizedEvidenceItemId = evidenceItemId;
   factContext = await factDurable.planningContext();
   const expectedRevision = Number(factContext.sessionRow.current_profile_revision);
   const resolveArgs = {
@@ -2856,7 +2882,7 @@ await state.storage.delete('queuedResponseAuthorization');
 // carries the allowed values, a tool_output response is queued, and no
 // failure speech interrupts the meeting. A repeat rejection in the same turn
 // speaks a conversational recovery instead of ending the interview.
-durable.finalizedEvidenceItems.add('item_reject_evidence_001');
+durable.finalizedEvidenceItems.add('item_reject_evidence_001'); durable.latestFinalizedEvidenceItemId = 'item_reject_evidence_001';
 durable.inResponse = true;
 durable.currentAuthorizedResponseId = 'response_reject_cycle_001';
 durable.currentResponseReason = 'finalized_user_item';

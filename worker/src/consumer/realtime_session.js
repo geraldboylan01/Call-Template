@@ -587,6 +587,12 @@ export class ConsumerRealtimeSession {
     this.lastResumedSpeechText = null;
     this.lastFinalizedTurnAt = 0;
     this.cancelledTurnReason = null;
+    // The opaque provider item id of the most recently finalized consumer
+    // turn. gpt-realtime cannot reliably echo an exact opaque id back as a
+    // tool argument, so the server — not the model — binds proposed facts to
+    // this authoritative evidence. Persisted so it survives Durable Object
+    // eviction between the transcription and the tool call.
+    this.latestFinalizedEvidenceItemId = null;
     this.pendingSessionPolicyHash = null;
     this.pendingSessionPolicySnapshot = null;
     this.currentSessionPolicyHash = null;
@@ -607,6 +613,10 @@ export class ConsumerRealtimeSession {
       this.currentSessionPolicyHash = await this.state.storage.get('currentSessionPolicyHash') || null;
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
       this.queuedResponseAuthorization = await this.state.storage.get('queuedResponseAuthorization') || null;
+      this.latestFinalizedEvidenceItemId = await this.state.storage.get('latestFinalizedEvidenceItemId') || null;
+      if (this.latestFinalizedEvidenceItemId) {
+        this.finalizedEvidenceItems.add(this.latestFinalizedEvidenceItemId);
+      }
     });
   }
 
@@ -862,6 +872,8 @@ export class ConsumerRealtimeSession {
       this.cancelledTurnReason = null;
       this.lastFinalizedTurnAt = Date.now();
       this.finalizedEvidenceItems.add(itemId);
+      this.latestFinalizedEvidenceItemId = itemId;
+      await this.state.storage.put('latestFinalizedEvidenceItemId', itemId).catch(() => {});
       await recordRealtimeFinalTurn(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -1881,6 +1893,17 @@ export class ConsumerRealtimeSession {
     }
   }
 
+  // The server-authoritative evidence for the current turn is the most
+  // recently finalized consumer item, not whatever opaque id the model echoed
+  // back (it cannot reproduce those reliably). Returns null only when no
+  // consumer turn has been finalized yet, which still fails closed.
+  authoritativeEvidenceItemId() {
+    const itemId = this.latestFinalizedEvidenceItemId;
+    if (!itemId || !validProviderId(itemId)) return null;
+    this.finalizedEvidenceItems.add(itemId);
+    return itemId;
+  }
+
   async executeTool(toolName, args, context, toolAttemptId) {
     if (toolName === 'get_planning_state') {
       this.requireExpectedRevision(args, context);
@@ -1895,6 +1918,18 @@ export class ConsumerRealtimeSession {
       if (!Array.isArray(args.facts) || args.facts.length < 1 || args.facts.length > 8) {
         throw new ConsumerError(400, 'realtime_fact_count_invalid', 'Propose between one and eight explicit facts from the finalized answer.');
       }
+      // The model cannot reliably echo the opaque evidence item id, so the
+      // server binds every proposed fact to the current finalized turn itself.
+      // This still fails closed when no consumer turn has been finalized.
+      const authoritativeEvidenceItemId = this.authoritativeEvidenceItemId();
+      if (!authoritativeEvidenceItemId) {
+        throw new ConsumerError(409, 'realtime_evidence_not_final', 'Wait for the consumer input item to finish before proposing or confirming facts.');
+      }
+      args.facts = args.facts.map((fact) => (
+        fact && typeof fact === 'object' && !Array.isArray(fact)
+          ? { ...fact, evidenceItemId: authoritativeEvidenceItemId }
+          : fact
+      ));
       const seenFactIds = new Set();
       const evidenceItems = new Set();
       args.facts.forEach((fact) => {
@@ -2015,6 +2050,14 @@ export class ConsumerRealtimeSession {
     }
     if (toolName === 'resolve_fact_confirmation') {
       this.requireExpectedRevision(args, context);
+      // Bind to the server-authoritative finalized turn (the consumer's spoken
+      // confirmation), not the opaque id the model echoed. The reuse guard
+      // below still requires it to differ from the proposal's own evidence.
+      const authoritativeEvidenceItemId = this.authoritativeEvidenceItemId();
+      if (!authoritativeEvidenceItemId) {
+        throw new ConsumerError(409, 'realtime_evidence_not_final', 'Wait for the consumer input item to finish before proposing or confirming facts.');
+      }
+      args.evidenceItemId = authoritativeEvidenceItemId;
       this.requireFinalizedEvidence(args.evidenceItemId);
       const proposal = await getPendingRealtimeFactProposal(
         this.env,

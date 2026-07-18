@@ -20,7 +20,7 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
   {
     type: 'function',
     name: 'propose_facts',
-    description: `Propose explicit facts only for server-approved semantic fact IDs. For an entity fact, send one object or {items:[...]} using operation upsert, remove or confirm_none and a stable entityId; use owner primary, partner or joint where requested. For Net Retirement, confirm no after-tax income with {operation:"confirm_none",scope:"net_retirement_income"} and no available cash/liquid investments with scope "retirement_available_assets" even when other records exist. The primary_goal value must be exactly one of: ${GOAL_TYPES.join(', ')} (a broad "how am I doing" review is understand_position). Choice facts accept only the values listed in get_planning_state factValueVocabulary. The server returns exact readBackText for material read-back facts and saves ordinary facts only as editable drafts for final visual confirmation.`,
+    description: `Propose explicit facts only for server-approved semantic fact IDs. For an entity fact, send one object or {items:[...]} using operation upsert, remove or confirm_none and a stable entityId; use owner primary, partner or joint where requested. For Net Retirement, confirm no after-tax income with {operation:"confirm_none",scope:"net_retirement_income"} and no available cash/liquid investments with scope "retirement_available_assets" even when other records exist. The primary_goal value must be exactly one of: ${GOAL_TYPES.join(', ')} (a broad "how am I doing" review is understand_position). Choice facts accept only the values listed in get_planning_state factValueVocabulary. Call this as soon as the consumer states anything mappable — a goal, life stage, or figure — rather than waiting. The server binds the evidence to the current finalized turn, returns exact readBackText for material read-back facts, and saves ordinary facts as editable drafts for final visual confirmation.`,
     parameters: {
       type: 'object', additionalProperties: false,
       required: ['expectedRevision', 'facts'],
@@ -35,6 +35,10 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
               factId: { type: 'string', minLength: 1, maxLength: 120 },
               value: {},
               certainty: { type: 'string', enum: ['exact', 'approximate', 'range', 'unknown'] },
+              // The server binds every fact to the current finalized consumer
+              // turn; this field is accepted for compatibility but its value is
+              // not trusted. Pass the finalized user item id when known, else
+              // any placeholder such as "latest".
               evidenceItemId: { type: 'string', minLength: 1, maxLength: 160 }
             }
           }
