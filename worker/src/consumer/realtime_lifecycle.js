@@ -42,10 +42,22 @@ async function closeThroughDurableObject(env, lease, options) {
     : null;
 }
 
+// A provider call cannot outlive its lease by hours: the session's own hard
+// expiry plus the provider's maximum call duration bound it. Beyond that
+// margin the call is proven dead by time alone, so cleanup must not depend on
+// the hangup endpoint answering for long-dead call ids.
+const HANGUP_TIME_PROOF_MARGIN_MS = 2 * 60 * 60 * 1000;
+
+function terminationTimeProven(lease) {
+  const hardExpiresMs = Date.parse(String(lease?.hard_expires_at || ''));
+  return Number.isFinite(hardExpiresMs)
+    && Date.now() - hardExpiresMs > HANGUP_TIME_PROOF_MARGIN_MS;
+}
+
 async function closeDirectly(env, lease, options) {
   const providerCallId = await getRealtimeProviderCallId(env, lease.session_id, lease.id);
   const wasDispatched = Boolean(lease.activated_at || lease.provider_call_id_hash_b64u || providerCallId);
-  if (wasDispatched) {
+  if (wasDispatched && !terminationTimeProven(lease)) {
     if (!providerCallId) {
       throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call could not be terminated safely. Please retry.');
     }
@@ -86,12 +98,18 @@ export async function terminateRealtimeLease(env, lease, options = {}) {
     errorCode: options.errorCode || null,
     usageKnown: options.usageKnown === true
   };
-  try {
-    const coordinated = await closeThroughDurableObject(env, lease, normalized);
-    if (coordinated) return coordinated;
-  } catch (_error) {
-    // The official provider hangup below is the fail-safe when the coordinator
-    // is unavailable. D1 is never purged before one of these paths confirms.
+  // A time-proven-dead lease goes straight to the direct close: its Durable
+  // Object is long evicted, and the coordinator round trip can only burn
+  // subrequests or fail.
+  if (!terminationTimeProven(lease)) {
+    try {
+      const coordinated = await closeThroughDurableObject(env, lease, normalized);
+      if (coordinated) return coordinated;
+    } catch (_error) {
+      // The official provider hangup below is the fail-safe when the
+      // coordinator is unavailable. D1 is never purged before one of these
+      // paths confirms.
+    }
   }
   return closeDirectly(env, lease, normalized);
 }

@@ -2423,10 +2423,16 @@ export class ConsumerRealtimeSession {
         || lease.provider_call_id_encrypted
         || providerCallId
       );
-      if (wasDispatched && !providerCallId) {
-        throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call could not be terminated safely.');
-      }
-      if (wasDispatched) {
+      // Hours past the hard expiry the provider call is proven dead by time
+      // alone (the provider hard-caps call duration); do not let a flaky
+      // dead-call hangup endpoint keep this close retrying.
+      const hardExpiresMs = Date.parse(String(lease.hard_expires_at || ''));
+      const terminationTimeProven = Number.isFinite(hardExpiresMs)
+        && Date.now() - hardExpiresMs > 2 * 60 * 60 * 1000;
+      if (wasDispatched && !terminationTimeProven) {
+        if (!providerCallId) {
+          throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call could not be terminated safely.');
+        }
         await hangupOpenAiRealtimeCall({ env: this.env, providerCallId });
       }
       hangupConfirmed = true;

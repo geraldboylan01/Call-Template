@@ -413,12 +413,12 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
 const HANGUP_ALREADY_ENDED_STATUSES = new Set([404, 410]);
 const HANGUP_ALREADY_ENDED_PATTERN = /(?:not[_-]?found|already|ended|inactive|expired|terminat|complete|no[_-]?active|closed)/i;
 
-export async function hangupOpenAiRealtimeCall({ env, providerCallId, timeoutMs = 5_000 }) {
+export async function hangupOpenAiRealtimeCall({ env, providerCallId, timeoutMs = 10_000 }) {
   if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(providerCallId || ''))) {
     throw new ConsumerError(502, 'realtime_hangup_invalid', 'The live provider call could not be terminated safely.');
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(1_000, Math.min(10_000, timeoutMs)));
+  const timeout = setTimeout(() => controller.abort(), Math.max(1_000, Math.min(15_000, timeoutMs)));
   try {
     const response = await fetch(
       `${OPENAI_REALTIME_CALLS_URL}/${encodeURIComponent(providerCallId)}/hangup`,
@@ -458,6 +458,12 @@ export async function hangupOpenAiRealtimeCall({ env, providerCallId, timeoutMs 
     throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call termination could not be confirmed.');
   } catch (error) {
     if (error instanceof ConsumerError) throw error;
+    // Distinguish an aborted/slow provider from a network failure in logs;
+    // both remain fail-closed uncertainties.
+    console.warn('OpenAI Realtime hangup request failed', {
+      name: String(error?.name || 'Error').slice(0, 60),
+      message: String(error?.message || error).slice(0, 160)
+    });
     throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call termination could not be confirmed.');
   } finally {
     clearTimeout(timeout);
