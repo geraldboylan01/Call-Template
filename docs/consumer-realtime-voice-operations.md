@@ -114,6 +114,25 @@ finished" control (tap on mobile) and the space bar commits on desktop. The
 browser's provider-event surface stays allowlisted to clearing and
 committing its own audio buffer.
 
+### Provider hang-up semantics and retry backoff
+
+Hanging up a call the provider reports as already gone (HTTP 404/410, or a
+4xx whose error body indicates the call ended) is a CONFIRMED termination.
+Treating it as uncertain left expired leases un-closable: their whole
+reservation stayed charged, and each stuck Durable Object re-armed a
+5-second close-retry alarm forever — four such loops exhausted the Workers
+free-tier Durable Object duration quota overnight and 500ed every new
+meeting until the daily quota reset. Close retries now back off
+exponentially from 5 seconds to a 10-minute cap. Ambiguous hang-up
+responses (5xx, unrelated 4xx) still fail closed and retain the
+reservation.
+
+Operational note: every live meeting holds a Durable Object with an open
+provider WebSocket for up to 15 minutes, so on the Workers FREE plan the
+Durable Object duration quota — not the € allowance — is the binding
+limit on daily meeting minutes. The Workers Paid plan removes that
+constraint.
+
 ### Uncertain-close settlement
 
 When a live meeting ends without provider-confirmed usage, the cost entry is
