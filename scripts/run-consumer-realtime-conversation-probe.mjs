@@ -35,7 +35,11 @@ const CONVERSATION = [
       + 'where I stand, making sure I can look after the little one, get my mortgage paid off, '
       + 'and eventually get the baby into college.',
     expectReply: true,
-    mustNotRepeatGreeting: true
+    mustNotRepeatGreeting: true,
+    // "Just had a baby" makes the classification obvious; an intelligent
+    // interview infers new_parent as a reviewable draft instead of reading a
+    // category menu back at the consumer.
+    mustNotMatch: /which best describes your situation/i
   },
   {
     label: 'repeat_request',
@@ -427,6 +431,9 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
       }
       if (turn.mustNotRepeatGreeting && greeting && reply.slice(0, 40) === greeting.slice(0, 40)) {
         failures.push(`Turn "${turn.label}" repeated the greeting instead of responding.`);
+      }
+      if (turn.mustNotMatch && turn.mustNotMatch.test(reply)) {
+        failures.push(`Turn "${turn.label}" asked a category menu instead of inferring the classification: "${reply.slice(0, 120)}"`);
       }
     }
     const serverTurns = await readServerTurns();
