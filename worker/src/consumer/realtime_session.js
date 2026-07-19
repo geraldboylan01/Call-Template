@@ -2375,6 +2375,24 @@ export class ConsumerRealtimeSession {
     }
   }
 
+  // Terminalization retries back off exponentially (5s doubling to a 10-minute
+  // cap). A flat 5-second alarm loop on a stuck close burned the entire
+  // Durable Object free-tier duration quota overnight and took every meeting
+  // down with it; a successful terminalize clears all storage, resetting the
+  // counter.
+  async scheduleTerminalizationRetry() {
+    let attempts = 0;
+    try {
+      attempts = Number(await this.state.storage.get('terminalizationRetryAttempts') || 0);
+    } catch (_error) {
+      attempts = 0;
+    }
+    attempts += 1;
+    await this.state.storage.put('terminalizationRetryAttempts', attempts).catch(() => {});
+    const delayMs = Math.min(600_000, 5_000 * 2 ** Math.min(attempts - 1, 10));
+    await this.state.storage.setAlarm(Date.now() + delayMs).catch(() => {});
+  }
+
   async terminalize(status, reason, errorCode, usageKnown) {
     if (!this.meta) return { providerHangupConfirmed: true };
     if (this.closing) {
@@ -2414,7 +2432,7 @@ export class ConsumerRealtimeSession {
       hangupConfirmed = true;
     } catch (error) {
       this.closing = false;
-      await this.state.storage.setAlarm(Date.now() + 5_000).catch(() => {});
+      await this.scheduleTerminalizationRetry();
       if (error instanceof ConsumerError) throw error;
       throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call could not be terminated safely.');
     }
@@ -2449,12 +2467,12 @@ export class ConsumerRealtimeSession {
       );
     } catch (_error) {
       this.closing = false;
-      await this.state.storage.setAlarm(Date.now() + 5_000).catch(() => {});
+      await this.scheduleTerminalizationRetry();
       throw new ConsumerError(503, 'realtime_close_failed', 'The live voice session could not be closed safely.');
     }
     if (!row || ['pending', 'active', 'closing'].includes(row.status)) {
       this.closing = false;
-      await this.state.storage.setAlarm(Date.now() + 5_000).catch(() => {});
+      await this.scheduleTerminalizationRetry();
       throw new ConsumerError(503, 'realtime_close_failed', 'The live voice session could not be closed safely.');
     }
     let speechUsageSettled = false;
