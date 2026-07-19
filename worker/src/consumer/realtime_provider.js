@@ -406,6 +406,13 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
   return { answerSdp, providerCallId };
 }
 
+// Provider responses that mean the call is already gone. Hanging up a call
+// that has ended is a SUCCESSFUL termination, not an uncertainty: treating it
+// as uncertain left expired leases un-closable forever, holding their whole
+// reservation against the daily allowance on every hourly cleanup attempt.
+const HANGUP_ALREADY_ENDED_STATUSES = new Set([404, 410]);
+const HANGUP_ALREADY_ENDED_PATTERN = /(?:not[_-]?found|already|ended|inactive|expired|terminat|complete|no[_-]?active|closed)/i;
+
 export async function hangupOpenAiRealtimeCall({ env, providerCallId, timeoutMs = 5_000 }) {
   if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(providerCallId || ''))) {
     throw new ConsumerError(502, 'realtime_hangup_invalid', 'The live provider call could not be terminated safely.');
@@ -424,11 +431,31 @@ export async function hangupOpenAiRealtimeCall({ env, providerCallId, timeoutMs 
         signal: controller.signal
       }
     );
-    response.body?.cancel().catch(() => {});
-    if (!response.ok && response.status !== 404) {
-      throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call termination could not be confirmed.');
+    if (response.ok || HANGUP_ALREADY_ENDED_STATUSES.has(response.status)) {
+      response.body?.cancel().catch(() => {});
+      return { confirmed: true };
     }
-    return { confirmed: true };
+    const diagnostic = await readProviderRejectionMetadata(response);
+    const descriptor = [
+      diagnostic.providerErrorCode,
+      diagnostic.providerErrorType,
+      diagnostic.providerErrorParam
+    ].filter(Boolean).join(':');
+    if (response.status < 500 && HANGUP_ALREADY_ENDED_PATTERN.test(descriptor)) {
+      console.warn('OpenAI Realtime hangup: call already ended', {
+        status: diagnostic.status,
+        code: diagnostic.providerErrorCode,
+        type: diagnostic.providerErrorType
+      });
+      return { confirmed: true };
+    }
+    console.warn('OpenAI Realtime hangup unconfirmed', {
+      status: diagnostic.status,
+      code: diagnostic.providerErrorCode,
+      type: diagnostic.providerErrorType,
+      requestId: diagnostic.providerRequestId
+    });
+    throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call termination could not be confirmed.');
   } catch (error) {
     if (error instanceof ConsumerError) throw error;
     throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call termination could not be confirmed.');

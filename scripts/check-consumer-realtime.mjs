@@ -666,6 +666,46 @@ assert.equal(providerCall.answerSdp, validSdp);
 assert.equal(providerCall.providerCallId, 'call_adversarial_test');
 assert.deepEqual(await hangupOpenAiRealtimeCall({ env, providerCallId: providerCall.providerCallId }), { confirmed: true });
 assert.equal(providerRequests.at(-1).url, 'https://api.openai.com/v1/realtime/calls/call_adversarial_test/hangup');
+
+// Hanging up a call the provider says is already gone IS a confirmed
+// termination — 404/410 by status, and 4xx bodies whose error indicates the
+// call ended. Anything ambiguous (5xx, unrelated 4xx) stays uncertain so the
+// reservation is retained. This is what lets the hourly cleanup close expired
+// leases instead of holding their whole reservation forever.
+{
+  const hangupFetch = globalThis.fetch;
+  const quietWarn = console.warn;
+  try {
+    console.warn = () => {};
+    globalThis.fetch = async () => new Response('', { status: 410 });
+    assert.deepEqual(
+      await hangupOpenAiRealtimeCall({ env, providerCallId: 'call_gone_410' }),
+      { confirmed: true }
+    );
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      error: { type: 'invalid_request_error', code: 'call_already_ended', message: 'The call has already ended.' }
+    }), { status: 422, headers: { 'Content-Type': 'application/json' } });
+    assert.deepEqual(
+      await hangupOpenAiRealtimeCall({ env, providerCallId: 'call_gone_422' }),
+      { confirmed: true }
+    );
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      error: { type: 'invalid_request_error', code: 'rate_limit_exceeded', message: 'Slow down.' }
+    }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+    await assert.rejects(
+      hangupOpenAiRealtimeCall({ env, providerCallId: 'call_ambiguous_429' }),
+      (error) => error?.code === 'realtime_hangup_uncertain'
+    );
+    globalThis.fetch = async () => new Response('', { status: 500 });
+    await assert.rejects(
+      hangupOpenAiRealtimeCall({ env, providerCallId: 'call_server_error' }),
+      (error) => error?.code === 'realtime_hangup_uncertain'
+    );
+  } finally {
+    globalThis.fetch = hangupFetch;
+    console.warn = quietWarn;
+  }
+}
 const originalConsoleWarn = console.warn;
 let providerRejectionWarning;
 try {
