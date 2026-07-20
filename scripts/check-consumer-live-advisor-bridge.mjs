@@ -460,7 +460,12 @@ async function main() {
       assert.equal(proof.audibleGreetingObserved, true, 'The production companion greeting was not proven.');
       assert.equal(proof.webRtcConnected, true, 'The production WebRTC connection was not proven.');
       assert.equal(proof.sidebandConnected, true, 'The production sideband connection was not proven.');
-      assert.equal(proof.readOnlyToolSucceeded, true, 'The production read-only planning tool was not proven.');
+      if (proof.conversationVersion === 'v2') {
+        assert.equal(proof.directProviderAudioAttached, true, 'The production direct Marin audio stream was not proven.');
+        assert.equal(proof.initialWelcomeSucceeded, true, 'The production server-authorized Marin welcome was not proven.');
+      } else {
+        assert.equal(proof.readOnlyToolSucceeded, true, 'The production read-only planning tool was not proven.');
+      }
       assert.equal(proof.providerHangupConfirmed, true, 'The production provider hang-up was not proven.');
     }
 

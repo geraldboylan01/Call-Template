@@ -32,6 +32,13 @@ or any deterministic calculation engine.
 `CONSUMER_REALTIME_CONVERSATION_V2_ENABLED="false"`. The production workflow
 refuses a committed `true` value for either switch.
 
+When the invite-only Realtime adviser canary is active, the production
+workflow now defaults the independent conversation switch to v2. Set the
+protected repository variable
+`CONSUMER_REALTIME_CONVERSATION_V2_ENABLED=false` for the immediate controlled
+v1 rollback. This default cannot activate Realtime outside the separately
+approved adviser canary.
+
 The canary is enabled only when all of the following are true:
 
 1. the existing signed-invite adviser beta is enabled;
@@ -114,8 +121,8 @@ transcription so the recovery plays promptly.
 
 `CONSUMER_REALTIME_CONVERSATION_V2_ENABLED` is an independent rollout and
 rollback switch. It can be enabled only while the adviser Realtime canary is
-already active. Set the protected repository variable to `true` for the v2
-adviser cohort; set it to `false` to return immediately to the controlled v1
+already active. The reviewed adviser canary defaults to v2; set the protected
+repository variable to `false` to return immediately to the controlled v1
 journey without disabling typed or bounded voice.
 
 In v2, `gpt-realtime-2.1` owns ordinary audio dialogue with `marin`, low
@@ -125,6 +132,13 @@ responses. A silent Responses planner runs after each finalized client turn,
 has a 2.5-second foreground deadline, validates candidates independently and
 gets one idempotent catch-up attempt after a timeout. It cannot choose modules,
 confirm facts or calculate results.
+
+The first server-authorized response is a short, tool-free Marin welcome. The
+browser keeps its outbound microphone track disabled until the WebRTC output
+audio buffer stops (with `response.done` as a compatibility fallback), so
+Planéir can introduce himself, explain the review-and-confirm contract and put
+the client at ease before intake begins. The silent Responses planner is not
+called until the first finalized client transcript.
 
 The Worker converts planner-facing position kinds (`cash`, `investment`,
 `property`, `pension`, `mortgage`, `loan`, `business`, `other`) into the

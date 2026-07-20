@@ -282,6 +282,8 @@ export function classifyRealtimeEvent(event) {
   }
   if (type === 'response.created') return { ...base, kind: 'response_started' };
   if (type === 'response.done') return { ...base, kind: 'response_done' };
+  if (type === 'output_audio_buffer.started') return { ...base, kind: 'assistant_playback_started' };
+  if (type === 'output_audio_buffer.stopped') return { ...base, kind: 'assistant_playback_stopped' };
   if (type === 'response.output_audio.delta' || type === 'response.audio.delta') {
     return { ...base, kind: 'assistant_audio' };
   }
@@ -813,6 +815,8 @@ export class RealtimeVoiceController {
     this.bound = false;
     this.responseInProgress = false;
     this.awaitingWorkerSpeech = false;
+    this.welcomePending = false;
+    this.welcomePlaybackStarted = false;
     this.controlledSpeechController = null;
     this.controlledSpeechUrl = '';
     this.controlledSpeechReader = null;
@@ -1089,7 +1093,7 @@ export class RealtimeVoiceController {
     });
     if (start) {
       start.disabled = this.active
-        ? false
+        ? this.welcomePending
         : (context.journeyBusy
           || context.consentRefreshRequired
           || !context.configured
@@ -1097,7 +1101,9 @@ export class RealtimeVoiceController {
           || exhausted);
       start.setAttribute('aria-pressed', this.active ? 'true' : 'false');
       start.setAttribute('aria-label', this.active
-        ? 'Finish your answer and send it to Planéir'
+        ? (this.welcomePending
+            ? 'Planéir is welcoming you'
+            : 'Finish your answer and send it to Planéir')
         : 'Start Live voice');
     }
     if (orbLabel) {
@@ -1117,14 +1123,18 @@ export class RealtimeVoiceController {
       orbLabel.textContent = labels[this.phase] || 'Start your Planéir meeting';
     }
     if (mute) {
-      mute.disabled = !this.active;
+      mute.disabled = !this.active || this.welcomePending;
       mute.textContent = this.muted ? 'Unmute microphone' : 'Mute microphone';
       mute.setAttribute('aria-pressed', this.muted ? 'true' : 'false');
     }
     if (end) end.disabled = !this.active;
     if (resume && !this.active) resume.hidden = true;
     if (typedFallback) typedFallback.hidden = false;
-    if (micBadge) micBadge.textContent = this.active ? (this.muted ? 'Mic muted' : 'Mic on') : 'Mic off';
+    if (micBadge) {
+      micBadge.textContent = this.active
+        ? (this.welcomePending ? 'Mic starts after welcome' : (this.muted ? 'Mic muted' : 'Mic on'))
+        : 'Mic off';
+    }
     if (status) status.textContent = this.statusText || 'Press the button when you’re ready to begin.';
     if (launcher) {
       launcher.setAttribute('aria-label', this.active
@@ -1276,11 +1286,17 @@ export class RealtimeVoiceController {
       this.leaseId = call.leaseId;
       this.controlCapability = call.controlCapability;
       this.conversationVersion = call.conversationVersion;
+      this.setWelcomePending(call.conversationVersion === 'v2');
       if (call.payload) this.acceptServerPayload(call.payload);
       this.configureLeaseExpiry(call, context);
       await peer.setRemoteDescription({ type: 'answer', sdp: call.sdp });
       if (generation !== this.generation || controller.signal.aborted) return;
-      this.setPhase('listening', 'I’m listening — take your time.');
+      this.setPhase(
+        this.welcomePending ? 'thinking' : 'listening',
+        this.welcomePending
+          ? 'Planéir is about to welcome you. Your microphone will switch on afterwards.'
+          : 'I’m listening — take your time.'
+      );
       this.scheduleLeasePoll(1_500);
     } catch (error) {
       const sessionId = context.sessionId;
@@ -1366,9 +1382,14 @@ export class RealtimeVoiceController {
         if (this.disconnectTimer !== null) window.clearTimeout(this.disconnectTimer);
         this.disconnectTimer = null;
         if (this.phase === 'connecting' || this.phase === 'reconnecting') {
-          this.setPhase(this.muted ? 'muted' : 'listening', this.muted
-            ? 'Reconnected. Your microphone is still paused.'
-            : 'I’m listening — take your time.');
+          this.setPhase(
+            this.welcomePending ? 'thinking' : (this.muted ? 'muted' : 'listening'),
+            this.welcomePending
+              ? 'Planéir is about to welcome you. Your microphone will switch on afterwards.'
+              : this.muted
+                ? 'Reconnected. Your microphone is still paused.'
+                : 'I’m listening — take your time.'
+          );
         }
         return;
       }
@@ -1430,6 +1451,19 @@ export class RealtimeVoiceController {
         this.renderMicrophoneState();
       });
     }, { once: true });
+  }
+
+  setWelcomePending(pending) {
+    this.welcomePending = pending === true && this.conversationVersion === 'v2';
+    if (!this.welcomePending) this.welcomePlaybackStarted = false;
+    const captureEnabled = this.active
+      && !this.welcomePending
+      && !this.muted
+      && !this.microphoneRecoveryRequired;
+    this.localStream?.getAudioTracks?.().forEach((track) => {
+      track.enabled = captureEnabled;
+    });
+    this.updateUi();
   }
 
   async openMicrophoneStream(
@@ -1640,7 +1674,9 @@ export class RealtimeVoiceController {
       status.textContent = this.deviceRefreshInFlight
         ? 'Checking available microphones…'
         : this.active
-          ? `${this.muted ? 'Muted' : 'Using'}: ${displayLabel}`
+          ? this.welcomePending
+            ? `Starts after Planéir’s welcome: ${displayLabel}`
+            : `${this.muted ? 'Muted' : 'Using'}: ${displayLabel}`
           : selectedLabel
             ? `Ready to use: ${selectedLabel}`
             : this.microphoneDevices.length > 0
@@ -1696,7 +1732,7 @@ export class RealtimeVoiceController {
       if (!nextTrack || !sender?.replaceTrack) {
         throw new Error('This browser cannot switch microphones during a meeting.');
       }
-      nextTrack.enabled = !this.muted;
+      nextTrack.enabled = !this.muted && !this.welcomePending;
       await sender.replaceTrack(nextTrack);
       if (!this.active || generation !== this.generation) {
         stopTracks(nextStream);
@@ -1744,7 +1780,12 @@ export class RealtimeVoiceController {
     channel.addEventListener('open', () => {
       if (generation !== this.generation || !this.active) return;
       if (this.phase === 'connecting') {
-        this.setPhase('listening', 'I’m listening — take your time.');
+        this.setPhase(
+          this.welcomePending ? 'thinking' : 'listening',
+          this.welcomePending
+            ? 'Planéir is about to welcome you. Your microphone will switch on afterwards.'
+            : 'I’m listening — take your time.'
+        );
       }
     });
     channel.addEventListener('message', (event) => {
@@ -1822,7 +1863,9 @@ export class RealtimeVoiceController {
           return;
         }
         this.appendCaptionDelta('assistant', event.itemId, event.text);
-        this.setPhase('assistant_speaking', 'Planéir is speaking… You can interrupt naturally.');
+        this.setPhase('assistant_speaking', this.welcomePending
+          ? 'Planéir is welcoming you. Your microphone will switch on when he finishes.'
+          : 'Planéir is speaking… You can interrupt naturally.');
         return;
       case 'assistant_audio':
         if (this.conversationVersion !== 'v2') {
@@ -1830,7 +1873,25 @@ export class RealtimeVoiceController {
           return;
         }
         this.awaitingWorkerSpeech = false;
-        this.setPhase('assistant_speaking', 'Planéir is speaking… You can interrupt naturally.');
+        this.setPhase('assistant_speaking', this.welcomePending
+          ? 'Planéir is welcoming you. Your microphone will switch on when he finishes.'
+          : 'Planéir is speaking… You can interrupt naturally.');
+        return;
+      case 'assistant_playback_started':
+        if (this.conversationVersion === 'v2' && this.welcomePending) {
+          this.welcomePlaybackStarted = true;
+          this.setPhase('assistant_speaking', 'Planéir is welcoming you. Your microphone will switch on when he finishes.');
+        }
+        return;
+      case 'assistant_playback_stopped':
+        if (this.conversationVersion === 'v2' && this.welcomePending) {
+          this.setWelcomePending(false);
+          if (!this.responseInProgress && !['user_speaking', 'interrupted'].includes(this.phase)) {
+            this.setPhase(this.muted ? 'muted' : 'listening', this.muted
+              ? 'Your microphone is paused. Unmute when you’re ready to continue.'
+              : 'I’m listening — take your time.');
+          }
+        }
         return;
       case 'assistant_final':
         if (this.conversationVersion !== 'v2') {
@@ -1886,8 +1947,16 @@ export class RealtimeVoiceController {
         return;
       case 'response_done':
         this.responseInProgress = false;
-        if (this.conversationVersion === 'v2') this.awaitingWorkerSpeech = false;
-        if (!this.currentControlledSpeech
+        if (this.conversationVersion === 'v2') {
+          this.awaitingWorkerSpeech = false;
+          // WebRTC emits output_audio_buffer.stopped after buffered playback
+          // finishes. Keep the microphone gated until then when playback was
+          // observed; response.done remains the compatibility fallback.
+          if (!this.welcomePlaybackStarted) this.setWelcomePending(false);
+        }
+        if (this.welcomePending) {
+          this.setPhase('assistant_speaking', 'Planéir is welcoming you. Your microphone will switch on when he finishes.');
+        } else if (!this.currentControlledSpeech
           && !this.awaitingWorkerSpeech
           && !['user_speaking', 'interrupted'].includes(this.phase)) {
           this.setPhase(this.muted ? 'muted' : 'listening', this.muted
@@ -2461,7 +2530,7 @@ export class RealtimeVoiceController {
   // mistimed press is harmless — an empty-buffer commit is a benign,
   // recoverable provider error on both ends.
   commitTurn() {
-    if (!this.active || this.muted) return false;
+    if (!this.active || this.muted || this.welcomePending) return false;
     const sent = this.sendEvent({
       type: 'input_audio_buffer.commit',
       event_id: newIdempotencyKey('turn')
@@ -2473,7 +2542,7 @@ export class RealtimeVoiceController {
   }
 
   toggleMute() {
-    if (!this.active || !this.localStream) return;
+    if (!this.active || !this.localStream || this.welcomePending) return;
     const preserveVoicePhase = MICROPHONE_ORTHOGONAL_PHASES.has(this.phase);
     this.muted = !this.muted;
     this.localStream.getAudioTracks().forEach((track) => {
@@ -2721,6 +2790,8 @@ export class RealtimeVoiceController {
     this.muted = false;
     this.responseInProgress = false;
     this.awaitingWorkerSpeech = false;
+    this.welcomePending = false;
+    this.welcomePlaybackStarted = false;
     this.stopControlledSpeech();
     this.startController?.abort('realtime_voice_ended');
     this.pollController?.abort('realtime_voice_ended');

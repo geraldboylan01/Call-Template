@@ -507,11 +507,17 @@ export async function getRealtimeControlPlaneProof(env, sessionId, leaseId) {
         WHERE session_id = ? AND realtime_session_id = ?
           AND tool_name = 'get_planning_state' AND status = 'succeeded'
           AND completed_at IS NOT NULL
-      ) AS read_only_tool_succeeded
-  `).bind(sessionId, leaseId, sessionId, leaseId).first();
+      ) AS read_only_tool_succeeded,
+      EXISTS (
+        SELECT 1 FROM consumer_realtime_events
+        WHERE session_id = ? AND realtime_session_id = ?
+          AND event_type = 'realtime.response.completed'
+      ) AS initial_welcome_succeeded
+  `).bind(sessionId, leaseId, sessionId, leaseId, sessionId, leaseId).first();
   return {
     sidebandConnected: Number(row?.sideband_connected) === 1,
-    readOnlyToolSucceeded: Number(row?.read_only_tool_succeeded) === 1
+    readOnlyToolSucceeded: Number(row?.read_only_tool_succeeded) === 1,
+    initialWelcomeSucceeded: Number(row?.initial_welcome_succeeded) === 1
   };
 }
 

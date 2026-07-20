@@ -479,6 +479,8 @@ for (const provenBoundary of [
   'webRtcConnected',
   'sidebandConnected',
   'readOnlyToolSucceeded',
+  'directProviderAudioAttached',
+  'initialWelcomeSucceeded',
   'providerHangupConfirmed'
 ]) {
   assert.match(liveAdvisorBridgeSource, new RegExp(`proof\\.${provenBoundary}`));
@@ -490,7 +492,7 @@ assert.match(realtimeInfrastructureProofSource, /controlledSpeechPromise/);
 assert.match(realtimeInfrastructureProofSource, /x-realtime-speech-id/);
 assert.match(realtimeInfrastructureProofSource, /audio\.srcObject === null/);
 assert.match(realtimeInfrastructureProofSource, /controlledSpeechPlayed/);
-assert.doesNotMatch(realtimeInfrastructureProofSource, /srcObject instanceof MediaStream/);
+assert.match(realtimeInfrastructureProofSource, /srcObject instanceof MediaStream/);
 assert.doesNotMatch(realtimeInfrastructureProofSource, /new RTCPeerConnection\(\)/);
 assert.doesNotMatch(realtimeInfrastructureProofSource, /createDataChannel\('oai-events'\)/);
 assert.match(realtimeInfrastructureProofSource, /await launcher\.click\(\)/);
@@ -509,6 +511,7 @@ assert.match(realtimeInfrastructureProofSource, /errorPayload\?\.error\?\.code/)
 assert.match(realtimeInfrastructureProofSource, /x-realtime-lease-id/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.sidebandConnected, true/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.readOnlyToolSucceeded, true/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.initialWelcomeSucceeded, true/);
 assert.match(realtimeInfrastructureProofSource, /response\.request\(\)\.method\(\) === 'DELETE'/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(closedPayload\.providerHangupConfirmed, true/);
 assert.match(realtimeInfrastructureProofSource, /finally \{/);
@@ -675,7 +678,7 @@ const realtimeDeploymentPolicy = {
   realtimeVoice: 'marin',
   realtimeReasoningEffort: 'low',
   realtimeTranscriptionModel: 'gpt-4o-mini-transcribe',
-  realtimePromptVersion: 'consumer-realtime-orchestrator-v7',
+  realtimePromptVersion: 'consumer-realtime-orchestrator-v8',
   realtimeToolsetVersion: 'consumer-realtime-tools-v6',
   realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   realtimeSessionBudgetMicroEur: 10_000_000,
@@ -1223,7 +1226,7 @@ const realtimeVoicePreviewConfig = {
   realtimeVoice: 'marin',
   realtimeReasoningEffort: 'low',
   realtimeTranscriptionModel: 'gpt-4o-mini-transcribe',
-  realtimePromptVersion: 'consumer-realtime-orchestrator-v7',
+  realtimePromptVersion: 'consumer-realtime-orchestrator-v8',
   realtimeToolsetVersion: 'consumer-realtime-tools-v6',
   realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   realtimeSpeechModel: 'gpt-4o-mini-tts',

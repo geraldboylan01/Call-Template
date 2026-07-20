@@ -1001,6 +1001,8 @@ assert.deepEqual(
 );
 assert.equal(classifyRealtimeEvent({ type: 'input_audio_buffer.speech_started' }).kind, 'speech_started');
 assert.equal(classifyRealtimeEvent({ type: 'response.output_audio.delta' }).kind, 'assistant_audio');
+assert.equal(classifyRealtimeEvent({ type: 'output_audio_buffer.started' }).kind, 'assistant_playback_started');
+assert.equal(classifyRealtimeEvent({ type: 'output_audio_buffer.stopped' }).kind, 'assistant_playback_stopped');
 for (const type of ['conversation.item.created', 'conversation.item.added', 'conversation.item.done']) {
   const planningUpdate = classifyRealtimeEvent({
     type,
@@ -1304,6 +1306,53 @@ assert.equal(
   'worker-controlled-audio-only',
   'The provider media stream must never be assigned to the companion audio element.'
 );
+const directAudioElement = {
+  srcObject: null,
+  playCalls: 0,
+  play() { this.playCalls += 1; return Promise.resolve(); }
+};
+const directPeerListeners = new Map();
+const directTrackController = new RealtimeVoiceController({
+  root: {
+    querySelector: (selector) => selector === '#realtimeVoiceAudio' ? directAudioElement : null
+  }
+});
+directTrackController.conversationVersion = 'v2';
+directTrackController.bindPeerConnection({
+  addEventListener: (type, listener) => directPeerListeners.set(type, listener)
+}, directTrackController.generation);
+const marinTrack = { enabled: false };
+const marinStream = { id: 'direct-marin-stream' };
+directPeerListeners.get('track')?.({ track: marinTrack, streams: [marinStream] });
+assert.equal(marinTrack.enabled, true);
+assert.equal(directAudioElement.srcObject, marinStream);
+assert.equal(directAudioElement.playCalls, 1);
+
+// V2 holds the outbound microphone track until the server-authorized Marin
+// welcome completes. No click or space press can commit intake audio early.
+const welcomeTrack = { kind: 'audio', enabled: true, stop: () => {} };
+const welcomeController = new RealtimeVoiceController({ root: null });
+welcomeController.active = true;
+welcomeController.conversationVersion = 'v2';
+welcomeController.localStream = {
+  getAudioTracks: () => [welcomeTrack],
+  getTracks: () => [welcomeTrack]
+};
+welcomeController.setWelcomePending(true);
+assert.equal(welcomeTrack.enabled, false);
+assert.equal(welcomeController.commitTurn(), false);
+welcomeController.handleRealtimeEvent({ type: 'response.created' });
+welcomeController.handleRealtimeEvent({ type: 'response.output_audio.delta' });
+assert.equal(welcomeTrack.enabled, false, 'Client audio must remain gated while Marin is welcoming the client.');
+welcomeController.handleRealtimeEvent({ type: 'output_audio_buffer.started' });
+welcomeController.handleRealtimeEvent({ type: 'response.done' });
+assert.equal(welcomeController.welcomePending, true, 'A completed response may still have buffered welcome audio playing.');
+assert.equal(welcomeTrack.enabled, false, 'Client audio must remain gated until buffered welcome playback stops.');
+welcomeController.handleRealtimeEvent({ type: 'output_audio_buffer.stopped' });
+assert.equal(welcomeController.welcomePending, false);
+assert.equal(welcomeTrack.enabled, true, 'Client audio must open immediately after the welcome playback stops.');
+assert.equal(welcomeController.phase, 'listening');
+welcomeController.cleanupLocal();
 
 const sentRealtimeEvents = [];
 realtimeController.active = true;

@@ -60,18 +60,31 @@ export async function runRealtimeInfrastructureProof({
     // Settle the live flag across consecutive samples before any paid, rate
     // limited Start attempt.
     let consecutiveEnabledSamples = 0;
+    let conversationVersion = 'v1';
+    let previousEnabledVersion = '';
     for (let attempt = 1; attempt <= REALTIME_FLAG_SETTLE_MAX_ATTEMPTS; attempt += 1) {
       let enabled = false;
+      let sampledVersion = '';
       try {
         const response = await fetch(`${workerOrigin}/api/consumer/bootstrap`, {
           headers: { Origin: siteOrigin }
         });
         const payload = response.ok ? await response.json() : null;
         enabled = payload?.flags?.consumerRealtimeVoiceEnabled === true;
+        sampledVersion = payload?.realtimeVoice?.conversationVersion === 'v2' ? 'v2' : 'v1';
       } catch (_error) {
         enabled = false;
       }
-      consecutiveEnabledSamples = enabled ? consecutiveEnabledSamples + 1 : 0;
+      if (enabled) {
+        consecutiveEnabledSamples = sampledVersion === previousEnabledVersion
+          ? consecutiveEnabledSamples + 1
+          : 1;
+        previousEnabledVersion = sampledVersion;
+        conversationVersion = sampledVersion;
+      } else {
+        consecutiveEnabledSamples = 0;
+        previousEnabledVersion = '';
+      }
       if (consecutiveEnabledSamples >= REALTIME_FLAG_SETTLE_SAMPLES) break;
       await new Promise((resolve) => setTimeout(resolve, REALTIME_FLAG_SETTLE_INTERVAL_MS));
     }
@@ -169,15 +182,17 @@ export async function runRealtimeInfrastructureProof({
     let leaseId = '';
     let controlCapability = '';
     try {
-      const controlledSpeechPromise = page.waitForResponse((response) => {
-        const url = new URL(response.url());
-        return response.request().method() === 'POST'
-          && url.pathname.startsWith(`${endpointPath}/rt_`)
-          && url.pathname.endsWith('/speech');
-      }, { timeout: PROOF_TIMEOUT_MS }).then(
-        (response) => ({ response, error: null }),
-        (error) => ({ response: null, error })
-      );
+      const controlledSpeechPromise = conversationVersion === 'v1'
+        ? page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return response.request().method() === 'POST'
+              && url.pathname.startsWith(`${endpointPath}/rt_`)
+              && url.pathname.endsWith('/speech');
+          }, { timeout: PROOF_TIMEOUT_MS }).then(
+            (response) => ({ response, error: null }),
+            (error) => ({ response: null, error })
+          )
+        : null;
       let created = null;
       for (let attempt = 1; attempt <= MAX_PROPAGATION_ATTEMPTS; attempt += 1) {
         const createdPromise = page.waitForResponse((response) => {
@@ -239,7 +254,8 @@ export async function runRealtimeInfrastructureProof({
         leaseIdValue,
         credentialValue,
         controlCapabilityValue,
-        timeoutMs
+        timeoutMs,
+        conversationVersionValue
       }) => {
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
@@ -253,7 +269,10 @@ export async function runRealtimeInfrastructureProof({
           if (!response.ok) throw new Error(`Realtime proof status returned HTTP ${response.status}.`);
           const payload = await response.json();
           const control = payload.controlPlane || payload.infrastructureProof || {};
-          if (control.sidebandConnected === true && control.readOnlyToolSucceeded === true) return control;
+          const welcomeProven = conversationVersionValue === 'v2'
+            ? control.initialWelcomeSucceeded === true
+            : control.readOnlyToolSucceeded === true;
+          if (control.sidebandConnected === true && welcomeProven) return control;
           const lease = payload.realtimeLease || {};
           if (lease.status && !['pending', 'active'].includes(lease.status)) {
             const reason = String(lease.closeReason || 'unknown').slice(0, 100);
@@ -262,75 +281,82 @@ export async function runRealtimeInfrastructureProof({
           }
           await new Promise((resolve) => window.setTimeout(resolve, 500));
         }
-        throw new Error('The authenticated sideband tool proof did not complete in time.');
+        throw new Error('The authenticated sideband welcome proof did not complete in time.');
       }, {
         workerOriginValue: workerOrigin,
         endpointPathValue: endpointPath,
         leaseIdValue: leaseId,
         credentialValue: credential,
         controlCapabilityValue: controlCapability,
-        timeoutMs: PROOF_TIMEOUT_MS
+        timeoutMs: PROOF_TIMEOUT_MS,
+        conversationVersionValue: conversationVersion
       });
       assert.equal(proof.sidebandConnected, true, 'The authenticated provider sideband was not proven.');
-      assert.equal(proof.readOnlyToolSucceeded, true, 'The forced get_planning_state tool did not succeed.');
+      if (conversationVersion === 'v2') {
+        assert.equal(proof.initialWelcomeSucceeded, true, 'The server-authorized Marin welcome did not complete.');
+      } else {
+        assert.equal(proof.readOnlyToolSucceeded, true, 'The forced get_planning_state tool did not succeed.');
+      }
 
-      const controlledSpeechOutcome = await controlledSpeechPromise;
-      if (controlledSpeechOutcome.error) {
-        const leaseDiagnostic = await page.evaluate(async ({
-          workerOriginValue,
-          endpointPathValue,
-          leaseIdValue,
-          credentialValue,
-          controlCapabilityValue
-        }) => {
-          const response = await fetch(`${workerOriginValue}${endpointPathValue}/${encodeURIComponent(leaseIdValue)}`, {
-            headers: {
-              Accept: 'application/json',
-              'X-Consumer-Session': credentialValue,
-              'X-Realtime-Control-Capability': controlCapabilityValue
-            }
-          });
-          const payload = response.ok ? await response.json() : {};
-          const lease = payload.realtimeLease || {};
-          return {
-            httpStatus: response.status,
-            status: String(lease.status || 'unknown').slice(0, 40),
-            closeReason: String(lease.closeReason || 'unknown').slice(0, 100),
-            errorCode: String(lease.errorCode || 'none').slice(0, 120),
-            controlPresent: Boolean(payload.realtimeControl)
-          };
-        }, {
-          workerOriginValue: workerOrigin,
-          endpointPathValue: endpointPath,
-          leaseIdValue: leaseId,
-          credentialValue: credential,
-          controlCapabilityValue: controlCapability
-        }).catch(() => ({
-          httpStatus: 0,
-          status: 'unavailable',
-          closeReason: 'unavailable',
-          errorCode: 'unavailable',
-          controlPresent: false
-        }));
-        throw new Error(
-          `${controlledSpeechOutcome.error.message} `
-          + `(lease HTTP ${leaseDiagnostic.httpStatus}; ${leaseDiagnostic.status}; `
-          + `${leaseDiagnostic.closeReason}; ${leaseDiagnostic.errorCode}; `
-          + `control present: ${leaseDiagnostic.controlPresent}).`
+      if (conversationVersion === 'v1') {
+        const controlledSpeechOutcome = await controlledSpeechPromise;
+        if (controlledSpeechOutcome.error) {
+          const leaseDiagnostic = await page.evaluate(async ({
+            workerOriginValue,
+            endpointPathValue,
+            leaseIdValue,
+            credentialValue,
+            controlCapabilityValue
+          }) => {
+            const response = await fetch(`${workerOriginValue}${endpointPathValue}/${encodeURIComponent(leaseIdValue)}`, {
+              headers: {
+                Accept: 'application/json',
+                'X-Consumer-Session': credentialValue,
+                'X-Realtime-Control-Capability': controlCapabilityValue
+              }
+            });
+            const payload = response.ok ? await response.json() : {};
+            const lease = payload.realtimeLease || {};
+            return {
+              httpStatus: response.status,
+              status: String(lease.status || 'unknown').slice(0, 40),
+              closeReason: String(lease.closeReason || 'unknown').slice(0, 100),
+              errorCode: String(lease.errorCode || 'none').slice(0, 120),
+              controlPresent: Boolean(payload.realtimeControl)
+            };
+          }, {
+            workerOriginValue: workerOrigin,
+            endpointPathValue: endpointPath,
+            leaseIdValue: leaseId,
+            credentialValue: credential,
+            controlCapabilityValue: controlCapability
+          }).catch(() => ({
+            httpStatus: 0,
+            status: 'unavailable',
+            closeReason: 'unavailable',
+            errorCode: 'unavailable',
+            controlPresent: false
+          }));
+          throw new Error(
+            `${controlledSpeechOutcome.error.message} `
+            + `(lease HTTP ${leaseDiagnostic.httpStatus}; ${leaseDiagnostic.status}; `
+            + `${leaseDiagnostic.closeReason}; ${leaseDiagnostic.errorCode}; `
+            + `control present: ${leaseDiagnostic.controlPresent}).`
+          );
+        }
+        const controlledSpeech = controlledSpeechOutcome.response;
+        assert.equal(controlledSpeech.status(), 200, 'The Worker-owned greeting speech request failed.');
+        assert.match(
+          String(controlledSpeech.headers()['content-type'] || ''),
+          /^audio\/mpeg(?:;|$)/i,
+          'The Worker-owned greeting did not return MP3 audio.'
+        );
+        assert.match(
+          String(controlledSpeech.headers()['x-realtime-speech-id'] || ''),
+          /^speech_[A-Za-z0-9_-]{20,80}$/,
+          'The greeting response was not bound to a Worker-issued speech ID.'
         );
       }
-      const controlledSpeech = controlledSpeechOutcome.response;
-      assert.equal(controlledSpeech.status(), 200, 'The Worker-owned greeting speech request failed.');
-      assert.match(
-        String(controlledSpeech.headers()['content-type'] || ''),
-        /^audio\/mpeg(?:;|$)/i,
-        'The Worker-owned greeting did not return MP3 audio.'
-      );
-      assert.match(
-        String(controlledSpeech.headers()['x-realtime-speech-id'] || ''),
-        /^speech_[A-Za-z0-9_-]{20,80}$/,
-        'The greeting response was not bound to a Worker-issued speech ID.'
-      );
 
       // The transcript is collapsed by default in the meeting layout; open it
       // before verifying the greeting caption.
@@ -345,22 +371,30 @@ export async function runRealtimeInfrastructureProof({
         timeout: PROOF_TIMEOUT_MS
       });
       const assistantGreeting = String(await page.locator('#realtimeVoiceTranscriptHistory .is-assistant p').first().textContent() || '').trim();
-      assert.match(
-        assistantGreeting,
-        /^Hi, I’m Planéir, your AI planning companion\./,
-        'The companion did not show the exact server-owned greeting caption.'
-      );
-      const audioReady = await page.evaluate(() => {
+      assert.match(assistantGreeting, /Planéir/i, 'The greeting did not introduce Planéir.');
+      const audioReady = await page.evaluate((conversationVersionValue) => {
         const audio = document.getElementById('realtimeVoiceAudio');
-        return Boolean(
-          audio
-          && audio.srcObject === null
+        if (!audio) return false;
+        if (conversationVersionValue === 'v2') {
+          return audio.srcObject instanceof MediaStream && audio.paused === false;
+        }
+        return audio.srcObject === null
           && /^speech_[A-Za-z0-9_-]{20,80}$/.test(String(audio.dataset.controlledSpeechId || ''))
           && audio.dataset.controlledSpeechPlayed === 'true'
-          && String(audio.currentSrc || audio.src || '').startsWith('blob:')
-        );
-      });
-      assert.equal(audioReady, true, 'The separately generated greeting MP3 was not played in the companion.');
+          && String(audio.currentSrc || audio.src || '').startsWith('blob:');
+      }, conversationVersion);
+      assert.equal(
+        audioReady,
+        true,
+        conversationVersion === 'v2'
+          ? 'The direct Marin WebRTC stream was not attached and playing.'
+          : 'The separately generated greeting MP3 was not played in the companion.'
+      );
+      if (conversationVersion === 'v2') {
+        await page.waitForFunction(() => (
+          document.getElementById('realtimeMicBadge')?.textContent === 'Mic on'
+        ), null, { timeout: PROOF_TIMEOUT_MS });
+      }
 
       const closedPromise = page.waitForResponse((response) => {
         const url = new URL(response.url());
@@ -414,25 +448,29 @@ export async function runRealtimeInfrastructureProof({
     }
 
     const result = {
+      conversationVersion,
       launcherVisible: true,
       companionStartWired: true,
       audibleGreetingObserved: true,
-      controlledSpeechObserved: true,
-      directProviderAudioAttached: false,
+      controlledSpeechObserved: conversationVersion === 'v1',
+      directProviderAudioAttached: conversationVersion === 'v2',
       webRtcConnected: true,
       sidebandConnected: true,
-      readOnlyToolSucceeded: true,
+      readOnlyToolSucceeded: conversationVersion === 'v1',
+      initialWelcomeSucceeded: conversationVersion === 'v2',
       providerHangupConfirmed: true
     };
     assert.deepEqual(result, {
+      conversationVersion,
       launcherVisible: true,
       companionStartWired: true,
       audibleGreetingObserved: true,
-      controlledSpeechObserved: true,
-      directProviderAudioAttached: false,
+      controlledSpeechObserved: conversationVersion === 'v1',
+      directProviderAudioAttached: conversationVersion === 'v2',
       webRtcConnected: true,
       sidebandConnected: true,
-      readOnlyToolSucceeded: true,
+      readOnlyToolSucceeded: conversationVersion === 'v1',
+      initialWelcomeSucceeded: conversationVersion === 'v2',
       providerHangupConfirmed: true
     });
     return result;

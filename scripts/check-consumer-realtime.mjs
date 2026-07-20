@@ -357,7 +357,7 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v7',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v8',
   CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v6',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
@@ -2657,11 +2657,37 @@ sqliteCommand(databasePath, 'run', {
   values: [sessionId]
 });
 
-// The paid infrastructure proof exercises the initial read-only greeting, but
-// the first consumer answer is the first point where a finalized transcript
-// can authorize a response and a fact can move the journey to a new tool set.
-// Exercise that transition with a provider-style full effective-session ack so
-// documented defaults cannot turn a valid answer into a failed lease.
+// V2 starts with a server-authorized, tool-free Marin welcome. The first
+// consumer answer is the first point where the silent planner may run and a
+// fact can move the journey to a new policy. Exercise both boundaries with a
+// provider-style full effective-session acknowledgement so documented defaults
+// cannot turn a valid answer into a failed lease.
+const welcomeState = new TestDurableObjectState();
+const welcomeDurable = new ConsumerRealtimeSession(welcomeState, {
+  ...env,
+  CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: 'true'
+});
+await welcomeState.ready;
+welcomeDurable.meta = {
+  sessionId,
+  leaseId: lease.id,
+  costEntryId: firstReservation.entry.id,
+  hardExpiresAt: lease.hard_expires_at,
+  idleExpiresAt: lease.idle_expires_at
+};
+const welcomeSocket = new FakeWebSocket();
+welcomeDurable.webSocket = welcomeSocket;
+await welcomeDurable.authorizeResponse('initial_state_probe');
+const welcomeCreate = welcomeSocket.sent.find((event) => (
+  event.type === 'response.create'
+  && event.response?.metadata?.reason === 'initial_state_probe'
+));
+assert.ok(welcomeCreate, 'Starting v2 must authorize an immediate spoken welcome.');
+assert.equal(welcomeCreate.response.tool_choice, 'none');
+assert.match(welcomeCreate.response.instructions, /Introduce yourself as Planéir/);
+assert.match(welcomeCreate.response.instructions, /relaxed conversation/);
+assert.match(welcomeCreate.response.instructions, /no analysis runs until they review and confirm/);
+
 const firstTurnState = new TestDurableObjectState();
 const firstTurnDurable = new ConsumerRealtimeSession(firstTurnState, env);
 await firstTurnState.ready;
@@ -3553,8 +3579,11 @@ const interruptedNormal = Number(sqliteCommand(databasePath, 'first', {
 assert.equal(interruptedNormal, interruptedAfter);
 
 const sidebandSocket = new FakeWebSocket();
-globalThis.fetch = async (url) => {
+globalThis.fetch = async (url, init = {}) => {
   assert.equal(String(url), 'https://api.openai.com/v1/realtime?call_id=call_control_plane_test');
+  assert.match(String(init.headers?.Authorization || ''), /^Bearer sk-test-/);
+  assert.equal(init.headers?.Upgrade, 'websocket');
+  assert.equal(Object.hasOwn(init.headers || {}, 'OpenAI-Beta'), false, 'The GA sideband must not send the removed beta header.');
   return {
     status: 101,
     webSocket: sidebandSocket,
@@ -3667,6 +3696,32 @@ assert.match(
   realtimeSessionSource,
   /await this\.authorizeResponse\('initial_state_probe', \{ forceTool: 'get_planning_state' \}\)/,
   'Sideband activation must issue the read-only probe directly from Worker-owned call policy.'
+);
+assert.doesNotMatch(
+  realtimeSessionSource,
+  /OpenAI-Beta['"]?\s*:\s*['"]realtime=v1/,
+  'The GA Realtime sideband must not send the removed beta header.'
+);
+assert.match(realtimeSessionSource, /Introduce yourself as Planéir, an AI planning companion/);
+assert.match(realtimeSessionSource, /no analysis runs until they review and confirm/);
+assert.match(
+  realtimeSessionSource,
+  /tool_choice:\s*authorizationReason === 'initial_state_probe' \? 'none' : 'auto'/,
+  'The initial v2 response must be guaranteed spoken audio without a tool detour.'
+);
+const v2ActivationSource = realtimeSessionSource.slice(
+  realtimeSessionSource.indexOf('async activate(body)'),
+  realtimeSessionSource.indexOf('async connectSideband(providerCallId)')
+);
+assert.doesNotMatch(
+  v2ActivationSource,
+  /processPlannerTurn|extractRealtimePlannerTurn/,
+  'The silent Responses planner must not run before the first finalized client turn.'
+);
+assert.match(
+  workflowSource,
+  /CONSUMER_REALTIME_CONVERSATION_V2_ENABLED:\s*\$\{\{ vars\.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED \|\| 'true' \}\}/,
+  'The active adviser canary must default to direct Marin v2 while retaining the protected false rollback.'
 );
 assert.match(
   realtimeSessionSource,

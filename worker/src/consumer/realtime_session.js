@@ -76,6 +76,14 @@ const MAX_PROVIDER_EVENT_BYTES = 64_000;
 const MAX_TOOL_ARGUMENT_BYTES = 20_000;
 const TOOL_VERSION = '1';
 const SIDE_BAND_URL = 'https://api.openai.com/v1/realtime';
+const REALTIME_V2_WELCOME_INSTRUCTIONS = [
+  'Open with a warm, unhurried welcome in three or four short sentences.',
+  'Introduce yourself as Planéir, an AI planning companion.',
+  'Explain that this will be a relaxed conversation about what matters to the client, and that useful details will appear on screen as reviewable drafts.',
+  'Reassure the client that they can ask questions at any time and that no analysis runs until they review and confirm the visible information.',
+  'Finish with one open invitation to describe what they would like help understanding today.',
+  'Do not list categories, ask for financial figures, call a tool, or mention internal systems.'
+].join(' ');
 // propose_facts rejections that a corrected retry of the same call can
 // genuinely resolve. Everything else (a fact the routed analyses do not use,
 // a duplicate, an out-of-order confirmation) speaks immediately and advances
@@ -787,8 +795,7 @@ export class ConsumerRealtimeSession {
       response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${key}`,
-          Upgrade: 'websocket',
-          'OpenAI-Beta': 'realtime=v1'
+          Upgrade: 'websocket'
         }
       });
     } catch (_error) {
@@ -1443,11 +1450,14 @@ export class ConsumerRealtimeSession {
                 instructions: authorizationReason === 'tool_output'
                   ? 'Continue the same turn naturally using the reviewed tool output. Keep the answer concise, then bridge to the signed brief nextObjective. Do not repeat the previous wording.'
                   : authorizationReason === 'initial_state_probe'
-                    ? 'Give a brief, warm welcome as an AI planning companion, then invite the client to describe what they want help understanding. Do not use a persona menu.'
+                    ? REALTIME_V2_WELCOME_INSTRUCTIONS
                     : authorizationReason === 'silence_prompt'
                       ? 'Offer one gentle, brief reassurance that there is no rush, and ask whether rephrasing the current objective would help. Do not repeat the previous question verbatim.'
-                    : 'Respond naturally to the finalized client turn using the current signed MeetingBriefV1. Answer any client question first, then continue with the next objective. Do not repeat a failed prompt.',
-                tool_choice: 'auto'
+                      : 'Respond naturally to the finalized client turn using the current signed MeetingBriefV1. Answer any client question first, then continue with the next objective. Do not repeat a failed prompt.',
+                // The first response is a spoken welcome, not an intake or
+                // planner turn. Disallow tools for that response so Marin is
+                // guaranteed to speak before the microphone starts sending.
+                tool_choice: authorizationReason === 'initial_state_probe' ? 'none' : 'auto'
               }
             : forceTool
             ? {
