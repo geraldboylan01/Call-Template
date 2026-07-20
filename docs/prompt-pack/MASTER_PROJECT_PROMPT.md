@@ -249,6 +249,7 @@ Use the Protection playbook when Gerry says things like:
 - Use House Purchase for planning a future purchase. Use Mortgage for an existing housing loan's payment, term, payoff, or overpayment path.
 
 ## PBS Playbook
+<!-- planeir-planning-module {"moduleId":"personal_balance_sheet","outputKey":"generated.pbsInputs","role":"analysis"} -->
 Use this playbook when Gerry says `use the PBS playbook`, `run PBS`, or asks for a personal balance sheet module.
 
 ### Job
@@ -452,6 +453,7 @@ Include:
 - Omit unrelated keys such as `report`, `education`, `mortgageInputs`, `loanInputs`, and `pensionInputs`.
 
 ## Retirement Playbook
+<!-- planeir-planning-module {"moduleId":"pension_projection","outputKey":"generated.pensionInputs","role":"analysis"} -->
 Use this playbook when Gerry says `run the retirement playbook`, asks for a retirement projection, or wants target-income or affordable-income retirement modelling.
 
 ### Job
@@ -642,6 +644,7 @@ For this playbook, do not emit:
 The app computes the repeatable retirement outputs after apply.
 
 ## Net Retirement Cash Flow Playbook
+<!-- planeir-planning-module {"moduleId":"net_retirement_cashflow","outputKey":"generated.netRetirementInputs","role":"analysis"} -->
 Use this playbook when Gerry wants to model retirement spending from net expenditure and net income, where pension taxation is too uncertain for a true net-income pension projection.
 
 ### Job
@@ -770,6 +773,7 @@ The app computes the repeatable outputs, annual table, and charts after apply.
 - The fund chart floors the available fund path at zero after depletion.
 
 ## Liquidity Playbook
+<!-- planeir-planning-module {"moduleId":"liquidity_analysis","outputKey":"generated.liquidityPlan","role":"analysis"} -->
 Use this playbook when Gerry says `use the liquidity playbook`, `cash buffer`, `emergency fund`, `too much cash`, or asks for a cash-only liquidity module.
 
 ### Job
@@ -929,6 +933,7 @@ For this playbook, do not emit:
 - Guessing client spend or retirement status.
 
 ## Mortgage Playbook
+<!-- planeir-planning-module {"moduleId":"mortgage_analysis","outputKey":"generated.mortgageInputs","role":"analysis"} -->
 Use this playbook when Gerry says `use the mortgage playbook`, wants a mortgage projection, or wants to test repayment and overpayment scenarios on a housing loan.
 
 This playbook is for an existing housing loan with a balance, rate, and repayment path. Use the House Purchase playbook for a future purchase, buying capacity, deposit target, purchase date, household affordability, or Help to Buy / First Home Scheme screen.
@@ -1020,6 +1025,7 @@ For this playbook, do not emit:
 The app computes the repeatable mortgage outputs after apply.
 
 ## Loan Playbook
+<!-- planeir-planning-module {"moduleId":"loan_analysis","outputKey":"generated.loanInputs","role":"analysis"} -->
 Use this playbook when Gerry says `use the loan playbook`, wants a non-housing loan projection, or wants the amortising loan engine without mortgage wording.
 
 ### Job
@@ -1108,6 +1114,7 @@ For this playbook, do not emit:
 The app computes the repeatable loan outputs after apply.
 
 ## College Funding Playbook
+<!-- planeir-planning-module {"moduleId":"college_funding","outputKey":"generated.collegeFundingInputs","role":"analysis"} -->
 Use this playbook when Gerry says `use the college funding playbook`, asks for education funding options, asks to ring-fence college costs, or wants to compare children living at home versus going away for college.
 
 ### Job
@@ -1274,6 +1281,7 @@ For this playbook, do not emit:
 This is a JS-engine module. The app calculates outputs and charts.
 
 ## House Purchase Playbook
+<!-- planeir-planning-module {"moduleId":"house_purchase","outputKey":"generated.housePurchaseInputs","role":"analysis"} -->
 Use this playbook when Gerry says `use the house purchase playbook`, `house purchase planner`, `first-home plan`, `what can they afford to buy`, or asks when a client could buy a target Irish home after allowing for deposit, purchase costs, protected cash, household affordability, and buyer supports.
 
 Do not use this playbook for an existing mortgage balance, repayment schedule, payoff date, or overpayment comparison. Those belong in the Mortgage playbook.
@@ -2055,6 +2063,7 @@ For this playbook, do not emit:
 This playbook transforms longer content into report blocks.
 
 ## Protection Playbook
+<!-- planeir-planning-module {"moduleId":"protection_analysis","outputKey":"generated.report","role":"analysis"} -->
 Use this playbook when Gerry says `use the protection playbook`, wants a protection planning module, or asks about income protection and serious illness cover.
 
 ### Job

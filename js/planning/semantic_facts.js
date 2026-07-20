@@ -95,6 +95,7 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
         MODULE_IDS.PENSION_PROJECTION,
         MODULE_IDS.NET_RETIREMENT,
         MODULE_IDS.MORTGAGE,
+        MODULE_IDS.LOAN,
         MODULE_IDS.COLLEGE_FUNDING,
         MODULE_IDS.CAT,
         MODULE_IDS.BUSINESS_OWNER_ANALYSIS,
@@ -103,7 +104,7 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
       ]
     }],
     confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
-    questionPrompt: 'What would you most like this plan to help you understand?',
+    questionPrompt: 'What brought you here today, and what would you most like help with?',
     answerType: 'text',
     materiality: 5,
     ambiguity: 5,
@@ -559,6 +560,52 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     materiality: 4,
     ambiguity: 2,
     userEffort: 1
+  }),
+  defineFact({
+    factId: 'loan_position',
+    aliases: ['loan.position'],
+    valueType: 'entity',
+    sensitivity: 'restricted',
+    label: 'Loan position',
+    description: 'The non-housing loan selected for analysis.',
+    mappings: [{ pathPattern: '/liabilities', moduleIds: [MODULE_IDS.LOAN] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.EXPLICIT_VALUE_OR_NONE,
+    questionPrompt: 'Which non-housing loan would you like to review?',
+    answerType: 'text', materiality: 5, ambiguity: 4, userEffort: 2
+  }),
+  defineFact({
+    factId: 'loan_current_balance',
+    aliases: ['loan.current_balance'],
+    sensitivity: 'restricted',
+    label: 'Current loan balance',
+    description: 'The current balance of one non-housing loan.',
+    mappings: [{ pathPattern: '/liabilities/*/currentBalance', moduleIds: [MODULE_IDS.LOAN] }],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'liabilityId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'What is the current balance of this loan?',
+    answerType: 'money', materiality: 5, ambiguity: 1, userEffort: 1
+  }),
+  defineFact({
+    factId: 'loan_annual_interest_rate',
+    aliases: ['loan.annual_interest_rate'],
+    label: 'Loan interest rate',
+    description: 'The annual interest rate of one non-housing loan.',
+    mappings: [{ pathPattern: '/liabilities/*/annualInterestRate', moduleIds: [MODULE_IDS.LOAN] }],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'liabilityId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'What annual interest rate applies to this loan?',
+    answerType: 'number', materiality: 5, ambiguity: 2, userEffort: 1
+  }),
+  defineFact({
+    factId: 'loan_remaining_term_months',
+    aliases: ['loan.remaining_term_months'],
+    label: 'Remaining loan term',
+    description: 'The remaining term of one non-housing loan in months.',
+    mappings: [{ pathPattern: '/liabilities/*/remainingTermMonths', moduleIds: [MODULE_IDS.LOAN] }],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'liabilityId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'How many months remain on this loan?',
+    answerType: 'number', materiality: 4, ambiguity: 2, userEffort: 1
   }),
   defineFact({
     factId: 'dependants',

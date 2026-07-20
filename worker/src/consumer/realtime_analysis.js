@@ -35,8 +35,8 @@ export function buildGatedModuleDisclosure(moduleSlots, { allGated = false } = {
   }
   const subject = joinedNames(names);
   const speakableText = allGated
-    ? `Your three-analysis plan is saved. ${subject} ${names.length === 1 ? 'requires' : 'require'} Gerry’s review, so no automated financial result has been produced for ${names.length === 1 ? 'that analysis' : 'those analyses'}.`
-    : `${subject} ${names.length === 1 ? 'remains' : 'remain'} in your three-analysis plan and ${names.length === 1 ? 'requires' : 'require'} Gerry’s review; no automated result was produced for ${names.length === 1 ? 'that analysis' : 'those analyses'}.`;
+    ? `Your analysis plan is saved. ${subject} ${names.length === 1 ? 'requires' : 'require'} Gerry’s review, so no automated financial result has been produced for ${names.length === 1 ? 'that analysis' : 'those analyses'}.`
+    : `${subject} ${names.length === 1 ? 'remains' : 'remain'} in your analysis plan and ${names.length === 1 ? 'requires' : 'require'} Gerry’s review; no automated result was produced for ${names.length === 1 ? 'that analysis' : 'those analyses'}.`;
   return { moduleIds: modules.map((item) => item.moduleId), speakableText };
 }
 
@@ -102,7 +102,7 @@ export async function confirmAndRunRealtimeAnalysisPlan({
       const result = {
         speakableText: disclosure.speakableText
           ? disclosure.speakableText
-          : 'Your three-analysis plan is saved, but no analysis in it is released for automated calculation yet.',
+          : 'Your analysis plan is saved, but no analysis in it is released for automated calculation yet.',
         promptVersion: config.realtimePromptVersion,
         toolsetVersion: config.realtimeToolsetVersion,
         calculationVersion: null,

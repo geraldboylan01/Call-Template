@@ -243,7 +243,7 @@ export function validateAnalysisBody(body, allowedModules) {
   const value = body === undefined || body === null ? {} : body;
   if (!plainObject(value)) throw badRequest('Analysis body must be an object.');
   const requested = value.moduleIds === undefined ? undefined : value.moduleIds;
-  if (requested !== undefined && (!Array.isArray(requested) || requested.length > 12)) throw badRequest('Module ids must be a list.');
+  if (requested !== undefined && (!Array.isArray(requested) || requested.length > 3)) throw badRequest('Module ids must contain no more than three entries.');
   const moduleIds = requested?.map((item) => cleanText(item, 'Module id', 80)) || undefined;
   if (moduleIds?.some((id) => !ID_PATTERN.test(id) || !allowedModules.includes(id))) {
     throw badRequest('One or more requested modules are not available.', 'module_not_available');

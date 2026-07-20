@@ -297,7 +297,7 @@ function chooseViewFromServer({ action = '', payload = null, profileChanged = tr
   }
   if (action === 'turn'
     && !profileChanged
-    && ['goal_discovery', 'goal_specific_questions'].includes(stage)) {
+    && ['goal_discovery', 'goal_clarification', 'goal_specific_questions', 'targeted_fact_gathering'].includes(stage)) {
     return 'conversation';
   }
   if (stage === 'human_handoff' && available.handoff) {
@@ -1014,10 +1014,10 @@ async function handleRunAnalysis() {
   setBusy(true);
   renderCurrentJourney();
   try {
-    if (state.selectedModuleIds.length === 0 && state.recommendations.length !== 3) {
+    if (state.recommendations.length < 1 || state.recommendations.length > 3) {
       setBusy(false);
       renderCurrentJourney();
-      showToast('A complete three-analysis plan is required before continuing.', { error: true });
+      showToast('A valid one-to-three-analysis plan is required before continuing.', { error: true });
       return;
     }
     const prepared = await prepareDisplayedAnalysisPlan({ generation });

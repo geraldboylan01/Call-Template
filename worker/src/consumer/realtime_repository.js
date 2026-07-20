@@ -2,6 +2,7 @@ import { ConsumerError, notFound } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 import { sanitizeRealtimeEventPayload } from './realtime_event_schema.js';
 import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
+import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import {
   constantTimeEqual,
   decryptJson,
@@ -1803,6 +1804,8 @@ export async function prepareRealtimeAnalysisPlan(env, request) {
   const input = {
     moduleIds: request.moduleIds || null,
     scenarioOverrides: request.scenarioOverrides || {},
+    selectionPolicyVersion: request.selectionPolicyVersion || null,
+    goalAssessment: request.goalAssessment || null,
     personaAssessment: request.personaAssessment || null,
     moduleSlots: request.moduleSlots || [],
     overrides: request.overrides || [],
@@ -1994,6 +1997,10 @@ function toPublicModuleSlot(slot) {
     moduleId: slot.moduleId,
     source: typeof slot.source === 'string' ? slot.source : 'persona_default',
     availability: typeof slot.availability === 'string' ? slot.availability : 'unsupported',
+    intakeStatus: typeof slot.intakeStatus === 'string' ? slot.intakeStatus : 'missing_information',
+    relatedGoalTypes: Array.isArray(slot.relatedGoalTypes)
+      ? slot.relatedGoalTypes.filter((value) => typeof value === 'string').slice(0, 8)
+      : [],
     reasons: Array.isArray(slot.reasons)
       ? slot.reasons.filter((value) => typeof value === 'string').slice(0, 8)
       : [],
@@ -2017,8 +2024,12 @@ export function toPublicRealtimeAnalysisPlan(row, decryptedInput = null) {
   if (!row) return null;
   const input = decryptedInput && typeof decryptedInput === 'object' ? decryptedInput : {};
   const moduleIds = Array.isArray(input.moduleIds)
-    ? input.moduleIds.filter((item) => typeof item === 'string').slice(0, 12)
+    ? input.moduleIds.filter((item) => typeof item === 'string').slice(0, 3)
     : [];
+  const selectionPolicyVersion = typeof input.selectionPolicyVersion === 'string'
+    ? input.selectionPolicyVersion.slice(0, 80)
+    : null;
+  const goalAssessment = toPublicGoalAssessment(input.goalAssessment);
   const personaAssessment = toPublicPersonaAssessment(input.personaAssessment);
   const moduleSlots = Array.isArray(input.moduleSlots)
     ? input.moduleSlots.map(toPublicModuleSlot).filter(Boolean).slice(0, 3)
@@ -2036,6 +2047,8 @@ export function toPublicRealtimeAnalysisPlan(row, decryptedInput = null) {
     profileRevision: Number(row.profile_revision),
     status: row.status,
     moduleIds,
+    selectionPolicyVersion,
+    goalAssessment,
     personaAssessment,
     moduleSlots,
     overrides,

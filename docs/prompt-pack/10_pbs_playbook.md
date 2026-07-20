@@ -1,5 +1,7 @@
 # PBS Playbook
 
+<!-- planeir-planning-module {"moduleId":"personal_balance_sheet","outputKey":"generated.pbsInputs","role":"analysis"} -->
+
 Use this playbook when Gerry says `use the PBS playbook`, `run PBS`, or asks for a personal balance sheet module.
 
 ## Job

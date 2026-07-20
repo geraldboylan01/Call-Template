@@ -24,6 +24,11 @@ import {
   runMortgageAnalysis
 } from './adapters/mortgage.js';
 import {
+  buildLoanInput,
+  getLoanReadiness,
+  runLoanAnalysis
+} from './adapters/loan.js';
+import {
   buildCollegeFundingInput,
   getCollegeFundingReadiness,
   runCollegeFundingAnalysis
@@ -34,6 +39,10 @@ import {
   runPersonalBalanceSheet
 } from './adapters/personal_balance_sheet.js';
 import { readJsonPointer, sha256Json } from './utils.js';
+import {
+  PLANNING_PLAYBOOK_MANIFEST,
+  PLANNING_PLAYBOOK_MANIFEST_VERSION
+} from './playbook_manifest.generated.js';
 
 export const MODULE_INTAKE_CONTRACT_VERSION = 'consumer-module-intake-1.0.0';
 
@@ -63,6 +72,10 @@ const INTAKE_FACTS = Object.freeze({
   [MODULE_IDS.MORTGAGE]: Object.freeze([
     'primary_goal', 'mortgage_position', 'mortgage_current_balance',
     'mortgage_annual_interest_rate', 'mortgage_remaining_term_months'
+  ]),
+  [MODULE_IDS.LOAN]: Object.freeze([
+    'primary_goal', 'loan_position', 'loan_current_balance',
+    'loan_annual_interest_rate', 'loan_remaining_term_months'
   ]),
   [MODULE_IDS.COLLEGE_FUNDING]: Object.freeze([
     'primary_goal', 'dependants', 'dependant_current_age', 'college_cost_scenarios'
@@ -428,13 +441,36 @@ register({
 });
 
 register({
+  id: MODULE_IDS.LOAN,
+  kind: 'calculation',
+  name: 'Loan analysis',
+  description: 'Projects repayment, payoff timing and lifetime interest for a non-housing loan.',
+  status: 'beta',
+  moduleVersion: '1.0.0-readiness',
+  applicableGoals: ['manage_loan'],
+  requiredProfilePaths: ['/liabilities'],
+  optionalProfilePaths: ['/assumptions/values/loan'],
+  adviserAvailable: true,
+  consumerAvailable: false,
+  intakeContract: approvedIntake(
+    'calculation',
+    INTAKE_FACTS[MODULE_IDS.LOAN],
+    withTerminalConfirmedNone(getLoanReadiness, MODULE_IDS.LOAN, ['/liabilities'])
+  ),
+  canRun: getLoanReadiness,
+  explainSelection: () => ['A non-housing loan goal maps to the deterministic repayment and interest engine.'],
+  buildInput: buildLoanInput,
+  run: runLoanAnalysis
+});
+
+register({
   id: MODULE_IDS.COLLEGE_FUNDING,
   kind: 'calculation',
   name: 'College funding',
   description: 'Builds child-level, inflation-aware college cost scenarios.',
   status: 'beta',
   moduleVersion: '1.0.0-readiness',
-  applicableGoals: ['assess_decision'],
+  applicableGoals: ['fund_education'],
   requiredProfilePaths: ['/dependants', '/assumptions/values/collegeFunding/scenarios'],
   optionalProfilePaths: ['/assumptions/inflationRate'],
   adviserAvailable: true,
@@ -495,6 +531,8 @@ register({
     'retire',
     'retire_early',
     'optimise_mortgage',
+    'manage_loan',
+    'fund_education',
     'assess_decision',
     'transfer_wealth',
     'business_planning',
@@ -534,7 +572,7 @@ register({
     )
   ),
   canRun: getPersonalBalanceSheetReadiness,
-  explainSelection: () => ['A reconciled personal balance sheet provides the foundation for the three-analysis plan.'],
+  explainSelection: () => ['A reconciled personal balance sheet provides a useful view of the household’s overall position.'],
   buildInput: buildPersonalBalanceSheetInput,
   run: runPersonalBalanceSheet
 });
@@ -554,6 +592,24 @@ register({
     'Scenario analysis has no independent intake contract; use a scenario-aware calculation module.'
   ),
   canRun: unsupported('scenario_analysis must be applied through a scenario-aware module.'),
+  explainSelection: () => []
+});
+
+register({
+  id: MODULE_IDS.PROTECTION,
+  kind: 'composition',
+  name: 'Protection analysis',
+  description: 'Protection-needs playbook awaiting a complete planning adapter and approved intake contract.',
+  status: 'unsupported',
+  moduleVersion: 'template-only',
+  applicableGoals: [],
+  adviserAvailable: true,
+  consumerAvailable: false,
+  intakeContract: incompleteIntake(
+    'adviser_handoff',
+    'Protection is present in the master prompt but is not planning-ready.'
+  ),
+  canRun: unsupported('Protection does not yet have a complete planning adapter.'),
   explainSelection: () => []
 });
 
@@ -619,6 +675,36 @@ export function listPlanningModuleDefinitions() {
   return Array.from(REGISTRY.values());
 }
 
+const PLAYBOOK_BY_MODULE_ID = new Map(
+  PLANNING_PLAYBOOK_MANIFEST.map((entry) => [entry.moduleId, entry])
+);
+
+export function getPlanningPlaybookManifestVersion() {
+  return PLANNING_PLAYBOOK_MANIFEST_VERSION;
+}
+
+export function getPlanningPlaybookEntry(moduleId) {
+  return PLAYBOOK_BY_MODULE_ID.get(moduleId) || null;
+}
+
+export function isPlanningModuleTemplateAvailable(moduleId) {
+  return PLAYBOOK_BY_MODULE_ID.has(moduleId);
+}
+
+export function isPlanningModuleSelectable(moduleId) {
+  const definition = getPlanningModuleDefinition(moduleId);
+  return Boolean(
+    PLAYBOOK_BY_MODULE_ID.has(moduleId)
+    && definition?.intakeContract?.status === 'approved'
+    && typeof definition.buildInput === 'function'
+    && typeof definition.run === 'function'
+  );
+}
+
+export function listSelectablePlanningModuleDefinitions() {
+  return listPlanningModuleDefinitions().filter((definition) => isPlanningModuleSelectable(definition.id));
+}
+
 function toDescriptor(definition) {
   return {
     id: definition.id,
@@ -634,6 +720,8 @@ function toDescriptor(definition) {
     prerequisiteModuleIds: [...definition.prerequisiteModuleIds],
     adviserAvailable: definition.adviserAvailable,
     consumerAvailable: definition.consumerAvailable,
+    templateAvailable: isPlanningModuleTemplateAvailable(definition.id),
+    planningSelectable: isPlanningModuleSelectable(definition.id),
     intakeContract: {
       version: definition.intakeContract.version,
       mode: definition.intakeContract.mode,

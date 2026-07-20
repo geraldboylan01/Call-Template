@@ -1,5 +1,7 @@
 # Mortgage Playbook
 
+<!-- planeir-planning-module {"moduleId":"mortgage_analysis","outputKey":"generated.mortgageInputs","role":"analysis"} -->
+
 Use this playbook when Gerry says `use the mortgage playbook`, wants a mortgage projection, or wants to test repayment and overpayment scenarios on a housing loan.
 
 This playbook is for an existing housing loan with a balance, rate, and repayment path. Use the House Purchase playbook for a future purchase, buying capacity, deposit target, purchase date, household affordability, or Help to Buy / First Home Scheme screen.

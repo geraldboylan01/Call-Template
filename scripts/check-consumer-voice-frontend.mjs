@@ -800,8 +800,8 @@ assert.match(planIndexSource, /id="realtimeVoiceMuteButton"[\s\S]*id="realtimeVo
 assert.match(planIndexSource, /id="realtimeVoiceBoundedFallbackButton"/);
 assert.equal(
   [...planIndexSource.matchAll(/class="is-empty is-module-slot"/g)].length,
-  3,
-  'The unopened companion must reserve exactly three visible analysis slots.'
+  1,
+  'The unopened companion must show one goal-listening state without filler slots.'
 );
 assert.match(planIndexSource, /id="realtimeVoiceTranscriptHistory"[\s\S]*aria-live="polite"/);
 assert.match(planIndexSource, /id="realtimeVoiceFactsList"/);
@@ -908,7 +908,7 @@ assert.match(preparePlanRequestSource, /expectedRevision:\s*revision/);
 assert.doesNotMatch(
   preparePlanRequestSource,
   /moduleIds/,
-  'The browser must let the Worker derive the exact persona bundle.'
+  'The browser must let the Worker derive the exact goal-led bundle.'
 );
 assert.match(appSource, /action:\s*'confirm_and_run'[\s\S]*planId,[\s\S]*planNonce,[\s\S]*confirmation:\s*true/);
 assert.doesNotMatch(appSource, /runAnalyses\(/);
@@ -918,9 +918,9 @@ const confirmPlanRequestSource = appSource.slice(
 );
 assert.doesNotMatch(confirmPlanRequestSource, /moduleIds|scenarioOverrides/);
 assert.doesNotMatch(appSource, /planNonce:\s*newIdempotencyKey|planNonce:\s*crypto\./);
-assert.match(appSource, /state\.selectedModuleIds\.length === 0 && state\.recommendations\.length !== 3/);
+assert.match(appSource, /state\.recommendations\.length < 1 \|\| state\.recommendations\.length > 3/);
 assert.match(viewsSource, /Confirm profile & save review plan/);
-assert.match(viewsSource, /Your authoritative three-analysis plan is shown below/);
+assert.match(viewsSource, /Your analysis plan is shown below/);
 assert.match(storeSource, /state\.selectedModuleIds = \[\.\.\.new Set\(state\.analysisPlan\.moduleIds\)\]/);
 assert.doesNotMatch(
   storeSource,
@@ -1073,7 +1073,7 @@ const authoritativeSlots = extractRealtimePlanningContext({
 assert.deepEqual(
   authoritativeSlots.modules.map((item) => item.moduleId),
   ['personal_balance_sheet', 'house_purchase', 'liquidity_analysis'],
-  'The companion must render the Worker-authoritative three slots, not the broader recommendation list.'
+  'The companion must render the Worker-authoritative plan slots, not the broader recommendation list.'
 );
 assert.equal(authoritativeSlots.modules[0].badge.label, 'Gerry review');
 assert.equal(authoritativeSlots.modules[1].badge.label, 'Released');

@@ -6,7 +6,7 @@ import {
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
 import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
-import { recommendModules } from '../../../js/planning/routing_rules.js';
+import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
 import { describeConversationState } from './conversation.js';
@@ -14,6 +14,7 @@ import { ConsumerError } from './errors.js';
 import {
   getCurrentProfile,
   getSessionRow,
+  recordEvent,
   releaseConsumerProviderCostNotSent,
   settleConsumerProviderCostKnown,
   settleConsumerProviderCostUnknown
@@ -383,7 +384,7 @@ function controlledQuestionText(state = {}) {
 
 function controlledModuleList(moduleSlots = []) {
   const labels = moduleSlots.slice(0, 3).map((slot) => (
-    getPlanningModuleDefinition(slot?.moduleId)?.label
+    getPlanningModuleDefinition(slot?.moduleId)?.name
     || String(slot?.moduleId || '').replace(/_/g, ' ')
   )).filter(Boolean);
   if (labels.length < 1) return '';
@@ -1608,11 +1609,34 @@ export class ConsumerRealtimeSession {
 
   async applyPlannerExtraction(extraction) {
     const context = await this.planningContext();
+    const mappedGoals = (extraction.goalCandidates || [])
+      .filter((candidate) => ['high', 'medium'].includes(candidate.confidence))
+      .flatMap((candidate) => [{
+        candidateId: candidate.candidateId,
+        operation: candidate.correctionTarget ? 'correct' : 'upsert',
+        factId: 'primary_goal',
+        value: {
+          type: candidate.goalType,
+          ...(candidate.correctionTarget ? { correctionTarget: candidate.correctionTarget } : {})
+        },
+        certainty: candidate.confidence === 'high' ? 'exact' : 'approximate',
+        evidenceText: candidate.evidenceText,
+        correctionTarget: candidate.correctionTarget || ''
+      }, ...(candidate.priorityHint === 'primary' ? [{
+        candidateId: `${candidate.candidateId}-focus`,
+        operation: 'upsert',
+        factId: 'primary_goal_focus',
+        value: candidate.goalType,
+        certainty: 'exact',
+        evidenceText: candidate.evidenceText,
+        correctionTarget: ''
+      }] : [])]);
     const mappedPositions = positionCandidatesToRealtimeFacts(extraction.positions);
     const mappedCompletions = extraction.sectionCompletions
       .map(sectionCompletionToRealtimeFact)
       .filter(Boolean);
     const candidates = [
+      ...mappedGoals,
       ...extraction.semanticFacts,
       ...mappedPositions,
       ...mappedCompletions
@@ -1694,6 +1718,25 @@ export class ConsumerRealtimeSession {
       }
     }
     const refreshed = await this.planningContext();
+    const previousModuleIds = (context.state.moduleSlots || []).map((slot) => slot.moduleId);
+    const moduleIds = (refreshed.state.moduleSlots || []).map((slot) => slot.moduleId);
+    await recordEvent(this.env, this.meta.sessionId, 'goal_plan_evaluated', {
+      selectionPolicyVersion: refreshed.state.selectionPolicyVersion || null,
+      goalTypes: refreshed.state.goalAssessment?.activeGoalTypes || [],
+      deferredGoalTypes: refreshed.state.goalAssessment?.deferredGoalTypes || [],
+      moduleIds,
+      ruleIds: (refreshed.state.recommendations || []).flatMap((item) => item.triggeredRuleIds || []),
+      clarificationRequired: refreshed.state.requiresGoalPriorityQuestion === true
+        || refreshed.state.requiresDecisionTopicQuestion === true,
+      planChanged: previousModuleIds.join('|') !== moduleIds.join('|')
+    }).catch(() => {});
+    if (previousModuleIds.join('|') !== moduleIds.join('|')) {
+      await recordEvent(this.env, this.meta.sessionId, 'goal_plan_changed', {
+        selectionPolicyVersion: refreshed.state.selectionPolicyVersion || null,
+        previousModuleIds,
+        moduleIds
+      }).catch(() => {});
+    }
     const brief = await composeMeetingBrief({
       env: this.env,
       context: refreshed,
@@ -1841,7 +1884,7 @@ export class ConsumerRealtimeSession {
     }
     const profile = await getCurrentProfile(this.env, sessionRow);
     const state = describeConversationState(profile, config);
-    const allDeterministicRecommendations = recommendModules(profile, { text: '' });
+    const allDeterministicRecommendations = state.recommendations || [];
     const proposedFacts = await listRealtimeFactProposalSummaries(
       this.env,
       this.meta.sessionId,
@@ -1888,12 +1931,14 @@ export class ConsumerRealtimeSession {
         ...buildConfirmedRealtimeFactSummary(profile)
       ].slice(0, 16),
       currentPendingProposal: pendingFacts[0] || null,
-      personaAssessment: toPublicPersonaAssessment(state.personaAssessment),
+      selectionPolicyVersion: state.selectionPolicyVersion || null,
+      goalAssessment: toPublicGoalAssessment(state.goalAssessment),
+      ...(state.personaAssessment
+        ? { personaAssessment: toPublicPersonaAssessment(state.personaAssessment) }
+        : {}),
       moduleSlots: (state.moduleSlots || []).slice(0, 3),
-      overrides: (state.overrides || []).slice(0, 6),
       requiresGoalPriorityQuestion: state.requiresGoalPriorityQuestion === true,
       requiresDecisionTopicQuestion: state.requiresDecisionTopicQuestion === true,
-      requiresPersonaScan: state.requiresPersonaScan === true,
       deferredGoalTypes: (state.deferredGoalTypes || []).slice(0, 8),
       likelyModules: (state.moduleSlots || [])
         .map((item) => item.moduleId)
@@ -2453,7 +2498,12 @@ export class ConsumerRealtimeSession {
           );
         }
       });
-      const enabledModules = modulesEnabledByFacts(context.state.recommendations, args.facts, context.profile);
+      const enabledModules = modulesEnabledByFacts(
+        context.state.recommendations,
+        args.facts,
+        context.profile,
+        { goalRoutingEnabled: context.config.goalRoutingEnabled }
+      );
       const orderedFacts = orderRealtimeFactsByDependency(args.facts);
       let projectedProfile = context.profile;
       const normalized = orderedFacts.map((fact) => {
@@ -2656,12 +2706,12 @@ export class ConsumerRealtimeSession {
         confirmedProfileRevision: context.sessionRow.confirmed_profile_revision === null
           ? null
           : Number(context.sessionRow.confirmed_profile_revision),
-        personaAssessment: context.state.personaAssessment,
+        selectionPolicyVersion: context.state.selectionPolicyVersion,
+        goalAssessment: context.state.goalAssessment,
+        ...(context.state.personaAssessment ? { personaAssessment: context.state.personaAssessment } : {}),
         moduleSlots: context.state.moduleSlots,
-        overrides: context.state.overrides,
         requiresGoalPriorityQuestion: context.state.requiresGoalPriorityQuestion,
         requiresDecisionTopicQuestion: context.state.requiresDecisionTopicQuestion,
-        requiresPersonaScan: context.state.requiresPersonaScan,
         deferredGoalTypes: context.state.deferredGoalTypes,
         recommendations: context.state.recommendations,
         nextQuestion: context.state.nextQuestion

@@ -1,5 +1,7 @@
 # Loan Playbook
 
+<!-- planeir-planning-module {"moduleId":"loan_analysis","outputKey":"generated.loanInputs","role":"analysis"} -->
+
 Use this playbook when Gerry says `use the loan playbook`, wants a non-housing loan projection, or wants the amortising loan engine without mortgage wording.
 
 ## Job

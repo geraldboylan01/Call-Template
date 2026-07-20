@@ -67,16 +67,16 @@ const tableModuleIds = [...new Set(golden.cases.flatMap((entry) => entry.modules
 const sameTurnProfile = emptyProfile('intake-same-turn-persona');
 assert.deepEqual(
   [...modulesEnabledByFacts([], [{ factId: 'primary_goal', value: 'buy_home' }], sameTurnProfile)],
-  [],
-  'a goal alone does not reopen goal-based module routing'
+  ['house_purchase', 'liquidity_analysis', 'personal_balance_sheet'],
+  'a supported goal immediately opens its deterministic goal bundle'
 );
 assert.deepEqual(
   [...modulesEnabledByFacts([], [
     { factId: 'primary_goal', value: 'buy_home' },
-    { factId: 'self_description', value: 'first_time_buyer' }
+    { factId: 'life_stage', value: 'young_employee' }
   ], sameTurnProfile)],
-  ['personal_balance_sheet', 'house_purchase', 'liquidity_analysis'],
-  'same-turn persona evidence projects the exact table bundle before validating volunteered module facts'
+  ['house_purchase', 'liquidity_analysis'],
+  'same-turn early-life evidence omits the default balance sheet without changing the direct goal bundle'
 );
 
 for (const moduleId of tableModuleIds) {
@@ -114,7 +114,8 @@ readinessProfiles.set(MODULE_IDS.LIQUIDITY, withGoal('understand_position'));
 readinessProfiles.set(MODULE_IDS.HOUSE_PURCHASE, withGoal('buy_home'));
 readinessProfiles.set(MODULE_IDS.NET_RETIREMENT, withGoal('retire'));
 readinessProfiles.set(MODULE_IDS.MORTGAGE, withGoal('optimise_mortgage'));
-readinessProfiles.set(MODULE_IDS.COLLEGE_FUNDING, withGoal('assess_decision', 'Plan college funding'));
+readinessProfiles.set(MODULE_IDS.LOAN, withGoal('manage_loan'));
+readinessProfiles.set(MODULE_IDS.COLLEGE_FUNDING, withGoal('fund_education', 'Plan college funding'));
 
 let pensionProfile = withGoal('retire');
 pensionProfile = normalizeHouseholdProfile({

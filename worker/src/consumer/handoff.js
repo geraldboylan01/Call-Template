@@ -20,9 +20,9 @@ async function getCurrentAdviserReviewOutcome(env, sessionRow) {
   const completedModuleIds = stored.result?.completedModuleIds;
   const gatedModuleIds = stored.result?.gatedModuleIds;
   if (!Array.isArray(completedModuleIds) || completedModuleIds.length !== 0
-    || !Array.isArray(gatedModuleIds) || gatedModuleIds.length !== 3
+    || !Array.isArray(gatedModuleIds) || gatedModuleIds.length < 1 || gatedModuleIds.length > 3
     || gatedModuleIds.some((moduleId) => typeof moduleId !== 'string' || !moduleId)
-    || new Set(gatedModuleIds).size !== 3) {
+    || new Set(gatedModuleIds).size !== gatedModuleIds.length) {
     return null;
   }
   return {

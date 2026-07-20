@@ -8,6 +8,7 @@ import {
 } from './crypto.js';
 import { describeConversationState, processTurn } from './conversation.js';
 import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
+import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
 import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
@@ -464,7 +465,8 @@ function questionText(question) {
 function publicConversationState(state) {
   return {
     ...state,
-    personaAssessment: toPublicPersonaAssessment(state?.personaAssessment)
+    ...(state?.personaAssessment ? { personaAssessment: toPublicPersonaAssessment(state.personaAssessment) } : {}),
+    ...(state?.goalAssessment ? { goalAssessment: toPublicGoalAssessment(state.goalAssessment) } : {})
   };
 }
 
@@ -856,12 +858,14 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
             : Number(sessionRow.confirmed_profile_revision),
           stage: planningState.stage,
           nextQuestion,
-          personaAssessment: toPublicPersonaAssessment(planningState.personaAssessment),
+          selectionPolicyVersion: planningState.selectionPolicyVersion || null,
+          goalAssessment: toPublicGoalAssessment(planningState.goalAssessment),
+          ...(planningState.personaAssessment
+            ? { personaAssessment: toPublicPersonaAssessment(planningState.personaAssessment) }
+            : {}),
           moduleSlots: (planningState.moduleSlots || []).slice(0, 3),
-          overrides: (planningState.overrides || []).slice(0, 6),
           requiresGoalPriorityQuestion: planningState.requiresGoalPriorityQuestion === true,
           requiresDecisionTopicQuestion: planningState.requiresDecisionTopicQuestion === true,
-          requiresPersonaScan: planningState.requiresPersonaScan === true,
           deferredGoalTypes: (planningState.deferredGoalTypes || []).slice(0, 8),
           facts: [
             ...pendingFacts,
@@ -1107,28 +1111,29 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           }
         }
         const planningState = describeConversationState(profile, config);
-        if (planningState.personaAssessment?.needsDisambiguation) {
+        if (!config.goalRoutingEnabled && planningState.personaAssessment?.needsDisambiguation) {
           throw new ConsumerError(409, 'persona_disambiguation_required', 'Answer the current situation question before confirming the three-analysis plan.');
         }
         if (planningState.requiresDecisionTopicQuestion) {
           throw new ConsumerError(409, 'decision_topic_required', 'Name the specific financial decision before confirming the three-analysis plan.');
         }
-        if (planningState.requiresPersonaScan) {
+        if (!config.goalRoutingEnabled && planningState.requiresPersonaScan) {
           throw new ConsumerError(409, 'persona_scan_required', 'Complete the brief household and life-stage scan before confirming the three-analysis plan.');
         }
         if (planningState.requiresGoalPriorityQuestion) {
-          throw new ConsumerError(409, 'goal_priority_required', 'Choose which explicit goal this first three-analysis plan should address.');
+          throw new ConsumerError(409, 'goal_priority_required', 'Choose which explicit goal this analysis plan should address first.');
         }
         const moduleIds = realtimePlanModuleIds(profile, config);
         if (!(planningState.moduleSlots || []).length) {
-          throw new ConsumerError(409, 'analysis_plan_empty', 'Complete the goal and life-stage scan before preparing this analysis.');
+          throw new ConsumerError(409, 'analysis_plan_empty', 'Clarify a supported goal before preparing this analysis.');
         }
         const planInput = {
           moduleIds,
           scenarioOverrides: body.scenarioOverrides,
-          personaAssessment: planningState.personaAssessment,
+          selectionPolicyVersion: planningState.selectionPolicyVersion,
+          goalAssessment: planningState.goalAssessment,
+          ...(planningState.personaAssessment ? { personaAssessment: planningState.personaAssessment } : {}),
           moduleSlots: planningState.moduleSlots,
-          overrides: planningState.overrides,
           requiresGoalPriorityQuestion: planningState.requiresGoalPriorityQuestion,
           deferredGoalTypes: planningState.deferredGoalTypes
         };

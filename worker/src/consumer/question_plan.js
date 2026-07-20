@@ -37,7 +37,7 @@ function goalDiscoveryQuestion() {
     }],
     fieldPaths: ['/goals'],
     relatedFieldPaths: ['/goals'],
-    prompt: 'What would you most like this plan to help you understand?',
+    prompt: 'What brought you here today, and what would you most like help with?',
     answerType: 'text',
     confirmationPolicy: 'final_review',
     optional: false
@@ -83,6 +83,6 @@ export function buildQuestionPlan(profile, recommendations) {
 export function stageFromQuestionPlan(profile, recommendations) {
   if (!profile?.goals?.length) return 'goal_discovery';
   return buildQuestionPlan(profile, recommendations).fieldPaths.length
-    ? 'goal_specific_questions'
+    ? 'targeted_fact_gathering'
     : 'review';
 }

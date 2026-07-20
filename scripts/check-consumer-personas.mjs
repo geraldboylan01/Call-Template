@@ -219,6 +219,7 @@ for (const testCase of fixture.cases) {
     `${testCase.personaId}: conversation exact ordered three-module bundle`
   );
   const orchestrated = describeConversationState(conversation.profile, {
+    goalRoutingEnabled: false,
     allowedModules: [...new Set(fixture.cases.flatMap((item) => item.modules))]
   });
   assert.equal(
@@ -255,6 +256,7 @@ assert.deepEqual(unresolvedPlan.overrides, []);
 const goalOnlyPlan = buildPersonaModulePlan(goalOnly);
 assert.deepEqual(goalOnlyPlan.moduleSlots, [], 'a tied goal-only classification cannot expose a provisional bundle');
 const goalOnlyState = describeConversationState(goalOnly, {
+  goalRoutingEnabled: false,
   allowedModules: [...new Set(fixture.cases.flatMap((item) => item.modules))]
 });
 assert.deepEqual(goalOnlyState.moduleSlots, [], 'ambiguity blocks the server conversation plan');
@@ -320,6 +322,7 @@ assert.equal(
 );
 assert.notEqual(
   describeConversationState(selfDescribedDirectorHome, {
+    goalRoutingEnabled: false,
     allowedModules: ['house_purchase', 'liquidity_analysis']
   }).nextQuestion?.factId,
   'self_description',
@@ -349,6 +352,7 @@ const youngDecision = profileFor(youngEmployee, {
   goals: [goal('assess_decision'), goal('optimise_mortgage', 1)]
 });
 const youngScanState = describeConversationState(youngDecision, {
+  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
 assert.equal(youngScanState.requiresDecisionTopicQuestion, false);
@@ -362,7 +366,7 @@ assert.equal(
 );
 
 const directorContext = profileFor(overlapBase, { goals: [goal('business_planning')] });
-const directorScanState = describeConversationState(directorContext, { allowedModules: [] });
+const directorScanState = describeConversationState(directorContext, { goalRoutingEnabled: false, allowedModules: [] });
 assert.equal(directorScanState.requiresPersonaScan, false);
 assert.equal(directorScanState.personaAssessment.primaryPersonaId, 'company_director_owner_manager');
 assert.deepEqual(directorScanState.moduleSlots.map((slot) => slot.moduleId), overlapBase.modules);

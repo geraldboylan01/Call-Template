@@ -411,6 +411,7 @@ jobs:
             'CONSUMER_REALTIME_VOICE_ENABLED',
             'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
             'CONSUMER_MODULE_ROUTING_ENABLED',
+            'CONSUMER_GOAL_ROUTING_ENABLED',
             'CONSUMER_HANDOFF_ENABLED',
             'CONSUMER_PUBLIC_ACCESS_ENABLED'
           ];
@@ -583,6 +584,7 @@ jobs:
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_VOICE_ENABLED', 'true');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_GOAL_ROUTING_ENABLED', 'true');
 
             if (realtimeEnabled) {
               const fixedRealtimeValues = {
@@ -638,6 +640,7 @@ jobs:
             CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
             CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: realtimeV2Enabled ? 'true' : 'false',
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_GOAL_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_AI_INTAKE_ENABLED: 'false',
             CONSUMER_HANDOFF_ENABLED: 'false',
             CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'

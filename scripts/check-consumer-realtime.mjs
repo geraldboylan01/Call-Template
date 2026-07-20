@@ -407,8 +407,8 @@ const v2Session = buildRealtimeSessionConfig(v2Config, {
   conversationVersion: 'v2',
   realtimePhase: 'discovery',
   meetingBrief: {
-    schemaVersion: 'MeetingBriefV1',
-    phase: 'discovery',
+    schemaVersion: 'MeetingBriefV2',
+    phase: 'goal_discovery',
     profileRevision: 1,
     narrativeSummary: '',
     analyses: [],
@@ -439,10 +439,8 @@ globalThis.fetch = async () => new Response(JSON.stringify({
   id: 'resp_planner_test_1',
   status: 'completed',
   output_text: JSON.stringify({
-    semanticFacts: [{
-      operation: 'upsert', factId: 'self_description', valueJson: '"new_parent"',
-      certainty: 'approximate', evidenceText: 'just had a baby', correctionTarget: ''
-    }],
+    goalCandidates: [],
+    semanticFacts: [],
     positions: [
       {
         operation: 'upsert', kind: 'cash', label: 'Cash', entityId: 'cash', linkedEntityId: '',
@@ -458,7 +456,7 @@ globalThis.fetch = async () => new Response(JSON.stringify({
     sectionCompletions: [],
     clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
     ambiguities: [],
-    narrativePersona: { summary: 'A new parent seeking a broad financial health check.', evidence: ['just had a baby'] }
+    narrativeSummary: { summary: 'A new parent seeking a broad financial health check.', evidence: ['just had a baby'] }
   }),
   usage: { input_tokens: 100, output_tokens: 50, input_tokens_details: { cached_tokens: 10 } }
 }), { status: 200, headers: { 'Content-Type': 'application/json', 'x-request-id': 'req_planner_test_1' } });
@@ -475,7 +473,8 @@ try {
 } finally {
   globalThis.fetch = nativeFetch;
 }
-assert.equal(plannerTest.extraction.semanticFacts[0].value, 'new_parent');
+assert.equal(plannerTest.extraction.semanticFacts[0].factId, 'new_parent_status');
+assert.equal(plannerTest.extraction.semanticFacts[0].value, true);
 assert.equal(plannerTest.extraction.positions.length, 1, 'One invalid position must not reject a valid position from the same turn.');
 assert.equal(plannerTest.extraction.invalidCandidates.length, 1);
 assert.equal(plannerTest.metadata.reasoningEffort, 'low');
@@ -528,7 +527,7 @@ const signedBrief = await composeMeetingBrief({
   env,
   sourceTurnId: 'item_new_parent_regression',
   extraction: {
-    narrativePersona: {
+    narrativeSummary: {
       summary: 'You’re a new parent looking for a broader financial health check, with college funding and mortgage security in mind.',
       evidence: ['new baby', 'college funding', 'mortgage security']
     },
@@ -540,10 +539,17 @@ const signedBrief = await composeMeetingBrief({
     state: {
       profileRevision: 7,
       moduleSlots: [
-        { moduleId: 'personal_balance_sheet', availability: 'ready' },
-        { moduleId: 'college_funding', availability: 'needs_facts' },
-        { moduleId: 'pension_projection', availability: 'needs_facts' }
+        { moduleId: 'personal_balance_sheet', availability: 'ready', intakeStatus: 'ready' },
+        { moduleId: 'college_funding', availability: 'adviser_review_required', intakeStatus: 'missing_information' },
+        { moduleId: 'pension_projection', availability: 'adviser_review_required', intakeStatus: 'missing_information' }
       ],
+      goalAssessment: {
+        primaryGoalType: 'understand_position',
+        activeGoalTypes: ['understand_position', 'fund_education'],
+        deferredGoalTypes: [],
+        evidenceFactIds: ['primary_goal'],
+        confidence: 'high'
+      },
       facts: [],
       recommendations: [
         {
@@ -558,7 +564,7 @@ assert.equal(signedBrief.analyses.length, 3);
 assert.equal(signedBrief.analyses[0].moduleId, 'personal_balance_sheet');
 assert.ok(signedBrief.signature.length >= 40);
 const publicGuide = toConversationGuide(signedBrief);
-assert.deepEqual(Object.keys(publicGuide), ['narrativeSummary', 'analyses', 'progress', 'nextObjective']);
+assert.deepEqual(Object.keys(publicGuide), ['narrativeSummary', 'goals', 'deferredGoals', 'analyses', 'progress', 'nextObjective']);
 assert.equal(publicGuide.nextObjective.facts.length, 1);
 
 // Regression guard for the premature session ending: while a realtime lease
@@ -671,7 +677,7 @@ assert.match(instructions, /signed assistantSpeech for separate playback/);
 assert.match(instructions, /clearly disclosed AI conversational companion/);
 assert.match(instructions, /Every authorized response must call exactly one supplied tool/);
 assert.match(instructions, /Do not reveal an internal persona label/);
-assert.match(instructions, /exact three-analysis focus/);
+assert.match(instructions, /selected one-to-three analyses/);
 assert.doesNotMatch(instructions, /personal_balance_sheet, house_purchase, liquidity_analysis/);
 assert.equal(instructions, buildRealtimeInstructions({
   stage: 'results',
@@ -2449,7 +2455,7 @@ const mixedDisclosure = buildGatedModuleDisclosure([
 assert.deepEqual(mixedDisclosure.moduleIds, ['personal_balance_sheet']);
 assert.equal(
   mixedDisclosure.speakableText,
-  'Personal balance sheet remains in your three-analysis plan and requires Gerry’s review; no automated result was produced for that analysis.'
+  'Personal balance sheet remains in your analysis plan and requires Gerry’s review; no automated result was produced for that analysis.'
 );
 
 const gatedHandoffSessionId = `cs_${'H'.repeat(24)}`;
@@ -2604,7 +2610,7 @@ assert.equal(indexedPlan.personaAssessment.primaryPersonaId, 'first_time_buyer')
 assert.equal(indexedPlan.moduleSlots.length, 3);
 assert.deepEqual(
   Object.keys(indexedPlan.moduleSlots[0]).sort(),
-  ['availability', 'missingFactIds', 'moduleId', 'reasons', 'slot', 'source']
+  ['availability', 'intakeStatus', 'missingFactIds', 'moduleId', 'reasons', 'relatedGoalTypes', 'slot', 'source']
 );
 await rejectsCode(confirmRealtimeAnalysisPlan(env, {
   sessionId,

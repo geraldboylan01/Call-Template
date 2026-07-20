@@ -1,6 +1,10 @@
 import { applyProfilePatch as applyCanonicalProfilePatch } from '../../../js/planning/profile.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
-import { recommendModules } from '../../../js/planning/routing_rules.js';
+import {
+  buildGoalModulePlan,
+  getGoalLabel,
+  goalPlanRecommendations
+} from '../../../js/planning/goal_plan.js';
 import {
   buildPersonaModulePlan,
   personaPlanRecommendations
@@ -24,19 +28,6 @@ import {
 } from './repository.js';
 import { buildQuestionPlan, stageFromQuestionPlan } from './question_plan.js';
 
-function allowedRecommendations(profile, message, config) {
-  if (!config.moduleRoutingEnabled) return [];
-  if (profile?.goals?.length) {
-    const plan = buildPersonaModulePlan(profile, { allowedModuleIds: config.allowedModules });
-    return personaPlanRecommendations(plan, profile);
-  }
-  return recommendModules(profile, { text: message })
-    .filter((item) => (
-      config.allowedModules.includes(item.moduleId)
-      || ['adviser_review_required', 'unsupported'].includes(item.readiness?.status)
-    ));
-}
-
 const GOAL_TITLES = Object.freeze({
   understand_position: 'Understand my current position',
   maintain_liquidity: 'Maintain an emergency cash reserve',
@@ -46,6 +37,8 @@ const GOAL_TITLES = Object.freeze({
   retire: 'Plan for retirement',
   retire_early: 'Explore early retirement',
   optimise_mortgage: 'Review the mortgage path',
+  manage_loan: 'Review or repay a non-housing loan',
+  fund_education: 'Fund children’s education',
   assess_decision: 'Assess a financial decision',
   transfer_wealth: 'Plan a wealth transfer',
   business_planning: 'Plan around a business interest',
@@ -61,7 +54,9 @@ const GOAL_EVIDENCE = Object.freeze({
   retire: /\bretir(?:e|ement|ing)\b/i,
   retire_early: /\b(?:early retirement|retire early)\b/i,
   optimise_mortgage: /\b(?:mortgage|home loan)\b/i,
-  assess_decision: /\b(?:decision|compare|college|university|education fund)\b/i,
+  manage_loan: /\b(?:personal|car|student|business|non[- ]housing) loan\b|\b(?:repay|pay off|review).{0,20}\bloan\b/i,
+  fund_education: /\b(?:college|university|education).{0,30}\b(?:fund|funding|fees|costs?|pay)\b|\b(?:fund|funding|pay).{0,30}\b(?:college|university|education)\b/i,
+  assess_decision: /\b(?:decision|compare|weigh up|options?)\b/i,
   transfer_wealth: /\b(?:inheritance|gift|transfer wealth|estate)\b/i,
   business_planning: /\b(?:business|company|shareholding)\b/i,
   agricultural_planning: /\b(?:farm|agricultural|farmland)\b/i
@@ -258,21 +253,47 @@ function personaScanPatch(profile, question, message) {
 }
 
 function candidateGoalPatch(profile, candidates, message) {
-  const existing = new Set(profile.goals.map((goal) => goal.type));
+  const existing = new Map(profile.goals.map((goal, index) => [goal.type, index]));
   const patch = {};
   let index = profile.goals.length;
   for (const candidate of candidates || []) {
-    if (!GOAL_TYPES.includes(candidate?.type) || !['high', 'medium'].includes(candidate.confidence)) continue;
-    if (existing.has(candidate.type) || !GOAL_EVIDENCE[candidate.type]?.test(message)) continue;
+    const goalType = candidate?.goalType || candidate?.type;
+    if (!GOAL_TYPES.includes(goalType) || !['high', 'medium'].includes(candidate.confidence)) continue;
+    if (!GOAL_EVIDENCE[goalType]?.test(message)) continue;
+    const correctionTarget = GOAL_TYPES.includes(candidate.correctionTarget) ? candidate.correctionTarget : null;
+    const correctionIndex = correctionTarget !== null ? existing.get(correctionTarget) : undefined;
+    if (typeof correctionIndex === 'number' && correctionTarget !== goalType) {
+      const existingGoalIndex = existing.get(goalType);
+      if (typeof existingGoalIndex === 'number') {
+        patch[`/goals/${correctionIndex}`] = { ...profile.goals[correctionIndex], status: 'paused' };
+      } else {
+        patch[`/goals/${correctionIndex}`] = {
+          ...profile.goals[correctionIndex],
+          type: goalType,
+          title: GOAL_TITLES[goalType],
+          priority: candidate.confidence === 'high' ? 'high' : 'medium',
+          status: 'exploring'
+        };
+        existing.delete(correctionTarget);
+        existing.set(goalType, correctionIndex);
+      }
+    } else if (!existing.has(goalType)) {
     patch[`/goals/${index}`] = {
-      goalId: `ai-draft-${candidate.type}-${index + 1}`,
-      type: candidate.type,
-      title: GOAL_TITLES[candidate.type],
+      goalId: `ai-draft-${goalType}-${index + 1}`,
+      type: goalType,
+      title: GOAL_TITLES[goalType],
       priority: candidate.confidence === 'high' ? 'high' : 'medium',
       status: 'exploring'
     };
-    existing.add(candidate.type);
-    index += 1;
+      existing.set(goalType, index);
+      index += 1;
+    }
+    if (candidate.priorityHint === 'primary') {
+      patch['/assumptions/values/planning'] = {
+        ...(profile.assumptions.values.planning || {}),
+        primaryGoalType: goalType
+      };
+    }
   }
   return patch;
 }
@@ -335,11 +356,21 @@ export function extractContextBoundPatch(profile, question, message) {
       .map(([value]) => value);
     if (matches.length === 1) return { [path]: matches[0] };
   }
-  if (path === '/assumptions/values/persona/primaryGoalType') {
+  if (path === '/assumptions/values/planning/primaryGoalType') {
     const matches = Object.entries(GOAL_EVIDENCE)
       .filter(([, pattern]) => pattern.test(message))
       .map(([value]) => value);
-    if (matches.length === 1) return { [path]: matches[0] };
+    const narrowed = matches.includes('retire_early')
+      ? matches.filter((value) => value !== 'retire')
+      : matches;
+    if (narrowed.length === 1) {
+      return {
+        '/assumptions/values/planning': {
+          ...(profile.assumptions.values.planning || {}),
+          primaryGoalType: narrowed[0]
+        }
+      };
+    }
   }
   if (path === '/assumptions/values/housePurchase/lendingCategory') {
     const current = { ...(profile.assumptions.values.housePurchase || {}) };
@@ -483,7 +514,8 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
   let nextProfile = profile;
   let aiErrorCode = null;
   let aiAttemptId = null;
-  const activeQuestion = describeConversationState(profile, config).nextQuestion;
+  const initialConversationState = describeConversationState(profile, config);
+  const activeQuestion = initialConversationState.nextQuestion;
   const contextualPatch = extractContextBoundPatch(profile, activeQuestion, safeMessage);
 
   if (contextualPatch) {
@@ -589,6 +621,9 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
         assistantMessage,
         nextQuestion: question,
         recommendations,
+        selectionPolicyVersion: conversationState.selectionPolicyVersion || null,
+        goalAssessment: conversationState.goalAssessment || null,
+        moduleSlots: conversationState.moduleSlots || [],
         extraction: {
           mode,
           goalCandidates: extraction?.goalCandidates || [],
@@ -636,6 +671,26 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
       status: recommendation.status
     }).catch(() => {});
   }
+  const previousModuleIds = (initialConversationState.moduleSlots || []).map((slot) => slot.moduleId);
+  const currentModuleIds = (conversationState.moduleSlots || []).map((slot) => slot.moduleId);
+  const planChanged = previousModuleIds.join('|') !== currentModuleIds.join('|');
+  await recordEvent(env, sessionRow.id, 'goal_plan_evaluated', {
+    selectionPolicyVersion: conversationState.selectionPolicyVersion || null,
+    goalTypes: conversationState.goalAssessment?.activeGoalTypes || [],
+    deferredGoalTypes: conversationState.goalAssessment?.deferredGoalTypes || [],
+    moduleIds: currentModuleIds,
+    ruleIds: recommendations.flatMap((item) => item.triggeredRuleIds || []),
+    clarificationRequired: conversationState.requiresGoalPriorityQuestion === true
+      || conversationState.requiresDecisionTopicQuestion === true,
+    planChanged
+  }).catch(() => {});
+  if (planChanged) {
+    await recordEvent(env, sessionRow.id, 'goal_plan_changed', {
+      selectionPolicyVersion: conversationState.selectionPolicyVersion || null,
+      previousModuleIds,
+      moduleIds: currentModuleIds
+    }).catch(() => {});
+  }
   return {
     ...payload,
     turnId: committed.turnId,
@@ -647,42 +702,65 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
   };
 }
 
-export function describeConversationState(profile, config) {
+function describeLegacyPersonaState(profile, config) {
   const personaPlan = buildPersonaModulePlan(profile, { allowedModuleIds: config.allowedModules });
   const hasGoal = Boolean(profile?.goals?.length);
-  const plannedRecommendations = hasGoal
-    ? personaPlanRecommendations(personaPlan, profile)
-    : allowedRecommendations(profile, '', config);
+  const plannedRecommendations = hasGoal ? personaPlanRecommendations(personaPlan, profile) : [];
   const explicitPersonaResolved = personaPlan.personaAssessment.needsDisambiguation !== true
     && personaPlan.personaAssessment.evidenceFactIds.includes('self_description');
   const scanQuestion = hasGoal && !explicitPersonaResolved ? personaScanQuestion(profile) : null;
-  const recommendations = hasGoal && personaPlan.requiresDecisionTopicQuestion
-    ? []
-    : plannedRecommendations;
   let nextQuestion = buildQuestionPlan(profile, plannedRecommendations);
   let stage = stageFromQuestionPlan(profile, plannedRecommendations);
+  if (stage === 'targeted_fact_gathering') stage = 'goal_specific_questions';
   if (hasGoal && personaPlan.personaAssessment.needsDisambiguation) {
     nextQuestion = {
       questionId: `question-persona-disambiguation-${personaPlan.personaAssessment.profileRevision}`,
       factId: 'self_description',
       factInstanceId: 'self_description',
       factIds: ['self_description'],
-      facts: [{
-        factId: 'self_description',
-        factInstanceId: 'self_description',
-        fieldPath: '/assumptions/values/persona/selfDescription'
-      }],
+      facts: [{ factId: 'self_description', factInstanceId: 'self_description', fieldPath: '/assumptions/values/persona/selfDescription' }],
       fieldPaths: ['/assumptions/values/persona/selfDescription'],
       relatedFieldPaths: ['/assumptions/values/persona/selfDescription'],
-      prompt: 'Which best describes your situation right now—for example first-time buyer, new parent, self-employed, company director, pre-retiree, retired, or something else?',
+      prompt: 'Which description best matches your situation right now?',
       answerType: 'text',
       confirmationPolicy: 'final_review',
       optional: false
     };
     stage = 'life_stage_scan';
-  } else if (personaPlan.requiresDecisionTopicQuestion) {
+  } else if (scanQuestion) {
+    nextQuestion = scanQuestion;
+    stage = 'life_stage_scan';
+  }
+  return {
+    stage,
+    nextQuestion,
+    recommendations: plannedRecommendations,
+    personaAssessment: personaPlan.personaAssessment,
+    moduleSlots: personaPlan.moduleSlots,
+    overrides: personaPlan.overrides,
+    requiresGoalPriorityQuestion: false,
+    requiresDecisionTopicQuestion: false,
+    requiresPersonaScan: Boolean(scanQuestion),
+    deferredGoalTypes: []
+  };
+}
+
+export function describeConversationState(profile, config) {
+  if (config.goalRoutingEnabled === false) return describeLegacyPersonaState(profile, config);
+  const goalPlan = buildGoalModulePlan(profile, { allowedModuleIds: config.allowedModules });
+  const hasGoal = goalPlan.goalAssessment.activeGoalTypes.length > 0;
+  const plannedRecommendations = hasGoal ? goalPlanRecommendations(goalPlan, profile) : [];
+  const recommendations = goalPlan.requiresDecisionTopicQuestion || goalPlan.requiresGoalPriorityQuestion
+    ? [] : plannedRecommendations;
+  const unsupportedOnly = hasGoal
+    && goalPlan.moduleSlots.length === 0
+    && !goalPlan.requiresDecisionTopicQuestion
+    && !goalPlan.requiresGoalPriorityQuestion;
+  let nextQuestion = buildQuestionPlan(profile, plannedRecommendations);
+  let stage = stageFromQuestionPlan(profile, plannedRecommendations);
+  if (goalPlan.requiresDecisionTopicQuestion) {
     nextQuestion = {
-      questionId: `question-specific-decision-${personaPlan.profileRevision}`,
+      questionId: `question-specific-decision-${goalPlan.profileRevision}`,
       factId: 'primary_goal',
       factInstanceId: 'primary_goal',
       factIds: ['primary_goal'],
@@ -693,45 +771,64 @@ export function describeConversationState(profile, config) {
       }],
       fieldPaths: ['/goals'],
       relatedFieldPaths: ['/goals'],
-      prompt: 'What specific financial decision should we address first—for example buying a home, reviewing a mortgage, funding education, transferring wealth, or planning around a business?',
+      prompt: 'What does that decision concern—for example buying a home, reviewing a mortgage or loan, retirement, or funding education?',
       answerType: 'text',
       confirmationPolicy: 'final_review',
       optional: false
     };
-    stage = 'goal_discovery';
-  } else if (scanQuestion) {
-    nextQuestion = scanQuestion;
-    stage = 'life_stage_scan';
-  } else if (personaPlan.requiresGoalPriorityQuestion) {
+    stage = 'goal_clarification';
+  } else if (goalPlan.requiresGoalPriorityQuestion) {
+    const choices = goalPlan.goalAssessment.activeGoalTypes
+      .filter((goalType) => !goalPlan.deferredGoalTypes.includes(goalType))
+      .map(getGoalLabel);
     nextQuestion = {
-      questionId: `question-primary-goal-focus-${personaPlan.profileRevision}`,
+      questionId: `question-primary-goal-focus-${goalPlan.profileRevision}`,
       factId: 'primary_goal_focus',
       factInstanceId: 'primary_goal_focus',
       factIds: ['primary_goal_focus'],
       facts: [{
         factId: 'primary_goal_focus',
         factInstanceId: 'primary_goal_focus',
-        fieldPath: '/assumptions/values/persona/primaryGoalType'
+        fieldPath: '/assumptions/values/planning/primaryGoalType'
       }],
-      fieldPaths: ['/assumptions/values/persona/primaryGoalType'],
+      fieldPaths: ['/assumptions/values/planning/primaryGoalType'],
       relatedFieldPaths: ['/goals'],
-      prompt: 'You have several important goals. Which one should this first three-analysis plan address first?',
+      prompt: `You’ve mentioned ${choices.join(', ')}. Which would be most useful to focus on today?`,
       answerType: 'text',
       confirmationPolicy: 'final_review',
       optional: false
     };
-    stage = 'goal_priority';
+    stage = 'goal_clarification';
+  } else if (unsupportedOnly) {
+    nextQuestion = {
+      questionId: `question-supported-goal-${goalPlan.profileRevision}`,
+      factId: 'primary_goal',
+      factInstanceId: 'primary_goal',
+      factIds: ['primary_goal'],
+      facts: [{
+        factId: 'primary_goal',
+        factInstanceId: 'primary_goal',
+        fieldPath: '/goals'
+      }],
+      fieldPaths: ['/goals'],
+      relatedFieldPaths: ['/goals'],
+      prompt: 'I’ve noted that goal, but it does not yet have a consumer analysis in this version. Is there another goal you would like to focus on today?',
+      answerType: 'text',
+      confirmationPolicy: 'final_review',
+      optional: false
+    };
+    stage = 'goal_clarification';
   }
   return {
     stage,
     nextQuestion,
     recommendations,
-    personaAssessment: personaPlan.personaAssessment,
-    moduleSlots: hasGoal && !personaPlan.requiresDecisionTopicQuestion ? personaPlan.moduleSlots : [],
-    overrides: hasGoal && !personaPlan.requiresDecisionTopicQuestion ? personaPlan.overrides : [],
-    requiresGoalPriorityQuestion: hasGoal && personaPlan.requiresGoalPriorityQuestion,
-    requiresDecisionTopicQuestion: hasGoal && personaPlan.requiresDecisionTopicQuestion,
-    requiresPersonaScan: Boolean(hasGoal && scanQuestion),
-    deferredGoalTypes: hasGoal ? personaPlan.deferredGoalTypes : []
+    selectionPolicyVersion: goalPlan.selectionPolicyVersion,
+    goalAssessment: goalPlan.goalAssessment,
+    moduleSlots: hasGoal && !goalPlan.requiresDecisionTopicQuestion && !goalPlan.requiresGoalPriorityQuestion
+      ? goalPlan.moduleSlots.map(({ ruleIds: _ruleIds, ...slot }) => slot) : [],
+    requiresGoalPriorityQuestion: hasGoal && goalPlan.requiresGoalPriorityQuestion,
+    requiresDecisionTopicQuestion: hasGoal && goalPlan.requiresDecisionTopicQuestion,
+    deferredGoalTypes: hasGoal ? goalPlan.deferredGoalTypes : []
   };
 }

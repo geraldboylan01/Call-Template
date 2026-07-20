@@ -5,6 +5,7 @@ import {
   getPlanningModulesForSemanticFact,
   getRealtimeModuleSemanticFactIds
 } from '../../../js/planning/module_registry.js';
+import { buildGoalModulePlan } from '../../../js/planning/goal_plan.js';
 import { buildPersonaModulePlan } from '../../../js/planning/persona_catalogue.js';
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { escapeJsonPointerToken } from '../../../js/planning/utils.js';
@@ -67,6 +68,8 @@ const GOAL_DEFINITIONS = Object.freeze({
   retire: { title: 'Plan for retirement' },
   retire_early: { title: 'Explore early retirement' },
   optimise_mortgage: { title: 'Review the mortgage path' },
+  manage_loan: { title: 'Review a non-housing loan' },
+  fund_education: { title: 'Fund children’s education' },
   assess_decision: { title: 'Assess a financial decision' },
   transfer_wealth: { title: 'Plan a wealth transfer' },
   business_planning: { title: 'Plan around a business interest' },
@@ -453,10 +456,24 @@ function projectPersonaFacts(profile, facts) {
   projected.assumptions.values.persona = {
     ...(projected.assumptions.values.persona || {})
   };
+  projected.assumptions.values.planning = {
+    ...(projected.assumptions.values.planning || {})
+  };
   for (const fact of facts || []) {
     if (fact?.factId === 'primary_goal') {
       const type = goalType(fact.value);
-      const index = stableCollectionIndex(projected.goals, (goal) => goal.type === type);
+      const correctionTarget = plainObject(fact.value) && GOAL_TYPES.includes(fact.value.correctionTarget)
+        ? fact.value.correctionTarget : null;
+      const correctionIndex = correctionTarget
+        ? projected.goals.findIndex((goal) => goal.type === correctionTarget)
+        : -1;
+      const existingTypeIndex = projected.goals.findIndex((goal) => goal.type === type);
+      if (correctionIndex >= 0 && existingTypeIndex >= 0 && existingTypeIndex !== correctionIndex) {
+        projected.goals[correctionIndex] = { ...projected.goals[correctionIndex], status: 'paused' };
+        continue;
+      }
+      const index = correctionIndex >= 0 ? correctionIndex
+        : existingTypeIndex >= 0 ? existingTypeIndex : projected.goals.length;
       if (index === projected.goals.length) {
         projected.goals.push({
           goalId: `goal_realtime_${type}`,
@@ -465,12 +482,24 @@ function projectPersonaFacts(profile, facts) {
           priority: 'high',
           status: 'active'
         });
+      } else if (correctionIndex >= 0) {
+        projected.goals[index] = {
+          ...projected.goals[index],
+          goalId: `goal_realtime_${type}`,
+          type,
+          title: GOAL_DEFINITIONS[type].title,
+          priority: 'high',
+          status: 'active'
+        };
       }
       continue;
     }
     if (!Object.hasOwn(INTAKE_FACT_PATHS, fact?.factId)) continue;
     const [key, kind] = INTAKE_FACT_PATHS[fact.factId];
-    projected.assumptions.values.persona[key] = kind === 'boolean'
+    const target = fact.factId === 'primary_goal_focus'
+      ? projected.assumptions.values.planning
+      : projected.assumptions.values.persona;
+    target[key] = kind === 'boolean'
       ? strictBoolean(fact.value)
       : kind === 'count'
         ? boundedNumber(fact.value, { min: 0, max: 30, integer: true })
@@ -479,7 +508,7 @@ function projectPersonaFacts(profile, facts) {
   return normalizeHouseholdProfile(projected);
 }
 
-export function modulesEnabledByFacts(recommendations, facts = [], profile = null) {
+export function modulesEnabledByFacts(recommendations, facts = [], profile = null, { goalRoutingEnabled = true } = {}) {
   const projectedProfile = projectPersonaFacts(profile, facts);
   const modules = new Set(projectedProfile
     ? []
@@ -487,7 +516,9 @@ export function modulesEnabledByFacts(recommendations, facts = [], profile = nul
       .map((item) => item?.moduleId)
       .filter((moduleId) => typeof moduleId === 'string'));
   if (projectedProfile) {
-    const plan = buildPersonaModulePlan(projectedProfile);
+    const plan = goalRoutingEnabled
+      ? buildGoalModulePlan(projectedProfile)
+      : buildPersonaModulePlan(projectedProfile);
     plan.moduleSlots.forEach((slot) => modules.add(slot.moduleId));
   }
   return modules;
@@ -524,7 +555,7 @@ function formattedFactValue(factId, value, currency = 'EUR') {
     }
   }
   if (typeof value === 'number' && Number.isFinite(value)) {
-    if (['pension_employee_contribution_rate', 'pension_employer_contribution_rate', 'mortgage_annual_interest_rate'].includes(factId)) {
+    if (['pension_employee_contribution_rate', 'pension_employer_contribution_rate', 'mortgage_annual_interest_rate', 'loan_annual_interest_rate'].includes(factId)) {
       return new Intl.NumberFormat('en-IE', { style: 'percent', maximumFractionDigits: 2 }).format(value);
     }
     return new Intl.NumberFormat('en-IE', { maximumFractionDigits: 2 }).format(value);
@@ -556,7 +587,9 @@ function mapPersonaFact(profile, fact) {
       ? boundedNumber(fact.value, { min: 0, max: 30, integer: true })
       : normalizedChoice(fact.factId, fact.value);
   return {
-    fieldPath: `/assumptions/values/persona/${key}`,
+    fieldPath: fact.factId === 'primary_goal_focus'
+      ? `/assumptions/values/planning/${key}`
+      : `/assumptions/values/persona/${key}`,
     canonicalValue,
     displayValue: canonicalValue
   };
@@ -578,17 +611,21 @@ function pensionIndex(profile, value) {
   return { stableId, index, existing: profile.pensions[index] };
 }
 
-function mortgageIndex(profile, value) {
+function selectedDebtIndex(profile, value, type) {
   const selectedId = selectedEntityId(value, 'liability', profile.liabilities, 'liabilityId');
-  const stableId = selectedId || 'liability_realtime_mortgage';
+  const stableId = selectedId || `liability_realtime_${type}`;
   const existingIndex = profile.liabilities.findIndex((liability) => liability.liabilityId === stableId);
   const index = selectedId || existingIndex >= 0
     ? existingIndex
-    : profile.liabilities.findIndex((liability) => liability.type === 'mortgage');
+    : profile.liabilities.findIndex((liability) => liability.type === type);
   if (!selectedId && index < 0 && profile.liabilities.length > 0) {
-    throw new ConsumerError(409, 'realtime_mortgage_review_required', 'Existing liabilities require visual review before adding a spoken mortgage aggregate.');
+    throw new ConsumerError(409, `realtime_${type}_review_required`, `Existing liabilities require visual review before adding a spoken ${type} aggregate.`);
   }
   return { stableId, index: index < 0 ? profile.liabilities.length : index, existing: index < 0 ? null : profile.liabilities[index] };
+}
+
+function mortgageIndex(profile, value) {
+  return selectedDebtIndex(profile, value, 'mortgage');
 }
 
 function liabilityIndex(profile, value) {
@@ -763,6 +800,7 @@ function mapAssetPosition(profile, fact, currency) {
 
 function mapLiabilityPosition(profile, fact, currency) {
   const mortgageOnly = fact.factId === 'mortgage_position';
+  const loanOnly = fact.factId === 'loan_position';
   const mapped = withDecimalRateProposal(mapCollectionEntity(profile, fact, {
     collectionKey: 'liabilities',
     idKey: 'liabilityId',
@@ -775,6 +813,9 @@ function mapLiabilityPosition(profile, fact, currency) {
       }
       if (mortgageOnly && type !== 'mortgage') {
         throw new ConsumerError(400, 'realtime_mortgage_type_required', 'Mortgage analysis requires a mortgage liability, not another debt type.');
+      }
+      if (loanOnly && type !== 'loan') {
+        throw new ConsumerError(400, 'realtime_loan_type_required', 'Loan analysis requires a non-housing loan liability.');
       }
       const canonical = {
         ...(existing || {}),
@@ -1075,7 +1116,7 @@ export function mapRealtimeFact(profile, fact) {
   if (fact.factId === 'partner_person') return mapPartnerPerson(profile, fact);
   if (fact.factId === 'income_sources') return mapIncomeSource(profile, fact, currency);
   if (fact.factId === 'asset_position') return mapAssetPosition(profile, fact, currency);
-  if (fact.factId === 'liability_position' || fact.factId === 'mortgage_position') {
+  if (fact.factId === 'liability_position' || fact.factId === 'mortgage_position' || fact.factId === 'loan_position') {
     return mapLiabilityPosition(profile, fact, currency);
   }
   if (fact.factId === 'property_position') return mapPropertyPosition(profile, fact, currency);
@@ -1087,12 +1128,30 @@ export function mapRealtimeFact(profile, fact) {
 
   if (fact.factId === 'primary_goal') {
     const type = goalType(fact.value);
-    const index = stableCollectionIndex(profile.goals, (goal) => goal.type === type);
+    const correctionTarget = plainObject(fact.value) && GOAL_TYPES.includes(fact.value.correctionTarget)
+      ? fact.value.correctionTarget : null;
+    const correctionIndex = correctionTarget
+      ? profile.goals.findIndex((goal) => goal.type === correctionTarget)
+      : -1;
+    const existingTypeIndex = profile.goals.findIndex((goal) => goal.type === type);
+    if (correctionIndex >= 0 && existingTypeIndex >= 0 && existingTypeIndex !== correctionIndex) {
+      return {
+        fieldPath: `/goals/${existingTypeIndex}`,
+        canonicalValue: profile.goals[existingTypeIndex],
+        additionalPatch: {
+          [`/goals/${correctionIndex}`]: { ...profile.goals[correctionIndex], status: 'paused' }
+        },
+        displayValue: type
+      };
+    }
+    const index = correctionIndex >= 0 ? correctionIndex
+      : existingTypeIndex >= 0 ? existingTypeIndex : profile.goals.length;
     const existing = profile.goals[index];
     return {
       fieldPath: `/goals/${index}`,
-      canonicalValue: existing || {
-        goalId: `goal_realtime_${type}`,
+      canonicalValue: {
+        ...(existing || {}),
+        goalId: correctionIndex >= 0 || !existing ? `goal_realtime_${type}` : existing.goalId,
         type,
         title: GOAL_DEFINITIONS[type].title,
         priority: 'high',
@@ -1224,24 +1283,26 @@ export function mapRealtimeFact(profile, fact) {
     };
   }
 
-  if (['mortgage_current_balance', 'mortgage_annual_interest_rate', 'mortgage_remaining_term_months'].includes(fact.factId)) {
-    const { stableId, index, existing } = mortgageIndex(profile, fact.value);
-    const key = fact.factId === 'mortgage_current_balance' ? 'currentBalance'
-      : fact.factId === 'mortgage_annual_interest_rate' ? 'annualInterestRate' : 'remainingTermMonths';
-    const canonicalValue = fact.factId === 'mortgage_current_balance'
+  const debtScalarFacts = ['mortgage_current_balance', 'mortgage_annual_interest_rate', 'mortgage_remaining_term_months', 'loan_current_balance', 'loan_annual_interest_rate', 'loan_remaining_term_months'];
+  if (debtScalarFacts.includes(fact.factId)) {
+    const debtType = fact.factId.startsWith('loan_') ? 'loan' : 'mortgage';
+    const { stableId, index, existing } = selectedDebtIndex(profile, fact.value, debtType);
+    const key = fact.factId.endsWith('_current_balance') ? 'currentBalance'
+      : fact.factId.endsWith('_annual_interest_rate') ? 'annualInterestRate' : 'remainingTermMonths';
+    const canonicalValue = fact.factId.endsWith('_current_balance')
       ? money(fact.value, currency)
-      : fact.factId === 'mortgage_annual_interest_rate'
+      : fact.factId.endsWith('_annual_interest_rate')
         ? percentageRate(
           scalarValue(fact.value, [key, 'rate']),
           { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
         )
         : boundedNumber(scalarValue(fact.value, [key, 'months']), { min: 1, max: 1200, integer: true });
-    const proposalValue = fact.factId === 'mortgage_current_balance'
+    const proposalValue = fact.factId.endsWith('_current_balance')
       ? { entityId: stableId, ...canonicalValue }
       : {
         entityId: stableId,
         value: canonicalValue,
-        ...(fact.factId === 'mortgage_annual_interest_rate' ? { rateUnit: 'decimal' } : {})
+        ...(fact.factId.endsWith('_annual_interest_rate') ? { rateUnit: 'decimal' } : {})
       };
     if (existing) {
       return {
@@ -1251,7 +1312,7 @@ export function mapRealtimeFact(profile, fact) {
         proposalValue
       };
     }
-    const mortgage = { ...(existing || { liabilityId: stableId, ownerIds: [primaryOwnerId], type: 'mortgage', label: 'Mortgage' }), [key]: canonicalValue };
+    const mortgage = { ...(existing || { liabilityId: stableId, ownerIds: [primaryOwnerId], type: debtType, label: debtType === 'loan' ? 'Loan' : 'Mortgage' }), [key]: canonicalValue };
     return {
       fieldPath: `/liabilities/${index}`,
       canonicalValue: mortgage,
@@ -1320,7 +1381,11 @@ export function buildConfirmedRealtimeFactSummary(profile) {
   const goal = profile.goals?.find((item) => GOAL_TYPES.includes(item.type));
   if (goal) add('primary_goal', `/goals/${profile.goals.indexOf(goal)}`, goal.type);
   const persona = profile.assumptions?.values?.persona || {};
-  Object.entries(INTAKE_FACT_PATHS).forEach(([factId, [key]]) => add(factId, `/assumptions/values/persona/${key}`, persona[key]));
+  const planning = profile.assumptions?.values?.planning || {};
+  Object.entries(INTAKE_FACT_PATHS).forEach(([factId, [key]]) => {
+    if (factId === 'primary_goal_focus') add(factId, `/assumptions/values/planning/${key}`, planning[key]);
+    else add(factId, `/assumptions/values/persona/${key}`, persona[key]);
+  });
   if (profile.partner?.personId) {
     add('partner_person', '/partner', {
       personId: profile.partner.personId,
@@ -1427,6 +1492,16 @@ export function buildConfirmedRealtimeFactSummary(profile) {
     add('mortgage_current_balance', `${mortgagePath}/currentBalance`, mortgage.currentBalance);
     add('mortgage_annual_interest_rate', `${mortgagePath}/annualInterestRate`, mortgage.annualInterestRate);
     add('mortgage_remaining_term_months', `${mortgagePath}/remainingTermMonths`, mortgage.remainingTermMonths);
+  }
+  const loan = profile.liabilities?.find((item) => item.liabilityId === 'liability_realtime_loan')
+    || (profile.liabilities?.filter((item) => item.type === 'loan').length === 1
+      ? profile.liabilities.find((item) => item.type === 'loan')
+      : null);
+  if (loan) {
+    const loanPath = `/liabilities/${profile.liabilities.indexOf(loan)}`;
+    add('loan_current_balance', `${loanPath}/currentBalance`, loan.currentBalance);
+    add('loan_annual_interest_rate', `${loanPath}/annualInterestRate`, loan.annualInterestRate);
+    add('loan_remaining_term_months', `${loanPath}/remainingTermMonths`, loan.remainingTermMonths);
   }
   profile.dependants?.forEach((dependant, index) => {
     const dependantPath = `/dependants/${index}`;

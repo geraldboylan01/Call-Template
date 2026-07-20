@@ -1,5 +1,7 @@
 # Net Retirement Cash Flow Playbook
 
+<!-- planeir-planning-module {"moduleId":"net_retirement_cashflow","outputKey":"generated.netRetirementInputs","role":"analysis"} -->
+
 Use this playbook when Gerry wants to model retirement spending from net expenditure and net income, where pension taxation is too uncertain for a true net-income pension projection.
 
 ## Job

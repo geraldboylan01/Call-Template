@@ -1,7 +1,7 @@
 import { createHouseholdProfile, createProfilePatch, normalizeHouseholdProfile } from './profile.js';
 import { readJsonPointer } from './utils.js';
 
-export const RULES_ONLY_EXTRACTION_VERSION = 'rules-extraction-1.0.0';
+export const RULES_ONLY_EXTRACTION_VERSION = 'rules-extraction-2.0.0';
 
 const AMOUNT_SOURCE = '(?:€|eur\\s*|£|gbp\\s*|\\$|usd\\s*)?\\s*[\\d][\\d,.]*(?:\\s*(?:k|m|grand|thousand|million))?';
 const APPROXIMATE_WORDS = /\b(?:about|around|roughly|approximately|approx\.?|circa|nearly|almost)\b/i;
@@ -113,8 +113,20 @@ export function detectRulesOnlyGoalCandidates(text) {
   if (/\b(?:overpay|pay off|clear|reduce|refinance|switch)\b.{0,25}\bmortgage\b|\bmortgage\b.{0,25}\b(?:overpay|pay off|clear|reduce|refinance|switch)\b/i.test(normalized)) {
     add('optimise_mortgage', 90, 'text.mortgage.v1', 'The message asks about changing an existing mortgage path.');
   }
-  if (/\b(?:college|university|third[- ]level|education fund)\b/i.test(normalized)) {
-    add('assess_decision', 75, 'text.college.v1', 'The message asks about education funding.');
+  if (/\b(?:personal|car|student|business|non[- ]housing) loan\b|\b(?:repay|pay off|clear|reduce|review)\b.{0,25}\bloan\b/i.test(normalized)) {
+    add('manage_loan', 90, 'text.loan.v1', 'The message asks about a non-housing loan.');
+  }
+  if (/\b(?:college|university|third[- ]level|education fund|education funding)\b/i.test(normalized)) {
+    add('fund_education', 85, 'text.education.v1', 'The message asks about education funding.');
+  }
+  if (/\b(?:overall position|financial position|financial overview|how (?:am i|are we) doing|complete financial review|full financial review)\b/i.test(normalized)) {
+    add('understand_position', 85, 'text.position.v1', 'The message asks for an overall view of the household position.');
+  }
+  if (/\b(?:build|grow|create)\b.{0,25}\b(?:wealth|investments?|portfolio)\b/i.test(normalized)) {
+    add('build_wealth', 80, 'text.wealth.v1', 'The message describes building long-term wealth.');
+  }
+  if (/\b(?:financial decision|weigh up|compare my options|compare our options)\b/i.test(normalized)) {
+    add('assess_decision', 70, 'text.decision.v1', 'The message mentions a financial decision without a supported topic.');
   }
   if (/\b(?:inheritance planning|estate planning|transfer(?:ring)? wealth|capital acquisitions tax|cat planning|gift(?:ing)? assets?)\b/i.test(normalized)) {
     add('transfer_wealth', 80, 'text.transfer_wealth.v1', 'The message explicitly asks about a gift, estate or wealth transfer.');
@@ -170,7 +182,11 @@ export function extractRulesOnlyProfilePatch(text, {
       retire_early: 'Explore early retirement',
       improve_pension: 'Improve pension readiness',
       optimise_mortgage: 'Optimise the mortgage',
-      assess_decision: /college|university|education/i.test(normalized) ? 'Plan for college funding' : 'Assess a financial decision',
+      manage_loan: 'Review or repay a non-housing loan',
+      fund_education: 'Fund children’s education',
+      understand_position: 'Understand my current position',
+      build_wealth: 'Build long-term wealth',
+      assess_decision: 'Assess a financial decision',
       transfer_wealth: 'Plan a wealth transfer',
       business_planning: 'Plan around a business interest',
       agricultural_planning: 'Plan around agricultural assets'
@@ -422,6 +438,37 @@ export function extractRulesOnlyProfilePatch(text, {
           type: 'mortgage',
           label: 'Mortgage',
           currentBalance: money,
+          ...(rate !== null ? { annualInterestRate: rate } : {}),
+          ...(termMatch ? { remainingTermMonths: Number(termMatch[1]) * 12 } : {})
+        }
+      });
+    }
+  }
+
+  const loan = /\b(?:personal|car|student|business|non[- ]housing) loan\b/i.test(normalized) ? amountNear(
+    normalized,
+    new RegExp('(?:(?:personal|car|student|business|non[- ]housing)?\\s*loan(?:\\s+(?:balance|of|is))?\\s*(?<amount>' + AMOUNT_SOURCE + ')|(?<amount2>' + AMOUNT_SOURCE + ')\\s+(?:personal|car|student|business|non[- ]housing)?\\s*loan)', 'i'),
+    currency
+  ) : null;
+  if (loan?.match) {
+    const existing = findExisting(profile, 'liabilities', (liability) => liability.type === 'loan');
+    const loanMoney = parseAmount(loan.match.groups.amount || loan.match.groups.amount2, currency);
+    const rate = parsePercent((normalized.match(/(?:at|rate(?:\s+of)?)\s+([\d.]+\s*%)/i) || [])[1]);
+    const termMatch = normalized.match(/(\d{1,2})\s+years?\s+(?:left|remaining|to go)/i);
+    if (existing) {
+      operations.push(opFor(profile, `/liabilities/${existing.index}/currentBalance`, loanMoney));
+      if (rate !== null) operations.push(opFor(profile, `/liabilities/${existing.index}/annualInterestRate`, rate));
+      if (termMatch) operations.push(opFor(profile, `/liabilities/${existing.index}/remainingTermMonths`, Number(termMatch[1]) * 12));
+    } else {
+      operations.push({
+        op: 'add',
+        path: '/liabilities/-',
+        value: {
+          liabilityId: unusedCollectionId(profile, operations, 'liabilities', 'liabilityId', 'rules-loan'),
+          ownerIds: [profile.primaryPerson.personId],
+          type: 'loan',
+          label: 'Loan',
+          currentBalance: loanMoney,
           ...(rate !== null ? { annualInterestRate: rate } : {}),
           ...(termMatch ? { remainingTermMonths: Number(termMatch[1]) * 12 } : {})
         }

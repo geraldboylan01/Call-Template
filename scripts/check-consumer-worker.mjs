@@ -902,6 +902,7 @@ assert.equal(profile.fieldMetadata['/goals/0/type'].confirmedByUser, false);
 assert.deepEqual(recommendModules(profile).slice(0, 2).map((item) => item.moduleId), ['house_purchase', 'liquidity_analysis']);
 let state = describeConversationState(profile, {
   moduleRoutingEnabled: true,
+  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
 assert.equal(state.stage, 'life_stage_scan');
@@ -913,6 +914,7 @@ assert.deepEqual(personaPatch, {
 profile = applyProfilePatch(profile, personaPatch, [], 'consumer_edit');
 state = describeConversationState(profile, {
   moduleRoutingEnabled: true,
+  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
 assert.notEqual(state.stage, 'life_stage_scan');
@@ -1040,6 +1042,7 @@ const noExpenseProfile = applyProfilePatch(
 );
 const noExpenseState = describeConversationState(noExpenseProfile, {
   moduleRoutingEnabled: true,
+  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
 assert.equal(noExpenseState.stage, 'goal_specific_questions');
@@ -1060,6 +1063,7 @@ const siblingNoneProfile = applyProfilePatch(preparedNoExpenseProfile, {
 }, [], 'consumer_edit');
 const siblingNoneState = describeConversationState(siblingNoneProfile, {
   moduleRoutingEnabled: true,
+  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
 assert.equal(siblingNoneState.stage, 'goal_specific_questions');

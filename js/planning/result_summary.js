@@ -109,6 +109,19 @@ function mortgageHighlight(result) {
   };
 }
 
+function loanHighlight(result) {
+  const semantic = result.semanticResult;
+  return {
+    id: 'loan-position',
+    moduleId: result.moduleId,
+    title: 'Loan repayment path',
+    message: `The modelled monthly payment is ${formatMoney(semantic.monthlyPayment, semantic.currency)}, with ${formatMoney(semantic.totalInterestLifetime, semantic.currency)} of lifetime interest${semantic.payoffYear ? ` and payoff in ${semantic.payoffYear}` : ''}.`,
+    tone: 'neutral',
+    priority: 69,
+    numericFacts: { ...semantic }
+  };
+}
+
 function collegeHighlight(result) {
   const semantic = result.semanticResult;
   return {
@@ -151,6 +164,7 @@ const HIGHLIGHT_BUILDERS = Object.freeze({
   pension_projection: pensionHighlight,
   net_retirement_cashflow: netRetirementHighlight,
   mortgage_analysis: mortgageHighlight,
+  loan_analysis: loanHighlight,
   college_funding: collegeHighlight
 });
 

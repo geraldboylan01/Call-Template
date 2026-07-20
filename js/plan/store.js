@@ -429,7 +429,9 @@ export function mergePayload(payload) {
         return;
       }
       const readinessStatus = String(firstDefined(item?.readiness?.status, '') || '');
-      const consumerRunnable = !['adviser_review_required', 'unsupported', 'not_relevant'].includes(readinessStatus);
+      const availability = String(firstDefined(item?.availability, '') || '');
+      const consumerRunnable = availability !== 'adviser_review_required'
+        && !['adviser_review_required', 'unsupported', 'not_relevant'].includes(readinessStatus);
       if (consumerRunnable) nextSelection.add(moduleId);
     });
     state.selectedModuleIds = [...nextSelection];

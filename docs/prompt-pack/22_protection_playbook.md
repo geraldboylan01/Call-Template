@@ -1,5 +1,7 @@
 # Protection Playbook
 
+<!-- planeir-planning-module {"moduleId":"protection_analysis","outputKey":"generated.report","role":"analysis"} -->
+
 Use this playbook when Gerry says `use the protection playbook`, wants a protection planning module, or asks about income protection and serious illness cover.
 
 ## Job

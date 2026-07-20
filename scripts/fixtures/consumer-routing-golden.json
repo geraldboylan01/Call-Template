@@ -96,7 +96,7 @@
         "I want to plan for university and college funding, but I have not chosen cost figures yet."
       ],
       "expected": {
-        "goalTypes": ["assess_decision"],
+        "goalTypes": ["fund_education"],
         "modules": [
           {
             "moduleId": "college_funding",
@@ -121,7 +121,7 @@
         "We want to buy our first home and retire early, and we also want to plan for university costs."
       ],
       "expected": {
-        "goalTypes": ["buy_home", "retire_early", "assess_decision"],
+        "goalTypes": ["buy_home", "retire_early", "fund_education"],
         "modules": [
           {
             "moduleId": "house_purchase",

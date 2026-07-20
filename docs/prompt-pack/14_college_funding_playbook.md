@@ -1,5 +1,7 @@
 # College Funding Playbook
 
+<!-- planeir-planning-module {"moduleId":"college_funding","outputKey":"generated.collegeFundingInputs","role":"analysis"} -->
+
 Use this playbook when Gerry says `use the college funding playbook`, asks for education funding options, asks to ring-fence college costs, or wants to compare children living at home versus going away for college.
 
 ## Job

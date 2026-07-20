@@ -1,5 +1,7 @@
 # Retirement Playbook
 
+<!-- planeir-planning-module {"moduleId":"pension_projection","outputKey":"generated.pensionInputs","role":"analysis"} -->
+
 Use this playbook when Gerry says `run the retirement playbook`, asks for a retirement projection, or wants target-income or affordable-income retirement modelling.
 
 ## Job

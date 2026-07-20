@@ -94,7 +94,8 @@ export function recommendModules(rawProfile, {
   route('retire_early', MODULE_IDS.PENSION_PROJECTION, 15, 'recommended', 'route.retire_early.pension.v1', 'Early retirement requires pension timing analysis.');
   route('retire_early', MODULE_IDS.NET_RETIREMENT, 15, 'recommended', 'route.retire_early.net.v1', 'Early retirement requires bridge-period net cash-flow analysis.');
   route('optimise_mortgage', MODULE_IDS.MORTGAGE, 10, 'recommended', 'route.mortgage.v1', 'The goal maps to deterministic mortgage amortisation.');
-  route('assess_decision', MODULE_IDS.COLLEGE_FUNDING, 0, 'recommended', 'route.education.v1', 'An education-funding decision maps to child-level college funding.');
+  route('manage_loan', MODULE_IDS.LOAN, 10, 'recommended', 'route.loan.v1', 'The goal maps to deterministic non-housing loan amortisation.');
+  route('fund_education', MODULE_IDS.COLLEGE_FUNDING, 10, 'recommended', 'route.education.v1', 'An education-funding goal maps to child-level college funding.');
   route('transfer_wealth', MODULE_IDS.CAT, 0, 'recommended', 'route.transfer.adviser.v1', 'Wealth transfer remains adviser-only until dated CAT rules are code-owned.');
   route('business_planning', MODULE_IDS.BUSINESS_OWNER_ANALYSIS, 0, 'recommended', 'route.business_owner.adviser.v1', 'General business-owner analysis remains adviser-reviewed.');
   if (profile.assumptions?.values?.persona?.businessExit === true) {

@@ -2386,7 +2386,7 @@ export class RealtimeVoiceController {
     const factCount = this.element('realtimeVoiceFactsValue');
     const moduleCount = this.element('realtimeVoiceModulesValue');
     if (factCount) factCount.textContent = String(facts.length);
-    if (moduleCount) moduleCount.textContent = `${Math.min(modules.length, 3)}/3`;
+    if (moduleCount) moduleCount.textContent = String(Math.min(modules.length, 3));
     this.renderContextList(this.element('realtimeVoiceFactsList'), facts.slice(0, 6), {
       empty: 'Proposed facts will appear here as we talk.',
       type: 'fact'
@@ -2415,7 +2415,7 @@ export class RealtimeVoiceController {
       const progress = this.planningContext.progress;
       planStatus.textContent = progress?.readyToConfirm
         ? 'Ready for your visual review and confirmation.'
-        : 'Provisional — the three analyses may update transparently as facts change.';
+        : 'Provisional — the analysis plan may update transparently as your goals or facts change.';
     }
     this.updateUi();
   }

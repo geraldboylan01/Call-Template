@@ -252,6 +252,9 @@ export function getConsumerConfig(env) {
     realtimeNoticeId,
     realtimeDataPolicyId,
     moduleRoutingEnabled: journeyEnabled && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED),
+    goalRoutingEnabled: journeyEnabled
+      && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED)
+      && enabled(env.CONSUMER_GOAL_ROUTING_ENABLED),
     handoffRequested,
     handoffConfigured,
     handoffEnabled: journeyEnabled && handoffRequested && handoffConfigured,
@@ -278,8 +281,8 @@ export function getConsumerConfig(env) {
     complexModel: modelId(env.CONSUMER_AI_COMPLEX_MODEL, 'gpt-5.6-terra'),
     defaultReasoningEffort: reasoningEffort(env.CONSUMER_AI_DEFAULT_REASONING_EFFORT, 'low'),
     complexReasoningEffort: reasoningEffort(env.CONSUMER_AI_COMPLEX_REASONING_EFFORT, 'medium'),
-    aiPromptVersion: text(env.CONSUMER_AI_PROMPT_VERSION) || 'consumer-intake-v1',
-    aiSchemaVersion: 'consumer-profile-patch-v1',
+    aiPromptVersion: text(env.CONSUMER_AI_PROMPT_VERSION) || 'consumer-intake-goal-routing-v2',
+    aiSchemaVersion: 'consumer-goal-profile-patch-v2',
     aiTimeoutMs: boundedInteger(env.CONSUMER_AI_TIMEOUT_MS, 15_000, 3_000, 25_000),
     aiMaxOutputTokens: boundedInteger(env.CONSUMER_AI_MAX_OUTPUT_TOKENS, 1_200, 200, 3_000),
     aiRequestTokenReservation: boundedInteger(env.CONSUMER_AI_REQUEST_TOKEN_RESERVATION, 8_000, 2_000, 20_000),
@@ -359,6 +362,7 @@ export function publicConsumerConfig(config) {
       consumerRealtimeVoiceEnabled: config.realtimeEnabled,
       consumerRealtimeConversationV2Enabled: config.realtimeConversationV2Enabled,
       consumerModuleRoutingEnabled: config.moduleRoutingEnabled,
+      consumerGoalRoutingEnabled: config.goalRoutingEnabled,
       consumerHumanHandoffEnabled: config.handoffEnabled
     },
     access: {

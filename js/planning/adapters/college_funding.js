@@ -11,6 +11,8 @@ export const COLLEGE_FUNDING_ADAPTER_VERSION = '1.0.0';
 
 function isRelevant(profile) {
   if (getAssumption(profile, 'collegeFunding.requested') === true) return true;
+  if (findGoal(profile, 'fund_education')) return true;
+  // Legacy saved profiles used assess_decision with an education title.
   return Boolean(findGoal(profile, 'assess_decision')?.title?.match(/college|education|university/i));
 }
 
@@ -85,4 +87,3 @@ export async function runCollegeFundingAnalysis(input, context) {
     }
   });
 }
-

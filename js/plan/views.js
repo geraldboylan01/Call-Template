@@ -13,7 +13,9 @@ const STAGE_GROUPS = [
       'assets',
       'liabilities',
       'expenses',
-      'goal_specific_questions'
+      'goal_specific_questions',
+      'goal_clarification',
+      'targeted_fact_gathering'
     ]
   },
   { id: 'review', label: 'Review', stages: ['review'] },
@@ -48,7 +50,9 @@ const MODULE_LABELS = Object.freeze({
   pension_projection: 'Pension projection',
   net_retirement_cashflow: 'Net retirement cash flow',
   mortgage_analysis: 'Mortgage analysis',
+  loan_analysis: 'Loan analysis',
   college_funding: 'College funding',
+  personal_balance_sheet: 'Personal balance sheet',
   retirement_goal_analysis: 'Retirement goal analysis',
   scenario_analysis: 'Scenario analysis'
 });
@@ -193,7 +197,8 @@ export function getAvailableViews(currentState) {
     && Number(currentState.analysisPlan?.profileRevision || 0) === currentRevision
     && String(currentState.analysisPlan?.status || '') === 'complete'
     && asArray(currentState.analysisPlan?.moduleIds).length === 0
-    && planSlots.length === 3
+    && planSlots.length >= 1
+    && planSlots.length <= 3
     && planSlots.every((slot) => slot?.availability === 'adviser_review_required');
   const hasCompletedOutcome = hasCompletedResults || hasCompletedAdviserReviewPlan;
   const profileConfirmed = currentRevision > 0 && confirmedRevision === currentRevision;
@@ -914,18 +919,20 @@ function createRecommendationCard(item, currentState) {
   const card = element('article', 'recommendation-card');
   const head = element('div', 'recommendation-head');
   const readiness = normaliseReadiness(item);
-  const statusClass = readiness === 'ready'
+  const availability = String(firstDefined(item?.availability, '') || '');
+  const displayStatus = availability === 'adviser_review_required' ? availability : readiness;
+  const statusClass = displayStatus === 'ready'
     ? ' is-ready'
-    : readiness === 'ready_with_assumptions'
+    : displayStatus === 'ready_with_assumptions'
       ? ' is-assumption'
       : '';
-  append(head, element('h2', '', moduleName(item)), element('span', `module-status${statusClass}`, humanise(readiness)));
+  append(head, element('h2', '', moduleName(item)), element('span', `module-status${statusClass}`, humanise(displayStatus)));
   card.append(head);
 
   const moduleId = String(firstDefined(item?.moduleId, item?.id, item?.module?.id, '') || '');
   const recommendationStatus = String(firstDefined(item?.status, 'recommended'));
   const required = recommendationStatus === 'required';
-  const adviserOnly = readiness === 'adviser_review_required';
+  const adviserOnly = availability === 'adviser_review_required' || readiness === 'adviser_review_required';
   const excluded = recommendationStatus === 'excluded'
     || ['adviser_review_required', 'unsupported', 'not_relevant'].includes(readiness);
   const selectionLabel = element('div', 'module-select-row');
@@ -939,14 +946,14 @@ function createRecommendationCard(item, currentState) {
           ? 'Included · not automated'
           : required
             ? 'Included · required for this goal'
-            : 'Included in this three-analysis plan'),
+            : 'Included for your goals'),
     element('small', '', adviserOnly
         ? 'This analysis remains in your plan, but Gerry must review it before any result is produced.'
       : excluded
         ? 'This analysis remains visible, but the current readiness rules do not permit an automated result.'
       : required
         ? 'Deterministic planning rules require this slot and it cannot be removed here.'
-        : 'This slot comes from the authoritative table for the confirmed persona and cannot be changed here.')
+        : 'This analysis was selected by the goal-routing policy and cannot be changed directly here.')
   );
   selectionLabel.append(selectionCopy);
   card.append(selectionLabel);
@@ -993,9 +1000,9 @@ function createRecommendationsView(currentState) {
     section,
     createWorkspaceHeading(
       currentState,
-      'Selected from your confirmed persona',
+      'Selected for your goals',
       'Review and confirm your analysis plan',
-      'Your confirmed persona determines these three analyses from Planéir’s authoritative module table. Readiness checks decide which can run automatically, and your final button confirms the displayed profile revision and derived plan together.'
+      'Planéir selects one to three relevant analyses from the goals you described. Readiness checks decide which can run automatically, and your final button confirms the displayed profile revision and derived plan together.'
     )
   );
 
@@ -1017,9 +1024,7 @@ function createRecommendationsView(currentState) {
 
   const toolbar = element('div', 'recommendation-toolbar');
   const selectedNeedsInformation = currentState.recommendations.some((item) => {
-    const moduleId = String(firstDefined(item?.moduleId, item?.id, item?.module?.id, '') || '');
-    return currentState.selectedModuleIds.includes(moduleId)
-      && normaliseReadiness(item) === 'missing_information';
+    return normaliseReadiness(item) === 'missing_information';
   });
   const text = currentState.bootstrap?.routingEnabled === false
     ? 'Analysis is currently paused for this beta cohort. Your reviewed information remains available.'
@@ -1041,12 +1046,13 @@ function createRecommendationsView(currentState) {
   const addGoal = element(
     'button',
     'secondary-button',
-    selectedNeedsInformation ? 'Answer remaining question' : 'Add another goal'
+    selectedNeedsInformation ? 'Answer remaining question' : 'Continue conversation'
   );
   addGoal.type = 'button';
   addGoal.dataset.action = 'navigate';
   addGoal.dataset.view = 'conversation';
-  const hasAuthoritativeThreeSlotPlan = currentState.recommendations.length === 3;
+  const hasValidGoalPlan = currentState.recommendations.length >= 1
+    && currentState.recommendations.length <= 3;
   const runnableCount = currentState.selectedModuleIds.length;
   const run = element(
     'button',
@@ -1059,13 +1065,13 @@ function createRecommendationsView(currentState) {
   run.dataset.action = 'run-analysis';
   run.disabled = currentState.busy
     || currentState.bootstrap?.routingEnabled === false
-    || !hasAuthoritativeThreeSlotPlan
+    || !hasValidGoalPlan
     || selectedNeedsInformation;
   const adviserReviewCount = currentState.recommendations.filter((item) => (
     normaliseReadiness(item) === 'adviser_review_required'
   )).length;
-  const selectionSummary = hasAuthoritativeThreeSlotPlan
-    ? `Your authoritative three-analysis plan is shown below. ${runnableCount} ${runnableCount === 1 ? 'analysis will' : 'analyses will'} run automatically.${adviserReviewCount > 0 ? ` ${adviserReviewCount} ${adviserReviewCount === 1 ? 'analysis remains' : 'analyses remain'} included and require${adviserReviewCount === 1 ? 's' : ''} Gerry’s review.` : ''}`
+  const selectionSummary = hasValidGoalPlan
+    ? `Your analysis plan is shown below. ${runnableCount} ${runnableCount === 1 ? 'analysis will' : 'analyses will'} run automatically.${adviserReviewCount > 0 ? ` ${adviserReviewCount} ${adviserReviewCount === 1 ? 'analysis remains' : 'analyses remain'} included and require${adviserReviewCount === 1 ? 's' : ''} Gerry’s review.` : ''}`
     : `${currentState.selectedModuleIds.length} selected.`;
   append(actions, addGoal, run);
   append(
@@ -1453,13 +1459,13 @@ function createAdviserReviewOutcome(currentState) {
   const panel = element('section', 'uncertainty-panel adviser-review-outcome');
   append(
     panel,
-    element('h2', '', slots.length === 3 ? 'Three-analysis plan saved for review' : 'Part of this plan requires Gerry’s review'),
+    element('h2', '', getResultItems(currentState.analysis).length === 0 ? 'Analysis plan saved for review' : 'Part of this plan requires Gerry’s review'),
     element(
       'p',
       '',
-      slots.length === 3
+      getResultItems(currentState.analysis).length === 0
         ? 'No automated financial result was produced for these analyses. They remain in your confirmed plan and can be shared with Gerry only if you separately choose and consent.'
-        : 'The released analyses were calculated above. The analyses below remain in the same confirmed three-analysis plan, but no automated result was produced for them.'
+        : 'The released analyses were calculated above. The analyses below remain in the same confirmed analysis plan, but no automated result was produced for them.'
     )
   );
   const list = element('ul', 'plain-list');
@@ -1473,13 +1479,16 @@ function createAdviserReviewOutcome(currentState) {
 
 function createResultsView(currentState) {
   const adviserReviewSlots = adviserReviewModuleSlots(currentState);
-  const gatedOnly = adviserReviewSlots.length === 3 && getResultItems(currentState.analysis).length === 0;
+  const planSlotCount = asArray(currentState.analysisPlan?.moduleSlots).length;
+  const gatedOnly = adviserReviewSlots.length >= 1
+    && adviserReviewSlots.length === planSlotCount
+    && getResultItems(currentState.analysis).length === 0;
   const section = element('section');
   append(
     section,
     createWorkspaceHeading(
       currentState,
-      gatedOnly ? 'Confirmed three-analysis plan' : 'Calculated from your confirmed information',
+      gatedOnly ? 'Confirmed analysis plan' : 'Calculated from your confirmed information',
       gatedOnly ? 'Your plan is ready for adviser review' : 'Your educational analysis',
       gatedOnly
         ? 'These analyses are not released for automated calculation. Nothing has been calculated or shared with Gerry.'
@@ -1489,7 +1498,7 @@ function createResultsView(currentState) {
 
   const toolbar = element('div', 'results-toolbar');
   const text = element('span', '', gatedOnly
-    ? 'Your authoritative three-module selection is saved. You decide whether to send the reviewed package to Gerry.'
+    ? 'Your goal-led analysis selection is saved. You decide whether to send the reviewed package to Gerry.'
     : 'AI does not calculate or change these numbers. Versioned deterministic engines produce the outputs shown below.');
   const next = element('button', 'primary-button', currentState.bootstrap?.handoffEnabled ? 'Discuss this with Gerry' : 'Review my information');
   next.type = 'button';

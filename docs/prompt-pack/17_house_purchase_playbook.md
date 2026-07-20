@@ -1,5 +1,7 @@
 # House Purchase Playbook
 
+<!-- planeir-planning-module {"moduleId":"house_purchase","outputKey":"generated.housePurchaseInputs","role":"analysis"} -->
+
 Use this playbook when Gerry says `use the house purchase playbook`, `house purchase planner`, `first-home plan`, `what can they afford to buy`, or asks when a client could buy a target Irish home after allowing for deposit, purchase costs, protected cash, household affordability, and buyer supports.
 
 Do not use this playbook for an existing mortgage balance, repayment schedule, payoff date, or overpayment comparison. Those belong in the Mortgage playbook.

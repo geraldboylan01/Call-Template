@@ -1,5 +1,7 @@
 # Liquidity Playbook
 
+<!-- planeir-planning-module {"moduleId":"liquidity_analysis","outputKey":"generated.liquidityPlan","role":"analysis"} -->
+
 Use this playbook when Gerry says `use the liquidity playbook`, `cash buffer`, `emergency fund`, `too much cash`, or asks for a cash-only liquidity module.
 
 ## Job
