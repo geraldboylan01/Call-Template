@@ -52,6 +52,10 @@ CONSUMER_JOURNEY_ENABLED = "false"
 CONSUMER_AI_INTAKE_ENABLED = "false"
 CONSUMER_VOICE_ENABLED = "false"
 CONSUMER_REALTIME_VOICE_ENABLED = "false"
+# Direct speech-to-speech plus the silent Responses planner. This independent
+# kill switch deliberately defaults off so the controlled v1 journey remains
+# an immediate rollback path.
+CONSUMER_REALTIME_CONVERSATION_V2_ENABLED = "false"
 CONSUMER_MODULE_ROUTING_ENABLED = "false"
 CONSUMER_HANDOFF_ENABLED = "false"
 CONSUMER_PUBLIC_ACCESS_ENABLED = "false"
@@ -113,6 +117,10 @@ CONSUMER_REALTIME_SILENCE_PROMPT_SECONDS = "45"
 CONSUMER_REALTIME_MAX_SDP_BYTES = "32768"
 CONSUMER_REALTIME_MAX_RESPONSES = "40"
 CONSUMER_REALTIME_MAX_TOOL_CALLS = "24"
+CONSUMER_REALTIME_PLANNER_TIMEOUT_MS = "2500"
+CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS = "8000"
+CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS = "1800"
+CONSUMER_REALTIME_PLANNER_PROMPT_VERSION = "realtime-planner-v2"
 # The conversation director phrases Worker-owned speech with a bounded text
 # model call and falls back to the deterministic templates on any failure.
 # Fail closed here; the deploy workflow enables it for the adviser canary.

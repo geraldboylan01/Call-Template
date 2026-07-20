@@ -626,7 +626,12 @@ export async function synthesizeRealtimeControlledSpeech({ env, config, text }) 
       model: config.realtimeSpeechModel,
       voice: config.realtimeSpeechVoice,
       input,
-      response_format: 'mp3'
+      response_format: 'mp3',
+      ...(config.realtimeSpeechModel === 'gpt-4o-mini-tts'
+        ? {
+            instructions: 'Speak as a warm, calm and concise financial-education companion. Use natural pacing, gentle emphasis and a conversational Irish-English cadence without sounding theatrical.'
+          }
+        : {})
     })
   }, {
     maximumBytes: MAX_SPEECH_RESPONSE_BYTES,

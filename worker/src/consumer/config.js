@@ -214,6 +214,8 @@ export function getConsumerConfig(env) {
     && Object.values(realtimeUsageRates).every((rate) => rate > 0)
   );
   const realtimeEnabled = journeyEnabled && realtimeRequested && realtimeConfigured;
+  const realtimeConversationV2Enabled = realtimeEnabled
+    && enabled(env.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED);
   const handoffRequested = enabled(env.CONSUMER_HANDOFF_ENABLED);
   const handoffRetentionDays = optionalBoundedInteger(env.CONSUMER_HANDOFF_RETENTION_DAYS, 1, 365);
   const handoffRetentionPolicyId = policyId(env.CONSUMER_HANDOFF_RETENTION_POLICY_ID);
@@ -246,6 +248,7 @@ export function getConsumerConfig(env) {
     realtimeRequested,
     realtimeConfigured,
     realtimeEnabled,
+    realtimeConversationV2Enabled,
     realtimeNoticeId,
     realtimeDataPolicyId,
     moduleRoutingEnabled: journeyEnabled && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED),
@@ -323,6 +326,10 @@ export function getConsumerConfig(env) {
     realtimeMaxSdpBytes: boundedInteger(env.CONSUMER_REALTIME_MAX_SDP_BYTES, 32_768, 4_096, 32_768),
     realtimeMaxResponses: boundedInteger(env.CONSUMER_REALTIME_MAX_RESPONSES, 40, 1, 40),
     realtimeMaxToolCalls: boundedInteger(env.CONSUMER_REALTIME_MAX_TOOL_CALLS, 24, 1, 24),
+    realtimePlannerTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_TIMEOUT_MS, 2_500, 1_500, 2_500),
+    realtimePlannerCatchupTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS, 8_000, 2_500, 15_000),
+    realtimePlannerMaxOutputTokens: boundedInteger(env.CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS, 1_800, 600, 3_000),
+    realtimePlannerPromptVersion: text(env.CONSUMER_REALTIME_PLANNER_PROMPT_VERSION) || 'realtime-planner-v2',
     realtimeUsageRates,
     // The conversation director is a bounded, fail-open-to-template text-model
     // pass that phrases Worker-owned speech naturally. It never changes what
@@ -330,11 +337,12 @@ export function getConsumerConfig(env) {
     realtimeDirectorEnabled: journeyEnabled
       && realtimeRequested
       && realtimeConfigured
+      && !realtimeConversationV2Enabled
       && enabled(env.CONSUMER_REALTIME_DIRECTOR_ENABLED),
-    realtimeSpeechModel: voiceSpeechModel,
-    realtimeSpeechVoice: configuredVoiceName,
+    realtimeSpeechModel: 'gpt-4o-mini-tts',
+    realtimeSpeechVoice: 'marin',
     realtimeSpeechRateMicroEurPerMillionCharacters,
-    realtimeSpeechPricingVersion: `${realtimePricingVersion}:tts-1-hd-nova-char-v1`,
+    realtimeSpeechPricingVersion: `${realtimePricingVersion}:gpt-4o-mini-tts-marin-char-v1`,
     providerCostLimitEurMicros: Math.max(
       voiceEnabled ? voiceSessionBudgetCents * 10_000 : 0,
       realtimeEnabled ? realtimeSessionBudgetCents * 10_000 : 0
@@ -349,6 +357,7 @@ export function publicConsumerConfig(config) {
       consumerAiIntakeEnabled: config.aiEnabled,
       consumerVoiceEnabled: config.voiceEnabled,
       consumerRealtimeVoiceEnabled: config.realtimeEnabled,
+      consumerRealtimeConversationV2Enabled: config.realtimeConversationV2Enabled,
       consumerModuleRoutingEnabled: config.moduleRoutingEnabled,
       consumerHumanHandoffEnabled: config.handoffEnabled
     },
@@ -403,6 +412,7 @@ export function publicConsumerConfig(config) {
     },
     realtimeVoice: {
       enabled: config.realtimeEnabled,
+      conversationVersion: config.realtimeConversationV2Enabled ? 'v2' : 'v1',
       noticeId: config.realtimeEnabled ? config.realtimeNoticeId : null,
       dataPolicyId: config.realtimeEnabled ? config.realtimeDataPolicyId : null,
       policyVersion: config.realtimeEnabled ? config.consentPolicyVersion : null,
@@ -424,7 +434,9 @@ export function publicConsumerConfig(config) {
       dispatchStopMicroEur: config.realtimeEnabled ? config.realtimeDispatchStopMicroEur : 0,
       safetyReserveMicroEur: config.realtimeEnabled ? config.realtimeSafetyReserveMicroEur : 0,
       aiGeneratedDisclosure: config.realtimeEnabled
-        ? 'Realtime AI interprets your completed speech and calls protected planning tools. Separate code-owned AI speech reads only Worker-approved copy; the planning service controls all saved facts and calculations.'
+        ? (config.realtimeConversationV2Enabled
+            ? 'Realtime AI speaks with you directly while a silent planner extracts reviewable draft facts. Deterministic code controls the three analyses, saved profile and calculations.'
+            : 'Realtime AI interprets your completed speech and calls protected planning tools. Separate code-owned AI speech reads only Worker-approved copy; the planning service controls all saved facts and calculations.')
         : null
     },
     handoff: {

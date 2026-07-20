@@ -205,7 +205,7 @@ function entityOperation(value) {
   if (value.confirmNone === true || value.none === true) return 'confirm_none';
   if (value.remove === true) return 'remove';
   const operation = String(value.operation || value.action || 'upsert').trim().toLowerCase();
-  if (!['upsert', 'remove', 'confirm_none'].includes(operation)) {
+  if (!['upsert', 'remove', 'confirm_none', 'complete_section'].includes(operation)) {
     throw new ConsumerError(400, 'realtime_entity_operation_invalid', 'That position operation is not supported.');
   }
   return operation;
@@ -285,6 +285,23 @@ function completionNoneMapping(profile, markerPath, factId, scope = null) {
     metadataPath: `/assumptions/values/completionFacts/confirmedNonePaths/${escapeJsonPointerToken(markerPath)}`,
     canonicalValue: completionFacts,
     displayValue: { operation: 'confirm_none', factId, ...(scope ? { scope } : {}) }
+  };
+}
+
+function completionSectionMapping(profile, markerPath, factId) {
+  const completionFacts = {
+    ...(profile.assumptions?.values?.completionFacts || {}),
+    completedPaths: {
+      ...(profile.assumptions?.values?.completionFacts?.completedPaths || {}),
+      [markerPath]: true
+    }
+  };
+  return {
+    fieldPath: '/assumptions/values/completionFacts',
+    metadataPath: `/assumptions/values/completionFacts/completedPaths/${escapeJsonPointerToken(markerPath)}`,
+    canonicalValue: completionFacts,
+    displayValue: { operation: 'complete_section', factId },
+    proposalValue: { operation: 'complete_section' }
   };
 }
 
@@ -379,6 +396,9 @@ function mapCollectionEntity(profile, fact, {
       ...confirmedNoneMapping(profile, collectionPath, fact.factId),
       proposalValue: { operation: 'confirm_none' }
     };
+  }
+  if (operation === 'complete_section') {
+    return completionSectionMapping(profile, collectionPath, fact.factId);
   }
   const rawLabel = value.label ?? value.displayName ?? value.title;
   const label = typeof rawLabel === 'string' ? safeLabel(rawLabel) : '';
@@ -743,7 +763,7 @@ function mapAssetPosition(profile, fact, currency) {
 
 function mapLiabilityPosition(profile, fact, currency) {
   const mortgageOnly = fact.factId === 'mortgage_position';
-  return withDecimalRateProposal(mapCollectionEntity(profile, fact, {
+  const mapped = withDecimalRateProposal(mapCollectionEntity(profile, fact, {
     collectionKey: 'liabilities',
     idKey: 'liabilityId',
     idPrefix: 'liability',
@@ -779,6 +799,28 @@ function mapLiabilityPosition(profile, fact, currency) {
       return canonical;
     }
   }));
+  const linkedPropertyId = typeof fact.value?.linkedPropertyId === 'string'
+    ? fact.value.linkedPropertyId.trim()
+    : '';
+  if (!linkedPropertyId || entityOperation(fact.value) !== 'upsert') return mapped;
+  const canonicalLinkedId = linkedPropertyId.startsWith('property_')
+    ? linkedPropertyId
+    : canonicalEntityId('property', linkedPropertyId);
+  const propertyIndex = profile.properties.findIndex((property) => property.propertyId === canonicalLinkedId);
+  if (propertyIndex < 0) return mapped;
+  const liabilityId = mapped.proposalValue?.entityId || mapped.displayValue?.entityId;
+  if (!liabilityId) return mapped;
+  const property = profile.properties[propertyIndex];
+  return {
+    ...mapped,
+    additionalPatch: {
+      ...(mapped.additionalPatch || {}),
+      [`/properties/${propertyIndex}`]: {
+        ...property,
+        associatedLiabilityIds: [...new Set([...(property.associatedLiabilityIds || []), liabilityId])]
+      }
+    }
+  };
 }
 
 function mapPropertyPosition(profile, fact, currency) {

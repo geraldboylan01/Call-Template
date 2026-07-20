@@ -159,6 +159,13 @@ const ENCRYPTED_PAYLOAD_SPECS = Object.freeze([
     aad: (row) => `consumer/realtime/final-turn/${row.session_id}/${row.realtime_session_id}/${row.id}`
   },
   {
+    table: 'consumer_realtime_meeting_briefs',
+    column: 'brief_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id, source_turn_id',
+    aad: (row) => `consumer/realtime/meeting-brief/${row.session_id}/${row.realtime_session_id}/${row.source_turn_id}`
+  },
+  {
     table: 'consumer_realtime_fact_proposals',
     column: 'value_encrypted',
     keys: ['id'],
@@ -2177,6 +2184,8 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
     db(env).prepare(`DELETE FROM consumer_realtime_fact_proposals WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_final_turns WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_realtime_meeting_briefs WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_speech_usage WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),

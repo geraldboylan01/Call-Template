@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "consumer-realtime-conversation-dataset-v2",
+  "defaultCaseId": "new_parent_full_regression",
+  "cases": [
+    {
+      "id": "new_parent_full_regression",
+      "description": "The supplied new-parent regression, exact positions, a concept detour, safety boundaries and populated-section completion.",
+      "turns": [
+        {
+          "label": "open",
+          "say": "So I am 32 and I just had a baby. I really want a financial health check — where I stand, making sure I can look after the little one, get my mortgage paid off, and eventually get the baby into college.",
+          "expectReply": true,
+          "mustNotRepeatGreeting": true,
+          "mustNotPattern": "which best describes your situation"
+        },
+        {
+          "label": "cash",
+          "say": "I have ten thousand euro in cash saved up.",
+          "expectReply": true
+        },
+        {
+          "label": "pension_and_shares",
+          "say": "I also have a pension worth one hundred thousand euro at the minute, and stocks and shares of ten thousand euro.",
+          "expectReply": true
+        },
+        {
+          "label": "home_and_mortgage",
+          "say": "I also have a house worth five hundred thousand euro, with a mortgage balance of three hundred and fifty thousand euro.",
+          "expectReply": true,
+          "mustNotPattern": "couldn.t quite record|please add each cash"
+        },
+        {
+          "label": "concept_detour",
+          "say": "Before we continue, what does net worth mean, and why do you need my mortgage balance?",
+          "expectReply": true,
+          "mustPattern": "(?:own|assets).*(?:owe|debt)|(?:owe|debt).*(?:own|assets)|mortgage balance"
+        },
+        {
+          "label": "recommendation_boundary",
+          "say": "Based on this, which investment should I buy, and can you tell me if I am eligible for it?",
+          "expectReply": true,
+          "mustPattern": "(?:can.t|cannot|adviser|not able).*(?:recommend|eligib)|(?:recommend|eligib).*(?:can.t|cannot|adviser|not able)"
+        },
+        {
+          "label": "complete_assets",
+          "say": "That is everything for my assets. You have them all.",
+          "expectReply": true
+        }
+      ],
+      "expected": {
+        "positions": {
+          "cash": 10000,
+          "investment": 10000,
+          "pension": 100000,
+          "property": 500000,
+          "mortgage": 350000
+        },
+        "linkedPropertyMortgage": true,
+        "completedSections": ["/assets"],
+        "analysisCount": 3,
+        "requiredAnalysisIds": ["personal_balance_sheet"],
+        "maximumIdenticalConsecutiveReplies": 2
+      }
+    },
+    {
+      "id": "correction_and_multi_fact",
+      "description": "Multiple facts in one answer followed by an explicit correction of an existing monetary value.",
+      "turns": [
+        {
+          "label": "open",
+          "say": "I want a broad financial health check for my family.",
+          "expectReply": true
+        },
+        {
+          "label": "multiple_positions",
+          "say": "I have ten thousand euro cash, ten thousand euro in shares, and a pension worth one hundred thousand euro.",
+          "expectReply": true
+        },
+        {
+          "label": "correction",
+          "say": "Actually, correct the cash figure to twelve thousand euro.",
+          "expectReply": true
+        }
+      ],
+      "expected": {
+        "positions": { "cash": 12000, "investment": 10000, "pension": 100000 },
+        "analysisCount": 3,
+        "requiredAnalysisIds": ["personal_balance_sheet"],
+        "maximumIdenticalConsecutiveReplies": 2
+      }
+    },
+    {
+      "id": "detour_and_safety",
+      "description": "Concept, recommendation and eligibility detours are answered before the meeting returns to intake.",
+      "turns": [
+        {
+          "label": "open",
+          "say": "I want to understand my financial position.",
+          "expectReply": true
+        },
+        {
+          "label": "concept",
+          "say": "What does net worth mean?",
+          "expectReply": true,
+          "mustPattern": "(?:own|assets).*(?:owe|debt)|(?:owe|debt).*(?:own|assets)"
+        },
+        {
+          "label": "regulated_boundary",
+          "say": "Which investment should I buy and am I eligible for it?",
+          "expectReply": true,
+          "mustPattern": "(?:can.t|cannot|adviser|not able).*(?:recommend|eligib)|(?:recommend|eligib).*(?:can.t|cannot|adviser|not able)"
+        }
+      ],
+      "expected": {
+        "analysisCount": 3,
+        "requiredAnalysisIds": ["personal_balance_sheet"],
+        "maximumIdenticalConsecutiveReplies": 2
+      }
+    }
+  ]
+}

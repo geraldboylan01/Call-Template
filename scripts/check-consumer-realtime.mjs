@@ -37,6 +37,14 @@ import {
   buildRealtimeFactReadBack
 } from '../worker/src/consumer/realtime_fact_mapper.js';
 import {
+  composeMeetingBrief,
+  extractRealtimePlannerTurn,
+  intakeExplanation,
+  positionCandidatesToRealtimeFacts,
+  sectionCompletionToRealtimeFact,
+  toConversationGuide
+} from '../worker/src/consumer/realtime_planner.js';
+import {
   activateRealtimeLease,
   assertRealtimeControlMessage,
   cancelPendingRealtimeControlMessages,
@@ -87,6 +95,7 @@ import {
 } from '../worker/src/consumer/realtime_analysis.js';
 import {
   REALTIME_TOOL_DEFINITIONS,
+  REALTIME_V2_TOOL_DEFINITIONS,
   assertRealtimeToolName,
   buildRealtimeInstructions,
   buildRealtimeSessionConfig,
@@ -310,7 +319,9 @@ const migrationSql = [
   'worker/consumer-migrations/0007_add_realtime_control_inbox.sql',
   'worker/consumer-migrations/0008_widen_realtime_session_envelope.sql',
   'worker/consumer-migrations/0009_add_realtime_consent_purposes.sql',
-  'worker/consumer-migrations/0010_add_realtime_activation_recovery.sql'
+  'worker/consumer-migrations/0010_add_realtime_activation_recovery.sql',
+  'worker/consumer-migrations/0011_add_realtime_meeting_briefs.sql',
+  'worker/consumer-migrations/0012_add_realtime_planner_usage.sql'
 ].map(source).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 
@@ -380,9 +391,175 @@ assert.equal(config.realtimeDailyBudgetMicroEur, 50_000_000);
 assert.equal(config.realtimeMaxDurationSeconds, 900);
 assert.equal(config.realtimeIdleTimeoutSeconds, 180);
 assert.equal(config.realtimeSilencePromptSeconds, 45);
-assert.equal(config.realtimeSpeechModel, 'tts-1-hd');
-assert.equal(config.realtimeSpeechVoice, 'nova');
+assert.equal(config.realtimeSpeechModel, 'gpt-4o-mini-tts');
+assert.equal(config.realtimeSpeechVoice, 'marin');
 assert.equal(config.realtimeSpeechRateMicroEurPerMillionCharacters, 30_000_000);
+
+// Conversational v2 is an independent, fail-closed switch. It keeps the
+// reviewed Realtime model/voice while changing ordinary dialogue from a
+// mandatory silent tool call into direct, server-authorized audio.
+const v2Config = getConsumerConfig({
+  ...env,
+  CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: 'true'
+});
+assert.equal(v2Config.realtimeConversationV2Enabled, true);
+const v2Session = buildRealtimeSessionConfig(v2Config, {
+  conversationVersion: 'v2',
+  realtimePhase: 'discovery',
+  meetingBrief: {
+    schemaVersion: 'MeetingBriefV1',
+    phase: 'discovery',
+    profileRevision: 1,
+    narrativeSummary: '',
+    analyses: [],
+    stillNeeded: [],
+    nextObjective: { facts: [], reason: '' },
+    provisional: true,
+    readyToConfirm: false,
+    signature: 'test-signature'
+  }
+});
+assert.deepEqual(v2Session.output_modalities, ['audio']);
+assert.equal(v2Session.audio.output.voice, 'marin');
+assert.equal(v2Session.audio.input.turn_detection.eagerness, 'medium');
+assert.equal(v2Session.tool_choice, 'auto');
+assert.deepEqual(
+  v2Session.tools.map((tool) => tool.name),
+  ['get_meeting_brief', 'get_intake_explanation', 'get_result_summary', 'wait_for_user']
+);
+assert.deepEqual(
+  realtimeToolsForState({ conversationVersion: 'v2' }).map((tool) => tool.name),
+  REALTIME_V2_TOOL_DEFINITIONS.map((tool) => tool.name)
+);
+assert.match(v2Session.instructions, /Answer a client question first/i);
+assert.doesNotMatch(v2Session.instructions, /silent tool interpreter/i);
+
+const nativeFetch = globalThis.fetch;
+globalThis.fetch = async () => new Response(JSON.stringify({
+  id: 'resp_planner_test_1',
+  status: 'completed',
+  output_text: JSON.stringify({
+    semanticFacts: [{
+      operation: 'upsert', factId: 'self_description', valueJson: '"new_parent"',
+      certainty: 'approximate', evidenceText: 'just had a baby', correctionTarget: ''
+    }],
+    positions: [
+      {
+        operation: 'upsert', kind: 'cash', label: 'Cash', entityId: 'cash', linkedEntityId: '',
+        amountJson: '{"amount":10000,"currency":"EUR"}', owner: 'primary', propertyUse: 'unknown',
+        pensionType: 'unknown', agricultural: 'unknown', certainty: 'exact', evidenceText: 'ten thousand euro cash', correctionTarget: ''
+      },
+      {
+        operation: 'upsert', kind: 'investment', label: 'Broken candidate', entityId: 'broken', linkedEntityId: '',
+        amountJson: '{not-json}', owner: 'primary', propertyUse: 'unknown', pensionType: 'unknown',
+        agricultural: 'unknown', certainty: 'exact', evidenceText: 'invalid test candidate', correctionTarget: ''
+      }
+    ],
+    sectionCompletions: [],
+    clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+    ambiguities: [],
+    narrativePersona: { summary: 'A new parent seeking a broad financial health check.', evidence: ['just had a baby'] }
+  }),
+  usage: { input_tokens: 100, output_tokens: 50, input_tokens_details: { cached_tokens: 10 } }
+}), { status: 200, headers: { 'Content-Type': 'application/json', 'x-request-id': 'req_planner_test_1' } });
+let plannerTest;
+try {
+  plannerTest = await extractRealtimePlannerTurn({
+    env,
+    config: v2Config,
+    context: { sessionRow: { current_profile_revision: 1 }, state: { profileRevision: 1, moduleSlots: [], facts: [], recommendations: [] } },
+    sourceTurnId: 'item_planner_test_1',
+    transcript: 'I just had a baby and have ten thousand euro cash.',
+    recentTurns: []
+  });
+} finally {
+  globalThis.fetch = nativeFetch;
+}
+assert.equal(plannerTest.extraction.semanticFacts[0].value, 'new_parent');
+assert.equal(plannerTest.extraction.positions.length, 1, 'One invalid position must not reject a valid position from the same turn.');
+assert.equal(plannerTest.extraction.invalidCandidates.length, 1);
+assert.equal(plannerTest.metadata.reasoningEffort, 'low');
+assert.match(intakeExplanation('net worth and mortgage balance'), /what you own minus what you owe/i);
+assert.match(intakeExplanation('net worth and mortgage balance'), /mortgage balance lets/i);
+assert.match(intakeExplanation('adviser_boundary'), /regulated advice/i);
+
+const transcriptPositions = positionCandidatesToRealtimeFacts([
+  {
+    candidateId: 'cash', kind: 'cash', operation: 'upsert', label: 'Cash savings',
+    entityId: 'cash', linkedEntityId: '', amount: { amount: 10_000, currency: 'EUR' },
+    owner: 'primary', certainty: 'exact', evidenceText: '€10,000 cash'
+  },
+  {
+    candidateId: 'pension', kind: 'pension', operation: 'upsert', label: 'Pension',
+    entityId: 'pension', linkedEntityId: '', amount: { amount: 100_000, currency: 'EUR' },
+    owner: 'primary', pensionType: 'other', certainty: 'exact', evidenceText: '€100,000 pension'
+  },
+  {
+    candidateId: 'shares', kind: 'investment', operation: 'upsert', label: 'Stocks and shares',
+    entityId: 'shares', linkedEntityId: '', amount: { amount: 10_000, currency: 'EUR' },
+    owner: 'primary', certainty: 'exact', evidenceText: '€10,000 stocks and shares'
+  },
+  {
+    candidateId: 'home', kind: 'property', operation: 'upsert', label: 'Home',
+    entityId: 'home', linkedEntityId: 'home', amount: { amount: 500_000, currency: 'EUR' },
+    owner: 'primary', propertyUse: 'home', certainty: 'exact', evidenceText: 'house worth €500,000'
+  },
+  {
+    candidateId: 'mortgage', kind: 'mortgage', operation: 'upsert', label: 'Home mortgage',
+    entityId: 'home_mortgage', linkedEntityId: 'home', amount: { amount: 350_000, currency: 'EUR' },
+    owner: 'primary', certainty: 'exact', evidenceText: '€350,000 mortgage'
+  }
+]);
+assert.deepEqual(
+  transcriptPositions.map((item) => item.factId),
+  ['property_position', 'mortgage_position', 'asset_position', 'pension_positions', 'asset_position']
+);
+assert.deepEqual(transcriptPositions.map((item) => item.value.amount?.amount), [500_000, 350_000, 10_000, 100_000, 10_000]);
+assert.equal(transcriptPositions[1].value.linkedPropertyId, 'home');
+assert.deepEqual(sectionCompletionToRealtimeFact({
+  section: 'assets', signal: 'complete_section', evidenceText: "that's everything"
+}).value, { operation: 'complete_section' });
+assert.deepEqual(sectionCompletionToRealtimeFact({
+  section: 'assets', signal: 'confirm_empty', evidenceText: 'there are none'
+}).value, { operation: 'confirm_none' });
+assert.match(intakeExplanation('net_worth'), /what you own minus what you owe/i);
+
+const signedBrief = await composeMeetingBrief({
+  env,
+  sourceTurnId: 'item_new_parent_regression',
+  extraction: {
+    narrativePersona: {
+      summary: 'You’re a new parent looking for a broader financial health check, with college funding and mortgage security in mind.',
+      evidence: ['new baby', 'college funding', 'mortgage security']
+    },
+    clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+    ambiguities: []
+  },
+  context: {
+    sessionRow: { current_profile_revision: 7 },
+    state: {
+      profileRevision: 7,
+      moduleSlots: [
+        { moduleId: 'personal_balance_sheet', availability: 'ready' },
+        { moduleId: 'college_funding', availability: 'needs_facts' },
+        { moduleId: 'pension_projection', availability: 'needs_facts' }
+      ],
+      facts: [],
+      recommendations: [
+        {
+          moduleId: 'college_funding',
+          requiredMissing: [{ factId: 'dependant_current_age', reason: 'It sets the education timing.' }]
+        }
+      ]
+    }
+  }
+});
+assert.equal(signedBrief.analyses.length, 3);
+assert.equal(signedBrief.analyses[0].moduleId, 'personal_balance_sheet');
+assert.ok(signedBrief.signature.length >= 40);
+const publicGuide = toConversationGuide(signedBrief);
+assert.deepEqual(Object.keys(publicGuide), ['narrativeSummary', 'analyses', 'progress', 'nextObjective']);
+assert.equal(publicGuide.nextObjective.facts.length, 1);
 
 // Regression guard for the premature session ending: while a realtime lease
 // is open the ledger holds the entire session envelope as reserved, so the
@@ -3433,6 +3610,7 @@ for (const table of [
   'consumer_realtime_sessions', 'consumer_realtime_events', 'consumer_realtime_tool_attempts',
   'consumer_realtime_usage', 'consumer_realtime_speech_usage', 'consumer_realtime_control_messages',
   'consumer_realtime_final_turns', 'consumer_realtime_fact_proposals',
+  'consumer_realtime_meeting_briefs',
   'consumer_realtime_analysis_plans', 'consumer_realtime_run_provenance',
   'consumer_realtime_consents', 'consumer_realtime_consent_events',
   'consumer_realtime_consent_purposes', 'consumer_realtime_consent_purpose_events'
@@ -3457,6 +3635,7 @@ const realtimePurposeConsentMigrationSource = source('worker/consumer-migrations
 const liveBridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
 const realtimeProofSource = source('scripts/run-consumer-realtime-infrastructure-proof.mjs');
 assert.match(wranglerSource, /^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m);
+assert.match(wranglerSource, /^CONSUMER_REALTIME_CONVERSATION_V2_ENABLED\s*=\s*"false"\s*$/m);
 assert.match(wranglerSource, /CONSUMER_REALTIME_SESSIONS[^\n]*ConsumerRealtimeSession/);
 assert.match(wranglerSource, /tag\s*=\s*"consumer_realtime_sessions_v1"/);
 assert.match(workflowSource, /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.activate_realtime_adviser_canary == true/);
@@ -3488,6 +3667,11 @@ assert.match(
   realtimeSessionSource,
   /await this\.authorizeResponse\('initial_state_probe', \{ forceTool: 'get_planning_state' \}\)/,
   'Sideband activation must issue the read-only probe directly from Worker-owned call policy.'
+);
+assert.match(
+  realtimeSessionSource,
+  /context\.config\.realtimeConversationV2Enabled && this\.applyingPlannerBatch[\s\S]{0,120}\? 'final_review'/,
+  'V2 planner facts must become visible drafts instead of entering the removed spoken read-back loop.'
 );
 assert.match(lifecycleSource, /settleConsumerProviderCostUnknown/);
 assert.match(realtimeMigrationSource, /idx_consumer_realtime_one_active_session/);

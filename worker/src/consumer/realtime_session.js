@@ -29,6 +29,7 @@ import {
   getPendingRealtimeFactProposal,
   getRealtimeAnalysisPlanResult,
   getRealtimeConsent,
+  getLatestRealtimeMeetingBrief,
   getRealtimeLease,
   getRealtimeProviderCallId,
   hasUnsettledRealtimeSpeechUsage,
@@ -38,6 +39,7 @@ import {
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
   rejectRealtimeFactProposal,
+  saveRealtimeMeetingBrief,
   touchRealtimeLease
 } from './realtime_repository.js';
 import {
@@ -57,6 +59,14 @@ import {
 } from './realtime_provider.js';
 import { composeDirectedSpeech } from './realtime_director.js';
 import { issueRealtimeSpeechAuthorization } from './realtime_speech.js';
+import {
+  composeMeetingBrief,
+  extractRealtimePlannerTurn,
+  intakeExplanation,
+  positionCandidatesToRealtimeFacts,
+  sectionCompletionToRealtimeFact,
+  toConversationGuide
+} from './realtime_planner.js';
 import {
   applyProfilePatch
 } from './validators.js';
@@ -406,6 +416,9 @@ function clearCompletionFactMarker(profile, factId, fieldPath = null) {
   if (fieldPath && completionFacts.confirmedNonePaths) {
     delete completionFacts.confirmedNonePaths[fieldPath];
   }
+  if (fieldPath && completionFacts.completedPaths) {
+    delete completionFacts.completedPaths[fieldPath];
+  }
   return profile;
 }
 
@@ -620,6 +633,9 @@ export class ConsumerRealtimeSession {
     this.activeToolCallCount = 0;
     this.pendingTerminalization = null;
     this.silencePromptIssuedForIdleExpiresAt = null;
+    this.latestMeetingBrief = null;
+    this.plannerCatchupSourceTurnId = null;
+    this.currentAssistantTranscript = '';
     this.state.blockConcurrencyWhile(async () => {
       this.meta = await this.state.storage.get('lease') || null;
       this.currentPhase = await this.state.storage.get('phase') || null;
@@ -631,6 +647,8 @@ export class ConsumerRealtimeSession {
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
       this.queuedResponseAuthorization = await this.state.storage.get('queuedResponseAuthorization') || null;
       this.latestFinalizedEvidenceItemId = await this.state.storage.get('latestFinalizedEvidenceItemId') || null;
+      this.latestMeetingBrief = await this.state.storage.get('latestMeetingBrief') || null;
+      this.plannerCatchupSourceTurnId = await this.state.storage.get('plannerCatchupSourceTurnId') || null;
       if (this.latestFinalizedEvidenceItemId) {
         this.finalizedEvidenceItems.add(this.latestFinalizedEvidenceItemId);
       }
@@ -736,7 +754,28 @@ export class ConsumerRealtimeSession {
       phase: this.currentPhase,
       currentSessionPolicyHash: this.currentSessionPolicyHash
     });
-    await this.authorizeResponse('initial_state_probe', { forceTool: 'get_planning_state' });
+    if (context.config.realtimeConversationV2Enabled) {
+      const brief = await composeMeetingBrief({
+        env: this.env,
+        context,
+        extraction: null,
+        sourceTurnId: 'initial'
+      });
+      await saveRealtimeMeetingBrief(this.env, {
+        sessionId,
+        leaseId,
+        sourceTurnId: 'initial',
+        profileRevision: brief.profileRevision,
+        plannerPromptVersion: context.config.realtimePlannerPromptVersion,
+        brief
+      });
+      this.latestMeetingBrief = brief;
+      this.initialProbePending = true;
+      await this.state.storage.put({ latestMeetingBrief: brief });
+      await this.refreshJourneyState();
+    } else {
+      await this.authorizeResponse('initial_state_probe', { forceTool: 'get_planning_state' });
+    }
   }
 
   async connectSideband(providerCallId) {
@@ -901,6 +940,9 @@ export class ConsumerRealtimeSession {
       // A fresh consumer answer starts a fresh correction budget.
       this.toolRejectionRetryArmed = false;
       await this.touch();
+      if (config.realtimeConversationV2Enabled) {
+        await this.processPlannerTurn({ itemId, transcript });
+      }
       await this.authorizeResponse('finalized_user_item');
       return;
     }
@@ -1005,12 +1047,58 @@ export class ConsumerRealtimeSession {
       await this.touch();
       return;
     }
-    // Unauthorized model AUDIO is an immediate hard stop: only Worker-approved
-    // TTS may reach the consumer's ears. Stray assistant TEXT deltas are
-    // tolerated noise from the same chatty-model behaviour handled above —
-    // nothing renders them, and the response-level tool requirement still
-    // gates every turn.
+    // v1 keeps model AUDIO fail-closed. Conversational v2 accepts audio only
+    // inside a server-authorized response; transcript events remain bounded
+    // and an audio failure can fall back to controlled streaming TTS.
     if (/^response\.(?:output_audio|output_audio_transcript|audio|audio_transcript)(?:\.|$)/.test(type)) {
+      const config = getConsumerConfig(this.env);
+      if (config.realtimeConversationV2Enabled
+        && this.inResponse
+        && this.currentAuthorizedResponseId) {
+        if (['response.output_audio_transcript.delta', 'response.audio_transcript.delta'].includes(type)) {
+          const delta = typeof event.delta === 'string' ? event.delta : '';
+          this.currentAssistantTranscript = `${this.currentAssistantTranscript}${delta}`.slice(0, 2_400);
+        }
+        if (!this.firstOutputRecorded) {
+          this.firstOutputRecorded = true;
+          await appendRealtimeEvent(this.env, {
+            sessionId: this.meta.sessionId,
+            leaseId: this.meta.leaseId,
+            direction: 'server',
+            eventType: 'realtime.response.first_output',
+            payload: { latencyMs: Math.max(0, Date.now() - this.turnFinalAt) }
+          }).catch(() => {});
+        }
+        if (['response.output_audio_transcript.done', 'response.audio_transcript.done'].includes(type)) {
+          const transcript = typeof event.transcript === 'string' ? event.transcript.trim() : '';
+          const itemId = String(event.item_id || `${this.currentAuthorizedResponseId}_assistant`);
+          if (transcript && validProviderId(itemId)) {
+            this.currentAssistantTranscript = transcript.slice(0, 2_400);
+            await recordRealtimeFinalTurn(this.env, {
+              sessionId: this.meta.sessionId,
+              leaseId: this.meta.leaseId,
+              providerItemId: itemId,
+              role: 'assistant',
+              transcript
+            }).catch(() => {});
+          }
+        }
+        if (['response.output_audio.failed', 'response.audio.failed'].includes(type)) {
+          const context = await this.planningContext();
+          const fallbackText = this.currentAssistantTranscript.trim()
+            || 'I hit an audio problem, but I’m still with you. Please use the visible review or continue by typing while live voice recovers.';
+          await issueRealtimeSpeechAuthorization({
+            env: this.env,
+            sessionId: this.meta.sessionId,
+            leaseId: this.meta.leaseId,
+            kind: 'status',
+            profileRevision: Number(context.sessionRow.current_profile_revision),
+            text: fallbackText
+          }).catch(() => {});
+        }
+        await this.touch();
+        return;
+      }
       try { this.sendProvider({ type: 'response.cancel', response_id: this.currentAuthorizedResponseId || undefined }); } catch (_error) { /* terminal path owns loss */ }
       await this.terminalize('failed', 'assistant_output_unauthorized', 'realtime_assistant_output_unauthorized', false);
       return;
@@ -1080,6 +1168,7 @@ export class ConsumerRealtimeSession {
       this.currentAuthorizedResponseId = responseId;
       this.currentResponseReason = pending.reason;
       this.currentResponseToolCalls = 0;
+      this.currentAssistantTranscript = '';
       this.inResponse = true;
       await this.state.storage.delete('pendingResponseAuthorization');
       await this.state.storage.put('currentAuthorizedResponseId', responseId);
@@ -1118,6 +1207,7 @@ export class ConsumerRealtimeSession {
       // authorized: if the interrupting sound transcribes to nothing, the
       // same authorization is replayed so the answer is not silently lost.
       if (String(event.response?.status || '') === 'cancelled'
+        && !getConsumerConfig(this.env).realtimeConversationV2Enabled
         && this.currentResponseToolCalls < 1
         && ['finalized_user_item', 'tool_output'].includes(this.currentResponseReason || '')) {
         this.cancelledTurnReason = this.currentResponseReason;
@@ -1133,11 +1223,12 @@ export class ConsumerRealtimeSession {
         return;
       }
       const responseOutput = Array.isArray(event.response?.output) ? event.response.output : [];
+      const conversationalV2 = getConsumerConfig(this.env).realtimeConversationV2Enabled;
       // Assistant message and provider-internal reasoning items are tolerated
       // (their text is never played or shown). A completed response must still
       // contain the mandated tool call and no other output kinds.
       const toleratedOutputTypes = new Set(['function_call', 'message', 'reasoning']);
-      if (responseStatus === 'completed' && (
+      if (!conversationalV2 && responseStatus === 'completed' && (
         this.currentResponseToolCalls < 1
         || responseOutput.some((item) => !toleratedOutputTypes.has(item?.type))
       )) {
@@ -1148,7 +1239,9 @@ export class ConsumerRealtimeSession {
       // below, and when the truncation swallowed the mandated tool call the
       // same server reason is re-authorized. realtimeMaxResponses bounds the
       // total number of paid attempts.
-      const reauthorizeReason = responseStatus === 'incomplete' && this.currentResponseToolCalls < 1
+      const reauthorizeReason = !conversationalV2
+        && responseStatus === 'incomplete'
+        && this.currentResponseToolCalls < 1
         ? this.currentResponseReason
         : null;
       if (responseStatus === 'incomplete') {
@@ -1203,7 +1296,11 @@ export class ConsumerRealtimeSession {
       await this.state.storage.delete(['pendingSessionPolicyHash', 'pendingSessionPolicySnapshot']);
       if (this.initialProbePending) {
         this.initialProbePending = false;
-        await this.authorizeResponse('initial_state_probe', { forceTool: 'get_planning_state' });
+        const config = getConsumerConfig(this.env);
+        await this.authorizeResponse(
+          'initial_state_probe',
+          config.realtimeConversationV2Enabled ? {} : { forceTool: 'get_planning_state' }
+        );
       }
       await this.drainResponseAuthorization();
       return;
@@ -1329,6 +1426,7 @@ export class ConsumerRealtimeSession {
     this.pendingResponseAuthorization = { nonce, reason: authorizationReason };
     await this.state.storage.put('pendingResponseAuthorization', this.pendingResponseAuthorization);
     try {
+      const conversationalV2 = context.config.realtimeConversationV2Enabled;
       const forceTool = authorization.options?.forceTool === 'get_planning_state'
         ? 'get_planning_state'
         : null;
@@ -1340,7 +1438,18 @@ export class ConsumerRealtimeSession {
             authorization_nonce: nonce,
             reason: authorizationReason
           },
-          ...(forceTool
+          ...(conversationalV2
+            ? {
+                instructions: authorizationReason === 'tool_output'
+                  ? 'Continue the same turn naturally using the reviewed tool output. Keep the answer concise, then bridge to the signed brief nextObjective. Do not repeat the previous wording.'
+                  : authorizationReason === 'initial_state_probe'
+                    ? 'Give a brief, warm welcome as an AI planning companion, then invite the client to describe what they want help understanding. Do not use a persona menu.'
+                    : authorizationReason === 'silence_prompt'
+                      ? 'Offer one gentle, brief reassurance that there is no rush, and ask whether rephrasing the current objective would help. Do not repeat the previous question verbatim.'
+                    : 'Respond naturally to the finalized client turn using the current signed MeetingBriefV1. Answer any client question first, then continue with the next objective. Do not repeat a failed prompt.',
+                tool_choice: 'auto'
+              }
+            : forceTool
             ? {
                 instructions: `Call get_planning_state with expectedRevision ${Number(context.sessionRow.current_profile_revision)}. Emit no assistant text or audio.`,
                 tool_choice: { type: 'function', name: forceTool }
@@ -1405,6 +1514,229 @@ export class ConsumerRealtimeSession {
     return true;
   }
 
+  async applyPlannerExtraction(extraction) {
+    const context = await this.planningContext();
+    const mappedPositions = positionCandidatesToRealtimeFacts(extraction.positions);
+    const mappedCompletions = extraction.sectionCompletions
+      .map(sectionCompletionToRealtimeFact)
+      .filter(Boolean);
+    const candidates = [
+      ...extraction.semanticFacts,
+      ...mappedPositions,
+      ...mappedCompletions
+    ].slice(0, 24);
+    const outcomes = (extraction.invalidCandidates || []).map((item) => ({
+      candidateId: item.candidateId,
+      factId: null,
+      accepted: false,
+      errorCode: item.errorCode
+    }));
+    if (candidates.length > 0) {
+      const attempt = await beginRealtimeToolAttempt(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        providerToolCallId: `planner_${extraction.sourceTurnId}`.slice(0, 160),
+        toolName: 'silent_planner',
+        toolVersion: `${context.config.realtimePlannerPromptVersion}:${TOOL_VERSION}`,
+        expectedProfileRevision: Number(context.sessionRow.current_profile_revision),
+        arguments: {
+          schemaVersion: extraction.schemaVersion,
+          sourceTurnId: extraction.sourceTurnId,
+          candidates: candidates.map((candidate) => ({
+            candidateId: candidate.candidateId,
+            factId: candidate.factId,
+            value: candidate.value,
+            certainty: candidate.certainty,
+            correctionTarget: candidate.correctionTarget || ''
+          }))
+        },
+        maxToolCalls: context.config.realtimeMaxToolCalls
+      });
+      if (!attempt.replayed) {
+        this.applyingPlannerBatch = true;
+        try {
+          for (const candidate of candidates) {
+            try {
+              const current = await this.planningContext();
+              const output = await this.executeTool('propose_facts', {
+                expectedRevision: Number(current.sessionRow.current_profile_revision),
+                facts: [{
+                  factId: candidate.factId,
+                  value: candidate.value,
+                  certainty: candidate.certainty,
+                  evidenceItemId: extraction.sourceTurnId
+                }]
+              }, current, attempt.row.id);
+              outcomes.push({
+                candidateId: candidate.candidateId,
+                factId: candidate.factId,
+                accepted: output?.ok === true,
+                profileRevision: output?.profileRevision || null
+              });
+            } catch (error) {
+              outcomes.push({
+                candidateId: candidate.candidateId,
+                factId: candidate.factId,
+                accepted: false,
+                errorCode: error instanceof ConsumerError ? error.code : 'realtime_planner_candidate_invalid'
+              });
+            }
+          }
+        } finally {
+          this.applyingPlannerBatch = false;
+        }
+        await completeRealtimeToolAttempt(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          toolAttemptId: attempt.row.id,
+          status: 'succeeded',
+          result: {
+            ok: true,
+            schemaVersion: extraction.schemaVersion,
+            sourceTurnId: extraction.sourceTurnId,
+            outcomes
+          },
+          errorCode: null,
+          latencyMs: 0
+        });
+      }
+    }
+    const refreshed = await this.planningContext();
+    const brief = await composeMeetingBrief({
+      env: this.env,
+      context: refreshed,
+      extraction,
+      sourceTurnId: extraction.sourceTurnId
+    });
+    await saveRealtimeMeetingBrief(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      sourceTurnId: extraction.sourceTurnId,
+      profileRevision: brief.profileRevision,
+      plannerPromptVersion: refreshed.config.realtimePlannerPromptVersion,
+      brief
+    });
+    this.latestMeetingBrief = brief;
+    await this.state.storage.put('latestMeetingBrief', brief);
+    return { brief, outcomes };
+  }
+
+  async recordPlannerUsage(metadata, config) {
+    if (!metadata?.providerResponseId) return;
+    await recordRealtimeUsage(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      providerResponseId: metadata.providerResponseId,
+      usageKind: 'planner',
+      tokens: {
+        inputTextTokens: Math.max(0, Number(metadata.inputTokens || 0) - Number(metadata.cachedInputTokens || 0)),
+        inputAudioTokens: 0,
+        cachedTextTokens: Number(metadata.cachedInputTokens || 0),
+        cachedAudioTokens: 0,
+        outputTextTokens: Number(metadata.outputTokens || 0),
+        outputAudioTokens: 0
+      },
+      rates: config.realtimeUsageRates,
+      pricingVersion: config.realtimePricingVersion
+    });
+  }
+
+  async catchUpPlannerTurn({ itemId, transcript }) {
+    try {
+      const context = await this.planningContext();
+      const recentTurns = await listRealtimeFinalTurns(
+        this.env,
+        this.meta.sessionId,
+        this.meta.leaseId,
+        8
+      );
+      const planned = await extractRealtimePlannerTurn({
+        env: this.env,
+        config: context.config,
+        context,
+        sourceTurnId: itemId,
+        transcript,
+        recentTurns,
+        timeoutMs: context.config.realtimePlannerCatchupTimeoutMs
+      });
+      await this.recordPlannerUsage(planned.metadata, context.config);
+      await this.applyPlannerExtraction(planned.extraction);
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.catchup_completed',
+        payload: { sourceTurnId: itemId, latencyMs: planned.metadata.latencyMs }
+      });
+      if (!this.inResponse && !this.pendingSessionPolicyHash) {
+        await this.refreshJourneyState();
+      }
+    } catch (error) {
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.catchup_failed',
+        payload: {
+          sourceTurnId: itemId,
+          code: error instanceof ConsumerError ? error.code : 'realtime_planner_catchup_failed'
+        }
+      }).catch(() => {});
+    } finally {
+      await this.state.storage.delete('plannerCatchupSourceTurnId').catch(() => {});
+      if (this.plannerCatchupSourceTurnId === itemId) this.plannerCatchupSourceTurnId = null;
+    }
+  }
+
+  async processPlannerTurn({ itemId, transcript }) {
+    const context = await this.planningContext();
+    const recentTurns = await listRealtimeFinalTurns(
+      this.env,
+      this.meta.sessionId,
+      this.meta.leaseId,
+      8
+    );
+    try {
+      const planned = await extractRealtimePlannerTurn({
+        env: this.env,
+        config: context.config,
+        context,
+        sourceTurnId: itemId,
+        transcript,
+        recentTurns
+      });
+      await this.recordPlannerUsage(planned.metadata, context.config);
+      const applied = await this.applyPlannerExtraction(planned.extraction);
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.completed',
+        payload: {
+          sourceTurnId: itemId,
+          latencyMs: planned.metadata.latencyMs,
+          acceptedCandidates: applied.outcomes.filter((item) => item.accepted).length,
+          rejectedCandidates: applied.outcomes.filter((item) => !item.accepted).length
+        }
+      });
+      await this.refreshJourneyState();
+    } catch (error) {
+      const code = error instanceof ConsumerError ? error.code : 'realtime_planner_failed';
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.deferred',
+        payload: { sourceTurnId: itemId, code }
+      }).catch(() => {});
+      if (code === 'realtime_planner_timeout' && this.plannerCatchupSourceTurnId !== itemId) {
+        this.plannerCatchupSourceTurnId = itemId;
+        await this.state.storage.put('plannerCatchupSourceTurnId', itemId);
+        this.state.waitUntil(this.catchUpPlannerTurn({ itemId, transcript }));
+      }
+    }
+  }
+
   async planningContext() {
     const config = getConsumerConfig(this.env);
     if (!config.realtimeEnabled) throw new ConsumerError(503, 'realtime_unavailable', 'Live voice is not available.');
@@ -1423,6 +1755,10 @@ export class ConsumerRealtimeSession {
       this.meta.sessionId,
       this.meta.leaseId
     );
+    const storedMeetingBrief = config.realtimeConversationV2Enabled
+      ? await getLatestRealtimeMeetingBrief(this.env, this.meta.sessionId, this.meta.leaseId)
+      : null;
+    if (storedMeetingBrief?.brief) this.latestMeetingBrief = storedMeetingBrief.brief;
     const pendingFacts = proposedFacts.map((proposal) => ({
       ...proposal,
       readBackText: buildRealtimeFactReadBack(
@@ -1496,7 +1832,12 @@ export class ConsumerRealtimeSession {
             ? item.rationale[0].slice(0, 240)
             : 'This topic is not available for automated analysis in the current test.'
         })),
-      reasoningEscalation
+      reasoningEscalation,
+      conversationVersion: config.realtimeConversationV2Enabled ? 'v2' : 'v1',
+      meetingBrief: config.realtimeConversationV2Enabled ? this.latestMeetingBrief : null,
+      conversationGuide: config.realtimeConversationV2Enabled
+        ? toConversationGuide(this.latestMeetingBrief)
+        : null
     };
     return { config, sessionRow, profile, state: publicState };
   }
@@ -1608,7 +1949,9 @@ export class ConsumerRealtimeSession {
       if (attempt.replayed && attempt.result) output = attempt.result;
       else {
         output = await this.executeTool(toolName, args, context, attempt.row.id);
-        output = await this.attachWorkerSpeech(toolName, output, context);
+        if (!context.config.realtimeConversationV2Enabled) {
+          output = await this.attachWorkerSpeech(toolName, output, context);
+        }
       }
     } catch (error) {
       status = error instanceof ConsumerError && error.status < 500 ? 'rejected' : 'failed';
@@ -1631,11 +1974,16 @@ export class ConsumerRealtimeSession {
     // moving, never fall into a silent wait.
     const silentRetry = status === 'rejected'
       && RETRYABLE_TOOL_ERROR_CODES.has(errorCode)
+      && speechContext?.config?.realtimeConversationV2Enabled !== true
       && !fatalToolError
       && !attempt?.replayed
       && !this.toolRejectionRetryArmed
       && !this.closing;
-    if (!attempt?.replayed && toolName !== 'invalid' && !output?.assistantSpeech && !silentRetry) {
+    if (!attempt?.replayed
+      && toolName !== 'invalid'
+      && !output?.assistantSpeech
+      && !silentRetry
+      && speechContext?.config?.realtimeConversationV2Enabled !== true) {
       try {
         output = await this.attachWorkerSpeech(
           toolName,
@@ -1696,6 +2044,11 @@ export class ConsumerRealtimeSession {
         this.toolRejectionRetryArmed = false;
       } else if (silentRetry) {
         this.toolRejectionRetryArmed = true;
+        await this.queueResponseAuthorization('tool_output');
+      }
+      if (speechContext?.config?.realtimeConversationV2Enabled === true
+        && toolName !== 'wait_for_user') {
+        this.toolContinuationPending = true;
         await this.queueResponseAuthorization('tool_output');
       }
       if (this.turnFinalAt && !this.firstOutputRecorded) {
@@ -1933,6 +2286,37 @@ export class ConsumerRealtimeSession {
   }
 
   async executeTool(toolName, args, context, toolAttemptId) {
+    if (toolName === 'get_meeting_brief') {
+      if (!context.config.realtimeConversationV2Enabled || !context.state.meetingBrief) {
+        throw new ConsumerError(409, 'realtime_meeting_brief_unavailable', 'The current meeting brief is not available yet.');
+      }
+      return {
+        ok: true,
+        meetingBrief: context.state.meetingBrief,
+        conversationGuide: context.state.conversationGuide,
+        instruction: 'Use this signed brief as steering context. Do not expose its signature or internal fields.'
+      };
+    }
+    if (toolName === 'get_intake_explanation') {
+      if (!context.config.realtimeConversationV2Enabled) {
+        throw new ConsumerError(409, 'realtime_explanation_unavailable', 'Reviewed meeting explanations are not available in this voice version.');
+      }
+      const topic = String(args.topic || '').slice(0, 160);
+      const clientIntent = context.state.meetingBrief?.clientQuestion?.intent || 'none';
+      const boundaryTopic = clientIntent === 'recommendation'
+        ? 'recommendation_boundary'
+        : clientIntent === 'eligibility'
+          ? 'eligibility_boundary'
+          : clientIntent === 'regulated_or_time_sensitive'
+            ? 'adviser_boundary'
+          : topic;
+      return {
+        ok: true,
+        topic: boundaryTopic,
+        explanation: intakeExplanation(boundaryTopic, context.state.meetingBrief),
+        instruction: 'Answer in one to three sentences, then bridge naturally to nextObjective. Do not add advice, eligibility claims, projections or calculations.'
+      };
+    }
     if (toolName === 'get_planning_state') {
       // A pure read tolerates a stale expectedRevision: it returns the current
       // server-authoritative state (including the live revision) so the model
@@ -1987,7 +2371,8 @@ export class ConsumerRealtimeSession {
           throw new ConsumerError(400, 'realtime_fact_duplicate', 'Each semantic fact may be proposed once per answer.');
         }
         seenFactIds.add(fact.factId);
-        if (!realtimeFactAllowed(fact.factId, enabledModules)) {
+        if (!realtimeFactAllowed(fact.factId, enabledModules)
+          && !context.config.realtimeConversationV2Enabled) {
           throw new ConsumerError(409, 'realtime_fact_not_routed', 'That semantic fact is not used by the currently routed canary modules.');
         }
         if (!['exact', 'approximate', 'range', 'unknown'].includes(fact.certainty)) {
@@ -1996,7 +2381,15 @@ export class ConsumerRealtimeSession {
         const mapped = mapRealtimeProposalFact(projectedProfile, fact);
         const patch = patchForMappedRealtimeFact(mapped);
         projectedProfile = applyProfilePatch(projectedProfile, patch, [], 'ai_extraction');
-        const confirmationPolicy = getSemanticFactDefinition(fact.factId)?.confirmationPolicy || 'final_review';
+        const configuredConfirmationPolicy = getSemanticFactDefinition(fact.factId)?.confirmationPolicy || 'final_review';
+        // Conversational v2 has no mandatory spoken confirmation tool. The
+        // silent planner therefore saves even legacy read-back values as
+        // visibly reviewable drafts; the authenticated final profile/plan
+        // confirmation remains the authoritative gate. The controlled v1
+        // journey keeps its existing spoken read-back behaviour unchanged.
+        const confirmationPolicy = context.config.realtimeConversationV2Enabled && this.applyingPlannerBatch
+          ? 'final_review'
+          : configuredConfirmationPolicy;
         const readBackText = confirmationPolicy === 'read_back'
           ? buildRealtimeFactReadBack(
               fact.factId,
@@ -2060,7 +2453,9 @@ export class ConsumerRealtimeSession {
         proposal.profileRevision = committed.revision;
       }
       const pending = proposals.filter((proposal) => proposal.confirmationPolicy === 'read_back');
-      const refreshed = await this.refreshJourneyState();
+      const refreshed = this.applyingPlannerBatch
+        ? await this.planningContext()
+        : await this.refreshJourneyState();
       const currentPendingProposal = refreshed.state.currentPendingProposal || null;
       return {
         ok: true,
@@ -2328,14 +2723,18 @@ export class ConsumerRealtimeSession {
       const lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId);
       const profileRevision = Number(lease?.latest_profile_revision || 0);
       if (!lease || lease.status !== 'active' || profileRevision < 1) return;
-      await issueRealtimeSpeechAuthorization({
-        env: this.env,
-        sessionId: this.meta.sessionId,
-        leaseId: this.meta.leaseId,
-        kind: 'status',
-        profileRevision,
-        text: 'Take your time — there’s no rush. Would it help if I asked that in a different way? If you’re finished for now, you can end the meeting whenever you like.'
-      });
+      if (config.realtimeConversationV2Enabled) {
+        await this.authorizeResponse('silence_prompt');
+      } else {
+        await issueRealtimeSpeechAuthorization({
+          env: this.env,
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          kind: 'status',
+          profileRevision,
+          text: 'Take your time — there’s no rush. Would it help if I asked that in a different way? If you’re finished for now, you can end the meeting whenever you like.'
+        });
+      }
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,

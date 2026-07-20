@@ -1206,7 +1206,11 @@ export async function recordRealtimeUsage(env, request) {
       request.leaseId,
       request.sessionId,
       responseHash,
-      request.usageKind === 'transcription' ? 'transcription' : 'response',
+      request.usageKind === 'transcription'
+        ? 'transcription'
+        : request.usageKind === 'planner'
+          ? 'planner'
+          : 'response',
       tokens.inputTextTokens,
       tokens.inputAudioTokens,
       tokens.cachedTextTokens,
@@ -1321,6 +1325,69 @@ export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 40
     });
   }
   return turns;
+}
+
+export async function saveRealtimeMeetingBrief(env, request) {
+  const id = randomId('realtime_brief');
+  const timestamp = nowIso();
+  const aad = `consumer/realtime/meeting-brief/${request.sessionId}/${request.leaseId}/${request.sourceTurnId}`;
+  const [encrypted, hash] = await Promise.all([
+    encryptJson(env, request.brief, aad),
+    sha256Base64Url(stableStringify(request.brief))
+  ]);
+  await db(env).prepare(`
+    INSERT INTO consumer_realtime_meeting_briefs (
+      id, realtime_session_id, session_id, source_turn_id, profile_revision,
+      schema_version, planner_prompt_version, brief_encrypted,
+      brief_hash_b64u, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 'MeetingBriefV1', ?, ?, ?, ?, ?)
+    ON CONFLICT(realtime_session_id, source_turn_id) DO UPDATE SET
+      profile_revision = excluded.profile_revision,
+      planner_prompt_version = excluded.planner_prompt_version,
+      brief_encrypted = excluded.brief_encrypted,
+      brief_hash_b64u = excluded.brief_hash_b64u,
+      updated_at = excluded.updated_at
+  `).bind(
+    id,
+    request.leaseId,
+    request.sessionId,
+    request.sourceTurnId,
+    request.profileRevision,
+    request.plannerPromptVersion,
+    encrypted,
+    hash,
+    timestamp,
+    timestamp
+  ).run();
+  return { sourceTurnId: request.sourceTurnId, profileRevision: request.profileRevision, updatedAt: timestamp };
+}
+
+export async function getLatestRealtimeMeetingBrief(env, sessionId, leaseId) {
+  const row = await db(env).prepare(`
+    SELECT id, realtime_session_id, session_id, source_turn_id, profile_revision,
+           schema_version, planner_prompt_version, brief_encrypted,
+           brief_hash_b64u, created_at, updated_at
+    FROM consumer_realtime_meeting_briefs
+    WHERE session_id = ? AND realtime_session_id = ?
+    ORDER BY updated_at DESC, id DESC
+    LIMIT 1
+  `).bind(sessionId, leaseId).first();
+  if (!row) return null;
+  const brief = await decryptJson(
+    env,
+    row.brief_encrypted,
+    `consumer/realtime/meeting-brief/${sessionId}/${leaseId}/${row.source_turn_id}`
+  );
+  const actualHash = await sha256Base64Url(stableStringify(brief));
+  if (!constantTimeEqual(actualHash, row.brief_hash_b64u)) {
+    throw new ConsumerError(409, 'realtime_meeting_brief_corrupt', 'The saved meeting brief could not be verified.');
+  }
+  return {
+    row,
+    brief,
+    sourceTurnId: row.source_turn_id,
+    profileRevision: Number(row.profile_revision)
+  };
 }
 
 export async function beginRealtimeToolAttempt(env, request) {

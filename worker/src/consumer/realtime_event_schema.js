@@ -81,6 +81,24 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     requested: NON_CONTENT_FIELD_TYPES.STRING,
     applied: NON_CONTENT_FIELD_TYPES.BOOLEAN,
     reason: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  'realtime.planner.completed': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER,
+    acceptedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER,
+    rejectedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  'realtime.planner.deferred': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  'realtime.planner.catchup_completed': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  'realtime.planner.catchup_failed': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    code: NON_CONTENT_FIELD_TYPES.STRING
   })
 });
 

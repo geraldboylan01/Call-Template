@@ -27,8 +27,10 @@ or any deterministic calculation engine.
 
 ## Release controls
 
-`worker/wrangler.toml` must keep `CONSUMER_REALTIME_VOICE_ENABLED="false"`.
-The production workflow refuses a committed `true` value.
+`worker/wrangler.toml` must keep both
+`CONSUMER_REALTIME_VOICE_ENABLED="false"` and
+`CONSUMER_REALTIME_CONVERSATION_V2_ENABLED="false"`. The production workflow
+refuses a committed `true` value for either switch.
 
 The canary is enabled only when all of the following are true:
 
@@ -107,6 +109,47 @@ A barge-in that transcribes to nothing (a cough, background noise) no longer
 strands the consumer mid-sentence: the Worker re-speaks the cancelled line
 once ("As I was saying: …"), and the client polls immediately after an empty
 transcription so the recovery plays promptly.
+
+### Conversational voice v2
+
+`CONSUMER_REALTIME_CONVERSATION_V2_ENABLED` is an independent rollout and
+rollback switch. It can be enabled only while the adviser Realtime canary is
+already active. Set the protected repository variable to `true` for the v2
+adviser cohort; set it to `false` to return immediately to the controlled v1
+journey without disabling typed or bounded voice.
+
+In v2, `gpt-realtime-2.1` owns ordinary audio dialogue with `marin`, low
+reasoning and medium-eagerness semantic VAD. The Worker still authorizes every
+`response.create`, pins the effective session policy and terminates unsolicited
+responses. A silent Responses planner runs after each finalized client turn,
+has a 2.5-second foreground deadline, validates candidates independently and
+gets one idempotent catch-up attempt after a timeout. It cannot choose modules,
+confirm facts or calculate results.
+
+The Worker converts planner-facing position kinds (`cash`, `investment`,
+`property`, `pension`, `mortgage`, `loan`, `business`, `other`) into the
+canonical profile. A property and mortgage from the same turn are linked. A
+`complete_section` signal is distinct from `confirm_empty`, so “that is
+everything” completes records already captured instead of deleting or
+rejecting them.
+
+The latest signed `MeetingBriefV1` and source-turn ID are encrypted in D1. The
+browser receives only `conversationGuide`: the narrative summary, exactly
+three analysis slots, progress and the next objective. Planner reasoning, raw
+prompts, scores and unrestricted transcripts are never exposed. Analysis still
+requires the exact visually confirmed profile revision and plan nonce.
+
+Run `npm run probe:consumer-realtime-planner-paid` locally to exercise the
+silent planner against a fully synthetic new-parent regression analogue with
+the ignored `worker/.dev.vars` key. No consumer transcript is sent. The command
+reports only bounded counts and latency; it never prints the key or synthetic
+turn text. The deployed end-to-end voice and trace grader remains
+`scripts/run-consumer-realtime-conversation-probe.mjs`.
+
+If direct audio is rolled back or cannot be used, controlled playback streams
+`gpt-4o-mini-tts` with `marin` and explicit calm, conversational tone
+instructions. The legacy `tts-1-hd`/`nova` playback is no longer the Realtime
+fallback.
 
 Turn-taking runs semantic VAD at high eagerness, and the consumer can always
 force-finish a turn the detector missed: the live orb doubles as the "I've

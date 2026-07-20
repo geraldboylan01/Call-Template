@@ -65,6 +65,9 @@ jobs:
       # honors it when the currently deployed Worker already reports Realtime
       # enabled, and the OVERRIDE=false kill switch still wins.
       CONSUMER_REALTIME_KEEP_ACTIVE: ${{ vars.CONSUMER_REALTIME_KEEP_ACTIVE }}
+      # Independent v2 rollout switch. It is effective only while the adviser
+      # Realtime canary itself is active and defaults to the v1 rollback path.
+      CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: ${{ vars.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED || 'false' }}
       CONSUMER_DB_NAME: "planeir-consumer"
       CONSUMER_SITE_ZONE_NAME: "planeir.ie"
       CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
@@ -371,6 +374,11 @@ jobs:
             throw new Error('CONSUMER_REALTIME_ADVISER_CANARY_ENABLED must be exactly true or false.');
           }
           const realtimeEnabled = realtimeToggle === 'true';
+          const realtimeV2Toggle = envValue('CONSUMER_REALTIME_CONVERSATION_V2_ENABLED');
+          if (!['false', 'true'].includes(realtimeV2Toggle)) {
+            throw new Error('CONSUMER_REALTIME_CONVERSATION_V2_ENABLED must be exactly true or false.');
+          }
+          const realtimeV2Enabled = realtimeEnabled && realtimeV2Toggle === 'true';
           if (realtimeEnabled && !betaEnabled) {
             throw new Error('Realtime cannot be enabled outside the signed-invite adviser beta.');
           }
@@ -399,6 +407,7 @@ jobs:
             'CONSUMER_AI_INTAKE_ENABLED',
             'CONSUMER_VOICE_ENABLED',
             'CONSUMER_REALTIME_VOICE_ENABLED',
+            'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
             'CONSUMER_MODULE_ROUTING_ENABLED',
             'CONSUMER_HANDOFF_ENABLED',
             'CONSUMER_PUBLIC_ACCESS_ENABLED'
@@ -451,6 +460,10 @@ jobs:
             'CONSUMER_REALTIME_MAX_SDP_BYTES',
             'CONSUMER_REALTIME_MAX_RESPONSES',
             'CONSUMER_REALTIME_MAX_TOOL_CALLS',
+            'CONSUMER_REALTIME_PLANNER_TIMEOUT_MS',
+            'CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS',
+            'CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS',
+            'CONSUMER_REALTIME_PLANNER_PROMPT_VERSION',
             'CONSUMER_REALTIME_DIRECTOR_ENABLED',
             'CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION',
             'CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION',
@@ -608,6 +621,11 @@ jobs:
                 generatedSource = replaceTomlString(generatedSource, runtimeName, value);
               }
               generatedSource = replaceTomlString(generatedSource, 'CONSUMER_REALTIME_VOICE_ENABLED', 'true');
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
+                realtimeV2Enabled ? 'true' : 'false'
+              );
               generatedSource = replaceTomlString(generatedSource, 'CONSUMER_HANDOFF_ENABLED', 'false');
             }
           }
@@ -616,6 +634,7 @@ jobs:
             CONSUMER_JOURNEY_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_VOICE_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
+            CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: realtimeV2Enabled ? 'true' : 'false',
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_AI_INTAKE_ENABLED: 'false',
             CONSUMER_HANDOFF_ENABLED: 'false',
@@ -641,7 +660,11 @@ jobs:
           fs.writeFileSync(generatedPath, generatedSource.trimEnd() + '\n' + binding, { mode: 0o600 });
           const bootstrapSource = replaceTomlString(
             replaceTomlString(
-              generatedSource,
+              replaceTomlString(
+                generatedSource,
+                'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
+                'false'
+              ),
               'CONSUMER_REALTIME_VOICE_ENABLED',
               'false'
             ),
@@ -650,6 +673,9 @@ jobs:
           );
           if (!/^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep realtime voice disabled.');
+          }
+          if (!/^CONSUMER_REALTIME_CONVERSATION_V2_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep conversational realtime v2 disabled.');
           }
           if (!/^CONSUMER_HANDOFF_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep the realtime handoff disabled.');

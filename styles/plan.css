@@ -3210,6 +3210,23 @@ details.realtime-context-card {
   margin-top: 0.5rem;
 }
 
+.realtime-context-note {
+  margin: 0.55rem 0 0;
+  color: var(--plan-soft);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.realtime-next-objective-card {
+  display: block;
+}
+
+.realtime-next-objective-card .realtime-context-heading {
+  margin: 0;
+  color: var(--plan-ink);
+  font-size: 0.78rem;
+}
+
 .realtime-context-list {
   max-height: none;
 }

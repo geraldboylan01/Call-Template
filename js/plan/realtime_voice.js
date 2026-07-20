@@ -210,6 +210,9 @@ export function normaliseRealtimeCallResponse(response) {
   const activationId = cleanText(headerValue(response?.headers, [
     'X-Realtime-Activation-Id'
   ]), 120);
+  const conversationVersion = cleanText(headerValue(response?.headers, [
+    'X-Realtime-Conversation-Version'
+  ]), 8).toLowerCase() === 'v2' ? 'v2' : 'v1';
   const payload = parsed || (headerBudget ? { realtimeVoiceBudget: headerBudget } : null);
   return {
     sdp,
@@ -219,7 +222,8 @@ export function normaliseRealtimeCallResponse(response) {
     payload,
     budget: headerBudget,
     controlCapability,
-    activationId
+    activationId,
+    conversationVersion
   };
 }
 
@@ -280,6 +284,9 @@ export function classifyRealtimeEvent(event) {
   if (type === 'response.done') return { ...base, kind: 'response_done' };
   if (type === 'response.output_audio.delta' || type === 'response.audio.delta') {
     return { ...base, kind: 'assistant_audio' };
+  }
+  if (type === 'response.output_audio.failed' || type === 'response.audio.failed') {
+    return { ...base, kind: 'assistant_audio_failed' };
   }
   if (type === 'response.function_call_arguments.done') return { ...base, kind: 'tool_running' };
   if (type === 'error' || type.endsWith('.failed')) return { ...base, kind: 'error' };
@@ -475,6 +482,11 @@ function normaliseModule(item, index) {
 
 export function extractRealtimePlanningContext(payload, currentState = state) {
   const root = unwrap(payload);
+  const guide = asObject(firstDefined(
+    root.conversationGuide,
+    root.planningState?.conversationGuide,
+    root.realtime?.conversationGuide
+  )) || {};
   const realtime = asObject(firstDefined(
     root.realtime,
     root.realtimeVoice,
@@ -492,6 +504,7 @@ export function extractRealtimePlanningContext(payload, currentState = state) {
     root.toolState?.facts
   );
   const proposedModules = firstDefined(
+    guide.analyses,
     root.moduleSlots,
     realtime.moduleSlots,
     root.analysisPlan?.moduleSlots,
@@ -512,6 +525,9 @@ export function extractRealtimePlanningContext(payload, currentState = state) {
   return {
     facts,
     modules: sourceModules.map(normaliseModule),
+    narrativeSummary: cleanText(guide.narrativeSummary, 500),
+    nextObjective: asObject(guide.nextObjective) || null,
+    progress: asObject(guide.progress) || null,
     readyForReview: firstDefined(
       root.readyForReview,
       realtime.readyForReview,
@@ -780,8 +796,10 @@ export class RealtimeVoiceController {
     this.peerConnection = null;
     this.dataChannel = null;
     this.localStream = null;
+    this.remoteAudioStream = null;
     this.leaseId = '';
     this.controlCapability = '';
+    this.conversationVersion = 'v1';
     this.leaseExpiresAtMs = null;
     this.sessionId = '';
     this.startController = null;
@@ -1257,6 +1275,7 @@ export class RealtimeVoiceController {
       leaseId = call.leaseId;
       this.leaseId = call.leaseId;
       this.controlCapability = call.controlCapability;
+      this.conversationVersion = call.conversationVersion;
       if (call.payload) this.acceptServerPayload(call.payload);
       this.configureLeaseExpiry(call, context);
       await peer.setRemoteDescription({ type: 'answer', sdp: call.sdp });
@@ -1324,10 +1343,21 @@ export class RealtimeVoiceController {
   bindPeerConnection(peer, generation) {
     peer.addEventListener('track', (event) => {
       if (generation !== this.generation) return;
-      // Provider media is never an audible assistant channel. Disable the
-      // remote track before it can be attached; only authenticated Worker-
-      // generated MP3 responses are ever assigned to the audio element.
-      if (event.track) event.track.enabled = false;
+      if (this.conversationVersion !== 'v2') {
+        // The v1 provider media channel stays silent; only authenticated
+        // Worker-generated speech is audible on that rollback path.
+        if (event.track) event.track.enabled = false;
+        return;
+      }
+      const audio = this.element('realtimeVoiceAudio');
+      const stream = event.streams?.[0];
+      if (!audio || !stream) return;
+      if (event.track) event.track.enabled = true;
+      this.remoteAudioStream = stream;
+      audio.srcObject = stream;
+      audio.play?.().catch(() => {
+        this.element('realtimeVoiceResumeAudioButton')?.removeAttribute('hidden');
+      });
     });
     peer.addEventListener('connectionstatechange', () => {
       if (generation !== this.generation || !this.active) return;
@@ -1781,19 +1811,43 @@ export class RealtimeVoiceController {
         return;
       case 'response_started':
         this.responseInProgress = true;
-        this.awaitingWorkerSpeech = true;
+        this.awaitingWorkerSpeech = this.conversationVersion !== 'v2';
         this.assistantDeltas.clear();
         this.setCaption('assistant', 'Planéir is thinking…');
         this.setPhase('thinking', 'Planéir is thinking…');
         return;
       case 'assistant_delta':
-        this.handleUnauthorizedProviderOutput();
+        if (this.conversationVersion !== 'v2') {
+          this.handleUnauthorizedProviderOutput();
+          return;
+        }
+        this.appendCaptionDelta('assistant', event.itemId, event.text);
+        this.setPhase('assistant_speaking', 'Planéir is speaking… You can interrupt naturally.');
         return;
       case 'assistant_audio':
-        this.handleUnauthorizedProviderOutput();
+        if (this.conversationVersion !== 'v2') {
+          this.handleUnauthorizedProviderOutput();
+          return;
+        }
+        this.awaitingWorkerSpeech = false;
+        this.setPhase('assistant_speaking', 'Planéir is speaking… You can interrupt naturally.');
         return;
       case 'assistant_final':
-        this.handleUnauthorizedProviderOutput();
+        if (this.conversationVersion !== 'v2') {
+          this.handleUnauthorizedProviderOutput();
+          return;
+        }
+        this.awaitingWorkerSpeech = false;
+        this.finalizeCaption('assistant', event.itemId, event.text);
+        return;
+      case 'assistant_audio_failed':
+        if (this.conversationVersion !== 'v2') {
+          this.handleProviderError(event.event);
+          return;
+        }
+        this.awaitingWorkerSpeech = true;
+        this.setPhase('thinking', 'Switching to the backup voice…');
+        this.scheduleLeasePoll(0);
         return;
       case 'tool_running':
         this.awaitingWorkerSpeech = true;
@@ -1832,6 +1886,7 @@ export class RealtimeVoiceController {
         return;
       case 'response_done':
         this.responseInProgress = false;
+        if (this.conversationVersion === 'v2') this.awaitingWorkerSpeech = false;
         if (!this.currentControlledSpeech
           && !this.awaitingWorkerSpeech
           && !['user_speaking', 'interrupted'].includes(this.phase)) {
@@ -2116,6 +2171,7 @@ export class RealtimeVoiceController {
     this.controlledSpeechStreamTask = null;
     this.currentControlledSpeech = null;
     this.releaseControlledSpeechUrl();
+    this.restoreRealtimeAudioStream();
     if (error) {
       this.setCaption('assistant', approvedText);
       this.setPhase('error', 'The approved audio stopped unexpectedly. Continue with the written journey.', {
@@ -2137,6 +2193,17 @@ export class RealtimeVoiceController {
     this.controlledSpeechMediaSource = null;
   }
 
+  restoreRealtimeAudioStream() {
+    if (!this.active || this.conversationVersion !== 'v2' || !this.remoteAudioStream) return;
+    const audio = this.element('realtimeVoiceAudio');
+    if (!audio) return;
+    audio.removeAttribute?.('src');
+    audio.srcObject = this.remoteAudioStream;
+    audio.play?.().catch(() => {
+      this.element('realtimeVoiceResumeAudioButton')?.removeAttribute('hidden');
+    });
+  }
+
   stopControlledSpeech({ interrupted = false } = {}) {
     this.controlledSpeechController?.abort('controlled_speech_stopped');
     this.controlledSpeechController = null;
@@ -2155,6 +2222,7 @@ export class RealtimeVoiceController {
     }
     this.releaseControlledSpeechUrl();
     this.currentControlledSpeech = null;
+    this.restoreRealtimeAudioStream();
     if (interrupted) this.setCaption('assistant', 'Interrupted. Listening to you…');
   }
 
@@ -2258,6 +2326,28 @@ export class RealtimeVoiceController {
       empty: 'Relevant Planéir analyses will appear here.',
       type: 'module'
     });
+    const narrative = this.element('realtimeVoiceNarrative');
+    const nextNeed = this.element('realtimeVoiceNextNeed');
+    const planStatus = this.element('realtimeVoicePlanStatus');
+    if (narrative) {
+      narrative.textContent = this.planningContext.narrativeSummary
+        || 'I’ll build a short, reviewable picture of what matters to you as we talk.';
+    }
+    if (nextNeed) {
+      const objective = this.planningContext.nextObjective;
+      const labels = Array.isArray(objective?.facts)
+        ? objective.facts.slice(0, 2).map((item) => humanise(item?.factId || '')).filter(Boolean)
+        : [];
+      nextNeed.textContent = labels.length
+        ? `${labels.join(' and ')}${objective?.reason ? ` — ${cleanText(objective.reason, 220)}` : ''}`
+        : 'Nothing else is currently required for the selected analyses.';
+    }
+    if (planStatus) {
+      const progress = this.planningContext.progress;
+      planStatus.textContent = progress?.readyToConfirm
+        ? 'Ready for your visual review and confirmation.'
+        : 'Provisional — the three analyses may update transparently as facts change.';
+    }
     this.updateUi();
   }
 
@@ -2401,6 +2491,15 @@ export class RealtimeVoiceController {
 
   async resumeAudio() {
     const audio = this.element('realtimeVoiceAudio');
+    if (this.conversationVersion === 'v2' && audio?.srcObject) {
+      try {
+        await audio.play();
+        this.element('realtimeVoiceResumeAudioButton')?.setAttribute('hidden', '');
+      } catch (_error) {
+        this.setPhase('audio_blocked', 'Tap “Play response” to hear Planéir.');
+      }
+      return;
+    }
     const controller = this.controlledSpeechController;
     const generation = this.generation;
     const leaseId = this.leaseId;
@@ -2647,11 +2746,13 @@ export class RealtimeVoiceController {
     this.microphonePermissionStream = null;
     stopTracks(this.localStream);
     this.localStream = null;
+    this.remoteAudioStream = null;
     this.microphoneRecoveryRequired = false;
     this.activeMicrophoneLabel = '';
     this.playedSpeechIds.clear();
     this.leaseId = '';
     this.controlCapability = '';
+    this.conversationVersion = 'v1';
     this.leaseExpiresAtMs = null;
     this.sessionId = '';
     this.updateUi();

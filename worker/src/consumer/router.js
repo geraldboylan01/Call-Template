@@ -47,6 +47,7 @@ import {
   getRealtimeControlPlaneProof,
   getNextRealtimeControlMessage,
   getCurrentRealtimeAnalysisPlan,
+  getLatestRealtimeMeetingBrief,
   getPublicRealtimeAnalysisPlan,
   getLatestRealtimeLease,
   getRealtimeConsent,
@@ -75,6 +76,7 @@ import {
   readRealtimeSdpOffer
 } from './realtime_provider.js';
 import { renderAuthorizedRealtimeSpeech } from './realtime_speech.js';
+import { toConversationGuide } from './realtime_planner.js';
 import { requireConsumerSession } from './session_auth.js';
 import {
   getVoiceConsent,
@@ -196,8 +198,8 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v7'
     && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v6'
     && config?.realtimePricingVersion === 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'
-    && config?.realtimeSpeechModel === 'tts-1-hd'
-    && config?.realtimeSpeechVoice === 'nova'
+    && config?.realtimeSpeechModel === 'gpt-4o-mini-tts'
+    && config?.realtimeSpeechVoice === 'marin'
     && config?.realtimeSpeechRateMicroEurPerMillionCharacters === 30_000_000
     // Approved adviser-demo envelope: €10 session allowance (warn €7.50,
     // dispatch stop €9.70) inside the €50 UTC-day ceiling, 15-minute meetings,
@@ -809,7 +811,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         analysisPlan,
         currentProfile,
         proposedFacts,
-        realtimeControl
+        realtimeControl,
+        latestMeetingBrief
       ] = await Promise.all([
         getRealtimeControlPlaneProof(env, sessionRow.id, route.leaseId),
         getConsumerProviderBudget(env, sessionRow.id),
@@ -817,7 +820,10 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         getCurrentRealtimeAnalysisPlan(env, sessionRow.id),
         getCurrentProfile(env, sessionRow),
         listRealtimeFactProposalSummaries(env, sessionRow.id, route.leaseId),
-        getNextRealtimeControlMessage(env, sessionRow.id, route.leaseId)
+        getNextRealtimeControlMessage(env, sessionRow.id, route.leaseId),
+        config.realtimeConversationV2Enabled
+          ? getLatestRealtimeMeetingBrief(env, sessionRow.id, route.leaseId)
+          : null
       ]);
       const planningState = describeConversationState(currentProfile, config);
       const pendingFacts = proposedFacts.map((proposal) => ({
@@ -864,6 +870,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           currentPendingProposal: pendingFacts[0] || null
         },
         analysisPlan: await getPublicRealtimeAnalysisPlan(env, analysisPlan),
+        conversationGuide: toConversationGuide(latestMeetingBrief?.brief),
         realtimeTurns,
         ...(realtimeControl ? { realtimeControl } : {})
       }, 200, methods);
@@ -909,6 +916,9 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const realtimeTurns = realtimeLease
         ? await listRealtimeFinalTurns(env, sessionRow.id, realtimeLease.id)
         : [];
+      const latestMeetingBrief = config.realtimeConversationV2Enabled && realtimeLease
+        ? await getLatestRealtimeMeetingBrief(env, sessionRow.id, realtimeLease.id)
+        : null;
       const state = describeConversationState(profile, config);
       return respond({
         session: toConsumerSession(sessionRow),
@@ -926,6 +936,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         realtimeLease: toPublicRealtimeLease(realtimeLease),
         realtimeTurns,
         analysisPlan: await getPublicRealtimeAnalysisPlan(env, analysisPlan),
+        conversationGuide: toConversationGuide(latestMeetingBrief?.brief),
         ...publicConversationState(state)
       }, 200, methods);
     }
@@ -1018,6 +1029,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           'X-Realtime-Dispatch-Stop-Micro-Eur': String(lease.dispatch_stop_eur_micros),
           'X-Realtime-Activation-Id': activationId,
           'X-Realtime-Control-Capability': controlCapability,
+          'X-Realtime-Conversation-Version': config.realtimeConversationV2Enabled ? 'v2' : 'v1',
           'Access-Control-Expose-Headers': [
             'X-Realtime-Lease-Id',
             'X-Realtime-Hard-Expires-At',
@@ -1025,7 +1037,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
             'X-Realtime-Budget-Micro-Eur',
             'X-Realtime-Dispatch-Stop-Micro-Eur',
             'X-Realtime-Activation-Id',
-            'X-Realtime-Control-Capability'
+            'X-Realtime-Control-Capability',
+            'X-Realtime-Conversation-Version'
           ].join(', ')
         });
       } catch (error) {
