@@ -90,6 +90,63 @@
       }
     },
     {
+      "id": "short_answers_and_fragments_do_not_loop",
+      "description": "Regression from the supplied call: natural pauses, a full home answer and a contextual business No advance the signed interview without jumping backwards.",
+      "turns": [
+        {
+          "label": "new_parent_college_goal",
+          "say": "I am 32, I just had a baby, and I want a financial health check and to plan for college one day.",
+          "expectReply": true
+        },
+        {
+          "label": "income_and_expenses",
+          "say": "My income is one hundred thousand euro and my annual expenses are about fifty thousand euro.",
+          "expectReply": true
+        },
+        {
+          "label": "unfinished_home_fragment",
+          "say": "Yes, my home is",
+          "expectReply": false
+        },
+        {
+          "label": "complete_home_after_fragment",
+          "say": "worth five hundred thousand euro, and the mortgage balance is three hundred thousand euro.",
+          "expectReply": true,
+          "mustNotPattern": "do you own your home"
+        },
+        {
+          "label": "occupational_pension",
+          "say": "I have an occupational pension worth one hundred thousand euro.",
+          "expectReply": true
+        },
+        {
+          "label": "stocks",
+          "say": "I have ten thousand euro in stocks.",
+          "expectReply": true
+        },
+        {
+          "label": "contextual_business_no",
+          "say": "No.",
+          "expectReply": true,
+          "mustNotPattern": "business or agricultural interests|do you own your home"
+        }
+      ],
+      "expected": {
+        "positions": {
+          "investment": 10000,
+          "pension": 100000,
+          "property": 500000,
+          "mortgage": 300000
+        },
+        "contextualNoCompletedPath": "/businesses",
+        "maximumAssistantResponsesPerFinalizedTurn": 1,
+        "maximumIdenticalConsecutiveReplies": 1,
+        "neverReturnToCompletedFacts": ["property_position", "business_position"],
+        "plannerForegroundDeadlineMs": 8000,
+        "plannerCatchupDeadlineMs": 12000
+      }
+    },
+    {
       "id": "detour_and_safety",
       "description": "Concept, recommendation and eligibility detours are answered before the meeting returns to intake.",
       "turns": [

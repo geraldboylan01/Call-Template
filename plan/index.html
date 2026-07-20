@@ -107,7 +107,7 @@
               <p class="section-kicker">Planéir</p>
               <h2 id="realtimeVoiceTitle">Let’s talk about what matters to you.</h2>
               <p class="realtime-meeting-sub">
-                Planéir will ask you a few questions and create a personalised starting point.
+                A voice conversation about your goals and your finances.
               </p>
             </div>
             <button
@@ -154,6 +154,90 @@
                 <p id="realtimeVoiceError" class="field-error realtime-voice-error" role="alert" hidden></p>
               </div>
             </div>
+
+            <section id="realtimeVoiceBriefing" class="realtime-precall" aria-label="What to expect and what to have ready">
+              <ul class="realtime-precall-chips" aria-label="What this meeting is like">
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                  About 10 to 15 minutes
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+                  Private to this session
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l8 4-8 4-8-4 8-4z"></path><path d="M6 9v4c0 2 3 3.5 6 3.5s6-1.5 6-3.5V9"></path></svg>
+                  Guidance, not advice
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v4"></path></svg>
+                  Speak or type
+                </li>
+              </ul>
+
+              <div class="realtime-precall-grid">
+                <article class="realtime-precall-card">
+                  <h3 class="realtime-precall-card-title">
+                    <span class="realtime-precall-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z"></path></svg>
+                    </span>
+                    What we’ll talk about
+                  </h3>
+                  <ol class="realtime-precall-steps">
+                    <li>
+                      <strong>Your goals for the future.</strong>
+                      <span>Things like retirement, buying a home, or paying for education.</span>
+                    </li>
+                    <li>
+                      <strong>Your finances.</strong>
+                      <span>What you earn, what you spend, and what you own and owe.</span>
+                    </li>
+                    <li>
+                      <strong>A starting point.</strong>
+                      <span>Planéir uses your answers to build a personalised plan and shows every assumption it makes.</span>
+                    </li>
+                  </ol>
+                </article>
+
+                <article class="realtime-precall-card">
+                  <h3 class="realtime-precall-card-title">
+                    <span class="realtime-precall-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false"><rect x="6" y="4" width="12" height="16" rx="2"></rect><path d="M9 4.5h6V7H9zM9 12h6M9 16h4"></path></svg>
+                    </span>
+                    What to have ready
+                  </h3>
+                  <ul class="realtime-precall-list">
+                    <li>
+                      <strong>Your goals</strong>
+                      <span>When you want to reach them and what they might cost</span>
+                    </li>
+                    <li>
+                      <strong>Income</strong>
+                      <span>Your take-home salary, and a partner’s if you’re planning together</span>
+                    </li>
+                    <li>
+                      <strong>Spending</strong>
+                      <span>What you spend each month or year, from your recent bank statements</span>
+                    </li>
+                    <li>
+                      <strong>Home</strong>
+                      <span>Rent, or your mortgage balance, payment, and property value</span>
+                    </li>
+                    <li>
+                      <strong>Savings and assets</strong>
+                      <span>Savings, investments, pensions, and any other property</span>
+                    </li>
+                    <li>
+                      <strong>Debts</strong>
+                      <span>Loans, credit cards, and car finance</span>
+                    </li>
+                  </ul>
+                  <p class="realtime-precall-hint">
+                    Estimates are fine. You can update anything as you talk.
+                  </p>
+                </article>
+              </div>
+            </section>
 
             <section
               id="realtimeVoiceCaptionCard"
@@ -206,18 +290,6 @@
                   </p>
                 </div>
               </details>
-
-              <section class="realtime-context-card realtime-budget-card">
-                <span>Meeting allowance</span>
-                <strong id="realtimeVoiceBudgetValue">—</strong>
-                <meter
-                  id="realtimeVoiceBudgetMeter"
-                  min="0"
-                  max="1"
-                  value="0"
-                  aria-label="Meeting allowance remaining"
-                ></meter>
-              </section>
 
               <details class="realtime-context-card realtime-understanding-card">
                 <summary class="realtime-context-heading">

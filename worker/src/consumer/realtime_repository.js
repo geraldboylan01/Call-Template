@@ -1315,17 +1315,9 @@ export async function recordRealtimeFinalTurn(env, request) {
   return { id, transcript, sensitiveDetailsRemoved: transcript !== raw, idempotentReplay: false };
 }
 
-export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 200) {
-  const result = await db(env).prepare(`
-    SELECT id, realtime_session_id, role, transcript_encrypted,
-           sensitive_details_removed, created_at
-    FROM consumer_realtime_final_turns
-    WHERE session_id = ? AND realtime_session_id = ?
-    ORDER BY created_at ASC, id ASC
-    LIMIT ?
-  `).bind(sessionId, leaseId, Math.max(1, Math.min(200, limit))).all();
+async function decryptRealtimeFinalTurnRows(env, sessionId, rows) {
   const turns = [];
-  for (const row of result.results || []) {
+  for (const row of rows || []) {
     const payload = await decryptJson(
       env,
       row.transcript_encrypted,
@@ -1340,6 +1332,32 @@ export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 20
     });
   }
   return turns;
+}
+
+export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 200) {
+  const result = await db(env).prepare(`
+    SELECT id, realtime_session_id, role, transcript_encrypted,
+           sensitive_details_removed, created_at
+    FROM consumer_realtime_final_turns
+    WHERE session_id = ? AND realtime_session_id = ?
+    ORDER BY created_at ASC, id ASC
+    LIMIT ?
+  `).bind(sessionId, leaseId, Math.max(1, Math.min(200, limit))).all();
+  return decryptRealtimeFinalTurnRows(env, sessionId, result.results);
+}
+
+export async function listRecentRealtimeFinalTurns(env, sessionId, leaseId, limit = 8) {
+  // Apply the bound to the newest rows in SQL, then restore chronological
+  // order before handing the context window to a conversational model.
+  const result = await db(env).prepare(`
+    SELECT id, realtime_session_id, role, transcript_encrypted,
+           sensitive_details_removed, created_at
+    FROM consumer_realtime_final_turns
+    WHERE session_id = ? AND realtime_session_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+  `).bind(sessionId, leaseId, Math.max(1, Math.min(200, limit))).all();
+  return decryptRealtimeFinalTurnRows(env, sessionId, [...(result.results || [])].reverse());
 }
 
 export async function listRealtimeMeetings(env, sessionId, limit = 50) {

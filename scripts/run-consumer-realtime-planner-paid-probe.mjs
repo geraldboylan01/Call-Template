@@ -30,7 +30,21 @@ const turns = [
   { say: 'It also has a pension worth exactly one hundred thousand euro and an investment account worth exactly ten thousand euro.' },
   { say: 'Its home is worth exactly five hundred thousand euro and has a linked mortgage balance of exactly three hundred and fifty thousand euro.' },
   { say: 'In this synthetic test, what does net worth mean and why is the mortgage balance needed?' },
-  { say: 'That is everything for the synthetic household assets.' }
+  { say: 'That is everything for the synthetic household assets.' },
+  {
+    say: 'No.',
+    state: {
+      meetingBrief: {
+        questionBatch: {
+          primaryFact: {
+            factId: 'business_position',
+            reason: 'Business interests have not yet been confirmed.'
+          },
+          prompt: 'Do you have any business or agricultural interests we should include, and if so, roughly what are they worth?'
+        }
+      }
+    }
+  }
 ];
 const expectedPositions = {
   cash: 10_000,
@@ -42,7 +56,8 @@ const expectedPositions = {
 const key = localOpenAiKey();
 const config = {
   realtimeConversationV2Enabled: true,
-  realtimePlannerTimeoutMs: 2_500,
+  realtimePlannerTimeoutMs: 8_000,
+  realtimePlannerCatchupTimeoutMs: 12_000,
   realtimePlannerMaxOutputTokens: 1_800,
   defaultModel: String(process.env.CONSUMER_AI_DEFAULT_MODEL || 'gpt-5.6-luna'),
   complexModel: String(process.env.CONSUMER_AI_COMPLEX_MODEL || 'gpt-5.6-terra')
@@ -63,7 +78,8 @@ for (const [index, turn] of turns.entries()) {
         facts: [],
         moduleSlots: [],
         recommendations: [],
-        reasoningEscalation: { requested: false }
+        reasoningEscalation: { requested: false },
+        ...(turn.state || {})
       }
     },
     sourceTurnId: `paid_probe_turn_${index + 1}`,
@@ -92,6 +108,10 @@ if (!property?.linkedEntityId || property.linkedEntityId !== mortgage?.linkedEnt
 if (!extractions.flatMap((item) => item.sectionCompletions)
   .some((item) => item.section === 'assets' && item.signal === 'complete_section')) {
   failedChecks.push('populated_section_completion');
+}
+if (!extractions.flatMap((item) => item.sectionCompletions)
+  .some((item) => item.section === 'businesses' && item.signal === 'confirm_empty')) {
+  failedChecks.push('contextual_short_negative');
 }
 if (!extractions.some((item) => item.clientQuestion.present && /net worth/i.test(item.clientQuestion.questionText))) {
   failedChecks.push('client_question_intent');

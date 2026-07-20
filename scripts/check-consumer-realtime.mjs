@@ -41,9 +41,12 @@ import {
   composeMeetingBrief,
   extractRealtimePlannerTurn,
   intakeExplanation,
+  isLikelyIncompleteRealtimeUtterance,
+  plannerContextSlice,
   positionCandidatesToRealtimeFacts,
   sectionCompletionToRealtimeFact,
-  toConversationGuide
+  toConversationGuide,
+  withSafeTurnClassifications
 } from '../worker/src/consumer/realtime_planner.js';
 import {
   activateRealtimeLease,
@@ -70,6 +73,7 @@ import {
   hasUnsettledRealtimeSpeechUsage,
   listExpiredRealtimeLeases,
   listRealtimeFinalTurns,
+  listRecentRealtimeFinalTurns,
   listRealtimeMeetings,
   markRealtimeAnalysisPlanRunning,
   markRealtimeProviderCostInFlight,
@@ -403,6 +407,8 @@ assert.equal(config.realtimeDailyBudgetMicroEur, 50_000_000);
 assert.equal(config.realtimeMaxDurationSeconds, 900);
 assert.equal(config.realtimeIdleTimeoutSeconds, 180);
 assert.equal(config.realtimeSilencePromptSeconds, 45);
+assert.equal(config.realtimePlannerTimeoutMs, 8_000);
+assert.equal(config.realtimePlannerCatchupTimeoutMs, 12_000);
 assert.equal(config.realtimeSpeechModel, 'gpt-4o-mini-tts');
 assert.equal(config.realtimeSpeechVoice, 'marin');
 assert.equal(config.realtimeSpeechRateMicroEurPerMillionCharacters, 30_000_000);
@@ -433,7 +439,7 @@ const v2Session = buildRealtimeSessionConfig(v2Config, {
 });
 assert.deepEqual(v2Session.output_modalities, ['audio']);
 assert.equal(v2Session.audio.output.voice, 'marin');
-assert.equal(v2Session.audio.input.turn_detection.eagerness, 'medium');
+assert.equal(v2Session.audio.input.turn_detection.eagerness, 'low');
 assert.equal(v2Session.tool_choice, 'auto');
 assert.deepEqual(
   v2Session.tools.map((tool) => tool.name),
@@ -496,6 +502,58 @@ const couplePensionConfirmationSummary = buildVoiceConfirmationSummary({
   }
 });
 assert.match(couplePensionConfirmationSummary, /You at 100% from age 66 and Your wife at 50% from age 66/);
+
+const signedBusinessQuestionContext = {
+  profile: { businesses: [] },
+  sessionRow: { current_profile_revision: 4 },
+  state: {
+    profileRevision: 4,
+    // This deliberately conflicts with the question actually spoken. The
+    // signed MeetingBrief must be authoritative for contextual answers.
+    nextQuestion: {
+      factId: 'college_cost_scenarios',
+      prompt: 'Which annual college-cost scenario should be used?'
+    },
+    meetingBrief: {
+      narrativeSummary: 'A new parent is reviewing the household position.',
+      questionBatch: {
+        primaryFact: { factId: 'business_position', factInstanceId: null },
+        prompt: 'Do you have any business or agricultural interests we should include?'
+      }
+    }
+  }
+};
+assert.equal(
+  plannerContextSlice(signedBusinessQuestionContext).currentQuestion.factId,
+  'business_position',
+  'The silent planner must receive the exact signed question the voice asked, not another module prerequisite.'
+);
+const contextualBusinessNo = withSafeTurnClassifications({
+  schemaVersion: 'RealtimePlannerExtractionV3',
+  sourceTurnId: 'item_contextual_business_no_001',
+  goalCandidates: [],
+  semanticFacts: [],
+  positions: [],
+  invalidCandidates: [],
+  sectionCompletions: [],
+  clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+  ambiguities: [],
+  narrativeSummary: { summary: '', evidence: [] }
+}, 'No.', signedBusinessQuestionContext);
+assert.deepEqual(contextualBusinessNo.sectionCompletions, [{
+  schemaVersion: 'SectionCompletionV1',
+  section: 'businesses',
+  signal: 'confirm_empty',
+  evidenceText: 'No.'
+}]);
+assert.equal(isLikelyIncompleteRealtimeUtterance('Yes, my home is'), true);
+assert.equal(isLikelyIncompleteRealtimeUtterance('And the mortgage payments, which are about...'), true);
+assert.equal(isLikelyIncompleteRealtimeUtterance('Yes, it is.'), false);
+assert.equal(isLikelyIncompleteRealtimeUtterance('What does net worth mean?'), false);
+assert.equal(isLikelyIncompleteRealtimeUtterance('My home is worth €500,000.'), false);
+assert.equal(isLikelyIncompleteRealtimeUtterance('The college fund is what I am saving for.'), false);
+assert.equal(isLikelyIncompleteRealtimeUtterance('€500,000 is roughly what it is worth.'), false);
+assert.equal(isLikelyIncompleteRealtimeUtterance('€50,000 is what my annual spending is.'), false);
 
 const nativeFetch = globalThis.fetch;
 globalThis.fetch = async () => new Response(JSON.stringify({
@@ -582,6 +640,48 @@ assert.deepEqual(
 );
 assert.deepEqual(transcriptPositions.map((item) => item.value.amount?.amount), [500_000, 350_000, 10_000, 100_000, 10_000]);
 assert.equal(transcriptPositions[1].value.linkedPropertyId, 'home');
+const amountlessHomeFragment = positionCandidatesToRealtimeFacts([{
+  candidateId: 'partial-home', kind: 'property', operation: 'upsert', label: 'My home',
+  entityId: 'primary-residence', linkedEntityId: '', amount: null,
+  owner: 'primary', propertyUse: 'home', certainty: 'unknown', evidenceText: 'Yes, my home is'
+}]);
+assert.deepEqual(
+  amountlessHomeFragment,
+  [],
+  'An amountless partial home utterance must not create an incomplete property that drives a later question loop.'
+);
+const repeatedHomeIdentities = [
+  {
+    candidateId: 'first-home', kind: 'property', operation: 'upsert', label: 'My house',
+    entityId: 'primary-residence', linkedEntityId: '', amount: { amount: 500_000, currency: 'EUR' },
+    owner: 'primary', propertyUse: 'home', certainty: 'exact', evidenceText: 'my house is worth €500,000'
+  },
+  {
+    candidateId: 'repeated-home', kind: 'property', operation: 'upsert', label: 'Family home',
+    entityId: 'family-home', linkedEntityId: '', amount: { amount: 500_000, currency: 'EUR' },
+    owner: 'primary', propertyUse: 'home', certainty: 'exact', evidenceText: 'the family home is €500,000'
+  }
+].map((candidate) => positionCandidatesToRealtimeFacts([candidate])[0]);
+assert.deepEqual(
+  repeatedHomeIdentities.map((item) => item.value.entityId),
+  ['home', 'home'],
+  'Ordinary home wording changes must resolve to one canonical property identity.'
+);
+const unspecifiedAdditionalProperty = positionCandidatesToRealtimeFacts([{
+  candidateId: 'another-property', kind: 'property', operation: 'upsert', label: 'Another property',
+  entityId: 'another-property', linkedEntityId: '', amount: { amount: 200_000, currency: 'EUR' },
+  owner: 'primary', propertyUse: null, certainty: 'approximate', evidenceText: 'I also own another property worth about €200,000.'
+}])[0];
+assert.equal(unspecifiedAdditionalProperty.value.entityId, 'another_property');
+assert.equal(unspecifiedAdditionalProperty.value.use, 'other');
+const amountlessPropertyCorrection = positionCandidatesToRealtimeFacts([{
+  candidateId: 'home-owner-correction', kind: 'property', operation: 'correct', label: 'Home',
+  entityId: 'home', linkedEntityId: '', amount: null,
+  owner: 'joint', propertyUse: 'home', certainty: 'exact', evidenceText: 'Actually, the home is jointly owned.'
+}]);
+assert.equal(amountlessPropertyCorrection.length, 1);
+assert.equal(amountlessPropertyCorrection[0].value.entityId, 'home');
+assert.equal(amountlessPropertyCorrection[0].value.owner, 'joint');
 const volunteeredForeignHolding = positionCandidatesToRealtimeFacts([{
   candidateId: 'foreign-investment', kind: 'investment', operation: 'upsert',
   label: 'Foreign investment', entityId: 'foreign-investment', linkedEntityId: '',
@@ -678,6 +778,73 @@ const perPersonMissingBrief = await composeMeetingBrief({
 });
 assert.equal(perPersonMissingBrief.stillNeeded.length, 2);
 assert.equal(perPersonMissingBrief.questionBatch.maxQuestions, 1);
+
+const missingHomeValueBrief = await composeMeetingBrief({
+  env,
+  sourceTurnId: 'item_missing_home_value_001',
+  extraction: {
+    narrativeSummary: { summary: 'The household owns its home but has not supplied its value.', evidence: ['owns home'] },
+    clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+    ambiguities: []
+  },
+  context: {
+    config: { realtimeSpokenCompletionEnabled: true },
+    sessionRow: { current_profile_revision: 2 },
+    state: {
+      profileRevision: 2,
+      goalAssessment: { activeGoalTypes: ['understand_position'], deferredGoalTypes: [] },
+      moduleSlots: [{ moduleId: 'personal_balance_sheet', availability: 'needs_facts', intakeStatus: 'missing_information' }],
+      recommendations: [{
+        moduleId: 'personal_balance_sheet',
+        requiredMissing: [{
+          factId: 'property_position',
+          factInstanceId: 'property_position:home',
+          reason: 'Add the current value for Home in EUR; an existing position cannot be omitted from the balance sheet.'
+        }]
+      }],
+      facts: []
+    }
+  }
+});
+assert.equal(
+  missingHomeValueBrief.questionBatch.prompt,
+  'Roughly what is your home currently worth?',
+  'An existing home with a missing value must receive a value follow-up, not another ownership question.'
+);
+
+const missingBusinessBrief = await composeMeetingBrief({
+  env,
+  sourceTurnId: 'item_missing_business_001',
+  extraction: {
+    narrativeSummary: { summary: 'The household is completing its balance sheet.', evidence: [] },
+    clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+    ambiguities: []
+  },
+  context: {
+    config: { realtimeSpokenCompletionEnabled: true },
+    sessionRow: { current_profile_revision: 3 },
+    state: {
+      profileRevision: 3,
+      goalAssessment: { activeGoalTypes: ['understand_position'], deferredGoalTypes: [] },
+      moduleSlots: [{ moduleId: 'personal_balance_sheet', availability: 'needs_facts', intakeStatus: 'missing_information' }],
+      recommendations: [{
+        moduleId: 'personal_balance_sheet',
+        requiredMissing: [{
+          factId: 'business_position',
+          factInstanceId: 'business_position',
+          reason: 'Add each business or agricultural interest, or explicitly confirm there are none.'
+        }]
+      }],
+      facts: []
+    }
+  }
+});
+assert.match(missingBusinessBrief.questionBatch.prompt, /business or agricultural interests/i);
+assert.doesNotMatch(
+  missingBusinessBrief.questionBatch.prompt,
+  /other significant assets/i,
+  'The business completion question must not conflate business interests with the general-assets section.'
+);
 
 // Regression guard for the premature session ending: while a realtime lease
 // is open the ledger holds the entire session envelope as reserved, so the
@@ -2895,6 +3062,42 @@ welcomeDurable.terminalize = async (...args) => { raceTerminals.push(args); retu
 welcomeDurable.knownResponseIds = new Set(['resp_superseded_A', 'resp_current_B']);
 welcomeDurable.currentAuthorizedResponseId = 'resp_current_B';
 welcomeDurable.inResponse = true;
+welcomeDurable.currentAssistantTranscript = 'Current response prefix.';
+const responseRaceTurnsBefore = (await listRealtimeFinalTurns(env, sessionId, lease.id, 200)).length;
+await welcomeDurable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_late_assistant_delta_001',
+  type: 'response.output_audio_transcript.delta',
+  response_id: 'resp_superseded_A',
+  item_id: 'item_superseded_assistant_001',
+  delta: ' This belongs to the canceled response.'
+}));
+await welcomeDurable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_late_assistant_done_001',
+  type: 'response.output_audio_transcript.done',
+  response_id: 'resp_superseded_A',
+  item_id: 'item_superseded_assistant_001',
+  transcript: 'This canceled question must not appear in the meeting transcript.'
+}));
+assert.equal(welcomeDurable.currentAssistantTranscript, 'Current response prefix.');
+assert.equal(
+  (await listRealtimeFinalTurns(env, sessionId, lease.id, 200)).length,
+  responseRaceTurnsBefore,
+  'Late transcript envelopes from a superseded response must not be stored.'
+);
+welcomeDurable.bargeInStartedAt = Date.now();
+await welcomeDurable.handleProviderMessage(JSON.stringify({
+  event_id: 'event_interrupted_current_done_001',
+  type: 'response.output_audio_transcript.done',
+  response_id: 'resp_current_B',
+  item_id: 'item_interrupted_current_assistant_001',
+  transcript: 'This generated tail was not heard after the consumer interrupted.'
+}));
+welcomeDurable.bargeInStartedAt = 0;
+assert.equal(
+  (await listRealtimeFinalTurns(env, sessionId, lease.id, 200)).length,
+  responseRaceTurnsBefore,
+  'A current response interrupted by barge-in must ignore its later generated transcript tail.'
+);
 await welcomeDurable.handleProviderMessage(JSON.stringify({
   type: 'response.done',
   response: { id: 'resp_superseded_A', status: 'cancelled' }
@@ -2909,6 +3112,98 @@ assert.deepEqual(
   raceTerminals.pop()?.slice(1, 3),
   ['response_id_mismatch', 'realtime_response_id_mismatch'],
   'An unknown response id must still fail closed.'
+);
+
+// A semantic-VAD split in the middle of a clause is retained in the meeting
+// transcript but must not trigger a question before the client continues.
+// Replaying that old provider item later must also leave the newest evidence
+// pointer untouched.
+const fragmentState = new TestDurableObjectState();
+const fragmentDurable = new ConsumerRealtimeSession(fragmentState, {
+  ...env,
+  CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: 'true'
+});
+await fragmentState.ready;
+fragmentDurable.meta = {
+  sessionId,
+  leaseId: lease.id,
+  costEntryId: firstReservation.entry.id,
+  hardExpiresAt: lease.hard_expires_at,
+  idleExpiresAt: lease.idle_expires_at
+};
+const fragmentPlannerCalls = [];
+const fragmentResponseReasons = [];
+fragmentDurable.processPlannerTurn = async (request) => {
+  fragmentPlannerCalls.push(request);
+  return { status: 'applied' };
+};
+fragmentDurable.authorizeResponse = async (reason) => {
+  fragmentResponseReasons.push(reason);
+  return true;
+};
+const transcriptUsage = {
+  type: 'tokens',
+  total_tokens: 5,
+  input_tokens: 3,
+  input_token_details: { text_tokens: 0, audio_tokens: 3 },
+  output_tokens: 2
+};
+await fragmentDurable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_incomplete_home_fragment_001'
+}));
+await fragmentDurable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_incomplete_home_fragment_001',
+  transcript: 'Yes, my home is',
+  usage: transcriptUsage
+}));
+assert.equal(fragmentPlannerCalls.length, 0);
+assert.equal(fragmentResponseReasons.length, 0);
+assert.equal(fragmentDurable.latestFinalizedEvidenceItemId, 'item_incomplete_home_fragment_001');
+assert.equal('transcript' in fragmentDurable.pendingIncompleteTurn, false);
+assert.equal(fragmentDurable.pendingIncompleteTurn.turnIds.length, 1);
+
+await fragmentDurable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_complete_home_answer_002'
+}));
+await fragmentDurable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_complete_home_answer_002',
+  transcript: 'worth €500,000 and the mortgage balance is €300,000.',
+  usage: transcriptUsage
+}));
+assert.equal(fragmentPlannerCalls.length, 1);
+assert.equal(
+  fragmentPlannerCalls[0].transcript,
+  'Yes, my home is worth €500,000 and the mortgage balance is €300,000.'
+);
+assert.equal(fragmentResponseReasons.length, 1);
+assert.equal(fragmentResponseReasons[0], 'finalized_user_item');
+assert.equal(fragmentDurable.latestFinalizedEvidenceItemId, 'item_complete_home_answer_002');
+
+await fragmentDurable.handleProviderMessage(JSON.stringify({
+  type: 'input_audio_buffer.committed',
+  item_id: 'item_incomplete_home_fragment_001'
+}));
+await fragmentDurable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.input_audio_transcription.completed',
+  item_id: 'item_incomplete_home_fragment_001',
+  transcript: 'Yes, my home is',
+  usage: transcriptUsage
+}));
+assert.equal(
+  fragmentDurable.latestFinalizedEvidenceItemId,
+  'item_complete_home_answer_002',
+  'An idempotent replay must not move authoritative evidence back to an older turn.'
+);
+assert.equal(fragmentDurable.pendingIncompleteTurn, null);
+const fragmentTranscript = await listRealtimeFinalTurns(env, sessionId, lease.id, 200);
+assert.equal(
+  fragmentTranscript.filter((turn) => turn.transcript === 'Yes, my home is').length,
+  1,
+  'The incomplete finalized turn remains available exactly once in meeting history.'
 );
 
 const firstTurnState = new TestDurableObjectState();
@@ -3866,15 +4161,29 @@ sqliteCommand(databasePath, 'run', {
   sql: 'UPDATE consumer_realtime_final_turns SET created_at = ? WHERE id = ?',
   values: ['2026-01-01T00:00:00.000Z', savedTurn.id]
 });
+const longMeetingTurns = [];
 for (let index = 0; index < 25; index += 1) {
-  await recordRealtimeFinalTurn(env, {
+  const longTurn = await recordRealtimeFinalTurn(env, {
     sessionId,
     leaseId: lease.id,
     providerItemId: `item_long_meeting_${String(index).padStart(3, '0')}`,
     role: index % 2 === 0 ? 'assistant' : 'user',
-    transcript: `Finalized long-meeting turn ${index + 1}.`
+    transcript: index === 24
+      ? 'Latest server question: Do you have any business interests?'
+      : `Finalized long-meeting turn ${index + 1}.`
+  });
+  longMeetingTurns.push(longTurn);
+  sqliteCommand(databasePath, 'run', {
+    sql: 'UPDATE consumer_realtime_final_turns SET created_at = ? WHERE id = ?',
+    values: [`2099-01-01T00:00:${String(index + 1).padStart(2, '0')}.000Z`, longTurn.id]
   });
 }
+const recentPlannerTurns = await listRecentRealtimeFinalTurns(env, sessionId, lease.id, 8);
+assert.equal(recentPlannerTurns.length, 8);
+assert.equal(recentPlannerTurns[0].id, longMeetingTurns[17].id);
+assert.equal(recentPlannerTurns.at(-1).id, longMeetingTurns[24].id);
+assert.equal(recentPlannerTurns.at(-1).transcript, 'Latest server question: Do you have any business interests?');
+assert.ok(recentPlannerTurns.every((turn) => turn.id !== longMeetingTurns[0].id));
 const pagedTranscriptTurns = [];
 let transcriptCursor = null;
 do {
@@ -3995,9 +4304,30 @@ assert.match(realtimeSessionSource, /Introduce yourself as Planéir, an AI plann
 assert.match(realtimeSessionSource, /no analysis runs until they review and confirm/);
 assert.match(
   realtimeSessionSource,
-  /tool_choice:\s*authorizationReason === 'initial_state_probe' \? 'none' : 'auto'/,
-  'The initial v2 response must be guaranteed spoken audio without a tool detour.'
+  /tool_choice:\s*'none'/,
+  'Each v2 response must remain a single spoken pass because the silent planner and signed brief already own intake.'
 );
+assert.match(
+  realtimeSessionSource,
+  /return this\.catchUpPlannerTurn\(\{ itemId, transcript, turnOrdinal \}\)/,
+  'A timed-out planner turn must await its ordered catch-up instead of speaking from the stale brief.'
+);
+assert.doesNotMatch(
+  realtimeSessionSource,
+  /state\.waitUntil\(this\.catchUpPlannerTurn/,
+  'Planner catch-up must not race later turns in the background.'
+);
+assert.match(
+  realtimeSessionSource,
+  /ask the client to restate only that last point in different words/,
+  'After both bounded planner attempts fail, recovery must request an actionable focused rephrase.'
+);
+assert.doesNotMatch(
+  realtimeSessionSource,
+  /planning notes are still updating[\s\S]{0,180}pause for a moment/,
+  'Planner exhaustion must not imply that an unscheduled retry is still running.'
+);
+assert.match(realtimeSessionSource, /if \(recordedTurn\.idempotentReplay\)[\s\S]{0,100}return/);
 const v2ActivationSource = realtimeSessionSource.slice(
   realtimeSessionSource.indexOf('async activate(body)'),
   realtimeSessionSource.indexOf('async connectSideband(providerCallId)')

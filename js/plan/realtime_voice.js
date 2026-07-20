@@ -74,6 +74,28 @@ function cleanText(value, maximum = MAX_CAPTION_LENGTH) {
     .slice(0, maximum);
 }
 
+export function isLikelyIncompleteVoiceCaption(value) {
+  const raw = cleanText(value, 500);
+  if (!raw || /[?!]\s*$/.test(raw)) return false;
+  const normalized = raw
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/[.…]+$/g, '')
+    .replace(/[^a-z0-9€£$%]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return false;
+  if (/^(?:yes|yeah|yep|correct|no|nope|none|it is|yes it is|that is|yes there is|no there is not|i do|i dont|i do not)$/.test(normalized)) {
+    return false;
+  }
+  if (/^(?:what|why|how|when|where|who|is|are|do|does|can|could|would|will|should)\b/.test(normalized)) {
+    return false;
+  }
+  if (/\bwhat\b.*\b(?:is|worth)$/.test(normalized)) return false;
+  return /\b(?:is|are|was|were|about|around|roughly|approximately|worth)$/.test(normalized);
+}
+
 function newIdempotencyKey(prefix = 'voice-realtime') {
   if (typeof crypto?.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -253,6 +275,15 @@ function eventItemId(event) {
   ), 200);
 }
 
+function eventResponseId(event) {
+  return cleanText(firstDefined(
+    event?.response_id,
+    event?.responseId,
+    event?.response?.id,
+    ''
+  ), 200);
+}
+
 export function classifyRealtimeEvent(event) {
   const value = asObject(event) || {};
   const type = String(value.type || '').toLowerCase();
@@ -270,26 +301,26 @@ export function classifyRealtimeEvent(event) {
   if ([
     'response.output_audio_transcript.delta',
     'response.audio_transcript.delta'
-  ].includes(type)) return { ...base, kind: 'assistant_delta' };
+  ].includes(type)) return { ...base, kind: 'assistant_delta', responseId: eventResponseId(value) };
   if ([
     'response.output_audio_transcript.done',
     'response.audio_transcript.done'
-  ].includes(type)) return { ...base, kind: 'assistant_final' };
+  ].includes(type)) return { ...base, kind: 'assistant_final', responseId: eventResponseId(value) };
   // Stray assistant TEXT is tolerated: the Worker keeps the meeting alive (a
   // tool call is still mandatory per response) and this text is never
   // rendered or spoken. Only unauthorized AUDIO output hard-stops the call.
   if (type === 'response.output_text.delta' || type === 'response.output_text.done') {
     return { ...base, kind: 'ignored' };
   }
-  if (type === 'response.created') return { ...base, kind: 'response_started' };
-  if (type === 'response.done') return { ...base, kind: 'response_done' };
+  if (type === 'response.created') return { ...base, kind: 'response_started', responseId: eventResponseId(value) };
+  if (type === 'response.done') return { ...base, kind: 'response_done', responseId: eventResponseId(value) };
   if (type === 'output_audio_buffer.started') return { ...base, kind: 'assistant_playback_started' };
   if (type === 'output_audio_buffer.stopped') return { ...base, kind: 'assistant_playback_stopped' };
   if (type === 'response.output_audio.delta' || type === 'response.audio.delta') {
-    return { ...base, kind: 'assistant_audio' };
+    return { ...base, kind: 'assistant_audio', responseId: eventResponseId(value) };
   }
   if (type === 'response.output_audio.failed' || type === 'response.audio.failed') {
-    return { ...base, kind: 'assistant_audio_failed' };
+    return { ...base, kind: 'assistant_audio_failed', responseId: eventResponseId(value) };
   }
   if (type === 'response.function_call_arguments.done') return { ...base, kind: 'tool_running' };
   if (type === 'error' || type.endsWith('.failed')) return { ...base, kind: 'error' };
@@ -816,6 +847,7 @@ export class RealtimeVoiceController {
     this.generation = 0;
     this.bound = false;
     this.responseInProgress = false;
+    this.activeResponseId = '';
     this.awaitingWorkerSpeech = false;
     this.welcomePending = false;
     this.welcomePlaybackStarted = false;
@@ -859,6 +891,14 @@ export class RealtimeVoiceController {
 
   isCompletionLocked() {
     return Boolean(this.completionSpeechId || this.completionNavigationInFlight);
+  }
+
+  ownsRealtimeResponseEvent(event) {
+    if (this.conversationVersion !== 'v2') return true;
+    const responseId = cleanText(event?.responseId, 200);
+    // Keep compatibility with provider/test envelopes that predate response_id,
+    // while strictly gating every identified GA response envelope.
+    return !responseId || Boolean(this.activeResponseId && responseId === this.activeResponseId);
   }
 
   bind() {
@@ -1829,6 +1869,7 @@ export class RealtimeVoiceController {
           // cancel races the sideband event stream and can turn a normal
           // barge-in into a provider error.
           this.responseInProgress = false;
+          this.activeResponseId = '';
           if (this.interruptTimer !== null) window.clearTimeout(this.interruptTimer);
           this.setPhase('interrupted', 'Planéir stopped speaking. Listening to you now…');
           this.interruptTimer = window.setTimeout(() => {
@@ -1862,10 +1903,16 @@ export class RealtimeVoiceController {
           return;
         }
         this.finalizeCaption('user', event.itemId, event.text);
+        if (this.conversationVersion === 'v2' && isLikelyIncompleteVoiceCaption(event.text)) {
+          this.setPhase('listening', 'Take your time — finish that thought when you’re ready.');
+          this.scheduleLeasePoll(0);
+          return;
+        }
         this.setPhase('thinking', 'Planéir is thinking…');
         this.scheduleLeasePoll(0);
         return;
       case 'response_started':
+        if (event.responseId) this.activeResponseId = event.responseId;
         this.responseInProgress = true;
         this.awaitingWorkerSpeech = this.conversationVersion !== 'v2';
         this.assistantDeltas.clear();
@@ -1877,6 +1924,7 @@ export class RealtimeVoiceController {
           this.handleUnauthorizedProviderOutput();
           return;
         }
+        if (!this.ownsRealtimeResponseEvent(event)) return;
         this.appendCaptionDelta('assistant', event.itemId, event.text);
         this.setPhase('assistant_speaking', this.welcomePending
           ? 'Planéir is welcoming you. Your microphone will switch on when he finishes.'
@@ -1887,6 +1935,7 @@ export class RealtimeVoiceController {
           this.handleUnauthorizedProviderOutput();
           return;
         }
+        if (!this.ownsRealtimeResponseEvent(event)) return;
         this.awaitingWorkerSpeech = false;
         this.setPhase('assistant_speaking', this.welcomePending
           ? 'Planéir is welcoming you. Your microphone will switch on when he finishes.'
@@ -1913,6 +1962,7 @@ export class RealtimeVoiceController {
           this.handleUnauthorizedProviderOutput();
           return;
         }
+        if (!this.ownsRealtimeResponseEvent(event)) return;
         this.awaitingWorkerSpeech = false;
         this.finalizeCaption('assistant', event.itemId, event.text);
         return;
@@ -1921,6 +1971,7 @@ export class RealtimeVoiceController {
           this.handleProviderError(event.event);
           return;
         }
+        if (!this.ownsRealtimeResponseEvent(event)) return;
         this.awaitingWorkerSpeech = true;
         this.setPhase('thinking', 'Switching to the backup voice…');
         this.scheduleLeasePoll(0);
@@ -1961,7 +2012,9 @@ export class RealtimeVoiceController {
         this.scheduleLeasePoll(0);
         return;
       case 'response_done':
+        if (!this.ownsRealtimeResponseEvent(event)) return;
         this.responseInProgress = false;
+        this.activeResponseId = '';
         if (this.conversationVersion === 'v2') {
           this.awaitingWorkerSpeech = false;
           // WebRTC emits output_audio_buffer.stopped after buffered playback
@@ -2816,6 +2869,7 @@ export class RealtimeVoiceController {
     this.active = false;
     this.muted = false;
     this.responseInProgress = false;
+    this.activeResponseId = '';
     this.awaitingWorkerSpeech = false;
     this.welcomePending = false;
     this.welcomePlaybackStarted = false;

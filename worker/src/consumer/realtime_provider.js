@@ -289,7 +289,11 @@ export function buildRealtimeSessionConfig(config, state = {}) {
           transcription: { model: config.realtimeTranscriptionModel, language: 'en' },
           turn_detection: {
             type: 'semantic_vad',
-            eagerness: 'medium',
+            // Give clients room for natural pauses inside figures and
+            // corrections. Each committed item drives a server-authored
+            // planning turn, so an eager boundary can otherwise turn one
+            // sentence into several questions.
+            eagerness: 'low',
             create_response: false,
             interrupt_response: true
           }

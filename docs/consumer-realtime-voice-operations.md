@@ -127,12 +127,35 @@ repository variable to `false` to return immediately to the controlled v1
 journey without disabling typed or bounded voice.
 
 In v2, `gpt-realtime-2.1` owns ordinary audio dialogue with `marin`, low
-reasoning and medium-eagerness semantic VAD. The Worker still authorizes every
+reasoning and low-eagerness semantic VAD so natural pauses inside an answer are
+less likely to split the turn. The Worker still authorizes every
 `response.create`, pins the effective session policy and terminates unsolicited
 responses. A silent Responses planner runs after each finalized client turn,
-has a 2.5-second foreground deadline, validates candidates independently and
-gets one idempotent catch-up attempt after a timeout. It cannot choose modules,
+has an eight-second foreground deadline, validates candidates independently and
+gets one ordered twelve-second catch-up attempt after a timeout. No stale
+question is authorized while that catch-up is running. It cannot choose modules,
 confirm facts or calculate results.
+
+For each finalized v2 client turn, the signed `MeetingBrief.questionBatch` is
+the authoritative conversational context. Short answers such as “No” are
+interpreted only against that exact question, and planner/director context is
+drawn from the latest finalized turns rather than the beginning of a long
+meeting. Ordinary v2 speech runs with `tool_choice: none`: the silent planner
+has already updated the brief, so the model produces one acknowledgement and
+one signed question in a single response instead of speaking once before and
+again after an optional tool call.
+
+Low-eagerness VAD is backed by a conservative server guard for clearly
+unfinished clauses such as “my home is…” or “the balance is about…”. The
+finalized fragment remains in encrypted meeting history, but it does not
+authorize a response; the client can finish naturally in the next turn, and
+the silent planner receives the coalesced clause while history retains both
+original finalized turns. The detector is deliberately limited to trailing
+copulas and approximate-value lead-ins rather than ordinary prepositions. A
+replayed provider envelope is persistence-idempotent and cannot replace the
+newest evidence pointer. Principal-home identity is canonical only when the
+language or explicit property use identifies the home, so an unspecified
+additional property cannot overwrite it.
 
 The first server-authorized response is a short, tool-free Marin welcome. The
 browser keeps its outbound microphone track disabled until the WebRTC output

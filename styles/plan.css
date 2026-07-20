@@ -3915,8 +3915,267 @@ details.realtime-context-card {
   .realtime-voice-shell[data-realtime-phase="connecting"] .realtime-orb-ring-one,
   .realtime-voice-shell[data-realtime-phase="reconnecting"] .realtime-orb-ring-one,
   .realtime-voice-companion[data-realtime-phase="thinking"] .realtime-launcher-orb > span,
-  .realtime-voice-companion[data-realtime-phase="responding"] .realtime-launcher-orb::before {
+  .realtime-voice-companion[data-realtime-phase="responding"] .realtime-launcher-orb::before,
+  .realtime-voice-shell[data-realtime-phase="off"] .realtime-orb-ring-one,
+  .realtime-voice-shell[data-realtime-phase="off"] .realtime-orb-core {
     animation: none !important;
     transform: none !important;
+  }
+}
+
+/* ============================================================
+   Pre-call meeting briefing — the landing state before a
+   meeting starts. The full-screen shell has two faces:
+     · Idle / pre-call  ->  .realtime-voice-shell:not(.is-live)
+     · Live meeting     ->  .realtime-voice-shell.is-live
+   Pre-call shows the orb + "what to expect / have ready".
+   Live swaps in the transcript, context and meeting controls.
+   ============================================================ */
+
+/* Face switch: hide the briefing once the meeting is live, and
+   hide the live-only tools/controls while we are still on the
+   landing (they are noise before anyone has spoken). */
+.realtime-voice-shell.is-live .realtime-precall {
+  display: none;
+}
+
+.realtime-voice-shell:not(.is-live) .realtime-context-grid,
+.realtime-voice-shell:not(.is-live) #realtimeVoiceMuteButton,
+.realtime-voice-shell:not(.is-live) #realtimeVoiceEndButton,
+.realtime-voice-shell:not(.is-live) #realtimeVoiceTranscriptToggle,
+.realtime-voice-shell:not(.is-live) #realtimeVoiceReviewButton,
+.realtime-voice-shell:not(.is-live) #realtimeVoiceResumeAudioButton {
+  display: none;
+}
+
+/* Give the landing a touch more room than the live column so the
+   two briefing cards can sit side by side under the orb. */
+.realtime-voice-shell:not(.is-live) .realtime-voice-layout {
+  width: min(100%, 54rem);
+}
+
+/* A slow, inviting breath so the idle orb reads as "ready", not
+   frozen. Stops the moment we leave the "off" phase. */
+.realtime-voice-shell[data-realtime-phase="off"] .realtime-orb-ring-one {
+  animation: realtime-orb-breathe 3.6s ease-in-out infinite;
+}
+
+.realtime-voice-shell[data-realtime-phase="off"] .realtime-orb-core {
+  animation: realtime-precall-glow 3.6s ease-in-out infinite;
+}
+
+.realtime-precall {
+  display: grid;
+  gap: clamp(0.95rem, 2.6vh, 1.5rem);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.realtime-precall-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.realtime-precall-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.44rem;
+  min-height: 1.9rem;
+  padding: 0.4rem 0.82rem;
+  border: 1px solid var(--plan-border);
+  border-radius: 999px;
+  background: rgba(4, 12, 22, 0.55);
+  color: var(--plan-muted);
+  font-size: 0.74rem;
+  font-weight: 720;
+  line-height: 1.1;
+}
+
+.realtime-precall-chips svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: var(--plan-blue);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.realtime-precall-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(0.7rem, 1.6vw, 1rem);
+  text-align: left;
+}
+
+.realtime-precall-card {
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  border: 1px solid rgba(149, 188, 225, 0.18);
+  border-radius: var(--plan-radius-lg);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(76, 178, 244, 0.08), transparent 55%),
+    rgba(3, 10, 19, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.realtime-precall-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  color: var(--plan-text);
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.realtime-precall-ico {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  border: 1px solid rgba(146, 210, 250, 0.32);
+  background: var(--plan-blue-wash);
+}
+
+.realtime-precall-ico svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--plan-blue);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.realtime-precall-steps {
+  counter-reset: rp-step;
+  display: grid;
+  gap: 0.72rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.realtime-precall-steps li {
+  counter-increment: rp-step;
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  gap: 0.62rem;
+  align-items: start;
+}
+
+.realtime-precall-steps li::before {
+  content: counter(rp-step);
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(146, 210, 250, 0.42);
+  background: var(--plan-blue-wash);
+  color: var(--plan-blue);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.realtime-precall-steps strong,
+.realtime-precall-list strong {
+  display: block;
+  grid-column: 2;
+  color: var(--plan-text);
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+
+.realtime-precall-steps span,
+.realtime-precall-list span {
+  display: block;
+  grid-column: 2;
+  margin-top: 0.14rem;
+  color: var(--plan-muted);
+  font-size: 0.8rem;
+  line-height: 1.44;
+}
+
+.realtime-precall-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.realtime-precall-list li {
+  display: grid;
+  grid-template-columns: 1.3rem 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.realtime-precall-list li::before {
+  content: "";
+  box-sizing: border-box;
+  align-self: start;
+  justify-self: center;
+  width: 0.5rem;
+  height: 0.86rem;
+  margin-top: 0.15rem;
+  border: solid var(--plan-green);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.realtime-precall-hint {
+  margin: 0.1rem 0 0;
+  color: var(--plan-soft);
+  font-size: 0.76rem;
+  line-height: 1.46;
+  font-style: italic;
+}
+
+/* On the landing the controls row holds only the quiet
+   "Type instead" escape hatch — keep it calm and centered
+   instead of stretched across the live two-column grid. */
+.realtime-voice-shell:not(.is-live) .realtime-voice-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: -0.15rem;
+}
+
+.realtime-voice-shell:not(.is-live) .realtime-voice-controls .quiet-button {
+  width: auto;
+}
+
+@keyframes realtime-precall-glow {
+  0%, 100% {
+    box-shadow: 0 12px 36px rgba(42, 145, 211, 0.34), inset 0 1px 1px rgba(255, 255, 255, 0.46);
+  }
+  50% {
+    box-shadow: 0 18px 52px rgba(42, 145, 211, 0.52), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  }
+}
+
+@media (max-width: 720px) {
+  .realtime-precall-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .realtime-voice-shell:not(.is-live) .realtime-voice-layout {
+    width: 100%;
   }
 }

@@ -41,6 +41,7 @@ import {
   hasUnsettledRealtimeSpeechUsage,
   listRealtimeFactProposalSummaries,
   listRealtimeFinalTurns,
+  listRecentRealtimeFinalTurns,
   recordRealtimeVoiceConfirmation,
   realtimeConsentIsCurrent,
   recordRealtimeFinalTurn,
@@ -71,6 +72,7 @@ import {
   composeMeetingBrief,
   extractRealtimePlannerTurn,
   intakeExplanation,
+  isLikelyIncompleteRealtimeUtterance,
   positionCandidatesToRealtimeFacts,
   sectionCompletionToRealtimeFact,
   toConversationGuide
@@ -690,6 +692,10 @@ export class ConsumerRealtimeSession {
     this.silencePromptIssuedForIdleExpiresAt = null;
     this.latestMeetingBrief = null;
     this.plannerCatchupSourceTurnId = null;
+    this.plannerTurnOrdinal = 0;
+    this.latestPlannerBriefOrdinal = 0;
+    this.plannerEvidenceItemId = null;
+    this.pendingIncompleteTurn = null;
     this.currentAssistantTranscript = '';
     this.state.blockConcurrencyWhile(async () => {
       this.meta = await this.state.storage.get('lease') || null;
@@ -704,6 +710,9 @@ export class ConsumerRealtimeSession {
       this.latestFinalizedEvidenceItemId = await this.state.storage.get('latestFinalizedEvidenceItemId') || null;
       this.latestMeetingBrief = await this.state.storage.get('latestMeetingBrief') || null;
       this.plannerCatchupSourceTurnId = await this.state.storage.get('plannerCatchupSourceTurnId') || null;
+      this.plannerTurnOrdinal = Number(await this.state.storage.get('plannerTurnOrdinal') || 0);
+      this.latestPlannerBriefOrdinal = Number(await this.state.storage.get('latestPlannerBriefOrdinal') || 0);
+      this.pendingIncompleteTurn = await this.state.storage.get('pendingIncompleteTurn') || null;
       if (this.latestFinalizedEvidenceItemId) {
         this.finalizedEvidenceItems.add(this.latestFinalizedEvidenceItemId);
       }
@@ -975,15 +984,6 @@ export class ConsumerRealtimeSession {
         await this.touch();
         return;
       }
-      // A real utterance means the interruption was intentional; the
-      // conversation moves on rather than replaying the cancelled line, and
-      // the new turn supersedes any turn the barge-in cancelled.
-      this.interruptedSpeechCandidate = null;
-      this.cancelledTurnReason = null;
-      this.lastFinalizedTurnAt = Date.now();
-      this.finalizedEvidenceItems.add(itemId);
-      this.latestFinalizedEvidenceItemId = itemId;
-      await this.state.storage.put('latestFinalizedEvidenceItemId', itemId).catch(() => {});
       const recordedTurn = await recordRealtimeFinalTurn(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -991,6 +991,65 @@ export class ConsumerRealtimeSession {
         role: 'user',
         transcript
       });
+      // Provider envelopes may be replayed. Persistence is idempotent, and
+      // planning/response dispatch must be too; otherwise one audio item can
+      // create two planner runs and two copies of the same question.
+      if (recordedTurn.idempotentReplay) {
+        await this.touch();
+        return;
+      }
+      // Only a newly persisted finalized turn can become authoritative
+      // evidence. A replayed provider envelope must never move this pointer
+      // backwards and bind a later tool call to an old utterance.
+      this.interruptedSpeechCandidate = null;
+      this.cancelledTurnReason = null;
+      this.lastFinalizedTurnAt = Date.now();
+      this.finalizedEvidenceItems.add(itemId);
+      this.latestFinalizedEvidenceItemId = itemId;
+      await this.state.storage.put('latestFinalizedEvidenceItemId', itemId).catch(() => {});
+      const pendingIncompleteTurn = this.pendingIncompleteTurn;
+      const pendingTurnIds = Array.isArray(pendingIncompleteTurn?.turnIds)
+        ? pendingIncompleteTurn.turnIds.slice(-6)
+        : (pendingIncompleteTurn?.turnId ? [pendingIncompleteTurn.turnId] : []);
+      let pendingTranscripts = [];
+      if (config.realtimeConversationV2Enabled && pendingTurnIds.length > 0) {
+        const recentFinalTurns = await listRecentRealtimeFinalTurns(
+          this.env,
+          this.meta.sessionId,
+          this.meta.leaseId,
+          8
+        );
+        const transcriptByTurnId = new Map(recentFinalTurns.map((turn) => [turn.id, turn.transcript]));
+        pendingTranscripts = pendingTurnIds.map((turnId) => transcriptByTurnId.get(turnId)).filter(Boolean);
+      }
+      const plannerTranscript = [...pendingTranscripts, transcript]
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 4_000);
+      // Store genuinely finalized fragments for the complete transcript, but
+      // do not interrupt a client who is visibly mid-clause. Their next
+      // finalized turn is coalesced with this text for planning, while both
+      // original finalized turns remain separately reviewable in history.
+      if (config.realtimeConversationV2Enabled
+        && isLikelyIncompleteRealtimeUtterance(plannerTranscript)) {
+        this.pendingIncompleteTurn = {
+          itemId,
+          turnId: recordedTurn.id,
+          turnIds: [...pendingTurnIds, recordedTurn.id].slice(-6)
+        };
+        await this.state.storage.put('pendingIncompleteTurn', this.pendingIncompleteTurn);
+        await this.touch();
+        return;
+      }
+      if (pendingIncompleteTurn) {
+        this.pendingIncompleteTurn = null;
+        await this.state.storage.delete('pendingIncompleteTurn');
+      }
+      const plannerTurnOrdinal = this.plannerTurnOrdinal + 1;
+      this.plannerTurnOrdinal = plannerTurnOrdinal;
+      await this.state.storage.put('plannerTurnOrdinal', plannerTurnOrdinal);
       // A fresh consumer answer starts a fresh correction budget.
       this.toolRejectionRetryArmed = false;
       await this.touch();
@@ -999,11 +1058,20 @@ export class ConsumerRealtimeSession {
           const completionHandled = await this.handleSpokenCompletionTurn({
             itemId,
             turnId: recordedTurn.id,
-            transcript
+            transcript: plannerTranscript
           });
           if (completionHandled) return;
         }
-        await this.processPlannerTurn({ itemId, transcript });
+        const plannerResult = await this.processPlannerTurn({
+          itemId,
+          transcript: plannerTranscript,
+          turnOrdinal: plannerTurnOrdinal
+        });
+        if (plannerResult?.stale) return;
+        if (plannerResult?.status === 'failed') {
+          await this.authorizeResponse('planner_recovery');
+          return;
+        }
       }
       await this.authorizeResponse('finalized_user_item');
       return;
@@ -1137,6 +1205,28 @@ export class ConsumerRealtimeSession {
     // and an audio failure can fall back to controlled streaming TTS.
     if (/^response\.(?:output_audio|output_audio_transcript|audio|audio_transcript)(?:\.|$)/.test(type)) {
       const config = getConsumerConfig(this.env);
+      const responseId = String(event.response_id || event.response?.id || '');
+      if (config.realtimeConversationV2Enabled) {
+        const currentResponseMatches = validProviderId(responseId)
+          && this.currentAuthorizedResponseId
+          && constantTimeTextEqual(responseId, this.currentAuthorizedResponseId);
+        const interruptedCurrentResponse = currentResponseMatches && this.bargeInStartedAt > 0;
+        if (!currentResponseMatches || interruptedCurrentResponse) {
+          // A canceled response can finish flushing transcript/audio envelopes
+          // after the next response has begun. It is provider-owned history,
+          // but it must not mutate the current caption or be stored as a line
+          // the consumer heard. Unknown response ids still fail closed.
+          if (validProviderId(responseId) && this.knownResponseIds?.has(responseId)) {
+            // Audio arrives in many small delta envelopes. Ignore them without
+            // writing one diagnostic row per chunk; response.done already owns
+            // the bounded interruption telemetry for this response.
+            return;
+          }
+          try { this.sendProvider({ type: 'response.cancel', response_id: responseId || undefined }); } catch (_error) { /* terminal path owns loss */ }
+          await this.terminalize('failed', 'response_id_mismatch', 'realtime_response_id_mismatch', false);
+          return;
+        }
+      }
       if (config.realtimeConversationV2Enabled
         && this.inResponse
         && this.currentAuthorizedResponseId) {
@@ -1559,6 +1649,8 @@ export class ConsumerRealtimeSession {
             ? {
                 instructions: authorizationReason === 'tool_output'
                   ? 'Continue the same turn naturally using the reviewed tool output. Keep the answer concise, then bridge to the signed brief nextObjective. Do not repeat the previous wording.'
+                  : authorizationReason === 'planner_recovery'
+                    ? 'Briefly apologise that the last planning note could not be updated, then ask the client to restate only that last point in different words. Do not repeat an earlier intake question and do not claim anything was saved.'
                   : authorizationReason === 'initial_state_probe'
                     ? REALTIME_V2_WELCOME_INSTRUCTIONS
                     : authorizationReason === 'silence_prompt'
@@ -1571,7 +1663,12 @@ export class ConsumerRealtimeSession {
                 // The first response is a spoken welcome, not an intake or
                 // planner turn. Disallow tools for that response so Marin is
                 // guaranteed to speak before the microphone starts sending.
-                tool_choice: authorizationReason === 'initial_state_probe' ? 'none' : 'auto'
+                // The silent planner and signed brief already own ordinary
+                // intake. Allowing an optional tool call here can produce one
+                // spoken message before the call and another after tool_output.
+                // Spoken completion is intercepted server-side before this
+                // response path, so every conversational response is one pass.
+                tool_choice: 'none'
               }
             : forceTool
             ? {
@@ -1638,7 +1735,7 @@ export class ConsumerRealtimeSession {
     return true;
   }
 
-  async applyPlannerExtraction(extraction) {
+  async applyPlannerExtraction(extraction, { turnOrdinal = this.plannerTurnOrdinal } = {}) {
     const context = await this.planningContext();
     const mappedGoals = (extraction.goalCandidates || [])
       .filter((candidate) => ['high', 'medium'].includes(candidate.confidence))
@@ -1701,6 +1798,7 @@ export class ConsumerRealtimeSession {
       });
       if (!attempt.replayed) {
         this.applyingPlannerBatch = true;
+        this.plannerEvidenceItemId = extraction.sourceTurnId;
         try {
           for (const candidate of candidates) {
             try {
@@ -1731,6 +1829,7 @@ export class ConsumerRealtimeSession {
           }
         } finally {
           this.applyingPlannerBatch = false;
+          this.plannerEvidenceItemId = null;
         }
         await completeRealtimeToolAttempt(this.env, {
           sessionId: this.meta.sessionId,
@@ -1768,12 +1867,26 @@ export class ConsumerRealtimeSession {
         moduleIds
       }).catch(() => {});
     }
+    const normalizedOrdinal = Number.isSafeInteger(turnOrdinal) && turnOrdinal >= 1
+      ? turnOrdinal
+      : this.plannerTurnOrdinal;
+    // A slow older planner result may still contribute valid facts, but it
+    // must never become the active conversation brief after a newer turn has
+    // already advanced the meeting.
+    if (normalizedOrdinal < this.latestPlannerBriefOrdinal) {
+      return { brief: this.latestMeetingBrief, outcomes, stale: true };
+    }
+    this.latestPlannerBriefOrdinal = normalizedOrdinal;
+    await this.state.storage.put('latestPlannerBriefOrdinal', normalizedOrdinal);
     let brief = await composeMeetingBrief({
       env: this.env,
       context: refreshed,
       extraction,
       sourceTurnId: extraction.sourceTurnId
     });
+    if (this.latestPlannerBriefOrdinal !== normalizedOrdinal) {
+      return { brief: this.latestMeetingBrief, outcomes, stale: true };
+    }
     if (brief.readyToConfirm && refreshed.config.realtimeSpokenCompletionEnabled) {
       const prepared = await prepareRealtimeVoiceAnalysisPlan({
         env: this.env,
@@ -1830,6 +1943,9 @@ export class ConsumerRealtimeSession {
       plannerPromptVersion: refreshed.config.realtimePlannerPromptVersion,
       brief
     });
+    if (this.latestPlannerBriefOrdinal !== normalizedOrdinal) {
+      return { brief: this.latestMeetingBrief, outcomes, stale: true };
+    }
     this.latestMeetingBrief = brief;
     await this.state.storage.put('latestMeetingBrief', brief);
     return { brief, outcomes };
@@ -1855,10 +1971,10 @@ export class ConsumerRealtimeSession {
     });
   }
 
-  async catchUpPlannerTurn({ itemId, transcript }) {
+  async catchUpPlannerTurn({ itemId, transcript, turnOrdinal }) {
     try {
       const context = await this.planningContext();
-      const recentTurns = await listRealtimeFinalTurns(
+      const recentTurns = await listRecentRealtimeFinalTurns(
         this.env,
         this.meta.sessionId,
         this.meta.leaseId,
@@ -1874,7 +1990,7 @@ export class ConsumerRealtimeSession {
         timeoutMs: context.config.realtimePlannerCatchupTimeoutMs
       });
       await this.recordPlannerUsage(planned.metadata, context.config);
-      await this.applyPlannerExtraction(planned.extraction);
+      const applied = await this.applyPlannerExtraction(planned.extraction, { turnOrdinal });
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -1882,10 +1998,10 @@ export class ConsumerRealtimeSession {
         eventType: 'realtime.planner.catchup_completed',
         payload: { sourceTurnId: itemId, latencyMs: planned.metadata.latencyMs }
       });
-      if (!this.inResponse && !this.pendingSessionPolicyHash) {
-        await this.refreshJourneyState();
-      }
+      await this.refreshJourneyState();
+      return { status: 'applied', ...applied };
     } catch (error) {
+      const code = error instanceof ConsumerError ? error.code : 'realtime_planner_catchup_failed';
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -1893,18 +2009,19 @@ export class ConsumerRealtimeSession {
         eventType: 'realtime.planner.catchup_failed',
         payload: {
           sourceTurnId: itemId,
-          code: error instanceof ConsumerError ? error.code : 'realtime_planner_catchup_failed'
+          code
         }
       }).catch(() => {});
+      return { status: 'failed', code };
     } finally {
       await this.state.storage.delete('plannerCatchupSourceTurnId').catch(() => {});
       if (this.plannerCatchupSourceTurnId === itemId) this.plannerCatchupSourceTurnId = null;
     }
   }
 
-  async processPlannerTurn({ itemId, transcript }) {
+  async processPlannerTurn({ itemId, transcript, turnOrdinal }) {
     const context = await this.planningContext();
-    const recentTurns = await listRealtimeFinalTurns(
+    const recentTurns = await listRecentRealtimeFinalTurns(
       this.env,
       this.meta.sessionId,
       this.meta.leaseId,
@@ -1920,7 +2037,7 @@ export class ConsumerRealtimeSession {
         recentTurns
       });
       await this.recordPlannerUsage(planned.metadata, context.config);
-      const applied = await this.applyPlannerExtraction(planned.extraction);
+      const applied = await this.applyPlannerExtraction(planned.extraction, { turnOrdinal });
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -1934,6 +2051,7 @@ export class ConsumerRealtimeSession {
         }
       });
       await this.refreshJourneyState();
+      return { status: 'applied', ...applied };
     } catch (error) {
       const code = error instanceof ConsumerError ? error.code : 'realtime_planner_failed';
       await appendRealtimeEvent(this.env, {
@@ -1946,8 +2064,13 @@ export class ConsumerRealtimeSession {
       if (code === 'realtime_planner_timeout' && this.plannerCatchupSourceTurnId !== itemId) {
         this.plannerCatchupSourceTurnId = itemId;
         await this.state.storage.put('plannerCatchupSourceTurnId', itemId);
-        this.state.waitUntil(this.catchUpPlannerTurn({ itemId, transcript }));
+        // Do not speak from the unchanged brief. The previous implementation
+        // launched this retry in the background and immediately authorized the
+        // old question, which was the main repetition loop. Keep the turn
+        // ordered and let the retry produce the only next-question response.
+        return this.catchUpPlannerTurn({ itemId, transcript, turnOrdinal });
       }
+      return { status: 'failed', code };
     }
   }
 
@@ -2615,7 +2738,7 @@ export class ConsumerRealtimeSession {
     const directorConfig = context?.config || getConsumerConfig(this.env);
     if (directorConfig.realtimeDirectorEnabled === true
       && ['question', 'acknowledgement', 'status'].includes(kind)) {
-      const recentTurns = await listRealtimeFinalTurns(
+      const recentTurns = await listRecentRealtimeFinalTurns(
         this.env,
         this.meta.sessionId,
         this.meta.leaseId,
@@ -2787,7 +2910,9 @@ export class ConsumerRealtimeSession {
       // The model cannot reliably echo the opaque evidence item id, so the
       // server binds every proposed fact to the current finalized turn itself.
       // This still fails closed when no consumer turn has been finalized.
-      const authoritativeEvidenceItemId = this.authoritativeEvidenceItemId();
+      const authoritativeEvidenceItemId = this.applyingPlannerBatch
+        ? this.plannerEvidenceItemId
+        : this.authoritativeEvidenceItemId();
       if (!authoritativeEvidenceItemId) {
         throw new ConsumerError(409, 'realtime_evidence_not_final', 'Wait for the consumer input item to finish before proposing or confirming facts.');
       }

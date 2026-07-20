@@ -47,6 +47,7 @@ const {
 const {
   classifyRealtimeEvent,
   extractRealtimePlanningContext,
+  isLikelyIncompleteVoiceCaption,
   normaliseRealtimeCallResponse,
   RealtimeVoiceController
 } = await import('../js/plan/realtime_voice.js');
@@ -58,6 +59,14 @@ const {
   state: journeyState
 } = await import('../js/plan/store.js');
 const { getAvailableViews } = await import('../js/plan/views.js');
+
+assert.equal(isLikelyIncompleteVoiceCaption('Yes, my home is'), true);
+assert.equal(isLikelyIncompleteVoiceCaption('And the mortgage is about...'), true);
+assert.equal(isLikelyIncompleteVoiceCaption('Yes, it is.'), false);
+assert.equal(isLikelyIncompleteVoiceCaption('What does net worth mean?'), false);
+assert.equal(isLikelyIncompleteVoiceCaption('The college fund is what I am saving for.'), false);
+assert.equal(isLikelyIncompleteVoiceCaption('€500,000 is roughly what it is worth.'), false);
+assert.equal(isLikelyIncompleteVoiceCaption('€50,000 is what my annual spending is.'), false);
 
 class WebmRecorder {
   static isTypeSupported(type) {
@@ -883,8 +892,11 @@ assert.match(planCssSource, /@keyframes realtime-orb-hearing/);
 assert.match(planCssSource, /@keyframes realtime-orb-think/);
 assert.match(planCssSource, /@keyframes realtime-orb-prepare-outer/);
 assert.match(planCssSource, /@keyframes realtime-orb-response-outer/);
+const reducedMotionListeningIndex = planCssSource.lastIndexOf(
+  '.realtime-voice-shell[data-realtime-phase="listening"]'
+);
 const reducedMotionOrbSource = planCssSource.slice(
-  planCssSource.lastIndexOf('@media (prefers-reduced-motion: reduce)')
+  planCssSource.lastIndexOf('@media (prefers-reduced-motion: reduce)', reducedMotionListeningIndex)
 );
 assert.match(reducedMotionOrbSource, /data-realtime-phase="listening"/);
 assert.match(reducedMotionOrbSource, /data-realtime-phase="user_speaking"/);
@@ -1355,6 +1367,89 @@ assert.equal(welcomeController.welcomePending, false);
 assert.equal(welcomeTrack.enabled, true, 'Client audio must open immediately after the welcome playback stops.');
 assert.equal(welcomeController.phase, 'listening');
 welcomeController.cleanupLocal();
+
+// If semantic VAD finalizes an obviously unfinished clause, the server stays
+// silent and the UI should invite the client to continue instead of looking
+// stuck in a thinking state.
+{
+  const fragmentController = new RealtimeVoiceController({ root: null });
+  fragmentController.active = true;
+  fragmentController.conversationVersion = 'v2';
+  fragmentController.handleRealtimeEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'item_frontend_fragment_001',
+    transcript: 'Yes, my home is'
+  });
+  assert.equal(fragmentController.phase, 'listening');
+  assert.match(fragmentController.statusText, /finish that thought/i);
+  fragmentController.handleRealtimeEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'item_frontend_fragment_002',
+    transcript: 'worth €500,000.'
+  });
+  assert.equal(fragmentController.phase, 'thinking');
+  fragmentController.cleanupLocal();
+}
+
+// Response ids keep a canceled question's late transcript/audio envelopes
+// from becoming a ghost assistant turn after the consumer has barged in.
+{
+  const responseGateController = new RealtimeVoiceController({ root: null });
+  responseGateController.active = true;
+  responseGateController.conversationVersion = 'v2';
+  responseGateController.handleRealtimeEvent({
+    type: 'response.created',
+    response: { id: 'response_frontend_old_001' }
+  });
+  responseGateController.handleRealtimeEvent({
+    type: 'response.output_audio_transcript.delta',
+    response_id: 'response_frontend_old_001',
+    item_id: 'item_frontend_old_001',
+    delta: 'Do you own your home?'
+  });
+  responseGateController.handleRealtimeEvent({ type: 'input_audio_buffer.speech_started' });
+  responseGateController.handleRealtimeEvent({
+    type: 'response.output_audio_transcript.done',
+    response_id: 'response_frontend_old_001',
+    item_id: 'item_frontend_old_001',
+    transcript: 'Do you own your home, and if so, roughly what is it worth?'
+  });
+  assert.deepEqual(responseGateController.transcriptHistory, []);
+
+  responseGateController.handleRealtimeEvent({
+    type: 'response.created',
+    response: { id: 'response_frontend_current_002' }
+  });
+  responseGateController.handleRealtimeEvent({
+    type: 'response.output_audio_transcript.done',
+    response_id: 'response_frontend_old_001',
+    item_id: 'item_frontend_old_001',
+    transcript: 'A late canceled response must remain ignored.'
+  });
+  responseGateController.handleRealtimeEvent({
+    type: 'response.output_audio_transcript.done',
+    response_id: 'response_frontend_current_002',
+    item_id: 'item_frontend_current_002',
+    transcript: 'Thanks. Let’s move on to your pension.'
+  });
+  assert.deepEqual(responseGateController.transcriptHistory, [{
+    role: 'assistant',
+    text: 'Thanks. Let’s move on to your pension.'
+  }]);
+  responseGateController.handleRealtimeEvent({
+    type: 'response.done',
+    response: { id: 'response_frontend_old_001', status: 'cancelled' }
+  });
+  assert.equal(responseGateController.responseInProgress, true);
+  assert.equal(responseGateController.activeResponseId, 'response_frontend_current_002');
+  responseGateController.handleRealtimeEvent({
+    type: 'response.done',
+    response: { id: 'response_frontend_current_002', status: 'completed' }
+  });
+  assert.equal(responseGateController.responseInProgress, false);
+  assert.equal(responseGateController.activeResponseId, '');
+  responseGateController.cleanupLocal();
+}
 
 // Once the server authorizes the completion outro, microphone controls and
 // competing meeting actions remain locked until playback ends (or times out).

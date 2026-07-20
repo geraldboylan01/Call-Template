@@ -197,6 +197,31 @@ function boundedText(value, maximum = 500) {
   return text.slice(0, maximum);
 }
 
+export function isLikelyIncompleteRealtimeUtterance(value) {
+  const raw = boundedText(value, 500);
+  if (!raw || /[?!]\s*$/.test(raw)) return false;
+  const normalized = raw
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/[.…]+$/g, '')
+    .replace(/[^a-z0-9€£$%]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return false;
+  // These are short but complete contextual replies, not abandoned clauses.
+  if (/^(?:yes|yeah|yep|correct|no|nope|none|it is|yes it is|that is|yes there is|no there is not|i do|i dont|i do not)$/.test(normalized)) {
+    return false;
+  }
+  // A complete client question can end in a copula when punctuation was lost
+  // by transcription (for example, "What is net worth").
+  if (/^(?:what|why|how|when|where|who|is|are|do|does|can|could|would|will|should)\b/.test(normalized)) {
+    return false;
+  }
+  if (/\bwhat\b.*\b(?:is|worth)$/.test(normalized)) return false;
+  return /\b(?:is|are|was|were|about|around|roughly|approximately|worth)$/.test(normalized);
+}
+
 function parseJsonValue(value, maximum = 3000) {
   const text = boundedText(value, maximum);
   if (!text) return null;
@@ -311,31 +336,79 @@ function validatePlannerExtraction(value, sourceTurnId) {
   });
 }
 
-function withSafeTurnClassifications(extraction, transcript) {
+function signedCurrentQuestion(context) {
+  const state = context?.state || {};
+  const batch = state.meetingBrief?.questionBatch;
+  if (batch?.primaryFact?.factId) {
+    return {
+      ...batch.primaryFact,
+      prompt: batch.prompt || batch.primaryFact.prompt || ''
+    };
+  }
+  return state.nextApprovedFact || state.nextQuestion || null;
+}
+
+function clearShortNegative(value) {
+  const text = String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /^(?:no|nope|none|nothing|not that i know of|there (?:is|are) none|i (?:do not|dont|have no))(?: thanks)?$/.test(text);
+}
+
+export function withSafeTurnClassifications(extraction, transcript, context = null) {
   const newParent = /\b(?:i(?:'m| am) a new parent|i just had a baby|we just had a baby|our newborn|my newborn)\b/i.test(transcript);
-  if (!newParent || extraction.semanticFacts.some((item) => (
+  let classified = extraction;
+  if (newParent && !extraction.semanticFacts.some((item) => (
     item.factId === 'new_parent_status' && item.value === true
   ))) {
-    return extraction;
+    classified = Object.freeze({
+      ...classified,
+      semanticFacts: [
+        // The finalized turn is the authoritative evidence for this narrow,
+        // deterministic classification. Replace a conflicting model candidate
+        // instead of allowing it to suppress the safe canonical value.
+        ...classified.semanticFacts.filter((item) => item.factId !== 'new_parent_status'),
+        {
+          candidateId: 'safe-new-parent-context',
+          operation: 'upsert',
+          factId: 'new_parent_status',
+          value: true,
+          certainty: 'approximate',
+          evidenceText: 'The client described becoming a new parent in this finalized turn.',
+          correctionTarget: ''
+        }
+      ]
+    });
   }
-  return Object.freeze({
-    ...extraction,
-    semanticFacts: [
-      // The finalized turn is the authoritative evidence for this narrow,
-      // deterministic classification. Replace a conflicting model candidate
-      // instead of allowing it to suppress the safe canonical value.
-      ...extraction.semanticFacts.filter((item) => item.factId !== 'new_parent_status'),
-      {
-        candidateId: 'safe-new-parent-context',
-        operation: 'upsert',
-        factId: 'new_parent_status',
-        value: true,
-        certainty: 'approximate',
-        evidenceText: 'The client described becoming a new parent in this finalized turn.',
-        correctionTarget: ''
-      }
-    ]
-  });
+
+  // A short negative is meaningful only in the context of the exact signed
+  // question the client just heard. Business intake is household-wide, so a
+  // plain "No" can safely close that section. Do not generalize this to
+  // pensions, investments or debts, whose questions may be person/category
+  // scoped even though their storage collections are shared.
+  const currentFactId = signedCurrentQuestion(context)?.factId;
+  if (currentFactId === 'business_position' && clearShortNegative(transcript)) {
+    const hasBusinesses = (context?.profile?.businesses || []).length > 0;
+    classified = Object.freeze({
+      ...classified,
+      semanticFacts: classified.semanticFacts.filter((item) => item.factId !== 'business_position'),
+      positions: classified.positions.filter((item) => item.kind !== 'business'),
+      sectionCompletions: [
+        ...classified.sectionCompletions.filter((item) => item.section !== 'businesses'),
+        {
+          schemaVersion: SECTION_COMPLETION_V1,
+          section: 'businesses',
+          signal: hasBusinesses ? 'complete_section' : 'confirm_empty',
+          evidenceText: String(transcript || '').trim().slice(0, 500)
+        }
+      ]
+    });
+  }
+  return classified;
 }
 
 function responseOutputText(response) {
@@ -352,14 +425,18 @@ function responseOutputText(response) {
   throw new ConsumerError(502, 'realtime_planner_output_missing', 'The silent meeting planner returned no structured output.');
 }
 
-function plannerContextSlice(context) {
+export function plannerContextSlice(context) {
   const state = context?.state || {};
   return {
     profileRevision: Number(state.profileRevision || context?.sessionRow?.current_profile_revision || 0),
     goalSummary: state.meetingBrief?.narrativeSummary || '',
     activeGoals: state.goalAssessment?.activeGoalTypes || [],
     deferredGoals: state.goalAssessment?.deferredGoalTypes || [],
-    currentQuestion: state.nextApprovedFact || state.nextQuestion || null,
+    // The signed batch is the question the client actually heard. The generic
+    // question plan can point at a different module prerequisite, so using it
+    // here makes short contextual answers (especially "No") impossible to
+    // interpret and was a direct cause of repeated questions.
+    currentQuestion: signedCurrentQuestion(context),
     selectedAnalyses: (state.moduleSlots || []).slice(0, 3).map((slot) => ({
       moduleId: slot.moduleId,
       label: getPlanningModuleDefinition(slot.moduleId)?.label || slot.moduleId,
@@ -474,7 +551,8 @@ export async function extractRealtimePlannerTurn({
   try {
     extraction = withSafeTurnClassifications(
       validatePlannerExtraction(JSON.parse(responseOutputText(response)), sourceTurnId),
-      safeTranscript
+      safeTranscript,
+      context
     );
   } catch (error) {
     if (error instanceof ConsumerError) throw error;
@@ -499,7 +577,29 @@ export async function extractRealtimePlannerTurn({
   };
 }
 
+function isPrincipalHomeCandidate(candidate) {
+  if (candidate?.propertyUse === 'home') return true;
+  if (candidate?.propertyUse) return false;
+  const descriptor = [
+    candidate?.entityId,
+    candidate?.linkedEntityId,
+    candidate?.label,
+    candidate?.evidenceText
+  ].filter(Boolean).join(' ').toLowerCase().replace(/[_-]+/g, ' ');
+  if (/\b(?:another|second|additional|rental|investment|holiday|farm|business|commercial)\b/.test(descriptor)) {
+    return false;
+  }
+  return /\b(?:home|primary residence|principal residence|family residence|main residence)\b/.test(descriptor)
+    || /\b(?:my|our|the) (?:house|apartment|flat)\b/.test(descriptor);
+}
+
 function stablePositionId(kind, candidate, fallbackIndex) {
+  // A household can have several properties, but only one ordinary principal
+  // home. Do not let harmless model wording changes ("home", "my house",
+  // "primary residence") create a second canonical record on a later turn.
+  // Explicit rental, farm, business and other properties retain their own
+  // stable candidate identity.
+  if (kind === 'property' && isPrincipalHomeCandidate(candidate)) return 'home';
   const raw = candidate.entityId || candidate.correctionTarget || candidate.label || `${kind}-${fallbackIndex + 1}`;
   return String(raw).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60)
     || `${kind}_${fallbackIndex + 1}`;
@@ -515,7 +615,17 @@ function entityOperation(candidate) {
  * planner needs to know canonical collection names.
  */
 export function positionCandidatesToRealtimeFacts(candidates = []) {
-  const positions = candidates.slice(0, 12);
+  const positions = candidates.slice(0, 12).filter((candidate) => (
+    // A fragment such as "Yes, my home is ..." establishes neither a
+    // reviewable value nor a complete balance-sheet position. Persisting it
+    // would leave an incomplete property behind and make the meeting ask for
+    // the home again even after a later complete answer. Removal remains
+    // valid without an amount.
+    candidate?.kind !== 'property'
+    || candidate.operation === 'remove'
+    || candidate.amount
+    || !isLikelyIncompleteRealtimeUtterance(candidate.evidenceText)
+  ));
   const propertyByLink = new Map();
   positions.forEach((candidate, index) => {
     if (candidate.kind !== 'property') return;
@@ -540,7 +650,10 @@ export function positionCandidatesToRealtimeFacts(candidates = []) {
       value = { ...common, type: candidate.kind, ...(candidate.kind === 'cash' ? { liquid: true } : {}) };
     } else if (candidate.kind === 'property') {
       factId = 'property_position';
-      value = { ...common, use: candidate.propertyUse || 'home' };
+      value = {
+        ...common,
+        use: candidate.propertyUse || (isPrincipalHomeCandidate(candidate) ? 'home' : 'other')
+      };
     } else if (candidate.kind === 'pension') {
       factId = 'pension_positions';
       value = { ...common, type: candidate.pensionType || 'other' };
@@ -653,6 +766,14 @@ function questionTopic(factId) {
 
 function conversationalQuestion(fact, state) {
   const factId = fact?.factId;
+  const reason = boundedText(fact?.reason, 240);
+  const propertyValueMissing = factId === 'property_position'
+    && /\b(?:current value|currently worth)\b/i.test(reason);
+  const propertyValuePrompt = propertyValueMissing
+    ? /\bhome\b/i.test(reason)
+      ? 'Roughly what is your home currently worth?'
+      : 'Roughly what is that property currently worth?'
+    : '';
   const prompts = {
     primary_goal: 'What would you most like this planning conversation to help you work out?',
     partner_person: 'Are we planning just for you, or should we include your spouse or partner as well?',
@@ -663,7 +784,7 @@ function conversationalQuestion(fact, state) {
     pension_employer_contribution_rate: 'Does your employer contribute to that pension, and if so, about what percentage?',
     cash_savings: 'Roughly how much do you currently hold in cash or savings?',
     asset_position: 'Do you have investments such as shares or investment funds, and roughly what are they worth?',
-    business_position: 'Do you have any business interests or other significant assets we should include?',
+    business_position: 'Do you have any business or agricultural interests we should include, and if so, roughly what are they worth?',
     mortgage_position: 'Is there a mortgage on the home, and roughly what is still outstanding?',
     loan_position: 'Do you have any non-mortgage loans we need to include, and roughly what is outstanding?',
     liability_position: 'Apart from any mortgage already mentioned, are there other debts we need to include?',
@@ -676,7 +797,8 @@ function conversationalQuestion(fact, state) {
     target_retirement_income: 'About how much annual income would you like the household to have in retirement, in today’s money?'
   };
   const statePrompt = state.nextQuestion?.factId === factId ? state.nextQuestion.prompt : '';
-  const rawPrompt = prompts[factId]
+  const rawPrompt = propertyValuePrompt
+    || prompts[factId]
     || statePrompt
     || getSemanticFactDefinition(factId)?.questionPrompt
     || 'Could you tell me a little more about that?';

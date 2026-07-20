@@ -332,8 +332,12 @@ export function getConsumerConfig(env) {
     realtimeMaxSdpBytes: boundedInteger(env.CONSUMER_REALTIME_MAX_SDP_BYTES, 32_768, 4_096, 32_768),
     realtimeMaxResponses: boundedInteger(env.CONSUMER_REALTIME_MAX_RESPONSES, 40, 1, 40),
     realtimeMaxToolCalls: boundedInteger(env.CONSUMER_REALTIME_MAX_TOOL_CALLS, 24, 1, 24),
-    realtimePlannerTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_TIMEOUT_MS, 2_500, 1_500, 2_500),
-    realtimePlannerCatchupTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS, 8_000, 2_500, 15_000),
+    // The structured planner regularly takes longer than 2.5 seconds in paid
+    // probes. A timeout must be exceptional: timing out an ordinary turn used
+    // to leave the previous MeetingBrief active and made the voice repeat the
+    // question the client had just answered.
+    realtimePlannerTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_TIMEOUT_MS, 8_000, 2_500, 12_000),
+    realtimePlannerCatchupTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS, 12_000, 5_000, 20_000),
     realtimePlannerMaxOutputTokens: boundedInteger(env.CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS, 1_800, 600, 3_000),
     realtimePlannerPromptVersion: text(env.CONSUMER_REALTIME_PLANNER_PROMPT_VERSION) || 'realtime-planner-v3',
     realtimeUsageRates,

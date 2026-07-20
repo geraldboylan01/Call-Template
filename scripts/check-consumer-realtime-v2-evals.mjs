@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const datasetPath = fileURLToPath(new URL('./fixtures/consumer-realtime-conversations-v2.json', import.meta.url));
 const dataset = JSON.parse(readFileSync(datasetPath, 'utf8'));
 assert.equal(dataset.schemaVersion, 'consumer-realtime-conversation-dataset-v2');
-assert.ok(Array.isArray(dataset.cases) && dataset.cases.length >= 4);
+assert.ok(Array.isArray(dataset.cases) && dataset.cases.length >= 5);
 assert.equal(new Set(dataset.cases.map((item) => item.id)).size, dataset.cases.length);
 assert.ok(dataset.cases.some((item) => item.id === dataset.defaultCaseId));
 
@@ -19,6 +19,9 @@ for (const required of [
   'complete_assets',
   'multiple_positions',
   'correction',
+  'unfinished_home_fragment',
+  'complete_home_after_fragment',
+  'contextual_business_no',
   'state_pensions',
   'spoken_confirmation'
 ]) {
@@ -36,6 +39,23 @@ assert.deepEqual(regression.expected.positions, {
 assert.equal(regression.expected.analysisCount, 3);
 assert.ok(regression.expected.requiredAnalysisIds.includes('personal_balance_sheet'));
 assert.ok(regression.expected.completedSections.includes('/assets'));
+
+const loopRegression = dataset.cases.find((item) => item.id === 'short_answers_and_fragments_do_not_loop');
+assert.equal(
+  loopRegression.turns.find((turn) => turn.label === 'unfinished_home_fragment').expectReply,
+  false
+);
+assert.equal(loopRegression.expected.positions.property, 500_000);
+assert.equal(loopRegression.expected.positions.mortgage, 300_000);
+assert.equal(loopRegression.expected.contextualNoCompletedPath, '/businesses');
+assert.equal(loopRegression.expected.maximumAssistantResponsesPerFinalizedTurn, 1);
+assert.equal(loopRegression.expected.maximumIdenticalConsecutiveReplies, 1);
+assert.deepEqual(loopRegression.expected.neverReturnToCompletedFacts, [
+  'property_position',
+  'business_position'
+]);
+assert.equal(loopRegression.expected.plannerForegroundDeadlineMs, 8_000);
+assert.equal(loopRegression.expected.plannerCatchupDeadlineMs, 12_000);
 
 const completion = dataset.cases.find((item) => item.id === 'spoken_retirement_completion');
 assert.equal(completion.expected.questionBatchMax, 1);
@@ -69,4 +89,4 @@ for (const testCase of dataset.cases) {
   }
 }
 
-console.log(`Consumer Realtime v2 eval dataset covers ${dataset.cases.length} protected conversations, including spoken module completion and the supplied five-position regression.`);
+console.log(`Consumer Realtime v2 eval dataset covers ${dataset.cases.length} protected conversations, including spoken module completion, the supplied five-position regression, and the repeated-question regression.`);
