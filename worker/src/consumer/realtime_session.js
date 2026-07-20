@@ -1079,6 +1079,29 @@ export class ConsumerRealtimeSession {
       return;
     }
     if (['conversation.item.deleted', 'conversation.item.truncated', 'conversation.item.retrieved'].includes(type)) {
+      // conversation.item.truncated is the provider's normal signal that an
+      // assistant audio item was cut short by a barge-in. The conversational
+      // v2 flow has the model produce that audio, so interruption is expected
+      // and must not tear the meeting down. v1 never produces provider audio,
+      // so any item mutation there stays fail-closed, as do genuine deletions
+      // or retrievals the Worker never requests.
+      const conversationConfig = getConsumerConfig(this.env);
+      if (type === 'conversation.item.truncated' && conversationConfig.realtimeConversationV2Enabled) {
+        await appendRealtimeEvent(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          providerEventId: event.event_id,
+          direction: 'provider_in',
+          eventType: 'realtime.provider.error',
+          payload: { code: 'assistant_item_truncated', param: 'item', recoverable: true, scope: 'item' }
+        }).catch(() => {});
+        await this.touch();
+        return;
+      }
+      console.warn('Realtime conversation history mutated', {
+        type,
+        v2: conversationConfig.realtimeConversationV2Enabled === true
+      });
       await this.terminalize('failed', 'conversation_history_mutated', 'realtime_conversation_history_mutated', false);
       return;
     }

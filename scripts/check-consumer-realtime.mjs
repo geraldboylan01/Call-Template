@@ -2688,6 +2688,29 @@ assert.match(welcomeCreate.response.instructions, /Introduce yourself as Planéi
 assert.match(welcomeCreate.response.instructions, /relaxed conversation/);
 assert.match(welcomeCreate.response.instructions, /no analysis runs until they review and confirm/);
 
+// A barge-in truncates the model's own audio item in v2; the provider signals
+// this with conversation.item.truncated. It is normal interruption, not
+// history tampering, so it must not end the meeting. Genuine deletions still
+// fail closed.
+const truncationTerminals = [];
+welcomeDurable.terminalize = async (...args) => { truncationTerminals.push(args); return { providerHangupConfirmed: true }; };
+await welcomeDurable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.truncated',
+  item_id: 'item_welcome_audio_001',
+  content_index: 0,
+  audio_end_ms: 1200
+}));
+assert.equal(truncationTerminals.length, 0, 'A v2 barge-in truncation must not end the meeting.');
+await welcomeDurable.handleProviderMessage(JSON.stringify({
+  type: 'conversation.item.deleted',
+  item_id: 'item_welcome_audio_001'
+}));
+assert.deepEqual(
+  truncationTerminals.pop()?.slice(1, 3),
+  ['conversation_history_mutated', 'realtime_conversation_history_mutated'],
+  'A genuine item deletion must still fail closed, even in v2.'
+);
+
 const firstTurnState = new TestDurableObjectState();
 const firstTurnDurable = new ConsumerRealtimeSession(firstTurnState, env);
 await firstTurnState.ready;
