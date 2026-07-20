@@ -4,6 +4,12 @@ import { join } from 'node:path';
 
 import { computeHousePurchaseProjection } from '../js/house_purchase/index.js';
 import { computeWorkingLiquidityReserve } from '../js/liquidity_reserve.js';
+import { computePensionProjection } from '../js/pension_math.js';
+import {
+  IRISH_STATE_PENSION_CONTRIBUTORY,
+  statePensionAnnualAmount
+} from '../js/planning/ireland_rules.js';
+import { buildPensionProjectionInput } from '../js/planning/adapters/retirement.js';
 import {
   applyProfilePatch,
   confirmHouseholdProfile,
@@ -456,6 +462,43 @@ await runCase('result summary preserves code-owned numeric facts', async () => {
   assert.equal(houseSummary.numericFacts.currentCashGap, houseRun.semanticResult.currentCashGap);
   assert.equal(houseSummary.numericFacts.currentSupportablePrice, houseRun.semanticResult.currentSupportablePrice);
   assert.ok(result.summary.nextSteps.some((entry) => entry.includes('Confirm the inputs')));
+});
+
+await runCase('Irish State Pension rules apply full, half, mixed and legacy assumptions per person', () => {
+  assert.equal(IRISH_STATE_PENSION_CONTRIBUTORY.weeklyMaximumEur, 299.30);
+  assert.equal(IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur, 15_563.60);
+  assert.equal(statePensionAnnualAmount(0.5), 7_781.80);
+  const input = {
+    currentYear: 2026,
+    inflationRate: 0.04,
+    growthRate: 0.05,
+    wageGrowthRate: 0.02,
+    incomeMode: 'target',
+    targetIncomeToday: 50_000,
+    targetStartYear: 2036,
+    horizonEndAge: 95,
+    pensions: [
+      { id: 'primary', title: 'Primary', currentAge: 56, retirementAge: 66, currentSalary: 80_000, currentPot: 100_000, personalPct: 0.1, employerPct: 0, includeStatePension: true },
+      { id: 'partner', title: 'Partner', currentAge: 56, retirementAge: 66, currentSalary: 0, currentPot: 10_000, personalPct: 0, employerPct: 0, statePensionFraction: 0.5 }
+    ]
+  };
+  const projection = computePensionProjection(input);
+  const expected = 15_563.60 * 1.5 * Math.pow(1.02, 10);
+  assert.ok(Math.abs(projection.debug.statePensionNominalAtRetirement - expected) < 0.01);
+  assert.equal(projection.debug.pensions[0].statePensionFraction, 1);
+  assert.equal(projection.debug.pensions[0].statePensionStartAge, 66);
+  assert.equal(projection.debug.pensions[1].statePensionFraction, 0.5);
+  assert.match(projection.assumptionsTable.rows.flat().join(' '), /actual contributory rate depends.*PRSI/i);
+  assert.match(projection.assumptionsTable.rows.flat().join(' '), /effective January 2026/i);
+  assert.match(projection.assumptionsTable.rows.flat().join(' '), /e6f908-state-pension-contributory/);
+  assert.match(projection.assumptionsTable.rows.flat().join(' '), /budget-2026/);
+  const legacyProfile = JSON.parse(JSON.stringify(retirementProfile()));
+  legacyProfile.assumptions.values.retirement = {
+    ...(legacyProfile.assumptions.values.retirement || {}),
+    includeStatePension: false
+  };
+  const legacyAdapterInput = buildPensionProjectionInput(legacyProfile);
+  assert.ok(legacyAdapterInput.pensions.every((member) => member.statePensionFraction === 0));
 });
 
 await runCase('planning core has no DOM, browser-storage or Node-runtime imports', () => {

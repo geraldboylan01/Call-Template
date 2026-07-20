@@ -781,11 +781,13 @@ assert.match(viewsSource, /fixed conservative reservation/);
 assert.match(privacySource, /conservative application reservation rather than promising an exact provider/);
 assert.match(privacySource, /Short voice recording and playback[\s\S]*€2[\s\S]*Live voice feature[\s\S]*€10 per private session/);
 assert.match(privacySource, /Realtime-response, input-transcription, and character-priced approved speech/);
-assert.match(privacySource, /direct\s+model audio is disabled and never attached for\s+playback/);
-assert.match(privacySource, /content-bound\s+by a signed\s+authorization/);
+assert.match(privacySource, /OpenAI Realtime is used for microphone streaming,\s+speech recognition, turn detection, and natural dialogue/);
+assert.match(privacySource, /separate authenticated server control\s+connection owns protected tools and deterministic calculations/);
+assert.match(privacySource, /only a clear finalized answer to that closed\s+confirmation question authorizes the exact prepared plan and profile revision/);
+assert.match(privacySource, /complete finalized welcome,\s+conversation, and closing turns remain reviewable with the modules after reload/);
 assert.match(privacySource, /Partial caption streams are not retained/);
 assert.match(privacySource, /final, it is processed automatically as the next live turn/);
-assert.match(privacySource, /one final profile-and-module review/);
+assert.match(privacySource, /microphone input is disabled, playback is allowed to finish \(with a bounded\s+timeout\), the session closes, and the results view opens automatically/);
 assert.match(planIndexSource, /id="realtimeVoiceShell"/);
 assert.ok(
   planIndexSource.indexOf('id="realtimeVoiceShell"') > planIndexSource.indexOf('id="appRoot"'),
@@ -1353,6 +1355,56 @@ assert.equal(welcomeController.welcomePending, false);
 assert.equal(welcomeTrack.enabled, true, 'Client audio must open immediately after the welcome playback stops.');
 assert.equal(welcomeController.phase, 'listening');
 welcomeController.cleanupLocal();
+
+// Once the server authorizes the completion outro, microphone controls and
+// competing meeting actions remain locked until playback ends (or times out).
+{
+  const completionTrack = { kind: 'audio', enabled: true, stop: () => {} };
+  const startButton = { setAttribute: () => {} };
+  const muteButton = { setAttribute: () => {} };
+  const endButton = {};
+  const reviewButton = {};
+  const microphoneSelect = {};
+  const refreshButton = {};
+  const completionElements = new Map([
+    ['#realtimeVoiceStartButton', startButton],
+    ['#realtimeVoiceMuteButton', muteButton],
+    ['#realtimeVoiceEndButton', endButton],
+    ['#realtimeVoiceReviewButton', reviewButton],
+    ['#realtimeVoiceMicrophoneSelect', microphoneSelect],
+    ['#realtimeVoiceRefreshDevicesButton', refreshButton]
+  ]);
+  const completionController = new RealtimeVoiceController({
+    root: {
+      dataset: {},
+      classList: { toggle: () => {} },
+      querySelector: (selector) => completionElements.get(selector) || null
+    }
+  });
+  completionController.active = true;
+  completionController.localStream = {
+    getAudioTracks: () => [completionTrack],
+    getTracks: () => [completionTrack]
+  };
+  completionController.selectedMicrophoneId = 'mic-one';
+  completionController.beginCompletionPlayback({
+    outroSpeechId: 'speech_completion_frontend_lock_123456'
+  });
+  assert.equal(completionTrack.enabled, false);
+  assert.equal(completionController.muted, true);
+  completionController.toggleMute();
+  assert.equal(completionController.muted, true, 'The outro lock must not allow the microphone to be unmuted.');
+  assert.equal(completionController.commitTurn(), false);
+  assert.equal(await completionController.selectMicrophone('mic-two'), false);
+  assert.equal(completionController.selectedMicrophoneId, 'mic-one');
+  assert.equal(startButton.disabled, true);
+  assert.equal(muteButton.disabled, true);
+  assert.equal(endButton.disabled, true);
+  assert.equal(reviewButton.disabled, true);
+  assert.equal(microphoneSelect.disabled, true);
+  assert.equal(refreshButton.disabled, true);
+  completionController.cleanupLocal();
+}
 
 const sentRealtimeEvents = [];
 realtimeController.active = true;

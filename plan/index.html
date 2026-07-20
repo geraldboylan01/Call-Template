@@ -289,7 +289,7 @@
 
           <p id="realtimeVoiceTrustCopy" class="realtime-voice-trust-copy">
             Planéir is an AI companion for financial education, not a person or a regulated adviser.
-            Your microphone is on only during the meeting, and nothing is confirmed until you review it.
+            Your microphone is on only during the meeting. No module runs until Planéir summarises the exact plan and you explicitly confirm it.
             <a href="./privacy.html#optional-voice" target="_blank" rel="noopener noreferrer">Privacy details</a>.
           </p>
           <audio id="realtimeVoiceAudio" autoplay playsinline aria-hidden="true"></audio>
@@ -400,9 +400,10 @@
         </p>
         <ul class="voice-consent-facts">
           <li>The live conversation can continue while you move between planning steps. Streaming stops when you end voice, withdraw consent, delete or leave the journey, hide the tab, lose the private session, or reach the server lease limit; Mute pauses microphone audio without ending the lease.</li>
-          <li>OpenAI Realtime interprets completed speech and calls protected tools, but its direct audio is blocked. A separate authenticated speech service reads only exact, code-owned Planéir copy.</li>
+          <li>OpenAI Realtime provides the natural conversation. A protected server-side control connection owns tools, saved facts, plan preparation, calculations, and the exact closing message.</li>
           <li>Final spoken turns may invoke protected server-side tools that propose profile facts, follow-up questions, and relevant Planéir modules.</li>
-          <li>Proposals are not confirmed facts. Planéir reads back material amounts, dates, goals, and assumptions, then asks for one final profile-and-module confirmation.</li>
+          <li>Proposals are not confirmed facts. When spoken completion is enabled, Planéir summarises the goal, material assumptions and exact modules, then asks one closed question. Only a clear finalized spoken confirmation to that summary authorizes that exact profile revision.</li>
+          <li>After successful generation, microphone input is disabled, Planéir gives a short closing message, the meeting ends automatically, and your saved modules and complete finalized transcript are opened.</li>
           <li>Financial calculations still run only in tested Planéir code. The voice model cannot approve products or provide regulated advice.</li>
           <li>Do not say PPS numbers, passwords, PINs, full account or card numbers, exact addresses, or identity-document details.</li>
         </ul>
@@ -413,8 +414,8 @@
         <label class="check-row" for="realtimeVoiceConsentAcknowledgement">
           <input id="realtimeVoiceConsentAcknowledgement" name="realtimeVoiceConsentAcknowledgement" type="checkbox" required />
           <span>
-            <strong>I choose to enable automatic Live voice turns, protected planning tools, and code-owned AI playback</strong>
-            <small>I understand the microphone remains active while clearly marked, completed turns are interpreted automatically, and only separately authorized Planéir copy is spoken back before my final review.</small>
+            <strong>I choose to enable automatic Live voice turns, protected planning tools, and spoken plan authorization</strong>
+            <small>I understand that, when the spoken-completion feature is enabled, my clear spoken confirmation after the exact plan summary can authorize that profile revision and generate the listed modules without a separate button.</small>
           </span>
         </label>
         <p class="consent-detail">

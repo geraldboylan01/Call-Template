@@ -194,18 +194,20 @@
               Client code does not execute financial tools, and the voice model does not write confirmed
               facts directly. The interface labels proposed values as exact, approximate, or pending
               confirmation; material amounts, dates, goals, and assumptions are read back during the
-              conversation. Before calculations run, you receive one final profile-and-module review where
-              you can correct, remove, or confirm the proposals.
+              conversation. Before calculations run, Planéir summarises the goal, material assumptions and
+              exact modules. When spoken completion is enabled, only a clear finalized answer to that closed
+              confirmation question authorizes the exact prepared plan and profile revision. Corrections,
+              negative answers, ambiguous replies, stale revisions, and repeated calls do not authorize it.
             </p>
             <p>
-              <strong>Voice playback is AI-generated from code-owned copy.</strong> Bounded question playback
-              derives the exact current, server-owned Planéir question through the protected service. In Live
-              voice, OpenAI Realtime is used for microphone streaming, speech recognition, turn detection, and
-              protected tool interpretation. Its direct model audio is disabled and never attached for
-              playback. Each audible Planéir response is exact Worker-approved text, content-bound by a signed
-              authorization, and generated separately through the protected speech service. The visible final
-              caption is that same approved text. Speaking while it plays stops the controlled audio and returns
-              the companion to listening.
+              <strong>Voice dialogue and playback are AI-generated.</strong> In the controlled voice route,
+              bounded question playback derives the exact current, server-owned Planéir question through the
+              protected service. In conversational Live voice, OpenAI Realtime is used for microphone streaming,
+              speech recognition, turn detection, and natural dialogue. A separate authenticated server control
+              connection owns protected tools and deterministic calculations; the conversational model cannot
+              authorize or claim a module result. After successful module generation, the server authorizes the
+              exact closing message, microphone input is disabled, playback is allowed to finish (with a bounded
+              timeout), the session closes, and the results view opens automatically.
             </p>
             <p>
               Short voice recording and playback has a server-enforced €2 app allowance per private
@@ -229,6 +231,13 @@
               application logs. Server-side cost, consent, and lease audit records exclude raw audio and
               transcript content; only the encrypted, redacted finalized turns described above may retain
               transcript text in the private session.
+            </p>
+            <p>
+              Each Live voice call is stored as a separate meeting. Its complete finalized welcome,
+              conversation, and closing turns remain reviewable with the modules after reload. Stable turn IDs,
+              timestamps, and redaction indicators are returned; partial recognition events and raw audio are
+              not stored. The spoken-confirmation audit stores identifiers and a hash, not a duplicate copy of
+              the transcript. Existing session expiry, deletion, encryption, and ownership controls apply.
             </p>
             <div class="privacy-callout">
               Spoken audio reaches transcription before text redaction can run. Do not say PPS numbers,

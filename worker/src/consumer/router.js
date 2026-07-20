@@ -56,11 +56,14 @@ import {
   listRealtimeFactProposalSummaries,
   listRealtimeFinalTurns,
   getRealtimeLease,
+  getRealtimeMeetingTranscript,
+  listRealtimeMeetings,
   markRealtimeAnalysisPlanRunning,
   markRealtimeProviderCostInFlight,
   prepareRealtimeAnalysisPlan,
   realtimeConsentIsCurrent,
   setRealtimeConsent,
+  setRealtimeMeetingPhase,
   toPublicRealtimeAnalysisPlan,
   toPublicRealtimeConsent,
   toPublicRealtimeLease,
@@ -196,8 +199,8 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeVoice === 'marin'
     && config?.realtimeReasoningEffort === 'low'
     && config?.realtimeTranscriptionModel === 'gpt-4o-mini-transcribe'
-    && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v8'
-    && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v6'
+    && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v9'
+    && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v7'
     && config?.realtimePricingVersion === 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'
     && config?.realtimeSpeechModel === 'gpt-4o-mini-tts'
     && config?.realtimeSpeechVoice === 'marin'
@@ -270,6 +273,19 @@ async function readJson(request, { optional = false } = {}) {
 function routeMatch(pathname) {
   if (pathname === '/api/consumer/bootstrap') return { kind: 'bootstrap', methods: ['GET'] };
   if (pathname === '/api/consumer/sessions') return { kind: 'create', methods: ['POST'] };
+  const realtimeTranscriptMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/meetings\/(rt_[A-Za-z0-9_-]{20,80})\/transcript$/.exec(pathname);
+  if (realtimeTranscriptMatch) {
+    return {
+      kind: 'realtime_meeting_transcript',
+      sessionId: realtimeTranscriptMatch[1],
+      meetingId: realtimeTranscriptMatch[2],
+      methods: ['GET']
+    };
+  }
+  const realtimeMeetingsMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/meetings$/.exec(pathname);
+  if (realtimeMeetingsMatch) {
+    return { kind: 'realtime_meetings', sessionId: realtimeMeetingsMatch[1], methods: ['GET'] };
+  }
   const realtimeActivationMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/activations\/(rt_activation_[A-Za-z0-9_-]{20,80})$/.exec(pathname);
   if (realtimeActivationMatch) {
     return {
@@ -615,6 +631,24 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       return respond({ ...result, ai: { mode: 'rules_only', status: 'rules_only' } }, 200, methods);
     }
 
+    if (route.kind === 'realtime_meetings') {
+      const meetings = await listRealtimeMeetings(env, sessionRow.id);
+      return respond({ meetings }, 200, methods);
+    }
+
+    if (route.kind === 'realtime_meeting_transcript') {
+      const url = new URL(request.url);
+      const cursor = url.searchParams.get('cursor');
+      const limit = Number.parseInt(url.searchParams.get('limit') || '50', 10);
+      const transcript = await getRealtimeMeetingTranscript(
+        env,
+        sessionRow.id,
+        route.meetingId,
+        { cursor, limit }
+      );
+      return respond(transcript, 200, methods);
+    }
+
     if (route.kind === 'voice_consent') {
       const body = validateVoiceConsentBody(await readJson(request), {
         noticeId: config.voiceNoticeId,
@@ -789,6 +823,14 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       );
       if (!realtimeLease) throw notFound('This live voice lease could not be found.');
       if (request.method === 'DELETE' && ['pending', 'active', 'closing'].includes(realtimeLease.status)) {
+        if (realtimeLease.meeting_phase === 'closing') {
+          realtimeLease = await setRealtimeMeetingPhase(env, {
+            sessionId: sessionRow.id,
+            leaseId: realtimeLease.id,
+            phase: 'completed',
+            navigationTarget: realtimeLease.completion_navigation_target || '/plan/#results'
+          });
+        }
         realtimeLease = await closeRealtimeControl(env, realtimeLease, {
           status: 'complete',
           reason: 'consumer_closed',
@@ -818,7 +860,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       ] = await Promise.all([
         getRealtimeControlPlaneProof(env, sessionRow.id, route.leaseId),
         getConsumerProviderBudget(env, sessionRow.id),
-        listRealtimeFinalTurns(env, sessionRow.id, route.leaseId, 20),
+        listRealtimeFinalTurns(env, sessionRow.id, route.leaseId, 200),
         getCurrentRealtimeAnalysisPlan(env, sessionRow.id),
         getCurrentProfile(env, sessionRow),
         listRealtimeFactProposalSummaries(env, sessionRow.id, route.leaseId),
@@ -906,7 +948,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         voiceBudget,
         realtimeConsent,
         realtimeLease,
-        analysisPlan
+        analysisPlan,
+        realtimeMeetings
       ] = await Promise.all([
         listTurns(env, sessionRow.id),
         getLatestAnalysis(env, sessionRow.id, sessionRow.current_profile_revision),
@@ -915,7 +958,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         (config.voiceEnabled || config.realtimeEnabled) ? getConsumerProviderBudget(env, sessionRow.id) : null,
         getRealtimeConsent(env, sessionRow.id),
         getLatestRealtimeLease(env, sessionRow.id),
-        getCurrentRealtimeAnalysisPlan(env, sessionRow.id)
+        getCurrentRealtimeAnalysisPlan(env, sessionRow.id),
+        listRealtimeMeetings(env, sessionRow.id)
       ]);
       const realtimeTurns = realtimeLease
         ? await listRealtimeFinalTurns(env, sessionRow.id, realtimeLease.id)
@@ -938,6 +982,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         realtimeVoiceBudget: realtimeVoiceBudgetPayload(voiceBudget, realtimeLease, config),
         realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
         realtimeLease: toPublicRealtimeLease(realtimeLease),
+        realtimeMeetings,
         realtimeTurns,
         analysisPlan: await getPublicRealtimeAnalysisPlan(env, analysisPlan),
         conversationGuide: toConversationGuide(latestMeetingBrief?.brief),

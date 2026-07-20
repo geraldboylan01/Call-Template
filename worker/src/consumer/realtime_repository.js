@@ -68,7 +68,15 @@ export function toPublicRealtimeLease(row) {
     createdAt: row.created_at,
     activatedAt: row.activated_at || null,
     lastActiveAt: row.last_active_at,
-    endedAt: row.ended_at || null
+    endedAt: row.ended_at || null,
+    meetingPhase: row.meeting_phase || 'discovery',
+    analysisPlanId: row.completion_analysis_plan_id || null,
+    completionProfileRevision: row.completion_profile_revision === null
+      || typeof row.completion_profile_revision === 'undefined'
+      ? null
+      : safeInteger(row.completion_profile_revision),
+    navigationTarget: row.completion_navigation_target || null,
+    outroSpeechId: row.completion_outro_speech_id || null
   };
 }
 
@@ -1307,7 +1315,7 @@ export async function recordRealtimeFinalTurn(env, request) {
   return { id, transcript, sensitiveDetailsRemoved: transcript !== raw, idempotentReplay: false };
 }
 
-export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 40) {
+export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 200) {
   const result = await db(env).prepare(`
     SELECT id, realtime_session_id, role, transcript_encrypted,
            sensitive_details_removed, created_at
@@ -1315,7 +1323,7 @@ export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 40
     WHERE session_id = ? AND realtime_session_id = ?
     ORDER BY created_at ASC, id ASC
     LIMIT ?
-  `).bind(sessionId, leaseId, Math.max(1, Math.min(40, limit))).all();
+  `).bind(sessionId, leaseId, Math.max(1, Math.min(200, limit))).all();
   const turns = [];
   for (const row of result.results || []) {
     const payload = await decryptJson(
@@ -1334,6 +1342,189 @@ export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 40
   return turns;
 }
 
+export async function listRealtimeMeetings(env, sessionId, limit = 50) {
+  const result = await db(env).prepare(`
+    SELECT leases.*,
+           COUNT(turns.id) AS transcript_turn_count,
+           plans.status AS analysis_plan_status
+    FROM consumer_realtime_sessions AS leases
+    LEFT JOIN consumer_realtime_final_turns AS turns
+      ON turns.realtime_session_id = leases.id
+    LEFT JOIN consumer_realtime_analysis_plans AS plans
+      ON plans.id = leases.completion_analysis_plan_id
+    WHERE leases.session_id = ?
+    GROUP BY leases.id
+    ORDER BY COALESCE(leases.activated_at, leases.created_at) DESC, leases.id DESC
+    LIMIT ?
+  `).bind(sessionId, Math.max(1, Math.min(100, limit))).all();
+  return (result.results || []).map((row, index) => ({
+    meetingId: row.id,
+    status: row.status,
+    meetingPhase: row.meeting_phase || 'discovery',
+    startedAt: row.activated_at || row.created_at,
+    endedAt: row.ended_at || null,
+    turnCount: safeInteger(row.transcript_turn_count),
+    analysisPlanId: row.completion_analysis_plan_id || null,
+    analysisStatus: row.analysis_plan_status || null,
+    navigationTarget: row.completion_navigation_target || null,
+    isLatest: index === 0
+  }));
+}
+
+export async function getRealtimeMeetingTranscript(env, sessionId, leaseId, { cursor = null, limit = 50 } = {}) {
+  const lease = await db(env).prepare(`
+    SELECT * FROM consumer_realtime_sessions WHERE id = ? AND session_id = ? LIMIT 1
+  `).bind(leaseId, sessionId).first();
+  if (!lease) throw notFound('This voice meeting could not be found.');
+  let cursorRow = null;
+  if (cursor) {
+    cursorRow = await db(env).prepare(`
+      SELECT id, created_at FROM consumer_realtime_final_turns
+      WHERE id = ? AND realtime_session_id = ? AND session_id = ? LIMIT 1
+    `).bind(cursor, leaseId, sessionId).first();
+    if (!cursorRow) throw new ConsumerError(400, 'realtime_transcript_cursor_invalid', 'The transcript cursor is invalid.');
+  }
+  const pageSize = Math.max(1, Math.min(50, Number(limit) || 50));
+  const result = await db(env).prepare(`
+    SELECT id, realtime_session_id, role, transcript_encrypted,
+           sensitive_details_removed, created_at
+    FROM consumer_realtime_final_turns
+    WHERE session_id = ? AND realtime_session_id = ?
+      AND (? IS NULL OR created_at > ? OR (created_at = ? AND id > ?))
+    ORDER BY created_at ASC, id ASC
+    LIMIT ?
+  `).bind(
+    sessionId,
+    leaseId,
+    cursorRow?.id || null,
+    cursorRow?.created_at || '',
+    cursorRow?.created_at || '',
+    cursorRow?.id || '',
+    pageSize + 1
+  ).all();
+  const rows = result.results || [];
+  const hasMore = rows.length > pageSize;
+  const pageRows = rows.slice(0, pageSize);
+  const turns = [];
+  for (const row of pageRows) {
+    const payload = await decryptJson(
+      env,
+      row.transcript_encrypted,
+      `consumer/realtime/final-turn/${sessionId}/${row.realtime_session_id}/${row.id}`
+    );
+    turns.push({
+      id: row.id,
+      role: row.role,
+      transcript: String(payload?.transcript || '').slice(0, 4_000),
+      sensitiveDetailsRemoved: Number(row.sensitive_details_removed) === 1,
+      createdAt: row.created_at
+    });
+  }
+  return {
+    meeting: {
+      meetingId: lease.id,
+      status: lease.status,
+      meetingPhase: lease.meeting_phase || 'discovery',
+      startedAt: lease.activated_at || lease.created_at,
+      endedAt: lease.ended_at || null,
+      analysisPlanId: lease.completion_analysis_plan_id || null,
+      navigationTarget: lease.completion_navigation_target || null
+    },
+    turns,
+    nextCursor: hasMore ? turns.at(-1)?.id || null : null
+  };
+}
+
+export async function setRealtimeMeetingPhase(env, request) {
+  const phase = String(request.phase || '');
+  if (![
+    'discovery', 'intake', 'awaiting_voice_confirmation',
+    'generating_modules', 'closing', 'completed'
+  ].includes(phase)) {
+    throw new ConsumerError(400, 'realtime_meeting_phase_invalid', 'The voice meeting phase is invalid.');
+  }
+  const row = await db(env).prepare(`
+    UPDATE consumer_realtime_sessions
+    SET meeting_phase = ?,
+        completion_analysis_plan_id = COALESCE(?, completion_analysis_plan_id),
+        completion_profile_revision = COALESCE(?, completion_profile_revision),
+        completion_confirmation_turn_id = COALESCE(?, completion_confirmation_turn_id),
+        completion_navigation_target = COALESCE(?, completion_navigation_target),
+        completion_outro_speech_id = COALESCE(?, completion_outro_speech_id),
+        last_active_at = ?
+    WHERE id = ? AND session_id = ?
+    RETURNING *
+  `).bind(
+    phase,
+    request.planId || null,
+    Number.isSafeInteger(Number(request.profileRevision)) ? Number(request.profileRevision) : null,
+    request.confirmationTurnId || null,
+    request.navigationTarget || null,
+    request.outroSpeechId || null,
+    nowIso(),
+    request.leaseId,
+    request.sessionId
+  ).first();
+  if (!row) throw notFound('This voice meeting could not be found.');
+  return row;
+}
+
+export async function recordRealtimeVoiceConfirmation(env, request) {
+  const id = randomId('voice_confirmation');
+  const confirmationTurn = await db(env).prepare(`
+    SELECT turns.transcript_hash_b64u
+    FROM consumer_realtime_final_turns AS turns
+    WHERE turns.id = ? AND turns.session_id = ?
+      AND turns.realtime_session_id = ? AND turns.role = 'user'
+      AND EXISTS (
+        SELECT 1 FROM consumer_realtime_analysis_plans AS plans
+        WHERE plans.id = ? AND plans.session_id = ?
+          AND plans.realtime_session_id = ? AND plans.profile_revision = ?
+      )
+    LIMIT 1
+  `).bind(
+    request.confirmationTurnId,
+    request.sessionId,
+    request.leaseId,
+    request.planId,
+    request.sessionId,
+    request.leaseId,
+    request.profileRevision
+  ).first();
+  if (!confirmationTurn) {
+    throw new ConsumerError(409, 'spoken_confirmation_turn_invalid', 'The finalized confirmation turn is unavailable.');
+  }
+  const confirmationTurnHash = confirmationTurn.transcript_hash_b64u;
+  const timestamp = nowIso();
+  try {
+    const row = await db(env).prepare(`
+      INSERT INTO consumer_realtime_voice_confirmations (
+        id, session_id, realtime_session_id, analysis_plan_id, profile_revision,
+        confirmation_turn_id, confirmation_turn_hash_b64u, confirmation_mode, confirmed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'spoken_affirmative_v1', ?)
+      RETURNING *
+    `).bind(
+      id,
+      request.sessionId,
+      request.leaseId,
+      request.planId,
+      request.profileRevision,
+      request.confirmationTurnId,
+      confirmationTurnHash,
+      timestamp
+    ).first();
+    return { row, idempotentReplay: false };
+  } catch (error) {
+    const existing = await db(env).prepare(`
+      SELECT * FROM consumer_realtime_voice_confirmations
+      WHERE realtime_session_id = ? AND analysis_plan_id = ? AND confirmation_turn_id = ?
+      LIMIT 1
+    `).bind(request.leaseId, request.planId, request.confirmationTurnId).first().catch(() => null);
+    if (!existing) throw error;
+    return { row: existing, idempotentReplay: true };
+  }
+}
+
 export async function saveRealtimeMeetingBrief(env, request) {
   const id = randomId('realtime_brief');
   const timestamp = nowIso();
@@ -1347,9 +1538,10 @@ export async function saveRealtimeMeetingBrief(env, request) {
       id, realtime_session_id, session_id, source_turn_id, profile_revision,
       schema_version, planner_prompt_version, brief_encrypted,
       brief_hash_b64u, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 'MeetingBriefV1', ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(realtime_session_id, source_turn_id) DO UPDATE SET
       profile_revision = excluded.profile_revision,
+      schema_version = excluded.schema_version,
       planner_prompt_version = excluded.planner_prompt_version,
       brief_encrypted = excluded.brief_encrypted,
       brief_hash_b64u = excluded.brief_hash_b64u,
@@ -1360,6 +1552,7 @@ export async function saveRealtimeMeetingBrief(env, request) {
     request.sessionId,
     request.sourceTurnId,
     request.profileRevision,
+    request.brief.schemaVersion === 'MeetingBriefV2' ? 'MeetingBriefV2' : 'MeetingBriefV1',
     request.plannerPromptVersion,
     encrypted,
     hash,
@@ -2079,6 +2272,26 @@ export async function getCurrentRealtimeAnalysisPlan(env, sessionId) {
     ORDER BY created_at DESC
     LIMIT 1
   `).bind(sessionId).first();
+}
+
+export async function getRealtimeAnalysisPlanExecution(env, sessionId, planId, leaseId = null) {
+  const row = await db(env).prepare(`
+    SELECT * FROM consumer_realtime_analysis_plans
+    WHERE id = ? AND session_id = ?
+      AND (? IS NULL OR realtime_session_id = ?)
+    LIMIT 1
+  `).bind(planId, sessionId, leaseId, leaseId).first();
+  if (!row) throw notFound('This analysis plan could not be found.');
+  const input = await decryptJson(
+    env,
+    row.input_encrypted,
+    `consumer/realtime/analysis-plan/${sessionId}/${row.id}/input`
+  );
+  const planNonce = `plan_nonce_${await hmacSha256Base64Url(
+    env.CONSUMER_RATE_LIMIT_HASH_KEY,
+    `consumer/realtime/analysis-plan-nonce/v1/${sessionId}/${row.id}`
+  )}`;
+  return { row, input, planNonce };
 }
 
 export async function getRealtimeProviderCallId(env, sessionId, leaseId) {

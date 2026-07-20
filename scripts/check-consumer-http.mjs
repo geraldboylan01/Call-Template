@@ -124,6 +124,26 @@ assert.match(
   /X-Realtime-Activation-Id/i
 );
 
+const realtimeMeetingsPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/realtime/meetings', {
+  method: 'OPTIONS',
+  expectedStatus: 204,
+  extraHeaders: {
+    'Access-Control-Request-Method': 'GET',
+    'Access-Control-Request-Headers': 'x-consumer-session'
+  }
+});
+assert.match(realtimeMeetingsPreflight.response.headers.get('access-control-allow-methods') || '', /GET/i);
+
+const realtimeTranscriptPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/realtime/meetings/rt_AAAAAAAAAAAAAAAAAAAA/transcript', {
+  method: 'OPTIONS',
+  expectedStatus: 204,
+  extraHeaders: {
+    'Access-Control-Request-Method': 'GET',
+    'Access-Control-Request-Headers': 'x-consumer-session'
+  }
+});
+assert.match(realtimeTranscriptPreflight.response.headers.get('access-control-allow-methods') || '', /GET/i);
+
 const advisorInvitePreflight = await request('/api/advisor/consumer-invite', {
   method: 'OPTIONS',
   expectedStatus: 204,

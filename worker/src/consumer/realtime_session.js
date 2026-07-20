@@ -8,12 +8,16 @@ import { getPlanningModuleDefinition } from '../../../js/planning/module_registr
 import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
-import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
+import {
+  confirmAndRunRealtimeAnalysisPlan,
+  prepareRealtimeVoiceAnalysisPlan
+} from './realtime_analysis.js';
 import { describeConversationState } from './conversation.js';
 import { ConsumerError } from './errors.js';
 import {
   getCurrentProfile,
   getSessionRow,
+  confirmProfileRevision,
   recordEvent,
   releaseConsumerProviderCostNotSent,
   settleConsumerProviderCostKnown,
@@ -29,6 +33,7 @@ import {
   createRealtimeFactProposal,
   getPendingRealtimeFactProposal,
   getRealtimeAnalysisPlanResult,
+  getRealtimeAnalysisPlanExecution,
   getRealtimeConsent,
   getLatestRealtimeMeetingBrief,
   getRealtimeLease,
@@ -36,11 +41,13 @@ import {
   hasUnsettledRealtimeSpeechUsage,
   listRealtimeFactProposalSummaries,
   listRealtimeFinalTurns,
+  recordRealtimeVoiceConfirmation,
   realtimeConsentIsCurrent,
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
   rejectRealtimeFactProposal,
   saveRealtimeMeetingBrief,
+  setRealtimeMeetingPhase,
   touchRealtimeLease
 } from './realtime_repository.js';
 import {
@@ -68,6 +75,11 @@ import {
   sectionCompletionToRealtimeFact,
   toConversationGuide
 } from './realtime_planner.js';
+import {
+  buildVoiceConfirmationSummary,
+  classifySpokenPlanConfirmation,
+  REALTIME_COMPLETION_OUTRO
+} from './realtime_completion.js';
 import {
   applyProfilePatch
 } from './validators.js';
@@ -972,7 +984,7 @@ export class ConsumerRealtimeSession {
       this.finalizedEvidenceItems.add(itemId);
       this.latestFinalizedEvidenceItemId = itemId;
       await this.state.storage.put('latestFinalizedEvidenceItemId', itemId).catch(() => {});
-      await recordRealtimeFinalTurn(this.env, {
+      const recordedTurn = await recordRealtimeFinalTurn(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
         providerItemId: itemId,
@@ -983,6 +995,14 @@ export class ConsumerRealtimeSession {
       this.toolRejectionRetryArmed = false;
       await this.touch();
       if (config.realtimeConversationV2Enabled) {
+        if (config.realtimeSpokenCompletionEnabled) {
+          const completionHandled = await this.handleSpokenCompletionTurn({
+            itemId,
+            turnId: recordedTurn.id,
+            transcript
+          });
+          if (completionHandled) return;
+        }
         await this.processPlannerTurn({ itemId, transcript });
       }
       await this.authorizeResponse('finalized_user_item');
@@ -1517,6 +1537,13 @@ export class ConsumerRealtimeSession {
     await this.state.storage.put('pendingResponseAuthorization', this.pendingResponseAuthorization);
     try {
       const conversationalV2 = context.config.realtimeConversationV2Enabled;
+      const meetingPhase = context.state.meetingBrief?.phase || context.state.realtimePhase;
+      const confirmationInstruction = context.state.meetingBrief?.confirmationSummary
+        ? `Speak this confirmation summary exactly, without adding another question or claim: ${context.state.meetingBrief.confirmationSummary}`
+        : 'Briefly say the plan still needs review and ask one closed confirmation question.';
+      const intakeInstruction = context.state.meetingBrief?.questionBatch?.prompt
+        ? `Acknowledge the finalized client turn briefly, then ask exactly this one question and no other: ${context.state.meetingBrief.questionBatch.prompt}`
+        : 'Respond naturally to the finalized client turn, then ask only the single signed nextObjective question.';
       const forceTool = authorization.options?.forceTool === 'get_planning_state'
         ? 'get_planning_state'
         : null;
@@ -1536,7 +1563,11 @@ export class ConsumerRealtimeSession {
                     ? REALTIME_V2_WELCOME_INSTRUCTIONS
                     : authorizationReason === 'silence_prompt'
                       ? 'Offer one gentle, brief reassurance that there is no rush, and ask whether rephrasing the current objective would help. Do not repeat the previous question verbatim.'
-                      : 'Respond naturally to the finalized client turn using the current signed MeetingBriefV1. Answer any client question first, then continue with the next objective. Do not repeat a failed prompt.',
+                      : meetingPhase === 'awaiting_voice_confirmation'
+                        ? confirmationInstruction
+                        : meetingPhase === 'generating_modules' || meetingPhase === 'closing' || meetingPhase === 'completed'
+                          ? 'Do not speak. The server owns module generation, the closing message and navigation.'
+                          : intakeInstruction,
                 // The first response is a spoken welcome, not an intake or
                 // planner turn. Disallow tools for that response so Marin is
                 // guaranteed to speak before the microphone starts sending.
@@ -1737,12 +1768,60 @@ export class ConsumerRealtimeSession {
         moduleIds
       }).catch(() => {});
     }
-    const brief = await composeMeetingBrief({
+    let brief = await composeMeetingBrief({
       env: this.env,
       context: refreshed,
       extraction,
       sourceTurnId: extraction.sourceTurnId
     });
+    if (brief.readyToConfirm && refreshed.config.realtimeSpokenCompletionEnabled) {
+      const prepared = await prepareRealtimeVoiceAnalysisPlan({
+        env: this.env,
+        config: refreshed.config,
+        sessionRow: refreshed.sessionRow,
+        profile: refreshed.profile,
+        leaseId: this.meta.leaseId,
+        idempotencyKey: `spoken-completion:${this.meta.leaseId}:${brief.profileRevision}:${extraction.sourceTurnId}`
+      });
+      const enriched = {
+        ...brief,
+        phase: 'awaiting_voice_confirmation',
+        moduleState: 'prepared',
+        analysisPlan: {
+          planId: prepared.publicPlan.planId,
+          profileRevision: prepared.publicPlan.profileRevision,
+          status: prepared.publicPlan.status,
+          moduleIds: prepared.publicPlan.moduleIds
+        },
+        confirmationSummary: buildVoiceConfirmationSummary({
+          narrativeSummary: brief.narrativeSummary,
+          analyses: brief.analyses,
+          statePensionRule: brief.statePensionRule,
+          understood: brief.understood
+        })
+      };
+      const signature = await hmacSha256Base64Url(
+        this.env.CONSUMER_RATE_LIMIT_HASH_KEY,
+        `consumer/realtime/meeting-brief/v2/${stableStringify(enriched)}`
+      );
+      brief = Object.freeze({ ...enriched, signature });
+      await setRealtimeMeetingPhase(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        phase: 'awaiting_voice_confirmation',
+        planId: prepared.publicPlan.planId,
+        profileRevision: prepared.publicPlan.profileRevision,
+        navigationTarget: '/plan/#results'
+      });
+      this.currentPhase = 'awaiting_voice_confirmation';
+      await this.state.storage.put('phase', this.currentPhase);
+    } else {
+      await setRealtimeMeetingPhase(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        phase: brief.phase === 'discovery' ? 'discovery' : 'intake'
+      }).catch(() => {});
+    }
     await saveRealtimeMeetingBrief(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
@@ -1872,12 +1951,201 @@ export class ConsumerRealtimeSession {
     }
   }
 
+  async handleSpokenCompletionTurn({ itemId, turnId, transcript }) {
+    const context = await this.planningContext();
+    const brief = context.state.meetingBrief;
+    if (brief?.phase !== 'awaiting_voice_confirmation'
+      || !brief.analysisPlan?.planId
+      || Number(brief.analysisPlan.profileRevision) !== Number(context.sessionRow.current_profile_revision)) {
+      return false;
+    }
+    const decision = classifySpokenPlanConfirmation(transcript);
+    if (decision !== 'affirmed') return false;
+
+    const planId = brief.analysisPlan.planId;
+    const expectedRevision = Number(brief.analysisPlan.profileRevision);
+    try {
+      const execution = await getRealtimeAnalysisPlanExecution(
+        this.env,
+        this.meta.sessionId,
+        planId,
+        this.meta.leaseId
+      );
+      if (Number(execution.row.profile_revision) !== expectedRevision
+        || execution.row.status !== 'prepared') {
+        throw new ConsumerError(409, 'profile_revision_conflict', 'The prepared plan changed before spoken confirmation.');
+      }
+      await confirmProfileRevision(this.env, context.sessionRow, context.profile);
+      await recordRealtimeVoiceConfirmation(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        planId,
+        profileRevision: expectedRevision,
+        confirmationTurnId: turnId
+      });
+      await setRealtimeMeetingPhase(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        phase: 'generating_modules',
+        planId,
+        profileRevision: expectedRevision,
+        confirmationTurnId: turnId,
+        navigationTarget: '/plan/#results'
+      });
+      this.currentPhase = 'generating_modules';
+      await this.state.storage.put('phase', this.currentPhase);
+      const executed = await confirmAndRunRealtimeAnalysisPlan({
+        env: this.env,
+        config: context.config,
+        sessionId: this.meta.sessionId,
+        planId,
+        planNonce: execution.planNonce,
+        expectedRevision
+      });
+      if (executed.analysisPlan.status !== 'complete') {
+        const requiredQuestion = executed.requiredQuestions?.[0] || null;
+        const requiredPrompt = String(
+          requiredQuestion?.prompt
+          || requiredQuestion?.question
+          || 'I found that one more detail is needed before the modules can run. Could you tell me that now?'
+        ).slice(0, 300);
+        const updatedBrief = Object.freeze({
+          ...brief,
+          sourceTurnId: itemId,
+          phase: 'intake',
+          moduleState: 'needs_information',
+          readyToConfirm: false,
+          provisional: true,
+          confirmationSummary: '',
+          questionBatch: {
+            topic: 'required_information',
+            primaryFact: requiredQuestion,
+            linkedFact: null,
+            prompt: requiredPrompt,
+            maxQuestions: 1
+          },
+          nextObjective: {
+            facts: requiredQuestion ? [requiredQuestion] : [],
+            promptHint: requiredPrompt,
+            reason: 'The deterministic module engine requires this fact.'
+          }
+        });
+        await saveRealtimeMeetingBrief(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          sourceTurnId: itemId,
+          profileRevision: expectedRevision,
+          plannerPromptVersion: context.config.realtimePlannerPromptVersion,
+          brief: updatedBrief
+        });
+        this.latestMeetingBrief = updatedBrief;
+        await this.state.storage.put('latestMeetingBrief', updatedBrief);
+        await setRealtimeMeetingPhase(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          phase: 'intake'
+        });
+        await this.refreshJourneyState('intake');
+        await this.authorizeResponse('finalized_user_item');
+        return true;
+      }
+      const speech = await issueRealtimeSpeechAuthorization({
+        env: this.env,
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        kind: 'status',
+        profileRevision: expectedRevision,
+        text: REALTIME_COMPLETION_OUTRO
+      });
+      await recordRealtimeFinalTurn(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        providerItemId: `completion_${planId}`,
+        role: 'assistant',
+        transcript: REALTIME_COMPLETION_OUTRO
+      });
+      await setRealtimeMeetingPhase(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        phase: 'closing',
+        planId,
+        profileRevision: expectedRevision,
+        confirmationTurnId: turnId,
+        navigationTarget: '/plan/#results',
+        outroSpeechId: speech.speechId
+      });
+      this.currentPhase = 'closing';
+      await this.state.storage.put('phase', this.currentPhase);
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.spoken_completion.ready',
+        payload: { planId, profileRevision: expectedRevision, confirmationTurnId: turnId }
+      });
+      return true;
+    } catch (error) {
+      const failedBrief = Object.freeze({
+        ...brief,
+        sourceTurnId: itemId,
+        phase: 'intake',
+        moduleState: 'generation_failed',
+        readyToConfirm: false,
+        provisional: true,
+        confirmationSummary: '',
+        analysisPlan: null
+      });
+      await saveRealtimeMeetingBrief(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        sourceTurnId: itemId,
+        profileRevision: expectedRevision,
+        plannerPromptVersion: context.config.realtimePlannerPromptVersion,
+        brief: failedBrief
+      }).catch(() => {});
+      this.latestMeetingBrief = failedBrief;
+      await this.state.storage.put('latestMeetingBrief', failedBrief).catch(() => {});
+      await setRealtimeMeetingPhase(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        phase: 'intake'
+      }).catch(() => {});
+      this.currentPhase = 'intake';
+      await this.state.storage.put('phase', this.currentPhase);
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.spoken_completion.failed',
+        payload: { planId, code: error instanceof ConsumerError ? error.code : 'analysis_failed' }
+      }).catch(() => {});
+      const failureText = 'I’m sorry, I couldn’t generate those modules just now. Nothing has been marked complete, and the meeting will stay open so we can try again.';
+      await issueRealtimeSpeechAuthorization({
+        env: this.env,
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        kind: 'status',
+        profileRevision: expectedRevision,
+        text: failureText
+      }).catch(() => {});
+      await recordRealtimeFinalTurn(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        providerItemId: `completion_failed_${planId}_${itemId}`.slice(0, 240),
+        role: 'assistant',
+        transcript: failureText
+      }).catch(() => {});
+      return true;
+    }
+  }
+
   async planningContext() {
     const config = getConsumerConfig(this.env);
     if (!config.realtimeEnabled) throw new ConsumerError(503, 'realtime_unavailable', 'Live voice is not available.');
-    const [sessionRow, consent] = await Promise.all([
+    const [sessionRow, consent, realtimeLease] = await Promise.all([
       getSessionRow(this.env, this.meta.sessionId),
-      getRealtimeConsent(this.env, this.meta.sessionId)
+      getRealtimeConsent(this.env, this.meta.sessionId),
+      getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId)
     ]);
     if (!sessionRow || sessionRow.deleted_at || !realtimeConsentIsCurrent(consent, config)) {
       throw new ConsumerError(403, 'realtime_consent_required', 'Live voice consent is no longer current.');
@@ -1903,12 +2171,20 @@ export class ConsumerRealtimeSession {
         profile.preferences?.baseCurrency || 'EUR'
       )
     }));
-    const retainedTerminalPhase = ['analysis', 'results'].includes(this.currentPhase)
+    const retainedTerminalPhase = [
+      'awaiting_voice_confirmation', 'generating_modules', 'closing', 'completed',
+      'analysis', 'results'
+    ].includes(this.currentPhase)
       ? this.currentPhase
       : null;
-    const realtimePhase = pendingFacts.length
-      ? 'confirmation'
-      : retainedTerminalPhase || realtimeJourneyPhase({ stage: state.stage });
+    const realtimePhase = config.realtimeConversationV2Enabled
+      ? (realtimeLease?.meeting_phase
+        || storedMeetingBrief?.brief?.phase
+        || retainedTerminalPhase
+        || 'discovery')
+      : (pendingFacts.length
+        ? 'confirmation'
+        : retainedTerminalPhase || realtimeJourneyPhase({ stage: state.stage }));
     const reasoningEscalation = complexJourney(profile, state);
     const publicState = {
       profileRevision: Number(sessionRow.current_profile_revision),
@@ -1946,6 +2222,11 @@ export class ConsumerRealtimeSession {
       recommendations: (state.recommendations || []).slice(0, 12).map((item) => ({
         moduleId: item.moduleId,
         status: item.readiness?.status || item.status || 'unknown',
+        assumptionsUsed: (item.readiness?.assumptionsUsed || []).slice(0, 8).map((assumption) => ({
+          key: typeof assumption.key === 'string' ? assumption.key.slice(0, 100) : '',
+          value: assumption.value,
+          reason: typeof assumption.reason === 'string' ? assumption.reason.slice(0, 240) : ''
+        })),
         requiredMissing: (item.readiness?.requiredMissing || []).slice(0, 20).map((missing) => {
           const semantic = resolveSemanticFact(missing, { profile, moduleId: item.moduleId });
           return {
@@ -1971,6 +2252,7 @@ export class ConsumerRealtimeSession {
         })),
       reasoningEscalation,
       conversationVersion: config.realtimeConversationV2Enabled ? 'v2' : 'v1',
+      spokenCompletionEnabled: config.realtimeSpokenCompletionEnabled,
       meetingBrief: config.realtimeConversationV2Enabled ? this.latestMeetingBrief : null,
       conversationGuide: config.realtimeConversationV2Enabled
         ? toConversationGuide(this.latestMeetingBrief)
@@ -2184,7 +2466,7 @@ export class ConsumerRealtimeSession {
         await this.queueResponseAuthorization('tool_output');
       }
       if (speechContext?.config?.realtimeConversationV2Enabled === true
-        && toolName !== 'wait_for_user') {
+        && !['wait_for_user', 'confirm_and_run_voice_plan'].includes(toolName)) {
         this.toolContinuationPending = true;
         await this.queueResponseAuthorization('tool_output');
       }
@@ -2452,6 +2734,37 @@ export class ConsumerRealtimeSession {
         topic: boundaryTopic,
         explanation: intakeExplanation(boundaryTopic, context.state.meetingBrief),
         instruction: 'Answer in one to three sentences, then bridge naturally to nextObjective. Do not add advice, eligibility claims, projections or calculations.'
+      };
+    }
+    if (toolName === 'confirm_and_run_voice_plan') {
+      if (!context.config.realtimeConversationV2Enabled
+        || !context.config.realtimeSpokenCompletionEnabled) {
+        throw new ConsumerError(409, 'spoken_completion_disabled', 'Spoken completion is not enabled for this meeting.');
+      }
+      this.requireExpectedRevision(args, context);
+      const turns = await listRealtimeFinalTurns(
+        this.env,
+        this.meta.sessionId,
+        this.meta.leaseId,
+        200
+      );
+      const latestConsumerTurn = [...turns].reverse().find((turn) => turn.role === 'user');
+      if (!latestConsumerTurn
+        || classifySpokenPlanConfirmation(latestConsumerTurn.transcript) !== 'affirmed'
+        || context.state.meetingBrief?.phase !== 'awaiting_voice_confirmation') {
+        throw new ConsumerError(409, 'spoken_confirmation_required', 'A separate finalized, clear spoken confirmation is required for this exact plan.');
+      }
+      const handled = await this.handleSpokenCompletionTurn({
+        itemId: this.authoritativeEvidenceItemId() || latestConsumerTurn.id,
+        turnId: latestConsumerTurn.id,
+        transcript: latestConsumerTurn.transcript
+      });
+      const lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId);
+      return {
+        ok: handled,
+        planId: context.state.meetingBrief.analysisPlan.planId,
+        status: lease?.meeting_phase || 'intake',
+        navigationTarget: lease?.completion_navigation_target || null
       };
     }
     if (toolName === 'get_planning_state') {

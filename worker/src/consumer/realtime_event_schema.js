@@ -77,6 +77,15 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     status: NON_CONTENT_FIELD_TYPES.STRING,
     profileRevision: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
+  'realtime.spoken_completion.ready': event({
+    planId: NON_CONTENT_FIELD_TYPES.STRING,
+    profileRevision: NON_CONTENT_FIELD_TYPES.INTEGER,
+    confirmationTurnId: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  'realtime.spoken_completion.failed': event({
+    planId: NON_CONTENT_FIELD_TYPES.STRING,
+    code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
   'realtime.reasoning.escalation': event({
     requested: NON_CONTENT_FIELD_TYPES.STRING,
     applied: NON_CONTENT_FIELD_TYPES.BOOLEAN,

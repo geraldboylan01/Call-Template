@@ -1975,6 +1975,53 @@ body.realtime-voice-open {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.meeting-transcript-panel {
+  margin-top: 2rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid var(--border, #d9dfdc);
+  border-radius: 1rem;
+  background: var(--surface, #fff);
+}
+
+.meeting-transcript-list {
+  display: grid;
+  gap: .75rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meeting-transcript-turn {
+  max-width: min(90%, 48rem);
+  padding: .85rem 1rem;
+  border-radius: .9rem;
+  background: #f3f6f4;
+}
+
+.meeting-transcript-turn.is-user {
+  justify-self: end;
+  background: #e9f3ed;
+}
+
+.meeting-transcript-speaker {
+  display: block;
+  margin-bottom: .25rem;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.meeting-transcript-turn p { margin: 0; white-space: pre-wrap; }
+.meeting-transcript-turn small { display: block; margin-top: .45rem; }
+
+.previous-meetings { margin-top: 1.25rem; }
+.previous-meeting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: .5rem;
+}
+
 .result-card.is-wide,
 .assumptions-section,
 .uncertainty-panel {

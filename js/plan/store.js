@@ -53,6 +53,9 @@ export const state = {
   session: null,
   profile: null,
   turns: [],
+  realtimeMeetings: [],
+  realtimeTurns: [],
+  selectedRealtimeMeeting: null,
   nextQuestion: null,
   recommendations: [],
   analysisPlan: null,
@@ -400,6 +403,28 @@ export function mergePayload(payload) {
   ));
   if (turns) {
     state.turns = turns;
+  }
+  const realtimeMeetings = asArray(root.realtimeMeetings);
+  if (realtimeMeetings) state.realtimeMeetings = realtimeMeetings;
+  const realtimeTurns = asArray(root.realtimeTurns);
+  if (realtimeTurns) {
+    const byId = new Map(state.realtimeTurns.map((turn) => [turn.id, turn]));
+    realtimeTurns.forEach((turn) => byId.set(turn.id, turn));
+    state.realtimeTurns = [...byId.values()].sort((left, right) => (
+      String(left.createdAt || '').localeCompare(String(right.createdAt || ''))
+      || String(left.id || '').localeCompare(String(right.id || ''))
+    ));
+  }
+  const transcriptMeeting = asObject(root.meeting);
+  const transcriptTurns = asArray(root.transcriptTurns) || (
+    transcriptMeeting && asArray(root.turns) ? root.turns : null
+  );
+  if (transcriptMeeting && transcriptTurns) {
+    state.selectedRealtimeMeeting = {
+      ...transcriptMeeting,
+      turns: transcriptTurns,
+      nextCursor: root.nextCursor || null
+    };
   }
 
   const nextQuestion = firstDefined(
@@ -765,6 +790,9 @@ export function resetJourneyState() {
   state.session = null;
   state.profile = null;
   state.turns = [];
+  state.realtimeMeetings = [];
+  state.realtimeTurns = [];
+  state.selectedRealtimeMeeting = null;
   state.nextQuestion = null;
   state.recommendations = [];
   state.analysisPlan = null;

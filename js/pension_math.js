@@ -1,12 +1,17 @@
+import {
+  IRELAND_RULES_CATALOGUE_VERSION,
+  IRISH_STATE_PENSION_CONTRIBUTORY,
+  normalizeStatePensionFraction
+} from './planning/ireland_rules.js';
+
 const DEFAULT_INFLATION_RATE = 0.02;
 const DEFAULT_WAGE_GROWTH_RATE = 0.02;
 const DEFAULT_GROWTH_RATE = 0.05;
 const DEFAULT_HORIZON_END_AGE = 100;
 const DEFAULT_INCOME_MODE = 'target';
 const DEFAULT_AFFORDABLE_END_AGES = Object.freeze([100]);
-const STATE_PENSION_WEEKLY_TODAY = 299.30;
-const STATE_PENSION_ANNUAL_TODAY = STATE_PENSION_WEEKLY_TODAY * 52;
-const STATE_PENSION_START_AGE = 66;
+const STATE_PENSION_ANNUAL_TODAY = IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur;
+const STATE_PENSION_START_AGE = IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge;
 const ARF_HIGH_VALUE_THRESHOLD = 2000000;
 const REQUIRED_POT_TOLERANCE_EUR = 25;
 const HOUSEHOLD_OWNER_IDS = new Set(['household', 'joint', 'family']);
@@ -395,6 +400,13 @@ function normalizePensionMember(rawMember, index, defaults, prefix) {
     throw new Error(`generated.pensionInputs.${prefix} must be an object.`);
   }
 
+  const legacyIncluded = rawMember.includeStatePension === false ? false : true;
+  const statePensionFraction = legacyIncluded
+    ? normalizeStatePensionFraction(rawMember.statePensionFraction, 1)
+    : 0;
+  const statePensionStartAge = typeof rawMember.statePensionStartAge === 'undefined'
+    ? STATE_PENSION_START_AGE
+    : requireFiniteInteger(rawMember.statePensionStartAge, `${prefix}.statePensionStartAge`);
   const member = {
     id: normalizeScenarioId(rawMember.id, index === 0 ? 'primary' : `pension-${index + 1}`),
     title: typeof rawMember.title === 'string' && rawMember.title.trim()
@@ -408,7 +420,14 @@ function normalizePensionMember(rawMember, index, defaults, prefix) {
     employerPct: requireFiniteNumber(rawMember.employerPct, `${prefix}.employerPct`),
     growthRate: optionalFiniteNumber(rawMember.growthRate, defaults.growthRate, `${prefix}.growthRate`),
     wageGrowthRate: optionalFiniteNumber(rawMember.wageGrowthRate, defaults.wageGrowthRate, `${prefix}.wageGrowthRate`),
-    includeStatePension: rawMember.includeStatePension === false ? false : true
+    includeStatePension: statePensionFraction > 0,
+    statePensionFraction,
+    statePensionStartAge,
+    statePensionEscalationRate: optionalFiniteNumber(
+      rawMember.statePensionEscalationRate,
+      IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate,
+      `${prefix}.statePensionEscalationRate`
+    )
   };
 
   if (member.retirementAge < member.currentAge) {
@@ -419,6 +438,12 @@ function normalizePensionMember(rawMember, index, defaults, prefix) {
   }
   if (member.wageGrowthRate <= -1) {
     throw new Error(`generated.pensionInputs.${prefix}.wageGrowthRate must be greater than -1.`);
+  }
+  if (member.statePensionStartAge < STATE_PENSION_START_AGE || member.statePensionStartAge > 70) {
+    throw new Error(`generated.pensionInputs.${prefix}.statePensionStartAge must be between 66 and 70.`);
+  }
+  if (member.statePensionEscalationRate <= -1) {
+    throw new Error(`generated.pensionInputs.${prefix}.statePensionEscalationRate must be greater than -1.`);
   }
 
   member.retirementYear = yearForAge(member, member.retirementAge, defaults.currentYear);
@@ -453,7 +478,10 @@ function normalizePensionMembers(raw, defaults) {
     employerPct: raw.employerPct,
     growthRate: raw.growthRate,
     wageGrowthRate: raw.wageGrowthRate,
-    includeStatePension: raw.includeStatePension
+    includeStatePension: raw.includeStatePension,
+    statePensionFraction: raw.statePensionFraction,
+    statePensionStartAge: raw.statePensionStartAge,
+    statePensionEscalationRate: raw.statePensionEscalationRate
   }, 0, defaults, 'legacy');
 
   return [member];
@@ -689,10 +717,14 @@ function buildIncomeBreakdownAtYear(inputs, year) {
 
   const statePension = inputs.pensions.reduce((total, member) => {
     const age = ageAtYear(member, year, inputs.currentYear);
-    if (!member.includeStatePension || age < STATE_PENSION_START_AGE) {
+    if (!member.includeStatePension || age < member.statePensionStartAge) {
       return total;
     }
-    return total + (STATE_PENSION_ANNUAL_TODAY * inflationFactorForYear(inputs, year));
+    return total + (
+      STATE_PENSION_ANNUAL_TODAY
+      * member.statePensionFraction
+      * Math.pow(1 + member.statePensionEscalationRate, year - inputs.currentYear)
+    );
   }, 0);
 
   const rentalIncome = year >= inputs.incomeStartYear
@@ -1796,7 +1828,9 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         [`${member.title} current pension value`, toEuroText(member.currentPot)],
         [`${member.title} personal contribution`, toPercentText(member.personalPct)],
         [`${member.title} employer contribution`, toPercentText(member.employerPct)],
-        [`${member.title} State Pension`, member.includeStatePension ? 'Included' : 'Excluded']
+        [`${member.title} State Pension`, member.includeStatePension
+          ? `${toPercentText(member.statePensionFraction, 0)} of maximum from age ${member.statePensionStartAge}`
+          : 'Excluded']
       ]))
     ]
     : [
@@ -1806,7 +1840,9 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ['Current pension value', toEuroText(inputs.primaryPension.currentPot)],
       ['Personal contribution', toPercentText(inputs.primaryPension.personalPct)],
       ['Employer contribution', toPercentText(inputs.primaryPension.employerPct)],
-      ['State Pension', inputs.primaryPension.includeStatePension ? 'Included' : 'Excluded']
+      ['State Pension', inputs.primaryPension.includeStatePension
+        ? `${toPercentText(inputs.primaryPension.statePensionFraction, 0)} of maximum from age ${inputs.primaryPension.statePensionStartAge}`
+        : 'Excluded']
     ];
 
   const assumptionsTable = {
@@ -1816,7 +1852,12 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ['Growth rate', toPercentText(inputs.growthRate)],
       ['Wage growth', toPercentText(inputs.wageGrowthRate)],
       ['Inflation', toPercentText(inputs.inflationRate)],
-      ['Default State Pension today', toEuroText(STATE_PENSION_ANNUAL_TODAY)],
+      ['Maximum Irish State Pension (gross)', `${toEuroText(STATE_PENSION_ANNUAL_TODAY, 2)} a year (€299.30 a week)`],
+      ['State Pension rule', `${IRELAND_RULES_CATALOGUE_VERSION}; effective January 2026; default start age 66`],
+      ['State Pension escalation', toPercentText(IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate)],
+      ['State Pension entitlement', IRISH_STATE_PENSION_CONTRIBUTORY.entitlementNotice],
+      ['State Pension guidance source', IRISH_STATE_PENSION_CONTRIBUTORY.source.url],
+      ['State Pension rate source', IRISH_STATE_PENSION_CONTRIBUTORY.source.ratesUrl],
       ...(inputs.includeEmploymentIncomeDuringBridge
         ? [['Gross employment income at income start', toEuroText(employmentIncomeNominalAtRetirement)]]
         : []),

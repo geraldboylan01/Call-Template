@@ -21,7 +21,8 @@ const ADVISER_TEST_COHORT = 'adviser_test';
 const DEFAULT_SESSION_LIMIT_MICRO_EUR = 2_000_000;
 const LOW_BUDGET_MICRO_EUR = 300_000;
 const DEFAULT_LIVE_SECONDS = 300;
-const MAX_TRANSCRIPT_ITEMS = 16;
+const MAX_TRANSCRIPT_ITEMS = 500;
+const COMPLETION_PLAYBACK_TIMEOUT_MS = 15_000;
 const MAX_CAPTION_LENGTH = 3_000;
 const CONNECTION_GRACE_MS = 8_000;
 const MICROPHONE_PREFERENCE_STORAGE_KEY = 'planeir.consumer.realtime-microphone.v1';
@@ -811,6 +812,7 @@ export class RealtimeVoiceController {
     this.countdownTimer = null;
     this.disconnectTimer = null;
     this.interruptTimer = null;
+    this.completionTimer = null;
     this.generation = 0;
     this.bound = false;
     this.responseInProgress = false;
@@ -828,6 +830,8 @@ export class RealtimeVoiceController {
     this.assistantDeltas = new Map();
     this.seenFinalItems = new Set();
     this.transcriptHistory = [];
+    this.completionSpeechId = '';
+    this.completionNavigationInFlight = false;
     this.planningContext = null;
     this.lastState = state;
     this.expanded = false;
@@ -851,6 +855,10 @@ export class RealtimeVoiceController {
 
   isLive() {
     return this.active;
+  }
+
+  isCompletionLocked() {
+    return Boolean(this.completionSpeechId || this.completionNavigationInFlight);
   }
 
   bind() {
@@ -1067,6 +1075,7 @@ export class RealtimeVoiceController {
     if (!this.root) return;
     const context = realtimeContext();
     const supported = isRealtimeVoiceSupported();
+    const completionLocked = this.isCompletionLocked();
     const exhausted = context.budget.remainingMicroEur <= 0;
     const budgetLow = !exhausted && context.budget.remainingMicroEur <= context.lowBudgetMicroEur;
     const start = this.element('realtimeVoiceStartButton');
@@ -1093,7 +1102,7 @@ export class RealtimeVoiceController {
     });
     if (start) {
       start.disabled = this.active
-        ? this.welcomePending
+        ? (this.welcomePending || completionLocked)
         : (context.journeyBusy
           || context.consentRefreshRequired
           || !context.configured
@@ -1123,11 +1132,11 @@ export class RealtimeVoiceController {
       orbLabel.textContent = labels[this.phase] || 'Start your Planéir meeting';
     }
     if (mute) {
-      mute.disabled = !this.active || this.welcomePending;
+      mute.disabled = !this.active || this.welcomePending || completionLocked;
       mute.textContent = this.muted ? 'Unmute microphone' : 'Mute microphone';
       mute.setAttribute('aria-pressed', this.muted ? 'true' : 'false');
     }
-    if (end) end.disabled = !this.active;
+    if (end) end.disabled = !this.active || completionLocked;
     if (resume && !this.active) resume.hidden = true;
     if (typedFallback) typedFallback.hidden = false;
     if (micBadge) {
@@ -1161,14 +1170,16 @@ export class RealtimeVoiceController {
       const hasContext = (this.planningContext?.facts?.length || 0) > 0
         || (this.planningContext?.modules?.length || 0) > 0;
       review.hidden = false;
-      review.disabled = !(this.planningContext?.readyForReview || hasContext);
+      review.disabled = completionLocked || !(this.planningContext?.readyForReview || hasContext);
     }
     if (microphoneSelect) microphoneSelect.disabled = this.deviceRefreshInFlight
       || this.microphoneSwitchInFlight
+      || completionLocked
       || this.phase === 'connecting';
     if (refreshDevices) {
       refreshDevices.disabled = this.deviceRefreshInFlight
         || this.microphoneSwitchInFlight
+        || completionLocked
         || this.phase === 'connecting';
       refreshDevices.textContent = this.active && this.microphoneRecoveryRequired
         ? 'Reconnect automatic microphone'
@@ -1221,6 +1232,8 @@ export class RealtimeVoiceController {
     this.seenFinalItems.clear();
     this.playedSpeechIds.clear();
     this.transcriptHistory = [];
+    this.completionSpeechId = '';
+    this.completionNavigationInFlight = false;
     this.renderTranscriptHistory();
     this.setCaption('user', 'Your words will appear here while you speak.');
     this.setCaption('assistant', 'Planéir will welcome you in a moment.');
@@ -1608,7 +1621,7 @@ export class RealtimeVoiceController {
   }
 
   async refreshMicrophones({ activeStream = this.localStream } = {}) {
-    if (!navigator.mediaDevices?.enumerateDevices || this.deviceRefreshInFlight) return;
+    if (this.isCompletionLocked() || !navigator.mediaDevices?.enumerateDevices || this.deviceRefreshInFlight) return;
     this.deviceRefreshInFlight = true;
     this.renderMicrophoneState();
     try {
@@ -1686,6 +1699,7 @@ export class RealtimeVoiceController {
   }
 
   selectMicrophone(deviceId) {
+    if (this.isCompletionLocked()) return Promise.resolve(false);
     const selected = cleanText(deviceId, 500);
     const queuedSwitch = this.microphoneSwitchTask
       .catch(() => {})
@@ -1849,6 +1863,7 @@ export class RealtimeVoiceController {
         }
         this.finalizeCaption('user', event.itemId, event.text);
         this.setPhase('thinking', 'Planéir is thinking…');
+        this.scheduleLeasePoll(0);
         return;
       case 'response_started':
         this.responseInProgress = true;
@@ -2241,6 +2256,10 @@ export class RealtimeVoiceController {
     this.currentControlledSpeech = null;
     this.releaseControlledSpeechUrl();
     this.restoreRealtimeAudioStream();
+    if (speechId === this.completionSpeechId) {
+      void this.completeSpokenMeeting();
+      return;
+    }
     if (error) {
       this.setCaption('assistant', approvedText);
       this.setPhase('error', 'The approved audio stopped unexpectedly. Continue with the written journey.', {
@@ -2530,7 +2549,7 @@ export class RealtimeVoiceController {
   // mistimed press is harmless — an empty-buffer commit is a benign,
   // recoverable provider error on both ends.
   commitTurn() {
-    if (!this.active || this.muted || this.welcomePending) return false;
+    if (!this.active || this.muted || this.welcomePending || this.isCompletionLocked()) return false;
     const sent = this.sendEvent({
       type: 'input_audio_buffer.commit',
       event_id: newIdempotencyKey('turn')
@@ -2542,7 +2561,7 @@ export class RealtimeVoiceController {
   }
 
   toggleMute() {
-    if (!this.active || !this.localStream || this.welcomePending) return;
+    if (!this.active || !this.localStream || this.welcomePending || this.isCompletionLocked()) return;
     const preserveVoicePhase = MICROPHONE_ORTHOGONAL_PHASES.has(this.phase);
     this.muted = !this.muted;
     this.localStream.getAudioTracks().forEach((track) => {
@@ -2727,10 +2746,17 @@ export class RealtimeVoiceController {
 
   acceptServerPayload(payload) {
     if (!payload) return;
+    const root = unwrap(payload);
+    this.mergeServerTranscript(root.realtimeTurns);
     mergeVoicePayload(payload);
     this.onVoicePayload(payload);
     this.updatePlanningContext(payload, this.lastState);
     this.onPlanningPayload(payload);
+    const lease = asObject(firstDefined(root.realtimeLease, root.lease, root.call)) || {};
+    const meetingPhase = String(firstDefined(lease.meetingPhase, lease.meeting_phase, '') || '');
+    if (meetingPhase === 'closing') {
+      this.beginCompletionPlayback(lease);
+    }
     this.playWorkerSpeechFromPayload(payload);
     this.updateUi();
   }
@@ -2756,6 +2782,7 @@ export class RealtimeVoiceController {
       pagehide: 'The meeting ended. The microphone is off.',
       review: 'The meeting ended. Review and confirm what Planéir understood.',
       typed_fallback: 'The meeting ended. Continue in the typed answer box.',
+      completed: 'Your modules are ready.',
       user: 'The meeting ended. The microphone is off.'
     };
     if (reason === 'budget') {
@@ -2802,7 +2829,8 @@ export class RealtimeVoiceController {
       ['expiryTimer', 'clearTimeout'],
       ['countdownTimer', 'clearInterval'],
       ['disconnectTimer', 'clearTimeout'],
-      ['interruptTimer', 'clearTimeout']
+      ['interruptTimer', 'clearTimeout'],
+      ['completionTimer', 'clearTimeout']
     ].forEach(([property, method]) => {
       if (this[property] !== null) window[method](this[property]);
       this[property] = null;
@@ -2821,12 +2849,56 @@ export class RealtimeVoiceController {
     this.microphoneRecoveryRequired = false;
     this.activeMicrophoneLabel = '';
     this.playedSpeechIds.clear();
+    this.completionSpeechId = '';
+    this.completionNavigationInFlight = false;
     this.leaseId = '';
     this.controlCapability = '';
     this.conversationVersion = 'v1';
     this.leaseExpiresAtMs = null;
     this.sessionId = '';
     this.updateUi();
+  }
+
+  mergeServerTranscript(turns) {
+    if (!Array.isArray(turns)) return;
+    const existingIds = new Set(this.transcriptHistory.map((item) => item.id).filter(Boolean));
+    turns.forEach((turn) => {
+      const id = cleanText(turn?.id, 120);
+      const role = turn?.role === 'assistant' ? 'assistant' : turn?.role === 'user' ? 'user' : '';
+      const text = cleanText(turn?.transcript || turn?.text);
+      if (!role || !text || (id && existingIds.has(id))) return;
+      const duplicate = this.transcriptHistory.some((item) => item.role === role && item.text === text);
+      if (duplicate) return;
+      this.transcriptHistory.push({ id, role, text, createdAt: turn.createdAt || null });
+      if (id) existingIds.add(id);
+    });
+    const removed = Math.max(0, this.transcriptHistory.length - MAX_TRANSCRIPT_ITEMS);
+    if (removed > 0) this.transcriptHistory.splice(0, removed);
+    this.renderTranscriptHistory();
+  }
+
+  beginCompletionPlayback(lease) {
+    const speechId = cleanText(lease.outroSpeechId || lease.completion_outro_speech_id, 100);
+    if (!speechId || this.completionSpeechId === speechId || this.completionNavigationInFlight) return;
+    this.completionSpeechId = speechId;
+    this.muted = true;
+    this.localStream?.getAudioTracks?.().forEach((track) => { track.enabled = false; });
+    this.microphonePermissionStream?.getAudioTracks?.().forEach((track) => { track.enabled = false; });
+    this.setPhase('assistant_speaking', 'Planéir is finishing the meeting and taking you to your modules…');
+    if (this.completionTimer !== null) window.clearTimeout(this.completionTimer);
+    this.completionTimer = window.setTimeout(() => {
+      this.completionTimer = null;
+      void this.completeSpokenMeeting();
+    }, COMPLETION_PLAYBACK_TIMEOUT_MS);
+  }
+
+  async completeSpokenMeeting() {
+    if (this.completionNavigationInFlight) return;
+    this.completionNavigationInFlight = true;
+    if (this.completionTimer !== null) window.clearTimeout(this.completionTimer);
+    this.completionTimer = null;
+    await this.end({ reason: 'completed', notifyServer: true, announce: false });
+    await this.onNavigate('results');
   }
 
   openConsentDialog() {

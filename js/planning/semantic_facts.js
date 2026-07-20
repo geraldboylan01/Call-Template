@@ -436,6 +436,40 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     userEffort: 1
   }),
   defineFact({
+    factId: 'state_pension_fraction',
+    aliases: ['retirement.state_pension_fraction'],
+    label: 'Irish State Pension planning fraction',
+    description: 'The fraction of the maximum Irish State Pension (Contributory) used as an editable, per-person planning assumption.',
+    mappings: [{
+      pathPattern: '/assumptions/values/retirement/statePensionFraction/*',
+      moduleIds: [MODULE_IDS.PENSION_PROJECTION]
+    }],
+    entity: { kind: 'root_object', rootSegment: 0, idKey: 'personId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'For this person, should the illustration use the full Irish State Pension, a percentage of it, or none?',
+    answerType: 'number',
+    materiality: 4,
+    ambiguity: 2,
+    userEffort: 1
+  }),
+  defineFact({
+    factId: 'state_pension_start_age',
+    aliases: ['retirement.state_pension_start_age'],
+    label: 'Irish State Pension start age',
+    description: 'The per-person State Pension start age, defaulting to 66 unless an eligible deferral is explicitly specified.',
+    mappings: [{
+      pathPattern: '/assumptions/values/retirement/statePensionStartAge/*',
+      moduleIds: [MODULE_IDS.PENSION_PROJECTION]
+    }],
+    entity: { kind: 'root_object', rootSegment: 0, idKey: 'personId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Should this person’s Irish State Pension start at 66, or at a specified eligible deferred age?',
+    answerType: 'number',
+    materiality: 3,
+    ambiguity: 1,
+    userEffort: 1
+  }),
+  defineFact({
     factId: 'pension_current_value',
     aliases: ['pension.current_value'],
     sensitivity: 'restricted',

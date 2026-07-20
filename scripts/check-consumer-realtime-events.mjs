@@ -37,6 +37,8 @@ const expectedEmitterTypes = [
   'realtime.response.started',
   'realtime.silence.prompt_authorized',
   'realtime.speech.authorized',
+  'realtime.spoken_completion.failed',
+  'realtime.spoken_completion.ready',
   'realtime.tool.completed',
   'realtime.vad.speech_started',
   'realtime.vad.speech_stopped'

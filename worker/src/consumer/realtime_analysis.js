@@ -2,13 +2,62 @@ import { runStoredConsumerAnalysis } from './analysis.js';
 import { ConsumerError } from './errors.js';
 import { getCurrentProfile, getSessionRow } from './repository.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
+import { describeConversationState } from './conversation.js';
 import {
   completeRealtimeAnalysisPlan,
   confirmRealtimeAnalysisPlan,
   markRealtimeAnalysisPlanRunning,
+  prepareRealtimeAnalysisPlan,
   recordRealtimeRunProvenance,
   toPublicRealtimeAnalysisPlan
 } from './realtime_repository.js';
+
+export async function prepareRealtimeVoiceAnalysisPlan({
+  env,
+  config,
+  sessionRow,
+  profile,
+  leaseId,
+  idempotencyKey
+}) {
+  const planningState = describeConversationState(profile, config);
+  if (planningState.requiresDecisionTopicQuestion) {
+    throw new ConsumerError(409, 'decision_topic_required', 'Name the specific financial decision before confirming the analysis plan.');
+  }
+  if (planningState.requiresGoalPriorityQuestion) {
+    throw new ConsumerError(409, 'goal_priority_required', 'Choose which explicit goal the analysis plan should address first.');
+  }
+  if (!(planningState.moduleSlots || []).length) {
+    throw new ConsumerError(409, 'analysis_plan_empty', 'Clarify a supported goal before preparing this analysis.');
+  }
+  const moduleIds = (planningState.moduleSlots || [])
+    .filter((slot) => ['ready', 'needs_facts'].includes(slot.availability))
+    .map((slot) => slot.moduleId)
+    .filter((moduleId) => config.allowedModules.includes(moduleId));
+  const planInput = {
+    moduleIds,
+    scenarioOverrides: {},
+    selectionPolicyVersion: planningState.selectionPolicyVersion,
+    goalAssessment: planningState.goalAssessment,
+    ...(planningState.personaAssessment ? { personaAssessment: planningState.personaAssessment } : {}),
+    moduleSlots: planningState.moduleSlots,
+    requiresGoalPriorityQuestion: planningState.requiresGoalPriorityQuestion,
+    deferredGoalTypes: planningState.deferredGoalTypes
+  };
+  const prepared = await prepareRealtimeAnalysisPlan(env, {
+    sessionId: sessionRow.id,
+    leaseId,
+    idempotencyKey,
+    profileRevision: Number(sessionRow.current_profile_revision),
+    ...planInput
+  });
+  return {
+    row: prepared.row,
+    planNonce: prepared.planNonce,
+    publicPlan: toPublicRealtimeAnalysisPlan(prepared.row, planInput),
+    idempotentReplay: prepared.idempotentReplay
+  };
+}
 
 function adviserReviewModules(moduleSlots) {
   return (Array.isArray(moduleSlots) ? moduleSlots : [])

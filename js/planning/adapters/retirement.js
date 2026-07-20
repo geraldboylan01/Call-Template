@@ -1,6 +1,11 @@
 import { computePensionProjection } from '../../pension_math.js';
 import { computeNetRetirementProjection } from '../../net_retirement_math.js';
 import {
+  IRELAND_RULES_CATALOGUE_VERSION,
+  IRISH_STATE_PENSION_CONTRIBUTORY,
+  normalizeStatePensionFraction
+} from '../ireland_rules.js';
+import {
   annualExpenses,
   availableInvestmentAmount,
   baseCurrency,
@@ -82,6 +87,11 @@ export function getPensionProjectionReadiness(profile) {
   if (typeof profile.assumptions.inflationRate !== 'number') {
     assumptionsUsed.push({ key: 'inflationRate', value: 0.02, reason: 'Existing pension engine default; review before consumer activation.' });
   }
+  assumptionsUsed.push({
+    key: 'statePensionContributory',
+    value: IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur,
+    reason: `${IRELAND_RULES_CATALOGUE_VERSION}, effective January 2026. Maximum gross rate only; actual entitlement depends on each person’s PRSI record.`
+  });
   const warnings = [
     'Pension balances and projected withdrawals are pre-tax; they are not a substitute for the separate net retirement cash-flow view.',
     ...crossCurrencyWarnings(profile, [
@@ -98,6 +108,14 @@ export function buildPensionProjectionInput(profile) {
   const settings = getAssumption(profile, 'retirement', {});
   const pensions = Array.from(grouped.entries()).map(([ownerId, ownerPensions], index) => {
     const person = personForId(profile, ownerId);
+    const legacyIncludeSetting = settings.includeStatePension;
+    const includeStatePension = typeof legacyIncludeSetting === 'boolean'
+      ? legacyIncludeSetting
+      : getAssumption(profile, `retirement.includeStatePension.${ownerId}`, true);
+    const rawFraction = getAssumption(profile, `retirement.statePensionFraction.${ownerId}`);
+    const statePensionFraction = includeStatePension === false
+      ? 0
+      : normalizeStatePensionFraction(rawFraction, 1);
     return {
       id: ownerId,
       title: person?.displayName ? `${person.displayName} pension` : `Pension ${index + 1}`,
@@ -107,7 +125,14 @@ export function buildPensionProjectionInput(profile) {
       currentPot: sumKnown(ownerPensions.map((pension) => moneyAmount(pension.currentValue, currency))),
       personalPct: Math.min(1, sumKnown(ownerPensions.map((pension) => pension.employeeContributionRate))),
       employerPct: Math.min(1, sumKnown(ownerPensions.map((pension) => pension.employerContributionRate))),
-      includeStatePension: getAssumption(profile, `retirement.includeStatePension.${ownerId}`, true)
+      includeStatePension: statePensionFraction > 0,
+      statePensionFraction,
+      statePensionStartAge: getAssumption(
+        profile,
+        `retirement.statePensionStartAge.${ownerId}`,
+        IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge
+      ),
+      statePensionEscalationRate: IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate
     };
   });
   const otherIncomeSources = profile.incomeSources
@@ -132,7 +157,12 @@ export function buildPensionProjectionInput(profile) {
     targetIncomeToday: retirementTarget(profile),
     horizonEndAge: Number.isInteger(settings.horizonEndAge) ? settings.horizonEndAge : 100,
     pensions,
-    otherIncomeSources
+    otherIncomeSources,
+    statePensionRule: {
+      catalogueVersion: IRELAND_RULES_CATALOGUE_VERSION,
+      effectiveFrom: IRISH_STATE_PENSION_CONTRIBUTORY.effectiveFrom,
+      source: IRISH_STATE_PENSION_CONTRIBUTORY.source.url
+    }
   };
 }
 
@@ -236,4 +266,3 @@ export async function runNetRetirementCashflow(input, context) {
     }
   });
 }
-

@@ -29,8 +29,9 @@ or any deterministic calculation engine.
 
 `worker/wrangler.toml` must keep both
 `CONSUMER_REALTIME_VOICE_ENABLED="false"` and
-`CONSUMER_REALTIME_CONVERSATION_V2_ENABLED="false"`. The production workflow
-refuses a committed `true` value for either switch.
+`CONSUMER_REALTIME_CONVERSATION_V2_ENABLED="false"` and
+`CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED="false"`. The production workflow
+refuses a committed `true` value for these rollout switches.
 
 When the invite-only Realtime adviser canary is active, the production
 workflow now defaults the independent conversation switch to v2. Set the
@@ -147,11 +148,41 @@ canonical profile. A property and mortgage from the same turn are linked. A
 everything” completes records already captured instead of deleting or
 rejecting them.
 
-The latest signed `MeetingBriefV1` and source-turn ID are encrypted in D1. The
-browser receives only `conversationGuide`: the narrative summary, exactly
-three analysis slots, progress and the next objective. Planner reasoning, raw
-prompts, scores and unrestricted transcripts are never exposed. Analysis still
-requires the exact visually confirmed profile revision and plan nonce.
+The latest signed `MeetingBriefV2` and source-turn ID are encrypted in D1. The
+browser receives a bounded `conversationGuide`: jurisdiction, narrative,
+one-to-three analysis slots, phase, a single server-authored question batch,
+confirmation summary, module state and navigation target. Planner reasoning,
+raw prompts and scores are never exposed.
+
+### Spoken completion v2
+
+`CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED` is subordinate to conversational
+v2. When false, the existing visual profile/analysis-plan confirmation remains
+the rollback route. When true, the server prepares the exact plan and moves the
+meeting through `discovery → intake → awaiting_voice_confirmation →
+generating_modules → closing → completed`.
+
+Only a finalized consumer turn made in `awaiting_voice_confirmation` can
+authorize execution. The Worker classifies the answer, binds it to the lease,
+plan ID, profile revision and stored turn, records a hash-only audit receipt,
+retrieves the server-only plan nonce, and runs the existing deterministic
+engine. Corrections, negatives, ambiguity, stale revisions, duplicate calls,
+and model assertions fail closed. A generation failure or newly discovered
+required fact leaves the meeting open and never triggers navigation.
+
+After every selected output is saved (including visible adviser-review status
+for gated modules), the server authorizes exactly: “Thanks very much for your
+time today. Your modules are ready, and I’m taking you to them now.” The browser
+disables microphone input, waits for playback with a 15-second fallback,
+requests server-side hang-up, refreshes the consumer session and opens results.
+
+The Ireland rules catalogue is application-owned. Version
+`ie-planning-rules-2026.01` uses the maximum State Pension (Contributory) rate
+effective January 2026: €299.30 weekly / €15,563.60 gross annually, default age
+66 and 2% escalation. A per-person fraction defaults to 1 (legacy false maps to
+0); the fraction is applied before escalation. Results display the official
+source/effective date and warn that actual entitlement depends on PRSI. Irish
+intake must not introduce IRA, Roth IRA, 401(k), or ISA terminology.
 
 Run `npm run probe:consumer-realtime-planner-paid` locally to exercise the
 silent planner against a fully synthetic new-parent regression analogue with
@@ -253,6 +284,8 @@ v1 identifiers are stale and cannot authorize a new call.
 | `POST` | `/api/consumer/sessions/:id/voice/realtime/calls` | Accept `application/sdp`, reserve the envelope, create the provider call, and return an SDP answer |
 | `GET` | `/api/consumer/sessions/:id/voice/realtime/calls/:leaseId` | Read bounded public lease/fact/plan state |
 | `DELETE` | `/api/consumer/sessions/:id/voice/realtime/calls/:leaseId` | End the call from the server side |
+| `GET` | `/api/consumer/sessions/:id/voice/realtime/meetings` | List separate saved voice meetings |
+| `GET` | `/api/consumer/sessions/:id/voice/realtime/meetings/:meetingId/transcript?cursor=&limit=50` | Page finalized, redacted meeting turns |
 | `PUT` | `/api/consumer/sessions/:id/analysis-plan` | Save or explicitly confirm the displayed plan nonce at the current profile revision |
 
 Migration `0009_add_realtime_consent_purposes.sql` provides audited storage and
@@ -273,7 +306,7 @@ provenance, and analysis-plan rows along with the existing consumer data.
 
 ## Sideband tool allowlist
 
-Only these versioned tools may be installed:
+Conversational v1 may install only these versioned tools:
 
 1. `get_planning_state`
 2. `propose_facts`
@@ -282,6 +315,11 @@ Only these versioned tools may be installed:
 5. `confirm_and_run_plan`
 6. `get_result_summary`
 7. `wait_for_user`
+
+Conversational v2 installs only `get_meeting_brief`,
+`get_intake_explanation`, `get_result_summary`, and `wait_for_user`. When the
+spoken-completion flag is active it additionally installs
+`confirm_and_run_voice_plan`; the plan nonce is never a model-visible argument.
 
 Every attempt is schema-, size-, depth-, state-, revision-, idempotency-, and
 allowlist-validated. `propose_facts` accepts semantic fact IDs only and must be
@@ -296,8 +334,9 @@ Stored consumer data is application-encrypted before D1 persistence and is
 covered by the existing rekey, expiry, and deletion paths. The realtime tables
 retain versioned consent events, lease state, allowlisted event metadata,
 semantic fact proposals, idempotent tool attempts, response- and
-transcription-level token usage, redacted finalized turns, analysis plans, and
-deterministic run provenance.
+transcription-level token usage, separate meeting histories, redacted finalized
+turns, hash-only spoken-confirmation receipts, analysis plans, and deterministic
+run provenance.
 
 Do not store:
 

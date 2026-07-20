@@ -88,7 +88,12 @@ export function realtimeFactValueVocabulary(factId) {
 
 export const REALTIME_CANARY_FACT_IDS = Object.freeze([...new Set([
   ...getRealtimeModuleSemanticFactIds(),
-  ...Object.keys(INTAKE_FACT_PATHS)
+  ...Object.keys(INTAKE_FACT_PATHS),
+  // These are optional, rules-backed retirement assumptions rather than
+  // required intake facts. Keep them writable when volunteered without
+  // making the question planner ask for values that have safe IE defaults.
+  'state_pension_fraction',
+  'state_pension_start_age'
 ])]);
 
 function money(value, currency) {
@@ -791,6 +796,7 @@ function mapAssetPosition(profile, fact, currency) {
       };
       const currentValue = optionalMoney(value.currentValue ?? value.amount, currency);
       if (currentValue) canonical.currentValue = currentValue;
+      if (value.country) canonical.country = safeLabel(value.country);
       if (typeof value.liquid === 'boolean') canonical.liquid = value.liquid;
       else if (!existing && type === 'cash') canonical.liquid = true;
       return canonical;
@@ -1232,6 +1238,32 @@ export function mapRealtimeFact(profile, fact) {
     };
   }
 
+  if (fact.factId === 'state_pension_fraction' || fact.factId === 'state_pension_start_age') {
+    const selectedOwnerId = plainObject(fact.value)
+      ? ownerId(profile, fact.value.owner ?? fact.value.ownerId ?? fact.value.personId)
+      : primaryOwnerId;
+    const current = profile.assumptions?.values?.retirement || {};
+    const mapKey = fact.factId === 'state_pension_fraction'
+      ? 'statePensionFraction'
+      : 'statePensionStartAge';
+    const canonicalValue = fact.factId === 'state_pension_fraction'
+      ? boundedNumber(scalarValue(fact.value, ['fraction', 'value']), { min: 0, max: 1 })
+      : boundedNumber(scalarValue(fact.value, ['startAge', 'age', 'value']), { min: 66, max: 70, integer: true });
+    return {
+      fieldPath: '/assumptions/values/retirement',
+      metadataPath: `/assumptions/values/retirement/${mapKey}/${escapeJsonPointerToken(selectedOwnerId)}`,
+      canonicalValue: {
+        ...current,
+        [mapKey]: { ...(current[mapKey] || {}), [selectedOwnerId]: canonicalValue },
+        ...(fact.factId === 'state_pension_fraction'
+          ? { includeStatePension: { ...(current.includeStatePension || {}), [selectedOwnerId]: canonicalValue > 0 } }
+          : {})
+      },
+      displayValue: canonicalValue,
+      proposalValue: { ownerId: selectedOwnerId, value: canonicalValue }
+    };
+  }
+
   if (['pension_current_value', 'pension_employee_contribution_rate', 'pension_employer_contribution_rate'].includes(fact.factId)) {
     const { stableId, index, existing } = pensionIndex(profile, fact.value);
     const key = fact.factId === 'pension_current_value' ? 'currentValue'
@@ -1483,6 +1515,19 @@ export function buildConfirmedRealtimeFactSummary(profile) {
     '/assumptions/values/retirement/targetIncomeToday',
     profile.assumptions?.values?.retirement?.targetIncomeToday
   );
+  const retirement = profile.assumptions?.values?.retirement || {};
+  Object.entries(retirement.statePensionFraction || {}).forEach(([personId, value]) => add(
+    'state_pension_fraction',
+    `/assumptions/values/retirement/statePensionFraction/${escapeJsonPointerToken(personId)}`,
+    value,
+    personId
+  ));
+  Object.entries(retirement.statePensionStartAge || {}).forEach(([personId, value]) => add(
+    'state_pension_start_age',
+    `/assumptions/values/retirement/statePensionStartAge/${escapeJsonPointerToken(personId)}`,
+    value,
+    personId
+  ));
   const mortgage = profile.liabilities?.find((item) => item.liabilityId === 'liability_realtime_mortgage')
     || (profile.liabilities?.filter((item) => item.type === 'mortgage').length === 1
       ? profile.liabilities.find((item) => item.type === 'mortgage')

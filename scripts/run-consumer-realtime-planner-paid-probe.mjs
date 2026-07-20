@@ -78,7 +78,7 @@ for (const [index, turn] of turns.entries()) {
 
 const facts = extractions.flatMap((item) => item.semanticFacts);
 const failedChecks = [];
-if (!facts.some((item) => item.factId === 'self_description' && item.value === 'new_parent')) {
+if (!facts.some((item) => item.factId === 'new_parent_status' && item.value === true)) {
   failedChecks.push('new_parent_classification');
 }
 for (const [kind, expected] of Object.entries(expectedPositions)) {

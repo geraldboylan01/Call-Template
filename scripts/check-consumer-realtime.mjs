@@ -34,7 +34,8 @@ import { requestAdviserHandoff } from '../worker/src/consumer/handoff.js';
 import { buildQuestionPlan as buildWorkerQuestionPlan } from '../worker/src/consumer/question_plan.js';
 import {
   buildConfirmedRealtimeFactSummary,
-  buildRealtimeFactReadBack
+  buildRealtimeFactReadBack,
+  mapRealtimeFact
 } from '../worker/src/consumer/realtime_fact_mapper.js';
 import {
   composeMeetingBrief,
@@ -59,6 +60,8 @@ import {
   estimateRealtimeSpeechMicroEur,
   getActiveRealtimeLease,
   getCurrentRealtimeAnalysisPlan,
+  getLatestRealtimeMeetingBrief,
+  getRealtimeMeetingTranscript,
   getRealtimeConsent,
   getRealtimeConsentPurposes,
   getRealtimeLease,
@@ -67,16 +70,19 @@ import {
   hasUnsettledRealtimeSpeechUsage,
   listExpiredRealtimeLeases,
   listRealtimeFinalTurns,
+  listRealtimeMeetings,
   markRealtimeAnalysisPlanRunning,
   markRealtimeProviderCostInFlight,
   prepareRealtimeAnalysisPlan,
   recordRealtimeFinalTurn,
+  recordRealtimeVoiceConfirmation,
   recordRealtimeUsage,
   realtimeConsentIsCurrent,
   realtimePurposeConsentsAreCurrent,
   realtimeRetentionConsentIsCurrent,
   setRealtimeConsent,
   setRealtimeConsentPurposes,
+  saveRealtimeMeetingBrief,
   finalizeRealtimeControlMessage,
   verifyRealtimeControlCapability,
   toPublicRealtimeConsentPurposes,
@@ -93,6 +99,11 @@ import {
   buildGatedModuleDisclosure,
   confirmAndRunRealtimeAnalysisPlan
 } from '../worker/src/consumer/realtime_analysis.js';
+import {
+  buildVoiceConfirmationSummary,
+  classifySpokenPlanConfirmation,
+  REALTIME_COMPLETION_OUTRO
+} from '../worker/src/consumer/realtime_completion.js';
 import {
   REALTIME_TOOL_DEFINITIONS,
   REALTIME_V2_TOOL_DEFINITIONS,
@@ -321,7 +332,8 @@ const migrationSql = [
   'worker/consumer-migrations/0009_add_realtime_consent_purposes.sql',
   'worker/consumer-migrations/0010_add_realtime_activation_recovery.sql',
   'worker/consumer-migrations/0011_add_realtime_meeting_briefs.sql',
-  'worker/consumer-migrations/0012_add_realtime_planner_usage.sql'
+  'worker/consumer-migrations/0012_add_realtime_planner_usage.sql',
+  'worker/consumer-migrations/0013_complete_realtime_voice_meetings.sql'
 ].map(source).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 
@@ -357,8 +369,8 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v8',
-  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v6',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v9',
+  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v7',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
   CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '750',
@@ -428,11 +440,62 @@ assert.deepEqual(
   ['get_meeting_brief', 'get_intake_explanation', 'get_result_summary', 'wait_for_user']
 );
 assert.deepEqual(
-  realtimeToolsForState({ conversationVersion: 'v2' }).map((tool) => tool.name),
+  realtimeToolsForState({ conversationVersion: 'v2', spokenCompletionEnabled: false }).map((tool) => tool.name),
+  REALTIME_V2_TOOL_DEFINITIONS.filter((tool) => tool.name !== 'confirm_and_run_voice_plan').map((tool) => tool.name)
+);
+const spokenCompletionConfig = getConsumerConfig({
+  ...env,
+  CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: 'true',
+  CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: 'true'
+});
+assert.equal(spokenCompletionConfig.realtimeSpokenCompletionEnabled, true);
+assert.deepEqual(
+  realtimeToolsForState({ conversationVersion: 'v2', spokenCompletionEnabled: true }).map((tool) => tool.name),
   REALTIME_V2_TOOL_DEFINITIONS.map((tool) => tool.name)
 );
 assert.match(v2Session.instructions, /Answer a client question first/i);
 assert.doesNotMatch(v2Session.instructions, /silent tool interpreter/i);
+assert.match(v2Session.instructions, /Never introduce IRA, Roth IRA, 401\(k\), ISA/i);
+assert.equal(classifySpokenPlanConfirmation('Yes'), 'affirmed');
+assert.equal(classifySpokenPlanConfirmation('That sounds good'), 'affirmed');
+assert.equal(classifySpokenPlanConfirmation('Go ahead'), 'affirmed');
+assert.equal(classifySpokenPlanConfirmation("Yes, that's right"), 'affirmed');
+assert.equal(classifySpokenPlanConfirmation('Absolutely'), 'affirmed');
+assert.equal(classifySpokenPlanConfirmation('No'), 'rejected');
+assert.equal(classifySpokenPlanConfirmation('Yes, but change my retirement age'), 'ambiguous');
+assert.equal(classifySpokenPlanConfirmation('Okay, what happens next?'), 'ambiguous');
+assert.equal(
+  REALTIME_COMPLETION_OUTRO,
+  'Thanks very much for your time today. Your modules are ready, and I’m taking you to them now.'
+);
+const pensionConfirmationSummary = buildVoiceConfirmationSummary({
+  narrativeSummary: 'You and your wife are planning retirement',
+  analyses: [{
+    label: 'Pension projection',
+    assumptions: [
+      { key: 'growthRate', value: 0.05 },
+      { key: 'inflationRate', value: 0.02 }
+    ]
+  }],
+  statePensionRule: { effectiveFrom: '2026-01-01' },
+  understood: [{ factId: 'state_pension_fraction', value: 0.5 }]
+});
+assert.match(pensionConfirmationSummary, /€15,563\.60 gross a year, effective January 2026, with a default start age of 66/);
+assert.match(pensionConfirmationSummary, /without a stated fraction defaults to 100%/);
+assert.match(pensionConfirmationSummary, /stated per-person fraction is 50%/);
+assert.match(pensionConfirmationSummary, /apply each fraction before escalating it by 2%/);
+assert.match(pensionConfirmationSummary, /growth rate 5%/);
+assert.match(pensionConfirmationSummary, /inflation rate 2%/);
+const couplePensionConfirmationSummary = buildVoiceConfirmationSummary({
+  analyses: [{ label: 'Pension projection' }],
+  statePensionRule: {
+    perPersonAssumptions: [
+      { label: 'You', fraction: 1, startAge: 66 },
+      { label: 'Your wife', fraction: 0.5, startAge: 66 }
+    ]
+  }
+});
+assert.match(couplePensionConfirmationSummary, /You at 100% from age 66 and Your wife at 50% from age 66/);
 
 const nativeFetch = globalThis.fetch;
 globalThis.fetch = async () => new Response(JSON.stringify({
@@ -440,7 +503,10 @@ globalThis.fetch = async () => new Response(JSON.stringify({
   status: 'completed',
   output_text: JSON.stringify({
     goalCandidates: [],
-    semanticFacts: [],
+    semanticFacts: [{
+      operation: 'upsert', factId: 'new_parent_status', valueJson: 'false', certainty: 'approximate',
+      evidenceText: 'incorrect model classification used to exercise deterministic correction', correctionTarget: ''
+    }],
     positions: [
       {
         operation: 'upsert', kind: 'cash', label: 'Cash', entityId: 'cash', linkedEntityId: '',
@@ -475,6 +541,7 @@ try {
 }
 assert.equal(plannerTest.extraction.semanticFacts[0].factId, 'new_parent_status');
 assert.equal(plannerTest.extraction.semanticFacts[0].value, true);
+assert.equal(plannerTest.extraction.semanticFacts.length, 1, 'The safe finalized-turn classification replaces a conflicting model candidate.');
 assert.equal(plannerTest.extraction.positions.length, 1, 'One invalid position must not reject a valid position from the same turn.');
 assert.equal(plannerTest.extraction.invalidCandidates.length, 1);
 assert.equal(plannerTest.metadata.reasoningEffort, 'low');
@@ -515,6 +582,14 @@ assert.deepEqual(
 );
 assert.deepEqual(transcriptPositions.map((item) => item.value.amount?.amount), [500_000, 350_000, 10_000, 100_000, 10_000]);
 assert.equal(transcriptPositions[1].value.linkedPropertyId, 'home');
+const volunteeredForeignHolding = positionCandidatesToRealtimeFacts([{
+  candidateId: 'foreign-investment', kind: 'investment', operation: 'upsert',
+  label: 'Foreign investment', entityId: 'foreign-investment', linkedEntityId: '',
+  amount: { amount: 25_000, currency: 'EUR' }, owner: 'primary', country: 'United States',
+  certainty: 'approximate', evidenceText: 'about €25,000 held in the United States'
+}]);
+assert.equal(volunteeredForeignHolding[0].value.country, 'United States');
+assert.equal(volunteeredForeignHolding[0].value.label, 'Foreign investment');
 assert.deepEqual(sectionCompletionToRealtimeFact({
   section: 'assets', signal: 'complete_section', evidenceText: "that's everything"
 }).value, { operation: 'complete_section' });
@@ -564,8 +639,45 @@ assert.equal(signedBrief.analyses.length, 3);
 assert.equal(signedBrief.analyses[0].moduleId, 'personal_balance_sheet');
 assert.ok(signedBrief.signature.length >= 40);
 const publicGuide = toConversationGuide(signedBrief);
-assert.deepEqual(Object.keys(publicGuide), ['narrativeSummary', 'goals', 'deferredGoals', 'analyses', 'progress', 'nextObjective']);
+assert.deepEqual(Object.keys(publicGuide), [
+  'narrativeSummary', 'goals', 'deferredGoals', 'analyses', 'progress',
+  'nextObjective', 'jurisdiction', 'currentTopic', 'questionBatch',
+  'confirmationSummary', 'moduleState', 'finalNavigationTarget', 'statePensionRule'
+]);
 assert.equal(publicGuide.nextObjective.facts.length, 1);
+assert.equal(publicGuide.jurisdiction, 'IE');
+assert.equal(publicGuide.questionBatch.maxQuestions, 1);
+assert.equal(publicGuide.questionBatch.linkedFact, null);
+assert.equal((publicGuide.questionBatch.prompt.match(/\?/g) || []).length, 1);
+
+const perPersonMissingBrief = await composeMeetingBrief({
+  env,
+  sourceTurnId: 'item_per_person_missing_001',
+  extraction: {
+    narrativeSummary: { summary: 'A couple planning retirement together.', evidence: ['planning together'] },
+    clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+    ambiguities: []
+  },
+  context: {
+    config: { realtimeSpokenCompletionEnabled: true },
+    sessionRow: { current_profile_revision: 1 },
+    state: {
+      profileRevision: 1,
+      goalAssessment: { activeGoalTypes: ['retire'], deferredGoalTypes: [] },
+      moduleSlots: [{ moduleId: 'pension_projection', availability: 'needs_facts', intakeStatus: 'missing_information' }],
+      recommendations: [{
+        moduleId: 'pension_projection',
+        requiredMissing: [
+          { factId: 'person_current_age', factInstanceId: 'primary-person', reason: 'Primary age is required.' },
+          { factId: 'person_current_age', factInstanceId: 'partner-person', reason: 'Partner age is required.' }
+        ]
+      }],
+      facts: []
+    }
+  }
+});
+assert.equal(perPersonMissingBrief.stillNeeded.length, 2);
+assert.equal(perPersonMissingBrief.questionBatch.maxQuestions, 1);
 
 // Regression guard for the premature session ending: while a realtime lease
 // is open the ledger holds the entire session envelope as reserved, so the
@@ -2204,6 +2316,14 @@ assert.equal(factProfile.pensions.length, 1, 'the scalar must update the named p
 assert.equal(factProfile.pensions[0].pensionId, 'pension_realtime_workplace');
 assert.equal(factProfile.pensions[0].ownerId, factProfile.partner.personId);
 assert.deepEqual(factProfile.pensions[0].currentValue, { amount: 250_000, currency: 'EUR' });
+const partnerStatePension = mapRealtimeFact(factProfile, {
+  factId: 'state_pension_fraction',
+  value: { owner: 'partner', fraction: 0.5 },
+  certainty: 'approximate'
+});
+assert.match(partnerStatePension.metadataPath, /statePensionFraction\/partner_realtime$/);
+assert.equal(partnerStatePension.canonicalValue.statePensionFraction.partner_realtime, 0.5);
+assert.equal(partnerStatePension.canonicalValue.includeStatePension.partner_realtime, true);
 assert.ok(!factProfile.pensions.some((pension) => pension.pensionId === 'pension_realtime_primary'));
 
 const storedFactIds = sqliteCommand(databasePath, 'all', {
@@ -2397,6 +2517,20 @@ assert.equal(savedTurn.sensitiveDetailsRemoved, true);
 const turns = await listRealtimeFinalTurns(env, sessionId, lease.id);
 assert.equal(turns.length, 1);
 assert.doesNotMatch(turns[0].transcript, /1234567T|4111 1111/i);
+await saveRealtimeMeetingBrief(env, {
+  sessionId,
+  leaseId: lease.id,
+  sourceTurnId: 'item_meeting_brief_v2_001',
+  profileRevision: 1,
+  plannerPromptVersion: config.realtimePromptVersion,
+  brief: { ...signedBrief, profileRevision: 1 }
+});
+const storedMeetingBrief = await getLatestRealtimeMeetingBrief(env, sessionId, lease.id);
+assert.equal(storedMeetingBrief.row.schema_version, 'MeetingBriefV2');
+assert.equal(storedMeetingBrief.brief.jurisdiction, 'IE');
+const meetings = await listRealtimeMeetings(env, sessionId);
+assert.equal(meetings[0].meetingId, lease.id);
+assert.equal(meetings[0].turnCount, 1);
 
 // Analysis confirmation is bound to a one-way nonce and the exact confirmed
 // profile revision. Replays cannot run a second analysis.
@@ -2422,6 +2556,43 @@ const gatedPlan = await prepareRealtimeAnalysisPlan(env, {
   requiresGoalPriorityQuestion: false,
   deferredGoalTypes: []
 });
+const affirmativeTurn = await recordRealtimeFinalTurn(env, {
+  sessionId,
+  leaseId: lease.id,
+  providerItemId: 'item_spoken_confirmation_001',
+  role: 'user',
+  transcript: 'That sounds good. Go ahead.'
+});
+await rejectsCode(recordRealtimeVoiceConfirmation(env, {
+  sessionId,
+  leaseId: lease.id,
+  planId: gatedPlan.row.id,
+  profileRevision: 2,
+  confirmationTurnId: affirmativeTurn.id
+}), 'spoken_confirmation_turn_invalid');
+const confirmationReceipt = await recordRealtimeVoiceConfirmation(env, {
+  sessionId,
+  leaseId: lease.id,
+  planId: gatedPlan.row.id,
+  profileRevision: 1,
+  confirmationTurnId: affirmativeTurn.id
+});
+assert.equal(confirmationReceipt.idempotentReplay, false);
+assert.equal(confirmationReceipt.row.confirmation_turn_id, affirmativeTurn.id);
+const replayedConfirmationReceipt = await recordRealtimeVoiceConfirmation(env, {
+  sessionId,
+  leaseId: lease.id,
+  planId: gatedPlan.row.id,
+  profileRevision: 1,
+  confirmationTurnId: affirmativeTurn.id
+});
+assert.equal(replayedConfirmationReceipt.idempotentReplay, true);
+const confirmationColumns = sqliteCommand(databasePath, 'all', {
+  sql: 'PRAGMA table_info(consumer_realtime_voice_confirmations)',
+  values: []
+}).results.map((column) => column.name);
+assert.ok(confirmationColumns.includes('confirmation_turn_hash_b64u'));
+assert.ok(!confirmationColumns.some((name) => /transcript|raw_audio|partial/i.test(name)));
 const gatedOutcome = await confirmAndRunRealtimeAnalysisPlan({
   env,
   config,
@@ -3688,6 +3859,39 @@ sqliteCommand(databasePath, 'run', {
 });
 assert.ok((await listExpiredRealtimeLeases(env)).some((item) => item.id === lease.id));
 
+// A server-backed meeting transcript is not the browser's former 16-turn
+// window. Preserve the beginning of a long call and page every finalized turn
+// with stable IDs, without partial recognition events or raw audio.
+sqliteCommand(databasePath, 'run', {
+  sql: 'UPDATE consumer_realtime_final_turns SET created_at = ? WHERE id = ?',
+  values: ['2026-01-01T00:00:00.000Z', savedTurn.id]
+});
+for (let index = 0; index < 25; index += 1) {
+  await recordRealtimeFinalTurn(env, {
+    sessionId,
+    leaseId: lease.id,
+    providerItemId: `item_long_meeting_${String(index).padStart(3, '0')}`,
+    role: index % 2 === 0 ? 'assistant' : 'user',
+    transcript: `Finalized long-meeting turn ${index + 1}.`
+  });
+}
+const pagedTranscriptTurns = [];
+let transcriptCursor = null;
+do {
+  const page = await getRealtimeMeetingTranscript(env, sessionId, lease.id, {
+    cursor: transcriptCursor,
+    limit: 7
+  });
+  pagedTranscriptTurns.push(...page.turns);
+  transcriptCursor = page.nextCursor;
+} while (transcriptCursor);
+assert.ok(pagedTranscriptTurns.length > 20);
+assert.equal(new Set(pagedTranscriptTurns.map((turn) => turn.id)).size, pagedTranscriptTurns.length);
+assert.equal(pagedTranscriptTurns[0].id, savedTurn.id);
+assert.equal(pagedTranscriptTurns[0].sensitiveDetailsRemoved, true);
+assert.doesNotMatch(pagedTranscriptTurns[0].transcript, /1234567T|4111 1111/i);
+assert.equal((await listRealtimeMeetings(env, sessionId))[0].turnCount, pagedTranscriptTurns.length);
+
 // Lifecycle deletion/withdrawal must prove the provider hang-up first. If
 // final usage is uncertain the complete reservation remains charged unknown.
 const hangups = [];
@@ -3716,6 +3920,7 @@ for (const table of [
   'consumer_realtime_usage', 'consumer_realtime_speech_usage', 'consumer_realtime_control_messages',
   'consumer_realtime_final_turns', 'consumer_realtime_fact_proposals',
   'consumer_realtime_meeting_briefs',
+  'consumer_realtime_voice_confirmations',
   'consumer_realtime_analysis_plans', 'consumer_realtime_run_provenance',
   'consumer_realtime_consents', 'consumer_realtime_consent_events',
   'consumer_realtime_consent_purposes', 'consumer_realtime_consent_purpose_events'
@@ -3737,10 +3942,15 @@ const realtimeSessionSource = source('worker/src/consumer/realtime_session.js');
 const realtimeMigrationSource = source('worker/consumer-migrations/0005_add_consumer_realtime_voice.sql');
 const realtimeControlMigrationSource = source('worker/consumer-migrations/0007_add_realtime_control_inbox.sql');
 const realtimePurposeConsentMigrationSource = source('worker/consumer-migrations/0009_add_realtime_consent_purposes.sql');
+const realtimeCompletionMigrationSource = source('worker/consumer-migrations/0013_complete_realtime_voice_meetings.sql');
+const realtimeVoiceFrontendSource = source('js/plan/realtime_voice.js');
+const planningApiSource = source('js/plan/api.js');
+const planningViewsSource = source('js/plan/views.js');
 const liveBridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
 const realtimeProofSource = source('scripts/run-consumer-realtime-infrastructure-proof.mjs');
 assert.match(wranglerSource, /^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m);
 assert.match(wranglerSource, /^CONSUMER_REALTIME_CONVERSATION_V2_ENABLED\s*=\s*"false"\s*$/m);
+assert.match(wranglerSource, /^CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED\s*=\s*"false"\s*$/m);
 assert.match(wranglerSource, /CONSUMER_REALTIME_SESSIONS[^\n]*ConsumerRealtimeSession/);
 assert.match(wranglerSource, /tag\s*=\s*"consumer_realtime_sessions_v1"/);
 assert.match(workflowSource, /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.activate_realtime_adviser_canary == true/);
@@ -3758,6 +3968,9 @@ assert.match(realtimePurposeConsentMigrationSource, /live_voice_processing/);
 assert.match(realtimePurposeConsentMigrationSource, /automated_planning_analysis/);
 assert.match(realtimePurposeConsentMigrationSource, /redacted_turn_retention/);
 assert.doesNotMatch(realtimePurposeConsentMigrationSource, /raw_audio|audio_blob|transcript_(?:text|encrypted)/i);
+assert.match(realtimeCompletionMigrationSource, /consumer_realtime_voice_confirmations/);
+assert.match(realtimeCompletionMigrationSource, /MeetingBriefV2/);
+assert.doesNotMatch(realtimeCompletionMigrationSource, /raw_audio|audio_blob|partial_transcript/i);
 assert.match(workflowSource, /CONSUMER_BETA_REALTIME_NOTICE_ID:\s*"realtime-voice-adviser-test-v2"/);
 assert.match(workflowSource, /CONSUMER_BETA_REALTIME_DATA_POLICY_ID:\s*"openai-realtime-audio-adviser-test-v2"/);
 assert.match(realtimeProofSource, /realtimeVoiceConsentAcknowledgement/);
@@ -3799,6 +4012,19 @@ assert.match(
   /CONSUMER_REALTIME_CONVERSATION_V2_ENABLED:\s*\$\{\{ vars\.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED \|\| 'true' \}\}/,
   'The active adviser canary must default to direct Marin v2 while retaining the protected false rollback.'
 );
+assert.match(
+  workflowSource,
+  /CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED:\s*\$\{\{ vars\.CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED \|\| 'false' \}\}/,
+  'Spoken completion must remain independently opt-in with visual confirmation as rollback.'
+);
+assert.match(routerSource, /listRealtimeMeetings/);
+assert.match(routerSource, /realtime_meeting_transcript/);
+assert.match(planningApiSource, /getRealtimeVoiceMeetingTranscript/);
+assert.match(realtimeVoiceFrontendSource, /MAX_TRANSCRIPT_ITEMS = 500/);
+assert.match(realtimeVoiceFrontendSource, /COMPLETION_PLAYBACK_TIMEOUT_MS = 15_000/);
+assert.match(realtimeVoiceFrontendSource, /track\.enabled = false/);
+assert.match(planningViewsSource, /Your voice meeting transcript/);
+assert.doesNotMatch(planningViewsSource, /turns\.slice\(-16\)/);
 assert.match(
   realtimeSessionSource,
   /context\.config\.realtimeConversationV2Enabled && this\.applyingPlannerBatch[\s\S]{0,120}\? 'final_review'/,

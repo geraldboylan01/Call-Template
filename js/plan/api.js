@@ -276,6 +276,23 @@ export function getSession(sessionId) {
   return request(pathForSession(sessionId), { authenticated: true });
 }
 
+export function getRealtimeVoiceMeetings(sessionId) {
+  return request(pathForSession(sessionId, '/voice/realtime/meetings'), { authenticated: true });
+}
+
+export function getRealtimeVoiceMeetingTranscript(sessionId, meetingId, { cursor = '', limit = 50 } = {}) {
+  const id = String(meetingId || '').trim();
+  if (!/^rt_[A-Za-z0-9_-]{20,80}$/.test(id)) {
+    throw new ConsumerApiError('The voice meeting reference is invalid.', { code: 'invalid_realtime_meeting' });
+  }
+  const query = new URLSearchParams({ limit: String(Math.max(1, Math.min(50, Number(limit) || 50))) });
+  if (cursor) query.set('cursor', String(cursor));
+  return request(pathForSession(
+    sessionId,
+    `/voice/realtime/meetings/${encodeURIComponent(id)}/transcript?${query}`
+  ), { authenticated: true });
+}
+
 export function addTurn(sessionId, { message, idempotencyKey }) {
   return request(pathForSession(sessionId, '/turns'), {
     method: 'POST',

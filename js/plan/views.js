@@ -520,7 +520,7 @@ function createConversationView(currentState) {
     });
   }
 
-  turns.slice(-16).forEach((turn) => {
+  turns.forEach((turn) => {
     const row = element('div', `message-row${turn.role === 'user' ? ' is-user' : ''}`);
     if (turn.role !== 'user') {
       const avatar = element('span', 'message-avatar', 'P');
@@ -1477,6 +1477,66 @@ function createAdviserReviewOutcome(currentState) {
   return panel;
 }
 
+function meetingDate(value) {
+  const date = new Date(String(value || ''));
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat('en-IE', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+    : 'Saved meeting';
+}
+
+function createMeetingTranscriptSection(currentState) {
+  const meetings = asArray(currentState.realtimeMeetings);
+  if (meetings.length === 0 && asArray(currentState.realtimeTurns).length === 0) return null;
+  const latest = meetings[0] || null;
+  const selected = currentState.selectedRealtimeMeeting;
+  const activeMeetingId = selected?.meetingId || latest?.meetingId || null;
+  const turns = selected?.meetingId === activeMeetingId
+    ? asArray(selected.turns)
+    : asArray(currentState.realtimeTurns);
+  const panel = element('section', 'meeting-transcript-panel');
+  append(
+    panel,
+    element('p', 'section-kicker', 'Meeting record'),
+    element('h2', '', 'Your voice meeting transcript'),
+    element('p', '', 'Only finalized Planéir and consumer turns are retained. Partial recognition and raw audio are not stored.')
+  );
+  if (turns.length > 0) {
+    const list = element('ol', 'meeting-transcript-list');
+    turns.forEach((turn) => {
+      const row = element('li', `meeting-transcript-turn is-${turn.role === 'assistant' ? 'assistant' : 'user'}`);
+      const label = element('span', 'meeting-transcript-speaker', turn.role === 'assistant' ? 'Planéir voice · AI' : 'You');
+      const copy = element('p', '', String(turn.transcript || turn.text || ''));
+      append(row, label, copy);
+      if (turn.sensitiveDetailsRemoved === true) {
+        row.append(element('small', '', 'Sensitive identifying detail was removed.'));
+      }
+      list.append(row);
+    });
+    panel.append(list);
+  } else {
+    panel.append(element('p', 'empty-state-inline', 'This meeting has no finalized transcript turns.'));
+  }
+  if (meetings.length > 1) {
+    const previous = element('div', 'previous-meetings');
+    previous.append(element('h3', '', 'Previous calls'));
+    const list = element('ul', 'plain-list');
+    meetings.forEach((meeting) => {
+      const item = element('li', 'previous-meeting-row');
+      const label = element('span', '', `${meetingDate(meeting.startedAt)} · ${meeting.turnCount || 0} turns`);
+      const button = element('button', 'text-button', meeting.meetingId === activeMeetingId ? 'Viewing' : 'View transcript');
+      button.type = 'button';
+      button.dataset.action = 'load-meeting-transcript';
+      button.dataset.meetingId = meeting.meetingId;
+      button.disabled = meeting.meetingId === activeMeetingId;
+      append(item, label, button);
+      list.append(item);
+    });
+    previous.append(list);
+    panel.append(previous);
+  }
+  return panel;
+}
+
 function createResultsView(currentState) {
   const adviserReviewSlots = adviserReviewModuleSlots(currentState);
   const planSlotCount = asArray(currentState.analysisPlan?.moduleSlots).length;
@@ -1525,6 +1585,7 @@ function createResultsView(currentState) {
       empty.append(retry);
       append(section, createAnalysisErrors(currentState.analysis), empty);
     }
+    append(section, createMeetingTranscriptSection(currentState));
     return section;
   }
 
@@ -1538,6 +1599,7 @@ function createResultsView(currentState) {
   resultItems.forEach((item) => stack.append(createResultCard(item)));
   append(stack, createAssumptionsSection(currentState.analysis, resultItems), createUncertaintyPanel(currentState, resultItems));
   section.append(stack);
+  append(section, createMeetingTranscriptSection(currentState));
   return section;
 }
 

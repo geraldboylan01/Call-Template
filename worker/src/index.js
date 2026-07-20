@@ -203,6 +203,12 @@ function normalizePathname(pathname) {
 function getConsumerRouteMethods(pathname) {
   if (pathname === '/api/consumer/bootstrap') return 'GET,OPTIONS';
   if (pathname === '/api/consumer/sessions') return 'POST,OPTIONS';
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/meetings\/rt_[A-Za-z0-9_-]{20,80}\/transcript$/.test(pathname)) {
+    return 'GET,OPTIONS';
+  }
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/meetings$/.test(pathname)) {
+    return 'GET,OPTIONS';
+  }
   if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/activations\/rt_activation_[A-Za-z0-9_-]{20,80}$/.test(pathname)) {
     return 'DELETE,OPTIONS';
   }

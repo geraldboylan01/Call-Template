@@ -1,5 +1,11 @@
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
+import {
+  IRISH_STATE_PENSION_CONTRIBUTORY,
+  normalizeStatePensionFraction,
+  publicIrishStatePensionRule
+} from '../../../js/planning/ireland_rules.js';
+import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
@@ -70,6 +76,7 @@ const PLANNER_SCHEMA = Object.freeze({
           entityId: { type: 'string', maxLength: 120 },
           linkedEntityId: { type: 'string', maxLength: 120 },
           amountJson: { type: 'string', maxLength: 200 },
+          country: { type: 'string', maxLength: 80 },
           owner: { type: 'string', enum: ['primary', 'partner', 'joint', 'household', 'unknown'] },
           propertyUse: { type: 'string', enum: ['home', 'rental', 'farm', 'business', 'other', 'unknown'] },
           pensionType: { type: 'string', enum: ['occupational', 'prsa', 'personal', 'defined_benefit', 'other', 'unknown'] },
@@ -79,7 +86,7 @@ const PLANNER_SCHEMA = Object.freeze({
           correctionTarget: { type: 'string', maxLength: 160 }
         },
         required: [
-          'operation', 'kind', 'label', 'entityId', 'linkedEntityId', 'amountJson',
+          'operation', 'kind', 'label', 'entityId', 'linkedEntityId', 'amountJson', 'country',
           'owner', 'propertyUse', 'pensionType', 'agricultural', 'certainty',
           'evidenceText', 'correctionTarget'
         ],
@@ -153,6 +160,10 @@ Boundaries:
 - Do not extract credentials, account numbers, PPS numbers, exact addresses, or identity-document details.
 - When the client says they are a new parent, have a newborn, or just had a baby, the evidence may support household_structure=family and new_parent_status=true. Do not emit a persona label.
 - Numeric, monetary, ownership, and financial-position values must be explicit in the finalized turn.
+- The signed meeting jurisdiction is Ireland (IE). Use Irish terms such as occupational pension, PRSA, personal pension, AVC and defined-benefit pension.
+- Never introduce IRA, Roth IRA, 401(k), ISA or another foreign account list. If the client volunteers a foreign holding, preserve it generically with its country and approximate value; never relabel it as an Irish product.
+- For state_pension_fraction, valueJson is {"owner":"primary","fraction":1} or {"owner":"partner","fraction":0.5}. Full is 1, half or 50% is 0.5, and none is 0. The server supplies the default and rate; never guess or calculate them.
+- For state_pension_start_age, valueJson is {"owner":"primary","startAge":66} or the partner equivalent, and only when an eligible age from 66 to 70 is explicitly stated. Otherwise emit no fact; the server defaults to 66.
 
 Goals:
 - Emit one goalCandidates item for every supported or legacy goal clearly present in this turn. Use fund_education for college or university funding and manage_loan for a non-housing loan.
@@ -164,6 +175,7 @@ Goals:
 Financial positions:
 - Use positions for cash, investments, property, pensions, mortgages, loans, businesses, and other assets.
 - amountJson is either an empty string or an exact JSON money object such as {"amount":10000,"currency":"EUR"}. Never put a bare number in amountJson.
+- country is empty for ordinary Irish positions. For a consumer-volunteered foreign holding, set it to the stated country and use a generic label such as "Foreign investment".
 - A home worth €500,000 with a €350,000 mortgage produces two position candidates. Give both the same simple linkedEntityId such as "home".
 - Use operation=correct only when the client explicitly corrects an earlier value; correctionTarget identifies the earlier label or entity when possible.
 
@@ -243,6 +255,7 @@ function validatePlannerExtraction(value, sourceTurnId) {
         entityId: boundedText(item?.entityId, 120),
         linkedEntityId: boundedText(item?.linkedEntityId, 120),
         amount: parseMoneyJson(item?.amountJson),
+        country: boundedText(item?.country, 80),
         owner: ['primary', 'partner', 'joint', 'household'].includes(item?.owner) ? item.owner : null,
         propertyUse: ['home', 'rental', 'farm', 'business', 'other'].includes(item?.propertyUse) ? item.propertyUse : null,
         pensionType: ['occupational', 'prsa', 'personal', 'defined_benefit', 'other'].includes(item?.pensionType) ? item.pensionType : null,
@@ -300,13 +313,18 @@ function validatePlannerExtraction(value, sourceTurnId) {
 
 function withSafeTurnClassifications(extraction, transcript) {
   const newParent = /\b(?:i(?:'m| am) a new parent|i just had a baby|we just had a baby|our newborn|my newborn)\b/i.test(transcript);
-  if (!newParent || extraction.semanticFacts.some((item) => item.factId === 'new_parent_status')) {
+  if (!newParent || extraction.semanticFacts.some((item) => (
+    item.factId === 'new_parent_status' && item.value === true
+  ))) {
     return extraction;
   }
   return Object.freeze({
     ...extraction,
     semanticFacts: [
-      ...extraction.semanticFacts,
+      // The finalized turn is the authoritative evidence for this narrow,
+      // deterministic classification. Replace a conflicting model candidate
+      // instead of allowing it to suppress the safe canonical value.
+      ...extraction.semanticFacts.filter((item) => item.factId !== 'new_parent_status'),
       {
         candidateId: 'safe-new-parent-context',
         operation: 'upsert',
@@ -512,6 +530,7 @@ export function positionCandidatesToRealtimeFacts(candidates = []) {
       entityId: id,
       ...(candidate.label ? { label: candidate.label } : {}),
       ...(candidate.owner ? { owner: candidate.owner } : {}),
+      ...(candidate.country ? { country: candidate.country } : {}),
       ...(candidate.amount ? { amount: candidate.amount } : {})
     };
     let factId;
@@ -579,8 +598,9 @@ function uniqueMissingFacts(state) {
   const missing = [];
   for (const recommendation of state.recommendations || []) {
     for (const item of recommendation.requiredMissing || []) {
-      if (!item.factId || seen.has(item.factId)) continue;
-      seen.add(item.factId);
+      const instanceKey = `${item.factId || ''}:${item.factInstanceId || ''}`;
+      if (!item.factId || seen.has(instanceKey)) continue;
+      seen.add(instanceKey);
       missing.push({
         factId: item.factId,
         factInstanceId: item.factInstanceId || null,
@@ -602,9 +622,99 @@ function understoodFacts(state) {
   }));
 }
 
+function orderedMissingFacts(state, missingFacts) {
+  const order = [
+    'primary_goal', 'partner_person', 'property_position', 'pension_positions',
+    'pension_current_value', 'pension_employee_contribution_rate',
+    'pension_employer_contribution_rate', 'cash_savings', 'asset_position',
+    'business_position', 'mortgage_position', 'loan_position', 'liability_position', 'person_current_age',
+    'intended_retirement_age', 'income_sources', 'gross_household_income',
+    'annual_net_spending', 'monthly_spending', 'target_retirement_income'
+  ];
+  return [...missingFacts].sort((left, right) => {
+    const leftIndex = order.indexOf(left.factId);
+    const rightIndex = order.indexOf(right.factId);
+    return (leftIndex < 0 ? 999 : leftIndex) - (rightIndex < 0 ? 999 : rightIndex);
+  });
+}
+
+function questionTopic(factId) {
+  if (factId === 'property_position') return 'home';
+  if (factId?.startsWith('pension_') || factId?.startsWith('state_pension')) return 'pensions';
+  if (factId === 'cash_savings') return 'cash';
+  if (factId === 'asset_position') return 'investments';
+  if (factId === 'business_position') return 'other_assets';
+  if (factId?.includes('liability') || factId?.includes('mortgage') || factId?.includes('loan')) return 'debts';
+  if (factId?.includes('income')) return 'income';
+  if (factId?.includes('spending') || factId?.includes('expenses')) return 'spending';
+  if (factId?.includes('age')) return 'age';
+  return 'goal';
+}
+
+function conversationalQuestion(fact, state) {
+  const factId = fact?.factId;
+  const prompts = {
+    primary_goal: 'What would you most like this planning conversation to help you work out?',
+    partner_person: 'Are we planning just for you, or should we include your spouse or partner as well?',
+    property_position: 'Do you own your home, and if so, roughly what is it worth?',
+    pension_positions: 'Let’s take pensions one person at a time. Do you have an occupational pension, PRSA, personal pension, AVC or defined-benefit pension in your own name?',
+    pension_current_value: 'Roughly what is the current value of that pension?',
+    pension_employee_contribution_rate: 'About what percentage of your pay do you contribute to that pension?',
+    pension_employer_contribution_rate: 'Does your employer contribute to that pension, and if so, about what percentage?',
+    cash_savings: 'Roughly how much do you currently hold in cash or savings?',
+    asset_position: 'Do you have investments such as shares or investment funds, and roughly what are they worth?',
+    business_position: 'Do you have any business interests or other significant assets we should include?',
+    mortgage_position: 'Is there a mortgage on the home, and roughly what is still outstanding?',
+    loan_position: 'Do you have any non-mortgage loans we need to include, and roughly what is outstanding?',
+    liability_position: 'Apart from any mortgage already mentioned, are there other debts we need to include?',
+    person_current_age: 'What age are you?',
+    intended_retirement_age: 'At roughly what age would you like to retire?',
+    income_sources: 'What income does the household currently receive?',
+    gross_household_income: 'Roughly what is the household’s total gross income each year?',
+    annual_net_spending: 'Do you have a rough idea of how much the household spends in a year after tax?',
+    monthly_spending: 'About how much does the household spend each month on essentials?',
+    target_retirement_income: 'About how much annual income would you like the household to have in retirement, in today’s money?'
+  };
+  const statePrompt = state.nextQuestion?.factId === factId ? state.nextQuestion.prompt : '';
+  const rawPrompt = prompts[factId]
+    || statePrompt
+    || getSemanticFactDefinition(factId)?.questionPrompt
+    || 'Could you tell me a little more about that?';
+  const prompt = boundedText(rawPrompt, 299).replace(/[.]+$/, '');
+  return prompt.endsWith('?') ? prompt : `${prompt}?`;
+}
+
+function statePensionMemberAssumptions(profile) {
+  const retirement = profile?.assumptions?.values?.retirement || {};
+  const included = retirement.includeStatePension;
+  const fractions = retirement.statePensionFraction || {};
+  const startAges = retirement.statePensionStartAge || {};
+  const ownerIds = [...new Set((profile?.pensions || []).map((pension) => pension.ownerId).filter(Boolean))];
+  return ownerIds.map((personId) => {
+    const person = profile?.partner?.personId === personId ? profile.partner : profile?.primaryPerson;
+    const includedForPerson = typeof included === 'boolean'
+      ? included
+      : included?.[personId] !== false;
+    const fraction = includedForPerson
+      ? normalizeStatePensionFraction(fractions?.[personId], 1)
+      : 0;
+    const explicitStartAge = Number(startAges?.[personId]);
+    return {
+      personId,
+      label: personId === profile?.primaryPerson?.personId
+        ? (person?.displayName || 'You')
+        : (person?.displayName || 'Your partner'),
+      fraction,
+      startAge: Number.isInteger(explicitStartAge) && explicitStartAge >= 66 && explicitStartAge <= 70
+        ? explicitStartAge
+        : IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge
+    };
+  });
+}
+
 export async function composeMeetingBrief({ env, context, extraction, sourceTurnId }) {
   const state = context.state || {};
-  const missingFacts = uniqueMissingFacts(state);
+  const missingFacts = orderedMissingFacts(state, uniqueMissingFacts(state));
   const modules = (state.moduleSlots || []).slice(0, 3).map((slot, index) => ({
     slot: index + 1,
     moduleId: slot.moduleId,
@@ -612,18 +722,24 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
     status: slot.availability || 'provisional',
     intakeStatus: slot.intakeStatus || 'missing_information',
     goals: [...(slot.relatedGoalTypes || [])].slice(0, 8),
-    reason: boundedText(slot.reasons?.[0] || slot.reason || '', 240)
+    reason: boundedText(slot.reasons?.[0] || slot.reason || '', 240),
+    assumptions: (state.recommendations || [])
+      .find((item) => item.moduleId === slot.moduleId)
+      ?.assumptionsUsed?.slice(0, 6).map((assumption) => ({
+        key: boundedText(assumption.key, 100),
+        value: assumption.value,
+        reason: boundedText(assumption.reason, 240)
+      })) || []
   }));
   const ready = modules.length >= 1 && modules.length <= 3
     && modules.every((module) => ['ready', 'ready_with_assumptions'].includes(module.intakeStatus));
-  const phase = state.requiresGoalPriorityQuestion || state.requiresDecisionTopicQuestion
-    ? 'goal_clarification'
-    : ready ? 'review'
-    : state.currentPendingProposal
-      ? 'confirmation'
+  const phase = ready && context.config?.realtimeSpokenCompletionEnabled
+    ? 'awaiting_voice_confirmation'
+    : ready
+      ? 'intake'
       : state.goalAssessment?.activeGoalTypes?.length || extraction?.narrativeSummary?.summary
-        ? 'targeted_fact_gathering'
-        : 'goal_discovery';
+        ? 'intake'
+        : 'discovery';
   const extractedQuestion = extraction?.clientQuestion
     || { present: false, intent: 'none', topic: '', questionText: '' };
   const reviewedQuestionTopic = extractedQuestion.intent === 'recommendation'
@@ -636,11 +752,29 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
   const clientQuestion = extractedQuestion.present
     ? { ...extractedQuestion, reviewedAnswer: intakeExplanation(reviewedQuestionTopic, { stillNeeded: missingFacts }) }
     : extractedQuestion;
+  const primaryRequestedFact = missingFacts[0] || null;
+  const questionBatch = primaryRequestedFact
+    ? {
+        topic: questionTopic(primaryRequestedFact.factId),
+        primaryFact: primaryRequestedFact,
+        linkedFact: null,
+        prompt: conversationalQuestion(primaryRequestedFact, state),
+        maxQuestions: 1
+      }
+    : null;
+  const statePensionRule = modules.some((module) => module.moduleId === 'pension_projection')
+    ? {
+        ...publicIrishStatePensionRule(),
+        perPersonAssumptions: statePensionMemberAssumptions(context.profile)
+      }
+    : null;
   const brief = {
     schemaVersion: MEETING_BRIEF_V2,
     sourceTurnId,
     profileRevision: Number(state.profileRevision || context.sessionRow?.current_profile_revision || 0),
+    jurisdiction: 'IE',
     phase,
+    currentTopic: questionBatch?.topic || (ready ? 'confirmation' : 'goal'),
     narrativeSummary: boundedText(extraction?.narrativeSummary?.summary || state.meetingBrief?.narrativeSummary, 500),
     narrativeEvidence: (extraction?.narrativeSummary?.evidence || []).slice(0, 8),
     goals: [...(state.goalAssessment?.activeGoalTypes || [])].slice(0, 12),
@@ -649,14 +783,19 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
     analyses: modules,
     stillNeeded: missingFacts.slice(0, 10),
     nextObjective: {
-      facts: missingFacts.slice(0, 2),
-      promptHint: boundedText(state.nextQuestion?.prompt || '', 300),
+      facts: primaryRequestedFact ? [primaryRequestedFact] : [],
+      promptHint: questionBatch?.prompt || '',
       reason: boundedText(missingFacts[0]?.reason || '', 240)
     },
+    questionBatch,
     clientQuestion,
     ambiguities: (extraction?.ambiguities || []).slice(0, 6),
     provisional: !ready,
     readyToConfirm: ready,
+    confirmationSummary: '',
+    statePensionRule,
+    moduleState: ready ? 'prepared' : 'collecting_information',
+    finalNavigationTarget: '/plan/#results',
     generatedAt: new Date().toISOString()
   };
   const signature = await hmacSha256Base64Url(
@@ -677,7 +816,8 @@ export function toConversationGuide(brief) {
       moduleId: item.moduleId,
       label: item.label,
       status: item.status,
-      reason: item.reason
+      reason: item.reason,
+      assumptions: (item.assumptions || []).map((assumption) => ({ ...assumption }))
     })),
     progress: {
       phase: brief.phase,
@@ -686,9 +826,17 @@ export function toConversationGuide(brief) {
       profileRevision: brief.profileRevision
     },
     nextObjective: {
-      facts: brief.nextObjective.facts.slice(0, 2),
-      reason: brief.nextObjective.reason
-    }
+      facts: brief.nextObjective.facts.slice(0, 1),
+      reason: brief.nextObjective.reason,
+      prompt: brief.nextObjective.promptHint
+    },
+    jurisdiction: brief.jurisdiction,
+    currentTopic: brief.currentTopic,
+    questionBatch: brief.questionBatch,
+    confirmationSummary: brief.confirmationSummary,
+    moduleState: brief.moduleState,
+    finalNavigationTarget: brief.finalNavigationTarget,
+    statePensionRule: brief.statePensionRule
   };
 }
 
@@ -696,6 +844,7 @@ export const REALTIME_EDUCATION_V1 = Object.freeze({
   net_worth: 'Net worth is a snapshot of what you own minus what you owe. Here it is educational context only; the confirmed figures and deterministic Personal Balance Sheet provide the actual calculation.',
   mortgage_balance: 'The mortgage balance lets the Personal Balance Sheet distinguish the home’s value from the debt secured against it, and it helps show which mortgage facts are still missing.',
   pension_value: 'A current pension value gives the pension analysis a starting point. It is recorded as a reviewable fact and any projection remains deterministic and visible.',
+  state_pension: 'For this illustration, the maximum Irish State Pension (Contributory) rate effective January 2026 is €299.30 a week, or €15,563.60 gross a year, normally from age 66. The editable assumption escalates by 2% a year. The actual contributory rate depends on the person’s PRSI record.',
   why_information: 'I only ask for facts used by the analyses shown on screen. Each missing fact is tied to a deterministic readiness reason, and you can review every captured value before anything runs.',
   recommendation_boundary: 'I can explain the information and the analyses being prepared, but I cannot recommend products or actions or decide eligibility. Those need an adviser review.',
   eligibility_boundary: 'I cannot recommend products or actions, decide eligibility, or make approval claims in this meeting. I can capture the relevant facts for adviser review.',

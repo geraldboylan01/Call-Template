@@ -116,6 +116,82 @@
         "requiredAnalysisIds": ["personal_balance_sheet"],
         "maximumIdenticalConsecutiveReplies": 2
       }
+    },
+    {
+      "id": "spoken_retirement_completion",
+      "description": "A calm Irish retirement meeting gathers small batches, applies per-person State Pension assumptions and ends only after spoken authorization and the controlled outro.",
+      "turns": [
+        {
+          "label": "retirement_goal",
+          "say": "I am 60 and I would like to retire at 65 with my wife, who is already retired.",
+          "expectReply": true,
+          "mustNotPattern": "IRA|Roth IRA|401\\(k\\)|ISA"
+        },
+        {
+          "label": "home_position",
+          "say": "We own our home, it is worth about six hundred thousand euro, and the mortgage is fully paid off.",
+          "expectReply": true
+        },
+        {
+          "label": "primary_pension",
+          "say": "My occupational pension is worth about four hundred thousand euro and I contribute ten thousand euro a year.",
+          "expectReply": true
+        },
+        {
+          "label": "partner_pension",
+          "say": "My wife's pension is worth around one hundred thousand euro and she is no longer contributing.",
+          "expectReply": true
+        },
+        {
+          "label": "cash_and_investments",
+          "say": "We have fifty thousand euro in cash and thirty thousand euro in stocks and shares, with no other debts.",
+          "expectReply": true
+        },
+        {
+          "label": "income_and_spending",
+          "say": "My salary is one hundred thousand euro and we spend roughly fifty thousand euro a year.",
+          "expectReply": true
+        },
+        {
+          "label": "state_pensions",
+          "say": "Please assume the full Irish State Pension for me and half of the full rate for my wife.",
+          "expectReply": true,
+          "mustPattern": "15,?563\\.60|299\\.30|full.*State Pension|State Pension.*full"
+        },
+        {
+          "label": "spoken_confirmation",
+          "say": "That all sounds correct. Go ahead and generate the modules now.",
+          "expectReply": true
+        }
+      ],
+      "expected": {
+        "positions": {
+          "cash": 50000,
+          "investment": 30000,
+          "pension": 500000,
+          "property": 600000
+        },
+        "analysisCount": 3,
+        "requiredAnalysisIds": ["personal_balance_sheet"],
+        "maximumIdenticalConsecutiveReplies": 2,
+        "questionBatchMax": 1,
+        "statePensionAnnualPrimary": 15563.6,
+        "statePensionAnnualPartner": 7781.8,
+        "statePensionStartAge": 66,
+        "statePensionEscalationRate": 0.02,
+        "confirmationDecision": "affirmed",
+        "completionPhases": [
+          "awaiting_voice_confirmation",
+          "generating_modules",
+          "closing",
+          "completed"
+        ],
+        "outro": "Thanks very much for your time today. Your modules are ready, and I’m taking you to them now.",
+        "automaticHangup": true,
+        "navigationTarget": "results",
+        "transcriptIncludesWelcomeAndOutro": true,
+        "forbiddenUnsolicitedTerms": ["IRA", "Roth IRA", "401(k)", "ISA"]
+      }
     }
   ]
 }

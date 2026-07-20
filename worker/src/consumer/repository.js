@@ -2179,6 +2179,8 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
     // Realtime rows are purged in strict child-before-parent order. Active
     // leases are excluded by the session lock above and must be terminated by
     // the lifecycle coordinator before deletion can begin.
+    db(env).prepare(`DELETE FROM consumer_realtime_voice_confirmations WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_run_provenance WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_fact_proposals WHERE session_id = ? AND ${lockedSessionExists}`)

@@ -134,7 +134,10 @@ function normalizeAsset(value, index) {
     label: nonEmptyString(value.label, `${fieldName}.label`)
   };
   const currentValue = normalizeMoney(value.currentValue, `${fieldName}.currentValue`, { optional: true });
+  const country = optionalString(value.country, `${fieldName}.country`);
+  if (country && country.length > 80) throw new Error(`${fieldName}.country must be 80 characters or fewer.`);
   if (currentValue) asset.currentValue = currentValue;
+  if (country) asset.country = country;
   if (typeof value.liquid !== 'undefined') {
     if (typeof value.liquid !== 'boolean') throw new Error(`${fieldName}.liquid must be a boolean when provided.`);
     asset.liquid = value.liquid;

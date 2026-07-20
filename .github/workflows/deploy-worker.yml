@@ -70,6 +70,9 @@ jobs:
       # direct Marin conversation; setting the protected variable to false is
       # the immediate rollback to controlled v1 speech.
       CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: ${{ vars.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED || 'true' }}
+      # Spoken authorization is subordinate to both Realtime and conversational
+      # v2. It remains opt-in so visual confirmation is the immediate rollback.
+      CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: ${{ vars.CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED || 'false' }}
       CONSUMER_DB_NAME: "planeir-consumer"
       CONSUMER_SITE_ZONE_NAME: "planeir.ie"
       CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
@@ -92,8 +95,8 @@ jobs:
       CONSUMER_BETA_REALTIME_VOICE: "marin"
       CONSUMER_BETA_REALTIME_REASONING_EFFORT: "low"
       CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe"
-      CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v8"
-      CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v6"
+      CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v9"
+      CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v7"
       CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
       # Adviser-demo envelope: €10 per session (warn at €7.50) inside the
       # retained €50 UTC-day ceiling, 15-minute maximum meeting, 3-minute
@@ -381,6 +384,11 @@ jobs:
             throw new Error('CONSUMER_REALTIME_CONVERSATION_V2_ENABLED must be exactly true or false.');
           }
           const realtimeV2Enabled = realtimeEnabled && realtimeV2Toggle === 'true';
+          const spokenCompletionToggle = envValue('CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED');
+          if (!['false', 'true'].includes(spokenCompletionToggle)) {
+            throw new Error('CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED must be exactly true or false.');
+          }
+          const spokenCompletionEnabled = realtimeV2Enabled && spokenCompletionToggle === 'true';
           if (realtimeEnabled && !betaEnabled) {
             throw new Error('Realtime cannot be enabled outside the signed-invite adviser beta.');
           }
@@ -410,6 +418,7 @@ jobs:
             'CONSUMER_VOICE_ENABLED',
             'CONSUMER_REALTIME_VOICE_ENABLED',
             'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
+            'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
             'CONSUMER_MODULE_ROUTING_ENABLED',
             'CONSUMER_GOAL_ROUTING_ENABLED',
             'CONSUMER_HANDOFF_ENABLED',
@@ -594,8 +603,8 @@ jobs:
                 CONSUMER_REALTIME_VOICE: ['CONSUMER_BETA_REALTIME_VOICE', 'marin'],
                 CONSUMER_REALTIME_REASONING_EFFORT: ['CONSUMER_BETA_REALTIME_REASONING_EFFORT', 'low'],
                 CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
-                CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_REALTIME_PROMPT_VERSION', 'consumer-realtime-orchestrator-v8'],
-                CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_REALTIME_TOOLSET_VERSION', 'consumer-realtime-tools-v6'],
+                CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_REALTIME_PROMPT_VERSION', 'consumer-realtime-orchestrator-v9'],
+                CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_REALTIME_TOOLSET_VERSION', 'consumer-realtime-tools-v7'],
                 CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
                 CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS', '1000'],
                 CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_WARN_EUR_CENTS', '750'],
@@ -630,6 +639,11 @@ jobs:
                 'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
                 realtimeV2Enabled ? 'true' : 'false'
               );
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
+                spokenCompletionEnabled ? 'true' : 'false'
+              );
               generatedSource = replaceTomlString(generatedSource, 'CONSUMER_HANDOFF_ENABLED', 'false');
             }
           }
@@ -639,6 +653,7 @@ jobs:
             CONSUMER_VOICE_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
             CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: realtimeV2Enabled ? 'true' : 'false',
+            CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: spokenCompletionEnabled ? 'true' : 'false',
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_GOAL_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_AI_INTAKE_ENABLED: 'false',
@@ -666,7 +681,11 @@ jobs:
           const bootstrapSource = replaceTomlString(
             replaceTomlString(
               replaceTomlString(
-                generatedSource,
+                replaceTomlString(
+                  generatedSource,
+                  'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
+                  'false'
+                ),
                 'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
                 'false'
               ),
@@ -681,6 +700,9 @@ jobs:
           }
           if (!/^CONSUMER_REALTIME_CONVERSATION_V2_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep conversational realtime v2 disabled.');
+          }
+          if (!/^CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep spoken completion disabled.');
           }
           if (!/^CONSUMER_HANDOFF_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep the realtime handoff disabled.');

@@ -6,6 +6,7 @@ import {
   createSession,
   deleteSession,
   getBootstrap,
+  getRealtimeVoiceMeetingTranscript,
   getSession,
   patchProfile,
   putAnalysisPlan,
@@ -119,8 +120,14 @@ const realtimeVoiceController = createRealtimeVoiceController({
     if (currentProfileRevision() !== previousRevision) invalidatePendingAnalysisPlan();
   },
   onPlanningPayload: (payload) => scheduleRealtimeJourneyRender(payload),
-  onNavigate: (view) => {
-    setView(view || 'review');
+  onNavigate: async (view) => {
+    const destination = view || 'review';
+    if (destination === 'results') {
+      await refreshSavedSession({ keepView: true });
+      const latestMeeting = state.realtimeMeetings?.[0];
+      if (latestMeeting?.meetingId) await loadRealtimeMeetingTranscript(latestMeeting.meetingId);
+    }
+    setView(destination);
     renderCurrentJourney({ focus: true });
   },
   onStopBoundedVoice: () => voiceController.cancelActiveVoice(),
@@ -878,7 +885,7 @@ async function handleWithdrawAiConsent() {
 }
 
 async function refreshSavedSession({ keepView = true } = {}) {
-  if (state.busy) return;
+  if (state.busy) return null;
   setBusy(true);
   renderCurrentJourney();
   try {
@@ -887,12 +894,31 @@ async function refreshSavedSession({ keepView = true } = {}) {
     mergePayload(payload);
     if (!keepView) setView(chooseViewFromServer({ payload }));
     renderCurrentJourney({ focus: true });
+    return payload;
   } catch (error) {
     if (recoverUnavailableSession(error)) return;
     setBusy(false);
     renderCurrentJourney();
     showToast(getErrorMessage(error), { error: true });
+    return null;
   }
+}
+
+async function loadRealtimeMeetingTranscript(meetingId) {
+  const turns = [];
+  let cursor = '';
+  let meeting = null;
+  const seenCursors = new Set();
+  do {
+    const payload = await getRealtimeVoiceMeetingTranscript(getSessionId(), meetingId, { cursor, limit: 50 });
+    meeting = payload.meeting || meeting;
+    turns.push(...(Array.isArray(payload.turns) ? payload.turns : []));
+    cursor = String(payload.nextCursor || '');
+    if (cursor && seenCursors.has(cursor)) throw new Error('The saved meeting transcript could not be paged safely.');
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  mergePayload({ meeting, transcriptTurns: turns, nextCursor: cursor || null });
+  return turns;
 }
 
 async function retrySavedHandoff() {
@@ -1211,6 +1237,14 @@ function handleRootClick(event) {
     refreshSavedSession();
     return;
   }
+  if (action === 'load-meeting-transcript') {
+    button.disabled = true;
+    loadRealtimeMeetingTranscript(button.dataset.meetingId || '')
+      .then(() => renderCurrentJourney({ focus: true }))
+      .catch((error) => showToast(getErrorMessage(error), { error: true }))
+      .finally(() => { button.disabled = false; });
+    return;
+  }
   if (action === 'retry-handoff') {
     retrySavedHandoff();
   }
@@ -1316,6 +1350,8 @@ async function boot() {
         try {
           const sessionPayload = await getSession(access.sessionId);
           mergePayload(sessionPayload);
+          const latestMeeting = state.realtimeMeetings?.[0];
+          if (latestMeeting?.meetingId) await loadRealtimeMeetingTranscript(latestMeeting.meetingId);
         } catch (error) {
           if (recoverUnavailableSession(error)) return;
         }
@@ -1343,6 +1379,8 @@ async function boot() {
     try {
       const sessionPayload = await getSession(access.sessionId);
       mergePayload(sessionPayload);
+      const latestMeeting = state.realtimeMeetings?.[0];
+      if (latestMeeting?.meetingId) await loadRealtimeMeetingTranscript(latestMeeting.meetingId);
       setView(chooseViewFromServer({ payload: sessionPayload }));
       renderCurrentJourney();
     } catch (error) {
