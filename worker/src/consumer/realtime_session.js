@@ -223,6 +223,35 @@ export function realtimeSessionPolicySnapshot(session = {}) {
   };
 }
 
+// Diagnostic only: report which policy-snapshot fields differ between what the
+// Worker pinned and what the provider echoed, so a provider-side default
+// change is identified precisely instead of guessed. Values are bounded config
+// fields (model, voice, turn detection, tool shapes) — never user content.
+export function diffPolicySnapshot(expected, actual, base = '') {
+  const differences = [];
+  const brief = (value) => {
+    if (value === undefined) return '(absent)';
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    return String(text).length > 140 ? `${String(text).slice(0, 140)}…` : String(text);
+  };
+  const walk = (left, right, path) => {
+    if (differences.length > 25) return;
+    const leftObj = left && typeof left === 'object' && !Array.isArray(left);
+    const rightObj = right && typeof right === 'object' && !Array.isArray(right);
+    if (leftObj && rightObj) {
+      for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+        walk(left[key], right[key], path ? `${path}.${key}` : key);
+      }
+      return;
+    }
+    if (JSON.stringify(left) !== JSON.stringify(right)) {
+      differences.push({ path: path || '(root)', expected: brief(left), actual: brief(right) });
+    }
+  };
+  walk(expected, actual, base);
+  return differences;
+}
+
 function json(value, status = 200) {
   return new Response(JSON.stringify(value), {
     status,
@@ -1356,12 +1385,20 @@ export class ConsumerRealtimeSession {
         `consumer/realtime/session-policy/v1/${stableStringify(this.pendingSessionPolicySnapshot)}`
       )
     ]);
-    return constantTimeTextEqual(this.pendingSessionPolicyHash, actualHash)
+    const matches = constantTimeTextEqual(this.pendingSessionPolicyHash, actualHash)
       && constantTimeTextEqual(this.pendingSessionPolicyHash, expectedSnapshotHash)
       && constantTimeTextEqual(
         stableStringify(this.pendingSessionPolicySnapshot),
         actualSerialized
       );
+    if (!matches) {
+      try {
+        console.warn('Realtime session policy mismatch', {
+          differences: diffPolicySnapshot(this.pendingSessionPolicySnapshot, actualSnapshot)
+        });
+      } catch (_error) { /* diagnostics are best effort */ }
+    }
+    return matches;
   }
 
   responseAuthorizationPriority(reason) {
