@@ -2760,6 +2760,10 @@ firstTurnEffectiveSession.tools = firstTurnEffectiveSession.tools.map((tool) => 
 }));
 firstTurnEffectiveSession.temperature = 0.8;
 firstTurnEffectiveSession.tracing = null;
+// The provider applies parallel_tool_calls:false but has stopped echoing it in
+// session.updated. An omitted acknowledgement must remain a valid match, not a
+// session_policy_changed teardown.
+delete firstTurnEffectiveSession.parallel_tool_calls;
 await firstTurnDurable.handleProviderMessage(JSON.stringify({
   type: 'session.updated',
   session: firstTurnEffectiveSession
@@ -2770,6 +2774,26 @@ assert.equal(
   firstTurnTerminalEvents.length,
   0,
   'A valid first-turn provider policy acknowledgement must not close the connection.'
+);
+// A provider that explicitly echoes parallel_tool_calls:true IS a real policy
+// change and must still fail closed.
+const parallelViolationState = new TestDurableObjectState();
+const parallelViolationDurable = new ConsumerRealtimeSession(parallelViolationState, env);
+await parallelViolationState.ready;
+parallelViolationDurable.pendingSessionPolicySnapshot = realtimeSessionPolicySnapshot({ parallel_tool_calls: false });
+parallelViolationDurable.pendingSessionPolicyHash = await hmacSha256Base64Url(
+  env.CONSUMER_RATE_LIMIT_HASH_KEY,
+  `consumer/realtime/session-policy/v1/${stableStringify(realtimeSessionPolicySnapshot({ parallel_tool_calls: false }))}`
+);
+assert.equal(
+  await parallelViolationDurable.providerSessionMatchesPolicy({ parallel_tool_calls: true }),
+  false,
+  'An explicit provider parallel_tool_calls:true must fail the policy comparison.'
+);
+assert.equal(
+  await parallelViolationDurable.providerSessionMatchesPolicy({ parallel_tool_calls: false }),
+  true,
+  'The pinned parallel_tool_calls:false must still match when the provider echoes it.'
 );
 
 // Durable Object event ordering, prompt injection and response authorization

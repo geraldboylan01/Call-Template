@@ -216,7 +216,11 @@ export function realtimeSessionPolicySnapshot(session = {}) {
     },
     tools: normalizedTools(session.tools),
     tool_choice: normalizedToolChoice(session.tool_choice),
-    parallel_tool_calls: session.parallel_tool_calls,
+    // The Worker pins parallel_tool_calls:false. The provider applies it but
+    // has stopped echoing it in session.updated, so coerce like tool `strict`:
+    // absent is the requested false, while an explicit provider-echoed true
+    // still fails the policy comparison.
+    parallel_tool_calls: session.parallel_tool_calls === true,
     max_output_tokens: session.max_output_tokens,
     truncation: session.truncation,
     include: Array.isArray(session.include) ? session.include : []
