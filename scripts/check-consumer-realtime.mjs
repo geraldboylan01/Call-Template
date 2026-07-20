@@ -2711,6 +2711,29 @@ assert.deepEqual(
   'A genuine item deletion must still fail closed, even in v2.'
 );
 
+// A late response.done for a previously-authorized (barge-in-superseded)
+// response must be tolerated in v2, while an unknown id still fails closed.
+const raceTerminals = [];
+welcomeDurable.terminalize = async (...args) => { raceTerminals.push(args); return { providerHangupConfirmed: true }; };
+welcomeDurable.knownResponseIds = new Set(['resp_superseded_A', 'resp_current_B']);
+welcomeDurable.currentAuthorizedResponseId = 'resp_current_B';
+welcomeDurable.inResponse = true;
+await welcomeDurable.handleProviderMessage(JSON.stringify({
+  type: 'response.done',
+  response: { id: 'resp_superseded_A', status: 'cancelled' }
+}));
+assert.equal(raceTerminals.length, 0, 'A late done for a superseded response must not end a v2 meeting.');
+assert.equal(welcomeDurable.currentAuthorizedResponseId, 'resp_current_B', 'The current response must be untouched by a stale done.');
+await welcomeDurable.handleProviderMessage(JSON.stringify({
+  type: 'response.done',
+  response: { id: 'resp_never_authorized', status: 'completed' }
+}));
+assert.deepEqual(
+  raceTerminals.pop()?.slice(1, 3),
+  ['response_id_mismatch', 'realtime_response_id_mismatch'],
+  'An unknown response id must still fail closed.'
+);
+
 const firstTurnState = new TestDurableObjectState();
 const firstTurnDurable = new ConsumerRealtimeSession(firstTurnState, env);
 await firstTurnState.ready;

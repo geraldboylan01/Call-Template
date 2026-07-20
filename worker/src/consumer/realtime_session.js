@@ -649,6 +649,7 @@ export class ConsumerRealtimeSession {
     this.eventChain = Promise.resolve();
     this.pendingResponseAuthorization = null;
     this.currentAuthorizedResponseId = null;
+    this.knownResponseIds = new Set();
     this.currentResponseReason = null;
     this.currentResponseToolCalls = 0;
     this.toolContinuationPending = false;
@@ -1229,6 +1230,12 @@ export class ConsumerRealtimeSession {
       }
       this.pendingResponseAuthorization = null;
       this.currentAuthorizedResponseId = responseId;
+      // Remember recently-authorized response ids (bounded) so a late done
+      // from a superseded response after a barge-in is recognized as ours.
+      (this.knownResponseIds ||= new Set()).add(responseId);
+      while (this.knownResponseIds.size > 16) {
+        this.knownResponseIds.delete(this.knownResponseIds.values().next().value);
+      }
       this.currentResponseReason = pending.reason;
       this.currentResponseToolCalls = 0;
       this.currentAssistantTranscript = '';
@@ -1247,6 +1254,17 @@ export class ConsumerRealtimeSession {
     if (type === 'response.done') {
       const responseId = String(event.response?.id || '');
       if (!this.currentAuthorizedResponseId || responseId !== this.currentAuthorizedResponseId) {
+        // A barge-in in v2 can make a prior response's done land just after the
+        // next turn's response is authorized, so the arriving id is a
+        // previously-authorized (now superseded) response rather than an
+        // injection. Acknowledge that benign late done without disturbing the
+        // current in-flight response. Only a genuinely unknown id fails closed.
+        if (getConsumerConfig(this.env).realtimeConversationV2Enabled
+          && validProviderId(responseId)
+          && this.knownResponseIds?.has(responseId)) {
+          await this.touch();
+          return;
+        }
         await this.terminalize('failed', 'response_id_mismatch', 'realtime_response_id_mismatch', false);
         return;
       }
