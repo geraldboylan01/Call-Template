@@ -889,6 +889,20 @@ export class RealtimeVoiceController {
     return this.active;
   }
 
+  // True when the live meeting can actually run for this confirmed session:
+  // the cohort is eligible, the disclosure is configured, a server session
+  // exists, the browser supports it, and no consent refresh is outstanding.
+  // The app uses this to decide between the orb meeting and the "failed to
+  // load" page — there is no typed-journey fallback anymore.
+  isMeetingAvailable() {
+    const context = realtimeContext();
+    return context.eligible
+      && context.configured
+      && Boolean(context.sessionId)
+      && isRealtimeVoiceSupported()
+      && !context.consentRefreshRequired;
+  }
+
   isCompletionLocked() {
     return Boolean(this.completionSpeechId || this.completionNavigationInFlight);
   }

@@ -1,0 +1,61 @@
+name: Learning-signal service
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: learning-signals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://planeir:planeir_ci@127.0.0.1:5432/planeir_telemetry
+      NODE_ENV: test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: planeir_telemetry
+          POSTGRES_USER: planeir
+          POSTGRES_PASSWORD: planeir_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U planeir -d planeir_telemetry"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/learning-signals/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --prefix services/learning-signals
+
+      - name: Apply PostgreSQL migrations
+        run: make db-migrate
+
+      - name: Run the full PostgreSQL-backed suite
+        run: make test
+
+      - name: Type-check and lint
+        run: make lint
+

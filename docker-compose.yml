@@ -1,0 +1,22 @@
+name: planeir-learning-signals
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-planeir_telemetry}
+      POSTGRES_USER: ${POSTGRES_USER:-planeir}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-planeir_local_only}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - learning-signals-postgres:/var/lib/postgresql/data
+
+volumes:
+  learning-signals-postgres:
+

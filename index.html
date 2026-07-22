@@ -140,51 +140,25 @@
           </span>
         </a>
 
-        <button
-          id="mobileNavToggle"
-          class="nav-toggle"
-          type="button"
-          aria-expanded="false"
-          aria-controls="siteNav"
-        >
-          Menu
-        </button>
-
-        <nav id="siteNav" class="site-nav" aria-label="Primary">
-          <a href="#what-planeir-is">What Planeir is</a>
-          <a href="#who-its-for">What it covers</a>
-          <a href="#during-call">How calls work</a>
-          <a href="#gerry-boylan">About Gerry</a>
-          <a href="#free-calls">Free calls</a>
-          <a href="#request-call">Request a free call</a>
+        <div class="site-header-actions">
           <a class="site-nav-admin-login" href="./app/?login=1&return=home" data-advisor-login-link>Admin Login</a>
           <a class="site-nav-app advisor-app-link is-hidden" href="./app/" data-advisor-app-link hidden>Open app</a>
-        </nav>
+          <a class="button button-primary button-sm" href="#request-call">Request a free call</a>
+        </div>
       </header>
 
       <main>
         <section class="hero-section">
           <div class="hero-copy" data-reveal>
-            <p class="section-eyebrow">Irish financial education</p>
-            <h1 class="hero-title">Planeir helps Irish people understand financial decisions before they act.</h1>
+            <p class="section-eyebrow">Irish financial education calls</p>
+            <h1 class="hero-title">Get a clearer view of your next money decision.</h1>
             <p class="hero-subtitle">
-              Join a Gerry-led education call using your own scenario, live visual explanations,
-              and practical Irish financial planning context, so pensions, mortgages, retirement
-              questions, protection, savings buffers, and long-term goals become easier to understand.
+              Free, one to one education calls with Gerry Boylan, a QFA qualified financial adviser
+              based in Ireland. Bring your own numbers and we'll talk it through with simple visuals,
+              no jargon. Camera off and first names are both welcome.
             </p>
             <div class="hero-actions">
               <a class="button button-primary" href="#request-call">Request a free call</a>
-              <a class="button button-secondary" href="#during-call">See how it works</a>
-            </div>
-            <p class="hero-disclosure">
-              Planeir uses your situation as the example for education and explanation. It does not
-              sell products, arrange products, or provide regulated financial advice, tax advice,
-              legal advice, or product recommendations.
-            </p>
-            <div class="hero-points">
-              <div class="hero-point">Bring the question and context that are weighing on you most.</div>
-              <div class="hero-point">See the moving parts more clearly with live visuals.</div>
-              <div class="hero-point">Leave with a better understanding of what to explore next.</div>
             </div>
           </div>
 
@@ -203,7 +177,7 @@
                   ></iframe>
                 </div>
                 <div class="hero-video-caption">
-                  <span>Why Planeir exists</span>
+                  <span>Why Gerry started Planeir</span>
                   <p>
                     Gerry started Planeir to turn the financial questions people quietly carry into
                     clearer, visual education calls, helping you understand the moving parts before
@@ -215,209 +189,43 @@
           </div>
         </section>
 
-        <section class="trust-strip-section" aria-label="Core trust points">
-          <div class="trust-strip">
-            <article class="trust-pill" data-reveal>
-              <span class="trust-pill-label">Experience-led</span>
-              <p>Education calls are guided by Gerry's experience with complex financial planning conversations in Ireland.</p>
+        <h2 class="visually-hidden">Why people trust Planeir</h2>
+        <section class="trust-row-section" aria-label="Why people trust Planeir">
+          <div class="trust-row" data-reveal>
+            <span>QFA qualified through the IOB</span>
+            <span class="trust-row-divider" aria-hidden="true"></span>
+            <span>Free, no obligation</span>
+            <span class="trust-row-divider" aria-hidden="true"></span>
+            <span>Camera off is fine</span>
+          </div>
+        </section>
+
+        <h2 class="visually-hidden">How a Planeir call works</h2>
+        <section class="content-section how-section" aria-label="How a Planeir call works">
+          <div class="how-grid">
+            <article class="how-card" data-reveal>
+              <h3>Led by Gerry, built for Ireland</h3>
+              <p>Gerry is a QFA qualified adviser. He talks you through pensions, mortgages, protection and your goals using your own numbers, not a general script.</p>
             </article>
-            <article class="trust-pill" data-reveal data-reveal-delay="80">
-              <span class="trust-pill-label">Your scenario matters</span>
-              <p>The more relevant context Gerry has, the more useful the educational conversation can be.</p>
+            <article class="how-card" data-reveal data-reveal-delay="70">
+              <h3>See your options, not just the maths</h3>
+              <p>Live visuals make it easier to compare choices, like waiting a year versus moving now, so the trade offs actually make sense.</p>
             </article>
-            <article class="trust-pill" data-reveal data-reveal-delay="160">
-              <span class="trust-pill-label">No product sales</span>
-              <p>Planeir is not here to sell, arrange, or recommend financial products.</p>
+            <article class="how-card" data-reveal data-reveal-delay="140">
+              <h3>No sales, ever</h3>
+              <p>The call is there to help you understand your options. It never sells, arranges or recommends a product.</p>
             </article>
           </div>
         </section>
 
-        <section class="content-section difference-section" id="what-planeir-is">
-          <div class="section-heading" data-reveal>
-            <p class="section-eyebrow">What Planeir is</p>
-            <h2>An online Irish financial education app for live, visual conversations.</h2>
-            <p>
-              Planeir combines a Gerry-led conversation, your own financial scenario, and live visual
-              explanations so you can see the structure of a question instead of trying to hold
-              everything in your head.
-            </p>
-          </div>
-
-          <div class="difference-grid">
-            <article class="difference-card" data-reveal>
-              <span class="feature-index">01</span>
-              <h3>Gerry-led</h3>
-              <p>Gerry Boylan guides the conversation and brings practical financial planning context to the topic.</p>
-            </article>
-            <article class="difference-card" data-reveal data-reveal-delay="70">
-              <span class="feature-index">02</span>
-              <h3>Built around your context</h3>
-              <p>Relevant figures, goals, timelines, and concerns help make the education specific and useful.</p>
-            </article>
-            <article class="difference-card" data-reveal data-reveal-delay="140">
-              <span class="feature-index">03</span>
-              <h3>Built for Ireland</h3>
-              <p>Calls focus on the Irish context around pensions, mortgages, protection, and goals.</p>
-            </article>
-            <article class="difference-card" data-reveal data-reveal-delay="210">
-              <span class="feature-index">04</span>
-              <h3>Clear boundaries</h3>
-              <p>The call explains options and trade-offs, but does not sell products or make personal recommendations.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="content-section" id="who-its-for">
-          <div class="section-heading" data-reveal>
-            <p class="section-eyebrow">What Planeir can help you understand</p>
-            <h2>The starting point is usually a real Irish financial question, not a perfect brief.</h2>
-          </div>
-
-          <div class="use-case-grid person-grid">
-            <article class="use-case-card" data-reveal>
-              <h3>Pensions and retirement planning</h3>
-              <p>Understand the moving parts that influence whether you may be on track for later life.</p>
-            </article>
-            <article class="use-case-card" data-reveal data-reveal-delay="60">
-              <h3>Mortgage and housing decisions</h3>
-              <p>Talk through affordability, timing, buffers, and the trade-offs behind different routes.</p>
-            </article>
-            <article class="use-case-card" data-reveal data-reveal-delay="120">
-              <h3>Protection and family security</h3>
-              <p>Understand the protection questions that may matter for your household, income, and responsibilities.</p>
-            </article>
-            <article class="use-case-card" data-reveal data-reveal-delay="180">
-              <h3>Savings buffers and trade-offs</h3>
-              <p>Make competing priorities more visible so you can understand what each choice asks of you.</p>
-            </article>
-            <article class="use-case-card" data-reveal data-reveal-delay="240">
-              <h3>Financial goals</h3>
-              <p>See how goals, timelines, assumptions, and constraints can interact over time.</p>
-            </article>
-            <article class="use-case-card" data-reveal data-reveal-delay="300">
-              <h3>Better questions for next steps</h3>
-              <p>Leave with a clearer sense of what to check, compare, or ask about next.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="content-section showcase-section" id="during-call">
-          <div class="section-heading" data-reveal>
-            <p class="section-eyebrow">During the call, things become visible</p>
-            <h2>Instead of trying to hold everything in your head, you can start to see the decision more clearly.</h2>
-            <p>
-              Gerry uses visual tools during the educational conversation to make options,
-              trade-offs, and possible implications easier to understand while you are still talking
-              them through.
-            </p>
-          </div>
-
-          <div class="showcase-grid showcase-grid-single">
-            <article class="showcase-card showcase-card-large" data-reveal>
-              <div class="showcase-copy">
-                <span class="showcase-tag">See your options more clearly</span>
-                <h3>A hard decision can become something more visible and easier to weigh up.</h3>
-                <p>
-                  Rather than leaving everything abstract, the conversation can move into a clearer
-                  view of what each direction may mean for timing, pressure, flexibility, and confidence.
-                </p>
-              </div>
-              <div class="showcase-compare-visual" aria-hidden="true">
-                <div class="showcase-compare-column">
-                  <h4>Keep more buffer</h4>
-                  <strong>Move carefully with more breathing room</strong>
-                  <span>Lower pressure, slower progress</span>
-                </div>
-                <div class="showcase-compare-column is-highlighted">
-                  <h4>Move sooner</h4>
-                  <strong>See what a faster route could ask of you</strong>
-                  <span>Earlier progress, tighter trade-offs</span>
-                </div>
-                <div class="showcase-compare-column">
-                  <h4>Wait and review</h4>
-                  <strong>Buy more time before committing</strong>
-                  <span>More flexibility, later decisions</span>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <section class="content-section difference-section" id="gerry-boylan">
-          <div class="section-heading" data-reveal>
-            <p class="section-eyebrow">Who is behind Planeir</p>
-            <h2>Planeir is created and led by Gerry Boylan.</h2>
-            <p>
-              Gerry holds a QFA qualification from IOB, but Planeir is primarily shaped by his
-              practical experience in the field. He works in one of Ireland's leading wealth
-              management firms, where his professional role involves helping people work through
-              complex planning and investment questions.
-            </p>
-            <p>
-              Planeir brings that experience into an education-only format for Irish people. It is
-              not a regulated advice service, does not sell products, and does not provide product
-              recommendations through the app or calls.
-            </p>
-          </div>
-
-          <div class="difference-grid">
-            <article class="difference-card" data-reveal>
-              <span class="feature-index">01</span>
-              <h3>Field experience</h3>
-              <p>Planeir is informed by day-to-day work with complex financial planning and investment questions.</p>
-            </article>
-            <article class="difference-card" data-reveal data-reveal-delay="70">
-              <span class="feature-index">02</span>
-              <h3>Used to complexity</h3>
-              <p>Gerry's professional work means he is used to untangling financial questions with many moving parts.</p>
-            </article>
-            <article class="difference-card" data-reveal data-reveal-delay="140">
-              <span class="feature-index">03</span>
-              <h3>QFA qualification</h3>
-              <p>Gerry holds a Qualified Financial Adviser qualification from IOB, shown here as a supporting credential.</p>
-            </article>
-            <article class="difference-card" data-reveal data-reveal-delay="210">
-              <span class="feature-index">04</span>
-              <h3>Education-only limits</h3>
-              <p>Planeir helps with understanding, not product sales, implementation, or regulated advice.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="content-section early-access-section" id="free-calls">
-          <div class="early-access-card" data-reveal>
-            <div class="early-access-copy">
-              <p class="section-eyebrow">Free recorded education calls</p>
-              <h2>Calls are currently free for people willing to take part in a recorded educational conversation.</h2>
-              <p>
-                These sessions may be used in edited form as educational content online, including on
-                platforms such as YouTube, Instagram, TikTok, and similar channels. The goal is to
-                create useful Irish financial education conversations that help both the participant
-                and a wider audience.
-              </p>
-              <p>
-                You do not need to show your face. Camera off is absolutely fine, and you can use a
-                first name or a different name if you prefer. The call remains educational only.
-              </p>
+        <h2 class="visually-hidden">Book your free call</h2>
+        <section class="cta-band-section" aria-label="Book your free call">
+          <div class="cta-band" data-reveal>
+            <div class="cta-band-copy">
+              <h3>Gerry only takes a few free calls each week.</h3>
+              <p>Send your question and he'll reply himself, usually the same day.</p>
             </div>
-            <div class="early-access-points">
-              <article class="early-access-point">
-                <strong>Free to take part</strong>
-                <span>No fee if you are comfortable with the recorded format.</span>
-              </article>
-              <article class="early-access-point">
-                <strong>Anonymity is available</strong>
-                <span>Camera off, first name only, or a different name are all fine.</span>
-              </article>
-              <article class="early-access-point">
-                <strong>Useful beyond the call</strong>
-                <span>The conversation may also become educational content built around a real question.</span>
-              </article>
-              <article class="early-access-point">
-                <strong>Education-only boundary</strong>
-                <span>Your scenario can be discussed, but no product sale or regulated recommendation is provided.</span>
-              </article>
-            </div>
+            <a class="button button-primary" href="#request-call">Request a free call</a>
           </div>
         </section>
 
@@ -632,22 +440,14 @@
       </main>
 
       <footer class="site-footer">
-        <div>
-          <div class="site-footer-brand">Planeir</div>
-          <p class="site-footer-copy">Irish financial education conversations, made clearer with live visuals.</p>
-        </div>
-        <div class="site-footer-links">
+        <p class="site-footer-note">
+          Planeir is educational only, not regulated financial advice.
           <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>
-          <a href="#privacy-note">Privacy notice</a>
-          <a href="#request-call">Request a free call</a>
-          <a class="site-footer-admin-login" href="./app/?login=1&return=home" data-advisor-login-link>Admin Login</a>
-          <a class="advisor-app-link is-hidden" href="./app/" data-advisor-app-link hidden>Open app</a>
-        </div>
+        </p>
       </footer>
 
       <div class="mobile-cta-bar">
         <a class="button button-primary" href="#request-call">Request a free call</a>
-        <a class="button button-secondary" href="#during-call">See how it works</a>
       </div>
 
       <div id="leadSuccessOverlay" class="lead-success-overlay" aria-hidden="true">

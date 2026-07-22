@@ -2412,6 +2412,21 @@ body.realtime-voice-open {
   text-decoration: none;
 }
 
+.unavailable-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.7rem;
+  margin-top: 1.7rem;
+}
+
+.unavailable-actions .primary-button,
+.unavailable-actions .secondary-button {
+  width: auto;
+  margin: 0;
+  text-decoration: none;
+}
+
 .plan-dialog {
   width: min(calc(100% - 1.5rem), 560px);
   max-height: calc(100vh - 2rem);

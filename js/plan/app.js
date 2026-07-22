@@ -46,6 +46,7 @@ import {
   getAvailableViews,
   getProfileFieldGroups,
   renderJourney,
+  renderMeetingBackdrop,
   renderOnboarding,
   renderUnavailable
 } from './views.js';
@@ -237,6 +238,26 @@ function renderCurrentJourney({ focus = false } = {}) {
       inline: 'center'
     });
   });
+  if (focus) {
+    focusCurrentHeading();
+  }
+}
+
+// The test planner lands on exactly one of two surfaces: the live orb meeting
+// (when the realtime service can run it) or the "Failed to load" page. There is
+// no typed-journey fallback. The meeting view uses a non-'conversation' view so
+// the retired journey never re-renders behind the orb.
+function enterMeetingOrFail({ focus = false } = {}) {
+  if (!realtimeVoiceController.isMeetingAvailable()) {
+    renderUnavailable(appRoot);
+    syncHeader();
+    return;
+  }
+  setView('meeting');
+  renderMeetingBackdrop(appRoot);
+  realtimeVoiceController.sync(state);
+  maybeAutoOpenRealtimeMeeting();
+  syncHeader();
   if (focus) {
     focusCurrentHeading();
   }
@@ -582,9 +603,8 @@ async function handleStartSession(form) {
       // The creation response is sufficient to start; a later turn will refresh the session.
     }
 
-    setView('conversation');
     setBusy(false);
-    renderCurrentJourney({ focus: true });
+    enterMeetingOrFail({ focus: true });
     showToast('Your private session is ready.');
   } catch (error) {
     if (error instanceof ConsumerApiError
@@ -1381,21 +1401,14 @@ async function boot() {
       mergePayload(sessionPayload);
       const latestMeeting = state.realtimeMeetings?.[0];
       if (latestMeeting?.meetingId) await loadRealtimeMeetingTranscript(latestMeeting.meetingId);
-      setView(chooseViewFromServer({ payload: sessionPayload }));
-      renderCurrentJourney();
+      enterMeetingOrFail();
     } catch (error) {
       if (recoverUnavailableSession(error)) return;
-      renderUnavailable(appRoot, {
-        connectionError: true,
-        message: getErrorMessage(error)
-      });
+      renderUnavailable(appRoot, { message: getErrorMessage(error) });
       syncHeader();
     }
   } catch (error) {
-    renderUnavailable(appRoot, {
-      connectionError: true,
-      message: getErrorMessage(error)
-    });
+    renderUnavailable(appRoot, { message: getErrorMessage(error) });
     syncHeader();
   }
 }

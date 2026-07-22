@@ -1,10 +1,13 @@
 dist/
 node_modules/
+coverage/
+*.tsbuildinfo
 .worker-dry-run/
 worker/.wrangler/tmp/
 worker/wrangler.*.generated.toml
 .dev.vars
 worker/.dev.vars
 .env
+!.env.example
 worker/.env
 private/video-calls/

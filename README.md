@@ -11,6 +11,22 @@ Planeir now ships as two connected experiences:
 
 ## Local Development
 
+### Privacy-first learning signals (M0)
+
+The PostgreSQL-only learning-signal service is isolated under
+`services/learning-signals/`. Its stack decision, environment contract, and
+local verification gate are documented in
+[`services/learning-signals/README.md`](services/learning-signals/README.md).
+
+Run its M0 gate from the repository root:
+
+```bash
+docker compose up -d
+make db-migrate
+make test
+make lint
+```
+
 Static site:
 
 1. Serve the repo with any static server.

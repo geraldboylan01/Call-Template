@@ -1931,30 +1931,43 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
   root.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
-export function renderUnavailable(root, { connectionError = false, message = '' } = {}) {
+export function renderUnavailable(root, { message = '' } = {}) {
   root.replaceChildren();
   const card = element('section', 'unavailable-card');
   append(
     card,
-    element('p', 'section-kicker', connectionError ? 'Service unavailable' : 'Private beta'),
-    element('h1', '', connectionError ? 'We could not open the planning journey.' : 'The planning journey is not open just yet.'),
+    element('p', 'section-kicker', 'Planéir'),
+    element('h1', '', 'Failed to load'),
     element(
       'p',
       '',
-      message || (connectionError
-        ? 'The private-beta service could not be reached. No information has been submitted. Please try again later.'
-        : 'Planéir is releasing this guided experience carefully. The main Planéir website and existing adviser workflow are unaffected.')
+      message || 'We couldn’t load your planning meeting. It may be temporarily unavailable. Please try again in a moment, or get in touch if it keeps happening.'
     )
   );
-  const home = element('a', 'secondary-button', 'Return to Planéir.ie');
-  home.href = '../';
-  if (connectionError) {
-    const retry = element('button', 'primary-button', 'Try again');
-    retry.type = 'button';
-    retry.dataset.action = 'reload-page';
-    card.append(retry);
-  }
-  card.append(home);
+  const actions = element('div', 'unavailable-actions');
+  const contact = element('a', 'primary-button', 'Contact us');
+  contact.href = 'mailto:hello@planeir.ie';
+  const retry = element('button', 'secondary-button', 'Try again');
+  retry.type = 'button';
+  retry.dataset.action = 'reload-page';
+  append(actions, contact, retry);
+  card.append(actions);
+  root.append(card);
+  root.setAttribute('aria-busy', 'false');
+}
+
+// The test planner has exactly two destinations: the live orb meeting, or the
+// "Failed to load" page above. This is the calm surface that sits behind the
+// full-screen meeting; it only becomes visible if the person collapses the orb.
+export function renderMeetingBackdrop(root) {
+  root.replaceChildren();
+  const card = element('section', 'unavailable-card meeting-backdrop-card');
+  append(
+    card,
+    element('p', 'section-kicker', 'Planéir'),
+    element('h1', '', 'Your private planning meeting'),
+    element('p', '', 'Your live meeting is open. If you closed it, reopen it with the Talk to Planéir button.')
+  );
   root.append(card);
   root.setAttribute('aria-busy', 'false');
 }
