@@ -8,7 +8,55 @@
       "when": 1784678400000,
       "tag": "0000_m0_scaffold",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784765164009,
+      "tag": "0001_m1_privacy_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784765813528,
+      "tag": "0002_m1_derive_ingestion_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784765981787,
+      "tag": "0003_m1_always_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784788752947,
+      "tag": "0004_m2_transactional_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784835949938,
+      "tag": "0005_m3_corrections_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784836935648,
+      "tag": "0006_m3_policy_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784839564051,
+      "tag": "0007_m4_consent_retention_erasure",
+      "breakpoints": true
     }
   ]
 }
-

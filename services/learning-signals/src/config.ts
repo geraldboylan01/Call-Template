@@ -35,9 +35,18 @@ const environmentSchema = z.object({
     z.string().url().optional(),
   ),
   TENANT_SECRET_PROVIDER: z.enum(["kms", "env"]).default("env"),
+  TENANT_SECRETS_JSON: optionalText,
   DP_ENABLED: envBoolean,
   DP_EPSILON: z.coerce.number().positive().default(1),
   PARQUET_EXPORT_ENABLED: envBoolean,
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1_000),
+  OUTBOX_RETRY_BASE_MS: z.coerce.number().int().min(1).max(60_000).default(1_000),
+  OUTBOX_RETRY_MAX_MS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(86_400_000)
+    .default(60_000),
 });
 
 export type ServiceConfig = {
@@ -53,9 +62,13 @@ export type ServiceConfig = {
   langfuseHost: string | undefined;
   otelExporterOtlpEndpoint: string | undefined;
   tenantSecretProvider: "kms" | "env";
+  tenantSecretsJson: string | undefined;
   dpEnabled: boolean;
   dpEpsilon: number;
   parquetExportEnabled: boolean;
+  outboxPollIntervalMs: number;
+  outboxRetryBaseMs: number;
+  outboxRetryMaxMs: number;
 };
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -78,9 +91,12 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Servic
     langfuseHost: result.data.LANGFUSE_HOST,
     otelExporterOtlpEndpoint: result.data.OTEL_EXPORTER_OTLP_ENDPOINT,
     tenantSecretProvider: result.data.TENANT_SECRET_PROVIDER,
+    tenantSecretsJson: result.data.TENANT_SECRETS_JSON,
     dpEnabled: result.data.DP_ENABLED,
     dpEpsilon: result.data.DP_EPSILON,
     parquetExportEnabled: result.data.PARQUET_EXPORT_ENABLED,
+    outboxPollIntervalMs: result.data.OUTBOX_POLL_INTERVAL_MS,
+    outboxRetryBaseMs: result.data.OUTBOX_RETRY_BASE_MS,
+    outboxRetryMaxMs: result.data.OUTBOX_RETRY_MAX_MS,
   };
 }
-

@@ -1,0 +1,188 @@
+{
+  "$schema": "https://planeir.example/schemas/telemetry-event-catalog.v1.json",
+  "version": "telemetry-events-v2",
+  "events": {
+    "session.started": {
+      "consent_scope": "essential",
+      "attrs_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "maxProperties": 3,
+        "required": ["channel", "source"],
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": ["voice"],
+            "maxLength": 256
+          },
+          "source": {
+            "type": "string",
+            "enum": ["orchestrator", "adviser_ui", "extraction_pipeline"],
+            "maxLength": 256
+          },
+          "late": { "type": "boolean" }
+        }
+      },
+      "forward_attrs": ["channel", "source", "late"],
+      "forward_envelope": []
+    },
+    "question.prompted": {
+      "consent_scope": "essential",
+      "attrs_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "maxProperties": 4,
+        "required": ["question_kind", "sequence"],
+        "properties": {
+          "question_kind": {
+            "type": "string",
+            "enum": [
+              "identity",
+              "income",
+              "assets",
+              "liabilities",
+              "goals",
+              "risk",
+              "consent",
+              "other"
+            ],
+            "maxLength": 256
+          },
+          "sequence": { "type": "integer", "minimum": 0, "maximum": 10000 },
+          "retry": { "type": "boolean" },
+          "late": { "type": "boolean" }
+        }
+      },
+      "forward_attrs": ["question_kind", "sequence", "retry", "late"],
+      "forward_envelope": ["turn_index"]
+    },
+    "question.completed": {
+      "consent_scope": "essential",
+      "attrs_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "maxProperties": 4,
+        "required": ["outcome", "value_class"],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": ["answered", "skipped", "declined", "timeout"],
+            "maxLength": 256
+          },
+          "value_class": {
+            "type": "string",
+            "enum": ["provided", "not_provided", "banded"],
+            "maxLength": 256
+          },
+          "duration_bucket": {
+            "type": "string",
+            "enum": ["under_5s", "5_to_15s", "16_to_30s", "over_30s"],
+            "maxLength": 256
+          },
+          "late": { "type": "boolean" }
+        }
+      },
+      "forward_attrs": ["outcome", "value_class", "duration_bucket", "late"],
+      "forward_envelope": ["turn_index", "duration_ms"]
+    },
+    "extraction.completed": {
+      "consent_scope": "essential",
+      "attrs_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "maxProperties": 4,
+        "required": ["field_kind", "result", "confidence_band"],
+        "properties": {
+          "field_kind": {
+            "type": "string",
+            "enum": ["identity", "income", "asset", "liability", "goal", "risk"],
+            "maxLength": 256
+          },
+          "result": {
+            "type": "string",
+            "enum": ["extracted", "missing", "ambiguous"],
+            "maxLength": 256
+          },
+          "confidence_band": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "maxLength": 256
+          },
+          "late": { "type": "boolean" }
+        }
+      },
+      "forward_attrs": ["field_kind", "result", "confidence_band", "late"],
+      "forward_envelope": ["turn_index", "duration_ms"]
+    },
+    "extraction.corrected": {
+      "ingestion": "internal",
+      "consent_scope": "essential",
+      "attrs_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "maxProperties": 4,
+        "required": ["value_class", "change_kind", "reason_code"],
+        "properties": {
+          "value_class": {
+            "type": "string",
+            "enum": [
+              "identifier",
+              "age",
+              "currency",
+              "categorical",
+              "date",
+              "boolean",
+              "number"
+            ],
+            "maxLength": 256
+          },
+          "change_kind": {
+            "type": "string",
+            "enum": ["changed", "unchanged"],
+            "maxLength": 256
+          },
+          "reason_code": {
+            "type": "string",
+            "enum": [
+              "incorrect_value",
+              "missing_value",
+              "misclassified",
+              "formatting",
+              "other"
+            ],
+            "maxLength": 256
+          },
+          "late": { "type": "boolean" }
+        }
+      },
+      "forward_attrs": ["value_class", "change_kind", "reason_code", "late"],
+      "forward_envelope": []
+    },
+    "session.completed": {
+      "consent_scope": "essential",
+      "attrs_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "maxProperties": 3,
+        "required": ["outcome", "turn_count"],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": ["completed", "abandoned", "failed"],
+            "maxLength": 256
+          },
+          "turn_count": { "type": "integer", "minimum": 0, "maximum": 10000 },
+          "late": { "type": "boolean" }
+        }
+      },
+      "forward_attrs": ["outcome", "turn_count", "late"],
+      "forward_envelope": ["duration_ms"]
+    }
+  }
+}

@@ -6,6 +6,10 @@ export type DatabaseConnection = {
   pool: Pool;
 };
 
+export type DatabaseTransaction = Parameters<
+  Parameters<DatabaseConnection["db"]["transaction"]>[0]
+>[0];
+
 export function createDatabaseConnection(databaseUrl: string): DatabaseConnection {
   const pool = new Pool({
     connectionString: databaseUrl,

@@ -1,0 +1,49 @@
+version: field-policy-v1
+notes:
+  dlp_forward_allowed: false
+fields:
+  client.age:
+    value_class: age
+    preview: age_band
+    preview_allowed: true
+    store_raw_operational: false
+  finances.annual_income:
+    value_class: currency
+    preview: currency_band
+    preview_allowed: true
+    store_raw_operational: false
+  finances.total_assets:
+    value_class: currency
+    preview: currency_band
+    preview_allowed: true
+    store_raw_operational: false
+  finances.total_liabilities:
+    value_class: currency
+    preview: currency_band
+    preview_allowed: true
+    store_raw_operational: false
+  goals.retirement_age:
+    value_class: age
+    preview: age_band
+    preview_allowed: true
+    store_raw_operational: false
+  identity.email:
+    value_class: identifier
+    preview: none
+    preview_allowed: false
+    store_raw_operational: false
+  identity.full_name:
+    value_class: identifier
+    preview: none
+    preview_allowed: false
+    store_raw_operational: false
+  risk.profile:
+    value_class: categorical
+    preview: enum
+    preview_allowed: true
+    store_raw_operational: false
+    allowed_values:
+      - conservative
+      - balanced
+      - growth
+      - unknown
