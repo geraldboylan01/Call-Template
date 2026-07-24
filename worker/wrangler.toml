@@ -167,4 +167,6 @@ LEARNING_SIGNALS_MODULE_ID = "b864ca8f-fc74-4f5d-810c-cda8751be4a8"
 # CONSUMER_INVITE_SIGNING_KEY (for private cohorts),
 # CONSUMER_RATE_LIMIT_HASH_KEY (a separate 32-byte base64url key), OPENAI_API_KEY
 # (server-side AI or voice provider credential only),
-# LEARNING_SIGNALS_INGEST_KEY (a tenant `ingest` key for the learning-signal service).
+# LEARNING_SIGNALS_INGEST_KEY (a tenant `ingest` key for the learning-signal service),
+# LEARNING_SIGNALS_READ_KEY (a tenant `read` key; powers the advisor analytics
+# dashboard via /api/advisor/analytics/*. Never exposed to the browser).

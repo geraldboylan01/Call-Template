@@ -11,6 +11,7 @@ import {
   SubjectErasureService,
   type SubjectErasureServiceOptions,
 } from "./privacy/erasure.js";
+import { registerAnalyticsRoutes } from "./routes/analytics.js";
 import { registerCorrectionsRoutes } from "./routes/corrections.js";
 import { registerErasureRoutes } from "./routes/erasure.js";
 import { registerModuleVersionRoutes } from "./routes/module-versions.js";
@@ -143,6 +144,9 @@ export function buildApp(
   registerSessionRoutes(app, {
     connection,
     secretsProvider,
+  });
+  registerAnalyticsRoutes(app, {
+    connection,
   });
 
   if (ownsConnection) {

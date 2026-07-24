@@ -794,7 +794,7 @@ export const apiKeys = pgTable(
     check("api_keys_scopes_nonempty_check", sql`cardinality(${table.scopes}) > 0`),
     check(
       "api_keys_scopes_allowlist_check",
-      sql`${table.scopes} <@ array['ingest', 'corrections', 'admin']::text[]`,
+      sql`${table.scopes} <@ array['ingest', 'corrections', 'admin', 'read']::text[]`,
     ),
     check(
       "api_keys_revoked_at_check",

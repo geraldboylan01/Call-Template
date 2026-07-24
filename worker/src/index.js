@@ -272,6 +272,16 @@ function getRouteConfig(pathname) {
     };
   }
 
+  if (
+    pathname === '/api/advisor/analytics/overview' ||
+    pathname === '/api/advisor/analytics/timeseries' ||
+    pathname === '/api/advisor/analytics/alerts'
+  ) {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
   if (/^\/api\/advisor\/module-assets\/[^/]+\/[^/]+$/.test(pathname)) {
     return {
       methods: 'GET,PUT,DELETE,OPTIONS'
@@ -5101,6 +5111,106 @@ async function handleAdvisorLogout(request, env, origin) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Analytics dashboard (M0). The Worker is the backend-for-frontend: the browser
+// is advisor-gated here, and only the Worker holds LEARNING_SIGNALS_READ_KEY (a
+// least-privilege `read` tenant key). The learning-signals service is never
+// reachable from the browser (the site CSP excludes its origin), so every
+// dashboard read flows advisor -> Worker -> service. Responses are already
+// aggregate/allowlisted at the service, so the Worker forwards them verbatim.
+// ---------------------------------------------------------------------------
+
+const ANALYTICS_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ANALYTICS_UPSTREAM_TIMEOUT_MS = 15_000;
+
+function isLearningSignalsReadConfigured(env) {
+  return Boolean(
+    normalizeEnvValue(env.LEARNING_SIGNALS_URL) && normalizeEnvValue(env.LEARNING_SIGNALS_READ_KEY)
+  );
+}
+
+// Forwards a range (from/to) after validating it at the edge. A malformed date
+// is rejected here so a bad request never reaches the service; the service
+// re-validates and enforces the span cap as the authority.
+function analyticsRangeParams(url) {
+  const params = new URLSearchParams();
+  for (const key of ['from', 'to']) {
+    const value = url.searchParams.get(key);
+    if (value === null) continue;
+    if (!ANALYTICS_DATE_RE.test(value)) {
+      return { error: `Invalid ${key} date. Use YYYY-MM-DD.` };
+    }
+    params.set(key, value);
+  }
+  return { params };
+}
+
+async function fetchLearningSignalsRead(env, path, params) {
+  const base = normalizeEnvValue(env.LEARNING_SIGNALS_URL).replace(/\/+$/, '');
+  const query = params && params.toString() ? `?${params.toString()}` : '';
+  const response = await fetch(`${base}${path}${query}`, {
+    method: 'GET',
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${normalizeEnvValue(env.LEARNING_SIGNALS_READ_KEY)}`
+    },
+    signal: AbortSignal.timeout(ANALYTICS_UPSTREAM_TIMEOUT_MS)
+  });
+  const body = await response.json().catch(() => null);
+  return { status: response.status, body };
+}
+
+async function handleAdvisorAnalytics(request, env, origin, upstreamPath) {
+  const advisorAccess = await requireAdvisorSession(request, env, origin, 'GET,OPTIONS');
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  if (!isLearningSignalsReadConfigured(env)) {
+    return jsonResponse(
+      { error: 'Analytics is not configured for this environment.' },
+      503,
+      origin,
+      'GET,OPTIONS',
+      null,
+      noStoreHeaders()
+    );
+  }
+
+  const url = new URL(request.url);
+  const range = analyticsRangeParams(url);
+  if (range.error) {
+    return jsonResponse({ error: range.error }, 400, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  }
+
+  try {
+    const upstream = await fetchLearningSignalsRead(env, upstreamPath, range.params);
+    if (upstream.status < 200 || upstream.status >= 300) {
+      // Do not surface upstream internals; map to a generic gateway error while
+      // preserving a client-caused 400 so range validation stays actionable.
+      const status = upstream.status === 400 ? 400 : 502;
+      const error = status === 400
+        ? (upstream.body && upstream.body.error) || 'Invalid analytics request.'
+        : 'Analytics is temporarily unavailable.';
+      return jsonResponse({ error }, status, origin, 'GET,OPTIONS', null, noStoreHeaders());
+    }
+    return jsonResponse(upstream.body, 200, origin, 'GET,OPTIONS', null, noStoreHeaders());
+  } catch (error) {
+    console.error('Analytics upstream request failed', {
+      path: upstreamPath,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse(
+      { error: 'Analytics is temporarily unavailable.' },
+      502,
+      origin,
+      'GET,OPTIONS',
+      null,
+      noStoreHeaders()
+    );
+  }
+}
+
 async function handleAdvisorConsumerInvite(request, env, origin) {
   const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
     requireCsrf: true,
@@ -7345,6 +7455,18 @@ export default {
 
     if (request.method === 'POST' && pathname === '/api/advisor/consumer-invite') {
       return handleAdvisorConsumerInvite(request, env, origin);
+    }
+
+    if (request.method === 'GET' && pathname === '/api/advisor/analytics/overview') {
+      return handleAdvisorAnalytics(request, env, origin, '/v1/analytics/overview');
+    }
+
+    if (request.method === 'GET' && pathname === '/api/advisor/analytics/timeseries') {
+      return handleAdvisorAnalytics(request, env, origin, '/v1/analytics/timeseries');
+    }
+
+    if (request.method === 'GET' && pathname === '/api/advisor/analytics/alerts') {
+      return handleAdvisorAnalytics(request, env, origin, '/v1/analytics/alerts');
     }
 
     if (request.method === 'GET' && pathname === '/api/advisor/clients') {
