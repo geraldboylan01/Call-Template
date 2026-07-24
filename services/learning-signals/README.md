@@ -537,3 +537,42 @@ whose withdrawal flows through ingestion. Because the seed uses the real
 pipeline, running it validates ingestion, version pinning, consent gating, and
 correction sanitisation. `test/seed-m8.test.ts` runs the seed and asserts full
 event-type coverage and the privacy invariants (no raw value stored).
+
+## Integration Phase 0: onboarding a firm and opening sessions
+
+Two pieces make a real voice call able to feed the ledger.
+
+**Provision a firm as a tenant** (`make provision SLUG=... NAME="..." MODULE="..."`,
+or `npm run provision -- <slug> "<name>" ["<module title>"]`). This creates the
+tenant, mints one API key per scope, generates the tenant's pseudonymisation
+secret, and publishes an initial module version through the real publish route.
+The key secrets and the `TENANT_SECRETS_JSON` entry are printed **once** — store
+them in your secret manager and add the secret entry to the service environment
+(both `/v1/sessions` and `/v1/adviser-corrections` pseudonymise with the managed
+key, so a session open returns 503 until it is present).
+
+**Open a session** before ingesting events. The ledger is append-only and the
+session row is state, so the orchestrator calls this at the start of a fact-find:
+
+```
+POST /v1/sessions        Authorization: Bearer <ingest key>
+{ "module_id": "<uuid>", "subject_ref": "<opaque, non-identifying ref>",
+  "session_id": "<uuid, optional>" }
+→ 201 { session_id, module_version_id, key_version, status: "started" }
+```
+
+`tenant_id` comes from the key (a mismatched body `tenant_id` is 403); a foreign
+or unpublished `module_id` is 404 (no existence leak); the active published
+version of the module is pinned as the session's entry version; and the call is
+idempotent on `(tenant, session_id)` (a re-open returns the existing session with
+`replayed: true`). `subject_ref` is an opaque reference the caller controls — a
+stable client ref links a returning client across sessions, a per-session ref
+maximises isolation. It is HMAC'd with the tenant key into
+`pseudonymous_subject_id` and **never stored raw**. After the session is open,
+the orchestrator ingests `session.started`, `question.*`, `session.completed`,
+etc. through `/v1/telemetry/events` exactly as the seed does.
+
+This closes the only gap that made real-call ingestion impossible: sessions no
+longer require a raw SQL insert. The remaining integration work (Phase 1) is the
+emit + minimisation layer inside the voice orchestrator, and is out of this
+service.

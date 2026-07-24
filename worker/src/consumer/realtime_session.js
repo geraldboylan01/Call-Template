@@ -82,6 +82,7 @@ import {
   classifySpokenPlanConfirmation,
   REALTIME_COMPLETION_OUTRO
 } from './realtime_completion.js';
+import { emitSessionSummary } from './learning_signals.js';
 import {
   applyProfilePatch
 } from './validators.js';
@@ -3440,6 +3441,16 @@ export class ConsumerRealtimeSession {
         toolCallCount: Number(lease?.tool_call_count || 0)
       }
     }).catch(() => {});
+    // Best-effort, minimised learning-signal summary. A complete no-op unless
+    // LEARNING_SIGNALS_* env vars are set; it runs in waitUntil and can never
+    // throw into or block the close path.
+    emitSessionSummary(this.env, (promise) => this.state.waitUntil(promise), {
+      sessionId: this.meta.sessionId,
+      status,
+      reason,
+      activatedAtMs,
+      responseCount: Number(lease?.response_count || 0)
+    });
     let row;
     try {
       row = await closeRealtimeLease(

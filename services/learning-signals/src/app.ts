@@ -14,6 +14,7 @@ import {
 import { registerCorrectionsRoutes } from "./routes/corrections.js";
 import { registerErasureRoutes } from "./routes/erasure.js";
 import { registerModuleVersionRoutes } from "./routes/module-versions.js";
+import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerTelemetryRoutes } from "./routes/telemetry.js";
 import {
   createObservabilitySpanSink,
@@ -107,6 +108,13 @@ export function buildApp(
       secretsProvider,
       clock,
     } satisfies SubjectErasureServiceOptions);
+  // Unauthenticated liveness probe for the hosting platform's health check and
+  // for warming a spun-down free instance. Deliberately does no DB work so a
+  // transient DB blip never restarts the process.
+  app.get("/health", async (_request, reply) => {
+    return reply.send({ status: "ok" });
+  });
+
   const spans = dependencies.spans ?? createObservabilitySpanSink(config);
   registerTelemetryRoutes(app, {
     connection,
@@ -131,6 +139,10 @@ export function buildApp(
   registerModuleVersionRoutes(app, {
     connection,
     clock,
+  });
+  registerSessionRoutes(app, {
+    connection,
+    secretsProvider,
   });
 
   if (ownsConnection) {

@@ -9,9 +9,11 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "start:hosted": "npm run db:migrate && npm start",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --import tsx src/db/migrate.ts",
     "metrics": "node --import tsx src/jobs/metrics-cli.ts",
+    "provision": "node --import tsx src/provision/provision-cli.ts",
     "seed": "node --import tsx src/seed/seed-cli.ts",
     "test": "vitest run",
     "lint": "tsc --noEmit"

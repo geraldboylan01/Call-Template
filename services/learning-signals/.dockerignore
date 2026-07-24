@@ -1,0 +1,7 @@
+# Host-built (macOS) modules must never enter the linux image; the build runs a
+# fresh npm ci instead.
+node_modules
+.env
+.env.*
+*.log
+npm-debug.log*

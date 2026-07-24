@@ -20,6 +20,9 @@ const environmentSchema = z.object({
     ),
   SERVICE_HOST: z.string().min(1).default("127.0.0.1"),
   SERVICE_PORT: z.coerce.number().int().min(1).max(65_535).default(3_000),
+  // Platforms (Render/Fly/Koyeb/...) inject the listen port as PORT; when set
+  // it wins over SERVICE_PORT. Absent locally, SERVICE_PORT's default applies.
+  PORT: z.coerce.number().int().min(1).max(65_535).optional(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   POSTHOG_API_KEY: optionalText,
@@ -81,7 +84,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Servic
   return {
     databaseUrl: result.data.DATABASE_URL,
     host: result.data.SERVICE_HOST,
-    port: result.data.SERVICE_PORT,
+    port: result.data.PORT ?? result.data.SERVICE_PORT,
     nodeEnv: result.data.NODE_ENV,
     logLevel: result.data.LOG_LEVEL,
     posthogApiKey: result.data.POSTHOG_API_KEY,

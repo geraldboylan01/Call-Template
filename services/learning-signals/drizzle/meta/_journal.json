@@ -78,6 +78,13 @@
       "when": 1784889595507,
       "tag": "0010_m7_observability",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784896372890,
+      "tag": "0011_m9_reliability_call_dropped",
+      "breakpoints": true
     }
   ]
 }

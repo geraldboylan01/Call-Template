@@ -10,12 +10,39 @@ export type DatabaseTransaction = Parameters<
   Parameters<DatabaseConnection["db"]["transaction"]>[0]
 >[0];
 
+/**
+ * Resolves TLS for a hosted Postgres. Enabled when the URL asks for it
+ * (`sslmode=require|verify-ca|verify-full`, as Neon/Supabase/managed providers
+ * do) or `DATABASE_SSL=true`. `DATABASE_SSL_NO_VERIFY=true` relaxes cert
+ * verification for providers with self-signed chains. Local/compose URLs carry
+ * no sslmode, so SSL stays off and nothing changes for development or tests.
+ */
+function resolveSsl(
+  databaseUrl: string,
+): boolean | { rejectUnauthorized: false } | undefined {
+  const noVerify = process.env.DATABASE_SSL_NO_VERIFY === "true";
+  let sslmode: string | null = null;
+  try {
+    sslmode = new URL(databaseUrl).searchParams.get("sslmode");
+  } catch {
+    sslmode = null;
+  }
+  const wantsSsl =
+    noVerify ||
+    process.env.DATABASE_SSL === "true" ||
+    (sslmode !== null && sslmode !== "disable");
+  if (!wantsSsl) return undefined;
+  return noVerify ? { rejectUnauthorized: false } : true;
+}
+
 export function createDatabaseConnection(databaseUrl: string): DatabaseConnection {
+  const ssl = resolveSsl(databaseUrl);
   const pool = new Pool({
     connectionString: databaseUrl,
     application_name: "planeir-learning-signals",
-    connectionTimeoutMillis: 1_000,
+    connectionTimeoutMillis: 5_000,
     max: 10,
+    ...(ssl === undefined ? {} : { ssl }),
   });
 
   return {
