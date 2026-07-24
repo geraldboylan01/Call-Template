@@ -84,7 +84,12 @@ describe.sequential("Phase 0 session registration + provisioning", () => {
       `select scopes from api_keys where tenant_id = $1 order by scopes`,
       [tenantA.tenantId],
     );
-    expect(keys.rows.map((row) => row.scopes).sort()).toEqual([["admin"], ["corrections"], ["ingest"]]);
+    expect(keys.rows.map((row) => row.scopes).sort()).toEqual([
+      ["admin"],
+      ["corrections"],
+      ["ingest"],
+      ["read"],
+    ]);
   });
 
   it("opens a session, pins the active published version, and closes the ingest gap", async () => {

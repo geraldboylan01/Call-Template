@@ -6,3 +6,6 @@
 LEARNING_SIGNALS_URL=https://your-service.onrender.com
 LEARNING_SIGNALS_MODULE_ID=00000000-0000-0000-0000-000000000000
 LEARNING_SIGNALS_INGEST_KEY=your-ingest-key-here
+# A tenant `read` key (from `make provision`) powering the advisor analytics
+# dashboard. Held only by the Worker; never sent to the browser.
+LEARNING_SIGNALS_READ_KEY=your-read-key-here

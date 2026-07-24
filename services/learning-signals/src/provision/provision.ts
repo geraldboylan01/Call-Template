@@ -20,7 +20,7 @@ export type ProvisionOptions = {
 
 export type ProvisionSummary = {
   tenantId: string;
-  secrets: { ingest: string; corrections: string; admin: string };
+  secrets: { ingest: string; corrections: string; admin: string; read: string };
   tenantSecretsJson: string;
   moduleId?: string;
   moduleVersionId?: string;
@@ -40,6 +40,10 @@ export async function provisionTenant(
     ingest: `pk-ingest-${randomBytes(24).toString("base64url")}`,
     corrections: `pk-corrections-${randomBytes(24).toString("base64url")}`,
     admin: `pk-admin-${randomBytes(24).toString("base64url")}`,
+    // A least-privilege key for the analytics dashboard: it can read derived
+    // metrics and allowlisted session facts, and nothing else. The advisor BFF
+    // (Cloudflare Worker) holds it server-side; it never reaches the browser.
+    read: `pk-read-${randomBytes(24).toString("base64url")}`,
   };
   const tenantSecret = base64urlSecret();
   const tenantSecretsJson = JSON.stringify({
@@ -54,12 +58,14 @@ export async function provisionTenant(
     `insert into api_keys (tenant_id, key_hash, scopes, actor_label) values
        ($1, $2, array['ingest']::text[], 'voice-orchestrator'),
        ($1, $3, array['corrections']::text[], 'adviser-ui'),
-       ($1, $4, array['admin']::text[], 'module-admin')`,
+       ($1, $4, array['admin']::text[], 'module-admin'),
+       ($1, $5, array['read']::text[], 'analytics-dashboard')`,
     [
       tenantId,
       sha256Hex(secrets.ingest),
       sha256Hex(secrets.corrections),
       sha256Hex(secrets.admin),
+      sha256Hex(secrets.read),
     ],
   );
 

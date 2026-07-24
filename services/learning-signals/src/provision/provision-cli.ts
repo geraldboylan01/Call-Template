@@ -29,6 +29,7 @@ async function main(): Promise<void> {
     console.log(`  ingest:      ${summary.secrets.ingest}`);
     console.log(`  corrections: ${summary.secrets.corrections}`);
     console.log(`  admin:       ${summary.secrets.admin}`);
+    console.log(`  read:        ${summary.secrets.read}   (analytics dashboard; set as the Worker's LEARNING_SIGNALS_READ_KEY)`);
     console.log("Add this entry to TENANT_SECRETS_JSON (merge with any existing tenants):");
     console.log(`  ${summary.tenantSecretsJson}`);
     if (summary.moduleVersionId) {

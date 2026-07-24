@@ -85,6 +85,13 @@
       "when": 1784896372890,
       "tag": "0011_m9_reliability_call_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784913408336,
+      "tag": "0012_m10_analytics_read_scope",
+      "breakpoints": true
     }
   ]
 }
