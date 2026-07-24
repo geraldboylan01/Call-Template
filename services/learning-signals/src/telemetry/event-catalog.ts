@@ -18,6 +18,30 @@ const stringPropertySchema = z
   })
   .strict();
 
+// Closed identifier formats. These reference tenant-defined structure (module
+// UUIDs, module-authored question ids); the anchored lowercase charsets leave
+// no room for natural-language free text, so the no-free-text attrs rule holds.
+const IDENTIFIER_FORMAT_PATTERNS = {
+  uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  id_slug: /^[a-z0-9][a-z0-9_.-]{0,63}$/,
+} as const;
+
+const identifierStringPropertySchema = z
+  .object({
+    type: z.literal("string"),
+    format: z.enum(["uuid", "id_slug"]),
+    maxLength: z.number().int().positive().max(64),
+  })
+  .strict()
+  .superRefine((property, context) => {
+    if (property.format === "uuid" && property.maxLength !== 36) {
+      context.addIssue({
+        code: "custom",
+        message: "uuid identifier attributes must declare maxLength 36",
+      });
+    }
+  });
+
 const integerPropertySchema = z
   .object({
     type: z.literal("integer"),
@@ -36,8 +60,9 @@ const numberPropertySchema = z
 
 const booleanPropertySchema = z.object({ type: z.literal("boolean") }).strict();
 
-const primitivePropertySchema = z.discriminatedUnion("type", [
+const primitivePropertySchema = z.union([
   stringPropertySchema,
+  identifierStringPropertySchema,
   integerPropertySchema,
   numberPropertySchema,
   booleanPropertySchema,
@@ -78,6 +103,19 @@ const attrsJsonSchema = z
     }
   });
 
+// A conditional-requirement rule: when a categorical property holds one of the
+// listed values, the named attributes must be present. Used, for example, so
+// session.completed must carry abandonment_cause exactly when it did not
+// complete. Only string/enum trigger properties are supported; the `in` values
+// are matched literally against the incoming attribute.
+const requiredWhenRuleSchema = z
+  .object({
+    property: attributeName,
+    in: z.array(z.string().max(256)).min(1),
+    require: z.array(attributeName).min(1),
+  })
+  .strict();
+
 const eventDefinitionSchema = z
   .object({
     ingestion: z.enum(["service", "internal"]).default("service"),
@@ -86,6 +124,10 @@ const eventDefinitionSchema = z
     // legacy `essential` label.
     consent_scope: z.literal("essential").optional(),
     consent_class: z.enum(EVENT_CONSENT_CLASSIFICATIONS).optional(),
+    // Attributes the service derives and stamps at persistence (for example
+    // the pinned module_version_id). Clients may never supply them.
+    server_owned: z.array(attributeName).default([]),
+    required_when: z.array(requiredWhenRuleSchema).default([]),
     attrs_schema: attrsJsonSchema,
     forward_attrs: z.array(attributeName),
     forward_envelope: z.array(z.enum(["turn_index", "duration_ms"])),
@@ -109,6 +151,49 @@ const eventDefinitionSchema = z
           code: "custom",
           message: `forwarded attribute ${forwardedName} has no property schema`,
         });
+      }
+    }
+    const required = new Set(definition.attrs_schema.required);
+    for (const serverOwnedName of definition.server_owned) {
+      if (!properties.has(serverOwnedName)) {
+        context.addIssue({
+          code: "custom",
+          message: `server-owned attribute ${serverOwnedName} has no property schema`,
+        });
+      }
+      if (required.has(serverOwnedName)) {
+        context.addIssue({
+          code: "custom",
+          message: `server-owned attribute ${serverOwnedName} cannot be client-required`,
+        });
+      }
+      if (serverOwnedName === "late") {
+        context.addIssue({
+          code: "custom",
+          message: "attrs.late is implicitly server-owned",
+        });
+      }
+    }
+    for (const rule of definition.required_when) {
+      if (!properties.has(rule.property)) {
+        context.addIssue({
+          code: "custom",
+          message: `required_when trigger ${rule.property} has no property schema`,
+        });
+      }
+      for (const conditional of rule.require) {
+        if (!properties.has(conditional)) {
+          context.addIssue({
+            code: "custom",
+            message: `required_when target ${conditional} has no property schema`,
+          });
+        }
+        if (required.has(conditional)) {
+          context.addIssue({
+            code: "custom",
+            message: `required_when target ${conditional} is already unconditionally required`,
+          });
+        }
       }
     }
   });
@@ -143,6 +228,16 @@ function compileProperty(property: PrimitiveProperty): ZodType<JsonPrimitive> {
   if (property.type === "boolean") return z.boolean();
 
   if (property.type === "string") {
+    if ("format" in property) {
+      const formatPattern = IDENTIFIER_FORMAT_PATTERNS[property.format];
+      return z
+        .string()
+        .max(property.maxLength)
+        .refine(
+          (value) => formatPattern.test(value),
+          "value is not a well-formed identifier",
+        );
+    }
     const allowedValues = new Set(property.enum);
     return z
       .string()
@@ -269,6 +364,11 @@ export class EventCatalog {
     if (Object.hasOwn(attrs, "late")) {
       return { ok: false, error: "attrs.late is server-owned" };
     }
+    for (const serverOwnedName of definition.server_owned) {
+      if (Object.hasOwn(attrs, serverOwnedName)) {
+        return { ok: false, error: `attrs.${serverOwnedName} is server-owned` };
+      }
+    }
     if (hasOversizedString(attrs)) {
       return { ok: false, error: `attrs string exceeds 256 characters for ${eventType}` };
     }
@@ -279,6 +379,18 @@ export class EventCatalog {
     const parsed = validator.safeParse(attrs);
     if (!parsed.success) {
       return { ok: false, error: validationError(eventType, parsed.error.issues) };
+    }
+
+    for (const rule of definition.required_when) {
+      const trigger = parsed.data[rule.property];
+      if (typeof trigger !== "string" || !rule.in.includes(trigger)) continue;
+      const missing = rule.require.find((name) => parsed.data[name] === undefined);
+      if (missing) {
+        return {
+          ok: false,
+          error: `attrs.${missing} is required for ${eventType} when ${rule.property} is ${trigger}`,
+        };
+      }
     }
 
     const clientAttrs = parsed.data;
@@ -295,6 +407,40 @@ export class EventCatalog {
         persistedAttrs: persistedResult.data,
       },
     };
+  }
+
+  /**
+   * Merges service-derived attributes into an already validated attribute set
+   * and re-validates the result. Only attributes the catalog declares as
+   * server_owned may be stamped, so the persistence layer cannot widen an
+   * event's shape beyond its published schema.
+   */
+  withServerAttributes(
+    eventType: string,
+    attrs: EventAttributes,
+    patch: Readonly<Record<string, JsonPrimitive>>,
+  ): EventAttributes {
+    const definition = this.definitions.get(eventType);
+    const validator = this.validators.get(eventType);
+    if (!definition || !validator) {
+      throw new Error("event_type not allowed");
+    }
+    for (const name of Object.keys(patch)) {
+      if (!definition.server_owned.includes(name)) {
+        throw new Error(
+          "Only catalog-declared server-owned attributes may be stamped.",
+        );
+      }
+    }
+    const parsed = validator.safeParse({ ...attrs, ...patch });
+    if (!parsed.success) {
+      throw new Error("Server-derived event attributes violate the event catalog.");
+    }
+    return parsed.data;
+  }
+
+  serverOwnedAttributes(eventType: string): readonly string[] {
+    return this.definitions.get(eventType)?.server_owned ?? [];
   }
 
   isEssential(eventType: string): boolean {

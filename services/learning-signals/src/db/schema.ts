@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  date,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -1158,5 +1160,166 @@ export const privacyDeletionOutbox = pgTable(
       table.tenantId,
       table.requestId,
     ),
+  ],
+);
+
+// M6 daily metrics. A run materializes one metric_date across all metric
+// views into metric_daily_snapshots and evaluates config-driven thresholds
+// into metric_alerts. The Postgres ledger is the single source of truth; these
+// tables are derived and rebuildable, so re-running a metric_date is idempotent
+// (unique keys + upsert) and never mutates the append-only event ledger.
+export const metricDailyRuns = pgTable(
+  "metric_daily_runs",
+  {
+    runId: uuid("run_id").defaultRandom().primaryKey(),
+    metricDate: date("metric_date", { mode: "string" }).notNull(),
+    tenantScope: uuid("tenant_scope"),
+    status: text("status").notNull().default("running"),
+    snapshotCount: integer("snapshot_count").notNull().default(0),
+    alertCount: integer("alert_count").notNull().default(0),
+    thresholdsVersion: text("thresholds_version").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    foreignKey({
+      name: "metric_daily_runs_tenant_fk",
+      columns: [table.tenantScope],
+      foreignColumns: [tenants.tenantId],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    check(
+      "metric_daily_runs_status_check",
+      sql`${table.status} in ('running', 'completed', 'failed')`,
+    ),
+    check("metric_daily_runs_snapshot_count_check", sql`${table.snapshotCount} >= 0`),
+    check("metric_daily_runs_alert_count_check", sql`${table.alertCount} >= 0`),
+    check(
+      "metric_daily_runs_thresholds_version_check",
+      sql`length(btrim(${table.thresholdsVersion})) > 0`,
+    ),
+    check(
+      "metric_daily_runs_completed_at_check",
+      sql`(${table.status} = 'running' and ${table.completedAt} is null) or (${table.status} <> 'running' and ${table.completedAt} is not null)`,
+    ),
+    index("metric_daily_runs_date_idx").on(table.metricDate, table.startedAt),
+  ],
+);
+
+export const metricDailySnapshots = pgTable(
+  "metric_daily_snapshots",
+  {
+    snapshotId: uuid("snapshot_id").defaultRandom().primaryKey(),
+    runId: uuid("run_id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    metricDate: date("metric_date", { mode: "string" }).notNull(),
+    metricName: text("metric_name").notNull(),
+    // Empty string, not null, so the unique key never collapses distinct
+    // dimensionless metrics. Dimensions are bounded categorical labels only
+    // (field key, module_version_id, calibration bucket) — never free text.
+    dimension: text("dimension").notNull().default(""),
+    numerator: doublePrecision("numerator"),
+    denominator: doublePrecision("denominator"),
+    // Null value means "not defined for this window" (for example a ratio with
+    // a zero denominator), which is distinct from a real 0.
+    value: doublePrecision("value"),
+    reviewedDenominator: doublePrecision("reviewed_denominator"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("metric_daily_snapshots_natural_unique").on(
+      table.tenantId,
+      table.metricDate,
+      table.metricName,
+      table.dimension,
+    ),
+    foreignKey({
+      name: "metric_daily_snapshots_run_fk",
+      columns: [table.runId],
+      foreignColumns: [metricDailyRuns.runId],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    foreignKey({
+      name: "metric_daily_snapshots_tenant_fk",
+      columns: [table.tenantId],
+      foreignColumns: [tenants.tenantId],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    check(
+      "metric_daily_snapshots_metric_name_check",
+      sql`length(btrim(${table.metricName})) > 0`,
+    ),
+    check(
+      "metric_daily_snapshots_denominator_check",
+      sql`${table.denominator} is null or ${table.denominator} >= 0`,
+    ),
+    check(
+      "metric_daily_snapshots_reviewed_denominator_check",
+      sql`${table.reviewedDenominator} is null or ${table.reviewedDenominator} >= 0`,
+    ),
+    index("metric_daily_snapshots_tenant_metric_date_idx").on(
+      table.tenantId,
+      table.metricName,
+      table.metricDate,
+    ),
+  ],
+);
+
+export const metricAlerts = pgTable(
+  "metric_alerts",
+  {
+    alertId: uuid("alert_id").defaultRandom().primaryKey(),
+    runId: uuid("run_id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    metricDate: date("metric_date", { mode: "string" }).notNull(),
+    alertType: text("alert_type").notNull(),
+    dimension: text("dimension").notNull().default(""),
+    severity: text("severity").notNull(),
+    observedValue: doublePrecision("observed_value"),
+    thresholdValue: doublePrecision("threshold_value"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("metric_alerts_natural_unique").on(
+      table.tenantId,
+      table.metricDate,
+      table.alertType,
+      table.dimension,
+    ),
+    foreignKey({
+      name: "metric_alerts_run_fk",
+      columns: [table.runId],
+      foreignColumns: [metricDailyRuns.runId],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    foreignKey({
+      name: "metric_alerts_tenant_fk",
+      columns: [table.tenantId],
+      foreignColumns: [tenants.tenantId],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    check(
+      "metric_alerts_alert_type_check",
+      sql`${table.alertType} in (
+        'completion_rate_below_threshold',
+        'connection_success_below_threshold',
+        'drop_rate_above_threshold',
+        'cost_per_session_drift',
+        'reconciliation_divergence'
+      )`,
+    ),
+    check(
+      "metric_alerts_severity_check",
+      sql`${table.severity} in ('warning', 'critical')`,
+    ),
+    index("metric_alerts_tenant_date_idx").on(table.tenantId, table.metricDate),
   ],
 );

@@ -219,3 +219,137 @@ schedule and legal holds. They are outside this purge job. The learning ledger
 contains only minimised categorical, numeric, hashed, or fixed-band signals, and
 its shorter retention policy must never be presented as deleting those separate
 regulatory records.
+
+## M5 module versioning and performance
+
+`POST /v1/module-versions/publish` requires an active API key with the `admin`
+scope. The body carries `module_id`, a strict `semantic_version`
+(`MAJOR.MINOR.PATCH` with optional prerelease), and the firm-authored
+`module_json`. The service canonicalizes `module_json` RFC 8785-style
+(recursively key-sorted, whitespace-free) and stores
+`content_hash = sha256(canonical)` beside the body. Publishing the same
+`(module_id, semantic_version)` again with an identical hash replays with 200
+and the original `module_version_id`; a different hash returns 409. Rows are
+created directly in `published` status, and PostgreSQL triggers make published
+and retired rows immutable against UPDATE, DELETE, and TRUNCATE, so a version
+id can never change meaning after a session has pinned it. `module_json` is
+module structure authored by the firm — never conversational content — and the
+publish and performance routes never log request or response bodies.
+
+### Version pinning
+
+A session pins the version of each module at its first persisted
+`module.enter` for that module: ingestion resolves the module's most recently
+published version inside the insert transaction and stamps
+`module_version_id` into the event's attributes. The attribute is declared
+`server_owned` in `config/telemetry-events.v4.json`; a client that supplies it
+is rejected per item. Re-entering the same module later in the session reuses
+the existing stamp, so a publish mid-session never moves a session between
+versions. `module.enter` for a module with no published version is rejected
+per item. The v4 catalog introduces bounded identifier formats (`uuid`,
+`id_slug`) for these structural references; both are anchored lowercase
+charsets with no room for free text, and `question_id` is never forwarded to
+third-party sinks.
+
+### Performance metrics
+
+`GET /v1/module-versions/:id/performance` requires the `admin` scope and is
+tenant-scoped: a foreign or unknown id returns 404. All attribution is per
+module segment — a `module.enter` event stamped with the requested version,
+spanning until the session's next `module.enter` of any module (or the end of
+the session). `fact_find_sessions.entry_module_version_id` is never consulted.
+The 28-day window selects segments by the enter event's `occurred_at`;
+corrections attributed through those segments count regardless of when the
+adviser made them. Within a fixed window the metrics are:
+
+- `sessions_entered`: distinct sessions with at least one qualifying segment.
+- `completion_rate` / `abandonment_rate`: share of segments containing a
+  `module.exit` for the same module with `outcome=completed`; every other
+  segment (explicit abandon or missing exit) counts as abandoned. Rates are
+  rounded to 4 decimal places, `0.0` when no segments exist.
+- `median_module_duration_ms`: interpolated median (`percentile_cont`) of the
+  first in-segment `module.exit` `duration_ms`, regardless of outcome;
+  segments without an exit duration are excluded; `0` when none exist.
+- `correction_rate_by_field`: extractions attribute to a segment through their
+  `source_event_id`; per `field_key`, the share of attributed extractions with
+  at least one value-changing correction (`before_hash <> after_hash`).
+- `critical_correction_count`: value-changing corrections on attributed
+  extractions whose `value_class` is `identifier` or `currency` — the classes
+  where a wrong value corrupts identity or money facts.
+- `booked_meeting_conversion`: share of `sessions_entered` with at least one
+  `meeting.booked` event anywhere in the session.
+- `top_abandonment_questions`: for each abandoned segment, the last
+  `question.prompted` in the segment carrying a `question_id`; the top 5
+  question ids by count, ties broken by `question_id` ascending.
+- `calibration`: attributed extractions with a stored `confidence`, bucketed
+  into deciles (`0.8-0.9`; `1.0` folds into `0.9-1.0`), with `approval_rate`
+  the share never value-changed by a correction. Only non-empty buckets are
+  returned, ascending.
+
+## M6 daily metrics jobs
+
+The pilot KPIs are computed by SQL views (migration `0009_m6_metric_snapshots`),
+materialized daily into `metric_daily_snapshots` and evaluated against
+`config/thresholds.yaml` into `metric_alerts` by a small runner. There is no
+Airflow: an in-app scheduler (`startDailyMetrics`, mirroring the retention
+scheduler) runs the previous complete UTC day hourly and idempotently, and
+operators who prefer cron invoke `src/jobs/metrics-cli.ts` (`make metrics`,
+optional `DATE=YYYY-MM-DD`) instead. Every view emits one uniform shape
+(`tenant_id, metric_date, metric_name, dimension, numerator, denominator,
+value, reviewed_denominator`), so the runner materializes any of them with a
+single statement. The Postgres ledger is the single source of truth; snapshots
+are derived and rebuildable, and re-running a date deletes and rebuilds only
+that date's derived rows — the append-only event ledger is never touched.
+
+Every metric excludes withdrawn subjects via `metrics_included_sessions` (the
+same `subject_metric_exclusions` rule as the M4 daily job). Definitions are
+pinned in the SQL comment above each view; the exact denominators are:
+
+- **completion_rate** — sessions with a `session.completed` event ÷ sessions
+  with `session.started`, by the start event's UTC `received_at` date.
+- **dropoff_rate_by_module** (dimension = pinned M5 `module_version_id`) — a
+  module segment (a `module.enter`) is a drop when it is the session's last
+  entered segment and the session was abandoned (`session.completed` outcome
+  `abandoned`/`failed`, or no `session.completed`); ÷ segments of that version
+  entered. Attribution is by the version stamped on the enter event, never
+  `fact_find_sessions.entry_module_version_id`.
+- **median_question_time** — `percentile_cont(0.5)` over
+  `question.completed.occurred_at − question.prompted.occurred_at`, paired on
+  `(session_id, question_id, turn_index)`. Pairs < 0 or > 30 min are data
+  errors, discarded from the median and reported separately as
+  `question_time_discarded`.
+- **correction_rate_by_field** (dimension = field key) — extractions with a
+  value-changing correction (`before_hash <> after_hash`) ÷ proposed
+  extractions **whose session has a completed review** (the "% reviewed"
+  guard; `reviewed_denominator` restates it). Snapshotted at the session's
+  `review.completed` date.
+- **calibration_approval_rate** (dimension = confidence bucket) — fixed edges
+  `[0,0.5,0.7,0.85,0.95,1.0]` (top bucket closed so 1.0 lands in `0.95-1.0`);
+  approval = fraction not changed by review. Review-gated like corrections.
+
+v2 KPI additions:
+
+- **Reliability** — `connection_success_rate` (`call.connected` ÷ starts),
+  `mid_call_drop_rate` (`call.hung_up` with `cause_class = 'technical'` ÷
+  connected), `turn_latency_p95_ms` (p95 of `provider_usage.latency_ms`).
+  Alerts: connection success < 98% or drop rate > 5% (both `critical`). Every
+  `call.hung_up` and abandoned `session.completed` carries a technical vs
+  non-technical cause so product KPIs can exclude infra-caused abandonment.
+- **Adviser adoption** — `review_turnaround_median_ms` (completion →
+  `review.completed`), `pct_reviewed_within_7d`, `pct_reviewed` (the guard
+  headline), and `reviews_abandoned`. Correction and calibration KPIs always
+  carry their reviewed denominator.
+- **Unit economics** — `cost_per_completed_factfind`, `cost_per_booked_meeting`,
+  and `tenant_daily_cost_micros` (sum over a month = cost per tenant-month),
+  from `provider_usage.cost_micros` (the M1 column the spec calls
+  `estimated_cost_minor`). Alert when `cost_per_completed_factfind` exceeds
+  1.5× its trailing-28-day baseline, once the baseline has ≥ 3 days.
+- **Reconciliation** — daily ledger vs PostHog-forwarded count. Over events the
+  consent gate marked forwardable (a non-suppressed `telemetry_outbox` row),
+  divergence = not-yet-delivered ÷ expected; alert above 2%. PostHog and
+  Langfuse are disposable lenses (1-year / 30-day free-tier retention); any
+  long-lived signal such as calibration history lives in the ledger.
+
+Thresholds live in `config/thresholds.yaml`, loaded at runtime (never
+hardcoded) and strictly validated; a run records the `thresholds_version` that
+produced its alerts.

@@ -657,10 +657,14 @@ describe.sequential("M4 consent, retention, and erasure", () => {
 
     const posthog = new RecordingPostHogSink();
     const otel = new RecordingOtelSpanSink();
+    // The outbox row's next_attempt_at is stamped by PostgreSQL now() at
+    // insert, which lands after the frozen ingestion clock was captured. The
+    // worker claims strictly by its own clock, so drain with one that is
+    // unambiguously past the insert regardless of host/container clock skew.
     const worker = new OutboxWorker({
       pool: connection.pool,
       catalogs,
-      clock,
+      clock: new FixedClock(new Date(now.getTime() + 60_000)),
       posthog,
       otel,
       retryBaseMilliseconds: 1,

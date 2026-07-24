@@ -281,11 +281,11 @@ BEGIN
 
 		SELECT EXISTS (
 			SELECT 1
-			FROM privacy_scrub_authorizations authorization
-			WHERE authorization.tenant_id = scrub_tenant_id
-				AND authorization.operation_id = scrub_operation_id
-				AND authorization.operation_type = scrub_operation_type
-				AND authorization.created_at = transaction_timestamp()
+			FROM privacy_scrub_authorizations scrub_authorization
+			WHERE scrub_authorization.tenant_id = scrub_tenant_id
+				AND scrub_authorization.operation_id = scrub_operation_id
+				AND scrub_authorization.operation_type = scrub_operation_type
+				AND scrub_authorization.created_at = transaction_timestamp()
 		)
 		INTO authorized;
 
@@ -348,11 +348,11 @@ BEGIN
 
 		SELECT EXISTS (
 			SELECT 1
-			FROM privacy_scrub_authorizations authorization
-			WHERE authorization.tenant_id = scrub_tenant_id
-				AND authorization.operation_id = scrub_operation_id
-				AND authorization.operation_type = scrub_operation_type
-				AND authorization.created_at = transaction_timestamp()
+			FROM privacy_scrub_authorizations scrub_authorization
+			WHERE scrub_authorization.tenant_id = scrub_tenant_id
+				AND scrub_authorization.operation_id = scrub_operation_id
+				AND scrub_authorization.operation_type = scrub_operation_type
+				AND scrub_authorization.created_at = transaction_timestamp()
 		)
 		INTO authorized;
 

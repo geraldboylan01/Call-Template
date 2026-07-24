@@ -1,0 +1,31 @@
+# Pilot KPI alert thresholds. Loaded at runtime by the metrics runner; never
+# hardcoded in code. Bump the version when any threshold changes so a run
+# records which threshold set produced its alerts (metric_daily_runs.
+# thresholds_version).
+version: thresholds-v1
+
+# completion_rate below this fraction raises completion_rate_below_threshold.
+# (v1 pilot target.)
+completion_rate:
+  warn_below: 0.6
+
+# Reliability gates from the v2 KPI additions.
+reliability:
+  # connection_success_rate below this raises connection_success_below_threshold.
+  connection_success_warn_below: 0.98
+  # mid_call_drop_rate above this raises drop_rate_above_threshold.
+  drop_rate_warn_above: 0.05
+
+# Unit-economics guard: today's cost_per_completed_factfind above
+# (warn_ratio x trailing 28-day baseline) raises cost_per_session_drift.
+# 1.5 == "drifts > 50% vs baseline". A baseline needs at least
+# baseline_min_days days of history in the trailing window.
+unit_economics:
+  cost_per_session_warn_ratio: 1.5
+  baseline_days: 28
+  baseline_min_days: 3
+
+# Reconciliation guard: ledger-vs-PostHog divergence above this fraction raises
+# reconciliation_divergence. 0.02 == "> 2% divergence".
+reconciliation:
+  divergence_warn_above: 0.02

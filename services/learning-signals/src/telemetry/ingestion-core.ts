@@ -1,10 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { DatabaseTransaction } from "../db/client.js";
 import {
   consentLedger,
   factFindSessions,
+  moduleVersions,
   sessionEvents,
   telemetryOutbox,
 } from "../db/schema.js";
@@ -236,11 +237,82 @@ export async function prepareEvent(
   return { prepared };
 }
 
+/**
+ * Resolves the module version a `module.enter` event pins and stamps it into
+ * the persisted attributes. The first persisted enter of a module inside a
+ * session resolves the then-active published version; later enters of the
+ * same module in the same session reuse that pin, so a mid-session publish
+ * never changes a session's attribution. Runs after the fact_find_sessions
+ * row lock, which serializes concurrent enters of one session.
+ */
+async function pinModuleVersion(
+  transaction: DatabaseTransaction,
+  tenantId: string,
+  event: PreparedEvent,
+  catalog: EventCatalog,
+): Promise<IngestionResult | undefined> {
+  const moduleId = event.persistedAttrs.module_id;
+  if (typeof moduleId !== "string") {
+    throw new Error("Validated module entry is missing its module id.");
+  }
+
+  const priorPins = await transaction
+    .select({
+      moduleVersionId: sql<string | null>`${sessionEvents.attrs}->>'module_version_id'`,
+    })
+    .from(sessionEvents)
+    .where(
+      and(
+        eq(sessionEvents.tenantId, tenantId),
+        eq(sessionEvents.sessionId, event.sessionId),
+        eq(sessionEvents.eventType, "module.enter"),
+        sql`${sessionEvents.attrs}->>'module_id' = ${moduleId}`,
+      ),
+    )
+    .orderBy(asc(sessionEvents.createdAt), asc(sessionEvents.eventId))
+    .limit(1);
+
+  let pinnedVersionId = priorPins[0]?.moduleVersionId ?? undefined;
+  if (pinnedVersionId === undefined) {
+    const activeVersions = await transaction
+      .select({ moduleVersionId: moduleVersions.moduleVersionId })
+      .from(moduleVersions)
+      .where(
+        and(
+          eq(moduleVersions.tenantId, tenantId),
+          eq(moduleVersions.moduleId, moduleId),
+          eq(moduleVersions.status, "published"),
+        ),
+      )
+      .orderBy(
+        desc(moduleVersions.publishedAt),
+        desc(moduleVersions.createdAt),
+        desc(moduleVersions.moduleVersionId),
+      )
+      .limit(1);
+    pinnedVersionId = activeVersions[0]?.moduleVersionId;
+    if (pinnedVersionId === undefined) {
+      return {
+        event_id: event.eventId,
+        status: "invalid",
+        error: "module_id has no published version",
+      };
+    }
+  }
+
+  event.persistedAttrs = catalog.withServerAttributes(
+    event.eventType,
+    event.persistedAttrs,
+    { module_version_id: pinnedVersionId },
+  );
+  return undefined;
+}
+
 export async function persistPreparedEvent(
   transaction: DatabaseTransaction,
   tenantId: string,
   event: PreparedEvent,
-  catalogVersion: string,
+  catalog: EventCatalog,
 ): Promise<IngestionResult> {
   const session = await transaction
     .select({ sessionId: factFindSessions.sessionId })
@@ -259,6 +331,11 @@ export async function persistPreparedEvent(
       status: "invalid",
       error: "session_id not found",
     };
+  }
+
+  if (event.eventType === "module.enter") {
+    const pinFailure = await pinModuleVersion(transaction, tenantId, event, catalog);
+    if (pinFailure) return pinFailure;
   }
 
   if (event.consentClassification !== undefined) {
@@ -326,7 +403,7 @@ export async function persistPreparedEvent(
     await transaction.insert(telemetryOutbox).values({
       tenantId,
       eventId: event.eventId,
-      configVersion: catalogVersion,
+      configVersion: catalog.version,
     });
     return { event_id: event.eventId, status: "inserted" };
   }

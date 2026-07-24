@@ -368,7 +368,7 @@ export function registerCorrectionsRoutes(
               transaction,
               tenantContext.tenantId,
               derivedEvent,
-              dependencies.catalog.version,
+              dependencies.catalog,
             );
             if (eventResult.status !== "inserted") {
               throw new DerivedCorrectionEventError();

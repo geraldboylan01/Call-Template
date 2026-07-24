@@ -38,7 +38,7 @@ export OUTBOX_POLL_INTERVAL_MS OUTBOX_RETRY_BASE_MS OUTBOX_RETRY_MAX_MS
 
 DEPS_STAMP := $(LEARNING_SIGNALS_DIR)/node_modules/.package-lock.json
 
-.PHONY: db-up db-migrate db-reset test lint deps
+.PHONY: db-up db-migrate db-reset test lint deps metrics
 
 deps: $(DEPS_STAMP)
 
@@ -63,6 +63,11 @@ db-reset:
 	$(COMPOSE) down --volumes --remove-orphans
 	$(MAKE) db-up
 	$(MAKE) db-migrate
+
+# Runs the daily metric jobs (snapshots + threshold alerts). Optional DATE=YYYY-MM-DD
+# rebuilds a specific UTC day; default processes the previous complete day. Idempotent.
+metrics: deps
+	$(NPM) --prefix $(LEARNING_SIGNALS_DIR) run metrics -- $(DATE)
 
 test: deps
 	$(NPM) --prefix $(LEARNING_SIGNALS_DIR) test

@@ -380,7 +380,7 @@ export class PrivacyDeletionWorker {
         `update privacy_deletion_outbox
          set attempt_count = $2,
              next_attempt_at = $3,
-             processed_at = case when $4::boolean then $1 else null end,
+             processed_at = case when $4::boolean then $1::timestamptz else null end,
              last_failure_code = case
                when $4::boolean then null else 'sink_delete_failed' end,
              external_subject_ids = case

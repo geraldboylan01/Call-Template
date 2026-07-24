@@ -683,7 +683,9 @@ describe.sequential("M3 adviser corrections", () => {
           change_kind: "changed",
           reason_code: "incorrect_value",
         },
-        config_version: "telemetry-events-v2",
+        // The outbox row records the catalog revision that validated the
+        // derived event: the app under test ingests with catalogs.current.
+        config_version: catalogs.current.version,
       },
     ]);
   });

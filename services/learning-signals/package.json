@@ -11,6 +11,7 @@
     "start": "tsx src/server.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --import tsx src/db/migrate.ts",
+    "metrics": "node --import tsx src/jobs/metrics-cli.ts",
     "test": "vitest run",
     "lint": "tsc --noEmit"
   },

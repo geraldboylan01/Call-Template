@@ -94,7 +94,7 @@ export function registerTelemetryRoutes(
               transaction,
               tenantContext.tenantId,
               event,
-              dependencies.catalog.version,
+              dependencies.catalog,
             );
             results[event.index] = result;
             if (result.status === "conflict") conflictCount += 1;

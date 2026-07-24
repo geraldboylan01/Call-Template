@@ -6,6 +6,10 @@ import {
   startConsentDeletionPolling,
 } from "./jobs/consent-deletion.js";
 import {
+  MetricsRunner,
+  startDailyMetrics,
+} from "./jobs/metrics-runner.js";
+import {
   RetentionPurgeJob,
   startDailyRetention,
 } from "./jobs/retention.js";
@@ -51,6 +55,7 @@ const consentDeletionWorker = new ConsentDeletionWorker({
   catalog,
   clock,
 });
+const metricsRunner = new MetricsRunner({ pool: connection.pool, clock });
 let polling: ReturnType<typeof startOutboxPolling> | undefined;
 let consentDeletionPolling:
   | ReturnType<typeof startConsentDeletionPolling>
@@ -59,6 +64,7 @@ let privacyDeletionPolling:
   | ReturnType<typeof startPrivacyDeletionPolling>
   | undefined;
 let retentionSchedule: ReturnType<typeof startDailyRetention> | undefined;
+let metricsSchedule: ReturnType<typeof startDailyMetrics> | undefined;
 
 try {
   await waitForPostgres(connection.pool);
@@ -83,6 +89,9 @@ try {
   retentionSchedule = startDailyRetention(retentionJob, () => {
     console.error("Daily retention purge failed.");
   });
+  metricsSchedule = startDailyMetrics(metricsRunner, () => {
+    console.error("Daily metrics run failed.");
+  });
 } catch (_error) {
   console.error("Learning-signal service failed to start.");
   await connection.pool.end();
@@ -93,6 +102,7 @@ let closing = false;
 async function shutdown(): Promise<void> {
   if (closing) return;
   closing = true;
+  await metricsSchedule?.stop();
   await retentionSchedule?.stop();
   await consentDeletionPolling?.stop();
   await privacyDeletionPolling?.stop();

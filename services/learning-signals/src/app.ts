@@ -13,6 +13,7 @@ import {
 } from "./privacy/erasure.js";
 import { registerCorrectionsRoutes } from "./routes/corrections.js";
 import { registerErasureRoutes } from "./routes/erasure.js";
+import { registerModuleVersionRoutes } from "./routes/module-versions.js";
 import { registerTelemetryRoutes } from "./routes/telemetry.js";
 import { SystemClock, type Clock } from "./telemetry/clock.js";
 import { PilotConsentResolver, type ConsentResolver } from "./telemetry/consent.js";
@@ -119,6 +120,10 @@ export function buildApp(
   registerErasureRoutes(app, {
     connection,
     erasureService,
+  });
+  registerModuleVersionRoutes(app, {
+    connection,
+    clock,
   });
 
   if (ownsConnection) {
