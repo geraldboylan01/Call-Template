@@ -160,8 +160,8 @@ CONSUMER_BOOKING_URL = ""
 # leave any blank and the emitter is a complete no-op. LEARNING_SIGNALS_URL and
 # LEARNING_SIGNALS_MODULE_ID may live here per-environment; set
 # LEARNING_SIGNALS_INGEST_KEY (a tenant `ingest` key) with `wrangler secret put`.
-LEARNING_SIGNALS_URL = ""
-LEARNING_SIGNALS_MODULE_ID = ""
+LEARNING_SIGNALS_URL = "https://planeir-learning-signals.onrender.com"
+LEARNING_SIGNALS_MODULE_ID = "b864ca8f-fc74-4f5d-810c-cda8751be4a8"
 # Set with `wrangler secret put`: CONSUMER_DATA_ENCRYPTION_KEY,
 # CONSUMER_DATA_ENCRYPTION_PREVIOUS_KEYS_JSON (during rotations),
 # CONSUMER_INVITE_SIGNING_KEY (for private cohorts),
