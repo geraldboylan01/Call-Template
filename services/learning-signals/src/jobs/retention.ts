@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import {
+  NoopObservabilitySpanSink,
+  type ObservabilitySpanSink,
+} from "../sinks/observability-spans.js";
 import type { Clock } from "../telemetry/clock.js";
 
 const millisecondsPerDay = 24 * 60 * 60 * 1_000;
@@ -29,6 +33,7 @@ export type RetentionPurgeResult = {
 export type RetentionPurgeJobOptions = {
   pool: Pool;
   clock: Clock;
+  spans?: ObservabilitySpanSink;
 };
 
 function cutoff(runAt: Date, retentionDays: number): Date {
@@ -371,6 +376,16 @@ export class RetentionPurgeJob {
       }
     }
 
+    // Operational span: run id, tenants processed, rows removed. No content.
+    const spans = this.options.spans ?? new NoopObservabilitySpanSink();
+    spans.record({
+      name: "learning_signals.retention_purge",
+      attributes: {
+        run_id: runId,
+        tenants_processed: policies.rows.length,
+        rows_deleted: entries.reduce((total, entry) => total + entry.rowsDeleted, 0),
+      },
+    });
     return { runId, entries };
   }
 }

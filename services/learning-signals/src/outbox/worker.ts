@@ -1,6 +1,15 @@
 import type { Pool } from "pg";
 
-import type { PostHogSink, OtelSpanSink, ForwardedTelemetryEvent } from "../sinks/telemetry-sinks.js";
+import {
+  analyticsSessionId,
+  type PostHogSink,
+  type OtelSpanSink,
+  type ForwardedTelemetryEvent,
+} from "../sinks/telemetry-sinks.js";
+import {
+  NoopObservabilitySpanSink,
+  type ObservabilitySpanSink,
+} from "../sinks/observability-spans.js";
 import type { Clock } from "../telemetry/clock.js";
 import {
   consentGate,
@@ -33,16 +42,19 @@ export type OutboxWorkerOptions = {
   posthog: PostHogSink;
   otel: OtelSpanSink;
   consentResolver?: ConsentStateResolver;
+  spans?: ObservabilitySpanSink;
   retryBaseMilliseconds: number;
   retryMaxMilliseconds: number;
 };
 
 export class OutboxWorker {
   private readonly consentResolver: ConsentStateResolver;
+  private readonly spans: ObservabilitySpanSink;
 
   constructor(private readonly options: OutboxWorkerOptions) {
     this.consentResolver =
       options.consentResolver ?? new PostgresConsentStateResolver();
+    this.spans = options.spans ?? new NoopObservabilitySpanSink();
   }
 
   async runOnce(outboxId?: string): Promise<boolean> {
@@ -115,6 +127,10 @@ export class OutboxWorker {
           [suppressedAt, gate.reason, row.outbox_id],
         );
         await client.query("commit");
+        this.spans.record({
+          name: "learning_signals.outbox_drain",
+          attributes: { outbox_id: row.outbox_id, event_id: row.event_id, suppressed: true },
+        });
         return true;
       }
 
@@ -129,6 +145,7 @@ export class OutboxWorker {
         payload = {
           deliveryId: row.outbox_id,
           eventId: row.event_id,
+          analyticsSessionId: analyticsSessionId(row.session_id),
           eventType: row.event_type,
           occurredAt: row.occurred_at.toISOString(),
           receivedAt: row.received_at.toISOString(),
@@ -192,6 +209,16 @@ export class OutboxWorker {
         ],
       );
       await client.query("commit");
+      this.spans.record({
+        name: "learning_signals.outbox_drain",
+        attributes: {
+          outbox_id: row.outbox_id,
+          event_id: row.event_id,
+          posthog_delivered: posthogDelivered,
+          otel_delivered: otelDelivered,
+          processed,
+        },
+      });
       return true;
     } catch (error) {
       await client.query("rollback");

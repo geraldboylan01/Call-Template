@@ -15,6 +15,10 @@ import { registerCorrectionsRoutes } from "./routes/corrections.js";
 import { registerErasureRoutes } from "./routes/erasure.js";
 import { registerModuleVersionRoutes } from "./routes/module-versions.js";
 import { registerTelemetryRoutes } from "./routes/telemetry.js";
+import {
+  createObservabilitySpanSink,
+  type ObservabilitySpanSink,
+} from "./sinks/observability-spans.js";
 import { SystemClock, type Clock } from "./telemetry/clock.js";
 import { PilotConsentResolver, type ConsentResolver } from "./telemetry/consent.js";
 import {
@@ -47,6 +51,7 @@ export type AppDependencies = {
   fieldPolicy?: FieldPolicy;
   secretsProvider?: SecretsProvider;
   erasureService?: SubjectErasureService;
+  spans?: ObservabilitySpanSink;
   logStream?: { write(message: string): void };
 };
 
@@ -102,12 +107,14 @@ export function buildApp(
       secretsProvider,
       clock,
     } satisfies SubjectErasureServiceOptions);
+  const spans = dependencies.spans ?? createObservabilitySpanSink(config);
   registerTelemetryRoutes(app, {
     connection,
     catalog,
     clock,
     consentResolver,
     metrics: dependencies.metrics ?? new InMemoryIngestionMetrics(),
+    spans,
   });
   registerCorrectionsRoutes(app, {
     connection,

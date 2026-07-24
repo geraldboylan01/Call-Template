@@ -5,7 +5,28 @@ learning-signal layer. It is deliberately isolated from the existing Cloudflare
 Worker and its D1 databases: telemetry uses PostgreSQL 16 only. M1 established
 the tenant-carrying pilot schema; M2 added authenticated batch ingestion and the
 transactional delivery outbox; M3 added pseudonymised extraction corrections and
-the versioned field policy; M4 enforces consent, retention, and erasure.
+the versioned field policy; M4 enforces consent, retention, and erasure; M5
+added module-version publishing, version pinning, and per-version performance;
+M6 added the daily metric views, runner, and alerts; M7 added the hardened
+observability integrations (PostHog/Langfuse/OTel) behind masking and allowlist
+boundaries with a blocking negative-privacy suite; M8 adds the v2 event-type
+catalog, the demo seed that drives the real pipeline, and this documentation.
+
+## Run everything in five commands
+
+From the repository root, against a clean checkout:
+
+```sh
+docker compose up -d        # 1. PostgreSQL 16
+make db-reset               # 2. recreate the volume and apply every migration
+make test                   # 3. full suite against real Postgres (the gate)
+make lint                   # 4. tsc --noEmit
+make seed                   # 5. load the demo fixture through the real routes
+```
+
+`make db-reset` already runs `db-up` + `db-migrate`; run `make db-migrate`
+on its own to apply new migrations without dropping data. The milestone gate
+is `docker compose up -d && make db-reset && make db-migrate && make test`.
 
 ## Stack decision
 
@@ -39,6 +60,79 @@ make lint
 Drizzle migration ledger exists. It has no SQLite or in-memory fallback. Copy
 `.env.example` to `.env` only when local overrides are needed; never commit real
 credentials.
+
+## Data boundaries
+
+Three stores with different owners, contents, and lifetimes. The learning-signal
+ledger is the middle box; it never holds conversational content, and nothing
+leaves it to a partner without passing the export gate.
+
+```
+  ┌──────────────────────────────┐        ┌────────────────────────────────────┐
+  │  OPERATIONAL TENANT STORE     │        │  LEARNING-SIGNAL LEDGER (this svc)  │
+  │  (firm-owned, out of scope)   │        │  PostgreSQL 16, tenant-scoped       │
+  │                               │  minimised, keyed,                          │
+  │  • transcripts, audio         │  hashed, banded  │  • session_events         │
+  │  • raw answers & field values │ ───────────────► │    (append-only ledger)   │
+  │  • FCA suitability evidence   │  (never raw text)│  • field_extractions      │
+  │  • client identity            │                  │    (hashes + previews)    │
+  │                               │                  │  • adviser_corrections    │
+  │  Governed by the firm's own   │                  │  • provider_usage, consent│
+  │  schedule and legal holds.    │                  │  • metric_* snapshots      │
+  └──────────────────────────────┘                  └───────────┬────────────────┘
+                                                                 │
+                       consent gate + persist-first outbox       │  export gate:
+                                                                 │  k>=30 users,
+                          ┌──────────────────────────────────────┤  >=3 tenants,
+                          │                │                      │  <=80% dominance
+                          ▼                ▼                      ▼
+                 ┌──────────────┐  ┌──────────────┐   ┌─────────────────────────┐
+                 │  PostHog     │  │  Langfuse    │   │  PARTNER EXPORT         │
+                 │  (anonymous, │  │  (metadata-  │   │  (threshold-gated       │
+                 │   allowlist) │  │   only, mask)│   │   aggregates; SQL only) │
+                 └──────────────┘  └──────────────┘   └─────────────────────────┘
+                 OTel spans: ids/counts/durations only, allowlisted attributes.
+```
+
+- **Operational tenant store** (out of scope): the firm's own system of record for
+  transcripts, audio, raw answers, client identity, and FCA suitability evidence.
+  This service never receives raw content — only minimised, hashed, banded
+  signals derived from it.
+- **Learning-signal ledger** (this service): tenant-scoped PostgreSQL. Every read
+  is scoped to the credential's tenant; a foreign UUID returns 404. `session_events`
+  is append-only.
+- **Third-party lenses** (PostHog, Langfuse, OTel): disposable analysis surfaces
+  fed asynchronously from the outbox, behind consent gating and export allowlists.
+  Anything needed long-term lives in the ledger, the source of truth.
+- **Export gate** (partner reporting): aggregates only, suppressed unless k ≥ 30
+  users, ≥ 3 tenants, and ≤ 80% single-tenant dominance. Schema + threshold SQL
+  only; no delivery mechanism in the pilot.
+
+## Consent gating matrix
+
+Current consent per `(tenant, session, purpose)` is the latest ledger decision
+by `decision_ts` (server `received_at` breaks ties). `consentGate` is the single
+decision function, applied before persistence and again before each async
+delivery. Persist decides whether the minimised row enters the ledger; forward
+decides PostHog/OTel delivery; partner decides eligibility for aggregated export.
+
+| Event class (catalog `consent_class`) | Persist to ledger | Forward to PostHog/OTel | Partner-export eligible |
+| --- | --- | --- | --- |
+| `contract_necessity` (session/question/module/call/review/nudge) | Always | Requires `service_improvement_telemetry` | No |
+| `improvement_signal` (question.completed, extraction.*, survey.response) | Always (legitimate interest) | Requires `service_improvement_telemetry` | Requires `partner_benchmarking` |
+| `optional_demographics` (demographics.band.recorded) | Requires `optional_demographics` (fail closed) | With service consent | With `partner_benchmarking` |
+| `marketing_referral` (marketing.referral.recorded) | Requires `marketing_referral` (fail closed) | Not forwarded to shared sinks | No |
+| `consent_control` (consent.withdrawn) | Always | Never | No |
+
+A current withdrawal flips forwarding off for the session, suppresses pending
+outbox deliveries, excludes the subject from the next metrics run, and queues
+deletion of purpose-dependent rows. The seed exercises a fully consented, a
+declined, and a withdrawn session so all three paths are covered.
+
+See below for the full details: [secret rotation](#tenant-key-provisioning-and-rotation),
+the [FCA regulatory-record split](#regulatory-retention-boundary), and the
+[environment contract](../../.env.example) (every variable documented; absent
+optional vars install No-op sinks).
 
 ## Timestamp convention
 
@@ -353,3 +447,93 @@ v2 KPI additions:
 Thresholds live in `config/thresholds.yaml`, loaded at runtime (never
 hardcoded) and strictly validated; a run records the `thresholds_version` that
 produced its alerts.
+
+## M7 observability integrations
+
+All third-party observability sits behind the M2 sink interfaces with No-op and
+Recording fakes. The app boots and the whole suite passes with zero external
+credentials (No-op sinks, zero network). Export allowlists live in
+`config/observability.yaml`, loaded at runtime and strictly validated —
+deny-by-default: only enumerated keys ever leave the service.
+
+- **PostHog** (`buildPostHogCapture`): EU host default, server-side
+  anonymous-only capture. Every event sets `$process_person_profile: false`;
+  there is no identify/alias/group call and no autocapture/session-replay. The
+  `distinct_id` is an opaque, deterministic per-session id (`analyticsSessionId`,
+  a namespaced hash of the internal session_id) — never the
+  `pseudonymous_subject_id` and never the raw session_id, which is stripped from
+  the forwarded event entirely. Only allowlisted properties survive
+  (event_type is the event name; module_version_id, question_id, duration_ms,
+  status/categorical attrs, etc.).
+- **Langfuse** (metadata-only): `maskLangfuseGeneration` is the registered mask
+  — it keeps only the allowlisted metadata (model, provider, token counts,
+  latency, cost_micros, request_id, session_id, tenant_id) and drops all
+  `gen_ai.prompt.*`, `gen_ai.completion.*`, `input`, `output`, and any unknown
+  key, so the raw fact-find conversation can never reach Langfuse. Provider
+  usage forwards persist-first / async: an AFTER INSERT trigger enqueues a
+  `provider_usage_outbox` row in the same transaction as the provider_usage
+  insert, and `LangfuseForwardWorker` drains it, masking each row before export.
+  Prefer Langfuse Cloud EU (Hobby) for the pilot; absent credentials keep the
+  dormant no-op sink.
+- **OTel**: per-event spans (`buildOtelSpanPayload`) carry `event_id`,
+  `event_type`, and allowlisted attributes only. Operational spans for the
+  ingestion, outbox-drain, retention-purge, and metrics jobs
+  (`ObservabilitySpanSink`) carry only ids, counts, and durations — never a
+  payload fragment.
+- **Budget guardrails** (`BudgetGuardrail`): a per-tenant daily provider-spend
+  counter (real cost, not consent-filtered) against a configurable cap
+  (`tenant_provider_budgets.daily_cap_micros`, else the observability default).
+  Crossing the cap records a `provider_budget_alerts` row; the pilot never
+  hard-stops sessions. Runs from the metrics scheduler and `make metrics`.
+
+`question_id` became a forwardable attribute in `telemetry-events.v6.json`
+(reconciling M5's earlier stance) so PostHog/OTel can attribute question-level
+funnels; it is still an opaque module-authored slug, never conversational
+content.
+
+### Negative privacy suite (blocking)
+
+`test/negative-privacy-m7.test.ts` threads sentinel PII, a sentinel provider
+key, and a sentinel API key through a full seeded scenario — categorical
+ingestion, an adviser correction (raw values in before/after, provider key in
+the note), and provider usage — then drains every forwarding path into
+Recording fakes and runs the metrics/budget/purge jobs. It asserts no sentinel
+appears in: any telemetry table (full database dump), any PostHog capture, any
+OTel span, any Langfuse trace, any operational job span, or the captured
+application logs on a forced error path. The suite fails the milestone if any
+sentinel survives.
+
+## M8 catalog v2 additions and the demo seed
+
+`config/telemetry-events.v7.json` adds the v2 event types to the allowlist, each
+with a closed attrs schema (categorical/numeric/id only, `late` reserved,
+deny-by-default). The registry still loads every retained `vN` file; ingestion
+uses v7 while pending outbox rows keep the revision that validated them.
+
+- Adviser portal: `review.queue_viewed` (plus `review.started/completed/abandoned`
+  from earlier milestones).
+- Module authoring: `module.created`, `module.edited`, `module.test_run`,
+  `module.published`, `module.rolled_back`.
+- Reliability: `call.connect_failed`, `call.dropped` (plus `call.connected`,
+  `call.hung_up`).
+- Re-engagement: `nudge.sent`, `session.resumed`.
+- Satisfaction: `survey.response` — an integer `score` 1–5 and a categorical
+  `reason` only. There is no free-text survey field anywhere in the schema.
+
+Module-authoring and adviser-portal events are tenant-level, not tied to a
+client fact-find, but the ledger is session-keyed; the seed attaches them to a
+dedicated per-tenant "operations" session, and that is the intended convention.
+
+`make seed` (or `npm run seed`) loads the demo fixture by driving the real
+routes — module versions through the publish route, every telemetry event
+through `/v1/telemetry/events`, and every correction through
+`/v1/adviser-corrections`. Only setup rows with no HTTP surface (tenant, one API
+key per scope, sessions, granted/denied consent, proposed extractions) use SQL.
+The fixture is: 1 tenant on the default retention policy; 2 modules × 2 published
+versions; 6 sessions that together exercise **every** catalog event type
+(including the derived `extraction.corrected`), every correction reason code and
+both change kinds, a declined-consent session, and a withdrawn-consent session
+whose withdrawal flows through ingestion. Because the seed uses the real
+pipeline, running it validates ingestion, version pinning, consent gating, and
+correction sanitisation. `test/seed-m8.test.ts` runs the seed and asserts full
+event-type coverage and the privacy invariants (no raw value stored).

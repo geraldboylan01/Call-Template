@@ -1,5 +1,6 @@
 import { loadConfig } from "../config.js";
 import { createDatabaseConnection, waitForPostgres } from "../db/client.js";
+import { BudgetGuardrail } from "./budget.js";
 import { MetricsRunner } from "./metrics-runner.js";
 
 // Cron entrypoint for the daily metrics jobs. Run with no argument to process
@@ -13,14 +14,19 @@ async function main(): Promise<void> {
   try {
     await waitForPostgres(connection.pool);
     const runner = new MetricsRunner({ pool: connection.pool });
+    const budget = new BudgetGuardrail({ pool: connection.pool });
     const requestedDate = process.argv[2];
     const summary = requestedDate
       ? await runner.runDay(requestedDate)
       : await runner.runOnce();
+    const budgetResult = requestedDate
+      ? await budget.evaluateDay(requestedDate)
+      : await budget.runOnce();
     // Operational counts only; never event content.
     console.log(
       `metrics run ${summary.runId} for ${summary.metricDate}: ` +
-        `${summary.snapshotCount} snapshots, ${summary.alertCount} alerts`,
+        `${summary.snapshotCount} snapshots, ${summary.alertCount} alerts, ` +
+        `${budgetResult.alertCount} budget alerts`,
     );
   } finally {
     await connection.pool.end();

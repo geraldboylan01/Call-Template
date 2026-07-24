@@ -38,7 +38,7 @@ export OUTBOX_POLL_INTERVAL_MS OUTBOX_RETRY_BASE_MS OUTBOX_RETRY_MAX_MS
 
 DEPS_STAMP := $(LEARNING_SIGNALS_DIR)/node_modules/.package-lock.json
 
-.PHONY: db-up db-migrate db-reset test lint deps metrics
+.PHONY: db-up db-migrate db-reset test lint deps metrics seed
 
 deps: $(DEPS_STAMP)
 
@@ -68,6 +68,10 @@ db-reset:
 # rebuilds a specific UTC day; default processes the previous complete day. Idempotent.
 metrics: deps
 	$(NPM) --prefix $(LEARNING_SIGNALS_DIR) run metrics -- $(DATE)
+
+# Loads the demo fixture through the real ingestion/publish/corrections routes.
+seed: deps
+	$(NPM) --prefix $(LEARNING_SIGNALS_DIR) run seed
 
 test: deps
 	$(NPM) --prefix $(LEARNING_SIGNALS_DIR) test

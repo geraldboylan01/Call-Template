@@ -5,6 +5,10 @@ import { z } from "zod";
 import { authenticationHook } from "../auth/tenant-context.js";
 import type { DatabaseConnection } from "../db/client.js";
 import { moduleVersions } from "../db/schema.js";
+import {
+  NoopObservabilitySpanSink,
+  type ObservabilitySpanSink,
+} from "../sinks/observability-spans.js";
 import type { Clock } from "../telemetry/clock.js";
 import type { ConsentResolver } from "../telemetry/consent.js";
 import type { EventCatalog } from "../telemetry/event-catalog.js";
@@ -33,6 +37,7 @@ export type TelemetryRouteDependencies = {
   clock: Clock;
   consentResolver: ConsentResolver;
   metrics: IngestionMetrics;
+  spans?: ObservabilitySpanSink;
 };
 
 export function registerTelemetryRoutes(
@@ -105,6 +110,24 @@ export function registerTelemetryRoutes(
       for (let index = 0; index < conflictCount; index += 1) {
         dependencies.metrics.incrementIdempotencyConflict(tenantContext.tenantId);
       }
+
+      // Operational span: batch and outcome counts only, never event content.
+      let insertedCount = 0;
+      let invalidCount = 0;
+      for (const result of results) {
+        if (result?.status === "inserted") insertedCount += 1;
+        else if (result?.status === "invalid") invalidCount += 1;
+      }
+      (dependencies.spans ?? new NoopObservabilitySpanSink()).record({
+        name: "learning_signals.ingest_batch",
+        attributes: {
+          tenant_id: tenantContext.tenantId,
+          batch_size: results.length,
+          inserted: insertedCount,
+          invalid: invalidCount,
+          conflicts: conflictCount,
+        },
+      });
       return reply.status(207).send({ results: results as IngestionResult[] });
     },
   );

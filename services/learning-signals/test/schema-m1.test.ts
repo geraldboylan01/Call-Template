@@ -787,6 +787,7 @@ describe.sequential("M1 PostgreSQL schema", () => {
       "module_versions_immutability_trigger",
       "module_versions_no_delete_row_trigger",
       "module_versions_no_truncate_trigger",
+      "provider_usage_langfuse_outbox_trigger",
       "session_events_append_only_row_trigger",
       "session_events_append_only_truncate_trigger",
       "session_events_derive_ingestion_key_trigger",

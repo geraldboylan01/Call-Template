@@ -1,0 +1,105 @@
+# Observability export boundary (M7). Loaded at runtime, never hardcoded. These
+# allowlists are DENY-BY-DEFAULT: only the keys/fields enumerated here ever
+# leave the service to a third party, regardless of what a catalog or code path
+# produces. A future forward_attr is invisible to PostHog/OTel until it is
+# added here on purpose. No key below is conversational content — they are
+# enumerated categorical/structural/id/duration fields only.
+version: observability-v1
+
+posthog:
+  # Property keys permitted on a PostHog capture. distinct_id, $insert_id and
+  # $process_person_profile are added by the sink and are not listed here. The
+  # event name is always the telemetry event_type. No subject identifier and no
+  # raw value may appear.
+  property_allowlist:
+    - question_kind
+    - sequence
+    - retry
+    - outcome
+    - value_class
+    - duration_bucket
+    - field_kind
+    - result
+    - confidence_band
+    - change_kind
+    - reason_code
+    - turn_count
+    - abandonment_cause
+    - cause_class
+    - cause_detail
+    - reviewer_role
+    - corrections_made
+    - stage
+    - channel
+    - source
+    - module_id
+    - module_version_id
+    - question_id
+    - turn_index
+    - duration_ms
+    - queue_depth_bucket
+    - change_scope
+    - nudge_kind
+    - score
+    - reason
+
+otel:
+  # Per-event span attribute keys (exported under a telemetry.* namespace).
+  # event_id and event_type are always attached as span attributes; everything
+  # else must be listed here. IDs, counts, durations, categoricals only.
+  attribute_allowlist:
+    - question_kind
+    - sequence
+    - retry
+    - outcome
+    - value_class
+    - duration_bucket
+    - field_kind
+    - result
+    - confidence_band
+    - change_kind
+    - reason_code
+    - turn_count
+    - abandonment_cause
+    - cause_class
+    - cause_detail
+    - reviewer_role
+    - corrections_made
+    - stage
+    - channel
+    - source
+    - module_id
+    - module_version_id
+    - question_id
+    - turn_index
+    - duration_ms
+    - queue_depth_bucket
+    - change_scope
+    - nudge_kind
+    - score
+    - reason
+
+langfuse:
+  # The only fields a Langfuse generation trace may carry. The masking function
+  # keeps exactly these and drops everything else (all gen_ai.prompt.*,
+  # gen_ai.completion.*, input, output, and any unknown key), so the raw
+  # fact-find conversation can never reach Langfuse even by accident.
+  generation_field_allowlist:
+    - generation_id
+    - tenant_id
+    - session_id
+    - request_id
+    - provider
+    - model
+    - input_tokens
+    - output_tokens
+    - cached_input_tokens
+    - latency_ms
+    - cost_micros
+
+budget:
+  # Per-tenant daily provider-spend cap in cost micros (millionths of a currency
+  # unit, matching provider_usage.cost_micros). Tenants without a row in
+  # tenant_provider_budgets fall back to this default. Exceeding the cap emits a
+  # provider_budget_alerts row; sessions are never hard-stopped in the pilot.
+  default_daily_cap_micros: 50000000

@@ -212,7 +212,7 @@ describe.sequential("M5 module versioning and performance", () => {
     connection = createDatabaseConnection(config.databaseUrl);
     await waitForPostgres(connection.pool);
     catalogs = loadEventCatalogRegistry();
-    expect(catalogs.current.version).toBe("telemetry-events-v5");
+    expect(catalogs.current.version).toBe("telemetry-events-v7");
     baseNow = new Date();
     clock = new MutableClock(baseNow);
     const secretsProvider = new RecordingSecretsProvider();
@@ -519,7 +519,7 @@ describe.sequential("M5 module versioning and performance", () => {
       `select config_version from telemetry_outbox where tenant_id = $1 and event_id = $2`,
       [fixture.tenantA, s1Enter.event_id],
     );
-    expect(outbox.rows[0]?.config_version).toBe("telemetry-events-v5");
+    expect(outbox.rows[0]?.config_version).toBe("telemetry-events-v7");
   });
 
   it("keeps a session's pin stable after a newer version publishes", async () => {

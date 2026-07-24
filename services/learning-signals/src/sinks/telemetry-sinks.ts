@@ -1,14 +1,70 @@
 import { sha256Hex, type JsonPrimitive } from "../telemetry/canonical-json.js";
 import type { ServiceConfig } from "../config.js";
+import {
+  loadObservabilityConfig,
+  type ObservabilityConfig,
+} from "./observability-config.js";
 
 export type ForwardedTelemetryEvent = {
   deliveryId: string;
   eventId: string;
+  // Opaque per-session analytics id (see analyticsSessionId). The RAW
+  // session_id is deliberately never placed on the forwarded event, so no
+  // sink can leak it — PostHog groups by this opaque id instead.
+  analyticsSessionId: string;
   eventType: string;
   occurredAt: string;
   receivedAt: string;
   properties: Record<string, JsonPrimitive>;
 };
+
+/**
+ * Opaque, deterministic, per-session analytics id used as the PostHog
+ * distinct_id. Derived from the internal session_id under a fixed namespace so
+ * it groups a session's events for funnels without exposing the raw session_id
+ * to PostHog, and it is never the `pseudonymous_subject_id`. One-way: PostHog
+ * cannot recover the session_id, and no subject identifier is involved.
+ */
+export function analyticsSessionId(sessionId: string): string {
+  const hex = sha256Hex(`planeir:posthog-distinct:v1:${sessionId.toLowerCase()}`);
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join("-");
+}
+
+export type PostHogCapture = {
+  event: string;
+  timestamp: string;
+  properties: Record<string, JsonPrimitive>;
+};
+
+/**
+ * Builds the PostHog capture body for a forwarded event. Anonymous-only:
+ * `$process_person_profile` is forced false, `distinct_id` is the opaque
+ * per-session id, and ONLY properties on the configured allowlist survive — a
+ * deny-by-default boundary independent of what the catalog projected. No
+ * identify/alias/group and no subject identifier can be produced here.
+ */
+export function buildPostHogCapture(
+  event: ForwardedTelemetryEvent,
+  propertyAllowlist: ReadonlySet<string>,
+): PostHogCapture {
+  const properties: Record<string, JsonPrimitive> = {
+    distinct_id: event.analyticsSessionId,
+    $insert_id: `${event.deliveryId}:posthog`,
+    // Keeps every event anonymous — PostHog creates no person profile and the
+    // distinct_id is never merged with an identity.
+    $process_person_profile: false,
+  };
+  for (const [key, value] of Object.entries(event.properties)) {
+    if (value !== null && propertyAllowlist.has(key)) properties[key] = value;
+  }
+  return { event: event.eventType, timestamp: event.receivedAt, properties };
+}
 
 export interface PostHogSink {
   capture(event: ForwardedTelemetryEvent): Promise<void>;
@@ -50,8 +106,42 @@ export interface TraceSink extends OtelSpanSink {
   deleteTraces(request: SubjectDeletionRequest): Promise<void>;
 }
 
+/**
+ * A masked Langfuse generation trace. Metadata only: model, token counts,
+ * latency, cost, and opaque ids. No prompt, completion, input, or output text
+ * ever appears — that is the whole point of routing Langfuse through our own
+ * interface. Keys are the snake_case allowlist from observability config.
+ */
+export type LangfuseGeneration = Record<string, JsonPrimitive>;
+
+/**
+ * The masking function registered on the Langfuse boundary. Langfuse's default
+ * behavior captures full prompts/completions; for Planeir that would be the
+ * raw fact-find conversation. This keeps EXACTLY the allowlisted metadata
+ * fields (dropping `gen_ai.prompt.*`, `gen_ai.completion.*`, `input`,
+ * `output`, and any unknown key) and coerces to primitives, so no content can
+ * survive even if a caller passes it.
+ */
+export function maskLangfuseGeneration(
+  raw: Record<string, unknown>,
+  fieldAllowlist: ReadonlySet<string>,
+): LangfuseGeneration {
+  const masked: LangfuseGeneration = {};
+  for (const key of fieldAllowlist) {
+    const value = raw[key];
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      masked[key] = value;
+    }
+  }
+  return masked;
+}
+
 export interface LangfuseSink {
-  capture(event: ForwardedTelemetryEvent): Promise<void>;
+  captureGeneration(generation: LangfuseGeneration): Promise<void>;
 }
 
 export type TenantKeyRequest = {
@@ -85,7 +175,7 @@ export class NoopOtelSpanSink implements TraceSink {
 }
 
 export class NoopLangfuseSink implements LangfuseSink {
-  async capture(_event: ForwardedTelemetryEvent): Promise<void> {}
+  async captureGeneration(_generation: LangfuseGeneration): Promise<void> {}
 }
 
 export class NoopKmsSink implements KmsSink {
@@ -169,10 +259,10 @@ export class RecordingOtelSpanSink implements TraceSink {
 }
 
 export class RecordingLangfuseSink implements LangfuseSink {
-  readonly attempts: ForwardedTelemetryEvent[] = [];
+  readonly attempts: LangfuseGeneration[] = [];
 
-  async capture(event: ForwardedTelemetryEvent): Promise<void> {
-    this.attempts.push(structuredClone(event));
+  async captureGeneration(generation: LangfuseGeneration): Promise<void> {
+    this.attempts.push(structuredClone(generation));
   }
 }
 
@@ -210,22 +300,15 @@ class FetchPostHogSink implements AnalyticsSink {
   constructor(
     private readonly apiKey: string,
     private readonly endpoint: URL,
+    private readonly propertyAllowlist: ReadonlySet<string>,
   ) {}
 
   async capture(event: ForwardedTelemetryEvent): Promise<void> {
+    const capture = buildPostHogCapture(event, this.propertyAllowlist);
     const response = await fetch(this.endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        api_key: this.apiKey,
-        event: event.eventType,
-        timestamp: event.receivedAt,
-        properties: {
-          distinct_id: event.eventId,
-          $insert_id: `${event.deliveryId}:posthog`,
-          ...event.properties,
-        },
-      }),
+      body: JSON.stringify({ api_key: this.apiKey, ...capture }),
       signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) throw new Error("PostHog delivery failed.");
@@ -236,6 +319,41 @@ class FetchPostHogSink implements AnalyticsSink {
     // Keep the request retryable until a management-API deletion adapter and
     // its separate credential are configured; never report a false success.
     throw new Error("PostHog person deletion is not configured.");
+  }
+}
+
+class FetchLangfuseSink implements LangfuseSink {
+  constructor(
+    private readonly endpoint: URL,
+    private readonly publicKey: string,
+    private readonly secretKey: string,
+  ) {}
+
+  async captureGeneration(generation: LangfuseGeneration): Promise<void> {
+    // The generation is already masked to metadata by the forward worker; this
+    // adapter only transports it. Basic auth uses the tenant-agnostic project
+    // keys; no subject credential is ever involved.
+    const authorization = Buffer.from(
+      `${this.publicKey}:${this.secretKey}`,
+    ).toString("base64");
+    const response = await fetch(this.endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Basic ${authorization}`,
+      },
+      body: JSON.stringify({
+        batch: [
+          {
+            type: "generation-create",
+            id: generation.generation_id,
+            body: generation,
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) throw new Error("Langfuse delivery failed.");
   }
 }
 
@@ -261,44 +379,67 @@ export function otelSpanTimestamps(
   };
 }
 
-class FetchOtelSpanSink implements TraceSink {
-  constructor(private readonly endpoint: URL) {}
+/**
+ * Builds the OTLP span attributes for a forwarded event. `event_id` and
+ * `event_type` are always present as ids; every other attribute must be on the
+ * configured allowlist. Deny-by-default: nothing outside the allowlist — and
+ * no payload fragment — can reach the trace backend.
+ */
+export function buildOtelSpanAttributes(
+  event: ForwardedTelemetryEvent,
+  attributeAllowlist: ReadonlySet<string>,
+): object[] {
+  return [
+    { key: "telemetry.event_id", value: { stringValue: event.eventId } },
+    { key: "telemetry.event_type", value: { stringValue: event.eventType } },
+    ...Object.entries(event.properties)
+      .filter(([key]) => attributeAllowlist.has(key))
+      .map(([key, value]) => otelAttribute(`telemetry.${key}`, value))
+      .filter((attribute): attribute is object => attribute !== undefined),
+  ];
+}
 
-  async exportSpan(event: ForwardedTelemetryEvent): Promise<void> {
-    const identity = sha256Hex(`${event.deliveryId}:otel`);
-    const { startTimeUnixNano, endTimeUnixNano } = otelSpanTimestamps(event);
-    const attributes = [
-      { key: "telemetry.event_id", value: { stringValue: event.eventId } },
-      { key: "telemetry.event_type", value: { stringValue: event.eventType } },
-      ...Object.entries(event.properties)
-        .map(([key, value]) => otelAttribute(`telemetry.${key}`, value))
-        .filter((attribute): attribute is object => attribute !== undefined),
-    ];
-    const response = await fetch(this.endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        resourceSpans: [
+export function buildOtelSpanPayload(
+  event: ForwardedTelemetryEvent,
+  attributeAllowlist: ReadonlySet<string>,
+): object {
+  const identity = sha256Hex(`${event.deliveryId}:otel`);
+  const { startTimeUnixNano, endTimeUnixNano } = otelSpanTimestamps(event);
+  return {
+    resourceSpans: [
+      {
+        scopeSpans: [
           {
-            scopeSpans: [
+            scope: { name: "planeir.learning-signals" },
+            spans: [
               {
-                scope: { name: "planeir.learning-signals" },
-                spans: [
-                  {
-                    traceId: identity.slice(0, 32),
-                    spanId: identity.slice(32, 48),
-                    name: event.eventType,
-                    kind: 1,
-                    startTimeUnixNano,
-                    endTimeUnixNano,
-                    attributes,
-                  },
-                ],
+                traceId: identity.slice(0, 32),
+                spanId: identity.slice(32, 48),
+                name: event.eventType,
+                kind: 1,
+                startTimeUnixNano,
+                endTimeUnixNano,
+                attributes: buildOtelSpanAttributes(event, attributeAllowlist),
               },
             ],
           },
         ],
-      }),
+      },
+    ],
+  };
+}
+
+class FetchOtelSpanSink implements TraceSink {
+  constructor(
+    private readonly endpoint: URL,
+    private readonly attributeAllowlist: ReadonlySet<string>,
+  ) {}
+
+  async exportSpan(event: ForwardedTelemetryEvent): Promise<void> {
+    const response = await fetch(this.endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(buildOtelSpanPayload(event, this.attributeAllowlist)),
       signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) throw new Error("OTel delivery failed.");
@@ -321,7 +462,14 @@ function otelEndpoint(endpoint: string): URL {
   return url;
 }
 
-export function createTelemetrySinks(config: ServiceConfig): {
+function langfuseEndpoint(host: string): URL {
+  return new URL("/api/public/ingestion", host);
+}
+
+export function createTelemetrySinks(
+  config: ServiceConfig,
+  observability: ObservabilityConfig = loadObservabilityConfig(),
+): {
   posthog: AnalyticsSink;
   otel: TraceSink;
   langfuse: LangfuseSink;
@@ -330,15 +478,30 @@ export function createTelemetrySinks(config: ServiceConfig): {
 } {
   return {
     posthog: config.posthogApiKey
-      ? new FetchPostHogSink(config.posthogApiKey, posthogEndpoint(config.posthogHost))
+      ? new FetchPostHogSink(
+          config.posthogApiKey,
+          posthogEndpoint(config.posthogHost),
+          observability.posthogPropertyAllowlist,
+        )
       : new NoopPostHogSink(),
     otel: config.otelExporterOtlpEndpoint
-      ? new FetchOtelSpanSink(otelEndpoint(config.otelExporterOtlpEndpoint))
+      ? new FetchOtelSpanSink(
+          otelEndpoint(config.otelExporterOtlpEndpoint),
+          observability.otelAttributeAllowlist,
+        )
       : new NoopOtelSpanSink(),
-    // M2 has no approved Langfuse, KMS, or DLP call path. Their ports are
-    // installed as explicit no-ops so later milestones cannot bypass these
-    // boundaries; M2's outbox remains PostHog + OTel only.
-    langfuse: new NoopLangfuseSink(),
+    // Langfuse activates (M7) only when Cloud EU credentials are present; the
+    // forward worker masks every generation to metadata before it reaches this
+    // sink. Absent credentials keep the dormant no-op. KMS and DLP remain
+    // no-op ports with no approved call path.
+    langfuse:
+      config.langfusePublicKey && config.langfuseSecretKey
+        ? new FetchLangfuseSink(
+            langfuseEndpoint(config.langfuseHost ?? "https://cloud.langfuse.com"),
+            config.langfusePublicKey,
+            config.langfuseSecretKey,
+          )
+        : new NoopLangfuseSink(),
     kms: new NoopKmsSink(),
     dlp: new NoopDlpSink(),
   };

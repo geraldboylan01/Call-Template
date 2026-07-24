@@ -1330,6 +1330,7 @@ describe.sequential("M2 authenticated batch ingestion", () => {
     const forwarded = {
       deliveryId: randomUUID(),
       eventId: randomUUID(),
+      analyticsSessionId: "opaque-analytics-session",
       eventType: "question.prompted",
       occurredAt: baseNow.toISOString(),
       receivedAt: baseNow.toISOString(),
@@ -1339,23 +1340,25 @@ describe.sequential("M2 authenticated batch ingestion", () => {
       },
     };
     const langfuse = new RecordingLangfuseSink();
+    const generation = { model: "gpt", input_tokens: 12, session_id: fixture.sessionA };
     const keyMaterial = new Uint8Array([1, 2, 3]);
     const kms = new RecordingKmsSink(keyMaterial);
     const dlpResult = { allowed: false, categories: ["possible_identifier"] };
     const dlp = new RecordingDlpSink(dlpResult);
     const keyRequest = { tenantId: fixture.tenantA, keyVersion: 1 };
 
-    await langfuse.capture(forwarded);
+    await langfuse.captureGeneration(generation);
     const resolvedKey = await kms.resolveTenantKey(keyRequest);
     const inspected = await dlp.inspect(forwarded);
-    forwarded.properties.sequence = 99;
+    generation.input_tokens = 99;
     keyRequest.tenantId = fixture.tenantB;
     keyMaterial[0] = 99;
     dlpResult.categories[0] = "mutated";
 
-    expect(langfuse.attempts[0]?.properties).toEqual({
-      question_kind: "income",
-      sequence: 1,
+    expect(langfuse.attempts[0]).toEqual({
+      model: "gpt",
+      input_tokens: 12,
+      session_id: fixture.sessionA,
     });
     expect(kms.requests).toEqual([{ tenantId: fixture.tenantA, keyVersion: 1 }]);
     expect([...((resolvedKey ?? new Uint8Array()))]).toEqual([1, 2, 3]);

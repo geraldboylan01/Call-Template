@@ -476,6 +476,11 @@ export class EventCatalog {
     return this.definitions.get(eventType)?.ingestion === "service";
   }
 
+  /** Every event type this catalog defines, sorted for stable comparison. */
+  eventTypes(): readonly string[] {
+    return [...this.definitions.keys()].toSorted();
+  }
+
   projectProperties(
     eventType: string,
     attrs: unknown,

@@ -1,5 +1,9 @@
 import type { Pool, PoolClient } from "pg";
 
+import {
+  NoopObservabilitySpanSink,
+  type ObservabilitySpanSink,
+} from "../sinks/observability-spans.js";
 import type { Clock } from "../telemetry/clock.js";
 import { SystemClock } from "../telemetry/clock.js";
 import { loadThresholds, type Thresholds } from "./thresholds.js";
@@ -30,6 +34,7 @@ export type MetricsRunnerOptions = {
   pool: Pool;
   thresholds?: Thresholds;
   clock?: Clock;
+  spans?: ObservabilitySpanSink;
 };
 
 type AlertRow = {
@@ -50,11 +55,13 @@ export class MetricsRunner {
   private readonly pool: Pool;
   private readonly thresholds: Thresholds;
   private readonly clock: Clock;
+  private readonly spans: ObservabilitySpanSink;
 
   constructor(options: MetricsRunnerOptions) {
     this.pool = options.pool;
     this.thresholds = options.thresholds ?? loadThresholds();
     this.clock = options.clock ?? new SystemClock();
+    this.spans = options.spans ?? new NoopObservabilitySpanSink();
   }
 
   /** Runs every metric job for the previous complete UTC day. */
@@ -143,6 +150,16 @@ export class MetricsRunner {
         [runId, snapshotCount, alerts.length],
       );
       await client.query("commit");
+      // Operational span: ids/counts/dates only, never event content.
+      this.spans.record({
+        name: "learning_signals.metrics_run",
+        attributes: {
+          run_id: runId,
+          metric_date: metricDate,
+          snapshot_count: snapshotCount,
+          alert_count: alerts.length,
+        },
+      });
       return { runId, metricDate, snapshotCount, alertCount: alerts.length };
     } catch (error) {
       await client.query("rollback");

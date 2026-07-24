@@ -1323,3 +1323,115 @@ export const metricAlerts = pgTable(
     index("metric_alerts_tenant_date_idx").on(table.tenantId, table.metricDate),
   ],
 );
+
+// M7 observability. A transactional outbox for forwarding provider_usage rows
+// to Langfuse as MASKED metadata-only generation traces. A DB trigger inserts
+// one row per provider_usage insert in the same transaction (persist-first);
+// the LangfuseForwardWorker drains it async with retry/backoff. The FK
+// cascades on delete so retention/erasure purging a provider_usage row removes
+// its content-free outbox row automatically, without a retention-job change.
+export const providerUsageOutbox = pgTable(
+  "provider_usage_outbox",
+  {
+    outboxId: uuid("outbox_id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id").notNull(),
+    usageId: uuid("usage_id").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    langfuseDeliveredAt: timestamp("langfuse_delivered_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    processedAt: timestamp("processed_at", { withTimezone: true, mode: "date" }),
+    lastFailureCode: text("last_failure_code"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("provider_usage_outbox_usage_unique").on(table.usageId),
+    foreignKey({
+      name: "provider_usage_outbox_usage_fk",
+      columns: [table.usageId],
+      foreignColumns: [providerUsage.usageId],
+    })
+      .onUpdate("no action")
+      .onDelete("cascade"),
+    foreignKey({
+      name: "provider_usage_outbox_tenant_fk",
+      columns: [table.tenantId],
+      foreignColumns: [tenants.tenantId],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    check("provider_usage_outbox_attempt_count_check", sql`${table.attemptCount} >= 0`),
+    check(
+      "provider_usage_outbox_failure_code_check",
+      sql`${table.lastFailureCode} is null or ${table.lastFailureCode} = 'langfuse_delivery_failed'`,
+    ),
+    check(
+      "provider_usage_outbox_processed_check",
+      sql`(${table.processedAt} is null) or (${table.processedAt} is not null and ${table.langfuseDeliveredAt} is not null)`,
+    ),
+    index("provider_usage_outbox_pending_idx")
+      .on(table.nextAttemptAt, table.createdAt, table.outboxId)
+      .where(sql`${table.processedAt} is null`),
+  ],
+);
+
+// Per-tenant daily provider-spend cap. Absent row ⇒ observability default cap.
+export const tenantProviderBudgets = pgTable(
+  "tenant_provider_budgets",
+  {
+    tenantId: uuid("tenant_id").primaryKey(),
+    dailyCapMicros: bigint("daily_cap_micros", { mode: "bigint" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    foreignKey({
+      name: "tenant_provider_budgets_tenant_fk",
+      columns: [table.tenantId],
+      foreignColumns: [tenants.tenantId],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    check(
+      "tenant_provider_budgets_cap_check",
+      sql`${table.dailyCapMicros} >= 0`,
+    ),
+  ],
+);
+
+// A budget-guardrail alert: tenant's daily provider spend crossed its cap. The
+// pilot never hard-stops sessions; it records the breach here. Idempotent per
+// (tenant, day).
+export const providerBudgetAlerts = pgTable(
+  "provider_budget_alerts",
+  {
+    alertId: uuid("alert_id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id").notNull(),
+    spendDate: date("spend_date", { mode: "string" }).notNull(),
+    spendMicros: bigint("spend_micros", { mode: "bigint" }).notNull(),
+    capMicros: bigint("cap_micros", { mode: "bigint" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("provider_budget_alerts_natural_unique").on(
+      table.tenantId,
+      table.spendDate,
+    ),
+    foreignKey({
+      name: "provider_budget_alerts_tenant_fk",
+      columns: [table.tenantId],
+      foreignColumns: [tenants.tenantId],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    check("provider_budget_alerts_spend_check", sql`${table.spendMicros} >= 0`),
+    check("provider_budget_alerts_cap_check", sql`${table.capMicros} >= 0`),
+    index("provider_budget_alerts_tenant_date_idx").on(
+      table.tenantId,
+      table.spendDate,
+    ),
+  ],
+);
