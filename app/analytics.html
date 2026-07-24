@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://api.planeir.ie https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    />
+    <meta name="call-canvas-worker-base-url" content="https://api.planeir.ie" />
+    <meta
+      name="description"
+      content="Planeir advisor call analytics: how calls start, connect, complete and drop, with growth and reliability read-outs."
+    />
+    <title>Planeir Call Analytics</title>
+    <link rel="icon" type="image/png" href="../favicon.png" />
+    <link rel="stylesheet" href="../styles/base.css" />
+    <link rel="stylesheet" href="../styles/analytics.css" />
+  </head>
+  <body class="access-manager-page analytics-page is-auth-locked">
+    <div id="analyticsApp">
+      <header class="topbar" aria-label="Call analytics controls">
+        <div class="topbar-left">
+          <a class="app-home-link" href="../" aria-label="Return to Planeir website">
+            <img
+              class="app-home-link-image"
+              src="../assets/brand/planeir-wordmark-light.svg"
+              alt=""
+              width="1330"
+              height="384"
+              decoding="async"
+            />
+          </a>
+          <a class="ui-button" href="./index.html">Back to session</a>
+          <a class="ui-button" href="./clients.html">Client pipeline</a>
+        </div>
+        <div class="topbar-right">
+          <span id="advisorAuthStatus" class="session-status">Advisor sign-in not checked</span>
+          <button id="advisorLogoutBtn" class="ui-button is-hidden" type="button">Log Out</button>
+        </div>
+      </header>
+
+      <main class="analytics-main">
+        <div class="analytics-shell" id="analyticsShell">
+          <div class="analytics-head">
+            <div class="analytics-head-text">
+              <p class="access-manager-eyebrow">Advisor tools</p>
+              <h1 class="access-manager-title">Call Analytics</h1>
+              <p class="analytics-subtitle">
+                How calls start, connect, complete and drop — plus the growth and reliability
+                read-outs, computed from the call telemetry collected today.
+              </p>
+            </div>
+            <div class="analytics-controls">
+              <div class="range-group" role="group" aria-label="Date range">
+                <button class="range-btn" type="button" data-range="7">7d</button>
+                <button class="range-btn" type="button" data-range="30" aria-pressed="true">30d</button>
+                <button class="range-btn" type="button" data-range="90">90d</button>
+              </div>
+              <button id="refreshBtn" class="ui-button" type="button">Refresh</button>
+              <span class="freshness" id="freshness"></span>
+            </div>
+          </div>
+
+          <p id="errorBanner" class="state-note error" hidden></p>
+
+          <div class="health-hero" id="healthHero">
+            <div class="health-dial" id="healthDial" style="--pct:0">--</div>
+            <div class="health-copy">
+              <h2>Call Health Index</h2>
+              <p>
+                A single at-a-glance score — a published weighted blend of connection success (40%),
+                clean completion (40%) and reliability, i.e. 1 − technical drop (20%). Not a
+                black-box quality score; every input is a measured rate below.
+              </p>
+            </div>
+          </div>
+
+          <p class="section-title">Headline</p>
+          <div class="kpi-grid" id="kpiGrid">
+            <div class="kpi accent"><div class="kpi-label">Calls started</div><div class="kpi-value" id="kpiStarted">--</div><div class="kpi-cap" id="kpiGrowth">&nbsp;</div></div>
+            <div class="kpi good"><div class="kpi-label">Connection success</div><div class="kpi-value" id="kpiConnect">--</div><div class="kpi-cap" id="kpiConnectCap">&nbsp;</div></div>
+            <div class="kpi good"><div class="kpi-label">Clean completion</div><div class="kpi-value" id="kpiClean">--</div><div class="kpi-cap">outcome = completed ÷ started</div></div>
+            <div class="kpi bad"><div class="kpi-label">Technical drop</div><div class="kpi-value" id="kpiDrop">--</div><div class="kpi-cap" id="kpiDropCap">of connected calls</div></div>
+            <div class="kpi"><div class="kpi-label">Median duration</div><div class="kpi-value" id="kpiDuration">--</div><div class="kpi-cap">of completed calls</div></div>
+            <div class="kpi"><div class="kpi-label">Participants</div><div class="kpi-value" id="kpiSubjects">--</div><div class="kpi-cap dim">≈ calls until stable client ref</div></div>
+          </div>
+
+          <p class="section-title">Alerts</p>
+          <div class="alert-stack" id="alertStack">
+            <div class="alert-empty">Loading alerts…</div>
+          </div>
+
+          <p class="section-title">Trends</p>
+          <div class="card-row">
+            <div class="panel-card">
+              <h3>Daily call funnel</h3>
+              <p class="panel-sub">Started → connected → completed, by day (UTC).</p>
+              <div class="chart-holder"><canvas id="trendChart" aria-label="Daily call funnel chart"></canvas></div>
+            </div>
+            <div class="panel-card">
+              <h3>Outcome mix</h3>
+              <p class="panel-sub">How calls ended over the range.</p>
+              <div class="chart-holder small"><canvas id="outcomeChart" aria-label="Outcome mix chart"></canvas></div>
+            </div>
+          </div>
+
+          <p class="caveat-note" id="subjectCaveat" hidden>
+            Participants counts distinct pseudonymised subjects. Today the voice worker opens each
+            session with the call's own id, so this tracks calls, not unique people — it becomes a
+            true people count once a stable client reference is passed (roadmap M1.5).
+          </p>
+        </div>
+      </main>
+
+      <div id="toastHost" class="toast-host" aria-live="polite"></div>
+    </div>
+
+    <div id="advisorAuthLayer" class="session-unlock-layer is-hidden" aria-hidden="true">
+      <div class="session-unlock-card" role="dialog" aria-modal="true" aria-labelledby="advisorAuthTitle">
+        <h1 id="advisorAuthTitle">Advisor sign in</h1>
+        <p id="advisorAuthHint" class="session-unlock-hint">Sign in to view Planeir call analytics.</p>
+        <input
+          id="advisorAuthPasswordInput"
+          class="session-unlock-input"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Advisor password"
+          aria-label="Advisor password"
+        />
+        <div class="session-unlock-actions">
+          <button id="advisorAuthLoginBtn" class="ui-button" type="button">Sign In</button>
+        </div>
+        <p id="advisorAuthError" class="session-unlock-error" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <script src="../js/vendor/chart.umd.min.js"></script>
+    <script type="module" src="../js/analytics_manager.js"></script>
+  </body>
+</html>
