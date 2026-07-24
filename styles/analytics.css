@@ -1,0 +1,247 @@
+/*
+ * Call Analytics dashboard (M1 Overview). Scoped to the analytics page and
+ * built on the shared design tokens in base.css (dark financial palette,
+ * Manrope, the electric-blue/green/amber/red accents). Reuses topbar,
+ * ui-button, session-unlock and toast chrome from base.css; everything here is
+ * dashboard-specific layout.
+ */
+
+body.analytics-page.is-auth-locked #analyticsApp {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.analytics-main {
+  position: absolute;
+  inset: var(--topbar-height) 0 0 0;
+  overflow-y: auto;
+  padding: clamp(20px, 3vw, 34px) clamp(16px, 4vw, 44px) 72px;
+}
+
+.analytics-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* ---- Header + controls ---- */
+.analytics-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.analytics-head-text { max-width: 60ch; }
+.analytics-subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.analytics-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.range-group {
+  display: inline-flex;
+  border: 1px solid var(--surface-line);
+  border-radius: var(--radius-ui);
+  overflow: hidden;
+  background: var(--panel);
+}
+.range-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 7px 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.range-btn + .range-btn { border-left: 1px solid var(--surface-line); }
+.range-btn:hover { color: var(--text); }
+.range-btn[aria-pressed="true"] {
+  background: var(--electric-blue-soft);
+  color: var(--text);
+}
+.freshness {
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.freshness .partial {
+  color: var(--accent-amber);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 40%, transparent);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+/* ---- Health hero + KPI grid ---- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 14px;
+}
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--surface-line);
+  border-radius: var(--radius-card);
+  padding: 15px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 104px;
+}
+.kpi-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+.kpi-value {
+  font-size: 1.72rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.kpi-cap { font-size: 0.78rem; color: var(--muted); }
+.kpi-cap.up { color: var(--accent-green); }
+.kpi-cap.down { color: var(--accent-red); }
+.kpi.accent { border-top: 3px solid var(--electric-blue); }
+.kpi.good { border-top: 3px solid var(--accent-green); }
+.kpi.warn { border-top: 3px solid var(--accent-amber); }
+.kpi.bad { border-top: 3px solid var(--accent-red); }
+
+.health-hero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background:
+    radial-gradient(120% 160% at 0% 0%, var(--electric-blue-soft), transparent 60%),
+    var(--panel-strong);
+  border: 1px solid var(--surface-line);
+  border-radius: var(--radius-card);
+  padding: 18px 22px;
+}
+.health-dial {
+  --pct: 0;
+  --dial: var(--accent-green);
+  flex: 0 0 auto;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(closest-side, var(--panel-strong) 76%, transparent 77%),
+    conic-gradient(var(--dial) calc(var(--pct) * 1%), var(--surface-line) 0);
+  font-weight: 800;
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.health-copy h2 { font-size: 1.02rem; margin: 0 0 4px; }
+.health-copy p { margin: 0; color: var(--muted); font-size: 0.85rem; max-width: 52ch; }
+
+/* ---- Alert banner ---- */
+.alert-stack { display: flex; flex-direction: column; gap: 8px; }
+.alert-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 15px;
+  border-radius: var(--radius-ui);
+  border: 1px solid var(--surface-line);
+  background: var(--panel);
+  font-size: 0.88rem;
+}
+.alert-row.warning { border-left: 3px solid var(--accent-amber); }
+.alert-row.critical { border-left: 3px solid var(--accent-red); }
+.alert-sev {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.alert-row.warning .alert-sev { color: var(--accent-amber); border: 1px solid color-mix(in srgb, var(--accent-amber) 45%, transparent); }
+.alert-row.critical .alert-sev { color: var(--accent-red); border: 1px solid color-mix(in srgb, var(--accent-red) 45%, transparent); }
+.alert-date { margin-left: auto; color: var(--muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.alert-empty {
+  padding: 12px 15px;
+  border: 1px dashed var(--surface-line);
+  border-radius: var(--radius-ui);
+  color: var(--accent-green);
+  font-size: 0.86rem;
+  background: var(--panel);
+}
+
+/* ---- Cards + charts ---- */
+.card-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 820px) { .card-row { grid-template-columns: 1fr; } }
+.panel-card {
+  background: var(--panel);
+  border: 1px solid var(--surface-line);
+  border-radius: var(--radius-card);
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.panel-card h3 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.panel-sub { margin: -6px 0 0; color: var(--muted); font-size: 0.78rem; }
+.chart-holder { position: relative; width: 100%; min-height: 240px; }
+.chart-holder.small { min-height: 220px; }
+
+.section-title {
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  margin: 6px 0 -6px;
+}
+
+/* ---- States ---- */
+.state-note {
+  padding: 22px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--surface-line);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+}
+.state-note.error { color: var(--accent-red); border-color: color-mix(in srgb, var(--accent-red) 45%, transparent); }
+.is-loading .kpi-value,
+.is-loading .health-dial { opacity: 0.35; }
+.dim { opacity: 0.55; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .kpi, .panel-card, .alert-row { transition: border-color 160ms ease; }
+}
+.caveat-note {
+  font-size: 0.76rem;
+  color: var(--muted);
+  border-left: 2px solid var(--accent-amber);
+  padding-left: 10px;
+}
