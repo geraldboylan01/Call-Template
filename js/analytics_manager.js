@@ -56,7 +56,10 @@ const advisorAuthState = {
 const state = {
   rangeDays: 30,
   loading: false,
-  requestId: 0
+  requestId: 0,
+  // False until the advisor session has been resolved at least once. While it
+  // is false, Refresh retries startup (auth + data) rather than data alone.
+  authReady: false
 };
 
 const charts = { trend: null, outcome: null };
@@ -153,6 +156,7 @@ async function handleLogin() {
     advisorAuthState.csrfToken = String(payload?.csrfToken || '');
     advisorAuthState.expiresAt = String(payload?.expiresAt || '');
     updateAuthChrome();
+    state.authReady = true;
     if (ui.authPassword) ui.authPassword.value = '';
     setAuthVisible(false);
     await loadDashboard();
@@ -431,6 +435,35 @@ function showError(message) {
   ui.errorBanner.hidden = !message;
 }
 
+// A failed fetch surfaces as a TypeError with no useful message ("Failed to
+// fetch"), which tells an advisor nothing. Map it to something actionable.
+function friendlyError(error, fallback) {
+  if (error instanceof TypeError) {
+    return 'Could not reach the analytics service. Check your connection and press Refresh.';
+  }
+  return error?.message || fallback;
+}
+
+// A startup failure has to stay visible. The shell starts hidden behind
+// `is-auth-locked` until the advisor session resolves, so an error rendered
+// while it is still locked lands inside a hidden container and the advisor
+// just sees a blank page. Unlock the shell so the message and the Refresh
+// button are reachable. This exposes nothing: no data has loaded (the tiles
+// are still placeholders) and every read stays gated server-side.
+function showStartupError(message) {
+  document.body.classList.remove('is-auth-locked');
+  showError(message);
+  // Leave no panel claiming it is still loading, and never imply "no alerts"
+  // when the truth is that we could not ask.
+  if (ui.alertStack) {
+    ui.alertStack.innerHTML = '';
+    const unavailable = document.createElement('div');
+    unavailable.className = 'alert-empty dim';
+    unavailable.textContent = 'Alerts unavailable — could not reach the analytics service.';
+    ui.alertStack.appendChild(unavailable);
+  }
+}
+
 /* -------------------------------------------------------------- loading --- */
 
 async function loadDashboard() {
@@ -470,10 +503,7 @@ async function loadDashboard() {
   } catch (error) {
     if (requestId !== state.requestId) return;
     if (advisorAuthState.enabled && !advisorAuthState.authenticated) return; // login dialog is showing
-    const message = error instanceof TypeError
-      ? 'Could not reach the analytics service. Check your connection and press Refresh.'
-      : (error?.message || 'Analytics is temporarily unavailable. Try Refresh.');
-    showError(message);
+    showError(friendlyError(error, 'Analytics is temporarily unavailable. Try Refresh.'));
   } finally {
     if (requestId === state.requestId) {
       state.loading = false;
@@ -490,14 +520,18 @@ function selectRange(days) {
     const isActive = Number(button.dataset.range) === days;
     button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   }
-  void loadDashboard();
+  void (state.authReady ? loadDashboard() : startup());
 }
 
 function bindEvents() {
   for (const button of ui.rangeButtons) {
     button.addEventListener('click', () => selectRange(Number(button.dataset.range)));
   }
-  ui.refreshBtn?.addEventListener('click', () => void loadDashboard());
+  // Until the session has resolved once, Refresh retries the whole startup
+  // (auth + data); afterwards it just reloads the data.
+  ui.refreshBtn?.addEventListener('click', () => {
+    void (state.authReady ? loadDashboard() : startup());
+  });
   ui.authLoginBtn?.addEventListener('click', () => void handleLogin());
   ui.authPassword?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -508,18 +542,28 @@ function bindEvents() {
   ui.logoutBtn?.addEventListener('click', () => void handleLogout());
 }
 
-async function init() {
-  bindEvents();
+// Resolves the advisor session, then either prompts for sign-in or loads data.
+// Also used as the Refresh path until the session has resolved once, so a
+// transient outage at page load is recoverable without a manual reload.
+async function startup() {
   try {
     await syncAuthState();
+    state.authReady = true;
+    showError('');
     if (advisorAuthState.enabled && !advisorAuthState.authenticated) {
       setAuthVisible(true);
       return;
     }
     await loadDashboard();
   } catch (error) {
-    showError(error?.message || 'Could not start the analytics dashboard.');
+    state.authReady = false;
+    showStartupError(friendlyError(error, 'Could not start the analytics dashboard.'));
   }
+}
+
+async function init() {
+  bindEvents();
+  await startup();
 }
 
 void init();
