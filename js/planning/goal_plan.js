@@ -13,6 +13,9 @@ export const GOAL_ROUTING_POLICY_VERSION = 'goal-routing-1.0.0';
 const PRIORITY = Object.freeze({ high: 3, medium: 2, low: 1 });
 const SOURCE_RANK = Object.freeze({ goal_direct: 3, goal_companion: 2, balance_sheet_default: 1 });
 const EARLY_LIFE_STAGES = new Set(['student', 'early_adult', 'graduate', 'young_employee', 'early_career']);
+const NON_OWNING_PROPERTY_STATUSES = new Set([
+  'renter', 'first_time_buyer', 'buying_soon', 'delaying_purchase', 'no_property'
+]);
 
 const GOAL_LABELS = Object.freeze({
   understand_position: 'understanding your overall position',
@@ -105,10 +108,20 @@ function isEarlyLife(profile) {
   return Number.isInteger(profile.primaryPerson.age) && profile.primaryPerson.age <= 30;
 }
 
+/**
+ * A household that has said it does not own property has already answered the
+ * balance sheet's most expensive question. Adding the analysis anyway is what
+ * makes a renter saving for a first home get asked what their home is worth.
+ */
+function declaredNoProperty(profile) {
+  const status = profile.assumptions?.values?.persona?.propertyStatus;
+  return NON_OWNING_PROPERTY_STATUSES.has(String(status || ''));
+}
+
 function shouldAddBalanceSheet(profile, goalTypes) {
   if (goalTypes.includes('understand_position') || goalTypes.includes('build_wealth')) return true;
-  if (!isEarlyLife(profile)) return true;
-  return hasMeaningfulPosition(profile);
+  if (isEarlyLife(profile) || declaredNoProperty(profile)) return hasMeaningfulPosition(profile);
+  return true;
 }
 
 function addRoute(byModuleId, route, goalType) {

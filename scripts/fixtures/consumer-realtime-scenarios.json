@@ -1,0 +1,197 @@
+{
+  "schemaVersion": "consumer-realtime-scenario-dataset-v1",
+  "description": "Offline conversation scenarios. Each turn supplies the facts a correct planner extraction would produce for `say`, so the simulator can replay the real fact gate, routing, readiness and question-composition path without a model call. `mustNeverAsk` is where conversational intelligence is encoded as an assertion.",
+  "scenarios": [
+    {
+      "id": "young_renter_first_home",
+      "description": "Regression for the reported failure: a 25-year-old renter with few assets, saving toward a first home, was asked whether they own a home and what it is worth.",
+      "turns": [
+        {
+          "label": "open",
+          "say": "I'm twenty five, renting at the moment, and I'm trying to work out if I could buy my own place.",
+          "extraction": {
+            "goalCandidates": [
+              {
+                "type": "buy_home",
+                "priorityHint": "primary"
+              }
+            ],
+            "semanticFacts": [
+              {
+                "factId": "person_current_age",
+                "value": 25,
+                "certainty": "exact"
+              },
+              {
+                "factId": "property_status",
+                "value": "renter",
+                "certainty": "approximate"
+              },
+              {
+                "factId": "life_stage",
+                "value": "early_adult",
+                "certainty": "approximate"
+              }
+            ]
+          }
+        },
+        {
+          "label": "savings",
+          "say": "I've about twelve thousand saved up.",
+          "extraction": {
+            "positions": [
+              {
+                "kind": "cash",
+                "label": "Savings",
+                "amountJson": "{\"amount\":12000,\"currency\":\"EUR\"}",
+                "certainty": "exact",
+                "evidenceText": "I've about twelve thousand saved up."
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "expectedModuleIds": [
+          "house_purchase",
+          "liquidity_analysis"
+        ],
+        "forbiddenModuleIds": [
+          "personal_balance_sheet"
+        ],
+        "mustNeverAskFactIds": [
+          "property_position",
+          "mortgage_position",
+          "pension_positions",
+          "pension_current_value",
+          "target_retirement_income",
+          "intended_retirement_age"
+        ],
+        "mustAskFirstFactId": "cash_savings"
+      }
+    },
+    {
+      "id": "self_employed_no_pension",
+      "description": "A sole trader with no employer must never be asked what their employer contributes to a pension.",
+      "turns": [
+        {
+          "label": "open",
+          "say": "I'm thirty eight, self employed for the last six years, and I've never got round to starting a pension.",
+          "extraction": {
+            "goalCandidates": [
+              {
+                "type": "improve_pension",
+                "priorityHint": "primary"
+              }
+            ],
+            "semanticFacts": [
+              {
+                "factId": "person_current_age",
+                "value": 38,
+                "certainty": "exact"
+              },
+              {
+                "factId": "employment_context",
+                "value": "self_employed",
+                "certainty": "exact"
+              },
+              {
+                "factId": "has_pension",
+                "value": false,
+                "certainty": "exact"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustNeverAskFactIds": [
+          "pension_employer_contribution_rate",
+          "pension_employee_contribution_rate"
+        ],
+        "mustAskFirstFactId": "pension_positions"
+      }
+    },
+    {
+      "id": "mid_career_mortgage_switcher",
+      "description": "A homeowner reviewing their mortgage rate must never be asked their monthly rent or a target purchase price.",
+      "turns": [
+        {
+          "label": "open",
+          "say": "I'm forty two, we own the house, and I want to see if we're paying over the odds on the mortgage.",
+          "extraction": {
+            "goalCandidates": [
+              {
+                "type": "optimise_mortgage",
+                "priorityHint": "primary"
+              }
+            ],
+            "semanticFacts": [
+              {
+                "factId": "person_current_age",
+                "value": 42,
+                "certainty": "exact"
+              },
+              {
+                "factId": "property_status",
+                "value": "homeowner",
+                "certainty": "exact"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustNeverAskFactIds": [
+          "current_monthly_rent",
+          "target_home_price",
+          "lending_category"
+        ],
+        "mustAskFirstFactId": "mortgage_position"
+      }
+    },
+    {
+      "id": "retiree_drawdown",
+      "description": "A retired 68-year-old must never be asked at what age they intend to retire.",
+      "turns": [
+        {
+          "label": "open",
+          "say": "I'm sixty eight and retired three years ago. I just want to know if the money will last.",
+          "extraction": {
+            "goalCandidates": [
+              {
+                "type": "understand_position",
+                "priorityHint": "primary"
+              }
+            ],
+            "semanticFacts": [
+              {
+                "factId": "person_current_age",
+                "value": 68,
+                "certainty": "exact"
+              },
+              {
+                "factId": "retirement_status",
+                "value": "retired",
+                "certainty": "exact"
+              },
+              {
+                "factId": "life_stage",
+                "value": "retired",
+                "certainty": "exact"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustNeverAskFactIds": [
+          "intended_retirement_age",
+          "pension_employer_contribution_rate",
+          "target_home_price"
+        ],
+        "mustAskFirstFactId": "property_position"
+      }
+    }
+  ]
+}

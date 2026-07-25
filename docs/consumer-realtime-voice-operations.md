@@ -395,7 +395,10 @@ Before leaving the canary enabled, prove all of the following:
    typed fallback, mute, end, barge-in, echo/noise, reduced-motion, keyboard,
    safe-area, and 44px target checks;
 7. existing consumer, calculation, adviser, publishing, migration replay,
-   static-header, build, and live bridge checks stay green.
+   static-header, build, and live bridge checks stay green;
+8. **the silent planner emits orientation facts from natural context** — see
+   "Orientation-fact probe" below. This is outstanding from the P0 conversation
+   work and has never been observed on a live call.
 
 Use:
 
@@ -411,6 +414,44 @@ The provider proof is intentionally paid and manually initiated. Use the two
 Realtime checkboxes on a protected `Deploy Worker` dispatch. Do not put a paid
 call in an ordinary push or pull-request workflow, and do not leave the canary
 active if that proof fails.
+
+### Orientation-fact probe — REQUIRED at next activation
+
+**Status: outstanding.** Added by the P0 conversation work (2026-07-25,
+[realtime-intelligence-implementation-plan.md](realtime-intelligence-implementation-plan.md)
+§4a). Run this the next time Realtime is activated, before the canary is left
+enabled.
+
+P0 changed `PLANNER_SYSTEM_PROMPT` in
+[realtime_planner.js](../worker/src/consumer/realtime_planner.js) so the silent
+planner may infer *orientation* context — `person_current_age`, `life_stage`,
+`property_status`, `employment_context`, `retirement_status`, `has_pension` —
+from clear natural context, while monetary and financial-position **values**
+remain explicit-only.
+
+Module selection depends on those facts. The offline simulator
+(`npm run check:consumer-conversation-sim`) proves the pipeline routes correctly
+*when they arrive*, but **it cannot prove the model emits them** — that is prompt
+behaviour and only a live call can confirm it. Until this probe runs, the
+25-year-old-renter fix is verified in code and unverified in production.
+
+Probe:
+
+1. Dispatch the conversation probe with a first-turn utterance carrying implicit
+   orientation, e.g. *"I'm twenty five, renting at the moment, and I'm trying to
+   work out if I could buy my own place."*
+2. Inspect the resulting meeting brief / `goal_plan_evaluated` event and confirm:
+   - `property_status=renter` and `life_stage=early_adult` (or `person_current_age=25`)
+     were captured **without being asked for**;
+   - the selected analyses are House Purchase and Liquidity, with **no Personal
+     Balance Sheet**;
+   - no question about property value, mortgage balance, pension or retirement
+     income is asked at any point in the call.
+3. If orientation facts are absent, the routing fix is inert in production. Do
+   not treat the reported defect as closed; the prompt needs another iteration
+   and the offline simulator will not catch it.
+
+Record the outcome in a Field notes entry.
 
 ## Access and subscription alternative
 
