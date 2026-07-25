@@ -256,6 +256,9 @@ const MEETING_UNAVAILABLE_MESSAGES = Object.freeze({
 function enterMeetingOrFail({ focus = false } = {}) {
   if (!realtimeVoiceController.isMeetingAvailable()) {
     const reason = realtimeVoiceController.meetingUnavailableReason();
+    // Flags only, no personal data. Without this the failure page cannot tell
+    // an operator which gate closed.
+    console.warn('[planeir] live meeting unavailable', realtimeVoiceController.meetingUnavailableDetail());
     renderUnavailable(appRoot, { message: MEETING_UNAVAILABLE_MESSAGES[reason] || '' });
     syncHeader();
     return;

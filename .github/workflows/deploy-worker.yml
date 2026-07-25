@@ -242,7 +242,8 @@ jobs:
                           if (typeof flag !== "boolean") {
                             process.exit(1);
                           }
-                          process.stdout.write(flag ? "true" : "false");
+                          const enabled = parsed?.flags?.consumerRealtimeVoiceEnabled === true;
+                          process.stdout.write(enabled ? "true" : "false");
                         });
                       '
                 )"; then

@@ -914,6 +914,26 @@ export class RealtimeVoiceController {
     return '';
   }
 
+  // Per-gate breakdown for diagnosing a meeting that will not open. Booleans and
+  // identifiers only: no profile, transcript, or other personal data, so it is
+  // safe to log. `eligible` is split out because a single false there is the
+  // most common cause and the hardest to tell apart from the others.
+  meetingUnavailableDetail() {
+    const context = realtimeContext();
+    const bootstrap = state.bootstrap || {};
+    return {
+      reason: this.meetingUnavailableReason(),
+      journeyEnabled: bootstrap.enabled === true,
+      realtimeFlagEnabled: bootstrap.voiceRealtimeEnabled === true,
+      cohort: String(bootstrap.cohort || ''),
+      cohortMatches: String(bootstrap.cohort || '').toLowerCase() === ADVISER_TEST_COHORT,
+      noticesConfigured: context.configured,
+      browserSupported: isRealtimeVoiceSupported(),
+      serverSessionConfirmed: Boolean(context.sessionId),
+      consentRefreshRequired: context.consentRefreshRequired === true
+    };
+  }
+
   isCompletionLocked() {
     return Boolean(this.completionSpeechId || this.completionNavigationInFlight);
   }

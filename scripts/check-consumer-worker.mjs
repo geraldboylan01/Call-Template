@@ -324,7 +324,10 @@ assert.match(
 );
 assert.match(
   deployWorkflowSource,
-  /consumerRealtimeVoiceEnabled === true/
+  /consumerRealtimeVoiceEnabled === true/,
+  'The standing-preservation probe must read the live bootstrap flag by its wire name '
+    + 'flags.consumerRealtimeVoiceEnabled. The frontend maps that field to '
+    + 'bootstrap.voiceRealtimeEnabled in js/plan/store.js; do not rename it here.'
 );
 assert.match(
   deployWorkflowSource,
@@ -338,6 +341,63 @@ assert.match(
   deployWorkflowSource,
   /CONSUMER_REALTIME_STANDING_PRESERVED=\$realtime_standing_preserved/
 );
+
+// The manual activation path, exercised as behaviour rather than as workflow
+// text. The realtime values come from the workflow's own approved table, so a
+// drift between what a protected dispatch writes and what the Worker publishes
+// as flags.consumerRealtimeVoiceEnabled fails here instead of after a deploy.
+const approvedRealtimeEnv = Object.fromEntries(
+  [...deployWorkflowSource.matchAll(
+    /^\s*(CONSUMER_REALTIME_[A-Z0-9_]+):\s*\['[^']*',\s*'([^']*)'\]/gm
+  )].map(([, name, value]) => [name, value])
+);
+assert.ok(
+  Object.keys(approvedRealtimeEnv).length >= 20,
+  'Could not read the approved realtime values from deploy-worker.yml.'
+);
+const activationEnv = {
+  ...approvedRealtimeEnv,
+  CONSUMER_REALTIME_SESSIONS: {},
+  CONSUMER_DB: {},
+  CONSUMER_DATA_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString('base64url'),
+  CONSUMER_RATE_LIMIT_HASH_KEY: Buffer.alloc(32, 23).toString('base64url'),
+  OPENAI_API_KEY: 'sk-test-realtime-activation-key',
+  CONSUMER_JOURNEY_ENABLED: 'true',
+  CONSUMER_VOICE_ENABLED: 'true',
+  CONSUMER_VOICE_SPEECH_MODEL: 'tts-1-hd',
+  CONSUMER_VOICE_NAME: 'nova',
+  CONSUMER_COHORT: 'adviser_test',
+  CONSUMER_CONSENT_POLICY_VERSION: 'consumer-adviser-test-v1',
+  CONSUMER_CONSENT_MANIFEST_ID: 'consumer-adviser-test-manifest-v1',
+  CONSUMER_ANALYSIS_NOTICE_ID: 'analysis-adviser-test-v1',
+  CONSUMER_AI_NOTICE_ID: 'ai-adviser-test-v1',
+  CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html',
+  CONSUMER_SESSION_TTL_DAYS: '7',
+  // What replaceTomlString writes when a protected dispatch sets
+  // activate_realtime_adviser_canary=true with the paid proof.
+  CONSUMER_REALTIME_VOICE_ENABLED: 'true'
+};
+assert.equal(
+  publicConsumerConfig(getConsumerConfig(activationEnv)).flags.consumerRealtimeVoiceEnabled,
+  true,
+  'A protected manual activation must publish flags.consumerRealtimeVoiceEnabled === true.'
+);
+// Fail closed: every one of these alone must keep the canary off.
+for (const [label, overrides] of [
+  ['activation flag absent', { CONSUMER_REALTIME_VOICE_ENABLED: 'false' }],
+  ['journey disabled', { CONSUMER_JOURNEY_ENABLED: 'false' }],
+  ['provider key missing', { OPENAI_API_KEY: '' }],
+  ['durable object binding missing', { CONSUMER_REALTIME_SESSIONS: undefined }],
+  ['unapproved model', { CONSUMER_REALTIME_MODEL: 'gpt-realtime-9.9' }],
+  ['notice id missing', { CONSUMER_REALTIME_NOTICE_ID: '' }]
+]) {
+  assert.equal(
+    publicConsumerConfig(getConsumerConfig({ ...activationEnv, ...overrides }))
+      .flags.consumerRealtimeVoiceEnabled,
+    false,
+    `Realtime must stay disabled when the ${label}.`
+  );
+}
 const advisorBridgeSource = await source('scripts/check-consumer-live-advisor-bridge.mjs');
 assert.match(
   advisorBridgeSource,
