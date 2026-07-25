@@ -1,0 +1,56 @@
+# Retirement Goal Analysis
+
+<!-- planeir-module-manifest -->
+
+```json
+{
+  "moduleId": "retirement_goal_analysis",
+  "manifestVersion": "1.0.0",
+  "name": "Retirement Goal Analysis",
+  "status": "beta",
+  "consumerAvailable": false,
+  "goals": [],
+  "pinned": "never",
+  "priorityBoost": 0,
+  "requiredFacts": [
+    "primary_goal",
+    "partner_person",
+    "pension_positions",
+    "person_current_age",
+    "intended_retirement_age",
+    "income_sources",
+    "gross_household_income",
+    "pension_current_value",
+    "pension_employee_contribution_rate",
+    "pension_employer_contribution_rate",
+    "target_retirement_income",
+    "annual_net_spending",
+    "asset_position"
+  ],
+  "eligibility": {
+    "requireAll": [],
+    "excludeIf": []
+  },
+  "factPreconditions": {}
+}
+```
+
+## Purpose
+
+Composes the pension projection and the net retirement cash flow into a single adviser-reviewed retirement view.
+
+## When to use
+
+Adviser-composed retirement reviews where both the pre-tax pot and the after-tax cash flow are wanted as one output.
+
+## When not to use
+
+Not selected by consumer goal routing today. See the routing note below before enabling it — it is currently reachable only by explicit adviser selection.
+
+## Client signals
+
+_None recorded._
+
+## Routing note
+
+This module declares goals in the registry but no goal routes to it today, so consumer goal routing never selects it. Resolve deliberately in P2: either give it real routes or mark it adviser-selection-only.

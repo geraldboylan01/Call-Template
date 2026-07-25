@@ -604,12 +604,60 @@ Measured effect:
   offline harness cannot prove. It needs one live probe run, and that is the
   first thing to check when the canary is next activated.
 
+## 4b. P1 as delivered — 2026-07-25
+
+Nine manifests authored in [docs/modules/](modules/), compiled by
+[generate-module-manifest.mjs](../scripts/generate-module-manifest.mjs) into
+`js/planning/module_manifest.generated.js`. **Nothing reads the generated file** —
+verified by grep. `--check` is wired into `check:consumer`, generation into
+`npm run build`.
+
+Authoring format follows the prompt-pack precedent rather than the YAML
+frontmatter sketched in §4.1: an HTML comment marker locates a fenced JSON
+block, prose follows as markdown headings. Zero dependencies, same shape as
+[generate-planning-playbook-manifest.mjs](../scripts/generate-planning-playbook-manifest.mjs).
+
+**The parity assertion is behavioural, not structural.** Rather than importing
+the `ROUTES` table, the generator runs `buildGoalModulePlan` once per goal type
+and compares the resulting slots to the manifests. That matters because P2
+deletes `ROUTES`; a structural check would have to be rewritten at exactly the
+moment it is most needed. Each manifest must reproduce live routing goal-for-goal
+and role-for-role, the registry's intake facts exactly, and its name, status and
+`consumerAvailable`. Both assertions were negative-tested: mutating a goal or
+adding a fact fails `--check` with a diff.
+
+`balance_sheet_default` is compiled to `pinned: "when_eligible"` rather than to a
+goal, which is what lets P2 replace `shouldAddBalanceSheet` with manifest data.
+
+Adviser prose is treated as semi-trusted: length-capped, whitespace-normalised,
+and rejected at build time if it contains instruction-like text, because it is
+destined for a model prompt.
+
+### Three divergent representations, now visible
+
+The generator reports — without failing — where the registry's `applicableGoals`
+disagrees with what actually routes. This is the field P2 must resolve, and it is
+worse than it looked:
+
+| Module | `applicableGoals` | Actually routed |
+|---|---|---|
+| `liquidity_analysis` | + `understand_position` | `buy_home`, `maintain_liquidity` |
+| `personal_balance_sheet` | **all 14 goals** | `understand_position`, `build_wealth` |
+| `retirement_goal_analysis` | `improve_pension`, `retire`, `retire_early` | **nothing — orphaned** |
+
+`applicableGoals` is read by no routing code at all. `routing_rules.js`
+`recommendModules` is a *second* live table, used by `runConsumerAnalysis` to
+default module ids when none are passed explicitly. `goal_plan.js` `ROUTES` is
+the third and is the one the conversation uses. P2 collapses all three onto the
+manifest; `retirement_goal_analysis` needs a deliberate decision (give it routes,
+or mark it adviser-selection-only) rather than silent inheritance.
+
 ## 5. Phasing
 
 | Phase | Scope | Ships |
 |---|---|---|
 | **P0** ✅ **done 2026-07-25** | §4.8 simulator + 4 scenarios; slot-ordered question queue; `property_status` in the balance-sheet decision; planner orientation-extraction prompt | live bug fixed, safety net in place, `check:consumer` green |
-| **P1** (~1 wk) | §4.1 manifests authored + generator + `--check`; **assert parity with today's tables**, nothing reads them yet | zero behaviour change, fully reversible |
+| **P1** ✅ **done 2026-07-25** | §4.1 nine manifests + generator + `--check`; behavioural parity assertion; nothing reads them yet | zero behaviour change, fully reversible |
 | **P2** (~1–2 wk) | §4.6 ratifier reads manifests; delete ROUTES + persona router; rename to `circumstances` | bug structurally impossible |
 | **P3** (~1 wk) | §4.2 composer + mention register + prompt rule change | **R1 done** |
 | **P4** (~2 wk) | §4.3 two modes, five-beat opening, OARS, cache split | **R2 done** |
