@@ -740,3 +740,64 @@ these before deleting anything:
 of P0 and put them up for review rather than hold the build — they define what
 the regression suite treats as "intelligent", so they are worth a read, but a
 draft is a better starting point than a blank question.
+
+---
+
+## 4c. P3 as delivered — 2026-07-26
+
+The offer-then-collect flow. A relevant module is never added silently and never
+starts its own fact-find before the client agrees to it.
+
+### The spoken flow
+
+**1 — Offer.** One turn, one module, three parts:
+
+> "You mentioned **you own your home**. I can **show your current mortgage
+> repayment path and compare the alternatives — changing the term, switching, or
+> making extra repayments**. Would that be useful?"
+
+The anchor is a circumstance the client actually supplied, resolved from
+accumulated profile state. The benefit is owned by the module manifest
+(`clientBenefit`), so adding a module never means editing a conversation branch.
+**If no anchor can be found, no offer is made** — silence beats generic
+promotional copy.
+
+**2 — Record.** Accept, decline or leave uncertain, into
+`planning.acceptedModuleIds` / `planning.declinedModuleIds`. A decline is
+durable: the module is never offered again and its questions never open.
+
+**3 — Collect.** Only after acceptance. Module-specific questions come from
+selected modules alone, so an unaccepted module contributes nothing to the
+queue — the guarantee is structural, not a filter applied at the point of
+speech.
+
+**4 — Confirm.** The whole set, in plain language, never internal ids:
+
+> "So I will put together **Personal balance sheet and Mortgage analysis**. Have
+> I got that right?"
+
+**5 — Execute exactly that set.** `executionModuleIds` derives from confirmed
+selections only. Acceptance alone does not execute.
+
+### Why the voice can still answer instantly
+
+`composeModuleOffer(opportunity, { profile })` takes no transcript. There is no
+turn parameter to pass, so however quickly the voice replies, it cannot change
+which module is offered — only accumulated structured state can. That is
+asserted directly.
+
+### Delivered
+
+| Piece | Where |
+|---|---|
+| Offer composition, anchors, confirmation summary | [module_offers.js](../js/planning/module_offers.js) |
+| Three-state opportunities behind the hard visibility filter | [goal_plan.js](../js/planning/goal_plan.js) |
+| 16 assertions across offer, accept, decline, collect, confirm, execute | [check-consumer-module-offers.mjs](../scripts/check-consumer-module-offers.mjs) |
+
+### Remaining
+
+The deterministic layer produces the offer text, the decision fields and the
+confirmation summary. **The realtime session does not yet expose a tool for the
+voice agent to record accept/decline**, so today the decision has to be written
+through the planning profile rather than spoken. That tool plus its handler is
+the next step, and it is small compared with the flow it completes.
