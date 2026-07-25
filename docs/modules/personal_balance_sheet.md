@@ -5,22 +5,36 @@
 ```json
 {
   "moduleId": "personal_balance_sheet",
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "2.0.0",
   "name": "Personal balance sheet",
+  "kind": "calculation",
   "status": "beta",
-  "consumerAvailable": true,
-  "goals": [
-    {
-      "type": "understand_position",
-      "role": "direct"
-    },
-    {
-      "type": "build_wealth",
-      "role": "direct"
-    }
-  ],
-  "pinned": "when_eligible",
-  "priorityBoost": 0,
+  "availability": {
+    "adviser": true,
+    "consumer": true
+  },
+  "implementation": {
+    "status": "engine",
+    "intakeContract": "approved",
+    "scenarioAware": false,
+    "playbook": "10_pbs_playbook.md",
+    "outputKey": "generated.pbsInputs"
+  },
+  "routing": {
+    "consumerRoutable": true,
+    "goals": [
+      {
+        "type": "understand_position",
+        "role": "direct"
+      },
+      {
+        "type": "build_wealth",
+        "role": "direct"
+      }
+    ],
+    "pinned": "when_eligible",
+    "priorityBoost": 0
+  },
   "requiredFacts": [
     "primary_goal",
     "partner_person",
@@ -54,7 +68,4 @@ Do not add it as background context to a narrow goal when the household has litt
 
 ## Client signals
 
-- "am I doing okay"
-- "what am I actually worth"
-- "I just want to see the full picture"
-- "where do I stand"
+_None recorded._

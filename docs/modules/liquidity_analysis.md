@@ -5,22 +5,36 @@
 ```json
 {
   "moduleId": "liquidity_analysis",
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "2.0.0",
   "name": "Liquidity reserve",
+  "kind": "calculation",
   "status": "active",
-  "consumerAvailable": true,
-  "goals": [
-    {
-      "type": "maintain_liquidity",
-      "role": "direct"
-    },
-    {
-      "type": "buy_home",
-      "role": "companion"
-    }
-  ],
-  "pinned": "never",
-  "priorityBoost": 0,
+  "availability": {
+    "adviser": true,
+    "consumer": true
+  },
+  "implementation": {
+    "status": "engine",
+    "intakeContract": "approved",
+    "scenarioAware": false,
+    "playbook": "16_liquidity_playbook.md",
+    "outputKey": "generated.liquidityPlan"
+  },
+  "routing": {
+    "consumerRoutable": true,
+    "goals": [
+      {
+        "type": "maintain_liquidity",
+        "role": "direct"
+      },
+      {
+        "type": "buy_home",
+        "role": "companion"
+      }
+    ],
+    "pinned": "never",
+    "priorityBoost": 0
+  },
   "requiredFacts": [
     "primary_goal",
     "cash_savings",
@@ -48,7 +62,4 @@ Do not use it for a broad "what am I worth" question — that is the Personal Ba
 
 ## Client signals
 
-- "how much should I keep for emergencies"
-- "I've a lot sitting in the current account"
-- "what happens if I lost my job tomorrow"
-- "is it worth keeping this much in cash"
+_None recorded._

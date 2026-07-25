@@ -5,26 +5,40 @@
 ```json
 {
   "moduleId": "pension_projection",
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "2.0.0",
   "name": "Pension projection",
+  "kind": "calculation",
   "status": "beta",
-  "consumerAvailable": false,
-  "goals": [
-    {
-      "type": "improve_pension",
-      "role": "direct"
-    },
-    {
-      "type": "retire",
-      "role": "direct"
-    },
-    {
-      "type": "retire_early",
-      "role": "direct"
-    }
-  ],
-  "pinned": "never",
-  "priorityBoost": 0,
+  "availability": {
+    "adviser": true,
+    "consumer": false
+  },
+  "implementation": {
+    "status": "engine",
+    "intakeContract": "approved",
+    "scenarioAware": true,
+    "playbook": "11_retirement_playbook.md",
+    "outputKey": "generated.pensionInputs"
+  },
+  "routing": {
+    "consumerRoutable": true,
+    "goals": [
+      {
+        "type": "improve_pension",
+        "role": "direct"
+      },
+      {
+        "type": "retire",
+        "role": "direct"
+      },
+      {
+        "type": "retire_early",
+        "role": "direct"
+      }
+    ],
+    "pinned": "never",
+    "priorityBoost": 0
+  },
   "requiredFacts": [
     "primary_goal",
     "partner_person",
@@ -60,7 +74,4 @@ Do not use it for what the household will actually have to live on after tax —
 
 ## Client signals
 
-- "is my pension on track"
-- "should I be putting more in"
-- "what does my employer match"
-- "could I retire at sixty"
+_None recorded._

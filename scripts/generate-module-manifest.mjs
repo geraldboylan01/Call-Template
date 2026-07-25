@@ -1,10 +1,17 @@
 // Compiles the adviser-authored module manifests in docs/modules/*.md into
 // js/planning/module_manifest.generated.js.
 //
-// P1 ships this INERT: nothing reads the generated manifest yet. Its whole job
-// for now is the parity assertion below, which proves the authored data
-// reproduces today's live routing and intake contracts exactly. P2 switches
+// This ships INERT: nothing reads the generated manifest yet. Its whole job for
+// now is the parity assertion below, which proves the authored data reproduces
+// today's live routing, availability and intake contracts exactly. P2 switches
 // buildGoalModulePlan onto it and deletes the hand-maintained tables.
+//
+// The manifest set is the COMPLETE registered catalogue, not the consumer-
+// routable subset. Availability, routing eligibility and implementation status
+// are recorded as independent axes, because a module can be adviser-available
+// with no engine, no fact-find and no consumer route — and must not disappear
+// from the adviser portal for any of those reasons. See
+// docs/module-catalogue-reconciliation.md.
 //
 // Mirrors generate-planning-playbook-manifest.mjs: a marker locates the machine
 // data, prose is compiled alongside it, and `--check` fails CI on drift.
@@ -19,6 +26,7 @@ import {
   createHouseholdProfile,
   getPlanningModuleDefinition,
   getSemanticFactDefinition,
+  listPlanningModuleDefinitions,
   normalizeHouseholdProfile
 } from '../js/planning/index.js';
 
@@ -29,6 +37,19 @@ const MANIFEST_MARKER = '<!-- planeir-module-manifest -->';
 const MODULE_ID_PATTERN = /^[a-z][a-z0-9_]{1,79}$/;
 const PINNED_VALUES = new Set(['never', 'when_eligible']);
 const GOAL_ROLES = new Set(['direct', 'companion']);
+const IMPLEMENTATION_STATUSES = new Set([
+  // a deterministic run() exists
+  'engine',
+  // an adviser playbook/renderer exists but no engine and no approved fact-find
+  'template_only',
+  // selects other modules rather than calculating (retirement_goal_analysis)
+  'routing_label',
+  // composed across scenario-aware modules, never selectable (scenario_analysis)
+  'capability',
+  // named in the catalogue, not yet built
+  'planned'
+]);
+const INTAKE_STATUSES = new Set(['approved', 'incomplete']);
 const MAX_PROSE = 1_200;
 const MAX_SIGNAL = 160;
 const MAX_SIGNALS = 12;
@@ -79,14 +100,46 @@ function parseManifest(source, label) {
   }
   if (!MODULE_ID_PATTERN.test(manifest.moduleId || '')) fail(`${label} has an invalid moduleId.`);
   if (!/^\d+\.\d+\.\d+$/.test(manifest.manifestVersion || '')) fail(`${label} has an invalid manifestVersion.`);
-  if (!PINNED_VALUES.has(manifest.pinned)) fail(`${label} has an invalid pinned value.`);
-  if (!Number.isInteger(manifest.priorityBoost)) fail(`${label} has a non-integer priorityBoost.`);
-  if (typeof manifest.consumerAvailable !== 'boolean') fail(`${label} has a non-boolean consumerAvailable.`);
 
-  for (const goal of manifest.goals || []) {
+  const availability = manifest.availability || {};
+  if (typeof availability.adviser !== 'boolean') fail(`${label} has a non-boolean availability.adviser.`);
+  if (typeof availability.consumer !== 'boolean') fail(`${label} has a non-boolean availability.consumer.`);
+
+  const implementation = manifest.implementation || {};
+  if (!IMPLEMENTATION_STATUSES.has(implementation.status)) {
+    fail(`${label} has an invalid implementation.status.`);
+  }
+  if (!INTAKE_STATUSES.has(implementation.intakeContract)) {
+    fail(`${label} has an invalid implementation.intakeContract.`);
+  }
+  if (typeof implementation.scenarioAware !== 'boolean') {
+    fail(`${label} has a non-boolean implementation.scenarioAware.`);
+  }
+
+  const routing = manifest.routing || {};
+  if (typeof routing.consumerRoutable !== 'boolean') fail(`${label} has a non-boolean routing.consumerRoutable.`);
+  if (!PINNED_VALUES.has(routing.pinned)) fail(`${label} has an invalid routing.pinned value.`);
+  if (!Number.isInteger(routing.priorityBoost)) fail(`${label} has a non-integer routing.priorityBoost.`);
+  for (const goal of routing.goals || []) {
     if (!GOAL_TYPES.includes(goal.type)) fail(`${label} references unknown goal ${goal.type}.`);
     if (!GOAL_ROLES.has(goal.role)) fail(`${label} goal ${goal.type} has an invalid role.`);
   }
+
+  // A capability is not a module. Scenario handling is composed over
+  // scenario-aware modules; letting it carry routes or adviser availability
+  // would reintroduce it as a selectable analysis.
+  if (implementation.status === 'capability') {
+    if (routing.consumerRoutable || (routing.goals || []).length > 0) {
+      fail(`${label} is a capability and must not be consumer-routable or carry goals.`);
+    }
+    if (availability.adviser || availability.consumer) {
+      fail(`${label} is a capability and must not be offered to advisers or consumers.`);
+    }
+  }
+  if (routing.consumerRoutable && !availability.adviser) {
+    fail(`${label} is consumer-routable but not adviser-available, which is not a supported combination.`);
+  }
+
   for (const factId of manifest.requiredFacts || []) {
     if (!getSemanticFactDefinition(factId)) fail(`${label} references unknown semantic fact ${factId}.`);
   }
@@ -133,44 +186,81 @@ function liveRouting() {
 function assertParity(entries) {
   const routing = liveRouting();
   const divergences = [];
+  const byModuleId = new Map(entries.map((entry) => [entry.moduleId, entry]));
+
+  // ANTI-NARROWING. P1 manifested only the intake-approved modules and silently
+  // dropped six adviser-available ones. From P6 the adviser module admin resolves
+  // its list from this registry, so an incomplete manifest set would make those
+  // modules disappear from the portal. The catalogue must stay complete.
+  for (const definition of listPlanningModuleDefinitions()) {
+    if (!byModuleId.has(definition.id)) {
+      fail(`${definition.id} is a registered planning module with no manifest in docs/modules/.\n`
+        + '  Every registered module must be catalogued, including adviser-only and template-only\n'
+        + '  modules. See docs/module-catalogue-reconciliation.md.');
+    }
+  }
+
   for (const entry of entries) {
     const definition = getPlanningModuleDefinition(entry.moduleId);
     if (!definition) fail(`${entry.moduleId} is not a registered planning module.`);
 
+    // --- Identity and availability: asserted for every module ---
     if (entry.name !== definition.name) fail(`${entry.moduleId}: manifest name does not match the registry.`);
+    if (entry.kind !== definition.kind) fail(`${entry.moduleId}: manifest kind does not match the registry.`);
     if (entry.status !== definition.status) fail(`${entry.moduleId}: manifest status does not match the registry.`);
-    if (entry.consumerAvailable !== (definition.consumerAvailable === true)) {
-      fail(`${entry.moduleId}: manifest consumerAvailable does not match the registry.`);
+    if (entry.availability.adviser !== (definition.adviserAvailable === true)) {
+      fail(`${entry.moduleId}: availability.adviser does not match the registry.`);
+    }
+    if (entry.availability.consumer !== (definition.consumerAvailable === true)) {
+      fail(`${entry.moduleId}: availability.consumer does not match the registry.`);
+    }
+    if (entry.implementation.intakeContract !== definition.intakeContract.status) {
+      fail(`${entry.moduleId}: implementation.intakeContract does not match the registry.`);
+    }
+    const hasEngine = typeof definition.run === 'function';
+    if (hasEngine !== (entry.implementation.status === 'engine')) {
+      fail(`${entry.moduleId}: implementation.status is "${entry.implementation.status}" but the registry `
+        + `${hasEngine ? 'has' : 'has no'} a run() engine.`);
     }
 
-    const registryFacts = [...definition.intakeContract.semanticFactIds].sort();
-    const manifestFacts = [...entry.requiredFacts].sort();
-    if (JSON.stringify(registryFacts) !== JSON.stringify(manifestFacts)) {
-      fail(`${entry.moduleId}: requiredFacts do not match the module intake contract.\n`
-        + `  registry: ${registryFacts.join(', ')}\n  manifest: ${manifestFacts.join(', ')}`);
+    // --- Intake facts: only meaningful where the contract is approved ---
+    if (definition.intakeContract.status === 'approved') {
+      const registryFacts = [...definition.intakeContract.semanticFactIds].sort();
+      const manifestFacts = [...entry.requiredFacts].sort();
+      if (JSON.stringify(registryFacts) !== JSON.stringify(manifestFacts)) {
+        fail(`${entry.moduleId}: requiredFacts do not match the module intake contract.\n`
+          + `  registry: ${registryFacts.join(', ')}\n  manifest: ${manifestFacts.join(', ')}`);
+      }
+    } else if (entry.requiredFacts.length > 0) {
+      fail(`${entry.moduleId}: has an incomplete intake contract, so it must not declare requiredFacts.`);
     }
 
+    // --- Routing: asserted against live behaviour for every module, so that a
+    // module claiming to be unroutable really is ---
     const routes = routing.get(entry.moduleId) || [];
     const liveGoals = routes
       .filter((route) => route.source === 'goal_direct' || route.source === 'goal_companion')
       .map((route) => `${route.type}:${route.source === 'goal_direct' ? 'direct' : 'companion'}`)
       .sort();
-    const manifestGoals = entry.goals.map((goal) => `${goal.type}:${goal.role}`).sort();
+    const manifestGoals = entry.routing.goals.map((goal) => `${goal.type}:${goal.role}`).sort();
     if (JSON.stringify(liveGoals) !== JSON.stringify(manifestGoals)) {
-      fail(`${entry.moduleId}: manifest goals do not reproduce live routing.\n`
+      fail(`${entry.moduleId}: manifest routing.goals do not reproduce live routing.\n`
         + `  live:     ${liveGoals.join(', ') || '(none)'}\n  manifest: ${manifestGoals.join(', ') || '(none)'}`);
     }
-
     const livePinned = routes.some((route) => route.source === 'balance_sheet_default') ? 'when_eligible' : 'never';
-    if (entry.pinned !== livePinned) {
-      fail(`${entry.moduleId}: manifest pinned is "${entry.pinned}" but live routing behaves as "${livePinned}".`);
+    if (entry.routing.pinned !== livePinned) {
+      fail(`${entry.moduleId}: routing.pinned is "${entry.routing.pinned}" but live routing behaves as "${livePinned}".`);
+    }
+    if (entry.routing.consumerRoutable !== (routes.length > 0)) {
+      fail(`${entry.moduleId}: routing.consumerRoutable is ${entry.routing.consumerRoutable} `
+        + `but live routing ${routes.length > 0 ? 'does' : 'does not'} select it.`);
     }
 
     // Recorded, not fatal. `applicableGoals` is a third representation that no
     // routing code reads; P2 resolves it. Surfacing the gap here stops it being
     // silently inherited.
     const declared = [...definition.applicableGoals].sort();
-    const routed = [...new Set(entry.goals.map((goal) => goal.type))].sort();
+    const routed = [...new Set(entry.routing.goals.map((goal) => goal.type))].sort();
     if (JSON.stringify(declared) !== JSON.stringify(routed)) {
       divergences.push({
         moduleId: entry.moduleId,

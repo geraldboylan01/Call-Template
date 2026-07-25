@@ -5,22 +5,36 @@
 ```json
 {
   "moduleId": "net_retirement_cashflow",
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "2.0.0",
   "name": "Net retirement cash flow",
+  "kind": "calculation",
   "status": "beta",
-  "consumerAvailable": false,
-  "goals": [
-    {
-      "type": "retire",
-      "role": "companion"
-    },
-    {
-      "type": "retire_early",
-      "role": "companion"
-    }
-  ],
-  "pinned": "never",
-  "priorityBoost": 0,
+  "availability": {
+    "adviser": true,
+    "consumer": false
+  },
+  "implementation": {
+    "status": "engine",
+    "intakeContract": "approved",
+    "scenarioAware": true,
+    "playbook": "15_net_retirement_cashflow_playbook.md",
+    "outputKey": "generated.netRetirementInputs"
+  },
+  "routing": {
+    "consumerRoutable": true,
+    "goals": [
+      {
+        "type": "retire",
+        "role": "companion"
+      },
+      {
+        "type": "retire_early",
+        "role": "companion"
+      }
+    ],
+    "pinned": "never",
+    "priorityBoost": 0
+  },
   "requiredFacts": [
     "primary_goal",
     "person_current_age",
@@ -50,6 +64,4 @@ Do not use it on its own to answer a question about pot growth or contribution r
 
 ## Client signals
 
-- "will the money last"
-- "what will I actually live on"
-- "can we keep the same lifestyle"
+_None recorded._

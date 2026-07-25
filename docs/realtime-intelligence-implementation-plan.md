@@ -606,7 +606,17 @@ Measured effect:
 
 ## 4b. P1 as delivered — 2026-07-25
 
-Nine manifests authored in [docs/modules/](modules/), compiled by
+> **Corrected the same day.** P1 originally authored **nine** manifests, selected
+> by `intakeContract.status === 'approved'` — a measure of consumer intake
+> readiness mistaken for the catalogue. That silently dropped six
+> adviser-available modules, including `protection_analysis`, which has a live
+> adviser playbook. The manifest set is now the **complete 16-module registry**,
+> with availability, routing eligibility and implementation status recorded as
+> independent axes, and an anti-narrowing assertion that fails the build if any
+> registered module lacks a manifest. Full inventory and reasoning:
+> [module-catalogue-reconciliation.md](module-catalogue-reconciliation.md).
+
+Sixteen manifests authored in [docs/modules/](modules/), compiled by
 [generate-module-manifest.mjs](../scripts/generate-module-manifest.mjs) into
 `js/planning/module_manifest.generated.js`. **Nothing reads the generated file** —
 verified by grep. `--check` is wired into `check:consumer`, generation into
@@ -658,7 +668,7 @@ or mark it adviser-selection-only) rather than silent inheritance.
 |---|---|---|
 | **P0** ✅ **done 2026-07-25** | §4.8 simulator + 4 scenarios; slot-ordered question queue; `property_status` in the balance-sheet decision; planner orientation-extraction prompt | live bug fixed, safety net in place, `check:consumer` green |
 | **P1** ✅ **done 2026-07-25** | §4.1 nine manifests + generator + `--check`; behavioural parity assertion; nothing reads them yet | zero behaviour change, fully reversible |
-| **P2** (~1–2 wk) | §4.6 ratifier reads manifests; delete ROUTES + persona router; rename to `circumstances` | bug structurally impossible |
+| **P2** (~1–2 wk) | §4.6 ratifier reads manifests; delete ROUTES + persona router; rename to `circumstances`. **Gated on the reconciliation — see below.** | bug structurally impossible |
 | **P3** (~1 wk) | §4.2 composer + mention register + prompt rule change | **R1 done** |
 | **P4** (~2 wk) | §4.3 two modes, five-beat opening, OARS, cache split | **R2 done** |
 | **P5** (~2 wk) | §4.4 T1/T2 supervisor behind flag | background orchestration |
@@ -673,6 +683,28 @@ R1 (P3) lands before R2 (P4) deliberately: back-referencing is what makes the
 intake half feel human, and it is a smaller change than the opening rebuild.
 
 ---
+
+### P2 entry conditions
+
+The catalogue reconciliation is complete (items 1–5 of
+[module-catalogue-reconciliation.md](module-catalogue-reconciliation.md) §7 are
+implemented and negative-tested). P2 may proceed, but must additionally resolve
+these before deleting anything:
+
+1. **`retirement_goal_analysis`** — approved intake contract, no engine, routed
+   by nothing. Give it routes or mark it adviser-selection-only. A deliberate
+   decision, not silent inheritance.
+2. **`business_owner_relief` vs `business_relief_analysis`** — duplicate
+   adviser-only identities with overlapping goals. Merge, or record why both stay.
+3. **`applicableGoals`** — the third representation, read by no routing code.
+   Deleting it is safe; making it authoritative is not, since
+   `personal_balance_sheet` declares all fourteen goals.
+4. **`recommendModules`** — still live inside `runConsumerAnalysis` as the
+   execution-time default when no explicit module ids are passed. It must be
+   migrated or explicitly kept; deleting `ROUTES` alone does not cover it.
+5. **`adviserAvailable` is enforced by nothing today.** If P6's admin UI is to
+   resolve adviser modules from the manifest, P2 should make the registry field
+   authoritative rather than decorative.
 
 ## 6. Risks
 

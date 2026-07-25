@@ -5,18 +5,32 @@
 ```json
 {
   "moduleId": "loan_analysis",
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "2.0.0",
   "name": "Loan analysis",
+  "kind": "calculation",
   "status": "beta",
-  "consumerAvailable": false,
-  "goals": [
-    {
-      "type": "manage_loan",
-      "role": "direct"
-    }
-  ],
-  "pinned": "never",
-  "priorityBoost": 0,
+  "availability": {
+    "adviser": true,
+    "consumer": false
+  },
+  "implementation": {
+    "status": "engine",
+    "intakeContract": "approved",
+    "scenarioAware": false,
+    "playbook": "13_loan_playbook.md",
+    "outputKey": "generated.loanInputs"
+  },
+  "routing": {
+    "consumerRoutable": true,
+    "goals": [
+      {
+        "type": "manage_loan",
+        "role": "direct"
+      }
+    ],
+    "pinned": "never",
+    "priorityBoost": 0
+  },
   "requiredFacts": [
     "primary_goal",
     "loan_position",
@@ -46,6 +60,4 @@ Do not use it for a mortgage — that is Mortgage analysis.
 
 ## Client signals
 
-- "I've a car loan"
-- "should I clear the credit card first"
-- "credit union loan"
+_None recorded._

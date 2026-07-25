@@ -5,18 +5,32 @@
 ```json
 {
   "moduleId": "house_purchase",
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "2.0.0",
   "name": "House purchase planner",
+  "kind": "calculation",
   "status": "beta",
-  "consumerAvailable": true,
-  "goals": [
-    {
-      "type": "buy_home",
-      "role": "direct"
-    }
-  ],
-  "pinned": "never",
-  "priorityBoost": 0,
+  "availability": {
+    "adviser": true,
+    "consumer": true
+  },
+  "implementation": {
+    "status": "engine",
+    "intakeContract": "approved",
+    "scenarioAware": true,
+    "playbook": "17_house_purchase_playbook.md",
+    "outputKey": "generated.housePurchaseInputs"
+  },
+  "routing": {
+    "consumerRoutable": true,
+    "goals": [
+      {
+        "type": "buy_home",
+        "role": "direct"
+      }
+    ],
+    "pinned": "never",
+    "priorityBoost": 0
+  },
   "requiredFacts": [
     "primary_goal",
     "partner_person",
@@ -53,7 +67,4 @@ Do not use it when the client already owns their home and is only asking about t
 
 ## Client signals
 
-- "I want to buy my first place"
-- "trying to save a deposit"
-- "how much could we borrow"
-- "we're renting and want to get out of it"
+_None recorded._

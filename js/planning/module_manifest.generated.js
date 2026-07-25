@@ -3,19 +3,203 @@ export const MODULE_MANIFEST_VERSION = 'planeir-module-manifest-1.0.0';
 
 export const MODULE_MANIFEST = Object.freeze([
   {
+    "moduleId": "agricultural_relief",
+    "manifestVersion": "2.0.0",
+    "name": "Agricultural relief",
+    "kind": "composition",
+    "status": "adviser_only",
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "template_only",
+      "intakeContract": "incomplete",
+      "scenarioAware": false,
+      "playbook": null,
+      "outputKey": null
+    },
+    "routing": {
+      "consumerRoutable": false,
+      "goals": [],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
+    "requiredFacts": [],
+    "eligibility": {
+      "requireAll": [],
+      "excludeIf": []
+    },
+    "factPreconditions": {},
+    "purpose": "Adviser-only agricultural succession and relief planning.",
+    "whenToUse": "Adviser-led work for a farming household where agricultural relief conditions apply.",
+    "whenNotToUse": "Never route this from a consumer conversation. Consumer use waits for deterministic, date-versioned rules and tests.",
+    "clientSignals": []
+  },
+  {
+    "moduleId": "business_owner_analysis",
+    "manifestVersion": "2.0.0",
+    "name": "Business Owner Analysis",
+    "kind": "composition",
+    "status": "adviser_only",
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "template_only",
+      "intakeContract": "incomplete",
+      "scenarioAware": false,
+      "playbook": null,
+      "outputKey": null
+    },
+    "routing": {
+      "consumerRoutable": false,
+      "goals": [],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
+    "requiredFacts": [],
+    "eligibility": {
+      "requireAll": [],
+      "excludeIf": []
+    },
+    "factPreconditions": {},
+    "purpose": "Adviser-reviewed planning around a household business interest.",
+    "whenToUse": "Adviser-led work for a company director or owner-manager where the business interest materially shapes the plan.",
+    "whenNotToUse": "Never route this from a consumer conversation. Consumer use waits for a code-owned general business-owner analysis.",
+    "clientSignals": []
+  },
+  {
+    "moduleId": "business_owner_relief",
+    "manifestVersion": "2.0.0",
+    "name": "Business owner relief (legacy)",
+    "kind": "composition",
+    "status": "adviser_only",
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "template_only",
+      "intakeContract": "incomplete",
+      "scenarioAware": false,
+      "playbook": null,
+      "outputKey": null
+    },
+    "routing": {
+      "consumerRoutable": false,
+      "goals": [],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
+    "requiredFacts": [],
+    "eligibility": {
+      "requireAll": [],
+      "excludeIf": []
+    },
+    "factPreconditions": {},
+    "purpose": "Backward-compatible adviser-only business succession and relief module id, retained so existing adviser sessions and saved plans keep resolving.",
+    "whenToUse": "Only where an existing saved plan or adviser session already references this id.",
+    "whenNotToUse": "Do not use it for new work. See the catalogue note below: business_relief_analysis is the current id and the duplication needs a deliberate decision.",
+    "clientSignals": []
+  },
+  {
+    "moduleId": "business_relief_analysis",
+    "manifestVersion": "2.0.0",
+    "name": "Business Relief Analysis",
+    "kind": "composition",
+    "status": "adviser_only",
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "template_only",
+      "intakeContract": "incomplete",
+      "scenarioAware": false,
+      "playbook": null,
+      "outputKey": null
+    },
+    "routing": {
+      "consumerRoutable": false,
+      "goals": [],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
+    "requiredFacts": [],
+    "eligibility": {
+      "requireAll": [],
+      "excludeIf": []
+    },
+    "factPreconditions": {},
+    "purpose": "Adviser-reviewed, date-versioned business relief analysis for succession and disposal.",
+    "whenToUse": "Adviser-led succession or exit planning where business relief conditions need to be applied against dated rules.",
+    "whenNotToUse": "Never route this from a consumer conversation. See the catalogue note below: this overlaps the legacy business_owner_relief id and the pair needs resolving.",
+    "clientSignals": []
+  },
+  {
+    "moduleId": "cat_analysis",
+    "manifestVersion": "2.0.0",
+    "name": "Capital Acquisitions Tax analysis",
+    "kind": "composition",
+    "status": "adviser_only",
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "template_only",
+      "intakeContract": "incomplete",
+      "scenarioAware": false,
+      "playbook": null,
+      "outputKey": null
+    },
+    "routing": {
+      "consumerRoutable": false,
+      "goals": [],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
+    "requiredFacts": [],
+    "eligibility": {
+      "requireAll": [],
+      "excludeIf": []
+    },
+    "factPreconditions": {},
+    "purpose": "Adviser-only Capital Acquisitions Tax planning around gifts, inheritance and thresholds.",
+    "whenToUse": "Adviser-led wealth-transfer work where dated CAT thresholds and reliefs are applied by hand under review.",
+    "whenNotToUse": "Never route this from a consumer conversation. Consumer use waits for deterministic, date-versioned CAT rules and tests. A wealth-transfer goal should defer to an adviser handoff instead.",
+    "clientSignals": []
+  },
+  {
     "moduleId": "college_funding",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "College funding",
+    "kind": "calculation",
     "status": "beta",
-    "consumerAvailable": false,
-    "goals": [
-      {
-        "type": "fund_education",
-        "role": "direct"
-      }
-    ],
-    "pinned": "never",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "engine",
+      "intakeContract": "approved",
+      "scenarioAware": false,
+      "playbook": "14_college_funding_playbook.md",
+      "outputKey": "generated.collegeFundingInputs"
+    },
+    "routing": {
+      "consumerRoutable": true,
+      "goals": [
+        {
+          "type": "fund_education",
+          "role": "direct"
+        }
+      ],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "dependants",
@@ -34,18 +218,32 @@ export const MODULE_MANIFEST = Object.freeze([
   },
   {
     "moduleId": "house_purchase",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "House purchase planner",
+    "kind": "calculation",
     "status": "beta",
-    "consumerAvailable": true,
-    "goals": [
-      {
-        "type": "buy_home",
-        "role": "direct"
-      }
-    ],
-    "pinned": "never",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": true
+    },
+    "implementation": {
+      "status": "engine",
+      "intakeContract": "approved",
+      "scenarioAware": true,
+      "playbook": "17_house_purchase_playbook.md",
+      "outputKey": "generated.housePurchaseInputs"
+    },
+    "routing": {
+      "consumerRoutable": true,
+      "goals": [
+        {
+          "type": "buy_home",
+          "role": "direct"
+        }
+      ],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "partner_person",
@@ -72,22 +270,36 @@ export const MODULE_MANIFEST = Object.freeze([
   },
   {
     "moduleId": "liquidity_analysis",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "Liquidity reserve",
+    "kind": "calculation",
     "status": "active",
-    "consumerAvailable": true,
-    "goals": [
-      {
-        "type": "maintain_liquidity",
-        "role": "direct"
-      },
-      {
-        "type": "buy_home",
-        "role": "companion"
-      }
-    ],
-    "pinned": "never",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": true
+    },
+    "implementation": {
+      "status": "engine",
+      "intakeContract": "approved",
+      "scenarioAware": false,
+      "playbook": "16_liquidity_playbook.md",
+      "outputKey": "generated.liquidityPlan"
+    },
+    "routing": {
+      "consumerRoutable": true,
+      "goals": [
+        {
+          "type": "maintain_liquidity",
+          "role": "direct"
+        },
+        {
+          "type": "buy_home",
+          "role": "companion"
+        }
+      ],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "cash_savings",
@@ -105,18 +317,32 @@ export const MODULE_MANIFEST = Object.freeze([
   },
   {
     "moduleId": "loan_analysis",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "Loan analysis",
+    "kind": "calculation",
     "status": "beta",
-    "consumerAvailable": false,
-    "goals": [
-      {
-        "type": "manage_loan",
-        "role": "direct"
-      }
-    ],
-    "pinned": "never",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "engine",
+      "intakeContract": "approved",
+      "scenarioAware": false,
+      "playbook": "13_loan_playbook.md",
+      "outputKey": "generated.loanInputs"
+    },
+    "routing": {
+      "consumerRoutable": true,
+      "goals": [
+        {
+          "type": "manage_loan",
+          "role": "direct"
+        }
+      ],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "loan_position",
@@ -136,18 +362,32 @@ export const MODULE_MANIFEST = Object.freeze([
   },
   {
     "moduleId": "mortgage_analysis",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "Mortgage analysis",
+    "kind": "calculation",
     "status": "beta",
-    "consumerAvailable": false,
-    "goals": [
-      {
-        "type": "optimise_mortgage",
-        "role": "direct"
-      }
-    ],
-    "pinned": "never",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "engine",
+      "intakeContract": "approved",
+      "scenarioAware": false,
+      "playbook": "12_mortgage_playbook.md",
+      "outputKey": "generated.mortgageInputs"
+    },
+    "routing": {
+      "consumerRoutable": true,
+      "goals": [
+        {
+          "type": "optimise_mortgage",
+          "role": "direct"
+        }
+      ],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "mortgage_position",
@@ -167,22 +407,36 @@ export const MODULE_MANIFEST = Object.freeze([
   },
   {
     "moduleId": "net_retirement_cashflow",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "Net retirement cash flow",
+    "kind": "calculation",
     "status": "beta",
-    "consumerAvailable": false,
-    "goals": [
-      {
-        "type": "retire",
-        "role": "companion"
-      },
-      {
-        "type": "retire_early",
-        "role": "companion"
-      }
-    ],
-    "pinned": "never",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "engine",
+      "intakeContract": "approved",
+      "scenarioAware": true,
+      "playbook": "15_net_retirement_cashflow_playbook.md",
+      "outputKey": "generated.netRetirementInputs"
+    },
+    "routing": {
+      "consumerRoutable": true,
+      "goals": [
+        {
+          "type": "retire",
+          "role": "companion"
+        },
+        {
+          "type": "retire_early",
+          "role": "companion"
+        }
+      ],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "person_current_age",
@@ -202,26 +456,40 @@ export const MODULE_MANIFEST = Object.freeze([
   },
   {
     "moduleId": "pension_projection",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "Pension projection",
+    "kind": "calculation",
     "status": "beta",
-    "consumerAvailable": false,
-    "goals": [
-      {
-        "type": "improve_pension",
-        "role": "direct"
-      },
-      {
-        "type": "retire",
-        "role": "direct"
-      },
-      {
-        "type": "retire_early",
-        "role": "direct"
-      }
-    ],
-    "pinned": "never",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "engine",
+      "intakeContract": "approved",
+      "scenarioAware": true,
+      "playbook": "11_retirement_playbook.md",
+      "outputKey": "generated.pensionInputs"
+    },
+    "routing": {
+      "consumerRoutable": true,
+      "goals": [
+        {
+          "type": "improve_pension",
+          "role": "direct"
+        },
+        {
+          "type": "retire",
+          "role": "direct"
+        },
+        {
+          "type": "retire_early",
+          "role": "direct"
+        }
+      ],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "partner_person",
@@ -247,22 +515,36 @@ export const MODULE_MANIFEST = Object.freeze([
   },
   {
     "moduleId": "personal_balance_sheet",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "Personal balance sheet",
+    "kind": "calculation",
     "status": "beta",
-    "consumerAvailable": true,
-    "goals": [
-      {
-        "type": "understand_position",
-        "role": "direct"
-      },
-      {
-        "type": "build_wealth",
-        "role": "direct"
-      }
-    ],
-    "pinned": "when_eligible",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": true
+    },
+    "implementation": {
+      "status": "engine",
+      "intakeContract": "approved",
+      "scenarioAware": false,
+      "playbook": "10_pbs_playbook.md",
+      "outputKey": "generated.pbsInputs"
+    },
+    "routing": {
+      "consumerRoutable": true,
+      "goals": [
+        {
+          "type": "understand_position",
+          "role": "direct"
+        },
+        {
+          "type": "build_wealth",
+          "role": "direct"
+        }
+      ],
+      "pinned": "when_eligible",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "partner_person",
@@ -285,14 +567,62 @@ export const MODULE_MANIFEST = Object.freeze([
     "clientSignals": []
   },
   {
+    "moduleId": "protection_analysis",
+    "manifestVersion": "2.0.0",
+    "name": "Protection analysis",
+    "kind": "composition",
+    "status": "unsupported",
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "template_only",
+      "intakeContract": "incomplete",
+      "scenarioAware": false,
+      "playbook": "22_protection_playbook.md",
+      "outputKey": "generated.report"
+    },
+    "routing": {
+      "consumerRoutable": false,
+      "goals": [],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
+    "requiredFacts": [],
+    "eligibility": {
+      "requireAll": [],
+      "excludeIf": []
+    },
+    "factPreconditions": {},
+    "purpose": "A report-style protection module covering income protection and serious-illness cover, written to be calm and client-friendly without pretending to be an underwriting or quotation engine.",
+    "whenToUse": "Gerry asks for a protection module, or the conversation turns to what happens to the household income if someone cannot work. Adviser-produced today via the protection playbook.",
+    "whenNotToUse": "Never route this from a consumer conversation. It has no deterministic engine and no approved fact-find, so it cannot be run or made ready automatically.",
+    "clientSignals": []
+  },
+  {
     "moduleId": "retirement_goal_analysis",
-    "manifestVersion": "1.0.0",
+    "manifestVersion": "2.0.0",
     "name": "Retirement Goal Analysis",
+    "kind": "composition",
     "status": "beta",
-    "consumerAvailable": false,
-    "goals": [],
-    "pinned": "never",
-    "priorityBoost": 0,
+    "availability": {
+      "adviser": true,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "routing_label",
+      "intakeContract": "approved",
+      "scenarioAware": false,
+      "playbook": null,
+      "outputKey": null
+    },
+    "routing": {
+      "consumerRoutable": false,
+      "goals": [],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
     "requiredFacts": [
       "primary_goal",
       "partner_person",
@@ -316,6 +646,40 @@ export const MODULE_MANIFEST = Object.freeze([
     "purpose": "Composes the pension projection and the net retirement cash flow into a single adviser-reviewed retirement view.",
     "whenToUse": "Adviser-composed retirement reviews where both the pre-tax pot and the after-tax cash flow are wanted as one output.",
     "whenNotToUse": "Not selected by consumer goal routing today. See the routing note below before enabling it — it is currently reachable only by explicit adviser selection.",
+    "clientSignals": []
+  },
+  {
+    "moduleId": "scenario_analysis",
+    "manifestVersion": "2.0.0",
+    "name": "Scenario analysis",
+    "kind": "composition",
+    "status": "unsupported",
+    "availability": {
+      "adviser": false,
+      "consumer": false
+    },
+    "implementation": {
+      "status": "capability",
+      "intakeContract": "incomplete",
+      "scenarioAware": false,
+      "playbook": null,
+      "outputKey": null
+    },
+    "routing": {
+      "consumerRoutable": false,
+      "goals": [],
+      "pinned": "never",
+      "priorityBoost": 0
+    },
+    "requiredFacts": [],
+    "eligibility": {
+      "requireAll": [],
+      "excludeIf": []
+    },
+    "factPreconditions": {},
+    "purpose": "Not a standalone analysis. Scenario handling is a composition capability layered over scenario-aware modules, which receive per-module or flat overrides and hash them into their result identity.",
+    "whenToUse": "Never select this directly. Apply scenario overrides to the scenario-aware modules instead — see the catalogue note below.",
+    "whenNotToUse": "It has no engine, no fact-find and no adviser availability. The registry entry exists as a placeholder for the capability and must never be routed or offered as a module.",
     "clientSignals": []
   }
 ].map(Object.freeze));

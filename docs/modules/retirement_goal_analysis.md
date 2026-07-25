@@ -5,13 +5,27 @@
 ```json
 {
   "moduleId": "retirement_goal_analysis",
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "2.0.0",
   "name": "Retirement Goal Analysis",
+  "kind": "composition",
   "status": "beta",
-  "consumerAvailable": false,
-  "goals": [],
-  "pinned": "never",
-  "priorityBoost": 0,
+  "availability": {
+    "adviser": true,
+    "consumer": false
+  },
+  "implementation": {
+    "status": "routing_label",
+    "intakeContract": "approved",
+    "scenarioAware": false,
+    "playbook": null,
+    "outputKey": null
+  },
+  "routing": {
+    "consumerRoutable": false,
+    "goals": [],
+    "pinned": "never",
+    "priorityBoost": 0
+  },
   "requiredFacts": [
     "primary_goal",
     "partner_person",
@@ -51,6 +65,6 @@ Not selected by consumer goal routing today. See the routing note below before e
 
 _None recorded._
 
-## Routing note
+## Catalogue note
 
-This module declares goals in the registry but no goal routes to it today, so consumer goal routing never selects it. Resolve deliberately in P2: either give it real routes or mark it adviser-selection-only.
+This is a routing label, not a second retirement engine: it selects the pension projection, the net retirement cash flow, or both. It has an approved intake contract but no `run()`, so it can pass readiness with nothing to execute. No goal routes to it today. Resolve deliberately in P2.

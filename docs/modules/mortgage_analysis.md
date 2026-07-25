@@ -5,18 +5,32 @@
 ```json
 {
   "moduleId": "mortgage_analysis",
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "2.0.0",
   "name": "Mortgage analysis",
+  "kind": "calculation",
   "status": "beta",
-  "consumerAvailable": false,
-  "goals": [
-    {
-      "type": "optimise_mortgage",
-      "role": "direct"
-    }
-  ],
-  "pinned": "never",
-  "priorityBoost": 0,
+  "availability": {
+    "adviser": true,
+    "consumer": false
+  },
+  "implementation": {
+    "status": "engine",
+    "intakeContract": "approved",
+    "scenarioAware": false,
+    "playbook": "12_mortgage_playbook.md",
+    "outputKey": "generated.mortgageInputs"
+  },
+  "routing": {
+    "consumerRoutable": true,
+    "goals": [
+      {
+        "type": "optimise_mortgage",
+        "role": "direct"
+      }
+    ],
+    "pinned": "never",
+    "priorityBoost": 0
+  },
   "requiredFacts": [
     "primary_goal",
     "mortgage_position",
@@ -46,7 +60,4 @@ Do not use it for someone who has not bought yet. Affordability, deposit and app
 
 ## Client signals
 
-- "should I switch"
-- "are we paying over the odds"
-- "my fixed rate is ending"
-- "is it worth overpaying"
+_None recorded._
