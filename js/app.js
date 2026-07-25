@@ -424,13 +424,20 @@ async function handleAdvisorLoginSubmit() {
 }
 
 async function ensureAdvisorAuthenticated(message = 'Sign in to publish, reopen, revoke, extend, and send final client emails.') {
-  const authState = await syncAdvisorAuthState();
-  if (!authState.enabled || authState.authenticated) {
+  let authState = null;
+  let syncError = '';
+  try {
+    authState = await syncAdvisorAuthState();
+  } catch (error) {
+    syncError = error?.message || 'Could not reach the advisor service.';
+  }
+
+  if (authState && (!authState.enabled || authState.authenticated)) {
     setAdvisorAuthVisible(false);
     return;
   }
 
-  setAdvisorAuthError('');
+  setAdvisorAuthError(syncError);
   if (advisorAuthHint) {
     advisorAuthHint.textContent = String(message || 'Sign in to continue.');
   }
