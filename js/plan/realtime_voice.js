@@ -903,6 +903,17 @@ export class RealtimeVoiceController {
       && !context.consentRefreshRequired;
   }
 
+  // Why the meeting cannot open, so the failure page can say something the
+  // person can act on instead of the generic "try again in a moment".
+  meetingUnavailableReason() {
+    const context = realtimeContext();
+    if (!isRealtimeVoiceSupported()) return 'unsupported-browser';
+    if (!context.eligible || !context.configured) return 'service-off';
+    if (!context.sessionId) return 'no-session';
+    if (context.consentRefreshRequired) return 'consent-refresh';
+    return '';
+  }
+
   isCompletionLocked() {
     return Boolean(this.completionSpeechId || this.completionNavigationInFlight);
   }

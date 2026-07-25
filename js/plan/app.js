@@ -247,9 +247,16 @@ function renderCurrentJourney({ focus = false } = {}) {
 // (when the realtime service can run it) or the "Failed to load" page. There is
 // no typed-journey fallback. The meeting view uses a non-'conversation' view so
 // the retired journey never re-renders behind the orb.
+const MEETING_UNAVAILABLE_MESSAGES = Object.freeze({
+  'unsupported-browser': 'This browser can’t run the live meeting. Please try again in a recent version of Chrome, Edge, or Safari.',
+  'service-off': 'Your live meeting isn’t switched on at the moment. Nothing you have entered has been lost — get in touch and we’ll open it for you.',
+  'consent-refresh': 'Please review the updated privacy notice before your meeting starts.'
+});
+
 function enterMeetingOrFail({ focus = false } = {}) {
   if (!realtimeVoiceController.isMeetingAvailable()) {
-    renderUnavailable(appRoot);
+    const reason = realtimeVoiceController.meetingUnavailableReason();
+    renderUnavailable(appRoot, { message: MEETING_UNAVAILABLE_MESSAGES[reason] || '' });
     syncHeader();
     return;
   }

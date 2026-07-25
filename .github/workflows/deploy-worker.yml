@@ -211,22 +211,57 @@ jobs:
             && "$CONSUMER_REALTIME_KEEP_ACTIVE" == "true" \
             && "$effective_beta" == "true" \
             && "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" != "false" ]]; then
-            live_realtime_enabled="$(
-              curl -fsS --max-time 20 "$WORKER_BASE_URL/api/consumer/bootstrap" -H "Origin: $SMOKE_ORIGIN" \
-                | node --input-type=module -e '
-                    let raw = "";
-                    process.stdin.on("data", (chunk) => { raw += chunk; });
-                    process.stdin.on("end", () => {
-                      let enabled = false;
-                      try {
-                        enabled = JSON.parse(raw)?.flags?.consumerRealtimeVoiceEnabled === true;
-                      } catch (_error) {
-                        enabled = false;
-                      }
-                      process.stdout.write(enabled ? "true" : "false");
-                    });
-                  '
-            )" || live_realtime_enabled="false"
+            # A probe that cannot answer is not the same signal as a live Worker
+            # reporting Realtime off. Only the latter may keep Realtime disabled.
+            # Because the branch above can never switch Realtime back on, a
+            # transient probe failure that was read as "off" would retire a live
+            # canary permanently, so an unreadable probe aborts the deployment
+            # instead. Aborting leaves the deployed Worker exactly as it is.
+            live_realtime_enabled=""
+            probe_attempt=0
+            while [[ "$probe_attempt" -lt 3 && -z "$live_realtime_enabled" ]]; do
+              probe_attempt=$(( probe_attempt + 1 ))
+              probe_body=""
+              if ! probe_body="$(curl -fsS --max-time 20 "$WORKER_BASE_URL/api/consumer/bootstrap" -H "Origin: $SMOKE_ORIGIN")"; then
+                probe_body=""
+              fi
+              if [[ -n "$probe_body" ]]; then
+                if ! live_realtime_enabled="$(
+                  printf '%s' "$probe_body" \
+                    | node --input-type=module -e '
+                        let raw = "";
+                        process.stdin.on("data", (chunk) => { raw += chunk; });
+                        process.stdin.on("end", () => {
+                          let parsed = null;
+                          try {
+                            parsed = JSON.parse(raw);
+                          } catch (_error) {
+                            process.exit(1);
+                          }
+                          const flag = parsed?.flags?.consumerRealtimeVoiceEnabled;
+                          if (typeof flag !== "boolean") {
+                            process.exit(1);
+                          }
+                          process.stdout.write(flag ? "true" : "false");
+                        });
+                      '
+                )"; then
+                  live_realtime_enabled=""
+                fi
+              fi
+              if [[ -z "$live_realtime_enabled" ]]; then
+                echo "Realtime standing-preservation probe ${probe_attempt}/3 could not read the live bootstrap."
+                if [[ "$probe_attempt" -lt 3 ]]; then
+                  sleep 5
+                fi
+              fi
+            done
+            if [[ -z "$live_realtime_enabled" ]]; then
+              echo "Could not determine whether the Realtime adviser canary is currently live."
+              echo "Aborting so this push cannot silently retire a live canary; the deployed Worker is unchanged."
+              echo "Re-run once ${WORKER_BASE_URL} is reachable, or dispatch with the canary override to set the state explicitly."
+              exit 1
+            fi
             if [[ "$live_realtime_enabled" == "true" ]]; then
               effective_realtime="true"
               realtime_standing_preserved="true"
