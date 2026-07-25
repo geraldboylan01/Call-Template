@@ -11,9 +11,9 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false,
+    "consumer": true,
     "platformConsumerApproved": true,
-    "adviserConsumerEnabled": false
+    "adviserConsumerEnabled": true
   },
   "implementation": {
     "status": "engine",
@@ -63,10 +63,10 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "compare your current repayment path with switching, changing the term, or making extra repayments",
+  "clientBenefit": "show your current mortgage repayment path and compare the alternatives \u2014 changing the term, switching, or making extra repayments",
   "consumerReadiness": {
     "status": "approved",
-    "reviewedOn": "2026-07-25",
+    "reviewedOn": "2026-07-26",
     "blockingItems": []
   }
 }

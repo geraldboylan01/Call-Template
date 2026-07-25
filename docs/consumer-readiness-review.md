@@ -8,17 +8,27 @@ Projection and College Funding.
 criteria already applied to the live consumer modules, from the adapter code
 rather than from intent.
 
-**Outcome: 1 approved, 2 require remediation.**
+**Outcome after the 2026-07-26 assumption approvals: all four approved.**
 
-| Module | Outcome | Platform-approved |
-|---|---|---|
-| Mortgage Analysis | **Pass** | ✅ |
-| Pension Projection | **Remediation required** | ❌ |
-| College Funding | **Remediation required** | ❌ |
+| Module | Outcome | Platform-approved | Adviser-enabled by default |
+|---|---|---|---|
+| Mortgage Analysis | **Pass** | ✅ | ✅ |
+| Loan Analysis | **Pass** | ✅ | ✅ |
+| Pension Projection | **Pass**, once assumptions were centrally approved | ✅ | ✅ |
+| College Funding | **Pass**, once cost scenarios were centrally approved | ✅ | ✅ |
 
-Platform approval is not enablement. Mortgage Analysis is approved but ships
-with `adviserConsumerEnabled: false`, so **no consumer-facing behaviour changes
-until an adviser switches it on**.
+The two remediation items raised on 2026-07-25 were both assumption-approval
+decisions rather than engineering defects, and both were resolved by the
+centrally approved Planéir assumptions in
+[planeir_assumptions.js](../js/planning/planeir_assumptions.js). The original
+findings are kept below because they record why each module was gated.
+
+**Still gated:** `net_retirement_cashflow` has a runnable engine but has not been
+reviewed, so it stays invisible to consumers. Having an engine is never approval.
+
+Mortgage Analysis and Loan Analysis are **separate modules, not aliases**:
+mortgages, term changes, switching and overpayments on one side; car, personal
+and other non-mortgage debt with repayment acceleration on the other.
 
 ---
 
@@ -38,11 +48,14 @@ until an adviser switches it on**.
 **Scope limit, disclosed not blocking:** interest-only mortgages are out of
 scope in v1. The adapter says so in a warning that reaches the client.
 
-## Pension Projection — REMEDIATION REQUIRED
+## Pension Projection — APPROVED 2026-07-26 (was: remediation required)
 
-Passes seven criteria. Blocked on disclosures.
+**Resolved.** Growth of 5% and inflation of 2% are now centrally approved,
+versioned Planéir assumptions, stated as planning assumptions with the
+medium-risk diversified-portfolio basis and an explicit "not a guaranteed
+return" disclosure. Neither consumers nor advisers can override them.
 
-**Blocking items:**
+**Original blocking items:**
 
 1. **Growth and inflation defaults are unapproved for consumer use.** The
    adapter attaches 5% investment growth and 2% inflation with the reason
@@ -61,9 +74,15 @@ Strong points worth recording: the State Pension rule is dated
 caveat; and the pre-tax nature of the projection is disclosed with a pointer to
 the separate net retirement view.
 
-## College Funding — REMEDIATION REQUIRED
+## College Funding — APPROVED 2026-07-26 (was: remediation required)
 
-**Blocking item:**
+**Resolved.** Two standard scenarios are now centrally approved — living at home
+at €5,000 a year and living away at €15,000 a year, in today's money, four years
+per child — projected at 4% education inflation with the explanation that
+education costs tend to rise faster than general consumer prices. Output is
+presented as planning estimates, not guaranteed future costs.
+
+**Original blocking item:**
 
 1. **No approved cost scenarios.** The adapter refuses readiness with *"Add at
    least one explicit annual-cost scenario; consumer defaults are not yet
@@ -81,10 +100,12 @@ per-child missing-data handling — is in place.
 
 ## Not reviewed
 
-`net_retirement_cashflow` and `loan_analysis` have engines but were outside the
-requested scope. Both are recorded `not_reviewed` and remain invisible to
-consumers. `loan_analysis` looks like the strongest next candidate: it shares
-`mortgage_math.js` with the module that passed.
+`loan_analysis` was approved on 2026-07-26 alongside the others; it shares
+`mortgage_math.js` with Mortgage Analysis, which had already passed.
+
+`net_retirement_cashflow` remains `not_reviewed` and invisible to consumers. It
+is the obvious next candidate, and its review should cover how its after-tax
+projection is presented alongside the pre-tax pension projection.
 
 ## How this is enforced
 
@@ -97,5 +118,8 @@ and bound by the build:
 - the legacy `availability.consumer` must equal the derived value.
 
 `validateAdviserConsumerToggle` applies the same rules server-side, so a UI or
-API cannot enable Pension Projection or College Funding for consumers while
-their remediation is outstanding.
+API cannot enable an unreviewed module such as `net_retirement_cashflow`, or a
+module with no engine such as `protection_analysis`, for consumers.
+
+An adviser may disable any approved module for their own consumer journey;
+disabling only narrows what a consumer sees and needs no gate.

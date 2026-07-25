@@ -28,11 +28,15 @@ import {
   runConsumerAnalysis
 } from '../js/planning/index.js';
 import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
-import { validateAdviserConsumerToggle } from '../js/planning/module_availability.js';
+import { effectiveConsumerAvailability, validateAdviserConsumerToggle } from '../js/planning/module_availability.js';
 import { factPreconditionBlock, isFactApplicable, withoutInapplicableFacts } from '../js/planning/fact_preconditions.js';
 
 const NOW = '2026-07-25T09:00:00.000Z';
 const ALL = Object.values(MODULE_IDS);
+const APPROVED_MODULES = [
+  'liquidity_analysis', 'house_purchase', 'personal_balance_sheet',
+  'mortgage_analysis', 'loan_analysis', 'pension_projection', 'college_funding'
+];
 let failures = 0;
 
 function check(name, fn) {
@@ -324,8 +328,10 @@ function consumerFacing(plan) {
 }
 
 check('a module without platform consumer approval is never consumer-visible', () => {
-  const plan = planFor(RICH);
-  for (const moduleId of ['pension_projection', 'college_funding']) {
+  // net_retirement_cashflow has a runnable engine but has not been through the
+  // consumer-readiness review, so an engine alone must not make it visible.
+  const plan = planFor({ ...RICH, retirementStatus: 'approaching_retirement' });
+  for (const moduleId of ['net_retirement_cashflow']) {
     assert.ok(
       !plan.moduleOpportunities.some((item) => item.moduleId === moduleId),
       `${moduleId} is not platform-approved and must never be offered`
@@ -356,27 +362,40 @@ check('an adviser-disabled module is never offered', () => {
 });
 
 check('an adviser cannot enable a platform-unapproved or non-runnable module', () => {
-  assert.equal(validateAdviserConsumerToggle('pension_projection', true).code, 'module_not_platform_approved');
-  assert.equal(validateAdviserConsumerToggle('college_funding', true).code, 'module_not_platform_approved');
+  assert.equal(validateAdviserConsumerToggle('net_retirement_cashflow', true).code, 'module_not_platform_approved');
   assert.equal(validateAdviserConsumerToggle('protection_analysis', true).code, 'module_not_runnable');
+  assert.equal(validateAdviserConsumerToggle('cat_analysis', true).code, 'module_not_runnable');
   // Turning a module OFF only ever narrows what a consumer sees, so it is allowed.
-  assert.equal(validateAdviserConsumerToggle('pension_projection', false).ok, true);
-  // Mortgage passed the readiness review, so an adviser may switch it on.
-  assert.equal(validateAdviserConsumerToggle('mortgage_analysis', true).ok, true);
+  assert.equal(validateAdviserConsumerToggle('net_retirement_cashflow', false).ok, true);
+  // The reviewed modules may be switched on.
+  for (const moduleId of APPROVED_MODULES) {
+    assert.equal(validateAdviserConsumerToggle(moduleId, true).ok, true, `${moduleId} should be enableable`);
+  }
 });
 
-check('the three reviewed engine modules match their recorded readiness outcome', () => {
+check('the approved modules are platform-approved and adviser-enabled by default', () => {
   const byId = new Map(MODULE_MANIFEST.map((entry) => [entry.moduleId, entry]));
-  const mortgage = byId.get('mortgage_analysis');
-  assert.equal(mortgage.consumerReadiness.status, 'approved');
-  assert.equal(mortgage.availability.platformConsumerApproved, true);
-
-  for (const moduleId of ['pension_projection', 'college_funding']) {
+  for (const moduleId of APPROVED_MODULES) {
     const entry = byId.get(moduleId);
-    assert.equal(entry.consumerReadiness.status, 'remediation_required');
-    assert.equal(entry.availability.platformConsumerApproved, false);
-    assert.ok(entry.consumerReadiness.blockingItems.length > 0,
-      `${moduleId} needs remediation but records no blocking items`);
+    assert.equal(entry.consumerReadiness.status, 'approved', `${moduleId} readiness`);
+    assert.equal(entry.availability.platformConsumerApproved, true, `${moduleId} platform approval`);
+    assert.equal(entry.availability.adviserConsumerEnabled, true, `${moduleId} adviser default`);
+    assert.equal(entry.implementation.hasRunnableEngine, true, `${moduleId} engine`);
+    assert.ok(entry.clientBenefit.length > 40, `${moduleId} needs a client-facing benefit`);
+  }
+  // Mortgage and Loan are separate analyses, not aliases of one another.
+  assert.notEqual(byId.get('mortgage_analysis').clientBenefit, byId.get('loan_analysis').clientBenefit);
+  assert.ok(byId.get('mortgage_analysis').routing.goals.some((goal) => goal.type === 'optimise_mortgage'));
+  assert.ok(byId.get('loan_analysis').routing.goals.some((goal) => goal.type === 'manage_loan'));
+  // An engine without a completed review stays unapproved.
+  assert.equal(byId.get('net_retirement_cashflow').availability.platformConsumerApproved, false);
+});
+
+check('an adviser may disable any approved module for their own journey', () => {
+  for (const moduleId of APPROVED_MODULES) {
+    const off = effectiveConsumerAvailability(moduleId, { adviserOverrides: { [moduleId]: false } });
+    assert.equal(off.visible, false, `${moduleId} should be hideable by its adviser`);
+    assert.equal(off.blockedBy, 'adviser_consumer_enabled');
   }
 });
 
@@ -471,11 +490,14 @@ check('confirmation cannot smuggle in a module the client never accepted', () =>
 
 check('confirmation cannot smuggle in a module that is not consumer-visible', () => {
   const plan = planFor(
-    RICH,
-    { acceptedModuleIds: ['pension_projection'], confirmedModuleIds: ['pension_projection'] }
+    { ...RICH, retirementStatus: 'approaching_retirement' },
+    {
+      acceptedModuleIds: ['net_retirement_cashflow'],
+      confirmedModuleIds: ['net_retirement_cashflow']
+    }
   );
   assert.ok(
-    !plan.executionModuleIds.includes('pension_projection'),
+    !plan.executionModuleIds.includes('net_retirement_cashflow'),
     'a platform-unapproved module must not execute even if accepted and confirmed'
   );
 });

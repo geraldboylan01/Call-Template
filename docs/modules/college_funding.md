@@ -11,9 +11,9 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false,
-    "platformConsumerApproved": false,
-    "adviserConsumerEnabled": false
+    "consumer": true,
+    "platformConsumerApproved": true,
+    "adviserConsumerEnabled": true
   },
   "implementation": {
     "status": "engine",
@@ -64,13 +64,11 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "estimate what education is likely to cost and how much saving that would take under different assumptions",
+  "clientBenefit": "estimate what college is likely to cost using our standard living-at-home and living-away figures, and show the saving needed to fund four years for each child",
   "consumerReadiness": {
-    "status": "remediation_required",
-    "reviewedOn": "2026-07-25",
-    "blockingItems": [
-      "Supply reviewed, date-versioned annual college cost scenarios. The adapter blocks readiness with \"consumer defaults are not yet approved\" and warns that costs must be dated before consumer enablement."
-    ]
+    "status": "approved",
+    "reviewedOn": "2026-07-26",
+    "blockingItems": []
   }
 }
 ```

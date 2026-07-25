@@ -59,7 +59,7 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "check whether the cash you can reach is right for what you spend and the risks in the near term",
+  "clientBenefit": "check whether you have the right amount of money you can actually reach for everyday spending, emergencies and anything coming up soon, without leaving too much long-term money sitting uninvested",
   "consumerReadiness": {
     "status": "approved",
     "reviewedOn": "2026-07-25",

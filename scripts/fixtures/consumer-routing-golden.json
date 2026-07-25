@@ -62,8 +62,8 @@
             "routeRuleId": "manifest.retire.pension_projection.v1",
             "readinessStatus": "ready_with_assumptions",
             "releaseStatus": "beta",
-            "consumerAvailable": false,
-            "releaseGate": "consumer_gated"
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
           },
           {
             "moduleId": "net_retirement_cashflow",
@@ -96,8 +96,8 @@
             "routeRuleId": "manifest.optimise_mortgage.mortgage_analysis.v1",
             "readinessStatus": "ready_with_assumptions",
             "releaseStatus": "beta",
-            "consumerAvailable": false,
-            "releaseGate": "consumer_gated"
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
           }
         ]
       }
@@ -122,8 +122,8 @@
             "routeRuleId": "manifest.fund_education.college_funding.v1",
             "readinessStatus": "missing_information",
             "releaseStatus": "beta",
-            "consumerAvailable": false,
-            "releaseGate": "consumer_gated"
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
           }
         ],
         "absentProfilePaths": [
@@ -171,8 +171,8 @@
             "routeRuleId": "manifest.retire_early.pension_projection.v1",
             "readinessStatus": "missing_information",
             "releaseStatus": "beta",
-            "consumerAvailable": false,
-            "releaseGate": "consumer_gated"
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
           },
           {
             "moduleId": "liquidity_analysis",
@@ -189,8 +189,8 @@
             "routeRuleId": "manifest.fund_education.college_funding.v1",
             "readinessStatus": "missing_information",
             "releaseStatus": "beta",
-            "consumerAvailable": false,
-            "releaseGate": "consumer_gated"
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
           }
         ]
       }

@@ -56,7 +56,7 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "a clear breakdown of what you own and owe, where cash may be concentrated, and how your overall position supports your longer-term goals",
+  "clientBenefit": "create a clear breakdown of what you own and what you owe, and show how your cash, investments, pensions, property and debts fit together \u2014 including whether you are holding more cash than you need, and whether the overall shape looks aligned with your longer-term plans",
   "consumerReadiness": {
     "status": "approved",
     "reviewedOn": "2026-07-25",

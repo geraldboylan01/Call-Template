@@ -11,9 +11,9 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false,
-    "platformConsumerApproved": false,
-    "adviserConsumerEnabled": false
+    "consumer": true,
+    "platformConsumerApproved": true,
+    "adviserConsumerEnabled": true
   },
   "implementation": {
     "status": "engine",
@@ -86,14 +86,11 @@
       "reason": "A sole trader or contractor has no employer, so an employer contribution rate is not a question that can be answered."
     }
   },
-  "clientBenefit": "show how your pension may develop under different contribution levels and retirement ages",
+  "clientBenefit": "project how your pension may develop using our approved 5% growth and 2% inflation planning assumptions, and show whether your current contributions and retirement timing look aligned with what you want",
   "consumerReadiness": {
-    "status": "remediation_required",
-    "reviewedOn": "2026-07-25",
-    "blockingItems": [
-      "Approve the 5% investment growth and 2% inflation defaults as consumer-facing assumptions. The adapter flags both \"review before consumer activation\".",
-      "Land the employer-contribution fact precondition so a self-employed client is never asked what their employer contributes."
-    ]
+    "status": "approved",
+    "reviewedOn": "2026-07-26",
+    "blockingItems": []
   }
 }
 ```

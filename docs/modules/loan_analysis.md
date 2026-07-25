@@ -11,9 +11,9 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false,
-    "platformConsumerApproved": false,
-    "adviserConsumerEnabled": false
+    "consumer": true,
+    "platformConsumerApproved": true,
+    "adviserConsumerEnabled": true
   },
   "implementation": {
     "status": "engine",
@@ -57,10 +57,10 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "compare normal repayments with paying it off faster, including the interest saved and the effect on monthly cash flow",
+  "clientBenefit": "show what happens if you keep making normal repayments versus paying it off faster, including the interest you would save and the effect on your monthly cash flow",
   "consumerReadiness": {
-    "status": "not_reviewed",
-    "reviewedOn": "",
+    "status": "approved",
+    "reviewedOn": "2026-07-26",
     "blockingItems": []
   }
 }

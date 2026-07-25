@@ -260,9 +260,9 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false,
-      "platformConsumerApproved": false,
-      "adviserConsumerEnabled": false
+      "consumer": true,
+      "platformConsumerApproved": true,
+      "adviserConsumerEnabled": true
     },
     "implementation": {
       "status": "engine",
@@ -313,13 +313,11 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
-    "clientBenefit": "estimate what education is likely to cost and how much saving that would take under different assumptions",
+    "clientBenefit": "estimate what college is likely to cost using our standard living-at-home and living-away figures, and show the saving needed to fund four years for each child",
     "consumerReadiness": {
-      "status": "remediation_required",
-      "reviewedOn": "2026-07-25",
-      "blockingItems": [
-        "Supply reviewed, date-versioned annual college cost scenarios. The adapter blocks readiness with \"consumer defaults are not yet approved\" and warns that costs must be dated before consumer enablement."
-      ]
+      "status": "approved",
+      "reviewedOn": "2026-07-26",
+      "blockingItems": []
     },
     "purpose": "Projects the cost of each child’s education against a reviewed cost scenario and shows what needs to be saved.",
     "whenToUse": "The client raises paying for a child’s education, college or third-level costs, or saving for a specific child’s future.",
@@ -391,7 +389,7 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
-    "clientBenefit": "work out the deposit, what is affordable, the mortgage you would need, and the path to buying",
+    "clientBenefit": "work out the deposit, what is likely to be affordable, the mortgage you would need, and the savings path to get there",
     "consumerReadiness": {
       "status": "approved",
       "reviewedOn": "2026-07-25",
@@ -458,7 +456,7 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
-    "clientBenefit": "check whether the cash you can reach is right for what you spend and the risks in the near term",
+    "clientBenefit": "check whether you have the right amount of money you can actually reach for everyday spending, emergencies and anything coming up soon, without leaving too much long-term money sitting uninvested",
     "consumerReadiness": {
       "status": "approved",
       "reviewedOn": "2026-07-25",
@@ -477,9 +475,9 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false,
-      "platformConsumerApproved": false,
-      "adviserConsumerEnabled": false
+      "consumer": true,
+      "platformConsumerApproved": true,
+      "adviserConsumerEnabled": true
     },
     "implementation": {
       "status": "engine",
@@ -523,10 +521,10 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
-    "clientBenefit": "compare normal repayments with paying it off faster, including the interest saved and the effect on monthly cash flow",
+    "clientBenefit": "show what happens if you keep making normal repayments versus paying it off faster, including the interest you would save and the effect on your monthly cash flow",
     "consumerReadiness": {
-      "status": "not_reviewed",
-      "reviewedOn": "",
+      "status": "approved",
+      "reviewedOn": "2026-07-26",
       "blockingItems": []
     },
     "purpose": "Deterministic amortisation for non-housing debt, and what changes if it is repaid faster.",
@@ -542,9 +540,9 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false,
+      "consumer": true,
       "platformConsumerApproved": true,
-      "adviserConsumerEnabled": false
+      "adviserConsumerEnabled": true
     },
     "implementation": {
       "status": "engine",
@@ -594,10 +592,10 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
-    "clientBenefit": "compare your current repayment path with switching, changing the term, or making extra repayments",
+    "clientBenefit": "show your current mortgage repayment path and compare the alternatives — changing the term, switching, or making extra repayments",
     "consumerReadiness": {
       "status": "approved",
-      "reviewedOn": "2026-07-25",
+      "reviewedOn": "2026-07-26",
       "blockingItems": []
     },
     "purpose": "Deterministic amortisation of an existing mortgage: balance, rate, remaining term, and the effect of changing any of them.",
@@ -678,7 +676,7 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
-    "clientBenefit": "show what you would actually have to live on in retirement after tax, and any shortfall",
+    "clientBenefit": "show what you would actually have to live on in retirement after tax, and any shortfall against what you want to spend",
     "consumerReadiness": {
       "status": "not_reviewed",
       "reviewedOn": "",
@@ -697,9 +695,9 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false,
-      "platformConsumerApproved": false,
-      "adviserConsumerEnabled": false
+      "consumer": true,
+      "platformConsumerApproved": true,
+      "adviserConsumerEnabled": true
     },
     "implementation": {
       "status": "engine",
@@ -772,14 +770,11 @@ export const MODULE_MANIFEST = Object.freeze([
         "reason": "A sole trader or contractor has no employer, so an employer contribution rate is not a question that can be answered."
       }
     },
-    "clientBenefit": "show how your pension may develop under different contribution levels and retirement ages",
+    "clientBenefit": "project how your pension may develop using our approved 5% growth and 2% inflation planning assumptions, and show whether your current contributions and retirement timing look aligned with what you want",
     "consumerReadiness": {
-      "status": "remediation_required",
-      "reviewedOn": "2026-07-25",
-      "blockingItems": [
-        "Approve the 5% investment growth and 2% inflation defaults as consumer-facing assumptions. The adapter flags both \"review before consumer activation\".",
-        "Land the employer-contribution fact precondition so a self-employed client is never asked what their employer contributes."
-      ]
+      "status": "approved",
+      "reviewedOn": "2026-07-26",
+      "blockingItems": []
     },
     "purpose": "Projects pre-tax pension pots forward and shows readiness against a target retirement income.",
     "whenToUse": "The client asks whether their pension is on track, whether they are paying in enough, about contribution rates or an employer match, or whether they could retire at a particular age.",
@@ -839,7 +834,7 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
-    "clientBenefit": "a clear breakdown of what you own and owe, where cash may be concentrated, and how your overall position supports your longer-term goals",
+    "clientBenefit": "create a clear breakdown of what you own and what you owe, and show how your cash, investments, pensions, property and debts fit together — including whether you are holding more cash than you need, and whether the overall shape looks aligned with your longer-term plans",
     "consumerReadiness": {
       "status": "approved",
       "reviewedOn": "2026-07-25",

@@ -68,7 +68,7 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "work out the deposit, what is affordable, the mortgage you would need, and the path to buying",
+  "clientBenefit": "work out the deposit, what is likely to be affordable, the mortgage you would need, and the savings path to get there",
   "consumerReadiness": {
     "status": "approved",
     "reviewedOn": "2026-07-25",

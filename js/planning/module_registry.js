@@ -359,7 +359,7 @@ register({
   requiredProfilePaths: ['/primaryPerson/age', '/pensions', '/incomeSources', '/expenses'],
   optionalProfilePaths: ['/partner', '/assumptions/values/retirement'],
   adviserAvailable: true,
-  consumerAvailable: false,
+  consumerAvailable: true,
   intakeContract: approvedIntake(
     'calculation',
     INTAKE_FACTS[MODULE_IDS.PENSION_PROJECTION],
@@ -428,7 +428,7 @@ register({
   requiredProfilePaths: ['/liabilities'],
   optionalProfilePaths: ['/assumptions/values/mortgage'],
   adviserAvailable: true,
-  consumerAvailable: false,
+  consumerAvailable: true,
   intakeContract: approvedIntake(
     'calculation',
     INTAKE_FACTS[MODULE_IDS.MORTGAGE],
@@ -451,7 +451,7 @@ register({
   requiredProfilePaths: ['/liabilities'],
   optionalProfilePaths: ['/assumptions/values/loan'],
   adviserAvailable: true,
-  consumerAvailable: false,
+  consumerAvailable: true,
   intakeContract: approvedIntake(
     'calculation',
     INTAKE_FACTS[MODULE_IDS.LOAN],
@@ -474,7 +474,7 @@ register({
   requiredProfilePaths: ['/dependants', '/assumptions/values/collegeFunding/scenarios'],
   optionalProfilePaths: ['/assumptions/inflationRate'],
   adviserAvailable: true,
-  consumerAvailable: false,
+  consumerAvailable: true,
   intakeContract: approvedIntake(
     'calculation',
     INTAKE_FACTS[MODULE_IDS.COLLEGE_FUNDING],

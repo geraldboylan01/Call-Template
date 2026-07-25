@@ -458,3 +458,26 @@ P3 question composer and the spoken confirmation flow, which is where the
 "explain the addition and confirm the final set" wording will live.
 `confirmedModuleIds` is read from `assumptions.values.planning`, so the voice
 and typed journeys can both write it.
+
+---
+
+## 13. Deferred: legacy persona storage-path migration
+
+P2b deleted the persona **router**. The storage path
+`/assumptions/values/persona/*` deliberately remains, because renaming it changes
+profile JSON pointers referenced by `semantic_facts` mappings and by stored D1
+profiles — a data migration, not a rename.
+
+Scheduled as its own compatibility migration:
+
+1. **Dual read** — resolve circumstance facts from `circumstances` first, falling
+   back to `persona`.
+2. **Write new** — all new writes go to `circumstances`.
+3. **Backfill** — migrate stored profiles.
+4. **Retire** — remove the legacy path and the dual read after verification.
+
+**The legacy storage name must not reintroduce persona-based routing.** Nothing
+reads it as a persona label any more: `classifyPlanningPersona` and
+`buildPersonaModulePlan` are deleted, and the remaining reads treat those keys as
+plain circumstance facts feeding eligibility and suggestion predicates. The
+convergence suite would fail if persona-shaped routing returned.

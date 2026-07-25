@@ -76,7 +76,7 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "show what you would actually have to live on in retirement after tax, and any shortfall",
+  "clientBenefit": "show what you would actually have to live on in retirement after tax, and any shortfall against what you want to spend",
   "consumerReadiness": {
     "status": "not_reviewed",
     "reviewedOn": "",
