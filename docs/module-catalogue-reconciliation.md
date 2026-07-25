@@ -380,6 +380,81 @@ what live clients are shown. Flagged for Gerry rather than taken unilaterally:
 > sheet only. If yes, add `understand_position` to `liquidity_analysis`'s
 > `routing.goals` and the conversation will follow.
 
+**Answered 2026-07-25.** The Personal Balance Sheet stays the strong default,
+but the journey is no longer confined to it. Companion analyses are now
+*suggested* from accumulated circumstances and confirmed by the client before
+anything extra runs — see §12.
+
 Everything else in P2 is behaviour-preserving. Route rule ids changed form
 (`route.buy_home.v1` → `manifest.buy_home.house_purchase.v1`); they are recorded
 in telemetry, so historical `goal_plan_evaluated` events use the old strings.
+
+---
+
+## 12. Three selection states — selected, suggested, deferred
+
+Implemented 2026-07-25. An overall-position request opens on the Personal
+Balance Sheet and then keeps listening, without ever quietly widening what runs.
+
+| State | Meaning | Where it lives | Executed? |
+|---|---|---|---|
+| `selected` | directly supports the client's stated goal, or a suggestion the client confirmed | `plan.moduleSlots` | **yes** |
+| `suggested` | circumstances give a clear reason to consider it, and it has a real engine | `plan.suggestedModules` | **no — until confirmed** |
+| `deferred` | relevant on the evidence but not analysable (no engine) | `plan.deferredModules` | no |
+
+`executionModuleIds` is derived from `moduleSlots` alone, so a suggestion cannot
+reach the analysis layer without passing through confirmation. That is the
+structural guarantee behind "do not silently execute additional modules".
+
+### How a suggestion arises
+
+Manifests carry `routing.suggestedWhen`: a client-facing `reason` plus `anyOf`
+conditions over **accumulated profile state** — circumstance facts
+(`property_status`, `has_pension`, `dependant_count`, …) resolved through their
+existing `semantic_facts` path mappings, and `profileHas` predicates over
+recorded positions (`mortgage`, `pension`, `loan`, `cash`, `dependants`,
+`business`, `property`).
+
+Because the predicates read the profile rather than a turn, a suggestion appears
+when the evidence exists and not before — the voice model can stay immediate and
+conversational without being the thing that decides the module set. The build
+rejects a suggestion rule with no client-facing reason, since a suggestion that
+cannot be explained must not be offered.
+
+### The journey, as tested
+
+```
+understand_position, nothing else known
+  selected : personal_balance_sheet          EXECUTES: personal_balance_sheet
+  suggested: —
+
+… client mentions they own their home and have a pension
+  selected : personal_balance_sheet          EXECUTES: personal_balance_sheet
+  suggested: mortgage_analysis, pension_projection
+
+… client mentions two children
+  selected : personal_balance_sheet          EXECUTES: personal_balance_sheet
+  suggested: college_funding, mortgage_analysis, pension_projection
+  deferred : protection_analysis             (relevant, but no engine)
+
+… client confirms the mortgage
+  selected : personal_balance_sheet, mortgage_analysis
+  suggested: pension_projection
+```
+
+Nine assertions in
+[check-consumer-routing-convergence.mjs](../scripts/check-consumer-routing-convergence.mjs)
+hold this: the balance-sheet-only start, suggestion only after evidence, a
+reason on every suggestion, non-execution before confirmation, promotion on
+confirmation, mutual exclusivity of the three states, engine-less modules
+deferring rather than being offered, stability and monotonicity as facts
+accumulate, and exact execution of the confirmed set.
+
+### Remaining wiring
+
+The plan now produces the three states; the realtime conversation does not yet
+speak the suggestions aloud or collect the confirmation. That belongs with the
+P3 question composer and the spoken confirmation flow, which is where the
+"explain the addition and confirm the final set" wording will live.
+`confirmedModuleIds` is read from `assumptions.values.planning`, so the voice
+and typed journeys can both write it.

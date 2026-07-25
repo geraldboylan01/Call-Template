@@ -29,6 +29,16 @@
       }
     ],
     "adviserGoals": [],
+    "suggestedWhen": [
+      {
+        "reason": "You mentioned a loan, so I can show what clearing it earlier would change.",
+        "anyOf": [
+          {
+            "profileHas": "loan"
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

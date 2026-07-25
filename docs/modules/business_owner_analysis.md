@@ -29,6 +29,26 @@
         "role": "direct"
       }
     ],
+    "suggestedWhen": [
+      {
+        "reason": "You have a business interest, which Gerry should review alongside your personal position.",
+        "anyOf": [
+          {
+            "fact": "business_context",
+            "in": [
+              "business_owner",
+              "company_director",
+              "owner_manager",
+              "self_employed",
+              "farmer"
+            ]
+          },
+          {
+            "profileHas": "business"
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

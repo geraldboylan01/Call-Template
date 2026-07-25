@@ -30,6 +30,17 @@
         "requiresFact": "business_exit_intent"
       }
     ],
+    "suggestedWhen": [
+      {
+        "reason": "You are planning an exit from the business, which Gerry should review for the reliefs that may apply.",
+        "anyOf": [
+          {
+            "fact": "business_exit_intent",
+            "equals": true
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

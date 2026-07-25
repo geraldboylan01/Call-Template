@@ -33,6 +33,7 @@
       }
     ],
     "adviserGoals": [],
+    "suggestedWhen": [],
     "pinned": "when_eligible",
     "priorityBoost": 0
   },

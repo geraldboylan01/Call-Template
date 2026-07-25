@@ -33,6 +33,31 @@
       }
     ],
     "adviserGoals": [],
+    "suggestedWhen": [
+      {
+        "reason": "Retirement is close enough that it is worth showing what you would actually have to live on after tax.",
+        "anyOf": [
+          {
+            "fact": "retirement_status",
+            "in": [
+              "approaching_retirement",
+              "newly_retired",
+              "retired",
+              "older_retiree"
+            ]
+          },
+          {
+            "fact": "life_stage",
+            "in": [
+              "pre_retiree",
+              "newly_retired",
+              "retired",
+              "older_retiree"
+            ]
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

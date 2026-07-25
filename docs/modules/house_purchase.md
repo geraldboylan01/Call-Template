@@ -29,6 +29,20 @@
       }
     ],
     "adviserGoals": [],
+    "suggestedWhen": [
+      {
+        "reason": "You mentioned buying, so I can put affordability and deposit timing alongside this.",
+        "anyOf": [
+          {
+            "fact": "property_status",
+            "in": [
+              "first_time_buyer",
+              "buying_soon"
+            ]
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

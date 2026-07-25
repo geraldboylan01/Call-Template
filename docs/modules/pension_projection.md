@@ -37,6 +37,20 @@
       }
     ],
     "adviserGoals": [],
+    "suggestedWhen": [
+      {
+        "reason": "You have a pension, so I can show whether it is on track for the retirement you want.",
+        "anyOf": [
+          {
+            "fact": "has_pension",
+            "equals": true
+          },
+          {
+            "profileHas": "pension"
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

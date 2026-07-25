@@ -50,6 +50,10 @@ const IMPLEMENTATION_STATUSES = new Set([
   'planned'
 ]);
 const INTAKE_STATUSES = new Set(['approved', 'incomplete']);
+// Mirrors PROFILE_HAS_PREDICATES in goal_plan.js.
+const PROFILE_HAS_KINDS = new Set([
+  'cash', 'pension', 'property', 'business', 'dependants', 'mortgage', 'loan'
+]);
 const MAX_PROSE = 1_200;
 const MAX_SIGNAL = 160;
 const MAX_SIGNALS = 12;
@@ -127,6 +131,36 @@ function parseManifest(source, label) {
       fail(`${label} goal ${goal.type} requires unknown fact ${goal.requiresFact}.`);
     }
   }
+  // suggestedWhen drives circumstance-based suggestion. Every rule must carry a
+  // client-facing reason, because a suggestion is only ever offered out loud —
+  // it must never widen what runs without being explained and confirmed.
+  for (const rule of routing.suggestedWhen || []) {
+    const reason = typeof rule.reason === 'string' ? rule.reason.trim() : '';
+    if (!reason) fail(`${label} has a suggestion rule with no client-facing reason.`);
+    if (reason.length > MAX_PROSE) fail(`${label} has an over-long suggestion reason.`);
+    if (INSTRUCTION_LIKE.test(reason)) fail(`${label} has an instruction-like suggestion reason.`);
+    if (!Array.isArray(rule.anyOf) || rule.anyOf.length === 0) {
+      fail(`${label} has a suggestion rule with no conditions.`);
+    }
+    for (const condition of rule.anyOf) {
+      if (typeof condition.profileHas === 'string') {
+        if (!PROFILE_HAS_KINDS.has(condition.profileHas)) {
+          fail(`${label} suggestion uses unknown profileHas "${condition.profileHas}".`);
+        }
+        continue;
+      }
+      if (!getSemanticFactDefinition(condition.fact)) {
+        fail(`${label} suggestion references unknown fact ${condition.fact}.`);
+      }
+      if (!Array.isArray(condition.in) && condition.equals === undefined && !Number.isFinite(condition.min)) {
+        fail(`${label} suggestion condition for ${condition.fact} has no comparison.`);
+      }
+    }
+  }
+  if (implementation.status === 'capability' && (routing.suggestedWhen || []).length > 0) {
+    fail(`${label} is a capability and must not be suggestible.`);
+  }
+
   // adviserGoals are the extra edges the execution-time router recommends,
   // covering adviser-only analyses that consumer goal routing deliberately
   // never selects. A capability has no edges of either kind.

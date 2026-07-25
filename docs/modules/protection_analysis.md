@@ -24,6 +24,20 @@
     "consumerRoutable": false,
     "goals": [],
     "adviserGoals": [],
+    "suggestedWhen": [
+      {
+        "reason": "People depend on your income, so protection is worth reviewing with Gerry.",
+        "anyOf": [
+          {
+            "fact": "dependant_count",
+            "min": 1
+          },
+          {
+            "profileHas": "dependants"
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

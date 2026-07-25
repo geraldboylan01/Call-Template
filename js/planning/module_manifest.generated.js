@@ -28,6 +28,17 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "direct"
         }
       ],
+      "suggestedWhen": [
+        {
+          "reason": "You have agricultural assets, which Gerry should review for the reliefs that may apply.",
+          "anyOf": [
+            {
+              "fact": "agricultural_assets",
+              "equals": true
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -66,6 +77,26 @@ export const MODULE_MANIFEST = Object.freeze([
         {
           "type": "business_planning",
           "role": "direct"
+        }
+      ],
+      "suggestedWhen": [
+        {
+          "reason": "You have a business interest, which Gerry should review alongside your personal position.",
+          "anyOf": [
+            {
+              "fact": "business_context",
+              "in": [
+                "business_owner",
+                "company_director",
+                "owner_manager",
+                "self_employed",
+                "farmer"
+              ]
+            },
+            {
+              "profileHas": "business"
+            }
+          ]
         }
       ],
       "pinned": "never",
@@ -109,6 +140,17 @@ export const MODULE_MANIFEST = Object.freeze([
           "requiresFact": "business_exit_intent"
         }
       ],
+      "suggestedWhen": [
+        {
+          "reason": "You are planning an exit from the business, which Gerry should review for the reliefs that may apply.",
+          "anyOf": [
+            {
+              "fact": "business_exit_intent",
+              "equals": true
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -147,6 +189,17 @@ export const MODULE_MANIFEST = Object.freeze([
         {
           "type": "transfer_wealth",
           "role": "direct"
+        }
+      ],
+      "suggestedWhen": [
+        {
+          "reason": "You raised passing on wealth, which Gerry should review for the tax thresholds that apply.",
+          "anyOf": [
+            {
+              "fact": "wealth_transfer_intent",
+              "equals": true
+            }
+          ]
         }
       ],
       "pinned": "never",
@@ -189,6 +242,24 @@ export const MODULE_MANIFEST = Object.freeze([
         }
       ],
       "adviserGoals": [],
+      "suggestedWhen": [
+        {
+          "reason": "You have children to plan for, so I can put education costs alongside this.",
+          "anyOf": [
+            {
+              "fact": "education_funding_intent",
+              "equals": true
+            },
+            {
+              "fact": "dependant_count",
+              "min": 1
+            },
+            {
+              "profileHas": "dependants"
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -234,6 +305,20 @@ export const MODULE_MANIFEST = Object.freeze([
         }
       ],
       "adviserGoals": [],
+      "suggestedWhen": [
+        {
+          "reason": "You mentioned buying, so I can put affordability and deposit timing alongside this.",
+          "anyOf": [
+            {
+              "fact": "property_status",
+              "in": [
+                "first_time_buyer",
+                "buying_soon"
+              ]
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -291,6 +376,16 @@ export const MODULE_MANIFEST = Object.freeze([
         }
       ],
       "adviserGoals": [],
+      "suggestedWhen": [
+        {
+          "reason": "I can also check your cash reserve against what you spend, so we know what is genuinely spare.",
+          "anyOf": [
+            {
+              "profileHas": "cash"
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -335,6 +430,16 @@ export const MODULE_MANIFEST = Object.freeze([
         }
       ],
       "adviserGoals": [],
+      "suggestedWhen": [
+        {
+          "reason": "You mentioned a loan, so I can show what clearing it earlier would change.",
+          "anyOf": [
+            {
+              "profileHas": "loan"
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -381,6 +486,22 @@ export const MODULE_MANIFEST = Object.freeze([
         }
       ],
       "adviserGoals": [],
+      "suggestedWhen": [
+        {
+          "reason": "You have a mortgage, so I can look at the rate and remaining term alongside the overall picture.",
+          "anyOf": [
+            {
+              "fact": "property_status",
+              "in": [
+                "homeowner"
+              ]
+            },
+            {
+              "profileHas": "mortgage"
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -431,6 +552,31 @@ export const MODULE_MANIFEST = Object.freeze([
         }
       ],
       "adviserGoals": [],
+      "suggestedWhen": [
+        {
+          "reason": "Retirement is close enough that it is worth showing what you would actually have to live on after tax.",
+          "anyOf": [
+            {
+              "fact": "retirement_status",
+              "in": [
+                "approaching_retirement",
+                "newly_retired",
+                "retired",
+                "older_retiree"
+              ]
+            },
+            {
+              "fact": "life_stage",
+              "in": [
+                "pre_retiree",
+                "newly_retired",
+                "retired",
+                "older_retiree"
+              ]
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -485,6 +631,20 @@ export const MODULE_MANIFEST = Object.freeze([
         }
       ],
       "adviserGoals": [],
+      "suggestedWhen": [
+        {
+          "reason": "You have a pension, so I can show whether it is on track for the retirement you want.",
+          "anyOf": [
+            {
+              "fact": "has_pension",
+              "equals": true
+            },
+            {
+              "profileHas": "pension"
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -541,6 +701,7 @@ export const MODULE_MANIFEST = Object.freeze([
         }
       ],
       "adviserGoals": [],
+      "suggestedWhen": [],
       "pinned": "when_eligible",
       "priorityBoost": 0
     },
@@ -586,6 +747,20 @@ export const MODULE_MANIFEST = Object.freeze([
       "consumerRoutable": false,
       "goals": [],
       "adviserGoals": [],
+      "suggestedWhen": [
+        {
+          "reason": "People depend on your income, so protection is worth reviewing with Gerry.",
+          "anyOf": [
+            {
+              "fact": "dependant_count",
+              "min": 1
+            },
+            {
+              "profileHas": "dependants"
+            }
+          ]
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -621,6 +796,7 @@ export const MODULE_MANIFEST = Object.freeze([
       "consumerRoutable": false,
       "goals": [],
       "adviserGoals": [],
+      "suggestedWhen": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -670,6 +846,7 @@ export const MODULE_MANIFEST = Object.freeze([
       "consumerRoutable": false,
       "goals": [],
       "adviserGoals": [],
+      "suggestedWhen": [],
       "pinned": "never",
       "priorityBoost": 0
     },

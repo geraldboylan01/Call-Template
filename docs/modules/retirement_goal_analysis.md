@@ -24,6 +24,7 @@
     "consumerRoutable": false,
     "goals": [],
     "adviserGoals": [],
+    "suggestedWhen": [],
     "pinned": "never",
     "priorityBoost": 0
   },

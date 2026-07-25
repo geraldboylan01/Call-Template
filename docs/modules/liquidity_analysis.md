@@ -33,6 +33,16 @@
       }
     ],
     "adviserGoals": [],
+    "suggestedWhen": [
+      {
+        "reason": "I can also check your cash reserve against what you spend, so we know what is genuinely spare.",
+        "anyOf": [
+          {
+            "profileHas": "cash"
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

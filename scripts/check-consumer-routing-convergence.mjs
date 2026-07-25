@@ -299,6 +299,141 @@ check('retirement_goal_analysis stays adviser-selection-only', () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// 6. Overall-position journeys widen by suggestion, never silently.
+// ---------------------------------------------------------------------------
+
+function planFor(persona = {}, planning = {}, goals = ['understand_position']) {
+  const profile = profileFor(goals, { persona });
+  const withPlanning = normalizeHouseholdProfile({
+    ...profile,
+    assumptions: {
+      ...profile.assumptions,
+      values: { ...profile.assumptions.values, planning: { ...profile.assumptions.values.planning, ...planning } }
+    }
+  });
+  return buildGoalModulePlan(withPlanning, { allowedModuleIds: ALL });
+}
+
+check('understand_position starts on the Personal Balance Sheet alone', () => {
+  const plan = planFor();
+  assert.deepEqual(plan.moduleSlots.map((slot) => slot.moduleId), [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
+  assert.deepEqual(plan.suggestedModules, []);
+  assert.deepEqual(plan.executionModuleIds, [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
+});
+
+check('a companion is suggested once the circumstance emerges, not before', () => {
+  const before = planFor();
+  assert.ok(
+    !before.suggestedModules.some((item) => item.moduleId === MODULE_IDS.MORTGAGE),
+    'the mortgage was suggested before any evidence of one'
+  );
+
+  const after = planFor({ propertyStatus: 'homeowner', hasPension: true });
+  const suggestedIds = after.suggestedModules.map((item) => item.moduleId);
+  assert.ok(suggestedIds.includes(MODULE_IDS.MORTGAGE), 'a homeowner should be offered the mortgage analysis');
+  assert.ok(suggestedIds.includes(MODULE_IDS.PENSION_PROJECTION), 'a pension holder should be offered the pension projection');
+
+  // The balance sheet is still the only thing selected, and still the only
+  // thing that would run.
+  assert.deepEqual(after.moduleSlots.map((slot) => slot.moduleId), [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
+  assert.deepEqual(after.executionModuleIds, [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
+});
+
+check('every suggestion carries a client-facing reason', () => {
+  const plan = planFor({ propertyStatus: 'homeowner', hasPension: true, dependantCount: 2 });
+  for (const item of [...plan.suggestedModules, ...plan.deferredModules]) {
+    assert.equal(typeof item.reason, 'string');
+    assert.ok(item.reason.length > 20, `${item.moduleId} has no explainable reason`);
+  }
+});
+
+check('a suggestion is never executed until the client confirms it', () => {
+  const suggested = planFor({ propertyStatus: 'homeowner' });
+  assert.ok(suggested.suggestedModules.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+  assert.ok(
+    !suggested.executionModuleIds.includes(MODULE_IDS.MORTGAGE),
+    'an unconfirmed suggestion reached the execution set'
+  );
+  assert.ok(
+    !suggested.moduleSlots.some((slot) => slot.moduleId === MODULE_IDS.MORTGAGE),
+    'an unconfirmed suggestion was counted as selected'
+  );
+});
+
+check('confirming a suggestion promotes it to selected', () => {
+  const confirmed = planFor({ propertyStatus: 'homeowner' }, { confirmedModuleIds: [MODULE_IDS.MORTGAGE] });
+  const slot = confirmed.moduleSlots.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
+  assert.ok(slot, 'the confirmed module did not become selected');
+  assert.equal(slot.selectionState, 'selected');
+  assert.equal(slot.source, 'client_confirmed_suggestion');
+  assert.ok(
+    !confirmed.suggestedModules.some((item) => item.moduleId === MODULE_IDS.MORTGAGE),
+    'a confirmed module must leave the suggestion list'
+  );
+});
+
+check('the three states are mutually exclusive', () => {
+  const plan = planFor({ propertyStatus: 'homeowner', hasPension: true, dependantCount: 2 });
+  const selected = plan.moduleSlots.map((slot) => slot.moduleId);
+  const suggested = plan.suggestedModules.map((item) => item.moduleId);
+  const deferred = plan.deferredModules.map((item) => item.moduleId);
+  const all = [...selected, ...suggested, ...deferred];
+  assert.equal(new Set(all).size, all.length, 'a module appeared in more than one selection state');
+  for (const slot of plan.moduleSlots) assert.equal(slot.selectionState, 'selected');
+  for (const item of plan.suggestedModules) assert.equal(item.selectionState, 'suggested');
+  for (const item of plan.deferredModules) assert.equal(item.selectionState, 'deferred');
+});
+
+check('a module with no engine is deferred rather than suggested', () => {
+  const plan = planFor({ dependantCount: 2 });
+  assert.ok(
+    plan.deferredModules.some((item) => item.moduleId === 'protection_analysis'),
+    'protection has no engine and must be deferred, not offered as runnable'
+  );
+  assert.ok(!plan.suggestedModules.some((item) => item.moduleId === 'protection_analysis'));
+});
+
+check('selection is driven by accumulated state, not by a single turn', () => {
+  const persona = { propertyStatus: 'homeowner', hasPension: true };
+  const first = planFor(persona);
+  const second = planFor(persona);
+  assert.deepEqual(
+    second.suggestedModules.map((item) => item.moduleId),
+    first.suggestedModules.map((item) => item.moduleId),
+    'the same accumulated facts produced different suggestions'
+  );
+
+  // Suggestions accumulate as evidence accumulates; earlier ones do not vanish
+  // because a later turn was about something else.
+  const widened = planFor({ ...persona, dependantCount: 2 });
+  for (const moduleId of first.suggestedModules.map((item) => item.moduleId)) {
+    assert.ok(
+      widened.suggestedModules.some((item) => item.moduleId === moduleId),
+      `${moduleId} was dropped when unrelated evidence arrived`
+    );
+  }
+});
+
+check('execution still runs exactly the confirmed set after a suggestion is accepted', async () => {
+  const plan = planFor(
+    { propertyStatus: 'homeowner' },
+    { confirmedModuleIds: [MODULE_IDS.LIQUIDITY] }
+  );
+  const confirmedSet = plan.executionModuleIds;
+  const result = await runConsumerAnalysis({
+    profile: profileFor(['understand_position'], { persona: { propertyStatus: 'homeowner' } }),
+    moduleIds: confirmedSet,
+    allowedModuleIds: ALL,
+    calculatedAt: NOW
+  });
+  assert.deepEqual(
+    result.analysisPlan.selectedModules.map((item) => item.moduleId).sort(),
+    [...confirmedSet].sort(),
+    'the analysis layer did not run exactly the confirmed set'
+  );
+});
+
 if (failures > 0) {
   console.error(`\n[RoutingConvergence] ${failures} check(s) failed.`);
   process.exitCode = 1;

@@ -3,11 +3,14 @@ import {
   getModuleIntakeReadiness,
   getPlanningModuleDefinition,
   getPlanningPlaybookManifestVersion,
-  isPlanningModuleSelectable
+  isPlanningCapability,
+  isPlanningModuleSelectable,
+  isRunnablePlanningModule
 } from './module_registry.js';
 import { MODULE_MANIFEST } from './module_manifest.generated.js';
 import { normalizeHouseholdProfile } from './profile.js';
-import { resolveSemanticFact } from './semantic_facts.js';
+import { getSemanticFactDefinition, resolveSemanticFact } from './semantic_facts.js';
+import { readJsonPointer } from './utils.js';
 
 export const GOAL_ROUTING_POLICY_VERSION = 'goal-routing-1.0.0';
 
@@ -77,6 +80,63 @@ function pinnedModuleIds() {
   return MODULE_MANIFEST
     .filter((entry) => entry.routing?.pinned === 'when_eligible')
     .map((entry) => entry.moduleId);
+}
+
+/**
+ * Circumstance-driven module suggestion.
+ *
+ * A stated goal selects a module. A circumstance only ever *suggests* one: an
+ * overall-position request should keep listening for whether a mortgage,
+ * pension, loan or education need is relevant, without quietly widening what
+ * gets executed. Suggestions are explained to the client and must be confirmed
+ * before they join the executed set.
+ *
+ * Predicates read accumulated profile state, never a single conversational
+ * turn, so a suggestion appears when the evidence exists and not before.
+ */
+const PROFILE_HAS_PREDICATES = Object.freeze({
+  cash: (profile) => profile.assets.some((asset) => asset.type === 'cash'),
+  pension: (profile) => profile.pensions.length > 0,
+  property: (profile) => profile.properties.length > 0,
+  business: (profile) => profile.businesses.length > 0,
+  dependants: (profile) => profile.dependants.length > 0,
+  mortgage: (profile) => profile.liabilities.some((item) => (
+    item.type === 'mortgage' || Boolean(item.linkedPropertyId)
+  )),
+  loan: (profile) => profile.liabilities.some((item) => (
+    item.type !== 'mortgage' && !item.linkedPropertyId
+  ))
+});
+
+function circumstanceValue(profile, factId) {
+  const pathPattern = getSemanticFactDefinition(factId)?.mappings?.[0]?.pathPattern;
+  return pathPattern ? readJsonPointer(profile, pathPattern) : undefined;
+}
+
+function conditionHolds(profile, condition) {
+  if (!condition || typeof condition !== 'object') return false;
+  if (typeof condition.profileHas === 'string') {
+    const predicate = PROFILE_HAS_PREDICATES[condition.profileHas];
+    return typeof predicate === 'function' ? predicate(profile) === true : false;
+  }
+  const value = circumstanceValue(profile, condition.fact);
+  if (value === undefined || value === null) return false;
+  if (Array.isArray(condition.in)) return condition.in.includes(value);
+  if (condition.equals !== undefined) return value === condition.equals;
+  if (Number.isFinite(condition.min)) return Number.isFinite(Number(value)) && Number(value) >= condition.min;
+  return false;
+}
+
+function suggestionReasonFor(profile, entry) {
+  for (const rule of entry.routing?.suggestedWhen || []) {
+    if ((rule.anyOf || []).some((condition) => conditionHolds(profile, condition))) return rule.reason;
+  }
+  return null;
+}
+
+function confirmedModuleIds(profile) {
+  const value = planningValues(profile).confirmedModuleIds;
+  return new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string') : []);
 }
 
 function activeGoals(profile) {
@@ -230,12 +290,33 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds } = {}) {
   }
 
   const allowed = Array.isArray(allowedModuleIds) ? new Set(allowedModuleIds) : null;
-  const moduleSlots = [...byModuleId.values()].slice(0, 3).map((selection, index) => {
+  const confirmed = confirmedModuleIds(profile);
+
+  // A confirmed suggestion becomes a selected module. This is the only route by
+  // which a circumstance-driven module reaches execution.
+  for (const moduleId of confirmed) {
+    if (byModuleId.has(moduleId) || isPlanningCapability(moduleId)) continue;
+    if (!isPlanningModuleSelectable(moduleId)) continue;
+    byModuleId.set(moduleId, {
+      moduleId,
+      source: 'client_confirmed_suggestion',
+      relatedGoalTypes: [...plannedGoalTypes],
+      ruleIds: [`manifest.suggested.${moduleId}.confirmed.v1`]
+    });
+  }
+
+  const goalSelected = [...byModuleId.values()].filter((selection) => selection.source !== 'client_confirmed_suggestion');
+  const confirmedSelected = [...byModuleId.values()].filter((selection) => selection.source === 'client_confirmed_suggestion');
+  // Goal-driven selection keeps its one-to-three contract; confirmed
+  // suggestions extend it because the client explicitly asked for them.
+  const selections = [...goalSelected.slice(0, 3), ...confirmedSelected];
+  const moduleSlots = selections.map((selection, index) => {
     const intake = intakeFor(selection.moduleId, profile, allowed);
     return Object.freeze({
       slot: index + 1,
       moduleId: selection.moduleId,
       source: selection.source,
+      selectionState: 'selected',
       relatedGoalTypes: Object.freeze([...selection.relatedGoalTypes]),
       availability: intake.availability,
       intakeStatus: intake.intakeStatus,
@@ -244,6 +325,37 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds } = {}) {
       ruleIds: Object.freeze([...selection.ruleIds])
     });
   });
+
+  // Circumstance-driven candidates the client has not confirmed. These are
+  // explained and offered; they are deliberately absent from executionModuleIds
+  // so nothing extra can run silently.
+  const selectedIds = new Set(moduleSlots.map((slot) => slot.moduleId));
+  const suggestedModules = [];
+  const deferredModules = [];
+  for (const entry of MODULE_MANIFEST) {
+    if (selectedIds.has(entry.moduleId) || isPlanningCapability(entry.moduleId)) continue;
+    const reason = suggestionReasonFor(profile, entry);
+    if (!reason) continue;
+    const intake = intakeFor(entry.moduleId, profile, allowed);
+    const candidate = Object.freeze({
+      moduleId: entry.moduleId,
+      reason,
+      availability: intake.availability,
+      intakeStatus: intake.intakeStatus,
+      missingFactIds: Object.freeze([...intake.missingFactIds]),
+      ruleIds: Object.freeze([`manifest.suggested.${entry.moduleId}.v1`])
+    });
+    // Relevance and availability are different questions. A module with a real
+    // engine is worth suggesting even when its consumer release gate is shut —
+    // its availability says whether it runs here or goes to Gerry. A module with
+    // no engine at all cannot be analysed either way, so it is deferred.
+    if (isRunnablePlanningModule(entry.moduleId)) {
+      suggestedModules.push(Object.freeze({ ...candidate, selectionState: 'suggested' }));
+    } else {
+      deferredModules.push(Object.freeze({ ...candidate, selectionState: 'deferred' }));
+    }
+  }
+
   const executionModuleIds = moduleSlots
     .filter((slot) => slot.availability === 'ready' || slot.availability === 'needs_facts')
     .map((slot) => slot.moduleId);
@@ -265,6 +377,10 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds } = {}) {
       confidence
     }),
     moduleSlots: Object.freeze(moduleSlots),
+    // Offered to the client with a reason, never executed until confirmed.
+    suggestedModules: Object.freeze(suggestedModules.slice(0, 3)),
+    // Relevant on the evidence, but not available for automated analysis.
+    deferredModules: Object.freeze(deferredModules.slice(0, 3)),
     executionModuleIds: Object.freeze(executionModuleIds),
     requiresGoalPriorityQuestion,
     requiresDecisionTopicQuestion,

@@ -29,6 +29,17 @@
         "role": "direct"
       }
     ],
+    "suggestedWhen": [
+      {
+        "reason": "You have agricultural assets, which Gerry should review for the reliefs that may apply.",
+        "anyOf": [
+          {
+            "fact": "agricultural_assets",
+            "equals": true
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

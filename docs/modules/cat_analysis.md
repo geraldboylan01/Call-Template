@@ -29,6 +29,17 @@
         "role": "direct"
       }
     ],
+    "suggestedWhen": [
+      {
+        "reason": "You raised passing on wealth, which Gerry should review for the tax thresholds that apply.",
+        "anyOf": [
+          {
+            "fact": "wealth_transfer_intent",
+            "equals": true
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

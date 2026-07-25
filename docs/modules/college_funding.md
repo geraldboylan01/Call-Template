@@ -29,6 +29,24 @@
       }
     ],
     "adviserGoals": [],
+    "suggestedWhen": [
+      {
+        "reason": "You have children to plan for, so I can put education costs alongside this.",
+        "anyOf": [
+          {
+            "fact": "education_funding_intent",
+            "equals": true
+          },
+          {
+            "fact": "dependant_count",
+            "min": 1
+          },
+          {
+            "profileHas": "dependants"
+          }
+        ]
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },
