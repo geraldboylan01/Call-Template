@@ -11,14 +11,17 @@
   "status": "unsupported",
   "availability": {
     "adviser": false,
-    "consumer": false
+    "consumer": false,
+    "platformConsumerApproved": false,
+    "adviserConsumerEnabled": false
   },
   "implementation": {
     "status": "capability",
     "intakeContract": "incomplete",
     "scenarioAware": false,
     "playbook": null,
-    "outputKey": null
+    "outputKey": null,
+    "hasRunnableEngine": false
   },
   "routing": {
     "consumerRoutable": false,
@@ -33,7 +36,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "",
+  "consumerReadiness": {
+    "status": "not_applicable",
+    "reviewedOn": "",
+    "blockingItems": []
+  }
 }
 ```
 

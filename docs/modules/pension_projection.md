@@ -11,14 +11,17 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false
+    "consumer": false,
+    "platformConsumerApproved": false,
+    "adviserConsumerEnabled": false
   },
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
     "scenarioAware": true,
     "playbook": "11_retirement_playbook.md",
-    "outputKey": "generated.pensionInputs"
+    "outputKey": "generated.pensionInputs",
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,
@@ -71,7 +74,27 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {
+    "pension_employer_contribution_rate": {
+      "skipWhen": {
+        "fact": "employment_context",
+        "in": [
+          "self_employed",
+          "contractor"
+        ]
+      },
+      "reason": "A sole trader or contractor has no employer, so an employer contribution rate is not a question that can be answered."
+    }
+  },
+  "clientBenefit": "show how your pension may develop under different contribution levels and retirement ages",
+  "consumerReadiness": {
+    "status": "remediation_required",
+    "reviewedOn": "2026-07-25",
+    "blockingItems": [
+      "Approve the 5% investment growth and 2% inflation defaults as consumer-facing assumptions. The adapter flags both \"review before consumer activation\".",
+      "Land the employer-contribution fact precondition so a self-employed client is never asked what their employer contributes."
+    ]
+  }
 }
 ```
 

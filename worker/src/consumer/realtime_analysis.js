@@ -39,7 +39,6 @@ export async function prepareRealtimeVoiceAnalysisPlan({
     scenarioOverrides: {},
     selectionPolicyVersion: planningState.selectionPolicyVersion,
     goalAssessment: planningState.goalAssessment,
-    ...(planningState.personaAssessment ? { personaAssessment: planningState.personaAssessment } : {}),
     moduleSlots: planningState.moduleSlots,
     requiresGoalPriorityQuestion: planningState.requiresGoalPriorityQuestion,
     deferredGoalTypes: planningState.deferredGoalTypes

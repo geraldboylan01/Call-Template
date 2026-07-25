@@ -28,6 +28,8 @@ import {
   runConsumerAnalysis
 } from '../js/planning/index.js';
 import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
+import { validateAdviserConsumerToggle } from '../js/planning/module_availability.js';
+import { factPreconditionBlock, isFactApplicable, withoutInapplicableFacts } from '../js/planning/fact_preconditions.js';
 
 const NOW = '2026-07-25T09:00:00.000Z';
 const ALL = Object.values(MODULE_IDS);
@@ -300,10 +302,10 @@ check('retirement_goal_analysis stays adviser-selection-only', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. Overall-position journeys widen by suggestion, never silently.
+// 6. Consumer visibility is a hard filter.
 // ---------------------------------------------------------------------------
 
-function planFor(persona = {}, planning = {}, goals = ['understand_position']) {
+function planFor(persona = {}, planning = {}, goals = ['understand_position'], adviserOverrides = null) {
   const profile = profileFor(goals, { persona });
   const withPlanning = normalizeHouseholdProfile({
     ...profile,
@@ -312,127 +314,195 @@ function planFor(persona = {}, planning = {}, goals = ['understand_position']) {
       values: { ...profile.assumptions.values, planning: { ...profile.assumptions.values.planning, ...planning } }
     }
   });
-  return buildGoalModulePlan(withPlanning, { allowedModuleIds: ALL });
+  return buildGoalModulePlan(withPlanning, { allowedModuleIds: ALL, adviserOverrides });
 }
 
-check('understand_position starts on the Personal Balance Sheet alone', () => {
-  const plan = planFor();
-  assert.deepEqual(plan.moduleSlots.map((slot) => slot.moduleId), [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
-  assert.deepEqual(plan.suggestedModules, []);
-  assert.deepEqual(plan.executionModuleIds, [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
-});
+const RICH = { propertyStatus: 'homeowner', hasPension: true, dependantCount: 2 };
+/** Everything a consumer surface is allowed to see. */
+function consumerFacing(plan) {
+  return JSON.stringify({ slots: plan.moduleSlots, opportunities: plan.moduleOpportunities });
+}
 
-check('a companion is suggested once the circumstance emerges, not before', () => {
-  const before = planFor();
-  assert.ok(
-    !before.suggestedModules.some((item) => item.moduleId === MODULE_IDS.MORTGAGE),
-    'the mortgage was suggested before any evidence of one'
-  );
-
-  const after = planFor({ propertyStatus: 'homeowner', hasPension: true });
-  const suggestedIds = after.suggestedModules.map((item) => item.moduleId);
-  assert.ok(suggestedIds.includes(MODULE_IDS.MORTGAGE), 'a homeowner should be offered the mortgage analysis');
-  assert.ok(suggestedIds.includes(MODULE_IDS.PENSION_PROJECTION), 'a pension holder should be offered the pension projection');
-
-  // The balance sheet is still the only thing selected, and still the only
-  // thing that would run.
-  assert.deepEqual(after.moduleSlots.map((slot) => slot.moduleId), [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
-  assert.deepEqual(after.executionModuleIds, [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
-});
-
-check('every suggestion carries a client-facing reason', () => {
-  const plan = planFor({ propertyStatus: 'homeowner', hasPension: true, dependantCount: 2 });
-  for (const item of [...plan.suggestedModules, ...plan.deferredModules]) {
-    assert.equal(typeof item.reason, 'string');
-    assert.ok(item.reason.length > 20, `${item.moduleId} has no explainable reason`);
-  }
-});
-
-check('a suggestion is never executed until the client confirms it', () => {
-  const suggested = planFor({ propertyStatus: 'homeowner' });
-  assert.ok(suggested.suggestedModules.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
-  assert.ok(
-    !suggested.executionModuleIds.includes(MODULE_IDS.MORTGAGE),
-    'an unconfirmed suggestion reached the execution set'
-  );
-  assert.ok(
-    !suggested.moduleSlots.some((slot) => slot.moduleId === MODULE_IDS.MORTGAGE),
-    'an unconfirmed suggestion was counted as selected'
-  );
-});
-
-check('confirming a suggestion promotes it to selected', () => {
-  const confirmed = planFor({ propertyStatus: 'homeowner' }, { confirmedModuleIds: [MODULE_IDS.MORTGAGE] });
-  const slot = confirmed.moduleSlots.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
-  assert.ok(slot, 'the confirmed module did not become selected');
-  assert.equal(slot.selectionState, 'selected');
-  assert.equal(slot.source, 'client_confirmed_suggestion');
-  assert.ok(
-    !confirmed.suggestedModules.some((item) => item.moduleId === MODULE_IDS.MORTGAGE),
-    'a confirmed module must leave the suggestion list'
-  );
-});
-
-check('the three states are mutually exclusive', () => {
-  const plan = planFor({ propertyStatus: 'homeowner', hasPension: true, dependantCount: 2 });
-  const selected = plan.moduleSlots.map((slot) => slot.moduleId);
-  const suggested = plan.suggestedModules.map((item) => item.moduleId);
-  const deferred = plan.deferredModules.map((item) => item.moduleId);
-  const all = [...selected, ...suggested, ...deferred];
-  assert.equal(new Set(all).size, all.length, 'a module appeared in more than one selection state');
-  for (const slot of plan.moduleSlots) assert.equal(slot.selectionState, 'selected');
-  for (const item of plan.suggestedModules) assert.equal(item.selectionState, 'suggested');
-  for (const item of plan.deferredModules) assert.equal(item.selectionState, 'deferred');
-});
-
-check('a module with no engine is deferred rather than suggested', () => {
-  const plan = planFor({ dependantCount: 2 });
-  assert.ok(
-    plan.deferredModules.some((item) => item.moduleId === 'protection_analysis'),
-    'protection has no engine and must be deferred, not offered as runnable'
-  );
-  assert.ok(!plan.suggestedModules.some((item) => item.moduleId === 'protection_analysis'));
-});
-
-check('selection is driven by accumulated state, not by a single turn', () => {
-  const persona = { propertyStatus: 'homeowner', hasPension: true };
-  const first = planFor(persona);
-  const second = planFor(persona);
-  assert.deepEqual(
-    second.suggestedModules.map((item) => item.moduleId),
-    first.suggestedModules.map((item) => item.moduleId),
-    'the same accumulated facts produced different suggestions'
-  );
-
-  // Suggestions accumulate as evidence accumulates; earlier ones do not vanish
-  // because a later turn was about something else.
-  const widened = planFor({ ...persona, dependantCount: 2 });
-  for (const moduleId of first.suggestedModules.map((item) => item.moduleId)) {
+check('a module without platform consumer approval is never consumer-visible', () => {
+  const plan = planFor(RICH);
+  for (const moduleId of ['pension_projection', 'college_funding']) {
     assert.ok(
-      widened.suggestedModules.some((item) => item.moduleId === moduleId),
-      `${moduleId} was dropped when unrelated evidence arrived`
+      !plan.moduleOpportunities.some((item) => item.moduleId === moduleId),
+      `${moduleId} is not platform-approved and must never be offered`
+    );
+    assert.ok(!consumerFacing(plan).includes(moduleId), `${moduleId} leaked into a consumer-facing payload`);
+    assert.ok(
+      plan.withheldOpportunities.some((item) => item.moduleId === moduleId),
+      `${moduleId} should still be visible internally for adviser tooling`
     );
   }
 });
 
-check('execution still runs exactly the confirmed set after a suggestion is accepted', async () => {
-  const plan = planFor(
-    { propertyStatus: 'homeowner' },
-    { confirmedModuleIds: [MODULE_IDS.LIQUIDITY] }
-  );
-  const confirmedSet = plan.executionModuleIds;
-  const result = await runConsumerAnalysis({
-    profile: profileFor(['understand_position'], { persona: { propertyStatus: 'homeowner' } }),
-    moduleIds: confirmedSet,
-    allowedModuleIds: ALL,
-    calculatedAt: NOW
-  });
+check('a module with no runnable engine is never consumer-visible', () => {
+  const plan = planFor(RICH);
+  assert.ok(!consumerFacing(plan).includes('protection_analysis'));
+  const withheld = plan.withheldOpportunities.find((item) => item.moduleId === 'protection_analysis');
+  assert.equal(withheld.blockedBy, 'runnable_engine');
+});
+
+check('an adviser-disabled module is never offered', () => {
+  const off = planFor(RICH, {}, ['understand_position'], { mortgage_analysis: false });
+  assert.ok(!off.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+  const withheld = off.withheldOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
+  assert.equal(withheld.blockedBy, 'adviser_consumer_enabled');
+
+  const on = planFor(RICH, {}, ['understand_position'], { mortgage_analysis: true });
+  assert.ok(on.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+});
+
+check('an adviser cannot enable a platform-unapproved or non-runnable module', () => {
+  assert.equal(validateAdviserConsumerToggle('pension_projection', true).code, 'module_not_platform_approved');
+  assert.equal(validateAdviserConsumerToggle('college_funding', true).code, 'module_not_platform_approved');
+  assert.equal(validateAdviserConsumerToggle('protection_analysis', true).code, 'module_not_runnable');
+  // Turning a module OFF only ever narrows what a consumer sees, so it is allowed.
+  assert.equal(validateAdviserConsumerToggle('pension_projection', false).ok, true);
+  // Mortgage passed the readiness review, so an adviser may switch it on.
+  assert.equal(validateAdviserConsumerToggle('mortgage_analysis', true).ok, true);
+});
+
+check('the three reviewed engine modules match their recorded readiness outcome', () => {
+  const byId = new Map(MODULE_MANIFEST.map((entry) => [entry.moduleId, entry]));
+  const mortgage = byId.get('mortgage_analysis');
+  assert.equal(mortgage.consumerReadiness.status, 'approved');
+  assert.equal(mortgage.availability.platformConsumerApproved, true);
+
+  for (const moduleId of ['pension_projection', 'college_funding']) {
+    const entry = byId.get(moduleId);
+    assert.equal(entry.consumerReadiness.status, 'remediation_required');
+    assert.equal(entry.availability.platformConsumerApproved, false);
+    assert.ok(entry.consumerReadiness.blockingItems.length > 0,
+      `${moduleId} needs remediation but records no blocking items`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 7. Offers are anchored to what the client actually said.
+// ---------------------------------------------------------------------------
+
+check('understand_position starts on the Personal Balance Sheet alone', () => {
+  const plan = planFor();
+  assert.deepEqual(plan.moduleSlots.map((slot) => slot.moduleId), [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
+  assert.deepEqual(plan.moduleOpportunities, []);
+  assert.deepEqual(plan.executionModuleIds, [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
+});
+
+check('an opportunity appears only once the circumstance emerges', () => {
+  const before = planFor({}, {}, ['understand_position'], { mortgage_analysis: true });
+  assert.ok(!before.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+  const after = planFor({ propertyStatus: 'homeowner' }, {}, ['understand_position'], { mortgage_analysis: true });
+  assert.ok(after.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+});
+
+check('every offer carries a reason, supporting facts and a benefit descriptor', () => {
+  const plan = planFor({ propertyStatus: 'homeowner' }, {}, ['understand_position'], { mortgage_analysis: true });
+  const offer = plan.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
+  assert.ok(offer.relevanceReason.length > 20, 'an offer must be explainable');
+  assert.ok(offer.supportingFactIds.includes('property_status'),
+    'an offer must name the accumulated facts that make it relevant');
+  assert.ok(offer.clientBenefit.length > 20, 'an offer must state the benefit in plain language');
+  assert.equal(offer.effectiveConsumerAvailability.visible, true);
+});
+
+check('identical accumulated state produces stable opportunities', () => {
+  const persona = { propertyStatus: 'homeowner' };
+  const overrides = { mortgage_analysis: true };
+  const first = planFor(persona, {}, ['understand_position'], overrides);
+  const second = planFor(persona, {}, ['understand_position'], overrides);
   assert.deepEqual(
-    result.analysisPlan.selectedModules.map((item) => item.moduleId).sort(),
-    [...confirmedSet].sort(),
-    'the analysis layer did not run exactly the confirmed set'
+    second.moduleOpportunities.map((item) => `${item.moduleId}:${item.state}`),
+    first.moduleOpportunities.map((item) => `${item.moduleId}:${item.state}`)
+  );
+  // Unrelated later evidence must not drop an earlier opportunity.
+  const widened = planFor({ ...persona, dependantCount: 2 }, {}, ['understand_position'], overrides);
+  assert.ok(widened.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+});
+
+// ---------------------------------------------------------------------------
+// 8. Accept, decline, confirm, execute.
+// ---------------------------------------------------------------------------
+
+const OFFERED = { propertyStatus: 'homeowner' };
+const ENABLE_MORTGAGE = { mortgage_analysis: true };
+
+check('declining a module removes it from execution and marks it declined', () => {
+  const plan = planFor(OFFERED, { declinedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE);
+  const offer = plan.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
+  assert.equal(offer.state, 'declined');
+  assert.ok(!plan.executionModuleIds.includes(MODULE_IDS.MORTGAGE));
+  assert.ok(!plan.moduleSlots.some((slot) => slot.moduleId === MODULE_IDS.MORTGAGE));
+});
+
+check('accepting a module is not enough to execute it', () => {
+  const plan = planFor(OFFERED, { acceptedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE);
+  const offer = plan.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
+  assert.equal(offer.state, 'accepted');
+  assert.ok(
+    !plan.executionModuleIds.includes(MODULE_IDS.MORTGAGE),
+    'an accepted module must not execute before the final set is confirmed'
   );
 });
+
+check('confirming the final set promotes an accepted module to selected', () => {
+  const plan = planFor(
+    OFFERED,
+    { acceptedModuleIds: [MODULE_IDS.MORTGAGE], confirmedModuleIds: [MODULE_IDS.MORTGAGE] },
+    ['understand_position'],
+    ENABLE_MORTGAGE
+  );
+  const slot = plan.moduleSlots.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
+  assert.ok(slot, 'a confirmed accepted module must become selected');
+  assert.equal(slot.selectionState, 'selected');
+  assert.equal(slot.source, 'client_accepted_offer');
+  assert.ok(plan.executionModuleIds.includes(MODULE_IDS.MORTGAGE));
+});
+
+check('confirmation cannot smuggle in a module the client never accepted', () => {
+  const plan = planFor(OFFERED, { confirmedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE);
+  assert.ok(
+    !plan.executionModuleIds.includes(MODULE_IDS.MORTGAGE),
+    'confirmation without acceptance must not execute a module'
+  );
+});
+
+check('confirmation cannot smuggle in a module that is not consumer-visible', () => {
+  const plan = planFor(
+    RICH,
+    { acceptedModuleIds: ['pension_projection'], confirmedModuleIds: ['pension_projection'] }
+  );
+  assert.ok(
+    !plan.executionModuleIds.includes('pension_projection'),
+    'a platform-unapproved module must not execute even if accepted and confirmed'
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 9. Fact preconditions.
+// ---------------------------------------------------------------------------
+
+check('a sole trader is never asked what their employer contributes', () => {
+  const selfEmployed = profileFor(['improve_pension'], { persona: { employmentContext: 'self_employed' } });
+  const employee = profileFor(['improve_pension'], { persona: { employmentContext: 'employee' } });
+  const factId = 'pension_employer_contribution_rate';
+  assert.equal(isFactApplicable(factId, selfEmployed, 'pension_projection'), false);
+  assert.equal(isFactApplicable(factId, employee, 'pension_projection'), true);
+  assert.ok(factPreconditionBlock(factId, selfEmployed, 'pension_projection').reason.length > 20);
+});
+
+check('inapplicable facts are filtered out of a question queue', () => {
+  const selfEmployed = profileFor(['improve_pension'], { persona: { employmentContext: 'self_employed' } });
+  const queue = withoutInapplicableFacts([
+    { factId: 'pension_positions', moduleId: 'pension_projection' },
+    { factId: 'pension_employer_contribution_rate', moduleId: 'pension_projection' },
+    { factId: 'pension_employee_contribution_rate', moduleId: 'pension_projection' }
+  ], selfEmployed).map((item) => item.factId);
+  assert.deepEqual(queue, ['pension_positions', 'pension_employee_contribution_rate']);
+});
+
 
 if (failures > 0) {
   console.error(`\n[RoutingConvergence] ${failures} check(s) failed.`);

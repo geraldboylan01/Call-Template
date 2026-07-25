@@ -50,6 +50,7 @@ const IMPLEMENTATION_STATUSES = new Set([
   'planned'
 ]);
 const INTAKE_STATUSES = new Set(['approved', 'incomplete']);
+const READINESS_STATUSES = new Set(['approved', 'remediation_required', 'not_reviewed', 'not_applicable']);
 // Mirrors PROFILE_HAS_PREDICATES in goal_plan.js.
 const PROFILE_HAS_KINDS = new Set([
   'cash', 'pension', 'property', 'business', 'dependants', 'mortgage', 'loan'
@@ -108,6 +109,44 @@ function parseManifest(source, label) {
   const availability = manifest.availability || {};
   if (typeof availability.adviser !== 'boolean') fail(`${label} has a non-boolean availability.adviser.`);
   if (typeof availability.consumer !== 'boolean') fail(`${label} has a non-boolean availability.consumer.`);
+  if (typeof availability.platformConsumerApproved !== 'boolean') {
+    fail(`${label} has a non-boolean availability.platformConsumerApproved.`);
+  }
+  if (typeof availability.adviserConsumerEnabled !== 'boolean') {
+    fail(`${label} has a non-boolean availability.adviserConsumerEnabled.`);
+  }
+  // The invariant the adviser UI and API must also enforce server-side: a module
+  // cannot be switched on for consumers unless the platform approved it and it
+  // actually runs.
+  if (availability.adviserConsumerEnabled && !availability.platformConsumerApproved) {
+    fail(`${label} is adviser-enabled for consumers without platform consumer approval.`);
+  }
+  if (availability.platformConsumerApproved && manifest.implementation?.hasRunnableEngine !== true) {
+    fail(`${label} is platform-consumer-approved without a runnable engine.`);
+  }
+  // Legacy field must stay consistent with the authoritative controls while it
+  // exists, so nothing reading it during migration sees a different answer.
+  const derivedConsumer = availability.platformConsumerApproved === true
+    && availability.adviserConsumerEnabled === true
+    && manifest.implementation?.hasRunnableEngine === true;
+  if (availability.consumer !== derivedConsumer) {
+    fail(`${label}: legacy availability.consumer (${availability.consumer}) disagrees with the `
+      + `authoritative controls (${derivedConsumer}).`);
+  }
+
+  const readiness = manifest.consumerReadiness || {};
+  if (!READINESS_STATUSES.has(readiness.status)) fail(`${label} has an invalid consumerReadiness.status.`);
+  if (readiness.status === 'remediation_required' && (readiness.blockingItems || []).length === 0) {
+    fail(`${label} requires remediation but lists no blocking items.`);
+  }
+  if (availability.platformConsumerApproved && readiness.status !== 'approved') {
+    fail(`${label} is platform-consumer-approved but its readiness review is "${readiness.status}".`);
+  }
+  // A module a consumer can be offered must be able to explain what it does for
+  // them, in their language.
+  if (availability.platformConsumerApproved && !String(manifest.clientBenefit || '').trim()) {
+    fail(`${label} is consumer-approved but has no clientBenefit descriptor.`);
+  }
 
   const implementation = manifest.implementation || {};
   if (!IMPLEMENTATION_STATUSES.has(implementation.status)) {
@@ -115,6 +154,9 @@ function parseManifest(source, label) {
   }
   if (!INTAKE_STATUSES.has(implementation.intakeContract)) {
     fail(`${label} has an invalid implementation.intakeContract.`);
+  }
+  if (typeof implementation.hasRunnableEngine !== 'boolean') {
+    fail(`${label} has a non-boolean implementation.hasRunnableEngine.`);
   }
   if (typeof implementation.scenarioAware !== 'boolean') {
     fail(`${label} has a non-boolean implementation.scenarioAware.`);

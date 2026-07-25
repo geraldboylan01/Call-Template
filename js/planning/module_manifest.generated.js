@@ -10,14 +10,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "adviser_only",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "template_only",
       "intakeContract": "incomplete",
       "scenarioAware": false,
       "playbook": null,
-      "outputKey": null
+      "outputKey": null,
+      "hasRunnableEngine": false
     },
     "routing": {
       "consumerRoutable": false,
@@ -48,6 +51,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "",
+    "consumerReadiness": {
+      "status": "not_applicable",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "Adviser-only agricultural succession and relief planning.",
     "whenToUse": "Adviser-led work for a farming household where agricultural relief conditions apply.",
     "whenNotToUse": "Never route this from a consumer conversation. Consumer use waits for deterministic, date-versioned rules and tests.",
@@ -61,14 +70,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "adviser_only",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "template_only",
       "intakeContract": "incomplete",
       "scenarioAware": false,
       "playbook": null,
-      "outputKey": null
+      "outputKey": null,
+      "hasRunnableEngine": false
     },
     "routing": {
       "consumerRoutable": false,
@@ -108,6 +120,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "",
+    "consumerReadiness": {
+      "status": "not_applicable",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "Adviser-reviewed planning around a household business interest.",
     "whenToUse": "Adviser-led work for a company director or owner-manager where the business interest materially shapes the plan.",
     "whenNotToUse": "Never route this from a consumer conversation. Consumer use waits for a code-owned general business-owner analysis.",
@@ -121,14 +139,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "adviser_only",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "template_only",
       "intakeContract": "incomplete",
       "scenarioAware": false,
       "playbook": null,
-      "outputKey": null
+      "outputKey": null,
+      "hasRunnableEngine": false
     },
     "routing": {
       "consumerRoutable": false,
@@ -160,6 +181,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "",
+    "consumerReadiness": {
+      "status": "not_applicable",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "Adviser-reviewed, date-versioned business relief analysis for succession and disposal.",
     "whenToUse": "Adviser-led succession or exit planning where business relief conditions need to be applied against dated rules.",
     "whenNotToUse": "Never route this from a consumer conversation. See the catalogue note below: this overlaps the legacy business_owner_relief id and the pair needs resolving.",
@@ -173,14 +200,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "adviser_only",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "template_only",
       "intakeContract": "incomplete",
       "scenarioAware": false,
       "playbook": null,
-      "outputKey": null
+      "outputKey": null,
+      "hasRunnableEngine": false
     },
     "routing": {
       "consumerRoutable": false,
@@ -211,6 +241,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "",
+    "consumerReadiness": {
+      "status": "not_applicable",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "Adviser-only Capital Acquisitions Tax planning around gifts, inheritance and thresholds.",
     "whenToUse": "Adviser-led wealth-transfer work where dated CAT thresholds and reliefs are applied by hand under review.",
     "whenNotToUse": "Never route this from a consumer conversation. Consumer use waits for deterministic, date-versioned CAT rules and tests. A wealth-transfer goal should defer to an adviser handoff instead.",
@@ -224,14 +260,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
       "scenarioAware": false,
       "playbook": "14_college_funding_playbook.md",
-      "outputKey": "generated.collegeFundingInputs"
+      "outputKey": "generated.collegeFundingInputs",
+      "hasRunnableEngine": true
     },
     "routing": {
       "consumerRoutable": true,
@@ -274,6 +313,14 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "estimate what education is likely to cost and how much saving that would take under different assumptions",
+    "consumerReadiness": {
+      "status": "remediation_required",
+      "reviewedOn": "2026-07-25",
+      "blockingItems": [
+        "Supply reviewed, date-versioned annual college cost scenarios. The adapter blocks readiness with \"consumer defaults are not yet approved\" and warns that costs must be dated before consumer enablement."
+      ]
+    },
     "purpose": "Projects the cost of each child’s education against a reviewed cost scenario and shows what needs to be saved.",
     "whenToUse": "The client raises paying for a child’s education, college or third-level costs, or saving for a specific child’s future.",
     "whenNotToUse": "Do not use it for general saving with no education aim, or where the \"children\" mentioned are adults with no dependency.",
@@ -287,14 +334,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": true
+      "consumer": true,
+      "platformConsumerApproved": true,
+      "adviserConsumerEnabled": true
     },
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
       "scenarioAware": true,
       "playbook": "17_house_purchase_playbook.md",
-      "outputKey": "generated.housePurchaseInputs"
+      "outputKey": "generated.housePurchaseInputs",
+      "hasRunnableEngine": true
     },
     "routing": {
       "consumerRoutable": true,
@@ -341,6 +391,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "work out the deposit, what is affordable, the mortgage you would need, and the path to buying",
+    "consumerReadiness": {
+      "status": "approved",
+      "reviewedOn": "2026-07-25",
+      "blockingItems": []
+    },
     "purpose": "Illustrates what a household can afford to buy, the deposit they need, the timing, the costs, and the dated Irish support schemes that may apply.",
     "whenToUse": "The client talks about buying a home, getting on the property ladder, saving a deposit, mortgage approval, or moving house. Also use it when someone says they are throwing money away on rent — the underlying goal is usually buying.",
     "whenNotToUse": "Do not use it when the client already owns their home and is only asking about their existing mortgage rate or term. That is Mortgage analysis.",
@@ -354,14 +410,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "active",
     "availability": {
       "adviser": true,
-      "consumer": true
+      "consumer": true,
+      "platformConsumerApproved": true,
+      "adviserConsumerEnabled": true
     },
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
       "scenarioAware": false,
       "playbook": "16_liquidity_playbook.md",
-      "outputKey": "generated.liquidityPlan"
+      "outputKey": "generated.liquidityPlan",
+      "hasRunnableEngine": true
     },
     "routing": {
       "consumerRoutable": true,
@@ -399,6 +458,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "check whether the cash you can reach is right for what you spend and the risks in the near term",
+    "consumerReadiness": {
+      "status": "approved",
+      "reviewedOn": "2026-07-25",
+      "blockingItems": []
+    },
     "purpose": "Compares the cash a household actually holds against a deterministic minimum and target emergency reserve, and names any surplus so it can be given a job.",
     "whenToUse": "The client talks about an emergency fund, a cash buffer, how much to keep in the bank, feeling exposed if their income stopped, or having a lot of money sitting in a current account doing nothing. Also use it alongside a home purchase, so the deposit stays separate from the reserve they should not spend.",
     "whenNotToUse": "Do not use it for a broad \"what am I worth\" question — that is the Personal Balance Sheet. This analysis shows cash only: never net worth, property, pensions or lifestyle assets.",
@@ -412,14 +477,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
       "scenarioAware": false,
       "playbook": "13_loan_playbook.md",
-      "outputKey": "generated.loanInputs"
+      "outputKey": "generated.loanInputs",
+      "hasRunnableEngine": true
     },
     "routing": {
       "consumerRoutable": true,
@@ -455,6 +523,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "compare normal repayments with paying it off faster, including the interest saved and the effect on monthly cash flow",
+    "consumerReadiness": {
+      "status": "not_reviewed",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "Deterministic amortisation for non-housing debt, and what changes if it is repaid faster.",
     "whenToUse": "The client mentions a car loan, credit union loan, personal loan or a credit card balance, or asks whether to clear a debt before saving or investing.",
     "whenNotToUse": "Do not use it for a mortgage — that is Mortgage analysis.",
@@ -468,14 +542,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": true,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
       "scenarioAware": false,
       "playbook": "12_mortgage_playbook.md",
-      "outputKey": "generated.mortgageInputs"
+      "outputKey": "generated.mortgageInputs",
+      "hasRunnableEngine": true
     },
     "routing": {
       "consumerRoutable": true,
@@ -517,6 +594,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "compare your current repayment path with switching, changing the term, or making extra repayments",
+    "consumerReadiness": {
+      "status": "approved",
+      "reviewedOn": "2026-07-25",
+      "blockingItems": []
+    },
     "purpose": "Deterministic amortisation of an existing mortgage: balance, rate, remaining term, and the effect of changing any of them.",
     "whenToUse": "The client has a mortgage already and is asking about the rate, the term, overpaying, switching lender, or a fixed rate coming to an end.",
     "whenNotToUse": "Do not use it for someone who has not bought yet. Affordability, deposit and approval belong to the House purchase planner.",
@@ -530,14 +613,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
       "scenarioAware": true,
       "playbook": "15_net_retirement_cashflow_playbook.md",
-      "outputKey": "generated.netRetirementInputs"
+      "outputKey": "generated.netRetirementInputs",
+      "hasRunnableEngine": true
     },
     "routing": {
       "consumerRoutable": true,
@@ -592,6 +678,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "show what you would actually have to live on in retirement after tax, and any shortfall",
+    "consumerReadiness": {
+      "status": "not_reviewed",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "Shows after-tax income against after-tax spending through retirement, including any shortfall and the fund needed to close it.",
     "whenToUse": "The client wants to know whether the money will last, or what they will actually have to live on once tax is taken out. It runs alongside the pension projection for a retirement goal.",
     "whenNotToUse": "Do not use it on its own to answer a question about pot growth or contribution rates — that is the Pension projection.",
@@ -605,14 +697,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
       "scenarioAware": true,
       "playbook": "11_retirement_playbook.md",
-      "outputKey": "generated.pensionInputs"
+      "outputKey": "generated.pensionInputs",
+      "hasRunnableEngine": true
     },
     "routing": {
       "consumerRoutable": true,
@@ -665,7 +760,27 @@ export const MODULE_MANIFEST = Object.freeze([
       "requireAll": [],
       "excludeIf": []
     },
-    "factPreconditions": {},
+    "factPreconditions": {
+      "pension_employer_contribution_rate": {
+        "skipWhen": {
+          "fact": "employment_context",
+          "in": [
+            "self_employed",
+            "contractor"
+          ]
+        },
+        "reason": "A sole trader or contractor has no employer, so an employer contribution rate is not a question that can be answered."
+      }
+    },
+    "clientBenefit": "show how your pension may develop under different contribution levels and retirement ages",
+    "consumerReadiness": {
+      "status": "remediation_required",
+      "reviewedOn": "2026-07-25",
+      "blockingItems": [
+        "Approve the 5% investment growth and 2% inflation defaults as consumer-facing assumptions. The adapter flags both \"review before consumer activation\".",
+        "Land the employer-contribution fact precondition so a self-employed client is never asked what their employer contributes."
+      ]
+    },
     "purpose": "Projects pre-tax pension pots forward and shows readiness against a target retirement income.",
     "whenToUse": "The client asks whether their pension is on track, whether they are paying in enough, about contribution rates or an employer match, or whether they could retire at a particular age.",
     "whenNotToUse": "Do not use it for what the household will actually have to live on after tax — that is Net retirement cash flow. Use both together when the client is planning retirement rather than just building a pot.",
@@ -679,14 +794,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": true
+      "consumer": true,
+      "platformConsumerApproved": true,
+      "adviserConsumerEnabled": true
     },
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
       "scenarioAware": false,
       "playbook": "10_pbs_playbook.md",
-      "outputKey": "generated.pbsInputs"
+      "outputKey": "generated.pbsInputs",
+      "hasRunnableEngine": true
     },
     "routing": {
       "consumerRoutable": true,
@@ -721,6 +839,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "a clear breakdown of what you own and owe, where cash may be concentrated, and how your overall position supports your longer-term goals",
+    "consumerReadiness": {
+      "status": "approved",
+      "reviewedOn": "2026-07-25",
+      "blockingItems": []
+    },
     "purpose": "Everything the household owns minus everything it owes, bucketed into lifestyle assets, spendable reserves, long-term retirement funding and concentrated assets.",
     "whenToUse": "The client wants the full picture: where they stand overall, what they are worth, whether they are doing okay, or how to build wealth from here.",
     "whenNotToUse": "Do not add it as background context to a narrow goal when the household has little to show. Asking a renter with no pension what their home and business interests are worth is how a first meeting starts to feel like a form. Its inclusion is controlled by the pinned setting, not by prose.",
@@ -734,14 +858,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "unsupported",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "template_only",
       "intakeContract": "incomplete",
       "scenarioAware": false,
       "playbook": "22_protection_playbook.md",
-      "outputKey": "generated.report"
+      "outputKey": "generated.report",
+      "hasRunnableEngine": false
     },
     "routing": {
       "consumerRoutable": false,
@@ -770,6 +897,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "",
+    "consumerReadiness": {
+      "status": "not_applicable",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "A report-style protection module covering income protection and serious-illness cover, written to be calm and client-friendly without pretending to be an underwriting or quotation engine.",
     "whenToUse": "Gerry asks for a protection module, or the conversation turns to what happens to the household income if someone cannot work. Adviser-produced today via the protection playbook.",
     "whenNotToUse": "Never route this from a consumer conversation. It has no deterministic engine and no approved fact-find, so it cannot be run or made ready automatically.",
@@ -783,14 +916,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "beta",
     "availability": {
       "adviser": true,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "routing_label",
       "intakeContract": "approved",
       "scenarioAware": false,
       "playbook": null,
-      "outputKey": null
+      "outputKey": null,
+      "hasRunnableEngine": false
     },
     "routing": {
       "consumerRoutable": false,
@@ -820,6 +956,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "",
+    "consumerReadiness": {
+      "status": "not_applicable",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "Composes the pension projection and the net retirement cash flow into a single adviser-reviewed retirement view.",
     "whenToUse": "Adviser-composed retirement reviews where both the pre-tax pot and the after-tax cash flow are wanted as one output.",
     "whenNotToUse": "Not selected by consumer goal routing today. See the routing note below before enabling it — it is currently reachable only by explicit adviser selection.",
@@ -833,14 +975,17 @@ export const MODULE_MANIFEST = Object.freeze([
     "status": "unsupported",
     "availability": {
       "adviser": false,
-      "consumer": false
+      "consumer": false,
+      "platformConsumerApproved": false,
+      "adviserConsumerEnabled": false
     },
     "implementation": {
       "status": "capability",
       "intakeContract": "incomplete",
       "scenarioAware": false,
       "playbook": null,
-      "outputKey": null
+      "outputKey": null,
+      "hasRunnableEngine": false
     },
     "routing": {
       "consumerRoutable": false,
@@ -856,6 +1001,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "excludeIf": []
     },
     "factPreconditions": {},
+    "clientBenefit": "",
+    "consumerReadiness": {
+      "status": "not_applicable",
+      "reviewedOn": "",
+      "blockingItems": []
+    },
     "purpose": "Not a standalone analysis. Scenario handling is a composition capability layered over scenario-aware modules, which receive per-module or flat overrides and hash them into their result identity.",
     "whenToUse": "Never select this directly. Apply scenario overrides to the scenario-aware modules instead — see the catalogue note below.",
     "whenNotToUse": "It has no engine, no fact-find and no adviser availability. The registry entry exists as a placeholder for the capability and must never be routed or offered as a module.",

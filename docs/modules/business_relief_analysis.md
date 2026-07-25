@@ -11,14 +11,17 @@
   "status": "adviser_only",
   "availability": {
     "adviser": true,
-    "consumer": false
+    "consumer": false,
+    "platformConsumerApproved": false,
+    "adviserConsumerEnabled": false
   },
   "implementation": {
     "status": "template_only",
     "intakeContract": "incomplete",
     "scenarioAware": false,
     "playbook": null,
-    "outputKey": null
+    "outputKey": null,
+    "hasRunnableEngine": false
   },
   "routing": {
     "consumerRoutable": false,
@@ -49,7 +52,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "",
+  "consumerReadiness": {
+    "status": "not_applicable",
+    "reviewedOn": "",
+    "blockingItems": []
+  }
 }
 ```
 

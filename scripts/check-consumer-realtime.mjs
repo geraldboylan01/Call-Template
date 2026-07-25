@@ -2239,15 +2239,17 @@ const cashConfirmed = await factDurable.executeTool(
 assert.equal(cashConfirmed.profileRevision, 4);
 assert.match(cashConfirmed.readBackText, /€65,000/);
 
-// Module-specific intake facts are available only after persona evidence locks
-// the exact catalogue bundle. Same-turn persona evidence allows volunteered
-// facts for that bundle without reopening goal-based routing.
+// Module-specific intake facts follow from goal routing over accumulated
+// circumstances. The persona catalogue that used to gate this is gone.
 factContext = await factDurable.planningContext();
-assert.equal(factContext.state.personaAssessment.primaryPersonaId, 'first_time_buyer');
+assert.equal(factContext.state.personaAssessment, undefined);
+// Goal routing leads with the analyses the stated goal selected and pins the
+// Personal Balance Sheet last. The persona catalogue used to put the balance
+// sheet first, which is why a home-buying meeting opened on net worth.
 assert.deepEqual(factContext.state.moduleSlots.map((slot) => slot.moduleId), [
-  'personal_balance_sheet',
   'house_purchase',
-  'liquidity_analysis'
+  'liquidity_analysis',
+  'personal_balance_sheet'
 ]);
 
 // Unknown and ranged numerical answers are retained as conservative completion
@@ -2421,6 +2423,15 @@ const dependencyArgs = {
       value: 'pre_retiree',
       certainty: 'exact',
       evidenceItemId: dependencyEvidenceId
+    },
+    {
+      // Goals route modules now. The persona catalogue used to open a pension
+      // bundle from the self_description label; correcting the stated goal to
+      // retirement is what makes pension facts routable.
+      factId: 'primary_goal',
+      value: { type: 'retire', correctionTarget: 'buy_home' },
+      certainty: 'exact',
+      evidenceItemId: dependencyEvidenceId
     }
   ]
 };
@@ -2431,6 +2442,7 @@ const dependencyResult = await factDurable.executeTool(
   await startFactTool('propose_facts', dependencyArgs, 6)
 );
 assert.deepEqual(dependencyResult.proposals.map((proposal) => proposal.factId), [
+  'primary_goal',
   'self_description',
   'partner_person',
   'income_sources',
@@ -2439,12 +2451,13 @@ assert.deepEqual(dependencyResult.proposals.map((proposal) => proposal.factId), 
   'person_current_age'
 ]);
 assert.deepEqual(dependencyResult.savedDrafts.map((proposal) => proposal.factId), [
+  'primary_goal',
   'self_description',
   'partner_person',
   'income_sources',
   'pension_positions'
 ]);
-assert.equal(dependencyResult.profileRevision, 10);
+assert.equal(dependencyResult.profileRevision, 11);
 
 let dependencyPending = dependencyResult.currentPendingProposal;
 const dependencyConfirmationOrder = [];
@@ -2717,7 +2730,6 @@ const gatedPlan = await prepareRealtimeAnalysisPlan(env, {
   profileRevision: 1,
   moduleIds: [],
   scenarioOverrides: {},
-  personaAssessment: null,
   moduleSlots: gatedSlots,
   overrides: [],
   requiresGoalPriorityQuestion: false,
@@ -2812,7 +2824,6 @@ const gatedHandoffPlan = await prepareRealtimeAnalysisPlan(env, {
   profileRevision: 1,
   moduleIds: [],
   scenarioOverrides: {},
-  personaAssessment: null,
   moduleSlots: gatedSlots,
   overrides: [],
   requiresGoalPriorityQuestion: false,
@@ -2874,15 +2885,6 @@ const plan = await prepareRealtimeAnalysisPlan(env, {
   profileRevision: 1,
   moduleIds: ['house_purchase', 'liquidity_analysis'],
   scenarioOverrides: {},
-  personaAssessment: {
-    primaryPersonaId: 'first_time_buyer',
-    candidatePersonaIds: ['first_time_buyer'],
-    evidenceFactIds: ['primary_goal', 'self_description'],
-    confidence: 'high',
-    catalogueVersion: 'planeir-persona-1.0.0',
-    profileRevision: 1,
-    scoredCandidates: [{ personaId: 'first_time_buyer', score: 125, matchedSignals: ['first_time_buyer'] }]
-  },
   moduleSlots: [
     { slot: 1, moduleId: 'personal_balance_sheet', source: 'persona_default', availability: 'adviser_review_required', reasons: ['Private reason'], missingFactIds: ['assets'] },
     { slot: 2, moduleId: 'house_purchase', source: 'mandatory_rule', availability: 'needs_facts', reasons: ['Private reason'], missingFactIds: ['target_home_price'] },
@@ -2899,15 +2901,6 @@ const planReplay = await prepareRealtimeAnalysisPlan(env, {
   profileRevision: 1,
   moduleIds: ['house_purchase', 'liquidity_analysis'],
   scenarioOverrides: {},
-  personaAssessment: {
-    primaryPersonaId: 'first_time_buyer',
-    candidatePersonaIds: ['first_time_buyer'],
-    evidenceFactIds: ['primary_goal', 'self_description'],
-    confidence: 'high',
-    catalogueVersion: 'planeir-persona-1.0.0',
-    profileRevision: 1,
-    scoredCandidates: [{ personaId: 'first_time_buyer', score: 125, matchedSignals: ['first_time_buyer'] }]
-  },
   moduleSlots: [
     { slot: 1, moduleId: 'personal_balance_sheet', source: 'persona_default', availability: 'adviser_review_required', reasons: ['Private reason'], missingFactIds: ['assets'] },
     { slot: 2, moduleId: 'house_purchase', source: 'mandatory_rule', availability: 'needs_facts', reasons: ['Private reason'], missingFactIds: ['target_home_price'] },
@@ -2933,7 +2926,6 @@ const confirmedPlan = await confirmRealtimeAnalysisPlan(env, {
   profileRevision: 1
 });
 assert.equal(confirmedPlan.row.status, 'confirmed');
-assert.equal(confirmedPlan.input.personaAssessment.primaryPersonaId, 'first_time_buyer');
 assert.equal(confirmedPlan.input.moduleSlots.length, 3);
 assert.equal(confirmedPlan.input.deferredGoalTypes[0], 'retire');
 assert.deepEqual(
@@ -2944,7 +2936,6 @@ assert.deepEqual(
 assert.equal(confirmedPlan.row.module_ids_json.includes('house_purchase'), false);
 assert.equal(confirmedPlan.row.module_ids_json.includes('first_time_buyer'), false);
 const indexedPlan = toPublicRealtimeAnalysisPlan(confirmedPlan.row, confirmedPlan.input);
-assert.equal(indexedPlan.personaAssessment.primaryPersonaId, 'first_time_buyer');
 assert.equal(indexedPlan.moduleSlots.length, 3);
 assert.deepEqual(
   Object.keys(indexedPlan.moduleSlots[0]).sort(),

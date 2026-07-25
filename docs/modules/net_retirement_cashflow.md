@@ -11,14 +11,17 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false
+    "consumer": false,
+    "platformConsumerApproved": false,
+    "adviserConsumerEnabled": false
   },
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
     "scenarioAware": true,
     "playbook": "15_net_retirement_cashflow_playbook.md",
-    "outputKey": "generated.netRetirementInputs"
+    "outputKey": "generated.netRetirementInputs",
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,
@@ -72,7 +75,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "show what you would actually have to live on in retirement after tax, and any shortfall",
+  "consumerReadiness": {
+    "status": "not_reviewed",
+    "reviewedOn": "",
+    "blockingItems": []
+  }
 }
 ```
 

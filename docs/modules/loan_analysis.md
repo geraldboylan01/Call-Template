@@ -11,14 +11,17 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false
+    "consumer": false,
+    "platformConsumerApproved": false,
+    "adviserConsumerEnabled": false
   },
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
     "scenarioAware": false,
     "playbook": "13_loan_playbook.md",
-    "outputKey": "generated.loanInputs"
+    "outputKey": "generated.loanInputs",
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,
@@ -53,7 +56,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "compare normal repayments with paying it off faster, including the interest saved and the effect on monthly cash flow",
+  "consumerReadiness": {
+    "status": "not_reviewed",
+    "reviewedOn": "",
+    "blockingItems": []
+  }
 }
 ```
 

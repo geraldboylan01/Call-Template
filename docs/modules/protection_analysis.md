@@ -11,14 +11,17 @@
   "status": "unsupported",
   "availability": {
     "adviser": true,
-    "consumer": false
+    "consumer": false,
+    "platformConsumerApproved": false,
+    "adviserConsumerEnabled": false
   },
   "implementation": {
     "status": "template_only",
     "intakeContract": "incomplete",
     "scenarioAware": false,
     "playbook": "22_protection_playbook.md",
-    "outputKey": "generated.report"
+    "outputKey": "generated.report",
+    "hasRunnableEngine": false
   },
   "routing": {
     "consumerRoutable": false,
@@ -46,7 +49,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "",
+  "consumerReadiness": {
+    "status": "not_applicable",
+    "reviewedOn": "",
+    "blockingItems": []
+  }
 }
 ```
 

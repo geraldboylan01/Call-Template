@@ -11,14 +11,17 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false
+    "consumer": false,
+    "platformConsumerApproved": false,
+    "adviserConsumerEnabled": false
   },
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
     "scenarioAware": false,
     "playbook": "14_college_funding_playbook.md",
-    "outputKey": "generated.collegeFundingInputs"
+    "outputKey": "generated.collegeFundingInputs",
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,
@@ -60,7 +63,15 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "estimate what education is likely to cost and how much saving that would take under different assumptions",
+  "consumerReadiness": {
+    "status": "remediation_required",
+    "reviewedOn": "2026-07-25",
+    "blockingItems": [
+      "Supply reviewed, date-versioned annual college cost scenarios. The adapter blocks readiness with \"consumer defaults are not yet approved\" and warns that costs must be dated before consumer enablement."
+    ]
+  }
 }
 ```
 

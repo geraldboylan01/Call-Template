@@ -5,7 +5,6 @@ import {
 } from '../../../js/planning/semantic_facts.js';
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
-import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import {
@@ -2333,9 +2332,6 @@ export class ConsumerRealtimeSession {
       currentPendingProposal: pendingFacts[0] || null,
       selectionPolicyVersion: state.selectionPolicyVersion || null,
       goalAssessment: toPublicGoalAssessment(state.goalAssessment),
-      ...(state.personaAssessment
-        ? { personaAssessment: toPublicPersonaAssessment(state.personaAssessment) }
-        : {}),
       moduleSlots: (state.moduleSlots || []).slice(0, 3),
       requiresGoalPriorityQuestion: state.requiresGoalPriorityQuestion === true,
       requiresDecisionTopicQuestion: state.requiresDecisionTopicQuestion === true,
@@ -2940,9 +2936,7 @@ export class ConsumerRealtimeSession {
       const enabledModules = modulesEnabledByFacts(
         context.state.recommendations,
         args.facts,
-        context.profile,
-        { goalRoutingEnabled: context.config.goalRoutingEnabled }
-      );
+        context.profile);
       const orderedFacts = orderRealtimeFactsByDependency(args.facts);
       let projectedProfile = context.profile;
       const normalized = orderedFacts.map((fact) => {
@@ -3147,7 +3141,6 @@ export class ConsumerRealtimeSession {
           : Number(context.sessionRow.confirmed_profile_revision),
         selectionPolicyVersion: context.state.selectionPolicyVersion,
         goalAssessment: context.state.goalAssessment,
-        ...(context.state.personaAssessment ? { personaAssessment: context.state.personaAssessment } : {}),
         moduleSlots: context.state.moduleSlots,
         requiresGoalPriorityQuestion: context.state.requiresGoalPriorityQuestion,
         requiresDecisionTopicQuestion: context.state.requiresDecisionTopicQuestion,

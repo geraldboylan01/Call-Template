@@ -4,12 +4,16 @@ import {
   getPlanningModuleDefinition,
   getPlanningPlaybookManifestVersion,
   isPlanningCapability,
-  isPlanningModuleSelectable,
-  isRunnablePlanningModule
+  isPlanningModuleSelectable
 } from './module_registry.js';
+import {
+  effectiveConsumerAvailability,
+  isConsumerVisibleModule
+} from './module_availability.js';
 import { MODULE_MANIFEST } from './module_manifest.generated.js';
 import { normalizeHouseholdProfile } from './profile.js';
 import { getSemanticFactDefinition, resolveSemanticFact } from './semantic_facts.js';
+import { withoutInapplicableFacts } from './fact_preconditions.js';
 import { readJsonPointer } from './utils.js';
 
 export const GOAL_ROUTING_POLICY_VERSION = 'goal-routing-1.0.0';
@@ -134,9 +138,42 @@ function suggestionReasonFor(profile, entry) {
   return null;
 }
 
-function confirmedModuleIds(profile) {
-  const value = planningValues(profile).confirmedModuleIds;
+function moduleIdSet(profile, key) {
+  const value = planningValues(profile)[key];
   return new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string') : []);
+}
+
+/** Offers the client has said yes to. Acceptance alone does not execute. */
+function acceptedModuleIds(profile) {
+  return moduleIdSet(profile, 'acceptedModuleIds');
+}
+
+/** Offers the client has said no to. A decline is durable and silences the offer. */
+function declinedModuleIds(profile) {
+  return moduleIdSet(profile, 'declinedModuleIds');
+}
+
+/** The final module set the client confirmed. Only these may execute. */
+function confirmedModuleIds(profile) {
+  return moduleIdSet(profile, 'confirmedModuleIds');
+}
+
+/**
+ * The facts already recorded that make a module relevant. These are what the
+ * conversation quotes back — "you mentioned the mortgage" — so an offer is
+ * always anchored to something the client actually said.
+ */
+function supportingFactsFor(profile, entry) {
+  const supporting = [];
+  for (const rule of entry.routing?.suggestedWhen || []) {
+    for (const condition of rule.anyOf || []) {
+      if (!conditionHolds(profile, condition)) continue;
+      supporting.push(typeof condition.profileHas === 'string'
+        ? `position:${condition.profileHas}`
+        : condition.fact);
+    }
+  }
+  return [...new Set(supporting)];
 }
 
 function activeGoals(profile) {
@@ -210,14 +247,22 @@ function addRoute(byModuleId, route, goalType) {
   if (SOURCE_RANK[route.source] > SOURCE_RANK[existing.source]) existing.source = route.source;
 }
 
-function intakeFor(moduleId, profile, allowedModuleIds) {
+function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null) {
   const definition = getPlanningModuleDefinition(moduleId);
   const readiness = getModuleIntakeReadiness(moduleId, profile);
-  const missingFactIds = [...new Set((readiness.requiredMissing || []).map((item) => (
-    resolveSemanticFact(item, { profile, moduleId }).factId
-  )))];
-  const releaseAllowed = definition?.consumerAvailable === true
-    && (!allowedModuleIds || allowedModuleIds.has(moduleId));
+  const missingFactIds = [...new Set(withoutInapplicableFacts(
+    (readiness.requiredMissing || []).map((item) => ({
+      factId: resolveSemanticFact(item, { profile, moduleId }).factId,
+      moduleId
+    })),
+    profile
+  ).map((item) => item.factId))];
+  // Release is decided by the four authoritative controls, not by the legacy
+  // consumerAvailable boolean, so an adviser enabling an approved module takes
+  // effect here rather than being overruled by stale manifest data.
+  const releaseAllowed = isConsumerVisibleModule(moduleId, {
+    allowedModuleIds, adviserOverrides
+  });
   if (!releaseAllowed) {
     return {
       availability: 'adviser_review_required',
@@ -256,7 +301,7 @@ export function toPublicGoalAssessment(assessment) {
 }
 
 /** Build the deterministic one-to-three-module plan. Model output never supplies module ids. */
-export function buildGoalModulePlan(rawProfile, { allowedModuleIds } = {}) {
+export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverrides = null } = {}) {
   const profile = normalizeHouseholdProfile(rawProfile);
   const goals = activeGoals(profile);
   const activeGoalTypes = [...new Set(goals.map((goal) => goal.type))];
@@ -290,28 +335,32 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds } = {}) {
   }
 
   const allowed = Array.isArray(allowedModuleIds) ? new Set(allowedModuleIds) : null;
+  const visibility = { allowedModuleIds: allowed, adviserOverrides };
+  const accepted = acceptedModuleIds(profile);
+  const declined = declinedModuleIds(profile);
   const confirmed = confirmedModuleIds(profile);
 
-  // A confirmed suggestion becomes a selected module. This is the only route by
-  // which a circumstance-driven module reaches execution.
-  for (const moduleId of confirmed) {
+  // An accepted offer becomes selected only once it is in the confirmed final
+  // set. Acceptance opens its question queue; confirmation authorises execution.
+  for (const moduleId of accepted) {
+    if (!confirmed.has(moduleId)) continue;
     if (byModuleId.has(moduleId) || isPlanningCapability(moduleId)) continue;
-    if (!isPlanningModuleSelectable(moduleId)) continue;
+    if (!isConsumerVisibleModule(moduleId, visibility)) continue;
     byModuleId.set(moduleId, {
       moduleId,
-      source: 'client_confirmed_suggestion',
+      source: 'client_accepted_offer',
       relatedGoalTypes: [...plannedGoalTypes],
-      ruleIds: [`manifest.suggested.${moduleId}.confirmed.v1`]
+      ruleIds: [`manifest.offer.${moduleId}.confirmed.v1`]
     });
   }
 
-  const goalSelected = [...byModuleId.values()].filter((selection) => selection.source !== 'client_confirmed_suggestion');
-  const confirmedSelected = [...byModuleId.values()].filter((selection) => selection.source === 'client_confirmed_suggestion');
+  const goalSelected = [...byModuleId.values()].filter((selection) => selection.source !== 'client_accepted_offer');
+  const confirmedSelected = [...byModuleId.values()].filter((selection) => selection.source === 'client_accepted_offer');
   // Goal-driven selection keeps its one-to-three contract; confirmed
   // suggestions extend it because the client explicitly asked for them.
   const selections = [...goalSelected.slice(0, 3), ...confirmedSelected];
   const moduleSlots = selections.map((selection, index) => {
-    const intake = intakeFor(selection.moduleId, profile, allowed);
+    const intake = intakeFor(selection.moduleId, profile, allowed, adviserOverrides);
     return Object.freeze({
       slot: index + 1,
       moduleId: selection.moduleId,
@@ -326,34 +375,48 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds } = {}) {
     });
   });
 
-  // Circumstance-driven candidates the client has not confirmed. These are
-  // explained and offered; they are deliberately absent from executionModuleIds
-  // so nothing extra can run silently.
+  // Circumstance-driven opportunities.
+  //
+  // Consumer visibility is a HARD filter applied before anything reaches the
+  // conversation layer. A module that is not effectively consumer-available is
+  // classified `unavailable` and dropped from the consumer-facing output
+  // entirely — it is never described as deferred, adviser-only or available
+  // later, because a consumer must not learn it exists. Advisers see the same
+  // modules with full status through the adviser catalogue instead.
   const selectedIds = new Set(moduleSlots.map((slot) => slot.moduleId));
-  const suggestedModules = [];
-  const deferredModules = [];
+  const moduleOpportunities = [];
+  const withheldOpportunities = [];
   for (const entry of MODULE_MANIFEST) {
     if (selectedIds.has(entry.moduleId) || isPlanningCapability(entry.moduleId)) continue;
     const reason = suggestionReasonFor(profile, entry);
     if (!reason) continue;
-    const intake = intakeFor(entry.moduleId, profile, allowed);
-    const candidate = Object.freeze({
+    const intake = intakeFor(entry.moduleId, profile, allowed, adviserOverrides);
+    const base = {
       moduleId: entry.moduleId,
-      reason,
-      availability: intake.availability,
-      intakeStatus: intake.intakeStatus,
+      relevanceReason: reason,
+      supportingFactIds: Object.freeze(supportingFactsFor(profile, entry)),
       missingFactIds: Object.freeze([...intake.missingFactIds]),
-      ruleIds: Object.freeze([`manifest.suggested.${entry.moduleId}.v1`])
-    });
-    // Relevance and availability are different questions. A module with a real
-    // engine is worth suggesting even when its consumer release gate is shut —
-    // its availability says whether it runs here or goes to Gerry. A module with
-    // no engine at all cannot be analysed either way, so it is deferred.
-    if (isRunnablePlanningModule(entry.moduleId)) {
-      suggestedModules.push(Object.freeze({ ...candidate, selectionState: 'suggested' }));
-    } else {
-      deferredModules.push(Object.freeze({ ...candidate, selectionState: 'deferred' }));
+      clientBenefit: entry.clientBenefit || '',
+      ruleIds: Object.freeze([`manifest.offer.${entry.moduleId}.v1`])
+    };
+    const availability = effectiveConsumerAvailability(entry.moduleId, visibility);
+    if (!availability.visible) {
+      // Internal only. Never serialised to a consumer surface.
+      withheldOpportunities.push(Object.freeze({
+        ...base, state: 'unavailable', blockedBy: availability.blockedBy
+      }));
+      continue;
     }
+    const state = declined.has(entry.moduleId) ? 'declined'
+      : accepted.has(entry.moduleId) ? 'accepted'
+        : intake.availability === 'needs_facts' && base.missingFactIds.length > 0 && !reason
+          ? 'candidate'
+          : 'offerable';
+    moduleOpportunities.push(Object.freeze({
+      ...base,
+      state,
+      effectiveConsumerAvailability: Object.freeze({ visible: true, gates: availability.gates })
+    }));
   }
 
   const executionModuleIds = moduleSlots
@@ -377,10 +440,11 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds } = {}) {
       confidence
     }),
     moduleSlots: Object.freeze(moduleSlots),
-    // Offered to the client with a reason, never executed until confirmed.
-    suggestedModules: Object.freeze(suggestedModules.slice(0, 3)),
-    // Relevant on the evidence, but not available for automated analysis.
-    deferredModules: Object.freeze(deferredModules.slice(0, 3)),
+    // Consumer-visible opportunities only. Safe to serialise into a prompt.
+    moduleOpportunities: Object.freeze(moduleOpportunities.slice(0, 4)),
+    // Relevant internally but not consumer-visible. NEVER serialise this to a
+    // consumer surface; it exists for adviser tooling and diagnostics.
+    withheldOpportunities: Object.freeze(withheldOpportunities),
     executionModuleIds: Object.freeze(executionModuleIds),
     requiresGoalPriorityQuestion,
     requiresDecisionTopicQuestion,

@@ -5,10 +5,6 @@ import {
   getGoalLabel,
   goalPlanRecommendations
 } from '../../../js/planning/goal_plan.js';
-import {
-  buildPersonaModulePlan,
-  personaPlanRecommendations
-} from '../../../js/planning/persona_catalogue.js';
 import { extractRulesOnlyProfilePatch } from '../../../js/planning/rules_only_extraction.js';
 import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
 import { extractProfilePatchWithAi, selectAiRequestPolicy } from './ai_provider.js';
@@ -702,51 +698,7 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
   };
 }
 
-function describeLegacyPersonaState(profile, config) {
-  const personaPlan = buildPersonaModulePlan(profile, { allowedModuleIds: config.allowedModules });
-  const hasGoal = Boolean(profile?.goals?.length);
-  const plannedRecommendations = hasGoal ? personaPlanRecommendations(personaPlan, profile) : [];
-  const explicitPersonaResolved = personaPlan.personaAssessment.needsDisambiguation !== true
-    && personaPlan.personaAssessment.evidenceFactIds.includes('self_description');
-  const scanQuestion = hasGoal && !explicitPersonaResolved ? personaScanQuestion(profile) : null;
-  let nextQuestion = buildQuestionPlan(profile, plannedRecommendations);
-  let stage = stageFromQuestionPlan(profile, plannedRecommendations);
-  if (stage === 'targeted_fact_gathering') stage = 'goal_specific_questions';
-  if (hasGoal && personaPlan.personaAssessment.needsDisambiguation) {
-    nextQuestion = {
-      questionId: `question-persona-disambiguation-${personaPlan.personaAssessment.profileRevision}`,
-      factId: 'self_description',
-      factInstanceId: 'self_description',
-      factIds: ['self_description'],
-      facts: [{ factId: 'self_description', factInstanceId: 'self_description', fieldPath: '/assumptions/values/persona/selfDescription' }],
-      fieldPaths: ['/assumptions/values/persona/selfDescription'],
-      relatedFieldPaths: ['/assumptions/values/persona/selfDescription'],
-      prompt: 'Which description best matches your situation right now?',
-      answerType: 'text',
-      confirmationPolicy: 'final_review',
-      optional: false
-    };
-    stage = 'life_stage_scan';
-  } else if (scanQuestion) {
-    nextQuestion = scanQuestion;
-    stage = 'life_stage_scan';
-  }
-  return {
-    stage,
-    nextQuestion,
-    recommendations: plannedRecommendations,
-    personaAssessment: personaPlan.personaAssessment,
-    moduleSlots: personaPlan.moduleSlots,
-    overrides: personaPlan.overrides,
-    requiresGoalPriorityQuestion: false,
-    requiresDecisionTopicQuestion: false,
-    requiresPersonaScan: Boolean(scanQuestion),
-    deferredGoalTypes: []
-  };
-}
-
 export function describeConversationState(profile, config) {
-  if (config.goalRoutingEnabled === false) return describeLegacyPersonaState(profile, config);
   const goalPlan = buildGoalModulePlan(profile, { allowedModuleIds: config.allowedModules });
   const hasGoal = goalPlan.goalAssessment.activeGoalTypes.length > 0;
   const plannedRecommendations = hasGoal ? goalPlanRecommendations(goalPlan, profile) : [];

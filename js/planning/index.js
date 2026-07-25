@@ -1,7 +1,6 @@
 export * from './contracts.js';
 export * from './profile.js';
 export * from './semantic_facts.js';
-export * from './persona_catalogue.js';
 export * from './goal_plan.js';
 export * from './question_plan.js';
 export * from './rules_only_extraction.js';

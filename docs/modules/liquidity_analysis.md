@@ -11,14 +11,17 @@
   "status": "active",
   "availability": {
     "adviser": true,
-    "consumer": true
+    "consumer": true,
+    "platformConsumerApproved": true,
+    "adviserConsumerEnabled": true
   },
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
     "scenarioAware": false,
     "playbook": "16_liquidity_playbook.md",
-    "outputKey": "generated.liquidityPlan"
+    "outputKey": "generated.liquidityPlan",
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,
@@ -55,7 +58,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "check whether the cash you can reach is right for what you spend and the risks in the near term",
+  "consumerReadiness": {
+    "status": "approved",
+    "reviewedOn": "2026-07-25",
+    "blockingItems": []
+  }
 }
 ```
 

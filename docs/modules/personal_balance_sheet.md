@@ -11,14 +11,17 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": true
+    "consumer": true,
+    "platformConsumerApproved": true,
+    "adviserConsumerEnabled": true
   },
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
     "scenarioAware": false,
     "playbook": "10_pbs_playbook.md",
-    "outputKey": "generated.pbsInputs"
+    "outputKey": "generated.pbsInputs",
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,
@@ -52,7 +55,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "a clear breakdown of what you own and owe, where cash may be concentrated, and how your overall position supports your longer-term goals",
+  "consumerReadiness": {
+    "status": "approved",
+    "reviewedOn": "2026-07-25",
+    "blockingItems": []
+  }
 }
 ```
 

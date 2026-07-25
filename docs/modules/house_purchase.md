@@ -11,14 +11,17 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": true
+    "consumer": true,
+    "platformConsumerApproved": true,
+    "adviserConsumerEnabled": true
   },
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
     "scenarioAware": true,
     "playbook": "17_house_purchase_playbook.md",
-    "outputKey": "generated.housePurchaseInputs"
+    "outputKey": "generated.housePurchaseInputs",
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,
@@ -64,7 +67,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "work out the deposit, what is affordable, the mortgage you would need, and the path to buying",
+  "consumerReadiness": {
+    "status": "approved",
+    "reviewedOn": "2026-07-25",
+    "blockingItems": []
+  }
 }
 ```
 

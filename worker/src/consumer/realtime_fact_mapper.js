@@ -6,7 +6,6 @@ import {
   getRealtimeModuleSemanticFactIds
 } from '../../../js/planning/module_registry.js';
 import { buildGoalModulePlan } from '../../../js/planning/goal_plan.js';
-import { buildPersonaModulePlan } from '../../../js/planning/persona_catalogue.js';
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { escapeJsonPointerToken } from '../../../js/planning/utils.js';
 
@@ -513,7 +512,7 @@ function projectPersonaFacts(profile, facts) {
   return normalizeHouseholdProfile(projected);
 }
 
-export function modulesEnabledByFacts(recommendations, facts = [], profile = null, { goalRoutingEnabled = true } = {}) {
+export function modulesEnabledByFacts(recommendations, facts = [], profile = null) {
   const projectedProfile = projectPersonaFacts(profile, facts);
   const modules = new Set(projectedProfile
     ? []
@@ -521,9 +520,7 @@ export function modulesEnabledByFacts(recommendations, facts = [], profile = nul
       .map((item) => item?.moduleId)
       .filter((moduleId) => typeof moduleId === 'string'));
   if (projectedProfile) {
-    const plan = goalRoutingEnabled
-      ? buildGoalModulePlan(projectedProfile)
-      : buildPersonaModulePlan(projectedProfile);
+    const plan = buildGoalModulePlan(projectedProfile);
     plan.moduleSlots.forEach((slot) => modules.add(slot.moduleId));
   }
   return modules;

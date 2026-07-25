@@ -11,14 +11,17 @@
   "status": "beta",
   "availability": {
     "adviser": true,
-    "consumer": false
+    "consumer": false,
+    "platformConsumerApproved": true,
+    "adviserConsumerEnabled": false
   },
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
     "scenarioAware": false,
     "playbook": "12_mortgage_playbook.md",
-    "outputKey": "generated.mortgageInputs"
+    "outputKey": "generated.mortgageInputs",
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,
@@ -59,7 +62,13 @@
     "requireAll": [],
     "excludeIf": []
   },
-  "factPreconditions": {}
+  "factPreconditions": {},
+  "clientBenefit": "compare your current repayment path with switching, changing the term, or making extra repayments",
+  "consumerReadiness": {
+    "status": "approved",
+    "reviewedOn": "2026-07-25",
+    "blockingItems": []
+  }
 }
 ```
 

@@ -1,7 +1,6 @@
 import { ConsumerError, notFound } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 import { sanitizeRealtimeEventPayload } from './realtime_event_schema.js';
-import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import {
   constantTimeEqual,
@@ -2017,7 +2016,6 @@ export async function prepareRealtimeAnalysisPlan(env, request) {
     scenarioOverrides: request.scenarioOverrides || {},
     selectionPolicyVersion: request.selectionPolicyVersion || null,
     goalAssessment: request.goalAssessment || null,
-    personaAssessment: request.personaAssessment || null,
     moduleSlots: request.moduleSlots || [],
     overrides: request.overrides || [],
     requiresGoalPriorityQuestion: request.requiresGoalPriorityQuestion === true,
@@ -2241,7 +2239,6 @@ export function toPublicRealtimeAnalysisPlan(row, decryptedInput = null) {
     ? input.selectionPolicyVersion.slice(0, 80)
     : null;
   const goalAssessment = toPublicGoalAssessment(input.goalAssessment);
-  const personaAssessment = toPublicPersonaAssessment(input.personaAssessment);
   const moduleSlots = Array.isArray(input.moduleSlots)
     ? input.moduleSlots.map(toPublicModuleSlot).filter(Boolean).slice(0, 3)
     : [];
@@ -2260,7 +2257,6 @@ export function toPublicRealtimeAnalysisPlan(row, decryptedInput = null) {
     moduleIds,
     selectionPolicyVersion,
     goalAssessment,
-    personaAssessment,
     moduleSlots,
     overrides,
     requiresGoalPriorityQuestion,

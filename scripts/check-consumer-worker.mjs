@@ -962,22 +962,16 @@ assert.equal(profile.fieldMetadata['/goals/0/type'].confirmedByUser, false);
 assert.deepEqual(recommendModules(profile).slice(0, 2).map((item) => item.moduleId), ['house_purchase', 'liquidity_analysis']);
 let state = describeConversationState(profile, {
   moduleRoutingEnabled: true,
-  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.equal(state.stage, 'life_stage_scan');
-assert.equal(state.nextQuestion.fieldPaths[0], '/assumptions/values/persona/selfDescription');
-const personaPatch = extractContextBoundPatch(profile, state.nextQuestion, 'I am a first-time buyer');
-assert.deepEqual(personaPatch, {
-  '/assumptions/values/persona/selfDescription': 'first_time_buyer'
-});
-profile = applyProfilePatch(profile, personaPatch, [], 'consumer_edit');
+// The persona scan is gone: goal routing asks for the facts the stated goal's
+// analyses actually need, never for a self-description label.
+assert.equal(state.stage, 'targeted_fact_gathering');
+assert.notEqual(state.nextQuestion.fieldPaths[0], '/assumptions/values/persona/selfDescription');
 state = describeConversationState(profile, {
   moduleRoutingEnabled: true,
-  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.notEqual(state.stage, 'life_stage_scan');
 assert.equal(state.nextQuestion.fieldPaths[0], '/expenses/monthlyEssential');
 assert.deepEqual(extractContextBoundPatch(profile, state.nextQuestion, '€3,000'), {
   '/expenses/monthlyEssential': { amount: 3000, currency: 'EUR' }
@@ -1102,10 +1096,9 @@ const noExpenseProfile = applyProfilePatch(
 );
 const noExpenseState = describeConversationState(noExpenseProfile, {
   moduleRoutingEnabled: true,
-  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.equal(noExpenseState.stage, 'goal_specific_questions');
+assert.equal(noExpenseState.stage, 'targeted_fact_gathering');
 assert.deepEqual(noExpenseState.nextQuestion.fieldPaths, ['/businesses']);
 assert.equal(
   noExpenseState.recommendations.find((item) => item.moduleId === 'personal_balance_sheet').readiness.status,
@@ -1123,10 +1116,9 @@ const siblingNoneProfile = applyProfilePatch(preparedNoExpenseProfile, {
 }, [], 'consumer_edit');
 const siblingNoneState = describeConversationState(siblingNoneProfile, {
   moduleRoutingEnabled: true,
-  goalRoutingEnabled: false,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.equal(siblingNoneState.stage, 'goal_specific_questions');
+assert.equal(siblingNoneState.stage, 'targeted_fact_gathering');
 assert.equal(siblingNoneState.nextQuestion.fieldPaths[0], '/expenses/monthlyEssential');
 const previousBuyerPatch = extractContextBoundPatch(
   profile,

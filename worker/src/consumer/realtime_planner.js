@@ -1,3 +1,4 @@
+import { withoutInapplicableFacts } from '../../../js/planning/fact_preconditions.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import {
@@ -715,7 +716,7 @@ export function sectionCompletionToRealtimeFact(completion) {
   };
 }
 
-function uniqueMissingFacts(state) {
+function uniqueMissingFacts(state, profile = null) {
   const seen = new Set();
   const missing = [];
   for (const recommendation of state.recommendations || []) {
@@ -731,7 +732,9 @@ function uniqueMissingFacts(state) {
       });
     }
   }
-  return missing;
+  // Drop questions this client cannot answer — asking a sole trader what their
+  // employer contributes is the case this exists for.
+  return profile ? withoutInapplicableFacts(missing, profile) : missing;
 }
 
 function understoodFacts(state) {
@@ -865,7 +868,7 @@ function statePensionMemberAssumptions(profile) {
 
 export async function composeMeetingBrief({ env, context, extraction, sourceTurnId }) {
   const state = context.state || {};
-  const missingFacts = orderedMissingFacts(state, uniqueMissingFacts(state));
+  const missingFacts = orderedMissingFacts(state, uniqueMissingFacts(state, context.profile));
   const modules = (state.moduleSlots || []).slice(0, 3).map((slot, index) => ({
     slot: index + 1,
     moduleId: slot.moduleId,
