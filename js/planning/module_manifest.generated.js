@@ -22,6 +22,12 @@ export const MODULE_MANIFEST = Object.freeze([
     "routing": {
       "consumerRoutable": false,
       "goals": [],
+      "adviserGoals": [
+        {
+          "type": "agricultural_planning",
+          "role": "direct"
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -56,6 +62,12 @@ export const MODULE_MANIFEST = Object.freeze([
     "routing": {
       "consumerRoutable": false,
       "goals": [],
+      "adviserGoals": [
+        {
+          "type": "business_planning",
+          "role": "direct"
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -68,40 +80,6 @@ export const MODULE_MANIFEST = Object.freeze([
     "purpose": "Adviser-reviewed planning around a household business interest.",
     "whenToUse": "Adviser-led work for a company director or owner-manager where the business interest materially shapes the plan.",
     "whenNotToUse": "Never route this from a consumer conversation. Consumer use waits for a code-owned general business-owner analysis.",
-    "clientSignals": []
-  },
-  {
-    "moduleId": "business_owner_relief",
-    "manifestVersion": "2.0.0",
-    "name": "Business owner relief (legacy)",
-    "kind": "composition",
-    "status": "adviser_only",
-    "availability": {
-      "adviser": true,
-      "consumer": false
-    },
-    "implementation": {
-      "status": "template_only",
-      "intakeContract": "incomplete",
-      "scenarioAware": false,
-      "playbook": null,
-      "outputKey": null
-    },
-    "routing": {
-      "consumerRoutable": false,
-      "goals": [],
-      "pinned": "never",
-      "priorityBoost": 0
-    },
-    "requiredFacts": [],
-    "eligibility": {
-      "requireAll": [],
-      "excludeIf": []
-    },
-    "factPreconditions": {},
-    "purpose": "Backward-compatible adviser-only business succession and relief module id, retained so existing adviser sessions and saved plans keep resolving.",
-    "whenToUse": "Only where an existing saved plan or adviser session already references this id.",
-    "whenNotToUse": "Do not use it for new work. See the catalogue note below: business_relief_analysis is the current id and the duplication needs a deliberate decision.",
     "clientSignals": []
   },
   {
@@ -124,6 +102,13 @@ export const MODULE_MANIFEST = Object.freeze([
     "routing": {
       "consumerRoutable": false,
       "goals": [],
+      "adviserGoals": [
+        {
+          "type": "business_planning",
+          "role": "direct",
+          "requiresFact": "business_exit_intent"
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -158,6 +143,12 @@ export const MODULE_MANIFEST = Object.freeze([
     "routing": {
       "consumerRoutable": false,
       "goals": [],
+      "adviserGoals": [
+        {
+          "type": "transfer_wealth",
+          "role": "direct"
+        }
+      ],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -197,6 +188,7 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "direct"
         }
       ],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -241,6 +233,7 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "direct"
         }
       ],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -297,6 +290,7 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "companion"
         }
       ],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -340,6 +334,7 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "direct"
         }
       ],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -385,6 +380,7 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "direct"
         }
       ],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -434,6 +430,7 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "companion"
         }
       ],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -487,6 +484,7 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "direct"
         }
       ],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -542,6 +540,7 @@ export const MODULE_MANIFEST = Object.freeze([
           "role": "direct"
         }
       ],
+      "adviserGoals": [],
       "pinned": "when_eligible",
       "priorityBoost": 0
     },
@@ -586,6 +585,7 @@ export const MODULE_MANIFEST = Object.freeze([
     "routing": {
       "consumerRoutable": false,
       "goals": [],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -620,6 +620,7 @@ export const MODULE_MANIFEST = Object.freeze([
     "routing": {
       "consumerRoutable": false,
       "goals": [],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },
@@ -668,6 +669,7 @@ export const MODULE_MANIFEST = Object.freeze([
     "routing": {
       "consumerRoutable": false,
       "goals": [],
+      "adviserGoals": [],
       "pinned": "never",
       "priorityBoost": 0
     },

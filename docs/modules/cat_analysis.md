@@ -23,6 +23,12 @@
   "routing": {
     "consumerRoutable": false,
     "goals": [],
+    "adviserGoals": [
+      {
+        "type": "transfer_wealth",
+        "role": "direct"
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

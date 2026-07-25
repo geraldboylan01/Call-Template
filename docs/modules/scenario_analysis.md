@@ -23,6 +23,7 @@
   "routing": {
     "consumerRoutable": false,
     "goals": [],
+    "adviserGoals": [],
     "pinned": "never",
     "priorityBoost": 0
   },

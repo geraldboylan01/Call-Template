@@ -345,3 +345,41 @@ tax relief, and both are routed independently.
    The classification is complete (§8). Adviser-only modules stay available;
    `template_only`, `routing_label` and `capability` entries must never be
    presented as runnable reports.
+
+**Approved 2026-07-25 and implemented in P2:**
+
+- `business_relief_analysis` is canonical. `business_owner_relief` is retained
+  only as a resolvable alias in `RETIRED_MODULE_ID_ALIASES` and is no longer a
+  registry entry, manifest, adviser selector option or module count.
+- `scenario_analysis` stays as a documented cross-module capability, classified
+  `implementation.status: capability`, and is excluded by construction from
+  adviser selectors, consumer routing, runnable counts and output expectations.
+
+---
+
+## 11. One behaviour change in P2, and the decision behind it
+
+Migrating both routers onto the manifest exposed a real divergence that had been
+live: for `understand_position`, `buildGoalModulePlan` selects only the Personal
+Balance Sheet, while `recommendModules` also recommended `liquidity_analysis`
+(the old `route.position.liquidity.v1`). A client told "I'll put together your
+overall position" could have had a cash-reserve analysis run as well.
+
+The convergence test caught this immediately. **Resolved in favour of the
+conversation**: the `understand_position → liquidity_analysis` edge was dropped
+from `liquidity_analysis`'s `adviserGoals`, so the execution default now matches
+what the client is actually told. No golden fixture covered
+`understand_position`, so nothing pinned the old behaviour.
+
+The alternative — adding the edge to consumer routing so the conversation also
+offers liquidity — is a **product decision**, not a refactor, and it would change
+what live clients are shown. Flagged for Gerry rather than taken unilaterally:
+
+> Should a client whose goal is "understand my position" receive a cash-reserve
+> analysis alongside the Personal Balance Sheet? Today they receive the balance
+> sheet only. If yes, add `understand_position` to `liquidity_analysis`'s
+> `routing.goals` and the conversation will follow.
+
+Everything else in P2 is behaviour-preserving. Route rule ids changed form
+(`route.buy_home.v1` → `manifest.buy_home.house_purchase.v1`); they are recorded
+in telemetry, so historical `goal_plan_evaluated` events use the old strings.

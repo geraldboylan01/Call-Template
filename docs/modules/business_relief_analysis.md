@@ -23,6 +23,13 @@
   "routing": {
     "consumerRoutable": false,
     "goals": [],
+    "adviserGoals": [
+      {
+        "type": "business_planning",
+        "role": "direct",
+        "requiresFact": "business_exit_intent"
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

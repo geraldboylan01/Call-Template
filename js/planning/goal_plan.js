@@ -5,6 +5,7 @@ import {
   getPlanningPlaybookManifestVersion,
   isPlanningModuleSelectable
 } from './module_registry.js';
+import { MODULE_MANIFEST } from './module_manifest.generated.js';
 import { normalizeHouseholdProfile } from './profile.js';
 import { resolveSemanticFact } from './semantic_facts.js';
 
@@ -34,41 +35,49 @@ const GOAL_LABELS = Object.freeze({
   agricultural_planning: 'agricultural planning'
 });
 
-const ROUTES = Object.freeze({
-  understand_position: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.PERSONAL_BALANCE_SHEET, source: 'goal_direct', ruleId: 'goal.position.balance_sheet.v1' })
-  ]),
-  build_wealth: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.PERSONAL_BALANCE_SHEET, source: 'goal_direct', ruleId: 'goal.wealth.balance_sheet.v1' })
-  ]),
-  maintain_liquidity: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.LIQUIDITY, source: 'goal_direct', ruleId: 'goal.liquidity.direct.v1' })
-  ]),
-  buy_home: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.HOUSE_PURCHASE, source: 'goal_direct', ruleId: 'goal.home.direct.v1' }),
-    Object.freeze({ moduleId: MODULE_IDS.LIQUIDITY, source: 'goal_companion', ruleId: 'goal.home.liquidity.v1' })
-  ]),
-  improve_pension: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.PENSION_PROJECTION, source: 'goal_direct', ruleId: 'goal.pension.direct.v1' })
-  ]),
-  retire: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.PENSION_PROJECTION, source: 'goal_direct', ruleId: 'goal.retirement.pension.v1' }),
-    Object.freeze({ moduleId: MODULE_IDS.NET_RETIREMENT, source: 'goal_companion', ruleId: 'goal.retirement.net_cashflow.v1' })
-  ]),
-  retire_early: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.PENSION_PROJECTION, source: 'goal_direct', ruleId: 'goal.early_retirement.pension.v1' }),
-    Object.freeze({ moduleId: MODULE_IDS.NET_RETIREMENT, source: 'goal_companion', ruleId: 'goal.early_retirement.net_cashflow.v1' })
-  ]),
-  optimise_mortgage: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.MORTGAGE, source: 'goal_direct', ruleId: 'goal.mortgage.direct.v1' })
-  ]),
-  manage_loan: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.LOAN, source: 'goal_direct', ruleId: 'goal.loan.direct.v1' })
-  ]),
-  fund_education: Object.freeze([
-    Object.freeze({ moduleId: MODULE_IDS.COLLEGE_FUNDING, source: 'goal_direct', ruleId: 'goal.education.direct.v1' })
-  ])
-});
+/**
+ * Consumer goal routes, derived from the adviser-authored module manifests.
+ *
+ * This replaces the hand-maintained ROUTES table. The manifest is the single
+ * source of truth shared with the execution-time router in routing_rules.js, so
+ * the analyses a conversation selects cannot drift from the analyses the
+ * analysis layer runs. See docs/module-catalogue-reconciliation.md §10.
+ *
+ * Direct routes are ordered before companions, then by module id, which is the
+ * order the previous table encoded by hand: a goal's own analysis leads and its
+ * supporting analysis follows.
+ */
+const ROUTES = buildRoutesFromManifest();
+
+function buildRoutesFromManifest() {
+  const byGoal = {};
+  for (const entry of MODULE_MANIFEST) {
+    if (!entry.routing?.consumerRoutable) continue;
+    for (const goal of entry.routing.goals || []) {
+      (byGoal[goal.type] ||= []).push({
+        moduleId: entry.moduleId,
+        source: goal.role === 'direct' ? 'goal_direct' : 'goal_companion',
+        ruleId: `manifest.${goal.type}.${entry.moduleId}.${goal.role}.v1`
+      });
+    }
+  }
+  for (const goalType of Object.keys(byGoal)) {
+    byGoal[goalType] = Object.freeze(byGoal[goalType]
+      .sort((left, right) => (
+        Number(right.source === 'goal_direct') - Number(left.source === 'goal_direct')
+        || left.moduleId.localeCompare(right.moduleId)
+      ))
+      .map(Object.freeze));
+  }
+  return Object.freeze(byGoal);
+}
+
+/** Modules the manifest pins into a plan that still has room for them. */
+function pinnedModuleIds() {
+  return MODULE_MANIFEST
+    .filter((entry) => entry.routing?.pinned === 'when_eligible')
+    .map((entry) => entry.moduleId);
+}
 
 function activeGoals(profile) {
   return profile.goals
@@ -205,15 +214,18 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds } = {}) {
   const byModuleId = new Map();
   plannedGoalTypes.forEach((goalType) => ROUTES[goalType].forEach((route) => addRoute(byModuleId, route, goalType)));
 
-  if (byModuleId.size > 0 && byModuleId.size < 3
-    && !byModuleId.has(MODULE_IDS.PERSONAL_BALANCE_SHEET)
-    && shouldAddBalanceSheet(profile, plannedGoalTypes)
-    && isPlanningModuleSelectable(MODULE_IDS.PERSONAL_BALANCE_SHEET)) {
-    byModuleId.set(MODULE_IDS.PERSONAL_BALANCE_SHEET, {
-      moduleId: MODULE_IDS.PERSONAL_BALANCE_SHEET,
+  // Manifest-pinned modules fill a plan that still has room. Today only the
+  // Personal Balance Sheet is pinned; the setting becomes adviser-editable in P6
+  // rather than staying a branch in this function.
+  for (const moduleId of pinnedModuleIds()) {
+    if (byModuleId.size === 0 || byModuleId.size >= 3 || byModuleId.has(moduleId)) continue;
+    if (!isPlanningModuleSelectable(moduleId)) continue;
+    if (moduleId === MODULE_IDS.PERSONAL_BALANCE_SHEET && !shouldAddBalanceSheet(profile, plannedGoalTypes)) continue;
+    byModuleId.set(moduleId, {
+      moduleId,
       source: 'balance_sheet_default',
       relatedGoalTypes: [...plannedGoalTypes],
-      ruleIds: ['goal.balance_sheet.default.v1']
+      ruleIds: [`manifest.pinned.${moduleId}.v1`]
     });
   }
 

@@ -226,8 +226,15 @@ await runCase('registry exposes only active consumer candidates to bootstrap', (
   for (const id of [
     'pension_projection', 'net_retirement_cashflow', 'mortgage_analysis', 'college_funding',
     'personal_balance_sheet', 'cat_analysis', 'business_owner_analysis', 'business_relief_analysis',
-    'business_owner_relief', 'agricultural_relief'
+    'agricultural_relief'
   ]) assert.ok(all.some((entry) => entry.id === id), `missing registry entry ${id}`);
+  // business_owner_relief is a retired alias of business_relief_analysis. It must
+  // still resolve for stored payloads, but must never be a separate catalogue
+  // entry, adviser selector option, or module count.
+  assert.ok(
+    !all.some((entry) => entry.id === 'business_owner_relief'),
+    'the retired business_owner_relief alias must not appear as a catalogue entry'
+  );
   assert.equal(all.find((entry) => entry.id === 'personal_balance_sheet').status, 'beta');
   assert.equal(all.find((entry) => entry.id === 'personal_balance_sheet').consumerAvailable, true);
   assert.equal(all.find((entry) => entry.id === 'cat_analysis').consumerAvailable, false);
@@ -239,7 +246,7 @@ await runCase('deterministic routing distinguishes required and recommended modu
   const liquidity = recommendations.find((entry) => entry.moduleId === 'liquidity_analysis');
   assert.equal(house.status, 'required');
   assert.equal(liquidity.status, 'recommended');
-  assert.ok(house.triggeredRuleIds.includes('route.buy_home.v1'));
+  assert.ok(house.triggeredRuleIds.includes('manifest.buy_home.house_purchase.v1'));
   assert.equal(house.readiness.status, 'ready_with_assumptions');
 });
 

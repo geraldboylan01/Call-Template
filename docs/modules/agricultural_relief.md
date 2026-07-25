@@ -23,6 +23,12 @@
   "routing": {
     "consumerRoutable": false,
     "goals": [],
+    "adviserGoals": [
+      {
+        "type": "agricultural_planning",
+        "role": "direct"
+      }
+    ],
     "pinned": "never",
     "priorityBoost": 0
   },

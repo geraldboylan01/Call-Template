@@ -668,7 +668,8 @@ or mark it adviser-selection-only) rather than silent inheritance.
 |---|---|---|
 | **P0** ✅ **done 2026-07-25** | §4.8 simulator + 4 scenarios; slot-ordered question queue; `property_status` in the balance-sheet decision; planner orientation-extraction prompt | live bug fixed, safety net in place, `check:consumer` green |
 | **P1** ✅ **done 2026-07-25** | §4.1 nine manifests + generator + `--check`; behavioural parity assertion; nothing reads them yet | zero behaviour change, fully reversible |
-| **P2** (~1–2 wk) | §4.6 ratifier reads manifests; delete ROUTES + persona router; rename to `circumstances`. **Gated on the reconciliation — see below.** | bug structurally impossible |
+| **P2a** ✅ **done 2026-07-25** | Both routers read the manifest; `ROUTES` and the hand-written `route()` block deleted; alias + capability rules; convergence tests | one routing source; divergence impossible |
+| **P2b** (~1 wk) | Delete the persona router (`classifyPlanningPersona` / `buildPersonaModulePlan`), retire the `goalRoutingEnabled === false` branch, rename `assumptions.values.persona` → `circumstances`; add `eligibility` / `factPreconditions` | employer-contribution class of question closed |
 | **P3** (~1 wk) | §4.2 composer + mention register + prompt rule change | **R1 done** |
 | **P4** (~2 wk) | §4.3 two modes, five-beat opening, OARS, cache split | **R2 done** |
 | **P5** (~2 wk) | §4.4 T1/T2 supervisor behind flag | background orchestration |

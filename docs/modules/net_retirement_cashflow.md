@@ -32,6 +32,7 @@
         "role": "companion"
       }
     ],
+    "adviserGoals": [],
     "pinned": "never",
     "priorityBoost": 0
   },

@@ -120,9 +120,18 @@ function parseManifest(source, label) {
   if (typeof routing.consumerRoutable !== 'boolean') fail(`${label} has a non-boolean routing.consumerRoutable.`);
   if (!PINNED_VALUES.has(routing.pinned)) fail(`${label} has an invalid routing.pinned value.`);
   if (!Number.isInteger(routing.priorityBoost)) fail(`${label} has a non-integer routing.priorityBoost.`);
-  for (const goal of routing.goals || []) {
+  for (const goal of [...(routing.goals || []), ...(routing.adviserGoals || [])]) {
     if (!GOAL_TYPES.includes(goal.type)) fail(`${label} references unknown goal ${goal.type}.`);
     if (!GOAL_ROLES.has(goal.role)) fail(`${label} goal ${goal.type} has an invalid role.`);
+    if (goal.requiresFact !== undefined && !getSemanticFactDefinition(goal.requiresFact)) {
+      fail(`${label} goal ${goal.type} requires unknown fact ${goal.requiresFact}.`);
+    }
+  }
+  // adviserGoals are the extra edges the execution-time router recommends,
+  // covering adviser-only analyses that consumer goal routing deliberately
+  // never selects. A capability has no edges of either kind.
+  if (implementation.status === 'capability' && (routing.adviserGoals || []).length > 0) {
+    fail(`${label} is a capability and must not carry adviser goals.`);
   }
 
   // A capability is not a module. Scenario handling is composed over

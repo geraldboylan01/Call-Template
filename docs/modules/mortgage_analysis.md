@@ -28,6 +28,7 @@
         "role": "direct"
       }
     ],
+    "adviserGoals": [],
     "pinned": "never",
     "priorityBoost": 0
   },
