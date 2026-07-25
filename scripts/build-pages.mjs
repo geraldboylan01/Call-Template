@@ -31,6 +31,7 @@ const HTML_FILES = [
   'app/index.html',
   'app/session.html',
   'app/clients.html',
+  'app/analytics.html',
   'app/access.html',
   'app/leads.html',
   'app/video.html',
