@@ -234,3 +234,114 @@ This is the substantive risk the reconciliation was called for, and it is real.
 
 Until items 1–5 are done, P2 must not switch `buildGoalModulePlan` onto the
 manifests or delete `ROUTES`, `recommendModules` or `applicableGoals`.
+
+---
+
+## 8. The definitive 16-entry catalogue
+
+Generated from the live registry, manifests and playbook manifest on
+2026-07-25. "Auto-routing" is what goal routing actually does today, verified
+behaviourally, not what a declaration claims.
+
+| User-facing name | Internal ID | Implementation type | Engine | Adviser | Consumer | Auto-routing | Current output | Recommended long-term treatment |
+|---|---|---|---|---|---|---|---|---|
+| Personal balance sheet | `personal_balance_sheet` | Runnable engine | ✅ | ✅ | ✅ | `understand_position`, `build_wealth` (direct) + **pinned when eligible** | `generated.pbsInputs` | Keep. Replace the hardcoded default-add with the manifest `pinned` setting; make it adviser-tunable in P6. |
+| Liquidity reserve | `liquidity_analysis` | Runnable engine | ✅ | ✅ | ✅ | `maintain_liquidity` (direct), `buy_home` (companion) | `generated.liquidityPlan` | Keep as-is. The only `active` module and the most mature. |
+| House purchase planner | `house_purchase` | Runnable engine | ✅ | ✅ | ✅ | `buy_home` (direct) | `generated.housePurchaseInputs` | Keep. Scenario-aware. Add P2 `factPreconditions` so a homeowner is never asked rent. |
+| Pension projection | `pension_projection` | Runnable engine | ✅ | ✅ | ❌ | `improve_pension`, `retire`, `retire_early` (direct) | `generated.pensionInputs` | Promote to `consumerAvailable` once the employer-contribution precondition lands. Scenario-aware. |
+| Net retirement cash flow | `net_retirement_cashflow` | Runnable engine | ✅ | ✅ | ❌ | `retire`, `retire_early` (companion) | `generated.netRetirementInputs` | Keep paired with pension projection. Scenario-aware. |
+| Mortgage analysis | `mortgage_analysis` | Runnable engine | ✅ | ✅ | ❌ | `optimise_mortgage` (direct) | `generated.mortgageInputs` | Keep. Shares `mortgage_math.js` with loan analysis. |
+| Loan analysis | `loan_analysis` | Runnable engine | ✅ | ✅ | ❌ | `manage_loan` (direct) | `generated.loanInputs` | Keep. |
+| College funding | `college_funding` | Runnable engine | ✅ | ✅ | ❌ | `fund_education` (direct) | `generated.collegeFundingInputs` | Keep. Consumer release waits on reviewed, date-versioned cost scenarios. |
+| Retirement Goal Analysis | `retirement_goal_analysis` | **Routing label** | ❌ | ✅ | ❌ | **none** | — | **Adviser-selection-only (decided).** No automatic consumer routes until its intended output and its relationship to the two retirement engines are separately reviewed. Its approved intake contract is misleading and should be re-labelled. |
+| Protection analysis | `protection_analysis` | Template-only | ❌ | ✅ | ❌ | none | `generated.report` | Keep adviser-only. Real playbook and renderer, no engine. Never routable until a deterministic adapter exists. |
+| Capital Acquisitions Tax analysis | `cat_analysis` | Template-only | ❌ | ✅ | ❌ | none | — | Keep adviser-only. Needs date-versioned CAT rules + tests before any route. |
+| Business Owner Analysis | `business_owner_analysis` | Template-only | ❌ | ✅ | ❌ | none | — | Keep adviser-only. Genuinely distinct from business relief — general planning, not a tax relief. |
+| Business Relief Analysis | `business_relief_analysis` | Template-only | ❌ | ✅ | ❌ | none | — | **Canonical business-relief identity.** Keep adviser-only. See §9. |
+| Business owner relief (legacy) | `business_owner_relief` | Template-only | ❌ | ✅ | ❌ | none | — | **Retire to an alias of `business_relief_analysis`.** Not a distinct module. See §9. |
+| Agricultural relief | `agricultural_relief` | Template-only | ❌ | ✅ | ❌ | none | — | Keep adviser-only. Needs date-versioned rules + tests. |
+| Scenario analysis | `scenario_analysis` | **Capability** | ❌ | ❌ | ❌ | none | — | Never a module. Represent as `scenarioAware` on House purchase, Pension projection and Net retirement cash flow. Consider removing the placeholder id entirely in P2. |
+
+**Totals:** 8 runnable engines · 6 template-only · 1 routing label · 1 capability.
+15 adviser-available · 3 consumer-available · 8 auto-routed (of which 1 is
+pinned rather than goal-routed).
+
+**The non-runnable entries must never surface as runnable reports.** Nine of the
+sixteen have no engine. `implementation.status` is the field that distinguishes
+them, and P6's adviser UI must render `template_only`, `routing_label` and
+`capability` as non-executable.
+
+---
+
+## 9. Business relief: duplicates, and which is canonical
+
+**Recommendation: they are duplicates, not distinct modules and not a
+routing-label/module pair. `business_relief_analysis` is canonical;
+`business_owner_relief` should be retired to an alias rather than deleted.**
+
+Evidence across every axis asked for:
+
+| Axis | `business_relief_analysis` | `business_owner_relief` |
+|---|---|---|
+| Playbook | none | none |
+| Engine | none | none |
+| Output key | none | none |
+| Required facts | none (incomplete intake) | none (incomplete intake) |
+| Registry label | "Business Relief Analysis" | "Business owner relief (legacy)" |
+| Declared goals | `business_planning`, `transfer_wealth` | `business_planning` |
+| **Goal routing** | **routed** — [routing_rules.js:102](../js/planning/routing_rules.js:102) on `business_planning` + `businessExit` | **nothing routes to it** |
+| **Fact mappings** | **3 mappings** — `business_context`, `business_exit_intent`, `agricultural_assets` ([semantic_facts.js:820,828,836](../js/planning/semantic_facts.js:820)) | **none** |
+| **Persona catalogue** | used by 2 personas | **none** |
+| Test fixtures | persona golden + voice frontend slot fixture | registry-coverage assertions only |
+
+Two findings settle it:
+
+1. **The persona catalogue's constant named `BUSINESS_RELIEF` points at
+   `BUSINESS_RELIEF_ANALYSIS`** ([persona_catalogue.js:19](../js/planning/persona_catalogue.js:19)).
+   The legacy *name* survives as a variable while the legacy *id* does not. That
+   is a rename that was completed everywhere except the registry entry.
+
+2. **The stated justification for keeping it is not borne out.**
+   [contracts.js:93](../js/planning/contracts.js:93) says it is a
+   "Backward-compatible id used by existing adviser modules and saved plans".
+   But the adviser portal never resolves a module id against the planning
+   registry: `validModuleIds` is built from `appState.session.modules`
+   ([app.js:3737](../js/app.js:3737)) — session-local ids — and the Dev Panel
+   payload's `moduleId` is optional free text that no validator checks against
+   `MODULE_IDS`. A historical session containing the string would render
+   identically whether or not the registry entry exists. No consumer analysis
+   run can reference it either, since it has never been consumer-available or
+   routable.
+
+**Why alias rather than delete.** The code evidence says deletion is safe, but I
+cannot inspect Gerry's stored R2 sessions or D1 rows from here, and the
+conservative move costs nothing: keep `business_owner_relief` resolvable as an
+alias that maps to `business_relief_analysis`, and drop it as a separate
+catalogue entry so it stops appearing as a distinct adviser module. If a stored
+payload does carry the old id, it still resolves; nothing is lost, and the
+catalogue stops showing two entries for one analysis.
+
+`business_owner_analysis` is **not** part of this duplication — general
+business-owner planning is a genuinely different thing from a date-versioned
+tax relief, and both are routed independently.
+
+---
+
+## 10. Recorded decisions — 2026-07-25
+
+1. **`retirement_goal_analysis` stays adviser-selection-only.** No automatic
+   consumer routes until its intended output and its relationship with pension
+   projection and net retirement cash flow are separately reviewed. Its approved
+   intake contract is misleading given it has no engine, and should be
+   re-labelled as part of that review.
+2. **Business relief** — investigated above; recommendation is alias, pending
+   sign-off.
+3. **P2 must replace both routing paths together.** `buildGoalModulePlan` and
+   the execution-time `recommendModules` fallback inside `runConsumerAnalysis`
+   must move to the manifest in the same change, with **behavioural tests
+   proving conversation selection and executed modules cannot diverge** — the
+   same profile must yield the same module set through both paths.
+4. **Registry authoritative for adviser availability only after classification.**
+   The classification is complete (§8). Adviser-only modules stay available;
+   `template_only`, `routing_label` and `capability` entries must never be
+   presented as runnable reports.
