@@ -779,6 +779,9 @@ export function describeConversationState(profile, config) {
     goalAssessment: goalPlan.goalAssessment,
     moduleSlots: hasGoal && !goalPlan.requiresDecisionTopicQuestion && !goalPlan.requiresGoalPriorityQuestion
       ? goalPlan.moduleSlots.map(({ ruleIds: _ruleIds, ...slot }) => slot) : [],
+    // Consumer-visible opportunities only. withheldOpportunities is deliberately
+    // not surfaced here: it must never reach a consumer prompt.
+    moduleOpportunities: hasGoal ? [...goalPlan.moduleOpportunities] : [],
     requiresGoalPriorityQuestion: hasGoal && goalPlan.requiresGoalPriorityQuestion,
     requiresDecisionTopicQuestion: hasGoal && goalPlan.requiresDecisionTopicQuestion,
     deferredGoalTypes: hasGoal ? goalPlan.deferredGoalTypes : []

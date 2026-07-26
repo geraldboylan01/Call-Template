@@ -139,6 +139,21 @@ export const REALTIME_V2_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     type: 'function',
+    name: 'record_module_decision',
+    description: 'Record the client\'s answer to the single analysis you have just offered. Use accepted only for a clear yes such as "yes", "that sounds useful" or "include that". Use declined only for a clear no. Use uncertain for anything hedged or exploratory such as "maybe", "possibly", "I am not sure" or "tell me more" — uncertain is never an acceptance. The server decides which analysis this applies to; you cannot name one, add one that was not offered, or run anything.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['expectedRevision', 'decision'],
+      properties: {
+        expectedRevision: { type: 'integer', minimum: 1 },
+        decision: { type: 'string', enum: ['accepted', 'declined', 'uncertain'] },
+        evidenceText: { type: 'string', maxLength: 300 }
+      }
+    }
+  },
+  {
+    type: 'function',
     name: 'get_intake_explanation',
     description: 'Get a reviewed educational or process explanation. Use this before answering why a fact is needed, a financial concept, a recommendation request, or an eligibility question.',
     parameters: {
@@ -258,9 +273,13 @@ export function realtimeJourneyPhase(state = {}) {
 
 export function realtimeToolsForState(state = {}) {
   if (state.conversationVersion === 'v2') {
-    return REALTIME_V2_TOOL_DEFINITIONS.filter((tool) => (
-      tool.name !== 'confirm_and_run_voice_plan' || state.spokenCompletionEnabled === true
-    ));
+    return REALTIME_V2_TOOL_DEFINITIONS.filter((tool) => {
+      if (tool.name === 'confirm_and_run_voice_plan') return state.spokenCompletionEnabled === true;
+      // The decision tool exists only while an analysis is actually on the
+      // table, so the model cannot record a decision against nothing.
+      if (tool.name === 'record_module_decision') return Boolean(state.meetingBrief?.moduleOffer?.moduleId);
+      return true;
+    });
   }
   const phase = realtimeJourneyPhase(state);
   const names = phase === 'results'

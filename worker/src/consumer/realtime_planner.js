@@ -1,4 +1,5 @@
 import { withoutInapplicableFacts } from '../../../js/planning/fact_preconditions.js';
+import { confirmationSummary, nextModuleOffer } from '../../../js/planning/module_offers.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import {
@@ -922,6 +923,12 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
         perPersonAssumptions: statePensionMemberAssumptions(context.profile)
       }
     : null;
+  // The single active offer. The server owns which analysis is on the table, so
+  // a short "yes" can only ever resolve to one thing.
+  const activeOffer = nextModuleOffer(
+    { moduleOpportunities: state.moduleOpportunities || [] },
+    { profile: context.profile }
+  );
   const brief = {
     schemaVersion: MEETING_BRIEF_V2,
     sourceTurnId,
@@ -942,6 +949,14 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
       reason: boundedText(missingFacts[0]?.reason || '', 240)
     },
     questionBatch,
+    moduleOffer: activeOffer
+      ? {
+          moduleId: activeOffer.moduleId,
+          spokenOffer: activeOffer.spokenOffer,
+          anchor: activeOffer.anchor,
+          benefit: activeOffer.benefit
+        }
+      : null,
     clientQuestion,
     ambiguities: (extraction?.ambiguities || []).slice(0, 6),
     provisional: !ready,
@@ -987,6 +1002,7 @@ export function toConversationGuide(brief) {
     jurisdiction: brief.jurisdiction,
     currentTopic: brief.currentTopic,
     questionBatch: brief.questionBatch,
+    moduleOffer: brief.moduleOffer,
     confirmationSummary: brief.confirmationSummary,
     moduleState: brief.moduleState,
     finalNavigationTarget: brief.finalNavigationTarget,

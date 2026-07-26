@@ -110,17 +110,52 @@ export function composeModuleOffer(opportunity, { profile } = {}) {
   const manifest = getModuleManifest(opportunity.moduleId);
   const benefit = String(manifest?.clientBenefit || '').trim();
   if (!benefit) return null;
-  const anchor = anchorPhrase(opportunity.supportingFactIds, profile);
+
+  // A client who asked for the analysis outright is already anchored — their own
+  // request is the reason. Only a circumstance-driven offer needs a fact quoted
+  // back, because that is the one the client did not ask for.
+  const goalAnchor = goalAnchorPhrase(opportunity.moduleId, profile);
+  const anchor = goalAnchor || anchorPhrase(opportunity.supportingFactIds, profile);
   if (!anchor) return null;
   return Object.freeze({
     moduleId: opportunity.moduleId,
     policyVersion: MODULE_OFFER_POLICY_VERSION,
     anchor,
+    anchorSource: goalAnchor ? 'client_request' : 'circumstance',
     benefit,
-    spokenOffer: `You mentioned ${anchor}. I can ${benefit}. Would that be useful?`,
+    spokenOffer: goalAnchor
+      ? `${goalAnchor}, so I can ${benefit}. Would you like me to include that?`
+      : `You mentioned ${anchor}. I can ${benefit}. Would that be useful?`,
     supportingFactIds: Object.freeze([...(opportunity.supportingFactIds || [])]),
     requiredFactIds: Object.freeze([...(manifest?.requiredFacts || [])])
   });
+}
+
+const GOAL_REQUEST_PHRASES = Object.freeze({
+  buy_home: 'You said you want to buy a home',
+  optimise_mortgage: 'You asked about your mortgage',
+  manage_loan: 'You asked about your loan',
+  improve_pension: 'You want to get your pension in better shape',
+  retire: 'You want to plan for retirement',
+  retire_early: 'You want to look at retiring early',
+  fund_education: 'You want to plan for education costs',
+  maintain_liquidity: 'You want to be sure you have enough put by',
+  understand_position: 'You want to see where you stand overall',
+  build_wealth: 'You want to build up what you have'
+});
+
+/**
+ * The client's own request as an anchor, when a goal they stated is one this
+ * module directly serves.
+ */
+export function goalAnchorPhrase(moduleId, profile) {
+  const manifest = getModuleManifest(moduleId);
+  const served = new Set((manifest?.routing?.goals || []).map((goal) => goal.type));
+  const stated = (profile?.goals || [])
+    .filter((goal) => !['completed', 'paused'].includes(goal.status))
+    .map((goal) => goal.type);
+  const match = stated.find((goalType) => served.has(goalType) && GOAL_REQUEST_PHRASES[goalType]);
+  return match ? GOAL_REQUEST_PHRASES[match] : null;
 }
 
 /**

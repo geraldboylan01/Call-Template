@@ -2001,6 +2001,80 @@ export async function commitRealtimeFactConfirmation(env, request) {
   return { profile: nextProfile, sessionRow, revision };
 }
 
+/**
+ * Persist a client's decision about one offered module.
+ *
+ * A decision is not a fact about the client's finances, so it does not go
+ * through the fact-proposal machinery. It is still a durable, revisioned change
+ * to the profile: a decline has to survive the rest of the call, and a later
+ * reversal has to be an explicit new decision rather than the offer quietly
+ * coming back.
+ */
+export async function recordRealtimeModuleDecision(env, request) {
+  const currentRevision = Number(request.sessionRow.current_profile_revision || 1);
+  const revision = currentRevision + 1;
+  const timestamp = nowIso();
+  const planning = request.profile?.assumptions?.values?.planning || {};
+  const accepted = new Set(Array.isArray(planning.acceptedModuleIds) ? planning.acceptedModuleIds : []);
+  const declined = new Set(Array.isArray(planning.declinedModuleIds) ? planning.declinedModuleIds : []);
+
+  // A decision always replaces the previous one for that module, so a reversal
+  // is a clean state change rather than two contradictory records.
+  accepted.delete(request.moduleId);
+  declined.delete(request.moduleId);
+  if (request.decision === 'accepted') accepted.add(request.moduleId);
+  if (request.decision === 'declined') declined.add(request.moduleId);
+
+  const nextProfile = {
+    ...request.profile,
+    revision,
+    confirmedAt: undefined,
+    updatedAt: timestamp,
+    assumptions: {
+      ...request.profile.assumptions,
+      values: {
+        ...request.profile.assumptions.values,
+        planning: {
+          ...planning,
+          acceptedModuleIds: [...accepted],
+          declinedModuleIds: [...declined]
+        }
+      }
+    }
+  };
+  const payload = await encryptJson(
+    env,
+    nextProfile,
+    `consumer/profile/${request.sessionId}/${revision}`
+  );
+  await db(env).batch([
+    db(env).prepare(`
+      INSERT INTO consumer_profile_revisions (
+        session_id, revision, schema_version, payload_encrypted, confirmed_at, created_at
+      )
+      SELECT ?, ?, 1, ?, NULL, ?
+      WHERE EXISTS (
+        SELECT 1 FROM consumer_sessions
+        WHERE id = ? AND deleted_at IS NULL AND current_profile_revision = ?
+      )
+    `).bind(request.sessionId, revision, payload, timestamp, request.sessionId, currentRevision),
+    db(env).prepare(`
+      UPDATE consumer_sessions
+      SET current_profile_revision = ?, confirmed_profile_revision = NULL, last_active_at = ?
+      WHERE id = ? AND deleted_at IS NULL AND current_profile_revision = ?
+        AND EXISTS (
+          SELECT 1 FROM consumer_profile_revisions WHERE session_id = ? AND revision = ?
+        )
+    `).bind(revision, timestamp, request.sessionId, currentRevision, request.sessionId, revision)
+  ]);
+  const sessionRow = await db(env).prepare('SELECT * FROM consumer_sessions WHERE id = ? LIMIT 1')
+    .bind(request.sessionId).first();
+  if (Number(sessionRow?.current_profile_revision) !== revision) {
+    throw new ConsumerError(409, 'realtime_module_decision_conflict', 'The profile changed while recording that decision.');
+  }
+  return { profile: nextProfile, sessionRow, revision };
+}
+
 export async function prepareRealtimeAnalysisPlan(env, request) {
   const id = randomId('realtime_plan');
   const planNonce = `plan_nonce_${await hmacSha256Base64Url(

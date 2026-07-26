@@ -801,3 +801,32 @@ confirmation summary. **The realtime session does not yet expose a tool for the
 voice agent to record accept/decline**, so today the decision has to be written
 through the planning profile rather than spoken. That tool plus its handler is
 the next step, and it is small compared with the flow it completes.
+
+### P3 completion — spoken decisions, 2026-07-26
+
+`record_module_decision` closes the loop. The design constraint is that a bare
+"yes" must be safe, so **the model cannot name a module**: the tool takes only a
+decision, and the server resolves it against the single offer carried in the
+signed brief (`meetingBrief.moduleOffer`). An unoffered analysis therefore
+cannot be added, and nothing can be executed from the tool.
+
+| Decision | Effect |
+|---|---|
+| `accepted` | persisted, module joins the intended set, its question queue opens, **nothing runs** |
+| `declined` | persisted durably, questions never open, not offered again unless the client reverses it |
+| `uncertain` | recorded as an event and **changes nothing** — "maybe" and "tell me more" are not acceptance |
+
+The tool is only present in the toolset while an offer is active
+(`realtimeToolsForState`), so it cannot be called against nothing, and calling it
+with no active offer fails with `realtime_no_active_module_offer`.
+
+A decision replaces any earlier one for that module, so a reversal is a clean
+state change rather than two contradictory records. Persistence goes through
+`recordRealtimeModuleDecision`, a revisioned profile write — a decision is not a
+financial fact, so it does not use the fact-proposal machinery, but it is still
+durable and conflict-checked.
+
+Offers may now be anchored to **an explicit client request** as well as a
+circumstance: a client who stated the goal is already anchored by their own
+words ("You asked about your mortgage, so I can…"), while a circumstance-driven
+offer still has to quote a fact back. Ungrounded offers remain suppressed.
