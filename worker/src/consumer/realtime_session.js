@@ -4,7 +4,10 @@ import {
   resolveSemanticFact
 } from '../../../js/planning/semantic_facts.js';
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
-import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
+import {
+  consumerLanguageForModule,
+  containsInternalModuleTerminology
+} from '../../../js/planning/module_offers.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import {
@@ -75,6 +78,7 @@ import {
   isLikelyIncompleteRealtimeUtterance,
   positionCandidatesToRealtimeFacts,
   sectionCompletionToRealtimeFact,
+  toConsumerMeetingBrief,
   toConversationGuide
 } from './realtime_planner.js';
 import {
@@ -398,13 +402,99 @@ function controlledQuestionText(state = {}) {
 }
 
 function controlledModuleList(moduleSlots = []) {
-  const labels = moduleSlots.slice(0, 3).map((slot) => (
-    getPlanningModuleDefinition(slot?.moduleId)?.name
-    || String(slot?.moduleId || '').replace(/_/g, ' ')
-  )).filter(Boolean);
-  if (labels.length < 1) return '';
+  const selected = moduleSlots.slice(0, 3);
+  if (selected.length < 1) return '';
+  const labels = selected.map((slot) => (
+    consumerLanguageForModule(slot?.moduleId)?.shortDescription || ''
+  ));
+  if (!labels.every(Boolean)) {
+    return selected.length === 1 ? 'the analysis shown on screen' : 'the analyses shown on screen';
+  }
   if (labels.length === 1) return labels[0];
   return `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+}
+
+function safeConsumerPlanningText(value, maximumLength = 240) {
+  const text = typeof value === 'string' ? value.trim().slice(0, maximumLength) : '';
+  return text && !containsInternalModuleTerminology(text) ? text : '';
+}
+
+/**
+ * Reduce deterministic internal routing state to the controlled fields that
+ * may cross the Realtime consumer boundary. Exact approved module ids remain
+ * available for protocol identity, while hidden catalogue entries and
+ * catalogue-authored prose fail closed.
+ */
+export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
+  const visibleSlots = (state.moduleSlots || [])
+    .filter((slot) => Boolean(consumerLanguageForModule(slot?.moduleId, { profile })))
+    .slice(0, 3)
+    .map((slot) => {
+      const language = consumerLanguageForModule(slot.moduleId, { profile });
+      return {
+        slot: Number.isSafeInteger(Number(slot.slot)) ? Number(slot.slot) : null,
+        moduleId: slot.moduleId,
+        description: language.shortDescription,
+        availability: typeof slot.availability === 'string' ? slot.availability : 'unknown',
+        intakeStatus: typeof slot.intakeStatus === 'string' ? slot.intakeStatus : 'unknown',
+        selectionState: typeof slot.selectionState === 'string' ? slot.selectionState : 'selected',
+        relatedGoalTypes: Array.isArray(slot.relatedGoalTypes)
+          ? slot.relatedGoalTypes.filter((value) => typeof value === 'string').slice(0, 8)
+          : []
+      };
+    });
+
+  const visibleRecommendations = (state.recommendations || [])
+    .filter((item) => Boolean(consumerLanguageForModule(item?.moduleId, { profile })))
+    .slice(0, 12);
+
+  return Object.freeze({
+    moduleSlots: Object.freeze(visibleSlots),
+    likelyModules: Object.freeze(visibleSlots.map((slot) => slot.moduleId)),
+    recommendations: Object.freeze(visibleRecommendations.map((item) => {
+      const language = consumerLanguageForModule(item.moduleId, { profile });
+      return Object.freeze({
+        moduleId: item.moduleId,
+        description: language.shortDescription,
+        status: item.readiness?.status || item.status || 'unknown',
+        assumptionsUsed: Object.freeze((item.readiness?.assumptionsUsed || [])
+          .slice(0, 8)
+          .map((assumption) => Object.freeze({
+            key: typeof assumption.key === 'string' ? assumption.key.slice(0, 100) : '',
+            value: assumption.value,
+            reason: safeConsumerPlanningText(assumption.reason)
+          }))),
+        requiredMissing: Object.freeze((item.readiness?.requiredMissing || [])
+          .slice(0, 20)
+          .map((missing) => {
+            const semantic = resolveSemanticFact(missing, { profile, moduleId: item.moduleId });
+            return Object.freeze({
+              factId: semantic.factId,
+              factInstanceId: semantic.factInstanceId,
+              importance: missing.importance,
+              reason: safeConsumerPlanningText(missing.reason)
+            });
+          }))
+      });
+    })),
+    deferredOrAdviserTopics: Object.freeze(visibleRecommendations
+      .filter((item) => (
+        ['adviser_review_required', 'unsupported'].includes(item.readiness?.status || item.status)
+      ))
+      .slice(0, 8)
+      .map((item) => {
+        const language = consumerLanguageForModule(item.moduleId, { profile });
+        const status = item.readiness?.status || item.status;
+        return Object.freeze({
+          moduleId: item.moduleId,
+          description: language.shortDescription,
+          status,
+          reason: status === 'adviser_review_required'
+            ? 'This outcome needs Gerry’s review before it can be completed.'
+            : 'This outcome is not available for automated analysis in the current test.'
+        });
+      }))
+  });
 }
 
 function completionFactMapping(profile, fact, normalizedRange = null) {
@@ -1659,7 +1749,7 @@ export class ConsumerRealtimeSession {
                       : meetingPhase === 'awaiting_voice_confirmation'
                         ? confirmationInstruction
                         : meetingPhase === 'generating_modules' || meetingPhase === 'closing' || meetingPhase === 'completed'
-                          ? 'Do not speak. The server owns module generation, the closing message and navigation.'
+                          ? 'Do not speak. The server owns analysis generation, the closing message and navigation.'
                           : intakeInstruction,
                 // The first response is a spoken welcome, not an intake or
                 // planner turn. Disallow tools for that response so Marin is
@@ -2131,7 +2221,7 @@ export class ConsumerRealtimeSession {
         const requiredPrompt = String(
           requiredQuestion?.prompt
           || requiredQuestion?.question
-          || 'I found that one more detail is needed before the modules can run. Could you tell me that now?'
+          || 'I found that one more detail is needed before the analyses can run. Could you tell me that now?'
         ).slice(0, 300);
         const updatedBrief = Object.freeze({
           ...brief,
@@ -2151,7 +2241,7 @@ export class ConsumerRealtimeSession {
           nextObjective: {
             facts: requiredQuestion ? [requiredQuestion] : [],
             promptHint: requiredPrompt,
-            reason: 'The deterministic module engine requires this fact.'
+            reason: 'The deterministic analysis engine requires this fact.'
           }
         });
         await saveRealtimeMeetingBrief(this.env, {
@@ -2243,7 +2333,7 @@ export class ConsumerRealtimeSession {
         eventType: 'realtime.spoken_completion.failed',
         payload: { planId, code: error instanceof ConsumerError ? error.code : 'analysis_failed' }
       }).catch(() => {});
-      const failureText = 'I’m sorry, I couldn’t generate those modules just now. Nothing has been marked complete, and the meeting will stay open so we can try again.';
+      const failureText = 'I’m sorry, I couldn’t run those analyses just now. Nothing has been marked complete, and the meeting will stay open so we can try again.';
       await issueRealtimeSpeechAuthorization({
         env: this.env,
         sessionId: this.meta.sessionId,
@@ -2276,7 +2366,6 @@ export class ConsumerRealtimeSession {
     }
     const profile = await getCurrentProfile(this.env, sessionRow);
     const state = describeConversationState(profile, config);
-    const allDeterministicRecommendations = state.recommendations || [];
     const proposedFacts = await listRealtimeFactProposalSummaries(
       this.env,
       this.meta.sessionId,
@@ -2310,6 +2399,10 @@ export class ConsumerRealtimeSession {
         ? 'confirmation'
         : retainedTerminalPhase || realtimeJourneyPhase({ stage: state.stage }));
     const reasoningEscalation = complexJourney(profile, state);
+    const consumerPlanningLists = toConsumerRealtimePlanningLists(state, profile);
+    const consumerMeetingBrief = config.realtimeConversationV2Enabled
+      ? toConsumerMeetingBrief(this.latestMeetingBrief, { profile })
+      : null;
     const publicState = {
       profileRevision: Number(sessionRow.current_profile_revision),
       confirmedProfileRevision: sessionRow.confirmed_profile_revision === null
@@ -2333,50 +2426,19 @@ export class ConsumerRealtimeSession {
       currentPendingProposal: pendingFacts[0] || null,
       selectionPolicyVersion: state.selectionPolicyVersion || null,
       goalAssessment: toPublicGoalAssessment(state.goalAssessment),
-      moduleSlots: (state.moduleSlots || []).slice(0, 3),
+      moduleSlots: consumerPlanningLists.moduleSlots,
       requiresGoalPriorityQuestion: state.requiresGoalPriorityQuestion === true,
       requiresDecisionTopicQuestion: state.requiresDecisionTopicQuestion === true,
       deferredGoalTypes: (state.deferredGoalTypes || []).slice(0, 8),
-      likelyModules: (state.moduleSlots || [])
-        .map((item) => item.moduleId)
-        .slice(0, 3),
-      recommendations: (state.recommendations || []).slice(0, 12).map((item) => ({
-        moduleId: item.moduleId,
-        status: item.readiness?.status || item.status || 'unknown',
-        assumptionsUsed: (item.readiness?.assumptionsUsed || []).slice(0, 8).map((assumption) => ({
-          key: typeof assumption.key === 'string' ? assumption.key.slice(0, 100) : '',
-          value: assumption.value,
-          reason: typeof assumption.reason === 'string' ? assumption.reason.slice(0, 240) : ''
-        })),
-        requiredMissing: (item.readiness?.requiredMissing || []).slice(0, 20).map((missing) => {
-          const semantic = resolveSemanticFact(missing, { profile, moduleId: item.moduleId });
-          return {
-            factId: semantic.factId,
-            factInstanceId: semantic.factInstanceId,
-            importance: missing.importance,
-            reason: typeof missing.reason === 'string' ? missing.reason.slice(0, 240) : ''
-          };
-        })
-      })),
-      deferredOrAdviserTopics: allDeterministicRecommendations
-        .filter((item) => (
-          getPlanningModuleDefinition(item.moduleId)?.consumerAvailable === false
-          || ['adviser_review_required', 'unsupported'].includes(item.readiness?.status || item.status)
-        ))
-        .slice(0, 8)
-        .map((item) => ({
-          moduleId: item.moduleId,
-          status: item.readiness?.status || item.status,
-          reason: Array.isArray(item.rationale) && typeof item.rationale[0] === 'string'
-            ? item.rationale[0].slice(0, 240)
-            : 'This topic is not available for automated analysis in the current test.'
-        })),
+      likelyModules: consumerPlanningLists.likelyModules,
+      recommendations: consumerPlanningLists.recommendations,
+      deferredOrAdviserTopics: consumerPlanningLists.deferredOrAdviserTopics,
       reasoningEscalation,
       conversationVersion: config.realtimeConversationV2Enabled ? 'v2' : 'v1',
       spokenCompletionEnabled: config.realtimeSpokenCompletionEnabled,
-      meetingBrief: config.realtimeConversationV2Enabled ? this.latestMeetingBrief : null,
+      meetingBrief: consumerMeetingBrief,
       conversationGuide: config.realtimeConversationV2Enabled
-        ? toConversationGuide(this.latestMeetingBrief)
+        ? toConversationGuide(consumerMeetingBrief, { profile })
         : null
     };
     return { config, sessionRow, profile, state: publicState };
@@ -2700,7 +2762,7 @@ export class ConsumerRealtimeSession {
       kind = 'plan';
       const modules = controlledModuleList(state.moduleSlots || safeOutput.moduleSlots || []);
       text = modules
-        ? `Based on what you told me, the three analyses most relevant to you are ${modules}. ${question || 'Please review them on screen before anything runs.'}`
+        ? `Based on what you told me, I have outlined ${modules}. ${question || 'Please review them on screen before anything runs.'}`
         : (question || 'I need one more detail before I can show the three most relevant analyses.');
     } else if (toolName === 'get_planning_state') {
       kind = this.currentResponseReason === 'initial_state_probe' ? 'greeting' : 'question';

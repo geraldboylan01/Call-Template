@@ -93,7 +93,7 @@ export function getPensionProjectionReadiness(profile) {
     reason: `${IRELAND_RULES_CATALOGUE_VERSION}, effective January 2026. Maximum gross rate only; actual entitlement depends on each person’s PRSI record.`
   });
   const warnings = [
-    'Pension balances and projected withdrawals are pre-tax; they are not a substitute for the separate net retirement cash-flow view.',
+    'Pension balances and projected withdrawals are shown before tax. Tax and wider retirement-income needs require separate adviser review.',
     ...crossCurrencyWarnings(profile, [
       ['Pension values', profile.pensions.map((pension) => pension.currentValue)],
       ['Income values', profile.incomeSources.map((income) => income.grossAnnual)]

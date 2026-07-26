@@ -72,7 +72,7 @@ assert.deepEqual(completion.expected.completionPhases, [
 ]);
 assert.equal(
   completion.expected.outro,
-  'Thanks very much for your time today. Your modules are ready, and I’m taking you to them now.'
+  'Thanks very much for your time today. Your analyses are ready, and I’m taking you to them now.'
 );
 assert.equal(completion.expected.automaticHangup, true);
 assert.equal(completion.expected.navigationTarget, 'results');

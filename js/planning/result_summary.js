@@ -127,7 +127,7 @@ function collegeHighlight(result) {
   return {
     id: 'college-position',
     moduleId: result.moduleId,
-    title: 'College funding range',
+    title: 'Future college-cost range',
     message: `The reviewed scenarios run from ${formatMoney(semantic.nominalCostRange?.low, semantic.currency)} to ${formatMoney(semantic.nominalCostRange?.high, semantic.currency)} in nominal costs, starting in ${semantic.firstCollegeYear}.`,
     tone: 'neutral',
     priority: 65,
@@ -143,8 +143,8 @@ function personalBalanceSheetHighlight(result) {
   return {
     id: 'personal-balance-sheet-position',
     moduleId: result.moduleId,
-    title: semantic.netWorth < 0 ? 'Liabilities exceed recorded assets' : 'Personal balance sheet reconciled',
-    message: `The deterministic balance sheet records gross assets of ${formatMoney(semantic.grossAssets, semantic.currency)}, liabilities of ${formatMoney(semantic.totalLiabilities, semantic.currency)}, and net worth of ${formatMoney(semantic.netWorth, semantic.currency)}.${reserveText}`,
+    title: semantic.netWorth < 0 ? 'Liabilities exceed recorded assets' : 'Recorded assets and liabilities are reconciled',
+    message: `The deterministic calculation records gross assets of ${formatMoney(semantic.grossAssets, semantic.currency)}, liabilities of ${formatMoney(semantic.totalLiabilities, semantic.currency)}, and net worth of ${formatMoney(semantic.netWorth, semantic.currency)}.${reserveText}`,
     tone: semantic.netWorth < 0 ? 'attention' : 'neutral',
     priority: 90,
     numericFacts: {
@@ -191,8 +191,8 @@ export function summarizeAnalysisResults({ results = [], errors = [], analysisPl
   const warnings = [...new Set(results.flatMap((result) => result.warnings || []))];
   const missingCount = (analysisPlan?.requiredQuestions || []).length;
   const nextSteps = [];
-  if (missingCount > 0) nextSteps.push(`Review ${missingCount} missing information ${missingCount === 1 ? 'item' : 'items'} before running the affected modules.`);
-  if (errors.length > 0) nextSteps.push('Review modules that could not run; no failed module changed another result.');
+  if (missingCount > 0) nextSteps.push(`Review ${missingCount} missing information ${missingCount === 1 ? 'item' : 'items'} before running the affected analyses.`);
+  if (errors.length > 0) nextSteps.push('Review analyses that could not run; no failed analysis changed another result.');
   if (highlights.length > 0) nextSteps.push('Confirm the inputs and dated assumptions before acting on any illustration.');
   return {
     generatedBy: 'deterministic_rules',

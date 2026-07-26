@@ -109,6 +109,23 @@ export function validateAdviserConsumerToggle(moduleId, enabled) {
  * journey must never see, because the adviser surface is where approval and
  * enablement status belong.
  */
+function adviserConsumerLanguage(entry) {
+  const language = entry?.consumerLanguage;
+  if (!language) return null;
+  return Object.freeze({
+    consumerOfferDescription: language.consumerOfferDescription,
+    consumerShortLabel: language.consumerShortLabel,
+    consumerConfirmationDescription: language.consumerConfirmationDescription,
+    offerQuestion: language.offerQuestion,
+    offerClauses: Object.freeze((language.offerClauses || []).map((clause) => Object.freeze({
+      text: clause.text,
+      when: Object.freeze({
+        anyGoal: Object.freeze([...(clause.when?.anyGoal || [])])
+      })
+    })))
+  });
+}
+
 export function adviserCatalogueEntry(moduleId, options) {
   const entry = getModuleManifest(moduleId);
   if (!entry) return null;
@@ -125,6 +142,7 @@ export function adviserCatalogueEntry(moduleId, options) {
     blockedBy: effective.blockedBy,
     releaseStatus: entry.status,
     clientBenefit: entry.clientBenefit || '',
+    consumerLanguage: adviserConsumerLanguage(entry),
     eligibilitySummary: Object.freeze({
       goals: Object.freeze((entry.routing.goals || []).map((goal) => goal.type)),
       suggestedWhen: Object.freeze((entry.routing.suggestedWhen || []).map((rule) => rule.reason)),

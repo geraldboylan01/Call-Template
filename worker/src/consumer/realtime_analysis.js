@@ -1,7 +1,7 @@
 import { runStoredConsumerAnalysis } from './analysis.js';
 import { ConsumerError } from './errors.js';
 import { getCurrentProfile, getSessionRow } from './repository.js';
-import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
+import { consumerLanguageForModule } from '../../../js/planning/module_offers.js';
 import { describeConversationState } from './conversation.js';
 import {
   completeRealtimeAnalysisPlan,
@@ -63,9 +63,11 @@ function adviserReviewModules(moduleSlots) {
     .filter((slot) => slot?.availability === 'adviser_review_required')
     .map((slot) => ({
       moduleId: slot.moduleId,
-      name: getPlanningModuleDefinition(slot.moduleId)?.name || slot.moduleId
+      description: consumerLanguageForModule(slot.moduleId)?.shortDescription || ''
     }))
-    .filter((item) => typeof item.moduleId === 'string' && typeof item.name === 'string')
+    // Fail closed: an analysis with no approved client descriptor is omitted
+    // entirely, including from the consumer-facing gated id list.
+    .filter((item) => typeof item.moduleId === 'string' && item.description)
     .slice(0, 3);
 }
 
@@ -77,14 +79,15 @@ function joinedNames(names) {
 
 export function buildGatedModuleDisclosure(moduleSlots, { allGated = false } = {}) {
   const modules = adviserReviewModules(moduleSlots);
-  const names = modules.map((item) => item.name);
-  if (names.length === 0) {
+  if (modules.length === 0) {
     return { moduleIds: [], speakableText: '' };
   }
-  const subject = joinedNames(names);
+  const descriptions = modules.map((item) => item.description);
+  const describedSubject = joinedNames(descriptions);
+  const subject = `${describedSubject[0].toUpperCase()}${describedSubject.slice(1)}`;
   const speakableText = allGated
-    ? `Your analysis plan is saved. ${subject} ${names.length === 1 ? 'requires' : 'require'} Gerry’s review, so no automated financial result has been produced for ${names.length === 1 ? 'that analysis' : 'those analyses'}.`
-    : `${subject} ${names.length === 1 ? 'remains' : 'remain'} in your analysis plan and ${names.length === 1 ? 'requires' : 'require'} Gerry’s review; no automated result was produced for ${names.length === 1 ? 'that analysis' : 'those analyses'}.`;
+    ? `Your analysis plan is saved. ${subject} ${modules.length === 1 ? 'requires' : 'require'} Gerry’s review, so no automated financial result has been produced for ${modules.length === 1 ? 'that analysis' : 'those analyses'}.`
+    : `${subject} ${modules.length === 1 ? 'remains' : 'remain'} in your analysis plan and ${modules.length === 1 ? 'requires' : 'require'} Gerry’s review; no automated result was produced for ${modules.length === 1 ? 'that analysis' : 'those analyses'}.`;
   return { moduleIds: modules.map((item) => item.moduleId), speakableText };
 }
 

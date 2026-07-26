@@ -64,13 +64,12 @@
   },
   "consumerLanguage": {
     "consumerShortLabel": "a review of your overall financial picture",
-    "consumerOfferDescription": "We can look at your overall financial picture by bringing together what you own, what you owe and where your money is currently held. This can help show whether you may be keeping too much in cash and how your assets and debts fit together",
+    "consumerOfferDescription": "We can look at your overall financial picture by bringing together what you own, what you owe and where your money is currently held. This can help show whether you may be keeping too much in cash, how your assets and debts fit together, and how your current position supports your longer-term goals",
     "consumerConfirmationDescription": "put together a review of your overall financial picture",
-    "consumerCapacityDescription": "a review of your overall financial picture",
     "offerQuestion": "Would that be useful?",
     "offerClauses": [
       {
-        "text": ", and how your current position supports longer-term goals such as retirement",
+        "text": ", including retirement",
         "when": {
           "anyGoal": [
             "retire",

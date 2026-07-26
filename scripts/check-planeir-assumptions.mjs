@@ -20,7 +20,10 @@ import {
   buildCollegeFundingInput,
   getCollegeFundingReadiness
 } from '../js/planning/adapters/college_funding.js';
-import { buildPensionProjectionInput } from '../js/planning/adapters/retirement.js';
+import {
+  buildPensionProjectionInput,
+  getPensionProjectionReadiness
+} from '../js/planning/adapters/retirement.js';
 import { computeCollegeFundingProjection } from '../js/college_funding_math.js';
 import {
   applyProfilePatch,
@@ -116,6 +119,19 @@ check('the pension growth assumption explains its basis without promising a retu
   assert.match(record.reason, /not a guaranteed return/i);
   assert.ok(record.reason.includes(PLANEIR_ASSUMPTIONS_VERSION), 'the assumption must name its version');
   assert.doesNotMatch(record.reason, /\b(?:will earn|guarantees?|expected return of)\b/i);
+});
+
+check('pension disclosures do not expose the gated retirement analysis', () => {
+  let profile = emptyProfile('assumption-pension-warning');
+  const extraction = extractRulesOnlyProfilePatch(
+    'I want to retire at 65 and review my pension.',
+    { profile, capturedAt: NOW, conversationTurnId: 'warning-turn' }
+  );
+  profile = applyProfilePatch(profile, extraction.patch, { nowIso: NOW }).profile;
+  const readiness = getPensionProjectionReadiness(profile);
+  const copy = (readiness.warnings || []).join(' ');
+  assert.match(copy, /shown before tax/i);
+  assert.doesNotMatch(copy, /net retirement|cash-flow view|net_retirement_cashflow/i);
 });
 
 // ---------------------------------------------------------------------------

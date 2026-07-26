@@ -45,6 +45,7 @@ import {
   plannerContextSlice,
   positionCandidatesToRealtimeFacts,
   sectionCompletionToRealtimeFact,
+  toConsumerMeetingBrief,
   toConversationGuide,
   withSafeTurnClassifications
 } from '../worker/src/consumer/realtime_planner.js';
@@ -126,8 +127,76 @@ import {
   complexJourney,
   realtimeSessionPolicySnapshot,
   realtimeTranscriptionUsageFromEvent,
+  toConsumerRealtimePlanningLists,
   realtimeUsageFromResponse
 } from '../worker/src/consumer/realtime_session.js';
+
+const FORMAL_CONSUMER_MODULE_NAMES = /\b(?:Personal Balance Sheet|Mortgage Analysis|College Funding|Pension Projection|Liquidity Analysis|Liquidity Reserve|Loan Analysis|House Purchase(?: Planner)?)\b/i;
+const INTERNAL_CONSUMER_MODULE_IDS = /\b(?:personal_balance_sheet|mortgage_analysis|college_funding|pension_projection|liquidity_analysis|loan_analysis|house_purchase|net_retirement_cashflow)\b/i;
+
+function assertClientOutcomeLanguage(value, message) {
+  const text = String(value || '');
+  assert.doesNotMatch(text, FORMAL_CONSUMER_MODULE_NAMES, `${message}: formal module name leaked`);
+  assert.doesNotMatch(text, INTERNAL_CONSUMER_MODULE_IDS, `${message}: internal module id leaked`);
+}
+
+const publicPlanningBoundary = toConsumerRealtimePlanningLists({
+  moduleSlots: [
+    {
+      slot: 1,
+      moduleId: 'personal_balance_sheet',
+      availability: 'adviser_review_required',
+      intakeStatus: 'missing_information',
+      relatedGoalTypes: ['understand_position'],
+      reasons: ['Run Personal Balance Sheet.']
+    },
+    {
+      slot: 2,
+      moduleId: 'net_retirement_cashflow',
+      availability: 'adviser_review_required',
+      intakeStatus: 'missing_information',
+      relatedGoalTypes: ['retire'],
+      reasons: ['Run Net retirement cash flow.']
+    }
+  ],
+  recommendations: [
+    {
+      moduleId: 'personal_balance_sheet',
+      status: 'adviser_review_required',
+      rationale: ['Personal Balance Sheet is gated.'],
+      readiness: { status: 'adviser_review_required', assumptionsUsed: [], requiredMissing: [] }
+    },
+    {
+      moduleId: 'net_retirement_cashflow',
+      status: 'adviser_review_required',
+      rationale: ['Net retirement cash flow is gated.'],
+      readiness: { status: 'adviser_review_required', assumptionsUsed: [], requiredMissing: [] }
+    }
+  ]
+});
+assert.deepEqual(
+  publicPlanningBoundary.moduleSlots.map((slot) => slot.moduleId),
+  ['personal_balance_sheet'],
+  'The Realtime public-state boundary must remove hidden analysis slots.'
+);
+assert.deepEqual(publicPlanningBoundary.likelyModules, ['personal_balance_sheet']);
+assert.deepEqual(
+  publicPlanningBoundary.recommendations.map((item) => item.moduleId),
+  ['personal_balance_sheet']
+);
+assert.deepEqual(
+  publicPlanningBoundary.deferredOrAdviserTopics.map((item) => item.moduleId),
+  ['personal_balance_sheet']
+);
+assert.equal(
+  publicPlanningBoundary.moduleSlots[0].description,
+  'a review of your overall financial picture'
+);
+assert.doesNotMatch(
+  JSON.stringify(publicPlanningBoundary),
+  /net_retirement_cashflow|Net retirement|Personal Balance Sheet/i,
+  'Hidden ids and formal catalogue prose must not survive in Realtime public state.'
+);
 
 const PYTHON_SQLITE = String.raw`
 import json
@@ -481,6 +550,8 @@ assert.deepEqual(
 assert.match(v2Session.instructions, /Answer a client question first/i);
 assert.doesNotMatch(v2Session.instructions, /silent tool interpreter/i);
 assert.match(v2Session.instructions, /Never introduce IRA, Roth IRA, 401\(k\), ISA/i);
+assert.match(v2Session.instructions, /Never speak a formal catalogue name or module ID/i);
+assert.doesNotMatch(v2Session.instructions, /modules are generated/i);
 assert.equal(classifySpokenPlanConfirmation('Yes'), 'affirmed');
 assert.equal(classifySpokenPlanConfirmation('That sounds good'), 'affirmed');
 assert.equal(classifySpokenPlanConfirmation('Go ahead'), 'affirmed');
@@ -491,11 +562,15 @@ assert.equal(classifySpokenPlanConfirmation('Yes, but change my retirement age')
 assert.equal(classifySpokenPlanConfirmation('Okay, what happens next?'), 'ambiguous');
 assert.equal(
   REALTIME_COMPLETION_OUTRO,
-  'Thanks very much for your time today. Your modules are ready, and I’m taking you to them now.'
+  'Thanks very much for your time today. Your analyses are ready, and I’m taking you to them now.'
 );
+assertClientOutcomeLanguage(REALTIME_COMPLETION_OUTRO, 'Realtime completion outro');
 const pensionConfirmationSummary = buildVoiceConfirmationSummary({
   narrativeSummary: 'You and your wife are planning retirement',
   analyses: [{
+    moduleId: 'pension_projection',
+    // A formal label deliberately supplied by a legacy caller must not become
+    // the spoken confirmation; the module id resolves to approved client copy.
     label: 'Pension projection',
     assumptions: [
       { key: 'growthRate', value: 0.05 },
@@ -511,8 +586,20 @@ assert.match(pensionConfirmationSummary, /stated per-person fraction is 50%/);
 assert.match(pensionConfirmationSummary, /apply each fraction before escalating it by 2%/);
 assert.match(pensionConfirmationSummary, /growth rate 5%/);
 assert.match(pensionConfirmationSummary, /inflation rate 2%/);
+assert.match(pensionConfirmationSummary, /project whether your pension may be on track/);
+assert.match(pensionConfirmationSummary, /run those analyses now/);
+assertClientOutcomeLanguage(pensionConfirmationSummary, 'Pension confirmation summary');
+const legacyNarrativeConfirmation = buildVoiceConfirmationSummary({
+  narrativeSummary: 'Pension Projection and net_retirement_cashflow are ready',
+  analyses: [{ moduleId: 'pension_projection' }]
+});
+assertClientOutcomeLanguage(
+  legacyNarrativeConfirmation,
+  'Legacy narrative text must not override the ID-derived confirmation'
+);
+assert.doesNotMatch(legacyNarrativeConfirmation, /net_retirement_cashflow/i);
 const couplePensionConfirmationSummary = buildVoiceConfirmationSummary({
-  analyses: [{ label: 'Pension projection' }],
+  analyses: [{ moduleId: 'pension_projection', label: 'Pension projection' }],
   statePensionRule: {
     perPersonAssumptions: [
       { label: 'You', fraction: 1, startAge: 66 },
@@ -521,6 +608,7 @@ const couplePensionConfirmationSummary = buildVoiceConfirmationSummary({
   }
 });
 assert.match(couplePensionConfirmationSummary, /You at 100% from age 66 and Your wife at 50% from age 66/);
+assertClientOutcomeLanguage(couplePensionConfirmationSummary, 'Couple pension confirmation summary');
 
 const signedBusinessQuestionContext = {
   profile: { businesses: [] },
@@ -755,7 +843,29 @@ const signedBrief = await composeMeetingBrief({
   }
 });
 assert.equal(signedBrief.analyses.length, 3);
+assert.equal(
+  signedBrief.narrativeSummary,
+  '',
+  'Model-authored narrative copy containing a formal catalogue name must fail closed.'
+);
 assert.equal(signedBrief.analyses[0].moduleId, 'personal_balance_sheet');
+assert.deepEqual(
+  signedBrief.analyses.map((item) => item.moduleId),
+  ['personal_balance_sheet', 'college_funding', 'pension_projection'],
+  'Client language must remain deterministically attached to the exact analysis ids.'
+);
+assert.equal(signedBrief.analyses[0].label, 'a review of your overall financial picture');
+assert.equal(
+  signedBrief.analyses[0].confirmationDescription,
+  'put together a review of your overall financial picture'
+);
+for (const analysis of signedBrief.analyses) {
+  assertClientOutcomeLanguage(analysis.label, `Meeting brief label for ${analysis.moduleId}`);
+  assertClientOutcomeLanguage(
+    analysis.confirmationDescription,
+    `Meeting brief confirmation description for ${analysis.moduleId}`
+  );
+}
 assert.ok(signedBrief.signature.length >= 40);
 const publicGuide = toConversationGuide(signedBrief);
 assert.deepEqual(Object.keys(publicGuide), [
@@ -768,6 +878,88 @@ assert.equal(publicGuide.jurisdiction, 'IE');
 assert.equal(publicGuide.questionBatch.maxQuestions, 1);
 assert.equal(publicGuide.questionBatch.linkedFact, null);
 assert.equal((publicGuide.questionBatch.prompt.match(/\?/g) || []).length, 1);
+assert.deepEqual(
+  publicGuide.analyses.map((item) => item.moduleId),
+  signedBrief.analyses.map((item) => item.moduleId),
+  'The shared typed guide must preserve the exact deterministic analysis ids.'
+);
+for (const analysis of publicGuide.analyses) {
+  assertClientOutcomeLanguage(analysis.label, `Conversation guide label for ${analysis.moduleId}`);
+  assertClientOutcomeLanguage(
+    analysis.confirmationDescription,
+    `Conversation guide confirmation description for ${analysis.moduleId}`
+  );
+}
+
+const legacyStoredBrief = {
+  ...signedBrief,
+  narrativeSummary: 'House Purchase and net_retirement_cashflow are ready.',
+  analyses: [
+    {
+      slot: 1,
+      moduleId: 'house_purchase',
+      label: 'House Purchase',
+      confirmationDescription: 'run House Purchase',
+      status: 'ready',
+      intakeStatus: 'ready',
+      goals: ['buy_home'],
+      reason: 'House Purchase was selected.',
+      assumptions: []
+    },
+    {
+      slot: 2,
+      moduleId: 'net_retirement_cashflow',
+      label: 'Net retirement cash flow',
+      confirmationDescription: 'run net_retirement_cashflow',
+      status: 'adviser_review_required',
+      intakeStatus: 'missing_information',
+      goals: ['retire'],
+      reason: 'Net retirement cash flow was selected.',
+      assumptions: []
+    }
+  ],
+  moduleOffer: {
+    moduleId: 'net_retirement_cashflow',
+    spokenOffer: 'Would you like Net retirement cash flow?',
+    anchor: 'retirement',
+    benefit: 'Net retirement cash flow'
+  },
+  confirmationSummary: 'I will run House Purchase and net_retirement_cashflow.',
+  analysisPlan: {
+    planId: 'realtime_plan_legacy_copy',
+    profileRevision: 7,
+    status: 'prepared',
+    moduleIds: ['house_purchase', 'net_retirement_cashflow']
+  }
+};
+const projectedLegacyBrief = toConsumerMeetingBrief(legacyStoredBrief);
+assert.deepEqual(
+  projectedLegacyBrief.analyses.map((item) => item.moduleId),
+  ['house_purchase'],
+  'A resumed legacy meeting brief must drop hidden analysis entries.'
+);
+assert.equal(
+  projectedLegacyBrief.analyses[0].label,
+  'a review of your home-purchase affordability and savings path'
+);
+assert.equal(projectedLegacyBrief.narrativeSummary, '');
+assert.equal(projectedLegacyBrief.moduleOffer, null);
+assert.deepEqual(projectedLegacyBrief.analysisPlan.moduleIds, ['house_purchase']);
+assertClientOutcomeLanguage(
+  projectedLegacyBrief.confirmationSummary,
+  'Projected legacy confirmation'
+);
+assert.doesNotMatch(
+  JSON.stringify(projectedLegacyBrief),
+  /House Purchase|net_retirement_cashflow|Net retirement cash flow/i,
+  'Persisted legacy labels and hidden ids must fail closed at the meeting-brief read boundary.'
+);
+const projectedLegacyGuide = toConversationGuide(legacyStoredBrief);
+assert.deepEqual(projectedLegacyGuide.analyses.map((item) => item.moduleId), ['house_purchase']);
+assert.doesNotMatch(
+  JSON.stringify(projectedLegacyGuide),
+  /House Purchase|net_retirement_cashflow|Net retirement cash flow/i
+);
 
 const perPersonMissingBrief = await composeMeetingBrief({
   env,
@@ -967,7 +1159,7 @@ const instructions = buildRealtimeInstructions({
     { moduleId: 'liquidity_analysis' }
   ]
 });
-assert.match(instructions, /Worker and deterministic module runtime are authoritative/);
+assert.match(instructions, /Worker and deterministic analysis runtime are authoritative/);
 assert.match(instructions, /Never calculate/);
 assert.match(instructions, /silent tool interpreter/);
 assert.match(instructions, /never emit assistant audio or assistant prose/i);
@@ -2178,6 +2370,28 @@ const controlledResultOutput = await factDurable.attachWorkerSpeech('get_result_
 assert.equal(controlledResultOutput.response_text, exactControlledResult);
 assert.equal(controlledResultOutput.assistantSpeech.text, exactControlledResult);
 assert.equal(controlledResultOutput.assistantSpeech.kind, 'result');
+const controlledPlanContext = {
+  ...factContext,
+  state: {
+    ...factContext.state,
+    nextQuestion: null,
+    moduleSlots: [
+      { moduleId: 'house_purchase', availability: 'ready' },
+      { moduleId: 'liquidity_analysis', availability: 'needs_facts' }
+    ]
+  }
+};
+const originalControlledPlanContext = factDurable.planningContext.bind(factDurable);
+factDurable.planningContext = async () => controlledPlanContext;
+const controlledPlanOutput = await factDurable.attachWorkerSpeech(
+  'get_module_plan',
+  { ok: true, profileRevision: 1 },
+  controlledPlanContext
+);
+factDurable.planningContext = originalControlledPlanContext;
+assert.match(controlledPlanOutput.response_text, /home-purchase affordability and savings path/i);
+assert.match(controlledPlanOutput.response_text, /accessible cash and emergency reserves/i);
+assertClientOutcomeLanguage(controlledPlanOutput.response_text, 'V1 controlled analysis list');
 const hybridArgs = {
   expectedRevision: 1,
   facts: [
@@ -2740,7 +2954,7 @@ sqliteCommand(databasePath, 'run', {
 const gatedSlots = [
   { slot: 1, moduleId: 'personal_balance_sheet', source: 'persona_default', availability: 'adviser_review_required', reasons: [], missingFactIds: [] },
   { slot: 2, moduleId: 'pension_projection', source: 'persona_default', availability: 'adviser_review_required', reasons: [], missingFactIds: [] },
-  { slot: 3, moduleId: 'cat_analysis', source: 'goal_override', availability: 'adviser_review_required', reasons: [], missingFactIds: [] }
+  { slot: 3, moduleId: 'net_retirement_cashflow', source: 'goal_override', availability: 'adviser_review_required', reasons: [], missingFactIds: [] }
 ];
 const gatedPlan = await prepareRealtimeAnalysisPlan(env, {
   sessionId,
@@ -2801,10 +3015,23 @@ const gatedOutcome = await confirmAndRunRealtimeAnalysisPlan({
 });
 assert.equal(gatedOutcome.analysisPlan.status, 'complete');
 assert.deepEqual(gatedOutcome.analysisPlan.moduleIds, []);
-assert.equal(gatedOutcome.analysisPlan.moduleSlots.length, 3, 'all three authoritative display slots survive a zero-run completion');
+assert.deepEqual(
+  gatedOutcome.analysisPlan.moduleSlots.map((slot) => slot.moduleId),
+  ['personal_balance_sheet', 'pension_projection'],
+  'A hidden analysis must not survive in consumer-facing serialized plan state.'
+);
+assert.doesNotMatch(JSON.stringify(gatedOutcome.analysisPlan), /net_retirement_cashflow/);
 assert.equal(gatedOutcome.analysis, null, 'adviser-gated modules never masquerade as calculated results');
-assert.deepEqual(gatedOutcome.result.gatedModuleIds, ['personal_balance_sheet', 'pension_projection', 'cat_analysis']);
+assert.deepEqual(
+  gatedOutcome.result.gatedModuleIds,
+  ['personal_balance_sheet', 'pension_projection'],
+  'A hidden analysis with no approved consumer description must fail closed.'
+);
 assert.match(gatedOutcome.result.speakableText, /Gerry’s review/);
+assert.match(gatedOutcome.result.speakableText, /review of your overall financial picture/i);
+assert.match(gatedOutcome.result.speakableText, /projection of whether your pension may be on track/i);
+assertClientOutcomeLanguage(gatedOutcome.result.speakableText, 'All-gated disclosure');
+assert.doesNotMatch(gatedOutcome.result.speakableText, /net[_ -]?retirement|cash[- ]flow/i);
 const gatedReplay = await confirmAndRunRealtimeAnalysisPlan({
   env,
   config,
@@ -2814,7 +3041,11 @@ const gatedReplay = await confirmAndRunRealtimeAnalysisPlan({
   expectedRevision: 1
 });
 assert.equal(gatedReplay.idempotentReplay, true);
-assert.equal(gatedReplay.analysisPlan.moduleSlots.length, 3, 'idempotent gated replay reconstructs display from the encrypted input');
+assert.deepEqual(
+  gatedReplay.analysisPlan.moduleSlots.map((slot) => slot.moduleId),
+  ['personal_balance_sheet', 'pension_projection'],
+  'Idempotent replay must keep the hidden slot out of public plan state.'
+);
 
 const mixedDisclosure = buildGatedModuleDisclosure([
   gatedSlots[0],
@@ -2824,8 +3055,14 @@ const mixedDisclosure = buildGatedModuleDisclosure([
 assert.deepEqual(mixedDisclosure.moduleIds, ['personal_balance_sheet']);
 assert.equal(
   mixedDisclosure.speakableText,
-  'Personal balance sheet remains in your analysis plan and requires Gerry’s review; no automated result was produced for that analysis.'
+  'A review of your overall financial picture remains in your analysis plan and requires Gerry’s review; no automated result was produced for that analysis.'
 );
+assertClientOutcomeLanguage(mixedDisclosure.speakableText, 'Mixed gated disclosure');
+const hiddenDisclosure = buildGatedModuleDisclosure([
+  { slot: 1, moduleId: 'net_retirement_cashflow', availability: 'adviser_review_required' },
+  { slot: 2, moduleId: 'cat_analysis', availability: 'adviser_review_required' }
+], { allGated: true });
+assert.deepEqual(hiddenDisclosure, { moduleIds: [], speakableText: '' });
 
 const gatedHandoffSessionId = `cs_${'H'.repeat(24)}`;
 await createSessionRecord(env, {
@@ -2895,7 +3132,7 @@ assert.equal(gatedHandoffPackage.analysisReceipt.outcome, 'adviser_review_requir
 assert.equal(gatedHandoffPackage.analysisReceipt.analysisRunId, null);
 assert.equal(gatedHandoffPackage.analysisReceipt.analysisPlanId, gatedHandoffPlan.row.id);
 assert.deepEqual(gatedHandoffPackage.analysisReceipt.selectedModuleIds, [
-  'personal_balance_sheet', 'pension_projection', 'cat_analysis'
+  'personal_balance_sheet', 'pension_projection'
 ]);
 const plan = await prepareRealtimeAnalysisPlan(env, {
   sessionId,
@@ -4365,6 +4602,35 @@ assert.match(realtimeVoiceFrontendSource, /COMPLETION_PLAYBACK_TIMEOUT_MS = 15_0
 assert.match(realtimeVoiceFrontendSource, /track\.enabled = false/);
 assert.match(planningViewsSource, /Your voice meeting transcript/);
 assert.doesNotMatch(planningViewsSource, /turns\.slice\(-16\)/);
+const moduleNameSource = planningViewsSource.slice(
+  planningViewsSource.indexOf('function moduleName(item)'),
+  planningViewsSource.indexOf('function consumerVisibleAnalysis(')
+);
+assert.doesNotMatch(
+  moduleNameSource,
+  /item\?\.consumerShortLabel/,
+  'A cached client label must not override the manifest-owned outcome description.'
+);
+const resultCardSource = planningViewsSource.slice(
+  planningViewsSource.indexOf('function createResultCard(item)'),
+  planningViewsSource.indexOf('function collectAssumptions(')
+);
+assert.match(
+  resultCardSource,
+  /const summary = safeConsumerCopy\(/,
+  'Cached result summaries must pass through the formal-terminology boundary.'
+);
+assert.match(
+  resultCardSource,
+  /const warnings =[\s\S]*\.map\(safeConsumerCopy\)/,
+  'Cached result warnings must pass through the formal-terminology boundary.'
+);
+assert.doesNotMatch(
+  resultCardSource,
+  /Module version/,
+  'Result provenance must use client-facing analysis language.'
+);
+assert.match(resultCardSource, /Analysis version/);
 assert.match(
   realtimeSessionSource,
   /context\.config\.realtimeConversationV2Enabled && this\.applyingPlannerBatch[\s\S]{0,120}\? 'final_review'/,

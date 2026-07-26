@@ -60,6 +60,15 @@ const {
 } = await import('../js/plan/store.js');
 const { getAvailableViews } = await import('../js/plan/views.js');
 
+const FORMAL_CONSUMER_MODULE_NAMES = /\b(?:Personal Balance Sheet|Mortgage Analysis|College Funding|Pension Projection|Liquidity Analysis|Liquidity Reserve|Loan Analysis|House Purchase(?: Planner)?)\b/i;
+const INTERNAL_CONSUMER_MODULE_IDS = /\b(?:personal_balance_sheet|mortgage_analysis|college_funding|pension_projection|liquidity_analysis|loan_analysis|house_purchase|net_retirement_cashflow)\b/i;
+
+function assertClientOutcomeLabel(value, message) {
+  const label = String(value || '');
+  assert.doesNotMatch(label, FORMAL_CONSUMER_MODULE_NAMES, `${message}: formal module name leaked`);
+  assert.doesNotMatch(label, INTERNAL_CONSUMER_MODULE_IDS, `${message}: internal module id leaked`);
+}
+
 assert.equal(isLikelyIncompleteVoiceCaption('Yes, my home is'), true);
 assert.equal(isLikelyIncompleteVoiceCaption('And the mortgage is about...'), true);
 assert.equal(isLikelyIncompleteVoiceCaption('Yes, it is.'), false);
@@ -766,21 +775,35 @@ assert.equal(budgetRefreshes, 1, 'Deletion/reset cancellation must not race a se
 
 const appSource = readFileSync(`${rootPath}/js/plan/app.js`, 'utf8');
 const apiSource = readFileSync(`${rootPath}/js/plan/api.js`, 'utf8');
+const realtimeOrbSource = readFileSync(`${rootPath}/js/plan/realtime_orb.js`, 'utf8');
 const realtimeSource = readFileSync(`${rootPath}/js/plan/realtime_voice.js`, 'utf8');
 const storeSource = readFileSync(`${rootPath}/js/plan/store.js`, 'utf8');
 const viewsSource = readFileSync(`${rootPath}/js/plan/views.js`, 'utf8');
 const planCssSource = readFileSync(`${rootPath}/styles/plan.css`, 'utf8');
 const privacySource = readFileSync(`${rootPath}/plan/privacy.html`, 'utf8');
 const planIndexSource = readFileSync(`${rootPath}/plan/index.html`, 'utf8');
+assert.match(
+  viewsSource,
+  /const consumerDescription = consumerLanguageForModule\(id\)\?\.shortDescription;[\s\S]{0,180}consumerDescription,[\s\S]{0,80}'an analysis'/,
+  'Consumer recommendation headings must use manifest-owned outcome language and fail closed.'
+);
+assert.doesNotMatch(viewsSource, /net_retirement_cashflow:\s*'Net retirement cash flow'/);
+assert.doesNotMatch(
+  viewsSource,
+  /firstDefined\(error\?\.moduleName,\s*MODULE_LABELS\[error\?\.moduleId\]/,
+  'Typed error summaries must not trust formal module labels.'
+);
 // The consumer can always force-finish a turn the voice-activity detector
-// missed: the live orb doubles as the commit control, space bar works on
+// missed: the live orb is a dedicated commit control, space bar works on
 // desktop, and a mistimed empty commit is tolerated silently.
 assert.match(realtimeSource, /commitTurn\(\) \{/);
 assert.match(realtimeSource, /type: 'input_audio_buffer\.commit'/);
-assert.match(realtimeSource, /if \(this\.active\) this\.commitTurn\(\);\s*else this\.start\(\);/);
+assert.match(realtimeSource, /realtimeVoiceStartButton'\)\?\.addEventListener\('click', \(\) => this\.start\(\)\)/);
+assert.match(realtimeSource, /realtimeVoiceTurnButton'\)\?\.addEventListener\('click', \(\) => this\.commitTurn\(\)\)/);
 assert.match(realtimeSource, /event\.code !== 'Space'/);
 assert.match(realtimeSource, /Tap the circle or press space when you’ve finished/);
-assert.match(realtimeSource, /Finish your answer and send it to Planéir/);
+assert.match(realtimeSource, /turn\.disabled = !this\.active \|\| this\.welcomePending \|\| completionLocked/);
+assert.match(realtimeSource, /turn\.setAttribute\('aria-disabled', String\(turn\.disabled\)\)/);
 assert.match(realtimeSource, /commit_empty\|buffer_too_small\|input_audio_buffer_commit/);
 assert.match(appSource, /const draft = captureConversationDraft\(appRoot\)[\s\S]*renderCurrentJourney\(\)[\s\S]*restoreConversationDraft\(appRoot, draft\)/);
 assert.match(appSource, /async function handleDeleteSession\(\) \{\s*await realtimeVoiceController\.end\(\{ reason: 'deletion' \}\);\s*voiceController\.cancelActiveVoice\(\{ reason: 'deletion', refreshBudget: false \}\)/);
@@ -807,6 +830,10 @@ assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*Talk to Planéir
 assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*aria-controls="realtimeVoiceShell"/);
 assert.match(planIndexSource, /id="realtimeVoiceShell"[\s\S]*role="dialog"[\s\S]*aria-modal="true"/);
 assert.match(planIndexSource, /id="realtimeVoiceCollapseButton"/);
+assert.match(planIndexSource, /id="realtimeVoiceTurnButton"[\s\S]*aria-label="Finish your turn"[\s\S]*disabled/);
+assert.match(planIndexSource, /id="realtimeVoiceOrbCanvas"[\s\S]*aria-hidden="true"/);
+assert.match(planIndexSource, /id="realtimeVoiceOrbLabel"[\s\S]*role="status"[\s\S]*aria-live="polite"/);
+assert.match(planIndexSource, /id="realtimeVoiceStartButton"[\s\S]*Start your Planéir meeting/);
 assert.match(planIndexSource, /id="realtimeVoiceMuteButton"[\s\S]*id="realtimeVoiceEndButton"[\s\S]*id="realtimeVoiceFocusComposerButton"[\s\S]*id="realtimeVoiceReviewButton"/);
 assert.match(planIndexSource, /id="realtimeVoiceBoundedFallbackButton"/);
 assert.equal(
@@ -886,23 +913,24 @@ assert.match(planCssSource, /min-height:\s*44px/);
 assert.match(planCssSource, /@media \(prefers-reduced-motion: reduce\)/);
 assert.match(realtimeSource, /responding: 'Preparing to respond…'/);
 assert.match(realtimeSource, /Reconnect automatic microphone/);
-assert.match(planCssSource, /data-realtime-phase="responding"/);
-assert.match(planCssSource, /@keyframes realtime-orb-listen/);
-assert.match(planCssSource, /@keyframes realtime-orb-hearing/);
-assert.match(planCssSource, /@keyframes realtime-orb-think/);
-assert.match(planCssSource, /@keyframes realtime-orb-prepare-outer/);
-assert.match(planCssSource, /@keyframes realtime-orb-response-outer/);
-const reducedMotionListeningIndex = planCssSource.lastIndexOf(
-  '.realtime-voice-shell[data-realtime-phase="listening"]'
-);
-const reducedMotionOrbSource = planCssSource.slice(
-  planCssSource.lastIndexOf('@media (prefers-reduced-motion: reduce)', reducedMotionListeningIndex)
-);
-assert.match(reducedMotionOrbSource, /data-realtime-phase="listening"/);
-assert.match(reducedMotionOrbSource, /data-realtime-phase="user_speaking"/);
-assert.match(reducedMotionOrbSource, /data-realtime-phase="thinking"/);
-assert.match(reducedMotionOrbSource, /data-realtime-phase="responding"/);
-assert.match(reducedMotionOrbSource, /data-realtime-phase="assistant_speaking"/);
+assert.match(realtimeSource, /import \{ RealtimeOrb \} from '\.\/realtime_orb\.js'/);
+assert.match(realtimeSource, /this\.orb\?\.attachMicStream\(stream\)/);
+assert.match(realtimeSource, /this\.orb\?\.attachMicStream\(nextStream\)/);
+assert.match(realtimeSource, /this\.orb\?\.attachRemoteStream\(stream\)/);
+assert.match(realtimeSource, /this\.orb\?\.destroy\(\)/);
+assert.match(planCssSource, /\.realtime-orb-canvas\s*\{[\s\S]*width:\s*100%/);
+assert.match(planCssSource, /\.realtime-voice-shell\.is-live #realtimeVoiceStartButton\s*\{[\s\S]*display:\s*none/);
+assert.doesNotMatch(planCssSource, /@keyframes realtime-orb-/);
+assert.doesNotMatch(planCssSource, /@keyframes realtime-precall-glow/);
+assert.doesNotMatch(planCssSource, /\.realtime-orb-(?:ring|core|wave)/);
+assert.match(realtimeOrbSource, /interrupted: 'listening'/);
+assert.match(realtimeOrbSource, /reconnecting: 'connecting'/);
+assert.match(realtimeOrbSource, /audio_blocked: 'muted'/);
+assert.match(realtimeOrbSource, /\['listening', 'user_speaking', 'responding'\]\.includes\(this\.phase\)/);
+assert.match(realtimeOrbSource, /\['assistant_speaking', 'connecting'\]\.includes\(this\.phase\)/);
+assert.match(realtimeOrbSource, /prefers-reduced-motion: reduce/);
+assert.match(realtimeOrbSource, /new ResizeObserver\(this\.resize\)/);
+assert.match(realtimeOrbSource, /typeof ctx\.roundRect === 'function'/);
 const outboundRealtimeEventTypes = [...new Set(
   [...realtimeSource.matchAll(/sendEvent\(\{\s*type:\s*'([^']+)'/g)]
     .map((match) => match[1])
@@ -1037,8 +1065,42 @@ const planningContext = extractRealtimePlanningContext({
   }
 }, { profile: null, recommendations: [] });
 assert.equal(planningContext.facts[0].badge.label, 'Approximate');
-assert.equal(planningContext.modules[0].label, 'House purchase');
+assert.equal(
+  planningContext.modules[0].label,
+  'a review of your home-purchase affordability and savings path'
+);
+assertClientOutcomeLabel(planningContext.modules[0].label, 'Fallback planning-context label');
 assert.equal(planningContext.readyForReview, true);
+
+const signedGuideLabelContext = extractRealtimePlanningContext({
+  conversationGuide: {
+    analyses: [{
+      moduleId: 'house_purchase',
+      label: 'House Purchase'
+    }]
+  }
+}, { profile: null, recommendations: [] });
+assert.equal(
+  signedGuideLabelContext.modules[0].label,
+  'a review of your home-purchase affordability and savings path',
+  'Manifest-owned outcome language must take precedence over a legacy formal label.'
+);
+assertClientOutcomeLabel(signedGuideLabelContext.modules[0].label, 'Signed guide label');
+
+const hiddenPlanningContext = extractRealtimePlanningContext({
+  planningState: {
+    moduleSlots: [
+      { slot: 1, moduleId: 'net_retirement_cashflow', label: 'Net retirement cash flow' },
+      { slot: 2, moduleId: 'house_purchase', label: 'House Purchase' }
+    ]
+  }
+}, { profile: null, recommendations: [] });
+assert.deepEqual(
+  hiddenPlanningContext.modules.map((item) => item.moduleId),
+  ['house_purchase'],
+  'A hidden analysis must not enter the typed Realtime planning context.'
+);
+assertClientOutcomeLabel(hiddenPlanningContext.modules[0].label, 'Hidden-slot boundary');
 
 const workerFactContext = extractRealtimePlanningContext({
   planningState: {
@@ -1092,6 +1154,17 @@ assert.deepEqual(
 assert.equal(authoritativeSlots.modules[0].badge.label, 'Gerry review');
 assert.equal(authoritativeSlots.modules[1].badge.label, 'Released');
 assert.equal(authoritativeSlots.modules[2].badge.label, 'Needs information');
+assert.deepEqual(
+  authoritativeSlots.modules.map((item) => item.label),
+  [
+    'a review of your overall financial picture',
+    'a review of your home-purchase affordability and savings path',
+    'a review of your accessible cash and emergency reserves'
+  ]
+);
+authoritativeSlots.modules.forEach((item) => {
+  assertClientOutcomeLabel(item.label, `Authoritative typed label for ${item.moduleId}`);
+});
 
 const pristineProfileContext = extractRealtimePlanningContext({}, {
   profile: {
@@ -1456,6 +1529,7 @@ welcomeController.cleanupLocal();
 {
   const completionTrack = { kind: 'audio', enabled: true, stop: () => {} };
   const startButton = { setAttribute: () => {} };
+  const turnButton = { setAttribute: () => {} };
   const muteButton = { setAttribute: () => {} };
   const endButton = {};
   const reviewButton = {};
@@ -1463,6 +1537,7 @@ welcomeController.cleanupLocal();
   const refreshButton = {};
   const completionElements = new Map([
     ['#realtimeVoiceStartButton', startButton],
+    ['#realtimeVoiceTurnButton', turnButton],
     ['#realtimeVoiceMuteButton', muteButton],
     ['#realtimeVoiceEndButton', endButton],
     ['#realtimeVoiceReviewButton', reviewButton],
@@ -1493,6 +1568,7 @@ welcomeController.cleanupLocal();
   assert.equal(await completionController.selectMicrophone('mic-two'), false);
   assert.equal(completionController.selectedMicrophoneId, 'mic-one');
   assert.equal(startButton.disabled, true);
+  assert.equal(turnButton.disabled, true);
   assert.equal(muteButton.disabled, true);
   assert.equal(endButton.disabled, true);
   assert.equal(reviewButton.disabled, true);

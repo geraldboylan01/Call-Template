@@ -71,11 +71,9 @@
   },
   "consumerLanguage": {
     "consumerShortLabel": "a comparison of your mortgage repayment options",
-    "consumerOfferDescription": "We can look at your current repayment path and compare what may happen if you changed the term, switched arrangement or made additional repayments",
+    "consumerOfferDescription": "We can look at your current mortgage repayment path and compare what may happen if you changed the term, switched arrangement or made additional repayments",
     "consumerConfirmationDescription": "compare your mortgage repayment options",
-    "consumerCapacityDescription": "a comparison of your mortgage repayment options",
-    "offerQuestion": "Would you like to examine that?",
-    "offerClauses": []
+    "offerQuestion": "Would you like to examine that?"
   }
 }
 ```

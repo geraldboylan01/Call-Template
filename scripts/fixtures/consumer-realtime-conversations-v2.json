@@ -243,7 +243,7 @@
           "closing",
           "completed"
         ],
-        "outro": "Thanks very much for your time today. Your modules are ready, and I’m taking you to them now.",
+        "outro": "Thanks very much for your time today. Your analyses are ready, and I’m taking you to them now.",
         "automaticHangup": true,
         "navigationTarget": "results",
         "transcriptIncludesWelcomeAndOutro": true,

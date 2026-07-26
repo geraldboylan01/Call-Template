@@ -1,5 +1,9 @@
 import { getAiConsent, getConsumerInvite, hasCurrentVoiceConsent } from './store.js';
 import { isSubscriptionAssistCohort } from './subscription_assist.js';
+import {
+  consumerLanguageForModule,
+  containsInternalModuleTerminology
+} from '../planning/module_offers.js';
 
 const STAGE_GROUPS = [
   {
@@ -42,19 +46,6 @@ const GROUP_LABELS = Object.freeze({
   businesses: 'Business interests',
   preferences: 'Preferences',
   assumptions: 'Planning assumptions'
-});
-
-const MODULE_LABELS = Object.freeze({
-  liquidity_analysis: 'Liquidity analysis',
-  house_purchase: 'House purchase planner',
-  pension_projection: 'Pension projection',
-  net_retirement_cashflow: 'Net retirement cash flow',
-  mortgage_analysis: 'Mortgage analysis',
-  loan_analysis: 'Loan analysis',
-  college_funding: 'College funding',
-  personal_balance_sheet: 'Personal balance sheet',
-  retirement_goal_analysis: 'Retirement goal analysis',
-  scenario_analysis: 'Scenario analysis'
 });
 
 const INTERNAL_FIELD_KEYS = new Set([
@@ -907,7 +898,21 @@ function createReviewView(currentState) {
 
 function moduleName(item) {
   const id = String(firstDefined(item?.moduleId, item?.id, item?.module?.id, '') || '');
-  return String(firstDefined(item?.name, item?.title, item?.moduleName, item?.module?.name, MODULE_LABELS[id], humanise(id)));
+  const consumerDescription = consumerLanguageForModule(id)?.shortDescription;
+  return String(firstDefined(
+    consumerDescription,
+    'an analysis'
+  ));
+}
+
+function consumerVisibleAnalysis(item) {
+  const id = String(firstDefined(item?.moduleId, item?.id, item?.module?.id, '') || '');
+  return Boolean(consumerLanguageForModule(id));
+}
+
+function safeConsumerCopy(value) {
+  const text = String(value || '').trim();
+  return text && !containsInternalModuleTerminology(text) ? text : '';
 }
 
 function normaliseReadiness(item) {
@@ -958,15 +963,17 @@ function createRecommendationCard(item, currentState) {
   selectionLabel.append(selectionCopy);
   card.append(selectionLabel);
 
-  const description = String(firstDefined(item?.description, item?.module?.description, '') || '');
+  const description = consumerLanguageForModule(moduleId)?.offerDescription || '';
   if (description) {
-    card.append(element('p', 'module-description', description));
+    card.append(element('p', 'module-description', /[.!?]$/.test(description) ? description : `${description}.`));
   }
 
   const reasons = asArray(firstDefined(item?.rationale, item?.reasons, item?.selectionReasons, item?.explanation));
   const reasonStrings = reasons.map((reason) => typeof reason === 'string'
     ? reason
-    : String(firstDefined(reason?.text, reason?.reason, reason?.message, '') || '')).filter(Boolean);
+    : String(firstDefined(reason?.text, reason?.reason, reason?.message, '') || ''))
+    .map(safeConsumerCopy)
+    .filter(Boolean);
   if (reasonStrings.length > 0) {
     card.append(element('strong', 'reason-label', 'Why this is included'));
     const list = element('ul', 'reason-list');
@@ -976,15 +983,21 @@ function createRecommendationCard(item, currentState) {
 
   const readinessObject = asObject(item?.readiness) || {};
   const missing = asArray(firstDefined(readinessObject.requiredMissing, item?.missingInformation));
-  if (missing.length > 0) {
+  const safeMissing = missing
+    .map((entry) => safeConsumerCopy(typeof entry === 'string'
+      ? entry
+      : String(firstDefined(entry?.reason, humanise(String(entry?.fieldPath || '').split('/').pop()), 'More information'))))
+    .filter(Boolean);
+  if (safeMissing.length > 0) {
     card.append(element('strong', 'reason-label', 'Still needed'));
     const list = element('ul', 'reason-list');
-    missing.forEach((entry) => list.append(element('li', '', typeof entry === 'string'
-      ? entry
-      : String(firstDefined(entry?.reason, humanise(String(entry?.fieldPath || '').split('/').pop()), 'More information')))));
+    safeMissing.forEach((entry) => list.append(element('li', '', entry)));
     card.append(list);
   }
-  const readinessWarnings = asArray(readinessObject.warnings).filter((warning) => typeof warning === 'string' && warning.trim());
+  const readinessWarnings = asArray(readinessObject.warnings)
+    .filter((warning) => typeof warning === 'string')
+    .map(safeConsumerCopy)
+    .filter(Boolean);
   if (readinessWarnings.length > 0) {
     card.append(element('strong', 'reason-label', adviserOnly ? 'Why this needs human review' : 'Important checks'));
     const list = element('ul', 'reason-list warning-list');
@@ -996,6 +1009,10 @@ function createRecommendationCard(item, currentState) {
 
 function createRecommendationsView(currentState) {
   const section = element('section');
+  const visibleRecommendations = currentState.recommendations.filter(consumerVisibleAnalysis);
+  const visibleSelectedModuleIds = currentState.selectedModuleIds.filter((moduleId) => (
+    Boolean(consumerLanguageForModule(moduleId))
+  ));
   append(
     section,
     createWorkspaceHeading(
@@ -1006,7 +1023,7 @@ function createRecommendationsView(currentState) {
     )
   );
 
-  if (currentState.recommendations.length === 0) {
+  if (visibleRecommendations.length === 0) {
     const empty = element('section', 'empty-state');
     append(
       empty,
@@ -1023,7 +1040,7 @@ function createRecommendationsView(currentState) {
   }
 
   const toolbar = element('div', 'recommendation-toolbar');
-  const selectedNeedsInformation = currentState.recommendations.some((item) => {
+  const selectedNeedsInformation = visibleRecommendations.some((item) => {
     return normaliseReadiness(item) === 'missing_information';
   });
   const text = currentState.bootstrap?.routingEnabled === false
@@ -1041,7 +1058,7 @@ function createRecommendationsView(currentState) {
   const planPrepared = String(displayedPlan.status || '') === 'prepared'
     && Number(displayedPlan.profileRevision || 0) === displayedRevision
     && asArray(displayedPlan.moduleIds).slice().sort().join('|')
-      === currentState.selectedModuleIds.slice().sort().join('|');
+      === visibleSelectedModuleIds.slice().sort().join('|');
   const actions = element('div', 'recommendation-actions');
   const addGoal = element(
     'button',
@@ -1051,9 +1068,9 @@ function createRecommendationsView(currentState) {
   addGoal.type = 'button';
   addGoal.dataset.action = 'navigate';
   addGoal.dataset.view = 'conversation';
-  const hasValidGoalPlan = currentState.recommendations.length >= 1
-    && currentState.recommendations.length <= 3;
-  const runnableCount = currentState.selectedModuleIds.length;
+  const hasValidGoalPlan = visibleRecommendations.length >= 1
+    && visibleRecommendations.length <= 3;
+  const runnableCount = visibleSelectedModuleIds.length;
   const run = element(
     'button',
     'primary-button',
@@ -1067,12 +1084,12 @@ function createRecommendationsView(currentState) {
     || currentState.bootstrap?.routingEnabled === false
     || !hasValidGoalPlan
     || selectedNeedsInformation;
-  const adviserReviewCount = currentState.recommendations.filter((item) => (
+  const adviserReviewCount = visibleRecommendations.filter((item) => (
     normaliseReadiness(item) === 'adviser_review_required'
   )).length;
   const selectionSummary = hasValidGoalPlan
     ? `Your analysis plan is shown below. ${runnableCount} ${runnableCount === 1 ? 'analysis will' : 'analyses will'} run automatically.${adviserReviewCount > 0 ? ` ${adviserReviewCount} ${adviserReviewCount === 1 ? 'analysis remains' : 'analyses remain'} included and require${adviserReviewCount === 1 ? 's' : ''} Gerry’s review.` : ''}`
-    : `${currentState.selectedModuleIds.length} selected.`;
+    : `${visibleSelectedModuleIds.length} selected.`;
   append(actions, addGoal, run);
   append(
     toolbar,
@@ -1086,7 +1103,7 @@ function createRecommendationsView(currentState) {
   section.append(toolbar);
 
   const grid = element('div', 'recommendation-grid');
-  currentState.recommendations.forEach((item) => grid.append(createRecommendationCard(item, currentState)));
+  visibleRecommendations.forEach((item) => grid.append(createRecommendationCard(item, currentState)));
   section.append(grid);
   return section;
 }
@@ -1104,12 +1121,17 @@ function getResultItems(analysis) {
     nestedResults?.modules
   );
   if (Array.isArray(candidates)) {
-    return candidates;
+    return candidates.filter(consumerVisibleAnalysis);
   }
   if (asObject(candidates)) {
-    return Object.entries(candidates).map(([moduleId, value]) => ({ moduleId, ...(asObject(value) || { value }) }));
+    return Object.entries(candidates)
+      .map(([moduleId, value]) => ({ moduleId, ...(asObject(value) || { value }) }))
+      .filter(consumerVisibleAnalysis);
   }
-  if (root.outputs || root.semanticResult || root.highlights || root.summary) {
+  if (
+    (root.outputs || root.semanticResult || root.highlights || root.summary)
+    && consumerVisibleAnalysis(root)
+  ) {
     return [root];
   }
   return [];
@@ -1199,20 +1221,32 @@ function createResultCard(item) {
   const result = asObject(item?.result) && !item?.outputs ? { ...item, ...item.result } : item;
   const card = element('article', 'result-card');
   const head = element('div', 'result-head');
-  const status = String(firstDefined(result?.status, 'complete'));
+  const rawStatus = String(firstDefined(result?.status, 'complete'));
+  const status = safeConsumerCopy(humanise(rawStatus)) || 'Complete';
   append(
     head,
     element('h2', '', moduleName(result)),
-    element('span', `result-status${status === 'complete' || status === 'completed' || status === 'success' ? ' is-complete' : ''}`, humanise(status))
+    element('span', `result-status${['complete', 'completed', 'success'].includes(rawStatus) ? ' is-complete' : ''}`, status)
   );
   card.append(head);
 
-  const summary = firstDefined(result?.summary, result?.resultSummary, result?.headline, result?.description);
-  if (typeof summary === 'string' && summary.trim()) {
-    card.append(element('p', 'result-summary', summary.trim()));
+  const summary = safeConsumerCopy(firstDefined(
+    result?.summary,
+    result?.resultSummary,
+    result?.headline,
+    result?.description
+  ));
+  if (summary) {
+    card.append(element('p', 'result-summary', summary));
   }
 
-  const metrics = getMetrics(result);
+  const metrics = getMetrics(result).map((metric) => ({
+    ...metric,
+    label: safeConsumerCopy(metric.label) || 'Result',
+    value: typeof metric.value === 'string'
+      ? safeConsumerCopy(metric.value)
+      : metric.value
+  })).filter((metric) => metric.value !== '');
   if (metrics.length > 0) {
     const list = element('dl', 'metric-grid');
     metrics.forEach((metric) => {
@@ -1228,9 +1262,12 @@ function createResultCard(item) {
     card.append(list);
   }
 
-  const warnings = asArray(result?.warnings).map((warning) => typeof warning === 'string'
-    ? warning
-    : String(firstDefined(warning?.message, warning?.text, warning?.reason, '') || '')).filter(Boolean);
+  const warnings = asArray(result?.warnings)
+    .map((warning) => typeof warning === 'string'
+      ? warning
+      : String(firstDefined(warning?.message, warning?.text, warning?.reason, '') || ''))
+    .map(safeConsumerCopy)
+    .filter(Boolean);
   if (warnings.length > 0) {
     const list = element('ul', 'warning-list');
     warnings.forEach((warning) => list.append(element('li', '', warning)));
@@ -1245,10 +1282,16 @@ function createResultCard(item) {
     provenance.append(element('span', '', `Calculated ${safeDate(calculatedAt, { dateStyle: 'medium', timeStyle: 'short' }) || calculatedAt}`));
   }
   if (calculationVersion) {
-    provenance.append(element('span', '', `Calculation version ${calculationVersion}`));
+    const safeCalculationVersion = safeConsumerCopy(calculationVersion);
+    if (safeCalculationVersion) {
+      provenance.append(element('span', '', `Calculation version ${safeCalculationVersion}`));
+    }
   }
   if (moduleVersion) {
-    provenance.append(element('span', '', `Module version ${moduleVersion}`));
+    const safeAnalysisVersion = safeConsumerCopy(moduleVersion);
+    if (safeAnalysisVersion) {
+      provenance.append(element('span', '', `Analysis version ${safeAnalysisVersion}`));
+    }
   }
   if (provenance.childElementCount > 0) {
     card.append(provenance);
@@ -1263,11 +1306,13 @@ function collectAssumptions(analysis, resultItems) {
     if (entries.length >= 24 || value === undefined || value === null || typeof value === 'object') {
       return;
     }
-    const cleanLabel = humanise(label);
-    const signature = `${cleanLabel}:${String(value)}`;
+    const cleanLabel = safeConsumerCopy(humanise(label)) || 'Planning assumption';
+    const cleanValue = typeof value === 'string' ? safeConsumerCopy(value) : value;
+    if (cleanValue === '') return;
+    const signature = `${cleanLabel}:${String(cleanValue)}`;
     if (!seen.has(signature)) {
       seen.add(signature);
-      entries.push({ label: cleanLabel, value, path: path || label });
+      entries.push({ label: cleanLabel, value: cleanValue, path: path || label });
     }
   };
   const addObject = (value, prefix = '') => {
@@ -1339,18 +1384,18 @@ function createAssumptionsSection(analysis, resultItems) {
 function createUncertaintyPanel(currentState, resultItems) {
   const messages = [];
   asArray(currentState.profile?.missingInformation).forEach((item) => {
-    messages.push(typeof item === 'string'
+    const text = safeConsumerCopy(typeof item === 'string'
       ? item
       : String(firstDefined(item?.reason, humanise(String(item?.fieldPath || '').split('/').pop()), 'A profile detail is missing.')));
+    if (text) messages.push(text);
   });
   resultItems.forEach((item) => {
     asArray(item?.warnings).forEach((warning) => {
       const text = typeof warning === 'string'
         ? warning
         : String(firstDefined(warning?.message, warning?.text, warning?.reason, '') || '');
-      if (text) {
-        messages.push(text);
-      }
+      const safeText = safeConsumerCopy(text);
+      if (safeText) messages.push(safeText);
     });
   });
   const unique = [...new Set(messages.filter(Boolean))];
@@ -1367,7 +1412,8 @@ function createUncertaintyPanel(currentState, resultItems) {
 
 function summaryStrings(value) {
   if (typeof value === 'string') {
-    return value.trim() ? [value.trim()] : [];
+    const text = safeConsumerCopy(value);
+    return text ? [text] : [];
   }
   if (Array.isArray(value)) {
     return value.map((item) => {
@@ -1375,7 +1421,7 @@ function summaryStrings(value) {
         return item;
       }
       return String(firstDefined(item?.text, item?.message, item?.title, item?.label, '') || '');
-    }).filter(Boolean);
+    }).map(safeConsumerCopy).filter(Boolean);
   }
   return [];
 }
@@ -1387,13 +1433,14 @@ function createOverallSummary(analysis) {
   }
   const card = element('section', 'result-card is-wide');
   const summaryObject = asObject(summary);
-  const title = String(firstDefined(summaryObject?.headline, summaryObject?.title, 'What the analysis shows'));
+  const title = safeConsumerCopy(firstDefined(summaryObject?.headline, summaryObject?.title))
+    || 'What your analyses show';
   card.append(element('h2', '', title));
-  const narrative = typeof summary === 'string'
+  const narrative = safeConsumerCopy(typeof summary === 'string'
     ? summary
-    : firstDefined(summaryObject?.summary, summaryObject?.overview, summaryObject?.description);
-  if (typeof narrative === 'string' && narrative.trim() && narrative.trim() !== title) {
-    card.append(element('p', 'result-summary', narrative.trim()));
+    : firstDefined(summaryObject?.summary, summaryObject?.overview, summaryObject?.description));
+  if (narrative && narrative !== title) {
+    card.append(element('p', 'result-summary', narrative));
   }
   const findings = [
     ...summaryStrings(firstDefined(
@@ -1417,11 +1464,17 @@ function createOverallSummary(analysis) {
 function createAnalysisErrors(analysis) {
   const errors = asArray(analysis?.errors).map((error) => {
     if (typeof error === 'string') {
-      return error;
+      return safeConsumerCopy(error) || 'An analysis could not be completed.';
     }
-    const module = firstDefined(error?.moduleName, MODULE_LABELS[error?.moduleId], humanise(error?.moduleId || 'Analysis'));
-    const message = firstDefined(error?.message, error?.reason, error?.error, 'This analysis could not be completed.');
-    return `${module}: ${message}`;
+    const module = consumerLanguageForModule(error?.moduleId)?.shortDescription;
+    const message = safeConsumerCopy(firstDefined(
+      error?.message,
+      error?.reason,
+      error?.error
+    )) || 'This analysis could not be completed.';
+    return module
+      ? `${module}: ${message}`
+      : message;
   }).filter(Boolean);
   if (errors.length === 0) {
     return null;
@@ -1440,10 +1493,14 @@ function createAnalysisErrors(analysis) {
 
 function adviserReviewModuleSlots(currentState) {
   const persisted = asArray(currentState.analysisPlan?.moduleSlots)
-    .filter((slot) => slot?.availability === 'adviser_review_required');
+    .filter((slot) => (
+      slot?.availability === 'adviser_review_required' && consumerVisibleAnalysis(slot)
+    ));
   if (persisted.length > 0) return persisted.slice(0, 3);
   return asArray(currentState.recommendations)
-    .filter((item) => normaliseReadiness(item) === 'adviser_review_required')
+    .filter((item) => (
+      normaliseReadiness(item) === 'adviser_review_required' && consumerVisibleAnalysis(item)
+    ))
     .map((item, index) => ({
       slot: Number(item?.slot || index + 1),
       moduleId: String(firstDefined(item?.moduleId, item?.id, item?.module?.id, '') || ''),

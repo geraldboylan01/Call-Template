@@ -815,10 +815,10 @@ function mapLiabilityPosition(profile, fact, currency) {
         throw new ConsumerError(400, 'realtime_liability_type_invalid', 'That liability type requires visual review.');
       }
       if (mortgageOnly && type !== 'mortgage') {
-        throw new ConsumerError(400, 'realtime_mortgage_type_required', 'Mortgage analysis requires a mortgage liability, not another debt type.');
+        throw new ConsumerError(400, 'realtime_mortgage_type_required', 'The mortgage comparison requires a mortgage liability, not another debt type.');
       }
       if (loanOnly && type !== 'loan') {
-        throw new ConsumerError(400, 'realtime_loan_type_required', 'Loan analysis requires a non-housing loan liability.');
+        throw new ConsumerError(400, 'realtime_loan_type_required', 'The loan repayment comparison requires a non-housing loan liability.');
       }
       const canonical = {
         ...(existing || {}),
@@ -1002,7 +1002,7 @@ function mapCollegeCostScenario(profile, fact, currency) {
   }
   const operation = entityOperation(value);
   if (operation === 'confirm_none') {
-    throw new ConsumerError(409, 'realtime_college_scenario_required', 'College funding requires at least one reviewed cost scenario.');
+    throw new ConsumerError(409, 'realtime_college_scenario_required', 'The future college-cost estimate requires at least one reviewed cost scenario.');
   }
   const settings = { ...(profile.assumptions?.values?.collegeFunding || {}) };
   const scenarios = [...(Array.isArray(settings.scenarios) ? settings.scenarios : [])];
@@ -1024,7 +1024,7 @@ function mapCollegeCostScenario(profile, fact, currency) {
     const scenario = {
       ...(existing || {}),
       id: scenarioId,
-      title: safeLabel(value.title, existing?.title || 'College funding scenario'),
+      title: safeLabel(value.title, existing?.title || 'College cost scenario'),
       category: safeLabel(value.category, existing?.category || value.title || 'Reviewed scenario')
     };
     if (annual) scenario.annualCostTodayPerChild = annual.amount;
