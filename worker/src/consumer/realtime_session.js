@@ -1,19 +1,35 @@
 import { getConsumerConfig } from './config.js';
 import {
-  getSemanticFactDefinition,
-  resolveSemanticFact
+  getSemanticFactDefinition
 } from '../../../js/planning/semantic_facts.js';
-import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import {
-  consumerLanguageForModule,
-  containsInternalModuleTerminology
+  consumerLanguageForModule
 } from '../../../js/planning/module_offers.js';
-import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
+// The transport-independent planning core. Everything below this line that used
+// to live in this file now has exactly one implementation, shared with the
+// text/agent transport. See docs/agent-testing-parity-contract.md.
 import {
-  confirmAndRunRealtimeAnalysisPlan,
-  prepareRealtimeVoiceAnalysisPlan
-} from './realtime_analysis.js';
+  buildPlanningContext,
+  complexJourney,
+  toConsumerRealtimePlanningLists,
+  TERMINAL_MEETING_PHASES
+} from './planning_context.js';
+import {
+  applyMappedRealtimeFact,
+  mapRealtimeProposalFact,
+  orderRealtimeFactsByDependency,
+  patchForMappedRealtimeFact,
+  planFactProposal
+} from './planning_facts.js';
+import {
+  applyPlannerCandidates,
+  composeAndPersistBrief,
+  recordPlanEvaluation,
+  resolveCapacityDecision,
+  resolveModuleOffer
+} from './planning_turn.js';
+import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
 import { describeConversationState } from './conversation.js';
 import { ConsumerError } from './errors.js';
 import {
@@ -49,16 +65,12 @@ import {
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
   rejectRealtimeFactProposal,
-  recordRealtimeCapacityDecision,
-  recordRealtimeModuleDecision,
   saveRealtimeMeetingBrief,
   setRealtimeMeetingPhase,
   touchRealtimeLease
 } from './realtime_repository.js';
 import {
-  buildConfirmedRealtimeFactSummary,
   buildRealtimeFactReadBack,
-  mapRealtimeFact,
   modulesEnabledByFacts,
   realtimeFactAllowed,
   realtimeFactValueVocabulary
@@ -76,14 +88,9 @@ import {
   composeMeetingBrief,
   extractRealtimePlannerTurn,
   intakeExplanation,
-  isLikelyIncompleteRealtimeUtterance,
-  positionCandidatesToRealtimeFacts,
-  sectionCompletionToRealtimeFact,
-  toConsumerMeetingBrief,
-  toConversationGuide
+  isLikelyIncompleteRealtimeUtterance
 } from './realtime_planner.js';
 import {
-  buildVoiceConfirmationSummary,
   classifySpokenPlanConfirmation,
   REALTIME_COMPLETION_OUTRO
 } from './realtime_completion.js';
@@ -340,18 +347,9 @@ function isAudioOnlyUserItem(item) {
   ));
 }
 
-function boundedProposalRange(value) {
-  const source = value?.range && typeof value.range === 'object' ? value.range : value;
-  const comparable = (item) => (
-    item && typeof item === 'object' && !Array.isArray(item)
-      ? Number(item.amount)
-      : Number(item)
-  );
-  const min = comparable(source?.min);
-  const max = comparable(source?.max);
-  if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) return null;
-  return { min: source.min, max: source.max };
-}
+// Re-exported so existing importers keep one stable module path while the
+// implementations live in the shared transport-independent core.
+export { complexJourney, toConsumerRealtimePlanningLists };
 
 // The bounded value vocabulary for the facts the interview is asking about
 // right now (plus the goal vocabulary, which anchors the whole journey). The
@@ -415,225 +413,6 @@ function controlledModuleList(moduleSlots = []) {
   return `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
 }
 
-function safeConsumerPlanningText(value, maximumLength = 240) {
-  const text = typeof value === 'string' ? value.trim().slice(0, maximumLength) : '';
-  return text && !containsInternalModuleTerminology(text) ? text : '';
-}
-
-/**
- * Reduce deterministic internal routing state to the controlled fields that
- * may cross the Realtime consumer boundary. Exact approved module ids remain
- * available for protocol identity, while hidden catalogue entries and
- * catalogue-authored prose fail closed.
- */
-export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
-  const visibleSlots = (state.moduleSlots || [])
-    .filter((slot) => Boolean(consumerLanguageForModule(slot?.moduleId, { profile })))
-    .slice(0, 3)
-    .map((slot) => {
-      const language = consumerLanguageForModule(slot.moduleId, { profile });
-      return {
-        slot: Number.isSafeInteger(Number(slot.slot)) ? Number(slot.slot) : null,
-        moduleId: slot.moduleId,
-        description: language.shortDescription,
-        availability: typeof slot.availability === 'string' ? slot.availability : 'unknown',
-        intakeStatus: typeof slot.intakeStatus === 'string' ? slot.intakeStatus : 'unknown',
-        selectionState: typeof slot.selectionState === 'string' ? slot.selectionState : 'selected',
-        relatedGoalTypes: Array.isArray(slot.relatedGoalTypes)
-          ? slot.relatedGoalTypes.filter((value) => typeof value === 'string').slice(0, 8)
-          : []
-      };
-    });
-
-  const visibleRecommendations = (state.recommendations || [])
-    .filter((item) => Boolean(consumerLanguageForModule(item?.moduleId, { profile })))
-    .slice(0, 12);
-
-  return Object.freeze({
-    moduleSlots: Object.freeze(visibleSlots),
-    likelyModules: Object.freeze(visibleSlots.map((slot) => slot.moduleId)),
-    recommendations: Object.freeze(visibleRecommendations.map((item) => {
-      const language = consumerLanguageForModule(item.moduleId, { profile });
-      return Object.freeze({
-        moduleId: item.moduleId,
-        description: language.shortDescription,
-        status: item.readiness?.status || item.status || 'unknown',
-        assumptionsUsed: Object.freeze((item.readiness?.assumptionsUsed || [])
-          .slice(0, 8)
-          .map((assumption) => Object.freeze({
-            key: typeof assumption.key === 'string' ? assumption.key.slice(0, 100) : '',
-            value: assumption.value,
-            reason: safeConsumerPlanningText(assumption.reason)
-          }))),
-        requiredMissing: Object.freeze((item.readiness?.requiredMissing || [])
-          .slice(0, 20)
-          .map((missing) => {
-            const semantic = resolveSemanticFact(missing, { profile, moduleId: item.moduleId });
-            return Object.freeze({
-              factId: semantic.factId,
-              factInstanceId: semantic.factInstanceId,
-              importance: missing.importance,
-              reason: safeConsumerPlanningText(missing.reason)
-            });
-          }))
-      });
-    })),
-    deferredOrAdviserTopics: Object.freeze(visibleRecommendations
-      .filter((item) => (
-        ['adviser_review_required', 'unsupported'].includes(item.readiness?.status || item.status)
-      ))
-      .slice(0, 8)
-      .map((item) => {
-        const language = consumerLanguageForModule(item.moduleId, { profile });
-        const status = item.readiness?.status || item.status;
-        return Object.freeze({
-          moduleId: item.moduleId,
-          description: language.shortDescription,
-          status,
-          reason: status === 'adviser_review_required'
-            ? 'This outcome needs Gerry’s review before it can be completed.'
-            : 'This outcome is not available for automated analysis in the current test.'
-        });
-      }))
-  });
-}
-
-function completionFactMapping(profile, fact, normalizedRange = null) {
-  const definition = getSemanticFactDefinition(fact.factId);
-  if (!definition || !['money', 'number'].includes(definition.valueType)) {
-    throw new ConsumerError(
-      400,
-      'realtime_fact_certainty_invalid',
-      'Only a numerical or monetary fact may be recorded as unknown or as a range.'
-    );
-  }
-  const completionFacts = {
-    ...(profile.assumptions?.values?.completionFacts || {}),
-    unknownFactIds: {
-      ...(profile.assumptions?.values?.completionFacts?.unknownFactIds || {})
-    },
-    rangedFactValues: {
-      ...(profile.assumptions?.values?.completionFacts?.rangedFactValues || {})
-    }
-  };
-  if (fact.certainty === 'unknown') {
-    completionFacts.unknownFactIds[fact.factId] = true;
-    delete completionFacts.rangedFactValues[fact.factId];
-    return {
-      fieldPath: '/assumptions/values/completionFacts',
-      metadataPath: `/assumptions/values/completionFacts/unknownFactIds/${fact.factId}`,
-      canonicalValue: completionFacts,
-      displayValue: 'Unknown'
-    };
-  }
-  delete completionFacts.unknownFactIds[fact.factId];
-  completionFacts.rangedFactValues[fact.factId] = normalizedRange;
-  return {
-    fieldPath: '/assumptions/values/completionFacts',
-    metadataPath: `/assumptions/values/completionFacts/rangedFactValues/${fact.factId}`,
-    canonicalValue: completionFacts,
-    displayValue: normalizedRange
-  };
-}
-
-function mapRealtimeProposalFact(profile, fact) {
-  if (fact.certainty === 'unknown') return completionFactMapping(profile, fact);
-  if (fact.certainty !== 'range') return mapRealtimeFact(profile, fact);
-  const range = boundedProposalRange(fact.value);
-  if (!range) {
-    throw new ConsumerError(400, 'realtime_fact_range_invalid', 'A ranged fact requires finite minimum and maximum values.');
-  }
-  const minimum = mapRealtimeFact(profile, { ...fact, certainty: 'exact', value: range.min });
-  const maximum = mapRealtimeFact(profile, { ...fact, certainty: 'exact', value: range.max });
-  if (minimum.fieldPath !== maximum.fieldPath) {
-    throw new ConsumerError(409, 'realtime_fact_range_invalid', 'The ranged fact does not map to one stable profile field.');
-  }
-  const normalizedRange = { min: minimum.displayValue, max: maximum.displayValue };
-  const checked = boundedProposalRange(normalizedRange);
-  if (!checked) {
-    throw new ConsumerError(400, 'realtime_fact_range_invalid', 'The ranged fact minimum must not exceed its maximum.');
-  }
-  return completionFactMapping(profile, fact, normalizedRange);
-}
-
-function clearCompletionFactMarker(profile, factId, fieldPath = null) {
-  const completionFacts = profile.assumptions?.values?.completionFacts;
-  if (!completionFacts) return profile;
-  if (completionFacts.unknownFactIds) delete completionFacts.unknownFactIds[factId];
-  if (completionFacts.rangedFactValues) delete completionFacts.rangedFactValues[factId];
-  if (fieldPath && completionFacts.confirmedNonePaths) {
-    delete completionFacts.confirmedNonePaths[fieldPath];
-  }
-  if (fieldPath && completionFacts.completedPaths) {
-    delete completionFacts.completedPaths[fieldPath];
-  }
-  return profile;
-}
-
-function patchForMappedRealtimeFact(mapped) {
-  return {
-    ...(mapped.additionalPatch || {}),
-    [mapped.fieldPath]: mapped.canonicalValue
-  };
-}
-
-function applyMappedRealtimeFact(profile, fact, mapped) {
-  const patch = patchForMappedRealtimeFact(mapped);
-  let nextProfile = applyProfilePatch(profile, patch, [], 'consumer_edit');
-  const metadataPath = mapped.metadataPath || mapped.fieldPath;
-  const certainty = String(fact.certainty || 'unknown');
-  const storedRange = certainty === 'range' ? boundedProposalRange(mapped.displayValue) : null;
-  const rangeNumber = (value) => Number(value && typeof value === 'object' ? value.amount : value);
-  const range = storedRange
-    ? { min: rangeNumber(storedRange.min), max: rangeNumber(storedRange.max) }
-    : null;
-  Object.keys(nextProfile.fieldMetadata || {})
-    .filter((path) => path === metadataPath || path.startsWith(`${metadataPath}/`))
-    .forEach((path) => {
-      nextProfile.fieldMetadata[path] = {
-        ...nextProfile.fieldMetadata[path],
-        source: 'user_statement',
-        confidence: certainty === 'exact' ? 'high' : certainty === 'unknown' ? 'low' : 'medium',
-        certainty,
-        confirmedByUser: false,
-        ...(range ? { range } : {})
-      };
-    });
-  if (!['unknown', 'range'].includes(certainty)) {
-    clearCompletionFactMarker(nextProfile, fact.factId, mapped.fieldPath);
-  }
-  return normalizeHouseholdProfile(nextProfile);
-}
-
-function realtimeFactDependencyRank(fact) {
-  const factId = String(fact?.factId || '');
-  if (factId === 'primary_goal' || factId === 'self_description') return 0;
-
-  const definition = getSemanticFactDefinition(factId);
-  if (definition?.profilePathTemplate?.startsWith('/assumptions/values/persona/')) return 10;
-  if (factId === 'partner_person') return 20;
-
-  // Collection/root entity proposals establish stable identities and owners.
-  // They must be projected before any scalar proposal that selects or updates
-  // one of those records, regardless of the model's submitted array order.
-  if (definition?.valueType === 'entity') return 30;
-
-  // Reconciliation reads both the generic asset and specialist collection, so
-  // it is the final dependency layer rather than an ordinary scalar/choice.
-  if (factId === 'specialist_asset_reconciliation') return 50;
-  return 40;
-}
-
-function orderRealtimeFactsByDependency(facts) {
-  return [...facts].sort((left, right) => {
-    const rankDifference = realtimeFactDependencyRank(left) - realtimeFactDependencyRank(right);
-    if (rankDifference !== 0) return rankDifference;
-    const leftId = String(left?.factId || '');
-    const rightId = String(right?.factId || '');
-    return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
-  });
-}
-
 function parseTokenCount(value) {
   const number = Number(value || 0);
   return Number.isSafeInteger(number) && number >= 0 ? number : 0;
@@ -693,41 +472,6 @@ export function realtimeTranscriptionUsageFromEvent(event = {}) {
   };
 }
 
-export function complexJourney(profile, state = {}) {
-  const values = profile?.assumptions?.values || {};
-  const persona = values.persona || {};
-  const contradictions = (
-    Array.isArray(values.unresolvedContradictions) && values.unresolvedContradictions.length > 0
-  ) || (
-    Array.isArray(persona.unresolvedContradictions) && persona.unresolvedContradictions.length > 0
-  );
-  const multipleGoals = Array.isArray(profile?.goals) && profile.goals.length > 1;
-  const complexBusiness = (profile?.businesses?.length || 0) > 0
-    || ['company_director', 'owner_manager', 'business_owner', 'farmer'].includes(persona.businessContext)
-    || ['company_director', 'owner_manager', 'business_owner'].includes(persona.employmentContext)
-    || persona.companyDirector === true
-    || persona.ownerManager === true
-    || persona.businessExit === true
-    || persona.agriculturalAssets === true;
-  const complexHousehold = Boolean(profile?.partner)
-    || (profile?.dependants?.length || 0) > 1
-    || (profile?.properties?.length || 0) > 1
-    || (profile?.incomeSources?.length || 0) > 2;
-  return {
-    requested: contradictions || multipleGoals || complexBusiness || complexHousehold,
-    applied: contradictions || multipleGoals || complexBusiness || complexHousehold,
-    reason: contradictions
-      ? 'contradictory_facts'
-      : multipleGoals
-        ? 'multiple_goals'
-        : complexBusiness
-          ? 'complex_business'
-          : complexHousehold
-            ? 'complex_household'
-            : 'not_required',
-    stage: state.stage
-  };
-}
 
 async function readInternalJson(request) {
   const declared = Number(request.headers.get('Content-Length') || 0);
@@ -1829,39 +1573,9 @@ export class ConsumerRealtimeSession {
 
   async applyPlannerExtraction(extraction, { turnOrdinal = this.plannerTurnOrdinal } = {}) {
     const context = await this.planningContext();
-    const mappedGoals = (extraction.goalCandidates || [])
-      .filter((candidate) => ['high', 'medium'].includes(candidate.confidence))
-      .flatMap((candidate) => [{
-        candidateId: candidate.candidateId,
-        operation: candidate.correctionTarget ? 'correct' : 'upsert',
-        factId: 'primary_goal',
-        value: {
-          type: candidate.goalType,
-          ...(candidate.correctionTarget ? { correctionTarget: candidate.correctionTarget } : {})
-        },
-        certainty: candidate.confidence === 'high' ? 'exact' : 'approximate',
-        evidenceText: candidate.evidenceText,
-        correctionTarget: candidate.correctionTarget || ''
-      }, ...(candidate.priorityHint === 'primary' ? [{
-        candidateId: `${candidate.candidateId}-focus`,
-        operation: 'upsert',
-        factId: 'primary_goal_focus',
-        value: candidate.goalType,
-        certainty: 'exact',
-        evidenceText: candidate.evidenceText,
-        correctionTarget: ''
-      }] : [])]);
-    const mappedPositions = positionCandidatesToRealtimeFacts(extraction.positions);
-    const mappedCompletions = extraction.sectionCompletions
-      .map(sectionCompletionToRealtimeFact)
-      .filter(Boolean);
-    const candidates = [
-      ...mappedGoals,
-      ...extraction.semanticFacts,
-      ...mappedPositions,
-      ...mappedCompletions
-    ].slice(0, 24);
-    const outcomes = (extraction.invalidCandidates || []).map((item) => ({
+    // Candidate mapping is deterministic and transport-independent.
+    const candidates = mapPlannerExtractionToCandidates(extraction);
+    let outcomes = (extraction.invalidCandidates || []).map((item) => ({
       candidateId: item.candidateId,
       factId: null,
       accepted: false,
@@ -1889,40 +1603,21 @@ export class ConsumerRealtimeSession {
         maxToolCalls: context.config.realtimeMaxToolCalls
       });
       if (!attempt.replayed) {
-        this.applyingPlannerBatch = true;
-        this.plannerEvidenceItemId = extraction.sourceTurnId;
-        try {
-          for (const candidate of candidates) {
-            try {
-              const current = await this.planningContext();
-              const output = await this.executeTool('propose_facts', {
-                expectedRevision: Number(current.sessionRow.current_profile_revision),
-                facts: [{
-                  factId: candidate.factId,
-                  value: candidate.value,
-                  certainty: candidate.certainty,
-                  evidenceItemId: extraction.sourceTurnId
-                }]
-              }, current, attempt.row.id);
-              outcomes.push({
-                candidateId: candidate.candidateId,
-                factId: candidate.factId,
-                accepted: output?.ok === true,
-                profileRevision: output?.profileRevision || null
-              });
-            } catch (error) {
-              outcomes.push({
-                candidateId: candidate.candidateId,
-                factId: candidate.factId,
-                accepted: false,
-                errorCode: error instanceof ConsumerError ? error.code : 'realtime_planner_candidate_invalid'
-              });
-            }
-          }
-        } finally {
-          this.applyingPlannerBatch = false;
-          this.plannerEvidenceItemId = null;
-        }
+        // The shared core applies each candidate against a freshly reloaded
+        // context, exactly as the per-candidate tool loop used to.
+        const applied = await applyPlannerCandidates({
+          env: this.env,
+          config: context.config,
+          context,
+          extraction,
+          evidenceRef: extraction.sourceTurnId,
+          leaseId: this.meta.leaseId,
+          toolAttemptId: attempt.row.id,
+          loadContext: () => this.planningContext()
+        });
+        // applyPlannerCandidates already carries the planner's own invalid
+        // candidates, so its outcome list is authoritative for this batch.
+        outcomes = applied.outcomes;
         await completeRealtimeToolAttempt(this.env, {
           sessionId: this.meta.sessionId,
           leaseId: this.meta.leaseId,
@@ -1940,25 +1635,12 @@ export class ConsumerRealtimeSession {
       }
     }
     const refreshed = await this.planningContext();
-    const previousModuleIds = (context.state.moduleSlots || []).map((slot) => slot.moduleId);
-    const moduleIds = (refreshed.state.moduleSlots || []).map((slot) => slot.moduleId);
-    await recordEvent(this.env, this.meta.sessionId, 'goal_plan_evaluated', {
-      selectionPolicyVersion: refreshed.state.selectionPolicyVersion || null,
-      goalTypes: refreshed.state.goalAssessment?.activeGoalTypes || [],
-      deferredGoalTypes: refreshed.state.goalAssessment?.deferredGoalTypes || [],
-      moduleIds,
-      ruleIds: (refreshed.state.recommendations || []).flatMap((item) => item.triggeredRuleIds || []),
-      clarificationRequired: refreshed.state.requiresGoalPriorityQuestion === true
-        || refreshed.state.requiresDecisionTopicQuestion === true,
-      planChanged: previousModuleIds.join('|') !== moduleIds.join('|')
-    }).catch(() => {});
-    if (previousModuleIds.join('|') !== moduleIds.join('|')) {
-      await recordEvent(this.env, this.meta.sessionId, 'goal_plan_changed', {
-        selectionPolicyVersion: refreshed.state.selectionPolicyVersion || null,
-        previousModuleIds,
-        moduleIds
-      }).catch(() => {});
-    }
+    await recordPlanEvaluation({
+      env: this.env,
+      sessionId: this.meta.sessionId,
+      previousState: context.state,
+      nextState: refreshed.state
+    });
     const normalizedOrdinal = Number.isSafeInteger(turnOrdinal) && turnOrdinal >= 1
       ? turnOrdinal
       : this.plannerTurnOrdinal;
@@ -1970,71 +1652,22 @@ export class ConsumerRealtimeSession {
     }
     this.latestPlannerBriefOrdinal = normalizedOrdinal;
     await this.state.storage.put('latestPlannerBriefOrdinal', normalizedOrdinal);
-    let brief = await composeMeetingBrief({
+    const composed = await composeAndPersistBrief({
       env: this.env,
       context: refreshed,
       extraction,
-      sourceTurnId: extraction.sourceTurnId
+      sourceTurnId: extraction.sourceTurnId,
+      leaseId: this.meta.leaseId,
+      isStale: () => this.latestPlannerBriefOrdinal !== normalizedOrdinal
     });
-    if (this.latestPlannerBriefOrdinal !== normalizedOrdinal) {
+    if (composed.stale) {
       return { brief: this.latestMeetingBrief, outcomes, stale: true };
     }
-    if (brief.readyToConfirm && refreshed.config.realtimeSpokenCompletionEnabled) {
-      const prepared = await prepareRealtimeVoiceAnalysisPlan({
-        env: this.env,
-        config: refreshed.config,
-        sessionRow: refreshed.sessionRow,
-        profile: refreshed.profile,
-        leaseId: this.meta.leaseId,
-        idempotencyKey: `spoken-completion:${this.meta.leaseId}:${brief.profileRevision}:${extraction.sourceTurnId}`
-      });
-      const enriched = {
-        ...brief,
-        phase: 'awaiting_voice_confirmation',
-        moduleState: 'prepared',
-        analysisPlan: {
-          planId: prepared.publicPlan.planId,
-          profileRevision: prepared.publicPlan.profileRevision,
-          status: prepared.publicPlan.status,
-          moduleIds: prepared.publicPlan.moduleIds
-        },
-        confirmationSummary: buildVoiceConfirmationSummary({
-          narrativeSummary: brief.narrativeSummary,
-          analyses: brief.analyses,
-          statePensionRule: brief.statePensionRule,
-          understood: brief.understood
-        })
-      };
-      const signature = await hmacSha256Base64Url(
-        this.env.CONSUMER_RATE_LIMIT_HASH_KEY,
-        `consumer/realtime/meeting-brief/v2/${stableStringify(enriched)}`
-      );
-      brief = Object.freeze({ ...enriched, signature });
-      await setRealtimeMeetingPhase(this.env, {
-        sessionId: this.meta.sessionId,
-        leaseId: this.meta.leaseId,
-        phase: 'awaiting_voice_confirmation',
-        planId: prepared.publicPlan.planId,
-        profileRevision: prepared.publicPlan.profileRevision,
-        navigationTarget: '/plan/#results'
-      });
+    const brief = composed.brief;
+    if (brief.phase === 'awaiting_voice_confirmation') {
       this.currentPhase = 'awaiting_voice_confirmation';
       await this.state.storage.put('phase', this.currentPhase);
-    } else {
-      await setRealtimeMeetingPhase(this.env, {
-        sessionId: this.meta.sessionId,
-        leaseId: this.meta.leaseId,
-        phase: brief.phase === 'discovery' ? 'discovery' : 'intake'
-      }).catch(() => {});
     }
-    await saveRealtimeMeetingBrief(this.env, {
-      sessionId: this.meta.sessionId,
-      leaseId: this.meta.leaseId,
-      sourceTurnId: extraction.sourceTurnId,
-      profileRevision: brief.profileRevision,
-      plannerPromptVersion: refreshed.config.realtimePlannerPromptVersion,
-      brief
-    });
     if (this.latestPlannerBriefOrdinal !== normalizedOrdinal) {
       return { brief: this.latestMeetingBrief, outcomes, stale: true };
     }
@@ -2376,73 +2009,21 @@ export class ConsumerRealtimeSession {
       ? await getLatestRealtimeMeetingBrief(this.env, this.meta.sessionId, this.meta.leaseId)
       : null;
     if (storedMeetingBrief?.brief) this.latestMeetingBrief = storedMeetingBrief.brief;
-    const pendingFacts = proposedFacts.map((proposal) => ({
-      ...proposal,
-      readBackText: buildRealtimeFactReadBack(
-        proposal.factId,
-        proposal.value,
-        proposal.certainty,
-        profile.preferences?.baseCurrency || 'EUR'
-      )
-    }));
-    const retainedTerminalPhase = [
-      'awaiting_voice_confirmation', 'generating_modules', 'closing', 'completed',
-      'analysis', 'results'
-    ].includes(this.currentPhase)
+    const retainedTerminalPhase = TERMINAL_MEETING_PHASES.includes(this.currentPhase)
       ? this.currentPhase
       : null;
-    const realtimePhase = config.realtimeConversationV2Enabled
-      ? (realtimeLease?.meeting_phase
-        || storedMeetingBrief?.brief?.phase
-        || retainedTerminalPhase
-        || 'discovery')
-      : (pendingFacts.length
-        ? 'confirmation'
-        : retainedTerminalPhase || realtimeJourneyPhase({ stage: state.stage }));
-    const reasoningEscalation = complexJourney(profile, state);
-    const consumerPlanningLists = toConsumerRealtimePlanningLists(state, profile);
-    const consumerMeetingBrief = config.realtimeConversationV2Enabled
-      ? toConsumerMeetingBrief(this.latestMeetingBrief, { profile })
-      : null;
-    const publicState = {
-      profileRevision: Number(sessionRow.current_profile_revision),
-      confirmedProfileRevision: sessionRow.confirmed_profile_revision === null
-        ? null
-        : Number(sessionRow.confirmed_profile_revision),
-      stage: state.stage,
-      realtimePhase,
-      nextQuestion: state.nextQuestion,
-      nextApprovedFact: state.nextQuestion?.factId
-        ? {
-            factId: state.nextQuestion.factId,
-            factInstanceId: state.nextQuestion.factInstanceId || null,
-            prompt: state.nextQuestion.prompt,
-            confirmationPolicy: state.nextQuestion.confirmationPolicy || 'final_review'
-          }
-        : null,
-      facts: [
-        ...pendingFacts,
-        ...buildConfirmedRealtimeFactSummary(profile)
-      ].slice(0, 16),
-      currentPendingProposal: pendingFacts[0] || null,
-      selectionPolicyVersion: state.selectionPolicyVersion || null,
-      goalAssessment: toPublicGoalAssessment(state.goalAssessment),
-      moduleSlots: consumerPlanningLists.moduleSlots,
-      requiresGoalPriorityQuestion: state.requiresGoalPriorityQuestion === true,
-      requiresDecisionTopicQuestion: state.requiresDecisionTopicQuestion === true,
-      deferredGoalTypes: (state.deferredGoalTypes || []).slice(0, 8),
-      likelyModules: consumerPlanningLists.likelyModules,
-      recommendations: consumerPlanningLists.recommendations,
-      deferredOrAdviserTopics: consumerPlanningLists.deferredOrAdviserTopics,
-      reasoningEscalation,
-      conversationVersion: config.realtimeConversationV2Enabled ? 'v2' : 'v1',
-      spokenCompletionEnabled: config.realtimeSpokenCompletionEnabled,
-      meetingBrief: consumerMeetingBrief,
-      conversationGuide: config.realtimeConversationV2Enabled
-        ? toConversationGuide(consumerMeetingBrief, { profile })
-        : null
-    };
-    return { config, sessionRow, profile, state: publicState };
+    // Consent and lease gating above are the voice transport's job. Everything
+    // below is transport-independent and shared with the text/agent channel.
+    return buildPlanningContext({
+      config,
+      sessionRow,
+      profile,
+      pendingProposals: proposedFacts,
+      meetingPhase: realtimeLease?.meeting_phase || storedMeetingBrief?.brief?.phase || null,
+      latestMeetingBrief: this.latestMeetingBrief,
+      retainedTerminalPhase,
+      channel: 'voice'
+    });
   }
 
   async refreshJourneyState(overridePhase = null) {
@@ -2905,130 +2486,31 @@ export class ConsumerRealtimeSession {
         throw new ConsumerError(409, 'realtime_module_decision_unavailable', 'Module decisions are not available in this voice version.');
       }
       this.requireExpectedRevision(args, context);
-      // The server owns which analysis is on the table. The model cannot name a
-      // module, so a short "yes" can only ever resolve to the one just offered
-      // and an unoffered analysis can never be added.
-      const activeOffer = context.state.meetingBrief?.moduleOffer || null;
-      if (!activeOffer?.moduleId) {
-        throw new ConsumerError(409, 'realtime_no_active_module_offer', 'There is no analysis currently offered to decide on.');
-      }
-      const decision = String(args.decision || '');
-      if (!['accepted', 'declined', 'uncertain'].includes(decision)) {
-        throw new ConsumerError(400, 'realtime_module_decision_invalid', 'That decision value is not supported.');
-      }
-      // An unclear answer changes nothing. It is recorded as an event so the
-      // meeting can follow up, but it must never behave like an acceptance.
-      if (decision === 'uncertain') {
-        await recordEvent(this.env, this.meta.sessionId, 'module_offer_uncertain', {
-          moduleId: activeOffer.moduleId
-        }).catch(() => {});
-        return {
-          ok: true,
-          decision: 'uncertain',
-          moduleId: activeOffer.moduleId,
-          instruction: 'The client has not decided. Answer what they asked using get_intake_explanation, then ask again plainly. Do not treat this as a yes and do not start collecting facts for it.'
-        };
-      }
-      const recorded = await recordRealtimeModuleDecision(this.env, {
-        sessionId: this.meta.sessionId,
-        sessionRow: context.sessionRow,
-        profile: context.profile,
-        moduleId: activeOffer.moduleId,
-        decision
+      // The server owns which analysis is on the table, so a short "yes" can
+      // only ever resolve to the one just offered.
+      return resolveModuleOffer({
+        env: this.env,
+        config: context.config,
+        context,
+        decision: String(args.decision || ''),
+        activeOffer: context.state.meetingBrief?.moduleOffer || null
       });
-      await recordEvent(this.env, this.meta.sessionId, 'module_offer_decided', {
-        moduleId: activeOffer.moduleId,
-        decision,
-        profileRevision: recorded.revision
-      }).catch(() => {});
-      return {
-        ok: true,
-        decision,
-        moduleId: activeOffer.moduleId,
-        profileRevision: recorded.revision,
-        instruction: decision === 'accepted'
-          ? 'Acknowledge briefly and continue with the next question the server gives you. The analysis is included but has not run; the full set is confirmed later.'
-          : 'Acknowledge briefly without pressing, and continue. Do not offer this analysis again unless the client raises it themselves.'
-      };
     }
     if (toolName === 'resolve_capacity_decision') {
       if (!context.config.realtimeConversationV2Enabled) {
         throw new ConsumerError(409, 'realtime_capacity_decision_unavailable', 'Capacity decisions are not available in this voice version.');
       }
       this.requireExpectedRevision(args, context);
-      // The server owns the proposed analysis and the exact list that may be
-      // replaced. The model supplies a choice index into that server-owned list,
-      // never an identifier, so it cannot name an analysis or invent one.
-      const capacity = context.state.meetingBrief?.capacityDecision || null;
-      if (!capacity?.candidateModuleId || !(capacity.replacementChoices || []).length) {
-        throw new ConsumerError(409, 'realtime_no_active_capacity_decision', 'There is no capacity decision to resolve right now.');
-      }
-      const decision = String(args.decision || '');
-      if (!['replace', 'defer', 'unclear'].includes(decision)) {
-        throw new ConsumerError(400, 'realtime_capacity_decision_invalid', 'That capacity decision value is not supported.');
-      }
-
-      // An unclear answer must not mutate planning state. The client is asked
-      // again; the model never picks for them.
-      if (decision === 'unclear') {
-        await recordEvent(this.env, this.meta.sessionId, 'capacity_decision_unclear', {
-          candidateModuleId: capacity.candidateModuleId
-        }).catch(() => {});
-        return {
-          ok: true,
-          decision: 'unclear',
-          instruction: 'The client has not chosen. Re-read the options from capacityDecision.spoken exactly and ask again. '
-            + 'Never suggest which analysis they should drop, and do not change anything.'
-        };
-      }
-
-      let removeModuleId = null;
-      if (decision === 'replace') {
-        const choice = (capacity.replacementChoices || [])
-          .find((item) => Number(item.choiceIndex) === Number(args.replaceChoiceIndex));
-        // A choice outside the server-owned list changes nothing.
-        if (!choice) {
-          throw new ConsumerError(400, 'realtime_capacity_choice_invalid', 'That is not one of the analyses currently outlined.');
-        }
-        removeModuleId = choice.moduleId;
-      }
-
-      const recorded = await recordRealtimeCapacityDecision(this.env, {
-        sessionId: this.meta.sessionId,
-        sessionRow: context.sessionRow,
-        profile: context.profile,
-        decision,
-        candidateModuleId: capacity.candidateModuleId,
-        removeModuleId
+      // The model supplies a choice index into a server-owned list, never an
+      // identifier, so it cannot name an analysis or invent one.
+      return resolveCapacityDecision({
+        env: this.env,
+        config: context.config,
+        context,
+        decision: String(args.decision || ''),
+        replaceChoiceIndex: args.replaceChoiceIndex,
+        capacity: context.state.meetingBrief?.capacityDecision || null
       });
-      await recordEvent(this.env, this.meta.sessionId, 'capacity_decision_resolved', {
-        decision,
-        candidateModuleId: capacity.candidateModuleId,
-        removedModuleId: removeModuleId,
-        profileRevision: recorded.revision
-      }).catch(() => {});
-
-      // Acknowledgements reuse the manifest-owned client descriptions, so no
-      // formal analysis name is ever spoken back.
-      const removedDescription = decision === 'replace'
-        ? (capacity.replacementChoices.find((item) => item.moduleId === removeModuleId)?.description || '')
-        : '';
-      return {
-        ok: true,
-        decision,
-        profileRevision: recorded.revision,
-        ...(decision === 'replace'
-          ? {
-              acknowledgement: `Okay — we will leave out ${removedDescription} and include ${capacity.candidateDescription} instead.`,
-              instruction: 'Read the acknowledgement, then continue with the next question the server gives you. '
-                + 'The set has changed, so it must be confirmed again before anything runs.'
-            }
-          : {
-              acknowledgement: capacity.deferralAcknowledgement,
-              instruction: 'Read the acknowledgement and move on. Do not raise that analysis again in this session '
-                + 'unless the client brings it up themselves.'
-            })
-      };
     }
     if (toolName === 'get_intake_explanation') {
       if (!context.config.realtimeConversationV2Enabled) {

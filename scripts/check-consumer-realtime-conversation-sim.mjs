@@ -11,6 +11,13 @@
 // a given fact is a prompt question that only the live probe can answer; whether
 // the pipeline then does something sensible with it is decided entirely by code,
 // and that is what this file protects.
+//
+// It drives the PRODUCTION shared turn service — worker/src/consumer/planning_facts.js
+// and planning_context.js — not a local copy of it. It previously hand-mirrored
+// the Durable Object's candidate mapping, fact gate and brief-context reshaping,
+// with the source line numbers written into comments; every one of those line
+// references had already drifted, and the fact gate it described had moved. A
+// harness that re-implements the thing it is testing eventually tests nothing.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -18,21 +25,16 @@ import { fileURLToPath } from 'node:url';
 
 import {
   MODULE_IDS,
-  buildGoalModulePlan,
   createHouseholdProfile,
-  normalizeHouseholdProfile,
-  resolveSemanticFact
+  normalizeHouseholdProfile
 } from '../js/planning/index.js';
 import { describeConversationState } from '../worker/src/consumer/conversation.js';
+import { composeMeetingBrief } from '../worker/src/consumer/realtime_planner.js';
 import {
-  mapRealtimeFact,
-  realtimeFactAllowed
-} from '../worker/src/consumer/realtime_fact_mapper.js';
-import {
-  composeMeetingBrief,
-  positionCandidatesToRealtimeFacts
-} from '../worker/src/consumer/realtime_planner.js';
-import { applyProfilePatch } from '../worker/src/consumer/validators.js';
+  mapPlannerExtractionToCandidates,
+  planFactProposal
+} from '../worker/src/consumer/planning_facts.js';
+import { buildPlanningStateSlice } from '../worker/src/consumer/planning_context.js';
 
 const NOW = '2026-07-25T09:00:00.000Z';
 const ALL_RELEASED_FOR_TEST = Object.values(MODULE_IDS);
@@ -40,20 +42,16 @@ const ALL_RELEASED_FOR_TEST = Object.values(MODULE_IDS);
 // sign; it never leaves the process.
 const TEST_HASH_KEY = 'c2ltdWxhdG9yLXRlc3Qta2V5LTMyLWJ5dGVzLW9rMDA';
 const ENV = { CONSUMER_RATE_LIMIT_HASH_KEY: TEST_HASH_KEY };
-const CONFIG = {
+const CONFIG = Object.freeze({
   goalRoutingEnabled: true,
   moduleRoutingEnabled: true,
   allowedModules: ALL_RELEASED_FOR_TEST,
   realtimeSpokenCompletionEnabled: false,
   // The scenarios model the conversational v2 meeting, which is the shipped
-  // canary path.
+  // canary path. The module-relevance fact gate is disabled under v2; that
+  // decision now lives in planFactProposal rather than being mirrored here.
   realtimeConversationV2Enabled: true
-};
-// realtime_session.js:2955 applies the module-relevance gate only when v2 is
-// off (`!realtimeFactAllowed(...) && !realtimeConversationV2Enabled`). The
-// simulator must mirror that exactly, or it reports drops that production never
-// performs.
-const FACT_GATE_APPLIES = CONFIG.realtimeConversationV2Enabled !== true;
+});
 
 const datasetPath = fileURLToPath(new URL('./fixtures/consumer-realtime-scenarios.json', import.meta.url));
 const dataset = JSON.parse(readFileSync(datasetPath, 'utf8'));
@@ -86,41 +84,59 @@ function parseMoney(value) {
   }
 }
 
-/** Convert a scripted extraction into the realtime fact list the planner emits. */
-function extractionToFacts(extraction = {}) {
-  const positionCandidates = (extraction.positions || []).map((position, index) => ({
-    candidateId: `${position.kind}-${index}`,
-    kind: position.kind,
-    label: position.label,
-    owner: position.owner,
-    propertyUse: position.propertyUse,
-    pensionType: position.pensionType,
-    linkedEntityId: position.linkedEntityId,
-    operation: position.operation,
-    certainty: position.certainty || 'exact',
-    evidenceText: position.evidenceText || '',
-    amount: parseMoney(position.amountJson)
-  }));
-  return [
-    ...(extraction.goalCandidates || []).map((goal) => ({
-      factId: 'primary_goal',
-      value: { type: goal.type },
-      certainty: 'exact'
+/**
+ * Reshape a scripted fixture extraction into the PlannerExtractionV3 shape the
+ * production planner emits. This is fixture plumbing, not planning logic: the
+ * mapping from an extraction to profile candidates belongs to the production
+ * `mapPlannerExtractionToCandidates` and is called, not copied.
+ */
+function toPlannerExtraction(extraction = {}, sourceTurnId) {
+  return {
+    sourceTurnId,
+    goalCandidates: (extraction.goalCandidates || []).map((goal, index) => ({
+      candidateId: `goal-${index + 1}`,
+      goalType: goal.type || goal.goalType,
+      confidence: goal.confidence || 'high',
+      priorityHint: goal.priorityHint || 'unspecified',
+      evidenceText: goal.evidenceText || 'fixture',
+      correctionTarget: goal.correctionTarget || ''
     })),
-    ...(extraction.semanticFacts || []).map((fact) => ({
+    semanticFacts: (extraction.semanticFacts || []).map((fact, index) => ({
+      candidateId: `fact-${index + 1}`,
+      operation: fact.operation || 'upsert',
       factId: fact.factId,
       value: fact.value,
-      certainty: fact.certainty || 'exact'
+      certainty: fact.certainty || 'exact',
+      evidenceText: fact.evidenceText || 'fixture',
+      correctionTarget: fact.correctionTarget || ''
     })),
-    ...positionCandidatesToRealtimeFacts(positionCandidates)
-  ];
-}
-
-function enabledModuleIds(profile) {
-  return new Set(
-    buildGoalModulePlan(profile, { allowedModuleIds: ALL_RELEASED_FOR_TEST })
-      .moduleSlots.map((slot) => slot.moduleId)
-  );
+    positions: (extraction.positions || []).map((position, index) => ({
+      candidateId: `position-${index + 1}`,
+      operation: position.operation || 'upsert',
+      kind: position.kind,
+      label: position.label || '',
+      entityId: position.entityId || '',
+      linkedEntityId: position.linkedEntityId || '',
+      amount: parseMoney(position.amountJson),
+      country: position.country || '',
+      owner: position.owner || null,
+      propertyUse: position.propertyUse || null,
+      pensionType: position.pensionType || null,
+      agricultural: null,
+      certainty: position.certainty || 'exact',
+      evidenceText: position.evidenceText || 'fixture',
+      correctionTarget: position.correctionTarget || ''
+    })),
+    sectionCompletions: (extraction.sectionCompletions || []).map((item) => ({
+      section: item.section,
+      signal: item.signal,
+      evidenceText: item.evidenceText || 'fixture'
+    })),
+    invalidCandidates: [],
+    clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+    ambiguities: [],
+    narrativeSummary: { summary: '', evidence: [] }
+  };
 }
 
 /**
@@ -136,65 +152,53 @@ async function runScenario(scenario) {
   let state = describeConversationState(profile, CONFIG);
 
   for (const turn of scenario.turns) {
-    const enabled = enabledModuleIds(profile);
-    for (const fact of extractionToFacts(turn.extraction)) {
-      if (FACT_GATE_APPLIES && !realtimeFactAllowed(fact.factId, enabled)) {
-        rejectedFacts.push({ turn: turn.label, factId: fact.factId, value: fact.value });
-        continue;
-      }
-      let mapped;
+    const sourceTurnId = `sim-${scenario.id}-${turn.label}`;
+    const extraction = toPlannerExtraction(turn.extraction, sourceTurnId);
+
+    // The production planner batch proposes one candidate at a time against a
+    // freshly reloaded profile. Both the mapping and the per-candidate gate are
+    // the shipped implementations.
+    for (const candidate of mapPlannerExtractionToCandidates(extraction)) {
+      const currentState = describeConversationState(profile, CONFIG);
       try {
-        mapped = mapRealtimeFact(profile, fact);
+        profile = planFactProposal({
+          config: CONFIG,
+          profile,
+          state: currentState,
+          fact: {
+            factId: candidate.factId,
+            value: candidate.value,
+            certainty: candidate.certainty
+          },
+          plannerBatch: true
+        }).profile;
       } catch (error) {
         rejectedFacts.push({
           turn: turn.label,
-          factId: fact.factId,
-          value: fact.value,
+          factId: candidate.factId,
+          value: candidate.value,
           error: error?.code || error?.message
         });
-        continue;
       }
-      profile = applyProfilePatch(
-        profile,
-        { [mapped.fieldPath]: mapped.canonicalValue, ...(mapped.additionalPatch || {}) },
-        [],
-        'consumer_realtime',
-        mapped.removePaths || []
-      );
     }
 
     state = describeConversationState(profile, CONFIG);
     const brief = await composeMeetingBrief({
       env: ENV,
       context: {
-        state: {
-          ...state,
-          profileRevision: profile.revision,
-          facts: [],
-          // Mirror the reshaping the Durable Object performs before it composes
-          // a brief (realtime_session.js:2346) — the planner reads a flattened
-          // `requiredMissing`, not the nested readiness object.
-          recommendations: (state.recommendations || []).map((item) => ({
-            moduleId: item.moduleId,
-            status: item.readiness?.status || item.status || 'unknown',
-            assumptionsUsed: item.readiness?.assumptionsUsed || [],
-            requiredMissing: (item.readiness?.requiredMissing || []).map((missing) => {
-              const semantic = resolveSemanticFact(missing, { profile, moduleId: item.moduleId });
-              return {
-                factId: semantic.factId,
-                factInstanceId: semantic.factInstanceId,
-                importance: missing.importance,
-                reason: typeof missing.reason === 'string' ? missing.reason.slice(0, 240) : ''
-              };
-            })
-          }))
-        },
+        // The production state projection, called rather than mirrored.
+        state: buildPlanningStateSlice({
+          state,
+          profile,
+          sessionRow: { current_profile_revision: profile.revision },
+          config: CONFIG
+        }),
         profile,
         config: CONFIG,
         sessionRow: { current_profile_revision: profile.revision }
       },
       extraction: {},
-      sourceTurnId: `sim-${scenario.id}-${turn.label}`
+      sourceTurnId
     });
     if (brief.questionBatch?.prompt) {
       askedPrompts.push({
@@ -227,7 +231,6 @@ const failures = [];
 for (const scenario of dataset.scenarios) {
   const result = await runScenario(scenario);
   const expected = scenario.expected || {};
-  const transcript = result.askedPrompts.map((item) => item.prompt).join('\n');
 
   for (const factId of expected.mustNeverAskFactIds || []) {
     if (result.queuedFactIds.includes(factId)) {
@@ -292,7 +295,6 @@ for (const scenario of dataset.scenarios) {
   if (result.rejectedFacts.length > 0) {
     console.info(`    dropped: ${result.rejectedFacts.map((item) => item.factId).join(', ')}`);
   }
-  void transcript;
 }
 
 if (failures.length > 0) {

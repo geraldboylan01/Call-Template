@@ -3,6 +3,7 @@ import { ConsumerError } from './errors.js';
 import { getCurrentProfile, getSessionRow } from './repository.js';
 import { consumerLanguageForModule } from '../../../js/planning/module_offers.js';
 import { describeConversationState } from './conversation.js';
+import { resolveConfirmationCandidateModuleIds } from './planning_context.js';
 import {
   completeRealtimeAnalysisPlan,
   confirmRealtimeAnalysisPlan,
@@ -30,10 +31,12 @@ export async function prepareRealtimeVoiceAnalysisPlan({
   if (!(planningState.moduleSlots || []).length) {
     throw new ConsumerError(409, 'analysis_plan_empty', 'Clarify a supported goal before preparing this analysis.');
   }
-  const moduleIds = (planningState.moduleSlots || [])
-    .filter((slot) => ['ready', 'needs_facts'].includes(slot.availability))
-    .map((slot) => slot.moduleId)
-    .filter((moduleId) => config.allowedModules.includes(moduleId));
+  // The set read out to the client for confirmation — see D15 in
+  // docs/agent-testing-parity-contract.md §4. This was an inline copy of the
+  // then-current executionModuleIds rule that was never updated when that rule
+  // was tightened; it is now the named shared rule, shared with the agent
+  // transport. Behaviour is unchanged.
+  const moduleIds = resolveConfirmationCandidateModuleIds(planningState, config);
   const planInput = {
     moduleIds,
     scenarioOverrides: {},
