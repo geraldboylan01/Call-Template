@@ -19,6 +19,20 @@ const REALTIME_DAILY_BUDGET_MAX_CENTS = 10_000;
 const REALTIME_SAFETY_RESERVE_MICRO_EUR = 300_000;
 const REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS = 30_000_000;
 
+// The planner models this deployment is allowed to use. A server-side
+// allowlist: the planner model is never client-selectable, and a typo or an
+// unreviewed model cannot reach the provider.
+//
+// Verified against the OpenAI model catalogue: each supports /v1/responses and
+// structured outputs, which extractRealtimePlannerTurn requires.
+const APPROVED_PLANNER_MODELS = new Set([
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.6-luna'
+]);
+// Luna is the cost-appropriate tier for a per-turn extraction call.
+const DEFAULT_PLANNER_MODEL = 'gpt-5.6-luna';
+
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -82,6 +96,26 @@ function validEncryptionKey(value) {
     return false;
   }
 }
+
+/**
+ * Resolve the planner model against the approved allowlist.
+ *
+ * An unrecognised value falls back to the approved default rather than being
+ * passed through: an unreviewed model must never reach the provider, and a
+ * deployment typo must not take the planner down.
+ */
+function plannerModel(value) {
+  const candidate = text(value);
+  return APPROVED_PLANNER_MODELS.has(candidate) ? candidate : DEFAULT_PLANNER_MODEL;
+}
+
+/** Whether the configured value was explicitly approved, for diagnostics. */
+function plannerModelConfigured(value) {
+  const candidate = text(value);
+  return candidate === '' || APPROVED_PLANNER_MODELS.has(candidate);
+}
+
+export const PLANNER_MODEL_ALLOWLIST = Object.freeze([...APPROVED_PLANNER_MODELS]);
 
 export function getConsumerConfig(env) {
   const requestedJourneyEnabled = enabled(env.CONSUMER_JOURNEY_ENABLED);
@@ -358,7 +392,18 @@ export function getConsumerConfig(env) {
     // question the client had just answered.
     realtimePlannerTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_TIMEOUT_MS, 8_000, 2_500, 12_000),
     realtimePlannerCatchupTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS, 12_000, 5_000, 20_000),
-    realtimePlannerMaxOutputTokens: boundedInteger(env.CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS, 1_800, 600, 3_000),
+    // The planner previously inherited config.defaultModel — the AI *intake*
+    // model. Two unrelated features shared one setting, so retuning intake
+    // would silently retune the planner. It is now explicit, validated against
+    // a server-side allowlist, and never client-selectable.
+    realtimePlannerModel: plannerModel(env.CONSUMER_REALTIME_PLANNER_MODEL),
+    realtimePlannerModelConfigured: plannerModelConfigured(env.CONSUMER_REALTIME_PLANNER_MODEL),
+    // Reasoning tokens count toward max_output_tokens on a reasoning model, and
+    // the planner schema is large. Too small a budget returns
+    // status:"incomplete" rather than an error, which is why the previous
+    // ceiling was a silent failure mode. Raised, with the floor kept above the
+    // point where structured output cannot complete at all.
+    realtimePlannerMaxOutputTokens: boundedInteger(env.CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS, 4_000, 1_500, 16_000),
     realtimePlannerPromptVersion: text(env.CONSUMER_REALTIME_PLANNER_PROMPT_VERSION) || 'realtime-planner-v3',
     realtimeUsageRates,
     // The conversation director is a bounded, fail-open-to-template text-model

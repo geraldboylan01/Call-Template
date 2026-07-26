@@ -40,6 +40,7 @@ import {
 } from '../worker/src/consumer/realtime_planner.js';
 import { buildPlanningStateSlice } from '../worker/src/consumer/planning_context.js';
 import {
+  deterministicFallbackExtraction,
   mapPlannerExtractionToCandidates,
   planFactProposal
 } from '../worker/src/consumer/planning_facts.js';
@@ -316,6 +317,234 @@ for (const [label, allowed] of [
     'the greeting ends by inviting the client to describe what they want help with'
   );
   pass('the intended opening greeting is a warm, AI-disclosed welcome that asks for no figures');
+}
+
+/* ------------------------------------------------------------------ */
+/* Second incident: the planner failed and the meeting blamed the client */
+/* ------------------------------------------------------------------ */
+
+// Live transcript, verbatim. The assistant answered both turns with "the last
+// planning note couldn't be updated — could you restate that point?", and the
+// UI stayed at zero goals. That is the `planner_recovery` branch: the AI
+// planner call threw, so NOTHING was extracted. Rephrasing cannot fix a
+// provider outage, so the meeting looped.
+const LIVE_TURN_1 = "Well, I'm 25 and I'm mostly interested in saving up for buying a house in the "
+  + "future. So that's my, I guess, my main goal. After that, it's just whatever other financial "
+  + "advice you have for someone of my age would be great.";
+const LIVE_TURN_2 = "My main goal is just to buy a house in about five years' time.";
+
+{
+  // With the AI planner dead, the deterministic extractor must still capture
+  // the goal and the age. This is what stops the meeting stalling.
+  for (const [label, utterance] of [['turn 1', LIVE_TURN_1], ['turn 2', LIVE_TURN_2]]) {
+    const extraction = deterministicFallbackExtraction({
+      transcript: utterance,
+      profile: freshProfile(`fallback-${label.replace(/\s/g, '')}`),
+      sourceTurnId: 'live-turn'
+    });
+    assert.ok(extraction, `${label}: the deterministic fallback must salvage the turn`);
+    assert.equal(extraction.degraded, true, `${label}: the extraction is marked degraded`);
+    assert.ok(
+      extraction.goalCandidates.some((goal) => goal.goalType === 'buy_home'),
+      `${label}: the home-purchase goal is recovered without the AI planner`
+    );
+  }
+  const first = deterministicFallbackExtraction({
+    transcript: LIVE_TURN_1,
+    profile: freshProfile('fallback-age'),
+    sourceTurnId: 'live-turn'
+  });
+  assert.ok(
+    first.semanticFacts.some((fact) => fact.factId === 'person_current_age' && fact.value === 25),
+    'the stated age is recovered without the AI planner'
+  );
+  pass('a planner outage still captures the home-purchase goal and the age deterministically');
+}
+
+{
+  // And that salvaged extraction must flow through the normal candidate path,
+  // producing a real profile and a real next question.
+  const config = configFor(PRODUCTION_ALLOWED_MODULES);
+  let profile = freshProfile('fallback-journey');
+  const extraction = deterministicFallbackExtraction({
+    transcript: LIVE_TURN_1, profile, sourceTurnId: 'live-turn'
+  });
+  const rejected = [];
+  for (const candidate of mapPlannerExtractionToCandidates(extraction)) {
+    try {
+      profile = planFactProposal({
+        config,
+        profile,
+        state: describeConversationState(profile, config),
+        fact: { factId: candidate.factId, value: candidate.value, certainty: candidate.certainty },
+        plannerBatch: true
+      }).profile;
+    } catch (error) {
+      rejected.push({ factId: candidate.factId, code: error?.code });
+    }
+  }
+  assert.deepEqual(rejected, [], `no salvaged candidate may be rejected: ${JSON.stringify(rejected)}`);
+  assert.ok(profile.goals.some((goal) => goal.type === 'buy_home'), 'buy_home is persisted as an active goal');
+  assert.equal(profile.primaryPerson.age, 25, 'age 25 is persisted');
+
+  const brief = await briefFor(profile, config);
+  assert.ok(brief.questionBatch, 'the degraded meeting still has a question to ask');
+  assert.ok(brief.analyses.length > 0, 'the client can see what is being prepared');
+  assert.doesNotMatch(
+    brief.questionBatch.prompt,
+    /repeat|restate|say (?:that )?again|different words|rephrase/i,
+    'a degraded meeting must never ask the client to restate a valid goal'
+  );
+  pass('the salvaged turn persists the goal and age, and the meeting advances with a real question');
+}
+
+{
+  // One invalid secondary candidate must not block the valid goal. This is the
+  // independent-rejection property the incident report asked about.
+  const config = configFor(PRODUCTION_ALLOWED_MODULES);
+  let profile = freshProfile('independent-rejection');
+  const mixed = {
+    ...INCIDENT_EXTRACTION,
+    goalCandidates: [{
+      candidateId: 'goal-1', goalType: 'buy_home', confidence: 'high', priorityHint: 'primary',
+      evidenceText: 'buying a house', correctionTarget: ''
+    }],
+    semanticFacts: [
+      { candidateId: 'f1', operation: 'upsert', factId: 'person_current_age', value: 25, certainty: 'exact', evidenceText: 'x', correctionTarget: '' },
+      // Plausible but unsupported — exactly what a planner emits from
+      // "saving up ... in about five years".
+      { candidateId: 'f2', operation: 'upsert', factId: 'home_purchase_timeframe_years', value: 5, certainty: 'approximate', evidenceText: 'x', correctionTarget: '' },
+      { candidateId: 'f3', operation: 'upsert', factId: 'savings_goal', value: 'house_deposit', certainty: 'approximate', evidenceText: 'x', correctionTarget: '' }
+    ]
+  };
+  const outcomes = [];
+  for (const candidate of mapPlannerExtractionToCandidates(mixed)) {
+    try {
+      profile = planFactProposal({
+        config, profile, state: describeConversationState(profile, config),
+        fact: { factId: candidate.factId, value: candidate.value, certainty: candidate.certainty },
+        plannerBatch: true
+      }).profile;
+      outcomes.push({ factId: candidate.factId, accepted: true });
+    } catch (error) {
+      outcomes.push({ factId: candidate.factId, accepted: false, code: error?.code });
+    }
+  }
+  assert.ok(
+    outcomes.some((o) => o.factId === 'primary_goal' && o.accepted),
+    'the valid goal is accepted despite unsupported siblings'
+  );
+  assert.ok(
+    outcomes.some((o) => o.factId === 'person_current_age' && o.accepted),
+    'the valid age is accepted despite unsupported siblings'
+  );
+  assert.ok(
+    outcomes.some((o) => !o.accepted),
+    'the unsupported candidates are genuinely rejected'
+  );
+  assert.ok(profile.goals.some((goal) => goal.type === 'buy_home'), 'buy_home survives');
+  assert.equal(
+    profile.assumptions.values.planning.primaryGoalType,
+    'buy_home',
+    'the home-purchase goal is treated as primary'
+  );
+  pass('an unsupported secondary candidate is rejected independently and never blocks the valid goal');
+}
+
+{
+  // The failure handling itself: never blame the client twice for our fault.
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(
+    new URL('../worker/src/consumer/realtime_session.js', import.meta.url),
+    'utf8'
+  );
+  assert.match(source, /applyDeterministicFallback/, 'a planner failure tries the deterministic fallback first');
+  assert.match(
+    source,
+    /const fallback = await this\.applyDeterministicFallback[\s\S]{0,200}if \(fallback\)/,
+    'the fallback runs before any recovery response is authorised'
+  );
+  assert.match(source, /consecutivePlannerFailures/, 'consecutive planner failures are counted');
+  assert.match(
+    source,
+    /exhaustedRecovery \? 'planner_degraded' : 'planner_recovery'/,
+    'a repeated internal failure stops asking the client to rephrase'
+  );
+  const degraded = source.slice(source.indexOf("authorizationReason === 'planner_degraded'"));
+  const instruction = degraded.slice(0, degraded.indexOf('\n', degraded.indexOf('?')) + 400);
+  assert.match(instruction, /not anything the client said/i, 'the degraded message does not blame the client');
+  assert.match(instruction, /Do not ask them to rephrase/i, 'the degraded message does not ask for a rephrase');
+  pass('a planner failure falls back deterministically, and repeated failure stops blaming the client');
+}
+
+{
+  // The planner model must be its own validated, allowlisted setting — not
+  // inherited from the AI-intake defaultModel, which is a different feature.
+  const { getConsumerConfig, PLANNER_MODEL_ALLOWLIST } = await import('../worker/src/consumer/config.js');
+  const base = {
+    CONSUMER_JOURNEY_ENABLED: 'true',
+    CONSUMER_DATA_ENCRYPTION_KEY: Buffer.alloc(32, 31).toString('base64url'),
+    CONSUMER_RATE_LIMIT_HASH_KEY: Buffer.alloc(32, 47).toString('base64url'),
+    CONSUMER_DB: {},
+    CONSUMER_CONSENT_POLICY_VERSION: 'v1', CONSUMER_CONSENT_MANIFEST_ID: 'm1',
+    CONSUMER_ANALYSIS_NOTICE_ID: 'a1', CONSUMER_AI_NOTICE_ID: 'ai1',
+    CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html',
+    CONSUMER_SESSION_TTL_DAYS: '7'
+  };
+  assert.ok(PLANNER_MODEL_ALLOWLIST.length > 0, 'there is a server-side planner model allowlist');
+
+  const byDefault = getConsumerConfig(base);
+  assert.ok(
+    PLANNER_MODEL_ALLOWLIST.includes(byDefault.realtimePlannerModel),
+    'the default planner model is on the allowlist'
+  );
+  assert.equal(byDefault.realtimePlannerModelConfigured, true, 'an unset value is an approved default');
+
+  // An unapproved model must never reach the provider.
+  const rogue = getConsumerConfig({ ...base, CONSUMER_REALTIME_PLANNER_MODEL: 'some-unreviewed-model' });
+  assert.ok(
+    PLANNER_MODEL_ALLOWLIST.includes(rogue.realtimePlannerModel),
+    'an unapproved planner model falls back to an approved one'
+  );
+  assert.equal(rogue.realtimePlannerModelConfigured, false, 'the unapproved value is reported as such');
+
+  // Changing the AI-intake model must NOT change the planner.
+  const retunedIntake = getConsumerConfig({ ...base, CONSUMER_AI_DEFAULT_MODEL: 'gpt-5.6-sol' });
+  assert.equal(
+    retunedIntake.realtimePlannerModel,
+    byDefault.realtimePlannerModel,
+    'retuning the AI-intake model must not silently retune the planner'
+  );
+
+  // Reasoning tokens count toward max_output_tokens; the floor must leave room.
+  assert.ok(
+    byDefault.realtimePlannerMaxOutputTokens >= 1_500,
+    'the planner output budget leaves room for reasoning tokens'
+  );
+  pass('the planner model is explicitly configured, allowlisted, and independent of AI intake');
+}
+
+{
+  // A planner failure must be self-diagnosing next time.
+  const { readFileSync } = await import('node:fs');
+  const planner = readFileSync(new URL('../worker/src/consumer/realtime_planner.js', import.meta.url), 'utf8');
+  assert.match(planner, /readPlannerProviderError/, 'a rejected planner call reads the provider error classification');
+  assert.match(planner, /incomplete_details\?\.reason/, 'an incomplete response records why it was incomplete');
+  assert.match(planner, /reasoning_tokens/, 'reasoning token usage is recorded on an incomplete response');
+  assert.match(planner, /config\.realtimePlannerModel/, 'the planner uses its dedicated model');
+  assert.ok(
+    !/const model = complex \? config\.complexModel : config\.defaultModel/.test(planner),
+    'the planner no longer borrows the AI-intake model'
+  );
+
+  const schema = readFileSync(new URL('../worker/src/consumer/realtime_event_schema.js', import.meta.url), 'utf8');
+  for (const field of ['providerStatus', 'providerErrorType', 'providerErrorCode', 'incompleteReason', 'plannerModel']) {
+    assert.ok(schema.includes(field), `the deferred planner event records ${field}`);
+  }
+  const session = readFileSync(new URL('../worker/src/consumer/realtime_session.js', import.meta.url), 'utf8');
+  assert.match(session, /degradedTurnCount/, 'a degraded meeting reports how many turns were degraded');
+  assert.match(session, /degradedPlannerTurns \+= 1/, 'degraded turns are counted');
+  pass('a planner failure now records the provider status, error class and incomplete reason');
 }
 
 console.info(`\n[MultiGoalOpening] ${passes.length} assertions passed.`);

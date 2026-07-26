@@ -208,6 +208,31 @@ Return only the strict schema.`;
 
 const SAFE_PROVIDER_REQUEST_ID = /^[A-Za-z0-9._:-]{1,200}$/;
 
+/** Bounded, non-content diagnostic value. Never carries conversation text. */
+function boundedDiagnostic(value) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return /^[A-Za-z0-9._:\/-]{1,120}$/.test(text) ? text : null;
+}
+
+/**
+ * The provider's own error classification for a rejected planner call.
+ * Bounded and categorical: type, code and param only, never a message body.
+ */
+async function readPlannerProviderError(response) {
+  try {
+    const body = await response.text();
+    if (!body || body.length > 8_192) return {};
+    const error = JSON.parse(body)?.error || {};
+    return {
+      providerErrorType: boundedDiagnostic(error.type),
+      providerErrorCode: boundedDiagnostic(error.code),
+      providerErrorParam: boundedDiagnostic(error.param)
+    };
+  } catch (_error) {
+    return {};
+  }
+}
+
 function boundedText(value, maximum = 500) {
   const text = typeof value === 'string' ? value.trim() : '';
   return text.slice(0, maximum);
@@ -494,7 +519,10 @@ export async function extractRealtimePlannerTurn({
   const safeTranscript = redactSensitiveIdentifiers(String(transcript || '')).slice(0, 4_000);
   if (!safeTranscript) throw new ConsumerError(400, 'realtime_planner_turn_empty', 'The finalized turn is empty.');
   const complex = context?.state?.reasoningEscalation?.requested === true;
-  const model = complex ? config.complexModel : config.defaultModel;
+  // The planner has its own approved, allowlisted model. It no longer borrows
+  // the AI-intake defaultModel, so retuning intake cannot silently retune the
+  // planner (and vice versa).
+  const model = config.realtimePlannerModel;
   const reasoningEffort = complex ? 'medium' : 'low';
   const controller = new AbortController();
   const effectiveTimeout = Number.isSafeInteger(timeoutMs) ? timeoutMs : config.realtimePlannerTimeoutMs;
@@ -554,9 +582,26 @@ export async function extractRealtimePlannerTurn({
     ? apiResponse.headers.get('x-request-id')
     : null;
   if (!apiResponse.ok) {
-    apiResponse.body?.cancel().catch(() => {});
+    // Read the provider's own error classification before discarding the body.
+    // Without this the failure surfaces as a bare `request_failed` with no way
+    // to tell an auth problem from a quota problem from a bad request — which
+    // is exactly why the live planner outage could not be diagnosed.
+    const providerError = await readPlannerProviderError(apiResponse);
+    apiResponse.body?.cancel?.().catch?.(() => {});
     const error = new ConsumerError(502, 'realtime_planner_request_failed', 'The silent meeting planner could not process this turn.');
-    error.metadata = { model, reasoningEffort, providerRequestId, latencyMs: Date.now() - startedAt };
+    error.metadata = {
+      model,
+      reasoningEffort,
+      providerRequestId,
+      providerStatus: apiResponse.status,
+      ...providerError,
+      latencyMs: Date.now() - startedAt
+    };
+    error.diagnostics = {
+      providerStatus: apiResponse.status,
+      providerRequestId,
+      ...providerError
+    };
     throw error;
   }
   let response;
@@ -566,7 +611,35 @@ export async function extractRealtimePlannerTurn({
     throw new ConsumerError(502, 'realtime_planner_response_invalid', 'The silent meeting planner returned an invalid response.');
   }
   if (response?.status !== 'completed') {
-    throw new ConsumerError(502, 'realtime_planner_response_incomplete', 'The silent meeting planner returned an incomplete response.');
+    // A reasoning model that runs out of budget returns status:"incomplete"
+    // with a reason, NOT an HTTP error. Reasoning tokens count toward
+    // max_output_tokens, so a large schema plus a rich turn can exhaust it and
+    // fail every turn identically. Record which it was.
+    const incompleteReason = boundedDiagnostic(response?.incomplete_details?.reason);
+    const error = new ConsumerError(
+      502,
+      'realtime_planner_response_incomplete',
+      'The silent meeting planner returned an incomplete response.'
+    );
+    error.metadata = {
+      model,
+      reasoningEffort,
+      providerRequestId,
+      responseStatus: boundedDiagnostic(response?.status),
+      incompleteReason,
+      maxOutputTokens: config.realtimePlannerMaxOutputTokens,
+      outputTokens: Number(response?.usage?.output_tokens || 0),
+      reasoningTokens: Number(response?.usage?.output_tokens_details?.reasoning_tokens || 0),
+      latencyMs: Date.now() - startedAt
+    };
+    error.diagnostics = {
+      providerRequestId,
+      responseStatus: boundedDiagnostic(response?.status),
+      incompleteReason,
+      outputTokens: Number(response?.usage?.output_tokens || 0),
+      reasoningTokens: Number(response?.usage?.output_tokens_details?.reasoning_tokens || 0)
+    };
+    throw error;
   }
   let extraction;
   try {

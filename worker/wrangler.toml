@@ -132,6 +132,10 @@ CONSUMER_REALTIME_PLANNER_TIMEOUT_MS = "8000"
 CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS = "12000"
 CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS = "1800"
 CONSUMER_REALTIME_PLANNER_PROMPT_VERSION = "realtime-planner-v3"
+# The silent planner has its own approved model, validated against a
+# server-side allowlist. It previously inherited the AI-intake default model,
+# so retuning intake silently retuned the planner.
+CONSUMER_REALTIME_PLANNER_MODEL = "gpt-5.6-luna"
 # The conversation director phrases Worker-owned speech with a bounded text
 # model call and falls back to the deterministic templates on any failure.
 # Fail closed here; the deploy workflow enables it for the adviser canary.
