@@ -3,7 +3,11 @@ import { ConsumerError } from './errors.js';
 import { getCurrentProfile, getSessionRow } from './repository.js';
 import { consumerLanguageForModule } from '../../../js/planning/module_offers.js';
 import { describeConversationState } from './conversation.js';
-import { resolveConfirmationCandidateModuleIds } from './planning_context.js';
+import { buildGoalModulePlan } from '../../../js/planning/goal_plan.js';
+import {
+  resolveConfirmationCandidateModuleIds,
+  resolveExecutionModuleIds
+} from './planning_context.js';
 import {
   completeRealtimeAnalysisPlan,
   confirmRealtimeAnalysisPlan,
@@ -151,6 +155,23 @@ export async function confirmAndRunRealtimeAnalysisPlan({
       throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed before the analysis started.');
     }
     const profile = await getCurrentProfile(env, sessionRow);
+    // D-01 fail-closed guard: the prepared plan may only run if it is still
+    // exactly the set the client confirmed. The revision checks above already
+    // make divergence unreachable in normal operation (any planning write nulls
+    // confirmed_profile_revision), so this can fire only if the confirmed set
+    // and the prepared set genuinely disagree — in which case running either
+    // one would be running something the client did not authorise.
+    const executionModuleIds = resolveExecutionModuleIds(
+      buildGoalModulePlan(profile, { allowedModuleIds: config.allowedModules })
+    );
+    const preparedModuleIds = Array.isArray(confirmed.input.moduleIds) ? confirmed.input.moduleIds : [];
+    if ([...preparedModuleIds].sort().join('|') !== [...executionModuleIds].sort().join('|')) {
+      throw new ConsumerError(
+        409,
+        'analysis_plan_not_confirmed',
+        'The confirmed analyses no longer match the prepared plan. Review and confirm the plan again.'
+      );
+    }
     if (!Array.isArray(confirmed.input.moduleIds) || confirmed.input.moduleIds.length === 0) {
       const disclosure = buildGatedModuleDisclosure(confirmed.input.moduleSlots, { allGated: true });
       const result = {

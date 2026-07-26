@@ -59,6 +59,15 @@ CONSUMER_REALTIME_CONVERSATION_V2_ENABLED = "false"
 CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED = "false"
 CONSUMER_MODULE_ROUTING_ENABLED = "false"
 CONSUMER_GOAL_ROUTING_ENABLED = "false"
+# Offering an optional analysis, and the three-analysis capacity decision that
+# follows when a fourth becomes relevant. ONE shared rule across every
+# transport: on means all offer, off means none does. Defaults off so the
+# corrected flow is validated in the consumer-test environment and canaried on
+# voice separately. Rollback is this flag alone.
+CONSUMER_MODULE_OFFERS_ENABLED = "false"
+# The protected agent-test transport. A testing facility, never a public typed
+# consumer journey. Off in production.
+CONSUMER_AGENT_TEST_ENABLED = "false"
 CONSUMER_HANDOFF_ENABLED = "false"
 CONSUMER_PUBLIC_ACCESS_ENABLED = "false"
 CONSUMER_ALLOWED_MODULE_IDS = "house_purchase,liquidity_analysis"

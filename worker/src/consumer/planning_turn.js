@@ -18,7 +18,8 @@
 
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
-import { recordEvent } from './repository.js';
+import { confirmProfileRevision, recordEvent } from './repository.js';
+import { resolveConfirmationCandidateModuleIds } from './planning_context.js';
 import { mapPlannerExtractionToCandidates, planFactProposal } from './planning_facts.js';
 import { prepareRealtimeVoiceAnalysisPlan } from './realtime_analysis.js';
 import { buildVoiceConfirmationSummary } from './realtime_completion.js';
@@ -252,7 +253,64 @@ export async function composeAndPersistBrief({
     plannerPromptVersion: config.realtimePlannerPromptVersion,
     brief
   });
+  // What the client is about to be offered, recorded once per brief. Without
+  // this the offer and capacity flows are invisible in analytics, which is what
+  // let them stay dead in live voice unnoticed.
+  const channel = context.state?.channel || 'voice';
+  if (brief.moduleOffer?.moduleId) {
+    await recordEvent(env, context.sessionRow.id, 'module_offer_presented', {
+      moduleId: brief.moduleOffer.moduleId,
+      channel
+    }).catch(() => {});
+  }
+  if (brief.capacityDecision?.candidateModuleId) {
+    await recordEvent(env, context.sessionRow.id, 'capacity_decision_presented', {
+      candidateModuleId: brief.capacityDecision.candidateModuleId,
+      currentModuleIds: [...(brief.capacityDecision.currentModuleIds || [])],
+      channel
+    }).catch(() => {});
+  }
   return { brief, analysisPlan, stale: false };
+}
+
+/**
+ * Record the client's final confirmation of the analysis set, then confirm the
+ * profile revision.
+ *
+ * This is the missing link of the P3 flow (OFFER → RECORD → COLLECT → CONFIRM →
+ * EXECUTE). Its spoken half shipped; its persistence half did not, so
+ * `confirmedModuleIds` was never written and `executionModuleIds` stayed dead
+ * (D-01). Without this, an accepted-but-unconfirmed analysis could only execute
+ * because a stale duplicate of the execution rule allowed it.
+ *
+ * Revision safety: `confirmProfileRevision` rewrites the SAME revision in place
+ * rather than bumping it, so folding the confirmed set into the profile first
+ * keeps `current_profile_revision` stable. Every `expectedRevision` equality
+ * check and the analysis plan nonce binding therefore continue to hold.
+ *
+ * @returns {{profile, session, confirmedModuleIds}}
+ */
+export async function confirmPlanSelection({ env, config, sessionRow, profile, channel = 'voice' }) {
+  const state = describeConversationState(profile, config);
+  const confirmedModuleIds = resolveConfirmationCandidateModuleIds(state, config);
+  const planning = profile?.assumptions?.values?.planning || {};
+  const confirmedProfile = {
+    ...profile,
+    assumptions: {
+      ...profile.assumptions,
+      values: {
+        ...profile.assumptions.values,
+        planning: { ...planning, confirmedModuleIds }
+      }
+    }
+  };
+  const confirmed = await confirmProfileRevision(env, sessionRow, confirmedProfile);
+  await recordEvent(env, sessionRow.id, 'analysis_set_confirmed', {
+    moduleIds: confirmedModuleIds,
+    profileRevision: Number(sessionRow.current_profile_revision),
+    channel
+  }).catch(() => {});
+  return { ...confirmed, confirmedModuleIds };
 }
 
 /**
@@ -304,7 +362,8 @@ export async function resolveModuleOffer({ env, config, context, decision, activ
   // meeting can follow up, but it must never behave like an acceptance.
   if (decision === 'uncertain') {
     await recordEvent(env, context.sessionRow.id, 'module_offer_uncertain', {
-      moduleId: activeOffer.moduleId
+      moduleId: activeOffer.moduleId,
+      channel: context.state?.channel || 'voice'
     }).catch(() => {});
     return {
       ok: true,
@@ -323,7 +382,8 @@ export async function resolveModuleOffer({ env, config, context, decision, activ
   await recordEvent(env, context.sessionRow.id, 'module_offer_decided', {
     moduleId: activeOffer.moduleId,
     decision,
-    profileRevision: recorded.revision
+    profileRevision: recorded.revision,
+    channel: context.state?.channel || 'voice'
   }).catch(() => {});
   return {
     ok: true,
@@ -364,7 +424,8 @@ export async function resolveCapacityDecision({
   // again; nothing picks for them.
   if (decision === 'unclear') {
     await recordEvent(env, context.sessionRow.id, 'capacity_decision_unclear', {
-      candidateModuleId: capacity.candidateModuleId
+      candidateModuleId: capacity.candidateModuleId,
+      channel: context.state?.channel || 'voice'
     }).catch(() => {});
     return {
       ok: true,
@@ -397,7 +458,8 @@ export async function resolveCapacityDecision({
     decision,
     candidateModuleId: capacity.candidateModuleId,
     removedModuleId: removeModuleId,
-    profileRevision: recorded.revision
+    profileRevision: recorded.revision,
+    channel: context.state?.channel || 'voice'
   }).catch(() => {});
 
   // Acknowledgements reuse the manifest-owned client descriptions, so no formal

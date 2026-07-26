@@ -492,7 +492,7 @@ export async function getRealtimeLeaseByActivationHash(env, sessionId, activatio
 export async function getActiveRealtimeLease(env, sessionId) {
   return db(env).prepare(`
     SELECT * FROM consumer_realtime_sessions
-    WHERE session_id = ? AND status IN ('pending', 'active', 'closing')
+    WHERE session_id = ? AND channel = 'voice' AND status IN ('pending', 'active', 'closing')
     ORDER BY created_at DESC
     LIMIT 1
   `).bind(sessionId).first();
@@ -501,7 +501,7 @@ export async function getActiveRealtimeLease(env, sessionId) {
 export async function getLatestRealtimeLease(env, sessionId) {
   return db(env).prepare(`
     SELECT * FROM consumer_realtime_sessions
-    WHERE session_id = ?
+    WHERE session_id = ? AND channel = 'voice'
     ORDER BY created_at DESC
     LIMIT 1
   `).bind(sessionId).first();
@@ -2506,7 +2506,8 @@ export async function recordRealtimeRunProvenance(env, request) {
 export async function listExpiredRealtimeLeases(env, limit = 50) {
   const result = await db(env).prepare(`
     SELECT * FROM consumer_realtime_sessions
-    WHERE status IN ('pending', 'active', 'closing')
+    WHERE channel = 'voice'
+      AND status IN ('pending', 'active', 'closing')
       AND (hard_expires_at <= ? OR idle_expires_at <= ?)
     ORDER BY hard_expires_at ASC
     LIMIT ?

@@ -254,6 +254,26 @@ export function getConsumerConfig(env) {
     realtimeSpokenCompletionEnabled,
     realtimeNoticeId,
     realtimeDataPolicyId,
+    // Offering an optional analysis, and the three-analysis capacity decision
+    // that follows when a fourth becomes relevant. ONE shared rule: when this is
+    // on, every transport offers; when off, none does. It is a rollout control,
+    // never a per-transport difference — the planning state itself is always
+    // identical. Enable in the consumer-test environment first, then canary
+    // voice separately.
+    moduleOffersEnabled: journeyEnabled
+      && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED)
+      && enabled(env.CONSUMER_MODULE_OFFERS_ENABLED),
+    // The protected agent-test transport: a text channel over the same shared
+    // planning engine, for adviser/developer testing only. Never a public
+    // consumer chat surface. Defaults off; enabled in the consumer-test
+    // environment. Turning it off makes every agent route 404 immediately.
+    agentTestEnabled: journeyEnabled && enabled(env.CONSUMER_AGENT_TEST_ENABLED),
+    agentTestMaxTurns: boundedInteger(env.CONSUMER_AGENT_TEST_MAX_TURNS, 40, 1, 120),
+    agentTestMaxSessions: boundedInteger(env.CONSUMER_AGENT_TEST_MAX_SESSIONS, 20, 1, 200),
+    // Per-session ceiling on model spend, checked BEFORE each dispatch.
+    agentTestSessionBudgetMicroEur: boundedInteger(
+      env.CONSUMER_AGENT_TEST_SESSION_BUDGET_EUR_CENTS, 50, 1, 500
+    ) * 10_000,
     moduleRoutingEnabled: journeyEnabled && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED),
     goalRoutingEnabled: journeyEnabled
       && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED)

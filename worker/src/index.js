@@ -237,6 +237,17 @@ function getConsumerRouteMethods(pathname) {
 export { ConsumerRealtimeSession } from './consumer/realtime_session.js';
 
 function getRouteConfig(pathname) {
+  if (pathname === '/api/agent-tests/sessions') {
+    return { methods: 'POST,OPTIONS' };
+  }
+  const agentSessionMatch = /^\/api\/agent-tests\/sessions\/cs_[A-Za-z0-9_-]{20,80}(?:\/(turns|state|export|decisions\/offer|decisions\/capacity|confirm))?$/
+    .exec(pathname);
+  if (agentSessionMatch) {
+    const child = agentSessionMatch[1];
+    if (!child) return { methods: 'GET,DELETE,OPTIONS' };
+    return { methods: ['state', 'export'].includes(child) ? 'GET,OPTIONS' : 'POST,OPTIONS' };
+  }
+
   const consumerMethods = getConsumerRouteMethods(pathname);
   if (consumerMethods) {
     return { methods: consumerMethods };
@@ -7407,6 +7418,31 @@ export default {
       }
 
       return optionsResponse(request, origin, routeConfig.methods);
+    }
+
+    // Protected agent-test transport. Adviser authenticated with CSRF on every
+    // mutating call, feature flagged off by default, and never a public
+    // consumer surface. See docs/agent-testing-environment-plan.md.
+    if (pathname.startsWith('/api/agent-tests/')) {
+      const { agentRouteMatch, handleAgentTestRequest } = await import('./consumer/agent_router.js');
+      const route = agentRouteMatch(pathname);
+      const methods = route ? `${route.methods.join(',')},OPTIONS` : 'OPTIONS';
+      const advisorAccess = await requireAdvisorSession(request, env, origin, methods, {
+        requireCsrf: request.method !== 'GET',
+        rateScope: 'agent-test'
+      });
+      if (advisorAccess.response) return advisorAccess.response;
+      return handleAgentTestRequest(request, env, {
+        pathname,
+        respond: (data, status, allowedMethods) => jsonResponse(
+          data,
+          status,
+          origin,
+          allowedMethods,
+          requestHeaders,
+          noStoreHeaders()
+        )
+      });
     }
 
     if (pathname.startsWith('/api/consumer/')) {

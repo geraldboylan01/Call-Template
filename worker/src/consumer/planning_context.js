@@ -204,21 +204,7 @@ export function buildPlanningStateSlice({
   meetingPhase = null,
   latestMeetingBrief = null,
   retainedTerminalPhase = null,
-  channel = 'voice',
-  // DIVERGENCE D-02 — see docs/agent-testing-parity-contract.md §5.
-  //
-  // The live voice path has never carried `moduleOpportunities` or `capacity`
-  // into the state it hands to composeMeetingBrief. composeMeetingBrief reads
-  // exactly those two fields to build `moduleOffer` and `capacityDecision`, so
-  // both are unconditionally null in the canary and the spoken offer and
-  // three-analysis capacity flows cannot fire, even though every other part of
-  // them is wired and tested.
-  //
-  // Switching them on is a LIVE BEHAVIOUR CHANGE and is deliberately NOT part
-  // of the mechanical extraction. The default preserves today's behaviour
-  // exactly; the flag exists so the correction is one reviewed, canaried flip
-  // in one place rather than a second implementation.
-  includeOpportunityState = false
+  channel = 'voice'
 }) {
   const conversationV2 = config.realtimeConversationV2Enabled === true;
   // `meetingPhase` is the caller's already-resolved persisted phase (voice: the
@@ -265,14 +251,17 @@ export function buildPlanningStateSlice({
     likelyModules: consumerPlanningLists.likelyModules,
     recommendations: consumerPlanningLists.recommendations,
     deferredOrAdviserTopics: consumerPlanningLists.deferredOrAdviserTopics,
+    // The deterministic inputs the offer and three-analysis capacity flows bind
+    // to. Every transport receives these, unconditionally and identically —
+    // whether an offer is then PRESENTED is a single shared rollout decision
+    // made in composeMeetingBrief, not a difference in state shape. (D-02: the
+    // voice path used to drop both fields here, which silently disabled both
+    // flows end to end.)
+    //
     // Consumer-visible opportunities only. `withheldOpportunities` is NEVER
     // carried here: a consumer must not learn a hidden analysis exists.
-    ...(includeOpportunityState
-      ? {
-          moduleOpportunities: state.moduleOpportunities || [],
-          capacity: state.capacity
-        }
-      : {}),
+    moduleOpportunities: state.moduleOpportunities || [],
+    capacity: state.capacity,
     reasoningEscalation: complexJourney(profile, state),
     conversationVersion: conversationV2 ? 'v2' : 'v1',
     spokenCompletionEnabled: config.realtimeSpokenCompletionEnabled === true,
@@ -298,8 +287,7 @@ export function buildPlanningContext({
   meetingPhase = null,
   latestMeetingBrief = null,
   retainedTerminalPhase = null,
-  channel = 'voice',
-  includeOpportunityState = false
+  channel = 'voice'
 }) {
   const state = describeConversationState(profile, config);
   const pendingFacts = pendingProposals.map((proposal) => ({
@@ -324,8 +312,7 @@ export function buildPlanningContext({
       meetingPhase,
       latestMeetingBrief,
       retainedTerminalPhase,
-      channel,
-      includeOpportunityState
+      channel
     })
   };
 }

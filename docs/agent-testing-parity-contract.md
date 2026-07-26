@@ -1,9 +1,14 @@
 # Voice / Text Parity Contract and Divergent-Behaviour Register
 
-**Status:** A0 deliverable, delivered alongside the A1 extraction. This is the
-authoritative classification of consumer-planning behaviour into *shared*,
+**Status:** A0 deliverable, delivered alongside the A1 extraction and updated
+after the D-01 / D-02 / D-03 corrections. This is the authoritative
+classification of consumer-planning behaviour into *shared*,
 *transport-specific* and *divergent*. It is the reference the agent-testing
 transport is built against.
+
+**Register at a glance.** D-01 resolved · **D-02 code-complete and validated in
+test; production activation pending a voice canary** · D-03 resolved · D-04 open
+by design.
 
 **Companion documents.** [agent-testing-environment-plan.md](agent-testing-environment-plan.md)
 (the phased plan), [realtime-intelligence-implementation-plan.md](realtime-intelligence-implementation-plan.md)
@@ -55,6 +60,8 @@ audio, WebRTC, leases or the provider.
 | Plan-change telemetry | [`recordPlanEvaluation`](../worker/src/consumer/planning_turn.js) |
 | Execution-set rules | [`resolveExecutionModuleIds`](../worker/src/consumer/planning_turn.js), [`resolveConfirmationCandidateModuleIds`](../worker/src/consumer/planning_turn.js) |
 | Analysis preparation and execution | [`realtime_analysis.js`](../worker/src/consumer/realtime_analysis.js) |
+| Final confirmation of the analysis set | [`confirmPlanSelection`](../worker/src/consumer/planning_turn.js) |
+| Text/agent transport (A2) — session, turns, projections | [`agent_session.js`](../worker/src/consumer/agent_session.js), [`agent_text_channel.js`](../worker/src/consumer/agent_text_channel.js) |
 
 The silent planner ([`extractRealtimePlannerTurn`](../worker/src/consumer/realtime_planner.js:482))
 was already transport-independent: it takes a plain string. A typed message is a
@@ -148,9 +155,9 @@ Both are now named and shared:
 [`resolveConfirmationCandidateModuleIds`](../worker/src/consumer/planning_turn.js)
 and [`resolveExecutionModuleIds`](../worker/src/consumer/planning_turn.js).
 
-### 4.5 The missing link
+### 4.5 The missing link — since implemented
 
-The two questions were never connected, because **`confirmedModuleIds` is never
+The two questions were never connected, because **`confirmedModuleIds` was never
 written by production code.** It is read at [`goal_plan.js:423`](../js/planning/goal_plan.js:423),
 cleared on replacement at [`module_offers.js:368`](../js/planning/module_offers.js:368),
 and otherwise written only by test scripts. Step 4 of the P3 flow
@@ -178,13 +185,14 @@ Both transports inherit this. A mismatch between the prepared set and
 difference — which is the correct behaviour when the profile has changed between
 preparation and confirmation.
 
-### 4.7 Why the correction is not in A1
+### 4.7 The correction, delivered separately from A1
 
 Implementing §4.6 requires writing `confirmedModuleIds` at confirmation time.
-That is a **live voice behaviour change** and is deliberately excluded from the
-mechanical extraction, per the A1 brief. It is registered as **D-01** below.
+That is a **live voice behaviour change**, so it was deliberately excluded from
+the mechanical extraction and delivered afterwards as its own reviewed change.
+See **D-01** below for what shipped.
 
-Two facts make it a safe, well-scoped follow-up:
+Two facts made it a safe, well-scoped follow-up:
 
 - [`confirmProfileRevision`](../worker/src/consumer/repository.js:699) rewrites the
   **same** revision in place rather than bumping it, so `confirmedModuleIds` can
@@ -203,40 +211,44 @@ Two facts make it a safe, well-scoped follow-up:
 
 | | |
 |---|---|
-| **Status** | Open. Registered, not fixed. |
-| **Class** | divergent |
-| **Evidence** | [`goal_plan.js:528`](../js/planning/goal_plan.js:528) vs the former inline copy in [`realtime_analysis.js`](../worker/src/consumer/realtime_analysis.js); `confirmedModuleIds` written by no production path |
-| **Impact today** | `executionModuleIds` is dead in the voice path. Execution is decided by `resolveConfirmationCandidateModuleIds`. Net client outcome is currently correct. |
-| **Partially addressed** | A1 replaced the inline duplicate with a call to the named shared rule `resolveConfirmationCandidateModuleIds` — identical behaviour, one definition. What remains is writing `confirmedModuleIds`. |
-| **Resolution** | Implement §4.6: write `confirmedModuleIds` on final confirmation, so `resolveExecutionModuleIds` becomes live and the two rules converge. |
-| **Live voice change?** | **Yes** — mechanism changes, outcome should not. Requires dedicated characterisation + regression tests, staged separately from A1, canaried, rollback via revert. |
-| **Phase** | Between A1 and A2, as its own reviewed change. |
+| **Status** | **RESOLVED.** |
+| **Class** | was divergent → now shared |
+| **Approved rule** | Accepting an optional analysis does not by itself authorise execution. Only analyses in the final set the client confirmed may execute. |
+| **What was implemented** | [`confirmPlanSelection`](../worker/src/consumer/planning_turn.js) records `confirmedModuleIds` — exactly the set read out to the client — and then confirms the profile revision. Both confirmation paths use it: the spoken completion in the Durable Object and `POST /api/consumer/sessions/{id}/confirm` in the router. The duplicated inline execution filter in `realtime_analysis.js` was already replaced in A1 by the named shared rule. |
+| **Revision safety** | [`confirmProfileRevision`](../worker/src/consumer/repository.js:699) rewrites the **same** revision in place rather than bumping it, so folding the confirmed set into the profile first leaves `current_profile_revision` unchanged. Every `expectedRevision` equality check and the analysis-plan nonce binding continue to hold unmodified. |
+| **Runtime verification** | [`confirmAndRunRealtimeAnalysisPlan`](../worker/src/consumer/realtime_analysis.js) now fails closed with `analysis_plan_not_confirmed` if the prepared plan's `moduleIds` do not equal `resolveExecutionModuleIds` at execution time. The existing revision guards already make this unreachable in normal operation (any planning write nulls `confirmed_profile_revision`); it exists so that if the two ever disagree, nothing runs. |
+| **Tests** | [`check-consumer-shared-planning.mjs`](../scripts/check-consumer-shared-planning.mjs): acceptance alone does not execute but IS read out for confirmation; after confirmation the execution set equals the confirmed set exactly; the spoken confirmation describes exactly the set that will execute, in client language. |
+| **Live voice change?** | **Yes — mechanism, not outcome.** An accepted analysis executed before (via the stale duplicate rule) and executes now (via a genuine confirmation). `executionModuleIds` is no longer dead code, and an unconfirmed set can no longer run. |
+| **Rollback** | Revert the change. No schema change, no migration, no data rewrite: `confirmedModuleIds` is an additive field inside the existing encrypted profile payload, and every reader already defaults it to `[]`. Profiles written by the new code remain valid for the old code. |
 
 ### D-02 — module offers and capacity decisions cannot fire in live voice
 
 | | |
 |---|---|
-| **Status** | Open. Registered, not fixed. **Highest-value finding of A0.** |
-| **Class** | divergent |
-| **Evidence** | The Durable Object's `publicState` has never carried `moduleOpportunities` or `capacity`. [`composeMeetingBrief`](../worker/src/consumer/realtime_planner.js:947) reads exactly those two fields to build `moduleOffer` and `capacityDecision`. |
-| **Verification** | Reproduced directly: a homeowner-with-mortgage profile whose stated goal is `improve_pension` yields `moduleOpportunities: [mortgage_analysis:offerable]` from the deterministic engine, and `nextModuleOffer` composes an offer from it — but composing the brief with the shape the DO actually builds returns `moduleOffer=null`, while adding the two fields returns `moduleOffer=mortgage_analysis`. |
-| **Impact today** | `brief.moduleOffer` and `brief.capacityDecision` are unconditionally `null` in the canary. [`realtimeToolsForState`](../worker/src/consumer/realtime_provider.js:298) gates `record_module_decision` and `resolve_capacity_decision` on exactly those fields, so **neither tool is ever offered to the model**. The spoken offer flow (`3c71c07`, `bf0c265`) and the three-analysis capacity decision (`df40b12`) are wired, tested at the handler level, and dead end to end. |
-| **Resolution** | `buildPlanningStateSlice({ includeOpportunityState: true })`. The flag exists so this is one reviewed flip in one place, not a second implementation. |
-| **Live voice change?** | **Yes, and a large one** — it switches on two conversational flows that have never run with real clients. Needs its own canary and its own conversation probe. |
-| **Phase** | Its own change, after D-01. Not a prerequisite for A2; the agent transport can enable it independently for testing, which is precisely what the test environment is for. |
+| **Status** | **Code-complete and validated in the test environment. Production activation pending a controlled voice canary.** |
+| **Class** | was divergent → now shared |
+| **Original defect** | The Durable Object's `publicState` never carried `moduleOpportunities` or `capacity`. `composeMeetingBrief` reads exactly those two fields to build `moduleOffer` and `capacityDecision`, so both were unconditionally `null` in the canary. Since [`realtimeToolsForState`](../worker/src/consumer/realtime_provider.js:298) gates `record_module_decision` and `resolve_capacity_decision` on those fields, neither tool was ever offered to the model. Both flows were wired, handler-tested and dead end to end. |
+| **What was implemented** | [`buildPlanningStateSlice`](../worker/src/consumer/planning_context.js) carries `moduleOpportunities` and `capacity` **unconditionally for every transport**. The earlier `includeOpportunityState` flag was removed outright: a per-transport state shape is what caused the defect, so it must not survive as a permanent option. |
+| **Rollout control** | ONE shared decision, taken in `composeMeetingBrief` from `config.moduleOffersEnabled` (`CONSUMER_MODULE_OFFERS_ENABLED`). On means every transport offers; off means none does. It gates *presentation*, never state shape. |
+| **Environments** | `"true"` in [`wrangler.consumer-test.toml`](../worker/wrangler.consumer-test.toml). `"false"` in the committed production config, enforced by the deploy workflow's `requiredFalseFlags`, and settable at deploy time via the `CONSUMER_MODULE_OFFERS_ENABLED` repository variable. |
+| **Validated** | The full journey passes end to end through the agent transport against a real migrated database: offer produced and spoken in client language · `record_module_decision` gated on a live offer · accepted / declined / uncertain · no incorrect re-offer · three-analysis limit reached · capacity decision produced · `resolve_capacity_decision` gated on a live decision · replace / defer / unclear · confirmed execution set · no internal id or hidden opportunity in the consumer projection. See [`check-consumer-agent-journey.mjs`](../scripts/check-consumer-agent-journey.mjs) and [`check-consumer-agent-api.mjs`](../scripts/check-consumer-agent-api.mjs). |
+| **Live voice change?** | **Not yet.** Production keeps `CONSUMER_MODULE_OFFERS_ENABLED = "false"`, so live voice behaviour is byte-identical to today. |
+| **Remaining to close D-02** | The controlled realtime voice canary and production activation, per [agent-testing-d02-canary-runbook.md](agent-testing-d02-canary-runbook.md). Both require production credentials and a paid dispatch, so they are operator steps. |
+| **Rollback** | The flag alone. No schema change, no migration. |
 
 ### D-03 — `primary_goal_focus` cannot be saved on a fresh profile
 
 | | |
 |---|---|
-| **Status** | Open. Registered, not fixed. |
-| **Class** | divergent |
-| **Evidence** | The planner emits a `primary_goal_focus` candidate whenever `priorityHint === 'primary'`. It maps to `/assumptions/values/planning/primaryGoalType` ([`realtime_fact_mapper.js:592`](../worker/src/consumer/realtime_fact_mapper.js:592)), but `assumptions.values.planning` does not exist on a fresh profile, and the canonical patch requires the path to exist. Every such candidate is rejected with `invalid_profile_patch`. |
-| **How it surfaced** | The characterisation harness recorded the rejection on its first run; the re-pointed simulator now prints `dropped: primary_goal_focus` for all four scenarios. The previous simulator hid it, because its hand-copied candidate mapping ignored `priorityHint` and never produced the fact at all. |
-| **Impact today** | The client's explicitly stated *primary* goal is never persisted as the focus. `buildGoalModulePlan` falls back to `supportedGoalTypes[0]` (mention order). With one goal this is invisible; with several it silently changes ranking. |
-| **Resolution** | Either create `assumptions.values.planning` in `createHouseholdProfile`/`normalizeHouseholdProfile`, or map the fact through a whole-object patch as [`extractContextBoundPatch`](../worker/src/consumer/conversation.js:355) already does. |
-| **Live voice change?** | **Yes** — goal ranking would begin to honour a stated primary goal. |
-| **Phase** | Own change. Fix before multi-goal scenarios are used for parity assertions, since ranking is one of the eleven fields §3 requires to be identical. |
+| **Status** | **RESOLVED.** |
+| **Class** | was divergent → now shared |
+| **Original defect** | `primary_goal_focus` maps to the scalar path `/assumptions/values/planning/primaryGoalType`, but `assumptions.values.planning` did not exist on a fresh profile and a JSON-pointer patch cannot write through a missing parent. Every such candidate was rejected with `invalid_profile_patch`, so a client's explicitly stated primary goal was silently discarded and ranking fell back to mention order. |
+| **What was implemented** | `normalizeAssumptions` in [`profile.js`](../js/planning/profile.js) now guarantees `assumptions.values.planning` exactly as it has always guaranteed `assumptions.values.persona`. This is the root cause, not the symptom: any future scalar planning fact would have failed the same way. |
+| **Why it is safe** | An empty `planning: {}` is indistinguishable from absent to every reader — `planningValues()` in [`goal_plan.js`](../js/planning/goal_plan.js) already defaults to `{}`. Where no primary preference is stated, nothing is written and behaviour is unchanged. |
+| **Tests** | [`check-consumer-shared-planning.mjs`](../scripts/check-consumer-shared-planning.mjs): a fresh profile exposes an empty planning object; the scalar path persists; a fresh profile with three goals and an explicit primary honours the stated preference over mention order and resolves the priority question; and the control case — no stated preference — still uses mention order and still asks the priority question. |
+| **Characterisation** | The golden recorded the change precisely: each scenario gained one profile revision (a fact that used to fail now saves) and lost its `primary_goal_focus` rejection. Goals, module slots, questions, `stillNeeded`, capacity, execution set and every brief field are **unchanged** — these fixtures each state a single goal, so stated focus and mention order agree. Recorded in the golden's `changeLog`. |
+| **Live voice change?** | **Yes.** A stated primary goal now ranks its analyses first. This is the intended product behaviour and was the whole purpose of `primary_goal_focus`. It only becomes observable in a multi-goal meeting. |
+| **Rollback** | Revert. Additive and backward-compatible: profiles carrying `planning: {}` are valid for the old code, which already tolerated the field being absent. |
 
 ### D-04 — the typed `/turns` journey is a different pipeline
 
@@ -284,17 +296,26 @@ planning state, never on prose.
 - The offline simulator calls the production service instead of a hand-copy.
   Its three stale source-line references — all of which had drifted — are gone.
 
-### Explicitly not changed
+### Explicitly not changed by A1
 
 - No planning behaviour. Verified by the characterisation golden and the full
   realtime suite.
-- The execution-set *outcome* is unchanged. The duplicated inline filter in
-  `realtime_analysis.js` now calls the named shared rule
-  `resolveConfirmationCandidateModuleIds`, which is the same code; nothing yet
-  writes `confirmedModuleIds`, so `executionModuleIds` remains dead (D-01).
-- `includeOpportunityState` defaults to `false`, preserving today's live
-  behaviour exactly (D-02).
-- `primary_goal_focus` still fails on a fresh profile (D-03).
+- The three defects A1 uncovered were registered, not fixed, so the extraction
+  could be reviewed as a pure move.
+
+### Changed afterwards, as separate reviewed corrections
+
+- **D-03** — profile normalisation guarantees `assumptions.values.planning`, so a
+  stated primary goal persists and ranks. Live behaviour change, visible only in
+  a multi-goal meeting.
+- **D-01** — `confirmPlanSelection` writes `confirmedModuleIds` at final
+  confirmation on both confirmation paths, and execution fails closed if the
+  prepared set and the confirmed set disagree. Live mechanism change; same
+  outcome.
+- **D-02** — `moduleOpportunities` and `capacity` are carried unconditionally for
+  every transport; presentation is gated by the shared
+  `CONSUMER_MODULE_OFFERS_ENABLED` rollout control, which is off in production.
+  **No live voice behaviour change until that flag is turned on.**
 
 ---
 

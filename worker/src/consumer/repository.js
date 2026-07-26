@@ -29,7 +29,17 @@ const ALLOWED_EVENT_NAMES = new Set([
   'handoff_revoked',
   'handoff_viewed', 'consultation_booked', 'consultation_paid',
   'ai_consent_withdrawn', 'handoff_package_purged',
-  'journey_abandoned', 'journey_deleted', 'journey_expired'
+  'journey_abandoned', 'journey_deleted', 'journey_expired',
+  // Deterministic planning events. These were already being emitted by the
+  // shared planning path and silently discarded here, which made the offer and
+  // capacity flows unobservable — the single hardest thing about diagnosing why
+  // they had never fired at all.
+  'goal_plan_evaluated', 'goal_plan_changed',
+  'module_offer_presented', 'module_offer_decided', 'module_offer_uncertain',
+  'capacity_decision_presented', 'capacity_decision_resolved', 'capacity_decision_unclear',
+  'analysis_set_confirmed',
+  // Agent-test transport.
+  'agent_test_session_created', 'agent_turn_submitted', 'agent_test_session_deleted'
 ]);
 
 const EVENT_METADATA_FIELDS = Object.freeze({
@@ -47,7 +57,26 @@ const EVENT_METADATA_FIELDS = Object.freeze({
   handoff_requested: new Set(['handoffId', 'recipient']),
   handoff_linked: new Set(['handoffId']),
   handoff_revoked: new Set(['handoffId', 'downstreamShared']),
-  handoff_package_purged: new Set(['handoffId'])
+  handoff_package_purged: new Set(['handoffId']),
+  // Bounded, categorical metadata only. Module ids are server-owned
+  // enumerations, never client content; no free text is admitted.
+  goal_plan_evaluated: new Set([
+    'selectionPolicyVersion', 'goalTypes', 'deferredGoalTypes', 'moduleIds',
+    'ruleIds', 'clarificationRequired', 'planChanged'
+  ]),
+  goal_plan_changed: new Set(['selectionPolicyVersion', 'previousModuleIds', 'moduleIds']),
+  module_offer_presented: new Set(['moduleId', 'anchorSource', 'channel']),
+  module_offer_decided: new Set(['moduleId', 'decision', 'profileRevision', 'channel']),
+  module_offer_uncertain: new Set(['moduleId', 'channel']),
+  capacity_decision_presented: new Set(['candidateModuleId', 'currentModuleIds', 'channel']),
+  capacity_decision_resolved: new Set([
+    'decision', 'candidateModuleId', 'removedModuleId', 'profileRevision', 'channel'
+  ]),
+  capacity_decision_unclear: new Set(['candidateModuleId', 'channel']),
+  analysis_set_confirmed: new Set(['moduleIds', 'profileRevision', 'channel']),
+  agent_test_session_created: new Set(['scenarioId', 'cohort', 'channel']),
+  agent_turn_submitted: new Set(['turnIndex', 'revision', 'decisionMode', 'channel']),
+  agent_test_session_deleted: new Set(['turnCount'])
 });
 
 const SAFE_PROVIDER_COST_TOKEN = /^[A-Za-z0-9._:-]+$/;

@@ -11,11 +11,11 @@ import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
 import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
+import { confirmPlanSelection } from './planning_turn.js';
 import { createConsumerInvite, verifyConsumerInvite } from './invite.js';
 import {
   checkConsumerRateLimit,
   cleanupExpiredConsumerSessions,
-  confirmProfileRevision,
   createSessionRecord,
   deleteSessionData,
   getCurrentProfile,
@@ -1293,7 +1293,9 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         sessionRow = await getSessionRow(env, sessionRow.id);
         profile = saved.profile;
       }
-      const confirmed = await confirmProfileRevision(env, sessionRow, profile);
+      // The same shared confirmation rule the voice meeting uses: record the
+      // exact analysis set the client confirmed, so only that set may execute.
+      const confirmed = await confirmPlanSelection({ env, config, sessionRow, profile });
       return respond({
         ...confirmed,
         ...publicConversationState(describeConversationState(confirmed.profile, config))

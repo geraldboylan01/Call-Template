@@ -38,6 +38,10 @@ CONSUMER_AI_INTAKE_ENABLED = "false"
 CONSUMER_VOICE_ENABLED = "false"
 CONSUMER_REALTIME_VOICE_ENABLED = "false"
 CONSUMER_MODULE_ROUTING_ENABLED = "true"
+# The corrected offer and capacity flows are validated here first (D-02).
+CONSUMER_MODULE_OFFERS_ENABLED = "true"
+# The protected agent-test transport (A2). Adviser authenticated, synthetic only.
+CONSUMER_AGENT_TEST_ENABLED = "true"
 CONSUMER_HANDOFF_ENABLED = "true"
 CONSUMER_PUBLIC_ACCESS_ENABLED = "false"
 CONSUMER_ALLOWED_MODULE_IDS = "house_purchase,liquidity_analysis"

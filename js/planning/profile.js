@@ -303,6 +303,16 @@ function normalizeAssumptions(value) {
   const assumptionValues = isPlainObject(value.values) ? cloneJson(value.values) : {};
   if (typeof assumptionValues.persona === 'undefined') assumptionValues.persona = {};
   if (!isPlainObject(assumptionValues.persona)) throw new Error('assumptions.values.persona must be an object.');
+  // Planning decisions (the client's stated primary goal, and their accepted,
+  // declined, deferred, replaced and confirmed analyses) are guaranteed to
+  // exist for the same reason persona is: a JSON-pointer patch can only write
+  // to a path whose parent exists. Without this, a scalar write such as
+  // /assumptions/values/planning/primaryGoalType failed on every fresh profile,
+  // so a client's explicitly stated primary goal was silently discarded.
+  // An empty object is indistinguishable from absent to every reader —
+  // planningValues() in goal_plan.js already defaults to {}.
+  if (typeof assumptionValues.planning === 'undefined') assumptionValues.planning = {};
+  if (!isPlainObject(assumptionValues.planning)) throw new Error('assumptions.values.planning must be an object.');
   assertJsonCompatible(assumptionValues, 'assumptions.values');
   const assumptions = {
     calculationDateIso: assertIsoDate(value.calculationDateIso, 'assumptions.calculationDateIso'),

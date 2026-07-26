@@ -25,6 +25,7 @@ import {
 import {
   applyPlannerCandidates,
   composeAndPersistBrief,
+  confirmPlanSelection,
   recordPlanEvaluation,
   resolveCapacityDecision,
   resolveModuleOffer
@@ -35,7 +36,6 @@ import { ConsumerError } from './errors.js';
 import {
   getCurrentProfile,
   getSessionRow,
-  confirmProfileRevision,
   recordEvent,
   releaseConsumerProviderCostNotSent,
   settleConsumerProviderCostKnown,
@@ -1823,7 +1823,14 @@ export class ConsumerRealtimeSession {
         || execution.row.status !== 'prepared') {
         throw new ConsumerError(409, 'profile_revision_conflict', 'The prepared plan changed before spoken confirmation.');
       }
-      await confirmProfileRevision(this.env, context.sessionRow, context.profile);
+      // Records the exact set the client just confirmed, then confirms the
+      // revision in place. Only that set may execute (D-01).
+      await confirmPlanSelection({
+        env: this.env,
+        config: context.config,
+        sessionRow: context.sessionRow,
+        profile: context.profile
+      });
       await recordRealtimeVoiceConfirmation(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,

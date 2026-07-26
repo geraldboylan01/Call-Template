@@ -942,23 +942,33 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
         perPersonAssumptions: statePensionMemberAssumptions(context.profile)
       }
     : null;
+  // Whether optional analyses are OFFERED at all is one shared rollout
+  // decision, taken here for every transport alike. It is deliberately not a
+  // difference in the planning state each transport receives: that is exactly
+  // how the offer and capacity flows came to be silently dead in live voice
+  // (D-02). Off by default, matching every other consumer feature gate.
+  const moduleOffersEnabled = context.config?.moduleOffersEnabled === true;
   // The single active offer. The server owns which analysis is on the table, so
   // a short "yes" can only ever resolve to one thing.
-  const activeOffer = nextModuleOffer(
-    { moduleOpportunities: state.moduleOpportunities || [] },
-    { profile: context.profile }
-  );
+  const activeOffer = moduleOffersEnabled
+    ? nextModuleOffer(
+        { moduleOpportunities: state.moduleOpportunities || [] },
+        { profile: context.profile }
+      )
+    : null;
   // The single active capacity decision. Derived from the same deterministic
   // plan as everything else, so the proposed fourth analysis and the exact
   // three it could replace are server-owned rather than model-supplied.
-  const activeCapacityChoice = composeCapacityChoice(
-    {
-      capacity: state.capacity,
-      moduleSlots: state.moduleSlots || [],
-      moduleOpportunities: state.moduleOpportunities || []
-    },
-    { profile: context.profile }
-  );
+  const activeCapacityChoice = moduleOffersEnabled
+    ? composeCapacityChoice(
+        {
+          capacity: state.capacity,
+          moduleSlots: state.moduleSlots || [],
+          moduleOpportunities: state.moduleOpportunities || []
+        },
+        { profile: context.profile }
+      )
+    : null;
   const brief = {
     schemaVersion: MEETING_BRIEF_V2,
     sourceTurnId,
