@@ -8,7 +8,7 @@ transport is built against.
 
 **Register at a glance.** D-01 resolved · **D-02 code-complete and validated in
 test; production activation BLOCKED pending re-canary after D-05** · D-03
-resolved · D-04 open by design · **D-05 live incident, root-caused and fixed**.
+resolved · D-04 open by design · **D-05 and D-06 live incidents, root-caused and fixed**.
 
 **Companion documents.** [agent-testing-environment-plan.md](agent-testing-environment-plan.md)
 (the phased plan), [realtime-intelligence-implementation-plan.md](realtime-intelligence-implementation-plan.md)
@@ -265,6 +265,22 @@ Two facts made it a safe, well-scoped follow-up:
 | **Characterisation** | Unchanged — the fallback only fires where there was previously no question at all. |
 | **Live voice change?** | **Yes, and it is the point:** a meeting that previously had nothing to say now asks the deterministic clarification question. |
 | **Open** | Whether the opening greeting also failed is **not established**. A plausible mechanism exists (`refreshJourneyState` suppresses `session.update` when the policy hash is unchanged, and the greeting is only authorised on `session.updated`), but confirming it needs the meeting's `consumer_realtime_events` rows, which are not available here. |
+
+### D-06 — a planner failure blamed the client and looped forever
+
+| | |
+|---|---|
+| **Status** | **Root-caused and fixed.** Awaiting a live re-test. |
+| **Class** | was a live defect → now covered by regression |
+| **Incident** | Second live meeting, on `5d105a8` (greeting working). Client: *"Well, I'm 25 and I'm mostly interested in saving up for buying a house in the future…"*. Assistant: *"Sorry, the last planning note couldn't be updated. Could you restate only that last point…"* — twice, including after the client made the goal completely explicit. UI stayed at 0 focus areas, 0 understood. |
+| **Root cause** | That wording is the `planner_recovery` instruction, reached only when `processPlannerTurn` returns `status: 'failed'` — i.e. the **entire** try block threw. Since nothing was persisted, the throw was in `extractRealtimePlannerTurn` itself (the AI planner call), not in candidate application. **Asking the client to rephrase cannot fix a provider/model failure**, so every turn failed identically and the meeting looped. |
+| **Ruled out by reproduction** | Against a real migrated database with the exact production allowlist and flags, the candidate path is **healthy**: `buy_home` accepted, `primary_goal_focus` accepted, age 25 accepted, unsupported siblings (`home_purchase_timeframe_years`, `savings_goal`) rejected **independently** with `realtime_fact_not_supported` without blocking anything, and the resulting brief carried both analyses and a real question. So Q4–Q7 are answered: no candidate blocked the goal. |
+| **Deployment vs code** | **Code defect.** Live was `5d105a8`, which already includes the D-03 normalisation and the D-05 brief fallback (Q12). |
+| **Fix** | Two parts, both shared-core. (1) [`deterministicFallbackExtraction`](../worker/src/consumer/planning_facts.js) — when the AI planner fails, the deterministic rules extractor runs instead. It recovers `buy_home` and age 25 from the exact live utterance with **no network**, so the meeting keeps its state and keeps moving. (2) Consecutive internal failures are counted; the second one stops using `planner_recovery` and uses a new `planner_degraded` response that says plainly it is a technical problem on our side, does not blame the client's wording, and asks the next server-owned question. |
+| **Not just the apology text** | The apology now fires at most once, and only after the deterministic fallback has already failed to salvage anything. |
+| **Observability** | New `realtime.planner.degraded` event records the failure code and how many candidates were salvaged, so a degraded meeting is visibly distinct from a healthy one. |
+| **Tests** | [`check-consumer-multi-goal-opening.mjs`](../scripts/check-consumer-multi-goal-opening.mjs) — the exact two live utterances: the fallback recovers goal and age; the salvaged turn persists and advances with a real question that never asks for a restatement; an unsupported sibling is rejected independently while `buy_home` survives and becomes primary; and the failure handling itself is asserted. |
+| **Still unknown** | **Why** the planner call failed. That needs the meeting's `realtime.planner.deferred` event, which carries the exact code and is not available here. The fix makes the meeting survive the failure either way, but the underlying cause should still be read from telemetry. |
 
 ### D-04 — the typed `/turns` journey is a different pipeline
 
