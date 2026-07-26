@@ -172,6 +172,85 @@ export function nextModuleOffer(plan, { profile } = {}) {
   return null;
 }
 
+function readableList(names) {
+  return names.join(', ').replace(/, ([^,]*)$/, ' and $1');
+}
+
+/**
+ * The spoken explanation when a fourth analysis becomes relevant and the plan is
+ * already full.
+ *
+ * The three-analysis limit is a current product constraint, so it is described
+ * as one — not as a planning principle, and never with any suggestion that three
+ * is always enough. The client chooses what to drop; the model must not.
+ *
+ * @returns {null|{spoken, currentModuleIds, candidateModuleId, ...}}
+ */
+export function composeCapacityChoice(plan, { profile } = {}) {
+  if (!plan?.capacity?.atLimit) return null;
+  const candidateId = plan.capacity.overflowModuleIds?.[0]
+    || plan.moduleOpportunities?.find((item) => item.state === 'offerable')?.moduleId
+    || null;
+  if (!candidateId) return null;
+  const candidate = getModuleManifest(candidateId);
+  if (!candidate) return null;
+
+  const currentNames = plan.moduleSlots.map((slot) => getModuleManifest(slot.moduleId)?.name || slot.moduleId);
+  const opportunity = plan.moduleOpportunities?.find((item) => item.moduleId === candidateId);
+  const anchor = opportunity
+    ? anchorPhrase(opportunity.supportingFactIds, profile)
+    : goalAnchorPhrase(candidateId, profile);
+  const why = anchor
+    ? `${candidate.name} could also be useful, because ${anchor.replace(/^You (?:said|asked about|mentioned) /i, 'you mentioned ')}.`
+    : `${candidate.name} could also be useful based on what you have told me.`;
+
+  return Object.freeze({
+    candidateModuleId: candidateId,
+    candidateName: candidate.name,
+    currentModuleIds: Object.freeze(plan.moduleSlots.map((slot) => slot.moduleId)),
+    currentNames: Object.freeze(currentNames),
+    maximumAnalyses: plan.capacity.maximumAnalyses,
+    spoken: `At the moment the application can run up to ${plan.capacity.maximumAnalyses} analyses in this planning session. `
+      + `We currently have ${readableList(currentNames)} outlined. `
+      + `${why} `
+      + 'Would you prefer to replace one of those three with it, or keep it for a separate follow-up?'
+  });
+}
+
+/**
+ * Apply an explicit replacement. Only the analysis the client named is removed,
+ * and the goal behind it stays active so a later cycle can return to it.
+ */
+export function applyModuleReplacement(planning = {}, { removeModuleId, addModuleId }) {
+  const replaced = new Set(Array.isArray(planning.replacedModuleIds) ? planning.replacedModuleIds : []);
+  const accepted = new Set(Array.isArray(planning.acceptedModuleIds) ? planning.acceptedModuleIds : []);
+  const deferred = new Set(Array.isArray(planning.deferredModuleIds) ? planning.deferredModuleIds : []);
+  const confirmed = new Set(Array.isArray(planning.confirmedModuleIds) ? planning.confirmedModuleIds : []);
+  replaced.add(removeModuleId);
+  accepted.delete(removeModuleId);
+  confirmed.delete(removeModuleId);
+  accepted.add(addModuleId);
+  deferred.delete(addModuleId);
+  return {
+    ...planning,
+    replacedModuleIds: [...replaced],
+    acceptedModuleIds: [...accepted],
+    deferredModuleIds: [...deferred],
+    // The set has changed, so the previous confirmation no longer describes it.
+    confirmedModuleIds: []
+  };
+}
+
+/**
+ * Keep an analysis for a later cycle. It stops being offered now — deferring is
+ * a decision, not an invitation to keep asking.
+ */
+export function applyModuleDeferral(planning = {}, moduleId) {
+  const deferred = new Set(Array.isArray(planning.deferredModuleIds) ? planning.deferredModuleIds : []);
+  deferred.add(moduleId);
+  return { ...planning, deferredModuleIds: [...deferred] };
+}
+
 /**
  * The set the client is asked to confirm before anything runs, with the reason
  * each module is in it, so the confirmation can be read out rather than
@@ -192,6 +271,6 @@ export function confirmationSummary(plan) {
     moduleIds: Object.freeze(modules.map((item) => item.moduleId)),
     spoken: modules.length === 0
       ? ''
-      : `So I will put together ${modules.map((item) => item.name).join(', ').replace(/, ([^,]*)$/, ' and $1')}. Have I got that right?`
+      : `So I will put together ${readableList(modules.map((item) => item.name))}. Have I got that right?`
   });
 }

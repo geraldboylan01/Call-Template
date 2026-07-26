@@ -108,6 +108,9 @@ check('both routers derive their goal edges from the same manifest', () => {
 check('every consumer-routable manifest edge is honoured by the conversation', () => {
   for (const entry of MODULE_MANIFEST) {
     if (!entry.routing.consumerRoutable) continue;
+    // A gated module is filtered out before it can occupy a slot, so its
+    // declared routes are correctly absent from a plan.
+    if (!effectiveConsumerAvailability(entry.moduleId).visible) continue;
     for (const goal of entry.routing.goals || []) {
       const profile = profileFor([goal.type]);
       const selected = buildGoalModulePlan(profile, { allowedModuleIds: ALL })
@@ -458,8 +461,11 @@ check('declining a module removes it from execution and marks it declined', () =
 
 check('accepting a module is not enough to execute it', () => {
   const plan = planFor(OFFERED, { acceptedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE);
-  const offer = plan.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
-  assert.equal(offer.state, 'accepted');
+  // An accepted offer occupies a slot so its question queue opens, but it is
+  // marked accepted rather than selected and cannot execute yet.
+  const slot = plan.moduleSlots.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
+  assert.ok(slot, 'acceptance should bring the module into the plan');
+  assert.equal(slot.selectionState, 'accepted');
   assert.ok(
     !plan.executionModuleIds.includes(MODULE_IDS.MORTGAGE),
     'an accepted module must not execute before the final set is confirmed'

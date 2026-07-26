@@ -2262,13 +2262,13 @@ assert.match(cashConfirmed.readBackText, /€65,000/);
 // circumstances. The persona catalogue that used to gate this is gone.
 factContext = await factDurable.planningContext();
 assert.equal(factContext.state.personaAssessment, undefined);
-// Goal routing leads with the analyses the stated goal selected and pins the
-// Personal Balance Sheet last. The persona catalogue used to put the balance
-// sheet first, which is why a home-buying meeting opened on net worth.
+// Goal routing leads with the analyses the stated goal selected. The balance
+// sheet is pinned last and is outside this canary's release allowlist, so it is
+// filtered out before it can occupy a slot rather than taking one and producing
+// nothing.
 assert.deepEqual(factContext.state.moduleSlots.map((slot) => slot.moduleId), [
   'house_purchase',
-  'liquidity_analysis',
-  'personal_balance_sheet'
+  'liquidity_analysis'
 ]);
 
 // Unknown and ranged numerical answers are retained as conservative completion

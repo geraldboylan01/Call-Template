@@ -29,6 +29,7 @@ import {
   listPlanningModuleDefinitions,
   normalizeHouseholdProfile
 } from '../js/planning/index.js';
+import { isConsumerVisibleModule } from '../js/planning/module_availability.js';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const moduleDir = resolve(root, 'docs/modules');
@@ -323,22 +324,35 @@ function assertParity(entries) {
     // --- Routing: asserted against live behaviour for every module, so that a
     // module claiming to be unroutable really is ---
     const routes = routing.get(entry.moduleId) || [];
-    const liveGoals = routes
-      .filter((route) => route.source === 'goal_direct' || route.source === 'goal_companion')
-      .map((route) => `${route.type}:${route.source === 'goal_direct' ? 'direct' : 'companion'}`)
-      .sort();
-    const manifestGoals = entry.routing.goals.map((goal) => `${goal.type}:${goal.role}`).sort();
-    if (JSON.stringify(liveGoals) !== JSON.stringify(manifestGoals)) {
-      fail(`${entry.moduleId}: manifest routing.goals do not reproduce live routing.\n`
-        + `  live:     ${liveGoals.join(', ') || '(none)'}\n  manifest: ${manifestGoals.join(', ') || '(none)'}`);
-    }
-    const livePinned = routes.some((route) => route.source === 'balance_sheet_default') ? 'when_eligible' : 'never';
-    if (entry.routing.pinned !== livePinned) {
-      fail(`${entry.moduleId}: routing.pinned is "${entry.routing.pinned}" but live routing behaves as "${livePinned}".`);
-    }
-    if (entry.routing.consumerRoutable !== (routes.length > 0)) {
-      fail(`${entry.moduleId}: routing.consumerRoutable is ${entry.routing.consumerRoutable} `
-        + `but live routing ${routes.length > 0 ? 'does' : 'does not'} select it.`);
+
+    // A module the consumer cannot see is filtered out before a plan is built,
+    // so its declared routes are correctly absent from live plans. Assert the
+    // property that actually matters — it never reaches a plan — and compare
+    // declared routes only for modules that can appear.
+    const consumerVisible = isConsumerVisibleModule(entry.moduleId);
+    if (!consumerVisible) {
+      if (routes.length > 0) {
+        fail(`${entry.moduleId} is not consumer-visible but still reached a plan: `
+          + routes.map((route) => route.type).join(', '));
+      }
+    } else {
+      const liveGoals = routes
+        .filter((route) => route.source === 'goal_direct' || route.source === 'goal_companion')
+        .map((route) => `${route.type}:${route.source === 'goal_direct' ? 'direct' : 'companion'}`)
+        .sort();
+      const manifestGoals = entry.routing.goals.map((goal) => `${goal.type}:${goal.role}`).sort();
+      if (JSON.stringify(liveGoals) !== JSON.stringify(manifestGoals)) {
+        fail(`${entry.moduleId}: manifest routing.goals do not reproduce live routing.\n`
+          + `  live:     ${liveGoals.join(', ') || '(none)'}\n  manifest: ${manifestGoals.join(', ') || '(none)'}`);
+      }
+      const livePinned = routes.some((route) => route.source === 'balance_sheet_default') ? 'when_eligible' : 'never';
+      if (entry.routing.pinned !== livePinned) {
+        fail(`${entry.moduleId}: routing.pinned is "${entry.routing.pinned}" but live routing behaves as "${livePinned}".`);
+      }
+      if (entry.routing.consumerRoutable !== (routes.length > 0)) {
+        fail(`${entry.moduleId}: routing.consumerRoutable is ${entry.routing.consumerRoutable} `
+          + `but live routing ${routes.length > 0 ? 'does' : 'does not'} select it.`);
+      }
     }
 
     // Recorded, not fatal. `applicableGoals` is a third representation that no

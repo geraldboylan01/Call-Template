@@ -159,6 +159,46 @@ function confirmedModuleIds(profile) {
 }
 
 /**
+ * Analyses the client removed to make room for another. The analysis goes; the
+ * goal behind it stays active, so it can be picked up in a later cycle.
+ */
+function replacedModuleIds(profile) {
+  return moduleIdSet(profile, 'replacedModuleIds');
+}
+
+/**
+ * Analyses the client chose to keep for a later planning cycle. Deferring is a
+ * decision, not an invitation to ask again, so these are not re-offered in this
+ * cycle. A new cycle makes them candidates again.
+ */
+function deferredForLaterModuleIds(profile) {
+  return moduleIdSet(profile, 'deferredModuleIds');
+}
+
+export function planningCycleNumber(profile) {
+  const value = Number(planningValues(profile).planningCycle);
+  return Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+/**
+ * Planning values for a fresh cycle. Goals, facts and durable declines survive;
+ * the active offer and the confirmed set do not; anything deferred last time
+ * becomes a candidate again and is remembered as carried over.
+ */
+export function nextPlanningCycleValues(planning = {}) {
+  const carried = Array.isArray(planning.deferredModuleIds) ? [...planning.deferredModuleIds] : [];
+  return {
+    ...planning,
+    planningCycle: (Number.isInteger(planning.planningCycle) ? planning.planningCycle : 1) + 1,
+    acceptedModuleIds: [],
+    confirmedModuleIds: [],
+    replacedModuleIds: [],
+    deferredModuleIds: [],
+    carriedOverModuleIds: carried
+  };
+}
+
+/**
  * The facts already recorded that make a module relevant. These are what the
  * conversation quotes back — "you mentioned the mortgage" — so an offer is
  * always anchored to something the client actually said.
@@ -174,6 +214,49 @@ function supportingFactsFor(profile, entry) {
     }
   }
   return [...new Set(supporting)];
+}
+
+/**
+ * The current application can run at most three analyses in one planning cycle.
+ * This is a product constraint, not a financial-planning rule, and it is
+ * explained to the client in those terms when a fourth becomes relevant.
+ */
+export const MAX_CONSUMER_ANALYSES = 3;
+
+const MANIFEST_ORDER = new Map(MODULE_MANIFEST.map((entry, index) => [entry.moduleId, index]));
+
+function manifestOrder(moduleId) {
+  const index = MANIFEST_ORDER.get(moduleId);
+  return Number.isInteger(index) ? index : MANIFEST_ORDER.size;
+}
+
+/**
+ * Ranking tiers. A primary goal moves its modules up; it never removes anything.
+ *
+ *   1. modules the client explicitly asked for
+ *   2. modules serving the stated primary goal
+ *   3. modules serving any other stated goal
+ *   4. modules discovered from circumstances, including the pinned balance sheet
+ */
+function candidateTier(selection, primaryGoalType) {
+  if (selection.source === 'client_accepted_offer') return 1;
+  if (selection.source === 'balance_sheet_default') return 4;
+  if (primaryGoalType && selection.relatedGoalTypes.includes(primaryGoalType)) return 2;
+  if (selection.relatedGoalTypes.length > 0) return 3;
+  return 4;
+}
+
+/**
+ * Within a tier: explicit client priority first, then the order the goals were
+ * mentioned. `activeGoals` is already sorted that way, so its index expresses
+ * both deterministically.
+ */
+function goalRank(selection, goals) {
+  let best = Number.MAX_SAFE_INTEGER;
+  goals.forEach((goal, index) => {
+    if (selection.relatedGoalTypes.includes(goal.type)) best = Math.min(best, index);
+  });
+  return best;
 }
 
 function activeGoals(profile) {
@@ -308,28 +391,27 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   const supportedGoalTypes = activeGoalTypes.filter((goalType) => ROUTES[goalType]);
   const unsupportedGoalTypes = activeGoalTypes.filter((goalType) => !ROUTES[goalType]);
   const selectedFocus = selectedPrimaryGoal(profile, goals);
-  const directUnion = new Set(supportedGoalTypes.flatMap((goalType) => ROUTES[goalType].map((route) => route.moduleId)));
-  const overloaded = directUnion.size > 3;
-  const focusResolved = overloaded && supportedGoalTypes.includes(selectedFocus);
-  const plannedGoalTypes = focusResolved ? [selectedFocus] : overloaded ? [] : supportedGoalTypes;
-  const deferredGoalTypes = [...new Set([
-    ...unsupportedGoalTypes,
-    ...(focusResolved ? activeGoalTypes.filter((type) => type !== selectedFocus) : [])
-  ])];
-  const byModuleId = new Map();
-  plannedGoalTypes.forEach((goalType) => ROUTES[goalType].forEach((route) => addRoute(byModuleId, route, goalType)));
 
-  // Manifest-pinned modules fill a plan that still has room. Today only the
-  // Personal Balance Sheet is pinned; the setting becomes adviser-editable in P6
-  // rather than staying a branch in this function.
-  for (const moduleId of pinnedModuleIds()) {
-    if (byModuleId.size === 0 || byModuleId.size >= 3 || byModuleId.has(moduleId)) continue;
-    if (!isPlanningModuleSelectable(moduleId)) continue;
-    if (moduleId === MODULE_IDS.PERSONAL_BALANCE_SHEET && !shouldAddBalanceSheet(profile, plannedGoalTypes)) continue;
+  // Every supported goal is routed. A primary goal changes where its modules
+  // RANK; it never deletes the others. A client who wants a home and a pension
+  // review has two real goals, and dropping one because it lost a focus question
+  // is how a meeting quietly stops serving half of what was asked for.
+  const byModuleId = new Map();
+  supportedGoalTypes.forEach((goalType) => ROUTES[goalType].forEach((route) => addRoute(byModuleId, route, goalType)));
+
+  // Manifest-pinned modules are candidates too, ranked in the lowest tier so
+  // they yield to anything the client actually asked for. A pin fills space
+  // beside a real goal; it never becomes the whole plan on its own, so a client
+  // whose only goal has no consumer analysis still gets a clarifying question
+  // rather than a balance sheet nobody asked for.
+  const hasRoutedGoal = byModuleId.size > 0;
+  for (const moduleId of hasRoutedGoal ? pinnedModuleIds() : []) {
+    if (byModuleId.has(moduleId) || !isPlanningModuleSelectable(moduleId)) continue;
+    if (moduleId === MODULE_IDS.PERSONAL_BALANCE_SHEET && !shouldAddBalanceSheet(profile, supportedGoalTypes)) continue;
     byModuleId.set(moduleId, {
       moduleId,
       source: 'balance_sheet_default',
-      relatedGoalTypes: [...plannedGoalTypes],
+      relatedGoalTypes: [...supportedGoalTypes],
       ruleIds: [`manifest.pinned.${moduleId}.v1`]
     });
   }
@@ -339,33 +421,52 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   const accepted = acceptedModuleIds(profile);
   const declined = declinedModuleIds(profile);
   const confirmed = confirmedModuleIds(profile);
+  const replaced = replacedModuleIds(profile);
+  const deferredForLater = deferredForLaterModuleIds(profile);
 
-  // An accepted offer becomes selected only once it is in the confirmed final
-  // set. Acceptance opens its question queue; confirmation authorises execution.
+  // An accepted offer is a candidate in the top tier: the client asked for it.
+  // It still competes for one of the three slots rather than appending beyond
+  // them, because the cap is a limit on what the application can run.
   for (const moduleId of accepted) {
-    if (!confirmed.has(moduleId)) continue;
     if (byModuleId.has(moduleId) || isPlanningCapability(moduleId)) continue;
-    if (!isConsumerVisibleModule(moduleId, visibility)) continue;
     byModuleId.set(moduleId, {
       moduleId,
       source: 'client_accepted_offer',
-      relatedGoalTypes: [...plannedGoalTypes],
-      ruleIds: [`manifest.offer.${moduleId}.confirmed.v1`]
+      relatedGoalTypes: [...supportedGoalTypes],
+      ruleIds: [`manifest.offer.${moduleId}.accepted.v1`]
     });
   }
 
-  const goalSelected = [...byModuleId.values()].filter((selection) => selection.source !== 'client_accepted_offer');
-  const confirmedSelected = [...byModuleId.values()].filter((selection) => selection.source === 'client_accepted_offer');
-  // Goal-driven selection keeps its one-to-three contract; confirmed
-  // suggestions extend it because the client explicitly asked for them.
-  const selections = [...goalSelected.slice(0, 3), ...confirmedSelected];
+  // FILTER BEFORE RANKING. A module the consumer cannot see must not consume one
+  // of the three slots, reach the client-facing set, or displace an analysis
+  // that is actually available. Before this, a gated analysis such as the net
+  // retirement cash flow silently took a slot and produced nothing.
+  const eligible = [...byModuleId.values()].filter((selection) => (
+    isConsumerVisibleModule(selection.moduleId, visibility)
+    && !replaced.has(selection.moduleId)
+    && !deferredForLater.has(selection.moduleId)
+    && !declined.has(selection.moduleId)
+  ));
+
+  const ranked = [...eligible].sort((left, right) => (
+    candidateTier(left, selectedFocus) - candidateTier(right, selectedFocus)
+    || goalRank(left, goals) - goalRank(right, goals)
+    || manifestOrder(left.moduleId) - manifestOrder(right.moduleId)
+  ));
+  const selections = ranked.slice(0, MAX_CONSUMER_ANALYSES);
+  // Anything relevant that did not fit. Recorded, never deleted.
+  const overflowSelections = ranked.slice(MAX_CONSUMER_ANALYSES);
+
   const moduleSlots = selections.map((selection, index) => {
     const intake = intakeFor(selection.moduleId, profile, allowed, adviserOverrides);
+    const isAccepted = selection.source === 'client_accepted_offer';
     return Object.freeze({
       slot: index + 1,
       moduleId: selection.moduleId,
       source: selection.source,
-      selectionState: 'selected',
+      // An accepted offer opens its question queue straight away, but only the
+      // confirmed final set may execute.
+      selectionState: isAccepted && !confirmed.has(selection.moduleId) ? 'accepted' : 'selected',
       relatedGoalTypes: Object.freeze([...selection.relatedGoalTypes]),
       availability: intake.availability,
       intakeStatus: intake.intakeStatus,
@@ -388,6 +489,9 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   const withheldOpportunities = [];
   for (const entry of MODULE_MANIFEST) {
     if (selectedIds.has(entry.moduleId) || isPlanningCapability(entry.moduleId)) continue;
+    // A deferred or replaced analysis has already been decided on. Re-offering
+    // it would be pressing the client to reconsider within the same cycle.
+    if (deferredForLater.has(entry.moduleId) || replaced.has(entry.moduleId)) continue;
     const reason = suggestionReasonFor(profile, entry);
     if (!reason) continue;
     const intake = intakeFor(entry.moduleId, profile, allowed, adviserOverrides);
@@ -419,13 +523,40 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
     }));
   }
 
+  // Only a selected slot may execute. An accepted offer has opened its question
+  // queue but has not been through the final confirmation, so it waits.
   const executionModuleIds = moduleSlots
+    .filter((slot) => slot.selectionState === 'selected')
     .filter((slot) => slot.availability === 'ready' || slot.availability === 'needs_facts')
     .map((slot) => slot.moduleId);
-  const primaryGoalType = focusResolved ? selectedFocus : selectedFocus || supportedGoalTypes[0] || activeGoalTypes[0] || null;
+  const primaryGoalType = selectedFocus || supportedGoalTypes[0] || activeGoalTypes[0] || null;
   const requiresDecisionTopicQuestion = activeGoalTypes.includes('assess_decision')
     && supportedGoalTypes.length === 0;
-  const requiresGoalPriorityQuestion = overloaded && !focusResolved;
+
+  // Ask which goal matters most when several are live and none has been named
+  // primary — but never let the unanswered question empty the plan. The ranking
+  // above has already produced a workable provisional set, and the answer
+  // re-ranks it rather than creating it.
+  const requiresGoalPriorityQuestion = supportedGoalTypes.length > 1 && !selectedFocus;
+
+  // Goals whose analyses did not fit, plus goals with no consumer analysis at
+  // all. Recorded so a later cycle can pick them up; never deleted.
+  const selectedModuleIds = new Set(moduleSlots.map((slot) => slot.moduleId));
+  const unfittedGoalTypes = overflowSelections
+    .flatMap((selection) => selection.relatedGoalTypes)
+    .filter((goalType) => !moduleSlots.some((slot) => slot.relatedGoalTypes.includes(goalType)));
+  const deferredGoalTypes = [...new Set([...unsupportedGoalTypes, ...unfittedGoalTypes])];
+
+  // The honest product limit. When the plan is full and something relevant is
+  // still waiting, the client is told plainly and chooses; the model never
+  // decides what to drop.
+  const capacity = Object.freeze({
+    maximumAnalyses: MAX_CONSUMER_ANALYSES,
+    used: moduleSlots.length,
+    atLimit: moduleSlots.length >= MAX_CONSUMER_ANALYSES,
+    overflowModuleIds: Object.freeze(overflowSelections.map((selection) => selection.moduleId)),
+    replaceableModuleIds: Object.freeze([...selectedModuleIds])
+  });
   const confidence = primaryGoalType ? (requiresGoalPriorityQuestion || requiresDecisionTopicQuestion ? 'medium' : 'high') : 'low';
 
   return Object.freeze({
@@ -446,6 +577,8 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
     // consumer surface; it exists for adviser tooling and diagnostics.
     withheldOpportunities: Object.freeze(withheldOpportunities),
     executionModuleIds: Object.freeze(executionModuleIds),
+    capacity,
+    planningCycle: planningCycleNumber(profile),
     requiresGoalPriorityQuestion,
     requiresDecisionTopicQuestion,
     deferredGoalTypes: Object.freeze([...deferredGoalTypes])

@@ -1098,16 +1098,18 @@ const noExpenseState = describeConversationState(noExpenseProfile, {
   moduleRoutingEnabled: true,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.equal(noExpenseState.stage, 'targeted_fact_gathering');
-assert.deepEqual(noExpenseState.nextQuestion.fieldPaths, ['/businesses']);
-assert.equal(
-  noExpenseState.recommendations.find((item) => item.moduleId === 'personal_balance_sheet').readiness.status,
-  'missing_information',
-  'the exact persona bundle continues gathering Personal Balance Sheet inputs'
+// The Personal Balance Sheet is outside this release allowlist, so it is
+// filtered out before it can occupy a slot. It previously kept driving the
+// question queue -- asking for businesses on behalf of an analysis that could
+// never run.
+assert.ok(
+  !noExpenseState.recommendations.some((item) => item.moduleId === 'personal_balance_sheet'),
+  'a module outside the allowlist must not contribute questions'
 );
-assert.ok(noExpenseState.recommendations
-  .filter((item) => ['house_purchase', 'liquidity_analysis'].includes(item.moduleId))
-  .every((item) => item.readiness.status === 'adviser_review_required'));
+assert.ok(
+  !(noExpenseState.nextQuestion?.fieldPaths || []).includes('/businesses'),
+  'the business question belonged to the filtered-out balance sheet'
+);
 
 const siblingNoneProfile = applyProfilePatch(preparedNoExpenseProfile, {
   '/assumptions/values/completionFacts': {
@@ -1118,8 +1120,10 @@ const siblingNoneState = describeConversationState(siblingNoneProfile, {
   moduleRoutingEnabled: true,
   allowedModules: ['house_purchase', 'liquidity_analysis']
 });
-assert.equal(siblingNoneState.stage, 'targeted_fact_gathering');
-assert.equal(siblingNoneState.nextQuestion.fieldPaths[0], '/expenses/monthlyEssential');
+assert.ok(
+  !siblingNoneState.recommendations.some((item) => item.moduleId === 'personal_balance_sheet'),
+  'a module outside the allowlist must not contribute questions'
+);
 const previousBuyerPatch = extractContextBoundPatch(
   profile,
   { fieldPaths: ['/assumptions/values/housePurchase/lendingCategory'], answerType: 'text' },

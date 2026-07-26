@@ -1157,7 +1157,10 @@ export function mapRealtimeFact(profile, fact) {
         goalId: correctionIndex >= 0 || !existing ? `goal_realtime_${type}` : existing.goalId,
         type,
         title: GOAL_DEFINITIONS[type].title,
-        priority: 'high',
+        // Neutral by default. Explicit client priority is expressed through
+        // primary_goal_focus. Marking every goal "high" made the priority sort
+        // inert and silently collapsed ranking to mention order.
+        priority: 'medium',
         status: 'active'
       },
       displayValue: type
