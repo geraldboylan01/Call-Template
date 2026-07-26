@@ -20,6 +20,7 @@ import {
   consumerLanguageForModule,
   containsInternalModuleTerminology
 } from '../planning/module_offers.js';
+import { RealtimeOrb } from './realtime_orb.js';
 
 const ADVISER_TEST_COHORT = 'adviser_test';
 const DEFAULT_SESSION_LIMIT_MICRO_EUR = 2_000_000;
@@ -819,6 +820,7 @@ export class RealtimeVoiceController {
     this.dataChannel = null;
     this.localStream = null;
     this.remoteAudioStream = null;
+    this.orb = null;
     this.leaseId = '';
     this.controlCapability = '';
     this.conversationVersion = 'v1';
@@ -940,12 +942,8 @@ export class RealtimeVoiceController {
     this.element('realtimeVoiceLauncher')?.addEventListener('click', () => this.openCompanion());
     this.element('realtimeVoiceCollapseButton')?.addEventListener('click', () => this.collapseCompanion());
     this.element('realtimeVoiceBackdrop')?.addEventListener('click', () => this.collapseCompanion());
-    // While a meeting is live the orb doubles as the "I've finished speaking"
-    // control; before that it starts the meeting.
-    this.element('realtimeVoiceStartButton')?.addEventListener('click', () => {
-      if (this.active) this.commitTurn();
-      else this.start();
-    });
+    this.element('realtimeVoiceStartButton')?.addEventListener('click', () => this.start());
+    this.element('realtimeVoiceTurnButton')?.addEventListener('click', () => this.commitTurn());
     this.keydownHandler = (event) => {
       if (event.code !== 'Space' || event.repeat || !this.active) return;
       const target = event.target;
@@ -1013,6 +1011,7 @@ export class RealtimeVoiceController {
     const backdrop = this.element('realtimeVoiceBackdrop');
     const launcher = this.element('realtimeVoiceLauncher');
     if (panel) panel.hidden = false;
+    this.orb?.resize();
     if (backdrop) backdrop.hidden = false;
     if (launcher) launcher.setAttribute('aria-expanded', 'true');
     this.root.classList?.toggle?.('is-expanded', true);
@@ -1152,6 +1151,7 @@ export class RealtimeVoiceController {
     const exhausted = context.budget.remainingMicroEur <= 0;
     const budgetLow = !exhausted && context.budget.remainingMicroEur <= context.lowBudgetMicroEur;
     const start = this.element('realtimeVoiceStartButton');
+    const turn = this.element('realtimeVoiceTurnButton');
     const mute = this.element('realtimeVoiceMuteButton');
     const end = this.element('realtimeVoiceEndButton');
     const resume = this.element('realtimeVoiceResumeAudioButton');
@@ -1166,6 +1166,11 @@ export class RealtimeVoiceController {
     const microphoneSelect = this.element('realtimeVoiceMicrophoneSelect');
     const refreshDevices = this.element('realtimeVoiceRefreshDevicesButton');
 
+    if (!this.orb) {
+      const canvas = this.element('realtimeVoiceOrbCanvas');
+      if (canvas && panel) this.orb = new RealtimeOrb(canvas, { shell: panel });
+    }
+
     [this.root, panel].filter(Boolean).forEach((element) => {
       element.dataset.realtimePhase = this.phase;
       element.dataset.budgetState = exhausted ? 'exhausted' : (budgetLow ? 'low' : 'available');
@@ -1175,18 +1180,16 @@ export class RealtimeVoiceController {
     });
     if (start) {
       start.disabled = this.active
-        ? (this.welcomePending || completionLocked)
-        : (context.journeyBusy
-          || context.consentRefreshRequired
-          || !context.configured
-          || !supported
-          || exhausted);
-      start.setAttribute('aria-pressed', this.active ? 'true' : 'false');
-      start.setAttribute('aria-label', this.active
-        ? (this.welcomePending
-            ? 'Planéir is welcoming you'
-            : 'Finish your answer and send it to Planéir')
-        : 'Start Live voice');
+        || context.journeyBusy
+        || context.consentRefreshRequired
+        || !context.configured
+        || !supported
+        || exhausted;
+      start.setAttribute('aria-disabled', String(start.disabled));
+    }
+    if (turn) {
+      turn.disabled = !this.active || this.welcomePending || completionLocked;
+      turn.setAttribute('aria-disabled', String(turn.disabled));
     }
     if (orbLabel) {
       const labels = {
@@ -1199,10 +1202,11 @@ export class RealtimeVoiceController {
         interrupted: 'Listening',
         reconnecting: 'Reconnecting…',
         muted: 'Paused',
+        audio_blocked: 'Paused',
         budget_exhausted: 'Meeting complete',
         error: 'Connection problem'
       };
-      orbLabel.textContent = labels[this.phase] || 'Start your Planéir meeting';
+      orbLabel.textContent = labels[this.phase] || 'Ready when you are';
     }
     if (mute) {
       mute.disabled = !this.active || this.welcomePending || completionLocked;
@@ -1327,6 +1331,7 @@ export class RealtimeVoiceController {
         return;
       }
       this.localStream = stream;
+      this.orb?.attachMicStream(stream);
       this.microphoneRecoveryRequired = false;
       this.monitorMicrophoneStream(stream, generation);
       await this.refreshMicrophones({ activeStream: stream });
@@ -1457,6 +1462,7 @@ export class RealtimeVoiceController {
       if (event.track) event.track.enabled = true;
       this.remoteAudioStream = stream;
       audio.srcObject = stream;
+      this.orb?.attachRemoteStream(stream);
       audio.play?.().catch(() => {
         this.element('realtimeVoiceResumeAudioButton')?.removeAttribute('hidden');
       });
@@ -1831,6 +1837,7 @@ export class RealtimeVoiceController {
       }
       const previousStream = this.localStream;
       this.localStream = nextStream;
+      this.orb?.attachMicStream(nextStream);
       this.microphoneRecoveryRequired = false;
       this.monitorMicrophoneStream(nextStream, generation);
       replacementStream = null;
@@ -2373,6 +2380,7 @@ export class RealtimeVoiceController {
     if (!audio) return;
     audio.removeAttribute?.('src');
     audio.srcObject = this.remoteAudioStream;
+    this.orb?.attachRemoteStream(this.remoteAudioStream);
     audio.play?.().catch(() => {
       this.element('realtimeVoiceResumeAudioButton')?.removeAttribute('hidden');
     });
@@ -2932,6 +2940,8 @@ export class RealtimeVoiceController {
     this.microphonePermissionStream = null;
     stopTracks(this.localStream);
     this.localStream = null;
+    this.orb?.destroy();
+    this.orb = null;
     this.remoteAudioStream = null;
     this.microphoneRecoveryRequired = false;
     this.activeMicrophoneLabel = '';

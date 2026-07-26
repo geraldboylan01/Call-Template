@@ -128,19 +128,17 @@
           <div class="realtime-voice-layout">
             <div class="realtime-orb-stage">
               <button
-                id="realtimeVoiceStartButton"
+                id="realtimeVoiceTurnButton"
                 class="realtime-voice-orb"
                 type="button"
                 aria-describedby="realtimeVoiceStatus realtimeVoiceTrustCopy"
-                aria-pressed="false"
+                aria-label="Finish your turn"
+                aria-disabled="true"
+                disabled
               >
-                <span class="realtime-orb-ring realtime-orb-ring-one" aria-hidden="true"></span>
-                <span class="realtime-orb-ring realtime-orb-ring-two" aria-hidden="true"></span>
-                <span class="realtime-orb-core" aria-hidden="true">
-                  <span class="realtime-orb-wave"></span>
-                </span>
-                <span id="realtimeVoiceOrbLabel" class="realtime-orb-label">Start your Planéir meeting</span>
+                <canvas id="realtimeVoiceOrbCanvas" class="realtime-orb-canvas" aria-hidden="true"></canvas>
               </button>
+              <span id="realtimeVoiceOrbLabel" class="realtime-orb-label" role="status" aria-live="polite">Ready when you are</span>
               <div class="realtime-orb-copy">
                 <p
                   id="realtimeVoiceStatus"
@@ -325,6 +323,9 @@
           </div>
 
           <div class="realtime-voice-controls" aria-label="Meeting controls">
+            <button id="realtimeVoiceStartButton" class="primary-button" type="button">
+              Start your Planéir meeting
+            </button>
             <button id="realtimeVoiceMuteButton" class="secondary-button" type="button" disabled>
               Mute
             </button>
