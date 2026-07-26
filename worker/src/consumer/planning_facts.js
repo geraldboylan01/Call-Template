@@ -17,6 +17,7 @@
  */
 
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
+import { extractRulesOnlyProfilePatch } from '../../../js/planning/rules_only_extraction.js';
 import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
 import { ConsumerError } from './errors.js';
 import {
@@ -25,6 +26,7 @@ import {
   realtimeFactAllowed
 } from './realtime_fact_mapper.js';
 import {
+  PLANNER_EXTRACTION_V3,
   positionCandidatesToRealtimeFacts,
   sectionCompletionToRealtimeFact
 } from './realtime_planner.js';
@@ -222,6 +224,74 @@ export function mapPlannerExtractionToCandidates(extraction) {
     ...mappedPositions,
     ...mappedCompletions
   ].slice(0, MAX_PLANNER_CANDIDATES);
+}
+
+/**
+ * Deterministic fallback extraction, for when the AI planner is unavailable.
+ *
+ * A failed planner call is an INTERNAL failure. It is not the client saying
+ * something unclear, and asking them to rephrase cannot fix it — it just loops.
+ * The deterministic rules extractor already reads plain text and finds stated
+ * goals and a stated age with no network at all, so a planner outage degrades
+ * to reduced extraction instead of a dead meeting.
+ *
+ * Deliberately narrow: goals and age only. These are the two things the rules
+ * extractor identifies with high confidence and explicit textual evidence, and
+ * they are what unblocks a meeting. Everything else waits for the planner.
+ *
+ * @returns {null|object} a PlannerExtractionV3-shaped extraction, or null when
+ *   the turn genuinely yields nothing.
+ */
+export function deterministicFallbackExtraction({ transcript, profile, sourceTurnId, capturedAt = null }) {
+  let rules;
+  try {
+    rules = extractRulesOnlyProfilePatch(String(transcript || ''), {
+      profile,
+      capturedAt: capturedAt || new Date().toISOString(),
+      conversationTurnId: sourceTurnId
+    });
+  } catch (_error) {
+    return null;
+  }
+  const goalCandidates = (rules.goalCandidates || [])
+    .filter((candidate) => ['high', 'medium'].includes(candidate.confidence))
+    .map((candidate, index) => ({
+      candidateId: `fallback-goal-${index + 1}`,
+      goalType: candidate.type,
+      confidence: candidate.confidence,
+      priorityHint: 'unspecified',
+      evidenceText: (candidate.rationale || [])[0] || 'Stated in this turn.',
+      correctionTarget: ''
+    }));
+
+  const ageOperation = (rules.patch?.operations || [])
+    .find((operation) => operation.path === '/primaryPerson/age' && Number.isInteger(operation.value));
+  const semanticFacts = ageOperation
+    ? [{
+        candidateId: 'fallback-age',
+        operation: 'upsert',
+        factId: 'person_current_age',
+        value: ageOperation.value,
+        certainty: 'exact',
+        evidenceText: 'The client stated their age in this turn.',
+        correctionTarget: ''
+      }]
+    : [];
+
+  if (goalCandidates.length === 0 && semanticFacts.length === 0) return null;
+  return {
+    schemaVersion: PLANNER_EXTRACTION_V3,
+    sourceTurnId,
+    degraded: true,
+    goalCandidates,
+    semanticFacts,
+    positions: [],
+    sectionCompletions: [],
+    invalidCandidates: [],
+    clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+    ambiguities: [],
+    narrativeSummary: { summary: '', evidence: [] }
+  };
 }
 
 /**

@@ -97,9 +97,24 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     acceptedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER,
     rejectedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
+  // Carries the provider's own classification of the failure. Without these
+  // fields a planner outage is indistinguishable from a schema bug, an auth
+  // failure or a token-budget exhaustion — which is exactly what made the live
+  // incident undiagnosable. All bounded and categorical; never conversation
+  // content.
   'realtime.planner.deferred': event({
     sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
-    code: NON_CONTENT_FIELD_TYPES.STRING
+    code: NON_CONTENT_FIELD_TYPES.STRING,
+    providerStatus: NON_CONTENT_FIELD_TYPES.INTEGER,
+    providerRequestId: NON_CONTENT_FIELD_TYPES.STRING,
+    providerErrorType: NON_CONTENT_FIELD_TYPES.STRING,
+    providerErrorCode: NON_CONTENT_FIELD_TYPES.STRING,
+    providerErrorParam: NON_CONTENT_FIELD_TYPES.STRING,
+    responseStatus: NON_CONTENT_FIELD_TYPES.STRING,
+    incompleteReason: NON_CONTENT_FIELD_TYPES.STRING,
+    outputTokens: NON_CONTENT_FIELD_TYPES.INTEGER,
+    reasoningTokens: NON_CONTENT_FIELD_TYPES.INTEGER,
+    plannerModel: NON_CONTENT_FIELD_TYPES.STRING
   }),
   'realtime.planner.catchup_completed': event({
     sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
@@ -108,6 +123,16 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
   'realtime.planner.catchup_failed': event({
     sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
     code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  // The AI planner failed and the deterministic rules extractor kept the
+  // meeting going. Recorded so a degraded meeting is visibly distinct from a
+  // healthy one, rather than looking identical in telemetry.
+  'realtime.planner.degraded': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    code: NON_CONTENT_FIELD_TYPES.STRING,
+    plannerModel: NON_CONTENT_FIELD_TYPES.STRING,
+    degradedTurnCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    acceptedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER
   })
 });
 

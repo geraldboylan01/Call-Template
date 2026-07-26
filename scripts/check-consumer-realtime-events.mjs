@@ -28,6 +28,7 @@ const expectedEmitterTypes = [
   'realtime.planner.catchup_failed',
   'realtime.planner.completed',
   'realtime.planner.deferred',
+  'realtime.planner.degraded',
   'realtime.provider.connected',
   'realtime.provider.error',
   'realtime.reasoning.escalation',

@@ -17,6 +17,7 @@ import {
 } from './planning_context.js';
 import {
   applyMappedRealtimeFact,
+  deterministicFallbackExtraction,
   mapRealtimeProposalFact,
   orderRealtimeFactsByDependency,
   patchForMappedRealtimeFact,
@@ -530,6 +531,12 @@ export class ConsumerRealtimeSession {
     this.plannerCatchupSourceTurnId = null;
     this.plannerTurnOrdinal = 0;
     this.latestPlannerBriefOrdinal = 0;
+    // Consecutive planner failures that produced nothing usable. Bounds the
+    // rephrase recovery so one persistent internal fault cannot loop forever.
+    this.consecutivePlannerFailures = 0;
+    // Total turns served by the deterministic fallback. Never reset within a
+    // meeting: a meeting that degraded once stays visibly degraded.
+    this.degradedPlannerTurns = 0;
     this.plannerEvidenceItemId = null;
     this.pendingIncompleteTurn = null;
     this.currentAssistantTranscript = '';
@@ -549,6 +556,7 @@ export class ConsumerRealtimeSession {
       this.plannerTurnOrdinal = Number(await this.state.storage.get('plannerTurnOrdinal') || 0);
       this.latestPlannerBriefOrdinal = Number(await this.state.storage.get('latestPlannerBriefOrdinal') || 0);
       this.pendingIncompleteTurn = await this.state.storage.get('pendingIncompleteTurn') || null;
+      this.degradedPlannerTurns = Number(await this.state.storage.get('degradedPlannerTurns') || 0);
       if (this.latestFinalizedEvidenceItemId) {
         this.finalizedEvidenceItems.add(this.latestFinalizedEvidenceItemId);
       }
@@ -905,7 +913,13 @@ export class ConsumerRealtimeSession {
         });
         if (plannerResult?.stale) return;
         if (plannerResult?.status === 'failed') {
-          await this.authorizeResponse('planner_recovery');
+          // Ask the client to restate ONCE. A second consecutive internal
+          // failure is not something rephrasing can fix, so say so plainly and
+          // let the meeting continue from the deterministic brief rather than
+          // blaming the client's wording again.
+          await this.authorizeResponse(
+            plannerResult.exhaustedRecovery ? 'planner_degraded' : 'planner_recovery'
+          );
           return;
         }
       }
@@ -1487,6 +1501,10 @@ export class ConsumerRealtimeSession {
                   ? 'Continue the same turn naturally using the reviewed tool output. Keep the answer concise, then bridge to the signed brief nextObjective. Do not repeat the previous wording.'
                   : authorizationReason === 'planner_recovery'
                     ? 'Briefly apologise that the last planning note could not be updated, then ask the client to restate only that last point in different words. Do not repeat an earlier intake question and do not claim anything was saved.'
+                  : authorizationReason === 'planner_degraded'
+                    // Repeated internal failure. Never blame the client's
+                    // wording again — it is demonstrably not the problem.
+                    ? 'Say plainly and briefly that you are having a technical problem saving notes on your side, that it is not anything the client said, and that you will keep going. Then ask the single next question from the signed brief. Do not ask them to rephrase or repeat anything.'
                   : authorizationReason === 'initial_state_probe'
                     ? REALTIME_V2_WELCOME_INSTRUCTIONS
                     : authorizationReason === 'silence_prompt'
@@ -1696,6 +1714,53 @@ export class ConsumerRealtimeSession {
     });
   }
 
+  /**
+   * Keep the meeting alive when the AI planner fails.
+   *
+   * Applies whatever the deterministic rules extractor can find and composes a
+   * fresh brief from it, so the client sees their goal captured and gets a real
+   * next question instead of being asked to repeat themselves.
+   *
+   * @returns {null|object} an applied result, or null when nothing could be
+   *   salvaged and the caller should fall through to bounded recovery.
+   */
+  async applyDeterministicFallback({ itemId, transcript, turnOrdinal, code }) {
+    try {
+      const context = await this.planningContext();
+      const extraction = deterministicFallbackExtraction({
+        transcript,
+        profile: context.profile,
+        sourceTurnId: itemId
+      });
+      if (!extraction) return null;
+      // A degraded turn is never reported as a healthy one. The count is
+      // surfaced so repeated primary-planner failure stays operationally
+      // visible rather than being silently masked by the fallback.
+      this.degradedPlannerTurns += 1;
+      await this.state.storage.put('degradedPlannerTurns', this.degradedPlannerTurns).catch(() => {});
+      const applied = await this.applyPlannerExtraction(extraction, { turnOrdinal });
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.degraded',
+        payload: {
+          sourceTurnId: itemId,
+          code,
+          plannerModel: context.config.realtimePlannerModel,
+          degradedTurnCount: this.degradedPlannerTurns,
+          acceptedCandidates: applied.outcomes.filter((item) => item.accepted).length
+        }
+      }).catch(() => {});
+      await this.refreshJourneyState();
+      // The meeting continues normally: the client is not told anything failed,
+      // because from their side nothing did — their goal was understood.
+      return { status: 'applied', degraded: true, ...applied };
+    } catch (_error) {
+      return null;
+    }
+  }
+
   async catchUpPlannerTurn({ itemId, transcript, turnOrdinal }) {
     try {
       const context = await this.planningContext();
@@ -1776,6 +1841,7 @@ export class ConsumerRealtimeSession {
         }
       });
       await this.refreshJourneyState();
+      this.consecutivePlannerFailures = 0;
       return { status: 'applied', ...applied };
     } catch (error) {
       const code = error instanceof ConsumerError ? error.code : 'realtime_planner_failed';
@@ -1784,8 +1850,31 @@ export class ConsumerRealtimeSession {
         leaseId: this.meta.leaseId,
         direction: 'server',
         eventType: 'realtime.planner.deferred',
-        payload: { sourceTurnId: itemId, code }
+        payload: {
+          sourceTurnId: itemId,
+          code,
+          plannerModel: context.config.realtimePlannerModel,
+          ...(error?.diagnostics || {})
+        }
       }).catch(() => {});
+      // A PLANNER FAILURE IS OUR PROBLEM, NOT THE CLIENT'S.
+      //
+      // This branch used to go straight to `planner_recovery`, which asks the
+      // client to restate their last point in different words. That cannot fix
+      // a provider outage, a timeout or invalid model output — so when the
+      // planner failed repeatedly the meeting asked the client to rephrase a
+      // perfectly clear statement, forever, and captured nothing.
+      //
+      // Fall back to the deterministic rules extractor first. It reads plain
+      // text with no network and reliably finds a stated goal and a stated age,
+      // which is enough to keep the meeting moving and to show the client that
+      // they were understood.
+      const fallback = await this.applyDeterministicFallback({ itemId, transcript, turnOrdinal, code });
+      if (fallback) {
+        this.consecutivePlannerFailures = 0;
+        return fallback;
+      }
+      this.consecutivePlannerFailures += 1;
       if (code === 'realtime_planner_timeout' && this.plannerCatchupSourceTurnId !== itemId) {
         this.plannerCatchupSourceTurnId = itemId;
         await this.state.storage.put('plannerCatchupSourceTurnId', itemId);
@@ -1795,7 +1884,11 @@ export class ConsumerRealtimeSession {
         // ordered and let the retry produce the only next-question response.
         return this.catchUpPlannerTurn({ itemId, transcript, turnOrdinal });
       }
-      return { status: 'failed', code };
+      return {
+        status: 'failed',
+        code,
+        exhaustedRecovery: this.consecutivePlannerFailures > 1
+      };
     }
   }
 
