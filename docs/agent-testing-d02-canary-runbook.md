@@ -10,6 +10,18 @@ service. None of that is available to, or appropriate for, an automated agent.
 The code, tests and configuration are complete and merged; what follows is the
 human-run activation.
 
+> **BLOCKED — do not run this runbook yet.**
+> A live meeting on `933ee0c` entered a clarification loop when the client
+> stated two goals in one opening turn (D-05 in
+> [agent-testing-parity-contract.md](agent-testing-parity-contract.md)). The
+> cause was a brief with no question, and it is fixed, but the fix has not been
+> exercised in a live call. Run a plain conversation canary first to confirm the
+> meeting opens and progresses normally; only then start Step 1 below.
+>
+> D-05 is unrelated to D-02 — it reproduces with `CONSUMER_MODULE_OFFERS_ENABLED`
+> off — but activating a second change on top of an unverified fix would make
+> any new failure ambiguous.
+
 **Current state.**
 
 | Environment | `CONSUMER_MODULE_OFFERS_ENABLED` | Status |

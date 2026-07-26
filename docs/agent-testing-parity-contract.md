@@ -7,8 +7,8 @@ classification of consumer-planning behaviour into *shared*,
 transport is built against.
 
 **Register at a glance.** D-01 resolved · **D-02 code-complete and validated in
-test; production activation pending a voice canary** · D-03 resolved · D-04 open
-by design.
+test; production activation BLOCKED pending re-canary after D-05** · D-03
+resolved · D-04 open by design · **D-05 live incident, root-caused and fixed**.
 
 **Companion documents.** [agent-testing-environment-plan.md](agent-testing-environment-plan.md)
 (the phased plan), [realtime-intelligence-implementation-plan.md](realtime-intelligence-implementation-plan.md)
@@ -249,6 +249,22 @@ Two facts made it a safe, well-scoped follow-up:
 | **Characterisation** | The golden recorded the change precisely: each scenario gained one profile revision (a fact that used to fail now saves) and lost its `primary_goal_focus` rejection. Goals, module slots, questions, `stillNeeded`, capacity, execution set and every brief field are **unchanged** — these fixtures each state a single goal, so stated focus and mention order agree. Recorded in the golden's `changeLog`. |
 | **Live voice change?** | **Yes.** A stated primary goal now ranks its analyses first. This is the intended product behaviour and was the whole purpose of `primary_goal_focus`. It only becomes observable in a multi-goal meeting. |
 | **Rollback** | Revert. Additive and backward-compatible: profiles carrying `planning: {}` are valid for the old code, which already tolerated the field being absent. |
+
+### D-05 — a multi-goal opening turn produced a live clarification loop
+
+| | |
+|---|---|
+| **Status** | **Root-caused and fixed.** Awaiting a live re-test. |
+| **Class** | was a live defect → now covered by regression |
+| **Incident** | In a live realtime meeting the client opened with *"I'm 25 and early in my career. I want to get a broader picture of my financial position, and I'm hoping to buy a house in the future, so I want to make sure I'm properly set up for that."* The assistant repeatedly said it had not understood and asked for the point to be repeated, and never progressed past the opening. |
+| **Root cause** | Stating two goals in one turn sets `requiresGoalPriorityQuestion`, which makes [`describeConversationState`](../worker/src/consumer/conversation.js) return empty `moduleSlots` **and** empty `recommendations`. `composeMeetingBrief` built `questionBatch` **only** from the missing facts of routed analyses, so with no recommendations it emitted `questionBatch: null`. The conversational v2 phase guidance instructs the model to *"ask exactly the single server-authored questionBatch.prompt"* — with none, it had nothing to say and fell back to asking the client to repeat themselves. Every subsequent turn produced the same empty brief, so the loop could not break. |
+| **Not a regression** | Reproduced identically at commit `40ac8b8`, before the A0/A1 extraction. Not stale deployment either: the live frontend build id and the live Worker were both `933ee0c`. |
+| **The deeper point** | The deterministic clarification question existed the whole time in `state.nextQuestion`. It simply never reached the brief. Commit `32b3a62` had already declared *"THE PRIORITY QUESTION NO LONGER BLOCKS"* and fixed `buildGoalModulePlan` — but not `describeConversationState`. Same half-fix shape as D-01. |
+| **Fix** | `composeMeetingBrief` falls back to `state.nextQuestion` when there are no missing facts. **A live meeting can no longer receive a brief with no question**, whatever the cause — which is a stronger invariant than fixing this one trigger. |
+| **Tests** | [`check-consumer-multi-goal-opening.mjs`](../scripts/check-consumer-multi-goal-opening.mjs) — the exact utterance, under the exact production allowlist and the full catalogue: both goals recognised, age recorded, no fragment misclassification, a real advancing question, no request to repeat, no internal terminology, and the loop breaking once answered. Plus the same utterance end to end through the agent transport in [`check-consumer-agent-journey.mjs`](../scripts/check-consumer-agent-journey.mjs). |
+| **Characterisation** | Unchanged — the fallback only fires where there was previously no question at all. |
+| **Live voice change?** | **Yes, and it is the point:** a meeting that previously had nothing to say now asks the deterministic clarification question. |
+| **Open** | Whether the opening greeting also failed is **not established**. A plausible mechanism exists (`refreshJourneyState` suppresses `session.update` when the policy hash is unchanged, and the greeting is only authorised on `session.updated`), but confirming it needs the meeting's `consumer_realtime_events` rows, which are not available here. |
 
 ### D-04 — the typed `/turns` journey is a different pipeline
 

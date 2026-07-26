@@ -618,4 +618,72 @@ async function atCapacitySession(label) {
   pass('the agent transport builds shared planning state with no realtime consent and no lease');
 }
 
+/* ================================================================== */
+/* Incident regression — the multi-goal opening, through this transport */
+/* ================================================================== */
+
+{
+  // Q15 of the live-incident investigation: does the exact utterance that
+  // produced a clarification loop in voice succeed through the agent transport?
+  const { sessionId, meetingId } = await newAgentSession('incident-multi-goal');
+  const planner = scriptedPlanner([{
+    goals: [{ type: 'understand_position' }, { type: 'buy_home' }],
+    facts: [
+      { factId: 'person_current_age', value: 25 },
+      { factId: 'career_stage', value: 'early_career', certainty: 'approximate' }
+    ]
+  }, {}]);
+  const deps = { extractTurn: planner, renderText: scriptedRenderer };
+
+  const opening = await processAgentTurn(env, config, {
+    sessionId,
+    meetingId,
+    message: "I'm 25 and early in my career. I want to get a broader picture of my financial "
+      + "position, and I'm hoping to buy a house in the future, so I want to make sure I'm "
+      + "properly set up for that.",
+    deps
+  });
+
+  assert.deepEqual(
+    [...opening.diagnostics.goals.active].sort(),
+    ['buy_home', 'understand_position'],
+    'both goals are recognised through the agent transport'
+  );
+  assert.ok(
+    opening.diagnostics.facts.some((f) => f.factId === 'person_current_age' && f.value === 25),
+    'the stated age is recorded'
+  );
+  assert.equal(opening.diagnostics.goals.priorityQuestionRequired, true, 'two unranked goals need a focus question');
+  assert.ok(opening.diagnostics.pendingQuestion?.factId, 'the meeting has a real question to ask');
+  assert.equal(
+    opening.diagnostics.pendingQuestion.factId,
+    'primary_goal_focus',
+    'the agent transport asks which goal to focus on first'
+  );
+  assert.ok(opening.consumer.assistantMessage.trim().length > 0, 'the client receives a reply');
+  assert.doesNotMatch(
+    opening.consumer.assistantMessage,
+    /repeat|say (?:that )?again|didn.t (?:quite )?(?:catch|get|understand)/i,
+    'the client is never asked to repeat a complete statement'
+  );
+
+  // Answering it must progress the meeting, not restart the loop.
+  const answerPlanner = scriptedPlanner([{ goals: [{ type: 'buy_home', priorityHint: 'primary' }] }, {}]);
+  const answered = await processAgentTurn(env, config, {
+    sessionId,
+    meetingId,
+    message: 'Buying a house is the one I care about most right now.',
+    deps: { extractTurn: answerPlanner, renderText: scriptedRenderer }
+  });
+  assert.equal(answered.diagnostics.goals.primary, 'buy_home', 'the stated focus is persisted');
+  assert.equal(answered.diagnostics.goals.priorityQuestionRequired, false, 'the focus question is resolved');
+  assert.ok(answered.diagnostics.analyses.length > 0, 'analyses appear once the focus is known');
+  assert.notEqual(
+    answered.diagnostics.pendingQuestion?.factId,
+    'primary_goal_focus',
+    'the focus question is not asked twice'
+  );
+  pass('incident regression: the multi-goal opening succeeds end to end through the agent transport');
+}
+
 console.info(`\n[AgentJourney] ${passes.length} assertions passed.`);

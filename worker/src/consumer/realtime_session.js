@@ -104,7 +104,7 @@ const MAX_PROVIDER_EVENT_BYTES = 64_000;
 const MAX_TOOL_ARGUMENT_BYTES = 20_000;
 const TOOL_VERSION = '1';
 const SIDE_BAND_URL = 'https://api.openai.com/v1/realtime';
-const REALTIME_V2_WELCOME_INSTRUCTIONS = [
+export const REALTIME_V2_WELCOME_INSTRUCTIONS = [
   'Open with a warm, unhurried welcome in three or four short sentences.',
   'Introduce yourself as Planéir, an AI planning companion.',
   'Explain that this will be a relaxed conversation about what matters to the client, and that useful details will appear on screen as reviewable drafts.',

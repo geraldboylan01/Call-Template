@@ -927,6 +927,28 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
     ? { ...extractedQuestion, reviewedAnswer: intakeExplanation(reviewedQuestionTopic, { stillNeeded: missingFacts }) }
     : extractedQuestion;
   const primaryRequestedFact = missingFacts[0] || null;
+  // A LIVE MEETING MUST NEVER RECEIVE A BRIEF WITH NO QUESTION.
+  //
+  // questionBatch used to be built only from the missing facts of the routed
+  // analyses. When deterministic planning legitimately has no routed analyses
+  // yet — most importantly when the client states several goals and is asked
+  // which to focus on first, which empties moduleSlots and recommendations —
+  // the brief went out with `questionBatch: null`. The conversational v2 phase
+  // guidance tells the model to "ask exactly the single server-authored
+  // questionBatch.prompt", so with none it had nothing to say and fell back to
+  // asking the client to repeat themselves, on every turn, forever.
+  //
+  // The deterministic clarification question is already computed and sitting in
+  // `state.nextQuestion`; it simply never reached the brief. Fall back to it so
+  // the meeting always has exactly one server-owned thing to ask.
+  const clarificationFact = !primaryRequestedFact && state.nextQuestion?.factId
+    ? {
+        factId: state.nextQuestion.factId,
+        factInstanceId: state.nextQuestion.factInstanceId || null,
+        reason: '',
+        moduleId: null
+      }
+    : null;
   const questionBatch = primaryRequestedFact
     ? {
         topic: questionTopic(primaryRequestedFact.factId),
@@ -935,7 +957,16 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
         prompt: conversationalQuestion(primaryRequestedFact, state),
         maxQuestions: 1
       }
-    : null;
+    : clarificationFact
+      ? {
+          topic: questionTopic(clarificationFact.factId),
+          primaryFact: clarificationFact,
+          linkedFact: null,
+          prompt: boundedConsumerPlanningText(state.nextQuestion.prompt, 300)
+            || conversationalQuestion(clarificationFact, state),
+          maxQuestions: 1
+        }
+      : null;
   const statePensionRule = modules.some((module) => module.moduleId === 'pension_projection')
     ? {
         ...publicIrishStatePensionRule(),
