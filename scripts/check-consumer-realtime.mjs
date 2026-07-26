@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { buildGoalModulePlan, MODULE_IDS } from '../js/planning/index.js';
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
 import {
   handleConsumerRequest,
@@ -519,7 +520,9 @@ assert.deepEqual(
 assert.deepEqual(
   realtimeToolsForState({ conversationVersion: 'v2', spokenCompletionEnabled: false }).map((tool) => tool.name),
   REALTIME_V2_TOOL_DEFINITIONS
-    .filter((tool) => !['confirm_and_run_voice_plan', 'record_module_decision'].includes(tool.name))
+    .filter((tool) => ![
+      'confirm_and_run_voice_plan', 'record_module_decision', 'resolve_capacity_decision'
+    ].includes(tool.name))
     .map((tool) => tool.name)
 );
 assert.deepEqual(
@@ -529,9 +532,27 @@ assert.deepEqual(
     meetingBrief: { moduleOffer: { moduleId: 'mortgage_analysis' } }
   }).map((tool) => tool.name),
   REALTIME_V2_TOOL_DEFINITIONS
-    .filter((tool) => tool.name !== 'confirm_and_run_voice_plan')
+    .filter((tool) => !['confirm_and_run_voice_plan', 'resolve_capacity_decision'].includes(tool.name))
     .map((tool) => tool.name),
   'the decision tool must appear once an offer is active'
+);
+// The capacity tool appears only while the session is at its limit with a
+// proposed extra analysis.
+assert.deepEqual(
+  realtimeToolsForState({
+    conversationVersion: 'v2',
+    spokenCompletionEnabled: false,
+    meetingBrief: {
+      capacityDecision: {
+        candidateModuleId: 'pension_projection',
+        replacementChoices: [{ choiceIndex: 1, moduleId: 'liquidity_analysis', description: 'a review' }]
+      }
+    }
+  }).map((tool) => tool.name),
+  REALTIME_V2_TOOL_DEFINITIONS
+    .filter((tool) => !['confirm_and_run_voice_plan', 'record_module_decision'].includes(tool.name))
+    .map((tool) => tool.name),
+  'the capacity tool must appear once a capacity decision is active'
 );
 const spokenCompletionConfig = getConsumerConfig({
   ...env,
@@ -543,7 +564,13 @@ assert.deepEqual(
   realtimeToolsForState({
     conversationVersion: 'v2',
     spokenCompletionEnabled: true,
-    meetingBrief: { moduleOffer: { moduleId: 'mortgage_analysis' } }
+    meetingBrief: {
+      moduleOffer: { moduleId: 'mortgage_analysis' },
+      capacityDecision: {
+        candidateModuleId: 'pension_projection',
+        replacementChoices: [{ choiceIndex: 1, moduleId: 'liquidity_analysis', description: 'a review' }]
+      }
+    }
   }).map((tool) => tool.name),
   REALTIME_V2_TOOL_DEFINITIONS.map((tool) => tool.name)
 );
@@ -4814,6 +4841,257 @@ assert.deepEqual(Object.keys(decisionTool.parameters.properties).sort(), ['decis
 assert.deepEqual(decisionTool.parameters.properties.decision.enum, ['accepted', 'declined', 'uncertain']);
 assert.equal(decisionTool.parameters.additionalProperties, false);
 
+
+// ---------------------------------------------------------------------------
+// The three-analysis capacity decision.
+//
+// When the session is full and a fourth analysis is relevant, the client chooses
+// whether to swap one out or leave it for later. The server owns the proposed
+// analysis and the exact list that may be replaced; the model supplies only a
+// choice index, so it cannot name an analysis or invent an identifier.
+// ---------------------------------------------------------------------------
+
+/** The plan as consumer routing would build it, for post-decision assertions. */
+function buildGoalModulePlanForCapacity(profile) {
+  return buildGoalModulePlan(profile, { allowedModuleIds: Object.values(MODULE_IDS) });
+}
+
+const CAPACITY_CURRENT = Object.freeze([
+  { choiceIndex: 1, moduleId: 'personal_balance_sheet', description: 'a review of your overall financial picture' },
+  { choiceIndex: 2, moduleId: 'mortgage_analysis', description: 'a comparison of your mortgage repayment options' },
+  { choiceIndex: 3, moduleId: 'college_funding', description: 'an estimate of future college costs and the saving required' }
+]);
+
+/** A context whose brief carries one active capacity decision. */
+async function capacityContext({ active = true } = {}) {
+  const context = await decisionDurable.planningContext();
+  context.config = { ...context.config, realtimeConversationV2Enabled: true };
+  context.state = {
+    ...context.state,
+    meetingBrief: active
+      ? {
+          capacityDecision: {
+            candidateModuleId: 'pension_projection',
+            candidateDescription: 'a projection of whether your pension may be on track',
+            currentModuleIds: CAPACITY_CURRENT.map((item) => item.moduleId),
+            replacementChoices: CAPACITY_CURRENT.map((item) => ({ ...item })),
+            spoken: 'At the moment the application can run up to 3 analyses in this planning session.',
+            deferralAcknowledgement: 'Okay. We will keep the current three and leave a projection of whether your pension may be on track for a separate follow-up.',
+            maximumAnalyses: 3
+          }
+        }
+      : {}
+  };
+  return context;
+}
+
+async function capacityPlanning() {
+  const context = await decisionDurable.planningContext();
+  return context.profile?.assumptions?.values?.planning || {};
+}
+
+const FORMAL_ANALYSIS_NAMES = [
+  'Personal Balance Sheet', 'Mortgage Analysis', 'College Funding',
+  'Pension Projection', 'Liquidity Analysis', 'Loan Analysis', 'House Purchase'
+];
+function assertNoInternalTerminology(text, label) {
+  for (const name of FORMAL_ANALYSIS_NAMES) {
+    assert.ok(!text.includes(name), `${label} must not speak the formal name "${name}"`);
+  }
+  assert.doesNotMatch(text, /[a-z]+_[a-z_]+/, `${label} must not expose an internal id`);
+}
+
+// The tool is exposed only while a capacity decision is genuinely active.
+{
+  const withDecision = await capacityContext();
+  assert.ok(
+    realtimeToolsForState({
+      conversationVersion: 'v2',
+      spokenCompletionEnabled: false,
+      meetingBrief: withDecision.state.meetingBrief
+    }).some((tool) => tool.name === 'resolve_capacity_decision')
+  );
+  const withoutDecision = await capacityContext({ active: false });
+  assert.ok(
+    !realtimeToolsForState({
+      conversationVersion: 'v2',
+      spokenCompletionEnabled: false,
+      meetingBrief: withoutDecision.state.meetingBrief
+    }).some((tool) => tool.name === 'resolve_capacity_decision'),
+    'the capacity tool must not exist without an active decision'
+  );
+}
+
+// Calling it with no active decision fails closed and changes nothing.
+{
+  const before = await capacityPlanning();
+  const noneCtx = await capacityContext({ active: false });
+  await rejectsCode(decisionDurable.executeTool(
+    'resolve_capacity_decision',
+    { expectedRevision: Number(noneCtx.sessionRow.current_profile_revision), decision: 'defer' },
+    noneCtx,
+    await startDecisionTool('resolve_capacity_decision', { decision: 'defer' }, Number(noneCtx.sessionRow.current_profile_revision))
+  ), 'realtime_no_active_capacity_decision');
+  assert.deepEqual(await capacityPlanning(), before, 'a call with no active decision must not mutate state');
+}
+
+// A stale revision fails closed.
+{
+  const before = await capacityPlanning();
+  const staleCtx = await capacityContext();
+  await rejectsCode(decisionDurable.executeTool(
+    'resolve_capacity_decision',
+    { expectedRevision: Number(staleCtx.sessionRow.current_profile_revision) - 1, decision: 'defer' },
+    staleCtx,
+    await startDecisionTool('resolve_capacity_decision', { decision: 'defer' }, Number(staleCtx.sessionRow.current_profile_revision))
+  ), 'profile_revision_conflict');
+  assert.deepEqual(await capacityPlanning(), before, 'a stale revision must not mutate state');
+}
+
+// An unclear answer changes nothing and never picks for the client.
+{
+  const before = await capacityPlanning();
+  const unclearCtx = await capacityContext();
+  const unclear = await decisionDurable.executeTool(
+    'resolve_capacity_decision',
+    { expectedRevision: Number(unclearCtx.sessionRow.current_profile_revision), decision: 'unclear' },
+    unclearCtx,
+    await startDecisionTool('resolve_capacity_decision', { decision: 'unclear' }, Number(unclearCtx.sessionRow.current_profile_revision))
+  );
+  assert.equal(unclear.decision, 'unclear');
+  assert.match(unclear.instruction, /never suggest which analysis they should drop/i);
+  assert.deepEqual(await capacityPlanning(), before, 'an unclear answer must not mutate state');
+}
+
+// A choice outside the server-owned list changes nothing, so an arbitrary or
+// invented selection cannot take effect.
+{
+  const before = await capacityPlanning();
+  for (const badIndex of [4, 0, undefined]) {
+    const badCtx = await capacityContext();
+    await rejectsCode(decisionDurable.executeTool(
+      'resolve_capacity_decision',
+      {
+        expectedRevision: Number(badCtx.sessionRow.current_profile_revision),
+        decision: 'replace',
+        ...(badIndex === undefined ? {} : { replaceChoiceIndex: badIndex })
+      },
+      badCtx,
+      await startDecisionTool('resolve_capacity_decision', { decision: 'replace' }, Number(badCtx.sessionRow.current_profile_revision))
+    ), 'realtime_capacity_choice_invalid');
+  }
+  assert.deepEqual(await capacityPlanning(), before, 'an invalid choice must not mutate state');
+}
+
+// The tool takes no module id at all, so an arbitrary analysis cannot be named.
+{
+  const capacityTool = REALTIME_V2_TOOL_DEFINITIONS.find((tool) => tool.name === 'resolve_capacity_decision');
+  assert.ok(capacityTool);
+  assert.deepEqual(
+    Object.keys(capacityTool.parameters.properties).sort(),
+    ['decision', 'evidenceText', 'expectedRevision', 'replaceChoiceIndex']
+  );
+  assert.equal(capacityTool.parameters.additionalProperties, false);
+  assert.deepEqual(capacityTool.parameters.properties.decision.enum, ['replace', 'defer', 'unclear']);
+  assert.equal(capacityTool.parameters.properties.replaceChoiceIndex.maximum, 3);
+}
+
+// Deferral keeps the current three and stores the fourth for later.
+{
+  const deferCtx = await capacityContext();
+  const goalsBefore = JSON.stringify(deferCtx.profile.goals);
+  const deferred = await decisionDurable.executeTool(
+    'resolve_capacity_decision',
+    { expectedRevision: Number(deferCtx.sessionRow.current_profile_revision), decision: 'defer' },
+    deferCtx,
+    await startDecisionTool('resolve_capacity_decision', { decision: 'defer' }, Number(deferCtx.sessionRow.current_profile_revision))
+  );
+  assert.equal(deferred.decision, 'defer');
+  const planning = await capacityPlanning();
+  assert.ok((planning.deferredModuleIds || []).includes('pension_projection'), 'the fourth analysis is kept for later');
+  assert.deepEqual(planning.replacedModuleIds || [], [], 'nothing was replaced');
+  assertNoInternalTerminology(deferred.acknowledgement, 'the deferral acknowledgement');
+  assert.match(deferred.instruction, /Do not raise that analysis again/i);
+  const afterCtx = await decisionDurable.planningContext();
+  assert.equal(JSON.stringify(afterCtx.profile.goals), goalsBefore, 'goals are preserved');
+}
+
+// A deferred analysis is not offered again in this cycle.
+{
+  const context = await decisionDurable.planningContext();
+  const planning = context.profile?.assumptions?.values?.planning || {};
+  assert.ok((planning.deferredModuleIds || []).includes('pension_projection'));
+  const plan = buildGoalModulePlanForCapacity(context.profile);
+  assert.ok(
+    !plan.moduleOpportunities.some((item) => item.moduleId === 'pension_projection'),
+    'a deferred analysis must not be re-offered in the same cycle'
+  );
+}
+
+// Replacement removes only the analysis the client named, adds the proposed one,
+// keeps the total at three, preserves facts and clears the stale confirmation.
+{
+  const replaceCtx = await capacityContext();
+  const factsBefore = JSON.stringify({
+    assets: replaceCtx.profile.assets,
+    liabilities: replaceCtx.profile.liabilities,
+    goals: replaceCtx.profile.goals
+  });
+  const replaced = await decisionDurable.executeTool(
+    'resolve_capacity_decision',
+    {
+      expectedRevision: Number(replaceCtx.sessionRow.current_profile_revision),
+      decision: 'replace',
+      replaceChoiceIndex: 3
+    },
+    replaceCtx,
+    await startDecisionTool('resolve_capacity_decision', { decision: 'replace' }, Number(replaceCtx.sessionRow.current_profile_revision))
+  );
+  assert.equal(replaced.decision, 'replace');
+  const planning = await capacityPlanning();
+  assert.ok((planning.replacedModuleIds || []).includes('college_funding'), 'only the named analysis is removed');
+  assert.ok(!(planning.replacedModuleIds || []).includes('personal_balance_sheet'));
+  assert.ok(!(planning.replacedModuleIds || []).includes('mortgage_analysis'));
+  assert.ok((planning.acceptedModuleIds || []).includes('pension_projection'), 'the proposed analysis is added');
+  assert.deepEqual(planning.confirmedModuleIds || [], [], 'the stale confirmation is cleared');
+  assertNoInternalTerminology(replaced.acknowledgement, 'the replacement acknowledgement');
+  const afterCtx = await decisionDurable.planningContext();
+  assert.equal(JSON.stringify({
+    assets: afterCtx.profile.assets,
+    liabilities: afterCtx.profile.liabilities,
+    goals: afterCtx.profile.goals
+  }), factsBefore, 'collected facts and goals are preserved');
+
+  // The plan stays within the three-analysis limit and nothing runs until the
+  // set is confirmed again.
+  const plan = buildGoalModulePlanForCapacity(afterCtx.profile);
+  assert.ok(plan.moduleSlots.length <= 3, 'the limit still holds after a replacement');
+  assert.ok(
+    !plan.executionModuleIds.includes('pension_projection'),
+    'an accepted replacement must not execute before the final set is confirmed'
+  );
+}
+
+// Each of the three slots is a valid replacement choice.
+{
+  for (const choice of CAPACITY_CURRENT) {
+    const ctx = await capacityContext();
+    const result = await decisionDurable.executeTool(
+      'resolve_capacity_decision',
+      {
+        expectedRevision: Number(ctx.sessionRow.current_profile_revision),
+        decision: 'replace',
+        replaceChoiceIndex: choice.choiceIndex
+      },
+      ctx,
+      await startDecisionTool('resolve_capacity_decision', { decision: 'replace' }, Number(ctx.sessionRow.current_profile_revision))
+    );
+    assert.equal(result.decision, 'replace');
+    const planning = await capacityPlanning();
+    assert.ok((planning.replacedModuleIds || []).includes(choice.moduleId),
+      `choice ${choice.choiceIndex} must remove ${choice.moduleId}`);
+  }
+}
 
 console.log(
   'Consumer Realtime adversarial control-plane checks passed '

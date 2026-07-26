@@ -1,5 +1,6 @@
 import { withoutInapplicableFacts } from '../../../js/planning/fact_preconditions.js';
 import {
+  composeCapacityChoice,
   confirmationSummary as composeConsumerConfirmationSummary,
   consumerLanguageForModule,
   containsInternalModuleTerminology,
@@ -947,6 +948,17 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
     { moduleOpportunities: state.moduleOpportunities || [] },
     { profile: context.profile }
   );
+  // The single active capacity decision. Derived from the same deterministic
+  // plan as everything else, so the proposed fourth analysis and the exact
+  // three it could replace are server-owned rather than model-supplied.
+  const activeCapacityChoice = composeCapacityChoice(
+    {
+      capacity: state.capacity,
+      moduleSlots: state.moduleSlots || [],
+      moduleOpportunities: state.moduleOpportunities || []
+    },
+    { profile: context.profile }
+  );
   const brief = {
     schemaVersion: MEETING_BRIEF_V2,
     sourceTurnId,
@@ -979,6 +991,21 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
           spokenOffer: activeOffer.spokenOffer,
           anchor: activeOffer.anchor,
           benefit: activeOffer.benefit
+        }
+      : null,
+    capacityDecision: activeCapacityChoice
+      ? {
+          candidateModuleId: activeCapacityChoice.candidateModuleId,
+          candidateDescription: activeCapacityChoice.candidateDescription,
+          currentModuleIds: [...activeCapacityChoice.currentModuleIds],
+          replacementChoices: activeCapacityChoice.replacementChoices.map((choice, index) => ({
+            choiceIndex: index + 1,
+            moduleId: choice.moduleId,
+            description: choice.description
+          })),
+          spoken: activeCapacityChoice.spoken,
+          deferralAcknowledgement: activeCapacityChoice.deferralAcknowledgement,
+          maximumAnalyses: activeCapacityChoice.maximumAnalyses
         }
       : null,
     clientQuestion,
@@ -1072,6 +1099,36 @@ export function toConsumerMeetingBrief(brief, { profile } = {}) {
         benefit: offerLanguage.offerDescription
       }
     : null;
+  // The capacity decision keeps its server-owned module ids for binding, but
+  // every spoken field goes through the consumer-language guard: the client is
+  // never read a formal product name, and a choice we cannot describe in client
+  // language is dropped rather than half-spoken.
+  const rawCapacity = brief.capacityDecision;
+  const capacityChoices = (Array.isArray(rawCapacity?.replacementChoices) ? rawCapacity.replacementChoices : [])
+    .slice(0, 3)
+    .map((choice, index) => {
+      const description = boundedConsumerPlanningText(choice?.description, 240);
+      const language = consumerLanguageForModule(choice?.moduleId, { profile });
+      return description && language
+        ? { choiceIndex: index + 1, moduleId: choice.moduleId, description }
+        : null;
+    });
+  const capacitySpoken = boundedConsumerPlanningText(rawCapacity?.spoken, 900);
+  const capacityDecision = rawCapacity
+    && consumerLanguageForModule(rawCapacity.candidateModuleId, { profile })
+    && capacitySpoken
+    && capacityChoices.length > 0
+    && capacityChoices.every(Boolean)
+    ? {
+        candidateModuleId: rawCapacity.candidateModuleId,
+        candidateDescription: boundedConsumerPlanningText(rawCapacity.candidateDescription, 240),
+        currentModuleIds: capacityChoices.map((choice) => choice.moduleId),
+        replacementChoices: capacityChoices,
+        spoken: capacitySpoken,
+        deferralAcknowledgement: boundedConsumerPlanningText(rawCapacity.deferralAcknowledgement, 400),
+        maximumAnalyses: Number(rawCapacity.maximumAnalyses) || 3
+      }
+    : null;
   const safeRawConfirmation = boundedConsumerPlanningText(brief.confirmationSummary, 800);
   const canonicalConfirmation = analyses.length
     ? composeConsumerConfirmationSummary({
@@ -1127,6 +1184,7 @@ export function toConsumerMeetingBrief(brief, { profile } = {}) {
         }
       : null,
     moduleOffer,
+    capacityDecision,
     clientQuestion: brief.clientQuestion && typeof brief.clientQuestion === 'object'
       ? {
           present: brief.clientQuestion.present === true,

@@ -49,6 +49,7 @@ import {
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
   rejectRealtimeFactProposal,
+  recordRealtimeCapacityDecision,
   recordRealtimeModuleDecision,
   saveRealtimeMeetingBrief,
   setRealtimeMeetingPhase,
@@ -2948,6 +2949,85 @@ export class ConsumerRealtimeSession {
         instruction: decision === 'accepted'
           ? 'Acknowledge briefly and continue with the next question the server gives you. The analysis is included but has not run; the full set is confirmed later.'
           : 'Acknowledge briefly without pressing, and continue. Do not offer this analysis again unless the client raises it themselves.'
+      };
+    }
+    if (toolName === 'resolve_capacity_decision') {
+      if (!context.config.realtimeConversationV2Enabled) {
+        throw new ConsumerError(409, 'realtime_capacity_decision_unavailable', 'Capacity decisions are not available in this voice version.');
+      }
+      this.requireExpectedRevision(args, context);
+      // The server owns the proposed analysis and the exact list that may be
+      // replaced. The model supplies a choice index into that server-owned list,
+      // never an identifier, so it cannot name an analysis or invent one.
+      const capacity = context.state.meetingBrief?.capacityDecision || null;
+      if (!capacity?.candidateModuleId || !(capacity.replacementChoices || []).length) {
+        throw new ConsumerError(409, 'realtime_no_active_capacity_decision', 'There is no capacity decision to resolve right now.');
+      }
+      const decision = String(args.decision || '');
+      if (!['replace', 'defer', 'unclear'].includes(decision)) {
+        throw new ConsumerError(400, 'realtime_capacity_decision_invalid', 'That capacity decision value is not supported.');
+      }
+
+      // An unclear answer must not mutate planning state. The client is asked
+      // again; the model never picks for them.
+      if (decision === 'unclear') {
+        await recordEvent(this.env, this.meta.sessionId, 'capacity_decision_unclear', {
+          candidateModuleId: capacity.candidateModuleId
+        }).catch(() => {});
+        return {
+          ok: true,
+          decision: 'unclear',
+          instruction: 'The client has not chosen. Re-read the options from capacityDecision.spoken exactly and ask again. '
+            + 'Never suggest which analysis they should drop, and do not change anything.'
+        };
+      }
+
+      let removeModuleId = null;
+      if (decision === 'replace') {
+        const choice = (capacity.replacementChoices || [])
+          .find((item) => Number(item.choiceIndex) === Number(args.replaceChoiceIndex));
+        // A choice outside the server-owned list changes nothing.
+        if (!choice) {
+          throw new ConsumerError(400, 'realtime_capacity_choice_invalid', 'That is not one of the analyses currently outlined.');
+        }
+        removeModuleId = choice.moduleId;
+      }
+
+      const recorded = await recordRealtimeCapacityDecision(this.env, {
+        sessionId: this.meta.sessionId,
+        sessionRow: context.sessionRow,
+        profile: context.profile,
+        decision,
+        candidateModuleId: capacity.candidateModuleId,
+        removeModuleId
+      });
+      await recordEvent(this.env, this.meta.sessionId, 'capacity_decision_resolved', {
+        decision,
+        candidateModuleId: capacity.candidateModuleId,
+        removedModuleId: removeModuleId,
+        profileRevision: recorded.revision
+      }).catch(() => {});
+
+      // Acknowledgements reuse the manifest-owned client descriptions, so no
+      // formal analysis name is ever spoken back.
+      const removedDescription = decision === 'replace'
+        ? (capacity.replacementChoices.find((item) => item.moduleId === removeModuleId)?.description || '')
+        : '';
+      return {
+        ok: true,
+        decision,
+        profileRevision: recorded.revision,
+        ...(decision === 'replace'
+          ? {
+              acknowledgement: `Okay — we will leave out ${removedDescription} and include ${capacity.candidateDescription} instead.`,
+              instruction: 'Read the acknowledgement, then continue with the next question the server gives you. '
+                + 'The set has changed, so it must be confirmed again before anything runs.'
+            }
+          : {
+              acknowledgement: capacity.deferralAcknowledgement,
+              instruction: 'Read the acknowledgement and move on. Do not raise that analysis again in this session '
+                + 'unless the client brings it up themselves.'
+            })
       };
     }
     if (toolName === 'get_intake_explanation') {

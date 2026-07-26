@@ -154,6 +154,23 @@ export const REALTIME_V2_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     type: 'function',
+    name: 'resolve_capacity_decision',
+    description: 'Record the client\'s answer when this session is already at its limit of analyses and one more has been proposed. Use replace only when the client clearly names one of the analyses currently outlined to swap out, and set replaceChoiceIndex to that entry\'s choiceIndex from the brief. Use defer when the client would rather keep the current set and leave the extra one for a follow-up. Use unclear for anything hedged such as "maybe", "you decide" or "which would you drop" — never choose for them, and never suggest which one to remove. The server owns the proposed analysis and the exact list that may be replaced; you cannot name an analysis or supply an identifier.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['expectedRevision', 'decision'],
+      properties: {
+        expectedRevision: { type: 'integer', minimum: 1 },
+        decision: { type: 'string', enum: ['replace', 'defer', 'unclear'] },
+        // An index into the server-owned replacementChoices, never a module id.
+        replaceChoiceIndex: { type: 'integer', minimum: 1, maximum: 3 },
+        evidenceText: { type: 'string', maxLength: 300 }
+      }
+    }
+  },
+  {
+    type: 'function',
     name: 'get_intake_explanation',
     description: 'Get a reviewed educational or process explanation. Use this before answering why a fact is needed, a financial concept, a recommendation request, or an eligibility question.',
     parameters: {
@@ -279,6 +296,11 @@ export function realtimeToolsForState(state = {}) {
       // The decision tool exists only while an analysis is actually on the
       // table, so the model cannot record a decision against nothing.
       if (tool.name === 'record_module_decision') return Boolean(state.meetingBrief?.moduleOffer?.moduleId);
+      // Only offered while the session is genuinely at its limit with a proposed
+      // extra analysis, so a capacity answer cannot be recorded against nothing.
+      if (tool.name === 'resolve_capacity_decision') {
+        return Boolean(state.meetingBrief?.capacityDecision?.candidateModuleId);
+      }
       return true;
     });
   }

@@ -782,6 +782,10 @@ export function describeConversationState(profile, config) {
     // Consumer-visible opportunities only. withheldOpportunities is deliberately
     // not surfaced here: it must never reach a consumer prompt.
     moduleOpportunities: hasGoal ? [...goalPlan.moduleOpportunities] : [],
+    // The three-analysis capacity state. The realtime meeting binds a capacity
+    // decision to this, so the server stays authoritative for the proposed
+    // fourth analysis and the permitted replacement choices.
+    capacity: goalPlan.capacity,
     requiresGoalPriorityQuestion: hasGoal && goalPlan.requiresGoalPriorityQuestion,
     requiresDecisionTopicQuestion: hasGoal && goalPlan.requiresDecisionTopicQuestion,
     deferredGoalTypes: hasGoal ? goalPlan.deferredGoalTypes : []

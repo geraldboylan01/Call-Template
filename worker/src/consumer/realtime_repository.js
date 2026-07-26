@@ -2,7 +2,11 @@ import { ConsumerError, notFound } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 import { sanitizeRealtimeEventPayload } from './realtime_event_schema.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
-import { consumerLanguageForModule } from '../../../js/planning/module_offers.js';
+import {
+  applyModuleDeferral,
+  applyModuleReplacement,
+  consumerLanguageForModule
+} from '../../../js/planning/module_offers.js';
 import {
   constantTimeEqual,
   decryptJson,
@@ -2011,6 +2015,69 @@ export async function commitRealtimeFactConfirmation(env, request) {
  * reversal has to be an explicit new decision rather than the offer quietly
  * coming back.
  */
+/**
+ * Persist the client's answer to the three-analysis capacity decision.
+ *
+ * Reuses the same revisioned profile write as an ordinary module decision, and
+ * the same planning helpers the deterministic layer already uses, so there is no
+ * second copy of the replacement or deferral rules. Goals and collected facts
+ * are untouched; only the planning decision fields move.
+ */
+export async function recordRealtimeCapacityDecision(env, request) {
+  const currentRevision = Number(request.sessionRow.current_profile_revision || 1);
+  const revision = currentRevision + 1;
+  const timestamp = nowIso();
+  const planning = request.profile?.assumptions?.values?.planning || {};
+  const nextPlanning = request.decision === 'replace'
+    ? applyModuleReplacement(planning, {
+        removeModuleId: request.removeModuleId,
+        addModuleId: request.candidateModuleId
+      })
+    : applyModuleDeferral(planning, request.candidateModuleId);
+
+  const nextProfile = {
+    ...request.profile,
+    revision,
+    confirmedAt: undefined,
+    updatedAt: timestamp,
+    assumptions: {
+      ...request.profile.assumptions,
+      values: { ...request.profile.assumptions.values, planning: nextPlanning }
+    }
+  };
+  const payload = await encryptJson(
+    env,
+    nextProfile,
+    `consumer/profile/${request.sessionId}/${revision}`
+  );
+  await db(env).batch([
+    db(env).prepare(`
+      INSERT INTO consumer_profile_revisions (
+        session_id, revision, schema_version, payload_encrypted, confirmed_at, created_at
+      )
+      SELECT ?, ?, 1, ?, NULL, ?
+      WHERE EXISTS (
+        SELECT 1 FROM consumer_sessions
+        WHERE id = ? AND deleted_at IS NULL AND current_profile_revision = ?
+      )
+    `).bind(request.sessionId, revision, payload, timestamp, request.sessionId, currentRevision),
+    db(env).prepare(`
+      UPDATE consumer_sessions
+      SET current_profile_revision = ?, confirmed_profile_revision = NULL, last_active_at = ?
+      WHERE id = ? AND deleted_at IS NULL AND current_profile_revision = ?
+        AND EXISTS (
+          SELECT 1 FROM consumer_profile_revisions WHERE session_id = ? AND revision = ?
+        )
+    `).bind(revision, timestamp, request.sessionId, currentRevision, request.sessionId, revision)
+  ]);
+  const sessionRow = await db(env).prepare('SELECT * FROM consumer_sessions WHERE id = ? LIMIT 1')
+    .bind(request.sessionId).first();
+  if (Number(sessionRow?.current_profile_revision) !== revision) {
+    throw new ConsumerError(409, 'realtime_capacity_decision_conflict', 'The profile changed while recording that decision.');
+  }
+  return { profile: nextProfile, sessionRow, revision };
+}
+
 export async function recordRealtimeModuleDecision(env, request) {
   const currentRevision = Number(request.sessionRow.current_profile_revision || 1);
   const revision = currentRevision + 1;
