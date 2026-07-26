@@ -91,6 +91,14 @@
     "status": "approved",
     "reviewedOn": "2026-07-26",
     "blockingItems": []
+  },
+  "consumerLanguage": {
+    "consumerShortLabel": "a projection of whether your pension may be on track",
+    "consumerOfferDescription": "We can project how your pension may develop based on your current pension value, contributions and intended retirement timing, using the approved long-term planning assumptions",
+    "consumerConfirmationDescription": "project whether your pension may be on track",
+    "consumerCapacityDescription": "a projection of whether your pension may be on track",
+    "offerQuestion": "Would you like to see that?",
+    "offerClauses": []
   }
 }
 ```

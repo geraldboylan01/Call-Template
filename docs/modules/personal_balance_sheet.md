@@ -56,11 +56,30 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "create a clear breakdown of what you own and what you owe, and show how your cash, investments, pensions, property and debts fit together \u2014 including whether you are holding more cash than you need, and whether the overall shape looks aligned with your longer-term plans",
+  "clientBenefit": "create a clear breakdown of what you own and what you owe, and show how your cash, investments, pensions, property and debts fit together — including whether you are holding more cash than you need, and whether the overall shape looks aligned with your longer-term plans",
   "consumerReadiness": {
     "status": "approved",
     "reviewedOn": "2026-07-25",
     "blockingItems": []
+  },
+  "consumerLanguage": {
+    "consumerShortLabel": "a review of your overall financial picture",
+    "consumerOfferDescription": "We can look at your overall financial picture by bringing together what you own, what you owe and where your money is currently held. This can help show whether you may be keeping too much in cash and how your assets and debts fit together",
+    "consumerConfirmationDescription": "put together a review of your overall financial picture",
+    "consumerCapacityDescription": "a review of your overall financial picture",
+    "offerQuestion": "Would that be useful?",
+    "offerClauses": [
+      {
+        "text": ", and how your current position supports longer-term goals such as retirement",
+        "when": {
+          "anyGoal": [
+            "retire",
+            "retire_early",
+            "improve_pension"
+          ]
+        }
+      }
+    ]
   }
 }
 ```

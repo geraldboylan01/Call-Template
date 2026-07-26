@@ -69,6 +69,14 @@
     "status": "approved",
     "reviewedOn": "2026-07-26",
     "blockingItems": []
+  },
+  "consumerLanguage": {
+    "consumerShortLabel": "an estimate of future college costs and the saving required",
+    "consumerOfferDescription": "We can estimate the future cost of four years of college for {childPossessive} education and compare a situation where they attend nearby and live at home with one where they need accommodation away from home. We can then show the level of saving that may be required",
+    "consumerConfirmationDescription": "estimate the future cost of {childPossessive} college education",
+    "consumerCapacityDescription": "an estimate of the future cost of {childPossessive} college education",
+    "offerQuestion": "Would that be useful?",
+    "offerClauses": []
   }
 }
 ```

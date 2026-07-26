@@ -73,6 +73,14 @@
     "status": "approved",
     "reviewedOn": "2026-07-25",
     "blockingItems": []
+  },
+  "consumerLanguage": {
+    "consumerShortLabel": "a review of your home-purchase affordability and savings path",
+    "consumerOfferDescription": "We can look at the deposit you may need, likely mortgage affordability and the savings path toward the purchase",
+    "consumerConfirmationDescription": "review your home-purchase affordability and savings path",
+    "consumerCapacityDescription": "a review of your home-purchase affordability and savings path",
+    "offerQuestion": "Would that be useful?",
+    "offerClauses": []
   }
 }
 ```

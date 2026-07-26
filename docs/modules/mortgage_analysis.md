@@ -63,11 +63,19 @@
     "excludeIf": []
   },
   "factPreconditions": {},
-  "clientBenefit": "show your current mortgage repayment path and compare the alternatives \u2014 changing the term, switching, or making extra repayments",
+  "clientBenefit": "show your current mortgage repayment path and compare the alternatives — changing the term, switching, or making extra repayments",
   "consumerReadiness": {
     "status": "approved",
     "reviewedOn": "2026-07-26",
     "blockingItems": []
+  },
+  "consumerLanguage": {
+    "consumerShortLabel": "a comparison of your mortgage repayment options",
+    "consumerOfferDescription": "We can look at your current repayment path and compare what may happen if you changed the term, switched arrangement or made additional repayments",
+    "consumerConfirmationDescription": "compare your mortgage repayment options",
+    "consumerCapacityDescription": "a comparison of your mortgage repayment options",
+    "offerQuestion": "Would you like to examine that?",
+    "offerClauses": []
   }
 }
 ```
