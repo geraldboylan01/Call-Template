@@ -445,9 +445,24 @@ assert.deepEqual(
   v2Session.tools.map((tool) => tool.name),
   ['get_meeting_brief', 'get_intake_explanation', 'get_result_summary', 'wait_for_user']
 );
+// record_module_decision exists only while an analysis is actually on the
+// table, so a decision cannot be recorded against nothing.
 assert.deepEqual(
   realtimeToolsForState({ conversationVersion: 'v2', spokenCompletionEnabled: false }).map((tool) => tool.name),
-  REALTIME_V2_TOOL_DEFINITIONS.filter((tool) => tool.name !== 'confirm_and_run_voice_plan').map((tool) => tool.name)
+  REALTIME_V2_TOOL_DEFINITIONS
+    .filter((tool) => !['confirm_and_run_voice_plan', 'record_module_decision'].includes(tool.name))
+    .map((tool) => tool.name)
+);
+assert.deepEqual(
+  realtimeToolsForState({
+    conversationVersion: 'v2',
+    spokenCompletionEnabled: false,
+    meetingBrief: { moduleOffer: { moduleId: 'mortgage_analysis' } }
+  }).map((tool) => tool.name),
+  REALTIME_V2_TOOL_DEFINITIONS
+    .filter((tool) => tool.name !== 'confirm_and_run_voice_plan')
+    .map((tool) => tool.name),
+  'the decision tool must appear once an offer is active'
 );
 const spokenCompletionConfig = getConsumerConfig({
   ...env,
@@ -456,7 +471,11 @@ const spokenCompletionConfig = getConsumerConfig({
 });
 assert.equal(spokenCompletionConfig.realtimeSpokenCompletionEnabled, true);
 assert.deepEqual(
-  realtimeToolsForState({ conversationVersion: 'v2', spokenCompletionEnabled: true }).map((tool) => tool.name),
+  realtimeToolsForState({
+    conversationVersion: 'v2',
+    spokenCompletionEnabled: true,
+    meetingBrief: { moduleOffer: { moduleId: 'mortgage_analysis' } }
+  }).map((tool) => tool.name),
   REALTIME_V2_TOOL_DEFINITIONS.map((tool) => tool.name)
 );
 assert.match(v2Session.instructions, /Answer a client question first/i);
@@ -741,7 +760,7 @@ assert.ok(signedBrief.signature.length >= 40);
 const publicGuide = toConversationGuide(signedBrief);
 assert.deepEqual(Object.keys(publicGuide), [
   'narrativeSummary', 'goals', 'deferredGoals', 'analyses', 'progress',
-  'nextObjective', 'jurisdiction', 'currentTopic', 'questionBatch',
+  'nextObjective', 'jurisdiction', 'currentTopic', 'questionBatch', 'moduleOffer',
   'confirmationSummary', 'moduleState', 'finalNavigationTarget', 'statePensionRule'
 ]);
 assert.equal(publicGuide.nextObjective.facts.length, 1);
@@ -2239,13 +2258,15 @@ const cashConfirmed = await factDurable.executeTool(
 assert.equal(cashConfirmed.profileRevision, 4);
 assert.match(cashConfirmed.readBackText, /€65,000/);
 
-// Module-specific intake facts are available only after persona evidence locks
-// the exact catalogue bundle. Same-turn persona evidence allows volunteered
-// facts for that bundle without reopening goal-based routing.
+// Module-specific intake facts follow from goal routing over accumulated
+// circumstances. The persona catalogue that used to gate this is gone.
 factContext = await factDurable.planningContext();
-assert.equal(factContext.state.personaAssessment.primaryPersonaId, 'first_time_buyer');
+assert.equal(factContext.state.personaAssessment, undefined);
+// Goal routing leads with the analyses the stated goal selected. The balance
+// sheet is pinned last and is outside this canary's release allowlist, so it is
+// filtered out before it can occupy a slot rather than taking one and producing
+// nothing.
 assert.deepEqual(factContext.state.moduleSlots.map((slot) => slot.moduleId), [
-  'personal_balance_sheet',
   'house_purchase',
   'liquidity_analysis'
 ]);
@@ -2421,6 +2442,15 @@ const dependencyArgs = {
       value: 'pre_retiree',
       certainty: 'exact',
       evidenceItemId: dependencyEvidenceId
+    },
+    {
+      // Goals route modules now. The persona catalogue used to open a pension
+      // bundle from the self_description label; correcting the stated goal to
+      // retirement is what makes pension facts routable.
+      factId: 'primary_goal',
+      value: { type: 'retire', correctionTarget: 'buy_home' },
+      certainty: 'exact',
+      evidenceItemId: dependencyEvidenceId
     }
   ]
 };
@@ -2431,6 +2461,7 @@ const dependencyResult = await factDurable.executeTool(
   await startFactTool('propose_facts', dependencyArgs, 6)
 );
 assert.deepEqual(dependencyResult.proposals.map((proposal) => proposal.factId), [
+  'primary_goal',
   'self_description',
   'partner_person',
   'income_sources',
@@ -2439,12 +2470,13 @@ assert.deepEqual(dependencyResult.proposals.map((proposal) => proposal.factId), 
   'person_current_age'
 ]);
 assert.deepEqual(dependencyResult.savedDrafts.map((proposal) => proposal.factId), [
+  'primary_goal',
   'self_description',
   'partner_person',
   'income_sources',
   'pension_positions'
 ]);
-assert.equal(dependencyResult.profileRevision, 10);
+assert.equal(dependencyResult.profileRevision, 11);
 
 let dependencyPending = dependencyResult.currentPendingProposal;
 const dependencyConfirmationOrder = [];
@@ -2717,7 +2749,6 @@ const gatedPlan = await prepareRealtimeAnalysisPlan(env, {
   profileRevision: 1,
   moduleIds: [],
   scenarioOverrides: {},
-  personaAssessment: null,
   moduleSlots: gatedSlots,
   overrides: [],
   requiresGoalPriorityQuestion: false,
@@ -2812,7 +2843,6 @@ const gatedHandoffPlan = await prepareRealtimeAnalysisPlan(env, {
   profileRevision: 1,
   moduleIds: [],
   scenarioOverrides: {},
-  personaAssessment: null,
   moduleSlots: gatedSlots,
   overrides: [],
   requiresGoalPriorityQuestion: false,
@@ -2874,15 +2904,6 @@ const plan = await prepareRealtimeAnalysisPlan(env, {
   profileRevision: 1,
   moduleIds: ['house_purchase', 'liquidity_analysis'],
   scenarioOverrides: {},
-  personaAssessment: {
-    primaryPersonaId: 'first_time_buyer',
-    candidatePersonaIds: ['first_time_buyer'],
-    evidenceFactIds: ['primary_goal', 'self_description'],
-    confidence: 'high',
-    catalogueVersion: 'planeir-persona-1.0.0',
-    profileRevision: 1,
-    scoredCandidates: [{ personaId: 'first_time_buyer', score: 125, matchedSignals: ['first_time_buyer'] }]
-  },
   moduleSlots: [
     { slot: 1, moduleId: 'personal_balance_sheet', source: 'persona_default', availability: 'adviser_review_required', reasons: ['Private reason'], missingFactIds: ['assets'] },
     { slot: 2, moduleId: 'house_purchase', source: 'mandatory_rule', availability: 'needs_facts', reasons: ['Private reason'], missingFactIds: ['target_home_price'] },
@@ -2899,15 +2920,6 @@ const planReplay = await prepareRealtimeAnalysisPlan(env, {
   profileRevision: 1,
   moduleIds: ['house_purchase', 'liquidity_analysis'],
   scenarioOverrides: {},
-  personaAssessment: {
-    primaryPersonaId: 'first_time_buyer',
-    candidatePersonaIds: ['first_time_buyer'],
-    evidenceFactIds: ['primary_goal', 'self_description'],
-    confidence: 'high',
-    catalogueVersion: 'planeir-persona-1.0.0',
-    profileRevision: 1,
-    scoredCandidates: [{ personaId: 'first_time_buyer', score: 125, matchedSignals: ['first_time_buyer'] }]
-  },
   moduleSlots: [
     { slot: 1, moduleId: 'personal_balance_sheet', source: 'persona_default', availability: 'adviser_review_required', reasons: ['Private reason'], missingFactIds: ['assets'] },
     { slot: 2, moduleId: 'house_purchase', source: 'mandatory_rule', availability: 'needs_facts', reasons: ['Private reason'], missingFactIds: ['target_home_price'] },
@@ -2933,7 +2945,6 @@ const confirmedPlan = await confirmRealtimeAnalysisPlan(env, {
   profileRevision: 1
 });
 assert.equal(confirmedPlan.row.status, 'confirmed');
-assert.equal(confirmedPlan.input.personaAssessment.primaryPersonaId, 'first_time_buyer');
 assert.equal(confirmedPlan.input.moduleSlots.length, 3);
 assert.equal(confirmedPlan.input.deferredGoalTypes[0], 'retire');
 assert.deepEqual(
@@ -2944,7 +2955,6 @@ assert.deepEqual(
 assert.equal(confirmedPlan.row.module_ids_json.includes('house_purchase'), false);
 assert.equal(confirmedPlan.row.module_ids_json.includes('first_time_buyer'), false);
 const indexedPlan = toPublicRealtimeAnalysisPlan(confirmedPlan.row, confirmedPlan.input);
-assert.equal(indexedPlan.personaAssessment.primaryPersonaId, 'first_time_buyer');
 assert.equal(indexedPlan.moduleSlots.length, 3);
 assert.deepEqual(
   Object.keys(indexedPlan.moduleSlots[0]).sort(),
@@ -4365,6 +4375,179 @@ assert.match(realtimeMigrationSource, /idx_consumer_realtime_one_active_session/
 assert.match(realtimeMigrationSource, /reservation_eur_micros BETWEEN 1 AND 2000000/);
 assert.match(realtimeMigrationSource, /dispatch_stop_eur_micros BETWEEN 0 AND 1700000/);
 assert.doesNotMatch(realtimeMigrationSource, /raw_audio|audio_blob|partial_transcript/i);
+
+// ---------------------------------------------------------------------------
+// Spoken module decisions.
+//
+// A relevant analysis is offered out loud and the client's answer is recorded
+// through a narrow tool. The model may not name a module, add one that was not
+// offered, or run anything: the server decides which offer is on the table, so a
+// bare "yes" can only ever resolve to one analysis.
+// ---------------------------------------------------------------------------
+
+const decisionSessionId = `cs_${'D'.repeat(24)}`;
+await createSessionRecord(env, {
+  id: decisionSessionId,
+  credentialHashB64u: `hash_${'D'.repeat(30)}`
+}, consent, config, inviteClaimsFor(decisionSessionId));
+let decisionSessionRow = await getSessionRow(env, decisionSessionId);
+await setRealtimeConsent(env, decisionSessionRow, config, true);
+const decisionReservation = await reserveConsumerProviderCost(env, {
+  sessionId: decisionSessionId,
+  operation: 'realtime_voice_session',
+  idempotencyKey: 'realtime-decision-session-001',
+  provider: 'openai',
+  model: config.realtimeModel,
+  pricingVersion: config.realtimePricingVersion,
+  reservedCostEurMicros: 1_000_000,
+  dailyCostLimitEurMicros: config.realtimeDailyBudgetMicroEur
+});
+const decisionControl = await newControlCapability();
+let decisionLease = await createRealtimeLease(
+  env, decisionSessionRow, config, decisionReservation.entry, decisionControl.hash
+);
+await markRealtimeProviderCostInFlight(env, decisionReservation.entry.id, decisionSessionId, config);
+decisionLease = await activateRealtimeLease(env, decisionSessionId, decisionLease.id, 'call_decision_test');
+const decisionState = new TestDurableObjectState();
+const decisionDurable = new ConsumerRealtimeSession(decisionState, {
+  ...env,
+  CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: 'true'
+});
+await decisionState.ready;
+decisionDurable.meta = {
+  sessionId: decisionSessionId,
+  leaseId: decisionLease.id,
+  costEntryId: decisionReservation.entry.id,
+  hardExpiresAt: decisionLease.hard_expires_at,
+  idleExpiresAt: decisionLease.idle_expires_at
+};
+let decisionToolSequence = 0;
+const startDecisionTool = async (toolName, argumentsValue, revision) => {
+  decisionToolSequence += 1;
+  const attempt = await beginRealtimeToolAttempt(env, {
+    sessionId: decisionSessionId,
+    leaseId: decisionLease.id,
+    providerToolCallId: `decision_tool_${String(decisionToolSequence).padStart(3, '0')}`,
+    toolName,
+    toolVersion: 'test',
+    expectedProfileRevision: revision,
+    arguments: argumentsValue,
+    maxToolCalls: 64
+  });
+  return attempt.row.id;
+};
+
+/** A context whose brief has exactly one analysis on the table. */
+async function decisionContext(offerModuleId = 'mortgage_analysis') {
+  const context = await decisionDurable.planningContext();
+  context.config = { ...context.config, realtimeConversationV2Enabled: true };
+  context.state = {
+    ...context.state,
+    meetingBrief: offerModuleId
+      ? { moduleOffer: { moduleId: offerModuleId, spokenOffer: 'test offer', anchor: 'you own your home', benefit: 'compare options' } }
+      : null
+  };
+  return context;
+}
+
+async function currentDecisions() {
+  const context = await decisionDurable.planningContext();
+  const planning = context.profile?.assumptions?.values?.planning || {};
+  return {
+    accepted: planning.acceptedModuleIds || [],
+    declined: planning.declinedModuleIds || []
+  };
+}
+
+// A hedged answer must never behave like a yes.
+let decisionCtx = await decisionContext();
+let uncertainResult = await decisionDurable.executeTool(
+  'record_module_decision',
+  { expectedRevision: Number(decisionCtx.sessionRow.current_profile_revision), decision: 'uncertain' },
+  decisionCtx,
+  await startDecisionTool('record_module_decision', { decision: 'uncertain' }, Number(decisionCtx.sessionRow.current_profile_revision))
+);
+assert.equal(uncertainResult.decision, 'uncertain');
+assert.match(uncertainResult.instruction, /not decided/i);
+assert.match(uncertainResult.instruction, /do not treat this as a yes/i);
+let decisions = await currentDecisions();
+assert.deepEqual(decisions.accepted, [], 'an unclear answer must not accept anything');
+assert.deepEqual(decisions.declined, [], 'an unclear answer must not decline anything');
+
+// A clear yes is recorded, and only for the analysis actually on the table.
+decisionCtx = await decisionContext();
+const acceptResult = await decisionDurable.executeTool(
+  'record_module_decision',
+  { expectedRevision: Number(decisionCtx.sessionRow.current_profile_revision), decision: 'accepted' },
+  decisionCtx,
+  await startDecisionTool('record_module_decision', { decision: 'accepted' }, Number(decisionCtx.sessionRow.current_profile_revision))
+);
+assert.equal(acceptResult.moduleId, 'mortgage_analysis');
+assert.match(acceptResult.instruction, /has not run/i);
+decisions = await currentDecisions();
+assert.deepEqual(decisions.accepted, ['mortgage_analysis']);
+assert.deepEqual(decisions.declined, []);
+
+// Deciding with no analysis on the table is refused, so a stray "yes" after a
+// topic change cannot attach itself to something.
+const noOfferCtx = await decisionContext(null);
+await rejectsCode(decisionDurable.executeTool(
+  'record_module_decision',
+  { expectedRevision: Number(noOfferCtx.sessionRow.current_profile_revision), decision: 'accepted' },
+  noOfferCtx,
+  await startDecisionTool('record_module_decision', { decision: 'accepted' }, Number(noOfferCtx.sessionRow.current_profile_revision))
+), 'realtime_no_active_module_offer');
+
+// A different offer is now active; the earlier decision is untouched.
+decisionCtx = await decisionContext('college_funding');
+await decisionDurable.executeTool(
+  'record_module_decision',
+  { expectedRevision: Number(decisionCtx.sessionRow.current_profile_revision), decision: 'declined' },
+  decisionCtx,
+  await startDecisionTool('record_module_decision', { decision: 'declined' }, Number(decisionCtx.sessionRow.current_profile_revision))
+);
+decisions = await currentDecisions();
+assert.deepEqual(decisions.accepted, ['mortgage_analysis'], 'only the active offer may be affected');
+assert.deepEqual(decisions.declined, ['college_funding']);
+
+// Declining again is idempotent rather than duplicating the record.
+decisionCtx = await decisionContext('college_funding');
+await decisionDurable.executeTool(
+  'record_module_decision',
+  { expectedRevision: Number(decisionCtx.sessionRow.current_profile_revision), decision: 'declined' },
+  decisionCtx,
+  await startDecisionTool('record_module_decision', { decision: 'declined' }, Number(decisionCtx.sessionRow.current_profile_revision))
+);
+decisions = await currentDecisions();
+assert.deepEqual(decisions.declined, ['college_funding'], 'a repeated decline must not duplicate');
+
+// The client can change their mind later; a reversal is a clean state change.
+decisionCtx = await decisionContext('college_funding');
+await decisionDurable.executeTool(
+  'record_module_decision',
+  { expectedRevision: Number(decisionCtx.sessionRow.current_profile_revision), decision: 'accepted' },
+  decisionCtx,
+  await startDecisionTool('record_module_decision', { decision: 'accepted' }, Number(decisionCtx.sessionRow.current_profile_revision))
+);
+decisions = await currentDecisions();
+assert.ok(decisions.accepted.includes('college_funding'), 'a reversal must accept the module');
+assert.ok(!decisions.declined.includes('college_funding'), 'a reversal must clear the earlier decline');
+
+// Accepted is not executed. Only the separately confirmed set may run.
+const acceptedContext = await decisionDurable.planningContext();
+assert.deepEqual(
+  acceptedContext.state.executionModuleIds || [],
+  [],
+  'an accepted analysis must not reach the execution set before the final confirmation'
+);
+
+// The model cannot name a module or invent one: the tool takes no module id.
+const decisionTool = REALTIME_V2_TOOL_DEFINITIONS.find((tool) => tool.name === 'record_module_decision');
+assert.ok(decisionTool, 'the decision tool must exist');
+assert.deepEqual(Object.keys(decisionTool.parameters.properties).sort(), ['decision', 'evidenceText', 'expectedRevision']);
+assert.deepEqual(decisionTool.parameters.properties.decision.enum, ['accepted', 'declined', 'uncertain']);
+assert.equal(decisionTool.parameters.additionalProperties, false);
+
 
 console.log(
   'Consumer Realtime adversarial control-plane checks passed '

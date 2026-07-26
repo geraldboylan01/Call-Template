@@ -5,7 +5,6 @@ import {
 } from '../../../js/planning/semantic_facts.js';
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
-import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import {
@@ -47,6 +46,7 @@ import {
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
   rejectRealtimeFactProposal,
+  recordRealtimeModuleDecision,
   saveRealtimeMeetingBrief,
   setRealtimeMeetingPhase,
   touchRealtimeLease
@@ -2333,9 +2333,6 @@ export class ConsumerRealtimeSession {
       currentPendingProposal: pendingFacts[0] || null,
       selectionPolicyVersion: state.selectionPolicyVersion || null,
       goalAssessment: toPublicGoalAssessment(state.goalAssessment),
-      ...(state.personaAssessment
-        ? { personaAssessment: toPublicPersonaAssessment(state.personaAssessment) }
-        : {}),
       moduleSlots: (state.moduleSlots || []).slice(0, 3),
       requiresGoalPriorityQuestion: state.requiresGoalPriorityQuestion === true,
       requiresDecisionTopicQuestion: state.requiresDecisionTopicQuestion === true,
@@ -2840,6 +2837,57 @@ export class ConsumerRealtimeSession {
         instruction: 'Use this signed brief as steering context. Do not expose its signature or internal fields.'
       };
     }
+    if (toolName === 'record_module_decision') {
+      if (!context.config.realtimeConversationV2Enabled) {
+        throw new ConsumerError(409, 'realtime_module_decision_unavailable', 'Module decisions are not available in this voice version.');
+      }
+      this.requireExpectedRevision(args, context);
+      // The server owns which analysis is on the table. The model cannot name a
+      // module, so a short "yes" can only ever resolve to the one just offered
+      // and an unoffered analysis can never be added.
+      const activeOffer = context.state.meetingBrief?.moduleOffer || null;
+      if (!activeOffer?.moduleId) {
+        throw new ConsumerError(409, 'realtime_no_active_module_offer', 'There is no analysis currently offered to decide on.');
+      }
+      const decision = String(args.decision || '');
+      if (!['accepted', 'declined', 'uncertain'].includes(decision)) {
+        throw new ConsumerError(400, 'realtime_module_decision_invalid', 'That decision value is not supported.');
+      }
+      // An unclear answer changes nothing. It is recorded as an event so the
+      // meeting can follow up, but it must never behave like an acceptance.
+      if (decision === 'uncertain') {
+        await recordEvent(this.env, this.meta.sessionId, 'module_offer_uncertain', {
+          moduleId: activeOffer.moduleId
+        }).catch(() => {});
+        return {
+          ok: true,
+          decision: 'uncertain',
+          moduleId: activeOffer.moduleId,
+          instruction: 'The client has not decided. Answer what they asked using get_intake_explanation, then ask again plainly. Do not treat this as a yes and do not start collecting facts for it.'
+        };
+      }
+      const recorded = await recordRealtimeModuleDecision(this.env, {
+        sessionId: this.meta.sessionId,
+        sessionRow: context.sessionRow,
+        profile: context.profile,
+        moduleId: activeOffer.moduleId,
+        decision
+      });
+      await recordEvent(this.env, this.meta.sessionId, 'module_offer_decided', {
+        moduleId: activeOffer.moduleId,
+        decision,
+        profileRevision: recorded.revision
+      }).catch(() => {});
+      return {
+        ok: true,
+        decision,
+        moduleId: activeOffer.moduleId,
+        profileRevision: recorded.revision,
+        instruction: decision === 'accepted'
+          ? 'Acknowledge briefly and continue with the next question the server gives you. The analysis is included but has not run; the full set is confirmed later.'
+          : 'Acknowledge briefly without pressing, and continue. Do not offer this analysis again unless the client raises it themselves.'
+      };
+    }
     if (toolName === 'get_intake_explanation') {
       if (!context.config.realtimeConversationV2Enabled) {
         throw new ConsumerError(409, 'realtime_explanation_unavailable', 'Reviewed meeting explanations are not available in this voice version.');
@@ -2940,9 +2988,7 @@ export class ConsumerRealtimeSession {
       const enabledModules = modulesEnabledByFacts(
         context.state.recommendations,
         args.facts,
-        context.profile,
-        { goalRoutingEnabled: context.config.goalRoutingEnabled }
-      );
+        context.profile);
       const orderedFacts = orderRealtimeFactsByDependency(args.facts);
       let projectedProfile = context.profile;
       const normalized = orderedFacts.map((fact) => {
@@ -3147,7 +3193,6 @@ export class ConsumerRealtimeSession {
           : Number(context.sessionRow.confirmed_profile_revision),
         selectionPolicyVersion: context.state.selectionPolicyVersion,
         goalAssessment: context.state.goalAssessment,
-        ...(context.state.personaAssessment ? { personaAssessment: context.state.personaAssessment } : {}),
         moduleSlots: context.state.moduleSlots,
         requiresGoalPriorityQuestion: context.state.requiresGoalPriorityQuestion,
         requiresDecisionTopicQuestion: context.state.requiresDecisionTopicQuestion,

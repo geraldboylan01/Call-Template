@@ -83,7 +83,8 @@ const cases = [
   {
     name: 'retirement',
     profile: profile({ id: 'goal-retirement', age: 52, goals: [goal('retire')] }),
-    expected: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.NET_RETIREMENT, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    // net_retirement_cashflow is gated pending review, so it must not take a slot.
+    expected: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.PERSONAL_BALANCE_SHEET]
   },
   {
     name: 'existing mortgage',
@@ -117,8 +118,11 @@ const overloaded = profile({
   goals: [goal('buy_home', 0), goal('retire', 1)]
 });
 const overloadedPlan = buildGoalModulePlan(overloaded, { allowedModuleIds: ALL_RELEASED_FOR_TEST });
+// The client is still asked which goal matters most, but the unanswered
+// question must not empty the plan: a provisional set is built by rank.
 assert.equal(overloadedPlan.requiresGoalPriorityQuestion, true);
-assert.deepEqual(overloadedPlan.moduleSlots, []);
+assert.equal(overloadedPlan.moduleSlots.length, 3);
+assert.ok(overloadedPlan.capacity.atLimit);
 
 const focused = profile({
   id: 'goal-focused', age: 46,
@@ -126,11 +130,11 @@ const focused = profile({
   planning: { primaryGoalType: 'retire' }
 });
 const focusedPlan = buildGoalModulePlan(focused, { allowedModuleIds: ALL_RELEASED_FOR_TEST });
-assert.deepEqual(
-  focusedPlan.moduleSlots.map((slot) => slot.moduleId),
-  [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.NET_RETIREMENT, MODULE_IDS.PERSONAL_BALANCE_SHEET]
-);
-assert.deepEqual(focusedPlan.deferredGoalTypes, ['buy_home']);
+// A primary goal changes rank; it does not delete the other goal's analyses.
+assert.equal(focusedPlan.moduleSlots[0].moduleId, MODULE_IDS.PENSION_PROJECTION);
+assert.ok(focusedPlan.moduleSlots.some((slot) => slot.moduleId === MODULE_IDS.HOUSE_PURCHASE),
+  'the secondary goal must keep its analysis rather than being discarded');
+assert.ok(!focusedPlan.deferredGoalTypes.includes('buy_home'));
 
 const broadDecision = profile({ id: 'goal-broad-decision', age: 39, goals: [goal('assess_decision')] });
 const broadPlan = buildGoalModulePlan(broadDecision, { allowedModuleIds: ALL_RELEASED_FOR_TEST });
@@ -154,12 +158,15 @@ const gatedPlan = buildGoalModulePlan(establishedBuyer, {
   allowedModuleIds: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.LIQUIDITY]
 });
 assert.deepEqual(gatedPlan.executionModuleIds, [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.LIQUIDITY]);
-assert.equal(gatedPlan.moduleSlots[2].availability, 'adviser_review_required');
-assert.equal(typeof gatedPlan.moduleSlots[2].intakeStatus, 'string');
+// A module outside the release allowlist is filtered out before ranking, so it
+// no longer occupies a slot and produces nothing.
+assert.equal(gatedPlan.moduleSlots.length, 2);
+assert.ok(!gatedPlan.moduleSlots.some((slot) => slot.moduleId === MODULE_IDS.PERSONAL_BALANCE_SHEET));
+assert.ok(gatedPlan.moduleSlots.every((slot) => slot.availability !== 'adviser_review_required'));
 
 const recommendations = goalPlanRecommendations(gatedPlan, cases[2].profile);
-assert.equal(recommendations.length, 3);
-assert.equal(recommendations[2].availability, 'adviser_review_required');
+assert.equal(recommendations.length, 2);
+assert.ok(recommendations.every((item) => item.availability !== 'adviser_review_required'));
 
 const earlyBuyer = cases.find((item) => item.name === 'early-career first-time buyer').profile;
 const state = describeConversationState(earlyBuyer, {
@@ -188,7 +195,7 @@ corrected = applyProfilePatch(corrected, {
   [mappedCorrection.fieldPath]: mappedCorrection.canonicalValue
 }, [], 'ai_extraction');
 assert.deepEqual(corrected.goals.filter((item) => item.status === 'active').map((item) => item.type), ['retire']);
-assert.deepEqual(moduleIds(corrected), [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.NET_RETIREMENT, MODULE_IDS.PERSONAL_BALANCE_SHEET]);
+assert.deepEqual(moduleIds(corrected), [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.PERSONAL_BALANCE_SHEET]);
 
 const selectableIds = listSelectablePlanningModuleDefinitions().map((item) => item.id).sort();
 assert.deepEqual(selectableIds, [

@@ -219,18 +219,29 @@ await runCase('rules-only fallback returns no invented values for unbounded pros
 
 await runCase('registry exposes only active consumer candidates to bootstrap', () => {
   const consumer = getConsumerModuleDescriptors();
-  assert.deepEqual(consumer.map((entry) => entry.id), ['liquidity_analysis', 'house_purchase', 'personal_balance_sheet']);
+  assert.deepEqual(consumer.map((entry) => entry.id), [
+    'liquidity_analysis', 'house_purchase', 'pension_projection', 'mortgage_analysis',
+    'loan_analysis', 'college_funding', 'personal_balance_sheet'
+  ]);
   assert.ok(consumer.every((entry) => entry.consumerAvailable));
   assert.ok(consumer.every((entry) => !Object.values(entry).some((value) => typeof value === 'function')));
   const all = getPlanningModuleDescriptors();
   for (const id of [
     'pension_projection', 'net_retirement_cashflow', 'mortgage_analysis', 'college_funding',
     'personal_balance_sheet', 'cat_analysis', 'business_owner_analysis', 'business_relief_analysis',
-    'business_owner_relief', 'agricultural_relief'
+    'agricultural_relief'
   ]) assert.ok(all.some((entry) => entry.id === id), `missing registry entry ${id}`);
+  // business_owner_relief is a retired alias of business_relief_analysis. It must
+  // still resolve for stored payloads, but must never be a separate catalogue
+  // entry, adviser selector option, or module count.
+  assert.ok(
+    !all.some((entry) => entry.id === 'business_owner_relief'),
+    'the retired business_owner_relief alias must not appear as a catalogue entry'
+  );
   assert.equal(all.find((entry) => entry.id === 'personal_balance_sheet').status, 'beta');
   assert.equal(all.find((entry) => entry.id === 'personal_balance_sheet').consumerAvailable, true);
   assert.equal(all.find((entry) => entry.id === 'cat_analysis').consumerAvailable, false);
+  assert.equal(all.find((entry) => entry.id === 'net_retirement_cashflow').consumerAvailable, false);
 });
 
 await runCase('deterministic routing distinguishes required and recommended modules', () => {
@@ -239,7 +250,7 @@ await runCase('deterministic routing distinguishes required and recommended modu
   const liquidity = recommendations.find((entry) => entry.moduleId === 'liquidity_analysis');
   assert.equal(house.status, 'required');
   assert.equal(liquidity.status, 'recommended');
-  assert.ok(house.triggeredRuleIds.includes('route.buy_home.v1'));
+  assert.ok(house.triggeredRuleIds.includes('manifest.buy_home.house_purchase.v1'));
   assert.equal(house.readiness.status, 'ready_with_assumptions');
 });
 
@@ -324,10 +335,10 @@ await runCase('house adapter preserves direct-engine calculation parity', async 
   assert.equal(wrapped.tables.length, direct.tables.length);
 });
 
-await runCase('future deterministic engines have readiness but remain consumer-gated', () => {
+await runCase('the approved deterministic engines are ready and consumer-available', () => {
   const pension = getModuleReadiness('pension_projection', retirementProfile());
   assert.equal(pension.status, 'ready_with_assumptions');
-  assert.equal(getPlanningModuleDefinition('pension_projection').consumerAvailable, false);
+  assert.equal(getPlanningModuleDefinition('pension_projection').consumerAvailable, true);
 
   let mortgage = emptyProfile('profile-mortgage');
   const mortgageExtraction = extractRulesOnlyProfilePatch(
@@ -349,7 +360,10 @@ await runCase('future deterministic engines have readiness but remain consumer-g
     }
   ]);
   assert.equal(getModuleReadiness('college_funding', college).status, 'ready_with_assumptions');
-  assert.equal(getPlanningModuleDefinition('college_funding').consumerAvailable, false);
+  assert.equal(getPlanningModuleDefinition('college_funding').consumerAvailable, true);
+  // Net retirement cash flow has an engine but has not been reviewed, so it
+  // stays gated. Having an engine is never approval on its own.
+  assert.equal(getPlanningModuleDefinition('net_retirement_cashflow').consumerAvailable, false);
 });
 
 await runCase('adviser-only and unsupported modules cannot be run by consumer orchestration', async () => {

@@ -359,7 +359,7 @@ register({
   requiredProfilePaths: ['/primaryPerson/age', '/pensions', '/incomeSources', '/expenses'],
   optionalProfilePaths: ['/partner', '/assumptions/values/retirement'],
   adviserAvailable: true,
-  consumerAvailable: false,
+  consumerAvailable: true,
   intakeContract: approvedIntake(
     'calculation',
     INTAKE_FACTS[MODULE_IDS.PENSION_PROJECTION],
@@ -428,7 +428,7 @@ register({
   requiredProfilePaths: ['/liabilities'],
   optionalProfilePaths: ['/assumptions/values/mortgage'],
   adviserAvailable: true,
-  consumerAvailable: false,
+  consumerAvailable: true,
   intakeContract: approvedIntake(
     'calculation',
     INTAKE_FACTS[MODULE_IDS.MORTGAGE],
@@ -451,7 +451,7 @@ register({
   requiredProfilePaths: ['/liabilities'],
   optionalProfilePaths: ['/assumptions/values/loan'],
   adviserAvailable: true,
-  consumerAvailable: false,
+  consumerAvailable: true,
   intakeContract: approvedIntake(
     'calculation',
     INTAKE_FACTS[MODULE_IDS.LOAN],
@@ -474,7 +474,7 @@ register({
   requiredProfilePaths: ['/dependants', '/assumptions/values/collegeFunding/scenarios'],
   optionalProfilePaths: ['/assumptions/inflationRate'],
   adviserAvailable: true,
-  consumerAvailable: false,
+  consumerAvailable: true,
   intakeContract: approvedIntake(
     'calculation',
     INTAKE_FACTS[MODULE_IDS.COLLEGE_FUNDING],
@@ -636,13 +636,6 @@ register({
     reason: 'Consumer use waits for deterministic, date-versioned business relief rules and tests.'
   },
   {
-    id: MODULE_IDS.BUSINESS_RELIEF,
-    name: 'Business owner relief (legacy)',
-    description: 'Backward-compatible adviser-only business succession and relief module id.',
-    goals: ['business_planning'],
-    reason: 'Consumer use waits for deterministic, date-versioned rules and tests.'
-  },
-  {
     id: MODULE_IDS.AGRICULTURAL_RELIEF,
     name: 'Agricultural relief',
     description: 'Adviser-only agricultural succession and relief planning.',
@@ -667,8 +660,30 @@ register({
   explainSelection: () => [entry.reason]
 }));
 
+/**
+ * Retired module ids that still resolve to their canonical replacement.
+ *
+ * `business_owner_relief` was renamed to `business_relief_analysis`. The rename
+ * had already been completed everywhere that routes or maps facts — only the
+ * registry entry survived, which made one analysis look like two modules. The
+ * old id stays resolvable so any stored adviser payload still finds its module,
+ * but it is deliberately NOT a registry entry: it must never appear as a
+ * separate module in the adviser UI, the generated catalogue, or module counts.
+ *
+ * See docs/module-catalogue-reconciliation.md §9.
+ */
+export const RETIRED_MODULE_ID_ALIASES = Object.freeze({
+  [MODULE_IDS.BUSINESS_RELIEF]: MODULE_IDS.BUSINESS_RELIEF_ANALYSIS
+});
+
+/** Canonical id for any module id, resolving retired aliases. */
+export function resolvePlanningModuleId(moduleId) {
+  const id = typeof moduleId === 'string' ? moduleId : '';
+  return RETIRED_MODULE_ID_ALIASES[id] || id;
+}
+
 export function getPlanningModuleDefinition(moduleId) {
-  return REGISTRY.get(moduleId) || null;
+  return REGISTRY.get(resolvePlanningModuleId(moduleId)) || null;
 }
 
 export function listPlanningModuleDefinitions() {
@@ -691,10 +706,45 @@ export function isPlanningModuleTemplateAvailable(moduleId) {
   return PLAYBOOK_BY_MODULE_ID.has(moduleId);
 }
 
-export function isPlanningModuleSelectable(moduleId) {
+/**
+ * Cross-module capabilities are not modules. Scenario handling is composed over
+ * scenario-aware modules (house purchase, pension projection, net retirement
+ * cash flow), which receive overrides and hash them into their result identity.
+ * `scenario_analysis` exists only as a placeholder for that capability: it must
+ * never be offered in an adviser selector, routed to a consumer, counted as a
+ * runnable module, or expected to produce output.
+ *
+ * See docs/module-catalogue-reconciliation.md §4.
+ */
+export const PLANNING_CAPABILITY_MODULE_IDS = Object.freeze([MODULE_IDS.SCENARIO_ANALYSIS]);
+
+export function isPlanningCapability(moduleId) {
+  return PLANNING_CAPABILITY_MODULE_IDS.includes(resolvePlanningModuleId(moduleId));
+}
+
+/** Modules that can actually be executed: a real engine, never a capability. */
+export function isRunnablePlanningModule(moduleId) {
   const definition = getPlanningModuleDefinition(moduleId);
+  return Boolean(definition && !isPlanningCapability(definition.id) && typeof definition.run === 'function');
+}
+
+export function listRunnablePlanningModuleDefinitions() {
+  return listPlanningModuleDefinitions().filter((definition) => isRunnablePlanningModule(definition.id));
+}
+
+/** Modules an adviser may pick. Excludes capabilities by construction. */
+export function listAdviserSelectableModuleDefinitions() {
+  return listPlanningModuleDefinitions().filter((definition) => (
+    definition.adviserAvailable === true && !isPlanningCapability(definition.id)
+  ));
+}
+
+export function isPlanningModuleSelectable(moduleId) {
+  const canonical = resolvePlanningModuleId(moduleId);
+  const definition = getPlanningModuleDefinition(canonical);
   return Boolean(
-    PLAYBOOK_BY_MODULE_ID.has(moduleId)
+    !isPlanningCapability(canonical)
+    && PLAYBOOK_BY_MODULE_ID.has(canonical)
     && definition?.intakeContract?.status === 'approved'
     && typeof definition.buildInput === 'function'
     && typeof definition.run === 'function'

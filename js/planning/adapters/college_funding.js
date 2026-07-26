@@ -1,3 +1,8 @@
+import {
+  PLANEIR_ASSUMPTIONS,
+  approvedCollegeScenarios,
+  assumptionRecord
+} from '../planeir_assumptions.js';
 import { computeCollegeFundingProjection } from '../../college_funding_math.js';
 import {
   createModuleRunResult,
@@ -28,43 +33,39 @@ export function getCollegeFundingReadiness(profile) {
       requiredMissing.push(missing(`/dependants/${index}/currentAge`, 'Add the current age for college timing.', moduleIds));
     }
   });
-  const scenarios = getAssumption(profile, 'collegeFunding.scenarios');
-  if (!Array.isArray(scenarios) || scenarios.length === 0) {
-    requiredMissing.push(missing(
-      '/assumptions/values/collegeFunding/scenarios',
-      'Add at least one explicit annual-cost scenario; consumer defaults are not yet approved.',
-      moduleIds
-    ));
-  }
-  const assumptionsUsed = [];
-  if (typeof profile.assumptions.inflationRate !== 'number') {
-    assumptionsUsed.push({ key: 'inflationRate', value: 0.02, reason: 'Existing college engine default; review before activation.' });
-  }
-  if (!Number.isInteger(getAssumption(profile, 'collegeFunding.startAge'))) {
-    assumptionsUsed.push({ key: 'collegeStartAge', value: 18, reason: 'Default start age for a future consumer release.' });
-  }
-  if (!Number.isInteger(getAssumption(profile, 'collegeFunding.durationYears'))) {
-    assumptionsUsed.push({ key: 'collegeDurationYears', value: 4, reason: 'Default duration for a future consumer release.' });
-  }
+  // Cost scenarios are centrally approved Planéir assumptions, so the client is
+  // never asked to supply a cost basis they have no way of knowing.
+  const assumptionsUsed = [
+    assumptionRecord('collegeCosts'),
+    assumptionRecord('educationInflation'),
+    assumptionRecord('collegeStartAge'),
+    assumptionRecord('collegeDuration')
+  ];
   return readinessFromMissing(requiredMissing, {
     assumptionsUsed,
-    warnings: ['College costs must use reviewed, date-versioned scenarios before this module is enabled for consumers.']
+    warnings: [PLANEIR_ASSUMPTIONS.collegeFunding.disclosure]
   });
 }
 
 export function buildCollegeFundingInput(profile) {
   const settings = getAssumption(profile, 'collegeFunding', {});
+  const college = PLANEIR_ASSUMPTIONS.collegeFunding;
   return {
     currentYear: Number(profile.assumptions.calculationDateIso.slice(0, 4)),
-    inflationRate: profile.assumptions.inflationRate ?? 0.02,
+    // Education inflation is deliberately higher than general inflation.
+    inflationRate: PLANEIR_ASSUMPTIONS.inflation.educationRate,
     children: profile.dependants.map((dependant, index) => ({
       id: dependant.dependantId,
       title: dependant.displayName || `Child ${index + 1}`,
       currentAge: dependant.currentAge,
-      collegeStartAge: Number.isInteger(settings.startAge) ? settings.startAge : 18,
-      collegeDurationYears: Number.isInteger(settings.durationYears) ? settings.durationYears : 4
+      collegeStartAge: college.startAge,
+      collegeDurationYears: college.durationYears,
+      // Per-child scenario selection where the household has expressed one.
+      ...(typeof settings.scenarioByChild?.[dependant.dependantId] === 'string'
+        ? { scenarioId: settings.scenarioByChild[dependant.dependantId] }
+        : {})
     })),
-    scenarios: settings.scenarios
+    scenarios: approvedCollegeScenarios()
   };
 }
 

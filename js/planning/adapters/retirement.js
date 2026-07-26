@@ -1,3 +1,4 @@
+import { PLANEIR_ASSUMPTIONS, assumptionRecord } from '../planeir_assumptions.js';
 import { computePensionProjection } from '../../pension_math.js';
 import { computeNetRetirementProjection } from '../../net_retirement_math.js';
 import {
@@ -80,13 +81,12 @@ export function getPensionProjectionReadiness(profile) {
   if (retirementTarget(profile) === null) {
     requiredMissing.push(missing('/assumptions/values/retirement/targetIncomeToday', 'Add target annual retirement income or current annual spending.', moduleIds));
   }
-  const assumptionsUsed = [];
-  if (typeof profile.assumptions.investmentGrowthRate !== 'number') {
-    assumptionsUsed.push({ key: 'growthRate', value: 0.05, reason: 'Existing pension engine default; review before consumer activation.' });
-  }
-  if (typeof profile.assumptions.inflationRate !== 'number') {
-    assumptionsUsed.push({ key: 'inflationRate', value: 0.02, reason: 'Existing pension engine default; review before consumer activation.' });
-  }
+  // Centrally approved Planéir assumptions. Named and versioned so every
+  // projected figure can state the basis it rests on.
+  const assumptionsUsed = [
+    assumptionRecord('investmentGrowth'),
+    assumptionRecord('generalInflation')
+  ];
   assumptionsUsed.push({
     key: 'statePensionContributory',
     value: IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur,
@@ -150,9 +150,14 @@ export function buildPensionProjectionInput(profile) {
     .filter((income) => income.annualAmountToday > 0);
   return {
     currentYear: Number(profile.assumptions.calculationDateIso.slice(0, 4)),
-    growthRate: profile.assumptions.investmentGrowthRate ?? 0.05,
-    inflationRate: profile.assumptions.inflationRate ?? 0.02,
-    wageGrowthRate: Number.isFinite(settings.wageGrowthRate) ? settings.wageGrowthRate : 0.02,
+    // Centrally controlled: neither a consumer nor an adviser can override
+    // these, so the engine reads the approved values directly rather than a
+    // per-profile copy that could silently drift.
+    growthRate: PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate,
+    inflationRate: PLANEIR_ASSUMPTIONS.inflation.generalRate,
+    wageGrowthRate: Number.isFinite(settings.wageGrowthRate)
+      ? settings.wageGrowthRate
+      : PLANEIR_ASSUMPTIONS.inflation.generalRate,
     incomeMode: 'target',
     targetIncomeToday: retirementTarget(profile),
     horizonEndAge: Number.isInteger(settings.horizonEndAge) ? settings.horizonEndAge : 100,
@@ -202,7 +207,7 @@ export function getNetRetirementReadiness(profile) {
   }
   const assumptionsUsed = [];
   if (typeof profile.assumptions.inflationRate !== 'number') {
-    assumptionsUsed.push({ key: 'expenditureInflationRate', value: 0.02, reason: 'Existing net retirement engine default.' });
+    assumptionsUsed.push(assumptionRecord('generalInflation'));
   }
   if (!Number.isFinite(getAssumption(profile, 'retirement.presentValueRate'))) {
     assumptionsUsed.push({ key: 'presentValueRate', value: 0.04, reason: 'Existing net retirement engine default.' });
@@ -240,7 +245,7 @@ export function buildNetRetirementInput(profile) {
     currentAge,
     horizonEndAge: Number.isInteger(settings.horizonEndAge) ? settings.horizonEndAge : 100,
     annualExpenditureToday: annualExpenses(profile),
-    expenditureInflationRate: profile.assumptions.inflationRate ?? 0.02,
+    expenditureInflationRate: PLANEIR_ASSUMPTIONS.inflation.generalRate,
     presentValueRate: Number.isFinite(settings.presentValueRate) ? settings.presentValueRate : 0.04,
     availableInvestmentFundToday: availableInvestmentAmount(profile),
     incomeSources,

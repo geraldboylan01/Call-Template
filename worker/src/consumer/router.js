@@ -7,7 +7,6 @@ import {
   sha256Base64Url
 } from './crypto.js';
 import { describeConversationState, processTurn } from './conversation.js';
-import { toPublicPersonaAssessment } from '../../../js/planning/persona_catalogue.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
 import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
@@ -481,7 +480,6 @@ function questionText(question) {
 function publicConversationState(state) {
   return {
     ...state,
-    ...(state?.personaAssessment ? { personaAssessment: toPublicPersonaAssessment(state.personaAssessment) } : {}),
     ...(state?.goalAssessment ? { goalAssessment: toPublicGoalAssessment(state.goalAssessment) } : {})
   };
 }
@@ -902,9 +900,6 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           nextQuestion,
           selectionPolicyVersion: planningState.selectionPolicyVersion || null,
           goalAssessment: toPublicGoalAssessment(planningState.goalAssessment),
-          ...(planningState.personaAssessment
-            ? { personaAssessment: toPublicPersonaAssessment(planningState.personaAssessment) }
-            : {}),
           moduleSlots: (planningState.moduleSlots || []).slice(0, 3),
           requiresGoalPriorityQuestion: planningState.requiresGoalPriorityQuestion === true,
           requiresDecisionTopicQuestion: planningState.requiresDecisionTopicQuestion === true,
@@ -1156,14 +1151,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           }
         }
         const planningState = describeConversationState(profile, config);
-        if (!config.goalRoutingEnabled && planningState.personaAssessment?.needsDisambiguation) {
-          throw new ConsumerError(409, 'persona_disambiguation_required', 'Answer the current situation question before confirming the three-analysis plan.');
-        }
         if (planningState.requiresDecisionTopicQuestion) {
           throw new ConsumerError(409, 'decision_topic_required', 'Name the specific financial decision before confirming the three-analysis plan.');
-        }
-        if (!config.goalRoutingEnabled && planningState.requiresPersonaScan) {
-          throw new ConsumerError(409, 'persona_scan_required', 'Complete the brief household and life-stage scan before confirming the three-analysis plan.');
         }
         if (planningState.requiresGoalPriorityQuestion) {
           throw new ConsumerError(409, 'goal_priority_required', 'Choose which explicit goal this analysis plan should address first.');
