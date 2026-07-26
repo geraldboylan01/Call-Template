@@ -365,6 +365,24 @@ await runCase('preserves deterministic highlight messages exactly in bounded spe
   assert.ok(summary.highlights.every((highlight) => summary.speakableText.includes(highlight.message)));
   assert.ok(summary.speakableText.length <= MAX_SPEAKABLE_TEXT_CHARACTERS);
 
+  const collegeSummary = summarizeAnalysisResults({
+    results: [{
+      moduleId: 'college_funding',
+      warnings: [],
+      semanticResult: {
+        currency: 'EUR',
+        nominalCostRange: { low: 20_000, high: 60_000 },
+        firstCollegeYear: 2042
+      }
+    }],
+    analysisPlan: { requiredQuestions: [] }
+  });
+  assert.equal(collegeSummary.headline, 'Future college-cost range');
+  assert.doesNotMatch(
+    [collegeSummary.headline, collegeSummary.speakableText, ...collegeSummary.nextSteps].join(' '),
+    /college funding|college_funding/i
+  );
+
   const oversized = summarizeAnalysisResults({
     results: [{
       moduleId: 'pension_projection',

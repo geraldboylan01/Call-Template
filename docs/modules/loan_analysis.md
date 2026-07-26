@@ -67,9 +67,7 @@
     "consumerShortLabel": "a comparison of your loan repayment options",
     "consumerOfferDescription": "We can compare continuing with the current repayments against paying it down faster, including the potential interest saved and the effect on your monthly cash flow",
     "consumerConfirmationDescription": "compare your loan repayment options",
-    "consumerCapacityDescription": "a comparison of your loan repayment options",
-    "offerQuestion": "Would you like to look at that?",
-    "offerClauses": []
+    "offerQuestion": "Would you like to look at that?"
   }
 }
 ```

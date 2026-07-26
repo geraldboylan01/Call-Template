@@ -16,6 +16,10 @@ import {
   state
 } from './store.js';
 import { getSemanticFactDefinition } from '../planning/semantic_facts.js';
+import {
+  consumerLanguageForModule,
+  containsInternalModuleTerminology
+} from '../planning/module_offers.js';
 
 const ADVISER_TEST_COHORT = 'adviser_test';
 const DEFAULT_SESSION_LIMIT_MICRO_EUR = 2_000_000;
@@ -36,22 +40,6 @@ const MICROPHONE_ORTHOGONAL_PHASES = new Set([
   'interrupted',
   'reconnecting'
 ]);
-const MODULE_LABELS = Object.freeze({
-  cashflow: 'Cashflow',
-  cashflow_analysis: 'Cashflow analysis',
-  college_funding: 'College funding',
-  estate_planning: 'Estate planning',
-  house_purchase: 'House purchase',
-  liquidity_analysis: 'Liquidity analysis',
-  mortgage: 'Mortgage planning',
-  net_worth: 'Net worth',
-  pension: 'Pension planning',
-  protection: 'Protection review',
-  retirement: 'Retirement planning',
-  retirement_planning: 'Retirement planning',
-  savings: 'Savings planning'
-});
-
 function firstDefined(...values) {
   return values.find((value) => value !== undefined && value !== null);
 }
@@ -490,26 +478,26 @@ function moduleBadge(item) {
 function normaliseModule(item, index) {
   const value = asObject(item) || { moduleId: item };
   const moduleId = cleanText(firstDefined(value.moduleId, value.id, value.module?.id, `module-${index}`), 120);
+  const consumerDescription = consumerLanguageForModule(moduleId)?.shortDescription;
+  if (!consumerDescription) return null;
   const reasons = Array.isArray(value.reasons)
     ? value.reasons.filter((reason) => typeof reason === 'string' && reason.trim())
     : [];
+  const reason = cleanText(firstDefined(
+    value.reason,
+    reasons[0],
+    value.description,
+    Array.isArray(value.rationale) ? value.rationale[0] : value.rationale,
+    ''
+  ), 220);
   return {
     moduleId,
     label: cleanText(firstDefined(
-      value.name,
-      value.title,
-      value.moduleName,
-      value.module?.name,
-      MODULE_LABELS[moduleId],
-      humanise(moduleId)
+      consumerDescription,
+      value.consumerShortLabel,
+      'an analysis'
     ), 100),
-    reason: cleanText(firstDefined(
-      value.reason,
-      reasons[0],
-      value.description,
-      Array.isArray(value.rationale) ? value.rationale[0] : value.rationale,
-      ''
-    ), 220),
+    reason: containsInternalModuleTerminology(reason) ? '' : reason,
     badge: moduleBadge(value)
   };
 }
@@ -558,7 +546,7 @@ export function extractRealtimePlanningContext(payload, currentState = state) {
     : (Array.isArray(currentState?.recommendations) ? currentState.recommendations : []);
   return {
     facts,
-    modules: sourceModules.map(normaliseModule),
+    modules: sourceModules.map(normaliseModule).filter(Boolean),
     narrativeSummary: cleanText(guide.narrativeSummary, 500),
     nextObjective: asObject(guide.nextObjective) || null,
     progress: asObject(guide.progress) || null,
@@ -2880,7 +2868,7 @@ export class RealtimeVoiceController {
       pagehide: 'The meeting ended. The microphone is off.',
       review: 'The meeting ended. Review and confirm what Planéir understood.',
       typed_fallback: 'The meeting ended. Continue in the typed answer box.',
-      completed: 'Your modules are ready.',
+      completed: 'Your analyses are ready.',
       user: 'The meeting ended. The microphone is off.'
     };
     if (reason === 'budget') {
@@ -2983,7 +2971,7 @@ export class RealtimeVoiceController {
     this.muted = true;
     this.localStream?.getAudioTracks?.().forEach((track) => { track.enabled = false; });
     this.microphonePermissionStream?.getAudioTracks?.().forEach((track) => { track.enabled = false; });
-    this.setPhase('assistant_speaking', 'Planéir is finishing the meeting and taking you to your modules…');
+    this.setPhase('assistant_speaking', 'Planéir is finishing the meeting and taking you to your analyses…');
     if (this.completionTimer !== null) window.clearTimeout(this.completionTimer);
     this.completionTimer = window.setTimeout(() => {
       this.completionTimer = null;

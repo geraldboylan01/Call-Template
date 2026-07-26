@@ -69,9 +69,7 @@
     "consumerShortLabel": "a review of your accessible cash and emergency reserves",
     "consumerOfferDescription": "We can look at whether you have an appropriate amount available in cash for emergencies and near-term spending, while also considering whether too much of your longer-term money may be sitting uninvested",
     "consumerConfirmationDescription": "review your accessible cash and emergency reserves",
-    "consumerCapacityDescription": "a review of your accessible cash and emergency reserves",
-    "offerQuestion": "Would that be useful?",
-    "offerClauses": []
+    "offerQuestion": "Would that be useful?"
   }
 }
 ```

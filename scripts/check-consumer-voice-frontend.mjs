@@ -60,6 +60,15 @@ const {
 } = await import('../js/plan/store.js');
 const { getAvailableViews } = await import('../js/plan/views.js');
 
+const FORMAL_CONSUMER_MODULE_NAMES = /\b(?:Personal Balance Sheet|Mortgage Analysis|College Funding|Pension Projection|Liquidity Analysis|Liquidity Reserve|Loan Analysis|House Purchase(?: Planner)?)\b/i;
+const INTERNAL_CONSUMER_MODULE_IDS = /\b(?:personal_balance_sheet|mortgage_analysis|college_funding|pension_projection|liquidity_analysis|loan_analysis|house_purchase|net_retirement_cashflow)\b/i;
+
+function assertClientOutcomeLabel(value, message) {
+  const label = String(value || '');
+  assert.doesNotMatch(label, FORMAL_CONSUMER_MODULE_NAMES, `${message}: formal module name leaked`);
+  assert.doesNotMatch(label, INTERNAL_CONSUMER_MODULE_IDS, `${message}: internal module id leaked`);
+}
+
 assert.equal(isLikelyIncompleteVoiceCaption('Yes, my home is'), true);
 assert.equal(isLikelyIncompleteVoiceCaption('And the mortgage is about...'), true);
 assert.equal(isLikelyIncompleteVoiceCaption('Yes, it is.'), false);
@@ -772,6 +781,17 @@ const viewsSource = readFileSync(`${rootPath}/js/plan/views.js`, 'utf8');
 const planCssSource = readFileSync(`${rootPath}/styles/plan.css`, 'utf8');
 const privacySource = readFileSync(`${rootPath}/plan/privacy.html`, 'utf8');
 const planIndexSource = readFileSync(`${rootPath}/plan/index.html`, 'utf8');
+assert.match(
+  viewsSource,
+  /const consumerDescription = consumerLanguageForModule\(id\)\?\.shortDescription;[\s\S]{0,180}consumerDescription,[\s\S]{0,80}'an analysis'/,
+  'Consumer recommendation headings must use manifest-owned outcome language and fail closed.'
+);
+assert.doesNotMatch(viewsSource, /net_retirement_cashflow:\s*'Net retirement cash flow'/);
+assert.doesNotMatch(
+  viewsSource,
+  /firstDefined\(error\?\.moduleName,\s*MODULE_LABELS\[error\?\.moduleId\]/,
+  'Typed error summaries must not trust formal module labels.'
+);
 // The consumer can always force-finish a turn the voice-activity detector
 // missed: the live orb doubles as the commit control, space bar works on
 // desktop, and a mistimed empty commit is tolerated silently.
@@ -1037,8 +1057,42 @@ const planningContext = extractRealtimePlanningContext({
   }
 }, { profile: null, recommendations: [] });
 assert.equal(planningContext.facts[0].badge.label, 'Approximate');
-assert.equal(planningContext.modules[0].label, 'House purchase');
+assert.equal(
+  planningContext.modules[0].label,
+  'a review of your home-purchase affordability and savings path'
+);
+assertClientOutcomeLabel(planningContext.modules[0].label, 'Fallback planning-context label');
 assert.equal(planningContext.readyForReview, true);
+
+const signedGuideLabelContext = extractRealtimePlanningContext({
+  conversationGuide: {
+    analyses: [{
+      moduleId: 'house_purchase',
+      label: 'House Purchase'
+    }]
+  }
+}, { profile: null, recommendations: [] });
+assert.equal(
+  signedGuideLabelContext.modules[0].label,
+  'a review of your home-purchase affordability and savings path',
+  'Manifest-owned outcome language must take precedence over a legacy formal label.'
+);
+assertClientOutcomeLabel(signedGuideLabelContext.modules[0].label, 'Signed guide label');
+
+const hiddenPlanningContext = extractRealtimePlanningContext({
+  planningState: {
+    moduleSlots: [
+      { slot: 1, moduleId: 'net_retirement_cashflow', label: 'Net retirement cash flow' },
+      { slot: 2, moduleId: 'house_purchase', label: 'House Purchase' }
+    ]
+  }
+}, { profile: null, recommendations: [] });
+assert.deepEqual(
+  hiddenPlanningContext.modules.map((item) => item.moduleId),
+  ['house_purchase'],
+  'A hidden analysis must not enter the typed Realtime planning context.'
+);
+assertClientOutcomeLabel(hiddenPlanningContext.modules[0].label, 'Hidden-slot boundary');
 
 const workerFactContext = extractRealtimePlanningContext({
   planningState: {
@@ -1092,6 +1146,17 @@ assert.deepEqual(
 assert.equal(authoritativeSlots.modules[0].badge.label, 'Gerry review');
 assert.equal(authoritativeSlots.modules[1].badge.label, 'Released');
 assert.equal(authoritativeSlots.modules[2].badge.label, 'Needs information');
+assert.deepEqual(
+  authoritativeSlots.modules.map((item) => item.label),
+  [
+    'a review of your overall financial picture',
+    'a review of your home-purchase affordability and savings path',
+    'a review of your accessible cash and emergency reserves'
+  ]
+);
+authoritativeSlots.modules.forEach((item) => {
+  assertClientOutcomeLabel(item.label, `Authoritative typed label for ${item.moduleId}`);
+});
 
 const pristineProfileContext = extractRealtimePlanningContext({}, {
   profile: {

@@ -72,11 +72,9 @@
   },
   "consumerLanguage": {
     "consumerShortLabel": "an estimate of future college costs and the saving required",
-    "consumerOfferDescription": "We can estimate the future cost of four years of college for {childPossessive} education and compare a situation where they attend nearby and live at home with one where they need accommodation away from home. We can then show the level of saving that may be required",
-    "consumerConfirmationDescription": "estimate the future cost of {childPossessive} college education",
-    "consumerCapacityDescription": "an estimate of the future cost of {childPossessive} college education",
-    "offerQuestion": "Would that be useful?",
-    "offerClauses": []
+    "consumerOfferDescription": "We can estimate the future cost of four years of college for each child you want to support, comparing living at home with needing accommodation away from home. We can then show the level of saving that may be required",
+    "consumerConfirmationDescription": "estimate future college costs for each child you want to support and the saving required",
+    "offerQuestion": "Would that be useful?"
   }
 }
 ```

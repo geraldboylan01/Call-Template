@@ -13,6 +13,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  adviserCatalogueEntry,
   GOAL_TYPES,
   MODULE_IDS,
   buildGoalModulePlan,
@@ -378,6 +379,12 @@ check('an adviser cannot enable a platform-unapproved or non-runnable module', (
 
 check('the approved modules are platform-approved and adviser-enabled by default', () => {
   const byId = new Map(MODULE_MANIFEST.map((entry) => [entry.moduleId, entry]));
+  const requiredConsumerLanguage = [
+    'consumerOfferDescription',
+    'consumerShortLabel',
+    'consumerConfirmationDescription',
+    'offerQuestion'
+  ];
   for (const moduleId of APPROVED_MODULES) {
     const entry = byId.get(moduleId);
     assert.equal(entry.consumerReadiness.status, 'approved', `${moduleId} readiness`);
@@ -385,13 +392,42 @@ check('the approved modules are platform-approved and adviser-enabled by default
     assert.equal(entry.availability.adviserConsumerEnabled, true, `${moduleId} adviser default`);
     assert.equal(entry.implementation.hasRunnableEngine, true, `${moduleId} engine`);
     assert.ok(entry.clientBenefit.length > 40, `${moduleId} needs a client-facing benefit`);
+    for (const field of requiredConsumerLanguage) {
+      assert.ok(entry.consumerLanguage[field].length > 10, `${moduleId} needs consumerLanguage.${field}`);
+    }
+    assert.equal(
+      Object.hasOwn(entry.consumerLanguage, 'consumerCapacityDescription'),
+      false,
+      `${moduleId} must reuse its short label rather than carry a redundant capacity descriptor`
+    );
+    assert.doesNotMatch(
+      JSON.stringify(entry.consumerLanguage),
+      /\{[A-Za-z][A-Za-z0-9]*\}/,
+      `${moduleId} consumer language must not contain unresolved placeholders`
+    );
   }
   // Mortgage and Loan are separate analyses, not aliases of one another.
   assert.notEqual(byId.get('mortgage_analysis').clientBenefit, byId.get('loan_analysis').clientBenefit);
   assert.ok(byId.get('mortgage_analysis').routing.goals.some((goal) => goal.type === 'optimise_mortgage'));
   assert.ok(byId.get('loan_analysis').routing.goals.some((goal) => goal.type === 'manage_loan'));
   // An engine without a completed review stays unapproved.
-  assert.equal(byId.get('net_retirement_cashflow').availability.platformConsumerApproved, false);
+  const hiddenRetirement = byId.get('net_retirement_cashflow');
+  assert.equal(hiddenRetirement.availability.platformConsumerApproved, false);
+  assert.equal(hiddenRetirement.availability.adviserConsumerEnabled, false);
+  assert.equal(hiddenRetirement.availability.consumer, false);
+  assert.equal(hiddenRetirement.consumerLanguage, undefined);
+});
+
+check('the adviser catalogue keeps formal names and exposes controlled client language', () => {
+  const balanceSheet = adviserCatalogueEntry(MODULE_IDS.PERSONAL_BALANCE_SHEET);
+  assert.equal(balanceSheet.name, 'Personal balance sheet');
+  assert.equal(balanceSheet.consumerLanguage.consumerShortLabel, 'a review of your overall financial picture');
+  assert.match(balanceSheet.consumerLanguage.consumerOfferDescription, /what you own, what you owe/i);
+
+  const hiddenRetirement = adviserCatalogueEntry(MODULE_IDS.NET_RETIREMENT);
+  assert.equal(hiddenRetirement.name, 'Net retirement cash flow');
+  assert.equal(hiddenRetirement.consumerLanguage, null);
+  assert.equal(hiddenRetirement.effectiveConsumerVisible, false);
 });
 
 check('an adviser may disable any approved module for their own journey', () => {

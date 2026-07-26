@@ -2,6 +2,7 @@ import { ConsumerError, notFound } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 import { sanitizeRealtimeEventPayload } from './realtime_event_schema.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
+import { consumerLanguageForModule } from '../../../js/planning/module_offers.js';
 import {
   constantTimeEqual,
   decryptJson,
@@ -2274,7 +2275,13 @@ export async function getRealtimeAnalysisPlanResult(env, sessionId, planId = nul
 function toPublicModuleSlot(slot) {
   if (!slot || typeof slot !== 'object') return null;
   const slotNumber = Number(slot.slot);
-  if (![1, 2, 3].includes(slotNumber) || typeof slot.moduleId !== 'string') return null;
+  if (
+    ![1, 2, 3].includes(slotNumber)
+    || typeof slot.moduleId !== 'string'
+    || !consumerLanguageForModule(slot.moduleId)
+  ) {
+    return null;
+  }
   return {
     slot: slotNumber,
     moduleId: slot.moduleId,
@@ -2295,11 +2302,21 @@ function toPublicModuleSlot(slot) {
 
 function toPublicPlanOverride(override) {
   if (!override || typeof override !== 'object') return null;
+  const replacedModuleId = typeof override.replacedModuleId === 'string'
+    ? override.replacedModuleId
+    : null;
+  const moduleId = typeof override.moduleId === 'string' ? override.moduleId : null;
+  if (
+    (replacedModuleId && !consumerLanguageForModule(replacedModuleId))
+    || (moduleId && !consumerLanguageForModule(moduleId))
+  ) {
+    return null;
+  }
   return {
     ruleId: typeof override.ruleId === 'string' ? override.ruleId : null,
     goalType: typeof override.goalType === 'string' ? override.goalType : null,
-    replacedModuleId: typeof override.replacedModuleId === 'string' ? override.replacedModuleId : null,
-    moduleId: typeof override.moduleId === 'string' ? override.moduleId : null
+    replacedModuleId,
+    moduleId
   };
 }
 
@@ -2307,7 +2324,9 @@ export function toPublicRealtimeAnalysisPlan(row, decryptedInput = null) {
   if (!row) return null;
   const input = decryptedInput && typeof decryptedInput === 'object' ? decryptedInput : {};
   const moduleIds = Array.isArray(input.moduleIds)
-    ? input.moduleIds.filter((item) => typeof item === 'string').slice(0, 3)
+    ? input.moduleIds.filter((item) => (
+        typeof item === 'string' && consumerLanguageForModule(item)
+      )).slice(0, 3)
     : [];
   const selectionPolicyVersion = typeof input.selectionPolicyVersion === 'string'
     ? input.selectionPolicyVersion.slice(0, 80)

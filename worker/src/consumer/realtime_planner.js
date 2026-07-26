@@ -1,6 +1,10 @@
 import { withoutInapplicableFacts } from '../../../js/planning/fact_preconditions.js';
-import { confirmationSummary, nextModuleOffer } from '../../../js/planning/module_offers.js';
-import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
+import {
+  confirmationSummary as composeConsumerConfirmationSummary,
+  consumerLanguageForModule,
+  containsInternalModuleTerminology,
+  nextModuleOffer
+} from '../../../js/planning/module_offers.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import {
   IRISH_STATE_PENSION_CONTRIBUTORY,
@@ -206,6 +210,11 @@ const SAFE_PROVIDER_REQUEST_ID = /^[A-Za-z0-9._:-]{1,200}$/;
 function boundedText(value, maximum = 500) {
   const text = typeof value === 'string' ? value.trim() : '';
   return text.slice(0, maximum);
+}
+
+function boundedConsumerPlanningText(value, maximum = 500) {
+  const text = boundedText(value, maximum);
+  return containsInternalModuleTerminology(text) ? '' : text;
 }
 
 export function isLikelyIncompleteRealtimeUtterance(value) {
@@ -448,11 +457,11 @@ export function plannerContextSlice(context) {
     // here makes short contextual answers (especially "No") impossible to
     // interpret and was a direct cause of repeated questions.
     currentQuestion: signedCurrentQuestion(context),
-    selectedAnalyses: (state.moduleSlots || []).slice(0, 3).map((slot) => ({
-      moduleId: slot.moduleId,
-      label: getPlanningModuleDefinition(slot.moduleId)?.label || slot.moduleId,
-      availability: slot.availability
-    })),
+    selectedAnalyses: (state.moduleSlots || []).slice(0, 3).flatMap((slot) => {
+      const label = consumerLanguageForModule(slot.moduleId, { profile: context?.profile })
+        ?.shortDescription;
+      return label ? [{ moduleId: slot.moduleId, label, availability: slot.availability }] : [];
+    }),
     currentFacts: (state.facts || []).slice(0, 16).map((fact) => ({
       factId: fact.factId,
       value: fact.value,
@@ -870,22 +879,31 @@ function statePensionMemberAssumptions(profile) {
 export async function composeMeetingBrief({ env, context, extraction, sourceTurnId }) {
   const state = context.state || {};
   const missingFacts = orderedMissingFacts(state, uniqueMissingFacts(state, context.profile));
-  const modules = (state.moduleSlots || []).slice(0, 3).map((slot, index) => ({
-    slot: index + 1,
-    moduleId: slot.moduleId,
-    label: getPlanningModuleDefinition(slot.moduleId)?.name || String(slot.moduleId || '').replace(/_/g, ' '),
-    status: slot.availability || 'provisional',
-    intakeStatus: slot.intakeStatus || 'missing_information',
-    goals: [...(slot.relatedGoalTypes || [])].slice(0, 8),
-    reason: boundedText(slot.reasons?.[0] || slot.reason || '', 240),
-    assumptions: (state.recommendations || [])
-      .find((item) => item.moduleId === slot.moduleId)
-      ?.assumptionsUsed?.slice(0, 6).map((assumption) => ({
-        key: boundedText(assumption.key, 100),
-        value: assumption.value,
-        reason: boundedText(assumption.reason, 240)
-      })) || []
-  }));
+  const visibleSlots = (state.moduleSlots || []).slice(0, 3).filter((slot) => (
+    Boolean(consumerLanguageForModule(slot.moduleId, { profile: context.profile }))
+  ));
+  const modules = visibleSlots.map((slot, index) => {
+    const consumerLanguage = consumerLanguageForModule(slot.moduleId, { profile: context.profile });
+    return {
+      slot: index + 1,
+      moduleId: slot.moduleId,
+      // The module id stays attached for deterministic routing, while every
+      // label the voice model or shared typed view can present is client-facing.
+      label: consumerLanguage.shortDescription,
+      confirmationDescription: consumerLanguage.confirmationDescription,
+      status: slot.availability || 'provisional',
+      intakeStatus: slot.intakeStatus || 'missing_information',
+      goals: [...(slot.relatedGoalTypes || [])].slice(0, 8),
+      reason: boundedConsumerPlanningText(slot.reasons?.[0] || slot.reason || '', 240),
+      assumptions: (state.recommendations || [])
+        .find((item) => item.moduleId === slot.moduleId)
+        ?.assumptionsUsed?.slice(0, 6).map((assumption) => ({
+          key: boundedText(assumption.key, 100),
+          value: assumption.value,
+          reason: boundedConsumerPlanningText(assumption.reason, 240)
+        })) || []
+    };
+  });
   const ready = modules.length >= 1 && modules.length <= 3
     && modules.every((module) => ['ready', 'ready_with_assumptions'].includes(module.intakeStatus));
   const phase = ready && context.config?.realtimeSpokenCompletionEnabled
@@ -936,8 +954,14 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
     jurisdiction: 'IE',
     phase,
     currentTopic: questionBatch?.topic || (ready ? 'confirmation' : 'goal'),
-    narrativeSummary: boundedText(extraction?.narrativeSummary?.summary || state.meetingBrief?.narrativeSummary, 500),
-    narrativeEvidence: (extraction?.narrativeSummary?.evidence || []).slice(0, 8),
+    narrativeSummary: boundedConsumerPlanningText(
+      extraction?.narrativeSummary?.summary || state.meetingBrief?.narrativeSummary,
+      500
+    ),
+    narrativeEvidence: (extraction?.narrativeSummary?.evidence || [])
+      .slice(0, 8)
+      .map((item) => boundedConsumerPlanningText(item, 300))
+      .filter(Boolean),
     goals: [...(state.goalAssessment?.activeGoalTypes || [])].slice(0, 12),
     deferredGoals: [...(state.goalAssessment?.deferredGoalTypes || [])].slice(0, 12),
     understood: understoodFacts(state),
@@ -974,46 +998,206 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
   return Object.freeze({ ...brief, signature });
 }
 
-export function toConversationGuide(brief) {
-  if (!brief || brief.schemaVersion !== MEETING_BRIEF_V2) return null;
+function publicBriefFact(item, { profile } = {}) {
+  if (!item || typeof item !== 'object') return null;
+  const language = item.moduleId
+    ? consumerLanguageForModule(item.moduleId, { profile })
+    : null;
+  if (item.moduleId && !language) return null;
   return {
-    narrativeSummary: brief.narrativeSummary,
-    goals: [...(brief.goals || [])],
-    deferredGoals: [...(brief.deferredGoals || [])],
-    analyses: brief.analyses.slice(0, 3).map((item) => ({
+    factId: boundedText(item.factId, 120),
+    factInstanceId: boundedText(item.factInstanceId, 160) || null,
+    ...(item.moduleId ? { moduleId: item.moduleId } : {}),
+    label: boundedConsumerPlanningText(item.label, 120),
+    value: item.value,
+    certainty: boundedText(item.certainty, 40) || 'unknown',
+    status: boundedText(item.status, 60) || 'draft',
+    reason: boundedConsumerPlanningText(item.reason, 240),
+    prompt: boundedConsumerPlanningText(item.prompt, 300)
+  };
+}
+
+/**
+ * Project a stored brief through the current consumer-language boundary.
+ * Meeting briefs may outlive a deployment, so even a previously signed legacy
+ * brief is treated as untrusted presentation copy when it is read back.
+ */
+export function toConsumerMeetingBrief(brief, { profile } = {}) {
+  if (!brief || brief.schemaVersion !== MEETING_BRIEF_V2) return null;
+  const analyses = (Array.isArray(brief.analyses) ? brief.analyses : [])
+    .slice(0, 3)
+    .flatMap((item, index) => {
+      const language = consumerLanguageForModule(item?.moduleId, { profile });
+      if (!language) return [];
+      return [{
+        slot: Number.isSafeInteger(Number(item.slot)) ? Number(item.slot) : index + 1,
+        moduleId: item.moduleId,
+        label: language.shortDescription,
+        confirmationDescription: language.confirmationDescription,
+        status: boundedText(item.status, 60) || 'provisional',
+        intakeStatus: boundedText(item.intakeStatus, 60) || 'missing_information',
+        goals: (Array.isArray(item.goals) ? item.goals : [])
+          .filter((goal) => typeof goal === 'string')
+          .slice(0, 8),
+        reason: boundedConsumerPlanningText(item.reason, 240),
+        assumptions: (Array.isArray(item.assumptions) ? item.assumptions : [])
+          .slice(0, 6)
+          .map((assumption) => ({
+            key: boundedConsumerPlanningText(assumption?.key, 100),
+            value: assumption?.value,
+            reason: boundedConsumerPlanningText(assumption?.reason, 240)
+          }))
+          .filter((assumption) => assumption.key || assumption.reason)
+      }];
+    });
+  const stillNeeded = (Array.isArray(brief.stillNeeded) ? brief.stillNeeded : [])
+    .slice(0, 10)
+    .map((item) => publicBriefFact(item, { profile }))
+    .filter(Boolean);
+  const nextFacts = (Array.isArray(brief.nextObjective?.facts) ? brief.nextObjective.facts : [])
+    .slice(0, 1)
+    .map((item) => publicBriefFact(item, { profile }))
+    .filter(Boolean);
+  const primaryFact = publicBriefFact(brief.questionBatch?.primaryFact, { profile });
+  const linkedFact = publicBriefFact(brief.questionBatch?.linkedFact, { profile });
+  const questionPrompt = boundedConsumerPlanningText(brief.questionBatch?.prompt, 300);
+  const offerLanguage = consumerLanguageForModule(brief.moduleOffer?.moduleId, { profile });
+  const offerAnchor = boundedConsumerPlanningText(brief.moduleOffer?.anchor, 240);
+  const offerSpeech = boundedConsumerPlanningText(brief.moduleOffer?.spokenOffer, 600);
+  const moduleOffer = offerLanguage && offerAnchor && offerSpeech
+    ? {
+        moduleId: brief.moduleOffer.moduleId,
+        spokenOffer: offerSpeech,
+        anchor: offerAnchor,
+        benefit: offerLanguage.offerDescription
+      }
+    : null;
+  const safeRawConfirmation = boundedConsumerPlanningText(brief.confirmationSummary, 800);
+  const canonicalConfirmation = analyses.length
+    ? composeConsumerConfirmationSummary({
+        moduleSlots: analyses.map((item) => ({ moduleId: item.moduleId }))
+      }).spoken
+    : '';
+  const analysisPlan = brief.analysisPlan && typeof brief.analysisPlan === 'object'
+    ? {
+        planId: boundedText(brief.analysisPlan.planId, 200),
+        profileRevision: Number(brief.analysisPlan.profileRevision),
+        status: boundedText(brief.analysisPlan.status, 60),
+        moduleIds: (Array.isArray(brief.analysisPlan.moduleIds) ? brief.analysisPlan.moduleIds : [])
+          .filter((moduleId) => Boolean(consumerLanguageForModule(moduleId, { profile })))
+          .slice(0, 3)
+      }
+    : null;
+  return Object.freeze({
+    schemaVersion: MEETING_BRIEF_V2,
+    sourceTurnId: boundedText(brief.sourceTurnId, 200),
+    profileRevision: Number(brief.profileRevision || 0),
+    jurisdiction: 'IE',
+    phase: boundedText(brief.phase, 60) || 'discovery',
+    currentTopic: boundedConsumerPlanningText(brief.currentTopic, 160),
+    narrativeSummary: boundedConsumerPlanningText(brief.narrativeSummary, 500),
+    narrativeEvidence: (Array.isArray(brief.narrativeEvidence) ? brief.narrativeEvidence : [])
+      .slice(0, 8)
+      .map((item) => boundedConsumerPlanningText(item, 300))
+      .filter(Boolean),
+    goals: (Array.isArray(brief.goals) ? brief.goals : [])
+      .filter((goal) => typeof goal === 'string')
+      .slice(0, 12),
+    deferredGoals: (Array.isArray(brief.deferredGoals) ? brief.deferredGoals : [])
+      .filter((goal) => typeof goal === 'string')
+      .slice(0, 12),
+    understood: (Array.isArray(brief.understood) ? brief.understood : [])
+      .slice(0, 12)
+      .map((item) => publicBriefFact(item, { profile }))
+      .filter(Boolean),
+    analyses,
+    stillNeeded,
+    nextObjective: {
+      facts: nextFacts,
+      reason: boundedConsumerPlanningText(brief.nextObjective?.reason, 240),
+      promptHint: boundedConsumerPlanningText(brief.nextObjective?.promptHint, 300)
+    },
+    questionBatch: brief.questionBatch && typeof brief.questionBatch === 'object'
+      ? {
+          topic: boundedConsumerPlanningText(brief.questionBatch.topic, 160),
+          primaryFact,
+          linkedFact,
+          prompt: questionPrompt,
+          maxQuestions: 1
+        }
+      : null,
+    moduleOffer,
+    clientQuestion: brief.clientQuestion && typeof brief.clientQuestion === 'object'
+      ? {
+          present: brief.clientQuestion.present === true,
+          intent: boundedText(brief.clientQuestion.intent, 80) || 'none',
+          topic: boundedConsumerPlanningText(brief.clientQuestion.topic, 160),
+          questionText: boundedConsumerPlanningText(brief.clientQuestion.questionText, 500),
+          reviewedAnswer: boundedConsumerPlanningText(brief.clientQuestion.reviewedAnswer, 800)
+        }
+      : { present: false, intent: 'none', topic: '', questionText: '', reviewedAnswer: '' },
+    ambiguities: (Array.isArray(brief.ambiguities) ? brief.ambiguities : [])
+      .slice(0, 6)
+      .map((item) => ({
+        kind: item?.kind === 'contradiction' ? 'contradiction' : 'ambiguity',
+        description: boundedConsumerPlanningText(item?.description, 400),
+        clarification: boundedConsumerPlanningText(item?.clarification, 300)
+      }))
+      .filter((item) => item.description),
+    provisional: brief.provisional === true,
+    readyToConfirm: brief.readyToConfirm === true,
+    confirmationSummary: safeRawConfirmation || canonicalConfirmation,
+    statePensionRule: brief.statePensionRule || null,
+    moduleState: boundedText(brief.moduleState, 80),
+    finalNavigationTarget: '/plan/#results',
+    generatedAt: boundedText(brief.generatedAt, 80),
+    analysisPlan,
+    signature: boundedText(brief.signature, 500)
+  });
+}
+
+export function toConversationGuide(brief, { profile } = {}) {
+  const safeBrief = toConsumerMeetingBrief(brief, { profile });
+  if (!safeBrief) return null;
+  return {
+    narrativeSummary: safeBrief.narrativeSummary,
+    goals: [...safeBrief.goals],
+    deferredGoals: [...safeBrief.deferredGoals],
+    analyses: safeBrief.analyses.map((item) => ({
       slot: item.slot,
       moduleId: item.moduleId,
       label: item.label,
+      confirmationDescription: item.confirmationDescription,
       status: item.status,
       reason: item.reason,
-      assumptions: (item.assumptions || []).map((assumption) => ({ ...assumption }))
+      assumptions: item.assumptions.map((assumption) => ({ ...assumption }))
     })),
     progress: {
-      phase: brief.phase,
-      provisional: brief.provisional,
-      readyToConfirm: brief.readyToConfirm,
-      profileRevision: brief.profileRevision
+      phase: safeBrief.phase,
+      provisional: safeBrief.provisional,
+      readyToConfirm: safeBrief.readyToConfirm,
+      profileRevision: safeBrief.profileRevision
     },
     nextObjective: {
-      facts: brief.nextObjective.facts.slice(0, 1),
-      reason: brief.nextObjective.reason,
-      prompt: brief.nextObjective.promptHint
+      facts: safeBrief.nextObjective.facts,
+      reason: safeBrief.nextObjective.reason,
+      prompt: safeBrief.nextObjective.promptHint
     },
-    jurisdiction: brief.jurisdiction,
-    currentTopic: brief.currentTopic,
-    questionBatch: brief.questionBatch,
-    moduleOffer: brief.moduleOffer,
-    confirmationSummary: brief.confirmationSummary,
-    moduleState: brief.moduleState,
-    finalNavigationTarget: brief.finalNavigationTarget,
-    statePensionRule: brief.statePensionRule
+    jurisdiction: safeBrief.jurisdiction,
+    currentTopic: safeBrief.currentTopic,
+    questionBatch: safeBrief.questionBatch,
+    moduleOffer: safeBrief.moduleOffer,
+    confirmationSummary: safeBrief.confirmationSummary,
+    moduleState: safeBrief.moduleState,
+    finalNavigationTarget: safeBrief.finalNavigationTarget,
+    statePensionRule: safeBrief.statePensionRule
   };
 }
 
 export const REALTIME_EDUCATION_V1 = Object.freeze({
-  net_worth: 'Net worth is a snapshot of what you own minus what you owe. Here it is educational context only; the confirmed figures and deterministic Personal Balance Sheet provide the actual calculation.',
-  mortgage_balance: 'The mortgage balance lets the Personal Balance Sheet distinguish the home’s value from the debt secured against it, and it helps show which mortgage facts are still missing.',
-  pension_value: 'A current pension value gives the pension analysis a starting point. It is recorded as a reviewable fact and any projection remains deterministic and visible.',
+  net_worth: 'Net worth is a snapshot of what you own minus what you owe. Here it is educational context only; the confirmed figures and deterministic review of your overall financial picture provide the actual calculation.',
+  mortgage_balance: 'The mortgage balance lets a review of your overall financial picture distinguish the home’s value from the debt secured against it, and it helps show which mortgage facts are still missing.',
+  pension_value: 'A current pension value gives the projection a starting point. It is recorded as a reviewable fact, and the projection of whether your pension may be on track remains deterministic and visible.',
   state_pension: 'For this illustration, the maximum Irish State Pension (Contributory) rate effective January 2026 is €299.30 a week, or €15,563.60 gross a year, normally from age 66. The editable assumption escalates by 2% a year. The actual contributory rate depends on the person’s PRSI record.',
   why_information: 'I only ask for facts used by the analyses shown on screen. Each missing fact is tied to a deterministic readiness reason, and you can review every captured value before anything runs.',
   recommendation_boundary: 'I can explain the information and the analyses being prepared, but I cannot recommend products or actions or decide eligibility. Those need an adviser review.',

@@ -159,6 +159,11 @@ assert.equal(summary.generatedBy, 'deterministic_rules');
 assert.ok(summary.speakableText.includes('€780,000'));
 assert.ok(summary.speakableText.includes('€530,000'));
 assert.equal(summary.highlights[0].numericFacts.netWorth, 530_000);
+assert.equal(summary.headline, 'Recorded assets and liabilities are reconciled');
+assert.doesNotMatch(
+  [summary.headline, summary.speakableText, ...summary.nextSteps].join(' '),
+  /personal balance sheet|personal_balance_sheet/i
+);
 
 let incomplete = createHouseholdProfile({
   profileId: 'pbs-incomplete-positions',

@@ -94,11 +94,9 @@
   },
   "consumerLanguage": {
     "consumerShortLabel": "a projection of whether your pension may be on track",
-    "consumerOfferDescription": "We can project how your pension may develop based on your current pension value, contributions and intended retirement timing, using the approved long-term planning assumptions",
+    "consumerOfferDescription": "We can project how your pension may develop based on your current pension value, contributions and intended retirement timing, using our approved long-term planning assumptions: 5% annual investment growth intended to represent a medium-risk diversified portfolio and 2% annual inflation. Investment returns are not guaranteed",
     "consumerConfirmationDescription": "project whether your pension may be on track",
-    "consumerCapacityDescription": "a projection of whether your pension may be on track",
-    "offerQuestion": "Would you like to see that?",
-    "offerClauses": []
+    "offerQuestion": "Would you like to see that?"
   }
 }
 ```
