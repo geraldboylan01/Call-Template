@@ -516,10 +516,30 @@ const LIVE_TURN_2 = "My main goal is just to buy a house in about five years' ti
     'retuning the AI-intake model must not silently retune the planner'
   );
 
-  // Reasoning tokens count toward max_output_tokens; the floor must leave room.
+  // The planner imposes NO application-level output cap. Reasoning tokens count
+  // toward max_output_tokens, so any ceiling we pick silently truncates the
+  // response into status:"incomplete" instead of erroring. The model and
+  // endpoint apply their own native maximum.
+  assert.equal(
+    byDefault.realtimePlannerMaxOutputTokens,
+    undefined,
+    'there is no application-level planner output-token cap in config'
+  );
+  const { readFileSync: read } = await import('node:fs');
+  const plannerSource = read(new URL('../worker/src/consumer/realtime_planner.js', import.meta.url), 'utf8');
+  const requestBody = plannerSource
+    .slice(
+      plannerSource.indexOf('body: JSON.stringify({'),
+      plannerSource.indexOf('signal: controller.signal')
+    )
+    // Strip comments: the code explains WHY there is no cap, and that
+    // explanation must not itself trip the check.
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(requestBody.length > 0, 'the planner request body was located');
   assert.ok(
-    byDefault.realtimePlannerMaxOutputTokens >= 1_500,
-    'the planner output budget leaves room for reasoning tokens'
+    !requestBody.includes('max_output_tokens'),
+    'the outgoing planner request omits max_output_tokens'
   );
   pass('the planner model is explicitly configured, allowlisted, and independent of AI intake');
 }
@@ -545,6 +565,53 @@ const LIVE_TURN_2 = "My main goal is just to buy a house in about five years' ti
   assert.match(session, /degradedTurnCount/, 'a degraded meeting reports how many turns were degraded');
   assert.match(session, /degradedPlannerTurns \+= 1/, 'degraded turns are counted');
   pass('a planner failure now records the provider status, error class and incomplete reason');
+}
+
+{
+  // The planner's schema carries every value as a JSON string, so it naturally
+  // emits {"value": x} for a choice and {"age": 25} for a number. Numbers and
+  // goals already unwrapped; orientation facts did not, so life_stage,
+  // career_stage, property_status, employment_context, retirement_status and
+  // household_structure were ALL silently rejected in production. Those are
+  // exactly the facts that drive routing. Confirmed against the live API.
+  const config = configFor(PRODUCTION_ALLOWED_MODULES);
+  const base = freshProfile('wrapped-values');
+  const cases = [
+    ['life_stage', 'early_adult', { value: 'early_adult' }],
+    ['property_status', 'renter', { value: 'renter' }],
+    ['employment_context', 'employee', { value: 'employee' }],
+    ['has_pension', false, { value: false }],
+    ['dependant_count', 2, { value: 2 }],
+    ['person_current_age', 25, { age: 25 }]
+  ];
+  for (const [factId, bare, wrapped] of cases) {
+    for (const [shape, value] of [['bare', bare], ['wrapped', wrapped]]) {
+      const result = planFactProposal({
+        config,
+        profile: base,
+        state: describeConversationState(base, config),
+        fact: { factId, value, certainty: 'exact' },
+        plannerBatch: true
+      });
+      assert.ok(
+        result.mapped,
+        `${factId} must accept its ${shape} shape as the planner emits it`
+      );
+    }
+  }
+  // Tolerating the wrapper must NOT weaken validation.
+  assert.throws(
+    () => planFactProposal({
+      config,
+      profile: base,
+      state: describeConversationState(base, config),
+      fact: { factId: 'life_stage', value: { value: 'not_a_real_stage' }, certainty: 'exact' },
+      plannerBatch: true
+    }),
+    (error) => error.code === 'realtime_fact_value_invalid',
+    'an invalid choice is still rejected inside a wrapper'
+  );
+  pass('orientation facts accept the wrapped shape the planner emits, without weakening validation');
 }
 
 console.info(`\n[MultiGoalOpening] ${passes.length} assertions passed.`);

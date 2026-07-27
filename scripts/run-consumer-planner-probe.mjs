@@ -35,6 +35,16 @@ import { extractRealtimePlannerTurn } from '../worker/src/consumer/realtime_plan
 import { buildPlanningStateSlice } from '../worker/src/consumer/planning_context.js';
 import { mapPlannerExtractionToCandidates, planFactProposal } from '../worker/src/consumer/planning_facts.js';
 
+function plannerRequestBodyWithoutComments(source) {
+  const body = source.slice(
+    source.indexOf('body: JSON.stringify({'),
+    source.indexOf('signal: controller.signal')
+  );
+  // Strip comments: the code explains WHY there is no cap, and that explanation
+  // must not itself trip the check.
+  return body.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
 const UTTERANCE = "I'm 25 and my main goal is to buy a house in about five years.";
 const NOW = '2026-07-25T09:00:00.000Z';
 
@@ -58,9 +68,6 @@ const env = {
   ...(process.env.CONSUMER_REALTIME_PLANNER_MODEL
     ? { CONSUMER_REALTIME_PLANNER_MODEL: process.env.CONSUMER_REALTIME_PLANNER_MODEL }
     : {}),
-  ...(process.env.CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS
-    ? { CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS: process.env.CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS }
-    : {})
 };
 const config = Object.freeze({ ...getConsumerConfig(env), realtimeConversationV2Enabled: true });
 
@@ -86,7 +93,7 @@ console.info('=== Planner configuration ===');
 console.info(`  planner model      : ${config.realtimePlannerModel}`);
 console.info(`  model approved     : ${config.realtimePlannerModelConfigured}`);
 console.info(`  allowlist          : ${PLANNER_MODEL_ALLOWLIST.join(', ')}`);
-console.info(`  max output tokens  : ${config.realtimePlannerMaxOutputTokens}`);
+console.info('  max output tokens  : (none — the model applies its native maximum)');
 console.info(`  timeout ms         : ${config.realtimePlannerTimeoutMs}`);
 console.info(`  prompt version     : ${config.realtimePlannerPromptVersion}`);
 console.info(`  endpoint           : https://api.openai.com/v1/responses`);
@@ -97,6 +104,20 @@ assert.ok(
   PLANNER_MODEL_ALLOWLIST.includes(config.realtimePlannerModel),
   'the resolved planner model must be on the server-side allowlist'
 );
+assert.equal(
+  config.realtimePlannerMaxOutputTokens,
+  undefined,
+  'the planner must impose no application-level output-token cap'
+);
+{
+  // Read the request the planner actually builds, not a copy of it.
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../worker/src/consumer/realtime_planner.js', import.meta.url), 'utf8');
+  assert.ok(
+    !plannerRequestBodyWithoutComments(source).includes('max_output_tokens'),
+    'the outgoing planner request must omit max_output_tokens entirely'
+  );
+}
 if (!config.realtimePlannerModelConfigured) {
   console.warn('  WARNING: CONSUMER_REALTIME_PLANNER_MODEL was not an approved value; '
     + `falling back to ${config.realtimePlannerModel}.`);
@@ -109,7 +130,6 @@ if (!env.OPENAI_API_KEY) {
     model: config.realtimePlannerModel,
     store: false,
     reasoning: { effort: 'low' },
-    max_output_tokens: config.realtimePlannerMaxOutputTokens,
     text: { format: { type: 'json_schema', name: 'planner_extraction_v3', strict: true, schema: '<PLANNER_SCHEMA>' } }
   }, null, 2).split('\n').map((line) => `    ${line}`).join('\n'));
   console.info(`\n  Utterance: "${UTTERANCE}"`);
@@ -165,9 +185,12 @@ console.info(`\n  Extraction: goals=[${goals.join(', ')}] facts=[${facts.join(',
 console.info(`              priorityHints=[${extraction.goalCandidates.map((g) => g.priorityHint).join(', ')}]`);
 
 assert.ok(goals.includes('buy_home'), `the planner must extract buy_home, got [${goals.join(', ')}]`);
+// The planner may wrap a value ({"age":25}) or send it bare (25); the shared
+// fact mapper owns which shapes are accepted. Assert the fact was EXTRACTED
+// here, and let candidate application below decide whether it maps.
 assert.ok(
-  extraction.semanticFacts.some((fact) => fact.factId === 'person_current_age' && Number(fact.value) === 25),
-  `the planner must extract person_current_age=25, got [${facts.join(', ')}]`
+  extraction.semanticFacts.some((fact) => fact.factId === 'person_current_age'),
+  `the planner must extract person_current_age, got [${facts.join(', ')}]`
 );
 
 // -- Class 4: applying what was extracted ------------------------------------

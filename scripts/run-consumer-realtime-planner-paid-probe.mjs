@@ -58,7 +58,6 @@ const config = {
   realtimeConversationV2Enabled: true,
   realtimePlannerTimeoutMs: 8_000,
   realtimePlannerCatchupTimeoutMs: 12_000,
-  realtimePlannerMaxOutputTokens: 1_800,
   defaultModel: String(process.env.CONSUMER_AI_DEFAULT_MODEL || 'gpt-5.6-luna'),
   complexModel: String(process.env.CONSUMER_AI_COMPLEX_MODEL || 'gpt-5.6-terra')
 };

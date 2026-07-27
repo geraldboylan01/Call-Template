@@ -398,12 +398,6 @@ export function getConsumerConfig(env) {
     // a server-side allowlist, and never client-selectable.
     realtimePlannerModel: plannerModel(env.CONSUMER_REALTIME_PLANNER_MODEL),
     realtimePlannerModelConfigured: plannerModelConfigured(env.CONSUMER_REALTIME_PLANNER_MODEL),
-    // Reasoning tokens count toward max_output_tokens on a reasoning model, and
-    // the planner schema is large. Too small a budget returns
-    // status:"incomplete" rather than an error, which is why the previous
-    // ceiling was a silent failure mode. Raised, with the floor kept above the
-    // point where structured output cannot complete at all.
-    realtimePlannerMaxOutputTokens: boundedInteger(env.CONSUMER_REALTIME_PLANNER_MAX_OUTPUT_TOKENS, 4_000, 1_500, 16_000),
     realtimePlannerPromptVersion: text(env.CONSUMER_REALTIME_PLANNER_PROMPT_VERSION) || 'realtime-planner-v3',
     realtimeUsageRates,
     // The conversation director is a bounded, fail-open-to-template text-model

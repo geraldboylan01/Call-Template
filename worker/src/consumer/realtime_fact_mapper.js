@@ -503,11 +503,14 @@ function projectPersonaFacts(profile, facts) {
     const target = fact.factId === 'primary_goal_focus'
       ? projected.assumptions.values.planning
       : projected.assumptions.values.persona;
+    // Same wrapper tolerance as mapPersonaFact: this projection runs BEFORE the
+    // mapper, so a wrapped value rejected here never reaches it.
+    const projectedValue = scalarValue(fact.value, ['value']);
     target[key] = kind === 'boolean'
-      ? strictBoolean(fact.value)
+      ? strictBoolean(projectedValue)
       : kind === 'count'
-        ? boundedNumber(fact.value, { min: 0, max: 30, integer: true })
-        : normalizedChoice(fact.factId, fact.value);
+        ? boundedNumber(projectedValue, { min: 0, max: 30, integer: true })
+        : normalizedChoice(fact.factId, projectedValue);
   }
   return normalizeHouseholdProfile(projected);
 }
@@ -583,11 +586,20 @@ export function buildRealtimeFactReadBack(factId, value, certainty = 'exact', cu
 
 function mapPersonaFact(profile, fact) {
   const [key, kind] = INTAKE_FACT_PATHS[fact.factId];
+  // The planner routinely wraps a scalar as {"value": x} — its schema carries
+  // every fact value as a JSON string, and that is the shape it naturally
+  // produces. Numeric facts already unwrap ({"age":25} maps fine) and goals
+  // already accept {"type":...}, but orientation facts did not, so every
+  // life_stage, career_stage, property_status, employment_context,
+  // retirement_status and household_structure candidate was rejected with
+  // realtime_fact_value_invalid. Those are exactly the facts that drive
+  // routing. Unwrap once, here, so all three kinds behave the same.
+  const rawValue = scalarValue(fact.value, ['value']);
   const canonicalValue = kind === 'boolean'
-    ? strictBoolean(fact.value)
+    ? strictBoolean(rawValue)
     : kind === 'count'
-      ? boundedNumber(fact.value, { min: 0, max: 30, integer: true })
-      : normalizedChoice(fact.factId, fact.value);
+      ? boundedNumber(rawValue, { min: 0, max: 30, integer: true })
+      : normalizedChoice(fact.factId, rawValue);
   return {
     fieldPath: fact.factId === 'primary_goal_focus'
       ? `/assumptions/values/planning/${key}`

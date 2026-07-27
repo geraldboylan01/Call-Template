@@ -542,7 +542,12 @@ export async function extractRealtimePlannerTurn({
         model,
         store: false,
         reasoning: { effort: reasoningEffort },
-        max_output_tokens: config.realtimePlannerMaxOutputTokens,
+        // NO max_output_tokens. Reasoning tokens count toward that budget on a
+        // reasoning model, and the planner schema is large, so any
+        // application-imposed ceiling silently truncates the response into
+        // status:"incomplete" instead of erroring — which is a failure mode
+        // that looks exactly like a broken planner. The model and endpoint
+        // apply their own native maximum.
         input: [
           { role: 'system', content: PLANNER_SYSTEM_PROMPT },
           {
@@ -612,9 +617,9 @@ export async function extractRealtimePlannerTurn({
   }
   if (response?.status !== 'completed') {
     // A reasoning model that runs out of budget returns status:"incomplete"
-    // with a reason, NOT an HTTP error. Reasoning tokens count toward
-    // max_output_tokens, so a large schema plus a rich turn can exhaust it and
-    // fail every turn identically. Record which it was.
+    // with a reason, NOT an HTTP error. The application no longer imposes an
+    // output ceiling, so an incomplete response now means the model's own
+    // native limit or the context window was reached. Record which it was.
     const incompleteReason = boundedDiagnostic(response?.incomplete_details?.reason);
     const error = new ConsumerError(
       502,
@@ -627,7 +632,6 @@ export async function extractRealtimePlannerTurn({
       providerRequestId,
       responseStatus: boundedDiagnostic(response?.status),
       incompleteReason,
-      maxOutputTokens: config.realtimePlannerMaxOutputTokens,
       outputTokens: Number(response?.usage?.output_tokens || 0),
       reasoningTokens: Number(response?.usage?.output_tokens_details?.reasoning_tokens || 0),
       latencyMs: Date.now() - startedAt
