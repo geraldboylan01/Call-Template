@@ -99,6 +99,11 @@ jobs:
       CONSUMER_BETA_REALTIME_VOICE: "marin"
       CONSUMER_BETA_REALTIME_REASONING_EFFORT: "low"
       CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe"
+      # The silent planner's approved model. Declared here like every other
+      # protected canary value: the fail-closed builder compares the runtime
+      # value against this literal, so an undeclared variable is an empty
+      # string and correctly aborts the deployment.
+      CONSUMER_BETA_REALTIME_PLANNER_MODEL: "gpt-5.6-luna"
       CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v9"
       CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v7"
       CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
