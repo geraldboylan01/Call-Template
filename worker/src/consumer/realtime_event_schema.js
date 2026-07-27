@@ -127,6 +127,12 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
   // The AI planner failed and the deterministic rules extractor kept the
   // meeting going. Recorded so a degraded meeting is visibly distinct from a
   // healthy one, rather than looking identical in telemetry.
+  // The deterministic fallback itself failed to persist. Distinct from
+  // `degraded`, which means it succeeded.
+  'realtime.planner.degraded_failed': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
   'realtime.planner.degraded': event({
     sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
     code: NON_CONTENT_FIELD_TYPES.STRING,

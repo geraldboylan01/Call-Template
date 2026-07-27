@@ -1756,7 +1756,21 @@ export class ConsumerRealtimeSession {
       // The meeting continues normally: the client is not told anything failed,
       // because from their side nothing did — their goal was understood.
       return { status: 'applied', degraded: true, ...applied };
-    } catch (_error) {
+    } catch (error) {
+      // Never swallow this silently. A fallback that extracted candidates and
+      // then failed to persist them is a DIFFERENT fault from a turn with
+      // nothing to salvage, and conflating the two hides a failed write behind
+      // a plausible-looking next question.
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.degraded_failed',
+        payload: {
+          sourceTurnId: itemId,
+          code: error instanceof ConsumerError ? error.code : 'realtime_fallback_persist_failed'
+        }
+      }).catch(() => {});
       return null;
     }
   }

@@ -49,6 +49,7 @@ import {
   createAgentMeeting,
   getActiveAgentMeeting
 } from './agent_repository.js';
+import { deterministicFallbackExtraction } from './planning_facts.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 
 export const AGENT_CHANNEL = 'agent_test';
@@ -322,6 +323,7 @@ export async function processAgentTurn(env, config, {
 
   let extraction = null;
   let plannerErrorCode = null;
+  let degraded = false;
   try {
     const planned = await extractTurn({
       env,
@@ -335,6 +337,16 @@ export async function processAgentTurn(env, config, {
     await addAgentMeetingSpend(env, meetingId, Number(planned.metadata?.costMicroEur || 0));
   } catch (error) {
     plannerErrorCode = error instanceof ConsumerError ? error.code : 'agent_planner_failed';
+    // A planner outage is our problem, not the client's. The voice transport
+    // already falls back to the deterministic rules extractor; this path must
+    // do the same or the two transports degrade differently — which is exactly
+    // the divergence the turn-parity diagnostic caught.
+    extraction = deterministicFallbackExtraction({
+      transcript: safeMessage,
+      profile: context.profile,
+      sourceTurnId: turnRef
+    });
+    degraded = Boolean(extraction);
   }
 
   let outcomes = [];
@@ -427,6 +439,9 @@ export async function processAgentTurn(env, config, {
       decisionMode: 'utterance',
       candidateOutcomes: outcomes,
       plannerErrorCode,
+      // A degraded turn used the deterministic extractor, not the AI planner.
+      // It must never be reported as a normal successful planner turn.
+      degraded,
       rendererFallback: rendered.fallback === true,
       rendererErrorCode: rendered.errorCode || null,
       toolCalls: (rendered.decisions || []).map((item) => ({
