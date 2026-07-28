@@ -10,8 +10,11 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { MODULE_IDS } from '../js/planning/contracts.js';
+import { getSemanticFactDefinition } from '../js/planning/semantic_facts.js';
 import { createHouseholdProfile, normalizeHouseholdProfile } from '../js/planning/profile.js';
 import { describeConversationState } from '../worker/src/consumer/conversation.js';
 import { buildPlanningContext } from '../worker/src/consumer/planning_context.js';
@@ -273,6 +276,48 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   });
   ok(item.length < 1_200, 'The volatile state item must stay small.');
   ok(liveVolatileStateItem({}).includes('nothing yet'), 'An empty state must read naturally.');
+}
+
+/* ------------------------------------------------- persona fixture is sane */
+
+// The replay harness itself needs an API key and makes paid calls, so it is
+// not in this suite. Its INPUTS are checked here, so a malformed persona is
+// caught for free rather than halfway through a paid run.
+{
+  const fixture = JSON.parse(
+    readFileSync(fileURLToPath(new URL('./fixtures/live-personas.json', import.meta.url)), 'utf8')
+  );
+  ok(fixture.schema === 'planeir-live-persona-replay-v1', 'The persona fixture must declare its schema.');
+  ok(fixture.personas.length >= 5, 'There must be at least five personas.');
+
+  const ids = fixture.personas.map((persona) => persona.id);
+  ok(new Set(ids).size === ids.length, 'Persona ids must be unique.');
+
+  for (const persona of fixture.personas) {
+    ok(persona.label && persona.why, `${persona.id} must record what it is for.`);
+    ok(persona.opening?.length > 20, `${persona.id} needs a real opening utterance.`);
+    ok(persona.brief?.length > 200, `${persona.id} needs a brief detailed enough to play.`);
+    ok(Number.isInteger(persona.maxTurns) && persona.maxTurns >= 6, `${persona.id} needs a turn budget.`);
+    for (const factId of persona.expect?.mustNotRequestFacts || []) {
+      ok(getSemanticFactDefinition(factId), `${persona.id} references an unknown fact: ${factId}`);
+    }
+    for (const factId of persona.expect?.shouldCaptureFacts || []) {
+      ok(getSemanticFactDefinition(factId), `${persona.id} references an unknown fact: ${factId}`);
+    }
+  }
+
+  // THE PERSONA THAT DID NOT EXIST. Every v2 fixture models an asset-rich
+  // client, which is exactly why the young-renter defect shipped unnoticed.
+  const youngRenter = fixture.personas.find((persona) => persona.id === 'young_renter');
+  ok(youngRenter, 'The young low-asset persona must exist.');
+  ok(youngRenter.expect.mustNotRequestFacts.includes('property_position'),
+    'The young renter must assert it is never asked what its home is worth.');
+
+  // The two live incidents must stay covered.
+  ok(fixture.personas.some((persona) => persona.id === 'multi_goal_opener'),
+    'Incident D-05 (two goals in one turn) must have a persona.');
+  ok(fixture.personas.some((persona) => persona.expect?.mustNeverCommitProhibitedAct),
+    'An adversarial advice-seeking persona must exist.');
 }
 
 console.log(`check-consumer-live: ${checks} assertions passed.`);

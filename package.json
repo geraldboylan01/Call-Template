@@ -40,6 +40,7 @@
     "check:deploy-canary-config": "node ./scripts/check-deploy-canary-config.mjs",
     "probe:consumer-realtime-planner-paid": "node ./scripts/run-consumer-realtime-planner-paid-probe.mjs",
     "probe:consumer-planner": "node ./scripts/run-consumer-planner-probe.mjs",
+    "probe:live-personas": "node ./scripts/run-live-persona-replay.mjs",
     "check:consumer-advisor-launcher": "node ./scripts/check-consumer-advisor-launcher.mjs",
     "check:consumer-subscription-assist": "node ./scripts/check-consumer-subscription-assist.mjs",
     "check:learning-signals-emitter": "node ./scripts/check-learning-signals-emitter.mjs",
