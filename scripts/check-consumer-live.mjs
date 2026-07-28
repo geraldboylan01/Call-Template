@@ -320,4 +320,47 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'An adversarial advice-seeking persona must exist.');
 }
 
+/* --------------------------------------------- the client dropped its baggage */
+
+// These are contracts, not style. Each names something that actively harmed
+// the v2 lane and must not be reintroduced by copy-paste from realtime_voice.js.
+{
+  const client = readFileSync(fileURLToPath(new URL('../js/plan/live_voice.js', import.meta.url)), 'utf8');
+  // These assertions are about CODE, not prose. The file deliberately names
+  // the things it dropped in its header comment, so strip comments first —
+  // otherwise documenting a hazard would read as reintroducing it.
+  const code = client
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  // The provider-event allowlist and the failure mode it produced. The field
+  // note in consumer-realtime-voice-operations.md records this killing an
+  // entire live canary: the model added an assistant message alongside a
+  // mandated tool call and the allowlist tore the meeting down every turn.
+  ok(!code.includes('conversation_item_injected'),
+    'The live client must not police provider event types.');
+  ok(/NO ALLOWLIST/.test(client), 'The absence of an event allowlist must be deliberate and stated.');
+
+  // Worker-owned TTS is a v1-only path; the model speaks over WebRTC here.
+  for (const dropped of ['playWorkerSpeechFromPayload', 'attachControlledSpeechAudio', 'MediaSource']) {
+    ok(!code.includes(dropped), `The live client must not carry ${dropped}.`);
+  }
+
+  // create_response:true makes a manual finish control meaningless.
+  ok(!/space\s*bar|keydown/i.test(code), 'The live client must not carry a manual finish-turn control.');
+
+  // The browser never sees provider credentials or the call id.
+  ok(!/OPENAI|api[_-]?key/i.test(code), 'The live client must never handle provider credentials.');
+
+  // It must remain a fraction of the size of what it replaced.
+  const v2Client = readFileSync(fileURLToPath(new URL('../js/plan/realtime_voice.js', import.meta.url)), 'utf8');
+  ok(client.length * 4 < v2Client.length,
+    'The live client must stay far smaller than the v2 controller it replaces.');
+
+  // Same option surface, so it is a drop-in for the existing app wiring.
+  for (const option of ['onVoicePayload', 'onPlanningPayload', 'onNavigate', 'onStopBoundedVoice', 'onToast', 'onSessionUnavailable']) {
+    ok(client.includes(option), `The live controller must accept ${option} like the v2 controller.`);
+  }
+}
+
 console.log(`check-consumer-live: ${checks} assertions passed.`);
