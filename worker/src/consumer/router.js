@@ -80,6 +80,8 @@ import {
 } from './realtime_provider.js';
 import { renderAuthorizedRealtimeSpeech } from './realtime_speech.js';
 import { toConversationGuide } from './realtime_planner.js';
+import { conversationLaneStub } from './live/lane.js';
+import { buildLiveSessionConfig } from './live/live_provider.js';
 import { requireConsumerSession } from './session_auth.js';
 import {
   getVoiceConsent,
@@ -412,14 +414,11 @@ async function requireRealtimeControlCapability(request, env, sessionId, leaseId
 }
 
 function realtimeStub(env, leaseId) {
-  if (!env.CONSUMER_REALTIME_SESSIONS
-    || typeof env.CONSUMER_REALTIME_SESSIONS.idFromName !== 'function'
-    || typeof env.CONSUMER_REALTIME_SESSIONS.get !== 'function') {
+  const stub = conversationLaneStub(env, leaseId);
+  if (!stub) {
     throw new ConsumerError(503, 'realtime_control_unavailable', 'Live voice controls are not available.');
   }
-  return env.CONSUMER_REALTIME_SESSIONS.get(
-    env.CONSUMER_REALTIME_SESSIONS.idFromName(`consumer-realtime/${leaseId}`)
-  );
+  return stub;
 }
 
 async function durableObjectRequest(env, leaseId, path, body, method = 'POST') {
@@ -1049,12 +1048,19 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         await markRealtimeProviderCostInFlight(env, reservation.entry.id, sessionRow.id, config);
         dispatched = true;
         const state = describeConversationState(profile, config);
+        // The live lane differs only in the provider session policy it opens
+        // the call with — `create_response: true`, its own toolset, and the
+        // cached catalogue prompt. Everything above and below this point (the
+        // budget reservation, the lease, the rollback and hang-up path) is
+        // shared deliberately: two copies of that is exactly the code you do
+        // not want to maintain twice.
         const providerCall = await createOpenAiRealtimeCall({
           env,
           config,
           sessionId: sessionRow.id,
           offerSdp,
-          state
+          state,
+          ...(config.liveVoiceEnabled ? { sessionConfig: buildLiveSessionConfig(config) } : {})
         });
         providerCallId = providerCall.providerCallId;
         lease = await activateRealtimeLease(env, sessionRow.id, lease.id, providerCallId);
@@ -1073,7 +1079,9 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           'X-Realtime-Dispatch-Stop-Micro-Eur': String(lease.dispatch_stop_eur_micros),
           'X-Realtime-Activation-Id': activationId,
           'X-Realtime-Control-Capability': controlCapability,
-          'X-Realtime-Conversation-Version': config.realtimeConversationV2Enabled ? 'v2' : 'v1',
+          'X-Realtime-Conversation-Version': config.liveVoiceEnabled
+            ? 'live'
+            : config.realtimeConversationV2Enabled ? 'v2' : 'v1',
           'Access-Control-Expose-Headers': [
             'X-Realtime-Lease-Id',
             'X-Realtime-Hard-Expires-At',

@@ -526,7 +526,13 @@ async function readBoundedSdpAnswer(response) {
   return text;
 }
 
-export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSdp, state }) {
+/**
+ * @param {object} [options.sessionConfig] Prebuilt provider session policy. The
+ *   live lane supplies its own (`buildLiveSessionConfig`) because it inverts
+ *   the two settings this function's default would impose — `create_response`
+ *   and the toolset. Omitted everywhere else, so the v1/v2 paths are unchanged.
+ */
+export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSdp, state, sessionConfig = null }) {
   const safetyIdentifier = await hmacSha256Base64Url(
     env.CONSUMER_RATE_LIMIT_HASH_KEY,
     `openai-safety/realtime/v1/${sessionId}`
@@ -535,7 +541,7 @@ export async function createOpenAiRealtimeCall({ env, config, sessionId, offerSd
   // The unified Realtime WebRTC endpoint expects ordinary multipart fields.
   // File-like Blob parts are rejected as invalid_form_data by the provider.
   multipart.set('sdp', offerSdp);
-  multipart.set('session', JSON.stringify(buildRealtimeSessionConfig(config, state)));
+  multipart.set('session', JSON.stringify(sessionConfig || buildRealtimeSessionConfig(config, state)));
   let response;
   try {
     response = await fetch(OPENAI_REALTIME_CALLS_URL, {
