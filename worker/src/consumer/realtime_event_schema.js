@@ -133,6 +133,76 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     plannerModel: NON_CONTENT_FIELD_TYPES.STRING,
     degradedTurnCount: NON_CONTENT_FIELD_TYPES.INTEGER,
     acceptedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+
+  // ---------------------------------------------------------------------
+  // Live conversational lane. Additive: no v1/v2 event changes meaning.
+  //
+  // The same bounded, non-content rule applies — nothing here carries a
+  // transcript, a prompt, a tool argument or a figure. Compliance events
+  // record WHICH act tripped and which layer caught it, never the words.
+  // (Note the type names avoid "transcript"/"audio"/"delta": those are
+  // rejected outright by FORBIDDEN_REALTIME_EVENT_TYPE below.)
+  // ---------------------------------------------------------------------
+  'live.call.activated': event({
+    model: NON_CONTENT_FIELD_TYPES.STRING,
+    promptVersion: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  'live.provider.connected': event({}),
+  'live.provider.error': event({
+    code: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    param: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    fatal: NON_CONTENT_FIELD_TYPES.BOOLEAN
+  }),
+  'live.client.turn': event({
+    itemId: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  // THE THESIS MEASUREMENT: end of client speech to first output audio frame.
+  // If this does not come down dramatically against the v2 lane, the whole
+  // rebuild was not worth doing — see the plan's §6.6 stop condition.
+  'live.response.first_output': event({
+    latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  'live.response.completed': event({
+    toolCallCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    estimatedCostEurMicros: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  'live.tool.completed': event({
+    tool: NON_CONTENT_FIELD_TYPES.STRING,
+    ok: NON_CONTENT_FIELD_TYPES.BOOLEAN,
+    savedCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    rejectedCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  // A deterministic detector (L2/L3) cancelled a response mid-sentence.
+  'live.compliance.tripped': event({
+    actId: NON_CONTENT_FIELD_TYPES.STRING,
+    layer: NON_CONTENT_FIELD_TYPES.STRING,
+    violationCount: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  // The asynchronous supervisor (L4) returned a verdict on a completed turn.
+  'live.compliance.reviewed': event({
+    actId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    confidence: NON_CONTENT_FIELD_TYPES.STRING,
+    actionable: NON_CONTENT_FIELD_TYPES.BOOLEAN,
+    latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  'live.compliance.corrected': event({
+    actId: NON_CONTENT_FIELD_TYPES.STRING,
+    violationCount: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  'live.analysis.completed': event({
+    completedCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    status: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  'live.call.closed': event({
+    reason: NON_CONTENT_FIELD_TYPES.STRING,
+    status: NON_CONTENT_FIELD_TYPES.STRING,
+    errorCode: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    durationMs: NON_CONTENT_FIELD_TYPES.NULLABLE_INTEGER,
+    estimatedCostEurMicros: NON_CONTENT_FIELD_TYPES.INTEGER,
+    responseCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    violationCount: NON_CONTENT_FIELD_TYPES.INTEGER
   })
 });
 

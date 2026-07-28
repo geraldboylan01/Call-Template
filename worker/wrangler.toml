@@ -28,7 +28,8 @@ migrations_dir = "migrations"
 
 [durable_objects]
 bindings = [
-  { name = "CONSUMER_REALTIME_SESSIONS", class_name = "ConsumerRealtimeSession" }
+  { name = "CONSUMER_REALTIME_SESSIONS", class_name = "ConsumerRealtimeSession" },
+  { name = "CONSUMER_LIVE_SESSIONS", class_name = "ConsumerLiveSession" }
 ]
 
 # This additive migration provisions the per-call coordinator while the
@@ -37,6 +38,13 @@ bindings = [
 [[migrations]]
 tag = "consumer_realtime_sessions_v1"
 new_sqlite_classes = ["ConsumerRealtimeSession"]
+
+# The live conversational lane's coordinator. Additive and dormant: the class
+# is provisioned so the binding resolves, but no meeting reaches it while
+# CONSUMER_LIVE_VOICE_ENABLED is false.
+[[migrations]]
+tag = "consumer_live_sessions_v1"
+new_sqlite_classes = ["ConsumerLiveSession"]
 
 [triggers]
 crons = ["5 * * * *"]
@@ -57,6 +65,10 @@ CONSUMER_REALTIME_VOICE_ENABLED = "false"
 # an immediate rollback path.
 CONSUMER_REALTIME_CONVERSATION_V2_ENABLED = "false"
 CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED = "false"
+# The live conversational lane. Independent of the v1/v2 switch above: the two
+# are alternative conversation layers over the same lease, consent and cost
+# infrastructure, and exactly one drives a given meeting. Ships false.
+CONSUMER_LIVE_VOICE_ENABLED = "false"
 CONSUMER_MODULE_ROUTING_ENABLED = "false"
 CONSUMER_GOAL_ROUTING_ENABLED = "false"
 # Offering an optional analysis, and the three-analysis capacity decision that

@@ -252,6 +252,14 @@ export function getConsumerConfig(env) {
     && enabled(env.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED);
   const realtimeSpokenCompletionEnabled = realtimeConversationV2Enabled
     && enabled(env.CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED);
+  // The live conversational lane. It shares the realtime lease, consent, cost
+  // ledger and provider configuration — hence `realtimeEnabled` — but it is
+  // deliberately INDEPENDENT of the v1/v2 conversation switch: the two lanes
+  // are alternative conversation layers over the same infrastructure, and
+  // exactly one runs a given meeting. It is never derived from
+  // `realtimeConversationV2Enabled`, so turning one on can never imply the
+  // other.
+  const liveVoiceEnabled = realtimeEnabled && enabled(env.CONSUMER_LIVE_VOICE_ENABLED);
   const handoffRequested = enabled(env.CONSUMER_HANDOFF_ENABLED);
   const handoffRetentionDays = optionalBoundedInteger(env.CONSUMER_HANDOFF_RETENTION_DAYS, 1, 365);
   const handoffRetentionPolicyId = policyId(env.CONSUMER_HANDOFF_RETENTION_POLICY_ID);
@@ -286,6 +294,10 @@ export function getConsumerConfig(env) {
     realtimeEnabled,
     realtimeConversationV2Enabled,
     realtimeSpokenCompletionEnabled,
+    liveVoiceEnabled,
+    // The compliance supervisor (§2.3 L4). Reuses the validated planner model
+    // allowlist rather than introducing a second unvalidated model setting.
+    liveSupervisorModel: plannerModel(env.CONSUMER_LIVE_SUPERVISOR_MODEL || env.CONSUMER_REALTIME_PLANNER_MODEL),
     realtimeNoticeId,
     realtimeDataPolicyId,
     // Offering an optional analysis, and the three-analysis capacity decision

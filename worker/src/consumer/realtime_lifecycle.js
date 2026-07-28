@@ -4,6 +4,7 @@ import {
   settleConsumerProviderCostUnknown
 } from './repository.js';
 import { hangupOpenAiRealtimeCall } from './realtime_provider.js';
+import { conversationLaneStub } from './live/lane.js';
 import {
   closeRealtimeLease,
   getActiveRealtimeLease,
@@ -12,12 +13,7 @@ import {
 } from './realtime_repository.js';
 
 function durableObjectStub(env, leaseId) {
-  if (!env.CONSUMER_REALTIME_SESSIONS
-    || typeof env.CONSUMER_REALTIME_SESSIONS.idFromName !== 'function'
-    || typeof env.CONSUMER_REALTIME_SESSIONS.get !== 'function') return null;
-  return env.CONSUMER_REALTIME_SESSIONS.get(
-    env.CONSUMER_REALTIME_SESSIONS.idFromName(`consumer-realtime/${leaseId}`)
-  );
+  return conversationLaneStub(env, leaseId);
 }
 
 async function closeThroughDurableObject(env, lease, options) {
