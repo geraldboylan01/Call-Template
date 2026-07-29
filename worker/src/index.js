@@ -6040,12 +6040,31 @@ async function loadPublishedManifest(env, publishedId) {
   return validateStoredPublishedManifest(JSON.parse(text));
 }
 
-async function handleCreatePublishedSession(request, env, origin) {
-  const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
-    requireCsrf: true
-  });
-  if (advisorAccess.response) {
-    return advisorAccess.response;
+/**
+ * Create a published session.
+ *
+ * `options.authorize` exists so a consumer finishing their own AI meeting can
+ * publish their own analysis without an advisor session, WITHOUT a second copy
+ * of this handler. Everything after authorisation — validation, recovery,
+ * bundle storage, the row, the audit event — is identical for both callers and
+ * a duplicate would drift.
+ *
+ * `options.requirePublishTarget` is the consumer guard: it pins a self-service
+ * publish to the `ai-meeting` target so a consumer cannot reach the advisor's
+ * other modes by naming a different one. It is enforced rather than silently
+ * applied — the caller states the target and a mismatch is rejected.
+ */
+async function handleCreatePublishedSession(request, env, origin, options = {}) {
+  if (typeof options.authorize === 'function') {
+    const denied = await options.authorize();
+    if (denied) return denied;
+  } else {
+    const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
+      requireCsrf: true
+    });
+    if (advisorAccess.response) {
+      return advisorAccess.response;
+    }
   }
 
   let body;
@@ -6103,22 +6122,42 @@ async function handleCreatePublishedSession(request, env, origin) {
   const publishTarget = normalizeLeadValue(body?.publishTarget);
   const linkAccessMode = normalizeLeadValue(body?.linkAccessMode);
   const isDetachedShare = publishTarget === 'detached-share';
+  // An AI meeting the client finished themselves.
+  //
+  // THIS TARGET EXISTS TO SEPARATE TWO THINGS THE OTHERS CONFLATE. A detached
+  // share is the only mode that opens on a direct no-PIN link, and it is also
+  // the only mode that skips client-pipeline linking — so as written, wanting
+  // the first forced you to accept the second. An AI meeting needs the direct
+  // link (the client clicks straight through from their own results page) AND
+  // the pipeline entry (every meeting, advisor-created or AI-created, belongs in
+  // one place). Adding a third target keeps both existing advisor modes and
+  // their guards exactly as they were.
+  const isAiMeeting = publishTarget === 'ai-meeting';
+  const isDirectAccessShare = isDetachedShare || isAiMeeting;
   const isDirectLink = linkAccessMode === 'direct';
 
-  if (publishTarget && publishTarget !== 'detached-share') {
+  if (publishTarget && !['detached-share', 'ai-meeting'].includes(publishTarget)) {
     return jsonResponse({ error: 'Publish target is invalid.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
   if (linkAccessMode && linkAccessMode !== 'direct') {
     return jsonResponse({ error: 'Link access mode is invalid.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
-  if (isDirectLink !== isDetachedShare) {
-    return jsonResponse({ error: 'Direct share links must use detached-share publish target.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  if (isDirectLink !== isDirectAccessShare) {
+    return jsonResponse({ error: 'Direct links must use the detached-share or ai-meeting publish target.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
   if (isDetachedShare && (hasOwn(body, 'clientId') || hasOwn(body, 'sourceLeadId'))) {
     return jsonResponse({ error: 'Detached share links cannot be linked to a client or lead.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
-  if (isDetachedShare && (validated.kind !== 'v3' || validated.data.clientBundle.clientAccess.pinRequired)) {
-    return jsonResponse({ error: 'Detached share links must use direct no-PIN client access.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  // Both direct-access modes carry no PIN, so both are restricted to the v3
+  // bundle that expresses that. Only the pipeline behaviour differs.
+  if (isDirectAccessShare && (validated.kind !== 'v3' || validated.data.clientBundle.clientAccess.pinRequired)) {
+    return jsonResponse({ error: 'Direct links must use direct no-PIN client access.' }, 400, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+  // A self-service publish is pinned to one target by the route, so a consumer
+  // cannot reach the advisor's pipeline-linked or detached-share modes by
+  // choosing a different one.
+  if (options.requirePublishTarget && publishTarget !== options.requirePublishTarget) {
+    return jsonResponse({ error: 'This session may not be published with that publish target.' }, 403, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
 
   try {
@@ -6215,7 +6254,8 @@ async function handleCreatePublishedSession(request, env, origin) {
     await insertPublishedSessionEvent(env, publishedId, 'advisor', 'published', {
       clientId: linkedClientId,
       sourceLeadId: sourceLeadId || null,
-      publishTarget: isDetachedShare ? 'detached-share' : 'client-pipeline',
+      publishTarget: isDetachedShare ? 'detached-share'
+        : isAiMeeting ? 'ai-meeting' : 'client-pipeline',
       linkAccessMode: isDirectLink ? 'direct' : 'client-first-pin',
       version: validated.data.v,
       pinRequired: isV4 ? true : validated.data.clientBundle.clientAccess.pinRequired,
@@ -6237,7 +6277,8 @@ async function handleCreatePublishedSession(request, env, origin) {
     publishedId,
     clientId: linkedClientId,
     sourceLeadId: sourceLeadId || null,
-    publishTarget: isDetachedShare ? 'detached-share' : 'client-pipeline',
+    publishTarget: isDetachedShare ? 'detached-share'
+      : isAiMeeting ? 'ai-meeting' : 'client-pipeline',
     linkAccessMode: isDirectLink ? 'direct' : 'client-first-pin',
     createdAt,
     expiresAt,

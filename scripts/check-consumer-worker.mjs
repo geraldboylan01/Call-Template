@@ -1522,4 +1522,53 @@ const credential = await createConsumerCredential();
 assert.deepEqual(parseConsumerCredential(credential.credential), { id: credential.id, secret: credential.secret });
 assert.equal(parseConsumerCredential('invalid'), null);
 
+/* ------------------------------------- the ai-meeting publish target's guards */
+
+// These are security guards with no other local coverage: the only test that
+// exercised publish routes is scripts/check-worker-published-session-routes.mjs,
+// a smoke test against the DEPLOYED Worker, so nothing catches a guard being
+// weakened here before it ships. Source-level assertions are weaker than
+// executing the handler, but the handler is module-private in a 7k-line Worker
+// entry point, and "no coverage at all" is the worse option.
+{
+  const workerSource = await readFile(new URL('../worker/src/index.js', import.meta.url), 'utf8');
+
+  // The target has to exist and be spelled the one way the consumer route pins.
+  assert.match(workerSource, /publishTarget === 'ai-meeting'/,
+    'The ai-meeting publish target must be recognised.');
+  assert.match(workerSource, /\['detached-share', 'ai-meeting'\]\.includes\(publishTarget\)/,
+    'Only the two share targets may be accepted; anything else is rejected.');
+
+  // WHY THIS TARGET EXISTS: a detached share is the only mode that opens on a
+  // direct no-PIN link AND the only mode that skips pipeline linking, so wanting
+  // the first used to force the second. An AI meeting needs the direct link and
+  // the pipeline entry. These two assertions are what keep them separable.
+  assert.match(workerSource, /isDirectAccessShare = isDetachedShare \|\| isAiMeeting/,
+    'Direct no-PIN access must be shared by both share targets.');
+  assert.match(workerSource, /isDirectLink !== isDirectAccessShare/,
+    'A direct link must require a direct-access target, and vice versa.');
+
+  // Pipeline linking keys off `!isDetachedShare`, so an ai-meeting publish must
+  // NOT be lumped in with detached shares there — that is what puts an AI
+  // meeting in the pipeline beside advisor-created ones.
+  assert.match(workerSource, /\}\s*else if \(!isDetachedShare\) \{/,
+    'Client linking must exclude only detached shares, so ai-meeting still links.');
+  assert.match(workerSource, /isAiMeeting \? 'ai-meeting' : 'client-pipeline'/,
+    'An ai-meeting publish must be recorded as its own target, not as client-pipeline.');
+
+  // No PIN on either direct-access target.
+  assert.match(workerSource, /isDirectAccessShare && \(validated\.kind !== 'v3'/,
+    'Both direct-access targets are restricted to the no-PIN v3 bundle.');
+
+  // The consumer guard. Without this a self-service caller could name the
+  // advisor's pipeline-linked target and publish into it.
+  assert.match(workerSource, /options\.requirePublishTarget && publishTarget !== options\.requirePublishTarget/,
+    'A self-service publish must be pinned to one publish target.');
+
+  // Replacing the advisor check must stay opt-in: absent `authorize`, the
+  // advisor session check is what runs.
+  assert.match(workerSource, /typeof options\.authorize === 'function'/,
+    'The advisor session check must remain the default authorisation.');
+}
+
 console.log('Consumer Worker contracts passed.');
