@@ -64,6 +64,11 @@ const SIDE_BAND_URL = 'https://api.openai.com/v1/realtime';
 const MAX_PROVIDER_EVENT_BYTES = 64_000;
 const SIDE_BAND_HEARTBEAT_MS = 15_000;
 const MAX_ASSISTANT_TRANSCRIPT = 2_400;
+// The provider caps a meeting at 40 responses and 24 tool calls. Keep a little
+// headroom for cancelled/correction responses while making every transient
+// association structure explicitly bounded.
+const MAX_LIVE_TURN_LEDGER_ENTRIES = 64;
+const MAX_DEFERRED_EVIDENCE_TOOL_CALLS = 32;
 // Two violations end the meeting. One is a slip the model corrects and moves
 // on from; a second means the correction did not take, and a demo that keeps
 // going after that is worse than one that stops politely.
@@ -86,6 +91,24 @@ async function readInternalJson(request) {
   }
 }
 
+/**
+ * Provider auto-response can emit `response.created` before the finalized
+ * client transcription. In that ordering, the response-start snapshot does
+ * not yet contain figures the client just spoke. Add only those transcript
+ * figures to the active snapshot; tool-saved values remain global and become
+ * available to the next response, never retroactively to this one.
+ */
+export function sourceClientFiguresForActiveResponse(
+  currentResponseSourcedFigures,
+  transcript,
+  responseInProgress
+) {
+  if (responseInProgress) {
+    addSourcedFiguresFromText(currentResponseSourcedFigures, transcript);
+  }
+  return currentResponseSourcedFigures;
+}
+
 export class ConsumerLiveSession {
   constructor(state, env) {
     this.state = state;
@@ -104,6 +127,22 @@ export class ConsumerLiveSession {
     this.activeToolCalls = 0;
     this.violationCount = 0;
     this.sourcedFigures = createSourcedFigureSet();
+    this.currentResponseSourcedFigures = createSourcedFigureSet();
+    this.pendingClientTranscription = false;
+    this.pendingClientTranscriptionUnavailable = false;
+    this.currentResponseAwaitingClientTranscription = false;
+    this.currentResponseNumericContainmentUnavailable = false;
+    // Input transcription is asynchronous with response generation. Provider
+    // item/response ids, not "latest" globals, own every association below.
+    this.clientTurnOrdinal = 0;
+    this.latestClientTranscriptOrdinal = 0;
+    this.clientTurnsByItemId = new Map();
+    this.unboundAutoResponseTurnIds = [];
+    this.responseContextsById = new Map();
+    this.deferredEvidenceToolsByItemId = new Map();
+    this.deferredEvidenceToolCallIds = new Set();
+    this.processedToolCallIds = new Set();
+    this.clientNumericEvidenceIncomplete = false;
     this.pendingTerminalization = null;
 
     this.state.blockConcurrencyWhile(async () => {
@@ -245,6 +284,121 @@ export class ConsumerLiveSession {
     this.webSocket.send(text);
   }
 
+  registerStoppedClientTurn(event) {
+    const itemId = String(event?.item_id || '');
+    if (!itemId) {
+      // `item_id` is required by the provider schema. If it is absent, do not
+      // guess which response owns the audio: numeric containment becomes
+      // unavailable, and transcript-dependent tools will fail closed.
+      this.clientNumericEvidenceIncomplete = true;
+      return null;
+    }
+    let turn = this.clientTurnsByItemId.get(itemId);
+    if (!turn) {
+      turn = {
+        itemId,
+        ordinal: ++this.clientTurnOrdinal,
+        status: 'pending',
+        transcript: '',
+        stoppedAt: Date.now()
+      };
+      this.clientTurnsByItemId.set(itemId, turn);
+      this.unboundAutoResponseTurnIds.push(itemId);
+      this.pruneLiveTurnLedger();
+    }
+    return turn;
+  }
+
+  bindResponseContext(responseId) {
+    if (!responseId) return null;
+    const causeItemId = this.unboundAutoResponseTurnIds.shift() || null;
+    const pendingSourceItemIds = new Set(
+      [...this.clientTurnsByItemId.values()]
+        .filter((turn) => turn.status === 'pending')
+        .map((turn) => turn.itemId)
+    );
+    const cause = causeItemId ? this.clientTurnsByItemId.get(causeItemId) : null;
+    const context = {
+      responseId,
+      causeItemId,
+      pendingSourceItemIds,
+      sourcedFigures: { values: [...this.sourcedFigures.values] },
+      assistantTranscript: '',
+      assistantDone: false,
+      assistantItemId: '',
+      reviewScheduled: false,
+      numericUnavailable: this.clientNumericEvidenceIncomplete,
+      complianceTripped: false,
+      done: false,
+      turnFinalAt: Number(cause?.stoppedAt || this.turnFinalAt || 0),
+      firstOutputRecorded: false
+    };
+    this.responseContextsById.set(responseId, context);
+    this.currentResponseId = responseId;
+    this.syncCurrentResponseAliases(context);
+    this.pruneLiveTurnLedger();
+    return context;
+  }
+
+  responseContextForEvent(event) {
+    const responseId = String(event?.response_id || event?.response?.id || '');
+    if (responseId && this.responseContextsById.has(responseId)) {
+      return this.responseContextsById.get(responseId);
+    }
+    if (!responseId && this.currentResponseId) {
+      return this.responseContextsById.get(this.currentResponseId) || null;
+    }
+    return null;
+  }
+
+  syncCurrentResponseAliases(context) {
+    if (!context || context.responseId !== this.currentResponseId) return;
+    this.currentAssistantTranscript = context.assistantTranscript;
+    this.currentResponseSourcedFigures = context.sourcedFigures;
+    this.currentResponseAwaitingClientTranscription = context.pendingSourceItemIds.size > 0;
+    this.currentResponseNumericContainmentUnavailable = context.numericUnavailable;
+    this.firstOutputRecorded = context.firstOutputRecorded;
+  }
+
+  pendingEvidenceToolCount() {
+    let count = 0;
+    for (const calls of this.deferredEvidenceToolsByItemId.values()) count += calls.length;
+    return count;
+  }
+
+  pruneLiveTurnLedger() {
+    while (this.responseContextsById.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
+      const removable = [...this.responseContextsById.entries()].find(([, response]) =>
+        response.done
+        && response.pendingSourceItemIds.size === 0
+        && (response.reviewScheduled || !response.assistantDone)
+      );
+      if (!removable) break;
+      this.responseContextsById.delete(removable[0]);
+    }
+
+    while (this.clientTurnsByItemId.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
+      const responseTurnIds = new Set(
+        [...this.responseContextsById.values()].flatMap((response) => [
+          response.causeItemId,
+          ...response.pendingSourceItemIds
+        ]).filter(Boolean)
+      );
+      const removable = [...this.clientTurnsByItemId.entries()].find(([itemId, turn]) =>
+        turn.status !== 'pending'
+        && !responseTurnIds.has(itemId)
+        && !this.unboundAutoResponseTurnIds.includes(itemId)
+        && !this.deferredEvidenceToolsByItemId.has(itemId)
+      );
+      if (!removable) break;
+      this.clientTurnsByItemId.delete(removable[0]);
+    }
+
+    while (this.processedToolCallIds.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
+      this.processedToolCallIds.delete(this.processedToolCallIds.values().next().value);
+    }
+  }
+
   /* -------------------------------------------------------- provider events */
 
   async handleProviderMessage(data) {
@@ -265,6 +419,9 @@ export class ConsumerLiveSession {
       // stops speaking, not when transcription lands.
       this.turnFinalAt = Date.now();
       this.firstOutputRecorded = false;
+      const turn = this.registerStoppedClientTurn(event);
+      this.pendingClientTranscription = turn?.status === 'pending';
+      this.pendingClientTranscriptionUnavailable = !turn;
       return;
     }
 
@@ -272,10 +429,17 @@ export class ConsumerLiveSession {
       return this.handleClientTurn(event);
     }
 
+    if (type === 'conversation.item.input_audio_transcription.failed') {
+      return this.markClientTranscriptionUnavailable(event);
+    }
+
     if (type === 'response.created') {
       this.inResponse = true;
-      this.currentResponseId = String(event.response?.id || '');
-      this.currentAssistantTranscript = '';
+      const context = this.bindResponseContext(String(event.response?.id || ''));
+      if (!context) return;
+      this.currentResponseAwaitingClientTranscription = context.pendingSourceItemIds.size > 0;
+      this.currentResponseNumericContainmentUnavailable = context.numericUnavailable;
+      this.pendingClientTranscriptionUnavailable = false;
       return;
     }
 
@@ -292,7 +456,10 @@ export class ConsumerLiveSession {
     }
 
     if (type === 'response.done') {
-      this.inResponse = false;
+      const context = this.responseContextForEvent(event);
+      if (context) context.done = true;
+      this.inResponse = [...this.responseContextsById.values()].some((response) => !response.done);
+      this.pruneLiveTurnLedger();
       return this.handleUsage(event.response || {});
     }
   }
@@ -314,15 +481,64 @@ export class ConsumerLiveSession {
   async handleClientTurn(event) {
     const transcript = String(event.transcript || '').trim();
     const itemId = String(event.item_id || '');
-    if (!transcript || !itemId) return;
+    if (!transcript || !itemId) {
+      await this.markClientTranscriptionUnavailable(event);
+      return;
+    }
 
-    this.latestClientTranscript = transcript;
-    await this.state.storage.put('latestClientTranscript', transcript);
+    let turn = this.clientTurnsByItemId.get(itemId);
+    if (!turn) {
+      // Defensive support for an out-of-order provider envelope. Do not put it
+      // in the auto-response queue: a response may already have been created.
+      turn = {
+        itemId,
+        ordinal: ++this.clientTurnOrdinal,
+        status: 'pending',
+        transcript: '',
+        stoppedAt: 0
+      };
+      this.clientTurnsByItemId.set(itemId, turn);
+    }
+    if (turn.status === 'completed') return;
+    turn.status = 'completed';
+    turn.transcript = transcript;
 
     // EVERY FIGURE THE CLIENT STATES IS SOURCED. Without this, L2 would cancel
     // the model for repeating back a number it was just told — which is the
     // acknowledge-and-confirm shape the conversation is supposed to have.
     addSourcedFiguresFromText(this.sourcedFigures, transcript);
+    for (const response of this.responseContextsById.values()) {
+      if (!response.pendingSourceItemIds.has(itemId)) continue;
+      sourceClientFiguresForActiveResponse(
+        response.sourcedFigures,
+        transcript,
+        true
+      );
+      response.pendingSourceItemIds.delete(itemId);
+
+      // Output deltas may already have arrived. L3 was checked immediately;
+      // once every pending input transcript for this response is known, run
+      // the deferred L2 pass over that response's own buffered speech.
+      if (response.pendingSourceItemIds.size === 0 && !response.numericUnavailable) {
+        const verdict = scanAssistantSpeech(
+          response.assistantTranscript,
+          response.sourcedFigures,
+          { skipLeadInTripwires: true }
+        );
+        if (verdict.tripped) {
+          await this.tripCompliance(verdict.actId, verdict.layer, response.responseId);
+        }
+      }
+      this.syncCurrentResponseAliases(response);
+    }
+    this.pendingClientTranscription = [...this.clientTurnsByItemId.values()]
+      .some((clientTurn) => clientTurn.status === 'pending');
+    this.pendingClientTranscriptionUnavailable = false;
+    if (turn.ordinal >= this.latestClientTranscriptOrdinal) {
+      this.latestClientTranscriptOrdinal = turn.ordinal;
+      this.latestClientTranscript = transcript;
+      await this.state.storage.put('latestClientTranscript', transcript);
+    }
     await this.persistSourcedFigures();
 
     await recordRealtimeFinalTurn(this.env, {
@@ -343,42 +559,109 @@ export class ConsumerLiveSession {
 
     await this.meterTranscription(event);
     await this.touch();
+    await this.drainDeferredEvidenceTools(itemId, transcript);
+    this.scheduleReviewsForClientTurn(itemId, transcript);
+    this.pruneLiveTurnLedger();
 
     // NOTE WHAT DOES NOT HAPPEN HERE: no planner call, no brief, no
     // `response.create`. The provider is already replying.
+  }
+
+  async markClientTranscriptionUnavailable(event = {}) {
+    const itemId = String(event?.item_id || '');
+    const turn = itemId ? this.clientTurnsByItemId.get(itemId) : null;
+    if (turn && turn.status !== 'completed') {
+      turn.status = 'failed';
+      turn.transcript = '';
+    }
+    // Without this transcript there is no safe way to distinguish a figure
+    // copied from client audio from an invented one. L3 and L4 remain active.
+    this.clientNumericEvidenceIncomplete = true;
+    for (const response of this.responseContextsById.values()) {
+      if (turn && !response.pendingSourceItemIds.has(itemId)) continue;
+      response.pendingSourceItemIds.delete(itemId);
+      response.numericUnavailable = true;
+      this.syncCurrentResponseAliases(response);
+    }
+    this.pendingClientTranscription = [...this.clientTurnsByItemId.values()]
+      .some((clientTurn) => clientTurn.status === 'pending');
+    this.pendingClientTranscriptionUnavailable = true;
+    if (itemId) {
+      await this.drainDeferredEvidenceTools(itemId, '');
+      this.scheduleReviewsForClientTurn(itemId, '');
+    }
+    this.pruneLiveTurnLedger();
+  }
+
+  scheduleReviewsForClientTurn(itemId, transcript) {
+    for (const response of this.responseContextsById.values()) {
+      if (response.causeItemId !== itemId) continue;
+      this.scheduleResponseReview(response, transcript);
+    }
+  }
+
+  scheduleResponseReview(response, transcript) {
+    if (!response?.assistantDone || response.reviewScheduled) return;
+    const cause = response.causeItemId
+      ? this.clientTurnsByItemId.get(response.causeItemId)
+      : null;
+    if (cause?.status === 'pending') return;
+    response.reviewScheduled = true;
+    // Still behind speech and deliberately detached. Delayed ASR changes only
+    // which exact client turn L4 sees, never when the model may start speaking.
+    this.state.waitUntil(this.reviewTurn(response.assistantTranscript, transcript || ''));
   }
 
   /** L2 + L3. Synchronous regex over the speech so far. */
   async handleSpeechDelta(event) {
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta) return;
-    this.currentAssistantTranscript = `${this.currentAssistantTranscript}${delta}`.slice(0, MAX_ASSISTANT_TRANSCRIPT);
+    const response = this.responseContextForEvent(event);
+    if (!response) return;
+    response.assistantTranscript =
+      `${response.assistantTranscript}${delta}`.slice(0, MAX_ASSISTANT_TRANSCRIPT);
+    this.syncCurrentResponseAliases(response);
 
-    if (!this.firstOutputRecorded && this.turnFinalAt) {
-      this.firstOutputRecorded = true;
+    if (!response.firstOutputRecorded && response.turnFinalAt) {
+      response.firstOutputRecorded = true;
+      this.syncCurrentResponseAliases(response);
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
         direction: 'server',
         eventType: 'live.response.first_output',
-        payload: { latencyMs: Math.max(0, Date.now() - this.turnFinalAt) }
+        payload: { latencyMs: Math.max(0, Date.now() - response.turnFinalAt) }
       }).catch(() => {});
     }
 
-    const verdict = scanAssistantSpeech(this.currentAssistantTranscript, this.sourcedFigures);
-    if (verdict.tripped) await this.tripCompliance(verdict.actId, verdict.layer);
+    const verdict = scanAssistantSpeech(
+      response.assistantTranscript,
+      response.sourcedFigures,
+      {
+        skipNumericContainment: response.pendingSourceItemIds.size > 0
+          || response.numericUnavailable
+      }
+    );
+    if (verdict.tripped) {
+      await this.tripCompliance(verdict.actId, verdict.layer, response.responseId);
+    }
   }
 
   /** L4. Fired, never awaited. */
   async handleSpeechDone(event) {
     const transcript = String(event.transcript || '').trim();
     if (!transcript) return;
-    this.currentAssistantTranscript = transcript.slice(0, MAX_ASSISTANT_TRANSCRIPT);
+    const response = this.responseContextForEvent(event);
+    if (!response) return;
+    response.assistantTranscript = transcript.slice(0, MAX_ASSISTANT_TRANSCRIPT);
+    response.assistantDone = true;
+    response.assistantItemId = String(event.item_id || `${response.responseId}_assistant`);
+    this.syncCurrentResponseAliases(response);
 
     await recordRealtimeFinalTurn(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
-      providerItemId: String(event.item_id || `${this.currentResponseId}_assistant`),
+      providerItemId: response.assistantItemId,
       role: 'assistant',
       transcript
     }).catch(() => {});
@@ -387,7 +670,12 @@ export class ConsumerLiveSession {
     // client's next turn and its verdict changes the NEXT one. This is the
     // same Responses API the v2 planner used, in the opposite position in the
     // loop — and that position was the whole bug.
-    this.state.waitUntil(this.reviewTurn(transcript, this.latestClientTranscript));
+    const cause = response.causeItemId
+      ? this.clientTurnsByItemId.get(response.causeItemId)
+      : null;
+    if (!cause || cause.status !== 'pending') {
+      this.scheduleResponseReview(response, cause?.status === 'completed' ? cause.transcript : '');
+    }
   }
 
   async reviewTurn(assistantTranscript, clientTranscript) {
@@ -422,7 +710,18 @@ export class ConsumerLiveSession {
    * it. This is the ONE place the server creates a response, and it is a
    * correction rather than the normal conversational flow.
    */
-  async tripCompliance(actId, layer) {
+  async tripCompliance(actId, layer, responseId = null) {
+    const targetResponseId = String(responseId || '');
+    const targetResponse = targetResponseId
+      ? this.responseContextsById.get(targetResponseId)
+      : null;
+    // Audio transcript events are cumulative and already-queued deltas may
+    // arrive after cancellation. One unsafe response is one violation, even
+    // if the same detector sees that response again.
+    if (targetResponse?.complianceTripped) return;
+    if (targetResponse) targetResponse.complianceTripped = true;
+    const targetIsActive = targetResponse?.done === false;
+    const targetIsCurrent = targetIsActive && targetResponseId === this.currentResponseId;
     this.violationCount += 1;
     await this.state.storage.put('violationCount', this.violationCount);
     await appendRealtimeEvent(this.env, {
@@ -430,16 +729,28 @@ export class ConsumerLiveSession {
       leaseId: this.meta.leaseId,
       direction: 'server',
       eventType: 'live.compliance.tripped',
-      payload: { actId, layer, violationCount: this.violationCount }
+      payload: {
+        actId,
+        layer,
+        responseId: targetResponseId || null,
+        violationCount: this.violationCount
+      }
     }).catch(() => {});
 
-    try { this.sendProvider({ type: 'response.cancel' }); } catch (_error) { /* terminal path owns loss */ }
+    // Delayed ASR can discover an L2 violation after a newer response has
+    // started. Cancel only the response that produced the offending speech;
+    // never let a late verdict issue a bare cancel against the current turn.
+    if (targetIsActive) {
+      try {
+        this.sendProvider({ type: 'response.cancel', response_id: targetResponseId });
+      } catch (_error) { /* terminal path owns loss */ }
+    }
 
     if (this.violationCount >= MAX_COMPLIANCE_VIOLATIONS) {
       await this.terminalize('failed', 'compliance_limit', 'live_compliance_limit', true).catch(() => {});
       return;
     }
-    await this.correctNextTurn(actId, { speakNow: true }).catch(() => {});
+    await this.correctNextTurn(actId, { speakNow: targetIsCurrent }).catch(() => {});
   }
 
   async correctNextTurn(actId, { speakNow = false } = {}) {
@@ -468,7 +779,62 @@ export class ConsumerLiveSession {
   async handleToolCall(event) {
     const name = String(event.name || '');
     const callId = String(event.call_id || '');
-    if (!callId) return;
+    if (!callId
+      || this.processedToolCallIds.has(callId)
+      || this.deferredEvidenceToolCallIds.has(callId)) return;
+
+    // Both mutating tools derive authority from what the client just said.
+    // Their result may wait for ASR because this path is behind already-started
+    // speech; the provider event chain itself must return immediately so that
+    // the future transcription event can be processed.
+    if (name === 'save_facts' || name === 'confirm_and_run') {
+      const responseId = String(event.response_id || '');
+      const response = responseId ? this.responseContextsById.get(responseId) : null;
+      const turn = response?.causeItemId
+        ? this.clientTurnsByItemId.get(response.causeItemId)
+        : null;
+      if (turn?.status === 'pending') {
+        if (this.pendingEvidenceToolCount() < MAX_DEFERRED_EVIDENCE_TOOL_CALLS) {
+          const pending = this.deferredEvidenceToolsByItemId.get(turn.itemId) || [];
+          pending.push(event);
+          this.deferredEvidenceToolsByItemId.set(turn.itemId, pending);
+          this.deferredEvidenceToolCallIds.add(callId);
+          return;
+        }
+        // The bounded queue is full. Empty evidence preserves ordinary
+        // conversation while categorical-none and run confirmation fail closed.
+        return this.runToolCallWithTranscript(event, '');
+      }
+      return this.runToolCallWithTranscript(
+        event,
+        turn?.status === 'completed' ? turn.transcript : ''
+      );
+    }
+
+    return this.runToolCallWithTranscript(event, '');
+  }
+
+  async drainDeferredEvidenceTools(itemId, transcript) {
+    const pending = this.deferredEvidenceToolsByItemId.get(itemId) || [];
+    this.deferredEvidenceToolsByItemId.delete(itemId);
+    for (const event of pending) {
+      this.deferredEvidenceToolCallIds.delete(String(event.call_id || ''));
+      await this.runToolCallWithTranscript(event, transcript);
+    }
+  }
+
+  async runToolCallWithTranscript(event, clientTranscript) {
+    const callId = String(event.call_id || '');
+    if (!callId || this.processedToolCallIds.has(callId)) return;
+    this.processedToolCallIds.add(callId);
+    this.deferredEvidenceToolCallIds.delete(callId);
+    this.pruneLiveTurnLedger();
+    return this.executeToolCallWithTranscript(event, clientTranscript);
+  }
+
+  async executeToolCallWithTranscript(event, clientTranscript) {
+    const name = String(event.name || '');
+    const callId = String(event.call_id || '');
     const startedAt = Date.now();
     this.activeToolCalls += 1;
 
@@ -486,7 +852,9 @@ export class ConsumerLiveSession {
         config: getConsumerConfig(this.env),
         leaseId: this.meta.leaseId,
         evidenceRef: null,
-        latestClientTranscript: this.latestClientTranscript,
+        // Keep the existing dependency name for the tool contract, but pass
+        // only the transcript bound to this response's causal user item.
+        latestClientTranscript: clientTranscript,
         loadContext: () => loadLiveContext({
           env: this.env,
           config: getConsumerConfig(this.env),
@@ -576,7 +944,10 @@ export class ConsumerLiveSession {
             text: liveVolatileStateItem({
               captured: projection.captured,
               analyses: projection.analyses.map((analysis) => analysis.description),
-              missing: projection.missing
+              missing: projection.missing,
+              unknown: projection.unknown,
+              goalsAgreed: projection.goalsAgreed,
+              readyToConfirm: projection.readyToConfirm
             })
           }]
         }
@@ -809,7 +1180,10 @@ export class ConsumerLiveSession {
     } catch (_error) {
       speechUsageSettled = false;
     }
-    const noUnmeteredWork = speechUsageSettled && !this.inResponse && this.activeToolCalls === 0;
+    const noUnmeteredWork = speechUsageSettled
+      && !this.inResponse
+      && this.activeToolCalls === 0
+      && this.pendingEvidenceToolCount() === 0;
     try {
       if (!row.activated_at && !row.provider_call_id_hash_b64u && !row.provider_call_id_encrypted) {
         await releaseConsumerProviderCostNotSent(this.env, this.meta.costEntryId, { errorCode: errorCode || reason });
