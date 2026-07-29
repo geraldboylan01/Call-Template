@@ -1522,6 +1522,75 @@ const credential = await createConsumerCredential();
 assert.deepEqual(parseConsumerCredential(credential.credential), { id: credential.id, secret: credential.secret });
 assert.equal(parseConsumerCredential('invalid'), null);
 
+/* --------------------------------- the published-analysis sign-up validator */
+
+{
+  const { validatePublishedAnalysisSignupBody } = await import('../worker/src/consumer/validators.js');
+  const policy = { version: 'handoff-v1', url: 'https://planeir.ie/plan/privacy' };
+  const valid = Object.freeze({
+    consent: true,
+    policyVersion: policy.version,
+    policyUrl: policy.url,
+    firstName: 'Aoife',
+    lastName: 'Ní Bhriain',
+    email: 'Aoife@Example.IE',
+    address: '12 Rathmines Road, Dublin 6, D06 AF30'
+  });
+
+  const accepted = validatePublishedAnalysisSignupBody({ ...valid }, policy);
+  assert.equal(accepted.fullName, 'Aoife Ní Bhriain', 'fullName is composed from first and last name.');
+  assert.equal(accepted.email, 'aoife@example.ie', 'Email is normalised to lower case for pipeline matching.');
+  assert.equal(accepted.address, '12 Rathmines Road, Dublin 6, D06 AF30',
+    'An ordinary Irish address, Eircode included, must survive untouched.');
+
+  // REGRESSION GUARD. This field was first written to reuse
+  // `redactSensitiveIdentifiers`, which is built to catch an address hiding in
+  // narrative text — so it rewrites exactly the phrasings someone naturally
+  // types into an address box, and the sign-up rejected them with a "prohibited
+  // sensitive identifier" error. Verified: that helper still turns both of these
+  // into "[redacted identifier]". They must be accepted verbatim here.
+  for (const address of ['I live at 4 Grove Park, Cork', 'My address is 7 Oak Lane, Galway']) {
+    assert.equal(
+      validatePublishedAnalysisSignupBody({ ...valid, address }, policy).address,
+      address,
+      `A naturally phrased address must be accepted verbatim: ${address}`
+    );
+  }
+
+  // These details create a client pipeline entry, so they reach the adviser —
+  // the same boundary the handoff guards. Consent is not optional.
+  await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, consent: false }, policy),
+    /consent/i, 'Sign-up without explicit consent must be refused.');
+
+  // A stale disclosure must not be accepted, or a client could consent to
+  // wording that has since changed.
+  await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, policyVersion: 'handoff-v0' }, policy),
+    /no longer current/i, 'A stale policy version must be refused.');
+
+  // clients.full_name is NOT NULL and the lead insert throws without an email,
+  // so neither can be optional here.
+  for (const field of ['firstName', 'lastName', 'email']) {
+    await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, [field]: '' }, policy),
+      `A sign-up missing ${field} must be refused.`);
+  }
+  await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, email: 'not-an-email' }, policy),
+    /invalid/i, 'An unparseable email must be refused.');
+
+  // Identifiers with no business in a postal address. NOTE the contrast with the
+  // Eircode assertion above: the point of the narrower pattern list is that it
+  // rejects these WITHOUT rejecting real addresses.
+  for (const address of [
+    '12 Main St, PPS 1234567T',
+    '12 Main St, card number 4111 1111 1111 1111',
+    '12 Main St, password hunter2000',
+    '12 Main St, IE29 AIBK 9311 5212 3456 78'
+  ]) {
+    await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, address }, policy),
+      /PPS number, card or account number, or password/,
+      `An address carrying a foreign identifier must be refused: ${address}`);
+  }
+}
+
 /* ------------------------------------- the ai-meeting publish target's guards */
 
 // These are security guards with no other local coverage: the only test that

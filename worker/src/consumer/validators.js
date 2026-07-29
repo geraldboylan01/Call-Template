@@ -5,6 +5,27 @@ import {
 } from '../../../js/planning/profile.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Identifiers that have no business in a postal address.
+ *
+ * Drawn from `redactSensitiveIdentifiers` but WITHOUT its address-phrase
+ * patterns, which exist to catch an address hiding in narrative text and would
+ * reject legitimate input here. An Irish Eircode ("D02 AF30") matches none of
+ * these: the IBAN-style pattern needs two leading letters before its digits.
+ */
+const ADDRESS_PROHIBITED_PATTERNS = Object.freeze([
+  // PPS number.
+  /\b\d{7}[A-Z]{1,2}\b/i,
+  // IBAN-style account identifier.
+  /\b[A-Z]{2}\d{2}(?:[\s-]?[A-Z0-9]{4}){2,7}(?:[\s-]?[A-Z0-9]{1,3})?\b/i,
+  // A labelled account or card number.
+  /\b(?:account|card)\s*(?:number|no\.?|is|:)?\s*(?:\d[\s-]*){6,24}\b/i,
+  // A credential the client should never be typing into a form like this.
+  /\b(?:password|passcode|pin|credential)\s*(?:is|:)?\s*[A-Za-z0-9_-]{6,80}\b/i,
+  // A bare card-length digit run.
+  /\b(?:\d[\s-]*?){13,19}\b/
+]);
 const ID_PATTERN = /^[a-z][a-z0-9_]{1,79}$/;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{8,120}$/;
 const ROOT_PATHS = new Set([
@@ -300,6 +321,67 @@ export function validateRealtimeAnalysisPlanBody(body, allowedModules) {
     planNonce,
     leaseId,
     ...analysis
+  };
+}
+
+/**
+ * The sign-up a client completes to open their own finished analysis.
+ *
+ * WHY THIS DEMANDS CONSENT LIKE A HANDOFF DOES. These details create a client
+ * pipeline entry, so they reach the adviser — the same boundary
+ * `validateHandoffBody` guards. `clients.full_name` is NOT NULL and the lead
+ * insert throws without an email, so both are required rather than optional;
+ * the address is captured because the sign-up asks for it, and is validated to
+ * the same standard as the rest.
+ *
+ * The publish bundle itself is NOT validated here. It is already-encrypted
+ * ciphertext the Worker cannot read, and the publish handler owns its schema.
+ */
+export function validatePublishedAnalysisSignupBody(body, expectedPolicy) {
+  if (!plainObject(body)) throw badRequest('Sign-up body must be an object.');
+  if (body.consent !== true) {
+    throw badRequest('Explicit consent is required before your details are shared.', 'published_analysis_consent_required');
+  }
+  const expectedPolicyVersion = cleanText(expectedPolicy?.version, 'Configured handoff policy version', 80, false);
+  const expectedPolicyUrl = cleanText(expectedPolicy?.url, 'Configured handoff policy URL', 500, false);
+  const policyVersion = cleanText(body.policyVersion, 'Policy version', 80);
+  const policyUrl = cleanText(body.policyUrl, 'Policy URL', 500);
+  if (!expectedPolicyVersion || !expectedPolicyUrl
+    || policyVersion !== expectedPolicyVersion
+    || policyUrl !== expectedPolicyUrl) {
+    throw badRequest('The sharing disclosure is no longer current.', 'published_analysis_policy_outdated');
+  }
+
+  const firstName = cleanText(body.firstName, 'First name', 80);
+  const lastName = cleanText(body.lastName, 'Last name', 80);
+  const email = cleanText(body.email, 'Email', 160).toLowerCase();
+  if (!EMAIL_PATTERN.test(email)) throw badRequest('Email is invalid.');
+  const address = cleanText(body.address, 'Address', 400);
+
+  // NOT `redactSensitiveIdentifiers` here, deliberately.
+  //
+  // That helper exists to stop an address leaking through a NARRATIVE field —
+  // several of its patterns match "I live at ...", "address is: ..." and similar.
+  // Running it over a field whose entire purpose is the address would reject
+  // ordinary input, and its intent does not apply: this address is collected
+  // deliberately, with explicit consent, to create the client record.
+  //
+  // What must still never appear is an identifier that has nothing to do with a
+  // postal address, so those patterns are checked directly. Rejected rather than
+  // silently stripped, so the client can see and correct what they typed.
+  if (ADDRESS_PROHIBITED_PATTERNS.some((pattern) => pattern.test(address))) {
+    throw badRequest('Address must not contain a PPS number, card or account number, or password. Remove it before continuing.', 'published_analysis_sensitive_data_prohibited');
+  }
+
+  return {
+    firstName,
+    lastName,
+    fullName: `${firstName} ${lastName}`,
+    email,
+    address,
+    consent: true,
+    policyVersion,
+    policyUrl
   };
 }
 

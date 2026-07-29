@@ -223,6 +223,9 @@ function getConsumerRouteMethods(pathname) {
   if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/analysis-plan$/.test(pathname)) {
     return 'PUT,OPTIONS';
   }
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/published-analysis$/.test(pathname)) {
+    return 'POST,OPTIONS';
+  }
   const voiceMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/(consent|transcriptions|speech)$/.exec(pathname);
   if (voiceMatch) return voiceMatch[1] === 'consent' ? 'PATCH,OPTIONS' : 'POST,OPTIONS';
   const match = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
@@ -2448,6 +2451,31 @@ async function listClientRows(env, options = {}) {
   bindings.push(limit);
   const result = await db.prepare(sql).bind(...bindings).all();
   return (Array.isArray(result?.results) ? result.results : []).map(normalizeClientRow);
+}
+
+/**
+ * Store a client's postal address, if this database has the column.
+ *
+ * Added by migration 0015. The PRAGMA check mirrors the `consent_education_only`
+ * handling in the lead insert: the Worker must keep publishing against a
+ * database where the migration has not been applied yet, and losing an address
+ * is a far better failure than refusing the publish.
+ *
+ * Only fills a blank address, so a later self-service sign-up cannot overwrite
+ * an address an adviser has already corrected.
+ */
+async function setClientAddressIfSupported(env, clientId, address) {
+  const value = normalizeOptionalLeadValue(address || '');
+  if (!clientId || !value) return;
+  const db = getPublishedSessionsDb(env);
+  const schema = await db.prepare('PRAGMA table_info(clients)').all();
+  if (!(schema.results || []).some((column) => column.name === 'address')) return;
+  await db.prepare(`
+    UPDATE clients
+    SET address = CASE WHEN COALESCE(address, '') = '' THEN ? ELSE address END,
+        updated_at = ?
+    WHERE id = ?
+  `).bind(value, nowIso(), clientId).run();
 }
 
 async function updateClientProfileFromSource(env, clientId, profile = {}) {
@@ -6068,10 +6096,17 @@ async function handleCreatePublishedSession(request, env, origin, options = {}) 
   }
 
   let body;
-  try {
-    body = await parseJsonBody(request);
-  } catch (_error) {
-    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
+  if (options.body !== undefined) {
+    // A request body can only be read once, and the consumer route has to read
+    // it to validate the sign-up before publishing. It hands the parsed object
+    // over rather than the request being drained twice or cloned.
+    body = options.body;
+  } else {
+    try {
+      body = await parseJsonBody(request);
+    } catch (_error) {
+      return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, 'POST,OPTIONS');
+    }
   }
 
   let validated;
@@ -6199,6 +6234,14 @@ async function handleCreatePublishedSession(request, env, origin, options = {}) 
       timestamp: createdAt
     });
     linkedClientId = client?.id || null;
+  }
+
+  // The address comes from `options`, NOT from `meta`. The publish payload's
+  // `meta` is client-supplied and whitelisted to name, email and expiry, so
+  // widening it would let a caller set an address the server never validated.
+  // A self-service publish passes the address the route validated instead.
+  if (options.clientAddress) {
+    await setClientAddressIfSupported(env, linkedClientId, options.clientAddress).catch(() => {});
   }
 
   try {
@@ -7493,6 +7536,19 @@ export default {
         pathname,
         clientIp: getClientIp(request),
         createPipelineHandoff: (payload) => createConsumerPipelineHandoff(env, payload),
+        // Publishing a client's own finished analysis as a share link they can
+        // open and copy. The consumer router authenticates the session
+        // credential and validates the sign-up BEFORE calling here, which is why
+        // the advisor check is replaced rather than run — there is no advisor in
+        // a self-service meeting. `requirePublishTarget` pins the target, and
+        // `clientAddress` carries the server-validated address so it never has
+        // to travel through the client-supplied `meta`.
+        publishAnalysis: ({ body, clientAddress }) => handleCreatePublishedSession(request, env, origin, {
+          authorize: async () => null,
+          requirePublishTarget: 'ai-meeting',
+          body,
+          clientAddress
+        }),
         respond: (data, status, methods, extraHeaders) => jsonResponse(
           data,
           status,

@@ -1,0 +1,14 @@
+-- The sign-up a client completes to open their own AI-meeting analysis collects
+-- a postal address alongside first name, last name and email. `clients` had
+-- nowhere to put it: full_name, email, normalized_email, phone and
+-- pipeline_stage were the only profile columns, so the address would have been
+-- silently dropped.
+--
+-- Nullable and with no default, so every existing client row stays valid and
+-- advisor-created clients continue to carry no address until one is supplied.
+--
+-- Code that writes this column checks PRAGMA table_info(clients) first, matching
+-- the existing consent_education_only pattern in the lead insert, so the Worker
+-- keeps working against a database where this migration has not been applied
+-- yet.
+ALTER TABLE clients ADD COLUMN address TEXT;

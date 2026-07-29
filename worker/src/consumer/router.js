@@ -98,6 +98,7 @@ import {
   validateCreateSessionBody,
   validateHandoffBody,
   validateProfilePatchBody,
+  validatePublishedAnalysisSignupBody,
   validateRealtimeAnalysisPlanBody,
   validateRealtimeConsentBody,
   validateTurnBody,
@@ -326,6 +327,10 @@ function routeMatch(pathname) {
   if (analysisPlanMatch) {
     return { kind: 'analysis_plan', sessionId: analysisPlanMatch[1], methods: ['PUT'] };
   }
+  const publishedAnalysisMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/published-analysis$/.exec(pathname);
+  if (publishedAnalysisMatch) {
+    return { kind: 'published_analysis', sessionId: publishedAnalysisMatch[1], methods: ['POST'] };
+  }
   const voiceMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/(consent|transcriptions|speech)$/.exec(pathname);
   if (voiceMatch) {
     const [, sessionId, operation] = voiceMatch;
@@ -548,7 +553,10 @@ export async function cleanupExpiredConsumerSessionsWithRealtime(env, dependenci
 export { cleanupExpiredConsumerSessionsWithRealtime as cleanupExpiredConsumerSessions };
 
 export async function handleConsumerRequest(request, env, dependencies = {}) {
-  const { pathname, respond, respondBinary, clientIp = 'unknown', createPipelineHandoff } = dependencies;
+  const {
+    pathname, respond, respondBinary, clientIp = 'unknown',
+    createPipelineHandoff, publishAnalysis
+  } = dependencies;
   const route = routeMatch(pathname);
   if (!route) return respond({ error: 'Not found.', code: 'not_found' }, 404, 'GET,POST,PATCH,DELETE,OPTIONS');
   const methods = `${route.methods.join(',')},OPTIONS`;
@@ -1316,6 +1324,41 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const body = validateAnalysisBody(await readJson(request, { optional: true }), config.allowedModules);
       const result = await runStoredConsumerAnalysis({ env, config, sessionRow, profile, ...body });
       return respond({ session: result.session, profile, analysis: result.analysis }, 200, methods);
+    }
+
+    if (route.kind === 'published_analysis') {
+      if (!publishAnalysis) throw notFound();
+      // Six per hour. Publishing is idempotent from the client's point of view —
+      // they press one button — so this is abuse protection, not a real ceiling.
+      await rateLimit(env, 'consumer-published-analysis-session', sessionRow.id, 60 * 60 * 1000, 6);
+      const body = await readJson(request);
+      const signup = validatePublishedAnalysisSignupBody(body, {
+        version: config.handoffPolicyVersion,
+        url: config.handoffPolicyUrl
+      });
+
+      // THE SERVER DECIDES WHO GOES INTO THE PIPELINE. `meta` is client-supplied
+      // and is what the publish handler reads to create the client record, so an
+      // unchecked mismatch would let a caller file the entry under a name and
+      // email they never signed up with. The bundle is already encrypted around
+      // these values, so they are compared rather than overwritten.
+      const meta = body?.meta && typeof body.meta === 'object' ? body.meta : {};
+      if (String(meta.clientName || '').trim() !== signup.fullName
+        || String(meta.clientEmail || '').trim().toLowerCase() !== signup.email) {
+        throw new ConsumerError(
+          400,
+          'published_analysis_identity_mismatch',
+          'The details on the analysis do not match the ones you entered.'
+        );
+      }
+
+      const response = await publishAnalysis({ body, clientAddress: signup.address });
+      await recordEvent(env, sessionRow.id, 'published_analysis_created', {
+        // Categorical only: no name, email or address reaches the event log.
+        consentPolicyVersion: signup.policyVersion,
+        published: response.ok === true
+      }).catch(() => {});
+      return response;
     }
 
     if (route.kind === 'handoffs') {
