@@ -42,6 +42,11 @@ const MAX_TRANSCRIPT_ITEMS = 500;
 // appear on screen. Short enough to feel live, long enough not to hammer the
 // Worker while someone is mid-sentence.
 const STATE_REFRESH_DELAY_MS = 400;
+// The terminal results poll. This runs ONCE PER MEETING, on the way out, so it
+// can afford to retry; the per-turn draft refresh above stays a single request
+// because it fires on every turn.
+const RESULTS_POLL_ATTEMPTS = 6;
+const RESULTS_POLL_DELAY_MS = 700;
 
 function cleanText(value, maximum = MAX_CAPTION_LENGTH) {
   const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -269,9 +274,13 @@ export class LiveVoiceController {
     this.setPhase('off', 'Live meeting ended.');
     // The Worker owns provider hang-up and lease settlement; the browser only
     // reports that it is finished.
-    try {
-      await getSession(this.sessionId).then((payload) => this.acceptSessionPayload(payload));
-    } catch (_error) { /* the meeting is already over */ }
+    //
+    // The teardown above has already run, so this poll is invisible to the
+    // client. It is the last chance to notice a completed analysis: if the
+    // meeting ended without a final `response.done` — a lease expiry, a budget
+    // stop, or the client hanging up right after confirming — the per-turn
+    // refresh never fired and the results would otherwise sit unseen.
+    await this.waitForResults();
   }
 
   teardown() {
@@ -373,21 +382,61 @@ export class LiveVoiceController {
     this.acceptSessionPayload(payload);
   }
 
+  /** @returns {boolean} whether this payload triggered the results navigation. */
   acceptSessionPayload(payload) {
     const body = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
-    if (!body || typeof body !== 'object') return;
+    if (!body || typeof body !== 'object') return false;
 
     this.onVoicePayload(body);
     const planning = extractRealtimePlanningContext(body);
     if (planning) this.onPlanningPayload(planning);
 
     // The deterministic engine has run and the results exist. Navigate once.
-    const status = String(body.session?.status || '');
-    const hasResults = Boolean(body.analysis?.results?.length || body.analysis?.summary);
-    if (!this.navigated && hasResults && ['complete', 'completed'].includes(status)) {
+    //
+    // KEY OFF `stage`, NOT `status`. `completeAnalysisRun` sets stage='results'
+    // and never touches status; consumer_sessions.status only becomes
+    // 'completed' on the two writes that also set stage='human_handoff', which
+    // the client can reach only FROM this results view. Testing status here was
+    // therefore circular and this branch never ran — the client was told
+    // "your analyses are ready" and left on the voice screen.
+    if (!this.navigated && this.resultsAreReady(body)) {
       this.navigated = true;
       this.stop('completed').catch(() => {});
       this.onNavigate('results');
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Results exist and the session has reached the results stage. Both halves
+   * matter: the stage alone can be set before the payload carries the analysis,
+   * and analysis alone can be a previous run.
+   */
+  resultsAreReady(body) {
+    const stage = String(body?.session?.stage || '');
+    const hasResults = Boolean(body?.analysis?.results?.length || body?.analysis?.summary);
+    return hasResults && stage === 'results';
+  }
+
+  /**
+   * The terminal results poll.
+   *
+   * The per-turn refresh gives the final assistant turn exactly one 400ms
+   * chance to observe the completed analysis, and no further turn follows it —
+   * so a slow write, a dropped request, or a meeting that ends without a final
+   * `response.done` left the client stranded with results sitting in the
+   * database. This retries on the way out, where the cost is once per meeting.
+   */
+  async waitForResults() {
+    if (this.navigated || !this.sessionId) return;
+    for (let attempt = 0; attempt < RESULTS_POLL_ATTEMPTS; attempt += 1) {
+      let navigated = false;
+      try {
+        navigated = this.acceptSessionPayload(await getSession(this.sessionId));
+      } catch (_error) { /* try again; the meeting is already over either way */ }
+      if (navigated || this.navigated) return;
+      await new Promise((resolve) => setTimeout(resolve, RESULTS_POLL_DELAY_MS));
     }
   }
 

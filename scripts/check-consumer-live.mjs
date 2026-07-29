@@ -1988,6 +1988,39 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   for (const option of ['onVoicePayload', 'onPlanningPayload', 'onNavigate', 'onStopBoundedVoice', 'onToast', 'onSessionUnavailable']) {
     ok(client.includes(option), `The live controller must accept ${option} like the v2 controller.`);
   }
+
+  /* ------------------------------------------------ reaching the results view */
+
+  // THE DEFECT THESE GUARD AGAINST: the results navigation used to require
+  // `session.status` to be 'complete'/'completed'. `completeAnalysisRun` sets
+  // stage='results' and never touches status, and the only two writes that set
+  // status='completed' also set stage='human_handoff' — which the client can
+  // reach only FROM the results view. The condition was circular, so the branch
+  // never ran: the agent said "your analyses are ready" and the client sat on
+  // the voice screen while the results waited in the database. Nothing caught
+  // it because nothing asserted on it.
+  ok(/stage\s*===\s*'results'/.test(code),
+    'The live client must decide it has results from the session stage, which is what completeAnalysisRun actually writes.');
+  ok(!/session\?\.status|session\.status/.test(code),
+    'The live client must not gate the results navigation on session.status, which never becomes complete before the results view.');
+
+  // Both halves are required: a stage without a payload navigates to an empty
+  // view, and an analysis without the stage can be a previous run.
+  ok(/resultsAreReady/.test(code) && /analysis\?\.results|analysis\.results/.test(code),
+    'Readiness must require both the results stage and an analysis payload.');
+
+  // The per-turn refresh gives the final assistant turn exactly one chance, and
+  // no turn follows it. A meeting that ends without a final response.done — a
+  // lease expiry, a budget stop, or a client hanging up straight after
+  // confirming — must still reach the results.
+  ok(/waitForResults/.test(code), 'The live client must retry for results on the way out.');
+  ok(/RESULTS_POLL_ATTEMPTS/.test(code) && /RESULTS_POLL_DELAY_MS/.test(code),
+    'The terminal results poll must be bounded.');
+  // Slice to the `teardown() {` METHOD, not the `this.teardown()` call stop()
+  // makes partway through itself.
+  const stopBody = code.slice(code.indexOf('async stop('), code.search(/\n\s*teardown\(\)\s*\{/));
+  ok(/waitForResults/.test(stopBody),
+    'Every exit path runs through stop(), so stop() must be what waits for the results.');
 }
 
 console.log(`check-consumer-live: ${checks} assertions passed.`);
