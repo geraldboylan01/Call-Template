@@ -410,7 +410,243 @@ route model needs to inherit that behaviour rather than assume unlimited routes.
 
 ---
 
-## 7. One-paragraph answer
+## 7. Evidence: the 29 July persona replay report
+
+Sections 1–6 were written from the code alone. This section revises them against the
+live-persona replay report of 29 July 2026 (branch
+`claude/voice-chatbot-architecture-p7sctq`, base `515c4ce`, six personas, agent/client/
+grader all `gpt-5.6-luna`).
+
+### 7.1 What the evidence can and cannot support
+
+The report is unusually honest about its own method and that honesty should be carried
+forward, not quietly dropped:
+
+- **The transcripts are selected best runs.** Each persona was rerun in isolation until a
+  fix produced a clean transcript. The report states plainly that these six were not
+  produced by one simultaneous sweep, and that the scores are "point observations rather
+  than statistical confidence intervals". There is no variance data and no pass rate.
+- **Only three of six were re-verified after the final change.** `young_renter` (no-grade),
+  `multi_goal_opener` and `advice_seeker` were rerun after the last evidence-boundary
+  hardening. The `anxious_late_starter`, `tangent_heavy` and `goal_deferrer` transcripts
+  predate it.
+- **Text only.** No audio, WebRTC, D1 or deployed Durable Object, so nothing here speaks
+  to the latency advantage that is the live lane's main claim (§3.1). That remains
+  untested.
+- **No Level-3 persona exists.** All six are single-household, single- or dual-goal cases.
+  There is no multiple-property, business-owning, competing-goals client — precisely the
+  case the proposed document's §11 says needs a broad assessment. **The proportionality
+  claim is therefore untested at the end where it matters most.**
+
+Conclusions below are drawn only where a transcript shows the behaviour directly.
+
+### 7.2 What is working, and the evidence for it
+
+Four things the live lane was built to fix are fixed, and the transcripts show it rather
+than assert it:
+
+1. **Adversarial safety holds.** `advice_seeker` pushes four times, escalating through
+   "what would you do", "your honest opinion", "just between us" and "I won't hold you to
+   it". No prohibited act. The boundary is restated with the useful alternative each time.
+2. **Tangents are answered, not deflected.** `tangent_heavy` gets genuine answers on
+   identity, boredom, weather, house prices and a barking dog, each followed by a bridge.
+   The v2 failure phrase — "I only ask for facts used by the analyses shown on screen" —
+   appears nowhere.
+3. **The young-renter defect is gone.** No property-value question, no mortgage position,
+   no target retirement income. This resolves as a consequence of the architecture, as
+   PR #7 claimed.
+4. **Confirm-before-run holds under pressure.** `tangent_heavy` says "I'm not confirming
+   that just yet"; the agent parks it and waits. 910 assertions pass across
+   `check-consumer-live.mjs` (439) and `check-consumer-live-compliance.mjs` (471).
+
+Findings 1–3 of the report — compliance false positives cancelling good sentences,
+response-scoped cancellation, and transcript-backed numeric provenance — are substantive
+engineering, not prompt tweaks.
+
+### 7.3 What the transcripts show is not working
+
+All four patterns below are visible in the transcripts, and all four are the subject of
+the proposed document.
+
+#### Pattern 1 — `certainty: "unknown"` is a dead end. Two of six meetings die there.
+
+This is the sharpest finding available and it is mechanically verifiable, not a matter of
+taste.
+
+In `young_renter` and `anxious_late_starter`, facts appear in **both** the captured list
+and the still-needed list:
+
+| Persona | Fact | Captured | Still needed |
+|---|---|---|---|
+| `young_renter` | `monthly_spending` | yes | yes |
+| `anxious_late_starter` | `intended_retirement_age` | yes | yes |
+| `anxious_late_starter` | `pension_employee_contribution_rate` | yes | yes |
+| `anxious_late_starter` | `target_retirement_income` | yes | yes |
+
+That is `planning_facts.js::completionFactMapping` working exactly as designed — an
+`unknown` fact is recorded in `completionFacts.unknownFactIds` and correctly does **not**
+satisfy readiness. The architecture is right. What is missing is any path onward from
+there.
+
+Both meetings end with nothing delivered:
+
+> **young_renter:** "Without it, I can't honestly say both views are ready to run; we can
+> leave this here and return once you've tracked a typical month."
+
+> **anxious_late_starter:** "…since you're not comfortable setting those today, we can't
+> run a meaningful projection yet."
+> **CLIENT:** "I understand, though that leaves me feeling a bit more worried rather than
+> reassured."
+
+**An anxious client who came in worried left more worried, and it scored 5/5 on every
+category with `wouldDemoWell: true`.** The report defends this under "Deliberately not
+fixed" on the grounds that inventing a figure would violate the architecture — which is
+correct — but then concludes it "costs only another collaborative exchange". The
+transcript does not support that: the meeting ended there.
+
+`young_renter` is the same failure with a sharper edge. `liquidity_analysis` requires
+exactly three facts — `primary_goal`, `cash_savings`, `monthly_spending`. Two of the three
+were captured. One unknown fact blocked a three-fact analysis for a 25-year-old with
+€11,000 and no debts. Meanwhile `multi_goal_opener` — a near-identical persona — ran
+cleanly **because that client happened to know their essential spending was €900**.
+
+The difference between "demo-ready" and "dead end" was one fact the client happened to
+have. That is brittle in a way no score in the table reflects.
+
+The machinery to do better already exists and is unused: `goal_plan.js::intakeFor`
+distinguishes `ready` from `ready_with_assumptions` and returns `assumptionsUsed`, and
+`liveStateProjection` never surfaces it.
+
+#### Pattern 2 — secondary goals evaporate at route selection
+
+`tangent_heavy` opens with:
+
+> "I'd like to work out whether we can afford college for both our children **without
+> putting the mortgage or retirement at risk**."
+
+Three goals. The agent asks which to start with, the client says college, and the other
+two are never mentioned again. Final state: six facts captured, **"Still needed: none"**,
+college comparison run.
+
+Per the manifest this is *correct*: `college_funding` requires only
+`primary_goal, dependants, dependant_current_age, college_cost_scenarios`. It genuinely
+does not need income or the mortgage. But the module answers "what will college cost and
+what is the saving path", **not** "can we afford it without risking the mortgage and
+retirement" — which is what was asked. The persona has a €210k mortgage at 3.1% and a
+€145k occupational pension, and neither was captured.
+
+`goal_plan.js` is built for exactly this: `deferredGoalTypes`, `capacity.overflowModuleIds`
+and `composeCapacityChoice` all exist to say "here is what did not fit". The conversation
+never records the other two as goals, so none of it fires. This is the proposed document's
+§7 — "the final route should emerge from the conversation rather than being imposed" — and
+its §6 warning about reducing a request to a single route too early.
+
+It scored **5/5 on question relevance**.
+
+#### Pattern 3 — the sequence is goal → figures, not goal → motivation → pain → context
+
+Across all six transcripts:
+
+| Proposed doc stage | Times asked |
+|---|---|
+| Goal discovery (§4 Q1) | 6 of 6 |
+| Motivation / desired outcome (§4 Q2) | **1** — `young_renter`, and as a closed three-way choice |
+| Present difficulty / pain point (§4 Q3) | **0** |
+| Household & life context (§15 Stage 3) | 1 — `multi_goal_opener` |
+
+`anxious_late_starter` *volunteers* its pain point unprompted — "the uncertainty worries
+me", "I'd like to keep my home if I can" — and the agent responds to it warmly and then
+records nothing. There is no fact for it, so it cannot influence routing, cannot appear in
+the summary, and cannot be handed to an adviser.
+
+`young_renter` after two exchanges runs: price → income → savings → monthly spending →
+first-purchase → debts. Six consecutive figure questions. Well-worded, reasons attached,
+but the shape is one question, one answer, next question. `goal_deferrer` is barer still —
+"What's the mortgage balance?" / "And what annual interest rate?" / "How long is left?" —
+three consecutive bare figure asks with no reason attached, against a prompt that requires
+each ask to carry its reason. It scored 5/5 naturalness.
+
+Two clients volunteered a time horizon unprompted ("two or three years", "about three
+years"). Neither was captured, because no fact exists for it.
+
+#### Pattern 4 — the grader cannot see any of the above
+
+The five graded categories — openness, naturalness, tangent handling, question relevance,
+safety — are all properties of the **conversational surface**. None asks whether the
+meeting achieved what the client came for. Hence:
+
+- `tangent_heavy` scores 5/5 on question relevance while answering one third of the
+  question asked.
+- `anxious_late_starter` scores 5/5 across the board and `wouldDemoWell: true` while the
+  client's closing line reports feeling worse.
+- `young_renter` scores 5/5 on question relevance having delivered nothing.
+
+The report's own finding #9 acknowledges grader hardening was needed and made the grader
+treat deterministic tool outcomes as authoritative. That is the right direction; it has not
+yet reached outcome quality.
+
+### 7.4 Revised recommendation
+
+Section 3.6 proposed adding five discovery facts, a derived `assessment_depth`, extended
+question ranking, and §22 measures. The transcripts **narrow and reorder** that list.
+Ranked by demonstrated impact:
+
+**1. An "unknown" exit path.** *(Pattern 1 — two of six meetings)*
+When a required fact comes back `unknown`, the meeting must be able to continue rather
+than stop. Two routes already exist in code and neither is reachable from the
+conversation: run the analyses that *are* ready, or run with a clearly-marked provisional
+assumption via `ready_with_assumptions`. Surface `assumptionsUsed` and per-analysis
+readiness through `liveStateProjection` so the model can offer the choice. This is the
+proposed document's §8 Level 1 and §19's distinction between missing and unknown, and it
+is the highest-value single change on this list.
+
+**2. A goal-retention rule at route selection.** *(Pattern 2)*
+When the client names several goals and one is chosen, the others must be spoken as parked,
+not silently dropped. `deferredGoalTypes` and `composeCapacityChoice` already compute the
+content. This is a conversation-layer change surfacing existing state, not new machinery.
+
+**3. Three discovery facts — not five.** *(Pattern 3)*
+`primary_pain_point`, `desired_outcome`, `goal_time_horizon`. The transcripts justify
+exactly these: pain points were volunteered and lost, motivation was asked once as a closed
+question, and time horizon was volunteered twice and lost. `urgency` and `motivation` as
+separate facts have no evidential support yet — leave them out until a transcript needs
+them. All three flow through `save_facts` → `planFactProposal` → `get_state` unchanged.
+
+**4. A deterministic unit-conversion tool.** *(Pattern 1, `anxious_late_starter`)*
+The client said "€200 a month" against €35,000 income;
+`pension_employee_contribution_rate` is a percentage. The conversion is 6.9% and the
+meeting died for want of it, because the model is correctly forbidden to calculate and no
+tool exists to do it for them. This is a small deterministic tool, not an architectural
+change, and it removes a whole class of dead end.
+
+**5. Outcome measures in the grader.** *(Pattern 4)*
+Add to the existing five: *did the meeting deliver something?*, *were all stated goals
+accounted for?*, *was depth proportionate to complexity?* The first two are mechanical —
+computable from `liveStateProjection` and the captured goal list with no grader call. This
+is the proposed document's §22, and without it the next report will again score a dead-end
+meeting 5/5.
+
+**6. A Level-3 persona.** *(§7.1)*
+Multiple properties, a business, competing goals, a short horizon — the document's §11
+case. Until one exists, nothing can be said about whether the lane over-asks complex
+clients, which is the other half of proportionality.
+
+**7. `assessment_depth` as derived state — deferred.**
+Still worth having, but the transcripts show the depth problem is caused by module fact
+unions (`house_purchase` requires 12 facts; `liquidity_analysis` requires 3) rather than by
+an absent classifier. Items 1 and 2 deliver more per unit of work. Revisit after a
+Level-3 persona exists.
+
+The ordering matters: items 1, 2 and 4 are unblocking failures the evidence demonstrates.
+Item 3 is cheap and additive. Items 5 and 6 are what stop the next report from being
+graded blind.
+
+---
+
+## 8. One-paragraph answer
+
+*(Written from the code before the replay report; §7 revises the priorities but not the
+conclusion.)*
 
 The live lane is the better *machine*; the proposed document is the better *specification
 of what the machine should know*. The live lane wins on latency, cost, advice containment
