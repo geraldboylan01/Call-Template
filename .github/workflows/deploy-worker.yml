@@ -469,6 +469,7 @@ jobs:
             'CONSUMER_REALTIME_VOICE_ENABLED',
             'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
             'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
+            'CONSUMER_LIVE_VOICE_ENABLED',
             'CONSUMER_MODULE_ROUTING_ENABLED',
             'CONSUMER_GOAL_ROUTING_ENABLED',
             'CONSUMER_MODULE_OFFERS_ENABLED',
@@ -485,11 +486,14 @@ jobs:
           if (!/^CONSUMER_ALLOWED_MODULE_IDS\s*=\s*"house_purchase,liquidity_analysis"\s*$/m.test(source)) {
             throw new Error('The protected beta module allowlist must remain house_purchase,liquidity_analysis.');
           }
-          if (!/^bindings\s*=\s*\[\s*\{\s*name\s*=\s*"CONSUMER_REALTIME_SESSIONS",\s*class_name\s*=\s*"ConsumerRealtimeSession"\s*\}\s*\]\s*$/m.test(source)) {
-            throw new Error('The ConsumerRealtimeSession Durable Object binding must remain explicit.');
+          if (!/^bindings\s*=\s*\[\s*\{\s*name\s*=\s*"CONSUMER_REALTIME_SESSIONS",\s*class_name\s*=\s*"ConsumerRealtimeSession"\s*\}\s*,\s*\{\s*name\s*=\s*"CONSUMER_LIVE_SESSIONS",\s*class_name\s*=\s*"ConsumerLiveSession"\s*\}\s*\]\s*$/m.test(source)) {
+            throw new Error('The ConsumerRealtimeSession and ConsumerLiveSession Durable Object bindings must remain explicit.');
           }
           if (!/\[\[migrations\]\]\s*\ntag\s*=\s*"consumer_realtime_sessions_v1"\s*\nnew_sqlite_classes\s*=\s*\["ConsumerRealtimeSession"\]/m.test(source)) {
             throw new Error('The ConsumerRealtimeSession SQLite migration must remain explicit.');
+          }
+          if (!/\[\[migrations\]\]\s*\ntag\s*=\s*"consumer_live_sessions_v1"\s*\nnew_sqlite_classes\s*=\s*\["ConsumerLiveSession"\]/m.test(source)) {
+            throw new Error('The ConsumerLiveSession SQLite migration must remain explicit.');
           }
 
           const requiredPolicyVariables = [

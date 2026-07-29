@@ -235,6 +235,7 @@ function getConsumerRouteMethods(pathname) {
 }
 
 export { ConsumerRealtimeSession } from './consumer/realtime_session.js';
+export { ConsumerLiveSession } from './consumer/live/live_session.js';
 
 function getRouteConfig(pathname) {
   if (pathname === '/api/agent-tests/sessions') {
