@@ -81,6 +81,7 @@ const GOAL_DEFINITIONS = Object.freeze({
 export function realtimeFactValueVocabulary(factId) {
   const id = String(factId || '');
   if (id === 'primary_goal') return [...GOAL_TYPES];
+  if (id === 'lending_category') return ['first_time_buyer', 'fresh_start', 'second_or_subsequent'];
   const choices = CHOICES[id];
   return choices ? [...choices] : null;
 }
@@ -268,6 +269,31 @@ function optionalRate(value, options) {
 
 function optionalBounded(value, options) {
   return value === null || typeof value === 'undefined' ? undefined : boundedNumber(value, options);
+}
+
+function optionalRemainingTermMonths(value, { required = false } = {}) {
+  if (!plainObject(value)) return optionalBounded(value, { min: 1, max: 1200, integer: true });
+  if (value.remainingTermMonths !== null && typeof value.remainingTermMonths !== 'undefined') {
+    return optionalBounded(value.remainingTermMonths, { min: 1, max: 1200, integer: true });
+  }
+  if (value.months !== null && typeof value.months !== 'undefined') {
+    return optionalBounded(value.months, { min: 1, max: 1200, integer: true });
+  }
+  if (value.value !== null && typeof value.value !== 'undefined') {
+    return optionalBounded(value.value, { min: 1, max: 1200, integer: true });
+  }
+  const yearsValue = value.remainingTermYears ?? value.years;
+  if (yearsValue === null || typeof yearsValue === 'undefined') {
+    if (required) {
+      throw new ConsumerError(
+        400,
+        'realtime_fact_value_invalid',
+        'A remaining-term fact needs months or years.'
+      );
+    }
+    return undefined;
+  }
+  return boundedNumber(yearsValue, { min: 1, max: 100, integer: true }) * 12;
 }
 
 function scalarValue(value, keys = []) {
@@ -847,7 +873,7 @@ function mapLiabilityPosition(profile, fact, currency) {
         value.annualInterestRate ?? value.interestRate,
         { decimal: value.rateUnit === 'decimal' }
       );
-      const remainingTermMonths = optionalBounded(value.remainingTermMonths, { min: 1, max: 1200, integer: true });
+      const remainingTermMonths = optionalRemainingTermMonths(value);
       if (currentBalance) canonical.currentBalance = currentBalance;
       if (monthlyPayment) canonical.monthlyPayment = monthlyPayment;
       if (typeof annualInterestRate === 'number') canonical.annualInterestRate = annualInterestRate;
@@ -1340,7 +1366,7 @@ export function mapRealtimeFact(profile, fact) {
           scalarValue(fact.value, [key, 'rate']),
           { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
         )
-        : boundedNumber(scalarValue(fact.value, [key, 'months']), { min: 1, max: 1200, integer: true });
+        : optionalRemainingTermMonths(fact.value, { required: true });
     const proposalValue = fact.factId.endsWith('_current_balance')
       ? { entityId: stableId, ...canonicalValue }
       : {

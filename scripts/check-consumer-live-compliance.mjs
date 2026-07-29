@@ -126,9 +126,18 @@ for (const text of nonFinancial) {
     'Your best option is the PRSA.',
     'The best product for you would be an ARF.',
     'I would recommend consolidating the loan.',
+    'I’d recommend that you switch your mortgage.',
+    'I’d suggest investing in that fund.',
     'You should invest that in an index fund.',
+    'You’d be better off overpaying the mortgage.',
     'You would be better off overpaying the mortgage.',
-    'What I would do is top up the AVC.'
+    'What I would do is top up the AVC.',
+    'You should see that on screen. You should invest in that fund.',
+    'Whether you should invest is for an adviser; however, you should invest in that fund.',
+    'I’d suggest we overpay the mortgage.',
+    'I would suggest we invest in the pension.',
+    'You should see about switching mortgage providers.',
+    'If retirement is your priority you should invest in the pension.'
   ];
   for (const text of recommendations) {
     const verdict = trips(text);
@@ -138,8 +147,10 @@ for (const text of nonFinancial) {
   const eligibility = [
     'You would definitely qualify for that.',
     'You are eligible for the Help to Buy scheme.',
+    'You’re eligible for the Help to Buy scheme.',
     'You will be approved for that amount.',
-    'You are entitled to the full rate.'
+    'You are entitled to the full rate.',
+    'That confirms you would be treated as a first-time buyer for the review.'
   ];
   for (const text of eligibility) {
     const verdict = trips(text);
@@ -166,12 +177,20 @@ for (const text of nonFinancial) {
     'Please stop me whenever you like — you need to let me know if I go too fast.',
     'I would suggest we come back to the pension in a moment.',
     'I cannot recommend a specific product, but I can capture the details.',
+    'I can’t tell you which one to choose or what I would do in your position. I can compare the trade-off clearly.',
+    'I’d suggest we come back to the pension in a moment.',
+    'I would recommend we park the mortgage for now.',
+    'I cannot recommend a fund, but I would suggest taking this one question at a time.',
     'A pension is a long-term savings arrangement with tax relief on contributions.',
     'That is the kind of thing an adviser would look at with you.',
     'I am not able to tell you whether you would qualify — a lender decides that.',
     'The mortgage analysis looks at what your repayments would mean month to month.',
     'You have a mortgage and a loan, so those are both worth looking at.',
-    'Once you confirm, I will run the analyses and the numbers will appear on screen.'
+    'Once you confirm, I will run the analyses and the numbers will appear on screen.',
+    'The best option for you is not something I can decide, but I can map the trade-offs.',
+    'My advice is not something I can provide, but I can compare the analyses.',
+    'It would be wrong for me to say you would qualify; a lender decides that.',
+    'What I would do here is explain how the mortgage analysis works.'
   ];
   for (const text of mustNotTrip) {
     const verdict = trips(text);
@@ -202,6 +221,22 @@ for (const text of nonFinancial) {
   for (const text of declines) {
     ok(!trips(text).tripped, `A decline must not be flagged: ${text}`);
   }
+
+  const streamedSafeGuards = [
+    'For the pension I’d suggest we come back to that in a moment.',
+    'The best option for you is not something I can decide, but I can map the trade-offs.',
+    'My advice is not something I can provide, but I can compare the analyses.',
+    'It would be wrong for me to say you would qualify; a lender decides that.',
+    'What I would do here is explain how the mortgage analysis works.'
+  ];
+  for (const streamedSafeGuard of streamedSafeGuards) {
+    for (let index = 1; index <= streamedSafeGuard.length; index += 1) {
+      const prefix = streamedSafeGuard.slice(0, index);
+      ok(!trips(prefix).tripped, `A safe streaming prefix was flagged: ${prefix}`);
+    }
+  }
+  ok(trips('For the pension I’d suggest investing in that fund.').tripped,
+    'A suggestion that diverges from the safe streaming guard must trip.');
 }
 
 /* ---------------------------------------------------------- L4: supervisor */

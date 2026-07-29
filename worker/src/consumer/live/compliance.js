@@ -233,18 +233,18 @@ function figureIsSourced(set, figure) {
 // Unambiguous regardless of context.
 const UNAMBIGUOUS_RECOMMENDATION = [
   /\bmy advice (?:is|would be)\b/i,
-  /\bi'?d advise you\b/i,
-  /\bi (?:would |'d )?recommend(?:ed)? that you\b/i,
+  /\bi(?:'d|\s+would)?\s+advise\s+you\b/i,
+  /\bi(?:'d|\s+would)?\s+recommend(?:ed)?\s+that\s+you\b/i,
   /\byour best (?:bet|option) (?:is|would be)\b/i,
   /\bthe best (?:option|product|provider|policy|fund|plan) (?:for you )?(?:is|would be)\b/i
 ];
 
 // Recommendation verbs that only trip alongside a financial object.
 const CONTEXTUAL_RECOMMENDATION = [
-  /\bi (?:would |'d )?recommend\b/i,
-  /\bi (?:would |'d )?suggest\b/i,
-  /\byou (?:should|ought to|need to|'d be better off|would be better off)\b/i,
-  /\bwhat i(?:'d| would) do\b/i
+  /\bi(?:'d|\s+would)?\s+recommend\b/i,
+  /\bi(?:'d|\s+would)?\s+suggest\b/i,
+  /\byou(?:\s+(?:should|ought\s+to|need\s+to)|(?:'d|\s+would)\s+be\s+better\s+off)\b/i,
+  /\bwhat\s+i(?:'d|\s+would)\s+do\b/i
 ];
 
 // Financial actions/objects that make a recommendation verb a real recommendation.
@@ -256,21 +256,158 @@ const FINANCIAL_OBJECT = new RegExp(
   'i'
 );
 
-// "you should be able to see that on screen" must never trip. These win.
+// A recommendation-shaped phrase is sometimes only the lead-in to process
+// guidance or an explicit decline. These guards are deliberately complete
+// phrases: broad guards such as "I'd suggest we" or "you should see" also
+// suppress real recommendations ("I'd suggest we invest", "you should see
+// about switching"), which makes them unsafe.
 const RECOMMENDATION_NEGATIVE_GUARDS = [
-  /\byou should (?:be able to|see|hear|have|find|expect|notice|get a chance)\b/i,
+  /\bmy advice (?:is(?: not|n't)|would be not)\b/i,
+  /\byour best (?:bet|option) (?:is(?: not|n't)|would be not)\b/i,
+  /\bthe best (?:option|product|provider|policy|fund|plan) (?:for you )?(?:is(?: not|n't)|would be not)\b/i,
+  /\byou should be able to (?:see|hear|find|notice)\b/i,
+  /\byou should (?:see|notice) (?:that|this|it)\b/i,
   /\byou (?:should|need to) (?:tell me|let me know|say|shout|stop me|feel free)\b/i,
-  /\bi(?:'d| would) suggest we\b/i,
+  /\bi(?:'d| would) suggest we (?:come back|move on|park|start with|continue with|return to|focus on)\b/i,
   /\bi(?:'d| would) recommend we (?:come back|move on|park|start)\b/i,
+  /\bwhat i(?:'d| would) do(?: here)? is (?:explain|show|map|compare|outline|review|walk you through|talk you through)\b/i,
   /\byou need to (?:know|understand|be aware)\b/i
 ];
 
+// `scanAssistantSpeech` runs on every streaming delta, so a safe guard must be
+// protected while it is still being spoken. Once the suffix diverges from all
+// of these known-safe leads, the contextual detector may trip immediately.
+const SAFE_GUARD_LEADS = Object.freeze([
+  'my advice is not',
+  "my advice isn't",
+  'my advice would be not',
+  'your best bet is not',
+  "your best bet isn't",
+  'your best bet would be not',
+  'your best option is not',
+  "your best option isn't",
+  'your best option would be not',
+  'the best option is not',
+  "the best option isn't",
+  'the best option would be not',
+  'the best option for you is not',
+  "the best option for you isn't",
+  'the best option for you would be not',
+  'the best product is not',
+  "the best product isn't",
+  'the best product would be not',
+  'the best product for you is not',
+  "the best product for you isn't",
+  'the best product for you would be not',
+  'the best provider is not',
+  "the best provider isn't",
+  'the best provider would be not',
+  'the best provider for you is not',
+  "the best provider for you isn't",
+  'the best provider for you would be not',
+  'the best policy is not',
+  "the best policy isn't",
+  'the best policy would be not',
+  'the best policy for you is not',
+  "the best policy for you isn't",
+  'the best policy for you would be not',
+  'the best fund is not',
+  "the best fund isn't",
+  'the best fund would be not',
+  'the best fund for you is not',
+  "the best fund for you isn't",
+  'the best fund for you would be not',
+  'the best plan is not',
+  "the best plan isn't",
+  'the best plan would be not',
+  'the best plan for you is not',
+  "the best plan for you isn't",
+  'the best plan for you would be not',
+  'you should be able to',
+  'you should see that',
+  'you should see this',
+  'you should see it',
+  'you should notice that',
+  'you should notice this',
+  'you should notice it',
+  'you should tell me',
+  'you should let me know',
+  'you should say',
+  'you should shout',
+  'you should stop me',
+  'you should feel free',
+  'you need to tell me',
+  'you need to let me know',
+  'you need to say',
+  'you need to shout',
+  'you need to stop me',
+  'you need to feel free',
+  "i'd suggest we come back",
+  'i would suggest we come back',
+  "i'd suggest we move on",
+  'i would suggest we move on',
+  "i'd suggest we park",
+  'i would suggest we park',
+  "i'd suggest we start with",
+  'i would suggest we start with',
+  "i'd suggest we continue with",
+  'i would suggest we continue with',
+  "i'd suggest we return to",
+  'i would suggest we return to',
+  "i'd suggest we focus on",
+  'i would suggest we focus on',
+  "i'd recommend we come back",
+  'i would recommend we come back',
+  "i'd recommend we move on",
+  'i would recommend we move on',
+  "i'd recommend we park",
+  'i would recommend we park',
+  "i'd recommend we start",
+  'i would recommend we start',
+  "what i'd do is explain",
+  'what i would do is explain',
+  "what i'd do here is explain",
+  'what i would do here is explain',
+  "what i'd do is show",
+  'what i would do is show',
+  "what i'd do here is show",
+  'what i would do here is show',
+  "what i'd do is map",
+  'what i would do is map',
+  "what i'd do here is map",
+  'what i would do here is map',
+  "what i'd do is compare",
+  'what i would do is compare',
+  "what i'd do here is compare",
+  'what i would do here is compare',
+  "what i'd do is outline",
+  'what i would do is outline',
+  "what i'd do here is outline",
+  'what i would do here is outline',
+  "what i'd do is review",
+  'what i would do is review',
+  "what i'd do here is review",
+  'what i would do here is review',
+  "what i'd do is walk you through",
+  'what i would do is walk you through',
+  "what i'd do here is walk you through",
+  'what i would do here is walk you through',
+  "what i'd do is talk you through",
+  'what i would do is talk you through',
+  "what i'd do here is talk you through",
+  'what i would do here is talk you through',
+  'you need to know',
+  'you need to understand',
+  'you need to be aware'
+]);
+
 const ELIGIBILITY_CLAIM = [
-  /\byou(?:'d| would| will| 'll|'ll)? (?:definitely |likely |probably |certainly )?qualify\b/i,
-  /\byou (?:are|'re|would be|'d be|will be) (?:definitely |likely |probably )?eligible\b/i,
-  /\byou(?:'d| would| will|'ll)? (?:be )?approved\b/i,
-  /\byou(?:'re| are| would be|'d be) entitled to\b/i,
-  /\byou(?:'d| would)? get approved\b/i
+  /\byou(?:'d|\s+would|\s+will|'ll)?\s+(?:definitely\s+|likely\s+|probably\s+|certainly\s+)?qualify\b/i,
+  /\byou(?:\s+are|'re|\s+would\s+be|'d\s+be|\s+will\s+be|'ll\s+be)\s+(?:definitely\s+|likely\s+|probably\s+)?eligible\b/i,
+  /\byou(?:'d|\s+would|\s+will|'ll)?\s+(?:be\s+)?approved\b/i,
+  /\byou(?:'re|\s+are|\s+would\s+be|'d\s+be)\s+entitled\s+to\b/i,
+  /\byou(?:'d|\s+would|'ll|\s+will)?\s+get\s+approved\b/i,
+  /\byou(?:'d|\s+would|\s+will)\s+be\s+treated\s+as\s+(?:an?\s+)?(?:first[- ]time buyer|fresh[- ]start applicant|previous owner)\b/i
 ];
 
 const PREMATURE_RESULT = [
@@ -285,11 +422,21 @@ const PREMATURE_RESULT = [
  * text immediately preceding it is checked for a negation or an epistemic
  * hedge.
  *
- * This deliberately costs recall: "if that is right, you would qualify" is
- * suppressed too. L4 reads the whole turn and covers what this gives up.
+ * This deliberately costs some recall. L4 reads the whole turn and covers
+ * what this gives up. A conditional "if" is not a negation: "if retirement is
+ * your priority, you should invest" is still a recommendation and must trip.
  */
 const NEGATION_LOOKBACK = 70;
-const NEGATION_MARKER = /\b(?:not|cannot|can'?t|won'?t|unable|never|whether|if|neither|nor|don'?t|doesn'?t|isn'?t|aren'?t|wouldn'?t)\b/i;
+const NEGATION_MARKER = /\b(?:not|cannot|can'?t|won'?t|unable|never|whether|neither|nor|don'?t|doesn'?t|isn'?t|aren'?t|wouldn'?t)\b/i;
+const TYPOGRAPHIC_APOSTROPHES = /[\u2018\u2019\u02bc]/g;
+
+const ELIGIBILITY_NEGATIVE_GUARDS = [
+  /\bit would be wrong for me to say you(?:'d|\s+would|\s+will|'ll)?\s+qualify\b/i
+];
+
+function normalizeScanText(value) {
+  return String(value || '').replace(TYPOGRAPHIC_APOSTROPHES, "'");
+}
 
 function claimIsNegated(text, index) {
   const window = text.slice(Math.max(0, index - NEGATION_LOOKBACK), index);
@@ -300,12 +447,60 @@ function claimIsNegated(text, index) {
   return NEGATION_MARKER.test(clause);
 }
 
-function firstUnnegatedMatch(text, patterns) {
+function allMatches(text, pattern) {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  return text.matchAll(new RegExp(pattern.source, flags));
+}
+
+function firstAcceptedMatch(text, patterns, accept = () => true) {
+  let earliest = null;
   for (const pattern of patterns) {
-    const match = pattern.exec(text);
-    if (match && !claimIsNegated(text, match.index)) return match;
+    for (const match of allMatches(text, pattern)) {
+      if (claimIsNegated(text, match.index) || !accept(match)) continue;
+      if (!earliest || match.index < earliest.index) earliest = match;
+    }
   }
-  return null;
+  return earliest;
+}
+
+function guardContainsMatch(text, target, guards = RECOMMENDATION_NEGATIVE_GUARDS) {
+  const targetEnd = target.index + target[0].length;
+  return guards.some((pattern) => {
+    for (const guard of allMatches(text, pattern)) {
+      const guardEnd = guard.index + guard[0].length;
+      if (guard.index <= target.index && guardEnd >= targetEnd) return true;
+    }
+    return false;
+  });
+}
+
+function compactText(value) {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function guardIsPending(text, match) {
+  const tail = compactText(text.slice(match.index));
+  return SAFE_GUARD_LEADS.some((lead) => lead.startsWith(tail));
+}
+
+function financialObjectSharesClause(text, match) {
+  const before = text.slice(0, match.index);
+  const start = Math.max(
+    before.lastIndexOf('.'),
+    before.lastIndexOf(','),
+    before.lastIndexOf(';'),
+    before.lastIndexOf(':'),
+    before.lastIndexOf('—'),
+    before.lastIndexOf('–'),
+    before.lastIndexOf('?'),
+    before.lastIndexOf('!')
+  ) + 1;
+  const rest = text.slice(match.index + match[0].length);
+  const nextDelimiter = rest.search(/[.,;:—–?!]/);
+  const end = nextDelimiter === -1
+    ? text.length
+    : match.index + match[0].length + nextDelimiter;
+  return FINANCIAL_OBJECT.test(text.slice(start, end));
 }
 
 /**
@@ -315,39 +510,74 @@ function firstUnnegatedMatch(text, patterns) {
  * must stay that way — anything expensive here lands directly on the audio
  * path this whole lane exists to protect.
  *
+ * `skipNumericContainment` is used only while the provider still owes the
+ * finalized client transcription for the turn that triggered this response.
+ * L3 remains live during that short window. `skipLeadInTripwires` is the
+ * inverse rescan: once the client figures arrive, L2 is run over the buffered
+ * transcript without firing a second time for an L3 violation already handled
+ * on a streaming delta.
+ *
  * @returns {{tripped: boolean, actId: string|null, evidence: string, layer: string|null}}
  */
-export function scanAssistantSpeech(text, sourcedFigures) {
-  const speech = String(text || '').slice(0, 4_000);
+export function scanAssistantSpeech(
+  text,
+  sourcedFigures,
+  { skipNumericContainment = false, skipLeadInTripwires = false } = {}
+) {
+  // Voice transcripts commonly contain typographic apostrophes. Normalizing
+  // them keeps contractions inside both positive patterns and negative guards;
+  // replacement is one code point for one code point, so match indices stay
+  // aligned for the clause-scoped negation check.
+  const speech = normalizeScanText(text).slice(0, 4_000);
   const clean = () => ({ tripped: false, actId: null, evidence: '', layer: null });
   if (!speech.trim()) return clean();
 
   // L3 first: it is cheaper and fires earliest in the sentence.
-  const guarded = RECOMMENDATION_NEGATIVE_GUARDS.some((pattern) => pattern.test(speech));
-
-  const unambiguous = firstUnnegatedMatch(speech, UNAMBIGUOUS_RECOMMENDATION);
-  if (unambiguous) {
-    return { tripped: true, actId: 'recommendation', evidence: unambiguous[0], layer: 'L3' };
-  }
-  if (!guarded && FINANCIAL_OBJECT.test(speech)) {
-    const contextual = firstUnnegatedMatch(speech, CONTEXTUAL_RECOMMENDATION);
+  if (!skipLeadInTripwires) {
+    const unambiguous = firstAcceptedMatch(
+      speech,
+      UNAMBIGUOUS_RECOMMENDATION,
+      (match) => !guardContainsMatch(speech, match) && !guardIsPending(speech, match)
+    );
+    if (unambiguous) {
+      return { tripped: true, actId: 'recommendation', evidence: unambiguous[0], layer: 'L3' };
+    }
+    const contextual = firstAcceptedMatch(
+      speech,
+      CONTEXTUAL_RECOMMENDATION,
+      (match) => (
+        financialObjectSharesClause(speech, match)
+        && !guardContainsMatch(speech, match)
+        && !guardIsPending(speech, match)
+      )
+    );
     if (contextual) {
       return { tripped: true, actId: 'recommendation', evidence: contextual[0], layer: 'L3' };
     }
-  }
-  const eligibility = firstUnnegatedMatch(speech, ELIGIBILITY_CLAIM);
-  if (eligibility) {
-    return { tripped: true, actId: 'eligibility', evidence: eligibility[0], layer: 'L3' };
-  }
-  const premature = firstUnnegatedMatch(speech, PREMATURE_RESULT);
-  if (premature) {
-    return { tripped: true, actId: 'premature_result', evidence: premature[0], layer: 'L3' };
+    const eligibility = firstAcceptedMatch(
+      speech,
+      ELIGIBILITY_CLAIM,
+      (match) => !guardContainsMatch(speech, match, ELIGIBILITY_NEGATIVE_GUARDS)
+    );
+    if (eligibility) {
+      return { tripped: true, actId: 'eligibility', evidence: eligibility[0], layer: 'L3' };
+    }
+    const premature = firstAcceptedMatch(speech, PREMATURE_RESULT);
+    if (premature) {
+      return { tripped: true, actId: 'premature_result', evidence: premature[0], layer: 'L3' };
+    }
   }
 
-  // L2: any financial figure with no source.
-  for (const figure of extractFinancialFigures(speech)) {
-    if (!figureIsSourced(sourcedFigures, figure)) {
-      return { tripped: true, actId: 'unsourced_figure', evidence: String(figure), layer: 'L2' };
+  // L2: any financial figure with no source. Provider auto-response can begin
+  // before the client transcription finalizes. In that ordering the caller
+  // defers this loop, sources the client turn, then rescans the whole buffered
+  // assistant transcript. This prevents a good echo being cancelled without
+  // delaying recommendation or eligibility tripwires.
+  if (!skipNumericContainment) {
+    for (const figure of extractFinancialFigures(speech)) {
+      if (!figureIsSourced(sourcedFigures, figure)) {
+        return { tripped: true, actId: 'unsourced_figure', evidence: String(figure), layer: 'L2' };
+      }
     }
   }
 
