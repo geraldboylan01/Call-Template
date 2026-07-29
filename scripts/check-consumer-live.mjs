@@ -1947,6 +1947,87 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'An adversarial advice-seeking persona must exist.');
 }
 
+/* ------------------------------------------ the client reaches their analysis */
+
+// The published bundle is built from REAL engine output, not a fixture. The
+// whole design rests on `createModuleRunResult` already emitting the shapes the
+// session normalisers consume, so a fixture that happened to match would prove
+// nothing — a change to either side has to break these.
+{
+  const { runPlanningModule } = await import('../js/planning/module_registry.js');
+  const {
+    buildPublishedAnalysisSession,
+    PUBLISHED_ANALYSIS_EXPIRY_DAYS
+  } = await import('../js/plan/published_analysis.js');
+  const { exportPublishedSession, exportSession, importPublishedSession } = await import('../js/state.js');
+
+  const NOW = '2026-07-29T09:00:00.000Z';
+  const base = normalizeHouseholdProfile(createHouseholdProfile({
+    profileId: 'published-analysis', nowIso: NOW, calculationDateIso: NOW.slice(0, 10)
+  }));
+  const profile = normalizeHouseholdProfile({
+    ...base,
+    assets: [{
+      assetId: 'cash-1', ownerIds: [base.primaryPerson.personId], type: 'cash',
+      label: 'Savings', currentValue: { amount: 11_000, currency: 'EUR' }, liquid: true
+    }],
+    expenses: { ...base.expenses, monthlyEssential: { amount: 1_800, currency: 'EUR' } }
+  });
+
+  const run = await runPlanningModule('liquidity_analysis', profile, {
+    calculationVersion: 'check-1', calculatedAt: NOW, scenarioOverrides: {}
+  });
+  ok(Array.isArray(run.charts) && run.charts.length > 0,
+    'The engine must still emit charts — the published bundle carries them straight through.');
+
+  // A confirmed module with no result must not reach the grid: an overview tile
+  // that opens onto nothing is worse than an absent one.
+  const session = buildPublishedAnalysisSession({ results: [run] }, {
+    clientName: 'Aoife',
+    order: ['liquidity_analysis', 'pension_projection'],
+    nowIso: NOW,
+    sessionId: 'pub-check-1'
+  });
+  assert.deepEqual(session.order, ['liquidity_analysis'],
+    'Only confirmed modules that actually produced a result may appear in the overview order.');
+
+  // The real contract: whatever the viewer accepts is what we must produce.
+  const round = importPublishedSession(exportPublishedSession(session));
+  const published = round.modules[0];
+  ok(round.modules.length === 1, 'The published bundle must round-trip through importPublishedSession.');
+  ok(JSON.parse(exportSession(session)).modules.length === 1,
+    'The advisor bundle must be exportable from the same session object.');
+
+  // Charts and tables surviving the round trip IS the feature. views.js was
+  // dropping both, so the client saw headline scalars and nothing else.
+  ok(published.generated.charts.length === 1, 'A chart must survive the round trip.');
+  assert.deepEqual(published.generated.charts[0].datasets[0].data, [11_000, 5_400, 10_800],
+    'Chart data must survive the round trip unaltered.');
+  ok(published.generated.outputs.rows.length > 0 && published.generated.assumptions.rows.length > 0,
+    'Outputs and assumptions tables must survive the round trip.');
+
+  // The client never sees an internal id, here or anywhere else.
+  ok(!published.title.includes('liquidity_analysis') && published.title.length > 0,
+    'A published module title must be the client-facing description, never the module id.');
+
+  // summaryHtml is rendered AS HTML by the viewer, and module summaries are
+  // server-generated copy rather than authored markup.
+  const injected = buildPublishedAnalysisSession({
+    results: [{ ...run, summary: '<script>alert(1)</script>', warnings: ['<img src=x onerror=1>'] }]
+  }, { nowIso: NOW, sessionId: 'pub-check-2' });
+  const injectedHtml = injected.modules[0].generated.summaryHtml;
+  ok(!/<script|<img/i.test(injectedHtml) && injectedHtml.includes('&lt;script'),
+    'Module summary and warning text must be escaped before it becomes summaryHtml.');
+
+  // Warnings have no slot in `generated`, so they must not be silently lost.
+  // Escaping leaves the words intact — that is fine, and the point: the text
+  // survives as text and can never re-enter the document as markup.
+  ok(/<li>/.test(injectedHtml) && /&lt;img/.test(injectedHtml),
+    'Module warnings must be carried into the summary as escaped list items rather than dropped.');
+
+  ok(PUBLISHED_ANALYSIS_EXPIRY_DAYS === 90, 'The client link stays open for 90 days.');
+}
+
 /* --------------------------------------------- the client dropped its baggage */
 
 // These are contracts, not style. Each names something that actively harmed

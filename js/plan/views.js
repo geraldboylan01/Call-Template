@@ -1108,7 +1108,12 @@ function createRecommendationsView(currentState) {
   return section;
 }
 
-function getResultItems(analysis) {
+/**
+ * Exported so the published-analysis bundle is built from the same extraction
+ * the results view uses. This has accreted tolerance for several payload shapes;
+ * a second copy in the publishing path would drift from it.
+ */
+export function getResultItems(analysis) {
   const root = asObject(analysis) || {};
   const nestedResults = asObject(root.results);
   const candidates = firstDefined(
