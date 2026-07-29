@@ -417,6 +417,37 @@ live-persona replay report of 29 July 2026 (branch
 `claude/voice-chatbot-architecture-p7sctq`, base `515c4ce`, six personas, agent/client/
 grader all `gpt-5.6-luna`).
 
+### 7.0 PROVENANCE WARNING — the report's fixes are not in this repository
+
+Established while starting implementation, by running the checks the report cites:
+
+| Evidence | Report | This repository |
+|---|---|---|
+| `check-consumer-live.mjs` | 439 assertions | **193** |
+| `check-consumer-live-compliance.mjs` | 471 assertions | **96** |
+| `goal_deferrer` persona in `live-personas.json` | "added" | **absent** — the original five only |
+
+`claude/voice-chatbot-architecture-p7sctq` tips at `515c4ce`, which is also the report's own
+stated comparison base. No commit exists after it on any branch, the working tree is clean
+and there is no stash. The report's "Fixes applied" — the reworked `catalogue_prompt.js`,
+hardened `compliance.js`, `live_tools.js`, `live_session.js` and `realtime_fact_mapper.js`,
+the expanded check scripts and harness, and the sixth persona — **were never committed.**
+
+**What survives this.** Every claim in §7.3 that was verified against the committed code
+stands: `liveStateProjection` reading raw `requiredMissing`, `acknowledgedMissing` existing
+only on the worker's question-plan path, `completionFactMapping` writing unknowns into
+`completionFacts`, `college_funding` requiring four facts, `liquidity_analysis` requiring
+three. Those are properties of this repository, checked directly.
+
+**What does not.** Anything inferred from conversational *behaviour* in the transcripts. Those
+six conversations were produced by a prompt and toolchain that cannot be inspected here, so
+the `young_renter` dead-end and the `tangent_heavy` goal drop may already be partly addressed
+in the unpushed version. **Do not treat the transcripts as evidence about the code at
+`5c7b45c`.**
+
+Implementation is paused until the branch is pushed. Nine files overlap between the report's
+change list and the plan.
+
 ### 7.1 What the evidence can and cannot support
 
 The report is unusually honest about its own method and that honesty should be carried
