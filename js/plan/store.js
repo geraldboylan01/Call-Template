@@ -70,6 +70,10 @@ export const state = {
     realtimeBudget: null
   },
   selectedModuleIds: [],
+  // Set once the client signs up and their analysis is published. Holds the
+  // published id and the share link; its presence is what illuminates the
+  // complete-analysis box and reveals the copy button.
+  publishedAnalysis: null,
   view: 'conversation',
   busy: false
 };
@@ -798,6 +802,9 @@ export function resetJourneyState() {
   state.analysisPlan = null;
   state.analysis = null;
   state.handoff = null;
+  // A published link belongs to the session that produced it; a new journey
+  // must not inherit the previous client's share link.
+  state.publishedAnalysis = null;
   state.consentRefreshRequired = false;
   state.ai = null;
   state.voice = {

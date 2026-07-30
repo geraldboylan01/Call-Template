@@ -327,30 +327,29 @@ export function validateRealtimeAnalysisPlanBody(body, allowedModules) {
 /**
  * The sign-up a client completes to open their own finished analysis.
  *
- * WHY THIS DEMANDS CONSENT LIKE A HANDOFF DOES. These details create a client
- * pipeline entry, so they reach the adviser — the same boundary
- * `validateHandoffBody` guards. `clients.full_name` is NOT NULL and the lead
- * insert throws without an email, so both are required rather than optional;
- * the address is captured because the sign-up asks for it, and is validated to
- * the same standard as the rest.
+ * WHY THERE IS NO CONSENT GATE HERE, unlike `validateHandoffBody`.
  *
- * The publish bundle itself is NOT validated here. It is already-encrypted
- * ciphertext the Worker cannot read, and the publish handler owns its schema.
+ * This first demanded `consent: true` plus a policy version and URL matching
+ * `config.handoffPolicyVersion` / `handoffPolicyUrl`. That was wrong twice over.
+ *
+ * It was a bug: those values come from CONSUMER_HANDOFF_POLICY_VERSION and
+ * _URL, which are only set when handoff is configured. Wherever handoff is not
+ * configured they are empty, the match fails for everyone, and NOBODY can open
+ * their analysis — the feature is dead on arrival.
+ *
+ * And it was disproportionate. A handoff SENDS the client's analysis to the
+ * adviser, which is why it demands an explicit, versioned act. This form is the
+ * client asking for their own results; the pipeline entry is a side effect of
+ * details they are deliberately typing in. Saying plainly in the form what
+ * happens to them is the honest and sufficient answer, and the form does that.
+ *
+ * `clients.full_name` is NOT NULL and the lead insert throws without an email,
+ * so those two are required. The publish bundle is not validated here: it is
+ * already-encrypted ciphertext the Worker cannot read, and the publish handler
+ * owns its schema.
  */
-export function validatePublishedAnalysisSignupBody(body, expectedPolicy) {
+export function validatePublishedAnalysisSignupBody(body) {
   if (!plainObject(body)) throw badRequest('Sign-up body must be an object.');
-  if (body.consent !== true) {
-    throw badRequest('Explicit consent is required before your details are shared.', 'published_analysis_consent_required');
-  }
-  const expectedPolicyVersion = cleanText(expectedPolicy?.version, 'Configured handoff policy version', 80, false);
-  const expectedPolicyUrl = cleanText(expectedPolicy?.url, 'Configured handoff policy URL', 500, false);
-  const policyVersion = cleanText(body.policyVersion, 'Policy version', 80);
-  const policyUrl = cleanText(body.policyUrl, 'Policy URL', 500);
-  if (!expectedPolicyVersion || !expectedPolicyUrl
-    || policyVersion !== expectedPolicyVersion
-    || policyUrl !== expectedPolicyUrl) {
-    throw badRequest('The sharing disclosure is no longer current.', 'published_analysis_policy_outdated');
-  }
 
   const firstName = cleanText(body.firstName, 'First name', 80);
   const lastName = cleanText(body.lastName, 'Last name', 80);
@@ -378,10 +377,7 @@ export function validatePublishedAnalysisSignupBody(body, expectedPolicy) {
     lastName,
     fullName: `${firstName} ${lastName}`,
     email,
-    address,
-    consent: true,
-    policyVersion,
-    policyUrl
+    address
   };
 }
 

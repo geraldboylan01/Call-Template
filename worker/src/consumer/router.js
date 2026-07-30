@@ -1332,10 +1332,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       // they press one button — so this is abuse protection, not a real ceiling.
       await rateLimit(env, 'consumer-published-analysis-session', sessionRow.id, 60 * 60 * 1000, 6);
       const body = await readJson(request);
-      const signup = validatePublishedAnalysisSignupBody(body, {
-        version: config.handoffPolicyVersion,
-        url: config.handoffPolicyUrl
-      });
+      const signup = validatePublishedAnalysisSignupBody(body);
 
       // THE SERVER DECIDES WHO GOES INTO THE PIPELINE. `meta` is client-supplied
       // and is what the publish handler reads to create the client record, so an
@@ -1355,7 +1352,6 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const response = await publishAnalysis({ body, clientAddress: signup.address });
       await recordEvent(env, sessionRow.id, 'published_analysis_created', {
         // Categorical only: no name, email or address reaches the event log.
-        consentPolicyVersion: signup.policyVersion,
         published: response.ok === true
       }).catch(() => {});
       return response;

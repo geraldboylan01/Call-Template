@@ -1599,6 +1599,57 @@ function createMeetingTranscriptSection(currentState) {
   return panel;
 }
 
+/**
+ * The box that takes the client into their full analysis.
+ *
+ * TWO STATES, AND BOTH LOOK CLICKABLE. Before sign-up the box is not disabled or
+ * locked-looking — it invites the click, and the click opens the sign-up dialog.
+ * After sign-up the same box is illuminated (`is-active`) and the click opens the
+ * viewer, with the copy button revealed beside it. A box that looked dead until
+ * a form was filled in would read as broken rather than as one step away.
+ */
+function createPublishedAnalysisBox(currentState) {
+  if (getResultItems(currentState.analysis).length === 0) return null;
+  const published = asObject(currentState.publishedAnalysis);
+  const clientUrl = typeof published?.clientUrl === 'string' ? published.clientUrl : '';
+  const ready = Boolean(clientUrl);
+
+  const box = element('section', `published-analysis-box${ready ? ' is-active' : ''}`);
+  const head = element('div', 'published-analysis-head');
+  append(
+    head,
+    element('h2', '', 'Your complete analysis'),
+    element('p', '', ready
+      ? 'Open the full view to explore each analysis on its own.'
+      : 'Add your details to open the full view of everything we worked through.')
+  );
+
+  if (ready) {
+    // Top right, per the agreed layout, and only once there is a link to copy.
+    const copy = element('button', 'secondary-button published-analysis-copy', 'Copy link');
+    copy.type = 'button';
+    copy.dataset.action = 'copy-published-analysis-link';
+    copy.dataset.url = clientUrl;
+    copy.setAttribute('aria-label', 'Copy the link to your analysis');
+    head.append(copy);
+  }
+  box.append(head);
+
+  const open = element('button', 'primary-button published-analysis-open',
+    ready ? 'Open my analysis' : 'Open my analysis');
+  open.type = 'button';
+  // The SAME affordance either way; only the destination differs.
+  open.dataset.action = ready ? 'open-published-analysis' : 'open-published-analysis-signup';
+  if (ready) open.dataset.url = clientUrl;
+  box.append(open);
+
+  if (ready) {
+    box.append(element('p', 'published-analysis-note',
+      'This link stays open for 90 days. Anyone with it can view your analysis, so share it carefully.'));
+  }
+  return box;
+}
+
 function createResultsView(currentState) {
   const adviserReviewSlots = adviserReviewModuleSlots(currentState);
   const planSlotCount = asArray(currentState.analysisPlan?.moduleSlots).length;
@@ -1628,6 +1679,8 @@ function createResultsView(currentState) {
   next.dataset.view = currentState.bootstrap?.handoffEnabled ? 'handoff' : 'review';
   append(toolbar, text, next);
   section.append(toolbar);
+  const publishedBox = createPublishedAnalysisBox(currentState);
+  if (publishedBox) section.append(publishedBox);
 
   const resultItems = getResultItems(currentState.analysis);
   if (resultItems.length === 0) {

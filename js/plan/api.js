@@ -336,6 +336,24 @@ export function putAnalysisPlan(sessionId, plan) {
   });
 }
 
+/**
+ * Publish the client's finished analysis as a share link they can open and copy.
+ *
+ * `body` carries the already-encrypted v3 bundles from `encryptPublishedSessionV4`'s
+ * sibling — the Worker never sees the plaintext analysis — alongside the sign-up
+ * fields the server validates and files the pipeline entry under. The publish
+ * itself writes two R2 objects and a row, so it gets a longer timeout than an
+ * ordinary call, in line with putAnalysisPlan.
+ */
+export function publishAnalysis(sessionId, body) {
+  return request(pathForSession(sessionId, '/published-analysis'), {
+    method: 'POST',
+    authenticated: true,
+    body,
+    timeoutMs: 60_000
+  });
+}
+
 export function createHandoff(sessionId, handoff) {
   return request(pathForSession(sessionId, '/handoffs'), {
     method: 'POST',

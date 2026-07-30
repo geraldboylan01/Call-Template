@@ -1526,18 +1526,14 @@ assert.equal(parseConsumerCredential('invalid'), null);
 
 {
   const { validatePublishedAnalysisSignupBody } = await import('../worker/src/consumer/validators.js');
-  const policy = { version: 'handoff-v1', url: 'https://planeir.ie/plan/privacy' };
   const valid = Object.freeze({
-    consent: true,
-    policyVersion: policy.version,
-    policyUrl: policy.url,
     firstName: 'Aoife',
     lastName: 'Ní Bhriain',
     email: 'Aoife@Example.IE',
     address: '12 Rathmines Road, Dublin 6, D06 AF30'
   });
 
-  const accepted = validatePublishedAnalysisSignupBody({ ...valid }, policy);
+  const accepted = validatePublishedAnalysisSignupBody({ ...valid });
   assert.equal(accepted.fullName, 'Aoife Ní Bhriain', 'fullName is composed from first and last name.');
   assert.equal(accepted.email, 'aoife@example.ie', 'Email is normalised to lower case for pipeline matching.');
   assert.equal(accepted.address, '12 Rathmines Road, Dublin 6, D06 AF30',
@@ -1551,29 +1547,33 @@ assert.equal(parseConsumerCredential('invalid'), null);
   // into "[redacted identifier]". They must be accepted verbatim here.
   for (const address of ['I live at 4 Grove Park, Cork', 'My address is 7 Oak Lane, Galway']) {
     assert.equal(
-      validatePublishedAnalysisSignupBody({ ...valid, address }, policy).address,
+      validatePublishedAnalysisSignupBody({ ...valid, address }).address,
       address,
       `A naturally phrased address must be accepted verbatim: ${address}`
     );
   }
 
-  // These details create a client pipeline entry, so they reach the adviser —
-  // the same boundary the handoff guards. Consent is not optional.
-  await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, consent: false }, policy),
-    /consent/i, 'Sign-up without explicit consent must be refused.');
-
-  // A stale disclosure must not be accepted, or a client could consent to
-  // wording that has since changed.
-  await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, policyVersion: 'handoff-v0' }, policy),
-    /no longer current/i, 'A stale policy version must be refused.');
+  // REGRESSION GUARD FOR A PUBLISHING OUTAGE. This validator first demanded
+  // `consent: true` plus a policy version and URL matching
+  // config.handoffPolicyVersion / handoffPolicyUrl. Those come from env vars set
+  // only when handoff is configured, so wherever it is not, the match failed for
+  // everyone and NOBODY could open their analysis. A sign-up carrying no consent
+  // fields at all must therefore be accepted; the form states plainly what
+  // happens to the details instead.
+  assert.equal(
+    validatePublishedAnalysisSignupBody({ ...valid }).email,
+    'aoife@example.ie',
+    'A sign-up with no consent or policy fields must still be accepted.'
+  );
+  assert.equal(accepted.consent, undefined, 'No consent flag is recorded, because none is collected.');
 
   // clients.full_name is NOT NULL and the lead insert throws without an email,
   // so neither can be optional here.
   for (const field of ['firstName', 'lastName', 'email']) {
-    await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, [field]: '' }, policy),
+    await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, [field]: '' }),
       `A sign-up missing ${field} must be refused.`);
   }
-  await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, email: 'not-an-email' }, policy),
+  await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, email: 'not-an-email' }),
     /invalid/i, 'An unparseable email must be refused.');
 
   // Identifiers with no business in a postal address. NOTE the contrast with the
@@ -1585,7 +1585,7 @@ assert.equal(parseConsumerCredential('invalid'), null);
     '12 Main St, password hunter2000',
     '12 Main St, IE29 AIBK 9311 5212 3456 78'
   ]) {
-    await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, address }, policy),
+    await assert.rejects(async () => validatePublishedAnalysisSignupBody({ ...valid, address }),
       /PPS number, card or account number, or password/,
       `An address carrying a foreign identifier must be refused: ${address}`);
   }

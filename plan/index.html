@@ -426,6 +426,34 @@
       </form>
     </dialog>
 
+    <dialog id="publishedAnalysisDialog" class="plan-dialog" aria-labelledby="publishedAnalysisTitle">
+      <form id="publishedAnalysisForm" class="dialog-card">
+        <p class="section-kicker">One step before you open it</p>
+        <h2 id="publishedAnalysisTitle">Where should we send your analysis?</h2>
+        <p>
+          Your analysis is ready. Add your details and it opens straight away — you can come back to
+          the same link for the next 90 days.
+        </p>
+        <label class="field-label" for="publishedAnalysisFirstName">First name</label>
+        <input id="publishedAnalysisFirstName" name="firstName" type="text" autocomplete="given-name" maxlength="80" required />
+        <label class="field-label" for="publishedAnalysisLastName">Last name</label>
+        <input id="publishedAnalysisLastName" name="lastName" type="text" autocomplete="family-name" maxlength="80" required />
+        <label class="field-label" for="publishedAnalysisEmail">Email</label>
+        <input id="publishedAnalysisEmail" name="email" type="email" autocomplete="email" maxlength="160" required />
+        <label class="field-label" for="publishedAnalysisAddress">Address</label>
+        <input id="publishedAnalysisAddress" name="address" type="text" autocomplete="street-address" maxlength="400" required />
+        <p class="consent-detail">
+          We save these details so Gerry can follow up with you about your plan. Read the
+          <a href="./privacy.html" target="_blank" rel="noopener noreferrer">privacy details</a>.
+        </p>
+        <p id="publishedAnalysisError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancelPublishedAnalysisButton" class="secondary-button" type="button">Not now</button>
+          <button class="primary-button" type="submit">Open my analysis</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="voiceConsentDialog" class="plan-dialog" aria-labelledby="voiceConsentTitle">
       <form id="voiceConsentForm" class="dialog-card voice-consent-card">
         <p class="section-kicker">Optional adviser-test feature</p>

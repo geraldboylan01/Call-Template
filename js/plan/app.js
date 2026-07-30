@@ -9,11 +9,18 @@ import {
   getRealtimeVoiceMeetingTranscript,
   getSession,
   patchProfile,
+  publishAnalysis,
   putAnalysisPlan,
   revokeHandoff,
   withdrawAiConsent
 } from './api.js';
 import { buildSubscriptionAssistPrompt } from './subscription_assist.js';
+import {
+  PUBLISHED_ANALYSIS_EXPIRY_DAYS,
+  buildPublishedAnalysisSession
+} from './published_analysis.js';
+import { encryptPublishedSessionV3 } from '../crypto_session.js';
+import { exportPublishedSession, exportSession } from '../state.js';
 import {
   canUseSessionStorage,
   clearSessionAccess,
@@ -57,6 +64,9 @@ const headerSessionStatus = document.getElementById('headerSessionStatus');
 const deleteSessionButton = document.getElementById('deleteSessionButton');
 const privacyControlsButton = document.getElementById('privacyControlsButton');
 const deleteSessionDialog = document.getElementById('deleteSessionDialog');
+const publishedAnalysisDialog = document.getElementById('publishedAnalysisDialog');
+const publishedAnalysisForm = document.getElementById('publishedAnalysisForm');
+const publishedAnalysisError = document.getElementById('publishedAnalysisError');
 const confirmDeleteButton = document.getElementById('confirmDeleteButton');
 const editFieldDialog = document.getElementById('editFieldDialog');
 const editFieldForm = document.getElementById('editFieldForm');
@@ -450,6 +460,116 @@ async function copyTextToClipboard(value) {
   textarea.remove();
   if (!copied) {
     throw new Error('Your browser did not allow clipboard access.');
+  }
+}
+
+/* ------------------------------------------- the complete-analysis handoff */
+
+/**
+ * The client viewer lives at /app/session.html; this page is /plan/.
+ * Mirrors buildClientSessionLink in the advisor app, including `view=overview`
+ * so the link opens on the zoomed-out map of modules rather than mid-drill-in.
+ */
+function buildPublishedAnalysisClientLink(publishedId, clientSecretB64u) {
+  const url = new URL('../app/session.html', window.location.href);
+  url.searchParams.set('pub', publishedId);
+  url.searchParams.set('view', 'overview');
+  url.hash = new URLSearchParams({ ck: clientSecretB64u }).toString();
+  return url.toString();
+}
+
+function openPublishedAnalysisSignup() {
+  if (!publishedAnalysisDialog) return;
+  if (publishedAnalysisError) {
+    publishedAnalysisError.hidden = true;
+    publishedAnalysisError.textContent = '';
+  }
+  openDialog(publishedAnalysisDialog);
+}
+
+function openPublishedAnalysisLink(url) {
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+async function copyPublishedAnalysisLink(url) {
+  if (!url) return;
+  try {
+    await copyTextToClipboard(url);
+    showToast('Link copied. It stays open for 90 days.');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'The link could not be copied.', { error: true });
+  }
+}
+
+/**
+ * Publish the analysis, then illuminate the box.
+ *
+ * The encryption happens HERE, in the browser, so the Worker never sees the
+ * client's plaintext analysis — it stores ciphertext and a row. v3 is the
+ * no-PIN direct-link bundle, which is what lets the client click straight
+ * through from the box and share the copied URL.
+ *
+ * The page deliberately does not navigate on submit: the client stays where
+ * they are and the box becomes illuminated and clickable, with the copy button
+ * revealed beside it.
+ */
+async function submitPublishedAnalysisSignup(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const setError = (message) => {
+    if (!publishedAnalysisError) return;
+    publishedAnalysisError.textContent = message;
+    publishedAnalysisError.hidden = false;
+  };
+
+  const signup = {
+    firstName: String(form.elements.firstName?.value || '').trim(),
+    lastName: String(form.elements.lastName?.value || '').trim(),
+    email: String(form.elements.email?.value || '').trim(),
+    address: String(form.elements.address?.value || '').trim()
+  };
+  const fullName = `${signup.firstName} ${signup.lastName}`.trim();
+
+  if (submitButton) submitButton.disabled = true;
+  try {
+    const session = buildPublishedAnalysisSession(state.analysis, {
+      clientName: fullName || 'Client',
+      order: Array.isArray(state.selectedModuleIds) ? state.selectedModuleIds : []
+    });
+    if (session.modules.length === 0) throw new Error('There is no completed analysis to open yet.');
+
+    const encrypted = await encryptPublishedSessionV3({
+      clientSessionJson: exportPublishedSession(session),
+      advisorSessionJson: exportSession(session),
+      clientName: fullName,
+      clientEmail: signup.email,
+      expiresInDays: PUBLISHED_ANALYSIS_EXPIRY_DAYS
+    });
+
+    const response = await publishAnalysis(state.session.id, {
+      ...encrypted.requestBody,
+      // The server compares these against `meta` and refuses a mismatch, so the
+      // pipeline entry can only be filed under the details actually signed up.
+      ...signup,
+      publishTarget: 'ai-meeting',
+      linkAccessMode: 'direct'
+    });
+    const publishedId = unwrap(response)?.publishedId || response?.publishedId || '';
+    if (!publishedId) throw new Error('The analysis was not published. Please try again.');
+
+    state.publishedAnalysis = {
+      publishedId,
+      clientUrl: buildPublishedAnalysisClientLink(publishedId, encrypted.clientSecretB64u)
+    };
+    closeDialog(publishedAnalysisDialog);
+    renderCurrentJourney({ focus: false });
+    showToast('Your analysis is ready to open.');
+  } catch (error) {
+    setError(getErrorMessage(error));
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -1247,6 +1367,18 @@ function handleRootClick(event) {
     copySubscriptionAssistPrompt();
     return;
   }
+  if (action === 'open-published-analysis-signup') {
+    openPublishedAnalysisSignup();
+    return;
+  }
+  if (action === 'open-published-analysis') {
+    openPublishedAnalysisLink(button.dataset.url || '');
+    return;
+  }
+  if (action === 'copy-published-analysis-link') {
+    copyPublishedAnalysisLink(button.dataset.url || '');
+    return;
+  }
   if (action === 'edit-field') {
     openFieldEditor(button.dataset.path || '');
     return;
@@ -1318,6 +1450,9 @@ function bindEvents() {
   appRoot.addEventListener('submit', handleRootSubmit);
   appRoot.addEventListener('keydown', handleComposerShortcut);
   editFieldForm.addEventListener('submit', handleFieldEdit);
+  publishedAnalysisForm?.addEventListener('submit', submitPublishedAnalysisSignup);
+  document.getElementById('cancelPublishedAnalysisButton')
+    ?.addEventListener('click', () => closeDialog(publishedAnalysisDialog));
   cancelEditButton.addEventListener('click', () => {
     editingField = null;
     closeDialog(editFieldDialog);

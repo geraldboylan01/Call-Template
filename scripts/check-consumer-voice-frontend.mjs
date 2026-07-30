@@ -2302,4 +2302,60 @@ assert.deepEqual(journeyState.voice.realtimeConsent, {
   policyVersion: 'consumer-adviser-test-v1'
 }, 'The Worker realtimeConsent response must immediately unlock the visible Live voice flow.');
 
+/* ------------------------------------------- the complete-analysis box */
+
+{
+  const planMarkup = readFileSync(`${rootPath}/plan/index.html`, 'utf8');
+  const appSource = readFileSync(`${rootPath}/js/plan/app.js`, 'utf8');
+  const planStyles = readFileSync(`${rootPath}/styles/plan.css`, 'utf8');
+
+  // BOTH STATES MUST LOOK CLICKABLE. The box before sign-up is not disabled and
+  // not dimmed — it invites the click, which opens the sign-up. Only the
+  // destination differs between the two states, and only the illuminated state
+  // exposes the copy button. A box that looked dead until a form was filled in
+  // would read as broken rather than one step away.
+  assert.match(viewsSource, /open-published-analysis-signup/,
+    'The pre-sign-up box must open the sign-up dialog.');
+  assert.match(viewsSource, /dataset\.action = ready \? 'open-published-analysis' : 'open-published-analysis-signup'/,
+    'The same button serves both states; only its destination changes.');
+  assert.doesNotMatch(viewsSource, /published-analysis-open[\s\S]{0,200}?\.disabled = true/,
+    'The pre-sign-up box must never be rendered disabled.');
+  assert.match(viewsSource, /if \(ready\)[\s\S]{0,400}?published-analysis-copy/,
+    'The copy button appears only once there is a link to copy.');
+  assert.match(planStyles, /\.published-analysis-box\.is-active/,
+    'The illuminated state must be styled.');
+
+  // Four fields, and the plain sentence that replaced the consent gate. These
+  // details create a pipeline entry, so the client is told plainly what happens
+  // to them — see validatePublishedAnalysisSignupBody for why a versioned
+  // consent act would have been both disproportionate and a publishing outage.
+  // Scoped to THIS form: the page carries several dialogs and the voice-consent
+  // ones legitimately do have checkboxes, so an unscoped search matches them.
+  const signupFormStart = planMarkup.indexOf('id="publishedAnalysisForm"');
+  assert.ok(signupFormStart > 0, 'The sign-up form must exist in the plan page.');
+  const signupForm = planMarkup.slice(
+    signupFormStart,
+    planMarkup.indexOf('</form>', signupFormStart)
+  );
+
+  for (const field of ['firstName', 'lastName', 'email', 'address']) {
+    assert.match(signupForm, new RegExp(`name="${field}"`),
+      `The sign-up must collect ${field}.`);
+  }
+  assert.match(signupForm, /We save these details so Gerry can follow up/,
+    'The sign-up must say plainly what happens to the details.');
+  assert.doesNotMatch(signupForm, /type="checkbox"/,
+    'The sign-up must not carry a consent checkbox.');
+
+  // Submitting stays on the page: the box illuminates in place rather than the
+  // client being navigated away from their own results.
+  assert.match(appSource, /event\.preventDefault\(\)[\s\S]{0,3000}?state\.publishedAnalysis = \{/,
+    'Publishing must update state in place rather than navigating.');
+  assert.match(appSource, /expiresInDays: PUBLISHED_ANALYSIS_EXPIRY_DAYS/,
+    'The share link must use the agreed 90-day expiry.');
+  // Encryption stays in the browser, so the Worker only ever stores ciphertext.
+  assert.match(appSource, /encryptPublishedSessionV3\(/,
+    'The analysis must be encrypted client-side before it is published.');
+}
+
 console.log('Consumer bounded and controlled-realtime voice lifecycle, SDP, speech authorization, transcript, planning-context, and accessibility checks passed.');

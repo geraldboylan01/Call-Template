@@ -3900,3 +3900,68 @@ details.realtime-context-card {
     width: 100%;
   }
 }
+
+/* ------------------------------------------------- the complete-analysis box */
+
+/*
+ * Two states, and BOTH read as clickable. Before sign-up this is an ordinary
+ * inviting panel whose button opens the sign-up dialog; it is deliberately not
+ * dimmed or disabled, because a box that looks dead until a form is filled in
+ * reads as broken rather than as one step away. After sign-up the same box is
+ * illuminated and its button opens the analysis.
+ */
+.published-analysis-box {
+  margin-bottom: 1.25rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--plan-border-strong);
+  border-radius: var(--plan-radius-sm);
+  background: rgba(5, 13, 24, 0.62);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.published-analysis-box.is-active {
+  border-color: var(--plan-gold);
+  background: var(--plan-gold-wash);
+  box-shadow: 0 0 0 1px var(--plan-gold), 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.published-analysis-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.published-analysis-head h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1.05rem;
+}
+
+.published-analysis-head p {
+  margin: 0;
+  color: var(--plan-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* Top right of the box, and only present once there is a link to copy. */
+.published-analysis-copy {
+  flex: 0 0 auto;
+}
+
+.published-analysis-open {
+  margin-top: 0.9rem;
+}
+
+.published-analysis-note {
+  margin: 0.7rem 0 0;
+  color: var(--plan-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .published-analysis-box {
+    transition: none;
+  }
+}
