@@ -555,7 +555,7 @@ export { cleanupExpiredConsumerSessionsWithRealtime as cleanupExpiredConsumerSes
 export async function handleConsumerRequest(request, env, dependencies = {}) {
   const {
     pathname, respond, respondBinary, clientIp = 'unknown',
-    createPipelineHandoff, publishAnalysis
+    createPipelineHandoff, publishAnalysis, notifyAdvisorOfPublishedAnalysis
   } = dependencies;
   const route = routeMatch(pathname);
   if (!route) return respond({ error: 'Not found.', code: 'not_found' }, 404, 'GET,POST,PATCH,DELETE,OPTIONS');
@@ -1350,6 +1350,41 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }
 
       const response = await publishAnalysis({ body, clientAddress: signup.address });
+
+      // Email the advisor the advisor-version link so each AI meeting can be
+      // opened and checked. Built HERE rather than accepted from the browser:
+      // the publishedId only exists once the publish succeeds, and the server
+      // already holds both secrets in `recovery`.
+      //
+      // NOTHING IN THIS BLOCK MAY FAIL THE PUBLISH. The client's analysis is
+      // already stored and their link already works; an unsendable notification
+      // is the adviser's problem, not a reason to tell the client their analysis
+      // did not publish.
+      if (response.ok && notifyAdvisorOfPublishedAnalysis) {
+        try {
+          const published = await response.clone().json();
+          const publishedId = String(published?.publishedId || '');
+          const secrets = body?.recovery && typeof body.recovery === 'object' ? body.recovery : {};
+          if (publishedId && secrets.advisorSecretB64u) {
+            const origin = consumerPlanBaseUrl(env).origin;
+            const link = (path, hashKey, secret) => {
+              const url = new URL(path, `${origin}/`);
+              url.searchParams.set('pub', publishedId);
+              url.searchParams.set('view', 'overview');
+              url.hash = new URLSearchParams({ [hashKey]: secret }).toString();
+              return url.toString();
+            };
+            await notifyAdvisorOfPublishedAnalysis({
+              publishedId,
+              advisorLink: link('app/index.html', 'ak', secrets.advisorSecretB64u),
+              clientLink: secrets.clientSecretB64u
+                ? link('app/session.html', 'ck', secrets.clientSecretB64u)
+                : null
+            });
+          }
+        } catch (_error) { /* the analysis is published; the email is best effort */ }
+      }
+
       await recordEvent(env, sessionRow.id, 'published_analysis_created', {
         // Categorical only: no name, email or address reaches the event log.
         published: response.ok === true

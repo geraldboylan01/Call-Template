@@ -7549,6 +7549,17 @@ export default {
           body,
           clientAddress
         }),
+        // Email Gerry the advisor-version link after a client publishes, so each
+        // AI meeting can be opened and checked. Reuses the same sender the
+        // advisor's own notification endpoint calls; only the authorisation
+        // differs, and it happened server-side above.
+        notifyAdvisorOfPublishedAnalysis: async ({ publishedId, advisorLink, clientLink }) => {
+          const row = await getPublishedSessionRow(env, publishedId);
+          if (!row) return;
+          const task = sendPublishedAdvisorNotificationEmail(env, row, { advisorLink, clientLink });
+          if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(task);
+          else await task;
+        },
         respond: (data, status, methods, extraHeaders) => jsonResponse(
           data,
           status,

@@ -1638,6 +1638,38 @@ assert.equal(parseConsumerCredential('invalid'), null);
   // advisor session check is what runs.
   assert.match(workerSource, /typeof options\.authorize === 'function'/,
     'The advisor session check must remain the default authorisation.');
+
+  // The advisor notification reuses the sender the advisor's own endpoint calls
+  // rather than a second copy of the email composition.
+  assert.match(workerSource, /notifyAdvisorOfPublishedAnalysis: async \(\{[\s\S]{0,400}?sendPublishedAdvisorNotificationEmail\(env, row/,
+    'The advisor notification must reuse the existing published-session sender.');
+}
+
+/* --------------------------- the advisor notification cannot fail a publish */
+
+{
+  const routerSource = await readFile(new URL('../worker/src/consumer/router.js', import.meta.url), 'utf8');
+  const routeStart = routerSource.indexOf("route.kind === 'published_analysis'");
+  assert.ok(routeStart > 0, 'The published-analysis route must exist.');
+  const routeBody = routerSource.slice(routeStart, routerSource.indexOf("route.kind === 'handoffs'", routeStart));
+
+  // THE RULE: by the time this runs the client's analysis is stored and their
+  // link works. An unsendable advisor email is the adviser's problem and must
+  // never surface to the client as a failed publish.
+  assert.match(routeBody, /try \{[\s\S]*?notifyAdvisorOfPublishedAnalysis\([\s\S]*?\} catch \(_error\) \{/,
+    'Advisor notification failures must be swallowed, never surfaced as a publish failure.');
+
+  // Built server-side: the publishedId only exists after publishing, and the
+  // server already holds both secrets, so a browser-supplied link is neither
+  // necessary nor trustworthy.
+  assert.match(routeBody, /await response\.clone\(\)\.json\(\)/,
+    'The published id must be read from the publish response.');
+  assert.match(routeBody, /'ak', secrets\.advisorSecretB64u/,
+    'The advisor link must carry the advisor capability, not the client one.');
+
+  // The identity the pipeline entry is filed under is still server-decided.
+  assert.match(routeBody, /published_analysis_identity_mismatch/,
+    'A meta/sign-up identity mismatch must still be refused.');
 }
 
 console.log('Consumer Worker contracts passed.');

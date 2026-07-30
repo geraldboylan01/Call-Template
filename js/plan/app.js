@@ -550,6 +550,13 @@ async function submitPublishedAnalysisSignup(event) {
 
     const response = await publishAnalysis(state.session.id, {
       ...encrypted.requestBody,
+      // Both secrets, so the server can rebuild the advisor link and email it to
+      // Gerry after publishing. Stored encrypted at rest, exactly as the advisor
+      // app's own publish does.
+      recovery: {
+        clientSecretB64u: encrypted.clientSecretB64u,
+        advisorSecretB64u: encrypted.advisorSecretB64u
+      },
       // The server compares these against `meta` and refuses a mismatch, so the
       // pipeline entry can only be filed under the details actually signed up.
       ...signup,
