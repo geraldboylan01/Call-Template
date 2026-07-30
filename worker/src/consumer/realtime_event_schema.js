@@ -97,6 +97,18 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     acceptedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER,
     rejectedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
+  'realtime.planner.accounting_failed': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  'realtime.planner.apply_failed': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  'realtime.planner.refresh_failed': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
   // Carries the provider's own classification of the failure. Without these
   // fields a planner outage is indistinguishable from a schema bug, an auth
   // failure or a token-budget exhaustion — which is exactly what made the live

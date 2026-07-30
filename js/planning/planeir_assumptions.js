@@ -13,8 +13,8 @@
  * rebuilding the calculation engines.
  */
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.0.0';
-export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-07-26';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.1.0';
+export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-07-30';
 
 export const PLANEIR_ASSUMPTIONS = Object.freeze({
   version: PLANEIR_ASSUMPTIONS_VERSION,
@@ -56,6 +56,23 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
       })
     ]),
     disclosure: 'These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances.'
+  }),
+
+  liquidity: Object.freeze({
+    policyVersion: 'planeir-liquidity-reserve-1.0.0',
+    working: Object.freeze({
+      clientStatus: 'not-retired',
+      minimumBufferMonths: 3,
+      targetBufferMonths: 6,
+      basis: 'For a working household, Planéir uses three months of spending as the minimum cash-reserve floor and six months as the target.'
+    }),
+    retired: Object.freeze({
+      clientStatus: 'retired',
+      minimumBufferMonths: 12,
+      targetBufferMonths: 24,
+      basis: 'For a retired household, Planéir uses twelve months of spending as the minimum cash-reserve floor and twenty-four months as the target.'
+    }),
+    disclosure: 'These are Planéir planning guides for resilience, not a personal recommendation or a guarantee that a particular reserve will meet every emergency.'
   })
 });
 

@@ -78,6 +78,32 @@ for (const text of nonFinancial) {
   checks += 1;
 }
 
+/* ------------------------------------------ L2: liquidity policy grounding */
+
+{
+  const sourced = createSourcedFigureSet();
+  const unsupported = [
+    'An emergency fund of between one and three months can help.',
+    'A 1–3 month cash reserve is a useful range.'
+  ];
+  for (const text of unsupported) {
+    const verdict = scanAssistantSpeech(text, sourced);
+    ok(
+      verdict.tripped && verdict.actId === 'unsourced_figure' && verdict.layer === 'L2-policy',
+      `Unsupported liquidity duration was not caught: ${text}`
+    );
+  }
+
+  for (const text of [
+    'For a working household, the cash reserve guide is 3–6 months.',
+    'For a retired household, the emergency reserve guide is 12–24 months.',
+    'For a retired household, the emergency reserve guide is one to two years.',
+    'I will line up one to three analyses for you.'
+  ]) {
+    ok(!scanAssistantSpeech(text, sourced).tripped, `Approved or non-financial range was blocked: ${text}`);
+  }
+}
+
 /* ------------------------------------------------- L2: sourced containment */
 
 {

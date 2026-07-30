@@ -83,6 +83,10 @@ check('the approved values are versioned and centrally defined', () => {
   assert.equal(PLANEIR_ASSUMPTIONS.inflation.educationRate, 0.04);
   assert.equal(PLANEIR_ASSUMPTIONS.collegeFunding.startAge, 18);
   assert.equal(PLANEIR_ASSUMPTIONS.collegeFunding.durationYears, 4);
+  assert.equal(PLANEIR_ASSUMPTIONS.liquidity.working.minimumBufferMonths, 3);
+  assert.equal(PLANEIR_ASSUMPTIONS.liquidity.working.targetBufferMonths, 6);
+  assert.equal(PLANEIR_ASSUMPTIONS.liquidity.retired.minimumBufferMonths, 12);
+  assert.equal(PLANEIR_ASSUMPTIONS.liquidity.retired.targetBufferMonths, 24);
 });
 
 check('advisers cannot override the central assumptions in this version', () => {

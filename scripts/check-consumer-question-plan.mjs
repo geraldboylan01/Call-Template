@@ -312,7 +312,7 @@ await runCase('current House Purchase and Liquidity produce a stable deduplicate
   const questions = first.analysisPlan.requiredQuestions;
   assert.equal(first.analysisPlan.status, 'needs_review');
   assert.deepEqual(first.results, []);
-  assert.equal(questions.length, 6);
+  assert.equal(questions.length, 7);
   assert.equal(new Set(questions.map((question) => question.questionId)).size, questions.length);
   assert.ok(questions.every((question) => question.fieldPaths.length === 1));
   assert.deepEqual(
@@ -321,9 +321,12 @@ await runCase('current House Purchase and Liquidity produce a stable deduplicate
   );
   const cash = questions.find((question) => question.factId === 'cash_savings');
   const spending = questions.find((question) => question.factId === 'monthly_spending');
+  const retirementStatus = questions.find((question) => question.factId === 'retirement_status');
   assert.deepEqual(cash.blockingModuleIds, ['house_purchase', 'liquidity_analysis']);
   assert.deepEqual(spending.blockingModuleIds, ['house_purchase', 'liquidity_analysis']);
   assert.deepEqual(spending.fieldPaths, ['/expenses/monthlyEssential']);
+  assert.deepEqual(retirementStatus.blockingModuleIds, ['liquidity_analysis']);
+  assert.deepEqual(retirementStatus.fieldPaths, ['/assumptions/values/persona/retirementStatus']);
   assert.deepEqual(new Set(questions.slice(0, 2).map((question) => question.factId)), new Set([
     'cash_savings', 'monthly_spending'
   ]));

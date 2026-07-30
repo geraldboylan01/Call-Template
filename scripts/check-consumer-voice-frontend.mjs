@@ -867,6 +867,16 @@ assert.match(planIndexSource, /class="realtime-meeting-sub"/);
 assert.match(planIndexSource, /id="realtimeVoiceCaptionCard"[\s\S]*hidden/);
 assert.match(planIndexSource, /id="realtimeVoiceTranscriptToggle"/);
 assert.match(realtimeSource, /toggleTranscript\(\)/);
+assert.match(
+  planCssSource,
+  /\.realtime-voice-shell:not\(\.is-live\):not\(\.has-transcript\) #realtimeVoiceTranscriptToggle/,
+  'The transcript control may be hidden before a call, but not after a call with saved turns.'
+);
+assert.match(
+  realtimeSource,
+  /await this\.loadServerTranscript\(sessionId, leaseId\)[\s\S]*this\.revealTranscript\(\)/,
+  'Every visible terminal ending must reload and reveal the authoritative saved transcript.'
+);
 // 2. An eligible adviser invitation lands on the meeting screen automatically.
 assert.match(appSource, /function maybeAutoOpenRealtimeMeeting\(\)[\s\S]*openCompanion\(\{ focus: false \}\)/);
 // 3. Accepting the disclosure flows straight into microphone permission and
@@ -1306,6 +1316,34 @@ assert.equal(
   'The floating companion must remain available to present verified results.'
 );
 journeyState.view = 'conversation';
+
+journeyState.selectedRealtimeMeeting = {
+  meetingId: 'rt_saved_frontend_transcript_001',
+  turns: [
+    { id: 'turn-saved-user-one', role: 'user', transcript: 'Yes.' },
+    { id: 'turn-saved-assistant', role: 'assistant', transcript: 'This is the middle saved turn.' },
+    { id: 'turn-saved-user-two', role: 'user', transcript: 'Yes.' }
+  ]
+};
+realtimeController.sync(journeyState);
+assert.equal(
+  realtimeClassStates.get('has-transcript'),
+  true,
+  'A saved post-call transcript must keep its reveal control available after reload.'
+);
+assert.deepEqual(
+  realtimeController.transcriptHistory.map(({ role, text }) => ({ role, text })),
+  [
+    { role: 'user', text: 'Yes.' },
+    { role: 'assistant', text: 'This is the middle saved turn.' },
+    { role: 'user', text: 'Yes.' }
+  ],
+  'sync() restores every selected server turn, including repeated short answers.'
+);
+journeyState.selectedRealtimeMeeting = null;
+journeyState.realtimeTurns = [];
+realtimeController.transcriptHistory = [];
+realtimeController.updateUi();
 
 // Ending while device enumeration is pending must not let start() resume and
 // create a peer with a stopped microphone after local privacy cleanup.

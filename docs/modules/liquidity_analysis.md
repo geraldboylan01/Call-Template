@@ -52,7 +52,8 @@
   "requiredFacts": [
     "primary_goal",
     "cash_savings",
-    "monthly_spending"
+    "monthly_spending",
+    "retirement_status"
   ],
   "eligibility": {
     "requireAll": [],

@@ -78,7 +78,8 @@
               ],
               "missingFactIds": [
                 "cash_savings",
-                "monthly_spending"
+                "monthly_spending",
+                "retirement_status"
               ]
             }
           ],
@@ -132,7 +133,8 @@
               "monthly_spending",
               "target_home_price",
               "current_monthly_rent",
-              "lending_category"
+              "lending_category",
+              "retirement_status"
             ],
             "moduleOffer": null,
             "capacityDecision": null,
@@ -195,7 +197,8 @@
                 "buy_home"
               ],
               "missingFactIds": [
-                "monthly_spending"
+                "monthly_spending",
+                "retirement_status"
               ]
             }
           ],
@@ -248,7 +251,8 @@
               "monthly_spending",
               "target_home_price",
               "current_monthly_rent",
-              "lending_category"
+              "lending_category",
+              "retirement_status"
             ],
             "moduleOffer": null,
             "capacityDecision": null,

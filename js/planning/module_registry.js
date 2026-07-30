@@ -1,5 +1,6 @@
 import { MODULE_IDS } from './contracts.js';
 import { normalizeHouseholdProfile } from './profile.js';
+import { liquidityConversationGuidance } from '../liquidity_reserve.js';
 import {
   buildLiquidityInput,
   getLiquidityReadiness,
@@ -51,7 +52,7 @@ const MODULE_INTAKE_STATUSES = Object.freeze(['approved', 'incomplete']);
 
 const INTAKE_FACTS = Object.freeze({
   [MODULE_IDS.LIQUIDITY]: Object.freeze([
-    'primary_goal', 'cash_savings', 'monthly_spending'
+    'primary_goal', 'cash_savings', 'monthly_spending', 'retirement_status'
   ]),
   [MODULE_IDS.HOUSE_PURCHASE]: Object.freeze([
     'primary_goal', 'partner_person', 'target_home_price', 'income_sources', 'gross_household_income',
@@ -289,7 +290,10 @@ function register(definition) {
     exclusionRuleIds: Object.freeze([...(definition.exclusionRuleIds || [])]),
     prerequisiteModuleIds: Object.freeze([...(definition.prerequisiteModuleIds || [])]),
     requiredProfilePaths: Object.freeze([...(definition.requiredProfilePaths || [])]),
-    optionalProfilePaths: Object.freeze([...(definition.optionalProfilePaths || [])])
+    optionalProfilePaths: Object.freeze([...(definition.optionalProfilePaths || [])]),
+    conversationGuidance: Object.freeze(
+      (definition.conversationGuidance || []).map((line) => String(line || '').trim()).filter(Boolean)
+    )
   }));
 }
 
@@ -302,7 +306,11 @@ register({
   moduleVersion: '1.0.0',
   applicableGoals: ['understand_position', 'maintain_liquidity', 'buy_home'],
   requiredProfilePaths: ['/assets', '/expenses'],
-  optionalProfilePaths: ['/assumptions/values/liquidity'],
+  optionalProfilePaths: [
+    '/assumptions/values/liquidity',
+    '/assumptions/values/persona/retirementStatus'
+  ],
+  conversationGuidance: liquidityConversationGuidance(),
   adviserAvailable: true,
   consumerAvailable: true,
   intakeContract: approvedIntake('calculation', INTAKE_FACTS[MODULE_IDS.LIQUIDITY], getLiquidityReadiness),
@@ -766,6 +774,7 @@ function toDescriptor(definition) {
     applicableGoals: [...definition.applicableGoals],
     requiredProfilePaths: [...definition.requiredProfilePaths],
     optionalProfilePaths: [...definition.optionalProfilePaths],
+    conversationGuidance: [...definition.conversationGuidance],
     exclusionRuleIds: [...definition.exclusionRuleIds],
     prerequisiteModuleIds: [...definition.prerequisiteModuleIds],
     adviserAvailable: definition.adviserAvailable,

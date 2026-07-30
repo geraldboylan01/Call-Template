@@ -1,4 +1,5 @@
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
+import { MODULE_MANIFEST } from '../../../js/planning/module_manifest.generated.js';
 import { hmacSha256Base64Url } from './crypto.js';
 import { ConsumerError, badRequest } from './errors.js';
 
@@ -258,10 +259,26 @@ function realtimeV2PhaseGuidance(state = {}) {
   return guidance[phase] || guidance.intake;
 }
 
-export function buildRealtimeConversationV2Instructions(state = {}) {
+export function realtimeModuleConversationGuidance(state = {}, allowedModuleIds = []) {
+  const analyses = Array.isArray(state.meetingBrief?.analyses)
+    ? state.meetingBrief.analyses
+    : [];
+  const allowed = Array.isArray(allowedModuleIds) ? allowedModuleIds : [];
+  const selected = analyses
+    .map((analysis) => analysis?.moduleId || analysis?.id)
+    .filter(Boolean);
+  const ids = new Set([...allowed, ...selected]);
+  const lines = MODULE_MANIFEST
+    .filter((module) => ids.has(module.moduleId))
+    .flatMap((module) => module.conversationGuidance || []);
+  return [...new Set(lines)];
+}
+
+export function buildRealtimeConversationV2Instructions(state = {}, allowedModuleIds = []) {
   const brief = state.meetingBrief && typeof state.meetingBrief === 'object'
     ? JSON.stringify(state.meetingBrief).slice(0, 12_000)
     : '{}';
+  const moduleGuidance = realtimeModuleConversationGuidance(state, allowedModuleIds);
   return [
     'You are Planéir, a clearly disclosed AI conversational companion for financial education and information gathering.',
     'Own the live spoken conversation. Sound warm, calm, concise and natural. Use varied acknowledgements; never repeat the same wording on consecutive turns.',
@@ -277,6 +294,12 @@ export function buildRealtimeConversationV2Instructions(state = {}) {
     'If a corrected goal changes the analyses, explain the change naturally using their visible outcome descriptions and reasons. Never claim a plan is confirmed or analyses have run unless the signed phase says completed.',
     'Never request credentials, account/card numbers, PPS numbers, identification documents, or an exact address.',
     'When the client is frustrated or a prior capture failed, acknowledge it once, use the updated brief, and ask a genuinely useful next question. Never repeat a failed prompt verbatim.',
+    ...(moduleGuidance.length
+      ? [
+          'Module-owned education below is the factual source of truth. Keep natural freedom over wording, but never contradict or replace these ranges:',
+          ...moduleGuidance.map((line) => `- ${line}`)
+        ]
+      : []),
     `Current phase guidance: ${realtimeV2PhaseGuidance(state)}`,
     `Signed MeetingBriefV2: ${brief}`
   ].join('\n');
@@ -321,7 +344,7 @@ export function buildRealtimeSessionConfig(config, state = {}) {
     return {
       type: 'realtime',
       model: config.realtimeModel,
-      instructions: buildRealtimeConversationV2Instructions(v2State),
+      instructions: buildRealtimeConversationV2Instructions(v2State, config.allowedModules),
       reasoning: { effort: 'low' },
       output_modalities: ['audio'],
       audio: {

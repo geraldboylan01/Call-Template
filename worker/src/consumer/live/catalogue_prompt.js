@@ -28,7 +28,7 @@ import { publicIrishStatePensionRule } from '../../../../js/planning/ireland_rul
 import { realtimeFactValueVocabulary } from '../realtime_fact_mapper.js';
 import { PROHIBITED_ACTS } from './compliance.js';
 
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v2';
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v3';
 
 const MONEY_VALUE_SHAPE = '{"amount": <numeric amount copied from the client>, "currency": "EUR"}';
 
@@ -161,12 +161,14 @@ function safeClientBenefit(module) {
 function moduleBlock(module) {
   const facts = (module.requiredFacts || []).join(', ') || 'none';
   const goals = (module.routing?.goals || []).map((goal) => goal.type).join(', ') || 'none';
+  const guidance = (module.conversationGuidance || []).map((line) => `- ${line}`);
   return [
     `### ${module.name}`,
     module.purpose ? `Purpose: ${module.purpose}` : null,
     safeClientBenefit(module) ? `What the client gets: ${safeClientBenefit(module)}` : null,
     `Fits these goals: ${goals}`,
     `Needs: ${facts}`,
+    ...(guidance.length ? ['Approved education and planning guides:', ...guidance] : []),
     ''
   ].filter((line) => line !== null).join('\n');
 }

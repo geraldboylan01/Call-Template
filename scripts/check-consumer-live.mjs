@@ -337,6 +337,17 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
       ok(prompt.includes(factId), `The prompt must name the fact ${factId} that ${module.moduleId} needs.`);
     }
   }
+  const liquidity = liveConsumerModules().find((module) => module.moduleId === 'liquidity_analysis');
+  ok(liquidity?.conversationGuidance?.length > 0,
+    'Liquidity must publish module-owned conversational grounding.');
+  for (const line of liquidity.conversationGuidance) {
+    ok(prompt.includes(line), 'The live prompt must consume Liquidity guidance generated from JavaScript.');
+  }
+  ok(prompt.includes('3–6 months'), 'The live prompt must carry the working-household reserve range.');
+  ok(prompt.includes('12–24 months'), 'The live prompt must carry the retired-household reserve range.');
+  ok(prompt.includes('one to two years'), 'The retired range must also be expressed in natural language.');
+  ok(prompt.includes('Do not substitute a one-to-three-month'),
+    'The known incorrect emergency-fund range must be explicitly excluded.');
 
   // THE BANNED PHRASING MUST BE NAMED SO IT CANNOT COME BACK. This exact line
   // is what the v2 lane says to every off-topic question.

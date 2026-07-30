@@ -4,6 +4,7 @@ import {
   deleteRealtimeVoiceActivation,
   deleteRealtimeVoiceCall,
   getRealtimeVoiceCall,
+  getRealtimeVoiceMeetingTranscript,
   speakRealtimeAuthorized,
   updateRealtimeVoiceConsent
 } from './api.js';
@@ -1100,6 +1101,13 @@ export class RealtimeVoiceController {
 
   sync(currentState = state) {
     this.lastState = currentState;
+    if (!this.active) {
+      const selectedTurns = currentState.selectedRealtimeMeeting?.turns;
+      const savedTurns = Array.isArray(selectedTurns) && selectedTurns.length > 0
+        ? selectedTurns
+        : currentState.realtimeTurns;
+      this.mergeServerTranscript(savedTurns);
+    }
     const context = realtimeContext();
     const shouldShow = context.eligible
       && Boolean(context.sessionId)
@@ -1163,8 +1171,11 @@ export class RealtimeVoiceController {
     const launcher = this.element('realtimeVoiceLauncher');
     const launcherStatus = this.element('realtimeVoiceLauncherStatus');
     const panel = this.element('realtimeVoiceShell');
+    const transcriptToggle = this.element('realtimeVoiceTranscriptToggle');
+    const transcriptCard = this.element('realtimeVoiceCaptionCard');
     const microphoneSelect = this.element('realtimeVoiceMicrophoneSelect');
     const refreshDevices = this.element('realtimeVoiceRefreshDevicesButton');
+    const hasTranscript = this.transcriptHistory.length > 0;
 
     if (!this.orb) {
       const canvas = this.element('realtimeVoiceOrbCanvas');
@@ -1175,9 +1186,17 @@ export class RealtimeVoiceController {
       element.dataset.realtimePhase = this.phase;
       element.dataset.budgetState = exhausted ? 'exhausted' : (budgetLow ? 'low' : 'available');
       element.classList.toggle('is-live', this.active);
+      element.classList.toggle('has-transcript', hasTranscript);
       element.classList.toggle('is-muted', this.muted);
       element.classList.toggle('is-budget-low', budgetLow);
     });
+    if (transcriptToggle) {
+      const shown = transcriptCard?.hidden === false;
+      transcriptToggle.setAttribute('aria-pressed', shown ? 'true' : 'false');
+      transcriptToggle.textContent = shown
+        ? 'Hide transcript'
+        : (this.active ? 'Show transcript' : 'View saved transcript');
+    }
     if (start) {
       start.disabled = this.active
         || context.journeyBusy
@@ -2430,6 +2449,7 @@ export class RealtimeVoiceController {
     const removed = Math.max(0, this.transcriptHistory.length - MAX_TRANSCRIPT_ITEMS);
     if (removed > 0) this.transcriptHistory.splice(0, removed);
     this.appendTranscriptHistoryItem({ role, text }, removed);
+    this.updateUi();
     this.setCaption(role, role === 'user'
       ? '…'
       : '…');
@@ -2443,6 +2463,7 @@ export class RealtimeVoiceController {
     const removed = Math.max(0, this.transcriptHistory.length - MAX_TRANSCRIPT_ITEMS);
     if (removed > 0) this.transcriptHistory.splice(0, removed);
     this.appendTranscriptHistoryItem({ role: 'assistant', text }, removed);
+    this.updateUi();
     const caption = this.element('realtimeVoiceAssistantCaption');
     if (caption) caption.textContent = text;
   }
@@ -2758,8 +2779,20 @@ export class RealtimeVoiceController {
     card.hidden = !show;
     if (toggle) {
       toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
-      toggle.textContent = show ? 'Hide transcript' : 'Show transcript';
+      toggle.textContent = show ? 'Hide transcript' : (this.active ? 'Show transcript' : 'View saved transcript');
     }
+  }
+
+  revealTranscript() {
+    if (this.transcriptHistory.length === 0) return;
+    const card = this.element('realtimeVoiceCaptionCard');
+    const toggle = this.element('realtimeVoiceTranscriptToggle');
+    if (card) card.hidden = false;
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', 'true');
+      toggle.textContent = 'Hide transcript';
+    }
+    this.updateUi();
   }
 
   configureLeaseExpiry(call, context) {
@@ -2904,6 +2937,14 @@ export class RealtimeVoiceController {
         this.cleanupLocal();
       }
     }
+    const shouldRestoreTranscript = Boolean(this.root)
+      && Boolean(sessionId)
+      && Boolean(leaseId)
+      && !['pagehide', 'navigation', 'deletion', 'reset'].includes(reason);
+    if (shouldRestoreTranscript) {
+      await this.loadServerTranscript(sessionId, leaseId).catch(() => []);
+      this.revealTranscript();
+    }
   }
 
   cleanupLocal({ preserveProviderTransport = false } = {}) {
@@ -2964,14 +3005,52 @@ export class RealtimeVoiceController {
       const role = turn?.role === 'assistant' ? 'assistant' : turn?.role === 'user' ? 'user' : '';
       const text = cleanText(turn?.transcript || turn?.text);
       if (!role || !text || (id && existingIds.has(id))) return;
-      const duplicate = this.transcriptHistory.some((item) => item.role === role && item.text === text);
-      if (duplicate) return;
+      // Reconcile one local finalized caption with its authoritative server id.
+      // Do not collapse later turns merely because the client gave the same
+      // short answer twice ("yes", for example): distinct server ids are
+      // distinct transcript turns and must remain reviewable after reload.
+      const localIndex = this.transcriptHistory.findIndex((item) => (
+        !item.id && item.role === role && item.text === text
+      ));
+      if (localIndex >= 0 && id) {
+        this.transcriptHistory[localIndex] = {
+          ...this.transcriptHistory[localIndex],
+          id,
+          createdAt: turn.createdAt || null
+        };
+        existingIds.add(id);
+        return;
+      }
       this.transcriptHistory.push({ id, role, text, createdAt: turn.createdAt || null });
       if (id) existingIds.add(id);
     });
     const removed = Math.max(0, this.transcriptHistory.length - MAX_TRANSCRIPT_ITEMS);
     if (removed > 0) this.transcriptHistory.splice(0, removed);
     this.renderTranscriptHistory();
+    this.updateUi();
+  }
+
+  async loadServerTranscript(sessionId, meetingId) {
+    const turns = [];
+    let cursor = '';
+    let meeting = null;
+    const seenCursors = new Set();
+    do {
+      const payload = await getRealtimeVoiceMeetingTranscript(sessionId, meetingId, {
+        cursor,
+        limit: 50
+      });
+      meeting = payload.meeting || meeting;
+      turns.push(...(Array.isArray(payload.turns) ? payload.turns : []));
+      cursor = String(payload.nextCursor || '');
+      if (cursor && seenCursors.has(cursor)) {
+        throw new Error('The saved meeting transcript could not be paged safely.');
+      }
+      if (cursor) seenCursors.add(cursor);
+    } while (cursor);
+    this.mergeServerTranscript(turns);
+    this.onVoicePayload({ meeting, transcriptTurns: turns, nextCursor: null });
+    return turns;
   }
 
   beginCompletionPlayback(lease) {

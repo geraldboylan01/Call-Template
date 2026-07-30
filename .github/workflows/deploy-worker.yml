@@ -878,6 +878,17 @@ jobs:
             console.log("Verified required protected-beta Worker secret names without rotating existing values.");
           '
 
+      # A valid Realtime credential can still be unable to call the separate
+      # Responses planner because of model or endpoint permissions. Prove the
+      # exact production model, schema and candidate-application path before
+      # the final configuration is allowed to activate Realtime.
+      - name: Verify protected Realtime planner credential
+        if: env.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONSUMER_REALTIME_PLANNER_MODEL: ${{ env.CONSUMER_BETA_REALTIME_PLANNER_MODEL }}
+        run: node ./scripts/run-consumer-planner-probe.mjs
+
       - name: Deploy final Worker configuration
         working-directory: ./worker
         run: |

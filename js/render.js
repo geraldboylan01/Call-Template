@@ -14,7 +14,10 @@ import {
   getNetRetirementScenarioCases
 } from './net_retirement_math.js';
 import { computeHousePurchaseProjection } from './house_purchase/engine.js';
-import { computeWorkingLiquidityReserve } from './liquidity_reserve.js';
+import {
+  computeLiquidityReserve,
+  resolveLiquidityReservePolicy
+} from './liquidity_reserve.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -6038,6 +6041,8 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
   const annualExpenditure = getPositiveFiniteNumber(pbsInputs.annualExpenditure);
   const currentAge = getPositiveFiniteNumber(pbsInputs.currentAge);
   const useRetiredLiquidityThresholds = isRetiredPbsCase(pbsInputs);
+  const retiredLiquidityPolicy = resolveLiquidityReservePolicy('retired');
+  const workingLiquidityPolicy = resolveLiquidityReservePolicy('not-retired');
 
   if (annualExpenditure !== null) {
     const liquiditySection = findOutputsBucketedSectionByKey(outputsBucketed.sections, 'liquidity')
@@ -6048,9 +6053,9 @@ function getOutputsBucketedSectionEnhancements(module, outputsBucketed) {
         annualExpenditure,
         useRetiredLiquidityThresholds
           ? {
-            warningThreshold: 12,
-            healthyThreshold: 24,
-            thresholdContext: 'Because the client is retired or age 65+, the guide uses a one-to-two-year reserve range rather than the standard three-to-six-month working-age range.'
+            warningThreshold: retiredLiquidityPolicy.minimumBufferMonths,
+            healthyThreshold: retiredLiquidityPolicy.targetBufferMonths,
+            thresholdContext: `Because the client is retired or age 65+, the guide uses a one-to-two-year reserve range rather than the standard ${workingLiquidityPolicy.minimumBufferMonths}-to-${workingLiquidityPolicy.targetBufferMonths}-month working-age range.`
           }
           : {}
       );
@@ -9760,15 +9765,18 @@ function getLiquidityMonthlyExpenditure(plan = {}) {
 function computeLiquidityAssessment(plan = {}) {
   const currencySymbol = normalizeDisplayCurrencySymbol(plan.currencySymbol, '€');
   const clientStatus = getLiquidityClientStatus(plan);
-  const retired = clientStatus === 'retired';
-  const minimumBufferMonths = getPositiveFiniteNumber(plan.minimumBufferMonths) ?? (retired ? 12 : 3);
-  const rawTargetMonths = getPositiveFiniteNumber(plan.targetBufferMonths) ?? (retired ? 24 : 6);
+  const policy = resolveLiquidityReservePolicy(clientStatus);
+  const minimumBufferMonths = getPositiveFiniteNumber(plan.minimumBufferMonths)
+    ?? policy.minimumBufferMonths;
+  const rawTargetMonths = getPositiveFiniteNumber(plan.targetBufferMonths)
+    ?? policy.targetBufferMonths;
   const targetBufferMonths = Math.max(rawTargetMonths, minimumBufferMonths);
   const currentCash = getFiniteNumber(plan.currentCash);
   const monthlyExpenditure = getLiquidityMonthlyExpenditure(plan);
-  const reserve = computeWorkingLiquidityReserve({
+  const reserve = computeLiquidityReserve({
     currentCash,
     monthlyExpenditure,
+    clientStatus,
     minimumBufferMonths,
     targetBufferMonths
   });

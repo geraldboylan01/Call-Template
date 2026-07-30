@@ -452,7 +452,8 @@ const LIVE_TURN_2 = "My main goal is just to buy a house in about five years' ti
 }
 
 {
-  // The failure handling itself: never blame the client twice for our fault.
+  // Planner failures are operational faults and must never be narrated to the
+  // client or turn into a request to repeat a perfectly clear answer.
   const { readFileSync } = await import('node:fs');
   const source = readFileSync(
     new URL('../worker/src/consumer/realtime_session.js', import.meta.url),
@@ -467,14 +468,24 @@ const LIVE_TURN_2 = "My main goal is just to buy a house in about five years' ti
   assert.match(source, /consecutivePlannerFailures/, 'consecutive planner failures are counted');
   assert.match(
     source,
-    /exhaustedRecovery \? 'planner_degraded' : 'planner_recovery'/,
-    'a repeated internal failure stops asking the client to rephrase'
+    /authorizeResponse\('planner_degraded'\)/,
+    'an internal planner failure continues through a non-technical response path'
   );
   const degraded = source.slice(source.indexOf("authorizationReason === 'planner_degraded'"));
   const instruction = degraded.slice(0, degraded.indexOf('\n', degraded.indexOf('?')) + 400);
-  assert.match(instruction, /not anything the client said/i, 'the degraded message does not blame the client');
-  assert.match(instruction, /Do not ask them to rephrase/i, 'the degraded message does not ask for a rephrase');
-  pass('a planner failure falls back deterministically, and repeated failure stops blaming the client');
+  assert.match(instruction, /Do not mention any technical issue/i, 'the degraded message suppresses internal faults');
+  assert.match(instruction, /do not ask the client to repeat, restate or rephrase/i, 'the degraded message never asks for a repeat');
+  assert.doesNotMatch(
+    instruction,
+    /Say plainly.*technical|having a technical problem saving notes/i,
+    'the old spoken technical-difficulty preamble cannot return'
+  );
+  assert.match(
+    source,
+    /let planned;[\s\S]*try \{[\s\S]*planned = await extractRealtimePlannerTurn[\s\S]*\} catch \(error\)[\s\S]*Only extraction\/provider failures belong/,
+    'only extraction/provider failures enter the deterministic fallback'
+  );
+  pass('a planner failure stays operationally visible without disrupting the spoken conversation');
 }
 
 {

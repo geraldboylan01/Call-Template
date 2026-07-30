@@ -3,7 +3,10 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { computeHousePurchaseProjection } from '../js/house_purchase/index.js';
-import { computeWorkingLiquidityReserve } from '../js/liquidity_reserve.js';
+import {
+  LIQUIDITY_RESERVE_POLICY,
+  computeLiquidityReserve
+} from '../js/liquidity_reserve.js';
 import { computePensionProjection } from '../js/pension_math.js';
 import {
   IRISH_STATE_PENSION_CONTRIBUTORY,
@@ -76,6 +79,52 @@ function retirementProfile() {
     { profile: draft, capturedAt: NOW, conversationTurnId: 'turn-retirement' }
   );
   return applyProfilePatch(draft, extraction.patch, { nowIso: LATER }).profile;
+}
+
+function liquidityProfile({ cohort = 'working', id = `profile-liquidity-${cohort}` } = {}) {
+  let profile = emptyProfile(id);
+  const operations = [
+    {
+      op: 'add',
+      path: '/goals/-',
+      value: {
+        goalId: `liquidity-${cohort}`,
+        type: 'maintain_liquidity',
+        title: 'Maintain liquidity',
+        priority: 'high',
+        status: 'active'
+      }
+    },
+    {
+      op: 'add',
+      path: '/assets/-',
+      value: {
+        assetId: `cash-${cohort}`,
+        ownerIds: ['primary'],
+        type: 'cash',
+        label: 'Cash',
+        currentValue: { amount: 90_000, currency: 'EUR' },
+        liquid: true
+      }
+    },
+    {
+      op: 'add',
+      path: '/expenses/annualTotal',
+      value: { amount: 60_000, currency: 'EUR' }
+    }
+  ];
+  if (cohort === 'working') {
+    operations.push(
+      { op: 'replace', path: '/primaryPerson/employmentStatus', value: 'employee' },
+      { op: 'add', path: '/assumptions/values/persona/retirementStatus', value: 'working' }
+    );
+  } else if (cohort === 'retired') {
+    operations.push(
+      { op: 'replace', path: '/primaryPerson/employmentStatus', value: 'retired' },
+      { op: 'add', path: '/assumptions/values/persona/retirementStatus', value: 'retired' }
+    );
+  }
+  return apply(profile, operations);
 }
 
 await runCase('creates canonical HouseholdProfile v1 without adviser/session state', () => {
@@ -312,13 +361,57 @@ await runCase('liquidity adapter wraps the existing reserve formula without nume
   const profile = homeProfile();
   const definition = getPlanningModuleDefinition('liquidity_analysis');
   const input = definition.buildInput(profile);
-  const expected = computeWorkingLiquidityReserve(input);
+  const expected = computeLiquidityReserve(input);
   const result = await runPlanningModule('liquidity_analysis', profile, {
     calculationVersion: 'test', calculatedAt: NOW, scenarioOverrides: {}
   });
   assert.equal(result.semanticResult.targetCash, expected.targetCash);
   assert.equal(result.semanticResult.monthsCovered, expected.monthsCovered);
   assert.match(result.inputSnapshotHash, /^(sha256|fnv1a64):/);
+});
+
+await runCase('liquidity uses the working 3–6 month guide from central JavaScript', async () => {
+  const profile = liquidityProfile({ cohort: 'working' });
+  const definition = getPlanningModuleDefinition('liquidity_analysis');
+  const input = definition.buildInput(profile);
+  assert.equal(input.clientStatus, 'not-retired');
+  assert.equal(input.minimumBufferMonths, LIQUIDITY_RESERVE_POLICY.working.minimumBufferMonths);
+  assert.equal(input.targetBufferMonths, LIQUIDITY_RESERVE_POLICY.working.targetBufferMonths);
+  const result = await runPlanningModule('liquidity_analysis', profile, {
+    calculationVersion: 'test', calculatedAt: NOW, scenarioOverrides: {}
+  });
+  assert.equal(result.semanticResult.minimumCash, 15_000);
+  assert.equal(result.semanticResult.targetCash, 30_000);
+  assert.equal(result.semanticResult.surplusCash, 60_000);
+});
+
+await runCase('liquidity uses the retired 12–24 month guide and reports the true shortfall', async () => {
+  const profile = liquidityProfile({ cohort: 'retired' });
+  const definition = getPlanningModuleDefinition('liquidity_analysis');
+  const input = definition.buildInput(profile);
+  assert.equal(input.clientStatus, 'retired');
+  assert.equal(input.minimumBufferMonths, LIQUIDITY_RESERVE_POLICY.retired.minimumBufferMonths);
+  assert.equal(input.targetBufferMonths, LIQUIDITY_RESERVE_POLICY.retired.targetBufferMonths);
+  const result = await runPlanningModule('liquidity_analysis', profile, {
+    calculationVersion: 'test', calculatedAt: NOW, scenarioOverrides: {}
+  });
+  assert.equal(result.semanticResult.minimumCash, 60_000);
+  assert.equal(result.semanticResult.targetCash, 120_000);
+  assert.equal(result.semanticResult.shortfallCash, 30_000);
+  assert.equal(result.semanticResult.position, 'below_target');
+});
+
+await runCase('liquidity blocks until working-versus-retired status is known', () => {
+  const readiness = getModuleReadiness(
+    'liquidity_analysis',
+    liquidityProfile({ cohort: 'unknown' })
+  );
+  assert.equal(readiness.status, 'missing_information');
+  assert.ok(
+    readiness.requiredMissing.some((item) => (
+      item.fieldPath === '/assumptions/values/persona/retirementStatus'
+    ))
+  );
 });
 
 await runCase('house adapter preserves direct-engine calculation parity', async () => {

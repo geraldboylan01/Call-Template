@@ -29,6 +29,7 @@
  */
 
 import { publicIrishStatePensionRule } from '../../../../js/planning/ireland_rules.js';
+import { LIQUIDITY_RESERVE_POLICY } from '../../../../js/liquidity_reserve.js';
 
 /**
  * The single shared vocabulary. The prompt (L1), the deterministic detectors
@@ -111,6 +112,44 @@ const YEAR_LIKE_MAXIMUM = 2100;
 // Bare numbers below this are ages, counts, terms and step numbers. Money that
 // small is not a compliance risk and flagging it would cancel good sentences.
 const BARE_FIGURE_FLOOR = 1000;
+
+const LIQUIDITY_DURATION_CONTEXT = /\b(?:emergency fund|emergency reserve|cash buffer|cash reserve|liquidity buffer|liquidity reserve)\b/i;
+const LIQUIDITY_DURATION_RANGE = new RegExp(
+  String.raw`\b(?:between\s+)?(one|two|three|six|twelve|twenty[\s-]?four|1|2|3|6|12|24)`
+    + String.raw`\s*(?:-|–|—|to|and)\s*`
+    + String.raw`(one|two|three|six|twelve|twenty[\s-]?four|1|2|3|6|12|24)\s*(months?|years?)\b`,
+  'i'
+);
+const DURATION_NUMBER_WORDS = Object.freeze({
+  one: 1,
+  two: 2,
+  three: 3,
+  six: 6,
+  twelve: 12,
+  twentyfour: 24
+});
+
+function durationNumber(value) {
+  const token = String(value || '').toLowerCase().replace(/[\s-]/g, '');
+  return DURATION_NUMBER_WORDS[token] || Number(token) || 0;
+}
+
+function unsupportedLiquidityDurationRange(speech) {
+  if (!LIQUIDITY_DURATION_CONTEXT.test(speech)) return null;
+  const match = LIQUIDITY_DURATION_RANGE.exec(speech);
+  if (!match) return null;
+  const multiplier = /^years?$/i.test(match[3]) ? 12 : 1;
+  const minimumMonths = durationNumber(match[1]) * multiplier;
+  const targetMonths = durationNumber(match[2]) * multiplier;
+  const allowed = [
+    LIQUIDITY_RESERVE_POLICY.working,
+    LIQUIDITY_RESERVE_POLICY.retired
+  ].some((policy) => (
+    minimumMonths === policy.minimumBufferMonths
+    && targetMonths === policy.targetBufferMonths
+  ));
+  return allowed ? null : match[0];
+}
 
 const NUMBER = String.raw`\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?`;
 
@@ -531,6 +570,16 @@ export function scanAssistantSpeech(
   const speech = normalizeScanText(text).slice(0, 4_000);
   const clean = () => ({ tripped: false, actId: null, evidence: '', layer: null });
   if (!speech.trim()) return clean();
+
+  const liquidityConflict = unsupportedLiquidityDurationRange(speech);
+  if (liquidityConflict) {
+    return {
+      tripped: true,
+      actId: 'unsourced_figure',
+      evidence: liquidityConflict,
+      layer: 'L2-policy'
+    };
+  }
 
   // L3 first: it is cheaper and fires earliest in the sentence.
   if (!skipLeadInTripwires) {

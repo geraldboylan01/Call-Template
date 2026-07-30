@@ -510,6 +510,9 @@ const v2Session = buildRealtimeSessionConfig(v2Config, {
 });
 assert.deepEqual(v2Session.output_modalities, ['audio']);
 assert.equal(v2Session.audio.output.voice, 'marin');
+assert.match(v2Session.instructions, /3–6 months/, 'v2 receives the working liquidity guide from module JavaScript');
+assert.match(v2Session.instructions, /12–24 months/, 'v2 receives the retired liquidity guide from module JavaScript');
+assert.match(v2Session.instructions, /one-to-three-month/, 'v2 explicitly excludes the known incorrect range');
 assert.equal(v2Session.audio.input.turn_detection.eagerness, 'low');
 assert.equal(v2Session.tool_choice, 'auto');
 assert.deepEqual(
@@ -4592,10 +4595,20 @@ assert.doesNotMatch(
   /state\.waitUntil\(this\.catchUpPlannerTurn/,
   'Planner catch-up must not race later turns in the background.'
 );
-assert.match(
+assert.doesNotMatch(
   realtimeSessionSource,
   /ask the client to restate only that last point in different words/,
-  'After both bounded planner attempts fail, recovery must request an actionable focused rephrase.'
+  'A planner failure must never ask the client to rephrase a turn the Realtime model already heard.'
+);
+assert.match(
+  realtimeSessionSource,
+  /Do not mention any technical issue, error, failure, saving problem or planning note/,
+  'Internal planner faults must remain out of the spoken conversation.'
+);
+assert.match(
+  realtimeSessionSource,
+  /realtimeModuleConversationGuidance\(context\.state, context\.config\.allowedModules\)[\s\S]{0,500}module-owned facts/,
+  'Every v2 response retains module-owned education grounding as well as the session prompt.'
 );
 assert.doesNotMatch(
   realtimeSessionSource,

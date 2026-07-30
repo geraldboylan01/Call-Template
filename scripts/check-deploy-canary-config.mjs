@@ -147,6 +147,33 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
 }
 
 {
+  const credentialStep = workflow.indexOf('- name: Verify protected Realtime planner credential');
+  const activationStep = workflow.indexOf('- name: Deploy final Worker configuration');
+  assert.ok(credentialStep > 0, 'the protected realtime planner credential probe must exist');
+  assert.ok(
+    credentialStep < activationStep,
+    'the planner credential probe must pass before the final configuration can activate realtime'
+  );
+  const credentialBlock = workflow.slice(credentialStep, activationStep);
+  assert.match(
+    credentialBlock,
+    /if: env\.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'/,
+    'the paid planner probe runs only for an explicitly approved realtime canary'
+  );
+  assert.match(
+    credentialBlock,
+    /OPENAI_API_KEY: \$\{\{ secrets\.OPENAI_API_KEY \}\}/,
+    'the planner probe uses the protected deployment credential'
+  );
+  assert.match(
+    credentialBlock,
+    /node \.\/scripts\/run-consumer-planner-probe\.mjs/,
+    'the deployment uses the current production-shaped planner probe'
+  );
+  pass('the exact planner credential and model are proven before realtime activation');
+}
+
+{
   // An undeclared or mismatched value must still abort. Prove the checks above
   // would actually have caught #260 by simulating both faults.
   const brokenUndeclared = jobEnv.replace(/^ {6}CONSUMER_BETA_REALTIME_PLANNER_MODEL: "[^"]*"$/m, '');

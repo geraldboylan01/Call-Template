@@ -8,6 +8,7 @@ worker/wrangler.*.generated.toml
 .dev.vars
 worker/.dev.vars
 .env
+.env.local
 !.env.example
 worker/.env
 private/video-calls/

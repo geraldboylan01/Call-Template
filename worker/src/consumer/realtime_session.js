@@ -81,6 +81,7 @@ import {
   buildRealtimeSessionConfig,
   hangupOpenAiRealtimeCall,
   realtimeJourneyPhase,
+  realtimeModuleConversationGuidance,
   realtimeToolsForState
 } from './realtime_provider.js';
 import { composeDirectedSpeech } from './realtime_director.js';
@@ -531,8 +532,8 @@ export class ConsumerRealtimeSession {
     this.plannerCatchupSourceTurnId = null;
     this.plannerTurnOrdinal = 0;
     this.latestPlannerBriefOrdinal = 0;
-    // Consecutive planner failures that produced nothing usable. Bounds the
-    // rephrase recovery so one persistent internal fault cannot loop forever.
+    // Consecutive planner failures that produced nothing usable. Retained as
+    // operational state only; internal failures are never narrated to clients.
     this.consecutivePlannerFailures = 0;
     // Total turns served by the deterministic fallback. Never reset within a
     // meeting: a meeting that degraded once stays visibly degraded.
@@ -913,13 +914,11 @@ export class ConsumerRealtimeSession {
         });
         if (plannerResult?.stale) return;
         if (plannerResult?.status === 'failed') {
-          // Ask the client to restate ONCE. A second consecutive internal
-          // failure is not something rephrasing can fix, so say so plainly and
-          // let the meeting continue from the deterministic brief rather than
-          // blaming the client's wording again.
-          await this.authorizeResponse(
-            plannerResult.exhaustedRecovery ? 'planner_degraded' : 'planner_recovery'
-          );
+          // The Realtime model heard the client correctly; the separate silent
+          // planner failed. Keep that operational fault out of the spoken
+          // conversation and continue from the signed brief without asking the
+          // client to repeat a perfectly clear answer.
+          await this.authorizeResponse('planner_degraded');
           return;
         }
       }
@@ -1487,6 +1486,33 @@ export class ConsumerRealtimeSession {
       const forceTool = authorization.options?.forceTool === 'get_planning_state'
         ? 'get_planning_state'
         : null;
+      const conversationalInstruction = authorizationReason === 'tool_output'
+        ? 'Continue the same turn naturally using the reviewed tool output. Keep the answer concise, then bridge to the signed brief nextObjective. Do not repeat the previous wording.'
+        : authorizationReason === 'planner_recovery'
+          ? 'Do not mention any technical issue, error, failure, saving problem or planning note, and do not ask the client to repeat, restate or rephrase. Briefly acknowledge the latest client point without claiming it was saved, then continue naturally with one useful next question from the signed brief.'
+          : authorizationReason === 'planner_degraded'
+            ? 'Do not mention any technical issue, error, failure, saving problem or planning note, and do not ask the client to repeat, restate or rephrase. Briefly acknowledge the latest client point without claiming it was saved, then continue naturally with one useful next question from the signed brief. If that question would simply repeat what the client just answered, ask one concise clarifying follow-up about that objective instead.'
+            : authorizationReason === 'initial_state_probe'
+              ? REALTIME_V2_WELCOME_INSTRUCTIONS
+              : authorizationReason === 'silence_prompt'
+                ? 'Offer one gentle, brief reassurance that there is no rush, and ask whether rephrasing the current objective would help. Do not repeat the previous question verbatim.'
+                : meetingPhase === 'awaiting_voice_confirmation'
+                  ? confirmationInstruction
+                  : meetingPhase === 'generating_modules' || meetingPhase === 'closing' || meetingPhase === 'completed'
+                    ? 'Do not speak. The server owns analysis generation, the closing message and navigation.'
+                    : intakeInstruction;
+      const moduleGuidance = conversationalV2
+        ? realtimeModuleConversationGuidance(context.state, context.config.allowedModules)
+        : [];
+      const responseInstructions = [
+        conversationalInstruction,
+        ...(moduleGuidance.length
+          ? [
+              'For any financial education in this response, keep natural wording but stay within these module-owned facts:',
+              ...moduleGuidance.map((line) => `- ${line}`)
+            ]
+          : [])
+      ].join('\n');
       this.sendProvider({
         type: 'response.create',
         response: {
@@ -1497,23 +1523,7 @@ export class ConsumerRealtimeSession {
           },
           ...(conversationalV2
             ? {
-                instructions: authorizationReason === 'tool_output'
-                  ? 'Continue the same turn naturally using the reviewed tool output. Keep the answer concise, then bridge to the signed brief nextObjective. Do not repeat the previous wording.'
-                  : authorizationReason === 'planner_recovery'
-                    ? 'Briefly apologise that the last planning note could not be updated, then ask the client to restate only that last point in different words. Do not repeat an earlier intake question and do not claim anything was saved.'
-                  : authorizationReason === 'planner_degraded'
-                    // Repeated internal failure. Never blame the client's
-                    // wording again — it is demonstrably not the problem.
-                    ? 'Say plainly and briefly that you are having a technical problem saving notes on your side, that it is not anything the client said, and that you will keep going. Then ask the single next question from the signed brief. Do not ask them to rephrase or repeat anything.'
-                  : authorizationReason === 'initial_state_probe'
-                    ? REALTIME_V2_WELCOME_INSTRUCTIONS
-                    : authorizationReason === 'silence_prompt'
-                      ? 'Offer one gentle, brief reassurance that there is no rush, and ask whether rephrasing the current objective would help. Do not repeat the previous question verbatim.'
-                      : meetingPhase === 'awaiting_voice_confirmation'
-                        ? confirmationInstruction
-                        : meetingPhase === 'generating_modules' || meetingPhase === 'closing' || meetingPhase === 'completed'
-                          ? 'Do not speak. The server owns analysis generation, the closing message and navigation.'
-                          : intakeInstruction,
+                instructions: responseInstructions,
                 // The first response is a spoken welcome, not an intake or
                 // planner turn. Disallow tools for that response so Marin is
                 // guaranteed to speak before the microphone starts sending.
@@ -1831,8 +1841,9 @@ export class ConsumerRealtimeSession {
       this.meta.leaseId,
       8
     );
+    let planned;
     try {
-      const planned = await extractRealtimePlannerTurn({
+      planned = await extractRealtimePlannerTurn({
         env: this.env,
         config: context.config,
         context,
@@ -1840,23 +1851,6 @@ export class ConsumerRealtimeSession {
         transcript,
         recentTurns
       });
-      await this.recordPlannerUsage(planned.metadata, context.config);
-      const applied = await this.applyPlannerExtraction(planned.extraction, { turnOrdinal });
-      await appendRealtimeEvent(this.env, {
-        sessionId: this.meta.sessionId,
-        leaseId: this.meta.leaseId,
-        direction: 'server',
-        eventType: 'realtime.planner.completed',
-        payload: {
-          sourceTurnId: itemId,
-          latencyMs: planned.metadata.latencyMs,
-          acceptedCandidates: applied.outcomes.filter((item) => item.accepted).length,
-          rejectedCandidates: applied.outcomes.filter((item) => !item.accepted).length
-        }
-      });
-      await this.refreshJourneyState();
-      this.consecutivePlannerFailures = 0;
-      return { status: 'applied', ...applied };
     } catch (error) {
       const code = error instanceof ConsumerError ? error.code : 'realtime_planner_failed';
       await appendRealtimeEvent(this.env, {
@@ -1904,6 +1898,71 @@ export class ConsumerRealtimeSession {
         exhaustedRecovery: this.consecutivePlannerFailures > 1
       };
     }
+
+    // Only extraction/provider failures belong in the deterministic fallback
+    // path above. Accounting, persistence and refresh failures are distinct
+    // operational stages; treating them as another extraction failure could
+    // apply the same client facts twice and falsely say that notes were not
+    // saved after they had already been persisted.
+    try {
+      await this.recordPlannerUsage(planned.metadata, context.config);
+    } catch (error) {
+      const code = error instanceof ConsumerError ? error.code : 'realtime_planner_usage_failed';
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.accounting_failed',
+        payload: { sourceTurnId: itemId, code }
+      }).catch(() => {});
+      this.consecutivePlannerFailures += 1;
+      return { status: 'failed', code, exhaustedRecovery: true };
+    }
+
+    let applied;
+    try {
+      applied = await this.applyPlannerExtraction(planned.extraction, { turnOrdinal });
+    } catch (error) {
+      const code = error instanceof ConsumerError ? error.code : 'realtime_planner_apply_failed';
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.apply_failed',
+        payload: { sourceTurnId: itemId, code }
+      }).catch(() => {});
+      this.consecutivePlannerFailures += 1;
+      return { status: 'failed', code, exhaustedRecovery: true };
+    }
+
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      direction: 'server',
+      eventType: 'realtime.planner.completed',
+      payload: {
+        sourceTurnId: itemId,
+        latencyMs: planned.metadata.latencyMs,
+        acceptedCandidates: applied.outcomes.filter((item) => item.accepted).length,
+        rejectedCandidates: applied.outcomes.filter((item) => !item.accepted).length
+      }
+    }).catch(() => {});
+    try {
+      await this.refreshJourneyState();
+    } catch (error) {
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        direction: 'server',
+        eventType: 'realtime.planner.refresh_failed',
+        payload: {
+          sourceTurnId: itemId,
+          code: error instanceof ConsumerError ? error.code : 'realtime_planner_refresh_failed'
+        }
+      }).catch(() => {});
+    }
+    this.consecutivePlannerFailures = 0;
+    return { status: 'applied', ...applied };
   }
 
   async handleSpokenCompletionTurn({ itemId, turnId, transcript }) {

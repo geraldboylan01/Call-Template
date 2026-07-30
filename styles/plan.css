@@ -3746,7 +3746,7 @@ details.realtime-context-card {
 .realtime-voice-shell:not(.is-live) .realtime-context-grid,
 .realtime-voice-shell:not(.is-live) #realtimeVoiceMuteButton,
 .realtime-voice-shell:not(.is-live) #realtimeVoiceEndButton,
-.realtime-voice-shell:not(.is-live) #realtimeVoiceTranscriptToggle,
+.realtime-voice-shell:not(.is-live):not(.has-transcript) #realtimeVoiceTranscriptToggle,
 .realtime-voice-shell:not(.is-live) #realtimeVoiceReviewButton,
 .realtime-voice-shell:not(.is-live) #realtimeVoiceResumeAudioButton {
   display: none;
