@@ -503,6 +503,136 @@
       </form>
     </dialog>
 
+    <dialog id="termsDialog" class="plan-dialog terms-dialog" aria-labelledby="termsDialogTitle">
+      <form method="dialog" class="dialog-card">
+        <p class="section-kicker">Planéir demo</p>
+        <h2 id="termsDialogTitle">Terms of Use</h2>
+        <p class="dialog-context">Version <span id="termsVersion">—</span>. These terms apply to the Planéir demo only.</p>
+        <div id="termsBody" class="terms-body" tabindex="0">
+          <h3>1. Who we are</h3>
+          <p>
+            <strong>Planéir</strong> is the name of this demo. It is built and run by <strong>Gerry Boylan</strong>,
+            a sole trader based in Dublin, Ireland, so any agreement under these terms is between you and Gerry
+            Boylan.
+          </p>
+          <p>
+            You can contact us at <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>, and we will give you a
+            postal address on request. By starting a session you agree to these terms.
+          </p>
+
+          <h3>2. This is education, not advice</h3>
+          <p>
+            Planéir uses an AI conversation to help you organise information about your finances and goals, and
+            to produce educational illustrations from it.
+          </p>
+          <p>
+            <strong>Planéir does not provide regulated financial, investment, pension, mortgage, tax or legal
+            advice, and is not authorised by the Central Bank of Ireland to do so.</strong> Anything Planéir
+            produces is an illustration based on what you told it. It is not a recommendation, an approval, a
+            guarantee, a forecast, or a substitute for professional advice. Please do not make a financial
+            decision on the basis of this demo alone.
+          </p>
+
+          <h3>3. Who can use the demo</h3>
+          <ul>
+            <li>You must be 18 or older.</li>
+            <li>Use it for your own finances, for personal and non-commercial purposes.</li>
+            <li>
+              Do not enter information about another person unless you genuinely need to and you are entitled to
+              share it.
+            </li>
+            <li>
+              Do not try to break, overload, scrape or reverse-engineer the demo, use it to build a competing
+              service, or use it for anything unlawful or abusive.
+            </li>
+          </ul>
+
+          <h3>4. Please do not enter these details</h3>
+          <p>The demo never needs them, so please do not type or say:</p>
+          <ul>
+            <li>PPS numbers;</li>
+            <li>passwords, PINs or security codes;</li>
+            <li>complete bank-account, IBAN or card numbers;</li>
+            <li>identity-document details;</li>
+            <li>your exact home address;</li>
+            <li>medical or other highly sensitive personal information; or</li>
+            <li>identifying information about other people that isn't needed.</li>
+          </ul>
+          <p>If you enter something you'd rather we didn't hold, use <strong>Delete my session</strong>.</p>
+
+          <h3>5. AI can get things wrong</h3>
+          <p>
+            The conversation, including live speech, is powered by AI. AI and speech recognition make mistakes,
+            especially with amounts, dates, names and accents. Financial calculations themselves run in Planéir's
+            own tested code rather than in the AI model, but the figures and assumptions fed into them came from
+            the conversation. <strong>Review the figures, dates and assumptions shown to you before relying on
+            any illustration.</strong>
+          </p>
+
+          <h3>6. Your information</h3>
+          <p>
+            We process the information you provide in order to run the demo session you asked us to run, and to
+            keep it secure and working. Your conversation and planning information are encrypted when stored, the
+            session expires after about <span id="termsRetentionDays">7</span> days, and you can delete it sooner
+            at any time.
+          </p>
+          <p>
+            Relevant parts of the conversation are sent to OpenAI so the chatbot can respond. We have not opted
+            into sharing API data for model training. The
+            <a id="termsPrivacyLink" href="./privacy.html" target="_blank" rel="noopener noreferrer">privacy notice</a>
+            explains all of this in full, including voice, retention and your rights.
+          </p>
+
+          <h3>7. The demo is provided as is</h3>
+          <p>
+            This is a demo, provided "as is" and "as available". It may change, break, be interrupted or be
+            withdrawn at any time without notice, and we do not promise that it will be available, uninterrupted
+            or error-free, or that your session will survive. Keep your own copy of anything you want to keep.
+          </p>
+
+          <h3>8. Our responsibility to you</h3>
+          <p>
+            We are not liable for any decision you make, or choose not to make, on the basis of anything Planéir
+            produces, or for any loss arising from relying on its outputs, from the demo being unavailable, or
+            from the loss of session data.
+          </p>
+          <p>
+            Nothing in these terms excludes or limits our liability for death or personal injury caused by our
+            negligence, for fraud or fraudulent misrepresentation, or for anything else that Irish law does not
+            permit us to exclude. Where our liability can lawfully be limited, our total liability to you in
+            connection with the demo is limited to €100.
+          </p>
+          <p>
+            <strong>None of this affects your mandatory rights as a consumer</strong> under Irish and EU law,
+            including the Consumer Rights Act 2022.
+          </p>
+
+          <h3>9. Stopping, and us withdrawing the demo</h3>
+          <p>
+            You can stop at any time, and you can delete your session at any time using
+            <strong>Delete my session</strong>. Sessions also expire on their own. Because this is an early-stage
+            demo, we may suspend or withdraw access, for you or generally, at any time.
+          </p>
+
+          <h3>10. Changes to these terms</h3>
+          <p>
+            We may update these terms. If we make a material change, you will be asked to read and accept the new
+            version before continuing.
+          </p>
+
+          <h3>11. Law and complaints</h3>
+          <p>
+            These terms are governed by Irish law and the Irish courts have jurisdiction, though as a consumer you
+            may also have the right to bring proceedings where you live. If you believe your information has been
+            handled unlawfully, you can complain to the Irish Data Protection Commission.
+          </p>
+        </div>
+        <div class="dialog-actions">
+          <button id="closeTermsButton" class="secondary-button" value="cancel" type="button">Close</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="removeItemDialog" class="plan-dialog" aria-labelledby="removeItemTitle">
       <form method="dialog" class="dialog-card">
         <p class="section-kicker">Correct your information</p>

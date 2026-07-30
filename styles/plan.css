@@ -2142,6 +2142,22 @@ body.realtime-voice-open {
   text-underline-offset: 0.2em;
 }
 
+/* Inline text link that can sit inside running copy, including inside a label. */
+.inline-link-button {
+  display: inline;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--plan-blue);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
 .privacy-main {
   width: min(calc(100% - 2rem), 1080px);
 }
@@ -2406,6 +2422,53 @@ body.realtime-voice-open {
   justify-content: flex-end;
   gap: 0.7rem;
   margin-top: 0.35rem;
+}
+
+.terms-dialog {
+  width: min(calc(100% - 1.5rem), 660px);
+}
+
+.terms-body {
+  max-height: min(56vh, 32rem);
+  padding: 0.9rem 0.7rem 0.9rem 0;
+  border-top: 1px solid var(--plan-border);
+  border-bottom: 1px solid var(--plan-border);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.terms-body h3 {
+  margin: 1.25rem 0 0.4rem;
+  color: var(--plan-text);
+  font-size: 0.9rem;
+}
+
+.terms-body h3:first-child {
+  margin-top: 0;
+}
+
+.terms-body p,
+.terms-body li {
+  color: var(--plan-muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.terms-body p {
+  margin: 0 0 0.6rem;
+}
+
+.terms-body ul {
+  margin: 0 0 0.7rem;
+  padding-left: 1.1rem;
+}
+
+.terms-body li {
+  margin-bottom: 0.35rem;
+}
+
+.terms-body strong {
+  color: var(--plan-text);
 }
 
 .dialog-actions .primary-button,

@@ -65,6 +65,12 @@ const editFieldContext = document.getElementById('editFieldContext');
 const editFieldInput = document.getElementById('editFieldInput');
 const editFieldError = document.getElementById('editFieldError');
 const cancelEditButton = document.getElementById('cancelEditButton');
+const termsDialog = document.getElementById('termsDialog');
+const termsBody = document.getElementById('termsBody');
+const termsVersion = document.getElementById('termsVersion');
+const termsRetentionDays = document.getElementById('termsRetentionDays');
+const termsPrivacyLink = document.getElementById('termsPrivacyLink');
+const closeTermsButton = document.getElementById('closeTermsButton');
 const privacyControlsDialog = document.getElementById('privacyControlsDialog');
 const privacyControlsCopy = document.getElementById('privacyControlsCopy');
 const privacyControlsError = document.getElementById('privacyControlsError');
@@ -422,6 +428,24 @@ function closeDialog(dialog) {
     dialog.removeAttribute('open');
   }
   document.body.classList.remove('dialog-open');
+}
+
+/** Keeps the static Terms of Use copy aligned with the live policy version and retention config. */
+function syncTermsDialog(bootstrap) {
+  if (!termsDialog) {
+    return;
+  }
+  if (termsVersion) {
+    termsVersion.textContent = String(bootstrap?.policyVersion || '').trim() || 'demo';
+  }
+  const ttlDays = Number(bootstrap?.limits?.sessionTtlDays || 0);
+  if (termsRetentionDays && ttlDays > 0) {
+    termsRetentionDays.textContent = String(ttlDays);
+  }
+  if (termsPrivacyLink) {
+    const url = String(bootstrap?.privacyNoticeUrl || '');
+    termsPrivacyLink.href = /^https:\/\//i.test(url) ? url : './privacy.html';
+  }
 }
 
 function activeConversationQuestion() {
@@ -1235,6 +1259,16 @@ function handleRootClick(event) {
     window.location.reload();
     return;
   }
+  if (action === 'open-terms') {
+    // This button sits inside a consent label; stop the click toggling the checkbox.
+    event.preventDefault();
+    event.stopPropagation();
+    openDialog(termsDialog);
+    if (termsBody) {
+      termsBody.scrollTop = 0;
+    }
+    return;
+  }
   if (action === 'open-delete-dialog') {
     openDialog(deleteSessionDialog);
     return;
@@ -1350,6 +1384,10 @@ function bindEvents() {
     renderCurrentJourney();
   });
   revokeHandoffButton.addEventListener('click', handleRevokeHandoff);
+  closeTermsButton?.addEventListener('click', () => closeDialog(termsDialog));
+  termsDialog?.addEventListener('close', () => {
+    document.body.classList.remove('dialog-open');
+  });
   deleteSessionDialog.addEventListener('close', () => {
     document.body.classList.remove('dialog-open');
   });
@@ -1370,6 +1408,7 @@ async function boot() {
     }
     const bootstrapPayload = await getBootstrap();
     const bootstrap = setBootstrap(bootstrapPayload);
+    syncTermsDialog(bootstrap);
     const bootstrapRoot = unwrap(bootstrapPayload);
     if (bootstrapRoot.ai && typeof bootstrapRoot.ai === 'object') {
       state.ai = bootstrapRoot.ai;

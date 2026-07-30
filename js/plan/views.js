@@ -1886,6 +1886,24 @@ function createCurrentView(currentState) {
   }
 }
 
+function privacyNoticeLink(bootstrap, label = 'consumer journey privacy notice') {
+  const link = element('a', '', label);
+  link.href = /^https:\/\//i.test(String(bootstrap?.privacyNoticeUrl || ''))
+    ? bootstrap.privacyNoticeUrl
+    : './privacy.html';
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  return link;
+}
+
+/** Opens the Terms of Use dialog; safe inside a label because it is interactive content. */
+function termsLink(label = 'Terms of Use') {
+  const button = element('button', 'inline-link-button', label);
+  button.type = 'button';
+  button.dataset.action = 'open-terms';
+  return button;
+}
+
 export function renderOnboarding(root, bootstrap, { busy = false, error = '' } = {}) {
   root.replaceChildren();
   const shell = element('section', 'onboarding-shell');
@@ -1931,14 +1949,16 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
     },
     {
       name: 'analysisConsent',
-      title: 'I consent to my information being processed for this analysis',
-      detail: 'Planéir needs to process the financial information I choose to provide to create and save this session.',
+      title: 'I have read how Planéir handles my information',
+      detail: 'Planéir processes the financial details I choose to share in order to run this demo session for me, and the conversation is powered by OpenAI. Full detail is in the ',
+      detailSuffix: [privacyNoticeLink(bootstrap), '.'],
       required: true
     },
     {
       name: 'educationAcknowledged',
-      title: 'I understand this is education, not advice',
-      detail: 'Results are illustrations, not regulated financial, tax, legal, mortgage, product, or approval advice.',
+      title: 'I understand this is education, not advice, and I accept the Terms of Use',
+      detail: 'Results are illustrations, not regulated financial, tax, legal, mortgage, product, or approval advice. Read the ',
+      detailSuffix: [termsLink(), ' before you begin.'],
       required: true
     }
   ];
@@ -1959,21 +1979,18 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
     input.required = config.required;
     input.disabled = busy;
     const text = element('span');
-    append(text, element('strong', '', config.title), element('small', '', config.detail));
+    const detail = element('small', '', config.detail);
+    if (config.detailSuffix) {
+      append(detail, config.detailSuffix);
+    }
+    append(text, element('strong', '', config.title), detail);
     append(label, input, text);
     checks.append(label);
   });
   form.append(checks);
   form.append(element('p', 'consent-detail', 'Your private access credential stays only in this browser tab. Do not enter PPS numbers, account passwords, complete account numbers, or upload identity documents.'));
   const privacy = element('p', 'consent-detail');
-  privacy.append('Read the ');
-  const privacyLink = element('a', '', 'consumer journey privacy notice');
-  privacyLink.href = /^https:\/\//i.test(String(bootstrap.privacyNoticeUrl || ''))
-    ? bootstrap.privacyNoticeUrl
-    : './privacy.html';
-  privacyLink.target = '_blank';
-  privacyLink.rel = 'noopener noreferrer';
-  privacy.append(privacyLink, ` (policy ${bootstrap.policyVersion}).`);
+  privacy.append('Read the ', termsLink(), ' and the ', privacyNoticeLink(bootstrap), ` (policy ${bootstrap.policyVersion}).`);
   form.append(privacy);
   if (error) {
     form.append(element('p', 'form-error', error));

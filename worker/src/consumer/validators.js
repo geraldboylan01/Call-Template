@@ -42,10 +42,12 @@ export function validateCreateSessionBody(body, expectedManifest) {
     || privacyNoticeUrl !== manifest.privacyNoticeUrl) {
     throw badRequest('The planning disclosure is no longer current. Reload before starting.', 'consent_policy_outdated');
   }
-  if (consent.analysis !== true) throw badRequest('Analysis consent is required.', 'analysis_consent_required');
+  if (consent.analysis !== true) {
+    throw badRequest('You must confirm that you have read how Planéir handles your information.', 'analysis_consent_required');
+  }
   if (consent.adultConfirmed !== true) throw badRequest('You must confirm that you are 18 or older.', 'adult_confirmation_required');
   if (consent.educationOnlyAcknowledged !== true) {
-    throw badRequest('You must acknowledge that this is financial education, not financial advice.', 'education_only_acknowledgement_required');
+    throw badRequest('You must accept the Terms of Use and acknowledge that this is financial education, not financial advice.', 'education_only_acknowledgement_required');
   }
   if (typeof consent.aiProcessing !== 'boolean') throw badRequest('AI processing preference must be confirmed.');
   return {
