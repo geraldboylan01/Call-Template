@@ -1,5 +1,5 @@
 /**
- * The live lane's three tools.
+ * The live lane's five tools.
  *
  * DESIGN RULE: EVERY EXECUTOR IS PURE JS PLUS AT MOST A FEW D1 WRITES.
  *
@@ -30,6 +30,8 @@ import { classifySpokenPlanConfirmation } from '../realtime_completion.js';
 import { getCurrentProfile, getSessionRow } from '../repository.js';
 import { MODULE_IDS } from '../../../../js/planning/contracts.js';
 import { getSemanticFactDefinition } from '../../../../js/planning/semantic_facts.js';
+import { provisionalFactAssumption } from '../../../../js/planning/planeir_assumptions.js';
+import { recordRealtimeCapacityDecision } from '../realtime_repository.js';
 
 const MAX_FACTS_PER_CALL = 10;
 
@@ -97,6 +99,32 @@ export const LIVE_TOOL_DEFINITIONS = Object.freeze([
       + 'and the client has clearly agreed in their own words. The server checks their actual '
       + 'last words and refuses if they did not clearly say yes. Never call it on an assumption, '
       + 'a maybe, or to move things along.',
+    parameters: { type: 'object', additionalProperties: false, required: [], properties: {} }
+  },
+  {
+    type: 'function',
+    name: 'use_approved_assumption',
+    description:
+      'When the client cannot give you a figure even roughly, and get_state says an approved '
+      + 'assumption exists for it, use it so the analysis can still run. Say out loud first that '
+      + 'you are using a placeholder and that it is not a decision they are committing to. You '
+      + 'cannot choose the value: the server supplies an approved one, and refuses any fact it '
+      + 'has not approved. Never present the result as something the client told you.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['factId'],
+      properties: { factId: { type: 'string', minLength: 1, maxLength: 120 } }
+    }
+  },
+  {
+    type: 'function',
+    name: 'park_blocked_analyses',
+    description:
+      'When an analysis is blocked only by something the client cannot supply and no approved '
+      + 'assumption exists, set it aside so the rest of the meeting can still finish. Say plainly '
+      + 'which one you are parking and why, in your own words, using the description this returns. '
+      + 'Never park an analysis that is merely missing a question you have not asked yet.',
     parameters: { type: 'object', additionalProperties: false, required: [], properties: {} }
   }
 ]);
@@ -994,21 +1022,41 @@ function liveStateProjection(context) {
     .filter((fact) => fact?.factId)
     .map((fact) => factLabel(fact.factId));
 
-  const analyses = (state.recommendations || []).map((item) => ({
-    description: item.description,
-    status: item.status,
-    stillNeeded: (item.requiredMissing || []).map((missing) => ({
-      factId: missing.factId,
-      why: missing.reason
-    }))
-  }));
-
-  const missing = [...new Set(analyses.flatMap((analysis) => analysis.stillNeeded.map((item) => item.factId)))];
-  const unknown = Object.entries(
+  // WHY A FACT IS OUTSTANDING DECIDES WHAT TO DO ABOUT IT, and until now the
+  // projection did not say. A fact nobody has asked about yet just needs asking.
+  // A fact the client has already said they cannot supply needs an approved
+  // assumption or the analysis parked — and reporting both as "still needed"
+  // is what left the agent telling clients the meeting could not proceed.
+  const unknownFactIds = Object.entries(
     context.profile?.assumptions?.values?.completionFacts?.unknownFactIds || {}
   )
     .filter(([, acknowledged]) => acknowledged === true)
     .map(([factId]) => factId);
+  const unknownSet = new Set(unknownFactIds);
+
+  const analyses = (state.recommendations || []).map((item) => {
+    const stillNeeded = (item.requiredMissing || []).map((missing) => ({
+      factId: missing.factId,
+      why: missing.reason,
+      // 'unresolved' means asked and the client could not say; 'missing' means
+      // not yet asked.
+      state: unknownSet.has(missing.factId) ? 'unresolved' : 'missing',
+      assumptionAvailable: Boolean(provisionalFactAssumption(missing.factId))
+    }));
+    return {
+      description: item.description,
+      status: item.status,
+      stillNeeded,
+      // Blocked ONLY by things the client cannot supply. This is the actionable
+      // case: every remaining blocker either has an approved assumption or the
+      // analysis has to be parked.
+      blockedOnlyByUnresolved: stillNeeded.length > 0
+        && stillNeeded.every((need) => need.state === 'unresolved')
+    };
+  });
+
+  const missing = [...new Set(analyses.flatMap((analysis) => analysis.stillNeeded.map((item) => item.factId)))];
+  const unknown = unknownFactIds;
 
   return {
     ok: true,
@@ -1092,6 +1140,137 @@ async function executeConfirmAndRun(_args, deps) {
   };
 }
 
+/* ----------------------------------------------- the unresolved-fact ladder */
+
+/**
+ * Rung 1 — apply an approved provisional value.
+ *
+ * THE MODEL DOES NOT CHOOSE THE NUMBER. It names a fact; the server looks up
+ * whether an adviser has approved a provisional value for it and refuses if not.
+ * That is the difference between a placeholder and an invented figure, and it is
+ * why the value cannot travel in the arguments.
+ *
+ * Saved at certainty `approximate` so it satisfies readiness like any other
+ * estimate, and returned as a sourced figure so compliance permits the agent
+ * saying it out loud.
+ */
+async function executeUseApprovedAssumption(args, deps) {
+  const factId = String(args?.factId || '').slice(0, 120);
+  const approved = provisionalFactAssumption(factId);
+  if (!approved) {
+    return {
+      ok: false,
+      code: 'assumption_not_approved',
+      message: 'There is no approved placeholder for that. Ask for a rough figure instead, or park the analysis.'
+    };
+  }
+
+  const context = await deps.loadContext();
+  const applied = await applyPlannerCandidates({
+    env: deps.env,
+    config: livePlanningConfig(deps.config),
+    context,
+    extraction: {
+      goalCandidates: [],
+      semanticFacts: [{
+        candidateId: `assumption-${factId}`,
+        operation: 'upsert',
+        factId,
+        value: approved.value,
+        certainty: 'approximate',
+        evidenceText: '',
+        correctionTarget: ''
+      }],
+      positions: [],
+      sectionCompletions: [],
+      invalidCandidates: []
+    },
+    evidenceRef: deps.evidenceRef || null,
+    leaseId: deps.leaseId || null,
+    toolAttemptId: null,
+    loadContext: deps.loadContext
+  });
+
+  const accepted = applied.outcomes.some((item) => item.accepted && item.factId === factId);
+  if (!accepted) {
+    return {
+      ok: false,
+      code: 'assumption_rejected',
+      message: 'That placeholder did not apply. Do not mention it — carry on with something else.'
+    };
+  }
+  return {
+    ok: true,
+    factId,
+    label: approved.label,
+    value: approved.value,
+    // The agent must present this as a placeholder, never as a client answer.
+    speakableBasis: approved.disclosure,
+    sourcedValues: [approved.value],
+    context: applied.context
+  };
+}
+
+/**
+ * Rung 3 — park what cannot run, and keep going.
+ *
+ * NO MODULE ID CROSSES THIS BOUNDARY, in either direction. The model cannot
+ * name what to park and does not learn what was parked beyond its client-facing
+ * description; the server decides, from the state, which analyses are blocked
+ * ONLY by facts the client has said they cannot supply. An analysis merely
+ * missing a question nobody has asked is never parked.
+ */
+async function executeParkBlockedAnalyses(_args, deps) {
+  const context = await deps.loadContext();
+  const projection = liveStateProjection(context);
+  const parkable = projection.analyses.filter((analysis) => (
+    analysis.blockedOnlyByUnresolved
+    && !analysis.stillNeeded.some((need) => need.assumptionAvailable)
+  ));
+  if (parkable.length === 0) {
+    return {
+      ok: false,
+      code: 'nothing_to_park',
+      message: 'Nothing is blocked in a way that parking would help. Keep going.'
+    };
+  }
+
+  // Reuses the same revisioned write the spoken capacity decision uses, so a
+  // parked analysis is recorded exactly as a deferred one — including being
+  // excluded from re-offering for the rest of the cycle.
+  const slots = context.state?.moduleSlots || [];
+  const parked = [];
+  let sessionRow = context.sessionRow;
+  let profile = context.profile;
+  for (const analysis of parkable) {
+    const slot = slots.find((item) => item.description === analysis.description);
+    if (!slot?.moduleId) continue;
+    const recorded = await recordRealtimeCapacityDecision(deps.env, {
+      sessionId: sessionRow.id,
+      sessionRow,
+      profile,
+      decision: 'defer',
+      candidateModuleId: slot.moduleId,
+      removeModuleId: null
+    });
+    // Each write bumps the revision, so the next iteration must build on the
+    // row and profile it returns or the second deferral hits a revision conflict.
+    sessionRow = recorded.sessionRow || sessionRow;
+    profile = recorded.profile || profile;
+    parked.push(analysis.description);
+  }
+  if (parked.length === 0) {
+    return { ok: false, code: 'nothing_to_park', message: 'Nothing could be parked. Keep going.' };
+  }
+
+  return {
+    ok: true,
+    // Plain descriptions only — the same language the agent already uses.
+    parked,
+    message: 'Say which of these you are setting aside and why, then carry on with what is left.'
+  };
+}
+
 /* ------------------------------------------------------------- dispatcher */
 
 export function assertLiveToolName(name) {
@@ -1112,6 +1291,8 @@ export async function executeLiveTool(name, args, deps) {
   assertLiveToolName(name);
   if (name === 'save_facts') return executeSaveFacts(args, deps);
   if (name === 'get_state') return liveStateProjection(await deps.loadContext());
+  if (name === 'use_approved_assumption') return executeUseApprovedAssumption(args, deps);
+  if (name === 'park_blocked_analyses') return executeParkBlockedAnalyses(args, deps);
   return executeConfirmAndRun(args, deps);
 }
 

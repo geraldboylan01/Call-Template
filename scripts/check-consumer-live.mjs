@@ -182,8 +182,15 @@ function saveFact(profile, factId, value, certainty = 'exact') {
 
 /* ------------------------------------------------------------ tool shapes */
 
-ok(LIVE_TOOL_NAMES.length === 3, 'The live lane has exactly three tools.');
-assert.deepEqual([...LIVE_TOOL_NAMES].sort(), ['confirm_and_run', 'get_state', 'save_facts']);
+// An exact list, not a maximum. The point of pinning it is that every tool is a
+// decision the model can make, so adding one is a deliberate act rather than a
+// convenience — the v2 lane's surface grew until nothing could be reasoned about.
+// The two ladder tools earn their place: without them a single "I don't know"
+// ended the meeting with nothing delivered.
+ok(LIVE_TOOL_NAMES.length === 5, 'The live lane has exactly five tools.');
+assert.deepEqual([...LIVE_TOOL_NAMES].sort(), [
+  'confirm_and_run', 'get_state', 'park_blocked_analyses', 'save_facts', 'use_approved_assumption'
+]);
 checks += 1;
 
 for (const tool of LIVE_TOOL_DEFINITIONS) {
@@ -1945,6 +1952,95 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'Incident D-05 (two goals in one turn) must have a persona.');
   ok(fixture.personas.some((persona) => persona.expect?.mustNeverCommitProhibitedAct),
     'An adversarial advice-seeking persona must exist.');
+}
+
+/* ------------------------------------------------ the unresolved-fact ladder */
+
+// THE DEFECT THIS EXISTS TO FIX: an unknown fact stayed in `missing` forever, so
+// readyToConfirm could never become true and the agent told the client the
+// meeting could not proceed. Two of six replay personas ended having delivered
+// nothing. liquidity_analysis needs three facts; one "I don't know" blocked it.
+{
+  const {
+    provisionalFactAssumption,
+    provisionalFactIds
+  } = await import('../js/planning/planeir_assumptions.js');
+
+  // Rung 1 is only reachable where an adviser has approved a value. Anything
+  // else must fail closed — offering an unapproved placeholder would be
+  // inventing a figure with extra steps.
+  ok(provisionalFactIds().length > 0, 'At least one provisional fact must be approved.');
+  ok(provisionalFactAssumption('intended_retirement_age')?.value === 66,
+    'The approved retirement age must track the State Pension default start age.');
+  ok(provisionalFactAssumption('target_retirement_income') === null,
+    'A fact with no approved provisional value must return null, not a guess.');
+  ok(provisionalFactAssumption('') === null, 'An empty factId must not resolve to an assumption.');
+
+  // The projection must say WHY a fact is outstanding, because that decides what
+  // to do: a fact nobody asked about just needs asking; one the client could not
+  // supply needs an assumption or the analysis parked.
+  const NOW = '2026-07-29T09:00:00.000Z';
+  const base = normalizeHouseholdProfile(createHouseholdProfile({
+    profileId: 'ladder', nowIso: NOW, calculationDateIso: NOW.slice(0, 10)
+  }));
+  let session = { profile: base, revision: 1 };
+  const advance = (fact) => {
+    const proposed = planFactProposal({
+      config: CONFIG,
+      profile: session.profile,
+      state: describeConversationState(session.profile, CONFIG),
+      fact,
+      plannerBatch: true
+    });
+    session = { profile: proposed.profile, revision: session.revision + 1 };
+  };
+
+  advance({ factId: 'primary_goal', value: { type: 'maintain_liquidity' }, certainty: 'exact' });
+  advance({ factId: 'cash_savings', value: { amount: 11_000, currency: 'EUR' }, certainty: 'exact' });
+
+  const beforeUnknown = liveStateProjection(contextFor(session.profile));
+  const spendingBefore = beforeUnknown.analyses
+    .flatMap((analysis) => analysis.stillNeeded)
+    .find((need) => need.factId === 'monthly_spending');
+  ok(spendingBefore?.state === 'missing',
+    'A fact nobody has asked about yet must read as missing, not unresolved.');
+
+  // The client says they do not know, after being asked for a ballpark.
+  advance({ factId: 'monthly_spending', value: null, certainty: 'unknown' });
+  const afterUnknown = liveStateProjection(contextFor(session.profile));
+  const spendingAfter = afterUnknown.analyses
+    .flatMap((analysis) => analysis.stillNeeded)
+    .find((need) => need.factId === 'monthly_spending');
+  ok(spendingAfter?.state === 'unresolved',
+    'A fact the client could not supply must read as unresolved, so the ladder can act on it.');
+  ok(spendingAfter?.assumptionAvailable === false,
+    'monthly_spending has no approved placeholder, so parking is the only remaining rung.');
+  ok(afterUnknown.analyses.some((analysis) => analysis.blockedOnlyByUnresolved),
+    'An analysis blocked solely by what the client cannot supply must be identifiable as parkable.');
+
+  // RUNG 2 IS THE ONE THAT COSTS NOTHING. An approximate answer already writes
+  // the real profile field and already satisfies readiness — which is exactly
+  // why the prompt now asks for a ballpark before reaching for unknown.
+  let approximate = { profile: base, revision: 1 };
+  for (const fact of [
+    { factId: 'primary_goal', value: { type: 'maintain_liquidity' }, certainty: 'exact' },
+    { factId: 'cash_savings', value: { amount: 11_000, currency: 'EUR' }, certainty: 'exact' },
+    { factId: 'monthly_spending', value: { amount: 1_800, currency: 'EUR' }, certainty: 'approximate' }
+  ]) {
+    const proposed = planFactProposal({
+      config: CONFIG,
+      profile: approximate.profile,
+      state: describeConversationState(approximate.profile, CONFIG),
+      fact,
+      plannerBatch: true
+    });
+    approximate = { profile: proposed.profile, revision: approximate.revision + 1 };
+  }
+  const withApproximate = liveStateProjection(contextFor(approximate.profile));
+  ok(!withApproximate.missing.includes('monthly_spending'),
+    'An approximate answer must satisfy readiness where an unknown one does not.');
+  ok(withApproximate.analyses.every((analysis) => !analysis.blockedOnlyByUnresolved),
+    'Nothing is parkable once the client has given a rough figure.');
 }
 
 /* ------------------------------------------ the client reaches their analysis */

@@ -13,6 +13,8 @@
  * rebuilding the calculation engines.
  */
 
+import { IRISH_STATE_PENSION_CONTRIBUTORY } from './ireland_rules.js';
+
 export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.0.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-07-26';
 
@@ -56,6 +58,27 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
       })
     ]),
     disclosure: 'These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances.'
+  }),
+
+  /**
+   * Provisional values for facts a client may genuinely not be able to supply.
+   *
+   * WHY THESE ARE HERE AND NOT IN THE CONVERSATION. A client who cannot name a
+   * retirement age is not a client who should leave with nothing — but the model
+   * must never invent the number that fills the gap. These are centrally
+   * approved, versioned and dated exactly like every other assumption, so the
+   * agent selects from this list and cannot originate a value. Each one appears
+   * on screen as an assumption rather than as something the client said.
+   *
+   * ADDING AN ENTRY IS AN ADVISER DECISION, NOT AN ENGINEERING ONE.
+   */
+  provisionalFacts: Object.freeze({
+    intended_retirement_age: Object.freeze({
+      value: IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge,
+      label: 'Retirement age',
+      basis: `Aligned with the State Pension (Contributory) default start age of ${IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge}, so a provisional plan lines up with when that income is assumed to begin.`,
+      disclosure: 'This is a placeholder so the projection can run, not a decision. Change it whenever a real age is chosen.'
+    })
   })
 });
 
@@ -118,4 +141,32 @@ export function assumptionRecord(key) {
     }
   };
   return records[key] ? Object.freeze({ ...records[key] }) : null;
+}
+
+/**
+ * The approved provisional value for a fact, or null if there is not one.
+ *
+ * Returning null is the answer that matters: it is what stops the agent
+ * offering an assumption for a fact nobody has approved one for, which would be
+ * inventing a figure with extra steps.
+ */
+export function provisionalFactAssumption(factId) {
+  const entry = PLANEIR_ASSUMPTIONS.provisionalFacts[String(factId || '')];
+  return entry ? Object.freeze({ ...entry, factId, version: PLANEIR_ASSUMPTIONS.version }) : null;
+}
+
+/** Facts an approved provisional value exists for. */
+export function provisionalFactIds() {
+  return Object.keys(PLANEIR_ASSUMPTIONS.provisionalFacts);
+}
+
+/** The `assumptionsUsed` record for a provisional fact, so it shows on screen as an assumption. */
+export function provisionalFactRecord(factId) {
+  const entry = provisionalFactAssumption(factId);
+  if (!entry) return null;
+  return Object.freeze({
+    key: factId,
+    value: entry.value,
+    reason: `${entry.basis} ${entry.disclosure} (${entry.version})`
+  });
 }
