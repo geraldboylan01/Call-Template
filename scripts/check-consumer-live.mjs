@@ -2043,6 +2043,55 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'Nothing is parkable once the client has given a rough figure.');
 }
 
+/* -------------------------------- a contribution stated as money, not a rate */
+
+// Margaret's numbers from the replay: "€200 a month" against €35,000, into a
+// fact typed as a percentage. The model is rightly forbidden to divide and
+// there was no other path, so the projection she came for never ran.
+{
+  const { mapRealtimeFact } = await import('../worker/src/consumer/realtime_fact_mapper.js');
+  const NOW = '2026-07-29T09:00:00.000Z';
+  const base = normalizeHouseholdProfile(createHouseholdProfile({
+    profileId: 'contribution', nowIso: NOW, calculationDateIso: NOW.slice(0, 10)
+  }));
+  const withIncome = normalizeHouseholdProfile({
+    ...base,
+    incomeSources: [{
+      incomeId: 'i1', ownerId: base.primaryPerson.personId, type: 'employment',
+      label: 'Self-employment', grossAnnual: { amount: 35_000, currency: 'EUR' }
+    }]
+  });
+
+  const converted = mapRealtimeFact(withIncome, {
+    factId: 'pension_employee_contribution_rate',
+    value: { amount: 200, currency: 'EUR', cadence: 'monthly' },
+    certainty: 'approximate'
+  });
+  ok(converted.canonicalValue.employeeContributionRate === 0.069,
+    'A monthly contribution must convert to the annual rate the fact holds.');
+
+  // An ordinary percentage answer must fall through untouched.
+  const asRate = mapRealtimeFact(withIncome, {
+    factId: 'pension_employee_contribution_rate', value: 5, certainty: 'exact'
+  });
+  ok(asRate.canonicalValue.employeeContributionRate === 0.05,
+    'A plain percentage answer must keep working exactly as before.');
+
+  // FAILS CLOSED. Without income there is no defensible denominator, and
+  // inventing one is the figure this lane forbids. Leaving the fact outstanding
+  // is safe — the client can be asked for their income or the percentage.
+  assert.throws(
+    () => mapRealtimeFact(base, {
+      factId: 'pension_employee_contribution_rate',
+      value: { amount: 200, currency: 'EUR', cadence: 'monthly' },
+      certainty: 'approximate'
+    }),
+    (error) => error?.code === 'realtime_fact_value_invalid',
+    'A money contribution with no recorded income must be refused, never guessed.'
+  );
+  checks += 1;
+}
+
 /* ------------------------------------------ the client reaches their analysis */
 
 // The published bundle is built from REAL engine output, not a fixture. The

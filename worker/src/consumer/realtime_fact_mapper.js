@@ -271,6 +271,52 @@ function optionalBounded(value, options) {
   return value === null || typeof value === 'undefined' ? undefined : boundedNumber(value, options);
 }
 
+/**
+ * A pension contribution stated as money, converted to the rate the fact holds.
+ *
+ * WHY THIS EXISTS. `pension_employee_contribution_rate` is a percentage, but
+ * people say "two hundred a month". The model is correctly forbidden to do
+ * arithmetic, and there was no other path — so a client who knew exactly what
+ * they contribute could not satisfy the fact, and the projection that needed it
+ * never ran. That is what killed the anxious-late-starter replay.
+ *
+ * FAILS CLOSED WITHOUT INCOME. The conversion is only meaningful against gross
+ * annual income; with none recorded there is no defensible denominator, and
+ * guessing one would be exactly the invented figure this lane forbids. Rejecting
+ * is safe: the fact is simply still outstanding, and the client can be asked
+ * for the percentage or for their income instead.
+ *
+ * Returns undefined when the value is not money-shaped, so ordinary percentage
+ * answers fall through to the existing path untouched.
+ */
+function contributionRateFromMoney(profile, value, currency) {
+  if (!plainObject(value)) return undefined;
+  const amount = Number(value.amount ?? value.contribution?.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+
+  const annualIncome = (profile.incomeSources || []).reduce((total, source) => (
+    total + (Number(source?.grossAnnual?.amount) || 0)
+  ), 0);
+  if (!(annualIncome > 0)) {
+    throw new ConsumerError(
+      400,
+      'realtime_fact_value_invalid',
+      'A contribution given as an amount needs gross annual income before it can be expressed as a rate.'
+    );
+  }
+
+  const cadence = String(value.cadence || value.period || '').toLowerCase();
+  // Anything not explicitly annual is treated as monthly, because that is how
+  // contributions are almost always stated out loud.
+  const annualContribution = /^(?:annual|annually|year|yearly|per_year|pa)$/.test(cadence)
+    ? amount
+    : amount * 12;
+  return percentageRate(
+    Math.round((annualContribution / annualIncome) * 1_000) / 10,
+    { decimal: false }
+  );
+}
+
 function optionalRemainingTermMonths(value, { required = false } = {}) {
   if (!plainObject(value)) return optionalBounded(value, { min: 1, max: 1200, integer: true });
   if (value.remainingTermMonths !== null && typeof value.remainingTermMonths !== 'undefined') {
@@ -1308,10 +1354,12 @@ export function mapRealtimeFact(profile, fact) {
       : fact.factId === 'pension_employee_contribution_rate' ? 'employeeContributionRate' : 'employerContributionRate';
     const canonicalValue = fact.factId === 'pension_current_value'
       ? money(fact.value, currency)
-      : percentageRate(
+      // Money first: "two hundred a month" is a contribution the client knows,
+      // and only the shape stops it satisfying a percentage fact.
+      : (contributionRateFromMoney(profile, fact.value, currency) ?? percentageRate(
         scalarValue(fact.value, [key, 'rate']),
         { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
-      );
+      ));
     const proposalValue = fact.factId === 'pension_current_value'
       ? { entityId: stableId, ...canonicalValue }
       : { entityId: stableId, value: canonicalValue, rateUnit: 'decimal' };
