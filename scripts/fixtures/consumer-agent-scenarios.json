@@ -1,0 +1,510 @@
+{
+  "schemaVersion": "consumer-agent-scenario-v1",
+  "synthetic": true,
+  "note": "Synthetic test clients only. Never real client data. Each scenario carries what the client SAYS, what a correct planner extracts from it, and what the planning engine must then do. The runner replays every scenario through both the agent and voice-equivalent transports and requires them to agree.",
+  "scenarios": [
+    {
+      "id": "young_renter_first_home",
+      "client": {
+        "identity": "25, renting, early in a first job",
+        "circumstances": "renting a flat, saving a deposit, no property, no pension yet",
+        "knownFacts": "you are 25; you have about 12,000 euro saved",
+        "wants": "to buy a first home in a few years and know if you are on track",
+        "style": "friendly, a bit unsure of the jargon",
+        "behaviours": [
+          "gives round numbers",
+          "asks what things mean"
+        ]
+      },
+      "turns": [
+        {
+          "say": "I'm 25 and renting at the moment, and I really want to buy my first place in a few years.",
+          "extraction": {
+            "goals": [
+              {
+                "type": "buy_home",
+                "priorityHint": "primary"
+              }
+            ],
+            "facts": [
+              {
+                "factId": "person_current_age",
+                "value": {
+                  "age": 25
+                }
+              },
+              {
+                "factId": "property_status",
+                "value": {
+                  "value": "renter"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "say": "I've got about twelve thousand put away so far.",
+          "extraction": {
+            "positions": [
+              {
+                "kind": "cash",
+                "entityId": "savings",
+                "label": "Savings",
+                "amount": {
+                  "amount": 12000,
+                  "currency": "EUR"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustPersistGoals": [
+          "buy_home"
+        ],
+        "mustSelectModuleIds": [
+          "house_purchase"
+        ],
+        "mustNeverSelectModuleIds": [
+          "pension_projection",
+          "mortgage_analysis"
+        ],
+        "mustNeverAskFactIds": [
+          "intended_retirement_age",
+          "pension_employer_contribution_rate"
+        ],
+        "mustPersistFactIds": [
+          "person_current_age"
+        ]
+      }
+    },
+    {
+      "id": "new_parent_overall_and_college",
+      "client": {
+        "identity": "32, one young child",
+        "circumstances": "recently became a parent, wants a general picture and to plan for education",
+        "knownFacts": "you are 32; you have one child, a toddler",
+        "wants": "an overall look at your finances, and to know college is affordable one day",
+        "style": "warm, slightly rambling",
+        "behaviours": [
+          "mentions two goals in one breath"
+        ]
+      },
+      "turns": [
+        {
+          "say": "So I'm 32 and I'm after having a young kid, and I would like to just have an overall look at my financial picture and ensure that at one stage I can afford to send this kid to college.",
+          "extraction": {
+            "goals": [
+              "understand_position",
+              "fund_education"
+            ],
+            "facts": [
+              {
+                "factId": "person_current_age",
+                "value": {
+                  "age": 32
+                }
+              },
+              {
+                "factId": "household_structure",
+                "value": {
+                  "value": "family"
+                }
+              },
+              {
+                "factId": "dependant_count",
+                "value": {
+                  "value": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "say": "I want to get a broader picture of my current financial position and then look towards getting my kid into college.",
+          "extraction": {
+            "goals": [
+              "understand_position",
+              "fund_education"
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustPersistGoals": [
+          "understand_position",
+          "fund_education"
+        ],
+        "mustSelectModuleIds": [
+          "personal_balance_sheet",
+          "college_funding"
+        ],
+        "mustPersistFactIds": [
+          "person_current_age"
+        ],
+        "expectsPriorityQuestion": true,
+        "mustNeverAskFactIds": [
+          "intended_retirement_age"
+        ]
+      }
+    },
+    {
+      "id": "self_employed_no_pension",
+      "client": {
+        "identity": "38, sole trader with irregular income",
+        "circumstances": "self-employed, never set up a pension",
+        "knownFacts": "you are 38; you are self-employed",
+        "wants": "to sort out a pension",
+        "style": "brief, slightly guarded",
+        "behaviours": [
+          "reluctant about exact figures"
+        ]
+      },
+      "turns": [
+        {
+          "say": "I'm self employed and never got round to sorting a pension. I'm 38.",
+          "extraction": {
+            "goals": [
+              {
+                "type": "improve_pension",
+                "priorityHint": "primary"
+              }
+            ],
+            "facts": [
+              {
+                "factId": "person_current_age",
+                "value": {
+                  "age": 38
+                }
+              },
+              {
+                "factId": "employment_context",
+                "value": {
+                  "value": "self_employed"
+                }
+              },
+              {
+                "factId": "has_pension",
+                "value": {
+                  "value": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustPersistGoals": [
+          "improve_pension"
+        ],
+        "mustSelectModuleIds": [
+          "pension_projection"
+        ],
+        "mustNeverAskFactIds": [
+          "pension_employer_contribution_rate",
+          "current_monthly_rent"
+        ],
+        "mustPersistFactIds": [
+          "person_current_age",
+          "employment_context"
+        ]
+      }
+    },
+    {
+      "id": "mid_career_mortgage_switcher",
+      "client": {
+        "identity": "42, owns a home with a mortgage",
+        "circumstances": "homeowner, wants to review the mortgage rate",
+        "knownFacts": "you are 42; your home is worth about 400,000 and the mortgage is about 220,000",
+        "wants": "to know whether the mortgage is costing more than it should",
+        "style": "direct and numerate",
+        "behaviours": [
+          "gives figures readily"
+        ]
+      },
+      "turns": [
+        {
+          "say": "I'm 42, I own my house and I want to review the mortgage \u2014 I think the rate is poor.",
+          "extraction": {
+            "goals": [
+              {
+                "type": "optimise_mortgage",
+                "priorityHint": "primary"
+              }
+            ],
+            "facts": [
+              {
+                "factId": "person_current_age",
+                "value": {
+                  "age": 42
+                }
+              },
+              {
+                "factId": "property_status",
+                "value": {
+                  "value": "homeowner"
+                }
+              }
+            ],
+            "positions": [
+              {
+                "kind": "property",
+                "entityId": "home",
+                "propertyUse": "home",
+                "label": "Home",
+                "amount": {
+                  "amount": 400000,
+                  "currency": "EUR"
+                }
+              },
+              {
+                "kind": "mortgage",
+                "entityId": "mortgage",
+                "linkedEntityId": "home",
+                "label": "Mortgage",
+                "amount": {
+                  "amount": 220000,
+                  "currency": "EUR"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustPersistGoals": [
+          "optimise_mortgage"
+        ],
+        "mustSelectModuleIds": [
+          "mortgage_analysis"
+        ],
+        "mustNeverAskFactIds": [
+          "current_monthly_rent",
+          "target_home_price"
+        ],
+        "mustPersistFactIds": [
+          "person_current_age",
+          "property_status"
+        ]
+      }
+    },
+    {
+      "id": "retiree_drawdown",
+      "client": {
+        "identity": "68, retired",
+        "circumstances": "retired three years ago, living off a pension and savings",
+        "knownFacts": "you are 68; you retired at 65",
+        "wants": "to understand whether your money will last",
+        "style": "measured, unhurried",
+        "behaviours": [
+          "corrects you politely if you assume they are working"
+        ]
+      },
+      "turns": [
+        {
+          "say": "I retired three years ago and I'd like to understand where I stand overall.",
+          "extraction": {
+            "goals": [
+              {
+                "type": "understand_position",
+                "priorityHint": "primary"
+              }
+            ],
+            "facts": [
+              {
+                "factId": "person_current_age",
+                "value": {
+                  "age": 68
+                }
+              },
+              {
+                "factId": "retirement_status",
+                "value": {
+                  "value": "retired"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustPersistGoals": [
+          "understand_position"
+        ],
+        "mustSelectModuleIds": [
+          "personal_balance_sheet"
+        ],
+        "mustNeverAskFactIds": [
+          "intended_retirement_age",
+          "target_home_price"
+        ],
+        "mustPersistFactIds": [
+          "retirement_status"
+        ]
+      }
+    },
+    {
+      "id": "contradictory_then_corrected",
+      "client": {
+        "identity": "45, changes their mind mid-conversation",
+        "circumstances": "starts by asking about retirement, then says the real priority is a loan",
+        "knownFacts": "you are 45",
+        "wants": "to sort out an expensive loan, though you start by mentioning retirement",
+        "style": "thinks aloud",
+        "behaviours": [
+          "corrects an earlier statement"
+        ]
+      },
+      "turns": [
+        {
+          "say": "I suppose I should think about retirement. I'm 45.",
+          "extraction": {
+            "goals": [
+              "retire"
+            ],
+            "facts": [
+              {
+                "factId": "person_current_age",
+                "value": {
+                  "age": 45
+                }
+              }
+            ]
+          }
+        },
+        {
+          "say": "Actually, forget retirement for now \u2014 the real thing is I've a credit union loan that's costing me a fortune.",
+          "extraction": {
+            "goals": [
+              {
+                "type": "manage_loan",
+                "priorityHint": "primary",
+                "correctionTarget": "retire"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustPersistGoals": [
+          "manage_loan"
+        ],
+        "mustSelectModuleIds": [
+          "loan_analysis"
+        ],
+        "mustPersistFactIds": [
+          "person_current_age"
+        ]
+      }
+    },
+    {
+      "id": "unsupported_goal_only",
+      "client": {
+        "identity": "55, business owner asking about something not yet released",
+        "circumstances": "wants help with passing on a business",
+        "knownFacts": "you are 55",
+        "wants": "to plan a business succession",
+        "style": "matter of fact",
+        "behaviours": [
+          "asks about one thing only"
+        ]
+      },
+      "turns": [
+        {
+          "say": "I'm 55 and I want to plan how to hand the business on to my daughter.",
+          "extraction": {
+            "goals": [
+              "business_planning"
+            ],
+            "facts": [
+              {
+                "factId": "person_current_age",
+                "value": {
+                  "age": 55
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustPersistGoals": [
+          "business_planning"
+        ],
+        "mustSelectModuleIds": [],
+        "expectsUnsupportedGoalMessage": true,
+        "mustPersistFactIds": [
+          "person_current_age"
+        ]
+      }
+    },
+    {
+      "id": "client_does_not_know_a_value",
+      "note": "Found by an agent-driven live run: the meeting asked 'roughly what is your home worth?' four times because the client kept saying they did not know. The engine supports certainty:'unknown' and suppresses an acknowledged fact, so this scenario pins that behaviour and makes any regression in it visible.",
+      "client": {
+        "identity": "40, homeowner who does not know their house value",
+        "circumstances": "owns a home, has never had it valued",
+        "knownFacts": "you are 40; you own your home but genuinely do not know what it is worth",
+        "wants": "an overall picture of where you stand",
+        "style": "helpful but vague about figures",
+        "behaviours": [
+          "says you do not know when you do not know",
+          "never invents a number"
+        ]
+      },
+      "turns": [
+        {
+          "say": "I'm 40 and I own my home. I'd like an overall picture of where I stand.",
+          "extraction": {
+            "goals": [
+              {
+                "type": "understand_position",
+                "priorityHint": "primary"
+              }
+            ],
+            "facts": [
+              {
+                "factId": "person_current_age",
+                "value": {
+                  "age": 40
+                }
+              },
+              {
+                "factId": "property_status",
+                "value": {
+                  "value": "homeowner"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "say": "Honestly I've no idea what the house is worth \u2014 it's never been valued.",
+          "extraction": {
+            "facts": [
+              {
+                "factId": "property_position",
+                "value": null,
+                "certainty": "unknown"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "mustPersistGoals": [
+          "understand_position"
+        ],
+        "mustSelectModuleIds": [
+          "personal_balance_sheet"
+        ],
+        "mustPersistFactIds": [
+          "person_current_age"
+        ],
+        "mustNotRepeatQuestion": true
+      },
+      "knownIssue": "KNOWN ISSUE, found by an agent-driven live run. The meeting asked 'roughly what is your home worth?' four times because the client kept saying they did not know. Root cause: certainty:'unknown' is only accepted for money and number facts (completionFactMapping in planning_facts.js requires valueType money|number). property_position is an ENTITY fact, so 'I don't know' is rejected with realtime_fact_certainty_invalid, nothing is recorded, and the question repeats forever. Fixing it is a design decision: how should an unknown attribute of an entity be acknowledged? Until then this scenario documents the defect and will start passing when it is fixed."
+    }
+  ]
+}
