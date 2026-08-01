@@ -103,10 +103,31 @@ function assertExpectations(scenario, mode, run) {
   // A client who says "I don't know" must not be asked the same thing again.
   // An agent-driven run found the meeting asking one question four times.
   if (expected.mustNotRepeatQuestion) {
-    const asked = run.turns.map((turn) => turn.questionFactId).filter(Boolean);
-    const repeated = asked.filter((factId, index) => asked.indexOf(factId) !== index);
-    check(scenario.id, mode, 'must not ask the same question twice in a row',
-      repeated.length === 0, `questions: ${JSON.stringify(asked)}`);
+    // The real fault is asking for something the client has ALREADY answered --
+    // including answering "I don't know". Asking an as-yet-unanswered question
+    // again on a later turn is normal conversation, not a loop.
+    const answered = new Set();
+    for (const turn of run.turns) {
+      if (turn.questionFactId && answered.has(turn.questionFactId)) {
+        check(scenario.id, mode,
+          `must not ask again for ${turn.questionFactId} — the client already answered it`,
+          false, `questions: ${JSON.stringify(run.turns.map((t) => t.questionFactId))}`);
+      }
+      for (const factId of turn.acceptedFactIds) answered.add(factId);
+    }
+  }
+  // An essential input the client does not have DROPS the analysis, freeing its
+  // slot -- and the drop reverses by itself when they later supply the figure.
+  if (expected.blocksThenRecovers) {
+    const { moduleId, blockedAfterTurn, recoveredAfterTurn } = expected.blocksThenRecovers;
+    const blockedTurn = run.turns[blockedAfterTurn - 1];
+    const recoveredTurn = run.turns[recoveredAfterTurn - 1];
+    check(scenario.id, mode, `${moduleId} must be dropped once its essential input is unknown`,
+      blockedTurn && !blockedTurn.analyses.includes(moduleId),
+      `analyses after turn ${blockedAfterTurn}: ${JSON.stringify(blockedTurn?.analyses)}`);
+    check(scenario.id, mode, `${moduleId} must return once the client supplies the figure`,
+      recoveredTurn && recoveredTurn.analyses.includes(moduleId),
+      `analyses after turn ${recoveredAfterTurn}: ${JSON.stringify(recoveredTurn?.analyses)}`);
   }
   if (expected.expectsUnsupportedGoalMessage) {
     check(scenario.id, mode, 'must tell the client this goal has no analysis yet',

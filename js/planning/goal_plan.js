@@ -343,6 +343,26 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null)
   // Release is decided by the four authoritative controls, not by the legacy
   // consumerAvailable boolean, so an adviser enabling an approved module takes
   // effect here rather than being overruled by stale manifest data.
+  // A required input the client has told us they do not know BLOCKS this
+  // analysis. We asked, we offered to take an estimate, and they do not have
+  // one; continuing to hold a slot for an analysis that can never run would
+  // keep a more useful one out.
+  //
+  // This is DERIVED, never stored, so it reverses by itself: the moment the
+  // client volunteers the figure, the unknown marker is cleared by
+  // clearCompletionFactMarker and the analysis returns to the plan on its own.
+  // Only an ESSENTIAL input blocks. A fact the analysis can proceed without --
+  // one it assumes, or treats as optional -- is simply not asked again once the
+  // client says they do not know it. Blocking on those would drop analyses that
+  // are perfectly runnable.
+  const unknownFactIds = profile.assumptions?.values?.completionFacts?.unknownFactIds || {};
+  const blockingFactIds = [...new Set(
+    (readiness.requiredMissing || [])
+      .filter((item) => item?.importance === 'required')
+      .map((item) => resolveSemanticFact(item, { profile, moduleId }).factId)
+      .filter((factId) => unknownFactIds[factId] === true)
+  )];
+
   const releaseAllowed = isConsumerVisibleModule(moduleId, {
     allowedModuleIds, adviserOverrides
   });
@@ -357,10 +377,20 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null)
       ...(readiness.warnings || []).slice(0, 2)]
     };
   }
+  if (blockingFactIds.length > 0) {
+    return {
+      availability: 'blocked_missing_input',
+      intakeStatus: readiness.status,
+      missingFactIds,
+      blockingFactIds,
+      reasons: ['This analysis needs information the client does not have.']
+    };
+  }
   return {
     availability: ['ready', 'ready_with_assumptions'].includes(readiness.status) ? 'ready' : 'needs_facts',
     intakeStatus: readiness.status,
     missingFactIds,
+    blockingFactIds: [],
     reasons: (readiness.warnings || []).slice(0, 3)
   };
 }
@@ -441,12 +471,29 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   // of the three slots, reach the client-facing set, or displace an analysis
   // that is actually available. Before this, a gated analysis such as the net
   // retirement cash flow silently took a slot and produced nothing.
-  const eligible = [...byModuleId.values()].filter((selection) => (
-    isConsumerVisibleModule(selection.moduleId, visibility)
-    && !replaced.has(selection.moduleId)
-    && !deferredForLater.has(selection.moduleId)
-    && !declined.has(selection.moduleId)
-  ));
+  // A blocked analysis is filtered out BEFORE ranking, exactly like a hidden
+  // one, so the slot it would have taken goes to something that can actually
+  // run. It is recorded separately so the meeting can explain the drop in the
+  // client's own terms.
+  const blockedSelections = [];
+  const eligible = [...byModuleId.values()].filter((selection) => {
+    if (!isConsumerVisibleModule(selection.moduleId, visibility)
+      || replaced.has(selection.moduleId)
+      || deferredForLater.has(selection.moduleId)
+      || declined.has(selection.moduleId)) {
+      return false;
+    }
+    const intake = intakeFor(selection.moduleId, profile, allowed, adviserOverrides);
+    if (intake.availability === 'blocked_missing_input') {
+      blockedSelections.push(Object.freeze({
+        moduleId: selection.moduleId,
+        blockingFactIds: Object.freeze([...intake.blockingFactIds]),
+        relatedGoalTypes: Object.freeze([...selection.relatedGoalTypes])
+      }));
+      return false;
+    }
+    return true;
+  });
 
   const ranked = [...eligible].sort((left, right) => (
     candidateTier(left, selectedFocus) - candidateTier(right, selectedFocus)
@@ -571,6 +618,9 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
       confidence
     }),
     moduleSlots: Object.freeze(moduleSlots),
+    // Analyses dropped because the client does not have a required input.
+    // Consumer-safe: ids only, described through the manifest's client language.
+    blockedModules: Object.freeze(blockedSelections),
     // Consumer-visible opportunities only. Safe to serialise into a prompt.
     moduleOpportunities: Object.freeze(moduleOpportunities.slice(0, 4)),
     // Relevant internally but not consumer-visible. NEVER serialise this to a
@@ -587,7 +637,26 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
 
 export function goalPlanRecommendations(plan, rawProfile) {
   const profile = normalizeHouseholdProfile(rawProfile);
-  return plan.moduleSlots.map((slot) => ({
+  // A blocked analysis stays in the recommendation list even though it has left
+  // the slots. It is out of the plan and out of the question queue, but its
+  // facts must remain acceptable: if the client later volunteers the figure
+  // they did not have, the block clears and the analysis comes back. Dropping
+  // it from here entirely would make that recovery impossible.
+  const blocked = (plan.blockedModules || []).map((item) => ({
+    slot: null,
+    moduleId: item.moduleId,
+    availability: 'blocked_missing_input',
+    intakeStatus: 'missing_information',
+    relatedGoalTypes: [...item.relatedGoalTypes],
+    priority: 0,
+    source: 'blocked',
+    status: 'blocked',
+    rationale: ['This analysis needs information the client does not have.'],
+    triggeredRuleIds: [],
+    blockingFactIds: [...item.blockingFactIds],
+    readiness: getModuleIntakeReadiness(item.moduleId, profile)
+  }));
+  return blocked.concat(plan.moduleSlots.map((slot) => ({
     slot: slot.slot,
     moduleId: slot.moduleId,
     availability: slot.availability,
@@ -599,7 +668,7 @@ export function goalPlanRecommendations(plan, rawProfile) {
     rationale: [...slot.reasons],
     triggeredRuleIds: [...slot.ruleIds],
     readiness: getModuleIntakeReadiness(slot.moduleId, profile)
-  }));
+  })));
 }
 
 export function getGoalLabel(goalType) {

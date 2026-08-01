@@ -551,6 +551,10 @@ export function modulesEnabledByFacts(recommendations, facts = [], profile = nul
   if (projectedProfile) {
     const plan = buildGoalModulePlan(projectedProfile);
     plan.moduleSlots.forEach((slot) => modules.add(slot.moduleId));
+    // A blocked analysis still accepts facts. It left the plan because the
+    // client did not have one essential input; supplying any of its inputs --
+    // including that one -- is exactly how it comes back.
+    (plan.blockedModules || []).forEach((item) => modules.add(item.moduleId));
   }
   return modules;
 }

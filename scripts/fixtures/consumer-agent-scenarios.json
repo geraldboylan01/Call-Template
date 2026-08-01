@@ -441,7 +441,7 @@
     },
     {
       "id": "client_does_not_know_a_value",
-      "note": "Found by an agent-driven live run: the meeting asked 'roughly what is your home worth?' four times because the client kept saying they did not know. Two causes, both fixed: certainty:'unknown' was only accepted for money and number facts, so an entity fact like property_position could not be acknowledged at all; and the brief built its own missing-fact list without applying the acknowledgement filter buildQuestionPlan already used. This scenario pins both.",
+      "note": "The full missing-essential-input journey. Found by an agent-driven live run that saw the meeting ask 'roughly what is your home worth?' four times. Turn 2 records the gap and DROPS the analysis that needed it, freeing its capacity slot. Turn 3 proves the drop reverses by itself: the client volunteers the figure and the analysis returns.",
       "client": {
         "identity": "40, homeowner who does not know their house value",
         "circumstances": "owns a home, has never had it valued",
@@ -490,19 +490,41 @@
               }
             ]
           }
+        },
+        {
+          "say": "I checked with a neighbour \u2014 ours would be about 400,000.",
+          "extraction": {
+            "positions": [
+              {
+                "kind": "property",
+                "entityId": "home",
+                "propertyUse": "home",
+                "label": "Home",
+                "amount": {
+                  "amount": 400000,
+                  "currency": "EUR"
+                }
+              }
+            ]
+          }
         }
       ],
       "expected": {
         "mustPersistGoals": [
           "understand_position"
         ],
-        "mustSelectModuleIds": [
-          "personal_balance_sheet"
-        ],
         "mustPersistFactIds": [
           "person_current_age"
         ],
-        "mustNotRepeatQuestion": true
+        "mustSelectModuleIds": [
+          "personal_balance_sheet"
+        ],
+        "mustNotRepeatQuestion": true,
+        "blocksThenRecovers": {
+          "moduleId": "personal_balance_sheet",
+          "blockedAfterTurn": 2,
+          "recoveredAfterTurn": 3
+        }
       }
     }
   ]

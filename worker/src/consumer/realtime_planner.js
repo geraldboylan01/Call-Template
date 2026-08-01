@@ -815,6 +815,9 @@ function uniqueMissingFacts(state, profile = null) {
   const acknowledged = (factId) => completionFacts.unknownFactIds?.[factId] === true
     || Boolean(completionFacts.rangedFactValues?.[factId]);
   for (const recommendation of state.recommendations || []) {
+    // A blocked analysis has been dropped. Its remaining inputs are no longer
+    // worth the client's time.
+    if (recommendation.availability === 'blocked_missing_input') continue;
     for (const item of recommendation.requiredMissing || []) {
       const instanceKey = `${item.factId || ''}:${item.factInstanceId || ''}`;
       if (!item.factId || seen.has(instanceKey) || acknowledged(item.factId)) continue;
