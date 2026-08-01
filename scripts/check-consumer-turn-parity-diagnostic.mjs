@@ -171,8 +171,8 @@ function makeEnv(databasePath) {
     CONSUMER_MODULE_ROUTING_ENABLED: 'true',
     CONSUMER_GOAL_ROUTING_ENABLED: 'true',
     CONSUMER_AGENT_TEST_ENABLED: 'true',
-    // The exact live adviser-canary allowlist.
-    CONSUMER_ALLOWED_MODULE_IDS: 'house_purchase,liquidity_analysis',
+    // The live adviser-canary allowlist, now the manifest-approved set.
+    CONSUMER_ALLOWED_MODULE_IDS: 'college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet',
     CONSUMER_MODULE_OFFERS_ENABLED: 'false',
     CONSUMER_COHORT: 'adviser_test',
     CONSUMER_CONSENT_POLICY_VERSION: 'consumer-adviser-test-v1',
@@ -513,15 +513,20 @@ for (const [label, stages] of Object.entries(runs)) {
     `${label}: the brief must carry a server-owned question so the model cannot improvise one`
   );
 
-  // 4. When no analysis is available, the meeting says so rather than
-  //    pretending to collect facts for analyses that do not exist.
-  if ((last.stateModuleSlots || []).length === 0) {
-    assert.ok(
-      ['primary_goal', 'primary_goal_focus'].includes(last.briefQuestionFactId),
-      `${label}: with no selectable analysis the meeting must ask about goals, `
-        + `not intake facts — got ${last.briefQuestionFactId}`
-    );
-  }
+  // 4. This client's goals must now reach real analyses. Before the release
+  //    allowlist was widened to the manifest-approved set, understand_position
+  //    and fund_education routed to personal_balance_sheet and college_funding
+  //    -- neither of which was released -- so the meeting showed zero focus
+  //    areas however well extraction worked.
+  assert.ok(
+    (last.stateModuleSlots || []).length > 0,
+    `${label}: this client's goals must reach at least one released analysis, got none`
+  );
+  assert.equal(
+    (last.uiProjection?.analyses ?? []).length,
+    (last.stateModuleSlots || []).length,
+    `${label}: the UI focus areas must match the selected analyses`
+  );
 }
 pass('every transport persists goals, projects them faithfully, and asks a server-owned question');
 

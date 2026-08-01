@@ -702,8 +702,18 @@ export function describeConversationState(profile, config) {
   const goalPlan = buildGoalModulePlan(profile, { allowedModuleIds: config.allowedModules });
   const hasGoal = goalPlan.goalAssessment.activeGoalTypes.length > 0;
   const plannedRecommendations = hasGoal ? goalPlanRecommendations(goalPlan, profile) : [];
-  const recommendations = goalPlan.requiresDecisionTopicQuestion || goalPlan.requiresGoalPriorityQuestion
-    ? [] : plannedRecommendations;
+  // An unanswered PRIORITY question must not empty the plan.
+  //
+  // Commit 32b3a62 already established this: several live goals with no stated
+  // primary still produce a ranked provisional set, and the answer RE-RANKS it
+  // rather than creating it. That fix landed in buildGoalModulePlan but not
+  // here, so describeConversationState kept discarding the very plan
+  // buildGoalModulePlan had just built — and a client who stated two goals saw
+  // zero analyses however well extraction worked.
+  //
+  // A missing decision TOPIC is different: "help me assess a decision" with no
+  // topic genuinely routes nowhere, so that one still blocks.
+  const recommendations = goalPlan.requiresDecisionTopicQuestion ? [] : plannedRecommendations;
   const unsupportedOnly = hasGoal
     && goalPlan.moduleSlots.length === 0
     && !goalPlan.requiresDecisionTopicQuestion
@@ -777,7 +787,7 @@ export function describeConversationState(profile, config) {
     recommendations,
     selectionPolicyVersion: goalPlan.selectionPolicyVersion,
     goalAssessment: goalPlan.goalAssessment,
-    moduleSlots: hasGoal && !goalPlan.requiresDecisionTopicQuestion && !goalPlan.requiresGoalPriorityQuestion
+    moduleSlots: hasGoal && !goalPlan.requiresDecisionTopicQuestion
       ? goalPlan.moduleSlots.map(({ ruleIds: _ruleIds, ...slot }) => slot) : [],
     // Consumer-visible opportunities only. withheldOpportunities is deliberately
     // not surfaced here: it must never reach a consumer prompt.

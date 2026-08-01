@@ -1018,7 +1018,14 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
   // The deterministic clarification question is already computed and sitting in
   // `state.nextQuestion`; it simply never reached the brief. Fall back to it so
   // the meeting always has exactly one server-owned thing to ask.
-  const clarificationFact = !primaryRequestedFact && state.nextQuestion?.factId
+  // A required clarification comes FIRST, even when the provisional plan already
+  // has facts to collect. The plan no longer empties while the priority question
+  // is unanswered (that was 32b3a62's intent), so without this the meeting would
+  // silently skip "which of these matters most today?" and start interrogating
+  // for a set the client has not confirmed the shape of.
+  const clarificationRequired = state.requiresGoalPriorityQuestion === true
+    || state.requiresDecisionTopicQuestion === true;
+  const clarificationFact = (clarificationRequired || !primaryRequestedFact) && state.nextQuestion?.factId
     ? {
         factId: state.nextQuestion.factId,
         factInstanceId: state.nextQuestion.factInstanceId || null,
@@ -1026,7 +1033,7 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
         moduleId: null
       }
     : null;
-  const questionBatch = primaryRequestedFact
+  const questionBatch = (primaryRequestedFact && !clarificationRequired)
     ? {
         topic: questionTopic(primaryRequestedFact.factId),
         primaryFact: primaryRequestedFact,

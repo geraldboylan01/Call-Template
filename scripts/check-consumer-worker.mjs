@@ -272,7 +272,10 @@ for (const flag of [
 ]) {
   assert.match(wranglerSource, new RegExp(`${flag} = "false"`));
 }
-assert.match(wranglerSource, /CONSUMER_ALLOWED_MODULE_IDS = "house_purchase,liquidity_analysis"/);
+// The release allowlist is the manifest-approved set; its exact contents and
+// drift are owned by check-deploy-canary-config.mjs, which cross-checks it
+// against the manifest gates and the deploy pin.
+assert.match(wranglerSource, /CONSUMER_ALLOWED_MODULE_IDS = "[a-z_]+(?:,[a-z_]+)*"/);
 assert.match(wranglerSource, /CONSUMER_AI_DEFAULT_MODEL = "gpt-5\.6-luna"/);
 assert.match(wranglerSource, /CONSUMER_AI_COMPLEX_MODEL = "gpt-5\.6-terra"/);
 assert.doesNotMatch(wranglerSource, /OPENAI_API_KEY\s*=/);

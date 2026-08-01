@@ -82,7 +82,13 @@ CONSUMER_MODULE_OFFERS_ENABLED = "false"
 CONSUMER_AGENT_TEST_ENABLED = "false"
 CONSUMER_HANDOFF_ENABLED = "false"
 CONSUMER_PUBLIC_ACCESS_ENABLED = "false"
-CONSUMER_ALLOWED_MODULE_IDS = "house_purchase,liquidity_analysis"
+# Every module that passes all four consumer gates in the manifest
+# (runnable engine, platform approval, adviser enablement, client language).
+# This was pinned to two modules on the first day of the adviser beta, before
+# the manifest governance model existed, and never widened as modules were
+# approved -- so a client asking about their overall position or their
+# children's education was routed to nothing at all.
+CONSUMER_ALLOWED_MODULE_IDS = "college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet"
 CONSUMER_COHORT = "internal"
 CONSUMER_CONSENT_POLICY_VERSION = "consumer-v1"
 CONSUMER_CONSENT_MANIFEST_ID = ""

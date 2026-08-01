@@ -193,4 +193,77 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
   pass('both the undeclared-variable and changed-value faults are detectable by these checks');
 }
 
+{
+  // The release allowlist must track the manifest.
+  //
+  // It is the fourth consumer gate, and it is meant to be a STAGED-RELEASE
+  // control, not a second approval decision. It was pinned to two modules on
+  // the first day of the adviser beta and never widened as modules were
+  // approved, so a client asking about their overall position or their
+  // children's education routed to nothing at all and saw "0 focus areas".
+  const { MODULE_MANIFEST } = await import('../js/planning/module_manifest.generated.js');
+  const { effectiveConsumerAvailability } = await import('../js/planning/module_availability.js');
+  const { consumerLanguageForModule } = await import('../js/planning/module_offers.js');
+
+  const releasable = MODULE_MANIFEST
+    .filter((entry) => effectiveConsumerAvailability(entry.moduleId, {}).visible
+      && entry.routing?.consumerRoutable === true
+      && Boolean(consumerLanguageForModule(entry.moduleId)))
+    .map((entry) => entry.moduleId)
+    .sort();
+
+  // Modules deliberately held back despite passing every manifest gate. Adding
+  // one here is a conscious product decision and must be justified in review.
+  const INTENTIONALLY_WITHHELD = [];
+
+  const expected = releasable.filter((id) => !INTENTIONALLY_WITHHELD.includes(id));
+  const wrangler = readFileSync(`${root}/worker/wrangler.toml`, 'utf8');
+  const configured = (wrangler.match(/^CONSUMER_ALLOWED_MODULE_IDS = "([^"]*)"$/m) || [])[1];
+  assert.ok(configured, 'the release allowlist must be set in wrangler.toml');
+  const configuredIds = configured.split(',').map((id) => id.trim()).filter(Boolean).sort();
+
+  // Safety direction: never release something the manifest has not approved.
+  for (const moduleId of configuredIds) {
+    assert.ok(
+      releasable.includes(moduleId),
+      `the release allowlist contains ${moduleId}, which does not pass every manifest consumer gate`
+    );
+  }
+  // Coverage direction: never silently withhold an approved module.
+  assert.deepEqual(
+    configuredIds,
+    expected,
+    'the release allowlist has drifted from the manifest-approved set. Add the module, or list it '
+      + 'in INTENTIONALLY_WITHHELD with a reason.'
+  );
+
+  // The deploy workflow pin must agree, or a correct allowlist fails the deploy.
+  assert.ok(
+    workflow.includes(configured),
+    'the deploy workflow allowlist pin must match wrangler.toml exactly'
+  );
+  pass(`the release allowlist matches the ${expected.length} manifest-approved modules, and the deploy pin agrees`);
+}
+
+{
+  // Every routable goal must reach at least one releasable analysis, or a client
+  // stating that goal gets nothing.
+  const { MODULE_MANIFEST } = await import('../js/planning/module_manifest.generated.js');
+  const wrangler = readFileSync(`${root}/worker/wrangler.toml`, 'utf8');
+  const configured = (wrangler.match(/^CONSUMER_ALLOWED_MODULE_IDS = "([^"]*)"$/m) || [])[1]
+    .split(',').map((id) => id.trim());
+  const covered = new Set();
+  for (const entry of MODULE_MANIFEST) {
+    if (!configured.includes(entry.moduleId)) continue;
+    for (const goal of entry.routing?.goals || []) covered.add(goal.type);
+  }
+  for (const goalType of ['understand_position', 'fund_education', 'buy_home', 'improve_pension', 'retire']) {
+    assert.ok(
+      covered.has(goalType),
+      `no releasable analysis serves the ${goalType} goal — a client stating it would see zero focus areas`
+    );
+  }
+  pass(`the released modules cover ${covered.size} client goals, including the ones this incident exposed`);
+}
+
 console.info(`\n[DeployCanary] ${passes.length} assertions passed.`);

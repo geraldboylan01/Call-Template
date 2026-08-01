@@ -483,8 +483,8 @@ jobs:
               throw new Error(`${flag} must remain exactly false for production deployment.`);
             }
           }
-          if (!/^CONSUMER_ALLOWED_MODULE_IDS\s*=\s*"house_purchase,liquidity_analysis"\s*$/m.test(source)) {
-            throw new Error('The protected beta module allowlist must remain house_purchase,liquidity_analysis.');
+          if (!/^CONSUMER_ALLOWED_MODULE_IDS\s*=\s*"college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet"\s*$/m.test(source)) {
+            throw new Error('The protected beta module allowlist must remain the manifest-approved set: college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet.');
           }
           if (!/^bindings\s*=\s*\[\s*\{\s*name\s*=\s*"CONSUMER_REALTIME_SESSIONS",\s*class_name\s*=\s*"ConsumerRealtimeSession"\s*\}\s*,\s*\{\s*name\s*=\s*"CONSUMER_LIVE_SESSIONS",\s*class_name\s*=\s*"ConsumerLiveSession"\s*\}\s*\]\s*$/m.test(source)) {
             throw new Error('The ConsumerRealtimeSession and ConsumerLiveSession Durable Object bindings must remain explicit.');
