@@ -807,10 +807,17 @@ export function sectionCompletionToRealtimeFact(completion) {
 function uniqueMissingFacts(state, profile = null) {
   const seen = new Set();
   const missing = [];
+  // A fact the client has already told us they do not know is NOT still
+  // missing — it is answered, with "I don't know". buildQuestionPlan has always
+  // applied this, but the brief built its own list and did not, so the meeting
+  // kept asking. An agent-driven run caught it asking one question four times.
+  const completionFacts = profile?.assumptions?.values?.completionFacts || {};
+  const acknowledged = (factId) => completionFacts.unknownFactIds?.[factId] === true
+    || Boolean(completionFacts.rangedFactValues?.[factId]);
   for (const recommendation of state.recommendations || []) {
     for (const item of recommendation.requiredMissing || []) {
       const instanceKey = `${item.factId || ''}:${item.factInstanceId || ''}`;
-      if (!item.factId || seen.has(instanceKey)) continue;
+      if (!item.factId || seen.has(instanceKey) || acknowledged(item.factId)) continue;
       seen.add(instanceKey);
       missing.push({
         factId: item.factId,

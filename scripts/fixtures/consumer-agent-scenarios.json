@@ -441,7 +441,7 @@
     },
     {
       "id": "client_does_not_know_a_value",
-      "note": "Found by an agent-driven live run: the meeting asked 'roughly what is your home worth?' four times because the client kept saying they did not know. The engine supports certainty:'unknown' and suppresses an acknowledged fact, so this scenario pins that behaviour and makes any regression in it visible.",
+      "note": "Found by an agent-driven live run: the meeting asked 'roughly what is your home worth?' four times because the client kept saying they did not know. Two causes, both fixed: certainty:'unknown' was only accepted for money and number facts, so an entity fact like property_position could not be acknowledged at all; and the brief built its own missing-fact list without applying the acknowledgement filter buildQuestionPlan already used. This scenario pins both.",
       "client": {
         "identity": "40, homeowner who does not know their house value",
         "circumstances": "owns a home, has never had it valued",
@@ -503,8 +503,7 @@
           "person_current_age"
         ],
         "mustNotRepeatQuestion": true
-      },
-      "knownIssue": "KNOWN ISSUE, found by an agent-driven live run. The meeting asked 'roughly what is your home worth?' four times because the client kept saying they did not know. Root cause: certainty:'unknown' is only accepted for money and number facts (completionFactMapping in planning_facts.js requires valueType money|number). property_position is an ENTITY fact, so 'I don't know' is rejected with realtime_fact_certainty_invalid, nothing is recorded, and the question repeats forever. Fixing it is a design decision: how should an unknown attribute of an entity be acknowledged? Until then this scenario documents the defect and will start passing when it is fixed."
+      }
     }
   ]
 }

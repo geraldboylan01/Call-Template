@@ -50,11 +50,19 @@ export function boundedProposalRange(value) {
 
 function completionFactMapping(profile, fact, normalizedRange = null) {
   const definition = getSemanticFactDefinition(fact.factId);
-  if (!definition || !['money', 'number'].includes(definition.valueType)) {
+  if (!definition) {
+    throw new ConsumerError(400, 'realtime_fact_unknown', 'That semantic fact is not recognised.');
+  }
+  // A RANGE is inherently numeric. "I don't know", though, is something a
+  // client can say about ANYTHING, and refusing to record it was a real defect:
+  // an agent-driven run caught the meeting asking "roughly what is your home
+  // worth?" four times because property_position is an entity fact and the
+  // client's "I don't know" was rejected every time.
+  if (normalizedRange && !['money', 'number'].includes(definition.valueType)) {
     throw new ConsumerError(
       400,
-      'realtime_fact_certainty_invalid',
-      'Only a numerical or monetary fact may be recorded as unknown or as a range.'
+      'realtime_fact_range_invalid',
+      'Only a numerical or monetary fact may be recorded as a range.'
     );
   }
   const completionFacts = {
@@ -131,6 +139,10 @@ export function applyMappedRealtimeFact(profile, fact, mapped) {
   const patch = patchForMappedRealtimeFact(mapped);
   let nextProfile = applyProfilePatch(profile, patch, [], 'consumer_edit');
   const metadataPath = mapped.metadataPath || mapped.fieldPath;
+  // The MAPPER decides the recorded certainty when it resolved the value
+  // itself. A stated range becomes an approximate midpoint, so the metadata
+  // must say approximate — recording it as `range` would demand a range on a
+  // field that now holds a single number.
   const certainty = String(fact.certainty || 'unknown');
   const storedRange = certainty === 'range' ? boundedProposalRange(mapped.displayValue) : null;
   const rangeNumber = (value) => Number(value && typeof value === 'object' ? value.amount : value);
@@ -307,7 +319,10 @@ export function planFactProposal({ config, profile, state, fact, plannerBatch = 
   if (!['exact', 'approximate', 'range', 'unknown'].includes(fact?.certainty)) {
     throw new ConsumerError(400, 'realtime_fact_certainty_invalid', 'Fact certainty is invalid.');
   }
-  if (['range', 'unknown'].includes(fact.certainty)
+  // A RANGE is inherently numeric. "I don't know" is not: a client can say it
+  // about anything, and it must always be recordable so the meeting can
+  // acknowledge the gap and move on instead of asking again.
+  if (fact.certainty === 'range'
     && !['money', 'number'].includes(getSemanticFactDefinition(fact.factId)?.valueType)) {
     throw new ConsumerError(
       400,

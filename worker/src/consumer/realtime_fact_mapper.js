@@ -599,11 +599,24 @@ function formattedFactValue(factId, value, currency = 'EUR') {
  * Code-owned spoken confirmation. The model may speak this text verbatim, but
  * may not create or paraphrase the value being confirmed.
  */
-export function buildRealtimeFactReadBack(factId, value, certainty = 'exact', currency = 'EUR') {
+export function buildRealtimeFactReadBack(
+  factId, value, certainty = 'exact', currency = 'EUR', statedRange = null
+) {
   const definition = getSemanticFactDefinition(factId);
   const label = definition?.label || humanise(factId) || 'Planning detail';
   if (certainty === 'unknown') {
     return `You do not know ${label.toLowerCase()} yet. Is that right?`;
+  }
+  // A stated range is confirmed as a range, alongside the single figure the
+  // analysis will actually use. Reading back only the midpoint would put words
+  // in the client's mouth; reading back only the range would hide the number
+  // the result depends on.
+  if (statedRange) {
+    const minimum = formattedFactValue(factId, statedRange.min, currency);
+    const maximum = formattedFactValue(factId, statedRange.max, currency);
+    const midpoint = formattedFactValue(factId, value, currency);
+    return `You said ${label.toLowerCase()} is between ${minimum} and ${maximum}, `
+      + `so I will work with ${midpoint}. Is that right?`;
   }
   const formatted = formattedFactValue(factId, value, currency);
   const qualifier = certainty === 'approximate' ? 'approximately ' : '';
