@@ -441,6 +441,16 @@ function toolsSection() {
     '  transcript. Do not mention it, apologise, re-ask or reconfirm the answer. If it still',
     '  rejects, move on and use get_state later.',
     '',
+    'WHEN SOMETHING IS STILL OUTSTANDING, WORK DOWN THIS ORDER. Never skip a step.',
+    '  1. Ask for it properly. A fact you never asked about is not a fact they could not give.',
+    '  2. Ask once for a rough figure. "Roughly is fine." Save it at "approximate".',
+    '  3. Only if they cannot even estimate: use_approved_assumption, if one exists for it.',
+    '     Say out loud that it is a placeholder and can be changed. A RETIREMENT AGE CHANGES',
+    '     A PLAN MORE THAN ALMOST ANYTHING ELSE — always ask for a real one before falling',
+    '     back to a placeholder, and take the real answer the moment they offer it.',
+    '  4. If no placeholder exists: park_blocked_analyses, then carry on with what is left.',
+    'Never tell a client the meeting cannot proceed while a step above is untried.',
+    '',
     'get_state — what you have captured, which analyses are in play, what is still missing.',
     '  Use it when you are deciding what to ask next or want to check you are not repeating',
     '  yourself. Cheap; use it freely.',
@@ -476,9 +486,13 @@ export function buildLiveCataloguePrompt() {
   // Facts that exist in the catalogue but no consumer analysis consumes. The
   // model may still capture them when volunteered — they inform routing — but
   // it must never go hunting for them.
+  // Asked for deliberately, so they must NOT fall into the never-hunt list below.
+  const discoveryFactIds = ['primary_pain_point', 'goal_time_horizon'];
+  const discoveryFactLines = discoveryFactIds.map(factLine).filter(Boolean);
+
   const contextFactIds = listSemanticFactDefinitions()
     .map((definition) => definition.factId)
-    .filter((factId) => !factIds.includes(factId));
+    .filter((factId) => !factIds.includes(factId) && !discoveryFactIds.includes(factId));
   const contextFactLines = contextFactIds.map(factLine).filter(Boolean);
 
   cachedPrompt = [
@@ -526,6 +540,15 @@ export function buildLiveCataloguePrompt() {
     'You may also save these when volunteered, because they help work out which analyses fit.',
     'Never go hunting for them:',
     ...contextFactLines,
+    '',
+    '## WHAT IS ACTUALLY WORRYING THEM',
+    '',
+    'These two are DIFFERENT from the list above: you SHOULD ask about them, early, in ORIENT',
+    'or FOCUS. They are not needed by any analysis and will never block one — they are how the',
+    'meeting ends up about the person\'s problem rather than a list of figures. Ask in your own',
+    'words, once, and take it gratefully if they volunteer it first.',
+    '',
+    ...discoveryFactLines,
     '',
     '## FINALLY',
     '',

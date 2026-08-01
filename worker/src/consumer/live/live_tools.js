@@ -105,11 +105,14 @@ export const LIVE_TOOL_DEFINITIONS = Object.freeze([
     type: 'function',
     name: 'use_approved_assumption',
     description:
-      'When the client cannot give you a figure even roughly, and get_state says an approved '
-      + 'assumption exists for it, use it so the analysis can still run. Say out loud first that '
-      + 'you are using a placeholder and that it is not a decision they are committing to. You '
-      + 'cannot choose the value: the server supplies an approved one, and refuses any fact it '
-      + 'has not approved. Never present the result as something the client told you.',
+      'A LAST RESORT, never a shortcut. Only after you have asked for the real figure AND asked '
+      + 'for a rough one, and the client still cannot give you either. These facts move a plan '
+      + 'more than almost anything else — a retirement age especially — so a placeholder must '
+      + 'never stand in for a question you did not ask. Say out loud that you are using a '
+      + 'placeholder, name it, and say plainly it is not a decision they are committing to and '
+      + 'can be changed. You cannot choose the value: the server supplies an approved one and '
+      + 'refuses any fact it has not approved. Never present the result as something the client '
+      + 'told you, and if they later give you the real figure, save that over it.',
     parameters: {
       type: 'object',
       additionalProperties: false,

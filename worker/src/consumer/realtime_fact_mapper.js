@@ -10,6 +10,8 @@ import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { escapeJsonPointerToken } from '../../../js/planning/utils.js';
 
 const INTAKE_FACT_PATHS = Object.freeze({
+  primary_pain_point: ['primaryPainPoint', 'choice'],
+  goal_time_horizon: ['goalTimeHorizon', 'choice'],
   self_description: ['selfDescription', 'choice'],
   primary_goal_focus: ['primaryGoalType', 'choice'],
   life_stage: ['lifeStage', 'choice'],
@@ -34,6 +36,19 @@ const INTAKE_FACT_PATHS = Object.freeze({
 });
 
 const CHOICES = Object.freeze({
+  // Discovery vocabularies. Closed so a stated worry or timeframe can drive
+  // routing rather than only appearing in prose. Drawn from the goal-led
+  // architecture review's own lists; extending them is an adviser decision.
+  primary_pain_point: new Set([
+    'not_saving_enough', 'high_expenditure', 'debt_pressure', 'retirement_uncertainty',
+    'no_emergency_savings', 'competing_goals', 'recent_life_event', 'lack_of_knowledge',
+    'investment_risk_worry', 'coordinating_with_partner', 'housing_cost_pressure',
+    'income_insecurity'
+  ]),
+  goal_time_horizon: new Set([
+    'within_a_year', 'one_to_three_years', 'three_to_five_years',
+    'five_to_ten_years', 'over_ten_years', 'no_fixed_timeframe'
+  ]),
   self_description: new Set([
     'student', 'early_adult', 'graduate', 'young_employee', 'first_time_buyer',
     'young_professional', 'combining_finances', 'new_parent', 'young_family',

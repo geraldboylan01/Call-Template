@@ -877,6 +877,47 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
     questionPrompt: 'Is there a particular financial decision you need to address first?',
     answerType: 'boolean', materiality: 4, ambiguity: 3, userEffort: 1
+  }),
+
+  /**
+   * Discovery facts: what is hurting, and by when.
+   *
+   * These were the largest genuine gap the goal-led architecture review found —
+   * a search across the codebase turned up no representation of motivation, pain
+   * points or time horizon anywhere. The fourteen goal types are product-shaped
+   * (buy_home, improve_pension), so there was no way to record "we run short
+   * before payday". In the replay transcripts a client volunteered her worry
+   * unprompted and it was heard warmly and then lost, and two clients gave a
+   * time horizon that nothing could hold.
+   *
+   * They live in the `persona` value namespace with every other contextual
+   * signal, because that is where the fact mapper already routes choice facts;
+   * a separate `discovery` namespace would have meant a mapper branch for no
+   * behavioural gain.
+   *
+   * DELIBERATELY REQUIRED BY NO MODULE. They inform routing and the summary and
+   * must never block an analysis from running, so they carry no module ids.
+   *
+   * `desired_outcome` is deliberately NOT here yet. Every fact in this catalogue
+   * is a closed vocabulary so its values can be validated and routed on, and a
+   * defensible vocabulary for "what would a good outcome look like" is an
+   * adviser's to author, not something to invent here.
+   */
+  defineFact({
+    factId: 'primary_pain_point', valueType: 'choice', label: 'Main worry',
+    description: 'What the client says is making their goal hard or uncertain. A closed vocabulary so it can drive routing, not just appear in prose.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/primaryPainPoint', moduleIds: [] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'What is making that difficult or uncertain at the moment?',
+    answerType: 'text', materiality: 4, ambiguity: 3, userEffort: 1
+  }),
+  defineFact({
+    factId: 'goal_time_horizon', valueType: 'choice', label: 'Timeframe',
+    description: 'When the client wants this to happen, banded so a loose answer is still usable.',
+    mappings: [{ pathPattern: '/assumptions/values/persona/goalTimeHorizon', moduleIds: [] }],
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Roughly when would you like this to happen?',
+    answerType: 'text', materiality: 4, ambiguity: 2, userEffort: 1
   })
 ]);
 
