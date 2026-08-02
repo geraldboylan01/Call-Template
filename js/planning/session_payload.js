@@ -163,8 +163,11 @@ function personalBalanceSheetSummary({
   const split = named.length > 0
     ? ` The split across those jobs is ${named.join(', ')}.`
     : '';
-  const reading = ' Start with net worth, then look at how much of it is tied up in things you live in '
-    + 'or cannot easily sell, compared with what is actually available to you.';
+  // The app prints its own orientation line above this paragraph -- "Start with
+  // net worth, then read the buckets as jobs for your money" -- so repeating it
+  // here made the client read the same instruction twice in two voices.
+  const reading = ' The figures below separate what is tied up in things you live in or cannot easily '
+    + 'sell from what is genuinely available to you.';
   const reserve = Number.isFinite(reserveMonths) && Number.isFinite(annualExpenditure)
     ? ` Your reserves would cover roughly ${Math.round(reserveMonths)} months of spending at `
       + `${euro(annualExpenditure)} a year.`

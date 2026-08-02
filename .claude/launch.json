@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "static",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "./scripts/dev-static-server.mjs"
+      ],
+      "port": 8788
+    }
+  ]
+}

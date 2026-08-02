@@ -17,3 +17,4 @@ agent-batch-report.json
 callers/*
 !callers/EXAMPLE.md
 agent-calls/
+dermot-preview-session.json
