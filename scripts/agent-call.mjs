@@ -323,7 +323,7 @@ if (command === 'finish') {
 
   const sessionRow = await getSessionRow(env, pointer.sessionId);
   const stored = await getLatestAnalysis(env, pointer.sessionId, null);
-  const results = stored?.payload?.results || [];
+  const results = stored?.results || [];
   if (results.length) {
     console.info('\n--- what the analyses produced ---');
     for (const item of results) {

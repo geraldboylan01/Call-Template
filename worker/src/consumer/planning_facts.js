@@ -42,10 +42,24 @@ export function boundedProposalRange(value) {
       ? Number(item.amount)
       : Number(item)
   );
-  const min = comparable(source?.min);
-  const max = comparable(source?.max);
+  // The planner writes a money range as {minAmount, maxAmount, currency} --
+  // that is the shape it naturally produces for an entity fact, and it is not
+  // the {min, max} shape this function was written for. The mismatch silently
+  // failed every stated range: an agent-driven call as a Cork nurse answered
+  // "somewhere between 180,000 and 220,000" and it was refused as an invalid
+  // range, so the meeting asked the same question a third time.
+  //
+  // Accept both, and normalise here rather than making each caller care.
+  const endpoints = source?.minAmount !== undefined || source?.maxAmount !== undefined
+    ? {
+        min: source.currency ? { amount: source.minAmount, currency: source.currency } : source.minAmount,
+        max: source.currency ? { amount: source.maxAmount, currency: source.currency } : source.maxAmount
+      }
+    : { min: source?.min, max: source?.max };
+  const min = comparable(endpoints.min);
+  const max = comparable(endpoints.max);
   if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) return null;
-  return { min: source.min, max: source.max };
+  return { min: endpoints.min, max: endpoints.max };
 }
 
 function completionFactMapping(profile, fact, normalizedRange = null) {

@@ -333,7 +333,7 @@ export async function runAgentScenario(
       // most actionable result there is: it means the call promised something
       // it had not gathered enough to deliver, and the payload names exactly
       // what was still needed.
-      const payload = (await getLatestAnalysis(env, sessionId, null))?.payload || {};
+      const payload = (await getLatestAnalysis(env, sessionId, null)) || {};
       execution = {
         ...confirmed.execution,
         speakableText: confirmed.consumer?.assistantMessage || '',

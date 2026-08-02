@@ -35,6 +35,7 @@ import { requestAdviserHandoff } from '../worker/src/consumer/handoff.js';
 import { buildQuestionPlan as buildWorkerQuestionPlan } from '../worker/src/consumer/question_plan.js';
 import {
   applyMappedRealtimeFact,
+  boundedProposalRange,
   mapRealtimeProposalFact
 } from '../worker/src/consumer/planning_facts.js';
 import {
@@ -2896,6 +2897,24 @@ const singlePensionRange = mapRealtimeProposalFact(factProfile, {
   certainty: 'range'
 });
 assert.deepEqual(singlePensionRange.displayValue, { amount: 200_000, currency: 'EUR' });
+// The planner writes a money range as {minAmount, maxAmount, currency}. That is
+// the shape it actually produces, and it must map to the same midpoint as the
+// {min, max} shape — the mismatch silently refused every stated range.
+const plannerShapedRange = mapRealtimeProposalFact(factProfile, {
+  factId: 'pension_current_value',
+  value: { entityId: factProfile.pensions[0].pensionId, minAmount: 180_000, maxAmount: 220_000, currency: 'EUR' },
+  certainty: 'range'
+});
+assert.deepEqual(plannerShapedRange.displayValue, { amount: 200_000, currency: 'EUR' });
+assert.deepEqual(plannerShapedRange.derivedFromRange, {
+  min: { amount: 180_000, currency: 'EUR' }, max: { amount: 220_000, currency: 'EUR' }
+});
+assert.equal(
+  boundedProposalRange({ minAmount: 220_000, maxAmount: 180_000, currency: 'EUR' }),
+  null,
+  'an inverted range must still be refused, whichever shape it arrives in'
+);
+assert.equal(boundedProposalRange({ minAmount: 'lots', maxAmount: 200, currency: 'EUR' }), null);
 assert.deepEqual(singlePensionRange.derivedFromRange, {
   min: { amount: 180_000, currency: 'EUR' }, max: { amount: 220_000, currency: 'EUR' }
 });
