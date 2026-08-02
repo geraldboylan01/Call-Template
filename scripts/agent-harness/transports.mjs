@@ -20,9 +20,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getConsumerConfig } from '../../worker/src/consumer/config.js';
@@ -151,7 +151,7 @@ let databaseCounter = 0;
 export const RELEASED_MODULE_IDS = (readFileSync(`${root}/worker/wrangler.toml`, 'utf8')
   .match(/^CONSUMER_ALLOWED_MODULE_IDS = "([^"]*)"$/m) || [])[1];
 
-function makeEnv(databasePath, overrides = {}) {
+export function makeEnv(databasePath, overrides = {}) {
   return {
     CONSUMER_DB: new TestD1(databasePath),
     CONSUMER_DATA_ENCRYPTION_KEY: Buffer.alloc(32, 31).toString('base64url'),
@@ -174,6 +174,22 @@ function makeEnv(databasePath, overrides = {}) {
   };
 }
 
+/**
+ * A database that SURVIVES THE PROCESS.
+ *
+ * newDatabase() puts its file in a per-process temp workspace, which is right
+ * for a test run. It is useless for a call driven one turn at a time from a
+ * shell, where every turn is a separate node process and the session has to
+ * still be there when the next one starts.
+ */
+export function openCallDatabase(databasePath) {
+  if (!existsSync(databasePath)) {
+    mkdirSync(dirname(databasePath), { recursive: true });
+    sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${MIGRATIONS}` });
+  }
+  return databasePath;
+}
+
 export function newDatabase(label) {
   databaseCounter += 1;
   const databasePath = join(workspace, `${label}-${databaseCounter}.sqlite`);
@@ -191,7 +207,7 @@ export function makeConfig(env) {
   });
 }
 
-async function newSession(env, config) {
+export async function newSession(env, config) {
   const credential = await createConsumerCredential('');
   await createSessionRecord(env, credential, {
     analysis: true, aiProcessing: false, adultConfirmed: true, educationOnlyAcknowledged: true,

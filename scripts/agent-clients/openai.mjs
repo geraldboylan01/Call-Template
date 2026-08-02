@@ -19,7 +19,7 @@
  */
 
 import { extractRealtimePlannerTurn } from '../../worker/src/consumer/realtime_planner.js';
-import { personaClientBrief } from '../agent-harness/persona.mjs';
+import { callerBrief } from '../agent-harness/caller.mjs';
 
 const CLIENT_SYSTEM_PROMPT = [
   'You are role-playing a member of the public talking to a financial planning service in Ireland.',
@@ -35,11 +35,11 @@ const CLIENT_SYSTEM_PROMPT = [
 
 function clientBrief(scenario) {
   const client = scenario.client || {};
-  // A pasted persona is used VERBATIM. See scripts/agent-harness/persona.mjs:
+  // A pasted caller is used VERBATIM. See scripts/agent-harness/caller.mjs:
   // structuring someone's own description of themselves would decide in advance
   // which details matter, and the dropped ones are the ones a call trips over.
-  const persona = personaClientBrief(scenario);
-  if (persona) return persona;
+  const caller = callerBrief(scenario);
+  if (caller) return caller;
   const lines = [
     `You are: ${client.identity || 'a person seeking financial guidance'}.`,
     client.circumstances ? `Your circumstances: ${client.circumstances}` : '',

@@ -1,8 +1,8 @@
 /**
- * A7 — deterministic guarantees for personas, blockers, grading and trends.
+ * A7 — deterministic guarantees for callers, blockers, grading and trends.
  *
  * Free to run. The properties proved here are the ones the feedback loop rests
- * on: a persona is used verbatim, a blocker is found the same way every time, a
+ * on: a caller is used verbatim, a blocker is found the same way every time, a
  * blank grade is not a zero, and two runs of different systems are never
  * compared as though they were the same one.
  */
@@ -16,7 +16,7 @@ import { BLOCKER_IDS, detectBlockers, newBlockersAfterTurn, shouldAbandon } from
 import {
   buildGradingSheet, calibrate, describeCalibration, GRADE_DIMENSIONS, parseGradingSheet
 } from './agent-harness/grading.mjs';
-import { parsePersona, personaClientBrief } from './agent-harness/persona.mjs';
+import { parseCaller, callerBrief } from './agent-harness/caller.mjs';
 import {
   applyRetention, compareRuns, loadRuns, regressionsIn, runKey, saveRun, trendFor
 } from './agent-harness/runlog.mjs';
@@ -33,7 +33,7 @@ const turn = (over = {}) => ({
   acceptedFactIds: [], rejectedFactIds: [], plannerErrorCode: null, degraded: false, ...over
 });
 
-/* ------------------------------------------------------------- personas */
+/* ------------------------------------------------------------- callers */
 
 {
   const raw = `Deirdre, 44, self-employed graphic designer in Galway.
@@ -48,28 +48,28 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
 - deflects when asked about money
 - asks a lot of questions back`;
 
-  const persona = parsePersona(raw, 'deirdre');
-  const brief = personaClientBrief(persona);
+  const caller = parseCaller(raw, 'deirdre');
+  const brief = callerBrief(caller);
 
   // The pasted words are used verbatim: any restructuring would decide in
   // advance which details matter, and the dropped ones are what a call trips on.
-  check('the persona text survives verbatim', brief.includes('self-employed graphic designer in Galway'));
+  check('the caller text survives verbatim', brief.includes('self-employed graphic designer in Galway'));
   check('an exact figure survives verbatim', brief.includes('52,000'));
   check('an absence survives verbatim', brief.includes('No pension at all'));
-  check('questions are parsed off', persona.client.questions.length === 2);
-  check('behaviours are parsed off', persona.client.behaviours.length === 2);
+  check('questions are parsed off', caller.client.questions.length === 2);
+  check('behaviours are parsed off', caller.client.behaviours.length === 2);
   check('question markers are stripped from the brief body', !brief.split('Things you want to ask')[0].includes('# Questions'));
   check('questions are given as things to raise, not a checklist',
     /Raise them when it feels natural/.test(brief));
-  check('a persona carries no answer key', Object.keys(persona.expected).length === 0);
-  check('a persona is marked synthetic', persona.synthetic === true);
+  check('a caller carries no answer key', Object.keys(caller.expected).length === 0);
+  check('a caller is marked synthetic', caller.synthetic === true);
 
-  const plain = parsePersona('Just a person with a pension question.', 'plain');
-  check('a file with no headings is valid', personaClientBrief(plain).trim() === 'Just a person with a pension question.');
-  check('an empty persona is refused',
-    (() => { try { parsePersona('   ', 'x'); return false; } catch { return true; } })());
+  const plain = parseCaller('Just a person with a pension question.', 'plain');
+  check('a file with no headings is valid', callerBrief(plain).trim() === 'Just a person with a pension question.');
+  check('an empty caller is refused',
+    (() => { try { parseCaller('   ', 'x'); return false; } catch { return true; } })());
 
-  const bulleted = parsePersona('Someone.\n\n## Questions\n1. First?\n* Second?\n- Third?', 'b');
+  const bulleted = parseCaller('Someone.\n\n## Questions\n1. First?\n* Second?\n- Third?', 'b');
   check('numbered, starred and dashed questions all parse',
     bulleted.client.questions.length === 3, JSON.stringify(bulleted.client.questions));
 }
@@ -144,8 +144,8 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
   const sheet = buildGradingSheet({
     runId: 'run-1',
     calls: [
-      { callId: 'deirdre', persona: 'deirdre', turns: 6, blockerCount: 1, transcript: [{ role: 'client', text: 'hello' }] },
-      { callId: 'mary', persona: 'mary', turns: 8, blockerCount: 0, transcript: [] }
+      { callId: 'deirdre', caller: 'deirdre', turns: 6, blockerCount: 1, transcript: [{ role: 'client', text: 'hello' }] },
+      { callId: 'mary', caller: 'mary', turns: 8, blockerCount: 0, transcript: [] }
     ]
   });
   check('the sheet has a section per call', (sheet.match(/^## /gm) || []).length === 2);
@@ -292,5 +292,5 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
   check('an unavailable review reports why', /review unavailable/.test(failed.biggestSingleChange));
 }
 
-console.info(`[Agent report] ${checks} checks passed: personas verbatim, blockers deterministic, `
+console.info(`[Agent report] ${checks} checks passed: callers verbatim, blockers deterministic, `
   + 'blank grades not zero, different systems never compared.');

@@ -7,7 +7,7 @@
  * ones a real conversation trips over. The model playing the client reads what
  * you wrote, in your words, and behaves like that person.
  *
- * A persona file is plain text or markdown. Two optional headings are
+ * A caller file is plain text or markdown. Two optional headings are
  * recognised, and everything else is passed through untouched:
  *
  *     # Questions
@@ -40,11 +40,11 @@ function bulletLines(block) {
 }
 
 /**
- * @param {string} text the pasted persona
+ * @param {string} text the pasted caller
  * @param {string} id scenario id
  * @returns {object} a scenario the runners accept
  */
-export function parsePersona(text, id) {
+export function parseCaller(text, id) {
   const lines = String(text ?? '').split('\n');
   const sections = { brief: [], questions: [], behaviours: [] };
   let current = 'brief';
@@ -59,7 +59,7 @@ export function parsePersona(text, id) {
 
   const brief = sections.brief.join('\n').trim();
   if (!brief) {
-    throw new Error('a persona file needs at least some text describing the person');
+    throw new Error('a caller file needs at least some text describing the person');
   }
   const questions = bulletLines(sections.questions.join('\n'));
   const behaviours = bulletLines(sections.behaviours.join('\n'));
@@ -67,7 +67,7 @@ export function parsePersona(text, id) {
   return {
     id,
     synthetic: true,
-    note: 'Persona supplied by a person, played by a model. Not a fixed scenario: '
+    note: 'Caller supplied by a person, played by a model. Not a fixed scenario: '
       + 'there are no expected outcomes, because the point is to find out what happens.',
     client: {
       // Verbatim. See the note at the top of this file.
@@ -75,27 +75,27 @@ export function parsePersona(text, id) {
       questions,
       behaviours
     },
-    // A persona run has no answer key. Findings come from deterministic blocker
+    // A caller run has no answer key. Findings come from deterministic blocker
     // detection over the call and from review afterwards, never from a
     // pre-agreed outcome -- there is nothing to agree in advance.
     expected: {}
   };
 }
 
-export function loadPersona(path) {
+export function loadCaller(path) {
   const id = basename(path, extname(path)).replace(/[^a-z0-9_]+/gi, '_').toLowerCase();
-  return parsePersona(readFileSync(path, 'utf8'), id || 'persona');
+  return parseCaller(readFileSync(path, 'utf8'), id || 'caller');
 }
 
 /**
  * The brief handed to the model playing the client.
  *
- * A persona's own words come first and unedited. The questions are given as
+ * A caller's own words come first and unedited. The questions are given as
  * things to RAISE WHEN IT FEELS NATURAL rather than a checklist, because a
  * person who recites their questions in order is not a person, and a meeting
  * that survives that is not evidence of anything.
  */
-export function personaClientBrief(scenario) {
+export function callerBrief(scenario) {
   const client = scenario.client || {};
   if (!client.brief) return null;
   const parts = [client.brief];

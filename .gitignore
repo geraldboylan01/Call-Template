@@ -14,5 +14,6 @@ worker/.env
 private/video-calls/
 agent-runs/
 agent-batch-report.json
-personas/*
-!personas/EXAMPLE.md
+callers/*
+!callers/EXAMPLE.md
+agent-calls/

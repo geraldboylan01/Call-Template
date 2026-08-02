@@ -200,7 +200,7 @@ text message and returns an assistant message. But it is the **pre-v2** journey:
   prose is never authoritative or returned. The server owns this copy."*).
 - There is **no meeting brief, no module offer, no capacity decision, no final
   confirmation and no analysis execution** in that path.
-- It carries its own persona-scan question sequence
+- It carries its own caller-scan question sequence
   ([`conversation.js:88`](../worker/src/consumer/conversation.js:88)) which the
   v2 meeting does not use.
 
@@ -1433,7 +1433,7 @@ wrong, grade it, change the app, run it again.
 
 | Piece | File |
 |---|---|
-| Pasted person → caller | [`scripts/agent-harness/persona.mjs`](../scripts/agent-harness/persona.mjs) |
+| Pasted person → caller | [`scripts/agent-harness/caller.mjs`](../scripts/agent-harness/caller.mjs) |
 | Deterministic blocker detection (mid-call and post-call) | [`scripts/agent-harness/blockers.mjs`](../scripts/agent-harness/blockers.mjs) |
 | Run archive, trends, regression detection, retention | [`scripts/agent-harness/runlog.mjs`](../scripts/agent-harness/runlog.mjs) |
 | Grading sheet, parsing, judge calibration | [`scripts/agent-harness/grading.mjs`](../scripts/agent-harness/grading.mjs) |
@@ -1444,7 +1444,7 @@ wrong, grade it, change the app, run it again.
 
 Decisions worth recording:
 
-- **A pasted persona is used verbatim.** It is not parsed into fields. Any
+- **A pasted caller is used verbatim.** It is not parsed into fields. Any
   structuring step decides in advance which details matter, and the details it
   drops are exactly the ones a real conversation trips over.
 - **A review run uses the REAL renderer.** `runAgentScenario({renderWithModel:

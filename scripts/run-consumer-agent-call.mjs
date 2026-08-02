@@ -10,8 +10,8 @@
 //   5. A grading sheet is written for you. You grade it; those grades become
 //      the ground truth the judge is measured against.
 //
-//   OPENAI_API_KEY=... node ./scripts/run-consumer-agent-call.mjs personas/mary.md
-//   OPENAI_API_KEY=... node ./scripts/run-consumer-agent-call.mjs personas/*.md --turns=10
+//   OPENAI_API_KEY=... node ./scripts/run-consumer-agent-call.mjs callers/mary.md
+//   OPENAI_API_KEY=... node ./scripts/run-consumer-agent-call.mjs callers/*.md --turns=10
 //
 // PAID. Never run by CI.
 //
@@ -29,7 +29,7 @@ import {
 } from './agent-harness/blockers.mjs';
 import { createCostLedger } from './agent-harness/cost.mjs';
 import { buildGradingSheet } from './agent-harness/grading.mjs';
-import { loadPersona } from './agent-harness/persona.mjs';
+import { loadCaller } from './agent-harness/caller.mjs';
 import { runKey, saveRun } from './agent-harness/runlog.mjs';
 import { RELEASED_MODULE_IDS, runAgentScenario } from './agent-harness/transports.mjs';
 import { aggregateJudgements, createOpenAiJudge, judgeConversation } from './agent-judges/conversation.mjs';
@@ -40,7 +40,7 @@ const flag = (name, fallback) => {
   const found = args.find((arg) => arg.startsWith(`--${name}=`));
   return found ? found.slice(name.length + 3) : fallback;
 };
-const personaPaths = args.filter((arg) => !arg.startsWith('--'));
+const callerPaths = args.filter((arg) => !arg.startsWith('--'));
 const maxTurns = Math.max(1, Number(flag('turns', 10)) || 10);
 const runCeilingEur = Number(flag('ceiling', 3)) || 3;
 const outDir = flag('out', 'agent-runs');
@@ -52,10 +52,10 @@ if (!apiKey) {
   console.error('OPENAI_API_KEY is required. This runner makes paid model calls.');
   process.exit(1);
 }
-if (personaPaths.length === 0) {
-  console.error('Give me at least one persona file.');
-  console.error('  node ./scripts/run-consumer-agent-call.mjs personas/mary.md');
-  console.error('\nA persona file is plain text: who they are, what they have, what they earn.');
+if (callerPaths.length === 0) {
+  console.error('Give me at least one caller file.');
+  console.error('  node ./scripts/run-consumer-agent-call.mjs callers/mary.md');
+  console.error('\nA caller file is plain text: who they are, what they have, what they earn.');
   console.error('Optional "# Questions" and "# Behaviour" headings. Nothing else is required.');
   process.exit(1);
 }
@@ -65,7 +65,7 @@ const ledger = createCostLedger({ runCeilingEur, estimatedConversationEur: 0.15 
 const judge = createOpenAiJudge({ apiKey });
 const reviewer = noReview ? null : createOpenAiReviewer({ apiKey });
 
-console.info(`[Call] ${personaPaths.length} persona(s), up to ${maxTurns} turns each`);
+console.info(`[Call] ${callerPaths.length} caller(s), up to ${maxTurns} turns each`);
 console.info(`[Call] released modules: ${RELEASED_MODULE_IDS}`);
 console.info(`[Call] ceiling €${runCeilingEur.toFixed(2)} · real renderer (the words a client would hear)\n`);
 
@@ -74,22 +74,22 @@ const judgements = [];
 const reviews = [];
 let lastConfig = null;
 
-for (const personaPath of personaPaths) {
+for (const callerPath of callerPaths) {
   const gate = ledger.mayDispatch();
   if (!gate.allowed) {
-    console.info(`\n[Call] stopping before ${basename(personaPath)}: ${gate.reason}`);
+    console.info(`\n[Call] stopping before ${basename(callerPath)}: ${gate.reason}`);
     break;
   }
 
-  let persona;
+  let caller;
   try {
-    persona = loadPersona(personaPath);
+    caller = loadCaller(callerPath);
   } catch (error) {
-    console.error(`  ✗ ${personaPath}: ${error.message}`);
+    console.error(`  ✗ ${callerPath}: ${error.message}`);
     continue;
   }
 
-  console.info(`${'='.repeat(72)}\n${persona.id}\n${'='.repeat(72)}`);
+  console.info(`${'='.repeat(72)}\n${caller.id}\n${'='.repeat(72)}`);
 
   const seen = new Set();
   const liveFindings = [];
@@ -119,7 +119,7 @@ for (const personaPath of personaPaths) {
   let run;
   try {
     run = await runAgentScenario(
-      { ...persona, turns: Array.from({ length: maxTurns }, () => ({})) },
+      { ...caller, turns: Array.from({ length: maxTurns }, () => ({})) },
       {
         client: watchedClient,
         renderWithModel: true,
@@ -132,7 +132,7 @@ for (const personaPath of personaPaths) {
     );
   } catch (error) {
     console.error(`  *** call failed: ${error?.code || error?.message}`);
-    calls.push({ callId: persona.id, persona: persona.id, error: String(error?.message || error), turns: 0 });
+    calls.push({ callId: caller.id, caller: caller.id, error: String(error?.message || error), turns: 0 });
     continue;
   }
   lastConfig = run.config;
@@ -173,7 +173,7 @@ for (const personaPath of personaPaths) {
   }
 
   const judged = await judgeConversation(judge, run);
-  judgements.push({ callId: persona.id, ...judged });
+  judgements.push({ callId: caller.id, ...judged });
 
   const review = await reviewCall(reviewer, run, findings);
   reviews.push(review);
@@ -192,9 +192,9 @@ for (const personaPath of personaPaths) {
   ledger.completeConversation();
 
   calls.push({
-    callId: persona.id,
-    persona: persona.id,
-    personaPath,
+    callId: caller.id,
+    caller: caller.id,
+    callerPath,
     turns: run.turns.length,
     goals: last?.goals || [],
     analyses: last?.analyses || [],

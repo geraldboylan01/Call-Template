@@ -66,7 +66,7 @@ export function buildGradingSheet({ runId, calls }) {
     lines.push(
       `## ${call.callId}`,
       '',
-      `Persona: ${call.persona}`,
+      `Caller: ${call.caller}`,
       `Turns: ${call.turns}  ·  Blockers found: ${call.blockerCount}`,
       `Analyses: ${describeExecution(call.execution)}`,
       '',
