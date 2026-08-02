@@ -1086,6 +1086,67 @@ assert.deepEqual(secondAssumptionBrief.announcedAssumptions, ['cash_savings']);
 // assumption bookkeeping must not leak into it.
 assert.ok(!('announcedAssumptions' in toConversationGuide(firstAssumptionBrief)));
 
+// An analysis we have had to drop is never dropped silently: the client is told
+// what it costs them, in the words that describe that analysis to them, and the
+// meeting moves straight on.
+const droppedContext = (previousBrief) => ({
+  config: { realtimeSpokenCompletionEnabled: true },
+  sessionRow: { current_profile_revision: 1 },
+  profile: { preferences: { baseCurrency: 'EUR' } },
+  state: {
+    profileRevision: 1,
+    meetingBrief: previousBrief,
+    goalAssessment: { activeGoalTypes: ['understand_position'], deferredGoalTypes: [] },
+    moduleSlots: [{ moduleId: 'pension_projection', availability: 'needs_facts', intakeStatus: 'missing_information' }],
+    recommendations: [
+      {
+        moduleId: 'personal_balance_sheet',
+        availability: 'blocked_missing_input',
+        requiredMissing: [{ factId: 'property_position', reason: 'The home value is required.' }]
+      },
+      {
+        moduleId: 'pension_projection',
+        requiredMissing: [{ factId: 'person_current_age', reason: 'Age is required.' }]
+      }
+    ],
+    facts: []
+  }
+});
+const droppedExtraction = {
+  narrativeSummary: { summary: 'The client does not know their home value.', evidence: ['no valuation'] },
+  clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+  ambiguities: []
+};
+const firstDropBrief = await composeMeetingBrief({
+  env, sourceTurnId: 'item_dropped_analysis_001', extraction: droppedExtraction,
+  context: droppedContext(null)
+});
+assert.deepEqual(
+  firstDropBrief.droppedAnalysisNotices.map((notice) => notice.moduleId),
+  ['personal_balance_sheet']
+);
+assert.equal(
+  firstDropBrief.droppedAnalysisNotices[0].text,
+  'Since you do not have that figure, I will not be able to put together a review of your '
+    + 'overall financial picture \u2014 but let us keep going with the rest.',
+  'the drop is explained in the words that describe that analysis to the client'
+);
+assertClientOutcomeLanguage(
+  firstDropBrief.droppedAnalysisNotices[0].text,
+  'Dropped analysis notice'
+);
+assert.ok(firstDropBrief.questionBatch.prompt, 'the meeting keeps moving to the next goal');
+assert.notEqual(
+  firstDropBrief.questionBatch.primaryFact.factId,
+  'property_position',
+  'a dropped analysis must not keep the meeting asking for its input'
+);
+const secondDropBrief = await composeMeetingBrief({
+  env, sourceTurnId: 'item_dropped_analysis_002', extraction: droppedExtraction,
+  context: droppedContext(toConsumerMeetingBrief(firstDropBrief, {}))
+});
+assert.deepEqual(secondDropBrief.droppedAnalysisNotices, [], 'a drop is explained once, not every turn');
+
 const missingHomeValueBrief = await composeMeetingBrief({
   env,
   sourceTurnId: 'item_missing_home_value_001',

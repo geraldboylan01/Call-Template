@@ -1053,6 +1053,27 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
       );
       return text ? [{ factId, text: boundedText(text, 240) }] : [];
     });
+  //
+  // An analysis we have had to drop is never dropped SILENTLY. The client is
+  // told what it costs them, in the words that describe that analysis to them
+  // -- "put together a review of your overall financial picture" -- and the
+  // meeting moves straight on to the rest of their goals. An analysis we cannot
+  // describe in client language is not mentioned at all rather than half-named.
+  const announcedDrops = new Set(state.meetingBrief?.announcedDrops || []);
+  const droppedAnalysisNotices = (state.recommendations || [])
+    .filter((item) => item?.availability === 'blocked_missing_input' && !announcedDrops.has(item.moduleId))
+    .slice(0, 2)
+    .flatMap((item) => {
+      const language = consumerLanguageForModule(item.moduleId, { profile: context.profile });
+      if (!language?.confirmationDescription) return [];
+      const text = `Since you do not have that figure, I will not be able to `
+        + `${language.confirmationDescription} — but let us keep going with the rest.`;
+      return [{ moduleId: item.moduleId, text: boundedText(text, 300) }];
+    });
+  const nextAnnouncedDrops = [
+    ...announcedDrops,
+    ...droppedAnalysisNotices.map((notice) => notice.moduleId)
+  ].slice(-12);
   const nextAnnouncedAssumptions = [
     ...announcedAssumptions,
     ...assumptionNotices.map((notice) => notice.factId)
@@ -1167,6 +1188,8 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
     questionBatch,
     assumptionNotices,
     announcedAssumptions: nextAnnouncedAssumptions,
+    droppedAnalysisNotices,
+    announcedDrops: nextAnnouncedDrops,
     moduleOffer: activeOffer
       ? {
           moduleId: activeOffer.moduleId,
@@ -1365,6 +1388,17 @@ export function toConsumerMeetingBrief(brief, { profile } = {}) {
     announcedAssumptions: (Array.isArray(brief.announcedAssumptions) ? brief.announcedAssumptions : [])
       .filter((factId) => typeof factId === 'string')
       .slice(-24),
+    droppedAnalysisNotices: (Array.isArray(brief.droppedAnalysisNotices) ? brief.droppedAnalysisNotices : [])
+      .slice(0, 2)
+      .map((notice) => {
+        const text = boundedConsumerPlanningText(notice?.text, 300);
+        const language = consumerLanguageForModule(notice?.moduleId, { profile });
+        return text && language ? { moduleId: notice.moduleId, text } : null;
+      })
+      .filter(Boolean),
+    announcedDrops: (Array.isArray(brief.announcedDrops) ? brief.announcedDrops : [])
+      .filter((moduleId) => typeof moduleId === 'string')
+      .slice(-12),
     nextObjective: {
       facts: nextFacts,
       reason: boundedConsumerPlanningText(brief.nextObjective?.reason, 240),

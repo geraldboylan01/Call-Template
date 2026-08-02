@@ -1484,7 +1484,13 @@ export class ConsumerRealtimeSession {
       // as the next question. It is a statement, not a request: stopping to
       // collect a "yes" on every rounded figure is what made the meeting feel
       // like a form, and the client can correct it at any point.
-      const assumptionInstruction = (context.state.meetingBrief?.assumptionNotices || [])
+      // Both kinds of notice are spoken statements, not questions: an assumption
+      // we have taken, and an analysis we have had to drop. Each is said once,
+      // folded into the next question, so the meeting keeps moving.
+      const assumptionInstruction = [
+        ...(context.state.meetingBrief?.assumptionNotices || []),
+        ...(context.state.meetingBrief?.droppedAnalysisNotices || [])
+      ]
         .map((notice) => notice.text)
         .filter(Boolean)
         .join(' ');
@@ -1492,7 +1498,7 @@ export class ConsumerRealtimeSession {
         ? `Acknowledge the finalized client turn briefly, then ask exactly this one question and no other: ${context.state.meetingBrief.questionBatch.prompt}`
         : 'Respond naturally to the finalized client turn, then ask only the single signed nextObjective question.';
       const intakeInstructionWithAssumptions = assumptionInstruction
-        ? `${intakeInstruction} Before that question, and in the same breath, state this assumption once: ${assumptionInstruction} Do not pause for the client to confirm it.`
+        ? `${intakeInstruction} Before that question, and in the same breath, say this once: ${assumptionInstruction} Do not pause for the client to confirm it, and do not apologise at length.`
         : intakeInstruction;
       const forceTool = authorization.options?.forceTool === 'get_planning_state'
         ? 'get_planning_state'
