@@ -269,6 +269,73 @@ export function orderRealtimeFactsByDependency(facts) {
  * their semantic-fact equivalents. Deterministic server code owns this mapping —
  * the planner never names a module or a profile path.
  */
+/**
+ * Give an answer the identity of the thing it was asked about.
+ *
+ * THE MEETING ALREADY KNOWS WHICH ONE IT MEANT. When several pensions are on
+ * record, the question the client hears is specific -- "what percentage of your
+ * pay do you contribute to the pension from your old job?" -- and the signed
+ * question carries the exact entity behind it. But the client answers "thirty
+ * percent", the planner extracts a bare number with no pension attached, and
+ * the engine refuses it as ambiguous. The question is then asked again, and
+ * again, because there is no wording the client could use that would satisfy it.
+ *
+ * Three concurrent calls as the same household all ended here: six contribution
+ * rates outstanding across three pensions, none of them answerable.
+ *
+ * Rediscovering the entity from the client's words is the wrong direction --
+ * they were never told the pension's internal name and should not have to
+ * repeat it. The identity travels forward from the question instead, which is
+ * deterministic, costs nothing, and is exactly what a person would assume.
+ */
+/**
+ * Facts that describe the same holding. Asked about one, a client naturally
+ * answers several: "I pay 30% and the company does 10%" is one sentence about
+ * one pension. Binding only the fact that was literally asked left the other
+ * half of the answer homeless and refused.
+ */
+const ENTITY_FACT_FAMILIES = Object.freeze([
+  Object.freeze([
+    'pension_current_value',
+    'pension_employee_contribution_rate',
+    'pension_employer_contribution_rate'
+  ])
+]);
+
+function sharesEntityWith(askedFactId, candidateFactId) {
+  if (askedFactId === candidateFactId) return true;
+  return ENTITY_FACT_FAMILIES.some((family) => (
+    family.includes(askedFactId) && family.includes(candidateFactId)
+  ));
+}
+
+export function bindCandidateToAskedEntity(candidate, state) {
+  const asked = state?.meetingBrief?.questionBatch?.primaryFact
+    || state?.nextApprovedFact
+    || state?.nextQuestion;
+  if (!asked || !candidate?.factId || !sharesEntityWith(asked.factId, candidate.factId)) {
+    return candidate;
+  }
+  // An owner named by the planner is the client talking about someone else --
+  // "and Aoife's is 10%" -- which must not be pulled onto the holding under
+  // discussion.
+  if (candidate.value?.owner || candidate.value?.ownerId) return candidate;
+  // factInstanceId is `${factId}:${entityId}` when the question is scoped to a
+  // particular holding; anything else carries no entity to inherit.
+  const entityId = String(asked.factInstanceId || '').slice(String(asked.factId).length + 1);
+  if (!entityId) return candidate;
+  const value = candidate.value;
+  const alreadyIdentified = value && typeof value === 'object' && !Array.isArray(value)
+    && (value.entityId || value.id);
+  if (alreadyIdentified) return candidate;
+  return {
+    ...candidate,
+    value: value && typeof value === 'object' && !Array.isArray(value)
+      ? { ...value, entityId }
+      : { entityId, value }
+  };
+}
+
 export function mapPlannerExtractionToCandidates(extraction) {
   const mappedGoals = (extraction.goalCandidates || [])
     .filter((candidate) => ['high', 'medium'].includes(candidate.confidence))

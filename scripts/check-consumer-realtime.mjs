@@ -484,11 +484,10 @@ assert.equal(config.realtimeDailyBudgetMicroEur, 50_000_000);
 assert.equal(config.realtimeMaxDurationSeconds, 900);
 assert.equal(config.realtimeIdleTimeoutSeconds, 180);
 assert.equal(config.realtimeSilencePromptSeconds, 45);
-// Measured warm against the real planner: ~2.7s for a short answer, 4.1-6.1s
-// for a rich multi-fact one. Eight seconds clipped the tail and discarded a
-// perfectly good extraction, which is what made the meeting re-ask for figures
-// the client had just given it.
-assert.equal(config.realtimePlannerTimeoutMs, 10_000);
+// Measured 4.4-11.7s with no correlation to utterance length: the variance is
+// the provider's. A tight ceiling therefore clips whichever answer happened to
+// be slow, and discards the whole turn with it.
+assert.equal(config.realtimePlannerTimeoutMs, 14_000);
 assert.equal(config.realtimePlannerCatchupTimeoutMs, 12_000);
 assert.equal(config.realtimeSpeechModel, 'gpt-4o-mini-tts');
 assert.equal(config.realtimeSpeechVoice, 'marin');

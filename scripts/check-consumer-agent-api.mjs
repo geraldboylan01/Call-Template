@@ -35,6 +35,7 @@ import {
 } from '../worker/src/consumer/realtime_planner.js';
 import { realtimeChoiceVocabulary } from '../worker/src/consumer/realtime_fact_mapper.js';
 import {
+  bindCandidateToAskedEntity,
   mapPlannerExtractionToCandidates,
   mapRealtimeProposalFact
 } from '../worker/src/consumer/planning_facts.js';
@@ -385,13 +386,13 @@ async function agentContext(profile, config = CONFIG) {
     'only a failure that came back quickly is worth repeating');
   assert.match(source, /retryOfFastFailure: true/);
   const budgets = getConsumerConfig({ CONSUMER_JOURNEY_ENABLED: 'false' });
-  assert.equal(budgets.realtimePlannerTimeoutMs, 10_000,
-    'the single attempt must cover a rich multi-fact turn with headroom');
+  assert.equal(budgets.realtimePlannerTimeoutMs, 14_000,
+    'the single attempt must cover the measured latency tail, not the median');
   assert.equal(
     getConsumerConfig({
       CONSUMER_JOURNEY_ENABLED: 'false', CONSUMER_REALTIME_PLANNER_TIMEOUT_MS: '99999'
     }).realtimePlannerTimeoutMs,
-    15_000,
+    20_000,
     'and it stays a bounded ceiling — silence is still a cost'
   );
   pass('a planner timeout falls back at once; only a fast failure is retried');
@@ -530,6 +531,63 @@ async function agentContext(profile, config = CONFIG) {
   assert.ok(partnerAt < incomeAt,
     'the partner must exist before an income owned by them is applied');
   pass('entities are created before the figures that belong to them, in both directions');
+}
+
+{
+  // THE MEETING ALREADY KNOWS WHICH ONE IT MEANT. With three pensions on record
+  // the question is specific -- "the pension from your old job" -- and the
+  // signed question carries the exact entity. The client answers "thirty
+  // percent", the planner extracts a bare number, and the engine refused it as
+  // ambiguous. Three concurrent calls all ended there, six rates outstanding.
+  const askedState = {
+    meetingBrief: {
+      questionBatch: {
+        primaryFact: {
+          factId: 'pension_employee_contribution_rate',
+          factInstanceId: 'pension_employee_contribution_rate:pension_realtime_old_job'
+        }
+      }
+    }
+  };
+  const bound = bindCandidateToAskedEntity(
+    { factId: 'pension_employee_contribution_rate', value: 30 }, askedState
+  );
+  assert.equal(bound.value.entityId, 'pension_realtime_old_job',
+    'a bare answer inherits the pension the question named');
+  assert.equal(bound.value.value, 30, 'and keeps the figure the client gave');
+  // An answer that already identifies itself is left alone.
+  const explicit = bindCandidateToAskedEntity(
+    { factId: 'pension_employee_contribution_rate', value: { entityId: 'other', rate: 30 } }, askedState
+  );
+  assert.equal(explicit.value.entityId, 'other', 'the client naming a different one still wins');
+  // A different question must not donate its entity.
+  assert.equal(
+    bindCandidateToAskedEntity({ factId: 'cash_savings', value: 5 }, askedState).value, 5,
+    'an unrelated fact is untouched'
+  );
+  // An unscoped question has no entity to give.
+  assert.equal(
+    bindCandidateToAskedEntity({ factId: 'x', value: 1 }, {
+      meetingBrief: { questionBatch: { primaryFact: { factId: 'x', factInstanceId: 'x' } } }
+    }).value,
+    1
+  );
+  pass('an answer inherits the identity of whatever the meeting asked about');
+}
+
+{
+  // Contracts the planner was never told, each of which silently lost a fact.
+  const source = readFileSync(`${root}/worker/src/consumer/realtime_planner.js`, 'utf8');
+  assert.match(source, /valueJson MUST be valid JSON/,
+    'choice values came back as bare unquoted words and failed to parse');
+  assert.match(source, /A CONTRIBUTION ARRANGEMENT IS NOT A POSITION/,
+    '"her company pays 10%" became a fourth pension the client does not have');
+  assert.match(source, /Never emit a fact called dependants/,
+    'dependants needs an entity identity the planner cannot supply');
+  const provider = readFileSync(`${root}/worker/src/consumer/realtime_provider.js`, 'utf8');
+  assert.match(provider, /Never open with what you cannot do/,
+    'the meeting opened with a disclaimer before anything had been asked for');
+  pass('the planner is told the contracts that were silently losing facts');
 }
 
 {

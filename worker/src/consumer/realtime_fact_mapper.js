@@ -746,7 +746,14 @@ function liabilityIndex(profile, value) {
 }
 
 function mapPartnerPerson(profile, fact) {
-  const value = fact.value;
+  // ANY VALUE AT ALL MEANS THERE IS A PARTNER. This fact carries one piece of
+  // information -- that the household has a second person -- plus optional
+  // extras like an age. The planner writes it inconsistently: sometimes
+  // {"name":"Aoife","age":48}, sometimes a bare name. Refusing the bare form
+  // for its shape threw away the partner entirely, and every partner-owned
+  // figure after it was then refused for having nobody to belong to. A shape we
+  // did not expect is not the client saying they are single.
+  const value = plainObject(fact.value) ? fact.value : {};
   const operation = entityOperation(value);
   if (['remove', 'confirm_none'].includes(operation)) {
     if (profile.assumptions?.values?.persona?.householdStructure === 'couple') {

@@ -424,13 +424,20 @@ export function getConsumerConfig(env) {
     // probes. A timeout must be exceptional: timing out an ordinary turn used
     // to leave the previous MeetingBrief active and made the voice repeat the
     // question the client had just answered.
-    // Measured warm against the real planner: ~2.7s for a short answer, 4.1-6.1s
-    // for a rich multi-fact one. Eight seconds clipped the tail and threw away
-    // a perfectly good extraction, which cost the client their whole answer and
-    // made the meeting re-ask what they had just said. Ten covers the observed
-    // range with headroom, and it is a CEILING that rarely binds rather than a
-    // wait the client routinely takes.
-    realtimePlannerTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_TIMEOUT_MS, 10_000, 2_500, 15_000),
+    // Measured warm against the real planner, across utterances from three words
+    // to fifty-eight: 4.4s to 11.7s, with NO usable correlation to how much was
+    // said. A three-word answer took 6.6s once; a fifty-eight-word one took
+    // 6.9s. The variance is the provider's, not the client's.
+    //
+    // That rules out scaling the budget with the utterance, and it makes a tight
+    // ceiling actively harmful: it does not clip long answers, it clips
+    // whichever answer happened to be slow, and the whole turn is then thrown
+    // away. Fourteen seconds covers the observed tail. It is a ceiling that
+    // rarely binds, not a wait the client routinely takes -- typical is 5-7s.
+    //
+    // Getting typical DOWN is a separate, structural problem: the client should
+    // not be waiting on extraction at all. See the note in realtime_planner.js.
+    realtimePlannerTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_TIMEOUT_MS, 14_000, 2_500, 20_000),
     realtimePlannerCatchupTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS, 12_000, 5_000, 20_000),
     // The planner previously inherited config.defaultModel — the AI *intake*
     // model. Two unrelated features shared one setting, so retuning intake

@@ -20,7 +20,11 @@ import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
 import { confirmProfileRevision, recordEvent } from './repository.js';
 import { resolveConfirmationCandidateModuleIds } from './planning_context.js';
-import { mapPlannerExtractionToCandidates, planFactProposal } from './planning_facts.js';
+import {
+  bindCandidateToAskedEntity,
+  mapPlannerExtractionToCandidates,
+  planFactProposal
+} from './planning_facts.js';
 import { prepareRealtimeVoiceAnalysisPlan } from './realtime_analysis.js';
 import { buildVoiceConfirmationSummary } from './realtime_completion.js';
 import { composeMeetingBrief } from './realtime_planner.js';
@@ -74,7 +78,10 @@ export async function applyPlannerCandidates({
   }));
 
   let current = context;
-  for (const candidate of candidates) {
+  for (const rawCandidate of candidates) {
+    // An answer inherits the identity of whatever the meeting just asked about,
+    // so "thirty percent" lands on the pension the question named.
+    const candidate = bindCandidateToAskedEntity(rawCandidate, current.state);
     const fact = {
       factId: candidate.factId,
       value: candidate.value,

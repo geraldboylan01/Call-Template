@@ -217,6 +217,7 @@ Orientation context:
 - Ownership STATUS is orientation and may be emitted from clear context. Property, pension and business VALUES remain explicit-only.
 - The signed meeting jurisdiction is Ireland (IE). Use Irish terms such as occupational pension, PRSA, personal pension, AVC and defined-benefit pension.
 - Never introduce IRA, Roth IRA, 401(k), ISA or another foreign account list. If the client volunteers a foreign holding, preserve it generically with its country and approximate value; never relabel it as an Irish product.
+- valueJson MUST be valid JSON. A choice or text value is a quoted string such as "couple"; a number is 6.5; an object is {"age":12}. A bare unquoted word will not parse and the fact is discarded.
 - A contribution rate is a PERCENTAGE of pay: valueJson for pension_employee_contribution_rate is 6.5 when the client says six and a half percent, not 0.065. The same for pension_employer_contribution_rate.
 - For state_pension_fraction, valueJson is {"owner":"primary","fraction":1} or {"owner":"partner","fraction":0.5}. Full is 1, half or 50% is 0.5, and none is 0. The server supplies the default and rate; never guess or calculate them.
 - For state_pension_start_age, valueJson is {"owner":"primary","startAge":66} or the partner equivalent, and only when an eligible age from 66 to 70 is explicitly stated. Otherwise emit no fact; the server defaults to 66.
@@ -234,6 +235,8 @@ Financial positions:
 - amountJson is either an empty string or an exact JSON money object such as {"amount":10000,"currency":"EUR"}. Never put a bare number in amountJson.
 - country is empty for ordinary Irish positions. For a consumer-volunteered foreign holding, set it to the stated country and use a generic label such as "Foreign investment".
 - A home worth €500,000 with a €350,000 mortgage produces two position candidates. Give both the same simple linkedEntityId such as "home".
+- A CONTRIBUTION ARRANGEMENT IS NOT A POSITION. "her company pays 10%" describes an existing pension; never create a pension position for a contribution, an employer match or a percentage. Doing so invents a holding the client does not have. Emit the rate as pension_employee_contribution_rate or pension_employer_contribution_rate instead.
+- Children: use dependant_count for how many there are, and one dependant_current_age per child with a distinct entityId such as "child_1". Never emit a fact called dependants; it needs an identity you cannot supply, so it is discarded.
 - Use operation=correct only when the client explicitly corrects an earlier value; correctionTarget identifies the earlier label or entity when possible.
 
 Completion signals:
