@@ -412,7 +412,8 @@ const migrationSql = [
   'worker/consumer-migrations/0011_add_realtime_meeting_briefs.sql',
   'worker/consumer-migrations/0012_add_realtime_planner_usage.sql',
   'worker/consumer-migrations/0013_complete_realtime_voice_meetings.sql',
-  'worker/consumer-migrations/0014_add_agent_test_meetings.sql'
+  'worker/consumer-migrations/0014_add_agent_test_meetings.sql',
+  'worker/consumer-migrations/0015_add_privacy_notice_acknowledgement.sql'
 ].map(source).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 
@@ -1216,9 +1217,8 @@ assert.doesNotMatch(
 
 // Regression guard for the premature session ending: while a realtime lease
 // is open the ledger holds the entire session envelope as reserved, so the
-// raw provider budget reads as fully spent. The public budget payload must
-// report the lease's live estimated usage instead of remaining ≤ 0, which the
-// browser would otherwise treat as an exhausted allowance mid-meeting.
+// raw provider budget reads as fully spent. The public payload exposes only
+// availability and must keep an active lease available.
 {
   const fullyReservedProviderBudget = {
     limitEurMicros: config.realtimeSessionBudgetMicroEur,
@@ -1234,25 +1234,19 @@ assert.doesNotMatch(
     },
     config
   );
-  assert.equal(liveBudget.limitMicroEur, config.realtimeSessionBudgetMicroEur);
-  assert.equal(liveBudget.spentMicroEur, 120_000);
-  assert.equal(
-    liveBudget.remainingMicroEur,
-    config.realtimeSessionBudgetMicroEur - 120_000,
-    'An open lease must expose the live estimate, never the consumed reservation.'
-  );
+  assert.deepEqual(liveBudget, { available: true, status: 'available' });
   const closedBudget = realtimeVoiceBudgetPayload(
     fullyReservedProviderBudget,
     { status: 'complete', reservation_eur_micros: config.realtimeSessionBudgetMicroEur, estimated_cost_eur_micros: 120_000 },
     config
   );
-  assert.equal(closedBudget.remainingMicroEur, 0, 'A closed lease must fall back to the conservative provider ledger.');
+  assert.deepEqual(closedBudget, { available: false, status: 'unavailable' });
   const idleBudget = realtimeVoiceBudgetPayload(
     { limitEurMicros: config.realtimeSessionBudgetMicroEur, spentEurMicros: 0, remainingEurMicros: config.realtimeSessionBudgetMicroEur },
     null,
     config
   );
-  assert.equal(idleBudget.remainingMicroEur, config.realtimeSessionBudgetMicroEur);
+  assert.deepEqual(idleBudget, { available: true, status: 'available' });
 }
 
 // The session envelope remains hard-capped in code: an environment cannot
@@ -4669,7 +4663,7 @@ assert.doesNotMatch(realtimePurposeConsentMigrationSource, /raw_audio|audio_blob
 assert.match(realtimeCompletionMigrationSource, /consumer_realtime_voice_confirmations/);
 assert.match(realtimeCompletionMigrationSource, /MeetingBriefV2/);
 assert.doesNotMatch(realtimeCompletionMigrationSource, /raw_audio|audio_blob|partial_transcript/i);
-assert.match(workflowSource, /CONSUMER_BETA_REALTIME_NOTICE_ID:\s*"realtime-voice-adviser-test-v2"/);
+assert.match(workflowSource, /CONSUMER_BETA_REALTIME_NOTICE_ID:\s*"realtime-voice-openai-audio-adviser-test-v3"/);
 assert.match(workflowSource, /CONSUMER_BETA_REALTIME_DATA_POLICY_ID:\s*"openai-realtime-audio-adviser-test-v2"/);
 assert.match(realtimeProofSource, /realtimeVoiceConsentAcknowledgement/);
 assert.match(realtimeProofSource, /realtimeVoiceConsentForm button\[type="submit"\]/);

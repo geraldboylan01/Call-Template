@@ -88,28 +88,16 @@ export function normaliseBootstrap(payload) {
     root.voiceRealtime
   )) || {};
   const voiceBudget = normaliseVoiceBudget(firstDefined(
+    voice.availability,
     voice.budget,
     root.voiceBudget,
-    root.consumerVoiceBudget,
-    voice.sessionBudgetMicroEur !== undefined
-      ? {
-          limitMicroEur: voice.sessionBudgetMicroEur,
-          spentMicroEur: 0,
-          remainingMicroEur: voice.sessionBudgetMicroEur
-        }
-      : null
+    root.consumerVoiceBudget
   ));
   const realtimeVoiceBudget = normaliseVoiceBudget(firstDefined(
+    realtimeVoice.availability,
     realtimeVoice.budget,
     root.realtimeVoiceBudget,
-    root.voiceRealtimeBudget,
-    realtimeVoice.sessionBudgetMicroEur !== undefined
-      ? {
-          limitMicroEur: realtimeVoice.sessionBudgetMicroEur,
-          spentMicroEur: 0,
-          remainingMicroEur: realtimeVoice.sessionBudgetMicroEur
-        }
-      : null
+    root.voiceRealtimeBudget
   ));
   const rawAllowedModules = asArray(firstDefined(
     flags.consumerAllowedModuleIds,
@@ -214,11 +202,6 @@ export function normaliseBootstrap(payload) {
       root.voiceRealtimePollSeconds,
       20
     )) || 20)),
-    voiceRealtimeWarnMicroEur: Math.max(0, Number(firstDefined(
-      realtimeVoice.warnThresholdMicroEur,
-      root.voiceRealtimeWarnMicroEur,
-      0
-    )) || 0),
     voiceMaxRecordingSeconds: Math.min(45, Math.max(1, Number(firstDefined(
       voice.maxRecordingSeconds,
       voice.maxDurationSeconds,
@@ -261,6 +244,12 @@ function normaliseMicroEur(value) {
 export function normaliseVoiceBudget(value) {
   const budget = asObject(value);
   if (!budget) return null;
+  if (typeof budget.available === 'boolean') {
+    return {
+      available: budget.available,
+      status: String(budget.status || (budget.available ? 'available' : 'unavailable'))
+    };
+  }
   const limitMicroEur = normaliseMicroEur(firstDefined(
     budget.limitMicroEur,
     budget.sessionLimitMicroEur
@@ -274,9 +263,8 @@ export function normaliseVoiceBudget(value) {
     return null;
   }
   return {
-    limitMicroEur,
-    spentMicroEur,
-    remainingMicroEur
+    available: Number(remainingMicroEur || 0) > 0,
+    status: Number(remainingMicroEur || 0) > 0 ? 'available' : 'unavailable'
   };
 }
 

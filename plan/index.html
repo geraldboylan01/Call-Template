@@ -386,6 +386,7 @@
         <p>
           This removes your consumer journey, confirmed information, and results from this session.
           It cannot be undone. It does not affect any separate request you already chose to send to Gerry.
+          Minimized reliability signals contain no answers or transcripts and follow a separate 30-day deletion schedule.
         </p>
         <div class="dialog-actions">
           <button class="secondary-button" value="cancel" type="submit">Keep session</button>
@@ -431,23 +432,20 @@
         <p class="section-kicker">Optional adviser-test feature</p>
         <h2 id="voiceConsentTitle">Enable short voice recording for this session?</h2>
         <p>
-          Short voice recording is optional. Recording starts only when you press the microphone button and
-          stops when you press it again or after 45 seconds. You can always continue by typing.
+          Short voice is optional. Audio you deliberately record is sent to OpenAI for transcription, and
+          question playback uses an AI-generated voice. Recording stops when you press the control again or
+          after 45 seconds. You can always continue by typing.
         </p>
         <ul class="voice-consent-facts">
-          <li>Your recording is sent securely for AI transcription after you stop it.</li>
           <li>The transcript is placed in the answer box for you to review and edit; it is never submitted automatically.</li>
-          <li>Question playback uses an AI-generated voice, but reads the server-owned Planéir question exactly.</li>
+          <li>Planéir does not store the raw recording; the finalized transcript is stored only if you submit it.</li>
+          <li>You can withdraw voice consent at any time and continue by typing.</li>
           <li>Do not speak PPS numbers, passwords, PINs, full account or card numbers, exact addresses, or identity-document details.</li>
         </ul>
-        <div class="voice-consent-budget">
-          <strong id="voiceConsentBudget">€2.00 app voice allowance for this session.</strong>
-          <span>Each voice call uses a fixed conservative reservation. The app stops new voice calls at this allowance.</span>
-        </div>
         <label class="check-row" for="voiceConsentAcknowledgement">
           <input id="voiceConsentAcknowledgement" name="voiceConsentAcknowledgement" type="checkbox" required />
           <span>
-            <strong>I choose to enable microphone transcription and AI-generated voice</strong>
+            <strong>I agree to OpenAI processing audio I deliberately record for short voice</strong>
             <small>I understand that audio I deliberately record will be processed to create a transcript, and that I must review it before continuing.</small>
           </span>
         </label>
@@ -466,29 +464,23 @@
     <dialog id="realtimeVoiceConsentDialog" class="plan-dialog" aria-labelledby="realtimeVoiceConsentTitle">
       <form id="realtimeVoiceConsentForm" class="dialog-card voice-consent-card">
         <p class="section-kicker">Before your meeting begins</p>
-        <h2 id="realtimeVoiceConsentTitle">A quick word before we start</h2>
+        <h2 id="realtimeVoiceConsentTitle">Before you start Live voice</h2>
         <p>
-          Your Planéir meeting is a live, hands-free conversation. Once you begin, your completed spoken
-          answers are processed automatically so the conversation can flow naturally.
+          Live voice is optional. OpenAI processes your microphone audio for realtime transcription,
+          conversation and the AI-generated voice you hear. You can always continue by typing.
         </p>
         <ul class="voice-consent-facts">
-          <li>The live conversation can continue while you move between planning steps. Streaming stops when you end voice, withdraw consent, delete or leave the journey, hide the tab, lose the private session, or reach the server lease limit; Mute pauses microphone audio without ending the lease.</li>
-          <li>OpenAI Realtime provides the natural conversation. A protected server-side control connection owns tools, saved facts, plan preparation, calculations, and the exact closing message.</li>
-          <li>Final spoken turns may invoke protected server-side tools that propose profile facts, follow-up questions, and relevant Planéir modules.</li>
-          <li>Proposals are not confirmed facts. When spoken completion is enabled, Planéir summarises the goal, material assumptions and exact modules, then asks one closed question. Only a clear finalized spoken confirmation to that summary authorizes that exact profile revision.</li>
-          <li>After successful generation, microphone input is disabled, Planéir gives a short closing message, the meeting ends automatically, and your saved modules and complete finalized transcript are opened.</li>
-          <li>Financial calculations still run only in tested Planéir code. The voice model cannot approve products or provide regulated advice.</li>
+          <li>Your completed spoken turns are processed automatically so the conversation can flow naturally.</li>
+          <li>Finalized transcripts and planning information are stored encrypted with your seven-day Planéir session. Planéir does not store raw audio or partial transcripts.</li>
+          <li>You can end Live voice or withdraw consent at any time. Muting stops microphone audio without ending the meeting.</li>
+          <li>Planéir will summarise the plan before calculations. Only a clear answer to that summary can authorize the stated plan; calculations still run in Planéir's tested code.</li>
           <li>Do not say PPS numbers, passwords, PINs, full account or card numbers, exact addresses, or identity-document details.</li>
         </ul>
-        <div class="voice-consent-budget">
-          <strong id="realtimeVoiceConsentBudget">A per-session meeting allowance applies.</strong>
-          <span>Each meeting is time-limited and covered by a server-enforced allowance.</span>
-        </div>
         <label class="check-row" for="realtimeVoiceConsentAcknowledgement">
           <input id="realtimeVoiceConsentAcknowledgement" name="realtimeVoiceConsentAcknowledgement" type="checkbox" required />
           <span>
-            <strong>I choose to enable automatic Live voice turns, protected planning tools, and spoken plan authorization</strong>
-            <small>I understand that, when the spoken-completion feature is enabled, my clear spoken confirmation after the exact plan summary can authorize that profile revision and generate the listed modules without a separate button.</small>
+            <strong>I agree to OpenAI processing my microphone audio for Live voice</strong>
+            <small>I understand that finalized spoken turns are processed automatically and that a clear answer after the exact plan summary can authorize that stated plan.</small>
           </span>
         </label>
         <p class="consent-detail">
@@ -571,16 +563,10 @@
 
           <h3>6. Your information</h3>
           <p>
-            We process the information you provide in order to run the demo session you asked us to run, and to
-            keep it secure and working. Your conversation and planning information are encrypted when stored, the
-            session expires after about <span id="termsRetentionDays">7</span> days, and you can delete it sooner
-            at any time.
-          </p>
-          <p>
-            Relevant parts of the conversation are sent to OpenAI so the chatbot can respond. We have not opted
-            into sharing API data for model training. The
+            We handle information as explained in the
             <a id="termsPrivacyLink" href="./privacy.html" target="_blank" rel="noopener noreferrer">privacy notice</a>
-            explains all of this in full, including voice, retention and your rights.
+            including how optional voice uses OpenAI, how long information is kept, and your rights. Your planning
+            session expires after <span id="termsRetentionDays">7</span> days and you can delete it sooner.
           </p>
 
           <h3>7. The demo is provided as is</h3>

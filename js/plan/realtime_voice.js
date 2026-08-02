@@ -124,24 +124,6 @@ function headerNumber(headers, names) {
   return Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
 }
 
-function budgetFromHeaders(headers) {
-  const limitMicroEur = headerNumber(headers, [
-    'X-Voice-Limit-Micro-Eur',
-    'X-Realtime-Voice-Limit-Micro-Eur'
-  ]);
-  const spentMicroEur = headerNumber(headers, [
-    'X-Voice-Spent-Micro-Eur',
-    'X-Realtime-Voice-Spent-Micro-Eur'
-  ]);
-  const remainingMicroEur = headerNumber(headers, [
-    'X-Voice-Remaining-Micro-Eur',
-    'X-Realtime-Voice-Remaining-Micro-Eur',
-    'X-Realtime-Budget-Micro-Eur'
-  ]);
-  if (limitMicroEur === null && spentMicroEur === null && remainingMicroEur === null) return null;
-  return { limitMicroEur, spentMicroEur, remainingMicroEur };
-}
-
 function parseJson(value) {
   try {
     return JSON.parse(String(value || ''));
@@ -216,7 +198,6 @@ export function normaliseRealtimeCallResponse(response) {
     headerNumber(response?.headers, ['X-Voice-Realtime-Max-Duration-Ms']),
     0
   )) || 0;
-  const headerBudget = budgetFromHeaders(response?.headers);
   const controlCapability = cleanText(headerValue(response?.headers, [
     'X-Realtime-Control-Capability'
   ]), 120);
@@ -226,14 +207,13 @@ export function normaliseRealtimeCallResponse(response) {
   const conversationVersion = cleanText(headerValue(response?.headers, [
     'X-Realtime-Conversation-Version'
   ]), 8).toLowerCase() === 'v2' ? 'v2' : 'v1';
-  const payload = parsed || (headerBudget ? { realtimeVoiceBudget: headerBudget } : null);
+  const payload = parsed || null;
   return {
     sdp,
     leaseId,
     expiresAt,
     maxDurationMs,
     payload,
-    budget: headerBudget,
     controlCapability,
     activationId,
     conversationVersion
@@ -570,33 +550,13 @@ export function isRealtimeVoiceSupported(win = window, nav = navigator) {
   );
 }
 
-function formatEuroFromMicro(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount) || amount < 0) return '—';
-  return new Intl.NumberFormat('en-IE', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(amount / 1_000_000);
-}
-
 function currentBudget() {
   const budget = state.voice?.realtimeBudget
     || state.bootstrap?.realtimeVoiceBudget
     || state.voice?.budget
     || state.bootstrap?.voiceBudget
     || {};
-  const limitMicroEur = Math.max(0, Number(firstDefined(
-    budget.limitMicroEur,
-    DEFAULT_SESSION_LIMIT_MICRO_EUR
-  )) || DEFAULT_SESSION_LIMIT_MICRO_EUR);
-  const spentMicroEur = Math.max(0, Number(firstDefined(budget.spentMicroEur, 0)) || 0);
-  const remainingMicroEur = Math.max(0, Number(firstDefined(
-    budget.remainingMicroEur,
-    limitMicroEur - spentMicroEur
-  )) || 0);
-  return { limitMicroEur, spentMicroEur, remainingMicroEur };
+  return { available: budget.available !== false };
 }
 
 function safePrivacyUrl(value) {
@@ -645,16 +605,7 @@ function realtimeContext() {
     pollMs: Math.min(60_000, Math.max(10_000, Number(
       bootstrap.voiceRealtimePollSeconds || 20
     ) * 1_000)),
-    budget: currentBudget(),
-    // The warning threshold is expressed as spend (e.g. €7.50 of €10). The UI
-    // warns once the remaining allowance drops below limit − threshold.
-    lowBudgetMicroEur: (() => {
-      const budget = currentBudget();
-      const warnSpendMicroEur = Number(bootstrap.voiceRealtimeWarnMicroEur || 0);
-      return warnSpendMicroEur > 0 && warnSpendMicroEur < budget.limitMicroEur
-        ? Math.max(0, budget.limitMicroEur - warnSpendMicroEur)
-        : LOW_BUDGET_MICRO_EUR;
-    })()
+    budget: currentBudget()
   };
 }
 
@@ -1156,8 +1107,8 @@ export class RealtimeVoiceController {
     const context = realtimeContext();
     const supported = isRealtimeVoiceSupported();
     const completionLocked = this.isCompletionLocked();
-    const exhausted = context.budget.remainingMicroEur <= 0;
-    const budgetLow = !exhausted && context.budget.remainingMicroEur <= context.lowBudgetMicroEur;
+    const exhausted = !context.budget.available;
+    const budgetLow = false;
     const start = this.element('realtimeVoiceStartButton');
     const turn = this.element('realtimeVoiceTurnButton');
     const mute = this.element('realtimeVoiceMuteButton');
@@ -1257,7 +1208,7 @@ export class RealtimeVoiceController {
         interrupted: 'In a meeting · listening',
         reconnecting: 'Reconnecting…',
         muted: 'Meeting paused',
-        budget_exhausted: 'Meeting allowance used',
+        budget_exhausted: 'Voice unavailable',
         error: 'Connection problem'
       };
       launcherStatus.textContent = launcherLabels[this.phase] || 'Your private planning meeting';
@@ -1283,14 +1234,6 @@ export class RealtimeVoiceController {
     }
     this.renderMicrophoneState();
 
-    const budgetValue = this.element('realtimeVoiceBudgetValue');
-    const budgetMeter = this.element('realtimeVoiceBudgetMeter');
-    if (budgetValue) budgetValue.textContent = `${formatEuroFromMicro(context.budget.remainingMicroEur)} remaining`;
-    if (budgetMeter) {
-      budgetMeter.max = Math.max(1, context.budget.limitMicroEur);
-      budgetMeter.value = Math.min(context.budget.limitMicroEur, context.budget.remainingMicroEur);
-      budgetMeter.setAttribute('aria-valuetext', `${formatEuroFromMicro(context.budget.remainingMicroEur)} Live voice allowance remaining`);
-    }
     this.updateLeaseCountdown();
   }
 
@@ -1307,8 +1250,8 @@ export class RealtimeVoiceController {
       this.openConsentDialog();
       return;
     }
-    if (context.budget.remainingMicroEur <= 0) {
-      this.setPhase('budget_exhausted', 'This session’s meeting allowance has been used. You can continue by typing.');
+    if (!context.budget.available) {
+      this.setPhase('budget_exhausted', 'Voice is unavailable for the rest of this session. You can continue by typing.');
       return;
     }
     if (!isRealtimeVoiceSupported()) {
@@ -2172,8 +2115,6 @@ export class RealtimeVoiceController {
       // The Worker response authenticates the exact text independently of
       // audio decode/playback. Keep that caption visible if audio later fails.
       this.finalizeWorkerSpeech(speechId, text);
-      const budget = budgetFromHeaders(result.headers);
-      if (budget) this.onVoicePayload({ realtimeVoiceBudget: budget });
       const audio = this.element('realtimeVoiceAudio');
       if (!audio || typeof window.URL?.createObjectURL !== 'function') {
         throw new Error('Approved voice playback is unavailable in this browser.');
@@ -2902,9 +2843,9 @@ export class RealtimeVoiceController {
     const preserveProviderTransport = Boolean(notifyServer && leaseId && sessionId);
     this.cleanupLocal({ preserveProviderTransport });
     const messages = {
-      budget: 'This meeting’s allowance has been used. Everything you shared is saved — you can continue by typing.',
+      budget: 'Voice is unavailable for the rest of this session. Everything you shared is saved — you can continue by typing.',
       connection_failed: 'The meeting connection ended. Everything you shared is saved; you can start again or continue by typing.',
-      expired: 'Your meeting time ended. Everything you shared is saved — you can start a new meeting if allowance remains.',
+      expired: 'Your meeting time ended. Everything you shared is saved — you can continue by typing or start voice again if it is available.',
       hidden: 'The meeting ended because this tab was hidden. The microphone is off.',
       pagehide: 'The meeting ended. The microphone is off.',
       review: 'The meeting ended. Review and confirm what Planéir understood.',
@@ -3091,7 +3032,6 @@ export class RealtimeVoiceController {
     const dialog = document.getElementById('realtimeVoiceConsentDialog');
     const checkbox = document.getElementById('realtimeVoiceConsentAcknowledgement');
     const policy = document.getElementById('realtimeVoiceConsentPolicy');
-    const budget = document.getElementById('realtimeVoiceConsentBudget');
     const privacyLink = document.getElementById('realtimeVoiceConsentPrivacyLink');
     const error = document.getElementById('realtimeVoiceConsentError');
     if (!dialog || !checkbox) {
@@ -3101,7 +3041,6 @@ export class RealtimeVoiceController {
     checkbox.checked = false;
     checkbox.disabled = false;
     if (policy) policy.textContent = `Disclosure ${context.noticeId} · policy ${context.policyVersion}`;
-    if (budget) budget.textContent = `${formatEuroFromMicro(context.budget.limitMicroEur)} app voice allowance for this session.`;
     if (privacyLink) privacyLink.href = context.privacyNoticeUrl;
     if (error) {
       error.hidden = true;

@@ -192,6 +192,7 @@ CONSUMER_BOOKING_URL = ""
 # LEARNING_SIGNALS_INGEST_KEY (a tenant `ingest` key) with `wrangler secret put`.
 LEARNING_SIGNALS_URL = "https://planeir-learning-signals.onrender.com"
 LEARNING_SIGNALS_MODULE_ID = "b864ca8f-fc74-4f5d-810c-cda8751be4a8"
+LEARNING_SIGNALS_RETENTION_DAYS = "30"
 # Set with `wrangler secret put`: CONSUMER_DATA_ENCRYPTION_KEY,
 # CONSUMER_DATA_ENCRYPTION_PREVIOUS_KEYS_JSON (during rotations),
 # CONSUMER_INVITE_SIGNING_KEY (for private cohorts),

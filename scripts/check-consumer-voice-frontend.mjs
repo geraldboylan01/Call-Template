@@ -761,7 +761,8 @@ assert.equal(networkAborts, 1);
 assert.equal(sourceStops, 1);
 assert.equal(sourceDisconnects, 1);
 assert.doesNotMatch(lifecycleController.statusText, /nothing was submitted/i);
-assert.match(lifecycleController.statusText, /server-side allowance remains authoritative/);
+assert.match(lifecycleController.statusText, /Provider processing may already have started/);
+assert.doesNotMatch(lifecycleController.statusText, /allowance|€/);
 
 let budgetRefreshes = 0;
 lifecycleController.refreshVoiceBudget = async () => { budgetRefreshes += 1; };
@@ -808,18 +809,14 @@ assert.match(realtimeSource, /commit_empty\|buffer_too_small\|input_audio_buffer
 assert.match(appSource, /const draft = captureConversationDraft\(appRoot\)[\s\S]*renderCurrentJourney\(\)[\s\S]*restoreConversationDraft\(appRoot, draft\)/);
 assert.match(appSource, /async function handleDeleteSession\(\) \{\s*await realtimeVoiceController\.end\(\{ reason: 'deletion' \}\);\s*voiceController\.cancelActiveVoice\(\{ reason: 'deletion', refreshBudget: false \}\)/);
 assert.match(appSource, /deleteSessionButton\.addEventListener\('click',[\s\S]*realtimeVoiceController\.end\(\{ reason: 'deletion' \}\)[\s\S]*voiceController\.cancelActiveVoice\(\{ reason: 'deletion', refreshBudget: false \}\)[\s\S]*openDialog\(deleteSessionDialog\)/);
-assert.match(viewsSource, /app allowance/);
-assert.match(viewsSource, /fixed conservative reservation/);
-assert.match(privacySource, /conservative application reservation rather than promising an exact provider/);
-assert.match(privacySource, /Short voice recording and playback[\s\S]*€2[\s\S]*Live voice feature[\s\S]*€10 per private session/);
-assert.match(privacySource, /Realtime-response, input-transcription, and character-priced approved speech/);
-assert.match(privacySource, /OpenAI Realtime is used for microphone streaming,\s+speech recognition, turn detection, and natural dialogue/);
-assert.match(privacySource, /separate authenticated server control\s+connection owns protected tools and deterministic calculations/);
-assert.match(privacySource, /only a clear finalized answer to that closed\s+confirmation question authorizes the exact prepared plan and profile revision/);
-assert.match(privacySource, /complete finalized welcome,\s+conversation, and closing turns remain reviewable with the modules after reload/);
-assert.match(privacySource, /Partial caption streams are not retained/);
-assert.match(privacySource, /final, it is processed automatically as the next live turn/);
-assert.match(privacySource, /microphone input is disabled, playback is allowed to finish \(with a bounded\s+timeout\), the session closes, and the results view opens automatically/);
+assert.doesNotMatch(viewsSource, /app allowance|fixed conservative reservation/);
+assert.doesNotMatch(privacySource, /€2|€10|token limit|application reservation/);
+assert.match(privacySource, /OpenAI processes audio for transcription, realtime AI conversation and generated speech/);
+assert.match(privacySource, /does not intentionally store raw audio or partial transcripts/);
+assert.match(privacySource, /Finalized Live voice transcripts and related planning information are stored encrypted/);
+assert.match(privacySource, /seven days/);
+assert.match(privacySource, /up to 30 days/);
+assert.match(planIndexSource, /I agree to OpenAI processing my microphone audio for Live voice/);
 assert.match(planIndexSource, /id="realtimeVoiceShell"/);
 assert.ok(
   planIndexSource.indexOf('id="realtimeVoiceShell"') > planIndexSource.indexOf('id="appRoot"'),
@@ -994,7 +991,6 @@ const rawRealtimeCall = normaliseRealtimeCallResponse({
   headers: new Headers({
     'X-Realtime-Lease-Id': 'rt_lease_frontend_001',
     'X-Realtime-Hard-Expires-At': '2030-01-01T00:00:00.000Z',
-    'X-Realtime-Budget-Micro-Eur': '1750000',
     'X-Realtime-Activation-Id': `rt_activation_${'B'.repeat(24)}`,
     'X-Realtime-Control-Capability': `rt_control_${'C'.repeat(24)}`
   })
@@ -1002,16 +998,10 @@ const rawRealtimeCall = normaliseRealtimeCallResponse({
 assert.match(rawRealtimeCall.sdp, /^v=0/);
 assert.equal(rawRealtimeCall.leaseId, 'rt_lease_frontend_001');
 assert.equal(rawRealtimeCall.expiresAt, '2030-01-01T00:00:00.000Z');
-assert.equal(rawRealtimeCall.budget.remainingMicroEur, 1_750_000);
+assert.equal(rawRealtimeCall.budget, undefined);
 assert.equal(rawRealtimeCall.controlCapability, `rt_control_${'C'.repeat(24)}`);
 assert.equal(rawRealtimeCall.activationId, `rt_activation_${'B'.repeat(24)}`);
-assert.deepEqual(rawRealtimeCall.payload, {
-  realtimeVoiceBudget: {
-    limitMicroEur: null,
-    spentMicroEur: null,
-    remainingMicroEur: 1_750_000
-  }
-});
+assert.equal(rawRealtimeCall.payload, null);
 
 const headerDurationCall = normaliseRealtimeCallResponse({
   body: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
@@ -1211,18 +1201,18 @@ const independentRealtimeBootstrap = normaliseBootstrap({
     consumerRealtimeVoiceEnabled: true
   },
   cohort: 'adviser_test',
-  voice: { enabled: false, sessionBudgetMicroEur: 0 },
+  voice: { enabled: false, availability: { available: false, status: 'unavailable' } },
   realtimeVoice: {
     enabled: true,
     noticeId: 'realtime-notice-v1',
     policyVersion: 'consumer-v1',
     privacyNoticeUrl: 'https://planeir.ie/privacy',
-    sessionBudgetMicroEur: 2_000_000
+    availability: { available: true, status: 'available' }
   }
 });
 assert.equal(independentRealtimeBootstrap.voiceEnabled, false);
 assert.equal(independentRealtimeBootstrap.voiceRealtimeEnabled, true);
-assert.equal(independentRealtimeBootstrap.realtimeVoiceBudget.limitMicroEur, 2_000_000);
+assert.equal(independentRealtimeBootstrap.realtimeVoiceBudget.available, true);
 
 storage.set('planeir.consumer.analysis-plan-id.v1', 'realtime_plan_stale');
 storage.set('planeir.consumer.analysis-plan-nonce.v1', 'plan_nonce_stale');
@@ -1287,18 +1277,17 @@ journeyState.bootstrap = {
   voiceRealtimePollSeconds: 20
 };
 journeyState.voice.realtimeBudget = {
-  limitMicroEur: 2_000_000,
-  spentMicroEur: 1_750_000,
-  remainingMicroEur: 250_000
+  available: true,
+  status: 'available'
 };
 const realtimeController = new RealtimeVoiceController({ root: realtimeControllerRoot });
 realtimeController.updateUi();
-assert.equal(realtimeClassStates.get('is-budget-low'), true);
-assert.equal(realtimeControllerRoot.dataset.budgetState, 'low');
-journeyState.voice.realtimeBudget.remainingMicroEur = 350_000;
-realtimeController.updateUi();
 assert.equal(realtimeClassStates.get('is-budget-low'), false);
 assert.equal(realtimeControllerRoot.dataset.budgetState, 'available');
+journeyState.voice.realtimeBudget.available = false;
+realtimeController.updateUi();
+assert.equal(realtimeClassStates.get('is-budget-low'), false);
+assert.equal(realtimeControllerRoot.dataset.budgetState, 'exhausted');
 
 storage.set('planeir.consumer.session-id.v1', 'cs_frontend_voice_contract');
 journeyState.view = 'review';

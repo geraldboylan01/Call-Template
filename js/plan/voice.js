@@ -58,33 +58,9 @@ function cleanTranscript(value, maximum = 3_000) {
     .slice(0, maximum);
 }
 
-function formatEuroFromMicro(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount) || amount < 0) return '—';
-  return new Intl.NumberFormat('en-IE', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(amount / 1_000_000);
-}
-
 function currentBudget() {
   const configured = state.voice?.budget || state.bootstrap?.voiceBudget || {};
-  const limitMicroEur = Number(firstDefined(
-    configured.limitMicroEur,
-    DEFAULT_SESSION_LIMIT_MICRO_EUR
-  ));
-  const spentMicroEur = Number(firstDefined(configured.spentMicroEur, 0));
-  const remainingMicroEur = Number(firstDefined(
-    configured.remainingMicroEur,
-    Math.max(0, limitMicroEur - spentMicroEur)
-  ));
-  return {
-    limitMicroEur: Number.isFinite(limitMicroEur) ? Math.max(0, limitMicroEur) : DEFAULT_SESSION_LIMIT_MICRO_EUR,
-    spentMicroEur: Number.isFinite(spentMicroEur) ? Math.max(0, spentMicroEur) : 0,
-    remainingMicroEur: Number.isFinite(remainingMicroEur) ? Math.max(0, remainingMicroEur) : 0
-  };
+  return { available: configured.available !== false };
 }
 
 function voiceContext() {
@@ -223,25 +199,6 @@ function microphoneErrorMessage(error) {
   }
 }
 
-function budgetFromHeaders(headers) {
-  if (!headers || typeof headers.get !== 'function') return null;
-  const read = (name) => {
-    const value = Number(headers.get(name));
-    return Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
-  };
-  const limitMicroEur = read('X-Voice-Limit-Micro-Eur');
-  const spentMicroEur = read('X-Voice-Spent-Micro-Eur');
-  const remainingMicroEur = read('X-Voice-Remaining-Micro-Eur');
-  if (limitMicroEur === null && spentMicroEur === null && remainingMicroEur === null) {
-    return null;
-  }
-  return {
-    limitMicroEur,
-    spentMicroEur,
-    remainingMicroEur
-  };
-}
-
 function stopTracks(stream) {
   stream?.getTracks?.().forEach((track) => {
     try {
@@ -369,13 +326,11 @@ export class ConsumerVoiceController {
     if (!panel) return;
     const context = voiceContext();
     const supported = isMicrophoneSupported();
-    const exhausted = context.budget.remainingMicroEur <= 0;
+    const exhausted = !context.budget.available;
     const recordButton = panel.querySelector('[data-action="voice-record"]');
     const speechButton = panel.querySelector('[data-action="voice-speak"]');
     const status = panel.querySelector('[data-voice-status]');
     const timer = panel.querySelector('[data-voice-timer]');
-    const budgetText = panel.querySelector('[data-voice-budget-text]');
-    const budgetMeter = panel.querySelector('[data-voice-budget-meter]');
 
     panel.dataset.voicePhase = this.phase;
     panel.classList.toggle('is-recording', this.phase === 'recording');
@@ -421,22 +376,13 @@ export class ConsumerVoiceController {
       timer.hidden = this.phase !== 'recording';
     }
 
-    if (budgetText) {
-      budgetText.textContent = `${formatEuroFromMicro(context.budget.limitMicroEur)} app allowance · ${formatEuroFromMicro(context.budget.remainingMicroEur)} remaining`;
-    }
-    if (budgetMeter) {
-      budgetMeter.max = Math.max(1, context.budget.limitMicroEur);
-      budgetMeter.value = Math.min(context.budget.limitMicroEur, context.budget.remainingMicroEur);
-      budgetMeter.setAttribute('aria-valuetext', `${formatEuroFromMicro(context.budget.remainingMicroEur)} app voice allowance remaining`);
-    }
-
     let defaultStatus = 'Voice never starts automatically. Your transcript stays in the text box until you choose Continue.';
     if (!context.configured) {
       defaultStatus = 'Voice is temporarily unavailable because its disclosure configuration is incomplete. You can continue by typing.';
     } else if (!supported && context.consentGranted) {
       defaultStatus = 'This browser cannot create a supported short audio recording. You can continue by typing.';
     } else if (exhausted) {
-      defaultStatus = 'The app voice allowance for this session has been used. You can continue by typing.';
+      defaultStatus = 'Voice is unavailable for the rest of this session. You can continue by typing.';
     }
     if (status) {
       status.textContent = this.statusText || defaultStatus;
@@ -484,7 +430,6 @@ export class ConsumerVoiceController {
     const dialog = document.getElementById('voiceConsentDialog');
     const checkbox = document.getElementById('voiceConsentAcknowledgement');
     const policy = document.getElementById('voiceConsentPolicy');
-    const budget = document.getElementById('voiceConsentBudget');
     const privacyLink = document.getElementById('voiceConsentPrivacyLink');
     const error = document.getElementById('voiceConsentError');
     if (!dialog || !checkbox) {
@@ -494,7 +439,6 @@ export class ConsumerVoiceController {
     checkbox.checked = false;
     checkbox.disabled = false;
     if (policy) policy.textContent = `Disclosure ${context.noticeId} · policy ${context.policyVersion}`;
-    if (budget) budget.textContent = `${formatEuroFromMicro(context.budget.limitMicroEur)} app voice allowance for this session.`;
     const privacyUrl = safePrivacyUrl(context.privacyNoticeUrl);
     if (privacyLink && privacyUrl) privacyLink.href = privacyUrl;
     if (error) {
@@ -633,8 +577,8 @@ export class ConsumerVoiceController {
       return;
     }
     if (context.journeyBusy) return;
-    if (context.budget.remainingMicroEur <= 0) {
-      this.setPhase('idle', 'The app voice allowance has been used. Continue by typing.');
+    if (!context.budget.available) {
+      this.setPhase('idle', 'Voice is unavailable for the rest of this session. You can continue by typing.');
       return;
     }
     const mimeType = selectSupportedRecordingMimeType();
@@ -885,8 +829,8 @@ export class ConsumerVoiceController {
       this.setPhase('idle', 'There is no current question to play.');
       return;
     }
-    if (context.budget.remainingMicroEur <= 0) {
-      this.setPhase('idle', 'The app voice allowance has been used. The question remains available as text.');
+    if (!context.budget.available) {
+      this.setPhase('idle', 'Voice is unavailable for the rest of this session. You can continue by typing.');
       return;
     }
     const audioContext = await this.ensureAudioContext().catch((error) => {
@@ -907,12 +851,6 @@ export class ConsumerVoiceController {
         return;
       }
       if (context.sessionId !== getSessionId()) return;
-      const headerBudget = budgetFromHeaders(response.headers);
-      if (headerBudget) {
-        const payload = { voiceBudget: headerBudget };
-        mergeVoicePayload(payload);
-        this.onVoicePayload(payload);
-      }
       if (!String(response.contentType || '').toLowerCase().startsWith('audio/')) {
         throw new Error('The service returned an unexpected voice response.');
       }
@@ -1007,12 +945,9 @@ export class ConsumerVoiceController {
         ? 'Voice stopped because this tab was hidden. The local recording was discarded before upload.'
         : 'Voice stopped. The local recording was discarded before upload.');
     } else if (['transcribing', 'loading_speech'].includes(phaseAtCancellation)) {
-      const allowanceCopy = refreshBudget
-        ? 'the app is rechecking the allowance.'
-        : 'the server-side allowance remains authoritative.';
       this.setPhase('idle', reason === 'hidden'
-        ? `Voice stopped because this tab was hidden. No planning answer was added. Provider processing may already have started; ${allowanceCopy}`
-        : `Voice stopped. No planning answer was added. Provider processing may already have started; ${allowanceCopy}`);
+        ? 'Voice stopped because this tab was hidden. No planning answer was added. Provider processing may already have started.'
+        : 'Voice stopped. No planning answer was added. Provider processing may already have started.');
     } else if (phaseAtCancellation === 'speaking') {
       this.setPhase('idle', 'Voice playback stopped. The written question remains available.');
     } else if (['ready', 'error'].includes(phaseAtCancellation)) {

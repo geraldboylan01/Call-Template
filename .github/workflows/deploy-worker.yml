@@ -81,9 +81,9 @@ jobs:
       CONSUMER_SITE_ZONE_NAME: "planeir.ie"
       CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
       CONSUMER_BETA_CONSENT_MANIFEST_ID: "consumer-adviser-test-manifest-v1"
-      CONSUMER_BETA_ANALYSIS_NOTICE_ID: "analysis-adviser-test-v1"
+      CONSUMER_BETA_ANALYSIS_NOTICE_ID: "privacy-ack-adviser-test-v2"
       CONSUMER_BETA_AI_NOTICE_ID: "ai-adviser-test-v1"
-      CONSUMER_BETA_VOICE_NOTICE_ID: "voice-adviser-test-v1"
+      CONSUMER_BETA_VOICE_NOTICE_ID: "voice-openai-audio-adviser-test-v2"
       CONSUMER_BETA_VOICE_DATA_POLICY_ID: "openai-audio-adviser-test-v1"
       CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe"
       CONSUMER_BETA_VOICE_SPEECH_MODEL: "tts-1-hd"
@@ -93,7 +93,7 @@ jobs:
       CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS: "2000"
       CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: "10"
       CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS: "10"
-      CONSUMER_BETA_REALTIME_NOTICE_ID: "realtime-voice-adviser-test-v2"
+      CONSUMER_BETA_REALTIME_NOTICE_ID: "realtime-voice-openai-audio-adviser-test-v3"
       CONSUMER_BETA_REALTIME_DATA_POLICY_ID: "openai-realtime-audio-adviser-test-v2"
       CONSUMER_BETA_REALTIME_MODEL: "gpt-realtime-2.1"
       CONSUMER_BETA_REALTIME_VOICE: "marin"
@@ -592,7 +592,7 @@ jobs:
             }
 
             const fixedVoiceValues = {
-              CONSUMER_VOICE_NOTICE_ID: ['CONSUMER_BETA_VOICE_NOTICE_ID', 'voice-adviser-test-v1'],
+              CONSUMER_VOICE_NOTICE_ID: ['CONSUMER_BETA_VOICE_NOTICE_ID', 'voice-openai-audio-adviser-test-v2'],
               CONSUMER_VOICE_DATA_POLICY_ID: ['CONSUMER_BETA_VOICE_DATA_POLICY_ID', 'openai-audio-adviser-test-v1'],
               CONSUMER_VOICE_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
               CONSUMER_VOICE_SPEECH_MODEL: ['CONSUMER_BETA_VOICE_SPEECH_MODEL', 'tts-1-hd'],
@@ -657,7 +657,7 @@ jobs:
 
             if (realtimeEnabled) {
               const fixedRealtimeValues = {
-                CONSUMER_REALTIME_NOTICE_ID: ['CONSUMER_BETA_REALTIME_NOTICE_ID', 'realtime-voice-adviser-test-v2'],
+                CONSUMER_REALTIME_NOTICE_ID: ['CONSUMER_BETA_REALTIME_NOTICE_ID', 'realtime-voice-openai-audio-adviser-test-v3'],
                 CONSUMER_REALTIME_DATA_POLICY_ID: ['CONSUMER_BETA_REALTIME_DATA_POLICY_ID', 'openai-realtime-audio-adviser-test-v2'],
                 CONSUMER_REALTIME_MODEL: ['CONSUMER_BETA_REALTIME_MODEL', 'gpt-realtime-2.1'],
                 CONSUMER_REALTIME_VOICE: ['CONSUMER_BETA_REALTIME_VOICE', 'marin'],

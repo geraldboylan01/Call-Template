@@ -163,7 +163,7 @@ function hasApprovedAdvisorVoiceTransport(config) {
     && config?.publicAccessEnabled !== true
     && config?.inviteAccessConfigured === true
     && config?.cohort === 'adviser_test'
-    && config?.voiceNoticeId === 'voice-adviser-test-v1'
+    && ['voice-adviser-test-v1', 'voice-openai-audio-adviser-test-v2'].includes(config?.voiceNoticeId)
     && config?.voiceDataPolicyId === 'openai-audio-adviser-test-v1'
     && config?.voiceTranscriptionModel === 'gpt-4o-mini-transcribe'
     && config?.voiceSpeechModel === 'tts-1-hd'
@@ -194,7 +194,7 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeEnabled === true
     && config?.handoffRequested !== true
     && config?.handoffEnabled !== true
-    && config?.realtimeNoticeId === 'realtime-voice-adviser-test-v2'
+    && ['realtime-voice-adviser-test-v2', 'realtime-voice-openai-audio-adviser-test-v3'].includes(config?.realtimeNoticeId)
     && config?.realtimeDataPolicyId === 'openai-realtime-audio-adviser-test-v2'
     && config?.realtimeModel === 'gpt-realtime-2.1'
     && config?.realtimeVoice === 'marin'
@@ -445,7 +445,10 @@ function voiceBudgetPayload(value, config) {
   const remainingMicroEur = Number(
     value?.remainingMicroEur ?? value?.remainingEurMicros ?? Math.max(0, limitMicroEur - spentMicroEur)
   ) || 0;
-  return { limitMicroEur, spentMicroEur, remainingMicroEur };
+  return {
+    available: remainingMicroEur > 0,
+    status: remainingMicroEur > 0 ? 'available' : 'unavailable'
+  };
 }
 
 // While a realtime lease is open, the ledger conservatively holds the entire
@@ -459,11 +462,7 @@ export function realtimeVoiceBudgetPayload(providerBudget, lease, config) {
     const limitMicroEur = Number(lease.reservation_eur_micros || 0)
       || config.realtimeSessionBudgetMicroEur;
     const spentMicroEur = Math.max(0, Number(lease.estimated_cost_eur_micros || 0) || 0);
-    return {
-      limitMicroEur,
-      spentMicroEur,
-      remainingMicroEur: Math.max(0, limitMicroEur - spentMicroEur)
-    };
+    return { available: true, status: 'available' };
   }
   return voiceBudgetPayload(providerBudget, {
     voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur
@@ -792,15 +791,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const speechHeaders = {
         'Content-Type': result.contentType || 'audio/mpeg',
         'X-Realtime-Speech-Id': result.speechId,
-        'X-Realtime-Voice-Limit-Micro-Eur': String(result.budget.limitMicroEur),
-        'X-Realtime-Voice-Spent-Micro-Eur': String(result.budget.spentMicroEur),
-        'X-Realtime-Voice-Remaining-Micro-Eur': String(result.budget.remainingMicroEur),
-        'Access-Control-Expose-Headers': [
-          'X-Realtime-Speech-Id',
-          'X-Realtime-Voice-Limit-Micro-Eur',
-          'X-Realtime-Voice-Spent-Micro-Eur',
-          'X-Realtime-Voice-Remaining-Micro-Eur'
-        ].join(', ')
+        'Access-Control-Expose-Headers': 'X-Realtime-Speech-Id'
       };
       if (!result.streaming
         && Number.isSafeInteger(result.contentLength)
@@ -1261,11 +1252,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }
       return respondBinary(result.audio, 200, methods, {
         'Content-Type': 'audio/mpeg',
-        'Content-Length': String(result.audio.byteLength),
-        'X-Voice-Limit-Micro-Eur': String(result.voiceBudget.limitMicroEur),
-        'X-Voice-Spent-Micro-Eur': String(result.voiceBudget.spentMicroEur),
-        'X-Voice-Remaining-Micro-Eur': String(result.voiceBudget.remainingMicroEur),
-        'Access-Control-Expose-Headers': 'X-Voice-Limit-Micro-Eur, X-Voice-Spent-Micro-Eur, X-Voice-Remaining-Micro-Eur'
+        'Content-Length': String(result.audio.byteLength)
       });
     }
 

@@ -595,10 +595,10 @@ async function handleStartSession(form) {
   }
   const data = new FormData(form);
   const adultConfirmed = data.get('adultConfirmed') === 'on';
-  const analysisConsent = data.get('analysisConsent') === 'on';
+  const privacyNoticeAcknowledged = data.get('privacyNoticeAcknowledged') === 'on';
   const educationAcknowledged = data.get('educationAcknowledged') === 'on';
   const aiProcessing = state.bootstrap?.aiEnabled === true && data.get('aiProcessing') === 'on';
-  if (!adultConfirmed || !analysisConsent || !educationAcknowledged) {
+  if (!adultConfirmed || !privacyNoticeAcknowledged || !educationAcknowledged) {
     showFormError(form, 'Please confirm the three required statements before beginning.');
     return;
   }
@@ -611,7 +611,7 @@ async function handleStartSession(form) {
   try {
     preparePendingSessionAccess();
     const payload = await createSession({
-      analysis: true,
+      privacyNoticeAcknowledged: true,
       aiProcessing,
       adultConfirmed: true,
       educationOnlyAcknowledged: true,

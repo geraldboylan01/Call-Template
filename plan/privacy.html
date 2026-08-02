@@ -6,344 +6,75 @@
     <meta name="color-scheme" content="dark" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="robots" content="noindex, nofollow" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
-    />
-    <meta
-      name="description"
-      content="How the Planéir consumer planning journey handles private sessions, optional AI, deterministic calculations, deletion, and optional adviser handoff."
-    />
-    <title>Consumer journey privacy and disclosure | Planéir</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <meta name="description" content="How Planéir handles information in its private consumer MVP." />
+    <title>Privacy Notice | Planéir</title>
     <link rel="icon" type="image/png" href="../favicon.png" />
     <link rel="stylesheet" href="../styles/plan.css" />
   </head>
   <body class="privacy-page">
-    <a class="skip-link" href="#privacyMain">Skip to the disclosure</a>
-
-    <div class="plan-backdrop" aria-hidden="true">
-      <span class="plan-orb plan-orb-one"></span>
-      <span class="plan-orb plan-orb-two"></span>
-      <span class="plan-grid"></span>
-    </div>
-
+    <a class="skip-link" href="#privacyMain">Skip to the Privacy Notice</a>
+    <div class="plan-backdrop" aria-hidden="true"><span class="plan-orb plan-orb-one"></span><span class="plan-orb plan-orb-two"></span><span class="plan-grid"></span></div>
     <header class="plan-header">
-      <a class="plan-brand" href="../" aria-label="Planéir home">
-        <img
-          src="../assets/brand/planeir-wordmark-light.svg"
-          alt="Planéir"
-          width="1330"
-          height="384"
-          decoding="async"
-        />
-      </a>
-      <div class="plan-header-meta">
-        <span class="beta-badge">Consumer disclosure</span>
-      </div>
+      <a class="plan-brand" href="../" aria-label="Planéir home"><img src="../assets/brand/planeir-wordmark-light.svg" alt="Planéir" width="1330" height="384" decoding="async" /></a>
+      <div class="plan-header-meta"><span class="beta-badge">Private MVP</span></div>
     </header>
 
     <main id="privacyMain" class="plan-main privacy-main" tabindex="-1">
       <article class="privacy-shell">
         <header class="privacy-hero">
-          <p class="section-kicker">Clear by design</p>
-          <h1>Your information, your choices.</h1>
-          <p class="privacy-lead">
-            This disclosure explains what happens when you use Planéir’s consumer planning journey.
-            The journey is for financial education: it helps you organise information, review it, and
-            run transparent illustrations. It does not provide regulated financial, mortgage, tax,
-            legal, product, or approval advice.
-          </p>
-
-          <div class="privacy-highlight-grid" aria-label="Important privacy points">
-            <div class="privacy-highlight">
-              <strong>A private browser session</strong>
-              <p>Your access credential stays in this browser tab and is not used as an adviser login.</p>
-            </div>
-            <div class="privacy-highlight">
-              <strong>AI is optional</strong>
-              <p>If offered and selected, AI can organise draft facts. It never calculates the results.</p>
-            </div>
-            <div class="privacy-highlight">
-              <strong>Sharing is a separate choice</strong>
-              <p>Nothing is sent to Gerry unless you expressly consent after reviewing your results.</p>
-            </div>
-          </div>
+          <p class="section-kicker">Privacy Notice</p>
+          <h1>How we handle your information</h1>
+          <p class="privacy-lead">This notice covers Planéir's invite-only consumer financial-education MVP for adults. Planéir is operated by Gerry Boylan in Ireland. Contact <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>.</p>
         </header>
 
-        <nav class="privacy-toc" aria-label="On this page">
-          <strong>On this page</strong>
-          <a href="#private-session">Private session</a>
-          <a href="#safe-information">Information safety</a>
-          <a href="#optional-ai">Optional AI</a>
-          <a href="#optional-voice">Optional voice</a>
-          <a href="#subscription-assist">Your own Codex or ChatGPT</a>
-          <a href="#calculations">Calculations</a>
-          <a href="#handoff">Adviser handoff</a>
-          <a href="#deletion">Expiry and deletion</a>
-        </nav>
-
         <div class="privacy-section-grid">
-          <section id="private-session" class="privacy-card">
-            <p class="section-kicker">Your planning space</p>
-            <h2>A separate, time-limited consumer session</h2>
-            <p>
-              When you begin, Planéir creates an opaque private credential. The browser keeps it in
-              <code>sessionStorage</code>, which is scoped to this tab. It is not placed in a URL,
-              adviser cookie, or browser <code>localStorage</code>. Closing the tab removes the browser’s
-              copy, so the session may no longer be recoverable from that browser.
-            </p>
-            <p>
-              The session stores the information you choose to provide, conversation exchanges,
-              reviewed profile revisions, and calculation results. Sensitive payloads are encrypted
-              before they are stored by the service.
-            </p>
-            <p>
-              The server applies the session lifetime configured for the active journey. Your actual
-              expiry is shown in the journey after the session is created; no fixed duration is assumed
-              on this page.
-            </p>
+          <section class="privacy-card is-wide">
+            <p class="section-kicker">What we collect</p>
+            <h2>Information used in your private test session</h2>
+            <p>We collect the information you choose to type or say, finalized voice transcripts, planning facts and goals, generated illustrations, consent and acknowledgement records, and limited security and operational information. Do not provide PPS numbers, passwords, PINs, complete bank-account, IBAN or card details, exact addresses, identity-document information, or unnecessary information about another person.</p>
           </section>
 
-          <section id="safe-information" class="privacy-card">
-            <p class="section-kicker">Share only what is needed</p>
-            <h2>Do not enter high-risk identifiers</h2>
-            <p>
-              Financial totals and approximate figures may be useful. Direct identity, security, and
-              account credentials are not needed for this educational journey.
-            </p>
-            <ul class="privacy-list">
-              <li>Do not enter PPS numbers, passwords, passcodes, PINs, or banking credentials.</li>
-              <li>Do not enter complete bank-account, card, or IBAN details.</li>
-              <li>Do not provide passport, driving-licence, or other identity-document details or copies.</li>
-              <li>Do not provide an exact home address or unnecessary information about another person.</li>
-            </ul>
-            <div class="privacy-callout">
-              The service applies validation and redaction safeguards, but those safeguards are not a
-              reason to submit information the journey asks you to avoid.
-            </div>
+          <section class="privacy-card">
+            <p class="section-kicker">Why we use it</p>
+            <h2>Providing and protecting the MVP</h2>
+            <p>We process session information to provide the service you request under the Terms of Use. Optional microphone processing is based on your consent. We use limited operational information for our legitimate interests in securing the service, preventing misuse, controlling provider costs and testing reliability. We may also process information where required by law.</p>
           </section>
 
-          <section id="optional-ai" class="privacy-card is-wide">
-            <p class="section-kicker">Optional assistance</p>
-            <h2>What AI may do—and what it cannot do</h2>
-            <p>
-              AI assistance is used only when the option is available and you choose it. It may interpret
-              the words you type, propose draft profile details, and help select a clearer next question.
-              AI can make mistakes, so proposed details remain drafts until you review and confirm them.
-            </p>
-            <p>
-              Where AI assistance is active, the in-journey control lets you withdraw that choice for
-              future messages. Withdrawal applies to later messages; it does not undo processing already
-              completed. The journey then continues with structured, rules-only questions.
-            </p>
-            <p>
-              If you opt in, Planéir sends your latest message, the current question, a bounded
-              conversation summary, and the part of your planning profile relevant to that question to
-              OpenAI through its Responses API. The request disables application storage with
-              <code>store: false</code>. Any provider-side retention or abuse monitoring is governed by
-              Planéir’s approved OpenAI account data controls and processing policy; AI stays disabled
-              until that policy has been reviewed and configured.
-            </p>
-            <p>
-              AI is not allowed to calculate financial outputs, approve a mortgage or product, decide
-              eligibility, or silently write trusted facts. Those boundaries remain enforced even when AI
-              helps with the conversation.
-            </p>
+          <section class="privacy-card">
+            <p class="section-kicker">Service providers</p>
+            <h2>Cloudflare and OpenAI</h2>
+            <p>Cloudflare provides hosting, database and application infrastructure. If you enable voice, OpenAI processes audio for transcription, realtime AI conversation and generated speech. These providers may process information outside the European Economic Area using applicable contractual safeguards. Email us if you want more information about those safeguards.</p>
           </section>
 
           <section id="optional-voice" class="privacy-card is-wide">
-            <p class="section-kicker">Optional adviser-test feature</p>
-            <h2>Short transcription, Live voice, and AI-generated playback</h2>
-            <p>
-              Voice is offered only when the adviser-test feature flag and its current disclosure are
-              active. It never starts automatically, and typing remains available. You must first give
-              the separate, versioned consent for the voice mode you want and then deliberately start it.
-              Enabling short recording does not itself enable Live voice or automatic spoken turns.
-            </p>
-            <p>
-              <strong>Short recording</strong> starts only when you press its microphone control. It stops
-              when you press the control again, leave or hide the page, or reach the 45-second maximum.
-              Planéir then sends that bounded clip through its protected service to OpenAI’s transcription
-              API. The raw clip is used to produce the transcript and is not added to your planning profile,
-              conversation history, browser storage, D1 database, R2 storage, or application logs.
-            </p>
-            <p>
-              <strong>Live voice</strong> appears only when its separate server feature flag is active. It
-              starts when you press <strong>Start voice</strong> and streams microphone audio through
-              Planéir’s protected service to an OpenAI Realtime session while the on-screen Live voice
-              controls are active. It may remain active while you move between the conversation, review,
-              analysis-plan, and results steps so the companion can continue the same disclosed session. It
-              ends when you press <strong>End voice</strong>, withdraw Live voice consent, delete the planning
-              session, hide or leave the page, lose the protected session, or reach the server-enforced time
-              or allowance limit. Muting stops the microphone track from sending audio while keeping the live
-              session open.
-            </p>
-            <p>
-              Short-recording transcripts remain review-only: the returned transcript is copied into the
-              ordinary answer box and is not submitted until you choose <strong>Continue</strong>. Live voice
-              works differently. Live partial captions may change as recognition resolves your words; once
-              an utterance is final, it is processed automatically as the next live turn, without a separate
-              Continue press. Speech recognition can be wrong, particularly for amounts, dates, names,
-              accents, or background speech. Partial caption streams are not retained by Planéir. A
-              finalized turn may be redacted and stored, encrypted, with the private planning session so
-              the conversation can be reviewed and its fact provenance can be explained.
-            </p>
-            <p>
-              A finalized Live voice turn may ask protected server-side tools to propose profile facts,
-              decide which approved follow-up question is needed, and propose relevant Planéir modules.
-              Client code does not execute financial tools, and the voice model does not write confirmed
-              facts directly. The interface labels proposed values as exact, approximate, or pending
-              confirmation; material amounts, dates, goals, and assumptions are read back during the
-              conversation. Before calculations run, Planéir summarises the goal, material assumptions and
-              exact modules. When spoken completion is enabled, only a clear finalized answer to that closed
-              confirmation question authorizes the exact prepared plan and profile revision. Corrections,
-              negative answers, ambiguous replies, stale revisions, and repeated calls do not authorize it.
-            </p>
-            <p>
-              <strong>Voice dialogue and playback are AI-generated.</strong> In the controlled voice route,
-              bounded question playback derives the exact current, server-owned Planéir question through the
-              protected service. In conversational Live voice, OpenAI Realtime is used for microphone streaming,
-              speech recognition, turn detection, and natural dialogue. A separate authenticated server control
-              connection owns protected tools and deterministic calculations; the conversational model cannot
-              authorize or claim a module result. After successful module generation, the server authorizes the
-              exact closing message, microphone input is disabled, playback is allowed to finish (with a bounded
-              timeout), the session closes, and the results view opens automatically.
-            </p>
-            <p>
-              Short voice recording and playback has a server-enforced €2 app allowance per private
-              session. When the protected adviser-test Live voice feature is enabled, its meeting allowance
-              is €10 per private session. Each voice request uses a conservative application reservation rather than promising an exact provider
-              invoice. A Live call atomically reserves the €10
-              session envelope and reconciles
-              separately billed Realtime-response, input-transcription, and character-priced approved speech
-              usage against that same reservation. Live sessions
-              also use a server-created, time-limited lease and are closed when that lease or allowance
-              ends. The journey shows the remaining app allowance and stops new voice calls at that
-              allowance; typed answers continue normally. You can stop future voice processing at any time
-              through <strong>Privacy controls</strong>; this closes an active Live voice session but does
-              not undo audio processing already completed.
-            </p>
-            <p>
-              Approved OpenAI account data controls and provider-side abuse monitoring or retention terms
-              apply while short or live audio is processed. Planéir does not place raw audio, WebRTC session
-              descriptions, ephemeral provider credentials, partial transcript streams, or unrestricted live
-              event payloads into the planning profile, browser storage, D1 database, R2 storage, or
-              application logs. Server-side cost, consent, and lease audit records exclude raw audio and
-              transcript content; only the encrypted, redacted finalized turns described above may retain
-              transcript text in the private session.
-            </p>
-            <p>
-              Each Live voice call is stored as a separate meeting. Its complete finalized welcome,
-              conversation, and closing turns remain reviewable with the modules after reload. Stable turn IDs,
-              timestamps, and redaction indicators are returned; partial recognition events and raw audio are
-              not stored. The spoken-confirmation audit stores identifiers and a hash, not a duplicate copy of
-              the transcript. Existing session expiry, deletion, encryption, and ownership controls apply.
-            </p>
-            <div class="privacy-callout">
-              Spoken audio reaches transcription before text redaction can run. Do not say PPS numbers,
-              passwords, PINs, complete account, card or IBAN details, exact addresses, identity-document
-              details, or unnecessary information about another person.
-            </div>
+            <p class="section-kicker">Optional voice</p>
+            <h2>You can always use text</h2>
+            <p>Voice never starts automatically. The first time you start each voice mode, we explain the processing and ask for separate consent. Short recordings are sent to OpenAI only after you deliberately record them. Live voice streams microphone audio to OpenAI while the meeting is active and processes finalized spoken turns automatically.</p>
+            <p>Planéir does not intentionally store raw audio or partial transcripts. Finalized Live voice transcripts and related planning information are stored encrypted with your session. You may end voice or withdraw voice consent at any time; this stops future processing but cannot undo processing already completed.</p>
           </section>
 
-          <section id="subscription-assist" class="privacy-card is-wide">
-            <p class="section-kicker">Adviser-test option</p>
-            <h2>Using your own Codex or ChatGPT subscription manually</h2>
-            <p>
-              During the adviser-only test cohort, Planéir may offer a manual prompt-copy helper. It
-              creates a bounded prompt from the current Planéir question and the draft answer visible in
-              your browser. Planéir copies that prompt to your clipboard only after you press the copy
-              button; it does not send the prompt to OpenAI or connect to your OpenAI account.
-            </p>
-            <p>
-              If you choose to paste the prompt into your own Codex or ChatGPT workspace, that separate
-              workspace’s privacy, retention, and subscription terms apply. Review the copied text first.
-              Planéir invitation and private session credentials are automatically removed from the copied text. Nothing returns
-              to Planéir unless you review the rewritten answer, paste it into the journey, and submit it.
-            </p>
-            <p>
-              A ChatGPT subscription cannot act as an API credential for the live Planéir service. This
-              manual boundary keeps your subscription login out of Planéir while preserving the normal
-              profile review, correction, and deterministic-calculation controls.
-            </p>
+          <section class="privacy-card">
+            <p class="section-kicker">Retention and deletion</p>
+            <h2>Seven-day sessions</h2>
+            <p>Your planning session expires after seven days. You can delete it sooner using <strong>Delete my session</strong>. Deletion removes the linkable planning session, including its stored conversation, profile, transcripts and results.</p>
           </section>
 
-          <section id="calculations" class="privacy-card">
-            <p class="section-kicker">Code-owned outputs</p>
-            <h2>Deterministic calculations</h2>
-            <p>
-              Financial illustrations are produced by tested, versioned calculation code using the profile
-              revision you confirm. Results should show their assumptions, warnings, information gaps, and
-              calculation provenance so you can understand what shaped the figure.
-            </p>
-            <p>
-              These outputs are educational scenarios rather than personalised regulated advice, lender
-              decisions, guarantees, quotations, or product recommendations. Time-sensitive rules and
-              assumptions should be checked before acting on an illustration.
-            </p>
+          <section class="privacy-card">
+            <p class="section-kicker">Minimized testing signals</p>
+            <h2>Reliability information</h2>
+            <p>We may keep pseudonymous, categorical call signals for up to 30 days, such as whether a session connected or completed, its duration, turn count and a broad failure category. These signals do not contain answers, transcripts or raw failure reasons and follow a separate deletion schedule. Unlinkable anti-abuse counts and aggregate provider-cost totals may also remain.</p>
           </section>
 
-          <section id="handoff" class="privacy-card">
-            <p class="section-kicker">Optional human help</p>
-            <h2>A separate handoff to Gerry</h2>
-            <p>
-              After results are available, you may separately consent to send a reviewed package to Gerry
-              Boylan. The journey tells you what will be shared before you consent: your name, email,
-              optional phone number, the help you request, and a minimal consent receipt with a
-              non-financial analysis/revision reference. Your detailed profile and calculation results are
-              not automatically copied into the adviser pipeline.
-            </p>
-            <p>
-              This handoff is not automatic. It does not opt you into hidden marketing, an adviser
-              marketplace, bidding, sponsored ranking, or product promotion. Your free results do not
-              depend on agreeing to a handoff.
-            </p>
-            <p>
-              Once delivered, the handoff becomes a separate adviser record. Its retention period is set
-              by the active handoff policy and may differ from the consumer-session lifetime. Planéir must
-              present the applicable retention wording before handoff is enabled; this page deliberately
-              does not hardcode a duration.
-            </p>
-            <p>
-              Before or after delivery, the journey’s <strong>Privacy controls</strong> let you withdraw
-              the handoff and purge the encrypted bridge copy. If it has already reached Gerry, withdrawal
-              cannot recall the separate adviser record; the control tells you to contact Planéir about
-              that record.
-            </p>
-          </section>
-
-          <section id="deletion" class="privacy-card is-wide">
-            <p class="section-kicker">Your control</p>
-            <h2>Expiry, deletion, and an already-delivered handoff</h2>
-            <p>
-              You can use <strong>Delete my session</strong> in the journey to remove the consumer
-              conversation, profile revisions, analyses, module runs, events, and private session access.
-              Undelivered pending or failed handoff data is removed with the session. Sessions also expire
-              under the lifetime configured for the active journey.
-            </p>
-            <p>
-              If you already expressly sent a handoff and delivery completed, deleting the consumer session
-              does not recall that separate adviser record. Its active handoff policy applies. You can
-              contact Planéir to ask what is held or request an appropriate correction or deletion, subject
-              to any retention obligations that apply to the delivered record.
-            </p>
-            <div class="privacy-actions">
-              <a class="primary-button" href="./">Back to my planning journey</a>
-              <a class="secondary-button" href="mailto:hello@planeir.ie">Contact hello@planeir.ie</a>
-              <a class="secondary-button" href="../">Return to Planéir.ie</a>
-            </div>
+          <section class="privacy-card is-wide">
+            <p class="section-kicker">Your rights</p>
+            <h2>Contact us</h2>
+            <p>Depending on the circumstances, you may ask for access, correction, deletion, restriction or portability of your personal data, or object to processing based on legitimate interests. Where processing relies on consent, you may withdraw it without affecting earlier lawful processing. Email <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>. You may also complain to the <a href="https://www.dataprotection.ie/" target="_blank" rel="noopener noreferrer">Irish Data Protection Commission</a>.</p>
+            <div class="privacy-actions"><a class="primary-button" href="./">Back to my planning journey</a><a class="secondary-button" href="mailto:hello@planeir.ie">Contact Planéir</a></div>
           </section>
         </div>
       </article>
     </main>
-
-    <footer class="plan-footer">
-      <p>
-        Planéir provides financial education, not regulated financial, tax, legal, mortgage, product,
-        eligibility, or approval advice.
-      </p>
-      <a href="./">Planning journey</a>
-      <a href="mailto:hello@planeir.ie">Contact</a>
-    </footer>
+    <footer class="plan-footer"><p>Planéir provides financial education, not regulated financial, tax, legal, mortgage or product advice.</p><a href="./">Planning journey</a><a href="mailto:hello@planeir.ie">Contact</a></footer>
   </body>
 </html>

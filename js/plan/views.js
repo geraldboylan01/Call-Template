@@ -365,26 +365,10 @@ function normaliseQuestion(question) {
   };
 }
 
-function formatVoiceEuro(microEur) {
-  const value = Number(microEur);
-  if (!Number.isFinite(value) || value < 0) return '—';
-  return new Intl.NumberFormat('en-IE', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value / 1_000_000);
-}
-
 function createVoicePanel(currentState, question) {
   const voice = currentState.voice || {};
   const configuredBudget = voice.budget || currentState.bootstrap?.voiceBudget || {};
-  const limitMicroEur = Math.max(0, Number(firstDefined(configuredBudget.limitMicroEur, 2_000_000)) || 0);
-  const spentMicroEur = Math.max(0, Number(firstDefined(configuredBudget.spentMicroEur, 0)) || 0);
-  const remainingMicroEur = Math.max(0, Number(firstDefined(
-    configuredBudget.remainingMicroEur,
-    limitMicroEur - spentMicroEur
-  )) || 0);
+  const voiceAvailable = configuredBudget.available !== false;
   const consentGranted = hasCurrentVoiceConsent();
   const configured = Boolean(
     currentState.bootstrap?.voiceNoticeId
@@ -412,37 +396,17 @@ function createVoicePanel(currentState, question) {
     'Tap to record up to 45 seconds. Planéir adds the transcript to the same answer box so you can correct every word and figure before choosing Continue.'
   ));
 
-  const budget = element('div', 'voice-budget');
-  const budgetRow = element('div', 'voice-budget-row');
-  append(
-    budgetRow,
-    element('strong', '', 'App voice allowance'),
-    element('span', '', `${formatVoiceEuro(limitMicroEur)} app allowance · ${formatVoiceEuro(remainingMicroEur)} remaining`)
-  );
-  budgetRow.lastElementChild.dataset.voiceBudgetText = '';
-  const meter = element('meter', 'voice-budget-meter');
-  meter.dataset.voiceBudgetMeter = '';
-  meter.min = 0;
-  meter.max = Math.max(1, limitMicroEur);
-  meter.low = Math.max(1, limitMicroEur * 0.2);
-  meter.optimum = Math.max(1, limitMicroEur);
-  meter.value = Math.min(limitMicroEur, remainingMicroEur);
-  meter.setAttribute('aria-label', 'App voice allowance remaining');
-  meter.setAttribute('aria-valuetext', `${formatVoiceEuro(remainingMicroEur)} app voice allowance remaining`);
-  append(budget, budgetRow, meter, element('small', '', 'Each voice call uses a fixed conservative reservation. The app stops new voice calls at this allowance; typed answers remain available.'));
-  panel.append(budget);
-
   const actions = element('div', 'voice-actions');
   const record = element('button', 'voice-record-button', consentGranted ? 'Tap to talk' : 'Set up voice');
   record.type = 'button';
   record.dataset.action = consentGranted ? 'voice-record' : 'voice-consent';
-  record.disabled = currentState.busy || !configured || remainingMicroEur <= 0;
+  record.disabled = currentState.busy || !configured || !voiceAvailable;
   record.setAttribute('aria-describedby', 'voiceStatus voiceDisclosure');
   record.setAttribute('aria-pressed', 'false');
   const speak = element('button', 'secondary-button voice-speak-button', 'Hear this question');
   speak.type = 'button';
   speak.dataset.action = consentGranted ? 'voice-speak' : 'voice-consent';
-  speak.disabled = currentState.busy || !configured || remainingMicroEur <= 0 || !question.prompt;
+  speak.disabled = currentState.busy || !configured || !voiceAvailable || !question.prompt;
   speak.setAttribute('aria-describedby', 'voiceDisclosure');
   speak.setAttribute('aria-pressed', 'false');
   append(actions, record, speak);
@@ -1948,15 +1912,15 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
       required: true
     },
     {
-      name: 'analysisConsent',
-      title: 'I have read how Planéir handles my information',
-      detail: 'Planéir processes the financial details I choose to share in order to run this demo session for me, and the conversation is powered by OpenAI. Full detail is in the ',
-      detailSuffix: [privacyNoticeLink(bootstrap), '.'],
+      name: 'privacyNoticeAcknowledged',
+      title: 'I have read the Privacy Notice',
+      detail: '',
+      detailSuffix: [privacyNoticeLink(bootstrap, 'Privacy Notice')],
       required: true
     },
     {
       name: 'educationAcknowledged',
-      title: 'I understand this is education, not advice, and I accept the Terms of Use',
+      title: 'I accept the Terms of Use and understand this is financial education, not advice',
       detail: 'Results are illustrations, not regulated financial, tax, legal, mortgage, product, or approval advice. Read the ',
       detailSuffix: [termsLink(), ' before you begin.'],
       required: true
@@ -1989,9 +1953,6 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
   });
   form.append(checks);
   form.append(element('p', 'consent-detail', 'Your private access credential stays only in this browser tab. Do not enter PPS numbers, account passwords, complete account numbers, or upload identity documents.'));
-  const privacy = element('p', 'consent-detail');
-  privacy.append('Read the ', termsLink(), ' and the ', privacyNoticeLink(bootstrap), ` (policy ${bootstrap.policyVersion}).`);
-  form.append(privacy);
   if (error) {
     form.append(element('p', 'form-error', error));
   }

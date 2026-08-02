@@ -8,6 +8,7 @@
 //   LEARNING_SIGNALS_URL         base URL of the telemetry service
 //   LEARNING_SIGNALS_INGEST_KEY  a tenant API key with the `ingest` scope
 //   LEARNING_SIGNALS_MODULE_ID   the provisioned module id this planner maps to
+//   LEARNING_SIGNALS_RETENTION_DAYS reviewed tenant retention (MVP: exactly 30)
 //
 // Guarantees, in order of importance:
 //   1. It NEVER throws into the call path and NEVER blocks the call — delivery
@@ -56,7 +57,8 @@ export function isLearningSignalsConfigured(env) {
     env
       && typeof env.LEARNING_SIGNALS_URL === 'string' && env.LEARNING_SIGNALS_URL.trim()
       && typeof env.LEARNING_SIGNALS_INGEST_KEY === 'string' && env.LEARNING_SIGNALS_INGEST_KEY.trim()
-      && typeof env.LEARNING_SIGNALS_MODULE_ID === 'string' && env.LEARNING_SIGNALS_MODULE_ID.trim(),
+      && typeof env.LEARNING_SIGNALS_MODULE_ID === 'string' && env.LEARNING_SIGNALS_MODULE_ID.trim()
+      && String(env.LEARNING_SIGNALS_RETENTION_DAYS || '').trim() === '30'
   );
 }
 

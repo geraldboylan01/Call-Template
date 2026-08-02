@@ -482,12 +482,7 @@ export function publicConsumerConfig(config) {
       pricingVersion: config.voiceEnabled ? config.voicePricingVersion : null,
       maxDurationSeconds: config.voiceMaxDurationSeconds,
       maxRecordingSeconds: config.voiceMaxDurationSeconds,
-      sessionBudgetMicroEur: config.voiceEnabled ? config.voiceSessionBudgetMicroEur : 0,
-      budget: {
-        limitMicroEur: config.voiceEnabled ? config.voiceSessionBudgetMicroEur : 0,
-        spentMicroEur: 0,
-        remainingMicroEur: config.voiceEnabled ? config.voiceSessionBudgetMicroEur : 0
-      },
+      availability: { available: config.voiceEnabled, status: config.voiceEnabled ? 'available' : 'unavailable' },
       aiGeneratedDisclosure: config.voiceEnabled
         ? 'The voice you hear is AI-generated. Review each transcript before sending it.'
         : null
@@ -512,10 +507,7 @@ export function publicConsumerConfig(config) {
       speechPricingVersion: config.realtimeEnabled ? config.realtimeSpeechPricingVersion : null,
       maxDurationSeconds: config.realtimeMaxDurationSeconds,
       idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
-      sessionBudgetMicroEur: config.realtimeEnabled ? config.realtimeSessionBudgetMicroEur : 0,
-      warnThresholdMicroEur: config.realtimeEnabled ? config.realtimeSessionWarnMicroEur : 0,
-      dispatchStopMicroEur: config.realtimeEnabled ? config.realtimeDispatchStopMicroEur : 0,
-      safetyReserveMicroEur: config.realtimeEnabled ? config.realtimeSafetyReserveMicroEur : 0,
+      availability: { available: config.realtimeEnabled, status: config.realtimeEnabled ? 'available' : 'unavailable' },
       aiGeneratedDisclosure: config.realtimeEnabled
         ? (config.realtimeConversationV2Enabled
             ? (config.realtimeSpokenCompletionEnabled

@@ -85,9 +85,9 @@ durations, or URLs:
 
 | Name | Initial value | Purpose |
 |---|---|---|
-| `CONSUMER_CONSENT_POLICY_VERSION` | `consumer-v1` | Version attached to consent receipts; review before enablement |
-| `CONSUMER_CONSENT_MANIFEST_ID` | empty | Immutable approved manifest binding the policy version, analysis notice, AI notice, and privacy URL shown together |
-| `CONSUMER_ANALYSIS_NOTICE_ID` | empty | Exact analysis notice accepted at session creation |
+| `CONSUMER_CONSENT_POLICY_VERSION` | `consumer-v1` | Version attached to onboarding acknowledgements and optional consent receipts |
+| `CONSUMER_CONSENT_MANIFEST_ID` | empty | Immutable approved manifest binding the policy version, privacy acknowledgement, AI notice, and privacy URL shown together |
+| `CONSUMER_ANALYSIS_NOTICE_ID` | empty | Legacy-named identifier for the exact Privacy Notice acknowledged at session creation |
 | `CONSUMER_AI_NOTICE_ID` | empty | Exact optional AI-processing notice accepted at session creation |
 | `CONSUMER_VOICE_NOTICE_ID` | empty | Exact optional microphone, transcription, and AI-generated-voice notice |
 | `CONSUMER_PRIVACY_NOTICE_URL` | empty | Published HTTPS privacy notice |
@@ -97,6 +97,7 @@ durations, or URLs:
 | `CONSUMER_HANDOFF_POLICY_URL` | empty | Published HTTPS policy covering the encrypted bridge and separate adviser-record retention |
 | `CONSUMER_HANDOFF_RETENTION_POLICY_ID` | empty | Approved handoff-retention policy identifier |
 | `CONSUMER_HANDOFF_RETENTION_DAYS` | empty | Approved encrypted-package retention, 1-365 days |
+| `LEARNING_SIGNALS_RETENTION_DAYS` | `30` | Reviewed pseudonymous MVP signal retention; emission fails closed unless exactly 30 |
 
 The runtime treats a missing notice, HTTPS privacy URL, AI policy, handoff
 policy URL/version, or retention configuration as an unavailable capability. A
@@ -173,9 +174,9 @@ mode and approved policy set:
 | `CONSUMER_DB_NAME` | `planeir-consumer` |
 | `CONSUMER_BETA_CONSENT_POLICY_VERSION` | `consumer-adviser-test-v1` |
 | `CONSUMER_BETA_CONSENT_MANIFEST_ID` | `consumer-adviser-test-manifest-v1` |
-| `CONSUMER_BETA_ANALYSIS_NOTICE_ID` | `analysis-adviser-test-v1` |
+| `CONSUMER_BETA_ANALYSIS_NOTICE_ID` | `privacy-ack-adviser-test-v2` |
 | `CONSUMER_BETA_AI_NOTICE_ID` | `ai-adviser-test-v1` |
-| `CONSUMER_BETA_VOICE_NOTICE_ID` | `voice-adviser-test-v1` |
+| `CONSUMER_BETA_VOICE_NOTICE_ID` | `voice-openai-audio-adviser-test-v2` |
 | `CONSUMER_BETA_VOICE_DATA_POLICY_ID` | `openai-audio-adviser-test-v1` |
 | `CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL` | `gpt-4o-mini-transcribe` |
 | `CONSUMER_BETA_VOICE_SPEECH_MODEL` | `tts-1-hd` |

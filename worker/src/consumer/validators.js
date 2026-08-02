@@ -42,8 +42,10 @@ export function validateCreateSessionBody(body, expectedManifest) {
     || privacyNoticeUrl !== manifest.privacyNoticeUrl) {
     throw badRequest('The planning disclosure is no longer current. Reload before starting.', 'consent_policy_outdated');
   }
-  if (consent.analysis !== true) {
-    throw badRequest('You must confirm that you have read how Planéir handles your information.', 'analysis_consent_required');
+  const privacyNoticeAcknowledged = consent.privacyNoticeAcknowledged === true
+    || consent.analysis === true; // Temporary compatibility for cached clients.
+  if (!privacyNoticeAcknowledged) {
+    throw badRequest('You must confirm that you have read the Privacy Notice.', 'privacy_notice_acknowledgement_required');
   }
   if (consent.adultConfirmed !== true) throw badRequest('You must confirm that you are 18 or older.', 'adult_confirmation_required');
   if (consent.educationOnlyAcknowledged !== true) {
@@ -51,7 +53,7 @@ export function validateCreateSessionBody(body, expectedManifest) {
   }
   if (typeof consent.aiProcessing !== 'boolean') throw badRequest('AI processing preference must be confirmed.');
   return {
-    analysis: true,
+    privacyNoticeAcknowledged: true,
     aiProcessing: consent.aiProcessing,
     adultConfirmed: true,
     educationOnlyAcknowledged: true,

@@ -24,6 +24,7 @@ assert.equal(
     LEARNING_SIGNALS_URL: 'http://localhost:3000',
     LEARNING_SIGNALS_INGEST_KEY: 'k',
     LEARNING_SIGNALS_MODULE_ID: 'm',
+    LEARNING_SIGNALS_RETENTION_DAYS: '30',
   }),
   true,
 );
@@ -38,11 +39,11 @@ assert.equal(
 
 // emitSessionSummary never throws even with a hostile waitUntil / bad input.
 emitSessionSummary(
-  { LEARNING_SIGNALS_URL: 'http://x', LEARNING_SIGNALS_INGEST_KEY: 'k', LEARNING_SIGNALS_MODULE_ID: 'm' },
+  { LEARNING_SIGNALS_URL: 'http://x', LEARNING_SIGNALS_INGEST_KEY: 'k', LEARNING_SIGNALS_MODULE_ID: 'm', LEARNING_SIGNALS_RETENTION_DAYS: '30' },
   () => { throw new Error('boom'); },
   { sessionId: 'cs_x', status: 'completed' },
 );
-emitSessionSummary({ LEARNING_SIGNALS_URL: 'http://x', LEARNING_SIGNALS_INGEST_KEY: 'k', LEARNING_SIGNALS_MODULE_ID: 'm' }, () => {}, null);
+emitSessionSummary({ LEARNING_SIGNALS_URL: 'http://x', LEARNING_SIGNALS_INGEST_KEY: 'k', LEARNING_SIGNALS_MODULE_ID: 'm', LEARNING_SIGNALS_RETENTION_DAYS: '30' }, () => {}, null);
 
 // ---------------------------------------------------------------------------
 // Outcome + cause mapping.

@@ -249,17 +249,18 @@ export function toConsumerSession(row) {
       : Number(row.confirmed_profile_revision),
     featureCohort: row.feature_cohort,
     aiProcessingConsented: asBoolean(row.consent_ai_processing),
+    privacyNoticeAcknowledged: asBoolean(row.privacy_notice_acknowledged ?? row.consent_analysis),
+    privacyNoticeId: row.privacy_notice_id || row.consent_analysis_notice_id,
+    privacyNoticeVersion: row.privacy_notice_version || row.consent_policy_version,
+    privacyNoticeUrl: row.privacy_notice_url || row.consent_privacy_notice_url,
+    privacyNoticeAcknowledgedAt: row.privacy_notice_acknowledged_at || row.consent_captured_at,
     consent: {
-      analysis: asBoolean(row.consent_analysis),
       aiProcessing: asBoolean(row.consent_ai_processing),
       adultConfirmed: asBoolean(row.consent_adult_confirmed),
       educationOnlyAcknowledged: asBoolean(row.consent_education_only),
       manifestId: row.consent_manifest_id,
       policyVersion: row.consent_policy_version,
-      analysisNoticeId: row.consent_analysis_notice_id,
-      aiNoticeId: row.consent_ai_notice_id,
-      privacyNoticeUrl: row.consent_privacy_notice_url,
-      capturedAt: row.consent_captured_at
+      aiNoticeId: row.consent_ai_notice_id
     },
     consentPolicyVersion: row.consent_policy_version,
     aiConsentWithdrawnAt: row.ai_consent_withdrawn_at || null,
@@ -399,13 +400,6 @@ export function createInitialProfile(sessionId, consent, timestamp) {
     consent: [
       {
         consentId: randomId('consent'),
-        purpose: 'analysis',
-        granted: true,
-        policyVersion: consent.policyVersion,
-        capturedAt: timestamp
-      },
-      {
-        consentId: randomId('consent'),
         purpose: 'ai_processing',
         granted: consent.aiProcessing,
         policyVersion: consent.policyVersion,
@@ -524,23 +518,6 @@ export async function createSessionRecord(env, credential, consent, config, invi
       SELECT ?, 1, 1, ?, NULL, ?
       WHERE EXISTS (SELECT 1 FROM consumer_sessions WHERE id = ?)
     `).bind(credential.id, encryptedProfile, timestamp, credential.id),
-    db(env).prepare(`
-      INSERT INTO consumer_consent_events (
-        id, session_id, purpose, action, manifest_id, policy_version, notice_id,
-        privacy_notice_url, capture_method, created_at
-      )
-      SELECT ?, ?, 'analysis', 'granted', ?, ?, ?, ?, 'consumer_web', ?
-      WHERE EXISTS (SELECT 1 FROM consumer_sessions WHERE id = ?)
-    `).bind(
-      randomId('consent_event'),
-      credential.id,
-      consent.manifestId,
-      consent.policyVersion,
-      consent.analysisNoticeId,
-      consent.privacyNoticeUrl,
-      timestamp,
-      credential.id
-    ),
     db(env).prepare(`
       INSERT INTO consumer_consent_events (
         id, session_id, purpose, action, manifest_id, policy_version, notice_id,

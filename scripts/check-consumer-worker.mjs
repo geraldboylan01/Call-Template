@@ -425,7 +425,7 @@ assert.match(deployWorkflowSource, /jurisdiction !== "eu"/);
 assert.match(deployWorkflowSource, /must have the immutable EU jurisdiction before beta activation/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_CONSENT_MANIFEST_ID: "consumer-adviser-test-manifest-v1"/);
-assert.match(deployWorkflowSource, /CONSUMER_BETA_ANALYSIS_NOTICE_ID: "analysis-adviser-test-v1"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_ANALYSIS_NOTICE_ID: "privacy-ack-adviser-test-v2"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_AI_NOTICE_ID: "ai-adviser-test-v1"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_PRIVACY_NOTICE_URL: "https:\/\/planeir\.ie\/plan\/privacy\.html"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_SESSION_TTL_DAYS: "7"/);
@@ -838,7 +838,7 @@ assert.equal(disabledConfig.providerCostLimitEurMicros, 0);
 assert.equal(disabledConfig.handoffEnabled, false);
 
 const consent = {
-  analysis: true,
+  privacyNoticeAcknowledged: true,
   aiProcessing: false,
   adultConfirmed: true,
   educationOnlyAcknowledged: true,
@@ -887,13 +887,16 @@ assert.equal(publicConfig.bookingUrl, undefined, 'bootstrap must not disclose th
 assert.equal(publicConfig.handoff.policyUrl, 'https://planeir.ie/plan/privacy.html#handoff');
 assert.deepEqual(validateCreateSessionBody({ consent }, consentManifest), consent);
 for (const invalid of [
-  { ...consent, analysis: false },
+  { ...consent, privacyNoticeAcknowledged: false },
   { ...consent, adultConfirmed: false },
   { ...consent, educationOnlyAcknowledged: false },
   { ...consent, policyVersion: 'old' }
 ]) {
   assert.throws(() => validateCreateSessionBody({ consent: invalid }, consentManifest));
 }
+assert.equal(validateCreateSessionBody({
+  consent: { ...consent, privacyNoticeAcknowledged: undefined, analysis: true }
+}, consentManifest).privacyNoticeAcknowledged, true, 'cached analysis acknowledgement remains temporarily compatible');
 assert.throws(() => validateCreateSessionBody({
   consent: { ...consent, analysisNoticeId: 'analysis-v2' }
 }, consentManifest), (error) => error.code === 'consent_policy_outdated');
