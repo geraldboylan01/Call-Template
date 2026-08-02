@@ -233,7 +233,14 @@ if (command === 'say') {
   const captured = turns.at(-1).acceptedFactIds;
   const rejected = turns.at(-1).rejectedFactIds;
   if (captured.length) console.info(`\ncaptured  : ${captured.join(', ')}`);
-  if (rejected.length) console.info(`NOT saved : ${rejected.join(', ')}   <-- worth a look`);
+  if (rejected.length) {
+    // WHY it was rejected is the whole finding. "NOT saved: pension_current_value"
+    // tells you nothing you can act on; the error code tells you where to look.
+    console.info('NOT saved :');
+    for (const outcome of (diagnostics.candidateOutcomes || []).filter((item) => !item.accepted)) {
+      console.info(`  ${outcome.factId || '(no factId)'} — ${outcome.errorCode || outcome.reason || 'no reason given'}`);
+    }
+  }
   if (diagnostics.plannerErrorCode) console.info(`planner   : ${diagnostics.plannerErrorCode}`);
   printState(diagnostics);
   // Only findings that are new this turn, so the same loop is not re-reported

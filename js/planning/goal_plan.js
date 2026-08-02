@@ -408,6 +408,28 @@ function reasonFor(selection) {
   return `Selected directly for ${goals}.`;
 }
 
+/**
+ * Goals that describe one concern in different words.
+ *
+ * Only used to decide whether the client is really facing a CHOICE. Two goals
+ * in the same family are one concern stated twice, and asking someone to pick
+ * between them is asking them to arbitrate a distinction they never drew.
+ */
+const GOAL_FAMILIES = Object.freeze({
+  retire: 'retirement',
+  retire_early: 'retirement',
+  improve_pension: 'retirement',
+  buy_home: 'property',
+  optimise_mortgage: 'property',
+  manage_loan: 'debt',
+  build_wealth: 'wealth',
+  transfer_wealth: 'wealth'
+});
+
+export function goalFamily(goalType) {
+  return GOAL_FAMILIES[goalType] || goalType;
+}
+
 export function toPublicGoalAssessment(assessment) {
   if (!assessment || typeof assessment !== 'object') return null;
   return Object.freeze({
@@ -590,7 +612,18 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   // primary — but never let the unanswered question empty the plan. The ranking
   // above has already produced a workable provisional set, and the answer
   // re-ranks it rather than creating it.
-  const requiresGoalPriorityQuestion = supportedGoalTypes.length > 1 && !selectedFocus;
+  //
+  // GOALS IN THE SAME FAMILY ARE ONE CHOICE, NOT SEVERAL. A single stated aim
+  // routinely lands as two or three overlapping goal types across a call: an
+  // agent-driven call as a Cork nurse said "I'd love to go part-time at 60"
+  // once and accumulated retire_early, improve_pension and retire. Asking her
+  // to choose between those three would be asking her to arbitrate a
+  // distinction she never drew, about words she never used.
+  //
+  // The goals themselves are kept — they carry real routing information. It is
+  // only the QUESTION that is suppressed, because that is where the harm is.
+  const distinctGoalConcerns = new Set(supportedGoalTypes.map(goalFamily));
+  const requiresGoalPriorityQuestion = distinctGoalConcerns.size > 1 && !selectedFocus;
 
   // Goals whose analyses did not fit, plus goals with no consumer analysis at
   // all. Recorded so a later cycle can pick them up; never deleted.

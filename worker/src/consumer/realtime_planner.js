@@ -12,7 +12,15 @@ import {
   normalizeStatePensionFraction,
   publicIrishStatePensionRule
 } from '../../../js/planning/ireland_rules.js';
-import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
+import {
+  getSemanticFactDefinition,
+  listSemanticFactDefinitions
+} from '../../../js/planning/semantic_facts.js';
+
+/** Every semantic fact the engine can actually accept, for the planner schema. */
+const SEMANTIC_FACT_IDS = Object.freeze(
+  listSemanticFactDefinitions().map((definition) => definition.factId).sort()
+);
 import { buildRealtimeFactReadBack } from './realtime_fact_mapper.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
@@ -33,6 +41,16 @@ export const FINANCIAL_POSITION_KINDS = Object.freeze([
   'mortgage',
   'loan',
   'business',
+  // INCOME IS A POSITION. It had no route at all: the only path was the
+  // income_sources semantic fact, which needs a structured entity with a stable
+  // short name, and the planner never produced one -- so a client stating their
+  // salary in plain words lost it every time. An agent-driven call as a Cork
+  // nurse gave both household incomes twice and neither survived.
+  //
+  // Positions already solve exactly this: stablePositionId derives the entity
+  // id from the label, so the planner never has to invent one. Income belongs
+  // in the same machinery rather than in a parallel rule of its own.
+  'income',
   'other'
 ]);
 
@@ -62,7 +80,18 @@ const PLANNER_SCHEMA = Object.freeze({
         type: 'object',
         properties: {
           operation: { type: 'string', enum: ['upsert', 'correct', 'remove'] },
-          factId: { type: 'string', maxLength: 120 },
+          // THE CATALOGUE IS THE SCHEMA. A free string here let the planner
+          // invent plausible-looking ids -- partner_annual_income,
+          // primary_annual_income, partner_current_age -- none of which exist,
+          // so every one was rejected downstream and the client's answer was
+          // silently lost. An agent-driven call as a Cork nurse gave both
+          // household incomes in one sentence and neither survived.
+          //
+          // Structured outputs enforce an enum, so an invented id becomes
+          // impossible rather than merely refused. The list is derived, never
+          // hand-maintained: a new semantic fact is usable the moment it is
+          // added to the catalogue.
+          factId: { type: 'string', enum: SEMANTIC_FACT_IDS },
           valueJson: { type: 'string', maxLength: 3000 },
           certainty: { type: 'string', enum: ['exact', 'approximate', 'range', 'unknown'] },
           evidenceText: { type: 'string', maxLength: 500 },
@@ -88,6 +117,10 @@ const PLANNER_SCHEMA = Object.freeze({
           owner: { type: 'string', enum: ['primary', 'partner', 'joint', 'household', 'unknown'] },
           propertyUse: { type: 'string', enum: ['home', 'rental', 'farm', 'business', 'other', 'unknown'] },
           pensionType: { type: 'string', enum: ['occupational', 'prsa', 'personal', 'defined_benefit', 'other', 'unknown'] },
+          incomeType: {
+            type: 'string',
+            enum: ['employment', 'self_employment', 'rental', 'pension', 'state_pension', 'other', 'unknown']
+          },
           agricultural: { type: 'string', enum: ['true', 'false', 'unknown'] },
           certainty: { type: 'string', enum: ['exact', 'approximate', 'range', 'unknown'] },
           evidenceText: { type: 'string', maxLength: 500 },
@@ -95,7 +128,7 @@ const PLANNER_SCHEMA = Object.freeze({
         },
         required: [
           'operation', 'kind', 'label', 'entityId', 'linkedEntityId', 'amountJson', 'country',
-          'owner', 'propertyUse', 'pensionType', 'agricultural', 'certainty',
+          'owner', 'propertyUse', 'pensionType', 'incomeType', 'agricultural', 'certainty',
           'evidenceText', 'correctionTarget'
         ],
         additionalProperties: false
@@ -505,14 +538,51 @@ export function plannerContextSlice(context) {
   };
 }
 
-export async function extractRealtimePlannerTurn({
+/**
+ * ONE RETRY, ON A BOUNDED TOTAL BUDGET.
+ *
+ * A planner timeout costs the client's whole answer: the turn falls back to the
+ * regex extractor, which captures a fraction of what was said. An agent-driven
+ * call as a Cork nurse timed out twice in ten turns, and one of those turns was
+ * her longest -- retirement age, target income, house value, mortgage, savings,
+ * all of it lost.
+ *
+ * The retry is bounded rather than free because this runs on a LIVE VOICE CALL
+ * as well as on text. Two full 8s attempts back to back would be sixteen
+ * seconds of dead air. So the second attempt gets only what is left of a total
+ * budget, and if that is too little to be worth trying, the fallback runs
+ * immediately as before.
+ *
+ * Both transports get exactly this behaviour. Retrying only on text would make
+ * the agent transport see fewer timeouts than the voice journey it exists to
+ * test, which is worse than not retrying at all.
+ */
+export async function extractRealtimePlannerTurn(options) {
+  const { config } = options;
+  const firstAttempt = Number.isSafeInteger(options.timeoutMs)
+    ? options.timeoutMs
+    : config.realtimePlannerTimeoutMs;
+  try {
+    return await requestPlannerExtraction({ ...options, timeoutMs: firstAttempt });
+  } catch (error) {
+    if (error?.code !== 'realtime_planner_timeout') throw error;
+    const remaining = config.realtimePlannerTotalBudgetMs - firstAttempt;
+    // Below a couple of seconds a retry cannot finish; spending the client's
+    // time on one that will only time out again is worse than falling back now.
+    if (remaining < 2_000) throw error;
+    return requestPlannerExtraction({ ...options, timeoutMs: remaining, retryOfTimeout: true });
+  }
+}
+
+async function requestPlannerExtraction({
   env,
   config,
   context,
   sourceTurnId,
   transcript,
   recentTurns = [],
-  timeoutMs = null
+  timeoutMs = null,
+  retryOfTimeout = false
 }) {
   if (!config.realtimeConversationV2Enabled) {
     throw new ConsumerError(503, 'realtime_planner_disabled', 'The silent meeting planner is not enabled.');
@@ -668,6 +738,7 @@ export async function extractRealtimePlannerTurn({
       reasoningEffort,
       providerRequestId,
       providerResponseId,
+      retryOfTimeout,
       inputTokens: Number(usage.input_tokens || 0),
       outputTokens: Number(usage.output_tokens || 0),
       cachedInputTokens: Number(usage.input_tokens_details?.cached_tokens || 0),
@@ -766,6 +837,22 @@ export function positionCandidatesToRealtimeFacts(candidates = []) {
         type: candidate.kind,
         ...(linked ? { linkedPropertyId: linked } : {})
       };
+    } else if (candidate.kind === 'income') {
+      factId = 'income_sources';
+      // Gross unless the client clearly said take-home: an unqualified salary
+      // figure in Ireland is a gross one, and guessing net would understate
+      // every projection built on it.
+      value = {
+        ...common,
+        // A stated income with no qualifier is a salary. Leaving the type unset
+        // fails the entity guard outright, which is how the figure was being
+        // lost; the client can correct the type in visual review, and every
+        // module that reads income cares about the amount first.
+        type: ['employment', 'self_employment', 'rental', 'pension', 'state_pension', 'other']
+          .includes(candidate.incomeType) ? candidate.incomeType : 'employment',
+        ...(candidate.amount ? { grossAnnual: candidate.amount } : {})
+      };
+      delete value.amount;
     } else if (candidate.kind === 'business') {
       factId = 'business_position';
       value = { ...common, ...(typeof candidate.agricultural === 'boolean' ? { agricultural: candidate.agricultural } : {}) };

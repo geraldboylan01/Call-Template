@@ -278,6 +278,38 @@ export function realtimeAssumptionInstructions(state = {}) {
   ];
 }
 
+/**
+ * What the meeting is allowed to claim it has.
+ *
+ * THE ASSISTANT MAY ONLY SAY A FIGURE IS CAPTURED IF IT IS ON THE PROFILE.
+ *
+ * The renderer writes from the conversation, so it naturally confirms back
+ * whatever it just heard -- including facts the engine refused. An agent-driven
+ * call as a Cork nurse produced the worst version of this: she gave her pension
+ * contribution rates, was told "that confirms the contribution rates, so I
+ * won't ask for them again", and neither figure had been stored. It asked again
+ * on the next turn. She would have hung up believing she had given everything.
+ *
+ * Naming what IS recorded is deliberately more useful to the model than a
+ * blanket prohibition: the brief already carries the held facts, so the rule
+ * needs no per-turn plumbing and lands identically on both transports.
+ */
+export function realtimeRecordedFactInstructions(state = {}) {
+  const recorded = (state.meetingBrief?.understood || [])
+    .map((fact) => (typeof fact?.label === 'string' ? fact.label.trim() : ''))
+    .filter(Boolean)
+    .slice(0, 16);
+  const held = recorded.length
+    ? `The only details currently on this client's record are: ${recorded.join('; ')}.`
+    : 'Nothing is on this client\'s record yet.';
+  return [
+    `${held} Acknowledge what the client just said in your own words, but NEVER state or`
+      + ' imply that any other figure has been captured, confirmed, saved or noted, and never'
+      + ' promise not to ask for something again. If a figure they gave is not on that list,'
+      + ' the engine did not accept it, and saying otherwise misleads them.'
+  ];
+}
+
 export function buildRealtimeConversationV2Instructions(state = {}, allowedModuleIds = []) {
   const brief = state.meetingBrief && typeof state.meetingBrief === 'object'
     ? JSON.stringify(state.meetingBrief).slice(0, 12_000)
@@ -310,6 +342,7 @@ export function buildRealtimeConversationV2Instructions(state = {}, allowedModul
     // instruction pack, not in the voice session, because the agent transport is
     // the tester for the voice journey: a rule only one of them follows tests
     // nothing.
+    ...realtimeRecordedFactInstructions(state),
     ...realtimeAssumptionInstructions(state),
     `Current phase guidance: ${realtimeV2PhaseGuidance(state)}`,
     `Signed MeetingBriefV2: ${brief}`

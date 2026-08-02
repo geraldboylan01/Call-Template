@@ -26,6 +26,12 @@ import {
   normalizeHouseholdProfile
 } from '../js/planning/index.js';
 import { containsInternalModuleTerminology } from '../js/planning/module_offers.js';
+import { goalFamily } from '../js/planning/goal_plan.js';
+import {
+  FINANCIAL_POSITION_KINDS,
+  positionCandidatesToRealtimeFacts
+} from '../worker/src/consumer/realtime_planner.js';
+import { listSemanticFactDefinitions } from '../js/planning/semantic_facts.js';
 import { describeConversationState } from '../worker/src/consumer/conversation.js';
 import { composeMeetingBrief } from '../worker/src/consumer/realtime_planner.js';
 import { buildPlanningStateSlice } from '../worker/src/consumer/planning_context.js';
@@ -36,7 +42,8 @@ import {
 import { agentToolsForState } from '../worker/src/consumer/agent_text_channel.js';
 import {
   buildRealtimeConversationV2Instructions,
-  realtimeAssumptionInstructions
+  realtimeAssumptionInstructions,
+  realtimeRecordedFactInstructions
 } from '../worker/src/consumer/realtime_provider.js';
 import {
   toAgentConsumerView,
@@ -271,6 +278,117 @@ async function agentContext(profile, config = CONFIG) {
   assert.doesNotMatch(realtimeSession, /assumptionNotices/,
     'the voice session must not author its own copy of the assumption instruction');
   pass('assumption and dropped-analysis notices come from the one shared instruction pack');
+}
+
+{
+  // THE APP MUST NOT CLAIM IT SAVED SOMETHING IT REFUSED. A live call as a Cork
+  // nurse gave her pension contribution rates, was told "that confirms the
+  // contribution rates, so I won't ask for them again", and neither figure had
+  // been stored. It asked again on the next turn.
+  const withFacts = realtimeRecordedFactInstructions({
+    meetingBrief: { understood: [{ label: 'Your age' }, { label: 'Retirement goal' }] }
+  });
+  assert.equal(withFacts.length, 1);
+  assert.match(withFacts[0], /only details currently on this client's record are: Your age; Retirement goal/);
+  assert.match(withFacts[0], /NEVER state or imply that any other figure has been captured/);
+  assert.match(withFacts[0], /never promise not to ask for something again/,
+    'the exact phrasing that misled a real caller is named');
+  const empty = realtimeRecordedFactInstructions({});
+  assert.match(empty[0], /Nothing is on this client's record yet/,
+    'an empty record must still constrain what may be claimed, not fall silent');
+  assert.ok(
+    buildRealtimeConversationV2Instructions({
+      meetingBrief: { understood: [{ label: 'Your age' }] }
+    }).includes(withFacts[0].replace('; Retirement goal', '')),
+    'the rule lives in the shared pack, so both transports obey it'
+  );
+  pass('the meeting may only claim a figure is captured if it is actually on the record');
+}
+
+{
+  // THE CATALOGUE IS THE SCHEMA. The planner invented partner_annual_income,
+  // primary_annual_income, partner_current_age and partner_employment_context
+  // in a single live turn; none exist, so a client's stated household incomes
+  // were rejected and lost. An enum makes that impossible rather than refused.
+  const source = readFileSync(`${root}/worker/src/consumer/realtime_planner.js`, 'utf8');
+  assert.match(source, /factId: \{ type: 'string', enum: SEMANTIC_FACT_IDS \}/,
+    'the planner schema must constrain factId to the real catalogue');
+  assert.doesNotMatch(source, /factId: \{ type: 'string', maxLength: 120 \}/,
+    'a free-string factId lets the planner invent ids that are silently dropped');
+  assert.match(source, /listSemanticFactDefinitions\(\)\.map\(\(definition\) => definition\.factId\)/,
+    'the list is derived from the catalogue, never hand-maintained');
+  const catalogue = listSemanticFactDefinitions().map((item) => item.factId);
+  for (const invented of [
+    'partner_annual_income', 'primary_annual_income', 'partner_current_age', 'partner_employment_context'
+  ]) {
+    assert.ok(!catalogue.includes(invented), `${invented} is not a real fact and must be unreachable`);
+  }
+  for (const real of ['income_sources', 'person_current_age', 'employment_context']) {
+    assert.ok(catalogue.includes(real), `${real} is the id the planner should have used`);
+  }
+  pass('the planner can only name semantic facts that actually exist');
+}
+
+{
+  // INCOME HAD NO WORKING ROUTE. The only path was the income_sources entity
+  // fact, which needs a stable short name the planner never produced, so a
+  // client stating their salary in plain words lost it every time. Income is
+  // now a position, reusing the id-derivation every other position already has.
+  assert.ok(FINANCIAL_POSITION_KINDS.includes('income'), 'income must be a position kind');
+  const mapped = positionCandidatesToRealtimeFacts([
+    {
+      candidateId: 'c1', kind: 'income', operation: 'upsert', label: 'Mary salary',
+      owner: 'primary', incomeType: 'employment',
+      amount: { amount: 58_000, currency: 'EUR' }, certainty: 'exact', evidenceText: 'on about 58,000'
+    },
+    {
+      candidateId: 'c2', kind: 'income', operation: 'upsert', label: 'Tom salary',
+      owner: 'partner', incomeType: 'unknown',
+      amount: { amount: 41_000, currency: 'EUR' }, certainty: 'exact', evidenceText: 'earns about 41,000'
+    }
+  ]);
+  assert.equal(mapped.length, 2);
+  assert.deepEqual(mapped.map((item) => item.factId), ['income_sources', 'income_sources']);
+  assert.equal(mapped[0].value.entityId, 'mary_salary', 'the id is derived from the label, not invented');
+  assert.deepEqual(mapped[0].value.grossAnnual, { amount: 58_000, currency: 'EUR' },
+    'a stated salary is gross — assuming net would understate every projection built on it');
+  assert.ok(!('amount' in mapped[0].value), 'the raw amount must not shadow grossAnnual');
+  assert.equal(mapped[0].value.type, 'employment');
+  assert.equal(mapped[1].value.type, 'employment',
+    'an unqualified income type must not be left unset, which failed the entity guard outright');
+  assert.equal(mapped[1].value.owner, 'partner');
+  pass('a plainly stated salary now reaches the profile, for each owner');
+}
+
+{
+  // ONE RETRY, BOUNDED. A planner timeout costs the client's whole answer; two
+  // full attempts back to back would be dead air on a live voice call.
+  const source = readFileSync(`${root}/worker/src/consumer/realtime_planner.js`, 'utf8');
+  assert.match(source, /realtimePlannerTotalBudgetMs - firstAttempt/,
+    'the retry gets only what is left of a total budget');
+  assert.match(source, /if \(remaining < 2_000\) throw error;/,
+    'a retry too short to finish must fall back immediately instead');
+  assert.match(source, /if \(error\?\.code !== 'realtime_planner_timeout'\) throw error;/,
+    'only a timeout is retried — a bad request must not be sent twice');
+  const budgets = getConsumerConfig({
+    CONSUMER_JOURNEY_ENABLED: 'false', CONSUMER_REALTIME_PLANNER_TIMEOUT_MS: '8000'
+  });
+  assert.ok(budgets.realtimePlannerTotalBudgetMs > budgets.realtimePlannerTimeoutMs,
+    'the total budget must leave room for a retry');
+  pass('a planner timeout is retried once, on a bounded budget, on both transports');
+}
+
+{
+  // GOALS IN THE SAME FAMILY ARE ONE CHOICE. "I'd love to go part-time at 60"
+  // accumulated retire_early, improve_pension and retire in one live call.
+  assert.equal(goalFamily('retire'), goalFamily('retire_early'));
+  assert.equal(goalFamily('retire'), goalFamily('improve_pension'));
+  assert.equal(goalFamily('buy_home'), goalFamily('optimise_mortgage'));
+  assert.notEqual(goalFamily('retire'), goalFamily('fund_education'),
+    'genuinely different concerns must still be a real choice');
+  assert.equal(goalFamily('fund_education'), 'fund_education',
+    'a goal with no family is its own concern');
+  pass('overlapping goal types are one concern, so the client is not asked to arbitrate them');
 }
 
 {

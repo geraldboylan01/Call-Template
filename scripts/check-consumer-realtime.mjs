@@ -2875,6 +2875,44 @@ assert.equal(partnerStatePension.canonicalValue.statePensionFraction.partner_rea
 assert.equal(partnerStatePension.canonicalValue.includeStatePension.partner_realtime, true);
 assert.ok(!factProfile.pensions.some((pension) => pension.pensionId === 'pension_realtime_primary'));
 
+// ONE PENSION IS NOT AMBIGUOUS. A spoken figure with no entity id must attach
+// to the single position on record. Refusing it made the meeting ask a question
+// it could never accept an answer to: an agent-driven call as a Cork nurse was
+// asked for her contribution rate four times, had it confirmed back each time,
+// and none of it was stored.
+for (const [factId, value, path, expected] of [
+  ['pension_employee_contribution_rate', 6.5, '/pensions/0/employeeContributionRate', 0.065],
+  ['pension_employer_contribution_rate', 14, '/pensions/0/employerContributionRate', 0.14]
+]) {
+  const mapped = mapRealtimeProposalFact(factProfile, { factId, value, certainty: 'exact' });
+  assert.equal(mapped.fieldPath, path, `${factId} must attach to the only pension on record`);
+  assert.equal(mapped.canonicalValue, expected);
+}
+// A stated range for that pension now reaches the midpoint rule, which the gate
+// used to block before it could run.
+const singlePensionRange = mapRealtimeProposalFact(factProfile, {
+  factId: 'pension_current_value',
+  value: { min: 180_000, max: 220_000 },
+  certainty: 'range'
+});
+assert.deepEqual(singlePensionRange.displayValue, { amount: 200_000, currency: 'EUR' });
+assert.deepEqual(singlePensionRange.derivedFromRange, {
+  min: { amount: 180_000, currency: 'EUR' }, max: { amount: 220_000, currency: 'EUR' }
+});
+// The guard still does its job where it was actually needed: with TWO pensions
+// and no entity id, an aggregate could overwrite the wrong one.
+const twoPensions = {
+  ...factProfile,
+  pensions: [factProfile.pensions[0], { ...factProfile.pensions[0], pensionId: 'pension_realtime_second' }]
+};
+assert.throws(
+  () => mapRealtimeProposalFact(twoPensions, {
+    factId: 'pension_employee_contribution_rate', value: 6.5, certainty: 'exact'
+  }),
+  (error) => error.code === 'realtime_pension_review_required',
+  'with more than one pension an unattributed aggregate must still be refused'
+);
+
 const storedFactIds = sqliteCommand(databasePath, 'all', {
   sql: 'SELECT fact_id FROM consumer_realtime_fact_proposals WHERE session_id = ?',
   values: [factSessionId]

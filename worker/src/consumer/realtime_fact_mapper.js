@@ -660,6 +660,22 @@ function selectedEntityId(value, prefix, collection, idKey) {
 
 function pensionIndex(profile, value) {
   const selectedId = selectedEntityId(value, 'pension', profile.pensions, 'pensionId');
+  // ONE PENSION IS NOT AMBIGUOUS. The guard below exists so a spoken aggregate
+  // cannot silently overwrite the wrong position when a client holds several.
+  // With exactly one on record there is nothing to confuse: "I pay 6.5% in"
+  // can only mean that one. Refusing it created a question the engine could
+  // never accept an answer to -- an agent-driven call as a Cork nurse asked
+  // for her contribution rate four times, confirmed the answer back to her
+  // each time, and stored nothing.
+  //
+  // This is the same rule liabilityIndex already applies to a single debt.
+  if (!selectedId && profile.pensions.length === 1) {
+    return {
+      stableId: profile.pensions[0].pensionId,
+      index: 0,
+      existing: profile.pensions[0]
+    };
+  }
   const stableId = selectedId || 'pension_realtime_primary';
   const index = stableCollectionIndex(profile.pensions, (pension) => pension.pensionId === stableId);
   if (!selectedId && index === profile.pensions.length && profile.pensions.length > 0) {
