@@ -60,7 +60,7 @@ function usage(message = '') {
   console.error(`Drive a Planéir call one turn at a time.
 
   start [--caller=<file>] [--id=<name>]   begin a call, print the opening question
-  say "<what you said>"                   one turn; prints the reply and what it captured
+  say "<what you said>" [--call=<id>]     one turn; prints the reply and what it captured
   state                                   where the call currently stands
   transcript                              the whole conversation so far
   finish                                  confirm the plan and RUN the analyses
@@ -71,7 +71,22 @@ so you can stay in character. The app never sees it.`);
   process.exit(message ? 1 : 0);
 }
 
+/**
+ * Which call a command applies to.
+ *
+ * `--call=<id>` targets one explicitly, so several calls can run at once --
+ * necessary when comparing how the same person fares as an easy, a medium and
+ * a difficult caller, where running them one after another would let a fix or
+ * a fluke in one bleed into the reading of the next. Without it, the most
+ * recently started call is used.
+ */
 function readPointer() {
+  const named = flag('call');
+  if (named) {
+    const path = join(CALL_DIR, `${named}-pointer.json`);
+    if (!existsSync(path)) usage(`No call named "${named}". Start it first.`);
+    return JSON.parse(readFileSync(path, 'utf8'));
+  }
   if (!existsSync(POINTER)) usage('No call in progress. Run "start" first.');
   return JSON.parse(readFileSync(POINTER, 'utf8'));
 }
@@ -156,6 +171,7 @@ if (command === 'start') {
 
   const pointer = { callId, databasePath, sessionId, meetingId, callerPath: callerPath || null };
   writeFileSync(POINTER, `${JSON.stringify(pointer, null, 2)}\n`);
+  writeFileSync(join(CALL_DIR, `${callId}-pointer.json`), `${JSON.stringify(pointer, null, 2)}\n`);
   writeFileSync(join(CALL_DIR, `${callId}-transcript.json`), '[]\n');
   writeTurns(pointer, []);
 

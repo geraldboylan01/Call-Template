@@ -313,13 +313,42 @@ export function mapPlannerExtractionToCandidates(extraction) {
   // positions those people hold, then the figures that attach to a position.
   const establishesPerson = (candidate) => candidate?.factId === 'partner_person';
   const semanticFacts = extraction.semanticFacts || [];
-  return [
+  const ordered = [
     ...mappedGoals,
     ...semanticFacts.filter(establishesPerson),
     ...mappedPositions,
     ...semanticFacts.filter((candidate) => !establishesPerson(candidate)),
     ...mappedCompletions
-  ].slice(0, MAX_PLANNER_CANDIDATES);
+  ];
+
+  // NAMING A PARTNER'S MONEY ESTABLISHES THE PARTNER.
+  //
+  // Every partner-owned fact is refused until partner_person exists, and the
+  // planner does not reliably emit it: asked to "include Aoife in the
+  // planning", one turn produced her age and her employment and no
+  // partner_person at all, so both were refused and the partner never came into
+  // being. A later turn then refused her €500,000 pension for the same reason.
+  //
+  // Waiting for the model to remember a bookkeeping step is the wrong shape.
+  // A fact explicitly owned by the partner IS the evidence that a partner
+  // exists, so the household gains one here. Applying partner_person when a
+  // partner is already present is idempotent -- it resolves to the same person
+  // -- so this is safe to synthesise whenever it is absent.
+  const ownedByPartner = (candidate) => (
+    candidate?.value?.owner === 'partner' || candidate?.value?.ownerId === 'partner'
+  );
+  if (ordered.some(ownedByPartner) && !ordered.some(establishesPerson)) {
+    ordered.unshift({
+      candidateId: 'derived-partner-person',
+      operation: 'upsert',
+      factId: 'partner_person',
+      value: { include: true },
+      certainty: 'approximate',
+      evidenceText: 'The client attributed a position or figure to their partner.',
+      correctionTarget: ''
+    });
+  }
+  return ordered.slice(0, MAX_PLANNER_CANDIDATES);
 }
 
 /**
