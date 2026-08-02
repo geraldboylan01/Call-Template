@@ -4,9 +4,11 @@ import { resolveSemanticFact } from '../../../js/planning/semantic_facts.js';
 function acknowledgedMissing(profile, item) {
   const completionFacts = profile?.assumptions?.values?.completionFacts || {};
   const factId = resolveSemanticFact(item, { profile }).factId;
-  if (completionFacts.unknownFactIds?.[factId] === true
-    || completionFacts.rangedFactValues?.[factId]) {
-    return true;
+  if (completionFacts.rangedFactValues?.[factId]) return true;
+  if (completionFacts.unknownFactIds?.[factId] === true) {
+    // A single "I don't know" is not the end of it: the meeting comes back once
+    // to ask for an estimate. Only a declined estimate settles the fact.
+    return completionFacts.estimateDeclinedFactIds?.[factId] === true;
   }
   if (item?.importance === 'required') return false;
   const path = String(item?.fieldPath || '');

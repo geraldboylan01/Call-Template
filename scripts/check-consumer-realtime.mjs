@@ -34,6 +34,10 @@ import {
 import { requestAdviserHandoff } from '../worker/src/consumer/handoff.js';
 import { buildQuestionPlan as buildWorkerQuestionPlan } from '../worker/src/consumer/question_plan.js';
 import {
+  applyMappedRealtimeFact,
+  mapRealtimeProposalFact
+} from '../worker/src/consumer/planning_facts.js';
+import {
   buildConfirmedRealtimeFactSummary,
   buildRealtimeFactReadBack,
   mapRealtimeFact
@@ -2586,7 +2590,7 @@ assert.equal(factProfile.assumptions.values.completionFacts.unknownFactIds.month
 assert.ok(buildConfirmedRealtimeFactSummary(factProfile).some((fact) => (
   fact.factId === 'monthly_spending' && fact.value === 'Unknown' && fact.certainty === 'unknown'
 )));
-assert.equal(buildWorkerQuestionPlan(factProfile, [{
+const spendingRecommendation = [{
   moduleId: 'liquidity_analysis',
   readiness: {
     requiredMissing: [{
@@ -2596,7 +2600,50 @@ assert.equal(buildWorkerQuestionPlan(factProfile, [{
       blockingModuleIds: ['liquidity_analysis']
     }]
   }
-}]).factId, null);
+}];
+// ONE estimate prompt. A first "I don't know" on a required figure earns one
+// more question -- a rough idea or a range -- because clients often have one
+// and an approximate figure still runs the analysis.
+assert.equal(
+  buildWorkerQuestionPlan(factProfile, spendingRecommendation).factId,
+  'monthly_spending',
+  'a first "I don\u2019t know" must earn one estimate prompt'
+);
+assert.equal(factProfile.assumptions.values.completionFacts.estimateDeclinedFactIds?.monthly_spending, undefined);
+
+// Saying "I don't know" a SECOND time is the client declining that estimate,
+// and that is what settles the fact. It is derived from what is already on
+// record, so no separate bookkeeping write is needed and both transports reach
+// it identically.
+const declinedSpendingFact = {
+  factId: 'monthly_spending', value: null, certainty: 'unknown'
+};
+const declinedSpendingProfile = applyMappedRealtimeFact(
+  factProfile,
+  declinedSpendingFact,
+  mapRealtimeProposalFact(factProfile, declinedSpendingFact)
+);
+assert.equal(
+  declinedSpendingProfile.assumptions.values.completionFacts.estimateDeclinedFactIds.monthly_spending,
+  true
+);
+assert.equal(
+  buildWorkerQuestionPlan(declinedSpendingProfile, spendingRecommendation).factId,
+  null,
+  'a declined estimate must not be asked a third time'
+);
+// Volunteering the figure later reopens everything it was blocking.
+const recoveredFact = { factId: 'monthly_spending', value: { amount: 3_200, currency: 'EUR' }, certainty: 'exact' };
+const recoveredProfile = applyMappedRealtimeFact(
+  declinedSpendingProfile,
+  recoveredFact,
+  mapRealtimeProposalFact(declinedSpendingProfile, recoveredFact)
+);
+assert.equal(
+  recoveredProfile.assumptions.values.completionFacts.estimateDeclinedFactIds.monthly_spending,
+  undefined,
+  'a figure given later must clear the declined-estimate marker'
+);
 
 const rangeEvidenceId = 'item_fact_range_001';
 factDurable.finalizedEvidenceItems.add(rangeEvidenceId); factDurable.latestFinalizedEvidenceItemId = rangeEvidenceId;

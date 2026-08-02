@@ -116,6 +116,22 @@ function assertExpectations(scenario, mode, run) {
       for (const factId of turn.acceptedFactIds) answered.add(factId);
     }
   }
+  // ONE estimate prompt before anything is given up on. A single "I don't know"
+  // on an essential figure must NOT drop the analysis: the meeting comes back
+  // once for a rough idea or a range, because clients often have one.
+  if (expected.mustAskForEstimateAfterTurn) {
+    const turn = run.turns[expected.mustAskForEstimateAfterTurn - 1];
+    check(scenario.id, mode,
+      'a first "I don\u2019t know" must earn one estimate prompt, not an immediate drop',
+      Boolean(turn?.questionFactId),
+      `question after turn ${expected.mustAskForEstimateAfterTurn}: ${turn?.questionFactId}`);
+    for (const moduleId of expected.mustSelectModuleIds || []) {
+      check(scenario.id, mode,
+        `${moduleId} must survive a first "I don\u2019t know" while the estimate is outstanding`,
+        turn && turn.analyses.includes(moduleId),
+        `analyses after turn ${expected.mustAskForEstimateAfterTurn}: ${JSON.stringify(turn?.analyses)}`);
+    }
+  }
   // An essential input the client does not have DROPS the analysis, freeing its
   // slot -- and the drop reverses by itself when they later supply the figure.
   if (expected.blocksThenRecovers) {

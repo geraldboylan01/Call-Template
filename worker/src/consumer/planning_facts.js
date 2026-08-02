@@ -72,9 +72,22 @@ function completionFactMapping(profile, fact, normalizedRange = null) {
     },
     rangedFactValues: {
       ...(profile.assumptions?.values?.completionFacts?.rangedFactValues || {})
+    },
+    estimateDeclinedFactIds: {
+      ...(profile.assumptions?.values?.completionFacts?.estimateDeclinedFactIds || {})
     }
   };
   if (fact.certainty === 'unknown') {
+    // ONE estimate prompt, then we stop asking. The first "I don't know" is not
+    // final: the meeting comes back once for a rough idea or a range, because
+    // clients very often have one and an approximate figure still runs the
+    // analysis. A SECOND "I don't know" for the same fact is the client
+    // declining that estimate, and that is what makes the answer final --
+    // derived from what is already on record, so no separate bookkeeping write
+    // is needed and both transports reach it identically.
+    if (completionFacts.unknownFactIds[fact.factId] === true) {
+      completionFacts.estimateDeclinedFactIds[fact.factId] = true;
+    }
     completionFacts.unknownFactIds[fact.factId] = true;
     delete completionFacts.rangedFactValues[fact.factId];
     return {
@@ -85,6 +98,7 @@ function completionFactMapping(profile, fact, normalizedRange = null) {
     };
   }
   delete completionFacts.unknownFactIds[fact.factId];
+  delete completionFacts.estimateDeclinedFactIds[fact.factId];
   completionFacts.rangedFactValues[fact.factId] = normalizedRange;
   return {
     fieldPath: '/assumptions/values/completionFacts',
@@ -148,6 +162,7 @@ function clearCompletionFactMarker(profile, factId, fieldPath = null) {
   const completionFacts = profile.assumptions?.values?.completionFacts;
   if (!completionFacts) return profile;
   if (completionFacts.unknownFactIds) delete completionFacts.unknownFactIds[factId];
+  if (completionFacts.estimateDeclinedFactIds) delete completionFacts.estimateDeclinedFactIds[factId];
   if (completionFacts.rangedFactValues) delete completionFacts.rangedFactValues[factId];
   if (fieldPath && completionFacts.confirmedNonePaths) {
     delete completionFacts.confirmedNonePaths[fieldPath];

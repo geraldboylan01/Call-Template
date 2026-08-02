@@ -441,7 +441,7 @@
     },
     {
       "id": "client_does_not_know_a_value",
-      "note": "The full missing-essential-input journey. Found by an agent-driven live run that saw the meeting ask 'roughly what is your home worth?' four times. Turn 2 records the gap and DROPS the analysis that needed it, freeing its capacity slot. Turn 3 proves the drop reverses by itself: the client volunteers the figure and the analysis returns.",
+      "note": "The full missing-essential-input journey. Found by an agent-driven live run that saw the meeting ask 'roughly what is your home worth?' four times. Turn 2 records the gap but does NOT give up: one 'I don't know' earns one estimate prompt, because a rough figure still runs the analysis. Turn 3 is the client declining that estimate, which drops the analysis and frees its capacity slot. Turn 4 proves the drop reverses by itself: the client volunteers the figure and the analysis returns.",
       "client": {
         "identity": "40, homeowner who does not know their house value",
         "circumstances": "owns a home, has never had it valued",
@@ -450,7 +450,8 @@
         "style": "helpful but vague about figures",
         "behaviours": [
           "says you do not know when you do not know",
-          "never invents a number"
+          "never invents a number",
+          "cannot even guess a range for the house value when first pressed"
         ]
       },
       "turns": [
@@ -492,6 +493,18 @@
           }
         },
         {
+          "say": "I really couldn't even guess \u2014 I've nothing to compare it to.",
+          "extraction": {
+            "facts": [
+              {
+                "factId": "property_position",
+                "value": null,
+                "certainty": "unknown"
+              }
+            ]
+          }
+        },
+        {
           "say": "I checked with a neighbour \u2014 ours would be about 400,000.",
           "extraction": {
             "positions": [
@@ -522,9 +535,10 @@
         "mustNotRepeatQuestion": true,
         "blocksThenRecovers": {
           "moduleId": "personal_balance_sheet",
-          "blockedAfterTurn": 2,
-          "recoveredAfterTurn": 3
-        }
+          "blockedAfterTurn": 3,
+          "recoveredAfterTurn": 4
+        },
+        "mustAskForEstimateAfterTurn": 2
       }
     }
   ]

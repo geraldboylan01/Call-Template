@@ -813,8 +813,15 @@ function uniqueMissingFacts(state, profile = null) {
   // applied this, but the brief built its own list and did not, so the meeting
   // kept asking. An agent-driven run caught it asking one question four times.
   const completionFacts = profile?.assumptions?.values?.completionFacts || {};
-  const acknowledged = (factId) => completionFacts.unknownFactIds?.[factId] === true
-    || Boolean(completionFacts.rangedFactValues?.[factId]);
+  // ...with ONE exception: a required fact the client did not know is asked
+  // once more, as an estimate, before the analysis that needs it is dropped.
+  // Only a declined estimate closes the question for good.
+  const estimateRequested = (factId) => completionFacts.unknownFactIds?.[factId] === true
+    && completionFacts.estimateDeclinedFactIds?.[factId] !== true;
+  const acknowledged = (factId) => (
+    (completionFacts.unknownFactIds?.[factId] === true && !estimateRequested(factId))
+    || Boolean(completionFacts.rangedFactValues?.[factId])
+  );
   for (const recommendation of state.recommendations || []) {
     // A blocked analysis has been dropped. Its remaining inputs are no longer
     // worth the client's time.
@@ -827,7 +834,8 @@ function uniqueMissingFacts(state, profile = null) {
         factId: item.factId,
         factInstanceId: item.factInstanceId || null,
         reason: boundedText(item.reason, 240),
-        moduleId: recommendation.moduleId
+        moduleId: recommendation.moduleId,
+        estimateRequested: estimateRequested(item.factId)
       });
     }
   }
@@ -897,6 +905,13 @@ function questionTopic(factId) {
 
 function conversationalQuestion(fact, state) {
   const factId = fact?.factId;
+  // The one follow-up after "I don't know". It asks for the least the client
+  // could give and still be useful -- a rough figure, or two numbers we can
+  // work between -- and it is asked once.
+  if (fact?.estimateRequested) {
+    return 'No problem if you do not know it exactly — do you have a rough idea, '
+      + 'even a range you think it falls between?';
+  }
   const reason = boundedText(fact?.reason, 240);
   const propertyValueMissing = factId === 'property_position'
     && /\b(?:current value|currently worth)\b/i.test(reason);

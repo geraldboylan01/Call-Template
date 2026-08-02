@@ -355,12 +355,18 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null)
   // one it assumes, or treats as optional -- is simply not asked again once the
   // client says they do not know it. Blocking on those would drop analyses that
   // are perfectly runnable.
-  const unknownFactIds = profile.assumptions?.values?.completionFacts?.unknownFactIds || {};
+  //
+  // Only a DECLINED ESTIMATE blocks. A single "I don't know" earns one more
+  // question -- a rough idea, or a range we can take a midpoint from -- and the
+  // analysis stays in the plan while that question is outstanding. Dropping it
+  // on the first "I don't know" would give up before asking the question most
+  // likely to rescue it.
+  const declinedFactIds = profile.assumptions?.values?.completionFacts?.estimateDeclinedFactIds || {};
   const blockingFactIds = [...new Set(
     (readiness.requiredMissing || [])
       .filter((item) => item?.importance === 'required')
       .map((item) => resolveSemanticFact(item, { profile, moduleId }).factId)
-      .filter((factId) => unknownFactIds[factId] === true)
+      .filter((factId) => declinedFactIds[factId] === true)
   )];
 
   const releaseAllowed = isConsumerVisibleModule(moduleId, {
