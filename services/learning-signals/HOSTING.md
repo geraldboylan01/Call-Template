@@ -1,81 +1,182 @@
-# Hosting the learning-signal service (integration Phase 3)
+# Hosting the learning-signal service
 
 This service is Node + Fastify + **PostgreSQL 16**. Your website is Cloudflare
 (edge Worker + static), which cannot run this service, so it lives on a separate
-Node host with a managed Postgres. The worker (which stays on Cloudflare) then
-POSTs finished-call summaries to the hosted service over HTTPS.
+Node host. The long-term hosted topology is the Render web service plus a Neon
+PostgreSQL database. The worker (which stays on Cloudflare) POSTs finished-call
+summaries to the service over HTTPS.
 
-**What you do vs. what is prepared.** The repo now contains everything needed to
-deploy — a `Dockerfile`, a Render blueprint (`render.yaml`), a `/health` probe,
-migrations that run on boot, `$PORT` binding, and Postgres-over-SSL. Creating the
-hosting account, accepting its terms, and clicking deploy are yours to do (they
-involve account creation and possibly a card); this guide is the exact steps.
+The repo contains the Dockerfile, a web-service-only Render blueprint, a
+`/health` probe, migrations that run on boot, `$PORT` binding, and managed
+Postgres TLS support. `DATABASE_URL` remains a secret supplied by the hosting
+environment; no database connection string belongs in git.
 
 Everything here is a **pilot** setup for testing a couple of calls. It is not a
 production hardening guide.
 
 ---
 
-## Option A — Render blueprint (simplest, one click)
+## Current topology — Neon + Render web service
 
-Provisions a free web service **and** a free Postgres 16 from `render.yaml`.
+`render.yaml` manages only `planeir-learning-signals`. It intentionally does not
+define a Render Postgres resource. `DATABASE_URL` is declared with `sync: false`,
+so an initial Blueprint asks for it and later Blueprint syncs do not overwrite
+the dashboard-managed value.
 
-1. **Push the repo to GitHub** (it already is) and make sure `render.yaml` is on
-   the branch you will deploy.
-2. In Render: **New → Blueprint**, connect the repo, and apply. Render reads
-   `render.yaml` and creates `planeir-learning-signals-db` (Postgres 16) and the
-   `planeir-learning-signals` web service (built from the Dockerfile). The
-   service applies migrations on boot and comes up green when `/health` returns
-   200.
-3. **Note the service URL**, e.g. `https://planeir-learning-signals.onrender.com`.
-4. **Provision a tenant against the hosted database.** From the Render database
-   page copy the **external** connection string (it includes `sslmode=require`),
-   then from your laptop:
+For a brand-new deployment:
+
+1. Create a PostgreSQL 16 Neon project and copy its **direct/unpooled** connection
+   string. Keep the provider's TLS query parameters intact.
+2. Apply the repository migrations:
    ```bash
-   DATABASE_URL="<external-db-url>" \
+   DATABASE_URL="<neon-direct-url>" make db-migrate
+   ```
+3. In Render, choose **New → Blueprint**, connect this repository, and apply
+   `render.yaml`. Supply the Neon URL when Render asks for `DATABASE_URL`.
+4. For a genuinely new database only, provision the first tenant:
+   ```bash
+   DATABASE_URL="<neon-direct-url>" \
      make provision SLUG=planeir NAME="Planeir Pilot" MODULE="Test Planner"
    ```
-   This prints, once: the three API key secrets, the `module_id` /
+   This prints, once: four scoped API key secrets, the `module_id` /
    `module_version_id`, and a `TENANT_SECRETS_JSON` entry. Store them securely.
-5. **Give the service its pseudonymisation secret.** In the Render web service
-   **Environment** tab, set `TENANT_SECRETS_JSON` to the printed value and save
-   (this triggers a redeploy). Until it is set, `POST /v1/sessions` returns 503.
-6. **Warm the service** (free instances spin down when idle):
+5. In the Render service's **Environment** page, add `TENANT_SECRETS_JSON` and
+   choose **Save and deploy**. Until it is set, `POST /v1/sessions` returns 503.
+6. Note the service URL and warm the service:
    ```bash
    curl https://<service-url>/health      # -> {"status":"ok"}
    ```
-7. **Point the worker at it.** In `worker/wrangler.toml` set
-   `LEARNING_SIGNALS_URL` and `LEARNING_SIGNALS_MODULE_ID`, and set the ingest
-   key as a secret:
+7. Point the worker at it. The emitter requires `LEARNING_SIGNALS_URL`,
+   `LEARNING_SIGNALS_MODULE_ID`, `LEARNING_SIGNALS_RETENTION_DAYS`, and the
+   ingest-key secret. The read-key secret separately powers advisor analytics.
    ```bash
    cd worker
    wrangler secret put LEARNING_SIGNALS_INGEST_KEY   # paste the ingest key
+   wrangler secret put LEARNING_SIGNALS_READ_KEY     # paste the read key
+   wrangler deploy
    ```
-   Then `wrangler deploy` (or `wrangler dev` for a local worker pointed at the
-   hosted service). With all three set, finished calls emit; leave any blank and
-   the emitter is a complete no-op.
-8. **Do a couple of test calls**, hang up, then look at what landed:
+8. Do a couple of test calls, then inspect the Neon ledger:
    ```bash
-   DATABASE_URL="<external-db-url>" make metrics           # compute daily metrics
-   # or inspect the ledger directly:
-   psql "<external-db-url>" -c \
+   DATABASE_URL="<neon-direct-url>" make metrics
+   psql "<neon-direct-url>" -c \
      "select event_type, attrs->>'outcome' outcome from session_events order by received_at desc limit 20;"
    ```
 
 ---
 
-## Option B — Neon (persistent free Postgres) + any Node host
+## Migrating an existing Render Postgres database
 
-Render's free Postgres is time-limited; for a database that persists, use
-[Neon](https://neon.tech) (free serverless Postgres 16, no card) and deploy the
-Dockerfile anywhere (Fly.io, Koyeb, Render web-only):
+Use PostgreSQL **16.x** client tools against a dedicated, empty Neon target.
+`pg_dump` provides one consistent source snapshot. The restore is transactional
+and excludes source ownership and privileges, which are not portable to Neon.
 
-1. Create a Neon project → copy its connection string (has `sslmode=require`).
-2. Apply migrations once: `DATABASE_URL="<neon-url>" make db-migrate`.
-3. Deploy `services/learning-signals/Dockerfile` on your chosen host, setting
-   `DATABASE_URL=<neon-url>`, `SERVICE_HOST=0.0.0.0`, `NODE_ENV=production`, and
-   (after step 4 of Option A) `TENANT_SECRETS_JSON`.
-4. Provision, warm, wire the worker, and inspect exactly as in Option A.
+The restore command below replaces objects on the target. Confirm the two URLs
+resolve to different databases and that the target contains no data you need.
+Keep the temporary archive only until verification finishes.
+
+```bash
+set -euo pipefail
+
+# Load both values from a password manager or hidden prompt. Never put them in
+# this repository, a command transcript, or a committed .env file.
+export SOURCE_DATABASE_URL
+export TARGET_DATABASE_URL
+: "${SOURCE_DATABASE_URL:?SOURCE_DATABASE_URL must be set}"
+: "${TARGET_DATABASE_URL:?TARGET_DATABASE_URL must be set}"
+
+pg_dump --version       # must report 16.x
+pg_restore --version    # must report 16.x
+
+# Preflight the app migrations and compatibility against the target.
+DATABASE_URL="$TARGET_DATABASE_URL" make db-migrate
+
+dump_file="$(mktemp "${TMPDIR:-/tmp}/planeir-learning-signals.XXXXXX")"
+chmod 600 "$dump_file"
+trap 'rm -f "$dump_file"' EXIT
+
+pg_dump --dbname="$SOURCE_DATABASE_URL" \
+  --format=custom --compress=9 \
+  --no-owner --no-privileges \
+  --serializable-deferrable --lock-wait-timeout=10s \
+  --file="$dump_file"
+
+pg_restore --dbname="$TARGET_DATABASE_URL" \
+  --clean --if-exists \
+  --no-owner --no-privileges \
+  --exit-on-error --single-transaction \
+  "$dump_file"
+
+# Confirms the copied Drizzle ledger is current and the runner stays idempotent.
+DATABASE_URL="$TARGET_DATABASE_URL" make db-migrate
+```
+
+Compare exact counts for every application table on both databases:
+
+```bash
+for database_url in "$SOURCE_DATABASE_URL" "$TARGET_DATABASE_URL"; do
+  psql "$database_url" -X -v ON_ERROR_STOP=1 <<'SQL'
+SELECT format(
+  'SELECT %L AS table_name, count(*)::bigint AS row_count FROM %I.%I;',
+  tablename, schemaname, tablename
+)
+FROM pg_catalog.pg_tables
+WHERE schemaname = 'public'
+ORDER BY tablename
+\gexec
+SQL
+done
+```
+
+Also compare the migration count, latest key-row timestamps, invalid indexes,
+unvalidated constraints, and database collation. A logical dump restores schema
+objects and data, but it does not change the target database's default collation.
+
+The database copy includes tenant rows, API-key hashes, module IDs, migrations,
+views, functions, indexes, constraints, and triggers. It does **not** contain the
+plaintext API keys or `TENANT_SECRETS_JSON`; keep the existing values in the
+Render and Cloudflare secret stores. Do not provision a replacement tenant after
+a migration.
+
+### Manual Render cutover
+
+1. Merge the updated `render.yaml`, then open the service's Render Blueprint and
+   run **Manual Sync**. Confirm `DATABASE_URL` is no longer a `fromDatabase`
+   reference. The existing Render database remains intact.
+2. Stop test/production calls, select `planeir-learning-signals` in the Render
+   service list, choose **Suspend**, and wait until it is suspended. This stops
+   both incoming writes and the service's in-process background jobs.
+3. While the service is suspended, repeat the final dump/restore and verification
+   so the cutover snapshot cannot drift.
+4. Open the service's **Environment** page, edit `DATABASE_URL`, paste the Neon
+   direct/unpooled URL, and choose **Save and deploy**. Do not change
+   `TENANT_SECRETS_JSON`. If Render leaves the service suspended, choose
+   **Resume** after saving.
+5. Watch the deploy log for the migration-success message and a clean service
+   start. Then verify `GET /health` and make an authenticated, read-only analytics
+   request before resuming calls.
+6. Resume the worker and confirm a new event lands only in Neon.
+
+Keep the old Render database intact and unused for **14 days** as a rollback
+snapshot. A simple rollback is safe only before Neon accepts new writes; after
+that, switching back would lose Neon-only events unless they are copied in
+reverse. After the observation window, take any required final archive and
+delete the Render database manually. Removing it from `render.yaml` does not
+delete the existing Render resource. A free Render Postgres database expires 30
+days after creation and is inaccessible during its 14-day upgrade grace period,
+so first confirm that at least 14 active days remain. Otherwise, upgrade it for
+the observation window or retain an encrypted dump in approved backup storage.
+
+---
+
+## Neon + another Node host
+
+The Dockerfile can run on Fly.io, Koyeb, or another Node/Docker host:
+
+1. Apply migrations to Neon as above.
+2. Deploy `services/learning-signals/Dockerfile`, setting `DATABASE_URL`,
+   `SERVICE_HOST=0.0.0.0`, `NODE_ENV=production`, and `TENANT_SECRETS_JSON` in the
+   host's secret store.
+3. Provision only for a new database, then warm, wire, and verify as above.
 
 ---
 

@@ -1,20 +1,14 @@
-# Render Blueprint for the learning-signal telemetry service. One click from a
-# connected GitHub repo provisions a free PostgreSQL 16 database and a free web
-# service running the Dockerfile in services/learning-signals.
+# Render Blueprint for the learning-signal telemetry service. The long-term
+# database is external Neon PostgreSQL; this Blueprint manages only the Render
+# web service running the Dockerfile in services/learning-signals.
 #
-# After the first deploy: provision a tenant against the database (see
-# services/learning-signals/HOSTING.md), then set TENANT_SECRETS_JSON in the web
-# service's Environment tab and redeploy. The service boots and applies
-# migrations automatically.
+# DATABASE_URL is deliberately a dashboard-managed secret (`sync: false`), so
+# Blueprint syncs never put a connection string in git or rebind the service to
+# a Render database. See services/learning-signals/HOSTING.md for setup,
+# migration, cutover, and rollback instructions.
 #
 # Free-tier notes: the web service spins down after ~15 min idle (warm it with
 # GET /health before a test call); confirm current free-tier terms with Render.
-databases:
-  - name: planeir-learning-signals-db
-    plan: free
-    postgresMajorVersion: "16"
-    region: frankfurt
-
 services:
   - type: web
     name: planeir-learning-signals
@@ -27,15 +21,10 @@ services:
     autoDeploy: false
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: planeir-learning-signals-db
-          property: connectionString
+        sync: false
       - key: SERVICE_HOST
         value: "0.0.0.0"
       - key: NODE_ENV
         value: production
       - key: LOG_LEVEL
         value: info
-      # Set in the dashboard after provisioning the tenant; not stored in git.
-      - key: TENANT_SECRETS_JSON
-        sync: false
