@@ -24,7 +24,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 import { createOpenAiClient } from './agent-clients/openai.mjs';
-import { detectBlockers, newBlockersAfterTurn, shouldAbandon, summariseBlockers } from './agent-harness/blockers.mjs';
+import {
+  detectBlockers, detectExecutionBlockers, newBlockersAfterTurn, shouldAbandon, summariseBlockers
+} from './agent-harness/blockers.mjs';
 import { createCostLedger } from './agent-harness/cost.mjs';
 import { buildGradingSheet } from './agent-harness/grading.mjs';
 import { loadPersona } from './agent-harness/persona.mjs';
@@ -121,6 +123,10 @@ for (const personaPath of personaPaths) {
       {
         client: watchedClient,
         renderWithModel: true,
+        // Finish the call. Without this the modules never run, and the only
+        // thing left to grade is the conversation -- not the outcome it was
+        // supposed to produce.
+        confirmAndRun: true,
         envOverrides: { OPENAI_API_KEY: apiKey }
       }
     );
@@ -135,13 +141,27 @@ for (const personaPath of personaPaths) {
     console.info(`  ${entry.role === 'client' ? 'CLIENT ' : 'PLANÉIR'} ${entry.text}`);
   }
 
-  const findings = detectBlockers(run.turns);
+  const findings = [
+    ...detectBlockers(run.turns),
+    ...detectExecutionBlockers(run.execution, run.turns.length)
+  ];
   const last = run.turns.at(-1);
   console.info('\n  --- where the call got to ---');
   console.info(`  goals    : [${(last?.goals || []).join(', ')}]`);
   console.info(`  analyses : [${(last?.analyses || []).join(', ')}]`);
   console.info(`  facts    : ${(last?.factIds || []).length}`);
   console.info(`  turns    : ${run.turns.length}`);
+
+  const execution = run.execution || {};
+  console.info(`  analyses run: ${execution.status || 'not attempted'}`
+    + (execution.completedModuleIds?.length ? ` — ${execution.completedModuleIds.join(', ')}` : ''));
+  if (execution.missingForModules?.length) {
+    console.info('\n  --- what the analyses were still short of ---');
+    for (const missing of execution.missingForModules) {
+      console.info(`  ${missing.moduleIds.join(', ') || 'an analysis'} needed `
+        + `${missing.factId || missing.fieldPath}${missing.reason ? ` — ${missing.reason}` : ''}`);
+    }
+  }
 
   if (findings.length) {
     console.info(`\n  --- ${findings.length} blocker(s) ---`);
@@ -181,6 +201,15 @@ for (const personaPath of personaPaths) {
     factIds: last?.factIds || [],
     blockerCount: findings.length,
     blockers: findings,
+    execution: {
+      status: execution.status || 'not_attempted',
+      moduleIds: execution.moduleIds || [],
+      completedModuleIds: execution.completedModuleIds || [],
+      gatedModuleIds: execution.gatedModuleIds || [],
+      missingForModules: execution.missingForModules || [],
+      results: execution.results || [],
+      error: execution.error || null
+    },
     abandoned: liveFindings.length > 0 && run.turns.length < maxTurns,
     judge: judged,
     review,
@@ -212,6 +241,10 @@ const metrics = {
   turnsToGoal: turnsToGoal.length ? turnsToGoal.reduce((sum, value) => sum + value, 0) / turnsToGoal.length : null,
   goalCaptureRate: completed.length
     ? completed.filter((call) => call.goals.length > 0).length / completed.length : null,
+  // The metric that matters most: did the call gather enough for the analyses
+  // it promised to actually run? A call can feel perfect and still fail here.
+  analysisCompletionRate: completed.length
+    ? completed.filter((call) => call.execution?.status === 'complete').length / completed.length : null,
   analysisSelectionRate: completed.length
     ? completed.filter((call) => call.analyses.length > 0).length / completed.length : null,
   judgeGradeMean: aggregateJudgements(judgements.map((item) => item)).conversationsJudged

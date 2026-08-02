@@ -220,6 +220,65 @@ export function shouldAbandon(findings) {
   ));
 }
 
+/**
+ * Findings about the END of the call: whether the analyses the meeting promised
+ * could actually run.
+ *
+ * This is the sharpest signal the harness produces. A call can feel perfect and
+ * still fail here, because feeling perfect and having gathered enough to run a
+ * pension projection are different things. When it fails, the required
+ * questions name exactly which fact each analysis was short of -- which is a
+ * work list, not a complaint.
+ *
+ * @param {object|null} execution from runAgentScenario({confirmAndRun: true})
+ * @param {number} atTurn the turn the call ended on, for ordering
+ */
+export function detectExecutionBlockers(execution, atTurn = 0) {
+  if (!execution) return [];
+  const findings = [];
+  if (execution.error) {
+    // A refusal is not automatically a fault: an unanswered priority question
+    // or a goal with no released analysis are both correct refusals. They are
+    // reported so a person can tell the difference.
+    const expected = ['goal_priority_required', 'analysis_plan_empty'];
+    findings.push({
+      id: 'analysis_refused',
+      severity: expected.includes(execution.error) ? 'smell' : 'blocking',
+      detail: `the plan would not run: ${execution.error}`,
+      turn: atTurn
+    });
+    return findings;
+  }
+  if (execution.status !== 'complete') {
+    findings.push({
+      id: 'analysis_did_not_run',
+      severity: 'blocking',
+      detail: `the call promised ${execution.moduleIds.length} analysis/analyses `
+        + `but finished as "${execution.status}"`,
+      turn: atTurn
+    });
+  }
+  for (const missing of execution.missingForModules || []) {
+    findings.push({
+      id: 'analysis_missing_input',
+      severity: 'blocking',
+      detail: `${missing.moduleIds.join(', ') || 'an analysis'} still needed `
+        + `${missing.factId || missing.fieldPath} — the call never asked for it`,
+      turn: atTurn,
+      factId: missing.factId
+    });
+  }
+  for (const moduleId of execution.gatedModuleIds || []) {
+    findings.push({
+      id: 'analysis_gated',
+      severity: 'smell',
+      detail: `${moduleId} was selected but is not released for automated calculation`,
+      turn: atTurn
+    });
+  }
+  return findings;
+}
+
 export function summariseBlockers(findings) {
   const bySeverity = { blocking: 0, friction: 0, smell: 0 };
   const byId = {};

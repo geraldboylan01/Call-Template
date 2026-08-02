@@ -27,10 +27,28 @@ export const GRADE_DIMENSIONS = Object.freeze([
   { key: 'usefulness', prompt: 'Would this call have been worth the client\'s time?' },
   { key: 'tone', prompt: 'Did it sound like someone you would want representing you?' },
   { key: 'understanding', prompt: 'Did it understand what this person actually needed?' },
-  { key: 'progress', prompt: 'Did it get somewhere, at a reasonable pace?' }
+  { key: 'progress', prompt: 'Did it get somewhere, at a reasonable pace?' },
+  // The output, not the conversation. A call can feel excellent and still hand
+  // the client an analysis that could not run, or one built on figures it
+  // guessed at -- and you are the only person who can say whether what came out
+  // the end was actually any good.
+  { key: 'output', prompt: 'Was the analysis it produced worth having?' }
 ]);
 
 const SCALE = '1 = bad, 5 = good, or leave blank if you would rather not say';
+
+/** One line on what the call actually produced, for the top of a grading block. */
+function describeExecution(execution) {
+  if (!execution || execution.status === 'not_attempted') return 'not run';
+  if (execution.error) return `refused (${execution.error})`;
+  if (execution.status === 'complete') {
+    return `ran — ${(execution.completedModuleIds || []).join(', ') || 'none completed'}`;
+  }
+  const missing = (execution.missingForModules || [])
+    .map((item) => item.factId || item.fieldPath)
+    .filter(Boolean);
+  return `${execution.status}${missing.length ? ` — still needed ${missing.join(', ')}` : ''}`;
+}
 
 export function buildGradingSheet({ runId, calls }) {
   const lines = [
@@ -50,12 +68,23 @@ export function buildGradingSheet({ runId, calls }) {
       '',
       `Persona: ${call.persona}`,
       `Turns: ${call.turns}  ·  Blockers found: ${call.blockerCount}`,
+      `Analyses: ${describeExecution(call.execution)}`,
       '',
       '<!-- transcript -->',
       ...(call.transcript || []).map((entry) => (
         `> **${entry.role === 'client' ? 'CLIENT' : 'PLANÉIR'}:** ${entry.text}`
       )),
       '',
+      ...((call.execution?.results || []).length
+        ? [
+            '<!-- what the analyses produced -->',
+            ...call.execution.results.map((item) => (
+              `> **${item.moduleId}** (${item.status}): `
+              + `${JSON.stringify(item.output).slice(0, 600)}`
+            )),
+            ''
+          ]
+        : []),
       ...GRADE_DIMENSIONS.map((dimension) => `- ${dimension.key}: `),
       '- Notes: ',
       ''

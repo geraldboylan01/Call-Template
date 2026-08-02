@@ -13,7 +13,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { BLOCKER_IDS, detectBlockers, newBlockersAfterTurn, shouldAbandon } from './agent-harness/blockers.mjs';
-import { buildGradingSheet, calibrate, describeCalibration, parseGradingSheet } from './agent-harness/grading.mjs';
+import {
+  buildGradingSheet, calibrate, describeCalibration, GRADE_DIMENSIONS, parseGradingSheet
+} from './agent-harness/grading.mjs';
 import { parsePersona, personaClientBrief } from './agent-harness/persona.mjs';
 import {
   applyRetention, compareRuns, loadRuns, regressionsIn, runKey, saveRun, trendFor
@@ -151,14 +153,19 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
     !/judge.*[1-5]\s*\/\s*5/i.test(sheet) && /deliberately not shown/.test(sheet));
   check('the transcript is in the sheet so you can grade what was said', sheet.includes('hello'));
 
-  const filled = sheet
-    .replace('- usefulness: \n- tone: \n- understanding: \n- progress: \n- Notes: ',
-      '- usefulness: 4\n- tone: 5\n- understanding: 3\n- progress: 4\n- Notes: felt human\n')
-    .replace(/## mary[\s\S]*$/, '## mary\n\n- usefulness: \n- tone: \n- understanding: \n- progress: \n- Notes: \n');
+  // Built from GRADE_DIMENSIONS rather than a hardcoded list, so adding a
+  // dimension does not silently stop exercising this.
+  const scored = GRADE_DIMENSIONS.map((dimension, index) => `- ${dimension.key}: ${index % 5 + 1}`).join('\n');
+  const blank = GRADE_DIMENSIONS.map((dimension) => `- ${dimension.key}: `).join('\n');
+  const filled = `## deirdre\n\n${scored}\n- Notes: felt human\n\n## mary\n\n${blank}\n- Notes: \n`;
   const parsed = parseGradingSheet(filled);
+  const expectedMean = GRADE_DIMENSIONS
+    .map((unused, index) => index % 5 + 1)
+    .reduce((sum, value) => sum + value, 0) / GRADE_DIMENSIONS.length;
   const deirdre = parsed.find((item) => item.callId === 'deirdre');
   const mary = parsed.find((item) => item.callId === 'mary');
-  check('a filled call is graded', deirdre.graded === true && deirdre.mean === 4);
+  check('a filled call is graded', deirdre.graded === true && deirdre.mean === expectedMean,
+    `mean ${deirdre.mean}`);
   check('your note is kept', deirdre.notes === 'felt human');
   // The property that protects every trend downstream.
   check('a blank grade is MISSING, not zero', mary.graded === false && mary.mean === null);

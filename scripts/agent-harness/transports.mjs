@@ -28,7 +28,9 @@ import { fileURLToPath } from 'node:url';
 import { getConsumerConfig } from '../../worker/src/consumer/config.js';
 import { createConsumerCredential } from '../../worker/src/consumer/crypto.js';
 import { ConsumerError } from '../../worker/src/consumer/errors.js';
-import { createSessionRecord, getCurrentProfile, getSessionRow } from '../../worker/src/consumer/repository.js';
+import {
+  createSessionRecord, getCurrentProfile, getLatestAnalysis, getSessionRow
+} from '../../worker/src/consumer/repository.js';
 import { describeConversationState } from '../../worker/src/consumer/conversation.js';
 import { createAgentMeeting } from '../../worker/src/consumer/agent_repository.js';
 import { buildPlanningContext } from '../../worker/src/consumer/planning_context.js';
@@ -46,6 +48,7 @@ import {
   recordRealtimeFinalTurn
 } from '../../worker/src/consumer/realtime_repository.js';
 import {
+  confirmAgentPlan,
   processAgentTurn,
   toAgentConsumerView,
   toAgentDiagnosticView
@@ -255,7 +258,10 @@ function comparableTurn({ transcript, diagnostics, plannerErrorCode, degraded, o
  *   `renderAssistantText` the live transport uses, driven by the same shared
  *   instruction pack.
  */
-export async function runAgentScenario(scenario, { client, envOverrides = {}, renderWithModel = false } = {}) {
+export async function runAgentScenario(
+  scenario,
+  { client, envOverrides = {}, renderWithModel = false, confirmAndRun = false } = {}
+) {
   const databasePath = newDatabase(`agent-${scenario.id}`);
   const env = makeEnv(databasePath, envOverrides);
   const config = makeConfig(env);
@@ -294,7 +300,48 @@ export async function runAgentScenario(scenario, { client, envOverrides = {}, re
       outcomes: result.diagnostics.candidateOutcomes
     }));
   }
-  return { transport: 'agent', sessionId, meetingId, turns, transcript, env, config };
+  // FINISH THE CALL. Until this ran, a persona call stopped at the last
+  // question and no module ever executed -- so there was nothing to grade
+  // except the conversation. Confirming drives the same path the live app
+  // takes: confirmAgentPlan -> confirmAndRunRealtimeAnalysisPlan ->
+  // runStoredConsumerAnalysis -> runConsumerAnalysis, which is the real module
+  // JS in js/planning. The client's data reaches those modules as the PROFILE
+  // the call built; there is no separate input-mapping step, because the
+  // semantic-fact layer already is that mapping.
+  let execution = null;
+  if (confirmAndRun) {
+    try {
+      const confirmed = await confirmAgentPlan(env, config, { sessionId, meetingId });
+      const sessionRow = await getSessionRow(env, sessionId);
+      // Any status, not just complete. An analysis that could not run is the
+      // most actionable result there is: it means the call promised something
+      // it had not gathered enough to deliver, and the payload names exactly
+      // what was still needed.
+      const payload = (await getLatestAnalysis(env, sessionId, null))?.payload || {};
+      execution = {
+        ...confirmed.execution,
+        speakableText: confirmed.consumer?.assistantMessage || '',
+        results: (payload.results || []).map((item) => ({
+          moduleId: item.moduleId,
+          status: item.status ?? 'complete',
+          // The module's own output, kept whole: grading an analysis means
+          // looking at what it actually produced, not at a summary of it.
+          output: item
+        })),
+        missingForModules: confirmed.execution.requiredQuestions || [],
+        profileRevision: Number(sessionRow?.current_profile_revision ?? 0),
+        error: null
+      };
+    } catch (error) {
+      // A call that cannot reach execution is a finding, not a crash: the
+      // conversation still happened and is still worth reviewing.
+      execution = {
+        planId: null, status: 'failed', moduleIds: [], completedModuleIds: [], gatedModuleIds: [],
+        results: [], missingForModules: [], error: error?.code || String(error?.message || error)
+      };
+    }
+  }
+  return { transport: 'agent', sessionId, meetingId, turns, transcript, execution, env, config };
 }
 
 /* ------------------------------------------------------------------ */

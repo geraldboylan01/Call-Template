@@ -1486,6 +1486,50 @@ Documented kill switch. Runbook entry in
 **Rollback.** Single flag. **Completion.** Enabled in test; documented; production
 gate verified closed. **Changes voice behaviour?** No.
 
+**Built.** Two independent gates, checked at different times, because the
+deploy-time one can be bypassed.
+
+| Gate | When | What it checks |
+|---|---|---|
+| `CONSUMER_AGENT_TEST_ENABLED` | deploy time | The committed `wrangler.toml` must keep it exactly `"false"`; the fail-closed config builder refuses to build otherwise. |
+| `CONSUMER_AGENT_TEST_COHORTS` | **runtime** | Even with the flag on, the transport refuses unless this deployment's `CONSUMER_COHORT` is on the allowlist. Production runs `internal`, which is not. |
+
+The second gate is the point. A variable overridden directly in the Cloudflare
+dashboard never touches the committed file, so the deploy-time check never sees
+it; the cohort gate is evaluated on every request, so a flag flipped on a
+production deployment still 404s every agent route. Opening the transport
+somewhere new takes two deliberate, reviewable edits.
+
+Also asserted by [`check:consumer-agent-rollout`](../scripts/check-consumer-agent-rollout.mjs)
+(39 checks): the kill switch is a single variable and cannot be partial (every
+exported route carries the same assertion); an ambiguous flag value is off;
+turn, session and spend quotas are clamped in code so they cannot be widened to
+unlimited or disabled with a zero; and every route writes an audit row on a
+separable `agent_test` channel. Runbook:
+[consumer-realtime-voice-operations.md](consumer-realtime-voice-operations.md#agent-test-transport-a8).
+
+---
+
+## Module execution — how the client's data reaches the module workflows
+
+Worth recording, because it is easy to assume a mapping layer is missing here.
+
+There is no separate step that "feeds the client's data into the JS
+workflows". The call builds a **profile** — semantic facts land as JSON-pointer
+patches — and the profile *is* the module input. Confirmation runs
+`confirmAgentPlan` → `confirmAndRunRealtimeAnalysisPlan` →
+`runStoredConsumerAnalysis` → `runConsumerAnalysis`, which is the real module JS
+in `js/planning/`. The semantic-fact layer already is the mapping, and the agent
+transport reaches it through exactly the same path the voice meeting does.
+
+What *was* missing was that the harness never finished the call: it stopped at
+the last question, so no module ever ran and there was nothing to grade but the
+conversation. `runAgentScenario({ confirmAndRun: true })` now drives through to
+execution, and `confirmAgentPlan` returns the `requiredQuestions` the voice path
+had always returned and the agent transport had been dropping — which turns
+"needs_information" into a work list naming the exact fact each analysis was
+short of.
+
 ---
 
 ### Mermaid — batch evaluation architecture

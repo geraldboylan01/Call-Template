@@ -141,6 +141,15 @@ export function getConsumerConfig(env) {
     && dbConfigured
     && policyConfigured;
   const journeyEnabled = requestedJourneyEnabled && journeyConfigured;
+  const cohort = text(env.CONSUMER_COHORT) || 'internal';
+  // Which cohorts may run the agent-test transport at all. Deliberately a
+  // closed list with a safe default: an unset variable means the two test
+  // cohorts only, never whatever cohort happens to be deployed. Production's
+  // cohort is not in it, and adding it would be a visible, reviewable edit.
+  const agentTestCohorts = (text(env.CONSUMER_AGENT_TEST_COHORTS) || 'automated_test,consumer_test')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
   const aiRequested = enabled(env.CONSUMER_AI_INTAKE_ENABLED);
   const aiDataPolicyId = policyId(env.CONSUMER_AI_DATA_POLICY_ID);
   const aiConfigured = Boolean(text(env.OPENAI_API_KEY) && aiDataPolicyId && aiNoticeId);
@@ -311,9 +320,22 @@ export function getConsumerConfig(env) {
       && enabled(env.CONSUMER_MODULE_OFFERS_ENABLED),
     // The protected agent-test transport: a text channel over the same shared
     // planning engine, for adviser/developer testing only. Never a public
-    // consumer chat surface. Defaults off; enabled in the consumer-test
-    // environment. Turning it off makes every agent route 404 immediately.
-    agentTestEnabled: journeyEnabled && enabled(env.CONSUMER_AGENT_TEST_ENABLED),
+    // consumer chat surface. Turning the flag off makes every agent route 404
+    // immediately -- that is the kill switch, and it is a single variable.
+    //
+    // A8 DOUBLE GATE. The flag alone is not enough. The transport also requires
+    // the deployment's cohort to be named in CONSUMER_AGENT_TEST_COHORTS, which
+    // production's cohort is not. The two gates are independent on purpose:
+    // the committed config is checked at deploy time, but a variable overridden
+    // straight in the Cloudflare dashboard bypasses that entirely. This second
+    // gate is evaluated at RUNTIME, so flipping the flag on a production
+    // deployment still yields 404 on every agent route. Opening it in
+    // production would take two deliberate acts, by someone who had to know
+    // this comment exists.
+    agentTestEnabled: journeyEnabled
+      && enabled(env.CONSUMER_AGENT_TEST_ENABLED)
+      && agentTestCohorts.includes(cohort),
+    agentTestCohorts,
     agentTestMaxTurns: boundedInteger(env.CONSUMER_AGENT_TEST_MAX_TURNS, 40, 1, 120),
     agentTestMaxSessions: boundedInteger(env.CONSUMER_AGENT_TEST_MAX_SESSIONS, 20, 1, 200),
     // Per-session ceiling on model spend, checked BEFORE each dispatch.
@@ -336,7 +358,7 @@ export function getConsumerConfig(env) {
     inviteMaxTtlHours: boundedInteger(env.CONSUMER_INVITE_MAX_TTL_HOURS, 168, 1, 720),
     allowedModules,
     bookingUrl: bookingUrl(env.CONSUMER_BOOKING_URL),
-    cohort: text(env.CONSUMER_COHORT) || 'internal',
+    cohort,
     consentPolicyVersion,
     consentManifestId,
     analysisNoticeId,

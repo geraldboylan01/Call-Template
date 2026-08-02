@@ -463,3 +463,73 @@ ChatGPT subscriptions and API billing are separate. Keep the existing
 copy/open-ChatGPT or Codex-assisted path for someone who wants to use their own
 subscription manually. That fallback is not connected to the realtime tools
 and cannot silently write Planéir facts or run modules.
+
+## Agent-test transport (A8)
+
+The agent-test transport is a text channel over the **same shared planning
+engine** the voice meeting uses. That is what makes it a useful tester and what
+makes it dangerous: a call through it does everything a real call does, on real
+tables, including running the analysis modules. It exists for adviser and
+developer testing. It is never a public consumer chat surface.
+
+### Two gates, and why there are two
+
+| Gate | When | What it checks |
+|---|---|---|
+| `CONSUMER_AGENT_TEST_ENABLED` | deploy time | The committed `wrangler.toml` must keep this exactly `"false"`. The deploy workflow's fail-closed config builder refuses to build otherwise. |
+| `CONSUMER_AGENT_TEST_COHORTS` | **runtime** | Even with the flag on, `getConsumerConfig` refuses unless this deployment's `CONSUMER_COHORT` is named in the allowlist. Production runs `internal`, which is not on it. |
+
+The second gate exists because the first one can be bypassed. A variable
+overridden directly in the Cloudflare dashboard never touches the committed
+file, so the deploy-time check never sees it. The cohort gate is evaluated on
+every request, so a flag flipped on a production deployment still returns 404 on
+every agent route.
+
+Opening the transport in a new environment therefore takes **two deliberate
+edits**, both visible in review.
+
+### Kill switch
+
+Set `CONSUMER_AGENT_TEST_ENABLED=false` (or remove it). Every agent route
+returns 404 immediately — session creation, turns, decisions, confirmation,
+state, export and delete are all behind the same assertion, so the switch cannot
+be partial. No redeploy of application code is required.
+
+To stop it everywhere at once, `CONSUMER_JOURNEY_ENABLED=false` also disables
+it, along with the rest of the consumer journey.
+
+### Quotas
+
+All three are clamped in code; an operator cannot widen them to unlimited by
+typing a large number, and cannot disable one by typing zero.
+
+| Variable | Default | Bounds |
+|---|---|---|
+| `CONSUMER_AGENT_TEST_MAX_TURNS` | 40 | 1–120 |
+| `CONSUMER_AGENT_TEST_MAX_SESSIONS` | 20 | 1–200 |
+| `CONSUMER_AGENT_TEST_SESSION_BUDGET_EUR_CENTS` | 50 | 1–500 |
+
+Turn and spend ceilings are checked **before** a turn runs, not after.
+
+### Audit
+
+Every agent session writes `agent_test_session_created`, one
+`agent_turn_submitted` per turn, and `agent_test_session_deleted` to
+`consumer_events`. Agent sessions carry `channel = 'agent_test'`, so they are
+separable from real client traffic in any query.
+
+To review activity: filter `consumer_events` on those three event types, or on
+the `agent_test` channel, for the period in question. A production environment
+should return **nothing** — anything at all there means a gate failed and the
+transport should be killed with the switch above before investigating.
+
+### Enabling it in the test environment
+
+1. Confirm the target deployment's `CONSUMER_COHORT` is `automated_test` or
+   `consumer_test`.
+2. Set `CONSUMER_AGENT_TEST_ENABLED=true` on that deployment only.
+3. Confirm production is unaffected: an agent route there must still 404.
+4. `npm run check:consumer-agent-rollout` asserts both gates, the kill switch,
+   the quota clamps and the audit trail.
+
+Record the outcome in a Field notes entry.

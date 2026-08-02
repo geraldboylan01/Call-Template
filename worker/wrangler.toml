@@ -80,6 +80,11 @@ CONSUMER_MODULE_OFFERS_ENABLED = "false"
 # The protected agent-test transport. A testing facility, never a public typed
 # consumer journey. Off in production.
 CONSUMER_AGENT_TEST_ENABLED = "false"
+# A8 double gate. Even if CONSUMER_AGENT_TEST_ENABLED were flipped true on a
+# deployment -- including straight in the Cloudflare dashboard, which bypasses
+# the deploy-time checks entirely -- the agent transport still refuses unless
+# this deployment's CONSUMER_COHORT is named here. Production runs "internal".
+CONSUMER_AGENT_TEST_COHORTS = "automated_test,consumer_test"
 CONSUMER_HANDOFF_ENABLED = "false"
 CONSUMER_PUBLIC_ACCESS_ENABLED = "false"
 # Every module that passes all four consumer gates in the manifest

@@ -594,7 +594,19 @@ export async function confirmAgentPlan(env, config, { sessionId, meetingId, expe
       status: executed.analysisPlan.status,
       moduleIds: [...(executed.analysisPlan.moduleIds || [])],
       completedModuleIds: [...(executed.result?.completedModuleIds || [])],
-      gatedModuleIds: [...(executed.result?.gatedModuleIds || [])]
+      gatedModuleIds: [...(executed.result?.gatedModuleIds || [])],
+      // What the analyses still needed, when they could not run. The voice path
+      // has always returned this; the agent transport dropped it, which left a
+      // tester with "needs_information" and no way to see what was missing.
+      // That is the most actionable result a test call can produce: the meeting
+      // promised an analysis it had not gathered enough to deliver.
+      requiredQuestions: (executed.requiredQuestions || []).slice(0, 20).map((question) => ({
+        factId: question.factId ?? null,
+        fieldPath: question.fieldPath ?? null,
+        moduleIds: [...(question.blockingModuleIds || [])],
+        reason: typeof question.reason === 'string' ? question.reason.slice(0, 240) : ''
+      })),
+      analysisRunId: executed.analysis?.id ?? null
     },
     consumer: {
       revision: Number(after.sessionRow.current_profile_revision),
