@@ -41,12 +41,28 @@ function months(value) {
   return `${new Intl.NumberFormat('en-IE', { maximumFractionDigits: 1 }).format(value)} months`;
 }
 
+/**
+ * Holdings that are Legacy regardless of how they were typed or flagged.
+ * Crypto is the case that matters: it is volatile and concentrated whatever a
+ * client says about being able to sell it tomorrow, so a "liquid investment"
+ * flag must not route it into spendable reserves.
+ */
+const ALWAYS_LEGACY = /\b(?:crypto|bitcoin|btc|ethereum|eth|solana|coinbase|binance|kraken|altcoin|nft)\b/i;
+
 function bucketForAsset(asset) {
+  if (ALWAYS_LEGACY.test(String(asset?.label || ''))) return 'concentrated_assets';
   if (asset.type === 'cash') return 'spendable_reserves';
   if (asset.type === 'investment') return asset.liquid === true ? 'spendable_reserves' : 'concentrated_assets';
   if (asset.type === 'pension') return 'retirement_funding';
   if (asset.type === 'business' || asset.type === 'agricultural') return 'concentrated_assets';
-  return 'lifestyle_assets';
+  if (asset.type === 'property') return 'concentrated_assets';
+  // AMBIGUOUS ITEMS GO TO LEGACY, NOT LIFESTYLE. The buckets answer "what job
+  // does this money do", and the fallback was answering "personal use" for
+  // anything unrecognised -- so crypto, single shares and collectibles were
+  // counted alongside the family home. The published contract is explicit:
+  // bias ambiguous items toward Legacy unless they are clearly liquid reserves
+  // or clearly long-term retirement assets.
+  return 'concentrated_assets';
 }
 
 function valuedPositions(records, valueKey, currency) {
@@ -238,8 +254,15 @@ export function buildPersonalBalanceSheetInput(profile) {
     .filter((entry) => entry.decision === 'distinct')
     .forEach(({ record: property }) => assetPositions.push({
       id: property.propertyId,
-      label: property.use === 'home' ? 'Home' : `${property.use} property`,
-      bucket: property.use === 'business' || property.use === 'farm' ? 'concentrated_assets' : 'lifestyle_assets',
+      // The client's own words for it, when they gave them. "Home" and "rental
+      // property" are what the engine invents when nothing better exists.
+      label: (typeof property.label === 'string' && property.label.trim())
+        || (property.use === 'home' ? 'Home' : `${property.use} property`),
+      // ONLY THE HOME THEY LIVE IN IS A LIFESTYLE ASSET. An investment
+      // property is Legacy -- illiquid, concentrated, held for a purpose other
+      // than daily living. Bucketing a rental as Lifestyle overstated
+      // personal-use wealth by its whole value and left Legacy empty.
+      bucket: property.use === 'home' ? 'lifestyle_assets' : 'concentrated_assets',
       amount: moneyAmount(property.currentValue, currency),
       source: 'properties'
     }));
@@ -247,7 +270,8 @@ export function buildPersonalBalanceSheetInput(profile) {
     .filter((entry) => entry.decision === 'distinct')
     .forEach(({ record: pension }) => assetPositions.push({
       id: pension.pensionId,
-      label: `${pension.type.replaceAll('_', ' ')} pension`,
+      label: (typeof pension.label === 'string' && pension.label.trim())
+        || `${pension.type.replaceAll('_', ' ')} pension`,
       bucket: 'retirement_funding',
       amount: moneyAmount(pension.currentValue, currency),
       source: 'pensions'

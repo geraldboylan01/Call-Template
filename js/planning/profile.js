@@ -224,6 +224,8 @@ function normalizePension(value, index) {
     ownerId: nonEmptyString(value.ownerId, `${fieldName}.ownerId`),
     type: enumValue(value.type, PENSION_TYPES, `${fieldName}.type`)
   };
+  const label = optionalString(value.label, `${fieldName}.label`);
+  if (label) pension.label = label;
   const currentValue = normalizeMoney(value.currentValue, `${fieldName}.currentValue`, { optional: true });
   const employeeRate = optionalNumber(
     value.employeeContributionRate,
@@ -254,6 +256,11 @@ function normalizeProperty(value, index) {
   };
   const currentValue = normalizeMoney(value.currentValue, `${fieldName}.currentValue`, { optional: true });
   if (currentValue) property.currentValue = currentValue;
+  // THE CLIENT'S OWN NAME FOR IT. Dropping this left the balance sheet calling
+  // everything "Home" or "rental property", which is not what they said and
+  // not what they would recognise on the page.
+  const label = optionalString(value.label, `${fieldName}.label`);
+  if (label) property.label = label;
   return property;
 }
 

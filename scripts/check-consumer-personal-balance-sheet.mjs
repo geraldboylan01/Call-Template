@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { computePersonalBalanceSheet } from '../js/personal_balance_sheet.js';
+import { buildPersonalBalanceSheetInput } from '../js/planning/adapters/personal_balance_sheet.js';
 import {
   applyProfilePatch,
   createHouseholdProfile,
@@ -272,6 +273,46 @@ assert.equal(getModuleReadiness('personal_balance_sheet', empty).status, 'ready'
     'no client-facing row may carry a null');
   assert.equal(withoutSpending.length, withSpending.length - 1,
     'only the uncalculable row is dropped');
+}
+
+// THE FOUR BUCKETS ANSWER "WHAT JOB DOES THIS MONEY DO". Checked against the
+// published contract in docs/prompt-pack/MASTER_PROJECT_PROMPT.md, because the
+// engine disagreed with it in two ways that both flattered the client's
+// position: an investment property counted as a Lifestyle asset, and anything
+// unrecognised -- crypto, single shares, collectibles -- fell to Lifestyle too.
+{
+  const NOW_B = '2026-08-02T09:00:00.000Z';
+  const prov2 = {
+    source: 'user_confirmation', confidence: 'high', certainty: 'exact',
+    capturedAt: NOW_B, confirmedByUser: true
+  };
+  const built = applyProfilePatch(
+    createHouseholdProfile({ profileId: 'pbs-buckets', nowIso: NOW_B, calculationDateIso: '2026-08-02' }),
+    {
+      patchId: 'pbs-buckets-1',
+      operations: [
+        { op: 'add', path: '/properties/-', value: { propertyId: 'home', label: 'Family home', use: 'home', currentValue: { amount: 950_000, currency: 'EUR' } }, provenance: prov2 },
+        { op: 'add', path: '/properties/-', value: { propertyId: 'rental', label: 'Investment property', use: 'rental', currentValue: { amount: 500_000, currency: 'EUR' } }, provenance: prov2 },
+        { op: 'add', path: '/pensions/-', value: { pensionId: 'bond', ownerId: 'primary', label: 'Aviva buyout bond', type: 'buyout_bond', currentValue: { amount: 380_000, currency: 'EUR' } }, provenance: prov2 },
+        { op: 'add', path: '/assets/-', value: { assetId: 'cash', label: 'Cash savings', type: 'cash', currentValue: { amount: 38_000, currency: 'EUR' }, liquid: true }, provenance: prov2 },
+        // Typed as a liquid investment on purpose: crypto is ALWAYS Legacy, and
+        // a "liquid" flag must not route it into spendable reserves.
+        { op: 'add', path: '/assets/-', value: { assetId: 'btc', label: 'Bitcoin', type: 'investment', currentValue: { amount: 1_500, currency: 'EUR' }, liquid: true }, provenance: prov2 }
+      ]
+    },
+    { nowIso: NOW_B }
+  ).profile;
+  const byLabel = Object.fromEntries(
+    buildPersonalBalanceSheetInput(built).assetPositions.map((item) => [item.label, item.bucket])
+  );
+  assert.equal(byLabel['Family home'], 'lifestyle_assets', 'the home they live in is a lifestyle asset');
+  assert.equal(byLabel['Investment property'], 'concentrated_assets', 'a rental is Legacy, not Lifestyle');
+  assert.equal(byLabel['Aviva buyout bond'], 'retirement_funding');
+  assert.equal(byLabel['Cash savings'], 'spendable_reserves');
+  assert.equal(byLabel.Bitcoin, 'concentrated_assets', 'crypto is always Legacy, however it is typed');
+  // The client's own name for a holding survives onto the page.
+  assert.ok(Object.hasOwn(byLabel, 'Family home') && Object.hasOwn(byLabel, 'Aviva buyout bond'),
+    'property and pension labels are preserved, not replaced with generic ones');
 }
 
 console.info('[ConsumerPersonalBalanceSheet] PASS: deterministic totals, category reconciliation, readiness, number-preserving speech, and no null in a client-facing table.');
