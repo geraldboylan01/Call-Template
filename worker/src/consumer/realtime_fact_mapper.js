@@ -611,16 +611,16 @@ export function buildRealtimeFactReadBack(
   if (certainty === 'unknown') {
     return `You do not know ${label.toLowerCase()} yet. Is that right?`;
   }
-  // A stated range is confirmed as a range, alongside the single figure the
-  // analysis will actually use. Reading back only the midpoint would put words
-  // in the client's mouth; reading back only the range would hide the number
-  // the result depends on.
+  // A STATED RANGE IS AN ANSWER, not a question to be asked again. The meeting
+  // names the single figure it will use and leaves the door open, but it does
+  // not stop for a confirmation -- this line is spoken in the same breath as
+  // the next question, so an assumption never costs the client a turn.
   if (statedRange) {
     const minimum = formattedFactValue(factId, statedRange.min, currency);
     const maximum = formattedFactValue(factId, statedRange.max, currency);
     const midpoint = formattedFactValue(factId, value, currency);
     return `You said ${label.toLowerCase()} is between ${minimum} and ${maximum}, `
-      + `so I will work with ${midpoint}. Is that right?`;
+      + `so I will work with ${midpoint} \u2014 just say if you would rather I used a different figure.`;
   }
   const formatted = formattedFactValue(factId, value, currency);
   const qualifier = certainty === 'approximate' ? 'approximately ' : '';

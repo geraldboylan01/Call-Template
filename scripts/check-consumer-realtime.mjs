@@ -1021,6 +1021,67 @@ const perPersonMissingBrief = await composeMeetingBrief({
 assert.equal(perPersonMissingBrief.stillNeeded.length, 2);
 assert.equal(perPersonMissingBrief.questionBatch.maxQuestions, 1);
 
+// A stated range is announced ONCE, as a statement folded into the next
+// question -- never as a confirmation the meeting waits on, and never repeated
+// turn after turn while the range stays on the client's record.
+const rangeAssumptionContext = (previousBrief) => ({
+  config: { realtimeSpokenCompletionEnabled: true },
+  sessionRow: { current_profile_revision: 1 },
+  profile: {
+    preferences: { baseCurrency: 'EUR' },
+    assumptions: {
+      values: {
+        completionFacts: {
+          rangedFactValues: {
+            cash_savings: { min: { amount: 60_000, currency: 'EUR' }, max: { amount: 70_000, currency: 'EUR' } }
+          }
+        }
+      }
+    }
+  },
+  state: {
+    profileRevision: 1,
+    meetingBrief: previousBrief,
+    goalAssessment: { activeGoalTypes: ['retire'], deferredGoalTypes: [] },
+    moduleSlots: [{ moduleId: 'pension_projection', availability: 'needs_facts', intakeStatus: 'missing_information' }],
+    recommendations: [{
+      moduleId: 'pension_projection',
+      requiredMissing: [{ factId: 'person_current_age', reason: 'Age is required.' }]
+    }],
+    facts: [{ factId: 'cash_savings', value: { amount: 65_000, currency: 'EUR' }, certainty: 'approximate', status: 'confirmed' }]
+  }
+});
+const rangeExtraction = {
+  narrativeSummary: { summary: 'The client gave savings as a range.', evidence: ['gave a range'] },
+  clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+  ambiguities: []
+};
+const firstAssumptionBrief = await composeMeetingBrief({
+  env, sourceTurnId: 'item_range_assumption_001', extraction: rangeExtraction,
+  context: rangeAssumptionContext(null)
+});
+assert.deepEqual(firstAssumptionBrief.assumptionNotices.map((notice) => notice.factId), ['cash_savings']);
+assert.match(firstAssumptionBrief.assumptionNotices[0].text, /between .*60,000 and .*70,000/);
+assert.match(firstAssumptionBrief.assumptionNotices[0].text, /work with .*65,000/);
+assert.doesNotMatch(
+  firstAssumptionBrief.assumptionNotices[0].text,
+  /Is that right\?/,
+  'an assumption is stated, not put to the client as a question to answer'
+);
+assert.deepEqual(firstAssumptionBrief.announcedAssumptions, ['cash_savings']);
+assert.ok(firstAssumptionBrief.questionBatch.prompt, 'the meeting still moves on to its next question');
+// Carrying the announced set forward is what stops the repetition: the range
+// itself stays on the profile for the rest of the meeting.
+const secondAssumptionBrief = await composeMeetingBrief({
+  env, sourceTurnId: 'item_range_assumption_002', extraction: rangeExtraction,
+  context: rangeAssumptionContext(toConsumerMeetingBrief(firstAssumptionBrief, {}))
+});
+assert.deepEqual(secondAssumptionBrief.assumptionNotices, [], 'an assumption is never announced twice');
+assert.deepEqual(secondAssumptionBrief.announcedAssumptions, ['cash_savings']);
+// The public conversation guide is a client-facing contract: internal
+// assumption bookkeeping must not leak into it.
+assert.ok(!('announcedAssumptions' in toConversationGuide(firstAssumptionBrief)));
+
 const missingHomeValueBrief = await composeMeetingBrief({
   env,
   sourceTurnId: 'item_missing_home_value_001',
@@ -2559,14 +2620,26 @@ assert.equal(rangeResult.readBackRequired, false);
 assert.equal(rangeResult.currentPendingProposal, null);
 factContext = await factDurable.planningContext();
 factProfile = await getCurrentProfile(env, await getSessionRow(env, factSessionId));
-assert.equal(factProfile.incomeSources.length, 0);
+// A stated range is an answer: the midpoint is what the analysis uses, and the
+// range the client actually said stays on record so the meeting can quote it
+// back while announcing the figure it has taken.
+assert.equal(factProfile.incomeSources.length, 1);
+assert.equal(factProfile.incomeSources[0].grossAnnual.amount, 65_000);
 assert.deepEqual(factProfile.assumptions.values.completionFacts.rangedFactValues.gross_household_income, {
   min: { amount: 60_000, currency: 'EUR' },
   max: { amount: 70_000, currency: 'EUR' }
 });
 assert.ok(buildConfirmedRealtimeFactSummary(factProfile).some((fact) => (
-  fact.factId === 'gross_household_income' && fact.certainty === 'range'
-)));
+  fact.factId === 'gross_household_income' && fact.certainty === 'approximate'
+)), 'a midpoint is recorded as approximate, not as a range');
+assert.equal(
+  buildRealtimeFactReadBack('gross_household_income', { amount: 65_000, currency: 'EUR' }, 'approximate', 'EUR', {
+    min: { amount: 60_000, currency: 'EUR' },
+    max: { amount: 70_000, currency: 'EUR' }
+  }),
+  'You said gross household income is between \u20ac60,000 and \u20ac70,000, '
+    + 'so I will work with \u20ac65,000 \u2014 just say if you would rather I used a different figure.'
+);
 
 const invalidRangeEvidenceId = 'item_fact_bad_range_001';
 factDurable.finalizedEvidenceItems.add(invalidRangeEvidenceId); factDurable.latestFinalizedEvidenceItemId = invalidRangeEvidenceId;
@@ -2678,9 +2751,14 @@ factProfile = await getCurrentProfile(env, await getSessionRow(env, factSessionI
 assert.equal(factProfile.partner.personId, 'partner_realtime');
 assert.equal(factProfile.partner.age, 52);
 assert.notEqual(factProfile.primaryPerson.age, 52, 'the partner age must not fall back to the primary person');
-assert.equal(factProfile.incomeSources.length, 1);
-assert.equal(factProfile.incomeSources[0].incomeId, 'income_realtime_partner_salary');
-assert.equal(factProfile.incomeSources[0].ownerId, factProfile.partner.personId);
+// Two income sources now: the household income the client gave as a range
+// earlier in this session (stored at its midpoint), plus the partner salary.
+assert.equal(factProfile.incomeSources.length, 2);
+const partnerSalary = factProfile.incomeSources.find(
+  (income) => income.incomeId === 'income_realtime_partner_salary'
+);
+assert.ok(partnerSalary, 'the named partner salary is addressed by id, not by position');
+assert.equal(partnerSalary.ownerId, factProfile.partner.personId);
 assert.equal(factProfile.pensions.length, 1, 'the scalar must update the named position without creating a default pension');
 assert.equal(factProfile.pensions[0].pensionId, 'pension_realtime_workplace');
 assert.equal(factProfile.pensions[0].ownerId, factProfile.partner.personId);

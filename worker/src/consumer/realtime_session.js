@@ -1480,9 +1480,20 @@ export class ConsumerRealtimeSession {
       const confirmationInstruction = context.state.meetingBrief?.confirmationSummary
         ? `Speak this confirmation summary exactly, without adding another question or claim: ${context.state.meetingBrief.confirmationSummary}`
         : 'Briefly say the plan still needs review and ask one closed confirmation question.';
+      // An assumption taken from a stated range is announced in the SAME breath
+      // as the next question. It is a statement, not a request: stopping to
+      // collect a "yes" on every rounded figure is what made the meeting feel
+      // like a form, and the client can correct it at any point.
+      const assumptionInstruction = (context.state.meetingBrief?.assumptionNotices || [])
+        .map((notice) => notice.text)
+        .filter(Boolean)
+        .join(' ');
       const intakeInstruction = context.state.meetingBrief?.questionBatch?.prompt
         ? `Acknowledge the finalized client turn briefly, then ask exactly this one question and no other: ${context.state.meetingBrief.questionBatch.prompt}`
         : 'Respond naturally to the finalized client turn, then ask only the single signed nextObjective question.';
+      const intakeInstructionWithAssumptions = assumptionInstruction
+        ? `${intakeInstruction} Before that question, and in the same breath, state this assumption once: ${assumptionInstruction} Do not pause for the client to confirm it.`
+        : intakeInstruction;
       const forceTool = authorization.options?.forceTool === 'get_planning_state'
         ? 'get_planning_state'
         : null;
@@ -1500,7 +1511,7 @@ export class ConsumerRealtimeSession {
                   ? confirmationInstruction
                   : meetingPhase === 'generating_modules' || meetingPhase === 'closing' || meetingPhase === 'completed'
                     ? 'Do not speak. The server owns analysis generation, the closing message and navigation.'
-                    : intakeInstruction;
+                    : intakeInstructionWithAssumptions;
       const moduleGuidance = conversationalV2
         ? realtimeModuleConversationGuidance(context.state, context.config.allowedModules)
         : [];
@@ -2801,6 +2812,12 @@ export class ConsumerRealtimeSession {
         throw new ConsumerError(409, 'realtime_fact_evidence_mixed', 'Facts in one proposal batch must come from the same finalized consumer answer.');
       }
       const proposals = [];
+      // Each draft is committed with the mapping that was already computed for
+      // it above, against the same running profile. Re-deriving the mapping
+      // from the saved row cannot work once the mapper resolves a value itself:
+      // a stated range is saved as the midpoint it produced, and re-reading
+      // that single figure as a range fails.
+      const committable = [];
       for (const { fact, mapped, patch, confirmationPolicy, readBackText } of normalized) {
         const created = await createRealtimeFactProposal(this.env, {
           sessionId: this.meta.sessionId,
@@ -2813,26 +2830,22 @@ export class ConsumerRealtimeSession {
           baseProfileRevision: Number(context.sessionRow.current_profile_revision),
           evidenceItemId: fact.evidenceItemId,
           confidence: fact.certainty === 'exact' ? 'medium' : 'low',
-          certainty: fact.certainty
+          certainty: mapped.certainty || fact.certainty
         });
-        proposals.push({
+        const proposal = {
           ...created,
           factId: fact.factId,
           value: mapped.proposalValue ?? mapped.displayValue,
-          certainty: fact.certainty,
+          certainty: mapped.certainty || fact.certainty,
           confirmationPolicy,
           readBackText
-        });
+        };
+        proposals.push(proposal);
+        committable.push({ proposal, fact, mapped });
       }
       let currentProfile = context.profile;
       let currentSessionRow = context.sessionRow;
-      for (const proposal of proposals) {
-        const fact = {
-          factId: proposal.factId,
-          value: proposal.value,
-          certainty: proposal.certainty
-        };
-        const mapped = mapRealtimeProposalFact(currentProfile, fact);
+      for (const { proposal, fact, mapped } of committable) {
         const nextProfile = applyMappedRealtimeFact(currentProfile, fact, mapped);
         const nextState = describeConversationState(nextProfile, context.config);
         const committed = await commitRealtimeFactConfirmation(this.env, {

@@ -111,7 +111,37 @@ export function mapRealtimeProposalFact(profile, fact) {
   if (!checked) {
     throw new ConsumerError(400, 'realtime_fact_range_invalid', 'The ranged fact minimum must not exceed its maximum.');
   }
-  return completionFactMapping(profile, fact, normalizedRange);
+  // A RANGE IS AN ANSWER, not a gap. "Somewhere between 300 and 400 thousand"
+  // is the client telling us what they know, so take the midpoint and carry on.
+  // The stated range is kept beside it: the meeting announces which figure it
+  // will use and invites a correction, but nothing waits on a confirmation.
+  const numericPart = (endpoint) => Number(
+    endpoint && typeof endpoint === 'object' && !Array.isArray(endpoint) ? endpoint.amount : endpoint
+  );
+  const midpoint = (numericPart(checked.min) + numericPart(checked.max)) / 2;
+  const mapped = mapRealtimeFact(profile, {
+    ...fact,
+    certainty: 'approximate',
+    value: minimum.displayValue && typeof minimum.displayValue === 'object'
+      ? { ...minimum.displayValue, amount: midpoint }
+      : midpoint
+  });
+  const completionFacts = {
+    ...(profile.assumptions?.values?.completionFacts || {}),
+    rangedFactValues: {
+      ...(profile.assumptions?.values?.completionFacts?.rangedFactValues || {}),
+      [fact.factId]: normalizedRange
+    }
+  };
+  return {
+    ...mapped,
+    additionalPatch: {
+      ...(mapped.additionalPatch || {}),
+      '/assumptions/values/completionFacts': completionFacts
+    },
+    certainty: 'approximate',
+    derivedFromRange: normalizedRange
+  };
 }
 
 function clearCompletionFactMarker(profile, factId, fieldPath = null) {
@@ -143,8 +173,13 @@ export function applyMappedRealtimeFact(profile, fact, mapped) {
   // itself. A stated range becomes an approximate midpoint, so the metadata
   // must say approximate — recording it as `range` would demand a range on a
   // field that now holds a single number.
-  const certainty = String(fact.certainty || 'unknown');
-  const storedRange = certainty === 'range' ? boundedProposalRange(mapped.displayValue) : null;
+  // The mapper decides the recorded certainty when it resolved the value
+  // itself: a stated range becomes an approximate midpoint, so the metadata
+  // says approximate rather than demanding a range on a single number.
+  const certainty = String(mapped.certainty || fact.certainty || 'unknown');
+  const storedRange = mapped.derivedFromRange
+    ? boundedProposalRange(mapped.derivedFromRange)
+    : certainty === 'range' ? boundedProposalRange(mapped.displayValue) : null;
   const rangeNumber = (value) => Number(value && typeof value === 'object' ? value.amount : value);
   const range = storedRange
     ? { min: rangeNumber(storedRange.min), max: rangeNumber(storedRange.max) }
@@ -161,7 +196,9 @@ export function applyMappedRealtimeFact(profile, fact, mapped) {
         ...(range ? { range } : {})
       };
     });
-  if (!['unknown', 'range'].includes(certainty)) {
+  // A midpoint keeps the range it came from on record: that is what the client
+  // actually said, and the assumption notice quotes it back to them.
+  if (!['unknown', 'range'].includes(certainty) && !mapped.derivedFromRange) {
     clearCompletionFactMarker(nextProfile, fact.factId, mapped.fieldPath);
   }
   return normalizeHouseholdProfile(nextProfile);

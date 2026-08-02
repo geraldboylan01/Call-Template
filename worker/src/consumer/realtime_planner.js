@@ -13,6 +13,7 @@ import {
   publicIrishStatePensionRule
 } from '../../../js/planning/ireland_rules.js';
 import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
+import { buildRealtimeFactReadBack } from './realtime_fact_mapper.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
@@ -1013,6 +1014,35 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
   const clientQuestion = extractedQuestion.present
     ? { ...extractedQuestion, reviewedAnswer: intakeExplanation(reviewedQuestionTopic, { stillNeeded: missingFacts }) }
     : extractedQuestion;
+  // Assumptions taken from a stated range. The meeting speaks these in the same
+  // breath as its next question, so the client always knows which single figure
+  // is being used without the conversation stopping to ask permission for it.
+  //
+  // An assumption is announced ONCE. The set of already-announced facts is
+  // carried forward on the brief rather than recomputed from the profile,
+  // because the stated range stays on record for the whole meeting -- deriving
+  // "new" by diffing only the previous brief would re-announce the same
+  // assumption on every second turn. Carrying it on the brief also means voice
+  // and agent behave identically, which is the whole point of one engine.
+  const rangedValues = context.profile?.assumptions?.values?.completionFacts?.rangedFactValues || {};
+  const announcedAssumptions = new Set(state.meetingBrief?.announcedAssumptions || []);
+  const assumptionNotices = Object.entries(rangedValues)
+    .filter(([factId]) => !announcedAssumptions.has(factId))
+    .slice(0, 3)
+    .flatMap(([factId, range]) => {
+      const stored = (state.facts || []).find((item) => item.factId === factId);
+      if (!stored || !range) return [];
+      const text = buildRealtimeFactReadBack(
+        factId, stored.value, 'approximate',
+        context.profile?.preferences?.baseCurrency || 'EUR', range
+      );
+      return text ? [{ factId, text: boundedText(text, 240) }] : [];
+    });
+  const nextAnnouncedAssumptions = [
+    ...announcedAssumptions,
+    ...assumptionNotices.map((notice) => notice.factId)
+  ].slice(-24);
+
   const primaryRequestedFact = missingFacts[0] || null;
   // A LIVE MEETING MUST NEVER RECEIVE A BRIEF WITH NO QUESTION.
   //
@@ -1120,6 +1150,8 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
       reason: boundedText(missingFacts[0]?.reason || '', 240)
     },
     questionBatch,
+    assumptionNotices,
+    announcedAssumptions: nextAnnouncedAssumptions,
     moduleOffer: activeOffer
       ? {
           moduleId: activeOffer.moduleId,
@@ -1304,6 +1336,20 @@ export function toConsumerMeetingBrief(brief, { profile } = {}) {
       .filter(Boolean),
     analyses,
     stillNeeded,
+    // Assumption notices are spoken to the client, so they pass the same
+    // consumer-language guard as every other spoken field. The announced set is
+    // internal bookkeeping and carries through unchanged so that an assumption
+    // is stated exactly once, on voice and on the agent transport alike.
+    assumptionNotices: (Array.isArray(brief.assumptionNotices) ? brief.assumptionNotices : [])
+      .slice(0, 3)
+      .map((notice) => {
+        const text = boundedConsumerPlanningText(notice?.text, 240);
+        return text && notice?.factId ? { factId: boundedText(notice.factId, 80), text } : null;
+      })
+      .filter(Boolean),
+    announcedAssumptions: (Array.isArray(brief.announcedAssumptions) ? brief.announcedAssumptions : [])
+      .filter((factId) => typeof factId === 'string')
+      .slice(-24),
     nextObjective: {
       facts: nextFacts,
       reason: boundedConsumerPlanningText(brief.nextObjective?.reason, 240),
