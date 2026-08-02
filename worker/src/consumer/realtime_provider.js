@@ -310,6 +310,71 @@ export function realtimeRecordedFactInstructions(state = {}) {
   ];
 }
 
+/**
+ * Whether a turn is worth reflecting back before the planner runs.
+ *
+ * DETERMINISTIC, AND DECIDED BEFORE ANY MODEL IS ASKED. Reflecting "yes" or
+ * "sixty" back at someone is worse than saying nothing -- it makes the meeting
+ * sound doddery, and it doubles the responses on turns that were never slow
+ * enough to need covering.
+ *
+ * A turn earns a reflection when it carries something the client would want
+ * confirmed they were heard on: a figure, or enough words that a mishearing
+ * would matter.
+ */
+export function shouldReflectTurn(transcript) {
+  const text = String(transcript || '').trim();
+  if (!text) return false;
+  // A FIGURE ALWAYS EARNS A REFLECTION, however briefly it was said. "Sixty"
+  // and "sixteen", "thirty" and "thirteen" are the pairs transcription
+  // confuses, and a one-word answer is where a mishearing is least likely to
+  // be noticed. Utterance length is NOT a proxy for how long the client waits:
+  // the planner takes four to twelve seconds regardless of how much was said.
+  const hasFigure = /\d/.test(text)
+    || /\b(?:percent|per cent|hundred|thousand|million|none|nothing|no other|half|quarter)\b/i.test(text)
+    || /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b/i.test(text);
+  if (hasFigure) return true;
+  // Otherwise only a substantive answer is worth repeating. Reflecting "yes"
+  // back at someone makes the meeting sound doddery.
+  return text.split(/\s+/).filter(Boolean).length > 5;
+}
+
+/** A correction deserves a plainer frame than a warm one. */
+export function looksLikeCorrection(transcript) {
+  return /\b(?:no,|not|actually|sorry|i meant|that'?s wrong|mistake|correction)\b/i
+    .test(String(transcript || ''));
+}
+
+/**
+ * What the meeting says the instant the client stops speaking, while the
+ * planner reads the turn.
+ *
+ * IT REPEATS, IT DOES NOT CLAIM. At this point the app knows exactly what was
+ * SAID -- it has the finalized transcript -- and nothing at all about what will
+ * be captured. "You said thirty percent" is a statement about the audio the
+ * client can check instantly; "I have thirty percent" is a statement about the
+ * database, and that is the trust fault this codebase has already had once.
+ *
+ * The reflection is also the only place a mishearing gets caught. Today a
+ * transcription error becomes a stored fact and then a projection, silently.
+ * Said back, the client corrects it in the next breath.
+ */
+export function realtimeReflectionInstructions(transcript) {
+  const correcting = looksLikeCorrection(transcript);
+  return [
+    'The client has just finished speaking and the planner is still reading their answer.',
+    'Say ONE short sentence, under fifteen words, that repeats back the specific figures or'
+      + ' facts they just said, in their own terms, then say you are looking at it.',
+    correcting
+      ? 'They are correcting something. Repeat the corrected value plainly. Do not thank them warmly'
+        + ' and do not sound pleased.'
+      : 'Keep it plain and unhurried.',
+    'Do NOT ask a question. Do NOT add anything they did not say. Do NOT say the information is'
+      + ' saved, captured, confirmed, recorded or noted, and do not promise what happens next.',
+    'If they said nothing with a figure or a fact in it, say nothing at all.'
+  ];
+}
+
 export function buildRealtimeConversationV2Instructions(state = {}, allowedModuleIds = []) {
   const brief = state.meetingBrief && typeof state.meetingBrief === 'object'
     ? JSON.stringify(state.meetingBrief).slice(0, 12_000)

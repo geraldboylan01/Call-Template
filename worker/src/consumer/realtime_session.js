@@ -82,7 +82,9 @@ import {
   hangupOpenAiRealtimeCall,
   realtimeJourneyPhase,
   realtimeModuleConversationGuidance,
-  realtimeToolsForState
+  realtimeReflectionInstructions,
+  realtimeToolsForState,
+  shouldReflectTurn
 } from './realtime_provider.js';
 import { composeDirectedSpeech } from './realtime_director.js';
 import { issueRealtimeSpeechAuthorization } from './realtime_speech.js';
@@ -907,6 +909,27 @@ export class ConsumerRealtimeSession {
           });
           if (completionHandled) return;
         }
+        // SAY WHAT WAS HEARD BEFORE WORKING OUT WHAT IT MEANS.
+        //
+        // The planner takes four to twelve seconds, and until now the client
+        // heard nothing for all of it -- which on a phone call reads as a
+        // dropped line, not as thinking. This repeats their own figures back
+        // while the planner reads them.
+        //
+        // It is not only cover for the wait. It is the only point at which a
+        // mishearing can be caught: today "thirteen percent" for "thirty"
+        // becomes a stored fact and then a projection, silently, and the client
+        // never finds out. Said back, they correct it in the next breath.
+        //
+        // Ordering is safe without any cancellation logic:
+        // drainResponseAuthorization refuses to start while a response is in
+        // flight and queues instead, so the substantive turn below cannot
+        // overlap this one -- it drains when this finishes.
+        if (shouldReflectTurn(plannerTranscript)) {
+          await this.authorizeResponse('reflect_finalized_turn', {
+            reflectionTranscript: plannerTranscript
+          });
+        }
         const plannerResult = await this.processPlannerTurn({
           itemId,
           transcript: plannerTranscript,
@@ -1410,6 +1433,13 @@ export class ConsumerRealtimeSession {
     if (reason === 'finalized_user_item') return 5;
     if (reason === 'tool_output') return 4;
     if (reason === 'initial_state_probe') return 3;
+    // A reflection is the LOWEST priority there is. It exists only to cover the
+    // planner's thinking time, so if the real turn is ready it must win
+    // outright -- a queue that kept the reflection would drop the substantive
+    // response and leave the client repeating themselves back at nobody. This
+    // is stated rather than left to the default so it survives someone
+    // changing what an unrecognised reason scores.
+    if (reason === 'reflect_finalized_turn') return 0;
     return 1;
   }
 
@@ -1493,7 +1523,18 @@ export class ConsumerRealtimeSession {
       const forceTool = authorization.options?.forceTool === 'get_planning_state'
         ? 'get_planning_state'
         : null;
-      const conversationalInstruction = authorizationReason === 'tool_output'
+      // The reflection runs BEFORE the planner, so it must not touch the brief:
+      // the brief still describes the previous turn, and a question drawn from
+      // it would be one the client has already answered. This response repeats
+      // their own words and stops.
+      // Only used to tell a correction from a plain answer -- the transcript is
+      // never embedded in the instruction, because the model already has the
+      // turn in its own context and repeating it back to it adds nothing but
+      // a place for content to leak.
+      const reflectionTranscript = String(authorization.options?.reflectionTranscript || '');
+      const conversationalInstruction = authorizationReason === 'reflect_finalized_turn'
+        ? realtimeReflectionInstructions(reflectionTranscript).join(' ')
+        : authorizationReason === 'tool_output'
         ? 'Continue the same turn naturally using the reviewed tool output. Keep the answer concise, then bridge to the signed brief nextObjective. Do not repeat the previous wording.'
         : authorizationReason === 'planner_recovery'
           ? 'Do not mention any technical issue, error, failure, saving problem or planning note, and do not ask the client to repeat, restate or rephrase. Briefly acknowledge the latest client point without claiming it was saved, then continue naturally with one useful next question from the signed brief.'

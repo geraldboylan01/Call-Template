@@ -3622,8 +3622,10 @@ assert.equal(
   fragmentPlannerCalls[0].transcript,
   'Yes, my home is worth €500,000 and the mortgage balance is €300,000.'
 );
-assert.equal(fragmentResponseReasons.length, 1);
-assert.equal(fragmentResponseReasons[0], 'finalized_user_item');
+// A turn carrying figures is reflected back BEFORE the planner reads it, then
+// answered once the planner returns. The order matters: the reflection repeats
+// what was heard, the substantive turn acts on what was understood.
+assert.deepEqual(fragmentResponseReasons, ['reflect_finalized_turn', 'finalized_user_item']);
 assert.equal(fragmentDurable.latestFinalizedEvidenceItemId, 'item_complete_home_answer_002');
 
 await fragmentDurable.handleProviderMessage(JSON.stringify({

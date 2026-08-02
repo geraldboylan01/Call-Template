@@ -336,11 +336,15 @@ export function getConsumerConfig(env) {
       && enabled(env.CONSUMER_AGENT_TEST_ENABLED)
       && agentTestCohorts.includes(cohort),
     agentTestCohorts,
-    agentTestMaxTurns: boundedInteger(env.CONSUMER_AGENT_TEST_MAX_TURNS, 40, 1, 120),
+    agentTestMaxTurns: boundedInteger(env.CONSUMER_AGENT_TEST_MAX_TURNS, 60, 1, 120),
     agentTestMaxSessions: boundedInteger(env.CONSUMER_AGENT_TEST_MAX_SESSIONS, 20, 1, 200),
     // Per-session ceiling on model spend, checked BEFORE each dispatch.
+    // Fifty cents per agent-test session was set when a session meant a handful
+    // of scripted turns. A long diagnostic call with a real planner and a real
+    // renderer on every turn runs past it, and being cut off mid-call wastes
+    // the whole run rather than saving anything.
     agentTestSessionBudgetMicroEur: boundedInteger(
-      env.CONSUMER_AGENT_TEST_SESSION_BUDGET_EUR_CENTS, 50, 1, 500
+      env.CONSUMER_AGENT_TEST_SESSION_BUDGET_EUR_CENTS, 250, 1, 2_000
     ) * 10_000,
     moduleRoutingEnabled: journeyEnabled && enabled(env.CONSUMER_MODULE_ROUTING_ENABLED),
     goalRoutingEnabled: journeyEnabled
@@ -418,8 +422,19 @@ export function getConsumerConfig(env) {
     realtimeIdleTimeoutSeconds: boundedInteger(env.CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS, 90, 30, 300),
     realtimeSilencePromptSeconds: boundedInteger(env.CONSUMER_REALTIME_SILENCE_PROMPT_SECONDS, 45, 0, 120),
     realtimeMaxSdpBytes: boundedInteger(env.CONSUMER_REALTIME_MAX_SDP_BYTES, 32_768, 4_096, 32_768),
-    realtimeMaxResponses: boundedInteger(env.CONSUMER_REALTIME_MAX_RESPONSES, 40, 1, 40),
-    realtimeMaxToolCalls: boundedInteger(env.CONSUMER_REALTIME_MAX_TOOL_CALLS, 24, 1, 24),
+    // Forty assumed one spoken response per client turn. A reflection -- the
+    // short "you said thirty percent, ten from the employer" that covers the
+    // planner's thinking time -- makes it two, so forty capped a real call at
+    // about twenty turns, and these calls run longer than that.
+    //
+    // This is a RUNAWAY guard, not a spend expectation. Duration binds first in
+    // practice: fifteen minutes of conversation cannot reach a hundred
+    // responses. The money ceilings are separate and are nowhere near binding
+    // -- see the note on realtimeSessionBudgetCents.
+    realtimeMaxResponses: boundedInteger(env.CONSUMER_REALTIME_MAX_RESPONSES, 100, 1, 200),
+    // Tool calls scale with turns for the same reason: one propose_facts per
+    // answer. Twenty-four ran out well before a long call did.
+    realtimeMaxToolCalls: boundedInteger(env.CONSUMER_REALTIME_MAX_TOOL_CALLS, 60, 1, 120),
     // The structured planner regularly takes longer than 2.5 seconds in paid
     // probes. A timeout must be exceptional: timing out an ordinary turn used
     // to leave the previous MeetingBrief active and made the voice repeat the
