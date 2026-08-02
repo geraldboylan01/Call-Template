@@ -62,12 +62,19 @@ async function callResponses({ apiKey, model, instructions, input, maxTokens = 3
     throw new Error(`simulated client request failed: ${response.status} ${detail.slice(0, 200)}`);
   }
   const payload = await response.json();
+  const usage = {
+    inputTokens: Number(payload?.usage?.input_tokens || 0),
+    outputTokens: Number(payload?.usage?.output_tokens || 0),
+    cachedInputTokens: Number(payload?.usage?.input_tokens_details?.cached_tokens || 0)
+  };
   if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
-    return payload.output_text.trim();
+    return { text: payload.output_text.trim(), usage };
   }
   for (const item of payload.output || []) {
     for (const content of item.content || []) {
-      if (content?.type === 'output_text' && typeof content.text === 'string') return content.text.trim();
+      if (content?.type === 'output_text' && typeof content.text === 'string') {
+        return { text: content.text.trim(), usage };
+      }
     }
   }
   throw new Error('simulated client returned no text');
@@ -85,7 +92,16 @@ export function createOpenAiClient({ apiKey, model = 'gpt-5.6-luna', maxTurns = 
   if (!apiKey) throw new Error('createOpenAiClient requires an API key');
   return {
     id: 'openai',
-    usage: { clientCalls: 0, plannerCalls: 0 },
+    // Token counts are kept PER ROLE. The client and the planner are different
+    // models on different price tiers, and a batch that totalled them together
+    // could not tell you which half of the conversation costs the money.
+    usage: {
+      clientCalls: 0,
+      plannerCalls: 0,
+      client: { model, inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+      planner: { model: null, inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+      plannerLatenciesMs: []
+    },
 
     async nextMessage({ scenario, transcript, turnIndex }) {
       if (turnIndex >= maxTurns) return null;
@@ -97,12 +113,16 @@ export function createOpenAiClient({ apiKey, model = 'gpt-5.6-luna', maxTurns = 
             content: turn.text
           }));
       this.usage.clientCalls += 1;
-      return callResponses({
+      const { text, usage } = await callResponses({
         apiKey,
         model,
         instructions: `${CLIENT_SYSTEM_PROMPT}\n\nYour brief:\n${clientBrief(scenario)}`,
         input
       });
+      this.usage.client.inputTokens += usage.inputTokens;
+      this.usage.client.outputTokens += usage.outputTokens;
+      this.usage.client.cachedInputTokens += usage.cachedInputTokens;
+      return text;
     },
 
     /**
@@ -119,6 +139,12 @@ export function createOpenAiClient({ apiKey, model = 'gpt-5.6-luna', maxTurns = 
         transcript: text,
         recentTurns: []
       });
+      const metadata = planned.metadata || {};
+      this.usage.planner.model = metadata.model || this.usage.planner.model;
+      this.usage.planner.inputTokens += Number(metadata.inputTokens || 0);
+      this.usage.planner.outputTokens += Number(metadata.outputTokens || 0);
+      this.usage.planner.cachedInputTokens += Number(metadata.cachedInputTokens || 0);
+      if (Number.isFinite(metadata.latencyMs)) this.usage.plannerLatenciesMs.push(metadata.latencyMs);
       return planned.extraction;
     }
   };

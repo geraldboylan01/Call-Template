@@ -1385,6 +1385,33 @@ cost-ceiling refusal; judge output cannot change exit code. **Migration risk.**
 Medium (volume). **Rollback.** Flag off. **Completion.** A 20-conversation batch
 produces a report. **Changes voice behaviour?** No.
 
+**Built.** As a CLI batch, not a worker API — the orchestrator runs beside the
+engine rather than inside it, so a batch cannot consume production request
+capacity and needs no new route or flag. `POST /batches` is therefore deferred
+to A7, where the adviser-portal analytics panel gives it a consumer.
+
+| Piece | File |
+|---|---|
+| Orchestrator, hard concurrency cap, metrics rollup | [`scripts/agent-harness/batch.mjs`](../scripts/agent-harness/batch.mjs) |
+| Token/euro ledger, pre-dispatch ceiling, latency percentiles | [`scripts/agent-harness/cost.mjs`](../scripts/agent-harness/cost.mjs) |
+| Advisory judge (tone, groundedness, explains-why, momentum) | [`scripts/agent-judges/conversation.mjs`](../scripts/agent-judges/conversation.mjs) |
+| Paid runner + JSON report | [`scripts/run-consumer-agent-batch.mjs`](../scripts/run-consumer-agent-batch.mjs) |
+| Deterministic guarantees (free, in CI) | [`scripts/check-consumer-agent-batch.mjs`](../scripts/check-consumer-agent-batch.mjs) |
+
+Three properties are asserted rather than intended:
+
+1. **Concurrency is capped at 10 in code.** A request for more is clamped, not
+   refused — the cap protects the provider account and the app under test, and a
+   batch that refuses to start protects neither.
+2. **Spend is refused before dispatch.** The ledger projects the next
+   conversation's cost from the observed mean, so a batch that turns out dearer
+   than estimated still stops in time. Conversations already in flight finish;
+   the rest are reported as skipped, never silently dropped.
+3. **The judge cannot change the exit code.** Asserted by running identical
+   batches under a judge scoring 5/5 and a judge that throws, and comparing the
+   deterministic result. A judge that errors yields an *absent* opinion, not a
+   low score.
+
 ---
 
 ### A7 — Reporting, analytics and cost controls
