@@ -6,6 +6,7 @@ import {
   IRISH_STATE_PENSION_CONTRIBUTORY,
   normalizeStatePensionFraction
 } from '../ireland_rules.js';
+import { NON_CONTRIBUTORY_PENSION_TYPES } from '../profile.js';
 import {
   annualExpenses,
   availableInvestmentAmount,
@@ -70,6 +71,12 @@ export function getPensionProjectionReadiness(profile) {
     pensions.forEach((pension) => {
       const index = profile.pensions.indexOf(pension);
       if (!pension.currentValue) requiredMissing.push(missing(`/pensions/${index}/currentValue`, 'Add the current pension value.', moduleIds));
+      // A PRESERVED POLICY CANNOT BE CONTRIBUTED TO. Asking a client what they
+      // and their employer pay into a buyout bond is a question with no correct
+      // answer, and the meeting repeated it because no answer could be
+      // accepted. Its value still counts towards the projection; only the
+      // contribution questions are dropped.
+      if (NON_CONTRIBUTORY_PENSION_TYPES.includes(pension.type)) return;
       if (typeof pension.employeeContributionRate !== 'number') {
         requiredMissing.push(missing(`/pensions/${index}/employeeContributionRate`, 'Add the personal pension contribution rate.', moduleIds));
       }

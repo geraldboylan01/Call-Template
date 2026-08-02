@@ -31,7 +31,17 @@ import {
 const ASSET_TYPES = Object.freeze(['cash', 'investment', 'property', 'pension', 'business', 'agricultural', 'other']);
 const LIABILITY_TYPES = Object.freeze(['mortgage', 'loan', 'credit_card', 'other']);
 const INCOME_TYPES = Object.freeze(['employment', 'self_employment', 'rental', 'pension', 'state_pension', 'other']);
-const PENSION_TYPES = Object.freeze(['occupational', 'prsa', 'personal', 'defined_benefit', 'other']);
+// A buyout bond (personal retirement bond) holds benefits transferred out of a
+// scheme the person has left. It is PRESERVED: nobody contributes to it, by
+// anyone, ever. Without a way to say so, a client with one was asked what they
+// and their employer pay into it -- a question with no correct answer, which
+// the meeting then repeated because no answer could be accepted.
+const PENSION_TYPES = Object.freeze([
+  'occupational', 'prsa', 'personal', 'defined_benefit', 'buyout_bond', 'other'
+]);
+
+/** Pension types that cannot receive contributions, so are never asked about them. */
+export const NON_CONTRIBUTORY_PENSION_TYPES = Object.freeze(['buyout_bond']);
 const PROPERTY_USES = Object.freeze(['home', 'rental', 'farm', 'business', 'other']);
 const CONSENT_PURPOSES = Object.freeze(['analysis', 'ai_processing', 'save_profile', 'adviser_handoff', 'marketing']);
 const CONTACT_METHODS = Object.freeze(['email', 'phone']);

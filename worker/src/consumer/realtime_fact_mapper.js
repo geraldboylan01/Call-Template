@@ -1028,7 +1028,7 @@ function mapPensionPosition(profile, fact, currency) {
     allowConfirmedNone: true,
     buildValue: ({ value, existing, entityId }) => {
       const type = String(value.type || existing?.type || '').trim().toLowerCase();
-      if (!['occupational', 'prsa', 'personal', 'defined_benefit', 'other'].includes(type)) {
+      if (!['occupational', 'prsa', 'personal', 'defined_benefit', 'buyout_bond', 'other'].includes(type)) {
         throw new ConsumerError(400, 'realtime_pension_type_invalid', 'That pension type requires visual review.');
       }
       const canonical = {

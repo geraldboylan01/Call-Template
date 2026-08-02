@@ -309,21 +309,35 @@ function sharesEntityWith(askedFactId, candidateFactId) {
   ));
 }
 
-export function bindCandidateToAskedEntity(candidate, state) {
+export function bindCandidateToAskedEntity(candidate, state, profile = null) {
   const asked = state?.meetingBrief?.questionBatch?.primaryFact
     || state?.nextApprovedFact
     || state?.nextQuestion;
   if (!asked || !candidate?.factId || !sharesEntityWith(asked.factId, candidate.factId)) {
     return candidate;
   }
-  // An owner named by the planner is the client talking about someone else --
-  // "and Aoife's is 10%" -- which must not be pulled onto the holding under
-  // discussion.
-  if (candidate.value?.owner || candidate.value?.ownerId) return candidate;
   // factInstanceId is `${factId}:${entityId}` when the question is scoped to a
   // particular holding; anything else carries no entity to inherit.
   const entityId = String(asked.factInstanceId || '').slice(String(asked.factId).length + 1);
   if (!entityId) return candidate;
+  // An owner named by the planner only blocks the binding when it is a
+  // DIFFERENT person from the one whose holding was asked about. "And Aoife's
+  // is 10%" while discussing Dermot's scheme must not attach here -- but when
+  // the question is about Aoife's own pension, naming her is agreement, not
+  // contradiction, and refusing it lost her rates entirely.
+  const namedOwner = candidate.value?.owner || candidate.value?.ownerId;
+  if (namedOwner && profile) {
+    const askedOwnerId = (profile.pensions || [])
+      .find((pension) => pension.pensionId === entityId)?.ownerId;
+    const namedOwnerId = namedOwner === 'partner'
+      ? profile.partner?.personId
+      : namedOwner === 'primary'
+        ? profile.primaryPerson?.personId
+        : namedOwner;
+    if (askedOwnerId && namedOwnerId && askedOwnerId !== namedOwnerId) return candidate;
+  } else if (namedOwner) {
+    return candidate;
+  }
   const value = candidate.value;
   const alreadyIdentified = value && typeof value === 'object' && !Array.isArray(value)
     && (value.entityId || value.id);

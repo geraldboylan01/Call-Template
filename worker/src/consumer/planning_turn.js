@@ -81,7 +81,7 @@ export async function applyPlannerCandidates({
   for (const rawCandidate of candidates) {
     // An answer inherits the identity of whatever the meeting just asked about,
     // so "thirty percent" lands on the pension the question named.
-    const candidate = bindCandidateToAskedEntity(rawCandidate, current.state);
+    const candidate = bindCandidateToAskedEntity(rawCandidate, current.state, current.profile);
     const fact = {
       factId: candidate.factId,
       value: candidate.value,

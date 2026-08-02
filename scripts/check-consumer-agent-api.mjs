@@ -21,11 +21,14 @@ import { fileURLToPath } from 'node:url';
 
 import {
   MODULE_IDS,
+  applyProfilePatch,
   buildGoalModulePlan,
   createHouseholdProfile,
+  getModuleReadiness,
   normalizeHouseholdProfile
 } from '../js/planning/index.js';
 import { containsInternalModuleTerminology } from '../js/planning/module_offers.js';
+import { NON_CONTRIBUTORY_PENSION_TYPES } from '../js/planning/profile.js';
 import { goalFamily } from '../js/planning/goal_plan.js';
 import {
   FINANCIAL_POSITION_KINDS,
@@ -588,6 +591,56 @@ async function agentContext(profile, config = CONFIG) {
   assert.match(provider, /Never open with what you cannot do/,
     'the meeting opened with a disclaimer before anything had been asked for');
   pass('the planner is told the contracts that were silently losing facts');
+}
+
+{
+  // A PRESERVED POLICY CANNOT BE CONTRIBUTED TO. A buyout bond holds benefits
+  // from a scheme the client has left; asking what they and their employer pay
+  // into it is a question with no correct answer, and the meeting repeated it
+  // because no answer could be accepted.
+  const NOW_PBS = '2026-08-02T09:00:00.000Z';
+  const prov = {
+    source: 'user_confirmation', confidence: 'high', certainty: 'exact',
+    capturedAt: NOW_PBS, confirmedByUser: true
+  };
+  const built = applyProfilePatch(
+    createHouseholdProfile({ profileId: 'pen', nowIso: NOW_PBS, calculationDateIso: '2026-08-02' }),
+    {
+      patchId: 'pen-1',
+      operations: [
+        { op: 'add', path: '/goals/-', value: { goalId: 'g1', type: 'retire', title: 'Retire', status: 'active', priority: 'high' }, provenance: prov },
+        { op: 'add', path: '/primaryPerson/age', value: 53, provenance: prov },
+        { op: 'add', path: '/pensions/-', value: { pensionId: 'bond', ownerId: 'primary', type: 'buyout_bond', currentValue: { amount: 380_000, currency: 'EUR' } }, provenance: prov },
+        { op: 'add', path: '/pensions/-', value: { pensionId: 'work', ownerId: 'primary', type: 'occupational', currentValue: { amount: 360_000, currency: 'EUR' } }, provenance: prov }
+      ]
+    },
+    { nowIso: NOW_PBS }
+  ).profile;
+  assert.equal(built.pensions[0].type, 'buyout_bond', 'the type survives the profile contract');
+  const rates = getModuleReadiness('pension_projection', built).requiredMissing
+    .filter((item) => /ContributionRate/.test(item.fieldPath))
+    .map((item) => item.fieldPath);
+  assert.deepEqual(rates, ['/pensions/1/employeeContributionRate', '/pensions/1/employerContributionRate'],
+    'only the contributory pension is asked; the preserved one is not');
+  assert.ok(NON_CONTRIBUTORY_PENSION_TYPES.includes('buyout_bond'));
+  // Its value still counts — only the contribution questions are dropped.
+  assert.ok(!getModuleReadiness('pension_projection', built).requiredMissing
+    .some((item) => item.fieldPath === '/pensions/0/currentValue'));
+  pass('a preserved pension is valued but never asked what is paid into it');
+}
+
+{
+  // ONE HOLDING, ONE QUESTION. Asking the two rates a turn apart is how they
+  // ended up on different pensions: "the employer pays 10% into that same one"
+  // arrived after the meeting had moved to the next holding.
+  const source = readFileSync(`${root}/worker/src/consumer/realtime_planner.js`, 'utf8');
+  assert.match(source, /linkedFact: linkedRequestedFact/,
+    'the paired rate travels with the question, instead of linkedFact always being null');
+  assert.match(source, /maxQuestions: linkedRequestedFact \? 2 : 1/,
+    'and the batch admits it is asking for two things');
+  assert.match(source, /and does your employer add anything on top\?/,
+    'both rates are asked in one breath');
+  pass('both contribution rates for one pension are asked together');
 }
 
 {

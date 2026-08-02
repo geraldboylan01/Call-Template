@@ -117,7 +117,7 @@ const PLANNER_SCHEMA = Object.freeze({
           country: { type: 'string', maxLength: 80 },
           owner: { type: 'string', enum: ['primary', 'partner', 'joint', 'household', 'unknown'] },
           propertyUse: { type: 'string', enum: ['home', 'rental', 'farm', 'business', 'other', 'unknown'] },
-          pensionType: { type: 'string', enum: ['occupational', 'prsa', 'personal', 'defined_benefit', 'other', 'unknown'] },
+          pensionType: { type: 'string', enum: ['occupational', 'prsa', 'personal', 'defined_benefit', 'buyout_bond', 'other', 'unknown'] },
           incomeType: {
             type: 'string',
             enum: ['employment', 'self_employment', 'rental', 'pension', 'state_pension', 'other', 'unknown']
@@ -216,6 +216,7 @@ Orientation context:
 - "I retired three years ago" supports retirement_status=retired exact and life_stage=retired approximate.
 - Ownership STATUS is orientation and may be emitted from clear context. Property, pension and business VALUES remain explicit-only.
 - The signed meeting jurisdiction is Ireland (IE). Use Irish terms such as occupational pension, PRSA, personal pension, AVC and defined-benefit pension.
+- A buyout bond, personal retirement bond or PRB holds benefits from a scheme the client has LEFT. Set pensionType=buyout_bond. Nobody contributes to one, so never emit a contribution rate for it.
 - Never introduce IRA, Roth IRA, 401(k), ISA or another foreign account list. If the client volunteers a foreign holding, preserve it generically with its country and approximate value; never relabel it as an Irish product.
 - valueJson MUST be valid JSON. A choice or text value is a quoted string such as "couple"; a number is 6.5; an object is {"age":12}. A bare unquoted word will not parse and the fact is discarded.
 - A contribution rate is a PERCENTAGE of pay: valueJson for pension_employee_contribution_rate is 6.5 when the client says six and a half percent, not 0.065. The same for pension_employer_contribution_rate.
@@ -382,7 +383,7 @@ export function validatePlannerExtraction(value, sourceTurnId) {
         country: boundedText(item?.country, 80),
         owner: ['primary', 'partner', 'joint', 'household'].includes(item?.owner) ? item.owner : null,
         propertyUse: ['home', 'rental', 'farm', 'business', 'other'].includes(item?.propertyUse) ? item.propertyUse : null,
-        pensionType: ['occupational', 'prsa', 'personal', 'defined_benefit', 'other'].includes(item?.pensionType) ? item.pensionType : null,
+        pensionType: ['occupational', 'prsa', 'personal', 'defined_benefit', 'buyout_bond', 'other'].includes(item?.pensionType) ? item.pensionType : null,
         agricultural: item?.agricultural === 'true' ? true : item?.agricultural === 'false' ? false : null,
         certainty: ['exact', 'approximate', 'range', 'unknown'].includes(item?.certainty) ? item.certainty : 'unknown',
         evidenceText: boundedText(item?.evidenceText),
@@ -1090,6 +1091,34 @@ function conversationalQuestion(fact, state) {
   return prompt.endsWith('?') ? prompt : `${prompt}?`;
 }
 
+/** The entity a scoped question is about, or null when it is not scoped. */
+function askedEntityId(fact) {
+  const instance = String(fact?.factInstanceId || '');
+  const factId = String(fact?.factId || '');
+  return instance.startsWith(`${factId}:`) ? instance.slice(factId.length + 1) : null;
+}
+
+/**
+ * A second fact that belongs to the same holding and can honestly be asked in
+ * the same breath. Deliberately narrow: only the two contribution rates, which
+ * a client always states together and which are meaningless apart.
+ */
+function pairedRequestedFact(primary, missingFacts) {
+  const PAIR = ['pension_employee_contribution_rate', 'pension_employer_contribution_rate'];
+  if (!primary || !PAIR.includes(primary.factId)) return null;
+  const entityId = askedEntityId(primary);
+  if (!entityId) return null;
+  const partner = PAIR.find((factId) => factId !== primary.factId);
+  return (missingFacts || []).find((fact) => (
+    fact.factId === partner && askedEntityId(fact) === entityId
+  )) || null;
+}
+
+function pairedQuestion() {
+  return 'Roughly what percentage of your pay goes into that pension, '
+    + 'and does your employer add anything on top?';
+}
+
 function statePensionMemberAssumptions(profile) {
   const retirement = profile?.assumptions?.values?.retirement || {};
   const included = retirement.includeStatePension;
@@ -1247,13 +1276,23 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
         moduleId: null
       }
     : null;
+  // ONE HOLDING, ONE QUESTION. Both contribution rates belong to the same
+  // pension, and asking them a turn apart is how they ended up on different
+  // pensions: the client answered "and the employer pays 10% into that same
+  // one" after the meeting had already moved to the next holding, so "that
+  // same one" attached to the wrong policy. Asked together, the pair cannot
+  // drift, and a client who says "I pay 30% and they add 10%" is answered in
+  // one breath rather than made to repeat themselves.
+  const linkedRequestedFact = pairedRequestedFact(primaryRequestedFact, missingFacts);
   const questionBatch = (primaryRequestedFact && !clarificationRequired)
     ? {
         topic: questionTopic(primaryRequestedFact.factId),
         primaryFact: primaryRequestedFact,
-        linkedFact: null,
-        prompt: conversationalQuestion(primaryRequestedFact, state),
-        maxQuestions: 1
+        linkedFact: linkedRequestedFact,
+        prompt: linkedRequestedFact
+          ? pairedQuestion()
+          : conversationalQuestion(primaryRequestedFact, state),
+        maxQuestions: linkedRequestedFact ? 2 : 1
       }
     : clarificationFact
       ? {
