@@ -238,7 +238,24 @@ function comparableTurn({ transcript, diagnostics, plannerErrorCode, degraded, o
 /* A. Agent transport                                                   */
 /* ------------------------------------------------------------------ */
 
-export async function runAgentScenario(scenario, { client, envOverrides = {} } = {}) {
+/**
+ * @param {object} scenario
+ * @param {object} options
+ * @param {object} options.client
+ * @param {boolean} [options.renderWithModel] use the REAL assistant renderer
+ *   instead of the deterministic stand-in.
+ *
+ *   The stand-in returns the server-owned question verbatim, which is exactly
+ *   right for parity testing: what is under test there is planning, and prose
+ *   comes from two different model calls that are never expected to match.
+ *
+ *   It is exactly WRONG for judging a call. Grading tone or momentum on a raw
+ *   question prompt grades something no client would ever hear. So a review run
+ *   turns this on and pays for the real renderer, which is the same
+ *   `renderAssistantText` the live transport uses, driven by the same shared
+ *   instruction pack.
+ */
+export async function runAgentScenario(scenario, { client, envOverrides = {}, renderWithModel = false } = {}) {
   const databasePath = newDatabase(`agent-${scenario.id}`);
   const env = makeEnv(databasePath, envOverrides);
   const config = makeConfig(env);
@@ -247,7 +264,7 @@ export async function runAgentScenario(scenario, { client, envOverrides = {} } =
   const transcript = [];
 
   for (let index = 0; index < scenario.turns.length; index += 1) {
-    const say = await client.nextMessage({ scenario, transcript, turnIndex: index });
+    const say = await client.nextMessage({ scenario, transcript, turnIndex: index, turnsSoFar: turns });
     if (!say) break;
     const result = await processAgentTurn(env, config, {
       sessionId, meetingId, message: say,
@@ -257,10 +274,13 @@ export async function runAgentScenario(scenario, { client, envOverrides = {} } =
           metadata: { costMicroEur: 0 }
         }),
         // Deterministic stand-in for the renderer: the server-owned question.
-        // What is under test is planning, not prose.
-        renderText: async ({ context }) => ({
-          text: context.state.meetingBrief?.questionBatch?.prompt || '(no question)',
-          fallback: false, decisions: [], usageMicroEur: 0, context
+        // What is under test is planning, not prose. A review run passes
+        // renderWithModel and gets the real thing.
+        ...(renderWithModel ? {} : {
+          renderText: async ({ context }) => ({
+            text: context.state.meetingBrief?.questionBatch?.prompt || '(no question)',
+            fallback: false, decisions: [], usageMicroEur: 0, context
+          })
         })
       }
     });
@@ -302,7 +322,7 @@ export async function runVoiceScenario(scenario, { client, envOverrides = {} } =
   };
 
   for (let index = 0; index < scenario.turns.length; index += 1) {
-    const say = await client.nextMessage({ scenario, transcript, turnIndex: index });
+    const say = await client.nextMessage({ scenario, transcript, turnIndex: index, turnsSoFar: turns });
     if (!say) break;
     const turnRef = `voice_turn_${index + 1}`;
 

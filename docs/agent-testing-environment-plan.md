@@ -1427,6 +1427,50 @@ Retention policy for transcripts.
 **Completion.** A version bump produces a diffable report.
 **Changes voice behaviour?** No.
 
+**Built.** A7 was widened beyond the original scope to carry the feedback loop
+the environment exists to serve: run a call as a real person, find what went
+wrong, grade it, change the app, run it again.
+
+| Piece | File |
+|---|---|
+| Pasted person → caller | [`scripts/agent-harness/persona.mjs`](../scripts/agent-harness/persona.mjs) |
+| Deterministic blocker detection (mid-call and post-call) | [`scripts/agent-harness/blockers.mjs`](../scripts/agent-harness/blockers.mjs) |
+| Run archive, trends, regression detection, retention | [`scripts/agent-harness/runlog.mjs`](../scripts/agent-harness/runlog.mjs) |
+| Grading sheet, parsing, judge calibration | [`scripts/agent-harness/grading.mjs`](../scripts/agent-harness/grading.mjs) |
+| Post-call reviewer (advisory) | [`scripts/agent-judges/review.mjs`](../scripts/agent-judges/review.mjs) |
+| The call runner | [`scripts/run-consumer-agent-call.mjs`](../scripts/run-consumer-agent-call.mjs) |
+| Grade ingestion + calibration report | [`scripts/apply-consumer-agent-grades.mjs`](../scripts/apply-consumer-agent-grades.mjs) |
+| Deterministic guarantees (free, in CI) | [`scripts/check-consumer-agent-report.mjs`](../scripts/check-consumer-agent-report.mjs) |
+
+Decisions worth recording:
+
+- **A pasted persona is used verbatim.** It is not parsed into fields. Any
+  structuring step decides in advance which details matter, and the details it
+  drops are exactly the ones a real conversation trips over.
+- **A review run uses the REAL renderer.** `runAgentScenario({renderWithModel:
+  true})` drops the deterministic stand-in, so the words judged are the words a
+  client would hear. The stand-in remains correct for parity testing, where
+  prose is deliberately excluded from comparison.
+- **Deterministic detectors are the backbone; the model is a second opinion.**
+  A blocker you cannot reproduce is a blocker you cannot fix, so the repeated
+  question, the lost goal and the stall are found without a model. The reviewer
+  reads the words and finds what no detector can, and is given the mechanical
+  findings so it does not spend a call rediscovering them.
+- **Your grade is the ground truth; the judge's is a guess at it.** The grading
+  sheet hides the judge's score, because a grade anchored to the judge cannot be
+  used to check the judge. Ingesting grades produces a calibration: the judge's
+  bias and whether it tracks you closely enough to stand in for you.
+- **A blank grade is missing, not zero.** Recording an ungraded call as the
+  worst possible score would poison every trend it entered.
+- **Runs of different systems are never compared.** A run is keyed by prompt,
+  toolset, planner model, manifest and released module set; a comparison across
+  keys reports "different system" rather than a false regression.
+- **Retention drops the words before the numbers.** Transcripts clear at 30
+  days, the metrics survive for the trend, and the whole run goes at a year.
+
+**Still open for A7.** The adviser-portal analytics panel (the CLI report is the
+current surface) and per-tenant budgets.
+
 ---
 
 ### A8 — Deployment hardening and controlled rollout

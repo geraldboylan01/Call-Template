@@ -12,3 +12,7 @@ worker/.dev.vars
 !.env.example
 worker/.env
 private/video-calls/
+agent-runs/
+agent-batch-report.json
+personas/*
+!personas/EXAMPLE.md
