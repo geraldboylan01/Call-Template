@@ -20,6 +20,27 @@ const BUCKET_LABELS = Object.freeze({
   concentrated_assets: 'Concentrated or optional assets'
 });
 
+/**
+ * The module formats its own client-facing values.
+ *
+ * `outputsTable` is what a client reads, and leaving raw numbers in it pushed
+ * the decision onto the view, which had to guess from the label's spelling --
+ * "spendable reserves" matched a currency heuristic, "gross assets" did not, so
+ * two figures on the same card came out in different shapes. The module knows
+ * which of its own numbers are money; nothing else should have to infer it.
+ */
+function money(amount, currency = 'EUR') {
+  if (!Number.isFinite(amount)) return null;
+  return new Intl.NumberFormat('en-IE', {
+    style: 'currency', currency, maximumFractionDigits: 0
+  }).format(amount);
+}
+
+function months(value) {
+  if (!Number.isFinite(value)) return null;
+  return `${new Intl.NumberFormat('en-IE', { maximumFractionDigits: 1 }).format(value)} months`;
+}
+
 function bucketForAsset(asset) {
   if (asset.type === 'cash') return 'spendable_reserves';
   if (asset.type === 'investment') return asset.liquid === true ? 'spendable_reserves' : 'concentrated_assets';
@@ -288,11 +309,11 @@ export async function runPersonalBalanceSheet(input, context) {
       // module's own accounting policy two rows above: unknown values are
       // excluded rather than estimated.
       rows: [
-        ['Gross assets', balanceSheet.grossAssets],
-        ['Total liabilities', balanceSheet.totalLiabilities],
-        ['Net worth', balanceSheet.netWorth],
-        ['Spendable reserves', balanceSheet.spendableReserves],
-        ['Reserve months', balanceSheet.reserveMonths]
+        ['Gross assets', money(balanceSheet.grossAssets)],
+        ['Total liabilities', money(balanceSheet.totalLiabilities)],
+        ['Net worth', money(balanceSheet.netWorth)],
+        ['Spendable reserves', money(balanceSheet.spendableReserves)],
+        ['Reserve months', months(balanceSheet.reserveMonths)]
       ].filter(([, value]) => value !== null && value !== undefined).filter(([, value]) => value !== null && value !== undefined)
     },
     tables: [{

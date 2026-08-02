@@ -144,12 +144,20 @@ function formatPrimitive(value, { path = '', parent = null, format = '' } = {}) 
     if (format === 'months') {
       return `${new Intl.NumberFormat('en-IE', { maximumFractionDigits: 1 }).format(value)} months`;
     }
+    // A year is a label, not a quantity: "2029", never "2,029".
+    if (format === 'plain') return String(Math.round(value));
     return new Intl.NumberFormat('en-IE', { maximumFractionDigits: 2 }).format(value);
   }
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value)) {
     return safeDate(value, { day: 'numeric', month: 'short', year: 'numeric' }) || value;
   }
   if (typeof value === 'string' && /[_-]/.test(value)) {
+    return humanise(value);
+  }
+  // A camelCase string is an internal enum that escaped -- "currentOnTrack"
+  // reached a client's page. humanise() has always existed for exactly this and
+  // was only ever applied to the key, never to the value.
+  if (typeof value === 'string' && /^[a-z]+(?:[A-Z][a-z0-9]*)+$/.test(value)) {
     return humanise(value);
   }
   return String(value);
@@ -1101,8 +1109,19 @@ function getResultItems(analysis) {
   return [];
 }
 
+/** Keys the renderer itself consumes. They describe a result; they are not one. */
+const METRIC_METADATA_KEYS = new Set(['currency', 'moduleid', 'moduleversion', 'calculationversion']);
+
 function metricFormatFromKey(key, value) {
   const clean = String(key || '').toLowerCase();
+  // "2029" is a year, not a quantity. Grouping it as "2,029" is the kind of
+  // detail that makes a page look machine-made.
+  if (/year$/.test(clean) && typeof value === 'number') {
+    return 'plain';
+  }
+  if (/months?$/.test(clean) && typeof value === 'number') {
+    return 'months';
+  }
   if (/(?:rate|ratio|percent|percentage)$/.test(clean) && typeof value === 'number') {
     return 'percent';
   }
@@ -1132,6 +1151,10 @@ function flattenMetrics(value, output, prefix = '', depth = 0) {
       if (['debug', 'tables', 'charts', 'assumptions', 'warnings', 'code'].includes(key)) {
         return;
       }
+      // "Currency: EUR" is not a result. These describe the result and the
+      // renderer already reads them; showing them as metrics is noise a client
+      // has to look past.
+      if (METRIC_METADATA_KEYS.has(String(key).toLowerCase())) return;
       flattenMetrics(child, output, prefix ? `${prefix} · ${key}` : key, depth + 1);
     });
   }
@@ -1175,10 +1198,50 @@ function getMetrics(item) {
     });
   }
 
+  // A MODULE PUBLISHES ITS OWN CLIENT-FACING TABLE. `outputs` carries the
+  // labels it wrote, in the order it chose, with the values it formatted.
+  // `semanticResult` is the INTERNAL representation -- what feeds other modules
+  // and the summary engine -- and it was being preferred over `outputs`, so the
+  // card was built by reflecting over internals and guessing presentation from
+  // how each key happened to be spelled.
+  //
+  // That is where four client-facing faults came from at once: a pot shown as
+  // "2,195,539.05" beside one shown as "€1,017,100" (the second key contained
+  // the letters "income", which the currency heuristic matches on), a raw
+  // "currentOnTrack" enum, a year grouped as "2,029", and a "Currency: EUR" row
+  // that is renderer metadata rather than a result.
+  //
+  // Only liquidity_analysis and house_purchase had hand-written metric lists
+  // above, which is why nobody saw it: the two modules anyone looked at never
+  // took this path.
+  const authored = authoredOutputMetrics(item);
+  if (authored) return authored;
+
   const metrics = asObject(item?.metrics);
   const output = [];
-  flattenMetrics(firstDefined(metrics, item?.semanticResult, item?.outputs, item?.result), output);
+  flattenMetrics(firstDefined(metrics, item?.semanticResult, item?.result), output);
   return output;
+}
+
+/**
+ * A module's own `outputs` table, used verbatim.
+ *
+ * The label is NOT humanised: it is already the wording the module chose, and
+ * running it through a camelCase splitter turns "Max-contribution gap" into
+ * "Max contribution gap". The value is not reformatted either, because the
+ * module knows which of its own numbers are money, months or years, and every
+ * attempt to re-derive that from the label's spelling has produced a fault.
+ */
+function authoredOutputMetrics(item) {
+  const rows = asArray(asObject(item?.outputs)?.rows);
+  if (rows.length === 0) return null;
+  const metrics = rows.slice(0, 10).flatMap((row) => {
+    const [label, value] = asArray(row);
+    if (typeof label !== 'string' || !label.trim()) return [];
+    if (value === null || value === undefined || value === '') return [];
+    return [{ label: label.trim(), value, format: '' }];
+  });
+  return metrics.length > 0 ? metrics : null;
 }
 
 function createResultCard(item) {
