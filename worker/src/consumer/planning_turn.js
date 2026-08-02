@@ -66,7 +66,9 @@ export async function applyPlannerCandidates({
   const candidates = mapPlannerExtractionToCandidates(extraction);
   const outcomes = (extraction.invalidCandidates || []).map((item) => ({
     candidateId: item.candidateId,
-    factId: null,
+    // The planner knows which fact it was trying to write even when the value
+    // will not parse. Reporting null made every such rejection anonymous.
+    factId: item.factId ?? null,
     accepted: false,
     errorCode: item.errorCode
   }));

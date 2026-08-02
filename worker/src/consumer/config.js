@@ -424,14 +424,13 @@ export function getConsumerConfig(env) {
     // probes. A timeout must be exceptional: timing out an ordinary turn used
     // to leave the previous MeetingBrief active and made the voice repeat the
     // question the client had just answered.
-    realtimePlannerTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_TIMEOUT_MS, 8_000, 2_500, 12_000),
-    // The ceiling across a first attempt AND one retry. A timeout costs the
-    // client's entire answer, so one retry is worth having; on a live voice
-    // call two full attempts back to back would be dead air, so the total is
-    // capped and the retry only gets what is left.
-    realtimePlannerTotalBudgetMs: boundedInteger(
-      env.CONSUMER_REALTIME_PLANNER_TOTAL_BUDGET_MS, 14_000, 2_500, 20_000
-    ),
+    // Measured warm against the real planner: ~2.7s for a short answer, 4.1-6.1s
+    // for a rich multi-fact one. Eight seconds clipped the tail and threw away
+    // a perfectly good extraction, which cost the client their whole answer and
+    // made the meeting re-ask what they had just said. Ten covers the observed
+    // range with headroom, and it is a CEILING that rarely binds rather than a
+    // wait the client routinely takes.
+    realtimePlannerTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_TIMEOUT_MS, 10_000, 2_500, 15_000),
     realtimePlannerCatchupTimeoutMs: boundedInteger(env.CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS, 12_000, 5_000, 20_000),
     // The planner previously inherited config.defaultModel — the AI *intake*
     // model. Two unrelated features shared one setting, so retuning intake

@@ -122,7 +122,14 @@ function boundedNumber(value, { min = 0, max = 120, integer = false } = {}) {
 
 function percentageRate(value, { decimal = false } = {}) {
   const supplied = typeof value === 'number' ? value : Number(value);
-  const normalized = decimal ? supplied : supplied / 100;
+  // A rate below one is ALREADY a fraction. The planner is told to send
+  // percentages, but when it sends 0.065 for "six and a half percent" the
+  // divide-by-hundred turned it into 0.065% -- a hundredfold understatement
+  // that reached a real pension projection. Reading a sub-1 value as a
+  // fraction fails safe in the only direction that matters: nobody puts
+  // 0.065% of their pay into a pension, and everybody recognises 6.5%.
+  const alreadyFractional = decimal || (supplied > 0 && supplied < 1);
+  const normalized = alreadyFractional ? supplied : supplied / 100;
   return boundedNumber(normalized, { min: 0, max: 1 });
 }
 
@@ -131,6 +138,21 @@ function strictBoolean(value) {
     throw new ConsumerError(400, 'realtime_fact_value_invalid', 'That fact requires an explicit yes or no.');
   }
   return value;
+}
+
+/**
+ * The exact values each choice fact accepts.
+ *
+ * The planner prompt has always told it to "use only values from the
+ * server-supplied vocabulary" -- and the vocabulary was never supplied. So it
+ * guessed, and reasonable Irish guesses were refused: a nurse saying she works
+ * for the HSE produced employment_context=public_sector, and "we're both PAYE"
+ * produced paye. Neither exists, so both were dropped.
+ */
+export function realtimeChoiceVocabulary() {
+  return Object.fromEntries(
+    Object.entries(CHOICES).map(([factId, values]) => [factId, [...values]])
+  );
 }
 
 function normalizedChoice(factId, value) {

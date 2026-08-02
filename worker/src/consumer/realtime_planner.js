@@ -24,6 +24,7 @@ const SEMANTIC_FACT_IDS = Object.freeze(
 import { buildRealtimeFactReadBack } from './realtime_fact_mapper.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
+import { realtimeChoiceVocabulary } from './realtime_fact_mapper.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 
 export const PLANNER_EXTRACTION_V3 = 'PlannerExtractionV3';
@@ -179,8 +180,12 @@ const PLANNER_SCHEMA = Object.freeze({
     narrativeSummary: {
       type: 'object',
       properties: {
-        summary: { type: 'string', maxLength: 500 },
-        evidence: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 300 } }
+        // Output tokens are what the client waits for. Eight evidence strings of
+        // three hundred characters each were being regenerated every single
+        // turn, on top of the facts that actually matter. Three short phrases
+        // carry the same steering value.
+        summary: { type: 'string', maxLength: 320 },
+        evidence: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 160 } }
       },
       required: ['summary', 'evidence'],
       additionalProperties: false
@@ -204,7 +209,7 @@ Boundaries:
 
 Orientation context:
 - Orientation facts describe the client's situation rather than their money, and the analyses selected for them depend on these. Emit them whenever the turn clearly supports them, at certainty exact when stated outright and approximate when clearly implied. Do not ask the client to choose from a category list and do not emit a persona label.
-- The orientation facts are person_current_age, life_stage, career_stage, property_status, household_structure, employment_context, retirement_status, dependant_count and has_pension. Use only values from the server-supplied vocabulary for choice facts.
+- The orientation facts are person_current_age, life_stage, career_stage, property_status, household_structure, employment_context, retirement_status, dependant_count and has_pension. For every choice fact you MUST use a value listed in context.choiceVocabulary for that fact, exactly as spelled there. If nothing in that list fits what the client said, emit no fact rather than inventing a value — an invented one is discarded and their answer is lost.
 - "I'm twenty five, renting, trying to buy my first place" supports person_current_age=25 exact, property_status=renter exact and life_stage=early_adult approximate.
 - "We own the house and want to check the mortgage rate" supports property_status=homeowner exact.
 - "I'm self employed and never got round to a pension" supports employment_context=self_employed exact and has_pension=false exact.
@@ -212,6 +217,7 @@ Orientation context:
 - Ownership STATUS is orientation and may be emitted from clear context. Property, pension and business VALUES remain explicit-only.
 - The signed meeting jurisdiction is Ireland (IE). Use Irish terms such as occupational pension, PRSA, personal pension, AVC and defined-benefit pension.
 - Never introduce IRA, Roth IRA, 401(k), ISA or another foreign account list. If the client volunteers a foreign holding, preserve it generically with its country and approximate value; never relabel it as an Irish product.
+- A contribution rate is a PERCENTAGE of pay: valueJson for pension_employee_contribution_rate is 6.5 when the client says six and a half percent, not 0.065. The same for pension_employer_contribution_rate.
 - For state_pension_fraction, valueJson is {"owner":"primary","fraction":1} or {"owner":"partner","fraction":0.5}. Full is 1, half or 50% is 0.5, and none is 0. The server supplies the default and rate; never guess or calculate them.
 - For state_pension_start_age, valueJson is {"owner":"primary","startAge":66} or the partner equivalent, and only when an eligible age from 66 to 70 is explicitly stated. Otherwise emit no fact; the server defaults to 66.
 
@@ -223,7 +229,8 @@ Goals:
 - For an explicit correction, put the earlier goal type in correctionTarget when it is clear. Otherwise leave correctionTarget empty.
 
 Financial positions:
-- Use positions for cash, investments, property, pensions, mortgages, loans, businesses, and other assets.
+- Use positions for cash, investments, property, pensions, mortgages, loans, businesses, INCOME, and other assets.
+- A salary, wage, rental income or pension in payment is a position with kind=income and an incomeType. Never emit income_sources as a semantic fact: it needs a stable entity identity that only a position can carry, so a semantic-fact version is discarded and the client's figure is lost. One position per earner.
 - amountJson is either an empty string or an exact JSON money object such as {"amount":10000,"currency":"EUR"}. Never put a bare number in amountJson.
 - country is empty for ordinary Irish positions. For a consumer-volunteered foreign holding, set it to the stated country and use a generic label such as "Foreign investment".
 - A home worth €500,000 with a €350,000 mortgage produces two position candidates. Give both the same simple linkedEntityId such as "home".
@@ -235,7 +242,8 @@ Completion signals:
 
 Questions and summary:
 - Detect a client question so the conversational agent can answer it before returning to intake.
-- The narrative summary is a short, natural account of what the client wants based only on stated or safely implied evidence. It must not contain an internal persona label or advice.
+- The narrative summary is ONE short sentence about what the client wants, based only on stated or safely implied evidence. It must not contain an internal persona label or advice.
+- Give at most three evidence phrases, each a few words quoted or paraphrased from the turn. Brevity here matters: the client is waiting while you write.
 - Record only genuine ambiguities or contradictions. Do not manufacture a clarification when the meaning is clear.
 
 Return only the strict schema.`;
@@ -323,7 +331,7 @@ function parseMoneyJson(value) {
   return { amount, currency };
 }
 
-function validatePlannerExtraction(value, sourceTurnId) {
+export function validatePlannerExtraction(value, sourceTurnId) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new ConsumerError(502, 'realtime_planner_output_invalid', 'The silent meeting planner returned an invalid result.');
   }
@@ -345,7 +353,15 @@ function validatePlannerExtraction(value, sourceTurnId) {
       };
       return candidate.factId && candidate.evidenceText ? [candidate] : [];
     } catch (_error) {
-      invalidCandidates.push({ candidateId: `fact-${index + 1}`, errorCode: 'realtime_planner_candidate_value_invalid' });
+      // Name the fact. A candidate whose valueJson will not parse used to be
+      // reported with no factId at all, so a diagnostic read "the engine would
+      // not record: " with nothing after it -- true, useless, and impossible to
+      // act on. The id is right here; carrying it costs nothing.
+      invalidCandidates.push({
+        candidateId: `fact-${index + 1}`,
+        factId: boundedText(item?.factId, 120) || null,
+        errorCode: 'realtime_planner_candidate_value_invalid'
+      });
       return [];
     }
   });
@@ -517,6 +533,10 @@ export function plannerContextSlice(context) {
     // here makes short contextual answers (especially "No") impossible to
     // interpret and was a direct cause of repeated questions.
     currentQuestion: signedCurrentQuestion(context),
+    // The exact values every choice fact accepts. The prompt has always
+    // referred to this as "the server-supplied vocabulary"; until now nothing
+    // supplied it, so the planner guessed and its guesses were refused.
+    choiceVocabulary: realtimeChoiceVocabulary(),
     selectedAnalyses: (state.moduleSlots || []).slice(0, 3).flatMap((slot) => {
       const label = consumerLanguageForModule(slot.moduleId, { profile: context?.profile })
         ?.shortDescription;
@@ -539,38 +559,47 @@ export function plannerContextSlice(context) {
 }
 
 /**
- * ONE RETRY, ON A BOUNDED TOTAL BUDGET.
+ * RETRY WHAT A RETRY CAN FIX. NEVER RETRY A TIMEOUT.
  *
- * A planner timeout costs the client's whole answer: the turn falls back to the
- * regex extractor, which captures a fraction of what was said. An agent-driven
- * call as a Cork nurse timed out twice in ten turns, and one of those turns was
- * her longest -- retirement age, target income, house value, mortgage, savings,
- * all of it lost.
+ * A planner timeout costs the client's entire answer -- the turn falls back to
+ * the regex extractor, which captures a fraction of what was said, so the
+ * meeting asks again for something they just told it.
  *
- * The retry is bounded rather than free because this runs on a LIVE VOICE CALL
- * as well as on text. Two full 8s attempts back to back would be sixteen
- * seconds of dead air. So the second attempt gets only what is left of a total
- * budget, and if that is too little to be worth trying, the fallback runs
- * immediately as before.
+ * Measured on the real planner, warm: a short answer extracts in ~2.7s, a rich
+ * multi-fact answer ("home worth 420,000, 180,000 on the mortgage, 30,000 in
+ * savings, no other debts") in 4.1-6.1s. The extraction itself is excellent --
+ * every position with its correct amount. The failure was never comprehension;
+ * it was the clock.
  *
- * Both transports get exactly this behaviour. Retrying only on text would make
- * the agent transport see fewer timeouts than the voice journey it exists to
- * test, which is worse than not retrying at all.
+ * That measurement kills the obvious design. Splitting a budget into an 8s
+ * attempt and a 6s retry is the WORST option available: a turn that could not
+ * finish in eight seconds will almost never finish in six, so it spends
+ * fourteen seconds of the client's time and still throws the answer away.
+ *
+ * So: one attempt, with a budget that actually covers a rich turn. A timeout
+ * now means "this turn is genuinely slow", and the honest response is to fall
+ * back rather than to spend more silence discovering the same thing twice.
+ *
+ * A FAST failure is different. A network blip or a 502 costs almost nothing and
+ * usually succeeds on a second try, so that one retry is worth taking -- it
+ * adds no meaningful delay because the first attempt already failed quickly.
  */
 export async function extractRealtimePlannerTurn(options) {
   const { config } = options;
-  const firstAttempt = Number.isSafeInteger(options.timeoutMs)
+  const budget = Number.isSafeInteger(options.timeoutMs)
     ? options.timeoutMs
     : config.realtimePlannerTimeoutMs;
+  const startedAt = Date.now();
   try {
-    return await requestPlannerExtraction({ ...options, timeoutMs: firstAttempt });
+    return await requestPlannerExtraction({ ...options, timeoutMs: budget });
   } catch (error) {
-    if (error?.code !== 'realtime_planner_timeout') throw error;
-    const remaining = config.realtimePlannerTotalBudgetMs - firstAttempt;
-    // Below a couple of seconds a retry cannot finish; spending the client's
-    // time on one that will only time out again is worse than falling back now.
-    if (remaining < 2_000) throw error;
-    return requestPlannerExtraction({ ...options, timeoutMs: remaining, retryOfTimeout: true });
+    if (error?.code === 'realtime_planner_timeout') throw error;
+    // Only a failure that came back QUICKLY is worth repeating: the client has
+    // not been kept waiting yet, and the cause is usually transient.
+    const elapsed = Date.now() - startedAt;
+    const remaining = budget - elapsed;
+    if (elapsed > 2_000 || remaining < 2_000) throw error;
+    return requestPlannerExtraction({ ...options, timeoutMs: remaining, retryOfFastFailure: true });
   }
 }
 
@@ -582,14 +611,33 @@ async function requestPlannerExtraction({
   transcript,
   recentTurns = [],
   timeoutMs = null,
-  retryOfTimeout = false
+  retryOfFastFailure = false
 }) {
   if (!config.realtimeConversationV2Enabled) {
     throw new ConsumerError(503, 'realtime_planner_disabled', 'The silent meeting planner is not enabled.');
   }
   const safeTranscript = redactSensitiveIdentifiers(String(transcript || '')).slice(0, 4_000);
   if (!safeTranscript) throw new ConsumerError(400, 'realtime_planner_turn_empty', 'The finalized turn is empty.');
-  const complex = context?.state?.reasoningEscalation?.requested === true;
+  // EXTRACTION DIFFICULTY IS ABOUT WHAT WAS SAID, NOT WHO IS SAYING IT.
+  //
+  // complexJourney escalates on any partner, any business, more than one goal.
+  // That is a fair description of a complex PLANNING journey, and the
+  // conversational model still uses it. It is the wrong signal for this call:
+  // extraction gets harder when an utterance is dense, not when the client
+  // happens to be married.
+  //
+  // Measured on the real planner, same dense turn, three runs each:
+  //   medium  8.1-12.2s, 3-4 facts, 0 positions
+  //   low     4.6-7.7s,  3 facts,   0-1 positions
+  // Medium is roughly twice as slow and extracts no more. Since Mary has a
+  // husband, every turn after the first ran at medium, which is why a rich
+  // answer timed out and was thrown away.
+  //
+  // A CONTRADICTION is the one case where deliberation plausibly earns its
+  // cost: reconciling what the client just said against what is on record is a
+  // judgement, not a transcription. That trigger keeps the escalation.
+  const complex = context?.state?.reasoningEscalation?.requested === true
+    && context?.state?.reasoningEscalation?.reason === 'contradictory_facts';
   // The planner has its own approved, allowlisted model. It no longer borrows
   // the AI-intake defaultModel, so retuning intake cannot silently retune the
   // planner (and vice versa).
@@ -738,7 +786,7 @@ async function requestPlannerExtraction({
       reasoningEffort,
       providerRequestId,
       providerResponseId,
-      retryOfTimeout,
+      retryOfFastFailure,
       inputTokens: Number(usage.input_tokens || 0),
       outputTokens: Number(usage.output_tokens || 0),
       cachedInputTokens: Number(usage.input_tokens_details?.cached_tokens || 0),

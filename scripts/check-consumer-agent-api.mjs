@@ -29,12 +29,21 @@ import { containsInternalModuleTerminology } from '../js/planning/module_offers.
 import { goalFamily } from '../js/planning/goal_plan.js';
 import {
   FINANCIAL_POSITION_KINDS,
-  positionCandidatesToRealtimeFacts
+  plannerContextSlice,
+  positionCandidatesToRealtimeFacts,
+  validatePlannerExtraction
 } from '../worker/src/consumer/realtime_planner.js';
+import { realtimeChoiceVocabulary } from '../worker/src/consumer/realtime_fact_mapper.js';
+import {
+  mapPlannerExtractionToCandidates,
+  mapRealtimeProposalFact
+} from '../worker/src/consumer/planning_facts.js';
+
+const NOW_ISO = '2026-08-02T09:00:00.000Z';
 import { listSemanticFactDefinitions } from '../js/planning/semantic_facts.js';
 import { describeConversationState } from '../worker/src/consumer/conversation.js';
 import { composeMeetingBrief } from '../worker/src/consumer/realtime_planner.js';
-import { buildPlanningStateSlice } from '../worker/src/consumer/planning_context.js';
+import { buildPlanningStateSlice, complexJourney } from '../worker/src/consumer/planning_context.js';
 import {
   resolveCapacityDecision,
   resolveModuleOffer
@@ -361,21 +370,166 @@ async function agentContext(profile, config = CONFIG) {
 }
 
 {
-  // ONE RETRY, BOUNDED. A planner timeout costs the client's whole answer; two
-  // full attempts back to back would be dead air on a live voice call.
+  // NEVER RETRY A TIMEOUT. Measured warm against the real planner: ~2.7s for a
+  // short answer, 4.1-6.1s for a rich multi-fact one, with occasional spikes.
+  // A turn that could not finish in eight seconds will almost never finish in
+  // a six-second remainder, so splitting the budget spent fourteen seconds of
+  // the client's time and threw the answer away anyway.
   const source = readFileSync(`${root}/worker/src/consumer/realtime_planner.js`, 'utf8');
-  assert.match(source, /realtimePlannerTotalBudgetMs - firstAttempt/,
-    'the retry gets only what is left of a total budget');
-  assert.match(source, /if \(remaining < 2_000\) throw error;/,
-    'a retry too short to finish must fall back immediately instead');
-  assert.match(source, /if \(error\?\.code !== 'realtime_planner_timeout'\) throw error;/,
-    'only a timeout is retried — a bad request must not be sent twice');
-  const budgets = getConsumerConfig({
-    CONSUMER_JOURNEY_ENABLED: 'false', CONSUMER_REALTIME_PLANNER_TIMEOUT_MS: '8000'
+  assert.match(source, /if \(error\?\.code === 'realtime_planner_timeout'\) throw error;/,
+    'a timeout must fall back immediately, not spend more silence failing again');
+  assert.doesNotMatch(source, /realtimePlannerTotalBudgetMs/,
+    'the split-budget retry is gone; it was the worst of both options');
+  // A FAST failure is different: it costs nothing and usually succeeds.
+  assert.match(source, /if \(elapsed > 2_000 \|\| remaining < 2_000\) throw error;/,
+    'only a failure that came back quickly is worth repeating');
+  assert.match(source, /retryOfFastFailure: true/);
+  const budgets = getConsumerConfig({ CONSUMER_JOURNEY_ENABLED: 'false' });
+  assert.equal(budgets.realtimePlannerTimeoutMs, 10_000,
+    'the single attempt must cover a rich multi-fact turn with headroom');
+  assert.equal(
+    getConsumerConfig({
+      CONSUMER_JOURNEY_ENABLED: 'false', CONSUMER_REALTIME_PLANNER_TIMEOUT_MS: '99999'
+    }).realtimePlannerTimeoutMs,
+    15_000,
+    'and it stays a bounded ceiling — silence is still a cost'
+  );
+  pass('a planner timeout falls back at once; only a fast failure is retried');
+}
+
+{
+  // THE VOCABULARY THE PROMPT PROMISED. It told the planner to use "the
+  // server-supplied vocabulary" for choice facts and nothing ever supplied it,
+  // so it guessed: a nurse working for the HSE produced public_sector, "we're
+  // both PAYE" produced paye. Neither exists, so both were dropped.
+  const vocabulary = realtimeChoiceVocabulary();
+  assert.ok(Object.keys(vocabulary).length >= 8, 'every choice fact needs its list');
+  assert.ok(vocabulary.employment_context.includes('employee'));
+  assert.ok(!vocabulary.employment_context.includes('public_sector'),
+    'the guessed values are genuinely absent — that is why supplying the list matters');
+  const slice = plannerContextSlice({ state: {}, sessionRow: { current_profile_revision: 1 } });
+  assert.deepEqual(slice.choiceVocabulary, vocabulary,
+    'the planner is actually given the list, on every turn');
+  const plannerSource = readFileSync(`${root}/worker/src/consumer/realtime_planner.js`, 'utf8');
+  assert.match(plannerSource, /MUST use a value listed in context\.choiceVocabulary/,
+    'and is told to use it rather than invent');
+  assert.match(plannerSource, /emit no fact rather than inventing a value/,
+    'an unmatched value must be omitted, not guessed — a guess loses the answer silently');
+  pass('choice facts are constrained by a vocabulary the planner can actually see');
+}
+
+{
+  // EXTRACTION DIFFICULTY IS ABOUT WHAT WAS SAID, NOT WHO IS SAYING IT.
+  // complexJourney escalates on any partner, so every turn of a couple's call
+  // ran at medium reasoning: measured twice as slow (8.1-12.2s vs 4.6-7.7s) and
+  // extracting no more. That is why a rich answer timed out and was discarded.
+  const source = readFileSync(`${root}/worker/src/consumer/realtime_planner.js`, 'utf8');
+  assert.match(source, /reasoningEscalation\?\.reason === 'contradictory_facts'/,
+    'the planner escalates only where deliberation earns its cost');
+  // The conversational model keeps the broader signal — this decouples the two,
+  // it does not remove the capability.
+  const provider = readFileSync(`${root}/worker/src/consumer/realtime_provider.js`, 'utf8');
+  assert.match(provider, /state\.reasoningEscalation\?\.requested/,
+    'the spoken model still uses the full journey-complexity signal');
+  const withPartner = complexJourney({ partner: { personId: 'p' }, goals: [] }, {});
+  assert.equal(withPartner.requested, true, 'a partner is still a complex journey');
+  assert.equal(withPartner.reason, 'complex_household');
+  assert.notEqual(withPartner.reason, 'contradictory_facts',
+    'and that reason must NOT slow the planner down');
+  const contradictory = complexJourney(
+    { assumptions: { values: { unresolvedContradictions: ['x'] } }, goals: [] }, {}
+  );
+  assert.equal(contradictory.reason, 'contradictory_facts',
+    'reconciling a contradiction is a judgement, and still escalates');
+  pass('planner reasoning escalates on contradictions only, not on household shape');
+}
+
+{
+  // A REJECTION MUST NAME WHAT WAS LOST. A candidate whose valueJson would not
+  // parse was reported with no factId, so the diagnostic read "the engine would
+  // not record: " with nothing after it — true, useless, unactionable.
+  const parsed = validatePlannerExtraction({
+    goalCandidates: [], positions: [], sectionCompletions: [],
+    clientQuestion: { present: false, intent: 'none', topic: '', questionText: '' },
+    ambiguities: [], narrativeSummary: { summary: 'x', evidence: [] },
+    semanticFacts: [{
+      operation: 'upsert', factId: 'cash_savings', valueJson: '{not valid json',
+      certainty: 'exact', evidenceText: 'said something', correctionTarget: ''
+    }]
   });
-  assert.ok(budgets.realtimePlannerTotalBudgetMs > budgets.realtimePlannerTimeoutMs,
-    'the total budget must leave room for a retry');
-  pass('a planner timeout is retried once, on a bounded budget, on both transports');
+  assert.equal(parsed.semanticFacts.length, 0, 'the unparseable candidate is still dropped');
+  assert.equal(parsed.invalidCandidates.length, 1);
+  assert.equal(parsed.invalidCandidates[0].factId, 'cash_savings',
+    'and the rejection names the fact the client was trying to give');
+  assert.equal(parsed.invalidCandidates[0].errorCode, 'realtime_planner_candidate_value_invalid');
+  pass('a rejected candidate names the fact it was trying to record');
+}
+
+{
+  // A HUNDREDFOLD ERROR REACHED A REAL PENSION PROJECTION. "I put in about
+  // 6.5%" was written by the planner as 0.065, divided by a hundred again, and
+  // stored as 0.065% of pay. Nobody contributes that; everybody recognises 6.5%.
+  const blank = normalizeHouseholdProfile({
+    ...createHouseholdProfile({ profileId: 'rate', nowIso: NOW_ISO, calculationDateIso: '2026-08-02' }),
+    revision: 1
+  });
+  const rateFor = (value) => mapRealtimeProposalFact(blank, {
+    factId: 'pension_employee_contribution_rate', value, certainty: 'exact'
+  }).canonicalValue.employeeContributionRate;
+  assert.equal(rateFor(6.5), 0.065, 'a percentage is a percentage');
+  assert.equal(rateFor(0.065), 0.065, 'and a fraction means the same thing, not a hundredth of it');
+  assert.equal(rateFor(14), 0.14);
+  assert.equal(rateFor(0.14), 0.14);
+  assert.equal(rateFor(1), 0.01, 'a bare 1 is one percent — the ambiguity only cuts below 1');
+  assert.equal(rateFor(40), 0.4);
+  const plannerSource = readFileSync(`${root}/worker/src/consumer/realtime_planner.js`, 'utf8');
+  assert.match(plannerSource, /A contribution rate is a PERCENTAGE of pay/,
+    'and the planner is finally told which unit to send');
+  pass('a contribution rate means the same whichever unit it arrives in');
+}
+
+{
+  // POSITIONS BEFORE THE SCALARS THAT ATTACH TO THEM. Applying semantic facts
+  // first let a contribution rate create its own placeholder pension, so one
+  // HSE pension arrived as two records and the rates landed on the phantom.
+  const ordered = mapPlannerExtractionToCandidates({
+    goalCandidates: [],
+    semanticFacts: [{
+      candidateId: 'fact-1', factId: 'pension_employee_contribution_rate',
+      value: 6.5, certainty: 'exact', evidenceText: 'I put in about 6.5%'
+    }],
+    positions: [{
+      candidateId: 'position-1', kind: 'pension', operation: 'upsert', label: 'HSE pension',
+      pensionType: 'defined_benefit', certainty: 'exact', evidenceText: 'an HSE pension'
+    }],
+    sectionCompletions: []
+  });
+  const pensionAt = ordered.findIndex((item) => item.factId === 'pension_positions');
+  const rateAt = ordered.findIndex((item) => item.factId === 'pension_employee_contribution_rate');
+  assert.ok(pensionAt >= 0 && rateAt >= 0, 'both candidates survive');
+  assert.ok(pensionAt < rateAt,
+    'the pension must exist before a rate tries to attach to it');
+
+  // And the other direction: a partner's salary needs the partner to exist.
+  const withPartner = mapPlannerExtractionToCandidates({
+    goalCandidates: [],
+    semanticFacts: [{
+      candidateId: 'fact-1', factId: 'partner_person',
+      value: { include: true }, certainty: 'exact', evidenceText: 'include Tom'
+    }],
+    positions: [{
+      candidateId: 'position-1', kind: 'income', operation: 'upsert', label: 'Tom salary',
+      owner: 'partner', incomeType: 'employment',
+      amount: { amount: 41_000, currency: 'EUR' }, certainty: 'exact', evidenceText: "Tom's on 41,000"
+    }],
+    sectionCompletions: []
+  });
+  const partnerAt = withPartner.findIndex((item) => item.factId === 'partner_person');
+  const incomeAt = withPartner.findIndex((item) => item.factId === 'income_sources');
+  assert.ok(partnerAt >= 0 && incomeAt >= 0);
+  assert.ok(partnerAt < incomeAt,
+    'the partner must exist before an income owned by them is applied');
+  pass('entities are created before the figures that belong to them, in both directions');
 }
 
 {

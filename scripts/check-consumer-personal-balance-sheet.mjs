@@ -222,4 +222,40 @@ empty = applyProfilePatch(empty, {
 }, { nowIso: NOW }).profile;
 assert.equal(getModuleReadiness('personal_balance_sheet', empty).status, 'ready');
 
-console.info('[ConsumerPersonalBalanceSheet] PASS: deterministic totals, category reconciliation, readiness and number-preserving speech.');
+// A METRIC WE COULD NOT CALCULATE IS LEFT OUT, NEVER SHOWN AS A BLANK.
+// reserveMonths is null whenever monthly spending is unknown, and it was
+// reaching a client-facing table as the literal word "null" -- an agent-driven
+// call as a Cork nurse ended with "Reserve months: null" in her balance sheet.
+{
+  const buildProfile = (monthlyEssential) => {
+    let profile = createHouseholdProfile({ profileId: 'pbs-null', nowIso: NOW, calculationDateIso: '2026-07-14' });
+    return applyProfilePatch(profile, {
+      patchId: 'pbs-null-1',
+      operations: [
+        { op: 'add', path: '/assets/-', value: { assetId: 'cash', label: 'Savings', type: 'cash', currentValue: { amount: 30_000, currency: 'EUR' }, liquid: true }, provenance },
+        { op: 'add', path: '/assumptions/values/completionFacts', value: { confirmedNonePaths: { '/liabilities': true } }, provenance },
+        ...(monthlyEssential === null ? [] : [
+          { op: 'add', path: '/expenses/monthlyEssential', value: { amount: monthlyEssential, currency: 'EUR' }, provenance }
+        ])
+      ]
+    }, { nowIso: NOW }).profile;
+  };
+  const rowsFor = async (monthlyEssential) => {
+    const result = await runPlanningModule('personal_balance_sheet', buildProfile(monthlyEssential), {
+      calculationDateIso: '2026-07-14'
+    });
+    return result.outputs.rows;
+  };
+  const withSpending = await rowsFor(3_000);
+  assert.ok(withSpending.some(([label]) => label === 'Reserve months'),
+    'a calculable figure is still shown');
+  const withoutSpending = await rowsFor(null);
+  assert.ok(!withoutSpending.some(([label]) => label === 'Reserve months'),
+    'an uncalculable figure is omitted, never rendered blank');
+  assert.ok(withoutSpending.every(([, value]) => value !== null && value !== undefined),
+    'no client-facing row may carry a null');
+  assert.equal(withoutSpending.length, withSpending.length - 1,
+    'only the uncalculable row is dropped');
+}
+
+console.info('[ConsumerPersonalBalanceSheet] PASS: deterministic totals, category reconciliation, readiness, number-preserving speech, and no null in a client-facing table.');

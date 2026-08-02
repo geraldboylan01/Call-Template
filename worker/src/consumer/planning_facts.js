@@ -296,10 +296,28 @@ export function mapPlannerExtractionToCandidates(extraction) {
   const mappedCompletions = (extraction.sectionCompletions || [])
     .map(sectionCompletionToRealtimeFact)
     .filter(Boolean);
+  // ENTITIES BEFORE THE THINGS THAT REFERENCE THEM.
+  //
+  // Two ordering faults, in opposite directions, both from one turn where a
+  // client introduced herself, her husband, both salaries and her pension:
+  //
+  //   Scalars before positions -- a contribution rate arrived before the
+  //   pension it belongs to, so it created its own placeholder. One HSE
+  //   pension became two records and the rates landed on the phantom.
+  //
+  //   Positions before people -- her husband's salary arrived before
+  //   partner_person had created him, so an income owned by "partner" had no
+  //   partner to own it, and his €41,000 was dropped.
+  //
+  // So the order is by WHAT EACH CANDIDATE ESTABLISHES: people first, then the
+  // positions those people hold, then the figures that attach to a position.
+  const establishesPerson = (candidate) => candidate?.factId === 'partner_person';
+  const semanticFacts = extraction.semanticFacts || [];
   return [
     ...mappedGoals,
-    ...(extraction.semanticFacts || []),
+    ...semanticFacts.filter(establishesPerson),
     ...mappedPositions,
+    ...semanticFacts.filter((candidate) => !establishesPerson(candidate)),
     ...mappedCompletions
   ].slice(0, MAX_PLANNER_CANDIDATES);
 }

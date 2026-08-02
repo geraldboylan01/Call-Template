@@ -268,13 +268,19 @@ export async function runPersonalBalanceSheet(input, context) {
     },
     outputsTable: {
       columns: ['Metric', 'Value'],
+      // A metric we could not calculate is LEFT OUT, never shown as a blank.
+      // reserveMonths is null whenever monthly spending is unknown, and it was
+      // reaching a client-facing table as the literal word "null" -- an
+      // agent-driven call as a Cork nurse ended with "Reserve months: null" in
+      // her balance sheet. This is the module's own stated accounting policy
+      // two rows above: unknown values are excluded rather than estimated.
       rows: [
         ['Gross assets', balanceSheet.grossAssets],
         ['Total liabilities', balanceSheet.totalLiabilities],
         ['Net worth', balanceSheet.netWorth],
         ['Spendable reserves', balanceSheet.spendableReserves],
         ['Reserve months', balanceSheet.reserveMonths]
-      ]
+      ].filter(([, value]) => value !== null && value !== undefined)
     },
     tables: [{
       id: 'personal-balance-sheet-buckets',
