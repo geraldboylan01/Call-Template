@@ -122,8 +122,9 @@ export async function applyPlannerCandidates({
 
 /**
  * Persist one accepted fact: a reviewable proposal row, then the revisioned
- * profile commit. `read_back` facts stay as pending proposals for a separate
- * spoken confirmation; everything else saves as a reviewable draft immediately.
+ * profile commit. The spoken read-back is retired: every fact saves as a
+ * reviewable draft immediately and the authenticated visual confirmation is the
+ * only gate.
  */
 async function commitFactProposal({
   env,
@@ -152,9 +153,7 @@ async function commitFactProposal({
     confidence: fact.certainty === 'exact' ? 'medium' : 'low',
     certainty: fact.certainty
   });
-  if (confirmationPolicy === 'read_back') {
-    return { revision: Number(sessionRow.current_profile_revision), proposal: created, pending: true };
-  }
+
   const nextState = describeConversationState(nextProfile, config);
   const committed = await commitRealtimeFactConfirmation(env, {
     sessionId: sessionRow.id,

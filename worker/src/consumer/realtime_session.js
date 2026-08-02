@@ -2487,32 +2487,12 @@ export class ConsumerRealtimeSession {
       kind = 'result';
       text = safeOutput.speakableText;
     } else if (toolName === 'propose_facts') {
-      const readBack = safeOutput.currentPendingProposal?.readBackText
-        || safeOutput.currentReadBackText
-        || '';
-      if (safeOutput.readBackRequired && readBack) {
-        kind = 'read_back';
-        text = readBack;
-      } else {
-        kind = 'acknowledgement';
-        text = question
-          ? `Got it — you’ll be able to review that. ${question}`
-          : 'Got it. Please review the three analyses on screen.';
-      }
-    } else if (toolName === 'resolve_fact_confirmation') {
-      const nextReadBack = safeOutput.currentPendingProposal?.readBackText || '';
-      if (nextReadBack) {
-        kind = 'read_back';
-        text = nextReadBack;
-      } else {
-        kind = 'acknowledgement';
-        const prefix = safeOutput.status === 'confirmed'
-          ? 'That’s confirmed.'
-          : 'No problem — I won’t use that figure.';
-        text = question
-          ? `${prefix} ${question}`
-          : `${prefix} Please review the information and three analyses shown on screen.`;
-      }
+      // Saved facts are acknowledged and the meeting moves straight on. The
+      // spoken read-back that used to interrupt here is retired.
+      kind = 'acknowledgement';
+      text = question
+        ? `Got it — you’ll be able to review that. ${question}`
+        : 'Got it. Please review the three analyses on screen.';
     } else if (toolName === 'get_module_plan') {
       kind = 'plan';
       const modules = controlledModuleList(state.moduleSlots || safeOutput.moduleSlots || []);
@@ -2805,23 +2785,16 @@ export class ConsumerRealtimeSession {
         const mapped = mapRealtimeProposalFact(projectedProfile, fact);
         const patch = patchForMappedRealtimeFact(mapped);
         projectedProfile = applyProfilePatch(projectedProfile, patch, [], 'ai_extraction');
-        const configuredConfirmationPolicy = getSemanticFactDefinition(fact.factId)?.confirmationPolicy || 'final_review';
-        // Conversational v2 has no mandatory spoken confirmation tool. The
-        // silent planner therefore saves even legacy read-back values as
-        // visibly reviewable drafts; the authenticated final profile/plan
-        // confirmation remains the authoritative gate. The controlled v1
-        // journey keeps its existing spoken read-back behaviour unchanged.
-        const confirmationPolicy = context.config.realtimeConversationV2Enabled && this.applyingPlannerBatch
-          ? 'final_review'
-          : configuredConfirmationPolicy;
-        const readBackText = confirmationPolicy === 'read_back'
-          ? buildRealtimeFactReadBack(
-              fact.factId,
-              mapped.displayValue,
-              fact.certainty,
-              context.profile.preferences?.baseCurrency || 'EUR'
-            )
-          : null;
+        // RETIRED: the spoken read-back confirmation.
+        //
+        // Every fact now saves as a reviewable draft and the authenticated
+        // visual confirmation remains the authoritative gate -- which is what
+        // conversational v2 has always done. Holding the conversation for a
+        // spoken "yes" on individual figures made the meeting feel like a form,
+        // and it directly conflicted with announcing an assumption (a midpoint
+        // taken from a stated range) and carrying on.
+        const confirmationPolicy = 'final_review';
+        const readBackText = null;
         return { fact, mapped, patch, confirmationPolicy, readBackText };
       });
       if (evidenceItems.size !== 1) {
@@ -2853,7 +2826,7 @@ export class ConsumerRealtimeSession {
       }
       let currentProfile = context.profile;
       let currentSessionRow = context.sessionRow;
-      for (const proposal of proposals.filter((item) => item.confirmationPolicy !== 'read_back')) {
+      for (const proposal of proposals) {
         const fact = {
           factId: proposal.factId,
           value: proposal.value,
@@ -2876,108 +2849,21 @@ export class ConsumerRealtimeSession {
         proposal.status = 'saved_draft';
         proposal.profileRevision = committed.revision;
       }
-      const pending = proposals.filter((proposal) => proposal.confirmationPolicy === 'read_back');
       const refreshed = this.applyingPlannerBatch
         ? await this.planningContext()
         : await this.refreshJourneyState();
-      const currentPendingProposal = refreshed.state.currentPendingProposal || null;
+      // Nothing is ever pending now: every fact is a saved draft, reviewable on
+      // screen and confirmed once at the end.
       return {
         ok: true,
         proposals,
-        savedDrafts: proposals.filter((proposal) => proposal.confirmationPolicy !== 'read_back'),
-        // The database order is authoritative. Several read-back facts from
-        // one answer can share a timestamp, so a local insertion-order choice
-        // could disagree with the stable database tie-break and make the very
-        // next confirmation fail as out of order.
-        currentProposalId: currentPendingProposal?.proposalId || null,
-        currentReadBackText: currentPendingProposal?.readBackText || null,
-        currentPendingProposal,
+        savedDrafts: proposals,
+        currentProposalId: null,
+        currentReadBackText: null,
+        currentPendingProposal: null,
         profileRevision: Number(currentSessionRow.current_profile_revision),
-        readBackRequired: pending.length > 0,
-        instruction: pending.length
-          ? 'Speak currentReadBackText verbatim, then wait for a separate consumer answer.'
-          : 'Continue with the exact next server-selected question; do not ask for a separate spoken confirmation.'
-      };
-    }
-    if (toolName === 'resolve_fact_confirmation') {
-      this.requireExpectedRevision(args, context);
-      // Bind to the server-authoritative finalized turn (the consumer's spoken
-      // confirmation), not the opaque id the model echoed. The reuse guard
-      // below still requires it to differ from the proposal's own evidence.
-      const authoritativeEvidenceItemId = this.authoritativeEvidenceItemId();
-      if (!authoritativeEvidenceItemId) {
-        throw new ConsumerError(409, 'realtime_evidence_not_final', 'Wait for the consumer input item to finish before proposing or confirming facts.');
-      }
-      args.evidenceItemId = authoritativeEvidenceItemId;
-      this.requireFinalizedEvidence(args.evidenceItemId);
-      const proposal = await getPendingRealtimeFactProposal(
-        this.env,
-        this.meta.sessionId,
-        this.meta.leaseId,
-        args.proposalId
-      );
-      if (proposal.currentPendingId !== args.proposalId) {
-        throw new ConsumerError(409, 'realtime_fact_confirmation_out_of_order', 'Resolve the current spoken read-back before later proposals.');
-      }
-      if (Number(proposal.row.base_profile_revision) !== Number(context.sessionRow.current_profile_revision)) {
-        throw new ConsumerError(409, 'profile_revision_conflict', 'The fact proposal is stale.');
-      }
-      if (proposal.row.evidence_item_id === args.evidenceItemId) {
-        throw new ConsumerError(409, 'realtime_confirmation_evidence_reused', 'A separate finalized consumer confirmation is required.');
-      }
-      const readBackText = proposal.readBackText || buildRealtimeFactReadBack(
-        proposal.factId,
-        proposal.value,
-        proposal.row.certainty,
-        context.profile.preferences?.baseCurrency || 'EUR'
-      );
-      if (args.decision === 'rejected') {
-        const rejected = await rejectRealtimeFactProposal(
-          this.env,
-          this.meta.sessionId,
-          this.meta.leaseId,
-          args.proposalId,
-          args.evidenceItemId
-        );
-        const refreshed = await this.refreshJourneyState();
-        return {
-          ok: true,
-          proposal: rejected,
-          readBackText,
-          currentPendingProposal: refreshed.state.currentPendingProposal,
-          instruction: refreshed.state.currentPendingProposal
-            ? 'Speak currentPendingProposal.readBackText verbatim.'
-            : 'Continue with the exact next server-selected question.'
-        };
-      }
-      if (args.decision !== 'confirmed') {
-        throw new ConsumerError(400, 'realtime_confirmation_decision_invalid', 'Fact confirmation decision is invalid.');
-      }
-      const certainty = String(proposal.row.certainty || 'unknown');
-      const fact = { factId: proposal.factId, value: proposal.value, certainty };
-      const mapped = mapRealtimeProposalFact(context.profile, fact);
-      const nextProfile = applyMappedRealtimeFact(context.profile, fact, mapped);
-      const nextState = describeConversationState(nextProfile, context.config);
-      const committed = await commitRealtimeFactConfirmation(this.env, {
-        sessionId: this.meta.sessionId,
-        leaseId: this.meta.leaseId,
-        proposalId: args.proposalId,
-        confirmationEvidenceItemId: args.evidenceItemId,
-        sessionRow: context.sessionRow,
-        profile: nextProfile,
-        stage: nextState.stage
-      });
-      const refreshed = await this.refreshJourneyState();
-      return {
-        ok: true,
-        proposalId: args.proposalId,
-        status: 'confirmed',
-        readBackText,
-        profileRevision: committed.revision,
-        currentPendingProposal: refreshed.state.currentPendingProposal,
-        instruction: refreshed.state.currentPendingProposal
-          ? 'Speak currentPendingProposal.readBackText verbatim.'
-          : 'Continue with the exact next server-selected question.'
+        readBackRequired: false,
+        instruction: 'Continue with the exact next server-selected question; do not ask for a separate spoken confirmation.'
       };
     }
     if (toolName === 'get_module_plan') {

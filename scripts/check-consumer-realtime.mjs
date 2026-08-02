@@ -1165,7 +1165,7 @@ assert.doesNotMatch(
 assert.deepEqual(
   REALTIME_TOOL_DEFINITIONS.map((tool) => tool.name),
   [
-    'get_planning_state', 'propose_facts', 'resolve_fact_confirmation',
+    'get_planning_state', 'propose_facts',
     'get_module_plan', 'confirm_and_run_plan', 'get_result_summary', 'wait_for_user'
   ]
 );
@@ -1178,7 +1178,7 @@ assert.deepEqual(
   ['get_planning_state', 'get_result_summary', 'wait_for_user']
 );
 assert.ok(realtimeToolsForState({ realtimePhase: 'confirmation' })
-  .some((tool) => tool.name === 'resolve_fact_confirmation'));
+  .some((tool) => tool.name === 'propose_facts'));
 assert.equal(assertRealtimeToolName('get_planning_state'), 'get_planning_state');
 await rejectsCode(Promise.resolve().then(() => assertRealtimeToolName('calculate_net_worth')), 'realtime_tool_not_allowed');
 const instructions = buildRealtimeInstructions({
@@ -2382,17 +2382,9 @@ const startFactTool = async (toolName, argumentsValue, revision) => {
 const hybridEvidenceId = 'item_fact_hybrid_001';
 factDurable.finalizedEvidenceItems.add(hybridEvidenceId); factDurable.latestFinalizedEvidenceItemId = hybridEvidenceId;
 let factContext = await factDurable.planningContext();
-const exactControlledReadBack = 'You said available cash is exactly €65,000. Is that right?';
-const controlledReadBackOutput = await factDurable.attachWorkerSpeech('propose_facts', {
-  ok: true,
-  readBackRequired: true,
-  currentReadBackText: exactControlledReadBack,
-  profileRevision: 1
-}, factContext);
-assert.equal(controlledReadBackOutput.response_text, exactControlledReadBack);
-assert.equal(controlledReadBackOutput.require_repeat_verbatim, true);
-assert.equal(controlledReadBackOutput.assistantSpeech.text, exactControlledReadBack);
-assert.equal(controlledReadBackOutput.assistantSpeech.kind, 'read_back');
+// RETIRED: the spoken read-back. Facts save as reviewable drafts and the
+// authenticated visual confirmation is the only gate, so the Worker never asks
+// for a read_back speech any more.
 const exactControlledResult = 'Verified result: €65,000 remains €65,000; no model calculation was used.';
 const controlledResultOutput = await factDurable.attachWorkerSpeech('get_result_summary', {
   ok: true,
@@ -2442,9 +2434,12 @@ const hybridResult = await factDurable.executeTool(
   factContext,
   await startFactTool('propose_facts', hybridArgs, 1)
 );
-assert.equal(hybridResult.savedDrafts.length, 2);
+// All three save as drafts now. The cash figure used to be held back for a
+// spoken read-back; that step is retired, so it is saved like the rest.
+assert.equal(hybridResult.savedDrafts.length, 3);
 assert.equal(hybridResult.savedDrafts[0].factId, 'primary_goal');
 assert.equal(hybridResult.savedDrafts[1].factId, 'self_description');
+assert.equal(hybridResult.savedDrafts[2].factId, 'cash_savings');
 
 // Core fix (non-mutating unit check): gpt-realtime cannot reliably echo an
 // opaque evidence item id, so the server binds facts to the authoritative
@@ -2471,37 +2466,21 @@ assert.equal(
 );
 factDurable.finalizedEvidenceItems.add(hybridEvidenceId);
 factDurable.latestFinalizedEvidenceItemId = hybridEvidenceId;
-assert.equal(hybridResult.readBackRequired, true);
-assert.match(hybridResult.currentReadBackText, /available cash is approximately €65,000/);
-assert.equal(hybridResult.currentPendingProposal.factId, 'cash_savings');
-assert.equal(
-  hybridResult.currentProposalId,
-  hybridResult.currentPendingProposal.proposalId,
-  'the spoken read-back and the database-authoritative pending proposal must be identical'
-);
-assert.equal(hybridResult.currentReadBackText, hybridResult.currentPendingProposal.readBackText);
+assert.equal(hybridResult.readBackRequired, false, 'no fact waits on a spoken confirmation');
+assert.equal(hybridResult.currentPendingProposal, null, 'nothing is left pending');
+assert.equal(hybridResult.currentReadBackText, null);
+assert.equal(hybridResult.savedDrafts.length, hybridResult.proposals.length,
+  'every proposed fact is saved as a reviewable draft');
 factSessionRow = await getSessionRow(env, factSessionId);
-assert.equal(Number(factSessionRow.current_profile_revision), 3);
 factContext = await factDurable.planningContext();
-assert.equal(factContext.state.realtimePhase, 'confirmation');
-assert.equal(factContext.state.facts[0].factId, 'cash_savings');
-assert.ok(realtimeToolsForState(factContext.state).some((tool) => tool.name === 'resolve_fact_confirmation'));
-const cashConfirmationId = 'item_fact_cash_confirm_001';
-factDurable.finalizedEvidenceItems.add(cashConfirmationId); factDurable.latestFinalizedEvidenceItemId = cashConfirmationId;
-const cashResolveArgs = {
-  expectedRevision: 3,
-  proposalId: hybridResult.currentProposalId,
-  decision: 'confirmed',
-  evidenceItemId: cashConfirmationId
-};
-const cashConfirmed = await factDurable.executeTool(
-  'resolve_fact_confirmation',
-  cashResolveArgs,
-  factContext,
-  await startFactTool('resolve_fact_confirmation', cashResolveArgs, 3)
-);
-assert.equal(cashConfirmed.profileRevision, 4);
-assert.match(cashConfirmed.readBackText, /€65,000/);
+// The confirmed-fact summary is ordered by the profile, not by which fact was
+// once pending: with nothing held back, the first saved fact leads.
+assert.ok(factContext.state.facts.some((fact) => fact.factId === 'cash_savings'),
+  'the cash figure is saved and visible without a spoken confirmation');
+assert.ok(!realtimeToolsForState(factContext.state)
+  .some((tool) => tool.name === 'resolve_fact_confirmation'),
+  'the retired confirmation tool is never offered');
+
 
 // Module-specific intake facts follow from goal routing over accumulated
 // circumstances. The persona catalogue that used to gate this is gone.
@@ -2537,22 +2516,9 @@ const unknownResult = await factDurable.executeTool(
   factContext,
   await startFactTool('propose_facts', unknownArgs, 4)
 );
-assert.match(unknownResult.currentReadBackText, /do not know essential monthly spending yet/);
-const unknownConfirmationId = 'item_fact_unknown_confirm_001';
-factDurable.finalizedEvidenceItems.add(unknownConfirmationId); factDurable.latestFinalizedEvidenceItemId = unknownConfirmationId;
+assert.equal(unknownResult.readBackRequired, false);
+assert.equal(unknownResult.currentPendingProposal, null);
 factContext = await factDurable.planningContext();
-const unknownResolveArgs = {
-  expectedRevision: 4,
-  proposalId: unknownResult.currentProposalId,
-  decision: 'confirmed',
-  evidenceItemId: unknownConfirmationId
-};
-await factDurable.executeTool(
-  'resolve_fact_confirmation',
-  unknownResolveArgs,
-  factContext,
-  await startFactTool('resolve_fact_confirmation', unknownResolveArgs, 4)
-);
 let factProfile = await getCurrentProfile(env, await getSessionRow(env, factSessionId));
 assert.equal(factProfile.expenses.monthlyEssential, undefined);
 assert.equal(factProfile.assumptions.values.completionFacts.unknownFactIds.monthly_spending, true);
@@ -2589,22 +2555,9 @@ const rangeResult = await factDurable.executeTool(
   factContext,
   await startFactTool('propose_facts', rangeArgs, 5)
 );
-assert.match(rangeResult.currentReadBackText, /between €60,000 and €70,000/);
-const rangeConfirmationId = 'item_fact_range_confirm_001';
-factDurable.finalizedEvidenceItems.add(rangeConfirmationId); factDurable.latestFinalizedEvidenceItemId = rangeConfirmationId;
+assert.equal(rangeResult.readBackRequired, false);
+assert.equal(rangeResult.currentPendingProposal, null);
 factContext = await factDurable.planningContext();
-const rangeResolveArgs = {
-  expectedRevision: 5,
-  proposalId: rangeResult.currentProposalId,
-  decision: 'confirmed',
-  evidenceItemId: rangeConfirmationId
-};
-await factDurable.executeTool(
-  'resolve_fact_confirmation',
-  rangeResolveArgs,
-  factContext,
-  await startFactTool('resolve_fact_confirmation', rangeResolveArgs, 5)
-);
 factProfile = await getCurrentProfile(env, await getSessionRow(env, factSessionId));
 assert.equal(factProfile.incomeSources.length, 0);
 assert.deepEqual(factProfile.assumptions.values.completionFacts.rangedFactValues.gross_household_income, {
@@ -2714,40 +2667,12 @@ assert.deepEqual(dependencyResult.proposals.map((proposal) => proposal.factId), 
   'pension_current_value',
   'person_current_age'
 ]);
-assert.deepEqual(dependencyResult.savedDrafts.map((proposal) => proposal.factId), [
-  'primary_goal',
-  'self_description',
-  'partner_person',
-  'income_sources',
-  'pension_positions'
-]);
-assert.equal(dependencyResult.profileRevision, 11);
-
-let dependencyPending = dependencyResult.currentPendingProposal;
-const dependencyConfirmationOrder = [];
-for (let index = 0; index < 2; index += 1) {
-  assert.ok(dependencyPending, 'each dependent read-back remains confirmable after its parents are committed');
-  dependencyConfirmationOrder.push(dependencyPending.factId);
-  const evidenceItemId = `item_fact_dependency_confirm_${index + 1}`;
-  factDurable.finalizedEvidenceItems.add(evidenceItemId); factDurable.latestFinalizedEvidenceItemId = evidenceItemId;
-  factContext = await factDurable.planningContext();
-  const expectedRevision = Number(factContext.sessionRow.current_profile_revision);
-  const resolveArgs = {
-    expectedRevision,
-    proposalId: dependencyPending.proposalId,
-    decision: 'confirmed',
-    evidenceItemId
-  };
-  const resolved = await factDurable.executeTool(
-    'resolve_fact_confirmation',
-    resolveArgs,
-    factContext,
-    await startFactTool('resolve_fact_confirmation', resolveArgs, expectedRevision)
-  );
-  dependencyPending = resolved.currentPendingProposal;
-}
-assert.deepEqual(dependencyConfirmationOrder, ['pension_current_value', 'person_current_age']);
-assert.equal(dependencyPending, null);
+// Every fact in the batch saves as a draft, in dependency order. The
+// read-back confirmation loop this block used to drive is retired: nothing is
+// held back, so there is no pending queue to order.
+assert.deepEqual(dependencyResult.savedDrafts.map((proposal) => proposal.factId),
+  dependencyResult.proposals.map((proposal) => proposal.factId));
+assert.equal(dependencyResult.currentPendingProposal, null);
 
 factProfile = await getCurrentProfile(env, await getSessionRow(env, factSessionId));
 assert.equal(factProfile.partner.personId, 'partner_realtime');
@@ -4672,10 +4597,18 @@ assert.doesNotMatch(
   'Result provenance must use client-facing analysis language.'
 );
 assert.match(resultCardSource, /Analysis version/);
+// The spoken read-back is retired outright: EVERY fact becomes a visible draft,
+// on both conversation versions, and the authenticated visual confirmation is
+// the only gate.
 assert.match(
   realtimeSessionSource,
-  /context\.config\.realtimeConversationV2Enabled && this\.applyingPlannerBatch[\s\S]{0,120}\? 'final_review'/,
-  'V2 planner facts must become visible drafts instead of entering the removed spoken read-back loop.'
+  /const confirmationPolicy = 'final_review';/,
+  'Every fact must become a visible draft rather than entering a spoken read-back loop.'
+);
+assert.doesNotMatch(
+  realtimeSessionSource,
+  /confirmationPolicy === 'read_back'/,
+  'No code path may still branch on the retired read-back policy.'
 );
 assert.match(lifecycleSource, /settleConsumerProviderCostUnknown/);
 assert.match(realtimeMigrationSource, /idx_consumer_realtime_one_active_session/);

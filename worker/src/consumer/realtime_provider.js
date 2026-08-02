@@ -49,21 +49,6 @@ export const REALTIME_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     type: 'function',
-    name: 'resolve_fact_confirmation',
-    description: 'Resolve only the current server-owned readBackText using a separate finalized consumer confirmation item. Final profile and analysis execution still require the authenticated visual plan confirmation.',
-    parameters: {
-      type: 'object', additionalProperties: false,
-      required: ['proposalId', 'decision', 'expectedRevision', 'evidenceItemId'],
-      properties: {
-        proposalId: { type: 'string', minLength: 8, maxLength: 100 },
-        decision: { type: 'string', enum: ['confirmed', 'rejected'] },
-        expectedRevision: { type: 'integer', minimum: 1 },
-        evidenceItemId: { type: 'string', minLength: 1, maxLength: 160 }
-      }
-    }
-  },
-  {
-    type: 'function',
     name: 'get_module_plan',
     description: 'Ask the deterministic planning service which allowlisted analyses are ready and which exact facts remain missing.',
     parameters: {
@@ -333,7 +318,7 @@ export function realtimeToolsForState(state = {}) {
     : phase === 'analysis'
       ? ['get_planning_state', 'get_module_plan', 'confirm_and_run_plan', 'wait_for_user']
       : phase === 'confirmation'
-        ? ['get_planning_state', 'propose_facts', 'resolve_fact_confirmation', 'get_module_plan', 'wait_for_user']
+        ? ['get_planning_state', 'propose_facts', 'get_module_plan', 'wait_for_user']
         : ['get_planning_state', 'propose_facts', 'wait_for_user'];
   return REALTIME_TOOL_DEFINITIONS.filter((tool) => names.includes(tool.name));
 }
