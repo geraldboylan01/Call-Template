@@ -91,12 +91,14 @@ export function normaliseBootstrap(payload) {
     voice.availability,
     voice.budget,
     root.voiceBudget,
+    root.voiceAvailability,
     root.consumerVoiceBudget
   ));
   const realtimeVoiceBudget = normaliseVoiceBudget(firstDefined(
     realtimeVoice.availability,
     realtimeVoice.budget,
     root.realtimeVoiceBudget,
+    root.realtimeVoiceAvailability,
     root.voiceRealtimeBudget
   ));
   const rawAllowedModules = asArray(firstDefined(
@@ -305,6 +307,7 @@ export function mergeVoicePayload(payload) {
     };
   }
   const budget = normaliseVoiceBudget(firstDefined(
+    root.voiceAvailability,
     root.voiceBudget,
     voice.budget,
     session.voiceBudget
@@ -316,6 +319,7 @@ export function mergeVoicePayload(payload) {
     };
   }
   const realtimeBudget = normaliseVoiceBudget(firstDefined(
+    root.realtimeVoiceAvailability,
     root.realtimeVoiceBudget,
     root.voiceRealtimeBudget,
     realtimeVoice.budget,

@@ -289,7 +289,7 @@ export async function renderAuthorizedRealtimeSpeech({
     throw new ConsumerError(409, 'realtime_speech_already_dispatched', 'That approved spoken response was already processed.');
   }
   if (reservation.denied || !reservation.row) {
-    throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected live voice dispatch limit has been reached. Continue with the visible caption or typing.');
+    throw new ConsumerError(402, 'realtime_budget_exceeded', 'Voice is unavailable for the rest of this session. Continue with the visible caption or typing.');
   }
 
   let dispatched = false;

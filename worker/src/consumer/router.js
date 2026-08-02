@@ -659,7 +659,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const budget = await getConsumerProviderBudget(env, sessionRow.id);
       return respond({
         voiceConsent: toPublicVoiceConsent(voiceConsent),
-        voiceBudget: voiceBudgetPayload(budget, config)
+        voiceAvailability: voiceBudgetPayload(budget, config)
       }, 200, methods);
     }
 
@@ -687,7 +687,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       return respond({
         realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
         realtimeLease: toPublicRealtimeLease(realtimeLease),
-        realtimeVoiceBudget: realtimeVoiceBudgetPayload(
+        realtimeVoiceAvailability: realtimeVoiceBudgetPayload(
           await getConsumerProviderBudget(env, sessionRow.id),
           realtimeLease,
           config
@@ -879,7 +879,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         : null;
       return respond({
         realtimeLease: toPublicRealtimeLease(realtimeLease),
-        realtimeVoiceBudget: realtimeVoiceBudgetPayload(providerBudget, realtimeLease, config),
+        realtimeVoiceAvailability: realtimeVoiceBudgetPayload(providerBudget, realtimeLease, config),
         controlPlane,
         planningState: {
           profileRevision: Number(sessionRow.current_profile_revision),
@@ -963,8 +963,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         consentRefreshRequired,
         processingPaused: !config.journeyEnabled,
         voiceConsent: toPublicVoiceConsent(voiceConsent),
-        voiceBudget: voiceBudgetPayload(voiceBudget, config),
-        realtimeVoiceBudget: realtimeVoiceBudgetPayload(voiceBudget, realtimeLease, config),
+        voiceAvailability: voiceBudgetPayload(voiceBudget, config),
+        realtimeVoiceAvailability: realtimeVoiceBudgetPayload(voiceBudget, realtimeLease, config),
         realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
         realtimeLease: toPublicRealtimeLease(realtimeLease),
         realtimeMeetings,
@@ -1006,7 +1006,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const providerBudget = await getConsumerProviderBudget(env, sessionRow.id);
       const reservationAmount = Number(providerBudget.remainingEurMicros || 0);
       if (reservationAmount <= config.realtimeSafetyReserveMicroEur) {
-        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected session allowance is no longer large enough to start a live meeting. Continue by typing.');
+        throw new ConsumerError(402, 'realtime_budget_exceeded', 'Voice is unavailable for the rest of this session. You can continue by typing.');
       }
       const reservation = await reserveConsumerProviderCost(env, {
         sessionId: sessionRow.id,
@@ -1022,7 +1022,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         throw new ConsumerError(409, 'realtime_request_already_used', 'That live voice request id was already used. Create a new WebRTC offer.');
       }
       if (reservation.denied || !reservation.entry) {
-        throw new ConsumerError(402, 'realtime_budget_exceeded', 'The protected session or UTC-day provider allowance has been reached. Continue by typing.');
+        throw new ConsumerError(402, 'realtime_budget_exceeded', 'Voice is unavailable for the rest of this session. You can continue by typing.');
       }
       let lease = null;
       let dispatched = false;

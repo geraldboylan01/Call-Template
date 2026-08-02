@@ -1,7 +1,7 @@
 -- Reclassify the mandatory onboarding privacy control as an acknowledgement,
 -- not consent to the processing needed to provide the requested journey.
 -- Legacy columns remain during the cached-client compatibility window.
-ALTER TABLE consumer_sessions ADD COLUMN privacy_notice_acknowledged INTEGER NOT NULL DEFAULT 1
+ALTER TABLE consumer_sessions ADD COLUMN privacy_notice_acknowledged INTEGER NOT NULL DEFAULT 0
   CHECK (privacy_notice_acknowledged IN (0, 1));
 ALTER TABLE consumer_sessions ADD COLUMN privacy_notice_id TEXT;
 ALTER TABLE consumer_sessions ADD COLUMN privacy_notice_version TEXT;

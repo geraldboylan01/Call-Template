@@ -97,7 +97,7 @@ async function reserveVoiceCost(env, config, sessionId, operation, idempotencyKe
     throw new ConsumerError(
       402,
       'voice_budget_exceeded',
-      'The protected €2 voice allowance for this session has been reached. You can continue by typing.'
+      'Voice is unavailable for the rest of this session. You can continue by typing.'
     );
   }
   const entry = reservationEntry(result);
