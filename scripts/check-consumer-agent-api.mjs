@@ -35,6 +35,10 @@ import {
 } from '../worker/src/consumer/planning_turn.js';
 import { agentToolsForState } from '../worker/src/consumer/agent_text_channel.js';
 import {
+  buildRealtimeConversationV2Instructions,
+  realtimeAssumptionInstructions
+} from '../worker/src/consumer/realtime_provider.js';
+import {
   toAgentConsumerView,
   toAgentDiagnosticView
 } from '../worker/src/consumer/agent_session.js';
@@ -232,6 +236,41 @@ async function agentContext(profile, config = CONFIG) {
   assert.match(session, /composeAndPersistBrief/, 'briefs come from the shared composer');
   assert.match(session, /confirmPlanSelection/, 'confirmation uses the shared rule');
   pass('the text transport owns no instructions, tools, routing, question planning or offer logic');
+}
+
+{
+  // The spoken statements the meeting owes a client -- a figure assumed from a
+  // range they gave, and an analysis dropped for want of an essential figure --
+  // must reach BOTH transports. The agent transport is the tester for the voice
+  // journey, so a rule only one of them follows tests nothing.
+  const briefState = {
+    meetingBrief: {
+      assumptionNotices: [{ factId: 'cash_savings', text: 'You said savings is between A and B, so I will work with C.' }],
+      droppedAnalysisNotices: [{ moduleId: 'personal_balance_sheet', text: 'I will not be able to review your picture.' }],
+      questionBatch: { prompt: 'What age are you?' }
+    }
+  };
+  const lines = realtimeAssumptionInstructions(briefState);
+  assert.equal(lines.length, 1, 'both notice kinds are delivered as one instruction');
+  assert.match(lines[0], /same breath as your next question/, 'the meeting keeps moving');
+  assert.match(lines[0], /Do not pause for the client to confirm it/, 'an assumption is stated, not put to a vote');
+  assert.match(lines[0], /so I will work with C/);
+  assert.match(lines[0], /I will not be able to review your picture/);
+  assert.deepEqual(realtimeAssumptionInstructions({ meetingBrief: {} }), [],
+    'no notice means no instruction at all');
+  assert.deepEqual(realtimeAssumptionInstructions({}), []);
+
+  // The shared pack is what both transports build from, so carrying the notices
+  // there is what makes them identical.
+  const instructions = buildRealtimeConversationV2Instructions(briefState);
+  assert.ok(instructions.includes(lines[0]), 'the shared instruction pack carries the notices');
+
+  // And the voice session must not restate them, or the two transports would
+  // drift the moment one copy was edited.
+  const realtimeSession = readFileSync(`${root}/worker/src/consumer/realtime_session.js`, 'utf8');
+  assert.doesNotMatch(realtimeSession, /assumptionNotices/,
+    'the voice session must not author its own copy of the assumption instruction');
+  pass('assumption and dropped-analysis notices come from the one shared instruction pack');
 }
 
 {

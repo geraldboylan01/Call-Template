@@ -259,6 +259,25 @@ export function realtimeModuleConversationGuidance(state = {}, allowedModuleIds 
   return [...new Set(lines)];
 }
 
+/**
+ * The one-off statements the meeting owes the client this turn: a figure we
+ * assumed from a range they gave, and an analysis we have had to drop. Each is
+ * announced exactly once -- the brief carries the already-announced set -- and
+ * neither is a question, so the meeting states it and carries straight on.
+ */
+export function realtimeAssumptionInstructions(state = {}) {
+  const notices = [
+    ...(state.meetingBrief?.assumptionNotices || []),
+    ...(state.meetingBrief?.droppedAnalysisNotices || [])
+  ].map((notice) => notice?.text).filter((text) => typeof text === 'string' && text.trim());
+  if (notices.length === 0) return [];
+  return [
+    `Say this once, in the same breath as your next question, then carry on: ${notices.join(' ')}`
+      + ' Do not pause for the client to confirm it, do not ask whether it is right,'
+      + ' and do not apologise at length.'
+  ];
+}
+
 export function buildRealtimeConversationV2Instructions(state = {}, allowedModuleIds = []) {
   const brief = state.meetingBrief && typeof state.meetingBrief === 'object'
     ? JSON.stringify(state.meetingBrief).slice(0, 12_000)
@@ -285,6 +304,13 @@ export function buildRealtimeConversationV2Instructions(state = {}, allowedModul
           ...moduleGuidance.map((line) => `- ${line}`)
         ]
       : []),
+    // SPOKEN STATEMENTS, NOT QUESTIONS. An assumption taken from a stated range,
+    // and an analysis dropped for want of an essential figure, are both said
+    // once and folded into the next question. This lives in the SHARED
+    // instruction pack, not in the voice session, because the agent transport is
+    // the tester for the voice journey: a rule only one of them follows tests
+    // nothing.
+    ...realtimeAssumptionInstructions(state),
     `Current phase guidance: ${realtimeV2PhaseGuidance(state)}`,
     `Signed MeetingBriefV2: ${brief}`
   ].join('\n');

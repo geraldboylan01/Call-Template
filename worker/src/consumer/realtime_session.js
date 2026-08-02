@@ -1484,22 +1484,12 @@ export class ConsumerRealtimeSession {
       // as the next question. It is a statement, not a request: stopping to
       // collect a "yes" on every rounded figure is what made the meeting feel
       // like a form, and the client can correct it at any point.
-      // Both kinds of notice are spoken statements, not questions: an assumption
-      // we have taken, and an analysis we have had to drop. Each is said once,
-      // folded into the next question, so the meeting keeps moving.
-      const assumptionInstruction = [
-        ...(context.state.meetingBrief?.assumptionNotices || []),
-        ...(context.state.meetingBrief?.droppedAnalysisNotices || [])
-      ]
-        .map((notice) => notice.text)
-        .filter(Boolean)
-        .join(' ');
       const intakeInstruction = context.state.meetingBrief?.questionBatch?.prompt
         ? `Acknowledge the finalized client turn briefly, then ask exactly this one question and no other: ${context.state.meetingBrief.questionBatch.prompt}`
         : 'Respond naturally to the finalized client turn, then ask only the single signed nextObjective question.';
-      const intakeInstructionWithAssumptions = assumptionInstruction
-        ? `${intakeInstruction} Before that question, and in the same breath, say this once: ${assumptionInstruction} Do not pause for the client to confirm it, and do not apologise at length.`
-        : intakeInstruction;
+      // Assumption and dropped-analysis notices come from the SHARED instruction
+      // pack (realtimeAssumptionInstructions), so voice and the agent transport
+      // speak them identically. They are deliberately not restated here.
       const forceTool = authorization.options?.forceTool === 'get_planning_state'
         ? 'get_planning_state'
         : null;
@@ -1517,7 +1507,7 @@ export class ConsumerRealtimeSession {
                   ? confirmationInstruction
                   : meetingPhase === 'generating_modules' || meetingPhase === 'closing' || meetingPhase === 'completed'
                     ? 'Do not speak. The server owns analysis generation, the closing message and navigation.'
-                    : intakeInstructionWithAssumptions;
+                    : intakeInstruction;
       const moduleGuidance = conversationalV2
         ? realtimeModuleConversationGuidance(context.state, context.config.allowedModules)
         : [];
