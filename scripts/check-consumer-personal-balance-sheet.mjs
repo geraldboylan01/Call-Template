@@ -202,9 +202,19 @@ incomplete = applyProfilePatch(incomplete, {
 const incompleteReadiness = getModuleReadiness('personal_balance_sheet', incomplete);
 assert.equal(incompleteReadiness.status, 'missing_information');
 assert.deepEqual(
-  incompleteReadiness.requiredMissing.map((item) => item.fieldPath).sort(),
+  incompleteReadiness.requiredMissing
+    .filter((item) => (item.importance ?? 'required') === 'required')
+    .map((item) => item.fieldPath).sort(),
   ['/liabilities/1/currentBalance', '/properties/0/currentValue'],
   'Every existing unvalued financial position must block the balance-sheet run.'
+);
+// Monthly spending is ASKED FOR but never blocks: reserves expressed as months
+// of cover need it, and plenty of people do not know what they spend.
+assert.ok(
+  incompleteReadiness.requiredMissing.some((item) => (
+    item.fieldPath === '/expenses/monthlyEssential' && item.importance === 'assumed'
+  )),
+  'monthly spending is requested alongside, without blocking'
 );
 assert.throws(
   () => definition.buildInput(incomplete),
@@ -213,7 +223,13 @@ assert.throws(
 );
 
 let empty = createHouseholdProfile({ profileId: 'pbs-empty', nowIso: NOW, calculationDateIso: '2026-07-14' });
-assert.equal(getModuleReadiness('personal_balance_sheet', empty).requiredMissing.length, 2);
+// Assets and liabilities BLOCK; monthly spending is asked for alongside them.
+assert.equal(
+  getModuleReadiness('personal_balance_sheet', empty).requiredMissing
+    .filter((item) => (item.importance ?? 'required') === 'required').length,
+  2
+);
+assert.equal(getModuleReadiness('personal_balance_sheet', empty).requiredMissing.length, 3);
 empty = applyProfilePatch(empty, {
   patchId: 'pbs-none',
   operations: [

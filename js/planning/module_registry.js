@@ -84,6 +84,12 @@ const INTAKE_FACTS = Object.freeze({
   [MODULE_IDS.PERSONAL_BALANCE_SHEET]: Object.freeze([
     'primary_goal', 'partner_person', 'asset_position', 'liability_position', 'property_position',
     'business_position', 'pension_positions', 'pension_current_value',
+    // Monthly spending is what turns a pile of reserves into "how long could we
+    // last". The module has always read it -- /expenses is already an optional
+    // profile path -- but it was absent from the intake contract, so the meeting
+    // had no reason to ask and reserveMonths could never be computed. It is
+    // asked for, never required: plenty of people do not know what they spend.
+    'monthly_spending',
     'specialist_asset_reconciliation'
   ])
 });

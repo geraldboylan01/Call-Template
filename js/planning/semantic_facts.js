@@ -317,12 +317,18 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     description: 'Essential household spending excluding rent and housing debt.',
     mappings: [
       {
+        // The Personal Balance Sheet reads this too: reserves divided by monthly
+        // spending is what it reports as months of cover. Without the module
+        // named here the path could not resolve back to this fact, so the
+        // question was never asked and the figure was never calculable.
         pathPattern: '/expenses/monthlyEssential',
-        moduleIds: [MODULE_IDS.LIQUIDITY, MODULE_IDS.HOUSE_PURCHASE]
+        moduleIds: [
+          MODULE_IDS.LIQUIDITY, MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.PERSONAL_BALANCE_SHEET
+        ]
       },
       {
         pathPattern: '/expenses/annualTotal',
-        moduleIds: [MODULE_IDS.LIQUIDITY]
+        moduleIds: [MODULE_IDS.LIQUIDITY, MODULE_IDS.PERSONAL_BALANCE_SHEET]
       },
       {
         pathPattern: '/expenses',

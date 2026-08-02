@@ -49,6 +49,7 @@
     "business_position",
     "pension_positions",
     "pension_current_value",
+    "monthly_spending",
     "specialist_asset_reconciliation"
   ],
   "eligibility": {

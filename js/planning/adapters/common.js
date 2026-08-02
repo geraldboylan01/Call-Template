@@ -106,8 +106,21 @@ export function readinessFromMissing(requiredMissing, {
   relevant = true
 } = {}) {
   if (!relevant) return readiness({ status: 'not_relevant', warnings });
-  if (requiredMissing.length > 0) {
+  // ONLY A REQUIRED INPUT BLOCKS. An input marked 'assumed' is one the module
+  // runs without but answers better with, so it belongs in the question queue
+  // -- the meeting will ask for it -- without holding the analysis hostage when
+  // the client does not know it. Goal routing already draws exactly this line
+  // when deciding what may drop a module.
+  if (requiredMissing.some((item) => (item?.importance ?? 'required') === 'required')) {
     return readiness({ status: 'missing_information', requiredMissing, assumptionsUsed, warnings });
+  }
+  if (requiredMissing.length > 0) {
+    return readiness({
+      status: assumptionsUsed.length > 0 ? 'ready_with_assumptions' : 'ready',
+      requiredMissing,
+      assumptionsUsed,
+      warnings
+    });
   }
   return readiness({
     status: assumptionsUsed.length > 0 ? 'ready_with_assumptions' : 'ready',

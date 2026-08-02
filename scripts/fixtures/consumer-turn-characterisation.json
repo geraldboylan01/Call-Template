@@ -319,6 +319,7 @@
               "missingFactIds": [
                 "asset_position",
                 "liability_position",
+                "monthly_spending",
                 "property_position",
                 "pension_positions",
                 "business_position"
@@ -374,7 +375,8 @@
               "property_position",
               "asset_position",
               "business_position",
-              "liability_position"
+              "liability_position",
+              "monthly_spending"
             ],
             "moduleOffer": null,
             "capacityDecision": null,
@@ -409,8 +411,8 @@
           "requiresGoalPriorityQuestion": false,
           "requiresDecisionTopicQuestion": false,
           "nextQuestion": {
-            "factId": "asset_position",
-            "prompt": "Please add each cash, investment or other asset and its current value, or confirm that there are none."
+            "factId": "monthly_spending",
+            "prompt": "About how much does the household spend each month on essentials, excluding rent and housing debt?"
           },
           "moduleSlots": [
             {
@@ -440,6 +442,7 @@
               "missingFactIds": [
                 "asset_position",
                 "liability_position",
+                "monthly_spending",
                 "property_position",
                 "pension_positions",
                 "business_position"
@@ -495,7 +498,8 @@
               "pension_positions",
               "asset_position",
               "business_position",
-              "liability_position"
+              "liability_position",
+              "monthly_spending"
             ],
             "moduleOffer": null,
             "capacityDecision": null,
@@ -530,8 +534,8 @@
           "requiresGoalPriorityQuestion": false,
           "requiresDecisionTopicQuestion": false,
           "nextQuestion": {
-            "factId": "asset_position",
-            "prompt": "Please add each cash, investment or other asset and its current value, or confirm that there are none."
+            "factId": "monthly_spending",
+            "prompt": "About how much does the household spend each month on essentials, excluding rent and housing debt?"
           },
           "moduleSlots": [
             {
@@ -547,6 +551,7 @@
               "missingFactIds": [
                 "asset_position",
                 "liability_position",
+                "monthly_spending",
                 "property_position",
                 "pension_positions",
                 "business_position"
@@ -594,7 +599,8 @@
               "pension_positions",
               "asset_position",
               "business_position",
-              "liability_position"
+              "liability_position",
+              "monthly_spending"
             ],
             "moduleOffer": null,
             "capacityDecision": null,

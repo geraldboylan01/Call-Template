@@ -1558,7 +1558,10 @@ function createMeetingTranscriptSection(currentState) {
   return panel;
 }
 
-function createResultsView(currentState) {
+// Exported so a finished agent-driven call can be rendered EXACTLY as the
+// client sees it, rather than summarised second-hand by whoever is reviewing
+// the call. See scripts/render-client-results.mjs.
+export function createResultsView(currentState) {
   const adviserReviewSlots = adviserReviewModuleSlots(currentState);
   const planSlotCount = asArray(currentState.analysisPlan?.moduleSlots).length;
   const gatedOnly = adviserReviewSlots.length >= 1

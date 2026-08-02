@@ -161,6 +161,14 @@ export function getPersonalBalanceSheetReadiness(profile) {
   incompletePositionValues(profile, currency).forEach((item) => {
     requiredMissing.push(missing(item.fieldPath, item.reason, moduleIds));
   });
+  if (monthlyExpenses(profile) === null) {
+    requiredMissing.push(missing(
+      '/expenses/monthlyEssential',
+      'Add what the household spends in a typical month, so reserves can be expressed as months of cover.',
+      moduleIds,
+      'assumed'
+    ));
+  }
   for (const [category, entries] of Object.entries(specialistReconciliation(profile))) {
     const definition = SPECIALIST_CATEGORIES[category];
     entries
@@ -274,13 +282,18 @@ export async function runPersonalBalanceSheet(input, context) {
       // agent-driven call as a Cork nurse ended with "Reserve months: null" in
       // her balance sheet. This is the module's own stated accounting policy
       // two rows above: unknown values are excluded rather than estimated.
+      // A metric we could not calculate is LEFT OUT, never shown as a blank.
+      // reserveMonths is null whenever monthly spending is unknown, and it
+      // reached a client-facing table as the literal word "null". This is the
+      // module's own accounting policy two rows above: unknown values are
+      // excluded rather than estimated.
       rows: [
         ['Gross assets', balanceSheet.grossAssets],
         ['Total liabilities', balanceSheet.totalLiabilities],
         ['Net worth', balanceSheet.netWorth],
         ['Spendable reserves', balanceSheet.spendableReserves],
         ['Reserve months', balanceSheet.reserveMonths]
-      ].filter(([, value]) => value !== null && value !== undefined)
+      ].filter(([, value]) => value !== null && value !== undefined).filter(([, value]) => value !== null && value !== undefined)
     },
     tables: [{
       id: 'personal-balance-sheet-buckets',

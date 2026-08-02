@@ -1,3 +1,5 @@
+import { ThinkingTone } from './thinking_tone.js';
+
 const PALETTE = {
   off:                { hi: '#c3dcf0', lo: '#2c4d6d', glow: '90,140,185' },
   connecting:         { hi: '#a8dcff', lo: '#2f6f9e', glow: '110,180,235' },
@@ -74,6 +76,11 @@ export class RealtimeOrb {
     const raw = this.shell?.dataset.realtimePhase || 'off';
     this.phase = PHASE_ALIAS[raw] || (PALETTE[raw] ? raw : 'listening');
     this.paintLabel();
+    // A thinking pause is several seconds of silence, which a caller reads as
+    // a dropped line unless something tells them otherwise. The tone is driven
+    // from the same phase as the orb so the two can never disagree.
+    this.thinkingTone = this.thinkingTone || new ThinkingTone({ audioContext: this.audioCtx });
+    this.thinkingTone.syncPhase(this.phase);
     this.start();
   }
 
@@ -140,6 +147,10 @@ export class RealtimeOrb {
 
   destroy() {
     this.stop();
+    // The tone must not outlive the call: an orb torn down mid-pulse would
+    // otherwise keep sounding with nothing on screen to explain it.
+    this.thinkingTone?.destroy();
+    this.thinkingTone = null;
     this.observer.disconnect();
     this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.resize);
