@@ -60,32 +60,59 @@ export function paidRealtimeInfrastructureProofEnabled(value) {
   throw new Error('RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF must be exactly true or false.');
 }
 
-export function voiceBudgetFromHeaders(headers) {
-  const read = (name) => {
-    const raw = String(headers?.get?.(name) || '').trim();
-    assert.match(raw, /^(?:0|[1-9][0-9]*)$/, `${name} must be a non-negative integer.`);
-    const value = Number(raw);
-    assert.ok(Number.isSafeInteger(value), `${name} exceeds the safe integer range.`);
-    return value;
-  };
-  return {
-    limitMicroEur: read('x-voice-limit-micro-eur'),
-    spentMicroEur: read('x-voice-spent-micro-eur'),
-    remainingMicroEur: read('x-voice-remaining-micro-eur')
-  };
+/**
+ * The consumer's own view of its allowance: whether it has one, never how big.
+ *
+ * The Worker used to send limit/spent/remaining to the browser, and to echo them
+ * in x-voice-* response headers. Both are gone deliberately -- a person on a
+ * planning call must never be shown what their call costs -- so the only thing
+ * left to assert on a consumer surface is availability. Asserting the absence is
+ * the point: if a figure ever comes back, this fails.
+ */
+export function assertConsumerSeesNoFigures(value, label) {
+  assert.ok(value && typeof value === 'object', `${label} must report availability.`);
+  assert.equal(value.available, true, `${label} must be available for a fresh smoke session.`);
+  assert.equal(value.status, 'available', `${label} must report an available status.`);
+  for (const field of ['limitMicroEur', 'spentMicroEur', 'remainingMicroEur', 'limitEurMicros']) {
+    assert.equal(value[field], undefined, `${label} must not expose ${field} to the consumer.`);
+  }
 }
 
-// The session-level provider ceiling is shared: €2 for the voice-only canary,
-// €10 when the realtime adviser canary is active (voice draws from the same
-// session envelope in that mode).
-export function assertVoiceBudgetSnapshot(value, expectedSpentMicroEur, limitMicroEur = 2_000_000) {
-  assert.equal(value?.limitMicroEur, limitMicroEur, 'The paid smoke session provider ceiling changed unexpectedly.');
-  assert.equal(value?.spentMicroEur, expectedSpentMicroEur, 'The paid smoke reservation total changed unexpectedly.');
-  assert.equal(
-    value?.remainingMicroEur,
-    limitMicroEur - expectedSpentMicroEur,
-    'The paid smoke remaining allowance changed unexpectedly.'
-  );
+/**
+ * The session ledger charged what it should have, and still holds its ceiling.
+ *
+ * The figures come from the protected envelope, never from a consumer response,
+ * so verifying the ledger costs the consumer no visibility into the money.
+ */
+export function assertLedgerAccrued(session, expectedSpentMicroEur, limitMicroEur) {
+  assert.equal(session?.providerCostLimitMicroEur, limitMicroEur,
+    'The paid smoke session provider ceiling changed unexpectedly.');
+  assert.equal(session?.spentMicroEur, expectedSpentMicroEur,
+    'The paid smoke reservation total changed unexpectedly.');
+}
+
+/**
+ * The ceiling the live session actually received, read privately.
+ *
+ * Verified against the session row rather than the config, because the row is
+ * written at creation and a bug there is exactly what this smoke check is for.
+ * Served only to a caller holding the deploy verification credential.
+ */
+export async function readLiveSessionCeiling(workerBaseUrl, origin, sessionId) {
+  const key = String(process.env.CONSUMER_DEPLOY_VERIFICATION_KEY || '').trim();
+  assert.ok(key.length >= 32, 'CONSUMER_DEPLOY_VERIFICATION_KEY is required to read the live ceiling.');
+  const url = `${workerBaseUrl}/api/consumer/deployment-envelope`
+    + `?session=${encodeURIComponent(sessionId)}`;
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      Origin: origin,
+      'x-planeir-deploy-verification': key
+    }
+  });
+  const text = await response.text();
+  assert.equal(response.status, 200, `The protected envelope returned ${response.status}: ${text}`);
+  return JSON.parse(text).session;
 }
 
 export function buildProposedCredential() {
@@ -436,12 +463,14 @@ async function main() {
       }
     );
     assert.equal(voiceGranted.payload?.voiceConsent?.granted, true, 'Voice consent could not be granted.');
+    assertConsumerSeesNoFigures(voiceGranted.payload?.voiceAvailability, 'The voice allowance');
+    const liveCeiling = await readLiveSessionCeiling(workerBaseUrl, smokeOrigin, sessionId);
     assert.equal(
-      voiceGranted.payload?.voiceBudget?.limitMicroEur,
+      liveCeiling?.providerCostLimitMicroEur,
       realtimeExpected ? 10_000_000 : 2_000_000,
       'The live session does not have the expected provider ceiling.'
     );
-    assert.equal(voiceGranted.payload?.voiceBudget?.spentMicroEur, 0, 'A new smoke session unexpectedly has provider spend.');
+    assert.equal(liveCeiling?.spentMicroEur, 0, 'A new smoke session unexpectedly has provider spend.');
 
     let realtimeConsentPayload = null;
     if (runPaidRealtimeProof) {
@@ -462,8 +491,11 @@ async function main() {
         }
       );
       assert.equal(realtimeGranted.payload?.realtimeConsent?.granted, true, 'Realtime consent could not be granted.');
+      assertConsumerSeesNoFigures(
+        realtimeGranted.payload?.realtimeVoiceAvailability, 'The realtime allowance'
+      );
       assert.equal(
-        realtimeGranted.payload?.realtimeVoiceBudget?.limitMicroEur,
+        (await readLiveSessionCeiling(workerBaseUrl, smokeOrigin, sessionId))?.providerCostLimitMicroEur,
         10_000_000,
         'The Realtime proof does not have the €10 adviser-demo application allowance.'
       );
@@ -505,8 +537,11 @@ async function main() {
       );
       assert.ok(speechResult.bytes.byteLength > 0, 'The paid speech smoke returned no audio.');
       assert.ok(speechResult.bytes.byteLength <= 1_000_000, 'The paid speech smoke audio is too large for the bounded transcription route.');
-      assertVoiceBudgetSnapshot(
-        voiceBudgetFromHeaders(speechResult.headers),
+      // Spend must actually accrue against the session ledger. Read from the
+      // protected route: the speech response is audio, and the x-voice-* budget
+      // headers it used to carry were removed so a browser could not read them.
+      assertLedgerAccrued(
+        await readLiveSessionCeiling(workerBaseUrl, smokeOrigin, sessionId),
         100_000,
         realtimeExpected ? 10_000_000 : 2_000_000
       );
@@ -528,8 +563,9 @@ async function main() {
         typeof transcription?.transcript === 'string' && transcription.transcript.trim().length > 0,
         'The paid transcription smoke returned no reviewable transcript.'
       );
-      assertVoiceBudgetSnapshot(
-        transcription.voiceBudget,
+      assertConsumerSeesNoFigures(transcription.voiceAvailability, 'The transcription allowance');
+      assertLedgerAccrued(
+        await readLiveSessionCeiling(workerBaseUrl, smokeOrigin, sessionId),
         200_000,
         realtimeExpected ? 10_000_000 : 2_000_000
       );

@@ -622,7 +622,23 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       if (!isDeployVerificationRequest(request, env)) {
         return respond({ error: 'Not found.', code: 'not_found' }, 404, methods);
       }
-      return respond(deploymentCostEnvelope(config), 200, methods);
+      const envelope = deploymentCostEnvelope(config);
+      // Optionally, the ceiling a NAMED session actually received. The config
+      // envelope only proves what the Worker would apply; a session row is
+      // written at creation and could disagree, which is exactly the fault the
+      // deploy smoke check exists to catch. The consumer's own session routes
+      // deliberately report availability and never figures, so this credential
+      // is the only way to see it.
+      const sessionId = new URL(request.url).searchParams.get('session');
+      if (sessionId) {
+        const budget = await getConsumerProviderBudget(env, sessionId);
+        envelope.session = {
+          sessionId,
+          providerCostLimitMicroEur: Number(budget?.limitMicroEur ?? budget?.limitEurMicros ?? 0) || 0,
+          spentMicroEur: Number(budget?.spentMicroEur ?? budget?.spentEurMicros ?? 0) || 0
+        };
+      }
+      return respond(envelope, 200, methods);
     }
 
     if (route.kind === 'create') {
@@ -1291,8 +1307,15 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }
       await rateLimit(env, 'consumer-voice-session', sessionRow.id, 60 * 1000, 12);
       if (route.kind === 'voice_transcriptions') {
-        const result = await transcribeConsumerVoice({ env, config, sessionRow, request });
-        return respond(result, 200, methods);
+        const { voiceBudget, ...result } = await transcribeConsumerVoice({
+          env, config, sessionRow, request
+        });
+        // The provider figures stop here. The transcription route was still
+        // handing the browser limit/spent/remaining after every other consumer
+        // surface had been reduced to availability, so a person on a planning
+        // call could read what their call was costing. The ledger still needs
+        // the numbers; the client only needs to know it may continue.
+        return respond({ ...result, voiceAvailability: voiceBudgetPayload(voiceBudget, config) }, 200, methods);
       }
       const body = validateVoiceSpeechBody(await readJson(request));
       const state = describeConversationState(profile, config);

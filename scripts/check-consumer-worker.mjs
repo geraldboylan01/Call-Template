@@ -27,11 +27,11 @@ import {
 import { validateConsumerDeploymentBootstrap } from './check-consumer-live-deployment.mjs';
 import {
   assertBetaBootstrap,
-  assertVoiceBudgetSnapshot,
+  assertConsumerSeesNoFigures,
+  assertLedgerAccrued,
   buildProposedCredential,
   paidRealtimeInfrastructureProofEnabled,
   paidVoiceProviderSmokeEnabled,
-  voiceBudgetFromHeaders
 } from './check-consumer-live-advisor-bridge.mjs';
 import { validatePlanSecurityHeaders } from './check-consumer-static-headers.mjs';
 import {
@@ -798,23 +798,33 @@ assert.equal(paidRealtimeInfrastructureProofEnabled(undefined), false);
 assert.equal(paidRealtimeInfrastructureProofEnabled('false'), false);
 assert.equal(paidRealtimeInfrastructureProofEnabled('true'), true);
 assert.throws(() => paidRealtimeInfrastructureProofEnabled('yes'));
-const paidSmokeBudgetHeaders = new Headers({
-  'X-Voice-Limit-Micro-Eur': '2000000',
-  'X-Voice-Spent-Micro-Eur': '100000',
-  'X-Voice-Remaining-Micro-Eur': '1900000'
-});
-const paidSmokeBudget = voiceBudgetFromHeaders(paidSmokeBudgetHeaders);
-assert.deepEqual(paidSmokeBudget, {
-  limitMicroEur: 2_000_000,
-  spentMicroEur: 100_000,
-  remainingMicroEur: 1_900_000
-});
-assert.doesNotThrow(() => assertVoiceBudgetSnapshot(paidSmokeBudget, 100_000));
-assert.throws(() => voiceBudgetFromHeaders(new Headers({
-  'X-Voice-Limit-Micro-Eur': '2000000',
-  'X-Voice-Spent-Micro-Eur': '-1',
-  'X-Voice-Remaining-Micro-Eur': '1900000'
-})));
+// The x-voice-* budget headers are gone: a browser must not be able to read
+// what a call is costing. What replaced them is asserted here -- the consumer
+// sees availability, and the figures are read from the protected envelope.
+assert.doesNotThrow(() => assertConsumerSeesNoFigures(
+  { available: true, status: 'available' }, 'The voice allowance'
+));
+for (const leaked of [
+  { available: true, status: 'available', limitMicroEur: 2_000_000 },
+  { available: true, status: 'available', spentMicroEur: 100_000 },
+  { available: true, status: 'available', remainingMicroEur: 1_900_000 },
+  { available: true, status: 'available', limitEurMicros: 2_000_000 }
+]) {
+  assert.throws(() => assertConsumerSeesNoFigures(leaked, 'The voice allowance'),
+    'a spend figure on a consumer surface must fail the smoke check');
+}
+assert.throws(() => assertConsumerSeesNoFigures(null, 'The voice allowance'));
+
+assert.doesNotThrow(() => assertLedgerAccrued(
+  { providerCostLimitMicroEur: 2_000_000, spentMicroEur: 100_000 }, 100_000, 2_000_000
+));
+assert.throws(() => assertLedgerAccrued(
+  { providerCostLimitMicroEur: 2_000_000, spentMicroEur: 0 }, 100_000, 2_000_000
+), 'a ledger that recorded no spend must fail');
+assert.throws(() => assertLedgerAccrued(
+  { providerCostLimitMicroEur: 500_000, spentMicroEur: 100_000 }, 100_000, 2_000_000
+), 'a session created with the wrong ceiling must fail');
+
 for (const unsafePayload of [
   { ...betaDeploymentBootstrap, access: { publicAccessEnabled: true, inviteRequired: false } },
   {

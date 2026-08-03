@@ -285,5 +285,116 @@ for (const [label, headers, env] of [
   })();
 }
 
+/* --------------------- the live session's own ceiling, privately */
+
+/**
+ * The smallest D1 stub `getConsumerProviderBudget` needs. The route reads the
+ * ceiling from the SESSION ROW rather than from config, because the row is
+ * written at creation and a bug there -- a session created with the wrong
+ * ceiling -- is exactly what the deploy smoke check exists to catch.
+ */
+const sessionRowEnv = (row) => ({
+  ...keyedEnv,
+  CONSUMER_DB: {
+    prepare: () => ({
+      bind: () => ({ first: async () => row }),
+      first: async () => row
+    })
+  }
+});
+const LIVE_ROW = Object.freeze({
+  provider_cost_limit_eur_micros: 2_000_000,
+  spent_eur_micros: 0,
+  known_actual_eur_micros: 0,
+  reserved_or_unknown_eur_micros: 0,
+  released_eur_micros: 0
+});
+
+async function requestSessionEnvelope(env, headers) {
+  const pathname = '/api/consumer/deployment-envelope';
+  const response = await handleConsumerRequest(
+    new Request(`https://worker.test${pathname}?session=cs_${'a'.repeat(24)}`, { method: 'GET', headers }),
+    env,
+    {
+      pathname,
+      clientIp: '203.0.113.10',
+      respond: (body, status, _m, extra = {}) => new Response(JSON.stringify(body), {
+        status, headers: { 'Content-Type': 'application/json', ...extra }
+      }),
+      respondBinary: (body, status) => new Response(body, { status })
+    }
+  );
+  return { status: response.status, body: JSON.parse(await response.text()) };
+}
+
+await (async () => {
+  checks += 1;
+  const { status, body } = await requestSessionEnvelope(
+    sessionRowEnv(LIVE_ROW), { [DEPLOY_VERIFICATION_HEADER]: VERIFICATION_KEY }
+  );
+  assert.equal(status, 200, JSON.stringify(body));
+  // This is the figure deploy #278 could not find anywhere.
+  assert.equal(body.session.providerCostLimitMicroEur, 2_000_000);
+  assert.equal(body.session.spentMicroEur, 0);
+  console.info('[BootstrapContract] PASS: the live session ceiling is readable with the credential');
+})();
+
+await (async () => {
+  checks += 1;
+  // A session created with the wrong ceiling must be visible as such, or the
+  // check would pass on any number the row happened to hold.
+  const { body } = await requestSessionEnvelope(
+    sessionRowEnv({ ...LIVE_ROW, provider_cost_limit_eur_micros: 500_000 }),
+    { [DEPLOY_VERIFICATION_HEADER]: VERIFICATION_KEY }
+  );
+  assert.equal(body.session.providerCostLimitMicroEur, 500_000,
+    'the route must report the row it read, not the configured default');
+  console.info('[BootstrapContract] PASS: a wrong session ceiling is reported, not masked');
+})();
+
+for (const [label, headers] of [
+  ['no header', {}],
+  ['a wrong key', { [DEPLOY_VERIFICATION_HEADER]: 'C'.repeat(43) }]
+]) {
+  await (async () => {
+    checks += 1;
+    const { status, body } = await requestSessionEnvelope(sessionRowEnv(LIVE_ROW), headers);
+    assert.equal(status, 404, `${label} must not reach the session ceiling`);
+    assert.ok(!JSON.stringify(body).includes('2000000'), `${label} leaked the session ceiling`);
+    console.info(`[BootstrapContract] PASS: session ceiling refused — ${label}`);
+  })();
+}
+
+/* ------------------------- consumer surfaces carry no figures */
+
+check('the consumer never receives a spend figure, only availability', () => {
+  const routerSource = readFileSync(new URL('../worker/src/consumer/router.js', import.meta.url), 'utf8');
+  // voiceBudgetPayload is the one function allowed to face a consumer, and it
+  // returns availability only. Anything responding with a raw provider budget
+  // would hand the browser limit/spent/remaining.
+  const payloadFn = routerSource.slice(routerSource.indexOf('function voiceBudgetPayload'));
+  const body = payloadFn.slice(0, payloadFn.indexOf('\n}'));
+  assert.match(body, /return \{\s*available:/, 'voiceBudgetPayload must return availability only');
+  for (const field of ['limitMicroEur,', 'spentMicroEur,', 'remainingMicroEur,']) {
+    assert.ok(!body.includes(`  ${field}`), `voiceBudgetPayload must not return ${field}`);
+  }
+  // The transcription route was the last surface still returning the raw budget.
+  // Scoped to that branch specifically: an identical line exists in the session
+  // state response, so a repo-wide match would pass even with this one broken.
+  const branchStart = routerSource.indexOf("if (route.kind === 'voice_transcriptions') {");
+  assert.ok(branchStart > 0, 'the transcription branch could not be located');
+  const branch = routerSource.slice(branchStart, routerSource.indexOf('const body = validateVoiceSpeechBody', branchStart));
+  assert.match(branch, /voiceAvailability: voiceBudgetPayload\(/,
+    'the transcription route must report availability instead of figures');
+  // Only the response statement itself. Destructuring the budget out is fine --
+  // required, in fact -- so the check is what gets SENT, not what is named.
+  const responded = branch.split('\n').find((line) => line.includes('return respond('));
+  assert.ok(responded, 'the transcription route must respond');
+  assert.doesNotMatch(responded, /[,{]\s*voiceBudget\s*[,}]/,
+    'the transcription route must not respond with the raw provider budget');
+  assert.doesNotMatch(responded, /respond\(result,/,
+    'the transcription route must not respond with the provider result verbatim');
+});
+
 console.info(`\n[BootstrapContract] ${checks} assertions passed: the config that ships, through the `
   + 'real serialiser, satisfies the real live-deployment gate.');
