@@ -199,14 +199,18 @@ export async function renderAssistantText({
   config,
   context,
   recentTurns = [],
-  reloadContext
+  reloadContext,
+  // What the silent planner managed to record from the turn being answered.
+  // Without it the renderer confirms figures it does not hold and re-asks the
+  // question it just asked. See extractionOutcomeInstructions.
+  extractionOutcome = null
 }) {
   const state = context.state;
   const fallbackText = state.meetingBrief?.questionBatch?.prompt
     || state.nextQuestion?.prompt
     || 'Could you tell me a little more about that?';
   const tools = agentToolsForState(state);
-  const instructions = buildRealtimeConversationV2Instructions(state);
+  const instructions = buildRealtimeConversationV2Instructions(state, [], extractionOutcome);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RENDERER_TIMEOUT_MS);
   const decisions = [];

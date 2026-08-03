@@ -82,6 +82,7 @@ import {
   hangupOpenAiRealtimeCall,
   realtimeJourneyPhase,
   realtimeModuleConversationGuidance,
+  extractionOutcomeInstructions,
   realtimeReflectionInstructions,
   realtimeToolsForState,
   shouldReflectTurn
@@ -936,6 +937,18 @@ export class ConsumerRealtimeSession {
           turnOrdinal: plannerTurnOrdinal
         });
         if (plannerResult?.stale) return;
+        const plannerOutcomes = Array.isArray(plannerResult?.outcomes) ? plannerResult.outcomes : [];
+        const rejectedCount = plannerOutcomes.filter((item) => item.accepted !== true).length;
+        if (plannerResult?.status === 'applied' && rejectedCount > 0) {
+          // The planner ran and proposed values that could not be recorded.
+          // Without this the model confirms the figures it just heard and asks
+          // the same question again, which reads as not listening.
+          await this.authorizeResponse('planner_candidates_rejected', {
+            acceptedCount: plannerOutcomes.length - rejectedCount,
+            rejectedCount
+          });
+          return;
+        }
         if (plannerResult?.status === 'failed') {
           // The Realtime model heard the client correctly; the separate silent
           // planner failed. Keep that operational fault out of the spoken
@@ -1536,6 +1549,11 @@ export class ConsumerRealtimeSession {
         ? realtimeReflectionInstructions(reflectionTranscript).join(' ')
         : authorizationReason === 'tool_output'
         ? 'Continue the same turn naturally using the reviewed tool output. Keep the answer concise, then bridge to the signed brief nextObjective. Do not repeat the previous wording.'
+        : authorizationReason === 'planner_candidates_rejected'
+          ? extractionOutcomeInstructions({
+            acceptedCount: Number(authorization.options?.acceptedCount || 0),
+            rejectedCount: Number(authorization.options?.rejectedCount || 0)
+          }).join(' ')
         : authorizationReason === 'planner_recovery'
           ? 'Do not mention any technical issue, error, failure, saving problem or planning note, and do not ask the client to repeat, restate or rephrase. Briefly acknowledge the latest client point without claiming it was saved, then continue naturally with one useful next question from the signed brief.'
           : authorizationReason === 'planner_degraded'

@@ -375,12 +375,56 @@ export function realtimeReflectionInstructions(transcript) {
   ];
 }
 
-export function buildRealtimeConversationV2Instructions(state = {}, allowedModuleIds = []) {
+/**
+ * What the silent planner did with the client's last answer.
+ *
+ * WHY THE RENDERER NEEDS THIS. Without it the renderer sees only the transcript
+ * and the still-unmet requirement, so when extraction fails it does the two
+ * things that read as broken: it repeats the client's figures back warmly --
+ * proving it heard them -- and then asks the identical question again, because
+ * from its side nothing has been answered. A client watching that concludes the
+ * app is not listening, and they are nearly right: it heard and did not record.
+ *
+ * The figures themselves are never included. Only what happened to them.
+ */
+export function extractionOutcomeInstructions(outcome = {}) {
+  const rejected = Number(outcome.rejectedCount || 0);
+  const accepted = Number(outcome.acceptedCount || 0);
+  // A planner that failed operationally is handled the way voice already
+  // handles it: never surface the fault, never ask the client to repeat a
+  // perfectly clear answer. Only the wording of the NEXT question changes.
+  if (outcome.plannerFailed === true) {
+    return [
+      'Do not mention any technical issue, error, failure, saving problem or planning note, and do not '
+        + 'ask the client to repeat, restate or rephrase. Briefly acknowledge their latest point without '
+        + 'claiming it was saved, then continue with one useful next question. If that question would '
+        + 'simply repeat what they just answered, ask one concise clarifying follow-up instead.'
+    ];
+  }
+  if (rejected > 0) {
+    const partial = accepted > 0;
+    return [
+      (partial
+        ? 'Some of the figures in the client\'s last answer were recorded and some were not. Confirm only '
+          + 'what was recorded and do not repeat the rest back.'
+        : 'None of the figures in the client\'s last answer could be recorded. Do NOT repeat those figures '
+          + 'back as though you have them.')
+        + ' Do not mention any technical issue. Do not ask the current question again in the same words -- '
+        + 'to the client that reads as not being listened to. Instead ask for ONE of the outstanding items '
+        + 'on its own, naming which one you mean, so it can be taken in cleanly.'
+    ];
+  }
+  return [];
+}
+
+export function buildRealtimeConversationV2Instructions(state = {}, allowedModuleIds = [], outcome = null) {
   const brief = state.meetingBrief && typeof state.meetingBrief === 'object'
     ? JSON.stringify(state.meetingBrief).slice(0, 12_000)
     : '{}';
   const moduleGuidance = realtimeModuleConversationGuidance(state, allowedModuleIds);
+  const outcomeGuidance = outcome ? extractionOutcomeInstructions(outcome) : [];
   return [
+    ...outcomeGuidance,
     'You are Planéir, a clearly disclosed AI conversational companion for financial education and information gathering.',
     'Own the live spoken conversation. Sound warm, calm, concise and natural. Use varied acknowledgements; never repeat the same wording on consecutive turns.',
     'Answer a client question first in one to three sentences, then bridge naturally back to the current objective. When MeetingBriefV2.clientQuestion.reviewedAnswer is present, stay within that reviewed answer.',

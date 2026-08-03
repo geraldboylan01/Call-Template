@@ -411,7 +411,14 @@ export async function processAgentTurn(env, config, {
     config,
     context,
     recentTurns: [...recentTurns, { role: 'user', transcript: safeMessage }],
-    reloadContext: () => loadAgentContext(env, config, sessionId, meetingId)
+    reloadContext: () => loadAgentContext(env, config, sessionId, meetingId),
+    // Counts only -- never the values. The renderer needs to know whether the
+    // answer it is about to respond to was actually captured.
+    extractionOutcome: {
+      acceptedCount: outcomes.filter((item) => item.accepted === true).length,
+      rejectedCount: outcomes.filter((item) => item.accepted === false).length,
+      plannerFailed: degraded === true || Boolean(plannerErrorCode)
+    }
   });
   await addAgentMeetingSpend(env, meetingId, Number(rendered.usageMicroEur || 0));
   if (rendered.context) context = rendered.context;

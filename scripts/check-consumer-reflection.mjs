@@ -22,6 +22,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
+  extractionOutcomeInstructions,
   looksLikeCorrection,
   realtimeReflectionInstructions,
   shouldReflectTurn
@@ -154,5 +155,69 @@ check('the ceiling is still bounded',
   getConsumerConfig({ CONSUMER_JOURNEY_ENABLED: 'false', CONSUMER_REALTIME_MAX_RESPONSES: '99999' })
     .realtimeMaxResponses <= 200);
 
+
+
+/* ------------------------------------------------ what the renderer is told */
+
+/**
+ * THE FAULT THIS PREVENTS. The renderer used to receive only the transcript and
+ * the still-unmet requirement. When extraction failed it therefore did the two
+ * things that read as broken: it repeated the client's figures back warmly,
+ * proving it had heard them, and then asked the identical question again,
+ * because from its side nothing had been answered.
+ *
+ * Observed live on a real call: the client named three funds with amounts, and
+ * Planéir replied "that's €80,000 jointly in Zurich Prisma 4, €12,000 in Prisma
+ * 5, and a separate €3,000 for the children" -- then re-asked the same question
+ * word for word. It heard and did not record, and said so in the worst order.
+ */
+const noOutcome = extractionOutcomeInstructions({ acceptedCount: 2, rejectedCount: 0 });
+check('a clean turn adds no special instruction', noOutcome.length === 0,
+  'the ordinary path must stay ordinary');
+
+const allRejected = extractionOutcomeInstructions({ acceptedCount: 0, rejectedCount: 3 }).join(' ');
+check('a fully rejected turn must not repeat the figures back',
+  /Do NOT repeat those figures back/.test(allRejected));
+check('a fully rejected turn must not re-ask in the same words',
+  /not ask the current question again in the same words/.test(allRejected));
+check('a fully rejected turn narrows to one named item',
+  /ONE of the outstanding items on its own, naming which one/.test(allRejected));
+
+const partlyRejected = extractionOutcomeInstructions({ acceptedCount: 1, rejectedCount: 2 }).join(' ');
+check('a partly rejected turn confirms only what was recorded',
+  /Confirm only what was recorded/.test(partlyRejected));
+
+// The client is never told the machinery misbehaved, on any transport.
+for (const [label, text] of [['fully rejected', allRejected], ['partly rejected', partlyRejected]]) {
+  check(`a ${label} turn never surfaces the fault to the client`,
+    /Do not mention any technical issue/.test(text), text);
+}
+
+// A planner that failed operationally keeps the policy voice already had: never
+// ask a client to repeat an answer they gave perfectly clearly.
+const failed = extractionOutcomeInstructions({ plannerFailed: true }).join(' ');
+check('a failed planner never asks the client to repeat',
+  /do not ask the client to repeat, restate or rephrase/.test(failed));
+check('a failed planner still avoids re-asking what was just answered',
+  /would simply repeat what they just answered/.test(failed));
+check('a failed planner never claims the answer was saved',
+  /without claiming it was saved/.test(failed));
+
+// Parity: both transports must reach the same instruction for the same
+// situation, or a defect fixed on one surface persists on the other.
+const sessionSource = readFileSync(`${root}worker/src/consumer/realtime_session.js`, 'utf8');
+check('voice routes rejected candidates to the shared instruction',
+  /planner_candidates_rejected'\s*\n\s*\?\s*extractionOutcomeInstructions\(/.test(sessionSource),
+  'the voice path must not grow its own wording for this case');
+check('voice detects rejection from the recorded outcomes',
+  /rejectedCount = plannerOutcomes\.filter/.test(sessionSource));
+
+const agentSource = readFileSync(`${root}worker/src/consumer/agent_session.js`, 'utf8');
+check('text passes the outcome to the renderer', /extractionOutcome: \{/.test(agentSource));
+check('text reports counts, never the values',
+  !/extractionOutcome[\s\S]{0,300}transcript/.test(agentSource),
+  'the outcome must carry counts only, so no client figure can leak into an instruction');
+
 console.info(`[Reflection] ${checks} checks passed: a figure is always repeated back, never claimed `
-  + 'as held, never invented, and never outranks the real answer.');
+  + 'as held, never invented, never outranks the real answer, and a figure that was NOT recorded is '
+  + 'never confirmed nor its question re-asked verbatim.');

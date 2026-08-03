@@ -45,7 +45,10 @@ function plannerRequestBodyWithoutComments(source) {
   return body.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
-const UTTERANCE = "I'm 25 and my main goal is to buy a house in about five years.";
+// Overridable so a failure seen on a real call can be replayed against the
+// planner in isolation, which is how the intermittent money-candidate rejection
+// was narrowed down. The default utterance keeps the fixed assertions below.
+const UTTERANCE = process.env.PROBE_UTTERANCE || "I'm 25 and my main goal is to buy a house in about five years.";
 const NOW = '2026-07-25T09:00:00.000Z';
 
 // Production-like: the exact adviser-canary allowlist and flags.
@@ -184,6 +187,12 @@ const facts = extraction.semanticFacts.map((fact) => `${fact.factId}=${JSON.stri
 console.info(`\n  Extraction: goals=[${goals.join(', ')}] facts=[${facts.join(', ')}]`);
 console.info(`              priorityHints=[${extraction.goalCandidates.map((g) => g.priorityHint).join(', ')}]`);
 
+console.info(`              positions=${JSON.stringify(extraction.positions, null, 2)}`);
+console.info(`              invalidCandidates=${JSON.stringify(extraction.invalidCandidates)}`);
+// The assertions below describe the DEFAULT utterance. A replay is diagnostic:
+// it prints what the planner produced and stops rather than failing on
+// expectations that do not apply to it.
+if (process.env.PROBE_UTTERANCE) process.exit(0);
 assert.ok(goals.includes('buy_home'), `the planner must extract buy_home, got [${goals.join(', ')}]`);
 // The planner may wrap a value ({"age":25}) or send it bare (25); the shared
 // fact mapper owns which shapes are accepted. Assert the fact was EXTRACTED
