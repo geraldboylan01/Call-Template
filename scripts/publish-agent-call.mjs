@@ -118,6 +118,7 @@ assert.ok(publishedId, `The worker did not return a published id: ${created.text
 const base = String(process.env.CONSUMER_PLAN_BASE_URL || 'https://planeir.ie').replace(/\/+$/, '');
 console.info(`\n${clientName} — ${session.modules.length} analysis/analyses published`);
 if (skipped.length) console.info(`  (no publish builder yet, skipped: ${skipped.join(', ')})`);
-console.info(`\n  CLIENT   ${base}/app/session.html?id=${encodeURIComponent(publishedId)}#k=${encrypted.clientSecretB64u}`);
-console.info(`  ADVISER  ${base}/app/session.html?id=${encodeURIComponent(publishedId)}&role=advisor#k=${encrypted.advisorSecretB64u}`);
+const query = `pub=${encodeURIComponent(publishedId)}&view=overview`;
+console.info(`\n  CLIENT   ${base}/app/session.html?${query}#ck=${encrypted.clientSecretB64u}`);
+console.info(`  ADVISER  ${base}/app/index.html?${query}#ak=${encrypted.advisorSecretB64u}`);
 console.info('\n  Both links expire in 30 days. The key after # never reaches the server.');

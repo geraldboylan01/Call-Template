@@ -76,14 +76,22 @@ const published = await publish();
 
 check('a completed call publishes', Boolean(published.publishedId));
 check('one module was published', published.moduleCount === 1);
-check('a client link is produced', published.clientUrl.includes('/app/session.html'));
-check('an adviser link is produced', published.adviserUrl.includes('role=advisor'));
+// THE VIEWER'S OWN PARAMETER NAMES. session_viewer reads `pub` for a published
+// session and `id` for the LEGACY pin-gated one, so an `id` link sent a real
+// client to a gate demanding a PIN that had never been set, with no way to
+// create one. The two roles are also different pages.
+check('a client link opens the read-only session view',
+  published.clientUrl.includes('/app/session.html?pub='));
+check('an adviser link opens the workspace',
+  published.adviserUrl.includes('/app/index.html?pub='));
+check('neither link uses the legacy pin-gated parameter',
+  !/[?&]id=/.test(published.clientUrl) && !/[?&]id=/.test(published.adviserUrl));
 // The secret rides in the FRAGMENT so it is never sent to the server, never
 // written to an access log and never carried in a Referer header.
 for (const [name, url] of [['client', published.clientUrl], ['adviser', published.adviserUrl]]) {
   const [addressed, fragment] = url.split('#');
   check(`the ${name} key is in the fragment, not the path or query`,
-    Boolean(fragment) && fragment.startsWith('k=') && !addressed.includes(fragment.slice(2)));
+    Boolean(fragment) && /^(?:ck|ak)=/.test(fragment) && !addressed.includes(fragment.split('=')[1]));
 }
 check('the two links carry different keys',
   published.clientUrl.split('#')[1] !== published.adviserUrl.split('#')[1],

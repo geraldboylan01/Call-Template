@@ -152,9 +152,16 @@ export async function publishConsumerAnalysis({
  */
 export function buildPublishedLinks({ config, publishedId, encrypted }) {
   const base = String(config?.publishedSessionBaseUrl || 'https://planeir.ie').replace(/\/+$/, '');
+  // THE VIEWER'S OWN PARAMETER NAMES, not ones invented here. session_viewer
+  // reads `pub` for a published session and `id` for the LEGACY pin-gated one,
+  // so an `id` link sent a client to a gate asking for a PIN that had never
+  // been set and offered no way to create one. The fragment key is `ck` for the
+  // client and `ak` for the adviser, and the two roles are different pages:
+  // a client opens the read-only session view, an adviser opens the workspace.
+  const query = `pub=${encodeURIComponent(publishedId)}&view=overview`;
   return {
-    clientUrl: `${base}/app/session.html?id=${encodeURIComponent(publishedId)}#k=${encrypted.clientSecretB64u}`,
-    adviserUrl: `${base}/app/session.html?id=${encodeURIComponent(publishedId)}&role=advisor#k=${encrypted.advisorSecretB64u}`
+    clientUrl: `${base}/app/session.html?${query}#ck=${encrypted.clientSecretB64u}`,
+    adviserUrl: `${base}/app/index.html?${query}#ak=${encrypted.advisorSecretB64u}`
   };
 }
 
