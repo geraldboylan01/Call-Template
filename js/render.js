@@ -4167,6 +4167,12 @@ function createEditableAssumptionCell({
   return null;
 }
 
+/** Append a card only when one was built. */
+function appendIfPresent(parent, node) {
+  if (node) parent.appendChild(node);
+  return parent;
+}
+
 function buildAssumptionsTableCard(module, {
   onPatchInputs = null,
   status = null,
@@ -4223,6 +4229,11 @@ function buildAssumptionsTableCard(module, {
   const rows = Array.isArray(assumptions.rows) ? assumptions.rows : [];
 
   if (columns.length === 0 || rows.length === 0) {
+    // NOTHING TO SAY, SO SAY NOTHING. An empty card is a control in the
+    // adviser view -- it carries the Edit button that adds the first
+    // assumption -- but a client reading their own analysis just sees a box
+    // announcing an absence. Suppressed on the read-only surface only.
+    if (readOnly) return null;
     const empty = document.createElement('p');
     empty.className = 'generated-empty';
     empty.textContent = 'No assumptions provided.';
@@ -12713,7 +12724,7 @@ function renderCollegeFundingModule(module, {
     }));
   });
 
-  grid.appendChild(buildAssumptionsTableCard(displayModule, {
+  appendIfPresent(grid, buildAssumptionsTableCard(displayModule, {
     onPatchInputs,
     status: assumptionsEditorStatus,
     readOnly,
@@ -12886,7 +12897,7 @@ function buildGeneratedSection(module, {
     grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
   }
 
-  grid.appendChild(buildAssumptionsTableCard(displayModule, {
+  appendIfPresent(grid, buildAssumptionsTableCard(displayModule, {
     onPatchInputs,
     status: assumptionsEditorStatus,
     readOnly,
@@ -12952,6 +12963,13 @@ function replaceGeneratedCard({
   replacement
 }) {
   const existing = grid.querySelector(selector);
+  // A builder may now decline to produce a card at all -- an empty assumptions
+  // table is suppressed on the client's read-only view. Removing the old one
+  // is then the correct replacement.
+  if (!replacement) {
+    existing?.remove();
+    return;
+  }
   if (existing) {
     existing.replaceWith(replacement);
     return;

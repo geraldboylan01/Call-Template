@@ -49,10 +49,42 @@ function months(value) {
  */
 const ALWAYS_LEGACY = /\b(?:crypto|bitcoin|btc|ethereum|eth|solana|coinbase|binance|kraken|altcoin|nft)\b/i;
 
+/**
+ * Short-duration holdings that genuinely are reserves.
+ * A money market fund is spendable in a way an equity fund is not.
+ */
+const MONEY_MARKET = /\b(?:money market|deposit account|savings account|term deposit|state savings|prize bond|cash fund)\b/i;
+
+/**
+ * DIVERSIFIED means one holding that already spreads the risk for you -- an
+ * index tracker, a multi-asset or managed fund. Those are long-term retirement
+ * funding. A handful of direct shares is not diversified however large it is,
+ * so it stays Legacy.
+ *
+ * Names are matched rather than looked up because this runs in deterministic
+ * planning code with no network and must give the same answer every time. A
+ * holding whose nature cannot be read from its name falls to Legacy, which is
+ * the documented bias, and the meeting can ask about it.
+ */
+const DIVERSIFIED_FUND = new RegExp([
+  '\\betf\\b', '\\bindex\\b', '\\btracker\\b',
+  's&p ?500', '\\bsp ?500\\b', '\\bmsci\\b', '\\bftse\\b',
+  'all[- ]?world', 'world equity', 'global equity', 'emerging markets',
+  'multi[- ]?asset', 'managed fund', 'balanced fund', 'lifestyle fund',
+  '\\bprisma\\b', '\\bvanguard\\b', '\\bishares\\b', '\\bvwce\\b',
+  'mutual fund', 'unit trust', 'index fund'
+].join('|'), 'i');
+
 function bucketForAsset(asset) {
-  if (ALWAYS_LEGACY.test(String(asset?.label || ''))) return 'concentrated_assets';
+  const label = String(asset?.label || '');
+  if (ALWAYS_LEGACY.test(label)) return 'concentrated_assets';
   if (asset.type === 'cash') return 'spendable_reserves';
-  if (asset.type === 'investment') return asset.liquid === true ? 'spendable_reserves' : 'concentrated_assets';
+  if (asset.type === 'investment') {
+    if (MONEY_MARKET.test(label)) return 'spendable_reserves';
+    // A diversified fund is retirement funding; direct shares are not.
+    if (DIVERSIFIED_FUND.test(label)) return 'retirement_funding';
+    return 'concentrated_assets';
+  }
   if (asset.type === 'pension') return 'retirement_funding';
   if (asset.type === 'business' || asset.type === 'agricultural') return 'concentrated_assets';
   if (asset.type === 'property') return 'concentrated_assets';
@@ -262,7 +294,9 @@ export function buildPersonalBalanceSheetInput(profile) {
       // property is Legacy -- illiquid, concentrated, held for a purpose other
       // than daily living. Bucketing a rental as Lifestyle overstated
       // personal-use wealth by its whole value and left Legacy empty.
-      bucket: property.use === 'home' ? 'lifestyle_assets' : 'concentrated_assets',
+      // A home and a holiday home are both lifestyle: nice to have, not there to
+      // earn. A rental, farm or business property is held for a return.
+      bucket: ['home', 'holiday'].includes(property.use) ? 'lifestyle_assets' : 'concentrated_assets',
       amount: moneyAmount(property.currentValue, currency),
       source: 'properties'
     }));

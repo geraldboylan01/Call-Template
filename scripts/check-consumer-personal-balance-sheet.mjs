@@ -315,4 +315,53 @@ assert.equal(getModuleReadiness('personal_balance_sheet', empty).status, 'ready'
     'property and pension labels are preserved, not replaced with generic ones');
 }
 
+// DIVERSIFIED MEANS THE HOLDING ALREADY SPREADS THE RISK FOR YOU. An index
+// tracker or multi-asset fund is long-term retirement funding; a handful of
+// direct shares is not diversified however large it is, so it stays Legacy.
+{
+  const NOW_C = '2026-08-02T09:00:00.000Z';
+  const prov3 = {
+    source: 'user_confirmation', confidence: 'high', certainty: 'exact',
+    capturedAt: NOW_C, confirmedByUser: true
+  };
+  const holdings = [
+    ['Vanguard S&P 500 ETF', 'investment', 'retirement_funding'],
+    ['MSCI World index fund', 'investment', 'retirement_funding'],
+    ['Zurich Prisma 4', 'investment', 'retirement_funding'],
+    ['Ryanair shares', 'investment', 'concentrated_assets'],
+    ['Tesla and Apple shares', 'investment', 'concentrated_assets'],
+    ['State savings bond', 'investment', 'spendable_reserves'],
+    ['Bitcoin', 'investment', 'concentrated_assets'],
+    ['Some fund nobody named clearly', 'investment', 'concentrated_assets']
+  ];
+  const classified = applyProfilePatch(
+    createHouseholdProfile({ profileId: 'pbs-funds', nowIso: NOW_C, calculationDateIso: '2026-08-02' }),
+    {
+      patchId: 'pbs-funds-1',
+      operations: [
+        ...holdings.map(([label, type], index) => ({
+          op: 'add', path: '/assets/-',
+          value: { assetId: `a${index}`, label, type, currentValue: { amount: 10_000, currency: 'EUR' } },
+          provenance: prov3
+        })),
+        // A holiday home is nice to have and is not there to earn, so it is a
+        // lifestyle asset alongside the family home -- unlike a rental.
+        { op: 'add', path: '/properties/-', value: { propertyId: 'h', label: 'Family home', use: 'home', currentValue: { amount: 1, currency: 'EUR' } }, provenance: prov3 },
+        { op: 'add', path: '/properties/-', value: { propertyId: 'v', label: 'Holiday home', use: 'holiday', currentValue: { amount: 1, currency: 'EUR' } }, provenance: prov3 },
+        { op: 'add', path: '/properties/-', value: { propertyId: 'r', label: 'Rental property', use: 'rental', currentValue: { amount: 1, currency: 'EUR' } }, provenance: prov3 }
+      ]
+    },
+    { nowIso: NOW_C }
+  ).profile;
+  const bucketOf = Object.fromEntries(
+    buildPersonalBalanceSheetInput(classified).assetPositions.map((item) => [item.label, item.bucket])
+  );
+  for (const [label, , expected] of holdings) {
+    assert.equal(bucketOf[label], expected, `${label} belongs in ${expected}`);
+  }
+  assert.equal(bucketOf['Family home'], 'lifestyle_assets');
+  assert.equal(bucketOf['Holiday home'], 'lifestyle_assets', 'a holiday home is not held for a return');
+  assert.equal(bucketOf['Rental property'], 'concentrated_assets', 'a rental is');
+}
+
 console.info('[ConsumerPersonalBalanceSheet] PASS: deterministic totals, category reconciliation, readiness, number-preserving speech, and no null in a client-facing table.');

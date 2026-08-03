@@ -42,7 +42,11 @@ const PENSION_TYPES = Object.freeze([
 
 /** Pension types that cannot receive contributions, so are never asked about them. */
 export const NON_CONTRIBUTORY_PENSION_TYPES = Object.freeze(['buyout_bond']);
-const PROPERTY_USES = Object.freeze(['home', 'rental', 'farm', 'business', 'other']);
+// 'holiday' is a LIFESTYLE property, not an investment one: it is nice to have
+// and is not there to earn. Without its own use it arrived as 'other' and was
+// bucketed with concentrated assets, which reads as though the family were
+// holding it for a return.
+const PROPERTY_USES = Object.freeze(['home', 'holiday', 'rental', 'farm', 'business', 'other']);
 const CONSENT_PURPOSES = Object.freeze(['analysis', 'ai_processing', 'save_profile', 'adviser_handoff', 'marketing']);
 const CONTACT_METHODS = Object.freeze(['email', 'phone']);
 const PATCH_OPERATIONS = Object.freeze(['add', 'replace', 'remove']);
