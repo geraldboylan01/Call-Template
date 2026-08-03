@@ -1,6 +1,7 @@
 import { MODULE_IDS } from './contracts.js';
 import { normalizeHouseholdProfile } from './profile.js';
 import { liquidityConversationGuidance } from '../liquidity_reserve.js';
+import { pensionConversationGuidance } from '../pension_math.js';
 import {
   buildLiquidityInput,
   getLiquidityReadiness,
@@ -372,6 +373,7 @@ register({
   applicableGoals: ['improve_pension', 'retire', 'retire_early'],
   requiredProfilePaths: ['/primaryPerson/age', '/pensions', '/incomeSources', '/expenses'],
   optionalProfilePaths: ['/partner', '/assumptions/values/retirement'],
+  conversationGuidance: pensionConversationGuidance(),
   adviserAvailable: true,
   consumerAvailable: true,
   intakeContract: approvedIntake(

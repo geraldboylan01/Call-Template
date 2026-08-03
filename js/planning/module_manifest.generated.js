@@ -818,6 +818,11 @@ export const MODULE_MANIFEST = Object.freeze([
       "consumerConfirmationDescription": "project whether your pension may be on track",
       "offerQuestion": "Would you like to see that?"
     },
+    "conversationGuidance": [
+      "Revenue limits the PERSONAL contribution that gets tax relief by age: under 30: 15%, 30 to 39: 20%, 40 to 49: 25%, 50 to 54: 30%, 55 to 59: 35%, 60 and over: 40%. It applies to earnings up to a cap of EUR 115,000.",
+      "So when a client says they pay \"the maximum\", \"the max for tax relief\" or \"the full amount\", that IS their answer. Treat it as given, do not ask for a percentage again, and do not state the resulting figure yourself -- deterministic code derives it from their age.",
+      "An employer contribution is a separate arrangement that these limits do not cover, so it is the one thing still worth asking after \"the maximum\". Ask it only where an employer could exist: never for a self-employed client, a personal pension or PRSA in their own name, or a buyout bond, which nobody contributes to."
+    ],
     "purpose": "Projects pre-tax pension pots forward and shows readiness against a target retirement income.",
     "whenToUse": "The client asks whether their pension is on track, whether they are paying in enough, about contribution rates or an employer match, or whether they could retire at a particular age.",
     "whenNotToUse": "Do not use it for what the household will actually have to live on after tax — that is Net retirement cash flow. Use both together when the client is planning retirement rather than just building a pot.",

@@ -326,6 +326,7 @@ export async function processAgentTurn(env, config, {
   let extraction = null;
   let plannerErrorCode = null;
   let degraded = false;
+  let segmentsFailed = 0;
   try {
     const planned = await extractTurn({
       env,
@@ -336,6 +337,7 @@ export async function processAgentTurn(env, config, {
       recentTurns
     });
     extraction = planned.extraction;
+    segmentsFailed = Number(planned.metadata?.segmentsFailed || 0);
     await addAgentMeetingSpend(env, meetingId, Number(planned.metadata?.costMicroEur || 0));
   } catch (error) {
     plannerErrorCode = error instanceof ConsumerError ? error.code : 'agent_planner_failed';
@@ -461,7 +463,11 @@ export async function processAgentTurn(env, config, {
     // answer it is about to respond to was actually captured.
     extractionOutcome: {
       acceptedCount: outcomes.filter((item) => item.accepted === true).length,
-      rejectedCount: outcomes.filter((item) => item.accepted === false).length,
+      // A clause whose read failed is counted as rejected. Without this a turn
+      // that lost its most important sentence reports as a clean success, and
+      // the client is told nothing went wrong -- which is exactly the fault the
+      // renderer was given outcomes to prevent.
+      rejectedCount: outcomes.filter((item) => item.accepted === false).length + segmentsFailed,
       plannerFailed: degraded === true || Boolean(plannerErrorCode)
     }
   });
@@ -492,6 +498,7 @@ export async function processAgentTurn(env, config, {
       candidateOutcomes: outcomes,
       repairedCount,
       repairAttemptFailed,
+      segmentsFailed,
       plannerErrorCode,
       // A degraded turn used the deterministic extractor, not the AI planner.
       // It must never be reported as a normal successful planner turn.

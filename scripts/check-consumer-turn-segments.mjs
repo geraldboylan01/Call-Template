@@ -293,6 +293,29 @@ check('the groundedness rule is imported, never copied',
     && !/function ungroundedFigures/.test(reflection),
   'a second copy is how the checks and the code drift apart');
 
+
+
+/* ------------------------------- a lost clause is never reported as success */
+
+// THE WEAKNESS SEGMENTING INTRODUCED. Promise.allSettled means one clause can
+// fail while the turn still succeeds -- which is the point, since the rest of
+// the answer survives. But observed live: the opening clause carrying the
+// client's goal, age and retirement age failed, the turn reported clean
+// success, and five turns later the call still had no goal. Losing a clause is
+// acceptable; losing it silently is not.
+const agentSource = readFileSync(`${root}worker/src/consumer/agent_session.js`, 'utf8');
+check('a failed clause is counted against the turn',
+  /rejectedCount: outcomes\.filter\(\(item\) => item\.accepted === false\)\.length \+ segmentsFailed/
+    .test(agentSource),
+  'the renderer must not confirm a turn whose clause was dropped');
+check('the failed-clause count is read from the extraction',
+  /segmentsFailed = Number\(planned\.metadata\?\.segmentsFailed \|\| 0\)/.test(agentSource));
+check('the failed-clause count reaches diagnostics',
+  /^\s+segmentsFailed,$/m.test(agentSource),
+  'a silent loss cannot be graded after the call');
+check('the planner reports how many clauses were lost',
+  /segmentsFailed: segments\.length - succeeded\.length/.test(plannerSource));
+
 console.info(`[TurnSegments] ${checks} checks passed: a dense answer is read in clause-sized pieces, `
-  + 'settled clauses are read while the client still speaks, and nothing read early survives without '
-  + 'appearing in what they finally said.');
+  + 'settled clauses are read while the client still speaks, nothing read early survives without '
+  + 'appearing in what they finally said, and a lost clause is never reported as success.');

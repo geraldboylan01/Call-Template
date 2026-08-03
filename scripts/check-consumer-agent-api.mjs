@@ -29,6 +29,8 @@ import {
 } from '../js/planning/index.js';
 import { containsInternalModuleTerminology } from '../js/planning/module_offers.js';
 import { NON_CONTRIBUTORY_PENSION_TYPES } from '../js/planning/profile.js';
+import { maxRelievableContributionRatePercent } from '../js/pension_math.js';
+import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
 import { mapRealtimeFact } from '../worker/src/consumer/realtime_fact_mapper.js';
 import { goalFamily } from '../js/planning/goal_plan.js';
 import {
@@ -638,6 +640,70 @@ async function agentContext(profile, config = CONFIG) {
       `${factId} must land on the contributory pension, not the buyout bond`);
   }
   pass('a preserved pension is valued but never asked what is paid into it');
+}
+
+{
+  // "I PAY THE MAX" IS AN ANSWER, not a missing one. It is the Revenue age band
+  // applied to the client's age. Treating it as no answer made one observed call
+  // ask the same question nine times and finish unable to run the analysis.
+  const NOW = '2026-08-03T09:00:00.000Z';
+  const prov = { source: 'user_confirmation', confidence: 'high', certainty: 'exact', capturedAt: NOW, confirmedByUser: true };
+  const profile = applyProfilePatch(
+    createHouseholdProfile({ profileId: 'max', nowIso: NOW, calculationDateIso: '2026-08-03' }),
+    {
+      patchId: 'max-1',
+      operations: [
+        { op: 'add', path: '/primaryPerson/age', value: 53, provenance: prov },
+        { op: 'add', path: '/partner', value: { personId: 'partner', age: 48 }, provenance: prov },
+        { op: 'add', path: '/pensions/-', value: { pensionId: 'aon', ownerId: 'partner', label: 'Aon lifestyle fund', type: 'occupational', currentValue: { amount: 500_000, currency: 'EUR' } }, provenance: prov }
+      ]
+    },
+    { nowIso: NOW }
+  ).profile;
+
+  // The band is applied to the OWNER of the pension, not to whoever is speaking.
+  assert.equal(
+    mapRealtimeFact(profile, { factId: 'pension_employee_contribution_rate', value: { maxForAge: true, owner: 'partner' }, certainty: 'exact' }).canonicalValue,
+    25,
+    'a 48-year-old partner maxes at 25%'
+  );
+  assert.equal(
+    mapRealtimeFact(profile, { factId: 'pension_employee_contribution_rate', value: { maxForAge: true, owner: 'primary' }, certainty: 'exact' }).canonicalValue,
+    30,
+    'a 53-year-old maxes at 30%'
+  );
+  for (const [age, expected] of [[25, 15], [35, 20], [48, 25], [53, 30], [57, 35], [62, 40]]) {
+    assert.equal(maxRelievableContributionRatePercent(age), expected, `age ${age}`);
+  }
+  // Refuses rather than guesses: a guessed band silently changes what the client
+  // contributes, and the age is required for this analysis anyway.
+  const ageless = applyProfilePatch(
+    createHouseholdProfile({ profileId: 'noage', nowIso: NOW, calculationDateIso: '2026-08-03' }),
+    { patchId: 'noage-1', operations: [{ op: 'add', path: '/pensions/-', value: { pensionId: 'p', ownerId: 'primary', label: 'Scheme', type: 'occupational' }, provenance: prov }] },
+    { nowIso: NOW }
+  ).profile;
+  assert.throws(
+    () => mapRealtimeFact(ageless, { factId: 'pension_employee_contribution_rate', value: { maxForAge: true }, certainty: 'exact' }),
+    (error) => error.code === 'realtime_pension_max_age_required',
+    'without an age the maximum must be refused, never guessed'
+  );
+
+  // The conversation is told the rule, so it can use it instead of re-asking --
+  // and told the one thing the rule does not settle.
+  const guidance = MODULE_MANIFEST.find((entry) => entry.moduleId === 'pension_projection').conversationGuidance;
+  assert.ok(guidance.some((line) => /under 30: 15%/.test(line) && /60 and over: 40%/.test(line)),
+    'the age bands reach the meeting');
+  assert.ok(guidance.some((line) => /115,000/.test(line)), 'the earnings cap reaches the meeting');
+  assert.ok(guidance.some((line) => /do not ask for a percentage again/.test(line)),
+    'the meeting is told "the maximum" is an answer');
+  assert.ok(guidance.some((line) => /employer contribution is a separate arrangement/.test(line)
+    && /never for a self-employed client/.test(line)),
+    'the employer side is asked only where an employer could exist');
+  // The planner must report the phrase, never compute the number.
+  const planner = readFileSync(`${root}worker/src/consumer/realtime_planner.js`, 'utf8');
+  assert.match(planner, /Never work out the percentage yourself/,
+    'deterministic code owns the derivation, not the model');
+  pass('"I pay the max" is a complete answer, resolved from the client\'s age');
 }
 
 {

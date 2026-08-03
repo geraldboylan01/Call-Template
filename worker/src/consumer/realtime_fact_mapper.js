@@ -7,6 +7,7 @@ import {
 } from '../../../js/planning/module_registry.js';
 import { buildGoalModulePlan } from '../../../js/planning/goal_plan.js';
 import { NON_CONTRIBUTORY_PENSION_TYPES, normalizeHouseholdProfile } from '../../../js/planning/profile.js';
+import { maxRelievableContributionRatePercent } from '../../../js/pension_math.js';
 import { escapeJsonPointerToken } from '../../../js/planning/utils.js';
 
 const INTAKE_FACT_PATHS = Object.freeze({
@@ -680,6 +681,29 @@ function selectedEntityId(value, prefix, collection, idKey) {
   return supplied ? collectionEntityId(collection, idKey, prefix, supplied) : null;
 }
 
+/**
+ * The maximum relievable personal rate for whoever owns this pension.
+ *
+ * Refuses rather than guesses when the age is not on record: an age is
+ * required for the pension analysis anyway, so the meeting will ask for it, and
+ * a guessed band would silently change the client's contribution.
+ */
+function resolveMaxRelievableRate(profile, existing, value) {
+  const ownerId = String(value?.owner || value?.ownerId || existing?.ownerId || 'primary');
+  const age = ownerId === 'partner'
+    ? profile?.partner?.age
+    : profile?.primaryPerson?.age;
+  const rate = maxRelievableContributionRatePercent(age);
+  if (rate === null) {
+    throw new ConsumerError(
+      409,
+      'realtime_pension_max_age_required',
+      'An age is needed before the maximum contribution can be applied.'
+    );
+  }
+  return rate;
+}
+
 function pensionIndex(profile, value, { contributionRate = false } = {}) {
   const selectedId = selectedEntityId(value, 'pension', profile.pensions, 'pensionId');
   // A BUYOUT BOND CANNOT RECEIVE CONTRIBUTIONS. It holds benefits from a scheme
@@ -690,7 +714,14 @@ function pensionIndex(profile, value, { contributionRate = false } = {}) {
   // I pay 30% and they pay 10%" was refused as ambiguous and the rates were
   // lost. Same reasoning as the single-pension case below.
   if (!selectedId && contributionRate) {
-    const contributory = profile.pensions.filter(
+    // An owner narrows the field before ambiguity is declared. "Aoife pays the
+    // max" is unambiguous even in a household holding three pensions, because
+    // only one of them is hers and can be paid into.
+    const owner = plainObject(value) ? String(value.owner || value.ownerId || '') : '';
+    const scoped = ['primary', 'partner'].includes(owner)
+      ? profile.pensions.filter((pension) => String(pension.ownerId || 'primary') === owner)
+      : profile.pensions;
+    const contributory = scoped.filter(
       (pension) => !NON_CONTRIBUTORY_PENSION_TYPES.includes(pension.type)
     );
     if (contributory.length === 1) {
@@ -1390,12 +1421,23 @@ export function mapRealtimeFact(profile, fact) {
     });
     const key = fact.factId === 'pension_current_value' ? 'currentValue'
       : fact.factId === 'pension_employee_contribution_rate' ? 'employeeContributionRate' : 'employerContributionRate';
+    // "I PAY THE MAX" IS AN ANSWER. It is the Revenue age band applied to the
+    // client's age, which is a rule the server owns -- the planner reports only
+    // that they said "the maximum", and deterministic code derives the rate, so
+    // no model ever invents a percentage. Treating it as no answer made the
+    // meeting ask the same question nine times in one observed call and left
+    // the pension analysis unable to run.
+    const maximumForAge = fact.factId === 'pension_employee_contribution_rate'
+      && plainObject(fact.value)
+      && fact.value.maxForAge === true;
     const canonicalValue = fact.factId === 'pension_current_value'
       ? money(fact.value, currency)
-      : percentageRate(
-        scalarValue(fact.value, [key, 'rate']),
-        { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
-      );
+      : maximumForAge
+        ? resolveMaxRelievableRate(profile, existing, fact.value)
+        : percentageRate(
+          scalarValue(fact.value, [key, 'rate']),
+          { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
+        );
     const proposalValue = fact.factId === 'pension_current_value'
       ? { entityId: stableId, ...canonicalValue }
       : { entityId: stableId, value: canonicalValue, rateUnit: 'decimal' };

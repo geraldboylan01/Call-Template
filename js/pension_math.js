@@ -198,6 +198,72 @@ function sum(values) {
     : 0;
 }
 
+/**
+ * The Revenue age-related limits on personal pension contributions that qualify
+ * for tax relief, and the earnings cap they apply to.
+ *
+ * These are the numbers behind "I pay the max". A client who says that has
+ * given a complete answer -- it is this table applied to their age -- and the
+ * meeting used to treat it as no answer at all and ask again. The bands are
+ * exported so the conversation can state them accurately and the fact mapper
+ * can resolve "the maximum" into a rate, rather than either of them carrying a
+ * second copy of a rule that changes by statute.
+ */
+const PENSION_AGE_BANDS = Object.freeze([
+  Object.freeze({ maxAge: 29, rate: 0.15 }),
+  Object.freeze({ maxAge: 39, rate: 0.20 }),
+  Object.freeze({ maxAge: 49, rate: 0.25 }),
+  Object.freeze({ maxAge: 54, rate: 0.30 }),
+  Object.freeze({ maxAge: 59, rate: 0.35 }),
+  Object.freeze({ maxAge: Infinity, rate: 0.40 })
+]);
+
+/** Earnings above this do not attract relief, whatever the age band allows. */
+const PENSION_EARNINGS_CAP = 115_000;
+
+/**
+ * The maximum relievable personal contribution rate for an age, as a
+ * PERCENTAGE (25, not 0.25) to match how a contribution rate is recorded.
+ */
+export function maxRelievableContributionRatePercent(age) {
+  const years = Number(age);
+  if (!Number.isFinite(years) || years < 0) return null;
+  const band = PENSION_AGE_BANDS.find((entry) => years <= entry.maxAge);
+  return band ? Math.round(band.rate * 100) : null;
+}
+
+/**
+ * What the meeting may say about contribution limits, and what it must still ask.
+ *
+ * "I pay the max" is a complete answer, not a missing one: it is the age band
+ * applied to their age. The meeting used to treat it as no answer and ask the
+ * same question again -- observed nine times in one call, after which the
+ * analysis could not run at all. It is stated here so the conversation can use
+ * the rule accurately rather than approximating it, and so the ONE thing the
+ * rule does not settle is asked instead: the employer side, which is a separate
+ * arrangement and does not exist for the self-employed.
+ */
+export function pensionConversationGuidance() {
+  const bands = PENSION_AGE_BANDS.map((band, index) => {
+    const from = index === 0 ? 'under 30' : `${PENSION_AGE_BANDS[index - 1].maxAge + 1}`;
+    const label = index === 0
+      ? 'under 30'
+      : (band.maxAge === Infinity ? `${from} and over` : `${from} to ${band.maxAge}`);
+    return `${label}: ${Math.round(band.rate * 100)}%`;
+  }).join(', ');
+  return Object.freeze([
+    `Revenue limits the PERSONAL contribution that gets tax relief by age: ${bands}. `
+      + `It applies to earnings up to a cap of EUR ${PENSION_EARNINGS_CAP.toLocaleString('en-IE')}.`,
+    'So when a client says they pay "the maximum", "the max for tax relief" or "the full amount", '
+      + 'that IS their answer. Treat it as given, do not ask for a percentage again, and do not '
+      + 'state the resulting figure yourself -- deterministic code derives it from their age.',
+    'An employer contribution is a separate arrangement that these limits do not cover, so it is '
+      + 'the one thing still worth asking after "the maximum". Ask it only where an employer could '
+      + 'exist: never for a self-employed client, a personal pension or PRSA in their own name, or '
+      + 'a buyout bond, which nobody contributes to.'
+  ]);
+}
+
 function ageBandPct(age) {
   if (age < 30) {
     return 0.15;
@@ -218,7 +284,7 @@ function ageBandPct(age) {
 }
 
 function maxRelievablePersonalContribution(age, salaryAtAge) {
-  return ageBandPct(age) * Math.min(salaryAtAge, 115000);
+  return ageBandPct(age) * Math.min(salaryAtAge, PENSION_EARNINGS_CAP);
 }
 
 export function computeSft(retirementYear) {
