@@ -980,7 +980,13 @@ export function positionCandidatesToRealtimeFacts(candidates = []) {
       operation,
       entityId: id,
       ...(candidate.label ? { label: candidate.label } : {}),
-      ...(candidate.owner ? { owner: candidate.owner } : {}),
+      // MONEY BELONGS TO WHOEVER MENTIONED IT UNLESS THEY SAY OTHERWISE.
+      // A client naming a holding is naming their own; people say "my wife's
+      // pension" or "Aoife has" when it is not. Leaving an owner unset made a
+      // holding ownerless, and a clause read on its own -- "12,000 in prize
+      // bonds", split from the "I have" that opened the sentence -- lost the
+      // person it belonged to entirely.
+      owner: candidate.owner || 'primary',
       ...(candidate.country ? { country: candidate.country } : {}),
       ...(candidate.amount ? { amount: candidate.amount } : {})
     };

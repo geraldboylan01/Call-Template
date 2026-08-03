@@ -99,14 +99,40 @@ function tooDense(piece) {
   return figureCount(piece) > MAX_FIGURES_PER_SEGMENT || piece.length > MAX_SEGMENT_CHARS;
 }
 
+/**
+ * Who a sentence is about, when it is about someone other than the speaker.
+ *
+ * "Aoife has 200,000 in cash and 20,000 in regular savings" splits into two
+ * clauses, and the second no longer says whose savings they are. Unowned money
+ * is taken to be the speaker's -- people say "Aoife has" precisely when it is
+ * not theirs -- so a continuation clause that lost its subject silently moves a
+ * partner's holding onto the client's balance sheet. Measured: the partner's
+ * 200,000 landed on the primary.
+ *
+ * Only a named third party is carried. "I have" needs no carrying, because the
+ * speaker is already the default.
+ */
+const NAMED_SUBJECT = /^(?:my (?:wife|husband|partner)(?:,? \w+,?)?|[A-Z][a-z]+)\s+(?:has|holds|owns|earns|pays|gets)\b/;
+
+function subjectOf(piece) {
+  const match = NAMED_SUBJECT.exec(String(piece).trim());
+  return match ? match[0] : null;
+}
+
 /** The first cut that both relieves the density and leaves every piece meaningful. */
 function splitLongPiece(piece) {
   if (!tooDense(piece)) return [piece];
+  const subject = subjectOf(piece);
   for (const boundary of CLAUSE_BOUNDARIES) {
     const parts = piece.split(boundary).map((part) => part.trim()).filter(Boolean);
     if (parts.length <= 1) continue;
     if (!parts.every(carriesItsOwnMeaning)) continue;
-    return parts.flatMap((part) => (tooDense(part) ? splitLongPiece(part) : [part]));
+    // Carry the subject into every continuation clause, so each piece still
+    // says whose money it describes.
+    const owned = subject
+      ? parts.map((part, index) => (index === 0 || subjectOf(part) ? part : `${subject} ${part}`))
+      : parts;
+    return owned.flatMap((part) => (tooDense(part) ? splitLongPiece(part) : [part]));
   }
   // Nothing safe to cut on. A dense clause is left whole rather than chopped
   // mid-figure: reading it as one piece may fail, but reading a number apart

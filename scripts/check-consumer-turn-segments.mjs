@@ -394,6 +394,38 @@ check('an amountless whole-turn position is not added',
 check('a missing whole-turn read leaves the clauses untouched',
   unionWithWholeTurnRead(clauseSide, null) === clauseSide);
 
+/* ------------------------- a clause never loses whose money it is */
+
+// MONEY BELONGS TO WHOEVER MENTIONED IT UNLESS THEY SAY OTHERWISE, so a
+// continuation clause that lost its subject silently moves a partner's holding
+// onto the client's balance sheet. Measured before this: the partner's 200,000
+// landed on the primary.
+const partnerCash = segmentClientTurn(
+  'Aoife has 200,000 in cash and 20,000 in regular savings and 15,000 in a credit union account.'
+);
+check('every clause still says whose money it is',
+  partnerCash.every((piece) => /Aoife/.test(piece)), JSON.stringify(partnerCash));
+check('the partner sentence is still split', partnerCash.length > 1);
+
+// The speaker needs no carrying: unowned money is already taken to be theirs.
+const ownCash = segmentClientTurn(
+  'I have 20,000 in cash, a 50,000 State Savings bond and 12,000 in prize bonds.'
+);
+check('the speaker\'s own clauses are not padded with a subject',
+  ownCash.every((piece) => !/^I have I have/.test(piece)), JSON.stringify(ownCash));
+
+// A clause that already names its own subject must not be given a second one.
+const mixed = segmentClientTurn(
+  'Aoife has 300,000 in a pension and Dermot has 40,000 in savings and Sean has 12,000 in shares.'
+);
+check('no clause is given a subject it already has',
+  mixed.every((piece) => !/^(\w+ has )\1/.test(piece) && !/has .* has .* has/.test(piece)),
+  JSON.stringify(mixed));
+
+check('a holding with no stated owner belongs to the speaker',
+  /owner: candidate\.owner \|\| 'primary'/.test(plannerSource),
+  'people say "Aoife has" precisely when a holding is not their own');
+
 console.info(`[TurnSegments] ${checks} checks passed: a dense answer is read in clause-sized pieces, `
   + 'settled clauses are read while the client still speaks, nothing read early survives without '
   + 'appearing in what they finally said, and a lost clause is never reported as success.');
