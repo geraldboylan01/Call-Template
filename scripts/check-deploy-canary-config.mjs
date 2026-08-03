@@ -337,4 +337,88 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
 }
 
 
+{
+  /**
+   * The spend envelope must stay private, and must still be verified.
+   *
+   * Those pull in opposite directions, so the plumbing that reconciles them is
+   * asserted here: a credential the Worker holds, the same value handed to the
+   * post-deploy check, and neither ever printed.
+   */
+  const routerSource = readFileSync(`${root}/worker/src/consumer/router.js`, 'utf8');
+  const configSource = readFileSync(`${root}/worker/src/consumer/config.js`, 'utf8');
+
+  // The figures may only be serialised by the protected envelope builder.
+  const publicPayload = configSource.slice(configSource.indexOf('export function publicConsumerConfig'));
+  const publicBody = publicPayload.slice(0, publicPayload.indexOf('\nexport function '));
+  for (const field of ['sessionBudgetMicroEur', 'dailyBudgetMicroEur', 'dispatchStopMicroEur',
+    'warnThresholdMicroEur', 'safetyReserveMicroEur']) {
+    assert.ok(
+      !publicBody.includes(field),
+      `publicConsumerConfig serialises ${field}. Spend figures belong to deploymentCostEnvelope, `
+        + 'which is served only behind the deploy verification credential.'
+    );
+  }
+  assert.match(routerSource, /if \(!isDeployVerificationRequest\(request, env\)\) \{/,
+    'the deployment envelope route must be gated by the verification credential');
+  assert.match(routerSource, /expected\.length < 32/,
+    'an unconfigured verification secret must authorise nobody');
+
+  assert.match(workflow, /wrangler secret put CONSUMER_DEPLOY_VERIFICATION_KEY/,
+    'the workflow must provision the verification credential as a Worker secret');
+  assert.match(workflow, /echo "::add-mask::\$deploy_verification_key"/,
+    'the verification credential must be masked before it can reach a log');
+  assert.match(workflow, /echo "CONSUMER_DEPLOY_VERIFICATION_KEY=\$deploy_verification_key" >> "\$GITHUB_ENV"/,
+    'the post-deploy check must receive the same value the Worker was given');
+  assert.ok(
+    workflow.indexOf('wrangler secret put CONSUMER_DEPLOY_VERIFICATION_KEY')
+      < workflow.indexOf('Verify live consumer deployment mode'),
+    'the credential must be provisioned before the step that uses it'
+  );
+  // The unauthenticated probe is the assertion that actually proves privacy, so
+  // it must not be quietly dropped from the live check.
+  const liveCheck = readFileSync(`${root}/scripts/check-consumer-live-deployment.mjs`, 'utf8');
+  assert.match(liveCheck, /must not be readable publicly/,
+    'the live check must prove the envelope route refuses an unauthenticated request');
+  pass('the spend envelope is private, credentialled, and still verified live');
+}
+
+{
+  /**
+   * The adviser bridge and the deployed voice notice must agree.
+   *
+   * They did not: the bridge check pinned `voice-adviser-test-v1` while the
+   * deployment moved to the OpenAI-audio notice, so it failed a Worker that was
+   * disclosing correctly. The notice id is the consent key -- a stored
+   * acknowledgement is rejected when it differs from the running config -- so
+   * pinning a superseded id asserts that re-consent never happened.
+   */
+  const bridge = readFileSync(`${root}/scripts/check-consumer-live-advisor-bridge.mjs`, 'utf8');
+  assert.doesNotMatch(
+    bridge,
+    /noticeId, 'voice-/,
+    'the bridge check must read the expected notice from the protected environment, not restate it'
+  );
+  assert.match(bridge, /process\.env\.CONSUMER_BETA_VOICE_NOTICE_ID/,
+    'the bridge check must derive the expected voice notice from the deploy environment');
+
+  // The job environment the bridge check reads and the value actually deployed
+  // must be the same string, or it would verify against a notice nobody shipped.
+  const jobValue = (workflow.match(/^\s*CONSUMER_BETA_VOICE_NOTICE_ID: "([^"]*)"$/m) || [])[1];
+  const deployedValue = (workflow.match(
+    /CONSUMER_VOICE_NOTICE_ID: \['CONSUMER_BETA_VOICE_NOTICE_ID', '([^']*)'\]/
+  ) || [])[1];
+  assert.ok(jobValue, 'CONSUMER_BETA_VOICE_NOTICE_ID must be declared for the deploy job');
+  assert.equal(jobValue, deployedValue,
+    'the voice notice the bridge check verifies against is not the one the deploy ships');
+
+  // A notice id may be superseded but never silently dropped: the router's
+  // approved list must still contain whatever is being deployed.
+  const routerSource = readFileSync(`${root}/worker/src/consumer/router.js`, 'utf8');
+  const approved = (routerSource.match(/\[([^\]]*)\]\.includes\(config\?\.voiceNoticeId\)/) || [])[1] || '';
+  assert.ok(approved.includes(`'${deployedValue}'`),
+    `the router's approved voice notices do not include the deployed notice ${deployedValue}`);
+  pass(`the adviser bridge verifies the deployed voice notice (${deployedValue})`);
+}
+
 console.info(`\n[DeployCanary] ${passes.length} assertions passed.`);

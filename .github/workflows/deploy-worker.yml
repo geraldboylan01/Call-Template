@@ -884,6 +884,19 @@ jobs:
           unset OPENAI_API_KEY
           echo "Provisioned the protected OpenAI provider credential without exposing its value."
 
+          # The credential that lets the post-deploy check read the live spend
+          # envelope, which is deliberately not on any public route. Minted fresh
+          # every run and never stored anywhere else: it only has to survive from
+          # this step to the verification step, so there is nothing to rotate, no
+          # long-lived shared secret, and nothing for a human to configure.
+          deploy_verification_key="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")"
+          [[ "$deploy_verification_key" =~ ^[A-Za-z0-9_-]{43}$ ]] || { echo "Generated deploy verification key has an invalid format"; exit 1; }
+          echo "::add-mask::$deploy_verification_key"
+          printf '%s' "$deploy_verification_key" | wrangler secret put CONSUMER_DEPLOY_VERIFICATION_KEY --config wrangler.bootstrap.generated.toml
+          echo "CONSUMER_DEPLOY_VERIFICATION_KEY=$deploy_verification_key" >> "$GITHUB_ENV"
+          unset deploy_verification_key
+          echo "Provisioned the deploy verification credential without exposing its value."
+
           secret_inventory="$(wrangler secret list --config wrangler.bootstrap.generated.toml --format json)"
           SECRET_INVENTORY="$secret_inventory" node --input-type=module -e '
             const entries = JSON.parse(process.env.SECRET_INVENTORY || "[]");
@@ -892,7 +905,8 @@ jobs:
               "CONSUMER_DATA_ENCRYPTION_KEY",
               "CONSUMER_RATE_LIMIT_HASH_KEY",
               "CONSUMER_INVITE_SIGNING_KEY",
-              "OPENAI_API_KEY"
+              "OPENAI_API_KEY",
+              "CONSUMER_DEPLOY_VERIFICATION_KEY"
             ];
             const missing = required.filter((name) => !names.has(name));
             if (missing.length) throw new Error(`Protected beta Worker secrets are missing: ${missing.join(", ")}`);

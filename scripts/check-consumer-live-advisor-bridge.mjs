@@ -215,7 +215,10 @@ async function requestRawAudioJsonOnce(baseUrl, pathname, {
   return payload;
 }
 
-export function assertBetaBootstrap(payload, { realtimeExpected = false } = {}) {
+export function assertBetaBootstrap(payload, {
+  realtimeExpected = false,
+  expectedVoiceNoticeId = String(process.env.CONSUMER_BETA_VOICE_NOTICE_ID || '').trim()
+} = {}) {
   assert.equal(payload?.flags?.consumerJourneyEnabled, true, 'Consumer journey is not live.');
   assert.equal(payload?.flags?.consumerAiIntakeEnabled, false, 'AI must remain disabled.');
   assert.equal(payload?.flags?.consumerVoiceEnabled, true, 'Reviewed voice transport is not live.');
@@ -239,13 +242,26 @@ export function assertBetaBootstrap(payload, { realtimeExpected = false } = {}) 
     assert.ok(typeof value === 'string' && value.length > 0, 'The live disclosure contract is incomplete.');
   }
   assert.equal(payload?.voice?.enabled, true, 'Voice is not configured in the protected bootstrap.');
-  assert.equal(payload?.voice?.noticeId, 'voice-adviser-test-v1', 'The voice notice changed unexpectedly.');
+  // Read from the protected environment, never restated here. This assertion
+  // held 'voice-adviser-test-v1' long after the deployment moved to the
+  // OpenAI-audio notice, so it failed a Worker that was correctly disclosing
+  // MORE than the notice it was compared against. The notice id is also the
+  // consent key -- voice_repository rejects a stored acknowledgement whose
+  // notice_id differs from the running config -- so changing it forces every
+  // caller to re-consent, and a check that pins the old one is checking that
+  // re-consent never happened.
+  assert.ok(expectedVoiceNoticeId, 'CONSUMER_BETA_VOICE_NOTICE_ID is required to verify the live notice.');
+  assert.equal(payload?.voice?.noticeId, expectedVoiceNoticeId, 'The voice notice changed unexpectedly.');
   assert.equal(payload?.voice?.dataPolicyId, 'openai-audio-adviser-test-v1', 'The voice data policy changed unexpectedly.');
   assert.equal(payload?.voice?.transcriptionModel, 'gpt-4o-mini-transcribe', 'The transcription model changed unexpectedly.');
   assert.equal(payload?.voice?.speechModel, 'tts-1-hd', 'The speech model changed unexpectedly.');
   assert.equal(payload?.voice?.voice, 'nova', 'The reviewed voice changed unexpectedly.');
   assert.equal(payload?.voice?.pricingVersion, 'openai-audio-eur-safety-2026-07-13-v2', 'The voice pricing catalogue changed unexpectedly.');
-  assert.equal(payload?.voice?.sessionBudgetMicroEur, 2_000_000, 'The €2 session voice ceiling changed unexpectedly.');
+  // The spend ceilings are deliberately absent from this payload. They are
+  // verified on every deploy against the protected deployment-envelope route,
+  // which is the only place they are served.
+  assert.equal(payload?.voice?.sessionBudgetMicroEur, undefined,
+    'The public bootstrap must not expose the voice spend ceiling.');
   assert.ok(typeof payload?.voice?.privacyNoticeUrl === 'string' && payload.voice.privacyNoticeUrl.length > 0);
   assert.ok(typeof payload?.voice?.policyVersion === 'string' && payload.voice.policyVersion.length > 0);
   assert.equal(
@@ -266,9 +282,10 @@ export function assertBetaBootstrap(payload, { realtimeExpected = false } = {}) 
     );
     assert.equal(payload?.realtimeVoice?.maxDurationSeconds, 900, 'The realtime duration limit changed unexpectedly.');
     assert.equal(payload?.realtimeVoice?.idleTimeoutSeconds, 180, 'The realtime idle timeout changed unexpectedly.');
-    assert.equal(payload?.realtimeVoice?.sessionBudgetMicroEur, 10_000_000, 'The realtime €10 allowance changed unexpectedly.');
-    assert.equal(payload?.realtimeVoice?.dispatchStopMicroEur, 9_700_000, 'The realtime safety stop changed unexpectedly.');
-    assert.equal(payload?.realtimeVoice?.safetyReserveMicroEur, 300_000, 'The realtime delayed-usage reserve changed unexpectedly.');
+    for (const field of ['sessionBudgetMicroEur', 'dispatchStopMicroEur', 'safetyReserveMicroEur']) {
+      assert.equal(payload?.realtimeVoice?.[field], undefined,
+        `The public bootstrap must not expose realtimeVoice.${field}.`);
+    }
     assert.equal(payload?.handoff?.enabled, false, 'Human handoff must remain disabled for the voice-only canary.');
     assert.equal(payload?.handoff?.policyVersion, null, 'Disabled handoff must expose no policy.');
     assert.equal(payload?.handoff?.policyUrl, null, 'Disabled handoff must expose no policy URL.');

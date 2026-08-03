@@ -1,6 +1,7 @@
 import { getAvailableConsumerModules, runStoredConsumerAnalysis } from './analysis.js';
 import {
   APPROVED_CONSUMER_MODULE_KEY,
+  deploymentCostEnvelope,
   getConsumerConfig,
   publicConsumerConfig
 } from './config.js';
@@ -276,8 +277,45 @@ async function readJson(request, { optional = false } = {}) {
   }
 }
 
+/** The header the deploy workflow presents. Never a cookie: no ambient authority. */
+export const DEPLOY_VERIFICATION_HEADER = 'x-planeir-deploy-verification';
+
+/**
+ * Compare in time independent of how much of the value matched.
+ *
+ * A plain `===` on a secret leaks its prefix through response timing, which is
+ * enough to recover it byte by byte given enough requests. Length is compared
+ * first and the loop always runs to completion.
+ */
+function credentialMatches(presented, expected) {
+  const a = new TextEncoder().encode(String(presented || ''));
+  const b = new TextEncoder().encode(String(expected || ''));
+  if (a.length === 0 || a.length !== b.length) return false;
+  let difference = 0;
+  for (let index = 0; index < a.length; index += 1) difference |= a[index] ^ b[index];
+  return difference === 0;
+}
+
+/**
+ * Whether this request may read the deployment cost envelope.
+ *
+ * Fail-closed in both directions: an unconfigured secret authorises nobody, and
+ * a missing or wrong header is indistinguishable from the route not existing, so
+ * probing cannot even confirm the endpoint is there.
+ */
+export function isDeployVerificationRequest(request, env) {
+  const expected = String(env?.CONSUMER_DEPLOY_VERIFICATION_KEY || '');
+  // A short or absent key must never authorise: without this, an unset secret
+  // would let an empty header through.
+  if (expected.length < 32) return false;
+  return credentialMatches(request?.headers?.get?.(DEPLOY_VERIFICATION_HEADER), expected);
+}
+
 function routeMatch(pathname) {
   if (pathname === '/api/consumer/bootstrap') return { kind: 'bootstrap', methods: ['GET'] };
+  if (pathname === '/api/consumer/deployment-envelope') {
+    return { kind: 'deployment_envelope', methods: ['GET'] };
+  }
   if (pathname === '/api/consumer/sessions') return { kind: 'create', methods: ['POST'] };
   const realtimeTranscriptMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/meetings\/(rt_[A-Za-z0-9_-]{20,80})\/transcript$/.exec(pathname);
   if (realtimeTranscriptMatch) {
@@ -575,6 +613,16 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         ...publicConsumerConfig(config),
         modules: availableModules
       }, 200, methods);
+    }
+
+    // Deploy verification only. Answers 404 -- not 401 or 403 -- when the
+    // credential is absent or wrong, so an unauthenticated caller cannot tell
+    // this route apart from one that does not exist.
+    if (route.kind === 'deployment_envelope') {
+      if (!isDeployVerificationRequest(request, env)) {
+        return respond({ error: 'Not found.', code: 'not_found' }, 404, methods);
+      }
+      return respond(deploymentCostEnvelope(config), 200, methods);
     }
 
     if (route.kind === 'create') {

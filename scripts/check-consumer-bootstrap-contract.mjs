@@ -24,8 +24,12 @@ import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 
 import { getConsumerConfig, publicConsumerConfig } from '../worker/src/consumer/config.js';
+import { DEPLOY_VERIFICATION_HEADER, handleConsumerRequest } from '../worker/src/consumer/router.js';
 import { getAvailableConsumerModules } from '../worker/src/consumer/analysis.js';
-import { validateConsumerDeploymentBootstrap } from './check-consumer-live-deployment.mjs';
+import {
+  validateConsumerDeploymentBootstrap,
+  validateConsumerDeploymentEnvelope
+} from './check-consumer-live-deployment.mjs';
 import { shippedConsumerEnv } from './lib/shipped-consumer-config.mjs';
 
 let checks = 0;
@@ -162,18 +166,31 @@ check('the committed source configuration still serves a dormant bootstrap', () 
   assert.equal(validateConsumerDeploymentBootstrap(bootstrap, { mode: 'dormant' }), true);
 });
 
-// A dormant Worker must not publish the commercial envelope either. These
-// figures are only meaningful for an active, invite-only canary.
-check('a dormant bootstrap exposes no cost envelope', () => {
-  const bootstrap = serveBootstrap(sourceEnv);
-  for (const [block, field] of [
-    ['voice', 'sessionBudgetMicroEur'],
-    ['realtimeVoice', 'sessionBudgetMicroEur'],
-    ['realtimeVoice', 'dispatchStopMicroEur'],
-    ['realtimeVoice', 'warnThresholdMicroEur'],
-    ['realtimeVoice', 'safetyReserveMicroEur']
-  ]) {
-    assert.equal(bootstrap[block][field], null, `${block}.${field} must be null while dormant`);
+// SPEND FIGURES ARE NEVER PUBLIC -- in any mode, dormant or live. These are
+// internal operating controls: what a call may cost, when dispatch stops, what
+// is held back for teardown. An unauthenticated endpoint publishing them tells
+// anyone who asks what a call costs us, and hands them the number to aim at.
+const SPEND_FIELDS = Object.freeze([
+  'sessionBudgetMicroEur', 'dailyBudgetMicroEur', 'dispatchStopMicroEur',
+  'warnThresholdMicroEur', 'safetyReserveMicroEur', 'costLimitEurMicros'
+]);
+
+check('the public bootstrap exposes no spend figure, in any mode', () => {
+  for (const [label, env] of [['realtime canary', realtimeEnv], ['voice beta', voiceEnv], ['dormant', sourceEnv]]) {
+    const bootstrap = serveBootstrap(env);
+    for (const block of ['voice', 'realtimeVoice']) {
+      for (const field of SPEND_FIELDS) {
+        assert.equal(bootstrap[block][field], undefined,
+          `${label}: ${block}.${field} must not appear on the public bootstrap`);
+      }
+    }
+    // Belt and braces: no micro-euro figure anywhere in the serialised payload,
+    // whatever it might be called in future.
+    const serialised = JSON.stringify(bootstrap);
+    for (const amount of [2_000_000, 10_000_000, 20_000_000, 50_000_000, 9_700_000, 7_500_000, 300_000]) {
+      assert.ok(!serialised.includes(String(amount)),
+        `${label}: the public bootstrap leaks the figure ${amount}`);
+    }
   }
 });
 
@@ -187,11 +204,10 @@ check('the live check reads no field the bootstrap leaves undefined', () => {
   const bootstrap = serveBootstrap(realtimeEnv);
   for (const [block, fields] of [
     ['voice', ['enabled', 'noticeId', 'dataPolicyId', 'transcriptionModel', 'speechModel',
-      'voice', 'pricingVersion', 'sessionBudgetMicroEur']],
+      'voice', 'pricingVersion']],
     ['realtimeVoice', ['enabled', 'noticeId', 'dataPolicyId', 'model', 'voice', 'reasoningEffort',
       'transcriptionModel', 'promptVersion', 'toolsetVersion', 'pricingVersion',
-      'sessionBudgetMicroEur', 'maxDurationSeconds', 'idleTimeoutSeconds',
-      'dispatchStopMicroEur', 'warnThresholdMicroEur', 'safetyReserveMicroEur']]
+      'maxDurationSeconds', 'idleTimeoutSeconds']]
   ]) {
     for (const field of fields) {
       assert.notEqual(bootstrap[block][field], undefined,
@@ -199,6 +215,75 @@ check('the live check reads no field the bootstrap leaves undefined', () => {
     }
   }
 });
+
+/* ------------------------------------ the protected envelope route */
+
+const VERIFICATION_KEY = 'B'.repeat(43);
+
+async function requestEnvelope(env, headers = {}) {
+  const pathname = '/api/consumer/deployment-envelope';
+  const response = await handleConsumerRequest(
+    new Request(`https://worker.test${pathname}`, { method: 'GET', headers }),
+    env,
+    {
+      pathname,
+      clientIp: '203.0.113.10',
+      respond: (body, status, _methods, extra = {}) => new Response(JSON.stringify(body), {
+        status, headers: { 'Content-Type': 'application/json', ...extra }
+      }),
+      respondBinary: (body, status) => new Response(body, { status })
+    }
+  );
+  return { status: response.status, body: JSON.parse(await response.text()) };
+}
+
+const keyedEnv = { ...realtimeEnv, CONSUMER_DEPLOY_VERIFICATION_KEY: VERIFICATION_KEY };
+
+await (async () => {
+  checks += 1;
+  const { status, body } = await requestEnvelope(keyedEnv, { [DEPLOY_VERIFICATION_HEADER]: VERIFICATION_KEY });
+  assert.equal(status, 200, JSON.stringify(body));
+  assert.equal(
+    validateConsumerDeploymentEnvelope(body, {
+      mode: 'realtime_voice_rules_only',
+      expectedPolicy: expectedPolicyFor(realtimeEnv)
+    }),
+    true
+  );
+  // The figures the deploy gate exists to verify are genuinely present.
+  assert.equal(body.voice.sessionBudgetMicroEur, 2_000_000);
+  assert.equal(body.realtimeVoice.sessionBudgetMicroEur, 10_000_000);
+  console.info('[BootstrapContract] PASS: deploy verification reads the live envelope with the header');
+})();
+
+// Every way of not holding the credential must be indistinguishable from the
+// route not existing -- not 401, not 403, and never the figures.
+for (const [label, headers, env] of [
+  ['no header at all', {}, keyedEnv],
+  ['an empty header', { [DEPLOY_VERIFICATION_HEADER]: '' }, keyedEnv],
+  ['a wrong key of the same length', { [DEPLOY_VERIFICATION_HEADER]: 'C'.repeat(43) }, keyedEnv],
+  ['a correct prefix, truncated', { [DEPLOY_VERIFICATION_HEADER]: VERIFICATION_KEY.slice(0, 20) }, keyedEnv],
+  ['the right header when no secret is configured', { [DEPLOY_VERIFICATION_HEADER]: VERIFICATION_KEY }, realtimeEnv],
+  ['an empty header when no secret is configured', { [DEPLOY_VERIFICATION_HEADER]: '' }, realtimeEnv],
+  // A misconfigured short secret must authorise nobody, even the caller who
+  // presents it exactly. Without a minimum length, setting the variable to a
+  // single character would make the envelope trivially guessable.
+  ['a matching header against a too-short configured secret',
+    { [DEPLOY_VERIFICATION_HEADER]: 'short' },
+    { ...realtimeEnv, CONSUMER_DEPLOY_VERIFICATION_KEY: 'short' }]
+]) {
+  await (async () => {
+    checks += 1;
+    const { status, body } = await requestEnvelope(env, headers);
+    assert.equal(status, 404, `${label} must be refused, got ${status}`);
+    assert.equal(body.code, 'not_found', `${label} must not reveal that the route exists`);
+    const serialised = JSON.stringify(body);
+    for (const amount of [2_000_000, 10_000_000, 50_000_000]) {
+      assert.ok(!serialised.includes(String(amount)), `${label} leaked a spend figure`);
+    }
+    console.info(`[BootstrapContract] PASS: refused — ${label}`);
+  })();
+}
 
 console.info(`\n[BootstrapContract] ${checks} assertions passed: the config that ships, through the `
   + 'real serialiser, satisfies the real live-deployment gate.');

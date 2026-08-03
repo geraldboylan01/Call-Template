@@ -723,8 +723,10 @@ const betaDeploymentBootstrap = {
     transcriptionModel: betaDeploymentPolicy.voiceTranscriptionModel,
     speechModel: betaDeploymentPolicy.voiceSpeechModel,
     voice: betaDeploymentPolicy.voiceName,
-    pricingVersion: betaDeploymentPolicy.voicePricingVersion,
-    sessionBudgetMicroEur: betaDeploymentPolicy.voiceSessionBudgetMicroEur
+    pricingVersion: betaDeploymentPolicy.voicePricingVersion
+    // No spend figures: the public bootstrap must not carry them. They are
+    // verified against the protected deployment-envelope route instead, and the
+    // real serialiser is exercised end to end by check-consumer-bootstrap-contract.
   },
   handoff: { enabled: false },
   modules: [{ id: 'college_funding' }, { id: 'house_purchase' }, { id: 'liquidity_analysis' }, { id: 'loan_analysis' }, { id: 'mortgage_analysis' }, { id: 'pension_projection' }, { id: 'personal_balance_sheet' }]
@@ -733,7 +735,8 @@ assert.equal(validateConsumerDeploymentBootstrap(betaDeploymentBootstrap, {
   mode: 'voice_assisted_rules_only',
   expectedPolicy: betaDeploymentPolicy
 }), true);
-assert.doesNotThrow(() => assertBetaBootstrap(betaDeploymentBootstrap));
+assert.doesNotThrow(() => assertBetaBootstrap(betaDeploymentBootstrap,
+  { expectedVoiceNoticeId: betaDeploymentPolicy.voiceNoticeId }));
 
 const realtimeDeploymentPolicy = {
   ...betaDeploymentPolicy,
@@ -770,11 +773,7 @@ const realtimeDeploymentBootstrap = {
     toolsetVersion: realtimeDeploymentPolicy.realtimeToolsetVersion,
     pricingVersion: realtimeDeploymentPolicy.realtimePricingVersion,
     maxDurationSeconds: 900,
-    idleTimeoutSeconds: 180,
-    sessionBudgetMicroEur: 10_000_000,
-    warnThresholdMicroEur: 7_500_000,
-    dispatchStopMicroEur: 9_700_000,
-    safetyReserveMicroEur: 300_000
+    idleTimeoutSeconds: 180
   },
   handoff: {
     enabled: false,
@@ -788,7 +787,8 @@ assert.equal(validateConsumerDeploymentBootstrap(realtimeDeploymentBootstrap, {
   mode: 'realtime_voice_rules_only',
   expectedPolicy: realtimeDeploymentPolicy
 }), true);
-assert.doesNotThrow(() => assertBetaBootstrap(realtimeDeploymentBootstrap, { realtimeExpected: true }));
+assert.doesNotThrow(() => assertBetaBootstrap(realtimeDeploymentBootstrap,
+  { realtimeExpected: true, expectedVoiceNoticeId: betaDeploymentPolicy.voiceNoticeId }));
 assert.match(buildProposedCredential(), /^cs_[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{43}$/);
 assert.equal(paidVoiceProviderSmokeEnabled(undefined), false);
 assert.equal(paidVoiceProviderSmokeEnabled('false'), false);
@@ -829,7 +829,8 @@ for (const unsafePayload of [
     mode: 'voice_assisted_rules_only',
     expectedPolicy: betaDeploymentPolicy
   }));
-  assert.throws(() => assertBetaBootstrap(unsafePayload));
+  assert.throws(() => assertBetaBootstrap(unsafePayload,
+    { expectedVoiceNoticeId: betaDeploymentPolicy.voiceNoticeId }));
 }
 
 const disabledConfig = getConsumerConfig({});
