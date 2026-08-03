@@ -280,3 +280,60 @@ export function reconcileAgainstFinalTranscript(extraction, finalTranscript) {
     droppedByReconciliation: dropped
   });
 }
+
+/**
+ * Add what the whole-turn read found and the clause reads missed.
+ *
+ * WHY THE MERGE ABOVE IS NOT ENOUGH. The two ways of reading describe the same
+ * holding differently -- one clause read called it "Prisma 5", the whole-turn
+ * read called it "Zurich Prisma 5" -- and a merge keyed on the label treats
+ * those as two holdings. Measured on the three-fund answer that produced FIVE
+ * positions for three funds, which would put EUR 15,000 of money the client
+ * does not have onto their balance sheet. Missing a holding is a gap someone
+ * can spot; inventing one is a wrong number presented as fact.
+ *
+ * The two reads cover exactly the same words, so an amount can legitimately
+ * appear once per reading. A position from the whole-turn read is therefore
+ * kept only when its amount is not already accounted for. That errs toward
+ * under-counting: if the clause reads missed one of two identical amounts, this
+ * will not recover it. That is the safer direction to be wrong in.
+ */
+export function unionWithWholeTurnRead(clauseMerged, wholeExtraction) {
+  if (!wholeExtraction) return clauseMerged;
+  if (!clauseMerged) return wholeExtraction;
+
+  const seenAmounts = new Set(
+    (clauseMerged.positions || [])
+      .map((position) => Number(position?.amount?.amount))
+      .filter((amount) => Number.isFinite(amount))
+  );
+  const addedPositions = (wholeExtraction.positions || []).filter((position) => {
+    const amount = Number(position?.amount?.amount);
+    // A position with no amount carries nothing to double-count, but also
+    // nothing to reconcile, so it is left to the clause reads.
+    if (!Number.isFinite(amount)) return false;
+    return !seenAmounts.has(amount);
+  });
+
+  const knownFacts = new Set((clauseMerged.semanticFacts || []).map((fact) => fact.factId));
+  const knownGoals = new Set((clauseMerged.goalCandidates || []).map((goal) => goal.goalType));
+
+  const renumber = (items, prefix) => items.map((item, index) => ({
+    ...item, candidateId: `${prefix}-${index + 1}`
+  }));
+
+  return Object.freeze({
+    ...clauseMerged,
+    // A clause is the more focused reading of the same words, so it wins every
+    // conflict. The whole-turn read only fills gaps.
+    goalCandidates: renumber([
+      ...(clauseMerged.goalCandidates || []),
+      ...(wholeExtraction.goalCandidates || []).filter((goal) => !knownGoals.has(goal.goalType))
+    ], 'goal'),
+    semanticFacts: renumber([
+      ...(clauseMerged.semanticFacts || []),
+      ...(wholeExtraction.semanticFacts || []).filter((fact) => !knownFacts.has(fact.factId))
+    ], 'fact'),
+    positions: renumber([...(clauseMerged.positions || []), ...addedPositions], 'position')
+  });
+}

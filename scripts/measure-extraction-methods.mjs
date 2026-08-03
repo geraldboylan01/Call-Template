@@ -30,7 +30,7 @@ import {
 } from '../worker/src/consumer/realtime_planner.js';
 import { segmentClientTurn } from '../worker/src/consumer/turn_segments.js';
 import { buildPlanningContext } from '../worker/src/consumer/planning_context.js';
-import { createHouseholdProfile } from '../js/planning/profile.js';
+import { applyProfilePatch, createHouseholdProfile } from '../js/planning/profile.js';
 
 const runs = Number((process.argv.find((arg) => arg.startsWith('--runs=')) || '--runs=3').split('=')[1]);
 
@@ -60,14 +60,44 @@ if (!env.OPENAI_API_KEY) {
   for (const item of UTTERANCES) {
     console.info(`  ${item.label.padEnd(26)} ${segmentClientTurn(item.text).length} clause(s)`);
   }
-  console.info(`\n  ${UTTERANCES.length} utterances x ${runs} runs x 2 methods.`);
+  console.info(`\n  ${UTTERANCES.length} utterances x ${runs} runs x 3 methods.`);
   process.exit(0);
 }
 
 const config = { ...getConsumerConfig(env), realtimeConversationV2Enabled: true };
-const profile = createHouseholdProfile({
-  profileId: 'measure', nowIso: new Date().toISOString(), calculationDateIso: '2026-08-03'
+const NOW = new Date().toISOString();
+const empty = createHouseholdProfile({
+  profileId: 'measure', nowIso: NOW, calculationDateIso: '2026-08-03'
 });
+
+/**
+ * A profile part-way through a real call.
+ *
+ * THE VARIABLE THE FIRST RUN DID NOT CONTROL. The failures that motivated all
+ * of this -- a timeout that lost five income figures, three fund amounts
+ * refused together -- happened live, several turns in, with a full brief. The
+ * first measurement ran against an empty profile and reproduced none of them,
+ * which means utterance density may not be the thing that breaks extraction at
+ * all: the context the planner is sent grows every turn, and that is the other
+ * candidate. Measuring against a realistic profile is how the two are told
+ * apart.
+ */
+const prov = { source: 'user_confirmation', confidence: 'high', certainty: 'exact', capturedAt: NOW, confirmedByUser: true };
+const midCall = applyProfilePatch(empty, {
+  patchId: 'mid-call',
+  operations: [
+    { op: 'add', path: '/primaryPerson/age', value: 53, provenance: prov },
+    { op: 'add', path: '/partner', value: { personId: 'partner', age: 48 }, provenance: prov },
+    { op: 'add', path: '/pensions/-', value: { pensionId: 'bond', ownerId: 'primary', label: 'Aviva buyout bond', type: 'buyout_bond', currentValue: { amount: 380_000, currency: 'EUR' } }, provenance: prov },
+    { op: 'add', path: '/pensions/-', value: { pensionId: 'scheme', ownerId: 'primary', label: 'Current company scheme', type: 'occupational', currentValue: { amount: 360_000, currency: 'EUR' } }, provenance: prov },
+    { op: 'add', path: '/properties/-', value: { propertyId: 'home', label: 'Family home', use: 'home', currentValue: { amount: 950_000, currency: 'EUR' } }, provenance: prov },
+    { op: 'add', path: '/assets/-', value: { assetId: 'cash', label: 'Cash savings', type: 'cash', currentValue: { amount: 20_000, currency: 'EUR' }, liquid: true }, provenance: prov },
+    { op: 'add', path: '/expenses/annualTotal', value: { amount: 42_000, currency: 'EUR' }, provenance: prov }
+  ]
+}, { nowIso: NOW }).profile;
+
+const contextName = (process.argv.find((arg) => arg.startsWith('--context=')) || '--context=realistic').split('=')[1];
+const profile = contextName === 'empty' ? empty : midCall;
 const context = {
   profile,
   config,
@@ -84,16 +114,21 @@ function score(extraction) {
   };
 }
 
-const totals = {
-  whole: { facts: 0, positions: 0, goals: 0, refused: 0, empty: 0, failed: 0, ms: 0 },
-  clauses: { facts: 0, positions: 0, goals: 0, refused: 0, empty: 0, failed: 0, ms: 0 }
-};
+const blank = () => ({ facts: 0, positions: 0, goals: 0, refused: 0, empty: 0, failed: 0, ms: 0 });
+const METHODS = [
+  ['whole', (options) => extractRealtimePlannerTurn(options)],
+  // Clause reading with the recovery read suppressed, so the recovery path can
+  // be told apart from the clause reads themselves.
+  ['clauses', (options) => extractSegmentedPlannerTurn({ ...options, includeWholeTurnRead: false })],
+  ['recovery', (options) => extractSegmentedPlannerTurn(options)]
+];
+const totals = Object.fromEntries(METHODS.map(([name]) => [name, blank()]));
 
 for (const item of UTTERANCES) {
   const clauseCount = segmentClientTurn(item.text).length;
   const line = [];
-  for (const [method, extract] of [['whole', extractRealtimePlannerTurn], ['clauses', extractSegmentedPlannerTurn]]) {
-    const seen = { facts: 0, positions: 0, goals: 0, refused: 0, empty: 0, failed: 0, ms: 0 };
+  for (const [method, extract] of METHODS) {
+    const seen = blank();
     for (let run = 0; run < runs; run += 1) {
       const startedAt = Date.now();
       try {
@@ -122,7 +157,7 @@ for (const item of UTTERANCES) {
   for (const entry of line) console.info(`  ${entry}`);
 }
 
-console.info(`\n=== totals over ${UTTERANCES.length} utterances x ${runs} runs ===`);
+console.info(`\n=== totals: ${UTTERANCES.length} utterances x ${runs} runs, ${contextName} context ===`);
 for (const [method, sum] of Object.entries(totals)) {
   const attempts = UTTERANCES.length * runs;
   console.info(`  ${method.padEnd(8)} facts ${String(sum.facts).padStart(4)}  positions ${String(sum.positions).padStart(3)}  `

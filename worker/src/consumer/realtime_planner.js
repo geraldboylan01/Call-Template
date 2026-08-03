@@ -27,7 +27,8 @@ import { ConsumerError } from './errors.js';
 import {
   mergeSegmentExtractions,
   reconcileAgainstFinalTranscript,
-  segmentClientTurn
+  segmentClientTurn,
+  unionWithWholeTurnRead
 } from './turn_segments.js';
 import { realtimeChoiceVocabulary } from './realtime_fact_mapper.js';
 import { redactSensitiveIdentifiers } from './validators.js';
@@ -626,7 +627,7 @@ export async function extractSegmentedPlannerTurn(options) {
   // Revision safety falls out of the lookup rather than needing to be detected.
   const prefetched = options.prefetched instanceof Map ? options.prefetched : null;
 
-  const settled = await Promise.allSettled(segments.map((segment, index) => {
+  const clauseReads = segments.map((segment, index) => {
     const ready = prefetched?.get(segment);
     if (ready) return ready;
     return extractRealtimePlannerTurn({
@@ -636,9 +637,12 @@ export async function extractSegmentedPlannerTurn(options) {
       // the clause that caused it rather than to the whole turn.
       sourceTurnId: `${options.sourceTurnId}#s${index + 1}`
     });
-  }));
+  });
+
+  const settled = await Promise.allSettled(clauseReads);
 
   const succeeded = settled.filter((result) => result.status === 'fulfilled').map((result) => result.value);
+  const clausesFailed = settled.filter((result) => result.status !== 'fulfilled').length;
   if (succeeded.length === 0) {
     // Every piece failed, so this is a planner outage rather than a dense
     // sentence. Surface the first failure and let the caller degrade exactly as
@@ -646,7 +650,33 @@ export async function extractSegmentedPlannerTurn(options) {
     throw settled[0].reason;
   }
 
-  const merged = mergeSegmentExtractions(succeeded.map((result) => result.extraction), options.sourceTurnId);
+  // A WHOLE-TURN READ ONLY WHEN A CLAUSE WAS LOST.
+  //
+  // Running one alongside every turn was tried and measured. Once its results
+  // were deduplicated against the clause reads -- before that it was inventing
+  // holdings, five positions for three funds -- it extracted no more than the
+  // clauses alone within run-to-run noise, and cost about a second of extra
+  // latency and one more planner call on every dense turn. That is a bad trade
+  // on a voice call.
+  //
+  // What it is genuinely good for is the one failure clause reading introduced:
+  // a clause whose read fails takes its sentence with it, which was observed
+  // live losing a client's goal, age and retirement age in one go. Clause reads
+  // fail rarely -- none in 42 measured attempts -- so paying for a recovery
+  // read only when one actually fails costs almost nothing and closes the only
+  // hole the clause approach has.
+  let merged = mergeSegmentExtractions(
+    succeeded.map((result) => result.extraction),
+    options.sourceTurnId
+  );
+  if (clausesFailed > 0 && options.includeWholeTurnRead !== false) {
+    const recovered = await extractRealtimePlannerTurn({
+      ...options, sourceTurnId: `${options.sourceTurnId}#recover`
+    }).catch(() => null);
+    // Folded in separately, never merged by label: the two reads describe the
+    // same words, so the same holding arrives under two names.
+    merged = unionWithWholeTurnRead(merged, recovered?.extraction || null);
+  }
   // NOTHING READ FROM A PARTIAL IS TRUSTED. A value read from "I have sixteen
   // thousand" must not survive the recogniser settling on "sixty thousand".
   const extraction = prefetched
@@ -668,7 +698,7 @@ export async function extractSegmentedPlannerTurn(options) {
       outputTokens: sum('outputTokens'),
       cachedInputTokens: sum('cachedInputTokens'),
       segmentCount: segments.length,
-      segmentsFailed: segments.length - succeeded.length
+      segmentsFailed: clausesFailed
     }
   };
 }

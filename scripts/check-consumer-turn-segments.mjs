@@ -24,7 +24,8 @@ import {
   readableSegments,
   reconcileAgainstFinalTranscript,
   segmentClientTurn,
-  shouldSegmentTurn
+  shouldSegmentTurn,
+  unionWithWholeTurnRead
 } from '../worker/src/consumer/turn_segments.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -314,7 +315,84 @@ check('the failed-clause count reaches diagnostics',
   /^\s+segmentsFailed,$/m.test(agentSource),
   'a silent loss cannot be graded after the call');
 check('the planner reports how many clauses were lost',
-  /segmentsFailed: segments\.length - succeeded\.length/.test(plannerSource));
+  /segmentsFailed: clausesFailed/.test(plannerSource));
+// The extra whole-turn read is a safety net, not a clause. If it alone fails
+// the clauses still covered every word, and the turn must not look degraded.
+// A whole-turn read on EVERY turn was measured and rejected: deduplicated
+// against the clauses it found no more than they did, and cost about a second
+// and an extra call on every dense turn. It earns its place only where the
+// clause approach actually has a hole.
+check('a whole-turn read runs only when a clause was lost',
+  /if \(clausesFailed > 0 && options\.includeWholeTurnRead !== false\)/.test(plannerSource),
+  'paying for it on every turn was measured and did not pay for itself');
+check('the ordinary path reads clauses only',
+  /const settled = await Promise\.allSettled\(clauseReads\);/.test(plannerSource));
+check('a failed recovery read leaves the clauses standing',
+  /\.catch\(\(\) => null\)/.test(plannerSource));
+
+
+
+/* ---------------- the whole-turn read fills gaps, never invents a holding */
+
+// THE FAULT THIS PREVENTS, measured. Reading the three-fund answer both ways
+// produced FIVE positions for three funds: the clause read called one holding
+// "Prisma 5" and the whole-turn read called the same holding "Zurich Prisma 5",
+// so a label-keyed merge kept both. That is EUR 15,000 of money the client does
+// not have, presented as fact on their balance sheet.
+const clauseSide = {
+  schemaVersion: 'planner_extraction_v3',
+  goalCandidates: [{ candidateId: 'goal-1', goalType: 'retire' }],
+  semanticFacts: [{ candidateId: 'fact-1', factId: 'monthly_spending', value: 3_500 }],
+  positions: [
+    { candidateId: 'position-1', kind: 'asset', label: 'Prisma 5', amount: { amount: 12_000, currency: 'EUR' } }
+  ],
+  invalidCandidates: [], sectionCompletions: []
+};
+const wholeSide = {
+  schemaVersion: 'planner_extraction_v3',
+  goalCandidates: [{ candidateId: 'goal-1', goalType: 'retire' }, { candidateId: 'goal-2', goalType: 'improve_pension' }],
+  semanticFacts: [
+    { candidateId: 'fact-1', factId: 'monthly_spending', value: 9_999 },
+    { candidateId: 'fact-2', factId: 'person_current_age', value: 53 }
+  ],
+  positions: [
+    // The same holding under a fuller name -- must NOT become a second row.
+    { candidateId: 'position-1', kind: 'pension', label: 'Zurich Prisma 5', amount: { amount: 12_000, currency: 'EUR' } },
+    // A holding the clause reads genuinely missed -- must be kept.
+    { candidateId: 'position-2', kind: 'asset', label: 'Prize bonds', amount: { amount: 3_000, currency: 'EUR' } }
+  ],
+  invalidCandidates: [], sectionCompletions: []
+};
+const unioned = unionWithWholeTurnRead(clauseSide, wholeSide);
+
+check('the same holding under two names stays one holding',
+  unioned.positions.filter((position) => position.amount.amount === 12_000).length === 1,
+  JSON.stringify(unioned.positions.map((position) => position.label)));
+check('a holding the clauses missed is recovered',
+  unioned.positions.some((position) => position.amount.amount === 3_000));
+check('the union invents nothing', unioned.positions.length === 2);
+// A clause is the more focused reading of the same words, so it wins conflicts.
+check('a clause reading wins over the whole-turn reading',
+  unioned.semanticFacts.find((fact) => fact.factId === 'monthly_spending').value === 3_500,
+  'the whole-turn read must not overwrite what a clause read established');
+check('a fact only the whole-turn read found is added',
+  unioned.semanticFacts.some((fact) => fact.factId === 'person_current_age'));
+check('a goal named by both is one goal',
+  unioned.goalCandidates.filter((goal) => goal.goalType === 'retire').length === 1);
+check('a goal only the whole-turn read found is added',
+  unioned.goalCandidates.some((goal) => goal.goalType === 'improve_pension'));
+check('candidate ids stay unique after the union',
+  new Set(unioned.positions.map((position) => position.candidateId)).size === unioned.positions.length);
+
+// A position with no amount carries nothing to reconcile against, so it is left
+// to the clause reads rather than risked as a duplicate.
+check('an amountless whole-turn position is not added',
+  unionWithWholeTurnRead(clauseSide, {
+    ...wholeSide, positions: [{ candidateId: 'position-1', kind: 'asset', label: 'Something' }]
+  }).positions.length === 1);
+
+check('a missing whole-turn read leaves the clauses untouched',
+  unionWithWholeTurnRead(clauseSide, null) === clauseSide);
 
 console.info(`[TurnSegments] ${checks} checks passed: a dense answer is read in clause-sized pieces, `
   + 'settled clauses are read while the client still speaks, nothing read early survives without '
