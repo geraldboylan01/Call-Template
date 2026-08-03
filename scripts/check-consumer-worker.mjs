@@ -141,7 +141,8 @@ assert.match(routerSource, /isAdvisorProtectedPreviewConfig/);
 assert.match(routerSource, /config\?\.aiRequested !== true/);
 assert.match(routerSource, /config\?\.handoffRequested !== true/);
 assert.match(routerSource, /config\?\.cohort === 'adviser_test'/);
-assert.match(routerSource, /allowedModules === 'house_purchase,liquidity_analysis'/);
+// The gate must compare against the shared constant, not a literal of its own.
+assert.match(routerSource, /allowedModules === APPROVED_CONSUMER_MODULE_KEY/);
 assert.match(routerSource, /config\.cohort === 'adviser_test' && !isAdvisorProtectedPreviewConfig\(config\)/);
 assert.ok(routerSource.includes('voice\\/(consent|transcriptions|speech)'));
 assert.match(routerSource, /voiceConsentIsCurrent/);
@@ -705,7 +706,7 @@ const betaDeploymentBootstrap = {
     consumerHumanHandoffEnabled: false
   },
   access: { publicAccessEnabled: false, inviteRequired: true },
-  allowedModules: ['house_purchase', 'liquidity_analysis'],
+  allowedModules: ['college_funding', 'house_purchase', 'liquidity_analysis', 'loan_analysis', 'mortgage_analysis', 'pension_projection', 'personal_balance_sheet'],
   cohort: 'adviser_test',
   consentPolicyVersion: betaDeploymentPolicy.consentPolicyVersion,
   consentManifestId: betaDeploymentPolicy.consentManifestId,
@@ -726,7 +727,7 @@ const betaDeploymentBootstrap = {
     sessionBudgetMicroEur: betaDeploymentPolicy.voiceSessionBudgetMicroEur
   },
   handoff: { enabled: false },
-  modules: [{ id: 'house_purchase' }, { id: 'liquidity_analysis' }]
+  modules: [{ id: 'college_funding' }, { id: 'house_purchase' }, { id: 'liquidity_analysis' }, { id: 'loan_analysis' }, { id: 'mortgage_analysis' }, { id: 'pension_projection' }, { id: 'personal_balance_sheet' }]
 };
 assert.equal(validateConsumerDeploymentBootstrap(betaDeploymentBootstrap, {
   mode: 'voice_assisted_rules_only',
@@ -1212,7 +1213,7 @@ const previewEnv = {
   CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html',
   CONSUMER_SESSION_TTL_DAYS: '7',
   CONSUMER_INVITE_MAX_TTL_HOURS: '24',
-  CONSUMER_ALLOWED_MODULE_IDS: 'house_purchase,liquidity_analysis',
+  CONSUMER_ALLOWED_MODULE_IDS: 'college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet',
   CONSUMER_COHORT: 'adviser_test',
   CONSUMER_PLAN_BASE_URL: 'https://planeir.ie/plan/'
 };
@@ -1308,8 +1309,8 @@ const realtimeVoicePreviewConfig = {
   realtimeIdleTimeoutSeconds: 180,
   realtimeSilencePromptSeconds: 45,
   realtimeMaxSdpBytes: 32_768,
-  realtimeMaxResponses: 40,
-  realtimeMaxToolCalls: 24
+  realtimeMaxResponses: 100,
+  realtimeMaxToolCalls: 60
 };
 // The previous €2/600s/90s adviser envelope is no longer the approved
 // fingerprint; a worker still deployed with it must refuse adviser sessions

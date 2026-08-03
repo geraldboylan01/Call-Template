@@ -117,6 +117,29 @@ function plannerModelConfigured(value) {
 
 export const PLANNER_MODEL_ALLOWLIST = Object.freeze([...APPROVED_PLANNER_MODELS]);
 
+/**
+ * The analyses approved for the protected consumer beta.
+ *
+ * Defined ONCE and exported, because this exact list was previously written
+ * out as a literal in five places -- the committed wrangler config, the deploy
+ * workflow's fail-closed builder, two runtime gates in the router, and the
+ * post-deploy live verification. Widening it in some of those and not the
+ * others deployed a Worker whose own guards then refused it, which is how a
+ * green build produced a dead beta.
+ */
+export const APPROVED_CONSUMER_MODULE_IDS = Object.freeze([
+  'college_funding',
+  'house_purchase',
+  'liquidity_analysis',
+  'loan_analysis',
+  'mortgage_analysis',
+  'pension_projection',
+  'personal_balance_sheet'
+]);
+
+/** The same set as the router's gates compare against: sorted, comma-joined. */
+export const APPROVED_CONSUMER_MODULE_KEY = [...APPROVED_CONSUMER_MODULE_IDS].sort().join(',');
+
 export function getConsumerConfig(env) {
   const requestedJourneyEnabled = enabled(env.CONSUMER_JOURNEY_ENABLED);
   const encryptionKeyConfigured = validEncryptionKey(env.CONSUMER_DATA_ENCRYPTION_KEY);

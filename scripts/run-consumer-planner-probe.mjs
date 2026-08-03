@@ -57,7 +57,7 @@ const env = {
   CONSUMER_JOURNEY_ENABLED: 'true',
   CONSUMER_MODULE_ROUTING_ENABLED: 'true',
   CONSUMER_GOAL_ROUTING_ENABLED: 'true',
-  CONSUMER_ALLOWED_MODULE_IDS: 'house_purchase,liquidity_analysis',
+  CONSUMER_ALLOWED_MODULE_IDS: 'college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet',
   CONSUMER_COHORT: 'adviser_test',
   CONSUMER_CONSENT_POLICY_VERSION: 'consumer-adviser-test-v1',
   CONSUMER_CONSENT_MANIFEST_ID: 'consumer-adviser-test-manifest-v1',

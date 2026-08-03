@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
+import { APPROVED_CONSUMER_MODULE_IDS } from '../worker/src/consumer/config.js';
+
 const DORMANT_MODE = 'dormant';
 const VOICE_ASSISTED_RULES_ONLY_MODE = 'voice_assisted_rules_only';
 const REALTIME_VOICE_RULES_ONLY_MODE = 'realtime_voice_rules_only';
-const INITIAL_MODULE_IDS = Object.freeze(['house_purchase', 'liquidity_analysis']);
+// Imported, never restated. This assertion is what failed deploy #274: the
+// allowlist was widened in the Worker config and left at two modules here, so a
+// Worker that deployed exactly as intended was then judged non-compliant.
+const INITIAL_MODULE_IDS = APPROVED_CONSUMER_MODULE_IDS;
 // Cloudflare may serve the previous Worker version briefly after a successful
 // deploy. Keep rollback verification fail-closed, but allow enough time to
 // observe the newly deployed kill-switch state at every edge.

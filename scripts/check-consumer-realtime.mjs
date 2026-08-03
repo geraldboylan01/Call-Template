@@ -436,7 +436,7 @@ const env = {
   CONSUMER_MODULE_ROUTING_ENABLED: 'true',
   CONSUMER_PUBLIC_ACCESS_ENABLED: 'false',
   CONSUMER_HANDOFF_ENABLED: 'false',
-  CONSUMER_ALLOWED_MODULE_IDS: 'house_purchase,liquidity_analysis',
+  CONSUMER_ALLOWED_MODULE_IDS: 'college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet',
   CONSUMER_COHORT: 'adviser_test',
   CONSUMER_CONSENT_POLICY_VERSION: 'consumer-adviser-test-v1',
   CONSUMER_CONSENT_MANIFEST_ID: 'consumer-adviser-test-manifest-v1',
@@ -460,8 +460,8 @@ const env = {
   CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: '180',
   CONSUMER_REALTIME_SILENCE_PROMPT_SECONDS: '45',
   CONSUMER_REALTIME_MAX_SDP_BYTES: '32768',
-  CONSUMER_REALTIME_MAX_RESPONSES: '40',
-  CONSUMER_REALTIME_MAX_TOOL_CALLS: '24',
+  CONSUMER_REALTIME_MAX_RESPONSES: '100',
+  CONSUMER_REALTIME_MAX_TOOL_CALLS: '60',
   CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION: '4000000',
   CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION: '400000',
   CONSUMER_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION: '24000000',
@@ -2610,13 +2610,14 @@ assert.ok(!realtimeToolsForState(factContext.state)
 // circumstances. The persona catalogue that used to gate this is gone.
 factContext = await factDurable.planningContext();
 assert.equal(factContext.state.personaAssessment, undefined);
-// Goal routing leads with the analyses the stated goal selected. The balance
-// sheet is pinned last and is outside this canary's release allowlist, so it is
-// filtered out before it can occupy a slot rather than taking one and producing
-// nothing.
+// Goal routing leads with the analyses the stated goal selected, and the balance
+// sheet trails them. It is pinned last precisely so it never displaces a goal the
+// client actually stated -- it is the one analysis every profile can support, and
+// ordering it first would let it crowd out the reason they called.
 assert.deepEqual(factContext.state.moduleSlots.map((slot) => slot.moduleId), [
   'house_purchase',
-  'liquidity_analysis'
+  'liquidity_analysis',
+  'personal_balance_sheet'
 ]);
 
 // Unknown and ranged numerical answers are retained as conservative completion

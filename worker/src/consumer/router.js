@@ -1,5 +1,9 @@
 import { getAvailableConsumerModules, runStoredConsumerAnalysis } from './analysis.js';
-import { getConsumerConfig, publicConsumerConfig } from './config.js';
+import {
+  APPROVED_CONSUMER_MODULE_KEY,
+  getConsumerConfig,
+  publicConsumerConfig
+} from './config.js';
 import {
   constantTimeEqual,
   createConsumerCredential,
@@ -149,7 +153,7 @@ export function isAdvisorRulesOnlyPreviewConfig(config) {
     && config?.publicAccessEnabled !== true
     && config?.inviteAccessConfigured === true
     && config?.cohort === 'adviser_test'
-    && allowedModules === 'house_purchase,liquidity_analysis';
+    && allowedModules === APPROVED_CONSUMER_MODULE_KEY;
 }
 
 function hasApprovedAdvisorVoiceTransport(config) {
@@ -177,7 +181,7 @@ function hasApprovedAdvisorVoiceTransport(config) {
     && config?.voiceMaxAudioBytes === 1_000_000
     && config?.voiceMaxDurationSeconds === 45
     && config?.voiceMaxSpeechCharacters === 1_200
-    && allowedModules === 'house_purchase,liquidity_analysis';
+    && allowedModules === APPROVED_CONSUMER_MODULE_KEY;
 }
 
 export function isAdvisorVoicePreviewConfig(config) {
@@ -219,8 +223,8 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeIdleTimeoutSeconds === 180
     && config?.realtimeSilencePromptSeconds === 45
     && config?.realtimeMaxSdpBytes === 32_768
-    && config?.realtimeMaxResponses === 40
-    && config?.realtimeMaxToolCalls === 24;
+    && config?.realtimeMaxResponses === 100
+    && config?.realtimeMaxToolCalls === 60;
 }
 
 export function isAdvisorProtectedPreviewConfig(config) {

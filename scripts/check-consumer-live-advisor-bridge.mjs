@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { runRealtimeInfrastructureProof } from './run-consumer-realtime-infrastructure-proof.mjs';
+import { APPROVED_CONSUMER_MODULE_IDS } from '../worker/src/consumer/config.js';
 
 const MAX_ATTEMPTS = 5;
 const MAX_INVITE_PROPAGATION_ATTEMPTS = 12;
@@ -225,7 +226,7 @@ export function assertBetaBootstrap(payload, { realtimeExpected = false } = {}) 
   assert.equal(payload?.cohort, 'adviser_test', 'The live cohort must be adviser_test.');
   assert.deepEqual(
     [...(payload?.allowedModules || [])].sort(),
-    ['house_purchase', 'liquidity_analysis'],
+    [...APPROVED_CONSUMER_MODULE_IDS].sort(),
     'The live module allowlist changed.'
   );
   for (const value of [

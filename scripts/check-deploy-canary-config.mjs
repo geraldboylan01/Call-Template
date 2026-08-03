@@ -266,4 +266,88 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
   pass(`the released modules cover ${covered.size} client goals, including the ones this incident exposed`);
 }
 
+
+{
+  /**
+   * Every value the router PINS must equal the value the Worker will SHIP.
+   *
+   * This is the check that deploy #274 needed and did not have. The router's
+   * approval gates work by fingerprint: they compare the live config against an
+   * exact expected envelope and refuse the session on any mismatch. That is the
+   * right design -- a Worker running yesterday's budget ceiling should refuse
+   * rather than quietly spend -- but it means every pin is a second copy of a
+   * config value, and a copy that is only ever compared at RUNTIME.
+   *
+   * So widening the module allowlist in wrangler.toml, or raising the response
+   * ceiling, deployed a Worker whose own gates then rejected it: adviser invites,
+   * voice and realtime all 503 while every pre-deploy check stayed green. The
+   * failure was invisible until after the Worker was live.
+   *
+   * The pins are read out of the router source and checked against wrangler.toml
+   * here, before anything ships. Pins with no matching Worker variable are
+   * constants rather than config, and are skipped.
+   */
+  const routerSource = readFileSync(`${root}/worker/src/consumer/router.js`, 'utf8');
+  const wrangler = readFileSync(`${root}/worker/wrangler.toml`, 'utf8');
+
+  const envName = (field) => `CONSUMER_${field.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase()}`;
+
+  // What actually ships is not wrangler.toml alone. The committed file holds the
+  // dormant production defaults -- that is what makes the config fail closed --
+  // and the workflow rewrites named variables to their approved beta values on
+  // the way to Cloudflare. The effective value is the rewrite where one exists.
+  const effective = new Map();
+  for (const [, name, value] of wrangler.matchAll(/^(CONSUMER_[A-Z0-9_]+) = "([^"]*)"$/gm)) {
+    effective.set(name, value);
+  }
+  for (const [, name, value] of workflow.matchAll(
+    /replaceTomlString\(\s*generatedSource,\s*'([A-Z0-9_]+)',\s*'([^']*)'\s*\)/g
+  )) {
+    effective.set(name, value);
+  }
+  for (const [, name, value] of workflow.matchAll(
+    /^\s*(CONSUMER_[A-Z0-9_]+): \['CONSUMER_BETA_[A-Z0-9_]+', '([^']*)'\],?$/gm
+  )) {
+    effective.set(name, value);
+  }
+  const shipped = (name) => effective.get(name);
+
+  let compared = 0;
+  const pins = routerSource.matchAll(
+    /config\?\.(\w+) === (?:'([^']*)'|([\d_]+))(?=\s*(?:$|\n|\s*&&))/gm
+  );
+  for (const [, field, stringPin, numberPin] of pins) {
+    const configured = shipped(envName(field));
+    if (configured === undefined) continue;
+    compared += 1;
+    const expected = stringPin !== undefined ? stringPin : String(Number(numberPin.replace(/_/g, '')));
+    const actual = numberPin !== undefined ? String(Number(configured)) : configured;
+    assert.equal(
+      actual,
+      expected,
+      `${envName(field)} ships as "${configured}" but the router gate pins ${field} to `
+        + `${stringPin !== undefined ? `"${stringPin}"` : numberPin}. A Worker deployed with this `
+        + 'config would refuse its own adviser, voice and realtime sessions. Change both, or neither.'
+    );
+  }
+  assert.ok(compared >= 10, `expected the router to pin many shipped values, found ${compared}`);
+
+  // The module allowlist is the same class of pin, held as a list rather than a
+  // scalar. It is defined once in config.js and imported by the gates, so the
+  // only thing left to check is that the definition matches what ships.
+  const { APPROVED_CONSUMER_MODULE_IDS } = await import('../worker/src/consumer/config.js');
+  assert.equal(
+    [...APPROVED_CONSUMER_MODULE_IDS].sort().join(','),
+    (shipped('CONSUMER_ALLOWED_MODULE_IDS') || '').split(',').map((id) => id.trim()).sort().join(','),
+    'APPROVED_CONSUMER_MODULE_IDS must match the allowlist wrangler.toml ships'
+  );
+  assert.doesNotMatch(
+    routerSource,
+    /allowedModules === '/,
+    'a router gate is restating the module allowlist as a literal instead of importing the constant'
+  );
+  pass(`all ${compared} router gate pins match the config the Worker will ship`);
+}
+
+
 console.info(`\n[DeployCanary] ${passes.length} assertions passed.`);
