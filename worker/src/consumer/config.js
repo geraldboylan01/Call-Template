@@ -362,6 +362,13 @@ export function getConsumerConfig(env) {
     inviteMaxTtlHours: boundedInteger(env.CONSUMER_INVITE_MAX_TTL_HOURS, 168, 1, 720),
     allowedModules,
     bookingUrl: bookingUrl(env.CONSUMER_BOOKING_URL),
+    // Where a published analysis is read from. The link secret rides in the URL
+    // fragment, so this is only the origin the client's browser opens.
+    publishedSessionBaseUrl: text(env.CONSUMER_PUBLISHED_SESSION_BASE_URL) || 'https://planeir.ie',
+    // Who is told when a call publishes itself. Configuration only -- a
+    // client-supplied recipient would turn publishing into a way to send mail
+    // from Planeir to anyone.
+    adviserNotificationEmail: text(env.CONSUMER_ADVISER_NOTIFICATION_EMAIL) || '',
     cohort,
     consentPolicyVersion,
     consentManifestId,

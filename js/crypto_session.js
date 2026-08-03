@@ -17,11 +17,15 @@ const PUBLISHED_INFO = Object.freeze({
 });
 
 function getCrypto() {
-  if (!window.crypto || !window.crypto.subtle) {
-    throw new Error('Web Crypto API is unavailable in this browser.');
+  // globalThis rather than window: the same publishing code now runs in the
+  // worker, where a completed call publishes itself and there is no window.
+  // Behaviour in the browser is unchanged -- window IS globalThis there.
+  const runtimeCrypto = globalThis.crypto;
+  if (!runtimeCrypto || !runtimeCrypto.subtle) {
+    throw new Error('Web Crypto API is unavailable in this environment.');
   }
 
-  return window.crypto;
+  return runtimeCrypto;
 }
 
 export function randomBytes(length) {
