@@ -58,7 +58,6 @@
     "js/planning/routing_rules.js:detectGoalCandidates",
     "js/planning/routing_rules.js:getRoutingRulesVersion",
     "js/planning/rules_only_extraction.js:RULES_ONLY_EXTRACTION_VERSION",
-    "js/planning/session_payload.js:buildPersonalBalanceSheetModule",
     "js/planning/utils.js:uniqueBy",
     "js/render.js:debugResolveReportTimelineLayout",
     "js/render.js:getEducationChartVisuals",

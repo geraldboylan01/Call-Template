@@ -45,7 +45,7 @@ const round = (amount) => Math.round(Number.isFinite(amount) ? amount : 0);
  * "€880,000" in an outputsBucketed cell is a validation failure, not a
  * formatting preference.
  */
-export function buildPersonalBalanceSheetModule({ profile, result }) {
+function buildPersonalBalanceSheetModule({ profile, result }) {
   const input = buildPersonalBalanceSheetInput(profile);
   const semantic = result?.semanticResult || {};
 
@@ -176,9 +176,80 @@ function personalBalanceSheetSummary({
   return `<p>${opening} ${position}${split}${reading}${reserve}</p>`;
 }
 
+/**
+ * The Pension projection payload.
+ *
+ * EVERY FIGURE COMES FROM THE ENGINE'S OWN AUTHORED ROWS, verbatim. The module
+ * already produces a client-facing table -- labelled, currency-formatted,
+ * rounded the way a person should read it -- and the one previous attempt to
+ * improve on that re-derived numbers from semanticResult instead, which put
+ * "2,195,539.05" on the same page as "EUR 1,017,100", printed a raw
+ * currentOnTrack enum as if it were English, and showed a year as "2,029".
+ *
+ * So nothing here recalculates and nothing reformats. generated.pensionInputs
+ * is deliberately NOT emitted: it makes the app re-run its own projection, and
+ * a second set of numbers that almost agrees is worse than one set that does.
+ * Wiring that is a separate decision about which engine owns the figures.
+ */
+function buildPensionProjectionModule({ result }) {
+  const outputs = result?.outputs && Array.isArray(result.outputs.rows)
+    ? { columns: [...(result.outputs.columns || ['Output', 'Value'])], rows: result.outputs.rows.map((row) => [...row]) }
+    : null;
+  if (!outputs || outputs.rows.length === 0) return null;
+
+  const row = (match) => outputs.rows.find(([label]) => match.test(String(label)))?.[1];
+  // The contract allows bar and line only; the engine's pension charts are
+  // already bar, so anything else is a change upstream and is dropped rather
+  // than rendered as nothing.
+  const charts = (result.charts || [])
+    .filter((chart) => ['bar', 'line'].includes(chart?.type))
+    .map((chart) => ({ ...chart }));
+
+  return {
+    title: 'Pension projection',
+    generated: {
+      summaryHtml: pensionProjectionSummary({
+        readiness: result?.semanticResult?.readinessSentence,
+        // Tolerant patterns: the engine labels the same figure "at income
+        // start" or "at target start" depending on the scenario, and a summary
+        // that silently drops a sentence when a label shifts is worse than one
+        // that follows the table.
+        potAtIncomeStart: row(/projected .*pot at .*\(current\)/i),
+        requiredPot: row(/required pension pot/i),
+        targetToday: row(/target income \(today/i),
+        surplus: row(/surplus vs required/i)
+      }),
+      outputs,
+      ...(charts.length ? { charts } : {})
+    }
+  };
+}
+
+/**
+ * Two to four sentences, built from the same strings as the table above it.
+ *
+ * The readiness sentence is the engine's own client-facing prose, so the page
+ * and the analysis cannot disagree about the conclusion. Anything the engine
+ * did not produce is simply left out rather than described vaguely.
+ */
+function pensionProjectionSummary({ readiness, potAtIncomeStart, requiredPot, targetToday, surplus }) {
+  const opening = 'This projection carries your pensions forward on Planéir\u2019s standard assumptions '
+    + 'and compares what they are expected to be worth against what the retirement income you asked '
+    + 'for would require.';
+  const position = potAtIncomeStart && requiredPot
+    ? ` At the point your retirement income starts, the projection puts your available pension at `
+      + `${potAtIncomeStart} against a required pot of ${requiredPot}.`
+    : '';
+  const target = targetToday ? ` That target is ${targetToday} a year in today\u2019s money.` : '';
+  const verdict = typeof readiness === 'string' && readiness.trim() ? ` ${readiness.trim()}` : '';
+  const headroom = surplus ? ` The projected surplus against the required pot is ${surplus}.` : '';
+  return `<p>${opening}${position}${target}${verdict}${headroom}</p>`;
+}
+
 /** Which planning modules can be published, and how. */
 const MODULE_BUILDERS = Object.freeze({
-  personal_balance_sheet: buildPersonalBalanceSheetModule
+  personal_balance_sheet: buildPersonalBalanceSheetModule,
+  pension_projection: buildPensionProjectionModule
 });
 
 export function canPublishModule(moduleId) {
@@ -206,6 +277,13 @@ export function buildPublishedSessionFromCall({
       return;
     }
     const built = build({ profile, result });
+    // A builder may decline: a module that ran but produced nothing publishable
+    // must be skipped like one with no builder at all, not pushed as an empty
+    // card the app would render as a heading over nothing.
+    if (!built) {
+      skipped.push(result?.moduleId);
+      return;
+    }
     modules.push({
       id: `module-${index + 1}`,
       createdAt: stamp,

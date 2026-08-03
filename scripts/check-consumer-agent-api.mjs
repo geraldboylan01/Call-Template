@@ -664,13 +664,13 @@ async function agentContext(profile, config = CONFIG) {
   // The band is applied to the OWNER of the pension, not to whoever is speaking.
   assert.equal(
     mapRealtimeFact(profile, { factId: 'pension_employee_contribution_rate', value: { maxForAge: true, owner: 'partner' }, certainty: 'exact' }).canonicalValue,
-    25,
-    'a 48-year-old partner maxes at 25%'
+    0.25,
+    'a 48-year-old partner maxes at 25%, stored as a fraction like any other rate'
   );
   assert.equal(
     mapRealtimeFact(profile, { factId: 'pension_employee_contribution_rate', value: { maxForAge: true, owner: 'primary' }, certainty: 'exact' }).canonicalValue,
-    30,
-    'a 53-year-old maxes at 30%'
+    0.3,
+    'a 53-year-old maxes at 30%, stored as a fraction like any other rate'
   );
   for (const [age, expected] of [[25, 15], [35, 20], [48, 25], [53, 30], [57, 35], [62, 40]]) {
     assert.equal(maxRelievableContributionRatePercent(age), expected, `age ${age}`);

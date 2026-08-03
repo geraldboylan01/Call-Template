@@ -160,5 +160,66 @@ check('an unsupported module is skipped and reported',
   mixed.session.modules.length === 1 && mixed.skipped.join() === 'college_funding');
 check('nothing was skipped for the supported case', skipped.length === 0);
 
+/* ------------------------------------------------ the pension projection */
+
+const pensionProfile = applyProfilePatch(profile, {
+  patchId: 'pension-ready',
+  operations: [
+    { op: 'add', path: '/primaryPerson/intendedRetirementAge', value: 60, provenance },
+    { op: 'add', path: '/incomeSources/-', value: { incomeId: 'job', ownerId: 'primary', label: 'Salary', type: 'employment', grossAnnualAmount: { amount: 90_000, currency: 'EUR' } }, provenance },
+    { op: 'add', path: '/pensions/0/employeeContributionRate', value: 0.2, provenance },
+    { op: 'add', path: '/pensions/0/employerContributionRate', value: 0.1, provenance },
+    { op: 'add', path: '/assumptions/values/retirement', value: { targetIncomeToday: 45_000 }, provenance }
+  ]
+}, { nowIso: NOW }).profile;
+const pensionResult = await runPlanningModule('pension_projection', pensionProfile, { calculationDateIso: '2026-08-02' });
+const pensionModule = buildPublishedSessionFromCall({
+  profile: pensionProfile, results: [pensionResult], clientName: 'Pension Client'
+}).session.modules[0];
+
+check('the pension projection can be published', Boolean(pensionModule));
+check('the app validator accepts the pension projection',
+  importPublishedSession({ ...session, modules: [pensionModule], order: [pensionModule.id], activeModuleId: pensionModule.id })
+    .modules.length === 1);
+
+const pensionGenerated = pensionModule.generated;
+// EVERY FIGURE COMES FROM THE ENGINE'S OWN AUTHORED ROWS. Re-deriving them from
+// semanticResult once put "2,195,539.05" beside "€1,017,100" on the same page,
+// printed a raw currentOnTrack enum as English, and showed a year as "2,029".
+check('the pension table is the engine\'s own rows, unchanged',
+  JSON.stringify(pensionGenerated.outputs.rows) === JSON.stringify(pensionResult.outputs.rows));
+check('the pension table keeps the engine\'s own formatting',
+  pensionGenerated.outputs.rows.every(([, value]) => typeof value === 'string'),
+  'a re-rounded or re-formatted figure is a second source of truth');
+check('no raw status enum reaches the client',
+  !/currentOnTrack|maxOnTrack|offTrack/.test(JSON.stringify(pensionGenerated)));
+// The app must not be handed inputs to re-run its own projection alongside the
+// engine's: two sets of numbers that almost agree is worse than one that does.
+check('the app is not asked to recompute the projection',
+  !Object.hasOwn(pensionGenerated, 'pensionInputs'));
+
+for (const chart of pensionGenerated.charts || []) {
+  check(`pension chart "${chart.title}" is bar or line`, ['bar', 'line'].includes(chart.type));
+}
+check('the pension summary is a single client-facing paragraph',
+  /^<p>.*<\/p>$/.test(pensionGenerated.summaryHtml));
+check('the pension summary names no internal terminology',
+  !/semanticResult|payload|schema|readinessStatus/i.test(pensionGenerated.summaryHtml));
+// THE INVARIANT, not a specific label: every figure the summary states must
+// appear verbatim in the table above it, so prose and table cannot disagree.
+const tableValues = new Set(pensionResult.outputs.rows.map(([, value]) => String(value)));
+const summaryFigures = pensionGenerated.summaryHtml.match(/€[\d,]+/g) || [];
+check('the pension summary states no figure the table does not',
+  summaryFigures.every((figure) => [...tableValues].some((value) => value.includes(figure))),
+  JSON.stringify(summaryFigures));
+check('the pension summary carries the engine\'s own verdict',
+  pensionGenerated.summaryHtml.includes(pensionResult.semanticResult.readinessSentence.slice(0, 40)));
+
+// A module that produced nothing must not publish an empty card.
+check('a pension result with no rows does not publish',
+  buildPublishedSessionFromCall({
+    profile: pensionProfile, results: [{ moduleId: 'pension_projection', outputs: { columns: [], rows: [] } }]
+  }).session.modules.length === 0);
+
 console.info(`[SessionPayload] ${checks} checks passed: a finished call converts into a payload the `
   + 'app accepts, with the required sections, reconciling totals and bar charts only.');

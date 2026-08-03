@@ -693,8 +693,14 @@ function resolveMaxRelievableRate(profile, existing, value) {
   const age = ownerId === 'partner'
     ? profile?.partner?.age
     : profile?.primaryPerson?.age;
-  const rate = maxRelievableContributionRatePercent(age);
-  if (rate === null) {
+  const percent = maxRelievableContributionRatePercent(age);
+  // THROUGH THE SAME CONVERSION AS A SPOKEN RATE. A profile stores a
+  // contribution rate as a fraction -- 0.3 for thirty percent -- so returning
+  // the band as 25 wrote a value the profile validator refuses, and the whole
+  // patch failed as invalid_profile_patch. The unit test asserted 25 and so
+  // agreed with the bug; only the live call caught it.
+  const rate = percent === null ? null : percentageRate(percent);
+  if (percent === null) {
     throw new ConsumerError(
       409,
       'realtime_pension_max_age_required',
@@ -717,9 +723,18 @@ function pensionIndex(profile, value, { contributionRate = false } = {}) {
     // An owner narrows the field before ambiguity is declared. "Aoife pays the
     // max" is unambiguous even in a household holding three pensions, because
     // only one of them is hers and can be paid into.
+    // "primary" and "partner" are ROLES; a profile stores person IDS, and the
+    // partner's is whatever established them -- "partner_realtime" on a call.
+    // Comparing the role against the id matched nothing, so the partner's only
+    // contributory pension still looked ambiguous and her rate was refused.
     const owner = plainObject(value) ? String(value.owner || value.ownerId || '') : '';
-    const scoped = ['primary', 'partner'].includes(owner)
-      ? profile.pensions.filter((pension) => String(pension.ownerId || 'primary') === owner)
+    const ownerPersonId = owner === 'partner'
+      ? profile.partner?.personId
+      : owner === 'primary'
+        ? profile.primaryPerson?.personId
+        : null;
+    const scoped = ownerPersonId
+      ? profile.pensions.filter((pension) => String(pension.ownerId || '') === String(ownerPersonId))
       : profile.pensions;
     const contributory = scoped.filter(
       (pension) => !NON_CONTRIBUTORY_PENSION_TYPES.includes(pension.type)
