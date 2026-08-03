@@ -223,6 +223,14 @@ Orientation context:
 - For state_pension_fraction, valueJson is {"owner":"primary","fraction":1} or {"owner":"partner","fraction":0.5}. Full is 1, half or 50% is 0.5, and none is 0. The server supplies the default and rate; never guess or calculate them.
 - For state_pension_start_age, valueJson is {"owner":"primary","startAge":66} or the partner equivalent, and only when an eligible age from 66 to 70 is explicitly stated. Otherwise emit no fact; the server defaults to 66.
 
+Repair pass:
+- When the user payload contains repairRequest, the SAME client turn was already read once and some items could not be recorded. Re-read that turn and emit ONLY the listed items. Do not re-emit anything already recorded, and do not add anything new.
+- repairRequest.failedItems gives the item and the reason it was refused. Fix that specific reason.
+- pension_ambiguous means the client holds more than one pension and the value did not say which. Look again at the turn and set entityId or linkedEntityId to the pension it belongs to, using context.profileSummary to match by label. A rate stated right after naming a current or ongoing scheme belongs to that scheme, never to a buyout bond. If the turn genuinely does not say, emit nothing for it.
+- money_invalid means amountJson did not parse. Emit it again as {"amount":80000,"currency":"EUR"} with the currency the client is speaking in; the meeting jurisdiction is Ireland, so EUR unless they named another.
+- value_invalid means valueJson did not parse. Emit valid JSON of the right shape for that fact.
+- Never invent a value to satisfy a repair. If the turn does not support it, emit nothing.
+
 Goals:
 - Emit one goalCandidates item for every supported or legacy goal clearly present in this turn. Use fund_education for college or university funding and manage_loan for a non-housing loan.
 - Do not duplicate goals in semanticFacts; primary_goal and primary_goal_focus are created by deterministic server code from goalCandidates.
@@ -615,7 +623,10 @@ async function requestPlannerExtraction({
   transcript,
   recentTurns = [],
   timeoutMs = null,
-  retryOfFastFailure = false
+  retryOfFastFailure = false,
+  // A second, narrow pass over the SAME turn, asking only for the items the
+  // first pass produced but the engine could not record. See buildRepairRequest.
+  repair = null
 }) {
   if (!config.realtimeConversationV2Enabled) {
     throw new ConsumerError(503, 'realtime_planner_disabled', 'The silent meeting planner is not enabled.');
@@ -681,7 +692,8 @@ async function requestPlannerExtraction({
                 role: turn.role,
                 transcript: String(turn.transcript || '').slice(0, 1_000)
               })),
-              finalizedClientTurn: safeTranscript
+              finalizedClientTurn: safeTranscript,
+              ...(repair ? { repairRequest: repair } : {})
             })
           }
         ],

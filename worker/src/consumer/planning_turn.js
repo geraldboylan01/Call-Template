@@ -57,6 +57,73 @@ export {
  * @param {object} deps.persistence  {leaseId, toolAttemptId, evidenceRef} or null for a
  *                                   transport that does not keep fact proposals
  */
+/**
+ * Which refusals a second, narrow planner pass could plausibly fix.
+ *
+ * Deliberately a closed list. A repair costs a planner call and the client's
+ * patience, so it must only run where the FIRST pass produced something the
+ * engine understood but could not use -- a value that would not parse, or one
+ * that did not say which position it belonged to. A refusal that reflects a
+ * settled rule is not a parsing problem and will refuse again.
+ */
+const REPAIRABLE_REJECTIONS = Object.freeze({
+  realtime_pension_review_required: 'pension_ambiguous',
+  realtime_planner_candidate_money_invalid: 'money_invalid',
+  realtime_planner_candidate_invalid: 'value_invalid',
+  realtime_planner_output_invalid: 'value_invalid'
+});
+
+/**
+ * The repair request for a turn, or null when nothing is worth re-reading.
+ *
+ * WHY A SECOND PASS AND NOT A BIGGER FIRST ONE. Extraction fails on dense turns:
+ * a client who names two pensions and both contribution rates in one breath has
+ * said something perfectly clear that the engine cannot place, because "30%"
+ * does not say which pension. Asking the planner to try harder on every turn
+ * would slow down the many turns that already work. Asking it once, narrowly,
+ * about the specific items that failed costs nothing on a clean turn.
+ *
+ * Observed: the client stated both rates, they were refused as ambiguous, and
+ * the identical restatement one turn later was accepted -- because by then the
+ * meeting had asked about one pension and the answer bound to it. The
+ * information was always there. Only the linkage was missing.
+ */
+export function buildRepairRequest(outcomes = []) {
+  const failedItems = outcomes
+    .filter((outcome) => outcome.accepted !== true)
+    .map((outcome) => {
+      const reason = REPAIRABLE_REJECTIONS[outcome.errorCode];
+      return reason
+        ? { candidateId: outcome.candidateId || null, factId: outcome.factId || null, reason }
+        : null;
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+  if (failedItems.length === 0) return null;
+  return {
+    instruction: 'Re-read the same client turn and emit ONLY these items, fixing the stated reason. '
+      + 'Emit nothing else. Never invent a value the turn does not support.',
+    failedItems
+  };
+}
+
+/**
+ * Fold a repair pass's results into the first pass's outcomes.
+ *
+ * A value recovered on the second pass must read as RECORDED, not as a
+ * rejection that happened to be retried -- otherwise the renderer apologises
+ * for something the client can see was understood.
+ */
+export function mergeRepairOutcomes(original = [], repaired = []) {
+  const recoveredFactIds = new Set(
+    repaired.filter((item) => item.accepted === true && item.factId).map((item) => item.factId)
+  );
+  const stillFailing = original.filter((item) => (
+    item.accepted === true || !recoveredFactIds.has(item.factId)
+  ));
+  return [...stillFailing, ...repaired];
+}
+
 export async function applyPlannerCandidates({
   env,
   config,

@@ -25,8 +25,10 @@ import {
 } from './planning_facts.js';
 import {
   applyPlannerCandidates,
+  buildRepairRequest,
   composeAndPersistBrief,
   confirmPlanSelection,
+  mergeRepairOutcomes,
   recordPlanEvaluation,
   resolveCapacityDecision,
   resolveModuleOffer
@@ -2001,6 +2003,40 @@ export class ConsumerRealtimeSession {
       return { status: 'failed', code, exhaustedRecovery: true };
     }
 
+    // ONE narrow second pass over only what could not be recorded. On a clean
+    // turn buildRepairRequest returns null and nothing extra is spent.
+    const repair = buildRepairRequest(applied.outcomes);
+    if (repair) {
+      try {
+        const repairContext = await this.planningContext();
+        const repaired = await extractRealtimePlannerTurn({
+          env: this.env,
+          config: repairContext.config,
+          context: repairContext,
+          sourceTurnId: `${itemId}-repair`,
+          transcript,
+          recentTurns,
+          repair,
+          // Shorter than a first pass: the client is mid-conversation, and a
+          // repair that does not return quickly is worth less than the meeting
+          // moving on. The spoken response handles either outcome.
+          timeoutMs: Math.min(8_000, repairContext.config.realtimePlannerTimeoutMs)
+        });
+        await this.recordPlannerUsage(repaired.metadata, repairContext.config);
+        const reapplied = await this.applyPlannerExtraction(repaired.extraction, { turnOrdinal });
+        applied = { ...reapplied, outcomes: mergeRepairOutcomes(applied.outcomes, reapplied.outcomes) };
+      } catch (_error) {
+        // A failed repair leaves the first pass exactly as it was.
+        await appendRealtimeEvent(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          direction: 'server',
+          eventType: 'realtime.planner.repair_failed',
+          payload: { sourceTurnId: itemId }
+        }).catch(() => {});
+      }
+    }
+
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
@@ -2009,6 +2045,7 @@ export class ConsumerRealtimeSession {
       payload: {
         sourceTurnId: itemId,
         latencyMs: planned.metadata.latencyMs,
+        repaired: Boolean(repair),
         acceptedCandidates: applied.outcomes.filter((item) => item.accepted).length,
         rejectedCandidates: applied.outcomes.filter((item) => !item.accepted).length
       }

@@ -94,6 +94,8 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
   'realtime.planner.completed': event({
     sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
     latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER,
+    // Whether a narrow second pass ran for this turn. Boolean, never content.
+    repaired: NON_CONTENT_FIELD_TYPES.BOOLEAN,
     acceptedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER,
     rejectedCandidates: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
@@ -108,6 +110,12 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
   'realtime.planner.refresh_failed': event({
     sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
     code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  // The narrow second pass over items the first could not record did not
+  // return. Never a client-visible fault: the turn keeps the first pass's
+  // outcomes and continues.
+  'realtime.planner.repair_failed': event({
+    sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING
   }),
   // Carries the provider's own classification of the failure. Without these
   // fields a planner outage is indistinguishable from a schema bug, an auth

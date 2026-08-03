@@ -33,6 +33,8 @@ import { extractRealtimePlannerTurn } from './realtime_planner.js';
 import { buildPlanningContext } from './planning_context.js';
 import {
   applyPlannerCandidates,
+  buildRepairRequest,
+  mergeRepairOutcomes,
   composeAndPersistBrief,
   confirmPlanSelection,
   recordPlanEvaluation,
@@ -350,6 +352,8 @@ export async function processAgentTurn(env, config, {
   }
 
   let outcomes = [];
+  let repairedCount = 0;
+  let repairAttemptFailed = false;
   if (extraction) {
     // The same silent-planner attempt row the voice meeting opens, so an agent
     // turn leaves an identical audit trail and fact proposals bind to it.
@@ -375,6 +379,47 @@ export async function processAgentTurn(env, config, {
     });
     outcomes = applied.outcomes;
     context = applied.context;
+
+    // ONE narrow second pass, only over what the first could not record, and
+    // only when the planner itself ran. A degraded turn used the deterministic
+    // extractor, which has no model to re-ask.
+    const repair = degraded ? null : buildRepairRequest(outcomes);
+    if (repair) {
+      try {
+        const repaired = await extractRealtimePlannerTurn({
+          env,
+          config,
+          context,
+          sourceTurnId: `${turnRef}-repair`,
+          transcript: safeMessage,
+          recentTurns,
+          repair,
+          // Shorter than a first pass: the client is already waiting, and a
+          // repair that does not come back quickly is worth less than the turn
+          // continuing without it. The renderer handles the failure either way.
+          timeoutMs: Math.min(8_000, config.realtimePlannerTimeoutMs)
+        });
+        const reapplied = await applyPlannerCandidates({
+          env,
+          config,
+          context,
+          extraction: repaired.extraction,
+          evidenceRef: `${turnRef}-repair`,
+          leaseId: meetingId,
+          toolAttemptId: attempt.row.id,
+          loadContext: () => loadAgentContext(env, config, sessionId, meetingId)
+        });
+        context = reapplied.context;
+        // The repair REPLACES the outcome for anything it recovered, so the
+        // renderer is told the truth: a value recovered on the second pass was
+        // recorded, and must be confirmed rather than apologised for.
+        outcomes = mergeRepairOutcomes(outcomes, reapplied.outcomes);
+        repairedCount = reapplied.outcomes.filter((item) => item.accepted === true).length;
+      } catch (_error) {
+        // A failed repair leaves the first pass's outcomes exactly as they were.
+        repairAttemptFailed = true;
+      }
+    }
     await completeRealtimeToolAttempt(env, {
       sessionId,
       leaseId: meetingId,
@@ -445,6 +490,8 @@ export async function processAgentTurn(env, config, {
       ...toAgentDiagnosticView(context),
       decisionMode: 'utterance',
       candidateOutcomes: outcomes,
+      repairedCount,
+      repairAttemptFailed,
       plannerErrorCode,
       // A degraded turn used the deterministic extractor, not the AI planner.
       // It must never be reported as a normal successful planner turn.
