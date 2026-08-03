@@ -66,6 +66,7 @@
     "check:consumer-bootstrap-contract": "node ./scripts/check-consumer-bootstrap-contract.mjs",
     "check:consumer-planner-repair": "node ./scripts/check-consumer-planner-repair.mjs",
     "check:no-stale-exports": "node ./scripts/check-no-stale-exports.mjs",
-    "check:consumer-turn-segments": "node ./scripts/check-consumer-turn-segments.mjs"
+    "check:consumer-turn-segments": "node ./scripts/check-consumer-turn-segments.mjs",
+    "measure:extraction": "node ./scripts/measure-extraction-methods.mjs"
   }
 }

@@ -350,6 +350,42 @@ export function bindCandidateToAskedEntity(candidate, state, profile = null) {
   };
 }
 
+/**
+ * A contribution rate said in the same breath as a pension belongs to it.
+ *
+ * "Aoife has about 500,000 in an Aon lifestyle fund. Her company pays 10% and
+ * she pays the max" names the pension and the rates in one turn, and a person
+ * reading it has no doubt whose they are. The planner is not reliable about
+ * saying so -- asked in isolation it attributed "she pays the max" to the
+ * primary person -- and a rate with no owner cannot be placed in a household
+ * holding several pensions, so it was refused as ambiguous and lost.
+ *
+ * When the turn names exactly ONE pension, an unowned rate in that same turn
+ * inherits its owner. More than one pension named is genuinely ambiguous and is
+ * left alone: guessing between them would put a real contribution on the wrong
+ * pot, which is worse than asking.
+ */
+function inheritOwnerFromNamedPension(facts, positions) {
+  const pensions = positions.filter((position) => position?.kind === 'pension');
+  if (pensions.length !== 1) return facts;
+  const owner = pensions[0].owner;
+  if (!['primary', 'partner'].includes(owner)) return facts;
+  const RATES = ['pension_employee_contribution_rate', 'pension_employer_contribution_rate'];
+  return facts.map((fact) => {
+    if (!RATES.includes(fact?.factId)) return fact;
+    const value = fact.value;
+    const named = value && typeof value === 'object' && !Array.isArray(value)
+      && (value.owner || value.ownerId);
+    if (named) return fact;
+    return {
+      ...fact,
+      value: value && typeof value === 'object' && !Array.isArray(value)
+        ? { ...value, owner }
+        : { rate: value, owner }
+    };
+  });
+}
+
 export function mapPlannerExtractionToCandidates(extraction) {
   const mappedGoals = (extraction.goalCandidates || [])
     .filter((candidate) => ['high', 'medium'].includes(candidate.confidence))
@@ -393,7 +429,10 @@ export function mapPlannerExtractionToCandidates(extraction) {
   // So the order is by WHAT EACH CANDIDATE ESTABLISHES: people first, then the
   // positions those people hold, then the figures that attach to a position.
   const establishesPerson = (candidate) => candidate?.factId === 'partner_person';
-  const semanticFacts = extraction.semanticFacts || [];
+  const semanticFacts = inheritOwnerFromNamedPension(
+    extraction.semanticFacts || [],
+    extraction.positions || []
+  );
   const ordered = [
     ...mappedGoals,
     ...semanticFacts.filter(establishesPerson),

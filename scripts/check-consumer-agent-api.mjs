@@ -707,6 +707,55 @@ async function agentContext(profile, config = CONFIG) {
 }
 
 {
+  // A RATE SAID IN THE SAME BREATH AS A PENSION BELONGS TO IT. The planner is
+  // not reliable about saying whose it is -- asked in isolation it attributed
+  // "she pays the max" to the primary person -- and a rate with no owner cannot
+  // be placed in a household holding several pensions, so it was refused.
+  const withOnePension = {
+    goalCandidates: [], sectionCompletions: [], invalidCandidates: [],
+    positions: [{ candidateId: 'position-1', kind: 'pension', label: 'Aon lifestyle fund', owner: 'partner', evidenceText: 'Aoife has 500,000 in an Aon fund' }],
+    semanticFacts: [
+      { candidateId: 'fact-1', factId: 'pension_employee_contribution_rate', value: { maxForAge: true }, certainty: 'exact', evidenceText: 'she pays the max' },
+      { candidateId: 'fact-2', factId: 'pension_employer_contribution_rate', value: 10, certainty: 'exact', evidenceText: 'her company pays 10%' }
+    ]
+  };
+  const bound = mapPlannerExtractionToCandidates(withOnePension)
+    .filter((candidate) => /contribution_rate/.test(candidate.factId));
+  assert.equal(bound.length, 2);
+  assert.ok(bound.every((candidate) => candidate.value.owner === 'partner'),
+    'both rates inherit the owner of the only pension named in the turn');
+
+  // TWO pensions named is genuinely ambiguous. Guessing between them would put a
+  // real contribution on the wrong pot, which is worse than asking.
+  const withTwo = {
+    ...withOnePension,
+    positions: [
+      { candidateId: 'position-1', kind: 'pension', label: 'Aon fund', owner: 'partner', evidenceText: 'a' },
+      { candidateId: 'position-2', kind: 'pension', label: 'Irish Life', owner: 'primary', evidenceText: 'b' }
+    ]
+  };
+  assert.ok(
+    mapPlannerExtractionToCandidates(withTwo)
+      .filter((candidate) => /contribution_rate/.test(candidate.factId))
+      .every((candidate) => !candidate.value?.owner),
+    'two pensions in one turn leaves the rate unowned rather than guessing'
+  );
+
+  // An owner the planner DID state is never overwritten.
+  const stated = {
+    ...withOnePension,
+    semanticFacts: [{ candidateId: 'fact-1', factId: 'pension_employer_contribution_rate', value: { rate: 10, owner: 'primary' }, certainty: 'exact', evidenceText: 'x' }]
+  };
+  assert.equal(
+    mapPlannerExtractionToCandidates(stated)
+      .find((candidate) => /contribution_rate/.test(candidate.factId)).value.owner,
+    'primary',
+    'a stated owner wins over the inferred one'
+  );
+  pass('a contribution rate inherits the owner of the pension named beside it');
+}
+
+{
   // ONE HOLDING, ONE QUESTION. Asking the two rates a turn apart is how they
   // ended up on different pensions: "the employer pays 10% into that same one"
   // arrived after the meeting had moved to the next holding.
