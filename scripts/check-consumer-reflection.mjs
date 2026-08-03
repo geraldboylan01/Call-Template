@@ -190,6 +190,41 @@ check('text reports counts, never the values',
   !/extractionOutcome[\s\S]{0,300}transcript/.test(agentSource),
   'the outcome must carry counts only, so no client figure can leak into an instruction');
 
+
+
+/* ------------------------- a refusal that knows what it is waiting for */
+
+// "She pays the max" is a complete answer the server can turn into a
+// percentage -- but only once it knows whose pension it is and how old they
+// are. Refusing without saying so left the meeting to move on, and the
+// contribution was never recorded at all.
+const blocked = extractionOutcomeInstructions({
+  acceptedCount: 3,
+  rejectedCount: 1,
+  blockedOn: 'the age of the person whose pension it is, because the maximum contribution depends on their age'
+}).join(' ');
+check('a blocked refusal asks for the one missing thing',
+  /Ask for that one missing thing next/.test(blocked));
+check('a blocked refusal names what it needs',
+  /maximum contribution depends on their age/.test(blocked));
+check('a blocked refusal still hides the machinery',
+  /Do not mention any technical issue/.test(blocked));
+check('a blocked refusal does not confirm the figures',
+  /do not repeat their figures back as though they\s+were recorded/.test(blocked));
+// It must outrank the generic advice: there is exactly one useful question here.
+check('naming the need outranks the generic rejection wording',
+  !/ONE of the outstanding items/.test(blocked));
+
+const { blockedOnFromOutcomes } = await import('../worker/src/consumer/planning_turn.js');
+check('the pension age refusal is recognised',
+  /age/.test(blockedOnFromOutcomes([
+    { accepted: false, errorCode: 'realtime_pension_max_age_required' }
+  ]) || ''));
+check('an ordinary refusal names nothing',
+  blockedOnFromOutcomes([{ accepted: false, errorCode: 'realtime_planner_candidate_money_invalid' }]) === null);
+check('an accepted candidate blocks nothing',
+  blockedOnFromOutcomes([{ accepted: true, errorCode: 'realtime_pension_max_age_required' }]) === null);
+
 console.info(`[Reflection] ${checks} checks passed: a figure is always repeated back, never claimed `
   + 'as held, never invented, never outranks the real answer, and a figure that was NOT recorded is '
   + 'never confirmed nor its question re-asked verbatim.');

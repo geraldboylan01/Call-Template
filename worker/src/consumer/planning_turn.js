@@ -88,6 +88,29 @@ const REPAIRABLE_REJECTIONS = Object.freeze({
  * meeting had asked about one pension and the answer bound to it. The
  * information was always there. Only the linkage was missing.
  */
+/**
+ * What a refused candidate is waiting for, in words the meeting can ask for.
+ *
+ * Some refusals are not "we could not read that" but "we cannot use that yet".
+ * A client saying their partner pays the maximum has given a complete answer,
+ * and the server can turn it into a percentage -- but only once it knows the
+ * partner's age. Refusing without saying so left the meeting to move on and the
+ * contribution was simply never recorded.
+ */
+const BLOCKED_ON = Object.freeze({
+  realtime_pension_max_age_required: "the age of the person whose pension it is, because the maximum "
+    + 'contribution depends on their age'
+});
+
+export function blockedOnFromOutcomes(outcomes = []) {
+  for (const outcome of outcomes) {
+    if (outcome?.accepted === true) continue;
+    const need = BLOCKED_ON[outcome?.errorCode];
+    if (need) return need;
+  }
+  return null;
+}
+
 export function buildRepairRequest(outcomes = []) {
   const failedItems = outcomes
     .filter((outcome) => outcome.accepted !== true)

@@ -390,6 +390,15 @@ export function realtimeReflectionInstructions(transcript) {
 export function extractionOutcomeInstructions(outcome = {}) {
   const rejected = Number(outcome.rejectedCount || 0);
   const accepted = Number(outcome.acceptedCount || 0);
+  // A refusal that names what it is waiting for outranks the generic advice
+  // below: there is exactly one useful next question and this is it.
+  if (outcome.blockedOn) {
+    return [
+      `The client's last answer can be used, but not yet: it needs ${outcome.blockedOn}. `
+        + 'Do not mention any technical issue and do not repeat their figures back as though they '
+        + 'were recorded. Ask for that one missing thing next, in plain words, and nothing else.'
+    ];
+  }
   // A planner that failed operationally is handled the way voice already
   // handles it: never surface the fault, never ask the client to repeat a
   // perfectly clear answer. Only the wording of the NEXT question changes.

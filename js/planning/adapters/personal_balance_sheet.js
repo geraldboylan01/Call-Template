@@ -47,13 +47,17 @@ function months(value) {
  * client says about being able to sell it tomorrow, so a "liquid investment"
  * flag must not route it into spendable reserves.
  */
-const ALWAYS_LEGACY = /\b(?:crypto|bitcoin|btc|ethereum|eth|solana|coinbase|binance|kraken|altcoin|nft)\b/i;
+// A TRAILING "S" IS THE SAME HOLDING. Every one of these matched the singular
+// only, so a client saying "prize bonds" -- which is how anyone says it -- had
+// EUR 12,000 classified as Legacy instead of Liquidity, and their reserves
+// understated by that much on the page they were shown.
+const ALWAYS_LEGACY = /\b(?:crypto|bitcoin|btc|ethereum|eth|solana|coinbase|binance|kraken|altcoin|nft)s?\b/i;
 
 /**
  * Short-duration holdings that genuinely are reserves.
  * A money market fund is spendable in a way an equity fund is not.
  */
-const MONEY_MARKET = /\b(?:money market|deposit account|savings account|term deposit|state savings|prize bond|cash fund)\b/i;
+const MONEY_MARKET = /\b(?:money market|deposit account|savings account|term deposit|state savings|prize bond|cash fund)s?\b/i;
 
 /**
  * DIVERSIFIED means one holding that already spreads the risk for you -- an
@@ -67,12 +71,12 @@ const MONEY_MARKET = /\b(?:money market|deposit account|savings account|term dep
  * the documented bias, and the meeting can ask about it.
  */
 const DIVERSIFIED_FUND = new RegExp([
-  '\\betf\\b', '\\bindex\\b', '\\btracker\\b',
+  '\\betfs?\\b', '\\bindex\\b', '\\btrackers?\\b',
   's&p ?500', '\\bsp ?500\\b', '\\bmsci\\b', '\\bftse\\b',
   'all[- ]?world', 'world equity', 'global equity', 'emerging markets',
   'multi[- ]?asset', 'managed fund', 'balanced fund', 'lifestyle fund',
   '\\bprisma\\b', '\\bvanguard\\b', '\\bishares\\b', '\\bvwce\\b',
-  'mutual fund', 'unit trust', 'index fund'
+  'mutual funds?', 'unit trusts?', 'index funds?'
 ].join('|'), 'i');
 
 function bucketForAsset(asset) {

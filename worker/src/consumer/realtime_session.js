@@ -26,6 +26,7 @@ import {
 import { readableSegments } from './turn_segments.js';
 import {
   applyPlannerCandidates,
+  blockedOnFromOutcomes,
   buildRepairRequest,
   composeAndPersistBrief,
   confirmPlanSelection,
@@ -955,7 +956,8 @@ export class ConsumerRealtimeSession {
           // the same question again, which reads as not listening.
           await this.authorizeResponse('planner_candidates_rejected', {
             acceptedCount: plannerOutcomes.length - rejectedCount,
-            rejectedCount
+            rejectedCount,
+            blockedOn: blockedOnFromOutcomes(plannerOutcomes)
           });
           return;
         }
@@ -1567,7 +1569,8 @@ export class ConsumerRealtimeSession {
         : authorizationReason === 'planner_candidates_rejected'
           ? extractionOutcomeInstructions({
             acceptedCount: Number(authorization.options?.acceptedCount || 0),
-            rejectedCount: Number(authorization.options?.rejectedCount || 0)
+            rejectedCount: Number(authorization.options?.rejectedCount || 0),
+            blockedOn: authorization.options?.blockedOn || null
           }).join(' ')
         : authorizationReason === 'planner_recovery'
           ? 'Do not mention any technical issue, error, failure, saving problem or planning note, and do not ask the client to repeat, restate or rephrase. Briefly acknowledge the latest client point without claiming it was saved, then continue naturally with one useful next question from the signed brief.'

@@ -33,6 +33,7 @@ import { extractRealtimePlannerTurn, extractSegmentedPlannerTurn } from './realt
 import { buildPlanningContext } from './planning_context.js';
 import {
   applyPlannerCandidates,
+  blockedOnFromOutcomes,
   buildRepairRequest,
   mergeRepairOutcomes,
   composeAndPersistBrief,
@@ -468,7 +469,8 @@ export async function processAgentTurn(env, config, {
       // the client is told nothing went wrong -- which is exactly the fault the
       // renderer was given outcomes to prevent.
       rejectedCount: outcomes.filter((item) => item.accepted === false).length + segmentsFailed,
-      plannerFailed: degraded === true || Boolean(plannerErrorCode)
+      plannerFailed: degraded === true || Boolean(plannerErrorCode),
+      blockedOn: blockedOnFromOutcomes(outcomes)
     }
   });
   await addAgentMeetingSpend(env, meetingId, Number(rendered.usageMicroEur || 0));
