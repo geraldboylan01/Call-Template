@@ -1,3 +1,5 @@
+import { figuresAreGrounded } from './spoken_figures.js';
+
 /**
  * A client turn, read in pieces rather than all at once.
  *
@@ -220,5 +222,61 @@ export function mergeSegmentExtractions(extractions, sourceTurnId) {
     positions: renumber([...positions.values()], 'position'),
     invalidCandidates,
     sectionCompletions: [...sections.values()]
+  });
+}
+
+/* ------------------------------------- reading while the client still speaks */
+
+/**
+ * The pieces of an in-progress turn that are safe to read now.
+ *
+ * A streaming recogniser appends as it goes and revises before it settles, so
+ * the LAST piece of what has arrived so far is never safe: the client is still
+ * mid-clause and the words may still change. Every earlier piece is followed by
+ * speech that has already moved on, which is the strongest signal available
+ * that the recogniser is done with it.
+ *
+ * This is the conservative half of the micro-turn idea. Reading early buys the
+ * time back; reading the trailing fragment early would buy a wrong figure.
+ */
+export function readableSegments(inProgressTranscript) {
+  const segments = segmentClientTurn(inProgressTranscript);
+  return segments.length <= 1 ? [] : segments.slice(0, -1);
+}
+
+/**
+ * Drop anything whose figures are not in the final transcript.
+ *
+ * NOTHING READ FROM A PARTIAL IS TRUSTED. Work done while the client was still
+ * speaking is a head start, never a decision: a value read from "I have sixteen
+ * thousand" must not survive the recogniser settling on "sixty thousand". The
+ * candidate's own evidence text is checked against what the client finally said,
+ * and anything that no longer appears is discarded and re-read.
+ *
+ * @param {object} extraction merged candidates, possibly read from partials
+ * @param {string} finalTranscript what the client actually said
+ */
+export function reconcileAgainstFinalTranscript(extraction, finalTranscript) {
+  if (!extraction) return null;
+  const grounded = (candidate) => {
+    const evidence = String(candidate?.evidenceText || '');
+    // A candidate with no evidence text cannot be checked, so it is not kept:
+    // the whole point is that a partial read must prove itself.
+    if (!evidence) return false;
+    return figuresAreGrounded(evidence, finalTranscript);
+  };
+  const dropped = [];
+  const keep = (items, kind) => (items || []).filter((candidate) => {
+    if (grounded(candidate)) return true;
+    dropped.push({ kind, candidateId: candidate.candidateId || null });
+    return false;
+  });
+  return Object.freeze({
+    ...extraction,
+    semanticFacts: keep(extraction.semanticFacts, 'fact'),
+    positions: keep(extraction.positions, 'position'),
+    // Goals carry no figures, so revision cannot make them wrong.
+    goalCandidates: extraction.goalCandidates || [],
+    droppedByReconciliation: dropped
   });
 }

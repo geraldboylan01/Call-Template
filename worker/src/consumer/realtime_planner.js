@@ -24,7 +24,11 @@ const SEMANTIC_FACT_IDS = Object.freeze(
 import { buildRealtimeFactReadBack } from './realtime_fact_mapper.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
-import { mergeSegmentExtractions, segmentClientTurn } from './turn_segments.js';
+import {
+  mergeSegmentExtractions,
+  reconcileAgainstFinalTranscript,
+  segmentClientTurn
+} from './turn_segments.js';
 import { realtimeChoiceVocabulary } from './realtime_fact_mapper.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 
@@ -614,15 +618,24 @@ export async function extractSegmentedPlannerTurn(options) {
   const segments = segmentClientTurn(options.transcript);
   if (segments.length <= 1) return extractRealtimePlannerTurn(options);
 
-  const settled = await Promise.allSettled(segments.map((segment, index) => (
-    extractRealtimePlannerTurn({
+  // Work already done while the client was still speaking, keyed by the exact
+  // words it was done on. The key is what makes reading early safe: if the
+  // recogniser revised those words, the text no longer matches and the entry is
+  // simply not found, so the piece is read again from what was actually said.
+  // Revision safety falls out of the lookup rather than needing to be detected.
+  const prefetched = options.prefetched instanceof Map ? options.prefetched : null;
+
+  const settled = await Promise.allSettled(segments.map((segment, index) => {
+    const ready = prefetched?.get(segment);
+    if (ready) return ready;
+    return extractRealtimePlannerTurn({
       ...options,
       transcript: segment,
       // Each piece is audited under its own id, so a failure can be traced to
       // the clause that caused it rather than to the whole turn.
       sourceTurnId: `${options.sourceTurnId}#s${index + 1}`
-    })
-  )));
+    });
+  }));
 
   const succeeded = settled.filter((result) => result.status === 'fulfilled').map((result) => result.value);
   if (succeeded.length === 0) {
@@ -632,7 +645,12 @@ export async function extractSegmentedPlannerTurn(options) {
     throw settled[0].reason;
   }
 
-  const extraction = mergeSegmentExtractions(succeeded.map((result) => result.extraction), options.sourceTurnId);
+  const merged = mergeSegmentExtractions(succeeded.map((result) => result.extraction), options.sourceTurnId);
+  // NOTHING READ FROM A PARTIAL IS TRUSTED. A value read from "I have sixteen
+  // thousand" must not survive the recogniser settling on "sixty thousand".
+  const extraction = prefetched
+    ? reconcileAgainstFinalTranscript(merged, options.transcript)
+    : merged;
   const sum = (field) => succeeded.reduce((total, result) => total + Number(result.metadata?.[field] || 0), 0);
   return {
     extraction,

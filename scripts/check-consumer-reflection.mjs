@@ -28,6 +28,7 @@ import {
   shouldReflectTurn
 } from '../worker/src/consumer/realtime_provider.js';
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
+import { ungroundedFigures } from '../worker/src/consumer/spoken_figures.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 let checks = 0;
@@ -83,39 +84,10 @@ check('the client\'s words are never embedded in the instruction',
 
 /* ------------------------------------------------------ groundedness */
 
-/**
- * Every figure a reflection speaks must appear in what the client said.
- * Deterministic, free, and the only guard that catches an invented number.
- */
-const NUMBER_WORDS = Object.freeze({
-  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
-  seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40,
-  fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90
-});
-
-/**
- * Written numbers become digits on BOTH sides before comparing, because the
- * mishearings that matter most are spoken-word pairs -- thirty and thirteen,
- * sixty and sixteen, fifty and fifteen -- and a digits-only check misses every
- * one of them. Compound forms ("three hundred and sixty thousand") are left
- * alone; the confusable pairs are all in the tens.
- */
-function normaliseFigures(text) {
-  return String(text || '')
-    .toLowerCase()
-    .replace(/\b([a-z]+)\b/g, (word) => (
-      Object.hasOwn(NUMBER_WORDS, word) ? String(NUMBER_WORDS[word]) : word
-    ))
-    .replace(/[,\s]/g, '');
-}
-
-function ungroundedFigures(reflection, clientTranscript) {
-  const spoken = normaliseFigures(clientTranscript);
-  return [...normaliseFigures(reflection).matchAll(/\d+/g)]
-    .map((match) => match[0])
-    .filter((figure) => figure && !spoken.includes(figure));
-}
+// The implementation now lives in worker source, because Phase 2 extraction
+// from a partial transcript needs the same guard. Importing it here rather than
+// keeping a copy is the point: a second copy is how the checks and the code
+// drift apart.
 
 const said = 'I pay 30% and the company adds 10%, and the pot is about 360,000.';
 check('a faithful reflection passes',

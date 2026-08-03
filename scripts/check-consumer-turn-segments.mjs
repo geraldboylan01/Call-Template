@@ -21,6 +21,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   mergeSegmentExtractions,
+  readableSegments,
+  reconcileAgainstFinalTranscript,
   segmentClientTurn,
   shouldSegmentTurn
 } from '../worker/src/consumer/turn_segments.js';
@@ -191,5 +193,106 @@ for (const [transport, file] of [
     /repaired = await extractRealtimePlannerTurn\(/.test(source));
 }
 
+
+
+/* ============================ reading while the client still speaks ======== */
+
+/**
+ * The trailing fragment is never read. A streaming recogniser appends as it
+ * goes and revises before it settles, so the clause the client is still saying
+ * may not be the clause they end up having said.
+ */
+const speaking = 'I earn 114,000 plus a 10,000 bonus. Aoife earns 150,000 plus a 30,000 bonus. Together we';
+const readable = readableSegments(speaking);
+check('the clause still being spoken is never read early',
+  !readable.some((segment) => segment.includes('Together we')), JSON.stringify(readable));
+check('a settled clause is read early', readable.length >= 1, JSON.stringify(readable));
+check('nothing is read early from a single unfinished clause',
+  readableSegments('I earn about').length === 0,
+  'there is no settled clause yet, so there is nothing safe to start on');
+check('an empty in-progress turn reads nothing early', readableSegments('').length === 0);
+
+/* ------------------------------- a partial read must prove itself */
+
+// THE REVISION CASE, which is why partial reads are never trusted. The
+// recogniser hears "sixteen thousand" and settles on "sixty thousand"; a value
+// read from the first must not survive into the profile.
+const readFromPartial = {
+  schemaVersion: 'planner_extraction_v3',
+  goalCandidates: [{ candidateId: 'goal-1', goalType: 'retire', evidenceText: 'I want to retire' }],
+  semanticFacts: [
+    { candidateId: 'fact-1', factId: 'cash_savings', value: 16_000, evidenceText: 'about sixteen thousand in savings' },
+    { candidateId: 'fact-2', factId: 'monthly_spending', value: 3_500, evidenceText: 'we spend 3,500 a month' }
+  ],
+  positions: [
+    { candidateId: 'position-1', kind: 'asset', label: 'Savings', evidenceText: 'sixteen thousand' }
+  ],
+  invalidCandidates: [],
+  sectionCompletions: []
+};
+const settledText = 'I have about sixty thousand in savings and we spend 3,500 a month.';
+const reconciled = reconcileAgainstFinalTranscript(readFromPartial, settledText);
+
+check('a figure the client did not finally say is dropped',
+  !reconciled.semanticFacts.some((fact) => fact.factId === 'cash_savings'),
+  JSON.stringify(reconciled.semanticFacts.map((fact) => fact.factId)));
+check('a figure the client did say survives',
+  reconciled.semanticFacts.some((fact) => fact.factId === 'monthly_spending'));
+check('a position built on a revised figure is dropped', reconciled.positions.length === 0);
+check('what was dropped is reported, not silently discarded',
+  reconciled.droppedByReconciliation.length === 2,
+  JSON.stringify(reconciled.droppedByReconciliation));
+// Goals carry no figures, so a revision cannot make them wrong.
+check('a goal survives reconciliation', reconciled.goalCandidates.length === 1);
+
+// A candidate that cannot be checked is not kept: the whole point is that a
+// partial read proves itself against what was actually said.
+const unprovable = reconcileAgainstFinalTranscript({
+  ...readFromPartial,
+  semanticFacts: [{ candidateId: 'fact-1', factId: 'cash_savings', value: 16_000, evidenceText: '' }],
+  positions: []
+}, settledText);
+check('a candidate with no evidence cannot prove itself and is dropped',
+  unprovable.semanticFacts.length === 0);
+
+check('nothing to reconcile yields nothing',
+  reconcileAgainstFinalTranscript(null, settledText) === null);
+
+/* --------------------------------------------- how the head start is used */
+
+const session = readFileSync(`${root}worker/src/consumer/realtime_session.js`, 'utf8');
+check('partial transcripts start work while the client speaks',
+  /await this\.prefetchSettledClauses\(event\)/.test(session));
+check('the head start is bounded', /this\.segmentPrefetch\.size >= 5/.test(session),
+  'a client who talks for two minutes must not spend without limit');
+check('a failed early read is swallowed', /pending\.catch\(\(\) => \{\}\)/.test(session),
+  'the turn simply reads that clause again');
+// Scratch that outlives its turn would be matched against words from a
+// different answer.
+check('the head start is cleared once consumed',
+  (session.match(/this\.clearTurnPrefetch\(itemId\)/g) || []).length === 2);
+check('both finalized reads use the head start',
+  (session.match(/prefetched: this\.segmentPrefetch/g) || []).length === 2);
+
+const plannerSource = readFileSync(`${root}worker/src/consumer/realtime_planner.js`, 'utf8');
+// THE KEY IS THE SAFETY. Work is stored under the exact words it was read
+// from, so a revision misses the lookup instead of having to be detected.
+check('early work is looked up by the exact words it was read from',
+  /prefetched\?\.get\(segment\)/.test(plannerSource));
+check('a prefetched turn is reconciled before anything is recorded',
+  /reconcileAgainstFinalTranscript\(merged, options\.transcript\)/.test(plannerSource));
+check('a turn with no head start is not reconciled against itself',
+  /prefetched\s*\n?\s*\?\s*reconcileAgainstFinalTranscript/.test(plannerSource),
+  'segments of a finalized turn are already substrings of it');
+
+// The groundedness rule has one implementation, shared by the spoken
+// reflection and by partial-read reconciliation.
+const reflection = readFileSync(`${root}scripts/check-consumer-reflection.mjs`, 'utf8');
+check('the groundedness rule is imported, never copied',
+  /from '\.\.\/worker\/src\/consumer\/spoken_figures\.js'/.test(reflection)
+    && !/function ungroundedFigures/.test(reflection),
+  'a second copy is how the checks and the code drift apart');
+
 console.info(`[TurnSegments] ${checks} checks passed: a dense answer is read in clause-sized pieces, `
-  + 'no figure is cut from what it describes, and a piece that fails loses one clause not the turn.');
+  + 'settled clauses are read while the client still speaks, and nothing read early survives without '
+  + 'appearing in what they finally said.');

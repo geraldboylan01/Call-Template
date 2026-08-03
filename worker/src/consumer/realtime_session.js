@@ -23,6 +23,7 @@ import {
   patchForMappedRealtimeFact,
   planFactProposal
 } from './planning_facts.js';
+import { readableSegments } from './turn_segments.js';
 import {
   applyPlannerCandidates,
   buildRepairRequest,
@@ -530,6 +531,12 @@ export class ConsumerRealtimeSession {
     this.queuedResponseAuthorization = null;
     this.initialProbePending = false;
     this.committedAudioItemIds = new Set();
+    // What the recogniser has sent so far for a turn still being spoken, and
+    // the planner work already started on the clauses that have settled. Both
+    // are per-turn scratch: neither is persisted, and neither is trusted until
+    // the final transcript confirms it.
+    this.inProgressTranscripts = new Map();
+    this.segmentPrefetch = new Map();
     this.serverFunctionOutputs = new Map();
     this.activeToolCallCount = 0;
     this.pendingTerminalization = null;
@@ -1084,8 +1091,13 @@ export class ConsumerRealtimeSession {
       return;
     }
     if (type === 'conversation.item.input_audio_transcription.delta') {
-      // Partial transcripts are intentionally neither stored nor trusted.
+      // Partial transcripts are still neither stored nor trusted. They are only
+      // used to START reading clauses the client has already finished saying,
+      // so the planner is not sitting idle through a long answer. Every result
+      // is checked against the final transcript before anything is recorded --
+      // see reconcileAgainstFinalTranscript.
       await this.touch();
+      await this.prefetchSettledClauses(event);
       return;
     }
     // v1 keeps model AUDIO fail-closed. Conversational v2 accepts audio only
@@ -1870,8 +1882,13 @@ export class ConsumerRealtimeSession {
         sourceTurnId: itemId,
         transcript,
         recentTurns,
+        prefetched: this.segmentPrefetch,
         timeoutMs: context.config.realtimePlannerCatchupTimeoutMs
       });
+      // Consumed exactly once. Clearing here rather than at the end of the turn
+      // means an early return cannot leak one turn's head start into the next,
+      // where the words would no longer match anything the client said.
+      this.clearTurnPrefetch(itemId);
       await this.recordPlannerUsage(planned.metadata, context.config);
       const applied = await this.applyPlannerExtraction(planned.extraction, { turnOrdinal });
       await appendRealtimeEvent(this.env, {
@@ -1902,6 +1919,59 @@ export class ConsumerRealtimeSession {
     }
   }
 
+  /**
+   * Start reading the clauses the client has already finished saying.
+   *
+   * WHY. The planner takes four to twelve seconds, and today none of that
+   * starts until the client stops talking. On a long answer -- which is exactly
+   * the answer that used to fail -- most of the work could have been done while
+   * they were still speaking.
+   *
+   * WHAT IS AND IS NOT SAFE. The trailing fragment is never read: the client is
+   * mid-clause and a streaming recogniser revises words before it settles.
+   * Everything earlier is followed by speech that has moved on. Even then the
+   * result is only a head start -- it is keyed by the exact words it was read
+   * from, so a revision simply misses the cache, and it is checked against the
+   * final transcript before anything is recorded.
+   */
+  async prefetchSettledClauses(event) {
+    const config = getConsumerConfig(this.env);
+    if (!config.realtimeConversationV2Enabled) return;
+    const itemId = String(event.item_id || event.item?.id || '');
+    if (!validProviderId(itemId)) return;
+    const delta = typeof event.delta === 'string' ? event.delta : '';
+    if (!delta) return;
+
+    const soFar = `${this.inProgressTranscripts.get(itemId) || ''}${delta}`.slice(0, 4_000);
+    this.inProgressTranscripts.set(itemId, soFar);
+
+    for (const segment of readableSegments(soFar)) {
+      if (this.segmentPrefetch.has(segment)) continue;
+      // Bounded, so a client who talks for two minutes cannot spend without
+      // limit. The ceiling matches the per-turn segment ceiling.
+      if (this.segmentPrefetch.size >= 5) return;
+      // Started, not awaited: the point is that this runs while they speak. The
+      // promise is stored so the finalized turn can use it, and a rejection is
+      // swallowed here because the turn will simply read that clause again.
+      const pending = extractRealtimePlannerTurn({
+        env: this.env,
+        config,
+        context: await this.planningContext(),
+        sourceTurnId: `${itemId}#pre${this.segmentPrefetch.size + 1}`,
+        transcript: segment,
+        recentTurns: []
+      });
+      pending.catch(() => {});
+      this.segmentPrefetch.set(segment, pending);
+    }
+  }
+
+  /** Per-turn scratch, cleared once the turn it belonged to is finalized. */
+  clearTurnPrefetch(itemId) {
+    this.inProgressTranscripts.delete(itemId);
+    this.segmentPrefetch = new Map();
+  }
+
   async processPlannerTurn({ itemId, transcript, turnOrdinal }) {
     const context = await this.planningContext();
     const recentTurns = await listRecentRealtimeFinalTurns(
@@ -1918,8 +1988,10 @@ export class ConsumerRealtimeSession {
         context,
         sourceTurnId: itemId,
         transcript,
-        recentTurns
+        recentTurns,
+        prefetched: this.segmentPrefetch
       });
+      this.clearTurnPrefetch(itemId);
     } catch (error) {
       const code = error instanceof ConsumerError ? error.code : 'realtime_planner_failed';
       await appendRealtimeEvent(this.env, {
