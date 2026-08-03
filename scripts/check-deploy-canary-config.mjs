@@ -22,6 +22,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { resolveShippedConsumerEnv } from './lib/shipped-consumer-config.mjs';
+
 const root = fileURLToPath(new URL('..', import.meta.url));
 const workflow = readFileSync(`${root}/.github/workflows/deploy-worker.yml`, 'utf8');
 
@@ -292,24 +294,9 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
 
   const envName = (field) => `CONSUMER_${field.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase()}`;
 
-  // What actually ships is not wrangler.toml alone. The committed file holds the
-  // dormant production defaults -- that is what makes the config fail closed --
-  // and the workflow rewrites named variables to their approved beta values on
-  // the way to Cloudflare. The effective value is the rewrite where one exists.
-  const effective = new Map();
-  for (const [, name, value] of wrangler.matchAll(/^(CONSUMER_[A-Z0-9_]+) = "([^"]*)"$/gm)) {
-    effective.set(name, value);
-  }
-  for (const [, name, value] of workflow.matchAll(
-    /replaceTomlString\(\s*generatedSource,\s*'([A-Z0-9_]+)',\s*'([^']*)'\s*\)/g
-  )) {
-    effective.set(name, value);
-  }
-  for (const [, name, value] of workflow.matchAll(
-    /^\s*(CONSUMER_[A-Z0-9_]+): \['CONSUMER_BETA_[A-Z0-9_]+', '([^']*)'\],?$/gm
-  )) {
-    effective.set(name, value);
-  }
+  // Resolved once, in scripts/lib/shipped-consumer-config.mjs, so the pre-deploy
+  // checks cannot disagree with each other about what is being deployed.
+  const effective = resolveShippedConsumerEnv();
   const shipped = (name) => effective.get(name);
 
   let compared = 0;

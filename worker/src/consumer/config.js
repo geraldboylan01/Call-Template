@@ -560,6 +560,11 @@ export function publicConsumerConfig(config) {
       speechModel: config.voiceEnabled ? config.voiceSpeechModel : null,
       voice: config.voiceEnabled ? config.voiceName : null,
       pricingVersion: config.voiceEnabled ? config.voicePricingVersion : null,
+      // The spend envelope this transport is deployed with. Reported so the
+      // post-deploy gate can verify the LIVE ceiling rather than trusting that
+      // the config it pushed is the config now running. Null while disabled: a
+      // dormant Worker publishes no commercial envelope at all.
+      sessionBudgetMicroEur: config.voiceEnabled ? config.voiceSessionBudgetMicroEur : null,
       maxDurationSeconds: config.voiceMaxDurationSeconds,
       maxRecordingSeconds: config.voiceMaxDurationSeconds,
       availability: { available: config.voiceEnabled, status: config.voiceEnabled ? 'available' : 'unavailable' },
@@ -587,6 +592,14 @@ export function publicConsumerConfig(config) {
       speechPricingVersion: config.realtimeEnabled ? config.realtimeSpeechPricingVersion : null,
       maxDurationSeconds: config.realtimeMaxDurationSeconds,
       idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
+      // The four figures that bound a realtime call's cost: the session ceiling,
+      // the point dispatch stops, the spoken warning threshold, and the reserve
+      // held back for teardown. Same rule as voice -- reported when the canary is
+      // live so the deploy gate can check the running envelope, null otherwise.
+      sessionBudgetMicroEur: config.realtimeEnabled ? config.realtimeSessionBudgetMicroEur : null,
+      dispatchStopMicroEur: config.realtimeEnabled ? config.realtimeDispatchStopMicroEur : null,
+      warnThresholdMicroEur: config.realtimeEnabled ? config.realtimeSessionWarnMicroEur : null,
+      safetyReserveMicroEur: config.realtimeEnabled ? config.realtimeSafetyReserveMicroEur : null,
       availability: { available: config.realtimeEnabled, status: config.realtimeEnabled ? 'available' : 'unavailable' },
       aiGeneratedDisclosure: config.realtimeEnabled
         ? (config.realtimeConversationV2Enabled
