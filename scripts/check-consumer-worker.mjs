@@ -104,9 +104,10 @@ const [
 for (const route of [
   '/api/consumer/bootstrap',
   '/api/consumer/sessions',
-  'turns|profile|confirm|analyses|handoffs|consent'
+  // `publish` is the route a finished call uses to mint its own client link.
+  'turns|profile|confirm|analyses|publish|handoffs|consent'
 ]) {
-  assert.match(routerSource, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('turns\\|profile\\|confirm\\|analyses\\|handoffs\\|consent', 'turns\\|profile\\|confirm\\|analyses\\|handoffs\\|consent')));
+  assert.match(routerSource, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 }
 assert.match(indexSource, /pathname\.startsWith\('\/api\/consumer\/'\)/);
 assert.match(indexSource, /await import\('\.\/consumer\/router\.js'\)/);

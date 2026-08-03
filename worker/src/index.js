@@ -6084,6 +6084,98 @@ async function loadPublishedManifest(env, publishedId) {
   return validateStoredPublishedManifest(JSON.parse(text));
 }
 
+/**
+ * Store a published session that a completed consumer call produced.
+ *
+ * Deliberately narrower than the adviser publish handler. There is no client
+ * pipeline choice, no detached-share mode, no lead linking and no recovery
+ * payload -- a call publishes one thing, one way. What it does share is the
+ * storage layout, so the existing viewer reads these exactly as it reads an
+ * adviser-published session.
+ */
+async function storeConsumerPublishedSession(env, record) {
+  const { publishedId, createdAt, expiresAt, clientName, requestBody } = record;
+  const clientR2Key = getPublishedClientKey(publishedId);
+  const advisorR2Key = getPublishedAdvisorKey(publishedId);
+
+  await env.SESSIONS_BUCKET.put(clientR2Key, JSON.stringify(requestBody.clientBundle), {
+    httpMetadata: { contentType: 'application/json' }
+  });
+  await env.SESSIONS_BUCKET.put(advisorR2Key, JSON.stringify(requestBody.advisorBundle), {
+    httpMetadata: { contentType: 'application/json' }
+  });
+
+  // A client record so the call appears in the pipeline, marked with where it
+  // came from: an online caller has never spoken to anyone, and mixing them in
+  // with adviser sessions makes the list useless for deciding who to follow up.
+  const client = await findOrCreateClientForProfile(env, {
+    fullName: clientName,
+    pipelineStage: 'session_published',
+    timestamp: createdAt,
+    source: 'consumer_call'
+  });
+  const linkedClientId = client?.id || null;
+
+  await insertPublishedSessionRow(env, {
+    id: publishedId,
+    clientId: linkedClientId,
+    sourceLeadId: null,
+    version: requestBody.v,
+    status: 'active',
+    createdAt,
+    updatedAt: createdAt,
+    expiresAt,
+    revokedAt: null,
+    clientName,
+    clientEmail: '',
+    pinRequired: true,
+    clientAuthHashB64u: requestBody.auth.clientAuthHashB64u,
+    advisorAuthHashB64u: requestBody.auth.advisorAuthHashB64u,
+    clientR2Key,
+    advisorR2Key,
+    recoveryPayloadB64u: null,
+    recoveryIvB64u: null,
+    clientPinState: requestBody.clientBundle.clientAccess.pinState,
+    clientPinInitializedAt: null,
+    clientAccessRevision: requestBody.clientBundle.clientAccess.revision
+  });
+
+  if (linkedClientId) {
+    await advanceClientPipelineStage(env, linkedClientId, 'session_published', {
+      timestamp: createdAt,
+      profile: { fullName: clientName, email: '' }
+    }).catch(() => {});
+  }
+  await insertPublishedSessionEvent(env, publishedId, 'client', 'published', {
+    clientId: linkedClientId,
+    publishTarget: 'consumer-call',
+    linkAccessMode: 'client-first-pin',
+    version: requestBody.v,
+    expiresAt
+  }).catch(() => {});
+}
+
+/**
+ * Tell the adviser a call finished. Best effort: a publish that succeeded must
+ * not be reported as failed because a mail provider was slow.
+ */
+async function notifyAdviserOfConsumerPublish(env, message) {
+  const config = getLeadEmailConfig(env);
+  const recipients = config.advisorCopyRecipients;
+  if (!config.apiKey || !config.from || recipients.length === 0) {
+    console.warn('Consumer publish notification skipped: adviser email is not configured.');
+    return;
+  }
+  const { buildAdviserNotification } = await import('./consumer/publish.js');
+  const { subject, text } = buildAdviserNotification(message);
+  await sendEmailWithResend(config, {
+    from: config.from,
+    to: recipients,
+    subject,
+    text
+  }, `consumer-publish-${message.publishedId}`);
+}
+
 async function handleCreatePublishedSession(request, env, origin) {
   const advisorAccess = await requireAdvisorSession(request, env, origin, 'POST,OPTIONS', {
     requireCsrf: true
@@ -7498,6 +7590,10 @@ export default {
         pathname,
         clientIp: getClientIp(request),
         createPipelineHandoff: (payload) => createConsumerPipelineHandoff(env, payload),
+        // Storage and notification are injected rather than imported, so the
+        // consumer module stays free of this file's R2, D1 and email helpers.
+        publishConsumerSession: (record) => storeConsumerPublishedSession(env, record),
+        notifyAdviserOfPublishedCall: (message) => notifyAdviserOfConsumerPublish(env, message),
         respond: (data, status, methods, extraHeaders) => jsonResponse(
           data,
           status,

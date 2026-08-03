@@ -10,6 +10,7 @@ import { describeConversationState, processTurn } from './conversation.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
 import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
+import { publishConsumerAnalysis } from './publish.js';
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
 import { confirmPlanSelection } from './planning_turn.js';
 import { createConsumerInvite, verifyConsumerInvite } from './invite.js';
@@ -332,11 +333,11 @@ function routeMatch(pathname) {
     const voiceMethods = { consent: ['PATCH'], transcriptions: ['POST'], speech: ['POST'] };
     return { kind: `voice_${operation}`, sessionId, methods: voiceMethods[operation] };
   }
-  const match = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
+  const match = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})(?:\/(turns|profile|confirm|analyses|publish|handoffs|consent))?$/.exec(pathname);
   if (!match) return null;
   const [, sessionId, child] = match;
   if (!child) return { kind: 'session', sessionId, methods: ['GET', 'DELETE'] };
-  const methods = { turns: ['POST'], profile: ['PATCH'], confirm: ['POST'], analyses: ['POST'], handoffs: ['POST', 'DELETE'], consent: ['PATCH'] };
+  const methods = { turns: ['POST'], profile: ['PATCH'], confirm: ['POST'], analyses: ['POST'], publish: ['POST'], handoffs: ['POST', 'DELETE'], consent: ['PATCH'] };
   return { kind: child, sessionId, methods: methods[child] };
 }
 
@@ -547,7 +548,10 @@ export async function cleanupExpiredConsumerSessionsWithRealtime(env, dependenci
 export { cleanupExpiredConsumerSessionsWithRealtime as cleanupExpiredConsumerSessions };
 
 export async function handleConsumerRequest(request, env, dependencies = {}) {
-  const { pathname, respond, respondBinary, clientIp = 'unknown', createPipelineHandoff } = dependencies;
+  const {
+    pathname, respond, respondBinary, clientIp = 'unknown', createPipelineHandoff,
+    publishConsumerSession = null, notifyAdviserOfPublishedCall = null
+  } = dependencies;
   const route = routeMatch(pathname);
   if (!route) return respond({ error: 'Not found.', code: 'not_found' }, 404, 'GET,POST,PATCH,DELETE,OPTIONS');
   const methods = `${route.methods.join(',')},OPTIONS`;
@@ -1303,6 +1307,42 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const body = validateAnalysisBody(await readJson(request, { optional: true }), config.allowedModules);
       const result = await runStoredConsumerAnalysis({ env, config, sessionRow, profile, ...body });
       return respond({ session: result.session, profile, analysis: result.analysis }, 200, methods);
+    }
+
+    if (route.kind === 'publish') {
+      // THE SESSION AUTHORISES; THE SERVER WRITES. Reaching here proves the
+      // caller holds this session's credential, and that is the only thing the
+      // request decides. No body is read: the published payload is rebuilt from
+      // the confirmed profile and the analysis the engine already ran, so this
+      // route cannot be used to put chosen content in front of a client.
+      if (!config.moduleRoutingEnabled) throw new ConsumerError(404, 'module_routing_disabled', 'Consumer analysis is not available.');
+      if (typeof publishConsumerSession !== 'function') {
+        throw new ConsumerError(503, 'publish_unconfigured', 'Publishing is not available.');
+      }
+      await rateLimit(env, 'consumer-publish-session', sessionRow.id, 60 * 60 * 1000, 6);
+      const analysis = await getLatestAnalysis(env, sessionRow.id, sessionRow.current_profile_revision, {
+        completedOnly: true
+      });
+      if (!analysis) {
+        throw new ConsumerError(409, 'analysis_incomplete', 'There is no completed analysis to publish yet.');
+      }
+      const published = await publishConsumerAnalysis({
+        env,
+        config,
+        sessionRow,
+        profile,
+        analysis,
+        storePublishedSession: publishConsumerSession,
+        notifyAdviser: notifyAdviserOfPublishedCall || null
+      });
+      // The adviser link is never returned to the caller: it is the key to the
+      // adviser view and only reaches the configured adviser mailbox.
+      return respond({
+        publishedId: published.publishedId,
+        clientUrl: published.clientUrl,
+        moduleCount: published.moduleCount,
+        expiresAt: published.expiresAt
+      }, 201, methods);
     }
 
     if (route.kind === 'handoffs') {
