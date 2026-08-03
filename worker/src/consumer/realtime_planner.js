@@ -24,6 +24,7 @@ const SEMANTIC_FACT_IDS = Object.freeze(
 import { buildRealtimeFactReadBack } from './realtime_fact_mapper.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
+import { mergeSegmentExtractions, segmentClientTurn } from './turn_segments.js';
 import { realtimeChoiceVocabulary } from './realtime_fact_mapper.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 
@@ -596,6 +597,63 @@ export function plannerContextSlice(context) {
  * usually succeeds on a second try, so that one retry is worth taking -- it
  * adds no meaningful delay because the first attempt already failed quickly.
  */
+/**
+ * Read one client turn, in clause-sized pieces.
+ *
+ * THIS IS HOW EVERY TURN IS READ. A short answer segments into exactly one
+ * piece and this costs precisely what a single call cost before; a long one is
+ * read in parallel pieces. There is no second path and no flag -- see
+ * turn_segments.js for why density, not length, is what breaks extraction.
+ *
+ * The pieces run concurrently, so a six-clause answer takes about as long as a
+ * one-clause answer rather than six times as long. The important property is
+ * not speed though: it is that a piece which fails now loses one clause instead
+ * of the entire answer. A turn only fails outright when every piece fails.
+ */
+export async function extractSegmentedPlannerTurn(options) {
+  const segments = segmentClientTurn(options.transcript);
+  if (segments.length <= 1) return extractRealtimePlannerTurn(options);
+
+  const settled = await Promise.allSettled(segments.map((segment, index) => (
+    extractRealtimePlannerTurn({
+      ...options,
+      transcript: segment,
+      // Each piece is audited under its own id, so a failure can be traced to
+      // the clause that caused it rather than to the whole turn.
+      sourceTurnId: `${options.sourceTurnId}#s${index + 1}`
+    })
+  )));
+
+  const succeeded = settled.filter((result) => result.status === 'fulfilled').map((result) => result.value);
+  if (succeeded.length === 0) {
+    // Every piece failed, so this is a planner outage rather than a dense
+    // sentence. Surface the first failure and let the caller degrade exactly as
+    // it always has.
+    throw settled[0].reason;
+  }
+
+  const extraction = mergeSegmentExtractions(succeeded.map((result) => result.extraction), options.sourceTurnId);
+  const sum = (field) => succeeded.reduce((total, result) => total + Number(result.metadata?.[field] || 0), 0);
+  return {
+    extraction,
+    metadata: {
+      model: succeeded[0].metadata.model,
+      // Wall clock, not the sum: the pieces ran at the same time.
+      latencyMs: Math.max(...succeeded.map((result) => Number(result.metadata?.latencyMs || 0))),
+      // Usage is recorded once for the turn, against the first piece's response
+      // id, with every piece's tokens counted. Spend must not depend on how
+      // many pieces a sentence happened to make.
+      providerResponseId: succeeded[0].metadata.providerResponseId,
+      providerRequestId: succeeded[0].metadata.providerRequestId,
+      inputTokens: sum('inputTokens'),
+      outputTokens: sum('outputTokens'),
+      cachedInputTokens: sum('cachedInputTokens'),
+      segmentCount: segments.length,
+      segmentsFailed: segments.length - succeeded.length
+    }
+  };
+}
+
 export async function extractRealtimePlannerTurn(options) {
   const { config } = options;
   const budget = Number.isSafeInteger(options.timeoutMs)

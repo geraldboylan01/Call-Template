@@ -29,6 +29,7 @@ import {
 } from '../js/planning/index.js';
 import { containsInternalModuleTerminology } from '../js/planning/module_offers.js';
 import { NON_CONTRIBUTORY_PENSION_TYPES } from '../js/planning/profile.js';
+import { mapRealtimeFact } from '../worker/src/consumer/realtime_fact_mapper.js';
 import { goalFamily } from '../js/planning/goal_plan.js';
 import {
   FINANCIAL_POSITION_KINDS,
@@ -626,6 +627,16 @@ async function agentContext(profile, config = CONFIG) {
   // Its value still counts — only the contribution questions are dropped.
   assert.ok(!getModuleReadiness('pension_projection', built).requiredMissing
     .some((item) => item.fieldPath === '/pensions/0/currentValue'));
+  // AND A SPOKEN RATE LANDS ON IT WITHOUT BEING ASKED WHICH. A buyout bond
+  // cannot be paid into, so with exactly one contributory pension on record
+  // "I pay 30% and they pay 10%" is not ambiguous. Refusing it lost both rates
+  // on a real call and made the meeting ask a question it could not accept an
+  // answer to.
+  for (const factId of ['pension_employee_contribution_rate', 'pension_employer_contribution_rate']) {
+    const mapped = mapRealtimeFact(built, { factId, value: 30, certainty: 'exact' });
+    assert.match(mapped.fieldPath, /^\/pensions\/1\//,
+      `${factId} must land on the contributory pension, not the buyout bond`);
+  }
   pass('a preserved pension is valued but never asked what is paid into it');
 }
 

@@ -482,7 +482,7 @@ const LIVE_TURN_2 = "My main goal is just to buy a house in about five years' ti
   );
   assert.match(
     source,
-    /let planned;[\s\S]*try \{[\s\S]*planned = await extractRealtimePlannerTurn[\s\S]*\} catch \(error\)[\s\S]*Only extraction\/provider failures belong/,
+    /let planned;[\s\S]*try \{[\s\S]*planned = await extractSegmentedPlannerTurn[\s\S]*\} catch \(error\)[\s\S]*Only extraction\/provider failures belong/,
     'only extraction/provider failures enter the deterministic fallback'
   );
   pass('a planner failure stays operationally visible without disrupting the spoken conversation');

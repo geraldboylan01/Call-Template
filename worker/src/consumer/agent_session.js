@@ -29,7 +29,7 @@ import {
   recordRealtimeFinalTurn,
   setRealtimeMeetingPhase
 } from './realtime_repository.js';
-import { extractRealtimePlannerTurn } from './realtime_planner.js';
+import { extractRealtimePlannerTurn, extractSegmentedPlannerTurn } from './realtime_planner.js';
 import { buildPlanningContext } from './planning_context.js';
 import {
   applyPlannerCandidates,
@@ -290,7 +290,7 @@ export async function processAgentTurn(env, config, {
   deps = {}
 }) {
   assertAgentTestEnabled(config);
-  const extractTurn = deps.extractTurn || extractRealtimePlannerTurn;
+  const extractTurn = deps.extractTurn || extractSegmentedPlannerTurn;
   const renderText = deps.renderText || renderAssistantText;
 
   const safeMessage = assertMessage(message, config);

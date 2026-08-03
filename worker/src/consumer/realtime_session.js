@@ -94,6 +94,7 @@ import { issueRealtimeSpeechAuthorization } from './realtime_speech.js';
 import {
   composeMeetingBrief,
   extractRealtimePlannerTurn,
+  extractSegmentedPlannerTurn,
   intakeExplanation,
   isLikelyIncompleteRealtimeUtterance
 } from './realtime_planner.js';
@@ -1862,7 +1863,7 @@ export class ConsumerRealtimeSession {
         this.meta.leaseId,
         8
       );
-      const planned = await extractRealtimePlannerTurn({
+      const planned = await extractSegmentedPlannerTurn({
         env: this.env,
         config: context.config,
         context,
@@ -1911,7 +1912,7 @@ export class ConsumerRealtimeSession {
     );
     let planned;
     try {
-      planned = await extractRealtimePlannerTurn({
+      planned = await extractSegmentedPlannerTurn({
         env: this.env,
         config: context.config,
         context,

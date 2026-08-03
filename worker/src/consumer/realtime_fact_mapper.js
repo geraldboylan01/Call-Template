@@ -6,7 +6,7 @@ import {
   getRealtimeModuleSemanticFactIds
 } from '../../../js/planning/module_registry.js';
 import { buildGoalModulePlan } from '../../../js/planning/goal_plan.js';
-import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
+import { NON_CONTRIBUTORY_PENSION_TYPES, normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { escapeJsonPointerToken } from '../../../js/planning/utils.js';
 
 const INTAKE_FACT_PATHS = Object.freeze({
@@ -680,8 +680,28 @@ function selectedEntityId(value, prefix, collection, idKey) {
   return supplied ? collectionEntityId(collection, idKey, prefix, supplied) : null;
 }
 
-function pensionIndex(profile, value) {
+function pensionIndex(profile, value, { contributionRate = false } = {}) {
   const selectedId = selectedEntityId(value, 'pension', profile.pensions, 'pensionId');
+  // A BUYOUT BOND CANNOT RECEIVE CONTRIBUTIONS. It holds benefits from a scheme
+  // the client has left, so when they name a rate and hold exactly one pension
+  // that can actually be paid into, the rate can only mean that one -- there is
+  // nothing to confuse it with. The planner prompt has always stated this rule;
+  // the mapper simply never applied it, so "a buyout bond and my current scheme,
+  // I pay 30% and they pay 10%" was refused as ambiguous and the rates were
+  // lost. Same reasoning as the single-pension case below.
+  if (!selectedId && contributionRate) {
+    const contributory = profile.pensions.filter(
+      (pension) => !NON_CONTRIBUTORY_PENSION_TYPES.includes(pension.type)
+    );
+    if (contributory.length === 1) {
+      const only = contributory[0];
+      return {
+        stableId: only.pensionId,
+        index: profile.pensions.findIndex((pension) => pension.pensionId === only.pensionId),
+        existing: only
+      };
+    }
+  }
   // ONE PENSION IS NOT AMBIGUOUS. The guard below exists so a spoken aggregate
   // cannot silently overwrite the wrong position when a client holds several.
   // With exactly one on record there is nothing to confuse: "I pay 6.5% in"
@@ -1365,7 +1385,9 @@ export function mapRealtimeFact(profile, fact) {
   }
 
   if (['pension_current_value', 'pension_employee_contribution_rate', 'pension_employer_contribution_rate'].includes(fact.factId)) {
-    const { stableId, index, existing } = pensionIndex(profile, fact.value);
+    const { stableId, index, existing } = pensionIndex(profile, fact.value, {
+      contributionRate: fact.factId !== 'pension_current_value'
+    });
     const key = fact.factId === 'pension_current_value' ? 'currentValue'
       : fact.factId === 'pension_employee_contribution_rate' ? 'employeeContributionRate' : 'employerContributionRate';
     const canonicalValue = fact.factId === 'pension_current_value'
