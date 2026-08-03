@@ -60,6 +60,7 @@ const STAGE_RANKS = PIPELINE_STAGES.reduce((memo, stage, index) => {
 const ui = {
   toastHost: document.getElementById('toastHost'),
   clientStageTabs: document.getElementById('clientStageTabs'),
+  clientSourceTabs: document.getElementById('clientSourceTabs'),
   clientSearchInput: document.getElementById('clientSearchInput'),
   clientRefreshButton: document.getElementById('clientRefreshBtn'),
   clientListStatus: document.getElementById('clientListStatus'),
@@ -126,6 +127,12 @@ const state = {
   selectedPublishedSession: null,
   stages: PIPELINE_STAGES.map((value) => ({ value, label: STAGE_LABELS[value] })),
   stageFilter: params.get('stage')?.trim() || 'all',
+  // Where the client came from. Three routes create client records and they are
+  // not the same relationship: someone who registered and sat through a session
+  // with Gerry, a session published straight from the app, and someone who
+  // completed an online self-service call and has never spoken to anyone.
+  sourceFilter: params.get('source')?.trim() || 'all',
+  sources: [],
   listRequestId: 0,
   detailRequestId: 0,
   publishedRequestId: 0,
@@ -572,6 +579,41 @@ function getSelectedExpiryDays() {
   return [7, 30, 90].includes(value) ? value : 30;
 }
 
+/**
+ * Which kind of client the list is showing.
+ *
+ * Kept as its own row rather than folded into the stage tabs: source and stage
+ * are independent questions -- "how did I meet them" and "where are they up
+ * to" -- and combining them would multiply into a tab row nobody can scan.
+ */
+function renderSourceTabs() {
+  if (!ui.clientSourceTabs) {
+    return;
+  }
+
+  ui.clientSourceTabs.innerHTML = '';
+  const tabs = [{ value: 'all', label: 'All sources' }, ...state.sources];
+  tabs.forEach((source) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `client-stage-tab${state.sourceFilter === source.value ? ' is-active' : ''}`;
+    button.textContent = source.label;
+    button.addEventListener('click', async () => {
+      state.sourceFilter = source.value;
+      const url = new URL(window.location.href);
+      if (source.value === 'all') {
+        url.searchParams.delete('source');
+      } else {
+        url.searchParams.set('source', source.value);
+      }
+      window.history.replaceState({}, '', url);
+      renderSourceTabs();
+      await loadClientList({ preserveSelection: false, autoSelect: true });
+    });
+    ui.clientSourceTabs.appendChild(button);
+  });
+}
+
 function renderStageTabs() {
   if (!ui.clientStageTabs) {
     return;
@@ -903,13 +945,16 @@ function renderSelectedClient() {
   updateActionState();
 }
 
-async function fetchClients(query = '', stage = 'all') {
+async function fetchClients(query = '', stage = 'all', source = 'all') {
   const url = new URL(`${WORKER_BASE_URL}/api/advisor/clients`);
   if (query) {
     url.searchParams.set('q', query);
   }
   if (stage && stage !== 'all') {
     url.searchParams.set('stage', stage);
+  }
+  if (source && source !== 'all') {
+    url.searchParams.set('source', source);
   }
 
   const response = await fetchWithAdvisorAuth(url.toString(), {
@@ -1052,15 +1097,17 @@ async function loadClientList(options = {}) {
   setListStatus('Loading clients.');
 
   try {
-    const payload = await fetchClients(query, state.stageFilter);
+    const payload = await fetchClients(query, state.stageFilter, state.sourceFilter);
     if (requestId !== state.listRequestId) {
       return;
     }
 
     state.stages = Array.isArray(payload?.stages) ? payload.stages : state.stages;
+    state.sources = Array.isArray(payload?.sources) ? payload.sources : state.sources;
     state.clients = Array.isArray(payload?.clients) ? payload.clients : [];
     renderStageOptions();
     renderStageTabs();
+    renderSourceTabs();
     renderClientList();
 
     const preferredId = preserveSelection && state.selectedId && state.clients.some((entry) => String(entry.id) === String(state.selectedId))
@@ -1622,6 +1669,7 @@ function bindEvents() {
 async function init() {
   renderStageOptions();
   renderStageTabs();
+  renderSourceTabs();
   bindEvents();
   renderClientList();
   renderSelectedClient();

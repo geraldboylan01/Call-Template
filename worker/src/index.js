@@ -163,6 +163,27 @@ const CLIENT_PIPELINE_STAGES = [
   'archived'
 ];
 const ALLOWED_CLIENT_PIPELINE_STAGES = new Set(CLIENT_PIPELINE_STAGES);
+
+/**
+ * How a client record came to exist. Three genuinely different relationships,
+ * and a list that mixes them cannot answer "who should I follow up with".
+ *
+ *   adviser_meeting  registered, scheduled, sat through a session with Gerry
+ *   direct_publish   work published straight from the app, no registration
+ *   consumer_call    completed an online self-service call, never spoke to anyone
+ */
+const CLIENT_SOURCES = ['adviser_meeting', 'direct_publish', 'consumer_call'];
+const CLIENT_SOURCE_LABELS = {
+  adviser_meeting: 'Adviser sessions',
+  direct_publish: 'Published from the app',
+  consumer_call: 'Online calls'
+};
+const ALLOWED_CLIENT_SOURCES = new Set(CLIENT_SOURCES);
+
+function normalizeClientSource(value, fallback = 'adviser_meeting') {
+  const candidate = String(value ?? '').trim().toLowerCase().replace(/-/g, '_');
+  return ALLOWED_CLIENT_SOURCES.has(candidate) ? candidate : fallback;
+}
 const CLIENT_PIPELINE_STAGE_LABELS = {
   new_lead: 'New lead',
   reviewing: 'Reviewing',
@@ -2279,6 +2300,8 @@ function normalizeClientRow(row) {
     pipelineStageLabel: formatClientPipelineStage(pipelineStage),
     stageUpdatedAt: row.stage_updated_at || row.updated_at || row.created_at || '',
     advisorNotes: row.advisor_notes || '',
+    source: normalizeClientSource(row.source),
+    sourceLabel: CLIENT_SOURCE_LABELS[normalizeClientSource(row.source)],
     leadCount: Number(row.lead_count || 0),
     publishedSessionCount: Number(row.published_session_count || 0),
     latestLeadId: Number(row.latest_lead_id || 0) || null,
@@ -2329,6 +2352,7 @@ async function getClientRow(env, clientId) {
       c.pipeline_stage,
       c.stage_updated_at,
       c.advisor_notes,
+      c.source,
       (SELECT COUNT(*) FROM leads WHERE client_id = c.id) AS lead_count,
       (SELECT COUNT(*) FROM published_sessions WHERE client_id = c.id) AS published_session_count,
       (SELECT id FROM leads WHERE client_id = c.id ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1) AS latest_lead_id,
@@ -2348,9 +2372,16 @@ async function listClientRows(env, options = {}) {
   const db = getPublishedSessionsDb(env);
   const query = normalizeLeadValue(options.query).toLowerCase();
   const stage = normalizeLeadValue(options.stage).toLowerCase().replace(/-/g, '_');
+  // 'all' keeps every source, which is the default the list has always had.
+  const sourceFilter = normalizeLeadValue(options.source).toLowerCase().replace(/-/g, '_');
   const limit = Math.min(Math.max(Number(options.limit) || 60, 1), 120);
   const where = [];
   const bindings = [];
+
+  if (sourceFilter && sourceFilter !== 'all' && ALLOWED_CLIENT_SOURCES.has(sourceFilter)) {
+    where.push('c.source = ?');
+    bindings.push(sourceFilter);
+  }
 
   if (query) {
     const likeValue = `%${query}%`;
@@ -2416,6 +2447,7 @@ async function listClientRows(env, options = {}) {
       c.pipeline_stage,
       c.stage_updated_at,
       c.advisor_notes,
+      c.source,
       (SELECT COUNT(*) FROM leads WHERE client_id = c.id) AS lead_count,
       (SELECT COUNT(*) FROM published_sessions WHERE client_id = c.id) AS published_session_count,
       (SELECT id FROM leads WHERE client_id = c.id ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1) AS latest_lead_id,
@@ -2540,6 +2572,9 @@ async function findOrCreateClientForProfile(env, profile = {}) {
   const email = normalizeClientEmailForMatch(profile.email || profile.clientEmail || '');
   const phone = normalizeOptionalLeadValue(profile.phone || '');
   const pipelineStage = normalizeClientPipelineStage(profile.pipelineStage || 'new_lead', 'new_lead');
+  // A client matched by email keeps whatever source they were first created
+  // with: how you came to know someone does not change later.
+  const source = normalizeClientSource(profile.source);
 
   if (email) {
     const existing = await db.prepare(`
@@ -2576,8 +2611,9 @@ async function findOrCreateClientForProfile(env, profile = {}) {
       phone,
       pipeline_stage,
       stage_updated_at,
-      advisor_notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      advisor_notes,
+      source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     timestamp,
     timestamp,
@@ -2587,7 +2623,8 @@ async function findOrCreateClientForProfile(env, profile = {}) {
     phone || null,
     pipelineStage,
     timestamp,
-    normalizeLongText(profile.advisorNotes || '') || null
+    normalizeLongText(profile.advisorNotes || '') || null,
+    source
   ).run();
 
   const clientId = result.meta?.last_row_id;
@@ -2747,7 +2784,8 @@ async function ensureClientForLead(env, lead) {
     phone: lead.phone,
     pipelineStage: inferPipelineStageFromLeadStatus(lead.status),
     timestamp: lead.updatedAt || lead.createdAt || nowIso(),
-    advisorNotes: lead.advisorNotes
+    advisorNotes: lead.advisorNotes,
+    source: 'adviser_meeting'
   });
 
   await getPublishedSessionsDb(env).prepare(`
@@ -5449,12 +5487,18 @@ async function handleAdvisorClientsList(request, env, origin) {
   const url = new URL(request.url);
   const query = normalizeLeadValue(url.searchParams.get('q'));
   const stage = normalizeLeadValue(url.searchParams.get('stage')) || 'all';
+  const source = normalizeLeadValue(url.searchParams.get('source')) || 'all';
   const limit = Number(url.searchParams.get('limit') || 60);
 
   try {
-    const rows = await listClientRows(env, { query, stage, limit });
+    const rows = await listClientRows(env, { query, stage, source, limit });
     return jsonResponse({
       ok: true,
+      sources: CLIENT_SOURCES.map((value) => ({
+        value,
+        label: CLIENT_SOURCE_LABELS[value]
+      })),
+      source,
       stages: CLIENT_PIPELINE_STAGES.map((value) => ({
         value,
         label: formatClientPipelineStage(value)
@@ -6157,7 +6201,8 @@ async function handleCreatePublishedSession(request, env, origin) {
       fullName: validated.data.meta.clientName,
       email: validated.data.meta.clientEmail,
       pipelineStage: 'session_published',
-      timestamp: createdAt
+      timestamp: createdAt,
+      source: 'direct_publish'
     });
     linkedClientId = client?.id || null;
   }
@@ -6287,7 +6332,8 @@ async function handleLeadSubmit(request, env, origin, ctx) {
       email: validated.email,
       phone,
       pipelineStage: 'new_lead',
-      timestamp: createdAt
+      timestamp: createdAt,
+      source: 'adviser_meeting'
     });
     const result = await env.LEADS_DB.prepare(`
       INSERT INTO leads (
