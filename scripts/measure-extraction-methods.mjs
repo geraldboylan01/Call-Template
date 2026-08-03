@@ -35,18 +35,28 @@ import { applyProfilePatch, createHouseholdProfile } from '../js/planning/profil
 const runs = Number((process.argv.find((arg) => arg.startsWith('--runs=')) || '--runs=3').split('=')[1]);
 
 /**
- * Real utterances from real calls, spanning the range that matters: the ones
- * that used to fail, and the ones that always worked. A method that fixes dense
- * turns by breaking simple ones is not an improvement.
+ * Real utterances from real calls, each with what the caller actually holds.
+ *
+ * `amounts` is every figure the sentence states, so an extraction is judged on
+ * the caller's own words rather than on what the engine found convenient.
+ * `owners` names the person an amount belongs to where getting it wrong would
+ * put one household member's money on another's balance sheet.
  */
 const UTTERANCES = Object.freeze([
-  { label: 'opening (goal + 2 ages)', text: "Hi, I'm Dermot. I'm 53 and hoping to retire at 56. My wife Aoife is 48." },
-  { label: 'single figure', text: 'I earn 114,000 a year plus a 10,000 bonus.' },
-  { label: '2 pensions + 2 rates', text: 'I have a buyout bond with Aviva worth about 380,000 and my current scheme has about 360,000. The company puts in 10% and I put in 30%.' },
-  { label: '5 income figures', text: 'I earn 114,000 plus a 10,000 bonus. Aoife earns 150,000 plus a 30,000 bonus. Together we take home about 8,500 a month after our pension contributions come out. We also get 2,250 a month rent from an investment property.' },
-  { label: '3 funds', text: "Jointly we have 80,000 in Zurich Prisma 4 and 12,000 in Prisma 5. There's also 3,000 in a Prisma 5 for the kids." },
-  { label: '5 cash holdings', text: 'I have 20,000 in cash, a 50,000 State Savings bond and 12,000 in prize bonds. Aoife has 200,000 in cash and 20,000 in regular savings.' },
-  { label: 'partner pension + max', text: 'Aoife has about 500,000 in an Aon lifestyle fund. Her company pays 10% and she pays the max.' }
+  { label: 'opening (goal + 2 ages)', text: "Hi, I'm Dermot. I'm 53 and hoping to retire at 56. My wife Aoife is 48.",
+    amounts: [], facts: { person_current_age: 53, intended_retirement_age: 56 }, goals: ['retire_early', 'retire'] },
+  { label: 'single figure', text: 'I earn 114,000 a year plus a 10,000 bonus.',
+    amounts: [114_000, 10_000], facts: {}, goals: [] },
+  { label: '2 pensions + 2 rates', text: 'I have a buyout bond with Aviva worth about 380,000 and my current scheme has about 360,000. The company puts in 10% and I put in 30%.',
+    amounts: [380_000, 360_000], facts: { pension_employee_contribution_rate: 30, pension_employer_contribution_rate: 10 }, goals: [] },
+  { label: '5 income figures', text: 'I earn 114,000 plus a 10,000 bonus. Aoife earns 150,000 plus a 30,000 bonus. Together we take home about 8,500 a month after our pension contributions come out. We also get 2,250 a month rent from an investment property.',
+    amounts: [114_000, 10_000, 150_000, 30_000, 8_500, 2_250], owners: { 150_000: 'partner', 30_000: 'partner' }, facts: {}, goals: [] },
+  { label: '3 funds', text: "Jointly we have 80,000 in Zurich Prisma 4 and 12,000 in Prisma 5. There's also 3,000 in a Prisma 5 for the kids.",
+    amounts: [80_000, 12_000, 3_000], facts: {}, goals: [] },
+  { label: '5 cash holdings', text: 'I have 20,000 in cash, a 50,000 State Savings bond and 12,000 in prize bonds. Aoife has 200,000 in cash and 20,000 in regular savings.',
+    amounts: [20_000, 50_000, 12_000, 200_000, 20_000], owners: { 200_000: 'partner' }, facts: {}, goals: [] },
+  { label: 'partner pension + max', text: 'Aoife has about 500,000 in an Aon lifestyle fund. Her company pays 10% and she pays the max.',
+    amounts: [500_000], owners: { 500_000: 'partner' }, facts: { pension_employer_contribution_rate: 10 }, goals: [] }
 ]);
 
 const env = {
@@ -104,17 +114,69 @@ const context = {
   state: buildPlanningContext({ config, profile, sessionRow: { id: 'measure' } })
 };
 
-/** What one extraction actually yielded. */
-function score(extraction) {
-  return {
-    facts: (extraction?.semanticFacts || []).length,
-    positions: (extraction?.positions || []).length,
-    goals: (extraction?.goalCandidates || []).length,
-    refused: (extraction?.invalidCandidates || []).length
-  };
+/**
+ * How close one extraction came to what the caller actually said.
+ *
+ * Amounts are matched as a multiset: stating 20,000 twice means two rows, and
+ * extracting it twice when it was said once is a duplicate holding, not a
+ * bonus. Everything extracted that the caller did not state -- an invented
+ * figure, a duplicate, money put on the wrong person -- lands in `wrong`.
+ */
+function scoreAgainstTruth(extraction, truth) {
+  const outstanding = [...(truth.amounts || [])];
+  let correct = 0;
+  let wrong = 0;
+  const wrongDetail = [];
+
+  for (const position of extraction?.positions || []) {
+    const amount = Number(position?.amount?.amount);
+    if (!Number.isFinite(amount)) continue;
+    const index = outstanding.indexOf(amount);
+    if (index === -1) {
+      wrong += 1;
+      wrongDetail.push(`${amount} not stated, or stated once and extracted twice`);
+      continue;
+    }
+    outstanding.splice(index, 1);
+    // Money on the wrong person is wrong even though the figure is right: it
+    // moves a holding from one household member's balance sheet to another's.
+    const expectedOwner = (truth.owners || {})[amount];
+    if (expectedOwner && position.owner && position.owner !== expectedOwner) {
+      wrong += 1;
+      wrongDetail.push(`${amount} attributed to ${position.owner}, not ${expectedOwner}`);
+    } else {
+      correct += 1;
+    }
+  }
+
+  for (const [factId, expected] of Object.entries(truth.facts || {})) {
+    const found = (extraction?.semanticFacts || []).find((fact) => fact.factId === factId);
+    if (!found) { outstanding.push(factId); continue; }
+    const value = found.value && typeof found.value === 'object'
+      ? (found.value.rate ?? found.value.value ?? found.value.amount)
+      : found.value;
+    if (Number(value) === Number(expected)) correct += 1;
+    else {
+      wrong += 1;
+      wrongDetail.push(`${factId} read as ${JSON.stringify(found.value)}, not ${expected}`);
+    }
+  }
+
+  if ((truth.goals || []).length) {
+    const goals = (extraction?.goalCandidates || []).map((goal) => goal.goalType);
+    if (goals.some((goal) => truth.goals.includes(goal))) correct += 1;
+    else outstanding.push('goal');
+  }
+
+  return { correct, missed: outstanding.length, wrong, wrongDetail };
 }
 
-const blank = () => ({ facts: 0, positions: 0, goals: 0, refused: 0, empty: 0, failed: 0, ms: 0 });
+const expectedTotal = (truth) => (truth.amounts || []).length
+  + Object.keys(truth.facts || {}).length
+  + ((truth.goals || []).length ? 1 : 0);
+
+const blank = () => ({ correct: 0, missed: 0, wrong: 0, expected: 0, failed: 0, ms: 0 });
+const wrongEverywhere = [];
 const METHODS = [
   ['whole', (options) => extractRealtimePlannerTurn(options)],
   // Clause reading with the recovery read suppressed, so the recovery path can
@@ -126,7 +188,8 @@ const totals = Object.fromEntries(METHODS.map(([name]) => [name, blank()]));
 
 for (const item of UTTERANCES) {
   const clauseCount = segmentClientTurn(item.text).length;
-  const line = [];
+  const expected = expectedTotal(item);
+  console.info(`\n${item.label}  (${clauseCount} clause${clauseCount === 1 ? '' : 's'}, ${expected} things stated)`);
   for (const [method, extract] of METHODS) {
     const seen = blank();
     for (let run = 0; run < runs; run += 1) {
@@ -135,32 +198,33 @@ for (const item of UTTERANCES) {
         const planned = await extract({
           env, config, context, sourceTurnId: `measure-${method}-${run}`, transcript: item.text, recentTurns: []
         });
-        const result = score(planned.extraction);
-        seen.facts += result.facts;
-        seen.positions += result.positions;
-        seen.goals += result.goals;
-        seen.refused += result.refused;
-        // NOTHING AT ALL is the failure that matters most: the client answered
-        // and the engine came away with nothing to show for it.
-        if (result.facts + result.positions + result.goals === 0) seen.empty += 1;
+        const result = scoreAgainstTruth(planned.extraction, item);
+        seen.correct += result.correct;
+        seen.missed += result.missed;
+        seen.wrong += result.wrong;
+        for (const detail of result.wrongDetail) wrongEverywhere.push(`${method.padEnd(9)} ${item.label} -- ${detail}`);
       } catch (_error) {
         seen.failed += 1;
+        seen.missed += expected;
       }
+      seen.expected += expected;
       seen.ms += Date.now() - startedAt;
     }
     for (const key of Object.keys(seen)) totals[method][key] += seen[key];
-    line.push(`${method}: ${(seen.facts / runs).toFixed(1)}f ${(seen.positions / runs).toFixed(1)}p `
-      + `${(seen.goals / runs).toFixed(1)}g refused ${(seen.refused / runs).toFixed(1)} `
-      + `empty ${seen.empty}/${runs} failed ${seen.failed}/${runs} ${Math.round(seen.ms / runs)}ms`);
+    const accuracy = seen.expected ? Math.round((seen.correct / seen.expected) * 100) : 100;
+    console.info(`  ${method.padEnd(9)} ${String(accuracy).padStart(3)}% right  missed ${String(seen.missed).padStart(2)}  `
+      + `WRONG ${String(seen.wrong).padStart(2)}  failed ${seen.failed}/${runs}  ${Math.round(seen.ms / runs)}ms`);
   }
-  console.info(`\n${item.label}  (${clauseCount} clause${clauseCount === 1 ? '' : 's'})`);
-  for (const entry of line) console.info(`  ${entry}`);
 }
 
 console.info(`\n=== totals: ${UTTERANCES.length} utterances x ${runs} runs, ${contextName} context ===`);
 for (const [method, sum] of Object.entries(totals)) {
-  const attempts = UTTERANCES.length * runs;
-  console.info(`  ${method.padEnd(8)} facts ${String(sum.facts).padStart(4)}  positions ${String(sum.positions).padStart(3)}  `
-    + `goals ${String(sum.goals).padStart(3)}  refused ${String(sum.refused).padStart(3)}  `
-    + `empty ${sum.empty}/${attempts}  failed ${sum.failed}/${attempts}  mean ${Math.round(sum.ms / attempts)}ms`);
+  const accuracy = sum.expected ? ((sum.correct / sum.expected) * 100).toFixed(1) : '100.0';
+  console.info(`  ${method.padEnd(9)} ${String(accuracy).padStart(5)}% of what the caller said  `
+    + `missed ${String(sum.missed).padStart(3)}  WRONG ${String(sum.wrong).padStart(3)}  `
+    + `failed ${sum.failed}/${UTTERANCES.length * runs}  mean ${Math.round(sum.ms / (UTTERANCES.length * runs))}ms`);
+}
+if (wrongEverywhere.length) {
+  console.info('\n--- what each method got WRONG (invented, duplicated, or misattributed) ---');
+  for (const entry of [...new Set(wrongEverywhere)].slice(0, 30)) console.info(`  ${entry}`);
 }
