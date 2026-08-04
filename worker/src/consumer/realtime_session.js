@@ -1948,8 +1948,19 @@ export class ConsumerRealtimeSession {
     const soFar = `${this.inProgressTranscripts.get(itemId) || ''}${delta}`.slice(0, 4_000);
     this.inProgressTranscripts.set(itemId, soFar);
 
-    for (const segment of readableSegments(soFar)) {
-      if (this.segmentPrefetch.has(segment)) continue;
+    const unread = readableSegments(soFar).filter((segment) => !this.segmentPrefetch.has(segment));
+    if (!unread.length) return;
+
+    // LOADED ONCE FOR THE BATCH, NOT ONCE PER CLAUSE. This await used to sit
+    // inside the loop below, so each clause waited for its own multi-read
+    // context load -- four to six D1 reads plus a decrypt plus a full replan --
+    // before its planner call could even start. That serialised the very head
+    // start this function exists to provide. One snapshot is correct here:
+    // nothing writes to the profile between transcript deltas, because the
+    // client is still speaking and no turn has been finalized yet.
+    const context = await this.planningContext();
+
+    for (const segment of unread) {
       // Bounded, so a client who talks for two minutes cannot spend without
       // limit. The ceiling matches the per-turn segment ceiling.
       if (this.segmentPrefetch.size >= 5) return;
@@ -1959,7 +1970,7 @@ export class ConsumerRealtimeSession {
       const pending = extractRealtimePlannerTurn({
         env: this.env,
         config,
-        context: await this.planningContext(),
+        context,
         sourceTurnId: `${itemId}#pre${this.segmentPrefetch.size + 1}`,
         transcript: segment,
         recentTurns: []
