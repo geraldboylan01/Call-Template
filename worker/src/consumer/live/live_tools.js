@@ -33,6 +33,16 @@ import { getSemanticFactDefinition } from '../../../../js/planning/semantic_fact
 
 const MAX_FACTS_PER_CALL = 10;
 
+/**
+ * The identity of THIS tool surface, recorded on the lease.
+ *
+ * Three tools, not the v2 lane's seven, and the difference is the point: the
+ * model saves what it heard, reads its own state, and runs the plan. Anything
+ * that recorded a live meeting under `consumer-realtime-tools-v7` would be
+ * describing a surface this lane has never had.
+ */
+export const LIVE_TOOLSET_VERSION = 'planeir-live-tools-v1';
+
 export const LIVE_TOOL_DEFINITIONS = Object.freeze([
   {
     type: 'function',
