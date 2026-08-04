@@ -71,7 +71,11 @@ export async function runRealtimeInfrastructureProof({
         });
         const payload = response.ok ? await response.json() : null;
         enabled = payload?.flags?.consumerRealtimeVoiceEnabled === true;
-        sampledVersion = payload?.realtimeVoice?.conversationVersion === 'v2' ? 'v2' : 'v1';
+        // THREE LANES, NOT TWO. Collapsing anything that is not v2 into v1
+        // would read a live deployment as the controlled lane and then wait
+        // for a Worker-composed speech response that lane never sends.
+        const reported = payload?.realtimeVoice?.conversationVersion;
+        sampledVersion = ['live', 'v2'].includes(reported) ? reported : 'v1';
       } catch (_error) {
         enabled = false;
       }
@@ -294,6 +298,16 @@ export async function runRealtimeInfrastructureProof({
       assert.equal(proof.sidebandConnected, true, 'The authenticated provider sideband was not proven.');
       if (conversationVersion === 'v2') {
         assert.equal(proof.initialWelcomeSucceeded, true, 'The server-authorized Marin welcome did not complete.');
+      } else if (conversationVersion === 'live') {
+        // The live lane has neither. There is no server-authorized welcome --
+        // the provider opens the conversation itself under `create_response:
+        // true` -- and no forced read-only tool, because its tools are called
+        // by the model while it speaks rather than mandated by the server.
+        // The greeting and audio assertions below are what prove this lane.
+        assert.equal(proof.initialWelcomeSucceeded, false,
+          'The live lane must not report a server-authorized welcome; the provider opens the conversation.');
+        assert.equal(proof.readOnlyToolSucceeded, false,
+          'The live lane must not report a forced tool call; nothing on its reply path is mandated.');
       } else {
         assert.equal(proof.readOnlyToolSucceeded, true, 'The forced get_planning_state tool did not succeed.');
       }
@@ -370,9 +384,22 @@ export async function runRealtimeInfrastructureProof({
         state: 'visible',
         timeout: PROOF_TIMEOUT_MS
       });
-      const assistantGreeting = String(await page.locator('#realtimeVoiceTranscriptHistory .is-assistant p').first().textContent() || '').trim();
+      // The live lane writes the text straight onto the list item; the v2 lane
+      // nests a paragraph inside it.
+      const greetingSelector = conversationVersion === 'live'
+        ? '#realtimeVoiceTranscriptHistory .realtime-history-item.is-assistant'
+        : '#realtimeVoiceTranscriptHistory .is-assistant p';
+      const assistantGreeting = String(await page.locator(greetingSelector).first().textContent() || '').trim();
       assert.match(assistantGreeting, /Planéir/i, 'The greeting did not introduce Planéir.');
       const audioReady = await page.evaluate((conversationVersionValue) => {
+        if (conversationVersionValue === 'live') {
+          // This lane does NOT use the companion's `#realtimeVoiceAudio`
+          // element: it creates its own hidden one when the remote track
+          // arrives, because nothing about its playback is Worker-owned.
+          const streamed = [...document.querySelectorAll('audio')]
+            .find((element) => element.srcObject instanceof MediaStream);
+          return Boolean(streamed) && streamed.paused === false;
+        }
         const audio = document.getElementById('realtimeVoiceAudio');
         if (!audio) return false;
         if (conversationVersionValue === 'v2') {
@@ -386,9 +413,11 @@ export async function runRealtimeInfrastructureProof({
       assert.equal(
         audioReady,
         true,
-        conversationVersion === 'v2'
-          ? 'The direct Marin WebRTC stream was not attached and playing.'
-          : 'The separately generated greeting MP3 was not played in the companion.'
+        conversationVersion === 'live'
+          ? 'The live lane attached no playing WebRTC stream of its own.'
+          : conversationVersion === 'v2'
+            ? 'The direct Marin WebRTC stream was not attached and playing.'
+            : 'The separately generated greeting MP3 was not played in the companion.'
       );
       if (conversationVersion === 'v2') {
         await page.waitForFunction(() => (
@@ -453,7 +482,9 @@ export async function runRealtimeInfrastructureProof({
       companionStartWired: true,
       audibleGreetingObserved: true,
       controlledSpeechObserved: conversationVersion === 'v1',
-      directProviderAudioAttached: conversationVersion === 'v2',
+      // Direct provider audio is what BOTH conversational lanes do; only the
+      // controlled lane routes speech through the Worker.
+      directProviderAudioAttached: conversationVersion !== 'v1',
       webRtcConnected: true,
       sidebandConnected: true,
       readOnlyToolSucceeded: conversationVersion === 'v1',
@@ -466,7 +497,9 @@ export async function runRealtimeInfrastructureProof({
       companionStartWired: true,
       audibleGreetingObserved: true,
       controlledSpeechObserved: conversationVersion === 'v1',
-      directProviderAudioAttached: conversationVersion === 'v2',
+      // Direct provider audio is what BOTH conversational lanes do; only the
+      // controlled lane routes speech through the Worker.
+      directProviderAudioAttached: conversationVersion !== 'v1',
       webRtcConnected: true,
       sidebandConnected: true,
       readOnlyToolSucceeded: conversationVersion === 'v1',
