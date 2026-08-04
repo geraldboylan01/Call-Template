@@ -35,7 +35,7 @@ import {
   state,
   storeSessionAccess
 } from './store.js';
-import { createRealtimeVoiceController } from './realtime_voice.js';
+import { LIVE_LANE, createVoiceLaneController, resolveVoiceLane } from './voice_lane.js';
 import {
   captureConversationDraft,
   createVoiceController,
@@ -119,7 +119,10 @@ const voiceController = createVoiceController({
   onSessionUnavailable: (error) => recoverUnavailableSession(error)
 });
 
-const realtimeVoiceController = createRealtimeVoiceController({
+// The options are shared by both lanes; only the controller built from them
+// differs. Held apart from the construction below so the lane can be decided
+// once the bootstrap has told us which one this deployment runs.
+const realtimeVoiceControllerOptions = {
   root: document.getElementById('realtimeVoiceCompanion'),
   onVoicePayload: (payload) => {
     const previousRevision = currentProfileRevision();
@@ -140,6 +143,15 @@ const realtimeVoiceController = createRealtimeVoiceController({
   onStopBoundedVoice: () => voiceController.cancelActiveVoice(),
   onToast: (message, options) => showToast(message, options),
   onSessionUnavailable: (error) => recoverUnavailableSession(error)
+};
+
+// Built with the controlled lane so every call site below has something real
+// to talk to before the bootstrap lands, and rebuilt as the live lane if that
+// is what this deployment runs. Rebuilding is safe because neither controller
+// touches the page until `bind()`, which happens once, after the swap.
+let realtimeVoiceController = createVoiceLaneController({
+  lane: 'controlled',
+  ...realtimeVoiceControllerOptions
 });
 
 function firstDefined(...values) {
@@ -1347,7 +1359,9 @@ function handleComposerShortcut(event) {
 
 function bindEvents() {
   voiceController.bind();
-  realtimeVoiceController.bind();
+  // The realtime controller binds in `boot`, not here: which lane owns the
+  // companion is not known until the bootstrap has been read, and binding the
+  // wrong one would leave listeners on the page for a lane that never runs.
   appRoot.addEventListener('click', handleRootClick);
   appRoot.addEventListener('submit', handleRootSubmit);
   appRoot.addEventListener('keydown', handleComposerShortcut);
@@ -1408,6 +1422,13 @@ async function boot() {
     }
     const bootstrapPayload = await getBootstrap();
     const bootstrap = setBootstrap(bootstrapPayload);
+    if (resolveVoiceLane(bootstrap) === LIVE_LANE) {
+      realtimeVoiceController = createVoiceLaneController({
+        lane: LIVE_LANE,
+        ...realtimeVoiceControllerOptions
+      });
+    }
+    realtimeVoiceController.bind();
     syncTermsDialog(bootstrap);
     const bootstrapRoot = unwrap(bootstrapPayload);
     if (bootstrapRoot.ai && typeof bootstrapRoot.ai === 'object') {

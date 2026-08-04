@@ -440,6 +440,123 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(liveVolatileStateItem({}).includes('nothing yet'), 'An empty state must read naturally.');
 }
 
+/* ------------------------------- every question belongs to an analysis */
+
+// THE POINT OF GROUPING. A flat "still needed" list cannot say which analysis
+// wants a fact, so every question looks equally justified and the meeting
+// drifts into generic fact finding. Grouped, an unasked question has an owner.
+{
+  const item = liveVolatileStateItem({
+    captured: ['Current age'],
+    analyses: [
+      {
+        description: 'work out what your pension could be worth',
+        status: 'blocked_missing_input',
+        stillNeeded: [
+          { factId: 'pension_current_value', why: 'the balance we project forward' },
+          { factId: 'gross_household_income', why: 'sizes the contribution' }
+        ],
+        mayAssume: [{ label: 'Investment growth rate', why: 'a standard Planéir assumption' }]
+      },
+      {
+        description: 'check your emergency reserve',
+        status: 'ready',
+        stillNeeded: [],
+        mayAssume: []
+      }
+    ],
+    missing: ['pension_current_value', 'gross_household_income'],
+    unknown: [],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+
+  ok(item.includes('work out what your pension could be worth'),
+    'Each analysis must be named in the client-facing words.');
+  ok(item.includes('the balance we project forward'),
+    'A needed fact must carry the reason it is needed, not just its name.');
+  ok(item.includes(getSemanticFactDefinition('pension_current_value').label),
+    'A needed fact must be humanised.');
+  ok(!item.includes('pension_current_value'),
+    'The grouped render must never leak a raw fact id.');
+  ok(/Ask only for something an analysis above lists under Needs/.test(item),
+    'The model must be told that the per-analysis needs are the authority on what to ask.');
+  ok(item.includes('check your emergency reserve') && /has what it needs/.test(item),
+    'A satisfied analysis must be shown as satisfied, so it is not re-interrogated.');
+
+  // ADDITION 2: optional inputs stay optional.
+  ok(/never ask for these/i.test(item),
+    'A standard assumption must be stated as settled, never as an outstanding item.');
+  ok(item.includes('Investment growth rate'),
+    'The model must know WHICH values are being assumed, so it does not ask for them.');
+
+  // The grouped render costs more than a flat list. It must still not become
+  // the per-turn brief that made the v2 lane slow.
+  const loaded = liveVolatileStateItem({
+    captured: Array.from({ length: 40 }, (_, index) => `Captured item ${index}`),
+    analyses: Array.from({ length: 3 }, (_, slot) => ({
+      description: `a fairly wordy client-facing analysis description number ${slot}`,
+      status: 'blocked_missing_input',
+      stillNeeded: Array.from({ length: 8 }, () => ({
+        factId: 'pension_current_value',
+        why: 'a long-winded explanation of exactly why this particular fact is needed here'
+      })),
+      mayAssume: [{ label: 'Investment growth rate', why: 'standard' }]
+    })),
+    missing: ['pension_current_value'],
+    unknown: ['monthly_spending'],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+  ok(loaded.length < 1_200, 'A fully loaded grouped state item must still stay small.');
+  ok(loaded.includes('Do not ask for these again in this meeting'),
+    'A long analysis block must never crowd out the standing directives.');
+}
+
+/* ------------- an assumption is never a reason to hold up a confirmation */
+
+// ADDITION 2, at the projection rather than the prose. `assumptionsUsed` must
+// never reach `missing`, because `readyToConfirm` is derived from `missing`.
+{
+  let profile = freshProfile();
+  profile = saveFact(profile, 'primary_goal', { type: 'maintain_liquidity' });
+  const projection = liveStateProjection(contextFor(profile));
+  for (const analysis of projection.analyses) {
+    for (const assumed of analysis.mayAssume || []) {
+      ok(!projection.missing.includes(assumed.label),
+        'A value the engine assumes must never appear as a missing input.');
+    }
+    ok(Array.isArray(analysis.mayAssume),
+      'Every analysis must carry its optional/assumed inputs, even when empty.');
+  }
+}
+
+/* --------- a figure volunteered before the focus is agreed (ADDITION 3) */
+
+// Clients answer questions you have not asked. The figure must be KEPT -- it
+// would be rude and wasteful to drop it -- but it must not quietly become a
+// mandate to pick analyses or start collecting the rest of a fact set. The
+// focus conversation still has to happen.
+{
+  let profile = freshProfile();
+  profile = saveFact(profile, 'cash_savings', { amount: 40_000, currency: 'EUR' });
+
+  const projection = liveStateProjection(contextFor(profile));
+  ok(projection.captured.length > 0,
+    'A figure volunteered before any goal must still be preserved.');
+  ok(projection.goalsAgreed === false,
+    'Volunteering a figure must not count as agreeing a focus.');
+  ok(projection.readyToConfirm === false,
+    'A volunteered figure must never make a plan confirmable.');
+
+  const item = liveVolatileStateItem(projection);
+  ok(/stay in ORIENT or FOCUS and do not gather figures/.test(item),
+    'After an unprompted figure the model must still be held in the focus conversation.');
+  ok(projection.analyses.length === 0 || !/Ask only for something an analysis/.test(item)
+    || projection.goalsAgreed === false,
+    'A provisional analysis must not license figure gathering before the focus is agreed.');
+}
+
 /* ----------------------------------------- mapper and replay regressions */
 
 // Clients naturally state debt terms in years. The model must not calculate a
@@ -1999,6 +2116,83 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   for (const option of ['onVoicePayload', 'onPlanningPayload', 'onNavigate', 'onStopBoundedVoice', 'onToast', 'onSessionUnavailable']) {
     ok(client.includes(option), `The live controller must accept ${option} like the v2 controller.`);
   }
+}
+
+/* ------------------------------- one companion, two lanes, one adapter */
+
+{
+  const adapter = readFileSync(fileURLToPath(new URL('../js/plan/voice_lane.js', import.meta.url)), 'utf8');
+  const client = readFileSync(fileURLToPath(new URL('../js/plan/live_voice.js', import.meta.url)), 'utf8');
+  const app = readFileSync(fileURLToPath(new URL('../js/plan/app.js', import.meta.url)), 'utf8');
+  const markup = readFileSync(fileURLToPath(new URL('../plan/index.html', import.meta.url)), 'utf8');
+
+  // THE LIFECYCLE TRAP. `teardown()` closes the peer connection but never
+  // clears `active`, and `start()` returns immediately while `active` is set.
+  // A reset that called teardown would leave a companion that can never open
+  // another meeting -- silently, because nothing throws.
+  const resetBody = adapter.slice(adapter.indexOf('  reset()'), adapter.indexOf('  async withdrawConsent()'));
+  ok(resetBody.includes('stop('), 'reset must go through stop(), which is what clears `active`.');
+  ok(!resetBody.includes('teardown('),
+    'reset must never call teardown() directly: it leaves `active` set and start() would refuse forever.');
+  ok(/transcriptHistory = \[\]/.test(resetBody) && /hidden = true/.test(resetBody),
+    'reset must clear the transcript and hide the companion even when no meeting was running.');
+
+  // The adapter carries the v2-shaped surface so live_voice.js does not have to.
+  for (const method of [
+    'bind', 'sync', 'openCompanion', 'isLive', 'isMeetingAvailable',
+    'meetingUnavailableReason', 'meetingUnavailableDetail', 'end', 'reset',
+    'withdrawConsent', 'playWorkerSpeechFromPayload'
+  ]) {
+    ok(new RegExp(`\\b${method}\\s*\\(`).test(adapter),
+      `The adapter must answer ${method}(), which app.js calls on whichever lane is running.`);
+  }
+  // (That the live client itself carries no `playWorkerSpeechFromPayload` is
+  // already asserted above, against comment-stripped source.)
+
+  // ONE GATE, NOT TWO. Availability and consent read session state, not
+  // controller state, so both lanes must call the same helpers.
+  for (const shared of [
+    'realtimeMeetingAvailable', 'realtimeMeetingUnavailableReason',
+    'realtimeMeetingUnavailableDetail', 'withdrawRealtimeVoiceConsent'
+  ]) {
+    ok(adapter.includes(shared), `The adapter must reuse ${shared} rather than reimplementing the gate.`);
+  }
+
+  // The lane is chosen before a call exists, because the controller is what
+  // creates the call.
+  ok(/resolveVoiceLane\(bootstrap\)/.test(app),
+    'app.js must choose the lane from the bootstrap, not from the call response.');
+  ok(app.indexOf('resolveVoiceLane(bootstrap)') > app.indexOf('await getBootstrap()'),
+    'The lane can only be resolved after the bootstrap has been read.');
+  ok(!/^\s*realtimeVoiceController\.bind\(\);/m.test(app.slice(app.indexOf('function bindEvents()'), app.indexOf('async function boot()'))),
+    'The realtime controller must not bind before the lane is known.');
+
+  // The shared companion carries both contracts at once.
+  for (const hook of [
+    'data-live-start', 'data-live-stop', 'data-live-status',
+    'data-live-caption="user"', 'data-live-caption="assistant"',
+    'data-live-transcript', 'data-live-orb'
+  ]) {
+    ok(markup.includes(hook), `The shared companion must expose ${hook} for the live controller.`);
+  }
+  for (const id of ['realtimeVoiceStartButton', 'realtimeVoiceEndButton', 'realtimeVoiceShell']) {
+    ok(markup.includes(`id="${id}"`), `Adding live hooks must not remove the v2 id ${id}.`);
+  }
+
+  // Two bugs that would have made the shared companion look broken rather than
+  // fail: the CSS and the orb both key off `data-realtime-phase`, and the
+  // transcript region is an <ol> styled by `realtime-history-item`.
+  // Comments name both hazards deliberately, so assert against code only —
+  // documenting a trap must not read as falling into it.
+  const clientCode = client
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  ok(clientCode.includes('data-realtime-phase') && !/'data-phase'/.test(clientCode),
+    'The live client must set the phase attribute the stylesheet and the orb actually read.');
+  ok(clientCode.includes('realtime-history-item') && !clientCode.includes('live-transcript-line'),
+    'Transcript lines must use the class the stylesheet defines.');
+  ok(/createElement\('li'\)/.test(clientCode),
+    'Transcript lines go into an <ol>, so they must be list items.');
 }
 
 console.log(`check-consumer-live: ${checks} assertions passed.`);

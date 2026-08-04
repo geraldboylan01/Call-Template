@@ -609,6 +609,101 @@ function realtimeContext() {
   };
 }
 
+/**
+ * Whether a live meeting can run at all — SHARED BY BOTH LANES.
+ *
+ * These three gates read only `realtimeContext()` and module `state`: nothing
+ * about them depends on which controller is driving, or on any instance field.
+ * They are free functions so the live lane's adapter can ask the same question
+ * and get the same answer, rather than growing a second copy of the gate logic
+ * that drifts the first time one of these conditions changes.
+ */
+export function realtimeMeetingAvailable() {
+  const context = realtimeContext();
+  return context.eligible
+    && context.configured
+    && Boolean(context.sessionId)
+    && isRealtimeVoiceSupported()
+    && !context.consentRefreshRequired;
+}
+
+/** Why the meeting cannot open, so the failure page can say something actionable. */
+export function realtimeMeetingUnavailableReason() {
+  const context = realtimeContext();
+  if (!isRealtimeVoiceSupported()) return 'unsupported-browser';
+  if (!context.eligible || !context.configured) return 'service-off';
+  if (!context.sessionId) return 'no-session';
+  if (context.consentRefreshRequired) return 'consent-refresh';
+  return '';
+}
+
+/**
+ * Per-gate breakdown for diagnosing a meeting that will not open. Booleans and
+ * identifiers only: no profile, transcript, or other personal data, so it is
+ * safe to log. `eligible` is split out because a single false there is the most
+ * common cause and the hardest to tell apart from the others.
+ */
+export function realtimeMeetingUnavailableDetail() {
+  const context = realtimeContext();
+  const bootstrap = state.bootstrap || {};
+  return {
+    reason: realtimeMeetingUnavailableReason(),
+    journeyEnabled: bootstrap.enabled === true,
+    realtimeFlagEnabled: bootstrap.voiceRealtimeEnabled === true,
+    cohort: String(bootstrap.cohort || ''),
+    cohortMatches: String(bootstrap.cohort || '').toLowerCase() === ADVISER_TEST_COHORT,
+    noticesConfigured: context.configured,
+    browserSupported: isRealtimeVoiceSupported(),
+    serverSessionConfirmed: Boolean(context.sessionId),
+    consentRefreshRequired: context.consentRefreshRequired === true
+  };
+}
+
+/**
+ * Turning Live voice off — SHARED BY BOTH LANES.
+ *
+ * Withdrawing consent is a property of the session, not of whichever
+ * controller happens to be driving: the same button, the same endpoint, the
+ * same disabled-while-in-flight handling. Only "end the meeting" and the
+ * post-withdraw chrome differ, so those are the two callbacks.
+ */
+export async function withdrawRealtimeVoiceConsent({
+  endMeeting = async () => {},
+  afterWithdraw = () => {},
+  onVoicePayload = () => {},
+  onToast = () => {},
+  onSessionUnavailable = () => false
+} = {}) {
+  const context = realtimeContext();
+  if (!context.sessionId || getRealtimeVoiceConsent()?.granted !== true) return;
+  const button = document.getElementById('withdrawRealtimeVoiceConsentButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Turning off…';
+  }
+  await endMeeting();
+  try {
+    const payload = await updateRealtimeVoiceConsent(context.sessionId, {
+      granted: false,
+      noticeId: context.noticeId,
+      policyVersion: context.policyVersion,
+      privacyNoticeUrl: context.privacyNoticeUrl
+    });
+    mergeVoicePayload(payload);
+    onVoicePayload(payload);
+    afterWithdraw();
+    onToast('Live voice is off for this session.');
+  } catch (error) {
+    if (onSessionUnavailable(error)) return;
+    onToast(error instanceof Error ? error.message : 'Live voice could not be turned off.', { error: true });
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Stop Live voice';
+    }
+  }
+}
+
 function stopTracks(stream) {
   stream?.getTracks?.().forEach((track) => {
     try { track.stop(); } catch (_error) { /* best-effort privacy cleanup */ }
@@ -3115,35 +3210,16 @@ export class RealtimeVoiceController {
   }
 
   async withdrawConsent() {
-    const context = realtimeContext();
-    if (!context.sessionId || getRealtimeVoiceConsent()?.granted !== true) return;
-    const button = document.getElementById('withdrawRealtimeVoiceConsentButton');
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'Turning off…';
-    }
-    await this.end({ reason: 'consent_withdrawn' });
-    try {
-      const payload = await updateRealtimeVoiceConsent(context.sessionId, {
-        granted: false,
-        noticeId: context.noticeId,
-        policyVersion: context.policyVersion,
-        privacyNoticeUrl: context.privacyNoticeUrl
-      });
-      mergeVoicePayload(payload);
-      this.onVoicePayload(payload);
-      this.closeConsentDialog();
-      this.setPhase('off', 'Live voice is off. Short voice and typing remain available.');
-      this.onToast('Live voice is off for this session.');
-    } catch (error) {
-      if (this.onSessionUnavailable(error)) return;
-      this.onToast(error instanceof Error ? error.message : 'Live voice could not be turned off.', { error: true });
-    } finally {
-      if (button) {
-        button.disabled = false;
-        button.textContent = 'Stop Live voice';
-      }
-    }
+    return withdrawRealtimeVoiceConsent({
+      endMeeting: () => this.end({ reason: 'consent_withdrawn' }),
+      afterWithdraw: () => {
+        this.closeConsentDialog();
+        this.setPhase('off', 'Live voice is off. Short voice and typing remain available.');
+      },
+      onVoicePayload: this.onVoicePayload,
+      onToast: this.onToast,
+      onSessionUnavailable: this.onSessionUnavailable
+    });
   }
 
   reset({ notifyServer = false } = {}) {

@@ -28,7 +28,25 @@ import { publicIrishStatePensionRule } from '../../../../js/planning/ireland_rul
 import { realtimeFactValueVocabulary } from '../realtime_fact_mapper.js';
 import { PROHIBITED_ACTS } from './compliance.js';
 
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v3';
+// v4: the volatile state item now names what EACH analysis needs and why, and
+// the flow section makes those per-analysis needs authoritative over the
+// catalogue's capability lists below.
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v4';
+
+/**
+ * Budgets for the per-turn state item.
+ *
+ * This item is injected after every save and is deliberately NOT part of the
+ * cached prefix, so every character is paid for on every turn. Grouping needs
+ * by analysis costs more than a flat list; these caps are what stop that from
+ * growing into the 12 KB per-turn brief that made the v2 lane slow.
+ */
+const MAX_SHOWN_ANALYSES = 3;
+const MAX_NEEDS_PER_ANALYSIS = 4;
+const MAX_WHY_CHARS = 60;
+const MAX_ANALYSIS_BLOCK_CHARS = 700;
+const MAX_CAPTURED_CHARS = 320;
+const MAX_VOLATILE_ITEM_CHARS = 1_150;
 
 const MONEY_VALUE_SHAPE = '{"amount": <numeric amount copied from the client>, "currency": "EUR"}';
 
@@ -319,9 +337,23 @@ function conversationFlowSection() {
     'one dependants batch before moving on.',
     'When you have enough, say what you are going to run and ask them to confirm.',
     '',
-    'YOU DECIDE WHAT TO ASK NEXT. There is no server-supplied question and no fixed order. Use',
-    'get_state to see what is captured and what is still missing, then choose what a thoughtful',
-    'person would actually ask this particular client next.'
+    'EVERY QUESTION MUST BELONG TO AN ANALYSIS THAT IS IN PLAY. After each save you are given a',
+    'short state note listing the analyses in play and, for each one, what it still needs and why.',
+    'That note is the authority on what to ask. The "Needs:" lines in the catalogue below describe',
+    'what each analysis is CAPABLE of using — they are reference, not a checklist, and a fact',
+    'listed there for an analysis that is not in play must not be asked for at all.',
+    'If you cannot name the analysis a question serves, do not ask it.',
+    '',
+    'ANYTHING LISTED AS A STANDARD ASSUMPTION IS SETTLED. The engine already has an approved value',
+    'for it. Never ask for it, and never treat it as outstanding — an analysis that has what it',
+    'needs is ready to run even though assumptions are being used. Only ask about one if the client',
+    'raises it themselves, or if what they have told you makes the standard value clearly wrong for',
+    'them.',
+    '',
+    'YOU DECIDE WHAT TO ASK NEXT. There is no server-supplied question and no fixed order. The',
+    'state note arrives on its own after every save, so you rarely need get_state — reach for it',
+    'when you have lost track or want to check you are not repeating yourself. Then choose what a',
+    'thoughtful person would actually ask this particular client next.'
   ].join('\n');
 }
 
@@ -537,6 +569,40 @@ export function buildLiveCataloguePrompt() {
  * Deliberately tiny and deliberately NOT part of `instructions`: rewriting the
  * instruction block per turn is what breaks caching in the v2 lane.
  */
+function needPhrase(need) {
+  const label = getSemanticFactDefinition(need?.factId)?.label || need?.factId || '';
+  if (!label) return '';
+  const why = typeof need?.why === 'string' ? need.why.trim() : '';
+  return why ? `${label} — ${why.slice(0, MAX_WHY_CHARS)}` : label;
+}
+
+/**
+ * One analysis, with what IT needs — not a global to-do list.
+ *
+ * The per-analysis grouping is the whole point: a flat "still needed" list
+ * cannot tell the model which analysis a question serves, so every question
+ * looks equally justified and the conversation drifts into generic fact
+ * finding. Grouped, an unasked question has a visible owner.
+ */
+function analysisLine(analysis) {
+  if (typeof analysis === 'string') return `- ${analysis}.`;
+  const needs = (analysis?.stillNeeded || [])
+    .slice(0, MAX_NEEDS_PER_ANALYSIS)
+    .map(needPhrase)
+    .filter(Boolean);
+  const assumed = (analysis?.mayAssume || [])
+    .map((item) => item?.label)
+    .filter(Boolean);
+  const ready = ['ready', 'ready_with_assumptions'].includes(analysis?.status);
+  const parts = [`- ${analysis?.description || 'an analysis'}: ${ready ? 'has what it needs' : 'not ready yet'}.`];
+  if (needs.length) parts.push(`Needs ${needs.join('; ')}.`);
+  // Stated as settled, not as a shorter list to work through. An approved
+  // assumption is never a reason to ask, and never a reason to hold up a
+  // confirmation.
+  if (assumed.length) parts.push(`Standard assumptions already supplied, never ask for these: ${assumed.join(', ')}.`);
+  return parts.join(' ');
+}
+
 export function liveVolatileStateItem(state = {}) {
   const captured = Array.isArray(state.captured) ? state.captured : [];
   const analyses = Array.isArray(state.analyses) ? state.analyses : [];
@@ -544,22 +610,52 @@ export function liveVolatileStateItem(state = {}) {
   const unknown = Array.isArray(state.unknown) ? state.unknown : [];
   const missingLabels = missing.map((factId) => getSemanticFactDefinition(factId)?.label || factId);
   const unknownLabels = unknown.map((factId) => getSemanticFactDefinition(factId)?.label || factId);
-  const parts = [
-    `Captured so far: ${captured.length ? captured.join(', ') : 'nothing yet'}.`,
-    `Analyses in play: ${analyses.length ? analyses.join('; ') : 'none chosen yet'}.`,
-    `Still needed: ${missingLabels.length ? missingLabels.join(', ') : 'nothing outstanding'}.`
+
+  const shown = analyses.slice(0, MAX_SHOWN_ANALYSES);
+  const renderedNeeds = shown.some((analysis) => (analysis?.stillNeeded || []).length > 0);
+  // Budgeted on its own so a long analysis block can never push the standing
+  // directives below out of the item. They are what keep the meeting on rails.
+  const analysisBlock = shown.length
+    ? [
+      'Analyses in play, and what each one still needs:',
+      ...shown.map(analysisLine),
+      'Ask only for something an analysis above lists under Needs.'
+    ].join(' ').slice(0, MAX_ANALYSIS_BLOCK_CHARS)
+    : 'Analyses in play: none chosen yet.';
+
+  const describing = [
+    `Captured so far: ${captured.length ? captured.join(', ') : 'nothing yet'}.`
+      .slice(0, MAX_CAPTURED_CHARS),
+    analysisBlock
   ];
+  // Only when the grouped render carried no needs of its own -- otherwise this
+  // is the flat list the grouping exists to replace.
+  if (!renderedNeeds) {
+    describing.push(`Still needed: ${missingLabels.length ? missingLabels.join(', ') : 'nothing outstanding'}.`);
+  }
+
+  // STANDING DIRECTIVES ARE RESERVED, NOT TRIMMED. These are the lines that
+  // keep the meeting on rails -- do not re-ask what they cannot answer, do not
+  // gather figures before the focus is agreed, do not confirm early. They are
+  // budgeted first and the descriptive block gets whatever is left, so a
+  // talkative client with three analyses in play can never truncate them away.
+  const directives = [];
   if (unknownLabels.length) {
-    parts.push(`Client cannot supply now: ${unknownLabels.join(', ')}. Do not ask for these again in this meeting.`);
+    directives.push(`Client cannot supply now: ${unknownLabels.join(', ')}. Do not ask for these again in this meeting.`);
   }
   if (state.goalsAgreed === false) {
-    parts.push('First focus is not agreed yet: stay in ORIENT or FOCUS and do not gather figures.');
+    directives.push('First focus is not agreed yet: stay in ORIENT or FOCUS and do not gather figures.');
   } else if (state.goalsAgreed === true) {
-    parts.push('First focus is agreed.');
+    directives.push('First focus is agreed.');
   }
-  if (state.readyToConfirm === true) parts.push('The plan is ready for a spoken confirmation.');
+  if (state.readyToConfirm === true) directives.push('The plan is ready for a spoken confirmation.');
   if (state.readyToConfirm === false && analyses.length > 0) {
-    parts.push('The plan is not ready for confirmation yet.');
+    directives.push('The plan is not ready for confirmation yet.');
   }
-  return parts.join(' ');
+
+  const directiveText = directives.join(' ');
+  const describingText = describing
+    .join(' ')
+    .slice(0, Math.max(0, MAX_VOLATILE_ITEM_CHARS - directiveText.length - 1));
+  return [describingText, directiveText].filter(Boolean).join(' ');
 }

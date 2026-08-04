@@ -943,7 +943,15 @@ export class ConsumerLiveSession {
             type: 'input_text',
             text: liveVolatileStateItem({
               captured: projection.captured,
-              analyses: projection.analyses.map((analysis) => analysis.description),
+              // PASSED WHOLE, NOT FLATTENED TO DESCRIPTIONS. Mapping these to
+              // their descriptions used to discard `status`, `stillNeeded` and
+              // the `why` behind each need, so the pushed state could only say
+              // what was missing globally -- never which analysis wanted it.
+              // The model was left to infer the justification for its own
+              // questions, which is what turns a focused meeting into generic
+              // fact finding. The structure was already being built here; it
+              // just never survived this call.
+              analyses: projection.analyses,
               missing: projection.missing,
               unknown: projection.unknown,
               goalsAgreed: projection.goalsAgreed,

@@ -421,4 +421,68 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
   pass(`the adviser bridge verifies the deployed voice notice (${deployedValue})`);
 }
 
+/* ------------------------------------------- the live conversational lane */
+
+// The live lane is a SECOND conversation layer over the same lease, consent and
+// cost infrastructure. It ships dormant like everything else, and the two
+// things that differ when it runs -- the prompt it speaks from and the toolset
+// it is given -- are recorded on the lease, so they have to describe the lane
+// that actually ran.
+{
+  const wrangler = readFileSync(`${root}/worker/wrangler.toml`, 'utf8');
+  assert.match(wrangler, /^CONSUMER_LIVE_VOICE_ENABLED = "false"$/m,
+    'the live lane must ship dormant in the committed config, like every other capability');
+  assert.match(workflow, /CONSUMER_LIVE_VOICE_ENABLED:\s*\$\{\{\s*vars\.CONSUMER_LIVE_VOICE_ENABLED\s*\|\|\s*'false'\s*\}\}/,
+    'the live lane must default to false in the workflow — it has never run against real audio');
+  assert.match(workflow, /const liveVoiceEnabled = realtimeEnabled && liveVoiceToggle === 'true';/,
+    'the live lane must be gated on the realtime canary');
+  assert.doesNotMatch(workflow, /const liveVoiceEnabled = [^\n]*realtimeV2Enabled/,
+    'the live lane must not be derived from v2: they are alternative lanes, not a hierarchy');
+
+  // The infrastructure proof stands the plumbing up. It must not quietly become
+  // the live lane's first real-audio run.
+  assert.match(workflow, /must keep the live conversational lane disabled/,
+    'the bootstrap config must assert the live lane is off');
+
+  // PROVENANCE. Without the lane-scoped override a live meeting would file
+  // itself under the v2 orchestrator prompt and a seven-tool surface it does
+  // not have.
+  const v2Env = resolveShippedConsumerEnv({ realtime: true });
+  const liveEnv = resolveShippedConsumerEnv({ realtime: true, live: true });
+  assert.equal(v2Env.get('CONSUMER_REALTIME_PROMPT_VERSION'), 'consumer-realtime-orchestrator-v9',
+    'a v2 deployment must still ship the v2 prompt version');
+  assert.notEqual(
+    liveEnv.get('CONSUMER_REALTIME_PROMPT_VERSION'),
+    v2Env.get('CONSUMER_REALTIME_PROMPT_VERSION'),
+    'a live deployment must not record the v2 prompt version'
+  );
+  assert.notEqual(
+    liveEnv.get('CONSUMER_REALTIME_TOOLSET_VERSION'),
+    v2Env.get('CONSUMER_REALTIME_TOOLSET_VERSION'),
+    'a live deployment must not record the v2 toolset version'
+  );
+
+  // The versions the workflow ships must be the ones the code actually runs.
+  const promptSource = readFileSync(`${root}/worker/src/consumer/live/catalogue_prompt.js`, 'utf8');
+  const toolsSource = readFileSync(`${root}/worker/src/consumer/live/live_tools.js`, 'utf8');
+  const codePrompt = promptSource.match(/LIVE_PROMPT_VERSION = '([^']+)'/)?.[1];
+  const codeToolset = toolsSource.match(/LIVE_TOOLSET_VERSION = '([^']+)'/)?.[1];
+  assert.equal(liveEnv.get('CONSUMER_REALTIME_PROMPT_VERSION'), codePrompt,
+    'the deployed live prompt version must match LIVE_PROMPT_VERSION in the code that builds the prompt');
+  assert.equal(liveEnv.get('CONSUMER_REALTIME_TOOLSET_VERSION'), codeToolset,
+    'the deployed live toolset version must match LIVE_TOOLSET_VERSION beside the tool definitions');
+
+  // The router gate is what would refuse the Worker's own sessions. It must
+  // accept a live deployment, and it must still refuse one carrying v2 ids.
+  const routerSource = readFileSync(`${root}/worker/src/consumer/router.js`, 'utf8');
+  assert.match(routerSource, /config\?\.liveVoiceEnabled === true/,
+    'the preview gate must branch on the lane before pinning prompt and toolset versions');
+  assert.match(routerSource, /config\?\.realtimePromptVersion === LIVE_PROMPT_VERSION/,
+    'the gate must pin the live prompt version to the constant the prompt builder exports');
+  assert.match(routerSource, /config\?\.realtimeToolsetVersion === LIVE_TOOLSET_VERSION/,
+    'the gate must pin the live toolset version to the constant beside the tool definitions');
+
+  pass(`the live lane ships dormant and records its own prompt (${codePrompt}) and toolset (${codeToolset})`);
+}
+
 console.info(`\n[DeployCanary] ${passes.length} assertions passed.`);

@@ -88,6 +88,8 @@ import { renderAuthorizedRealtimeSpeech } from './realtime_speech.js';
 import { toConversationGuide } from './realtime_planner.js';
 import { conversationLaneStub } from './live/lane.js';
 import { buildLiveSessionConfig } from './live/live_provider.js';
+import { LIVE_PROMPT_VERSION } from './live/catalogue_prompt.js';
+import { LIVE_TOOLSET_VERSION } from './live/live_tools.js';
 import { requireConsumerSession } from './session_auth.js';
 import {
   getVoiceConsent,
@@ -206,8 +208,18 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeVoice === 'marin'
     && config?.realtimeReasoningEffort === 'low'
     && config?.realtimeTranscriptionModel === 'gpt-4o-mini-transcribe'
-    && config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v9'
-    && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v7'
+    // The prompt and toolset identities belong to the LANE, not to the
+    // transport. Everything else pinned here -- model, voice, reasoning
+    // effort, transcription model, pricing, the whole spend envelope and the
+    // duration caps -- is identical whichever lane runs, and none of it
+    // relaxes. Only these two differ, because the live lane genuinely runs a
+    // different prompt and a three-tool surface, and the lease records
+    // whichever pair the deployment is configured with.
+    && (config?.liveVoiceEnabled === true
+      ? config?.realtimePromptVersion === LIVE_PROMPT_VERSION
+        && config?.realtimeToolsetVersion === LIVE_TOOLSET_VERSION
+      : config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v9'
+        && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v7')
     && config?.realtimePricingVersion === 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'
     && config?.realtimeSpeechModel === 'gpt-4o-mini-tts'
     && config?.realtimeSpeechVoice === 'marin'

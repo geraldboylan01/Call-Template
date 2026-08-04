@@ -73,6 +73,15 @@ jobs:
       # Spoken authorization is subordinate to both Realtime and conversational
       # v2. It remains opt-in so visual confirmation is the immediate rollback.
       CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: ${{ vars.CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED || 'false' }}
+      # The live conversational lane. Like v2 it is effective only while the
+      # adviser Realtime canary is active, but it is NOT derived from v2: the
+      # two are alternative conversation layers over the same lease, consent and
+      # cost infrastructure, and exactly one drives a given meeting.
+      #
+      # Unlike v2 this defaults to FALSE, not true. v2 has been through a paid
+      # canary; this lane has never run against real audio, so it stays off
+      # until a protected variable turns it on for a reviewed deployment.
+      CONSUMER_LIVE_VOICE_ENABLED: ${{ vars.CONSUMER_LIVE_VOICE_ENABLED || 'false' }}
       # One shared rule across every transport: on means all transports offer
       # optional analyses and the three-analysis capacity decision, off means
       # none does. Canaried separately from the rest of the beta.
@@ -106,6 +115,12 @@ jobs:
       CONSUMER_BETA_REALTIME_PLANNER_MODEL: "gpt-5.6-luna"
       CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v9"
       CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v7"
+      # The live lane runs a different prompt and a different toolset, and the
+      # lease row records whichever pair the deployment is configured with. Left
+      # on the v2 values a live meeting would file itself under a prompt it
+      # never ran and a seven-tool surface it does not have.
+      CONSUMER_BETA_LIVE_PROMPT_VERSION: "planeir-live-conversation-v4"
+      CONSUMER_BETA_LIVE_TOOLSET_VERSION: "planeir-live-tools-v1"
       CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
       # Adviser-demo envelope: €10 per session (warn at €7.50) inside the
       # retained €50 UTC-day ceiling, 15-minute maximum meeting, 3-minute
@@ -434,6 +449,15 @@ jobs:
             throw new Error('CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED must be exactly true or false.');
           }
           const spokenCompletionEnabled = realtimeV2Enabled && spokenCompletionToggle === 'true';
+          const liveVoiceToggle = envValue('CONSUMER_LIVE_VOICE_ENABLED');
+          if (!['false', 'true'].includes(liveVoiceToggle)) {
+            throw new Error('CONSUMER_LIVE_VOICE_ENABLED must be exactly true or false.');
+          }
+          // Gated on the Realtime canary, never on v2. This mirrors
+          // worker/src/consumer/config.js, where the live lane depends on
+          // realtime being active but is deliberately independent of the v1/v2
+          // switch, so turning one on can never imply the other.
+          const liveVoiceEnabled = realtimeEnabled && liveVoiceToggle === 'true';
           const moduleOffersToggle = envValue('CONSUMER_MODULE_OFFERS_ENABLED');
           if (!['true', 'false'].includes(moduleOffersToggle)) {
             throw new Error('CONSUMER_MODULE_OFFERS_ENABLED must be exactly true or false.');
@@ -715,11 +739,35 @@ jobs:
                 }
                 generatedSource = replaceTomlString(generatedSource, runtimeName, value);
               }
+              // THE LEASE RECORDS WHAT ACTUALLY RAN. Both versions are written
+              // onto the realtime lease at creation from these two settings, so
+              // the pair has to describe the lane this deployment is running.
+              // The live lane's prompt and its three-tool surface are not the
+              // v2 orchestrator's, and provenance that says otherwise is worse
+              // than none: it would be believed.
+              if (liveVoiceEnabled) {
+                const fixedLiveValues = {
+                  CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v4'],
+                  CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1']
+                };
+                for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedLiveValues)) {
+                  const value = envValue(sourceName);
+                  if (value !== approvedValue) {
+                    throw new Error(`${sourceName} must remain exactly ${approvedValue} for the protected live lane.`);
+                  }
+                  generatedSource = replaceTomlString(generatedSource, runtimeName, value);
+                }
+              }
               generatedSource = replaceTomlString(generatedSource, 'CONSUMER_REALTIME_VOICE_ENABLED', 'true');
               generatedSource = replaceTomlString(
                 generatedSource,
                 'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
                 realtimeV2Enabled ? 'true' : 'false'
+              );
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_LIVE_VOICE_ENABLED',
+                liveVoiceEnabled ? 'true' : 'false'
               );
               generatedSource = replaceTomlString(
                 generatedSource,
@@ -736,6 +784,7 @@ jobs:
             CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
             CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: realtimeV2Enabled ? 'true' : 'false',
             CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: spokenCompletionEnabled ? 'true' : 'false',
+            CONSUMER_LIVE_VOICE_ENABLED: liveVoiceEnabled ? 'true' : 'false',
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_GOAL_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_MODULE_OFFERS_ENABLED: moduleOffersEnabled ? 'true' : 'false',
@@ -764,23 +813,17 @@ jobs:
             ''
           ].join('\n') : '\n';
           fs.writeFileSync(generatedPath, generatedSource.trimEnd() + '\n' + binding, { mode: 0o600 });
-          const bootstrapSource = replaceTomlString(
-            replaceTomlString(
-              replaceTomlString(
-                replaceTomlString(
-                  generatedSource,
-                  'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
-                  'false'
-                ),
-                'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
-                'false'
-              ),
-              'CONSUMER_REALTIME_VOICE_ENABLED',
-              'false'
-            ),
-            'CONSUMER_HANDOFF_ENABLED',
-            'false'
-          );
+          // Every conversation layer is off in the bootstrap config. It exists
+          // to stand the infrastructure up and prove SDP, sideband and hang-up
+          // -- not to exercise a lane. Written as a list rather than nested
+          // calls so adding a lane cannot quietly miss one.
+          const bootstrapSource = [
+            'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
+            'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
+            'CONSUMER_LIVE_VOICE_ENABLED',
+            'CONSUMER_REALTIME_VOICE_ENABLED',
+            'CONSUMER_HANDOFF_ENABLED'
+          ].reduce((source, flag) => replaceTomlString(source, flag, 'false'), generatedSource);
           if (!/^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep realtime voice disabled.');
           }
@@ -789,6 +832,9 @@ jobs:
           }
           if (!/^CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep spoken completion disabled.');
+          }
+          if (!/^CONSUMER_LIVE_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep the live conversational lane disabled.');
           }
           if (!/^CONSUMER_HANDOFF_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep the realtime handoff disabled.');
