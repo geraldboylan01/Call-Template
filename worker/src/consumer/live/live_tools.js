@@ -1000,6 +1000,15 @@ function liveStateProjection(context) {
     stillNeeded: (item.requiredMissing || []).map((missing) => ({
       factId: missing.factId,
       why: missing.reason
+    })),
+    // OPTIONAL INPUTS, AND THEY STAY OPTIONAL. An assumption is a value the
+    // deterministic engine already has an approved default for, so it never
+    // appears in `missing` and never holds up `readyToConfirm` below. It is
+    // surfaced only so the model can tell "must ask" from "may ask" -- and so
+    // it stops asking for something the server is going to supply anyway.
+    mayAssume: (item.assumptionsUsed || []).map((assumption) => ({
+      label: getSemanticFactDefinition(assumption.key)?.label || null,
+      why: assumption.reason
     }))
   }));
 

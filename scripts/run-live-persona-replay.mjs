@@ -736,7 +736,9 @@ async function runPersona(persona, instructions) {
             role: 'system',
             content: liveVolatileStateItem({
               captured: projection.captured,
-              analyses: projection.analyses.map((analysis) => analysis.description),
+              // Whole, exactly as live_session.js pushes it. If this flattens
+              // and production does not, the replay stops testing what ships.
+              analyses: projection.analyses,
               missing: projection.missing,
               unknown: projection.unknown,
               goalsAgreed: projection.goalsAgreed,

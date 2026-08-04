@@ -440,6 +440,123 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(liveVolatileStateItem({}).includes('nothing yet'), 'An empty state must read naturally.');
 }
 
+/* ------------------------------- every question belongs to an analysis */
+
+// THE POINT OF GROUPING. A flat "still needed" list cannot say which analysis
+// wants a fact, so every question looks equally justified and the meeting
+// drifts into generic fact finding. Grouped, an unasked question has an owner.
+{
+  const item = liveVolatileStateItem({
+    captured: ['Current age'],
+    analyses: [
+      {
+        description: 'work out what your pension could be worth',
+        status: 'blocked_missing_input',
+        stillNeeded: [
+          { factId: 'pension_current_value', why: 'the balance we project forward' },
+          { factId: 'gross_household_income', why: 'sizes the contribution' }
+        ],
+        mayAssume: [{ label: 'Investment growth rate', why: 'a standard Planéir assumption' }]
+      },
+      {
+        description: 'check your emergency reserve',
+        status: 'ready',
+        stillNeeded: [],
+        mayAssume: []
+      }
+    ],
+    missing: ['pension_current_value', 'gross_household_income'],
+    unknown: [],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+
+  ok(item.includes('work out what your pension could be worth'),
+    'Each analysis must be named in the client-facing words.');
+  ok(item.includes('the balance we project forward'),
+    'A needed fact must carry the reason it is needed, not just its name.');
+  ok(item.includes(getSemanticFactDefinition('pension_current_value').label),
+    'A needed fact must be humanised.');
+  ok(!item.includes('pension_current_value'),
+    'The grouped render must never leak a raw fact id.');
+  ok(/Ask only for something an analysis above lists under Needs/.test(item),
+    'The model must be told that the per-analysis needs are the authority on what to ask.');
+  ok(item.includes('check your emergency reserve') && /has what it needs/.test(item),
+    'A satisfied analysis must be shown as satisfied, so it is not re-interrogated.');
+
+  // ADDITION 2: optional inputs stay optional.
+  ok(/never ask for these/i.test(item),
+    'A standard assumption must be stated as settled, never as an outstanding item.');
+  ok(item.includes('Investment growth rate'),
+    'The model must know WHICH values are being assumed, so it does not ask for them.');
+
+  // The grouped render costs more than a flat list. It must still not become
+  // the per-turn brief that made the v2 lane slow.
+  const loaded = liveVolatileStateItem({
+    captured: Array.from({ length: 40 }, (_, index) => `Captured item ${index}`),
+    analyses: Array.from({ length: 3 }, (_, slot) => ({
+      description: `a fairly wordy client-facing analysis description number ${slot}`,
+      status: 'blocked_missing_input',
+      stillNeeded: Array.from({ length: 8 }, () => ({
+        factId: 'pension_current_value',
+        why: 'a long-winded explanation of exactly why this particular fact is needed here'
+      })),
+      mayAssume: [{ label: 'Investment growth rate', why: 'standard' }]
+    })),
+    missing: ['pension_current_value'],
+    unknown: ['monthly_spending'],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+  ok(loaded.length < 1_200, 'A fully loaded grouped state item must still stay small.');
+  ok(loaded.includes('Do not ask for these again in this meeting'),
+    'A long analysis block must never crowd out the standing directives.');
+}
+
+/* ------------- an assumption is never a reason to hold up a confirmation */
+
+// ADDITION 2, at the projection rather than the prose. `assumptionsUsed` must
+// never reach `missing`, because `readyToConfirm` is derived from `missing`.
+{
+  let profile = freshProfile();
+  profile = saveFact(profile, 'primary_goal', { type: 'maintain_liquidity' });
+  const projection = liveStateProjection(contextFor(profile));
+  for (const analysis of projection.analyses) {
+    for (const assumed of analysis.mayAssume || []) {
+      ok(!projection.missing.includes(assumed.label),
+        'A value the engine assumes must never appear as a missing input.');
+    }
+    ok(Array.isArray(analysis.mayAssume),
+      'Every analysis must carry its optional/assumed inputs, even when empty.');
+  }
+}
+
+/* --------- a figure volunteered before the focus is agreed (ADDITION 3) */
+
+// Clients answer questions you have not asked. The figure must be KEPT -- it
+// would be rude and wasteful to drop it -- but it must not quietly become a
+// mandate to pick analyses or start collecting the rest of a fact set. The
+// focus conversation still has to happen.
+{
+  let profile = freshProfile();
+  profile = saveFact(profile, 'cash_savings', { amount: 40_000, currency: 'EUR' });
+
+  const projection = liveStateProjection(contextFor(profile));
+  ok(projection.captured.length > 0,
+    'A figure volunteered before any goal must still be preserved.');
+  ok(projection.goalsAgreed === false,
+    'Volunteering a figure must not count as agreeing a focus.');
+  ok(projection.readyToConfirm === false,
+    'A volunteered figure must never make a plan confirmable.');
+
+  const item = liveVolatileStateItem(projection);
+  ok(/stay in ORIENT or FOCUS and do not gather figures/.test(item),
+    'After an unprompted figure the model must still be held in the focus conversation.');
+  ok(projection.analyses.length === 0 || !/Ask only for something an analysis/.test(item)
+    || projection.goalsAgreed === false,
+    'A provisional analysis must not license figure gathering before the focus is agreed.');
+}
+
 /* ----------------------------------------- mapper and replay regressions */
 
 // Clients naturally state debt terms in years. The model must not calculate a
