@@ -409,6 +409,67 @@ await runCase('complete current House Purchase and Liquidity still run in depend
   assert.deepEqual(result.errors, []);
 });
 
+
+/* ------------------------------- a question must say WHO it is about */
+
+/**
+ * NOBODY VOLUNTEERS A PARTNER'S RETIREMENT AGE. Observed on a real call: the
+ * pension analysis could not run because it lacked the partner's retirement age
+ * and her contribution rate, and the meeting's own prompts for both were "At
+ * what age does this person intend to retire?" and "What percentage of pay is
+ * personally contributed to this pension?" -- questions no client can answer,
+ * because they do not say which person or which pension.
+ */
+await runCase('every entity-scoped question names the person or holding it is about', async () => {
+  const NOW = '2026-08-03T09:00:00.000Z';
+  const prov = { source: 'user_confirmation', confidence: 'high', certainty: 'exact', capturedAt: NOW, confirmedByUser: true };
+  const household = applyProfilePatch(
+    createHouseholdProfile({ profileId: 'q', nowIso: NOW, calculationDateIso: '2026-08-03' }),
+    {
+      patchId: 'q1',
+      operations: [
+        { op: 'add', path: '/primaryPerson/age', value: 53, provenance: prov },
+        { op: 'add', path: '/partner', value: { personId: 'partner_realtime', age: 48 }, provenance: prov },
+        { op: 'add', path: '/pensions/-', value: { pensionId: 'own', ownerId: 'primary', type: 'occupational', currentValue: { amount: 360_000, currency: 'EUR' } }, provenance: prov },
+        { op: 'add', path: '/pensions/-', value: { pensionId: 'hers', ownerId: 'partner_realtime', type: 'other', currentValue: { amount: 500_000, currency: 'EUR' } }, provenance: prov }
+      ]
+    },
+    { nowIso: NOW }
+  ).profile;
+
+  const partnerAge = resolveSemanticFact('/partner/intendedRetirementAge', { profile: household });
+  assert.doesNotMatch(partnerAge.questionPrompt, /this person/i,
+    'a question about the partner must not say "this person"');
+  assert.match(partnerAge.questionPrompt, /your partner/i, partnerAge.questionPrompt);
+
+  const hersRate = resolveSemanticFact('/pensions/1/employeeContributionRate', { profile: household });
+  assert.doesNotMatch(hersRate.questionPrompt, /this pension/i,
+    'a question about one of several pensions must say whose it is');
+  assert.match(hersRate.questionPrompt, /your partner's/i, hersRate.questionPrompt);
+
+  // The client's own holdings are described as theirs, not as the partner's.
+  const ownRate = resolveSemanticFact('/pensions/0/employeeContributionRate', { profile: household });
+  assert.match(ownRate.questionPrompt, /your company pension/i, ownRate.questionPrompt);
+  assert.doesNotMatch(ownRate.questionPrompt, /partner/i, 'the client\'s own pension is not the partner\'s');
+
+  // Each instance is a SEPARATE question, or the meeting asks once and takes
+  // the first answer for whoever it happens to bind to.
+  const plan = buildQuestionPlan([
+    { moduleId: 'pension_projection', required: true, readiness: { requiredMissing: [
+      { fieldPath: '/partner/intendedRetirementAge' },
+      { fieldPath: '/pensions/0/employeeContributionRate' },
+      { fieldPath: '/pensions/1/employeeContributionRate' }
+    ] } }
+  ], { profile: household });
+  assert.equal(plan.length, 3, 'three distinct gaps must be three distinct questions');
+  assert.equal(new Set(plan.map((question) => question.prompt)).size, 3,
+    'two questions worded identically are one question to the client');
+
+  // A fact with no entity keeps the definition's wording untouched.
+  const spending = resolveSemanticFact('/expenses/annualTotal', { profile: household });
+  assert.ok(spending.questionPrompt.length > 0);
+});
+
 const failed = cases.filter((entry) => !entry.passed);
 if (failed.length > 0) {
   console.error(`[ConsumerQuestionPlan] ${failed.length}/${cases.length} checks failed.`);

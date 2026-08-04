@@ -943,6 +943,72 @@ function fallbackFactId(tokens) {
   return `profile.${suffix || 'unknown'}`;
 }
 
+/**
+ * What to call the thing a question is about, in the client's own words.
+ *
+ * A question scoped to an entity is useless unless it says WHICH. "At what age
+ * does this person intend to retire?" and "What percentage of pay is personally
+ * contributed to this pension?" are the prompts a household with a partner and
+ * three pensions was actually asked, and neither can be answered. Nobody
+ * volunteers a partner's retirement age or a second pension's contribution rate
+ * unless they are asked for it by name.
+ */
+function entityLabelFor(pathTokens, profile) {
+  const [collection, index] = pathTokens;
+  if (collection === 'partner') {
+    return String(profile?.partner?.name || '').trim() || 'your partner';
+  }
+  if (collection === 'primaryPerson') return 'you';
+  const record = Array.isArray(profile?.[collection]) && /^\d+$/.test(String(index))
+    ? profile[collection][Number(index)]
+    : null;
+  if (!record) return '';
+
+  // Whose it is, in the second person, because the question is asked of the
+  // client: "your partner's", or nothing at all when it is their own.
+  const owner = profile?.partner && record.ownerId === profile.partner.personId
+    ? `${String(profile.partner.name || '').trim() || 'your partner'}'s`
+    : 'your';
+
+  const label = String(record.label || record.name || '').trim();
+  if (label) return `${owner} ${label}`;
+
+  // A stored profile keeps no label for a pension -- only its type -- so the
+  // question describes it the way a person would. "your partner's pension" is
+  // answerable; "this pension" is not.
+  if (collection === 'pensions') {
+    return `${owner} ${PENSION_TYPE_WORDS[record.type] || 'pension'}`;
+  }
+  return '';
+}
+
+/** How a client would say each pension type aloud. */
+const PENSION_TYPE_WORDS = Object.freeze({
+  occupational: 'company pension',
+  prsa: 'PRSA',
+  personal: 'personal pension',
+  defined_benefit: 'defined-benefit pension',
+  buyout_bond: 'buyout bond',
+  other: 'pension'
+});
+
+/**
+ * Put the entity's name into a prompt written for a single unnamed one.
+ *
+ * The fact definitions are written once and reused for every instance, so they
+ * say "this person" and "this pension". Substituting here keeps one definition
+ * per fact while letting the question name what it is asking about.
+ */
+// Internal: every caller goes through resolveSemanticFact, which applies it.
+function personaliseQuestionPrompt(prompt, label) {
+  const text = String(prompt || '');
+  if (!label) return text;
+  return text
+    .replace(/\bthis person\b/gi, label)
+    .replace(/\bthis (pension|property|loan|mortgage|account|policy|business)\b/gi, `${label}`)
+    .replace(/\bthe (pension|property|loan|mortgage|account|policy|business)\b/gi, `${label}`);
+}
+
 function entityIdentity(definition, pathTokens, profile, explicitEntityId) {
   const entity = definition?.entity;
   if (entity?.kind === 'path_segments') {
@@ -1029,6 +1095,7 @@ export function resolveSemanticFact(itemOrPath, {
   const factId = definition?.factId || fallbackFactId(pathTokens);
   const identity = entityIdentity(definition, pathTokens, profile, item.entityId);
   const factInstanceId = identity.entityId ? `${factId}:${identity.entityId}` : factId;
+  const entityLabel = identity.entityId ? entityLabelFor(pathTokens, profile) : '';
   const answerType = definition?.answerType || fallbackAnswerType(fieldPath);
   return {
     factId,
@@ -1040,7 +1107,11 @@ export function resolveSemanticFact(itemOrPath, {
     valueType: definition?.valueType || (answerType === 'text' ? 'entity' : answerType),
     sensitivity: definition?.sensitivity || 'normal',
     confirmationPolicy: definition?.confirmationPolicy || FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
-    questionPrompt: definition?.questionPrompt || item.reason || `Please provide ${fieldPath || 'the missing information'}.`,
+    questionPrompt: personaliseQuestionPrompt(
+      definition?.questionPrompt || item.reason || `Please provide ${fieldPath || 'the missing information'}.`,
+      entityLabel
+    ),
+    entityLabel,
     answerType,
     materiality: definition?.materiality ?? 3,
     ambiguity: definition?.ambiguity ?? 3,
