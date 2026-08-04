@@ -136,3 +136,45 @@ export function assumptionRecord(key) {
   };
   return records[key] ? Object.freeze({ ...records[key] }) : null;
 }
+
+/**
+ * Plain names for the engine assumption keys that appear in `assumptionsUsed`.
+ *
+ * These keys are ENGINE keys, not semantic fact ids: `collegeStartAge`, not
+ * `college_start_age`. Passing them through the semantic fact registry returns
+ * nothing, so a consumer projection that tried it rendered every optional input
+ * as `null` and then filtered it away — which is why the live lane was never
+ * told which inputs it could skip, and asked for them.
+ *
+ * Every key any adapter can push into `assumptionsUsed` must be listed here.
+ * An unlisted key returns '' so a caller can fail closed rather than leak a
+ * camelCase identifier into something a client hears.
+ */
+const ASSUMPTION_LABELS = Object.freeze({
+  // Centrally approved Planéir assumptions (assumptionRecord above).
+  investmentGrowthRate: 'Long-run investment growth rate',
+  inflationRate: 'General inflation rate',
+  educationInflationRate: 'Education cost inflation rate',
+  collegeStartAge: 'College starting age',
+  collegeDurationYears: 'Number of years of college',
+  collegeAnnualCostsToday: 'Standard college costs in today’s money',
+  // Adapter-owned engine defaults.
+  purchaseCosts: 'Home-buying cost estimates',
+  mortgageIllustration: 'Illustrative mortgage rate and term',
+  targetPurchaseDate: 'Target purchase date',
+  minimumBufferMonths: 'Minimum cash-reserve months',
+  targetBufferMonths: 'Target cash-reserve months',
+  repaymentType: 'Repayment type',
+  presentValueRate: 'Present-value discount rate',
+  statePensionContributory: 'State Pension (Contributory) maximum rate'
+});
+
+/** The plain name for an engine assumption key, or '' when it is unknown. */
+export function assumptionLabel(key) {
+  return typeof key === 'string' ? ASSUMPTION_LABELS[key] || '' : '';
+}
+
+/** Every assumption key that has an approved consumer-safe label. */
+export function listAssumptionLabelKeys() {
+  return Object.keys(ASSUMPTION_LABELS);
+}

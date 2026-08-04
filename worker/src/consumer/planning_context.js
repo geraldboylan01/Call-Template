@@ -16,6 +16,7 @@ import {
   consumerLanguageForModule,
   containsInternalModuleTerminology
 } from '../../../js/planning/module_offers.js';
+import { assumptionLabel } from '../../../js/planning/planeir_assumptions.js';
 import { resolveSemanticFact } from '../../../js/planning/semantic_facts.js';
 import { describeConversationState } from './conversation.js';
 import { buildConfirmedRealtimeFactSummary, buildRealtimeFactReadBack } from './realtime_fact_mapper.js';
@@ -112,6 +113,12 @@ export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
           .slice(0, 8)
           .map((assumption) => Object.freeze({
             key: typeof assumption.key === 'string' ? assumption.key.slice(0, 100) : '',
+            // The plain name comes from the ENGINE assumption registry. It used
+            // to be looked up in the semantic fact registry by whoever consumed
+            // this, which never matches — those are snake_case fact ids and
+            // these are camelCase engine keys — so every optional input arrived
+            // nameless and got filtered out downstream.
+            label: safeConsumerPlanningText(assumptionLabel(assumption.key), 80),
             value: assumption.value,
             reason: safeConsumerPlanningText(assumption.reason)
           }))),
@@ -122,6 +129,12 @@ export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
             return Object.freeze({
               factId: semantic.factId,
               factInstanceId: semantic.factInstanceId,
+              // WHOSE requirement this is. Without it a consumer projection can
+              // only compare bare fact ids, so a pension value captured for the
+              // client silently satisfies the partner's missing pension value —
+              // or, worse, renders as captured AND still needed at once.
+              entityId: semantic.entityId || null,
+              entityLabel: safeConsumerPlanningText(semantic.entityLabel, 60),
               importance: missing.importance,
               reason: safeConsumerPlanningText(missing.reason)
             });
