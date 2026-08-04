@@ -595,7 +595,7 @@ function humanise(value) {
     .trim();
 }
 
-function formattedFactValue(factId, value, currency = 'EUR') {
+export function formattedFactValue(factId, value, currency = 'EUR') {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     if (Object.hasOwn(value, 'value')) {
       return formattedFactValue(factId, value.value, currency);
@@ -1584,6 +1584,11 @@ export function buildConfirmedRealtimeFactSummary(profile) {
     facts.push({
       factId, value,
       ...(entityId ? { entityId } : {}),
+      // Carried so a consumer projection can resolve the SAME instance identity
+      // and entity label the requirement side resolves, through one function
+      // (resolveSemanticFact). Comparing bare fact ids across the two sides is
+      // what let one pension's value satisfy another pension's requirement.
+      fieldPath,
       certainty: metadata?.certainty || 'unknown',
       status: metadata?.confirmedByUser ? 'confirmed' : 'saved_draft',
       revision: Number(profile.revision || 0)

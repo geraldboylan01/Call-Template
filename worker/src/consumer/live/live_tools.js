@@ -28,8 +28,9 @@ import {
 } from '../realtime_analysis.js';
 import { classifySpokenPlanConfirmation } from '../realtime_completion.js';
 import { getCurrentProfile, getSessionRow } from '../repository.js';
+import { buildConfirmedRealtimeFactSummary, formattedFactValue } from '../realtime_fact_mapper.js';
 import { MODULE_IDS } from '../../../../js/planning/contracts.js';
-import { getSemanticFactDefinition } from '../../../../js/planning/semantic_facts.js';
+import { getSemanticFactDefinition, resolveSemanticFact } from '../../../../js/planning/semantic_facts.js';
 
 const MAX_FACTS_PER_CALL = 10;
 
@@ -1000,26 +1001,45 @@ async function executeSaveFacts(args, deps) {
  */
 function liveStateProjection(context) {
   const state = context.state || {};
-  const captured = (state.facts || [])
-    .filter((fact) => fact?.factId)
-    .map((fact) => factLabel(fact.factId));
+  const captured = capturedFactMemory(context);
+  const capturedInstanceIds = new Set(captured.map((fact) => fact.instanceId));
 
   const analyses = (state.recommendations || []).map((item) => ({
     description: item.description,
     status: item.status,
-    stillNeeded: (item.requiredMissing || []).map((missing) => ({
-      factId: missing.factId,
-      why: missing.reason
-    })),
+    // RECONCILED AGAINST WHAT IS ALREADY KNOWN, PER INSTANCE.
+    //
+    // A requirement is only satisfied by a fact captured for the SAME entity.
+    // Dropping every requirement whose bare fact id happens to be captured
+    // somewhere would let the client's pension value answer the partner's
+    // missing pension value. Comparing instance ids -- both sides built from
+    // resolveSemanticFact's identity -- keeps the two apart while still
+    // removing the genuine duplicate that made a fact read as captured AND
+    // still needed at the same time.
+    stillNeeded: (item.requiredMissing || [])
+      .map((missing) => ({
+        instanceId: requirementInstanceId(missing),
+        factId: missing.factId,
+        whose: missing.entityLabel || '',
+        why: missing.reason
+      }))
+      .filter((need) => !capturedInstanceIds.has(need.instanceId)),
     // OPTIONAL INPUTS, AND THEY STAY OPTIONAL. An assumption is a value the
     // deterministic engine already has an approved default for, so it never
     // appears in `missing` and never holds up `readyToConfirm` below. It is
     // surfaced only so the model can tell "must ask" from "may ask" -- and so
     // it stops asking for something the server is going to supply anyway.
-    mayAssume: (item.assumptionsUsed || []).map((assumption) => ({
-      label: getSemanticFactDefinition(assumption.key)?.label || null,
-      why: assumption.reason
-    }))
+    //
+    // The label comes from planning_context, which reads the ENGINE assumption
+    // registry. Looking these camelCase keys up in the semantic fact registry
+    // returned null for every one of them, the renderer filtered the nulls
+    // away, and the "never ask for these" line was therefore never emitted.
+    mayAssume: (item.assumptionsUsed || [])
+      .map((assumption) => ({
+        label: assumption.label || null,
+        why: assumption.reason
+      }))
+      .filter((assumption) => Boolean(assumption.label))
   }));
 
   const missing = [...new Set(analyses.flatMap((analysis) => analysis.stillNeeded.map((item) => item.factId)))];
@@ -1029,10 +1049,27 @@ function liveStateProjection(context) {
     .filter(([, acknowledged]) => acknowledged === true)
     .map(([factId]) => factId);
 
+  assertNoCapturedRequirementContradiction(capturedInstanceIds, analyses);
+
   return {
     ok: true,
-    captured: [...new Set(captured)].slice(0, 40),
-    analyses: analyses.slice(0, 3),
+    // Rendered phrases, values included -- never bare topic labels. See
+    // capturedFactMemory for why the value has to travel with the label.
+    //
+    // Figures first. Whatever budget the per-turn item has, the entries that
+    // stop a question being re-asked are the ones carrying a number; a presence
+    // fact ("your PRSA — Pension positions") was never going to be asked for
+    // twice, so it yields its place under truncation.
+    captured: [
+      ...captured.filter((fact) => fact.hasValue),
+      ...captured.filter((fact) => !fact.hasValue)
+    ].map((fact) => fact.phrase).slice(0, MAX_CAPTURED_FACTS),
+    // `instanceId` is internal reconciliation scope and never crosses to the
+    // model; `whose` is the consumer-safe way to say the same thing.
+    analyses: analyses.slice(0, 3).map((analysis) => ({
+      ...analysis,
+      stillNeeded: analysis.stillNeeded.map(({ instanceId: _instanceId, ...need }) => need)
+    })),
     missing: missing.slice(0, 20),
     unknown: unknown.slice(0, 20),
     goalsAgreed: !state.requiresDecisionTopicQuestion
@@ -1044,6 +1081,106 @@ function liveStateProjection(context) {
       reason: topic.reason
     }))
   };
+}
+
+/**
+ * How many captured facts the model is shown. Bounded because this rides in the
+ * per-turn item, but far above the number a real meeting produces -- the old
+ * ceiling of sixteen (buildPlanningStateSlice's slice, sized for the v2 meeting
+ * brief) silently dropped the earliest figures out of a long conversation,
+ * which is exactly the memory this lane needed.
+ */
+const MAX_CAPTURED_FACTS = 32;
+
+/** Values a client actually said. Anything structural renders as presence only. */
+function renderableFactValue(factId, value, currency) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number' && Number.isFinite(value)) return formattedFactValue(factId, value, currency);
+  if (typeof value === 'boolean') return formattedFactValue(factId, value, currency);
+  // Through the shared formatter, never raw: a stored choice is a server-owned
+  // token like `improve_pension`, and the projection must not be the thing that
+  // teaches the model to say one out loud.
+  if (typeof value === 'string') return formattedFactValue(factId, value, currency).slice(0, 60);
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    // A money object, a {value: x} wrapper or a stated range formats cleanly.
+    // A collection record (a pension, an asset, a property) does not: it would
+    // render as "[object Object]", so it stays a presence fact with no figure.
+    if (Number.isFinite(value.amount)) return formattedFactValue(factId, value, currency);
+    if (Object.hasOwn(value, 'value')) return renderableFactValue(factId, value.value, currency);
+    const range = value.range && typeof value.range === 'object' ? value.range : value;
+    if (Object.hasOwn(range, 'min') && Object.hasOwn(range, 'max')) {
+      return formattedFactValue(factId, value, currency);
+    }
+  }
+  return '';
+}
+
+/**
+ * THE DURABLE FACT MEMORY, AS THE MODEL SEES IT.
+ *
+ * Read straight from the profile rather than from state.facts: that array is
+ * capped at sixteen for the v2 meeting brief, and a client who answers twenty
+ * questions loses the first four figures they gave.
+ *
+ * Each entry carries its VALUE. The projection used to send bare topic labels
+ * -- "Current pension value" with no number -- so the model knew the subject
+ * had been covered but not what the answer was, and asking again was the only
+ * move it had. That is the whole redundant-question bug.
+ */
+function capturedFactMemory(context) {
+  const profile = context.profile || {};
+  const currency = profile.preferences?.baseCurrency || 'EUR';
+  const seen = new Set();
+  const entries = [];
+  for (const fact of buildConfirmedRealtimeFactSummary(profile)) {
+    if (!fact?.factId) continue;
+    const instanceId = fact.entityId ? `${fact.factId}:${fact.entityId}` : fact.factId;
+    if (seen.has(instanceId)) continue;
+    seen.add(instanceId);
+    const whose = fact.fieldPath
+      ? resolveSemanticFact({ fieldPath: fact.fieldPath, entityId: fact.entityId }, { profile }).entityLabel
+      : '';
+    const label = factLabel(fact.factId);
+    const rendered = renderableFactValue(fact.factId, fact.value, currency);
+    const qualifier = rendered && fact.certainty === 'approximate' ? 'approximately ' : '';
+    const subject = whose ? `${whose} — ${label}` : label;
+    entries.push({
+      instanceId,
+      factId: fact.factId,
+      entityId: fact.entityId || null,
+      certainty: fact.certainty,
+      hasValue: Boolean(rendered),
+      phrase: rendered ? `${subject}: ${qualifier}${rendered}` : subject
+    });
+  }
+  return entries;
+}
+
+/** The instance a requirement is asking about, in the captured set's terms. */
+function requirementInstanceId(missing) {
+  if (typeof missing?.factInstanceId === 'string' && missing.factInstanceId) return missing.factInstanceId;
+  return missing?.entityId ? `${missing.factId}:${missing.entityId}` : missing?.factId;
+}
+
+/**
+ * A contradictory projection must not reach the model.
+ *
+ * "You told me X" and "I still need X" in the same breath is the state that
+ * produces a re-asked question, and it is a server bug every time -- the model
+ * has no way to resolve it. Fail loudly here rather than let the meeting do it
+ * politely and wrongly.
+ */
+function assertNoCapturedRequirementContradiction(capturedInstanceIds, analyses) {
+  for (const analysis of analyses) {
+    for (const need of analysis.stillNeeded || []) {
+      if (!capturedInstanceIds.has(need.instanceId)) continue;
+      throw new ConsumerError(
+        500,
+        'live_state_contradiction',
+        `A requirement is both captured and still needed for the same instance (${need.factId}).`
+      );
+    }
+  }
 }
 
 /* -------------------------------------------------------- confirm_and_run */

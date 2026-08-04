@@ -45,8 +45,28 @@ const MAX_SHOWN_ANALYSES = 3;
 const MAX_NEEDS_PER_ANALYSIS = 4;
 const MAX_WHY_CHARS = 60;
 const MAX_ANALYSIS_BLOCK_CHARS = 700;
-const MAX_CAPTURED_CHARS = 320;
+// Captured entries now carry their VALUE, not just a topic label, so they are
+// longer and they are worth the characters: a label with no figure is what left
+// the model no option but to ask again. `liveStateProjection` orders figures
+// first, and joinWithinBudget drops whole entries rather than cutting one in
+// half -- "approximately €28,0" would be worse than saying nothing.
+const MAX_CAPTURED_CHARS = 520;
 const MAX_VOLATILE_ITEM_CHARS = 1_150;
+
+/** Join entries, dropping whole ones, so a figure is never cut mid-number. */
+function joinWithinBudget(entries, budget, separator = '; ') {
+  const kept = [];
+  let used = 0;
+  for (const entry of entries) {
+    const text = String(entry || '').trim();
+    if (!text) continue;
+    const cost = text.length + (kept.length ? separator.length : 0);
+    if (used + cost > budget) break;
+    kept.push(text);
+    used += cost;
+  }
+  return { text: kept.join(separator), dropped: entries.length - kept.length };
+}
 
 const MONEY_VALUE_SHAPE = '{"amount": <numeric amount copied from the client>, "currency": "EUR"}';
 
@@ -343,6 +363,22 @@ function conversationFlowSection() {
     'what each analysis is CAPABLE of using — they are reference, not a checklist, and a fact',
     'listed there for an analysis that is not in play must not be asked for at all.',
     'If you cannot name the analysis a question serves, do not ask it.',
+    'If an analysis lists nothing under Needs, it has everything it requires. Do not invent a',
+    'further question for it from the catalogue below.',
+    '',
+    'NEVER ASK FOR SOMETHING THE STATE NOTE ALREADY KNOWS. The note opens with "Already known",',
+    'and every entry there carries the value the client gave you — "your PRSA — Current pension',
+    'value: approximately €28,000". That IS their answer. An approximate figure is an answer:',
+    '"about twenty-eight thousand" is captured, not missing, and asking again for a rounder number',
+    'is the single thing clients find most irritating. Never ask a client to repeat a figure back',
+    'to you, and never ask them to say one "in words".',
+    'Ask a second time ONLY when the note itself gives you a reason to: it marks the value as',
+    'conflicting or stale, the figure belongs to a different person or account from the one the',
+    'analysis needs, or the client tells you the earlier figure was wrong. Wanting more precision',
+    'is not a reason unless the analysis still lists that exact item under Needs.',
+    'Each entry names whose it is. "your PRSA" and "your partner’s company pension" are different',
+    'accounts: a value known for one is not a value known for the other, and a Needs line that',
+    'names an owner should be asked with that owner in it.',
     '',
     'ANYTHING LISTED AS A STANDARD ASSUMPTION IS SETTLED. The engine already has an approved value',
     'for it. Never ask for it, and never treat it as outstanding — an analysis that has what it',
@@ -572,8 +608,14 @@ export function buildLiveCataloguePrompt() {
 function needPhrase(need) {
   const label = getSemanticFactDefinition(need?.factId)?.label || need?.factId || '';
   if (!label) return '';
+  // WHOSE, when the requirement belongs to somebody or something in
+  // particular. "Current pension value" with two pensions in the profile is a
+  // question the client cannot answer and the model cannot ask precisely;
+  // "your partner's company pension — Current pension value" can be asked.
+  const whose = typeof need?.whose === 'string' ? need.whose.trim() : '';
+  const subject = whose ? `${whose} — ${label}` : label;
   const why = typeof need?.why === 'string' ? need.why.trim() : '';
-  return why ? `${label} — ${why.slice(0, MAX_WHY_CHARS)}` : label;
+  return why ? `${subject} — ${why.slice(0, MAX_WHY_CHARS)}` : subject;
 }
 
 /**
@@ -623,16 +665,11 @@ export function liveVolatileStateItem(state = {}) {
     ].join(' ').slice(0, MAX_ANALYSIS_BLOCK_CHARS)
     : 'Analyses in play: none chosen yet.';
 
-  const describing = [
-    `Captured so far: ${captured.length ? captured.join(', ') : 'nothing yet'}.`
-      .slice(0, MAX_CAPTURED_CHARS),
-    analysisBlock
-  ];
-  // Only when the grouped render carried no needs of its own -- otherwise this
-  // is the flat list the grouping exists to replace.
-  if (!renderedNeeds) {
-    describing.push(`Still needed: ${missingLabels.length ? missingLabels.join(', ') : 'nothing outstanding'}.`);
-  }
+  const trailing = renderedNeeds
+    // Only when the grouped render carried no needs of its own -- otherwise
+    // this is the flat list the grouping exists to replace.
+    ? ''
+    : `Still needed: ${missingLabels.length ? missingLabels.join(', ') : 'nothing outstanding'}.`;
 
   // STANDING DIRECTIVES ARE RESERVED, NOT TRIMMED. These are the lines that
   // keep the meeting on rails -- do not re-ask what they cannot answer, do not
@@ -653,9 +690,29 @@ export function liveVolatileStateItem(state = {}) {
     directives.push('The plan is not ready for confirmation yet.');
   }
 
+  // BUDGET ORDER: directives, then the analyses, then as many known figures as
+  // fit. Captured entries go last not because they matter least but because
+  // they are the only part that can be dropped whole without changing meaning
+  // -- and `liveStateProjection` has already ordered them so the figures go
+  // first and the presence-only entries fall off the end.
   const directiveText = directives.join(' ');
-  const describingText = describing
+  const fixed = [analysisBlock, trailing].filter(Boolean).join(' ');
+  const capturedBudget = Math.max(
+    0,
+    Math.min(
+      MAX_CAPTURED_CHARS,
+      MAX_VOLATILE_ITEM_CHARS - directiveText.length - fixed.length - CAPTURED_PREFIX_CHARS
+    )
+  );
+  const capturedText = captured.length && capturedBudget > 0
+    ? `Already known — never ask for any of these again: ${joinWithinBudget(captured, capturedBudget).text}.`
+    : captured.length ? '' : 'Already known: nothing yet.';
+
+  return [capturedText, fixed, directiveText]
+    .filter(Boolean)
     .join(' ')
-    .slice(0, Math.max(0, MAX_VOLATILE_ITEM_CHARS - directiveText.length - 1));
-  return [describingText, directiveText].filter(Boolean).join(' ');
+    .slice(0, MAX_VOLATILE_ITEM_CHARS);
 }
+
+/** Room reserved for the "Already known" lead-in and its trailing full stop. */
+const CAPTURED_PREFIX_CHARS = 54;
