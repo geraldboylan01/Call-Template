@@ -89,6 +89,7 @@ export class LiveVoiceController {
     this.dataChannel = null;
     this.localStream = null;
     this.remoteAudio = null;
+    this.shellElement = null;
     this.orb = null;
     this.startController = null;
     this.refreshTimer = null;
@@ -107,8 +108,13 @@ export class LiveVoiceController {
     this.userCaption = this.root.querySelector('[data-live-caption="user"]');
     this.agentCaption = this.root.querySelector('[data-live-caption="assistant"]');
     this.transcriptElement = this.root.querySelector('[data-live-transcript]');
+    // The drawer, not the outer companion. RealtimeOrb watches `hidden` on
+    // whatever node it is handed and stops painting when it is set; only the
+    // drawer's `hidden` tracks open and close, so handing it the outer element
+    // would leave the orb animating behind a collapsed panel.
+    this.shellElement = this.root.querySelector('.realtime-voice-shell') || this.root;
     const canvas = this.root.querySelector('[data-live-orb]');
-    if (canvas) this.orb = new RealtimeOrb(canvas, { shell: this.root });
+    if (canvas) this.orb = new RealtimeOrb(canvas, { shell: this.shellElement });
 
     this.startButton?.addEventListener('click', () => this.start());
     this.stopButton?.addEventListener('click', () => this.stop('consumer_closed'));
@@ -118,7 +124,15 @@ export class LiveVoiceController {
     this.orb?.syncPhase?.(phase);
     if (this.orb) this.orb.phase = phase;
     if (this.statusElement && message) this.statusElement.textContent = message;
-    this.root?.setAttribute('data-phase', phase);
+    // `data-realtime-phase`, NOT `data-phase`. plan.css keys every phase style
+    // off that exact attribute and RealtimeOrb.syncPhase reads it too, so the
+    // shorter name styled nothing and left the orb permanently idle.
+    this.root?.setAttribute('data-realtime-phase', phase);
+    this.shellElement?.setAttribute('data-realtime-phase', phase);
+    // The shared markup ships this button disabled for the v2 lane, which
+    // enables it from its own state machine. This lane has none, so it says so
+    // here: there is nothing to end until a meeting is running.
+    if (this.stopButton) this.stopButton.disabled = !this.active;
   }
 
   setCaption(role, text) {
@@ -132,8 +146,11 @@ export class LiveVoiceController {
     this.transcriptHistory.push({ role, text: clean });
     if (this.transcriptHistory.length > MAX_TRANSCRIPT_ITEMS) this.transcriptHistory.shift();
     if (!this.transcriptElement) return;
-    const line = document.createElement('p');
-    line.className = `live-transcript-line live-transcript-line--${role}`;
+    // An <li> carrying the classes plan.css actually styles. The transcript
+    // region is an <ol>, so a bare <p> was both invalid content and invisible:
+    // no stylesheet defines a `live-transcript-line` rule.
+    const line = document.createElement('li');
+    line.className = `realtime-history-item is-${role}`;
     line.textContent = clean;
     this.transcriptElement.append(line);
     this.transcriptElement.scrollTop = this.transcriptElement.scrollHeight;

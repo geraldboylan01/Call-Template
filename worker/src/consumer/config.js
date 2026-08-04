@@ -569,7 +569,15 @@ export function publicConsumerConfig(config) {
     },
     realtimeVoice: {
       enabled: config.realtimeEnabled,
-      conversationVersion: config.realtimeConversationV2Enabled ? 'v2' : 'v1',
+      // Which conversation lane will drive the next meeting. The browser needs
+      // this BEFORE it starts a call, because each lane has its own controller
+      // and the controller is what creates the call. The identical expression
+      // is echoed on the call response as `X-Realtime-Conversation-Version`
+      // (router.js) so the client can prove the lane it prepared for is the
+      // lane it got.
+      conversationVersion: config.liveVoiceEnabled
+        ? 'live'
+        : config.realtimeConversationV2Enabled ? 'v2' : 'v1',
       spokenCompletionEnabled: config.realtimeSpokenCompletionEnabled,
       noticeId: config.realtimeEnabled ? config.realtimeNoticeId : null,
       dataPolicyId: config.realtimeEnabled ? config.realtimeDataPolicyId : null,
@@ -588,8 +596,13 @@ export function publicConsumerConfig(config) {
       maxDurationSeconds: config.realtimeMaxDurationSeconds,
       idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
       availability: { available: config.realtimeEnabled, status: config.realtimeEnabled ? 'available' : 'unavailable' },
+      // The live lane has NO silent planner: the model itself records facts
+      // through its own tools while it speaks. Reusing the v2 sentence here
+      // would describe a component that is not running.
       aiGeneratedDisclosure: config.realtimeEnabled
-        ? (config.realtimeConversationV2Enabled
+        ? (config.liveVoiceEnabled
+          ? 'Realtime AI speaks with you directly and records what you say as reviewable draft facts as the conversation goes. Deterministic code controls the analyses, saved profile and calculations.'
+          : config.realtimeConversationV2Enabled
             ? (config.realtimeSpokenCompletionEnabled
                 ? 'Realtime AI speaks with you directly while a silent planner extracts reviewable draft facts. After Planéir reads the exact prepared plan, a clear spoken confirmation authorizes only that revision. Deterministic code controls the analyses, saved profile and calculations.'
                 : 'Realtime AI speaks with you directly while a silent planner extracts reviewable draft facts. Deterministic code controls the three analyses, saved profile and calculations.')
