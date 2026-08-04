@@ -191,6 +191,14 @@ export function normaliseBootstrap(payload) {
       root.voiceRealtimeModel,
       ''
     ) || ''),
+    // Which conversation lane this deployment runs. Needed BEFORE a call is
+    // created, because each lane has its own controller and the controller is
+    // what creates the call. The call response echoes the same value back as
+    // `X-Realtime-Conversation-Version` so the choice can be verified.
+    voiceRealtimeConversationVersion: String(firstDefined(
+      realtimeVoice.conversationVersion,
+      ''
+    ) || ''),
     voiceRealtimeMaxSeconds: Math.min(900, Math.max(15, Number(firstDefined(
       realtimeVoice.maxSessionSeconds,
       realtimeVoice.maxDurationSeconds,

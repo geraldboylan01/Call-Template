@@ -2118,4 +2118,81 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   }
 }
 
+/* ------------------------------- one companion, two lanes, one adapter */
+
+{
+  const adapter = readFileSync(fileURLToPath(new URL('../js/plan/voice_lane.js', import.meta.url)), 'utf8');
+  const client = readFileSync(fileURLToPath(new URL('../js/plan/live_voice.js', import.meta.url)), 'utf8');
+  const app = readFileSync(fileURLToPath(new URL('../js/plan/app.js', import.meta.url)), 'utf8');
+  const markup = readFileSync(fileURLToPath(new URL('../plan/index.html', import.meta.url)), 'utf8');
+
+  // THE LIFECYCLE TRAP. `teardown()` closes the peer connection but never
+  // clears `active`, and `start()` returns immediately while `active` is set.
+  // A reset that called teardown would leave a companion that can never open
+  // another meeting -- silently, because nothing throws.
+  const resetBody = adapter.slice(adapter.indexOf('  reset()'), adapter.indexOf('  async withdrawConsent()'));
+  ok(resetBody.includes('stop('), 'reset must go through stop(), which is what clears `active`.');
+  ok(!resetBody.includes('teardown('),
+    'reset must never call teardown() directly: it leaves `active` set and start() would refuse forever.');
+  ok(/transcriptHistory = \[\]/.test(resetBody) && /hidden = true/.test(resetBody),
+    'reset must clear the transcript and hide the companion even when no meeting was running.');
+
+  // The adapter carries the v2-shaped surface so live_voice.js does not have to.
+  for (const method of [
+    'bind', 'sync', 'openCompanion', 'isLive', 'isMeetingAvailable',
+    'meetingUnavailableReason', 'meetingUnavailableDetail', 'end', 'reset',
+    'withdrawConsent', 'playWorkerSpeechFromPayload'
+  ]) {
+    ok(new RegExp(`\\b${method}\\s*\\(`).test(adapter),
+      `The adapter must answer ${method}(), which app.js calls on whichever lane is running.`);
+  }
+  // (That the live client itself carries no `playWorkerSpeechFromPayload` is
+  // already asserted above, against comment-stripped source.)
+
+  // ONE GATE, NOT TWO. Availability and consent read session state, not
+  // controller state, so both lanes must call the same helpers.
+  for (const shared of [
+    'realtimeMeetingAvailable', 'realtimeMeetingUnavailableReason',
+    'realtimeMeetingUnavailableDetail', 'withdrawRealtimeVoiceConsent'
+  ]) {
+    ok(adapter.includes(shared), `The adapter must reuse ${shared} rather than reimplementing the gate.`);
+  }
+
+  // The lane is chosen before a call exists, because the controller is what
+  // creates the call.
+  ok(/resolveVoiceLane\(bootstrap\)/.test(app),
+    'app.js must choose the lane from the bootstrap, not from the call response.');
+  ok(app.indexOf('resolveVoiceLane(bootstrap)') > app.indexOf('await getBootstrap()'),
+    'The lane can only be resolved after the bootstrap has been read.');
+  ok(!/^\s*realtimeVoiceController\.bind\(\);/m.test(app.slice(app.indexOf('function bindEvents()'), app.indexOf('async function boot()'))),
+    'The realtime controller must not bind before the lane is known.');
+
+  // The shared companion carries both contracts at once.
+  for (const hook of [
+    'data-live-start', 'data-live-stop', 'data-live-status',
+    'data-live-caption="user"', 'data-live-caption="assistant"',
+    'data-live-transcript', 'data-live-orb'
+  ]) {
+    ok(markup.includes(hook), `The shared companion must expose ${hook} for the live controller.`);
+  }
+  for (const id of ['realtimeVoiceStartButton', 'realtimeVoiceEndButton', 'realtimeVoiceShell']) {
+    ok(markup.includes(`id="${id}"`), `Adding live hooks must not remove the v2 id ${id}.`);
+  }
+
+  // Two bugs that would have made the shared companion look broken rather than
+  // fail: the CSS and the orb both key off `data-realtime-phase`, and the
+  // transcript region is an <ol> styled by `realtime-history-item`.
+  // Comments name both hazards deliberately, so assert against code only —
+  // documenting a trap must not read as falling into it.
+  const clientCode = client
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  ok(clientCode.includes('data-realtime-phase') && !/'data-phase'/.test(clientCode),
+    'The live client must set the phase attribute the stylesheet and the orb actually read.');
+  ok(clientCode.includes('realtime-history-item') && !clientCode.includes('live-transcript-line'),
+    'Transcript lines must use the class the stylesheet defines.');
+  ok(/createElement\('li'\)/.test(clientCode),
+    'Transcript lines go into an <ol>, so they must be list items.');
+}
+
 console.log(`check-consumer-live: ${checks} assertions passed.`);

@@ -136,13 +136,14 @@
                 aria-disabled="true"
                 disabled
               >
-                <canvas id="realtimeVoiceOrbCanvas" class="realtime-orb-canvas" aria-hidden="true"></canvas>
+                <canvas id="realtimeVoiceOrbCanvas" class="realtime-orb-canvas" data-live-orb aria-hidden="true"></canvas>
               </button>
               <span id="realtimeVoiceOrbLabel" class="realtime-orb-label" role="status" aria-live="polite">Ready when you are</span>
               <div class="realtime-orb-copy">
                 <p
                   id="realtimeVoiceStatus"
                   class="realtime-voice-status"
+                  data-live-status
                   role="status"
                   aria-live="polite"
                   aria-atomic="true"
@@ -252,6 +253,7 @@
               <ol
                 id="realtimeVoiceTranscriptHistory"
                 class="realtime-caption-history"
+                data-live-transcript
                 role="log"
                 aria-live="polite"
                 aria-relevant="additions"
@@ -260,11 +262,11 @@
               <div class="realtime-caption-stream" aria-label="Current Live voice captions">
                 <div class="realtime-caption-row is-user">
                   <span>You · live</span>
-                  <p id="realtimeVoiceUserCaption">Your words will appear here while you speak.</p>
+                  <p id="realtimeVoiceUserCaption" data-live-caption="user">Your words will appear here while you speak.</p>
                 </div>
                 <div class="realtime-caption-row is-assistant">
                   <span>Planéir · AI · live</span>
-                  <p id="realtimeVoiceAssistantCaption">I’ll ask one useful question at a time.</p>
+                  <p id="realtimeVoiceAssistantCaption" data-live-caption="assistant">I’ll ask one useful question at a time.</p>
                 </div>
               </div>
             </section>
@@ -323,13 +325,13 @@
           </div>
 
           <div class="realtime-voice-controls" aria-label="Meeting controls">
-            <button id="realtimeVoiceStartButton" class="primary-button" type="button">
+            <button id="realtimeVoiceStartButton" class="primary-button" type="button" data-live-start>
               Start your Planéir meeting
             </button>
             <button id="realtimeVoiceMuteButton" class="secondary-button" type="button" disabled>
               Mute
             </button>
-            <button id="realtimeVoiceEndButton" class="secondary-button realtime-end-button" type="button" disabled>
+            <button id="realtimeVoiceEndButton" class="secondary-button realtime-end-button" type="button" data-live-stop disabled>
               End meeting
             </button>
             <button
