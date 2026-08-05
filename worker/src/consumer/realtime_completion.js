@@ -1,4 +1,5 @@
 import { consumerLanguageForModule } from '../../../js/planning/module_offers.js';
+import { assumptionLabel as approvedAssumptionLabel } from '../../../js/planning/planeir_assumptions.js';
 
 export const REALTIME_MEETING_PHASES = Object.freeze([
   'discovery',
@@ -53,7 +54,16 @@ export function classifySpokenPlanConfirmation(value) {
     : 'ambiguous';
 }
 
+/**
+ * ONE REGISTRY, so the spoken confirmation and the live state note cannot drift.
+ *
+ * The approved name wins where there is one. The de-camelCase fallback stays for
+ * a key no adapter has registered yet: it is worse prose but it is still safe to
+ * say aloud, and an unnamed assumption would read as a gap in the summary.
+ */
 function assumptionLabel(key) {
+  const approved = approvedAssumptionLabel(key);
+  if (approved) return approved.toLowerCase();
   return String(key || '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/[_-]+/g, ' ')

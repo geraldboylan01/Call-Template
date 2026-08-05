@@ -1003,6 +1003,12 @@ function liveStateProjection(context) {
   const state = context.state || {};
   const captured = capturedFactMemory(context);
   const capturedInstanceIds = new Set(captured.map((fact) => fact.instanceId));
+  const unknown = Object.entries(
+    context.profile?.assumptions?.values?.completionFacts?.unknownFactIds || {}
+  )
+    .filter(([, acknowledged]) => acknowledged === true)
+    .map(([factId]) => factId);
+  const unknownFactIds = new Set(unknown);
 
   const analyses = (state.recommendations || []).map((item) => ({
     description: item.description,
@@ -1023,7 +1029,16 @@ function liveStateProjection(context) {
         whose: missing.entityLabel || '',
         why: missing.reason
       }))
-      .filter((need) => !capturedInstanceIds.has(need.instanceId)),
+      .filter((need) => !capturedInstanceIds.has(need.instanceId))
+      // AND NOT SOMETHING THEY HAVE ALREADY SAID THEY CANNOT ANSWER.
+      //
+      // An acknowledged-unknown fact used to appear in `unknown` AND in this
+      // list, so the same item was rendered as "do not ask for these again"
+      // and "still needed" in one breath. The analysis genuinely cannot run
+      // without it -- readyToConfirm below still counts it -- but presenting
+      // it as an open question is asking the client to answer something they
+      // have already told you they cannot.
+      .filter((need) => !unknownFactIds.has(need.factId)),
     // OPTIONAL INPUTS, AND THEY STAY OPTIONAL. An assumption is a value the
     // deterministic engine already has an approved default for, so it never
     // appears in `missing` and never holds up `readyToConfirm` below. It is
@@ -1043,13 +1058,20 @@ function liveStateProjection(context) {
   }));
 
   const missing = [...new Set(analyses.flatMap((analysis) => analysis.stillNeeded.map((item) => item.factId)))];
-  const unknown = Object.entries(
-    context.profile?.assumptions?.values?.completionFacts?.unknownFactIds || {}
-  )
-    .filter(([, acknowledged]) => acknowledged === true)
-    .map(([factId]) => factId);
+  // Requirements the client has said they cannot answer. Removed from the ask
+  // list above, but still counted against readiness: an analysis that needs a
+  // figure nobody can supply is not ready, it is blocked, and offering to run
+  // it would be offering a result its own inputs do not support.
+  const blocked = [...new Set((state.recommendations || [])
+    .flatMap((item) => (item.requiredMissing || []))
+    .filter((need) => (
+      unknownFactIds.has(need.factId)
+      && !capturedInstanceIds.has(requirementInstanceId(need))
+    ))
+    .map((need) => need.factId))];
 
   assertNoCapturedRequirementContradiction(capturedInstanceIds, analyses);
+  assertNoUnknownRequirementContradiction(unknownFactIds, analyses);
 
   return {
     ok: true,
@@ -1071,11 +1093,22 @@ function liveStateProjection(context) {
       stillNeeded: analysis.stillNeeded.map(({ instanceId: _instanceId, ...need }) => need)
     })),
     missing: missing.slice(0, 20),
+    // The fact ids a VALUE is known for. Same vocabulary as `missing`, and it
+    // is what the deterministic duplicate-question guard compares an assistant
+    // turn against without having to re-derive the profile. See question_guard.
+    capturedFactIds: captured.filter((fact) => fact.hasValue).map((fact) => fact.factId).slice(0, 40),
     unknown: unknown.slice(0, 20),
+    // Named separately so the model can say WHY a plan is stuck without
+    // re-asking: "we cannot run this until there is a rough price" reads very
+    // differently from asking for the price a third time.
+    blocked: blocked.slice(0, 20),
     goalsAgreed: !state.requiresDecisionTopicQuestion
       && !state.requiresGoalPriorityQuestion
       && (state.moduleSlots || []).length > 0,
-    readyToConfirm: analyses.length > 0 && missing.length === 0,
+    // Blocked counts against readiness exactly as missing does. Dropping an
+    // unanswerable requirement from the ask list must never be the thing that
+    // makes a plan look runnable.
+    readyToConfirm: analyses.length > 0 && missing.length === 0 && blocked.length === 0,
     deferredTopics: (state.deferredOrAdviserTopics || []).map((topic) => ({
       description: topic.description,
       reason: topic.reason
@@ -1169,6 +1202,10 @@ function requirementInstanceId(missing) {
  * produces a re-asked question, and it is a server bug every time -- the model
  * has no way to resolve it. Fail loudly here rather than let the meeting do it
  * politely and wrongly.
+ *
+ * The reconciliation filters above are what make this unreachable today. That
+ * is deliberate: this exists so that deleting one of those filters fails a test
+ * instead of quietly costing another persona two points of question relevance.
  */
 function assertNoCapturedRequirementContradiction(capturedInstanceIds, analyses) {
   for (const analysis of analyses) {
@@ -1178,6 +1215,23 @@ function assertNoCapturedRequirementContradiction(capturedInstanceIds, analyses)
         500,
         'live_state_contradiction',
         `A requirement is both captured and still needed for the same instance (${need.factId}).`
+      );
+    }
+  }
+}
+
+/**
+ * The other way a state note can contradict itself: telling the model never to
+ * ask for something again and listing it as outstanding in the same breath.
+ */
+function assertNoUnknownRequirementContradiction(unknownFactIds, analyses) {
+  for (const analysis of analyses) {
+    for (const need of analysis.stillNeeded || []) {
+      if (!unknownFactIds.has(need.factId)) continue;
+      throw new ConsumerError(
+        500,
+        'live_state_contradiction',
+        `A requirement the client cannot supply is still listed as an open question (${need.factId}).`
       );
     }
   }
