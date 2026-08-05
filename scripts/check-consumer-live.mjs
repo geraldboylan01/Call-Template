@@ -34,6 +34,12 @@ import {
   liveVolatileStateItem
 } from '../worker/src/consumer/live/catalogue_prompt.js';
 import { classifySpokenPlanConfirmation } from '../worker/src/consumer/realtime_completion.js';
+import { assumptionLabel, listAssumptionLabelKeys } from '../js/planning/planeir_assumptions.js';
+import {
+  FACT_QUESTION_PATTERNS,
+  redundantQuestionVerdict,
+  requestsRepetition
+} from '../worker/src/consumer/live/question_guard.js';
 import { mapRealtimeFact } from '../worker/src/consumer/realtime_fact_mapper.js';
 import {
   addSourcedFigures,
@@ -2194,5 +2200,381 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(/createElement\('li'\)/.test(clientCode),
     'Transcript lines go into an <ol>, so they must be list items.');
 }
+
+
+/* ------------------------------------------------------------------------ */
+/* FACT MEMORY: the redundant-question regression of 2026-08-04.             */
+/*                                                                          */
+/* The persona replay lost two points of question relevance on three of six  */
+/* personas, all to the same failure: the meeting asked for a figure the     */
+/* client had already given. Every assertion in this section fails on the    */
+/* code as it was, and the suite passed anyway — it checked that the state   */
+/* item was well FORMED, never that it was legible.                          */
+/* ------------------------------------------------------------------------ */
+
+/** A pension profile with the pieces a retirement projection asks about. */
+function pensionSession({ partner = false, value = { amount: 28_000, currency: 'EUR' }, certainty = 'approximate' } = {}) {
+  const session = newReplaySession();
+  executeReplayTool(session, 'save_facts', {
+    facts: [
+      { factId: 'primary_goal', value: { type: 'improve_pension' }, certainty: 'exact' },
+      { factId: 'person_current_age', value: 52, certainty: 'exact' }
+    ]
+  }, 'I am 52 and worried about my pension.');
+  if (partner) {
+    executeReplayTool(session, 'save_facts', {
+      facts: [{ factId: 'partner_person', value: { displayName: 'Aoife' }, certainty: 'exact' }]
+    }, 'My wife Aoife is with me on this.');
+    executeReplayTool(session, 'save_facts', {
+      facts: [{
+        factId: 'pension_positions',
+        value: { items: [
+          { entityId: 'prsa-1', type: 'prsa', owner: 'primary', currentValue: value },
+          { entityId: 'occ-2', type: 'occupational', owner: 'partner' }
+        ] },
+        certainty
+      }]
+    }, 'I have a PRSA worth about twenty-eight thousand and Aoife has a company pension.');
+    return session;
+  }
+  executeReplayTool(session, 'save_facts', {
+    facts: [{ factId: 'pension_positions', value: { entityId: 'prsa-1', type: 'prsa', owner: 'primary' }, certainty: 'exact' }]
+  }, 'I have a PRSA.');
+  executeReplayTool(session, 'save_facts', {
+    facts: [{ factId: 'pension_current_value', value, certainty }]
+  }, 'It is worth about twenty-eight thousand.');
+  return session;
+}
+
+// 1. AN APPROXIMATE VALUE IS AN ANSWER. "About €28,000" is captured, and the
+//    figure itself has to reach the model — a bare "Current pension value"
+//    label is why it asked again.
+{
+  const state = executeReplayTool(pensionSession(), 'get_state', {}, '');
+  const phrase = state.captured.find((entry) => /pension value/i.test(entry));
+  ok(Boolean(phrase), 'A captured PRSA value must appear in the captured list.');
+  ok(/28,000/.test(phrase), 'The captured entry must carry the FIGURE, not just the topic label.');
+  ok(/approximately/i.test(phrase), 'An approximate value must be rendered as approximate, not silently exact.');
+  ok(!state.missing.includes('pension_current_value'),
+    'A captured pension value must not also be listed as still needed.');
+  ok(state.capturedFactIds.includes('pension_current_value'),
+    'The duplicate-question guard needs the captured fact id.');
+}
+
+// 2. THE MORTGAGE RATE, which goal_deferrer was asked for twice and then asked
+//    to say "in words".
+{
+  const session = newReplaySession();
+  executeReplayTool(session, 'save_facts', {
+    facts: [
+      { factId: 'primary_goal', value: { type: 'optimise_mortgage' }, certainty: 'exact' },
+      { factId: 'mortgage_position', value: {
+        entityId: 'mtg-1', type: 'mortgage', owner: 'primary',
+        currentBalance: { amount: 250_000, currency: 'EUR' },
+        // As the client says it. The live fact gate refuses a number that does
+        // not appear in their words, so 0.032 here would be rejected as
+        // unsourced — which is the gate working, not a test fixture detail.
+        annualInterestRate: 3.2, remainingTermMonths: 240
+      }, certainty: 'exact' }
+    ]
+  }, 'The mortgage balance is 250000 at 3.2 percent with 240 months left.');
+  const state = executeReplayTool(session, 'get_state', {}, '');
+  const rate = state.captured.find((entry) => /interest rate/i.test(entry));
+  ok(Boolean(rate) && /3\.2%/.test(rate), 'A stated mortgage rate must be readable in the captured list.');
+
+  const verdict = redundantQuestionVerdict('And what interest rate are you on for the mortgage?', {
+    capturedFactIds: state.capturedFactIds,
+    stillNeededFactIds: state.missing
+  });
+  ok(verdict.tripped && verdict.reason === 'already_captured',
+    'Re-asking a captured mortgage rate must trip the guard.');
+  ok(requestsRepetition('Could you say that figure again in words for me?'),
+    'Asking a client to repeat a figure in words must trip the guard on its own.');
+}
+
+// 3. TWO PEOPLE. A value known for the client is not a value known for their
+//    partner, and the projection must say so without contradicting itself.
+{
+  const state = executeReplayTool(pensionSession({ partner: true }), 'get_state', {}, '');
+  const mine = state.captured.find((entry) => /28,000/.test(entry));
+  ok(Boolean(mine) && /PRSA/i.test(mine), 'The client PRSA value must be captured against the PRSA.');
+  const partnerNeed = state.analyses
+    .flatMap((analysis) => analysis.stillNeeded)
+    .find((need) => need.factId === 'pension_current_value');
+  ok(Boolean(partnerNeed), 'The partner pension value must still be needed.');
+  ok(/partner/i.test(partnerNeed.whose),
+    'A still-needed pension value must name whose pension it is, so the question can be asked precisely.');
+  ok(!state.captured.some((entry) => /company pension.*: /i.test(entry) && /28,000/.test(entry)),
+    'One pension’s value must never be rendered as another pension’s.');
+}
+
+// 4. TWO ACCOUNTS, ONE UNRESOLVED. The bare "pension_value is both known and
+//    missing" state must be impossible rather than merely unlikely.
+{
+  const state = executeReplayTool(pensionSession({ partner: true }), 'get_state', {}, '');
+  for (const analysis of state.analyses) {
+    for (const need of analysis.stillNeeded) {
+      const capturedSameOwner = state.captured.some((entry) => (
+        need.whose && entry.startsWith(`${need.whose} — `)
+          && entry.includes(getSemanticFactDefinition(need.factId)?.label || need.factId)
+          && /: /.test(entry)
+      ));
+      ok(!capturedSameOwner,
+        `${need.factId} must not be captured and still needed for the same owner (${need.whose}).`);
+    }
+  }
+}
+
+// 5. AN EMPTY MISSING QUEUE IS NOT AN INVITATION. Nothing may be invented from
+//    the catalogue once an analysis has what it needs.
+{
+  const prompt = buildLiveCataloguePrompt();
+  ok(/lists nothing under Needs[\s\S]{0,200}Do not invent/i.test(prompt),
+    'The prompt must forbid inventing a question when an analysis needs nothing.');
+  const item = liveVolatileStateItem({
+    captured: ['Available cash: €20,000'],
+    analyses: [{ description: 'a review of your accessible cash', status: 'ready', stillNeeded: [], mayAssume: [] }],
+    missing: [],
+    unknown: [],
+    goalsAgreed: true,
+    readyToConfirm: true
+  });
+  ok(/has what it needs/.test(item), 'A ready analysis must be described as ready.');
+  ok(!/Still needed: [A-Z]/.test(item), 'A ready analysis must not carry a fabricated outstanding list.');
+}
+
+// 6. OPTIONAL INPUTS MUST BE NAMED. Every engine assumption key an adapter can
+//    emit needs an approved label, or the model is told "you may skip
+//    something" without being told what.
+{
+  const labelled = new Set(listAssumptionLabelKeys());
+  const emitted = [
+    'investmentGrowthRate', 'inflationRate', 'educationInflationRate',
+    'collegeStartAge', 'collegeDurationYears', 'collegeAnnualCostsToday',
+    'purchaseCosts', 'mortgageIllustration', 'targetPurchaseDate',
+    'minimumBufferMonths', 'targetBufferMonths', 'repaymentType',
+    'presentValueRate', 'statePensionContributory'
+  ];
+  for (const key of emitted) {
+    ok(labelled.has(key), `The engine assumption key ${key} must have a consumer-safe label.`);
+    ok(!/[A-Z]/.test(assumptionLabel(key).slice(1)) || /\s/.test(assumptionLabel(key)),
+      `${key} must render as words, never as a camelCase identifier.`);
+  }
+  const state = executeReplayTool(pensionSession(), 'get_state', {}, '');
+  const assumed = state.analyses.flatMap((analysis) => analysis.mayAssume);
+  ok(assumed.length > 0, 'A retirement projection must surface its approved defaults.');
+  ok(assumed.every((entry) => typeof entry.label === 'string' && entry.label.trim()),
+    'Every optional input must carry a readable label; a null label is silently dropped.');
+  ok(!state.missing.includes('inflationRate'),
+    'An approved default must never block readiness.');
+}
+
+// 7. A FIGURE VOLUNTEERED BEFORE GOALS ARE AGREED IS KEPT, and keeping it must
+//    not select an analysis or start figure gathering.
+{
+  const session = newReplaySession();
+  const saved = executeReplayTool(session, 'save_facts', {
+    facts: [{ factId: 'cash_savings', value: { amount: 20_000, currency: 'EUR' }, certainty: 'approximate' }]
+  }, 'We have about twenty thousand euro in savings, if that helps.');
+  ok(saved.saved.includes('cash_savings'), 'A figure volunteered before goals must still be saved.');
+  const state = executeReplayTool(session, 'get_state', {}, '');
+  ok(state.captured.some((entry) => /20,000/.test(entry)), 'The volunteered figure must be retained and legible.');
+  ok(state.analyses.length === 0, 'A volunteered figure must not select an analysis by itself.');
+  ok(state.goalsAgreed === false, 'A volunteered figure must not agree the goal.');
+  ok(state.missing.length === 0, 'A volunteered figure must not start figure gathering.');
+}
+
+// 8. NO OFFER TO RUN BEFORE DETERMINISTIC READINESS.
+{
+  const state = executeReplayTool(pensionSession(), 'get_state', {}, '');
+  ok(state.readyToConfirm === false, 'An incomplete projection must not report itself ready.');
+  const item = liveVolatileStateItem({ ...state, goalsAgreed: true });
+  ok(/not ready for confirmation/i.test(item),
+    'The state note must say plainly that the plan is not ready.');
+  const refused = executeReplayTool(pensionSession(), 'confirm_and_run', {}, 'Yes, go ahead.');
+  ok(refused.ok === false, 'confirm_and_run must refuse while inputs are outstanding.');
+}
+
+// 9. A TANGENT MUST NOT COST THE STATE. The projection is derived from the
+//    profile, so an off-topic turn cannot lose it.
+{
+  const session = pensionSession();
+  const before = executeReplayTool(session, 'get_state', {}, '');
+  executeReplayTool(session, 'get_state', {}, 'Anyway, terrible weather today isn’t it?');
+  const after = executeReplayTool(session, 'get_state', {}, '');
+  assert.deepEqual(after.captured, before.captured);
+  checks += 1;
+  assert.deepEqual(after.missing, before.missing);
+  checks += 1;
+}
+
+// 10. THE GUARD IS DETERMINISTIC AND CHEAP. It must never reach for the
+//     planner, and it must not fire on a question that does real work.
+{
+  const guardSource = readFileSync(new URL('../worker/src/consumer/live/question_guard.js', import.meta.url), 'utf8');
+  ok(!/planner|fetch\(|await /i.test(guardSource.replace(/\/\*[\s\S]*?\*\//g, '')),
+    'The duplicate-question guard must stay pure synchronous JS with no planner and no network call.');
+  ok(Object.keys(FACT_QUESTION_PATTERNS).length > 0, 'The shipped detector must define patterns.');
+
+  const mixed = redundantQuestionVerdict(
+    'You said your pension is about 28 thousand. What do you earn before tax?',
+    { capturedFactIds: ['pension_current_value'], stillNeededFactIds: ['gross_household_income'] }
+  );
+  ok(!mixed.tripped, 'A turn that recaps a known figure and asks a NEW question must not be suppressed.');
+
+  const scoped = redundantQuestionVerdict('What is your partner’s pension worth?', {
+    capturedFactIds: ['pension_current_value'],
+    stillNeededFactIds: ['pension_current_value']
+  });
+  ok(!scoped.tripped,
+    'A fact captured for one entity but still needed for another must remain askable.');
+}
+
+
+
+// 11. A FACT THE CLIENT CANNOT SUPPLY must not be rendered as both "never ask
+//     for this again" and "still needed". It blocks the plan; it is not an
+//     open question.
+{
+  const session = newReplaySession();
+  executeReplayTool(session, 'save_facts', {
+    facts: [
+      { factId: 'primary_goal', value: { type: 'buy_home' }, certainty: 'exact' },
+      { factId: 'person_current_age', value: 25, certainty: 'exact' }
+    ]
+  }, 'I am 25 and I want to buy a house.');
+  executeReplayTool(session, 'save_facts', {
+    facts: [{ factId: 'target_home_price', value: null, certainty: 'unknown' }]
+  }, 'I genuinely have no idea what price yet.');
+  const state = executeReplayTool(session, 'get_state', {}, '');
+  ok(state.unknown.includes('target_home_price'), 'An acknowledged unknown must be recorded as unknown.');
+  ok(!state.missing.includes('target_home_price'),
+    'An acknowledged unknown must not also be listed as an open question.');
+  ok(state.blocked.includes('target_home_price'),
+    'An acknowledged unknown that an analysis needs must be reported as blocking.');
+  ok(state.readyToConfirm === false,
+    'Removing an unanswerable requirement from the ask list must not make the plan look runnable.');
+  const item = liveVolatileStateItem(state);
+  ok(/Waiting on the client/i.test(item), 'The state note must say the plan is waiting on the client.');
+  ok(/do not ask for it again/i.test(item), 'The state note must forbid re-asking a blocked item.');
+}
+
+// 12. NO PARTIAL RUNS. One ready analysis alongside one that is not must never
+//     be offered on its own — the regression that produced "Would you like me
+//     to run the cash-reserve review on its own?" in the 2026-08-05 replay.
+{
+  const prompt = buildLiveCataloguePrompt();
+  ok(/THE ANALYSES RUN AS ONE SET/.test(prompt), 'The prompt must state that analyses run as one set.');
+  ok(/Never offer to run a subset/i.test(prompt), 'The prompt must forbid offering a subset.');
+  const item = liveVolatileStateItem({
+    captured: ['Available cash: €11,000'],
+    analyses: [
+      { description: 'a review of your accessible cash', status: 'ready', stillNeeded: [], mayAssume: [] },
+      { description: 'a review of your home-purchase affordability', status: 'missing_information', stillNeeded: [{ factId: 'target_home_price', whose: '', why: 'Add a target price.' }], mayAssume: [] }
+    ],
+    missing: ['target_home_price'],
+    unknown: [],
+    blocked: [],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+  ok(/they run as one set/i.test(item),
+    'A not-ready plan must tell the model the analyses run together, not one at a time.');
+}
+
+
+
+// 13. THE STANDING DIRECTIVES ARE RESERVED, NOT TRIMMED. Captured entries now
+//     carry values and are much longer than the topic labels they replaced, so
+//     the per-turn budget is genuinely contended. An earlier version of that
+//     budget sliced the assembled string and cut the final directive mid-word:
+//     "do not offer to run any analysis, includi".
+{
+  const captured = Array.from({ length: 32 }, (_, index) => (
+    `your partner’s company pension — Current pension value: approximately €${100_000 + index}`
+  ));
+  const analyses = Array.from({ length: 3 }, (_, index) => ({
+    description: `a deliberately long description of analysis number ${index} that runs on`,
+    status: 'missing_information',
+    stillNeeded: Array.from({ length: 4 }, () => ({
+      factId: 'pension_current_value',
+      whose: 'your partner’s company pension',
+      why: 'Add the current pension value for this account please.'
+    })),
+    mayAssume: [
+      { label: 'Long-run investment growth rate', why: 'x' },
+      { label: 'General inflation rate', why: 'y' }
+    ]
+  }));
+  const item = liveVolatileStateItem({
+    captured,
+    analyses,
+    missing: ['pension_current_value', 'target_retirement_income'],
+    unknown: ['target_home_price', 'monthly_spending'],
+    blocked: ['target_home_price', 'monthly_spending'],
+    goalsAgreed: false,
+    readyToConfirm: false
+  });
+  ok(item.length <= 1_150, 'The per-turn state item must stay within its character cap.');
+  ok(/they run as one set\.$/.test(item.trim()),
+    'The last standing directive must survive the worst case whole, never cut mid-sentence.');
+  ok(/do not gather figures\./.test(item),
+    'The ORIENT directive must survive a fully contended budget.');
+  ok(/do not ask for it again\./.test(item),
+    'The blocked-item directive must survive a fully contended budget.');
+
+  // And a figure is never cut mid-number when captured entries are the part
+  // that has to yield.
+  const tight = liveVolatileStateItem({
+    captured: ['Available cash: €20,000', 'you — Current age: 52', 'your PRSA — Current pension value: approximately €28,000'],
+    analyses: [],
+    missing: [],
+    unknown: [],
+    blocked: [],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+  ok(!/€[\d,]*[^\d,\s.]/.test(tight.replace(/€[\d,]+/g, '')),
+    'A rendered figure must never be truncated part-way through its digits.');
+}
+
+
+
+// 14. THE REPLY PATH STAYS PLANNER-FREE. The live lane now DOES call the
+//     planner — as an auditor, after the turn — so the rule that used to be
+//     "this file never imports the planner" has to become the sharper one:
+//     every planner call is detached, and none is awaited inline.
+{
+  const sessionSource = readFileSync(
+    new URL('../worker/src/consumer/live/live_session.js', import.meta.url),
+    'utf8'
+  );
+  const plannerCalls = [...sessionSource.matchAll(/^\s*(.*)\bextractRealtimePlannerTurn\(/gm)];
+  ok(plannerCalls.length > 0, 'The live lane must run the asynchronous fact audit.');
+  for (const [, prefix] of plannerCalls) {
+    ok(!/^\s*(?:const|let|var)?\s*[\w.]*\s*=?\s*await\s/.test(`${prefix} `) || /auditTurnFacts/.test(sessionSource),
+      'A planner call must never be awaited on the reply path.');
+  }
+  // Both post-turn passes are fired through waitUntil, never awaited by the
+  // handler that processes a client turn.
+  ok(/waitUntil\(this\.auditTurnFacts\(/.test(sessionSource),
+    'The fact audit must be detached through waitUntil.');
+  ok(/waitUntil\(this\.guardRedundantQuestion\(/.test(sessionSource),
+    'The duplicate-question guard must be detached through waitUntil.');
+  ok(!/await this\.auditTurnFacts\(/.test(sessionSource),
+    'The fact audit must never be awaited inline.');
+  ok(!/await this\.guardRedundantQuestion\(/.test(sessionSource),
+    'The duplicate-question guard must never be awaited inline.');
+
+  // And the tool executors stay pure: a model call in live_tools.js would put
+  // the planner back between the client finishing a sentence and the reply.
+  const toolsSource = readFileSync(
+    new URL('../worker/src/consumer/live/live_tools.js', import.meta.url),
+    'utf8'
+  ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  ok(!/extractRealtimePlannerTurn|composeMeetingBrief|api\.openai\.com/.test(toolsSource),
+    'The live tool executors must contain no model call of any kind.');
+}
+
 
 console.log(`check-consumer-live: ${checks} assertions passed.`);

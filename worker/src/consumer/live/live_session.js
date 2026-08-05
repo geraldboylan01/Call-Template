@@ -42,6 +42,8 @@ import {
   settleConsumerProviderCostUnknown
 } from '../repository.js';
 import { hangupOpenAiRealtimeCall } from '../realtime_provider.js';
+import { applyPlannerCandidates } from '../planning_turn.js';
+import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import {
   classifyRealtimeProviderError,
   realtimeTranscriptionUsageFromEvent,
@@ -50,6 +52,7 @@ import {
 import { emitSessionSummary } from '../learning_signals.js';
 import { LIVE_PROMPT_VERSION, liveVolatileStateItem } from './catalogue_prompt.js';
 import { executeLiveTool, liveStateProjection, loadLiveContext } from './live_tools.js';
+import { redundantQuestionVerdict } from './question_guard.js';
 import {
   addSourcedFigures,
   addSourcedFiguresFromText,
@@ -563,8 +566,15 @@ export class ConsumerLiveSession {
     this.scheduleReviewsForClientTurn(itemId, transcript);
     this.pruneLiveTurnLedger();
 
-    // NOTE WHAT DOES NOT HAPPEN HERE: no planner call, no brief, no
-    // `response.create`. The provider is already replying.
+    // NOTE WHAT DOES NOT HAPPEN HERE: no brief, no `response.create`, and
+    // nothing awaited. The provider is already replying.
+    //
+    // The fact audit below IS a planner call, and it is detached exactly like
+    // the compliance review above it: `waitUntil` keeps it off the reply path,
+    // so the v2 defect -- a model call BETWEEN the client finishing a sentence
+    // and the model being allowed to speak -- cannot come back through it. Its
+    // corrections land on a later turn, which is the whole point of an auditor.
+    this.state.waitUntil(this.auditTurnFacts(transcript, itemId).catch(() => {}));
   }
 
   async markClientTranscriptionUnavailable(event = {}) {
@@ -666,6 +676,11 @@ export class ConsumerLiveSession {
       transcript
     }).catch(() => {});
 
+    // Deterministic, synchronous, no model call: did that turn ask for a figure
+    // the state already holds? The response has finished, so nothing is
+    // cancelled — the correction lands as a state item the next turn reads.
+    this.state.waitUntil(this.guardRedundantQuestion(transcript).catch(() => {}));
+
     // THE SUPERVISOR NEVER GATES A RESPONSE. It runs concurrently with the
     // client's next turn and its verdict changes the NEXT one. This is the
     // same Responses API the v2 planner used, in the opposite position in the
@@ -700,6 +715,114 @@ export class ConsumerLiveSession {
       }
     }).catch(() => {});
     if (actionable) await this.correctNextTurn(verdict.actId).catch(() => {});
+  }
+
+  /**
+   * The deterministic duplicate-question backstop.
+   *
+   * Pure regex over the finished assistant turn against the fact ids the
+   * projection already holds a value for. No model call, no planner, and it
+   * cannot delay a reply: the response it inspects is already spoken.
+   *
+   * When it trips, the model is told plainly what it already knows and what to
+   * ask instead, so the redundancy cannot repeat on the next turn. See
+   * question_guard.js for why suppressing the first occurrence is not
+   * achievable in a lane whose audio the Worker never touches.
+   */
+  async guardRedundantQuestion(assistantTranscript) {
+    let projection;
+    try {
+      projection = liveStateProjection(await loadLiveContext({
+        env: this.env,
+        config: getConsumerConfig(this.env),
+        sessionId: this.meta.sessionId
+      }));
+    } catch (_error) {
+      return;
+    }
+    const verdict = redundantQuestionVerdict(assistantTranscript, {
+      capturedFactIds: projection.capturedFactIds,
+      stillNeededFactIds: projection.missing
+    });
+    if (!verdict.tripped) return;
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta?.sessionId,
+      leaseId: this.meta?.leaseId,
+      direction: 'server',
+      eventType: 'live.question.redundant',
+      payload: { reason: verdict.reason, requested: verdict.requested.slice(0, 4) }
+    }).catch(() => {});
+    await this.injectVolatileState().catch(() => {});
+  }
+
+  /* ----------------------------------------------------- asynchronous audit */
+
+  /**
+   * THE PLANNER IS AN AUDITOR HERE, NOT A GATE.
+   *
+   * The model already saved what it heard, in the same response it spoke, and
+   * that write is authoritative the moment it lands. This pass runs AFTER the
+   * turn, detached through waitUntil, and exists only to catch what the fast
+   * path missed — a figure buried in a long answer, a value that belongs to the
+   * partner's pension rather than the client's, a contradiction.
+   *
+   * It writes through applyPlannerCandidates, the same function the v2 lane and
+   * the agent transport use, so there is exactly one fact memory. Every write in
+   * that path is guarded by `current_profile_revision`, which is what makes a
+   * late audit safe: if the client has corrected something in the meantime, this
+   * batch fails the revision predicate instead of overwriting them.
+   *
+   * NOTHING ON THE REPLY PATH AWAITS THIS. If it is slow, or fails, or the
+   * provider has already moved on, the meeting is unaffected — the next turn
+   * simply reads whatever did land.
+   */
+  async auditTurnFacts(clientTranscript, sourceTurnId) {
+    const transcript = String(clientTranscript || '').trim();
+    if (!transcript || !this.meta?.sessionId) return;
+    const config = getConsumerConfig(this.env);
+    const startedAt = Date.now();
+    const loadContext = () => loadLiveContext({
+      env: this.env,
+      config,
+      sessionId: this.meta.sessionId
+    });
+    let applied = 0;
+    let errorCode = '';
+    try {
+      const context = await loadContext();
+      const extraction = await extractRealtimePlannerTurn({
+        env: this.env,
+        config: context.config,
+        context,
+        sourceTurnId,
+        transcript,
+        recentTurns: []
+      });
+      const outcome = await applyPlannerCandidates({
+        env: this.env,
+        config: context.config,
+        context,
+        extraction,
+        evidenceRef: sourceTurnId,
+        leaseId: this.meta.leaseId,
+        toolAttemptId: null,
+        loadContext
+      });
+      applied = outcome.outcomes.filter((item) => item.accepted).length;
+    } catch (error) {
+      errorCode = String(error?.code || 'live_fact_audit_failed');
+    }
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta?.sessionId,
+      leaseId: this.meta?.leaseId,
+      direction: 'server',
+      eventType: 'live.facts.audited',
+      payload: { applied, errorCode, latencyMs: Date.now() - startedAt }
+    }).catch(() => {});
+    // A correction the client can see on their next turn. Only when the audit
+    // actually changed something -- an audit that found nothing must not cost a
+    // per-turn item.
+    if (applied > 0) await this.injectVolatileState().catch(() => {});
   }
 
   /* ------------------------------------------------------------ compliance */
@@ -954,6 +1077,10 @@ export class ConsumerLiveSession {
               analyses: projection.analyses,
               missing: projection.missing,
               unknown: projection.unknown,
+              // Requirements the client has said they cannot answer. Dropped
+              // from the ask list but still holding the plan, so the note has
+              // to carry them or the model sees a shorter list and no reason.
+              blocked: projection.blocked,
               goalsAgreed: projection.goalsAgreed,
               readyToConfirm: projection.readyToConfirm
             })

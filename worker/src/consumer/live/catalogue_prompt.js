@@ -31,7 +31,12 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // v4: the volatile state item now names what EACH analysis needs and why, and
 // the flow section makes those per-analysis needs authoritative over the
 // catalogue's capability lists below.
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v4';
+// v5: captured facts arrive with their VALUES and with whose they are, and the
+// flow section forbids re-asking anything the state note already knows. v4 sent
+// bare topic labels — "Current pension value" with no figure — so the model
+// could see a subject had been covered but not what the answer was, and asking
+// again was the only move it had.
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v5';
 
 /**
  * Budgets for the per-turn state item.
@@ -356,6 +361,11 @@ function conversationFlowSection() {
     'When they give the ages of several children together, save every child and currentAge in',
     'one dependants batch before moving on.',
     'When you have enough, say what you are going to run and ask them to confirm.',
+    'THE ANALYSES RUN AS ONE SET. While any analysis in play is still missing an input, none of',
+    'them can run — not even one that already has everything it needs. Never offer to run a subset,',
+    'never offer to "leave that part for another time" and run the rest, and never ask a client to',
+    'confirm a partial plan. Say plainly what is outstanding and that you will run them together',
+    'once it is there.',
     '',
     'EVERY QUESTION MUST BELONG TO AN ANALYSIS THAT IS IN PLAY. After each save you are given a',
     'short state note listing the analyses in play and, for each one, what it still needs and why.',
@@ -379,6 +389,12 @@ function conversationFlowSection() {
     'Each entry names whose it is. "your PRSA" and "your partner’s company pension" are different',
     'accounts: a value known for one is not a value known for the other, and a Needs line that',
     'names an owner should be asked with that owner in it.',
+    '',
+    'A HOLDING IS THE SPEAKER’S UNTIL YOU KNOW OTHERWISE. Use owner "primary" unless you have',
+    'already recorded a partner. "We have a €400,000 mortgage" means save it as theirs — marking it',
+    '"joint" or "partner" before a partner exists is refused outright, and the figure is then lost',
+    'rather than merely mis-attributed. Whose it is can be corrected later; a number you never',
+    'saved cannot be.',
     '',
     'ANYTHING LISTED AS A STANDARD ASSUMPTION IS SETTLED. The engine already has an approved value',
     'for it. Never ask for it, and never treat it as outstanding — an analysis that has what it',
@@ -655,14 +671,12 @@ export function liveVolatileStateItem(state = {}) {
 
   const shown = analyses.slice(0, MAX_SHOWN_ANALYSES);
   const renderedNeeds = shown.some((analysis) => (analysis?.stillNeeded || []).length > 0);
-  // Budgeted on its own so a long analysis block can never push the standing
-  // directives below out of the item. They are what keep the meeting on rails.
   const analysisBlock = shown.length
     ? [
       'Analyses in play, and what each one still needs:',
       ...shown.map(analysisLine),
       'Ask only for something an analysis above lists under Needs.'
-    ].join(' ').slice(0, MAX_ANALYSIS_BLOCK_CHARS)
+    ].join(' ')
     : 'Analyses in play: none chosen yet.';
 
   const trailing = renderedNeeds
@@ -678,41 +692,74 @@ export function liveVolatileStateItem(state = {}) {
   // talkative client with three analyses in play can never truncate them away.
   const directives = [];
   if (unknownLabels.length) {
-    directives.push(`Client cannot supply now: ${unknownLabels.join(', ')}. Do not ask for these again in this meeting.`);
+    directives.push(
+      `Client cannot supply now: ${unknownLabels.slice(0, MAX_LISTED_LABELS).join(', ')}. `
+      + 'Do not ask for these again in this meeting.'
+    );
   }
   if (state.goalsAgreed === false) {
     directives.push('First focus is not agreed yet: stay in ORIENT or FOCUS and do not gather figures.');
   } else if (state.goalsAgreed === true) {
     directives.push('First focus is agreed.');
   }
+  const blockedLabels = (Array.isArray(state.blocked) ? state.blocked : [])
+    .slice(0, MAX_LISTED_LABELS)
+    .map((factId) => getSemanticFactDefinition(factId)?.label || factId);
+  if (blockedLabels.length) {
+    directives.push(
+      `Waiting on the client, not on you: ${blockedLabels.join(', ')}. `
+      + 'Say the plan is on hold until they have that, and do not ask for it again.'
+    );
+  }
   if (state.readyToConfirm === true) directives.push('The plan is ready for a spoken confirmation.');
   if (state.readyToConfirm === false && analyses.length > 0) {
-    directives.push('The plan is not ready for confirmation yet.');
+    // THE ANALYSES RUN AS ONE SET. Spelled out because a model that can see one
+    // analysis is ready and another is not will otherwise offer the ready one
+    // on its own -- which reads as helpful and is not something this lane can
+    // do. The whole set is confirmed together or not at all.
+    directives.push(
+      'The plan is not ready for confirmation yet. Do not offer to run any analysis, '
+      + 'including one that has what it needs on its own — they run as one set.'
+    );
   }
 
-  // BUDGET ORDER: directives, then the analyses, then as many known figures as
-  // fit. Captured entries go last not because they matter least but because
-  // they are the only part that can be dropped whole without changing meaning
-  // -- and `liveStateProjection` has already ordered them so the figures go
-  // first and the presence-only entries fall off the end.
+  // STANDING DIRECTIVES ARE RESERVED, NOT TRIMMED, and they are what is left
+  // when everything else has been cut. They are bounded by construction: a
+  // fixed set of sentences over label lists capped at MAX_LISTED_LABELS.
+  //
+  // Everything else is budgeted against what remains, longest-lived first:
+  // the analyses (which say what may be asked), then as many known figures as
+  // fit. Captured entries yield first not because they matter least but because
+  // they are the only part that can be dropped WHOLE without changing meaning --
+  // and `liveStateProjection` has already ordered them so the figures go first
+  // and the presence-only entries fall off the end.
+  //
+  // Nothing here slices the assembled string. An earlier version did, and in
+  // the worst case it cut the final directive mid-sentence -- turning "do not
+  // offer to run any analysis, including one that has what it needs on its own"
+  // into "do not offer to run any analysis, includi".
   const directiveText = directives.join(' ');
-  const fixed = [analysisBlock, trailing].filter(Boolean).join(' ');
+  const afterDirectives = Math.max(0, MAX_VOLATILE_ITEM_CHARS - directiveText.length - 1);
+
+  const analysisBudget = Math.min(MAX_ANALYSIS_BLOCK_CHARS, afterDirectives);
+  const analysisText = analysisBlock.slice(0, analysisBudget);
+  const trailingText = trailing.slice(0, Math.max(0, afterDirectives - analysisText.length - 1));
+  const fixed = [analysisText, trailingText].filter(Boolean).join(' ');
+
   const capturedBudget = Math.max(
     0,
-    Math.min(
-      MAX_CAPTURED_CHARS,
-      MAX_VOLATILE_ITEM_CHARS - directiveText.length - fixed.length - CAPTURED_PREFIX_CHARS
-    )
+    Math.min(MAX_CAPTURED_CHARS, afterDirectives - fixed.length - CAPTURED_PREFIX_CHARS)
   );
-  const capturedText = captured.length && capturedBudget > 0
-    ? `Already known — never ask for any of these again: ${joinWithinBudget(captured, capturedBudget).text}.`
-    : captured.length ? '' : 'Already known: nothing yet.';
+  const capturedText = captured.length
+    ? (capturedBudget > 0
+      ? `Already known — never ask for any of these again: ${joinWithinBudget(captured, capturedBudget).text}.`
+      : '')
+    : 'Already known: nothing yet.';
 
-  return [capturedText, fixed, directiveText]
-    .filter(Boolean)
-    .join(' ')
-    .slice(0, MAX_VOLATILE_ITEM_CHARS);
+  return [capturedText, fixed, directiveText].filter(Boolean).join(' ');
 }
 
 /** Room reserved for the "Already known" lead-in and its trailing full stop. */
 const CAPTURED_PREFIX_CHARS = 54;
+/** Label lists inside a directive stay short so the directive stays whole. */
+const MAX_LISTED_LABELS = 6;
