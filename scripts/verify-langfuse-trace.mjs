@@ -39,8 +39,13 @@ const host = String(process.env.LANGFUSE_HOST || '').trim() || 'https://cloud.la
 
 if (!publicKey || !secretKey) {
   console.error('LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are required.\n');
-  console.error('  LANGFUSE_PUBLIC_KEY=pk-… LANGFUSE_SECRET_KEY=sk-… npm run verify:langfuse\n');
-  console.error('Project settings → API keys. This script makes no model calls and costs nothing.');
+  console.error('  LANGFUSE_PUBLIC_KEY=pk-lf-… LANGFUSE_SECRET_KEY=sk-lf-… npm run verify:langfuse\n');
+  // Deliberately not "check your project settings". No Langfuse account has
+  // ever been provisioned for this repository -- not locally, not in Cloudflare
+  // secrets, GitHub Actions or Render -- so there is nowhere to look these up.
+  console.error('There is no Langfuse account for this project yet, so there is nothing to look');
+  console.error('up. docs/langfuse-setup.md walks through creating one (free tier, no card).');
+  console.error('\nThis script makes no model calls and costs nothing.');
   process.exit(2);
 }
 
