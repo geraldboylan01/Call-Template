@@ -5,6 +5,14 @@
 // FREE. No OPENAI_API_KEY, no model calls, no spend. It needs the three
 // LANGFUSE_* variables and nothing else.
 //
+// WHERE THOSE COME FROM. The npm script loads `.env.local` first-class and
+// `.env` as an optional fallback, both via Node's own --env-file-if-exists, so
+// neither file is required and a missing one is not an error. `.env.local` is
+// listed LAST on the command line, which is what makes it win: Node applies
+// --env-file in order and the last occurrence of a key is the one that sticks.
+// A variable exported in your shell still beats both, so a one-off run can
+// override the file without editing it.
+//
 // WHY THIS EXISTS. Everything else in this repo can be checked offline, because
 // everything else is our own code. This one thing cannot: whether a span
 // attribute we emit is an attribute Langfuse stores is a fact about their
@@ -39,6 +47,8 @@ const host = String(process.env.LANGFUSE_HOST || '').trim() || 'https://cloud.la
 
 if (!publicKey || !secretKey) {
   console.error('LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are required.\n');
+  console.error('Put them in .env.local (preferred) or .env — `npm run verify:langfuse` loads');
+  console.error('both, .env.local winning. Neither file is required; a shell variable also works:\n');
   console.error('  LANGFUSE_PUBLIC_KEY=pk-lf-… LANGFUSE_SECRET_KEY=sk-lf-… npm run verify:langfuse\n');
   // Deliberately not "check your project settings". No Langfuse account has
   // ever been provisioned for this repository -- not locally, not in Cloudflare

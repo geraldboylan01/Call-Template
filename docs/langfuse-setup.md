@@ -65,7 +65,7 @@ are for when you want live worker traces.
 
 ### Local — the only one needed now
 
-Create `.env` in the repository root (gitignored):
+Put them in **`.env.local`** in the repository root (gitignored, `.gitignore:11`):
 
 ```
 LANGFUSE_PUBLIC_KEY=pk-lf-…
@@ -75,10 +75,20 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 
 `LANGFUSE_HOST` may be omitted — the harness defaults to the EU region.
 
-`npm run verify:langfuse` loads this file automatically, via Node's built-in
-`--env-file-if-exists=.env`. No dependency, and it does not fail when the file is absent.
-The `Makefile` separately reads `.env` via `-include .env` and exports all three
-(`Makefile:34`), so `make` targets pick them up too.
+`npm run verify:langfuse` loads them with Node's own `--env-file-if-exists`, no dependency:
+
+```
+--env-file-if-exists=.env --env-file-if-exists=.env.local
+```
+
+Both are optional and a missing one is not an error — Node prints a one-line
+`… not found. Continuing without it.` and carries on. **`.env.local` is listed last on
+purpose**: Node applies `--env-file` in order and the last occurrence of a key wins, so
+`.env.local` takes precedence over `.env`. A variable exported in your shell beats both, so a
+one-off run can override the file without editing it.
+
+The `Makefile` is separate and older: it reads `.env` only, via `-include .env`
+(`Makefile:5,34`), for the learning-signals `make` targets. It does not read `.env.local`.
 
 The other harness runners (`probe:live-personas`, `run-consumer-agent-call.mjs`, …) do **not**
 load `.env` — they take the variables from the environment, so either export them in your
