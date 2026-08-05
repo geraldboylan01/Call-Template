@@ -73,14 +73,32 @@ LANGFUSE_SECRET_KEY=sk-lf-…
 LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
-`LANGFUSE_HOST` may be omitted — the harness defaults to the EU region. The `Makefile` reads
-`.env` via `-include .env` and exports all three (`Makefile:34`), so `make` targets pick them
-up too. Node scripts read `process.env`, so either use `.env` with a loader or pass them
-inline:
+`LANGFUSE_HOST` may be omitted — the harness defaults to the EU region.
+
+`npm run verify:langfuse` loads this file automatically, via Node's built-in
+`--env-file-if-exists=.env`. No dependency, and it does not fail when the file is absent.
+The `Makefile` separately reads `.env` via `-include .env` and exports all three
+(`Makefile:34`), so `make` targets pick them up too.
+
+The other harness runners (`probe:live-personas`, `run-consumer-agent-call.mjs`, …) do **not**
+load `.env` — they take the variables from the environment, so either export them in your
+shell or pass them inline:
 
 ```bash
 LANGFUSE_PUBLIC_KEY=pk-lf-… LANGFUSE_SECRET_KEY=sk-lf-… npm run verify:langfuse
 ```
+
+### This must be run on your own machine
+
+Claude Code sessions here run in a **disposable cloud container** that is rebuilt from a fresh
+git clone each time. It cannot see files on your laptop, and a `.env` created inside one
+session is gone when that container is reclaimed. `.env` is also gitignored, so it is never
+carried across in a commit.
+
+So the verifier has to be run locally by you, or the three variables have to be configured on
+the remote environment itself (Claude Code → environment settings → environment variables),
+which puts the secret key inside that sandbox. Running locally keeps the secret on your
+machine and is the better default.
 
 ### Cloudflare Worker — for live call traces
 
