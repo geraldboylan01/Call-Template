@@ -215,7 +215,8 @@ export async function extractProfilePatchWithAi({
   message,
   rollingSummary,
   activeQuestion,
-  requestPolicy = null
+  requestPolicy = null,
+  trace = null
 }) {
   if (!config.aiEnabled || !session.aiProcessingConsented) {
     throw new ConsumerError(503, 'ai_disabled', 'AI intake is not enabled for this session.');
@@ -243,6 +244,33 @@ export async function extractProfilePatchWithAi({
     cachedInputTokens: 0,
     latencyMs: 0
   };
+  // The span the turn's model call occupies. `trace.record` is inert unless
+  // tracing is configured and this cohort is sampled, so there is nothing to
+  // guard here and no branch that can get the guard wrong.
+  const traceSpan = trace?.startSpan?.() || null;
+  let recorded = false;
+  const recordSpan = ({ metadata, output = null, errorCode = null }) => {
+    if (recorded) return;
+    recorded = true;
+    trace?.record?.({
+      name: 'intake.extraction',
+      spanId: traceSpan?.spanId,
+      startedAt: traceSpan?.startedAt ?? startedAt,
+      endedAt: Date.now(),
+      model,
+      usage: metadata,
+      errorCode,
+      // Content and metadata stay separate arguments the whole way down. What
+      // survives is the cohort's decision, made in tracing.js, not this file's.
+      content: { input: safeMessage, output },
+      metadata: { ...metadata, stage: session.stage, errorCode }
+    });
+  };
+
+  // NOTE the asymmetry: the span may carry the model's text, `error.metadata`
+  // must never. That object is persisted to consumer_ai_attempts, which stores
+  // no content by design -- so output reaches the span through recordSpan and
+  // never through this function's overrides.
   const withMetadata = (error, overrides = {}) => {
     const normalized = error instanceof ConsumerError
       ? error
@@ -252,6 +280,7 @@ export async function extractProfilePatchWithAi({
       latencyMs: Date.now() - startedAt,
       ...overrides
     };
+    recordSpan({ metadata: normalized.metadata, errorCode: normalized.code });
     return normalized;
   };
   let apiResponse;
@@ -337,13 +366,19 @@ export async function extractProfilePatchWithAi({
   }
   console.log('Consumer AI response received', metadata);
   let parsed;
+  let outputText = null;
   try {
-    parsed = validateStructuredOutput(JSON.parse(extractOutputText(response)));
+    outputText = extractOutputText(response);
+    parsed = validateStructuredOutput(JSON.parse(outputText));
   } catch (error) {
     const normalized = error instanceof ConsumerError
       ? error
       : new ConsumerError(502, 'ai_output_invalid', 'AI intake returned invalid structured output.');
+    // Recorded first, with the text that failed to validate — the single most
+    // useful thing to be able to look at, and something no other record keeps.
+    recordSpan({ metadata, output: outputText, errorCode: normalized.code });
     throw withMetadata(normalized, metadata);
   }
+  recordSpan({ metadata, output: outputText });
   return { ...parsed, metadata };
 }

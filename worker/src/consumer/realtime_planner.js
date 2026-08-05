@@ -629,12 +629,22 @@ export async function extractSegmentedPlannerTurn(options) {
   // Revision safety falls out of the lookup rather than needing to be detected.
   const prefetched = options.prefetched instanceof Map ? options.prefetched : null;
 
+  // The parent the clause reads hang off. Without it the concurrent pieces
+  // arrive as a flat row of unrelated calls, which is precisely the shape that
+  // makes a dense turn impossible to read.
+  const trace = options.trace || null;
+  const segmentSpan = trace?.active ? trace.startSpan() : null;
+
   const clauseReads = segments.map((segment, index) => {
     const ready = prefetched?.get(segment);
+    // A prefetched clause was already traced when it was speculatively read
+    // while the client was still speaking, so it is not recorded twice here.
     if (ready) return ready;
     return extractRealtimePlannerTurn({
       ...options,
       transcript: segment,
+      traceParentSpanId: segmentSpan?.spanId,
+      segmentIndex: index,
       // Each piece is audited under its own id, so a failure can be traced to
       // the clause that caused it rather than to the whole turn.
       sourceTurnId: `${options.sourceTurnId}#s${index + 1}`
@@ -673,7 +683,9 @@ export async function extractSegmentedPlannerTurn(options) {
   );
   if (clausesFailed > 0 && options.includeWholeTurnRead !== false) {
     const recovered = await extractRealtimePlannerTurn({
-      ...options, sourceTurnId: `${options.sourceTurnId}#recover`
+      ...options,
+      sourceTurnId: `${options.sourceTurnId}#recover`,
+      traceParentSpanId: segmentSpan?.spanId
     }).catch(() => null);
     // Folded in separately, never merged by label: the two reads describe the
     // same words, so the same holding arrives under two names.
@@ -685,6 +697,28 @@ export async function extractSegmentedPlannerTurn(options) {
     ? reconcileAgainstFinalTranscript(merged, options.transcript)
     : merged;
   const sum = (field) => succeeded.reduce((total, result) => total + Number(result.metadata?.[field] || 0), 0);
+  if (segmentSpan) {
+    trace.record({
+      name: 'planner.segmented',
+      spanId: segmentSpan.spanId,
+      parentSpanId: options.traceParentSpanId,
+      startedAt: segmentSpan.startedAt,
+      endedAt: Date.now(),
+      observationType: 'span',
+      content: { input: options.transcript, output: extraction },
+      metadata: {
+        segmentCount: segments.length,
+        segmentsFailed: clausesFailed,
+        // How much of this turn was answered by work done before the client
+        // stopped talking. The single most useful number for judging whether
+        // speculation is paying for itself.
+        prefetchedCount: prefetched ? segments.filter((segment) => prefetched.has(segment)).length : 0,
+        inputTokens: sum('inputTokens'),
+        outputTokens: sum('outputTokens'),
+        cachedInputTokens: sum('cachedInputTokens')
+      }
+    });
+  }
   return {
     extraction,
     metadata: {
@@ -724,7 +758,61 @@ export async function extractRealtimePlannerTurn(options) {
   }
 }
 
-async function requestPlannerExtraction({
+/**
+ * Traced wrapper around the planner call.
+ *
+ * Written as a wrapper rather than as a line in each of the six terminal paths
+ * below. Those paths are the interesting ones — a timeout, a provider 4xx, an
+ * incomplete reasoning response, invalid structured output — and instrumenting
+ * them one by one would guarantee that the next one added is the one that goes
+ * unrecorded. Wrapping catches every exit by construction.
+ */
+async function requestPlannerExtraction(options) {
+  const trace = options.trace || null;
+  if (!trace?.active) return requestPlannerCall(options);
+
+  const span = trace.startSpan();
+  const name = options.repair
+    ? 'planner.repair'
+    : (options.speculative ? 'planner.speculative' : 'planner.extraction');
+  const record = (extra) => trace.record({
+    name,
+    spanId: span.spanId,
+    parentSpanId: options.traceParentSpanId,
+    startedAt: span.startedAt,
+    endedAt: Date.now(),
+    model: options.config?.realtimePlannerModel,
+    content: { input: options.transcript, ...(extra.content || {}) },
+    ...extra
+  });
+
+  try {
+    const result = await requestPlannerCall(options);
+    record({
+      usage: result.metadata,
+      metadata: { ...result.metadata, segmentIndex: options.segmentIndex, speculative: Boolean(options.speculative) },
+      content: { output: result.extraction }
+    });
+    return result;
+  } catch (error) {
+    // error.metadata is the planner's own per-path diagnostic bundle; it is
+    // exactly what the mask is for, and carries the provider status and
+    // incomplete reason that make a failed turn readable.
+    record({
+      usage: error?.metadata,
+      errorCode: error?.code || 'realtime_planner_failed',
+      metadata: {
+        ...(error?.metadata || {}),
+        errorCode: error?.code,
+        segmentIndex: options.segmentIndex,
+        speculative: Boolean(options.speculative)
+      }
+    });
+    throw error;
+  }
+}
+
+async function requestPlannerCall({
   env,
   config,
   context,

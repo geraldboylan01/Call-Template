@@ -480,7 +480,7 @@ function buildRollingSummary(profile, recommendations, stage) {
   return `Stage: ${stage}. Goal types: ${goalTypes}. Populated profile sections: ${populatedSections}. Deterministic module candidates: ${modules}.`;
 }
 
-export async function processTurn({ env, config, sessionRow, profile, message, idempotencyKey }) {
+export async function processTurn({ env, config, sessionRow, profile, message, idempotencyKey, trace = null }) {
   const safeMessage = redactSensitiveIdentifiers(message);
   const existing = await getTurnByIdempotencyKey(env, sessionRow.id, idempotencyKey);
   if (existing) {
@@ -537,7 +537,8 @@ export async function processTurn({ env, config, sessionRow, profile, message, i
           message: safeMessage,
           rollingSummary,
           activeQuestion,
-          requestPolicy
+          requestPolicy,
+          trace
         });
         metadata = ai.metadata;
         extraction = {

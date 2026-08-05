@@ -26,6 +26,7 @@ import {
   resolveAgentCapacity,
   resolveAgentOffer
 } from './agent_session.js';
+import { createTraceCollector, flushTraces, hashedTraceSessionId } from './tracing.js';
 
 const MAX_BODY_BYTES = 32_000;
 const SESSION_ID_PATTERN = /^cs_[A-Za-z0-9_-]{20,80}$/;
@@ -101,7 +102,7 @@ function errorPayload(error) {
   return { status: 500, body: { ok: false, code: 'agent_test_failed', message: 'The test request failed.' } };
 }
 
-export async function handleAgentTestRequest(request, env, { pathname, respond }) {
+export async function handleAgentTestRequest(request, env, { pathname, respond, executionCtx = null }) {
   const route = agentRouteMatch(pathname);
   if (!route) return respond({ ok: false, code: 'not_found' }, 404, 'OPTIONS');
   const methods = `${route.methods.join(',')},OPTIONS`;
@@ -147,12 +148,27 @@ export async function handleAgentTestRequest(request, env, { pathname, respond }
 
     if (route.kind === 'turns') {
       const body = await readJson(request);
-      const result = await processAgentTurn(env, config, {
-        ...shared,
-        message: body.message,
-        expectedRevision: Number.isSafeInteger(body.expectedRevision) ? body.expectedRevision : null
+      // This transport is only reachable from a cohort in
+      // CONSUMER_AGENT_TEST_COHORTS, which is the same list that decides whether
+      // conversation text may be exported. A turn here is therefore traced in
+      // full — it is one of ours by definition.
+      const trace = createTraceCollector({
+        env,
+        config,
+        lane: 'agent_test',
+        sessionIdHash: await hashedTraceSessionId(route.sessionId)
       });
-      return respond({ ok: true, ...result }, 200, methods);
+      try {
+        const result = await processAgentTurn(env, config, {
+          ...shared,
+          message: body.message,
+          expectedRevision: Number.isSafeInteger(body.expectedRevision) ? body.expectedRevision : null,
+          trace
+        });
+        return respond({ ok: true, ...result }, 200, methods);
+      } finally {
+        flushTraces(trace, executionCtx);
+      }
     }
 
     if (route.kind === 'state') {

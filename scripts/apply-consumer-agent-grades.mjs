@@ -14,6 +14,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 import { calibrate, describeCalibration, parseGradingSheet } from './agent-harness/grading.mjs';
+import { exportGrades } from './agent-harness/langfuse-export.mjs';
 import { compareRuns, loadRuns, regressionsIn, trendFor } from './agent-harness/runlog.mjs';
 
 const args = process.argv.slice(2);
@@ -105,3 +106,13 @@ if (trend.runs > 2) {
 }
 
 console.info(`\n[Grades] written back to ${runPath}`);
+
+// Your grades reach Langfuse having never seen the judge's — the sheet was
+// written blank on purpose, and posting after the fact keeps it that way. Both
+// sets of scores now sit on the same traces, which is the comparison this whole
+// loop exists to make.
+const published = await exportGrades(record, grades);
+if (published.enabled) {
+  console.info(`[Grades] published to Langfuse: ${published.graded} graded call(s), `
+    + `${published.delivered} score(s)${published.failures ? `, ${published.failures} failed` : ''}`);
+}

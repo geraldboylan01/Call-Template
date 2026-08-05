@@ -86,6 +86,7 @@ import {
 } from './realtime_provider.js';
 import { renderAuthorizedRealtimeSpeech } from './realtime_speech.js';
 import { toConversationGuide } from './realtime_planner.js';
+import { createTraceCollector, flushTraces, hashedTraceSessionId } from './tracing.js';
 import { conversationLaneStub } from './live/lane.js';
 import { buildLiveSessionConfig } from './live/live_provider.js';
 import { LIVE_PROMPT_VERSION } from './live/catalogue_prompt.js';
@@ -604,7 +605,8 @@ export { cleanupExpiredConsumerSessionsWithRealtime as cleanupExpiredConsumerSes
 export async function handleConsumerRequest(request, env, dependencies = {}) {
   const {
     pathname, respond, respondBinary, clientIp = 'unknown', createPipelineHandoff,
-    publishConsumerSession = null, notifyAdviserOfPublishedCall = null
+    publishConsumerSession = null, notifyAdviserOfPublishedCall = null,
+    executionCtx = null
   } = dependencies;
   const route = routeMatch(pathname);
   if (!route) return respond({ error: 'Not found.', code: 'not_found' }, 404, 'GET,POST,PATCH,DELETE,OPTIONS');
@@ -1350,8 +1352,23 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
     if (route.kind === 'turns') {
       await rateLimit(env, 'consumer-turn-session', sessionRow.id, 60 * 1000, 15);
       const body = validateTurnBody(await readJson(request), config.maxMessageLength);
-      const result = await processTurn({ env, config, sessionRow, profile, ...body });
-      return respond(result, 200, methods);
+      // One trace per turn. The session id is hashed before it leaves: grouping
+      // a caller's turns together must not require exporting the handle that
+      // reaches their data.
+      const trace = createTraceCollector({
+        env,
+        config,
+        lane: 'typed',
+        sessionIdHash: await hashedTraceSessionId(sessionRow.id)
+      });
+      try {
+        const result = await processTurn({ env, config, sessionRow, profile, ...body, trace });
+        return respond(result, 200, methods);
+      } finally {
+        // In `finally`, so a turn that threw is still visible -- a failed turn
+        // is the one you most want to be able to look at.
+        flushTraces(trace, executionCtx);
+      }
     }
 
     if (route.kind === 'profile') {

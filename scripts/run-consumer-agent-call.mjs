@@ -30,6 +30,7 @@ import {
 import { createCostLedger } from './agent-harness/cost.mjs';
 import { buildGradingSheet } from './agent-harness/grading.mjs';
 import { loadCaller } from './agent-harness/caller.mjs';
+import { exportRun } from './agent-harness/langfuse-export.mjs';
 import { runKey, saveRun } from './agent-harness/runlog.mjs';
 import { RELEASED_MODULE_IDS, runAgentScenario } from './agent-harness/transports.mjs';
 import { aggregateJudgements, createOpenAiJudge, judgeConversation } from './agent-judges/conversation.mjs';
@@ -191,11 +192,21 @@ for (const callerPath of callerPaths) {
   ledger.record({ role: 'planner', ...client.usage.planner });
   ledger.completeConversation();
 
+  const plannerLatencyMs = (client.usage.plannerLatenciesMs || [])
+    .reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+
   calls.push({
     callId: caller.id,
     caller: caller.id,
     callerPath,
     turns: run.turns.length,
+    // Per-role usage on the call itself, not just in the run total. The ledger
+    // already collects it; keeping it here is what lets the archive be
+    // republished later with real token and cost figures per model.
+    usage: {
+      client: { ...client.usage.client, calls: client.usage.clientCalls },
+      planner: { ...client.usage.planner, calls: client.usage.plannerCalls, latencyMs: plannerLatencyMs }
+    },
     goals: last?.goals || [],
     analyses: last?.analyses || [],
     factIds: last?.factIds || [],
@@ -275,6 +286,14 @@ mkdirSync(outDir, { recursive: true });
 const archivePath = saveRun(record, { dir: outDir });
 const sheetPath = join(outDir, `${runId}-grading.md`);
 writeFileSync(sheetPath, buildGradingSheet({ runId, calls: completed }));
+
+// Publishing happens AFTER the archive is on disk, so a Langfuse outage cannot
+// cost you a run you have already paid for.
+const published = await exportRun(record);
+if (published.enabled) {
+  console.info(`\n[Call] published to Langfuse: ${published.calls} call(s), `
+    + `${published.delivered} object(s)${published.failures ? `, ${published.failures} failed` : ''}`);
+}
 
 console.info(`${'='.repeat(72)}`);
 console.info(`[Call] ${completed.length}/${calls.length} calls completed · spend €${ledger.spentThisRunEur.toFixed(4)}`);

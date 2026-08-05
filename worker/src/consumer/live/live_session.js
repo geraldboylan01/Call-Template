@@ -48,6 +48,7 @@ import {
   realtimeUsageFromResponse
 } from '../realtime_session.js';
 import { emitSessionSummary } from '../learning_signals.js';
+import { createTraceCollector, flushTraces, hashedTraceSessionId } from '../tracing.js';
 import { LIVE_PROMPT_VERSION, liveVolatileStateItem } from './catalogue_prompt.js';
 import { executeLiveTool, liveStateProjection, loadLiveContext } from './live_tools.js';
 import {
@@ -680,12 +681,24 @@ export class ConsumerLiveSession {
 
   async reviewTurn(assistantTranscript, clientTranscript) {
     const config = getConsumerConfig(this.env);
+    // A trace of its own, rather than the turn's. The supervisor runs AFTER the
+    // turn it reviews has been spoken and its verdict lands on the next one, so
+    // attaching it to the turn already closed would misrepresent when it ran —
+    // and that timing is the thing this lane exists to get right.
+    const trace = createTraceCollector({
+      env: this.env,
+      config,
+      lane: 'live',
+      sessionIdHash: await hashedTraceSessionId(this.meta?.sessionId)
+    });
     const verdict = await reviewAssistantTurn({
       env: this.env,
       config,
       assistantTranscript,
-      clientTranscript
+      clientTranscript,
+      trace
     });
+    flushTraces(trace, this.state);
     const actionable = supervisorVerdictIsActionable(verdict);
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta?.sessionId,

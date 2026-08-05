@@ -7573,6 +7573,7 @@ export default {
       if (advisorAccess.response) return advisorAccess.response;
       return handleAgentTestRequest(request, env, {
         pathname,
+        executionCtx: ctx,
         respond: (data, status, allowedMethods) => jsonResponse(
           data,
           status,
@@ -7589,6 +7590,9 @@ export default {
       return handleConsumerRequest(request, env, {
         pathname,
         clientIp: getClientIp(request),
+        // Passed so trace delivery can run after the response has gone. Nothing
+        // in the consumer module may do background work without it.
+        executionCtx: ctx,
         createPipelineHandoff: (payload) => createConsumerPipelineHandoff(env, payload),
         // Storage and notification are injected rather than imported, so the
         // consumer module stays free of this file's R2, D1 and email helpers.

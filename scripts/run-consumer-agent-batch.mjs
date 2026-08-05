@@ -26,6 +26,8 @@ import { fileURLToPath } from 'node:url';
 import { createOpenAiClient } from './agent-clients/openai.mjs';
 import { rollUpMetrics, runBatch } from './agent-harness/batch.mjs';
 import { createCostLedger, latencyPercentiles } from './agent-harness/cost.mjs';
+import { exportBatch } from './agent-harness/langfuse-export.mjs';
+import { runKey } from './agent-harness/runlog.mjs';
 import { RELEASED_MODULE_IDS, runAgentScenario, runVoiceScenario } from './agent-harness/transports.mjs';
 import { aggregateJudgements, createOpenAiJudge, judgeConversation } from './agent-judges/conversation.mjs';
 
@@ -107,12 +109,14 @@ async function runConversation({ scenario }) {
     if (agentGoals !== voiceGoals) divergence = `agent ${agentGoals} vs voice ${voiceGoals}`;
   }
 
+  let judgement = null;
   if (judge) {
     // The judge is shared across the batch, so record the DELTA for this
     // conversation. Recording its running total would charge the first
     // conversation once, the second twice, and so on.
     const before = { ...judge.usage };
-    judgements.push(await judgeConversation(judge, run));
+    judgement = await judgeConversation(judge, run);
+    judgements.push(judgement);
     ledger.record({
       role: 'judge',
       model: judge.model,
@@ -121,7 +125,24 @@ async function runConversation({ scenario }) {
       cachedInputTokens: judge.usage.cachedInputTokens - before.cachedInputTokens
     });
   }
-  return { ...run, divergence, clientCalls: client.usage.clientCalls, plannerCalls: client.usage.plannerCalls };
+  return {
+    ...run,
+    divergence,
+    clientCalls: client.usage.clientCalls,
+    plannerCalls: client.usage.plannerCalls,
+    // Kept ON the conversation, not just in the shared arrays. The batch runs
+    // concurrently, so position in a shared array is not an identity — and a
+    // judgement that cannot be tied back to its conversation cannot be read.
+    judgement,
+    usage: {
+      client: { ...client.usage.client, calls: client.usage.clientCalls },
+      planner: {
+        ...client.usage.planner,
+        calls: client.usage.plannerCalls,
+        latencyMs: (client.usage.plannerLatenciesMs || []).reduce((sum, value) => sum + value, 0)
+      }
+    }
+  };
 }
 
 const batch = await runBatch({
@@ -172,8 +193,18 @@ if (withJudge) {
     + `(${summary.conversationsJudged} judged)`);
 }
 
+const generatedAt = new Date().toISOString();
 const report = {
-  generatedAt: new Date().toISOString(),
+  runId: `batch-${generatedAt.replace(/[:.]/g, '-')}`,
+  generatedAt,
+  // The same key the call archive uses, for the same reason: two batches run
+  // against different prompt or toolset versions are different systems, and
+  // anything comparing them has to be able to tell.
+  runKey: runKey({
+    config: batch.results.find((item) => item.outcome?.config)?.outcome?.config || {},
+    releasedModuleIds: RELEASED_MODULE_IDS,
+    manifestVersion: '2.0.0'
+  }),
   releasedModules: RELEASED_MODULE_IDS,
   settings: { repeats, maxTurns, concurrency: batch.concurrencyLimit, runCeilingEur, dayCeilingEur, bothTransports, withJudge },
   spend: { runEur: ledger.spentThisRunEur, stoppedReason: batch.stoppedReason, skipped: batch.skipped.length },
@@ -189,12 +220,22 @@ const report = {
     turns: item.outcome?.turns?.length ?? 0,
     goals: item.outcome?.turns?.at(-1)?.goals ?? [],
     analyses: item.outcome?.turns?.at(-1)?.analyses ?? [],
-    transcript: item.outcome?.transcript ?? []
+    transcript: item.outcome?.transcript ?? [],
+    divergence: item.outcome?.divergence ?? null,
+    judge: item.outcome?.judgement ?? null,
+    usage: item.outcome?.usage ?? null
   }))
 };
 mkdirSync(dirname(reportPath), { recursive: true });
 writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 console.info(`\n[Batch] report written to ${reportPath}`);
+
+// After the report is on disk, never before.
+const published = await exportBatch(report);
+if (published.enabled) {
+  console.info(`[Batch] published to Langfuse: ${published.calls} conversation(s), `
+    + `${published.delivered} object(s)${published.failures ? `, ${published.failures} failed` : ''}`);
+}
 
 // THE EXIT CODE IS DETERMINISTIC. Conversations that failed outright, and
 // transport divergences, decide it. The judge's scores never do.

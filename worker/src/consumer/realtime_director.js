@@ -78,7 +78,42 @@ export function directorUsageTokens(usage = {}) {
   };
 }
 
-export async function composeDirectedSpeech({
+/**
+ * Traced wrapper. The director fails OPEN — every failure path below returns
+ * the deterministic template rather than raising — which is right for a call and
+ * unreadable afterwards: a directed line and a silently fallen-back line look
+ * identical once spoken. The span records which happened, and why.
+ */
+export async function composeDirectedSpeech(options) {
+  const trace = options.trace || null;
+  if (!trace?.active) return composeDirectedSpeechCall(options);
+
+  const span = trace.startSpan();
+  const result = await composeDirectedSpeechCall(options);
+  trace.record({
+    name: 'director',
+    spanId: span.spanId,
+    parentSpanId: options.traceParentSpanId,
+    startedAt: span.startedAt,
+    endedAt: Date.now(),
+    model: options.config?.defaultModel,
+    content: { input: options.templateText, output: result.text },
+    usage: {
+      inputTokens: result.tokens?.inputTextTokens,
+      outputTokens: result.tokens?.outputTextTokens,
+      cachedInputTokens: result.tokens?.cachedTextTokens
+    },
+    metadata: {
+      // The distinction the span exists for.
+      directed: result.directed,
+      toolName: options.toolName,
+      reasoningEffort: 'low'
+    }
+  });
+  return result;
+}
+
+async function composeDirectedSpeechCall({
   env,
   config,
   kind,

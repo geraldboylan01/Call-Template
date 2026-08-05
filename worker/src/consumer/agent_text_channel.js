@@ -99,9 +99,32 @@ function responseToolCalls(response) {
     });
 }
 
-async function callResponsesApi({ env, config, instructions, tools, input, signal }) {
+async function callResponsesApi({
+  env, config, instructions, tools, input, signal, trace = null, spanName = 'renderer'
+}) {
   const key = typeof env.OPENAI_API_KEY === 'string' ? env.OPENAI_API_KEY.trim() : '';
   if (!key) throw new ConsumerError(503, 'agent_renderer_unconfigured', 'The text renderer is not configured.');
+  const span = trace?.active ? trace.startSpan() : null;
+  const record = (payload, errorCode = null) => trace?.record?.({
+    name: spanName,
+    spanId: span?.spanId,
+    startedAt: span?.startedAt,
+    endedAt: Date.now(),
+    model: config.defaultModel,
+    errorCode,
+    content: { input, output: payload?.output_text ?? payload ?? null },
+    usage: {
+      inputTokens: Number(payload?.usage?.input_tokens || 0),
+      outputTokens: Number(payload?.usage?.output_tokens || 0),
+      cachedInputTokens: Number(payload?.usage?.input_tokens_details?.cached_tokens || 0)
+    },
+    metadata: {
+      reasoningEffort: 'low',
+      responseStatus: typeof payload?.status === 'string' ? payload.status : undefined,
+      errorCode
+    }
+  });
+
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -129,9 +152,12 @@ async function callResponsesApi({ env, config, instructions, tools, input, signa
   });
   if (!response.ok) {
     response.body?.cancel?.().catch?.(() => {});
+    record(null, 'agent_renderer_failed');
     throw new ConsumerError(502, 'agent_renderer_failed', 'The text renderer could not produce a reply.');
   }
-  return response.json();
+  const payload = await response.json();
+  record(payload);
+  return payload;
 }
 
 /**
@@ -203,7 +229,8 @@ export async function renderAssistantText({
   // What the silent planner managed to record from the turn being answered.
   // Without it the renderer confirms figures it does not hold and re-asks the
   // question it just asked. See extractionOutcomeInstructions.
-  extractionOutcome = null
+  extractionOutcome = null,
+  trace = null
 }) {
   const state = context.state;
   const fallbackText = state.meetingBrief?.questionBatch?.prompt
@@ -229,7 +256,7 @@ export async function renderAssistantText({
     }
 
     let response = await callResponsesApi({
-      env, config, instructions, tools, input, signal: controller.signal
+      env, config, instructions, tools, input, signal: controller.signal, trace, spanName: 'renderer.call_1'
     });
     spend += usageMicroEur(response?.usage, config);
 
@@ -237,6 +264,9 @@ export async function renderAssistantText({
     if (calls.length > 0) {
       const call = calls[0];
       let output;
+      // The tool sits between the two model calls and is the reason there are
+      // two. A tree that skipped it would show a second call with no cause.
+      const toolSpan = trace?.active ? trace.startSpan() : null;
       try {
         output = await dispatchToolCall({ env, config, context: workingContext, call });
       } catch (error) {
@@ -247,6 +277,16 @@ export async function renderAssistantText({
         };
       }
       decisions.push({ tool: call.name, args: call.args, result: output });
+      trace?.record?.({
+        name: `tool.${call.name}`,
+        spanId: toolSpan?.spanId,
+        startedAt: toolSpan?.startedAt,
+        endedAt: Date.now(),
+        observationType: 'span',
+        content: { input: call.args, output },
+        errorCode: output?.ok === false ? (output.code || 'agent_tool_failed') : null,
+        metadata: { toolName: call.name, refused: output?.ok === false }
+      });
 
       // A decision changes planning state, so the second pass must speak from
       // the refreshed brief rather than the one that produced the call.
@@ -267,7 +307,9 @@ export async function renderAssistantText({
               + 'Reply to the client now in one to three natural sentences. Do not call another tool.'
           }
         ],
-        signal: controller.signal
+        signal: controller.signal,
+        trace,
+        spanName: 'renderer.call_2'
       });
       spend += usageMicroEur(response?.usage, config);
     }

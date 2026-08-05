@@ -195,6 +195,20 @@ CONSUMER_BOOKING_URL = ""
 # leave any blank and the emitter is a complete no-op. LEARNING_SIGNALS_URL and
 # LEARNING_SIGNALS_MODULE_ID may live here per-environment; set
 # LEARNING_SIGNALS_INGEST_KEY (a tenant `ingest` key) with `wrangler secret put`.
+# Live-call tracing to Langfuse. Dormant: the flag is false and the credentials
+# are unset, and worker/src/consumer/tracing.js requires all of
+# LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, an https LANGFUSE_HOST and this flag
+# before a single span is built. Set the two keys with `wrangler secret put`.
+#
+# CONTENT: conversation text is exported ONLY for a cohort named in
+# CONSUMER_AGENT_TEST_COHORTS. This deployment's cohort is "internal", which is
+# NOT in that list, so a real caller's turn carries model, tokens, latency, cost
+# and status and no text at all -- see the mask in tracing.js.
+CONSUMER_TRACING_ENABLED = "false"
+# Sampling for cohorts we do not run ourselves. Zero means a real caller's turn
+# is not traced at all. An agent-test cohort ignores this and always samples.
+CONSUMER_TRACING_SAMPLE_PERCENT = "0"
+LANGFUSE_HOST = ""
 LEARNING_SIGNALS_URL = "https://planeir-learning-signals.onrender.com"
 LEARNING_SIGNALS_MODULE_ID = "b864ca8f-fc74-4f5d-810c-cda8751be4a8"
 LEARNING_SIGNALS_RETENTION_DAYS = "30"

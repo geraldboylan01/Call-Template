@@ -393,6 +393,11 @@ export function getConsumerConfig(env) {
     // from Planeir to anyone.
     adviserNotificationEmail: text(env.CONSUMER_ADVISER_NOTIFICATION_EMAIL) || '',
     cohort,
+    // Live-call tracing. The percentage governs cohorts we do NOT run: an
+    // internal or agent-test cohort is always sampled, because the reason this
+    // exists is to make our own calls debuggable. Zero means a real caller's
+    // turn is never traced at all -- not traced without content, not traced.
+    tracingSamplePercent: boundedInteger(env.CONSUMER_TRACING_SAMPLE_PERCENT, 0, 0, 100),
     consentPolicyVersion,
     consentManifestId,
     analysisNoticeId,

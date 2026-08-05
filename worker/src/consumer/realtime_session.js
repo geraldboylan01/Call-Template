@@ -100,6 +100,7 @@ import {
   intakeExplanation,
   isLikelyIncompleteRealtimeUtterance
 } from './realtime_planner.js';
+import { createTraceCollector, flushTraces, hashedTraceSessionId } from './tracing.js';
 import {
   classifySpokenPlanConfirmation,
   REALTIME_COMPLETION_OUTRO
@@ -508,6 +509,10 @@ export class ConsumerRealtimeSession {
     this.bargeInStartedAt = 0;
     this.firstOutputRecorded = false;
     this.eventChain = Promise.resolve();
+    // One trace per turn, opened by the first clause read of that turn. See
+    // traceForTurn.
+    this.turnTrace = null;
+    this.tracedSessionIdHash = null;
     this.pendingResponseAuthorization = null;
     this.currentAuthorizedResponseId = null;
     this.knownResponseIds = new Set();
@@ -1940,6 +1945,7 @@ export class ConsumerRealtimeSession {
   async prefetchSettledClauses(event) {
     const config = getConsumerConfig(this.env);
     if (!config.realtimeConversationV2Enabled) return;
+    await this.ensureTracedSessionId();
     const itemId = String(event.item_id || event.item?.id || '');
     if (!validProviderId(itemId)) return;
     const delta = typeof event.delta === 'string' ? event.delta : '';
@@ -1973,11 +1979,60 @@ export class ConsumerRealtimeSession {
         context,
         sourceTurnId: `${itemId}#pre${this.segmentPrefetch.size + 1}`,
         transcript: segment,
-        recentTurns: []
+        recentTurns: [],
+        trace: this.traceForTurn(itemId, config),
+        speculative: true
       });
       pending.catch(() => {});
       this.segmentPrefetch.set(segment, pending);
     }
+  }
+
+  /**
+   * The trace this turn belongs to.
+   *
+   * Created on first use and reused for the rest of the turn, because the turn
+   * starts BEFORE it is finalized: the speculative clause reads fire while the
+   * client is still speaking, and they belong in the same tree as the work that
+   * follows. Creating it in processPlannerTurn would put the speculation in a
+   * different trace from the turn it was speculating about, which is the one
+   * relationship worth being able to see.
+   *
+   * Per turn rather than per call: a call runs for minutes, and a session-long
+   * buffer would hold spans long past the point they were useful.
+   */
+  /**
+   * Computes the hashed session handle once per lease.
+   *
+   * Async and therefore separate from traceForTurn, which has to stay
+   * synchronous so it can be called from the middle of the prefetch loop
+   * without adding an await to the path that exists to avoid waiting.
+   */
+  async ensureTracedSessionId() {
+    if (this.tracedSessionIdHash || !this.meta?.sessionId) return;
+    this.tracedSessionIdHash = await hashedTraceSessionId(this.meta.sessionId);
+  }
+
+  traceForTurn(itemId, config) {
+    if (this.turnTrace?.itemId === itemId) return this.turnTrace.collector;
+    // A turn starting means the previous one is over. Ship it.
+    this.flushTurnTrace();
+    const collector = createTraceCollector({
+      env: this.env,
+      config,
+      lane: 'realtime_v2',
+      sessionIdHash: this.tracedSessionIdHash || null
+    });
+    this.turnTrace = { itemId, collector, startedAt: Date.now() };
+    return collector;
+  }
+
+  /** Hands the current turn's spans to the platform. Safe to call repeatedly. */
+  flushTurnTrace() {
+    const pending = this.turnTrace;
+    this.turnTrace = null;
+    if (!pending?.collector?.active) return;
+    flushTraces(pending.collector, this.state);
   }
 
   /** Per-turn scratch, cleared once the turn it belonged to is finalized. */
@@ -1987,6 +2042,7 @@ export class ConsumerRealtimeSession {
   }
 
   async processPlannerTurn({ itemId, transcript, turnOrdinal }) {
+    await this.ensureTracedSessionId();
     const context = await this.planningContext();
     const recentTurns = await listRecentRealtimeFinalTurns(
       this.env,
@@ -2003,7 +2059,8 @@ export class ConsumerRealtimeSession {
         sourceTurnId: itemId,
         transcript,
         recentTurns,
-        prefetched: this.segmentPrefetch
+        prefetched: this.segmentPrefetch,
+        trace: this.traceForTurn(itemId, context.config)
       });
       this.clearTurnPrefetch(itemId);
     } catch (error) {
@@ -2104,6 +2161,7 @@ export class ConsumerRealtimeSession {
           transcript,
           recentTurns,
           repair,
+          trace: this.traceForTurn(itemId, repairContext.config),
           // Shorter than a first pass: the client is mid-conversation, and a
           // repair that does not return quickly is worth less than the meeting
           // moving on. The spoken response handles either outcome.
@@ -2740,7 +2798,10 @@ export class ConsumerRealtimeSession {
         toolOk: safeOutput.ok === true,
         toolErrorCode: safeOutput.errorCode || null,
         recentTurns,
-        previousAssistantLine: this.lastAuthorizedSpeech?.text || ''
+        previousAssistantLine: this.lastAuthorizedSpeech?.text || '',
+        // The director speaks for the turn just planned, so it belongs to that
+        // turn's trace rather than opening one of its own.
+        trace: this.turnTrace?.collector || null
       });
       if (directed.directed) {
         text = directed.text;
@@ -3294,6 +3355,10 @@ export class ConsumerRealtimeSession {
   }
 
   async terminalize(status, reason, errorCode, usageKnown) {
+    // The last turn of a call has no following turn to ship it, so the call
+    // ending is what ships it. Done first: a call that ends badly is the one
+    // whose final turn most needs to have been recorded.
+    this.flushTurnTrace();
     if (!this.meta) return { providerHangupConfirmed: true };
     if (this.closing) {
       throw new ConsumerError(409, 'realtime_close_in_progress', 'The live voice session is already closing.');

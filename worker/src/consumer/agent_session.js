@@ -288,7 +288,8 @@ export async function processAgentTurn(env, config, {
   meetingId,
   message,
   expectedRevision = null,
-  deps = {}
+  deps = {},
+  trace = null
 }) {
   assertAgentTestEnabled(config);
   const extractTurn = deps.extractTurn || extractSegmentedPlannerTurn;
@@ -335,7 +336,8 @@ export async function processAgentTurn(env, config, {
       context,
       sourceTurnId: turnRef,
       transcript: safeMessage,
-      recentTurns
+      recentTurns,
+      trace
     });
     extraction = planned.extraction;
     segmentsFailed = Number(planned.metadata?.segmentsFailed || 0);
@@ -397,6 +399,7 @@ export async function processAgentTurn(env, config, {
           transcript: safeMessage,
           recentTurns,
           repair,
+          trace,
           // Shorter than a first pass: the client is already waiting, and a
           // repair that does not come back quickly is worth less than the turn
           // continuing without it. The renderer handles the failure either way.
@@ -458,6 +461,7 @@ export async function processAgentTurn(env, config, {
     env,
     config,
     context,
+    trace,
     recentTurns: [...recentTurns, { role: 'user', transcript: safeMessage }],
     reloadContext: () => loadAgentContext(env, config, sessionId, meetingId),
     // Counts only -- never the values. The renderer needs to know whether the

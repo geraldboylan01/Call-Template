@@ -692,7 +692,32 @@ const NO_VIOLATION = Object.freeze({
  * Never throws. Never blocks. A failed review is indistinguishable from a
  * clean one to the caller, by design.
  */
-export async function reviewAssistantTurn({
+export async function reviewAssistantTurn(options = {}) {
+  const trace = options.trace || null;
+  if (!trace?.active) return reviewAssistantTurnCall(options);
+
+  const span = trace.startSpan();
+  const review = await reviewAssistantTurnCall(options);
+  trace.record({
+    name: 'compliance.supervisor',
+    spanId: span.spanId,
+    parentSpanId: options.traceParentSpanId,
+    startedAt: span.startedAt,
+    endedAt: Date.now(),
+    model: options.config?.liveSupervisorModel,
+    content: { input: options.assistantTranscript, output: review },
+    metadata: {
+      // The supervisor "never throws and never blocks", so a review that failed
+      // and a review that found nothing are the same value to the caller. This
+      // is the only place the difference is recorded.
+      refused: review?.actionable === true,
+      reasoningEffort: 'low'
+    }
+  });
+  return review;
+}
+
+async function reviewAssistantTurnCall({
   env,
   config,
   assistantTranscript,

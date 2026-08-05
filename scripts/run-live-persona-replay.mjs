@@ -43,9 +43,11 @@ import {
   partitionSupportedConfirmedNoneFacts
 } from '../worker/src/consumer/live/live_tools.js';
 import {
+  LIVE_PROMPT_VERSION,
   buildLiveCataloguePrompt,
   liveVolatileStateItem
 } from '../worker/src/consumer/live/catalogue_prompt.js';
+import { exportRun } from './agent-harness/langfuse-export.mjs';
 import {
   addSourcedFiguresFromText,
   createSourcedFigureSet,
@@ -926,6 +928,10 @@ async function main() {
   console.log(`Prompt: ${instructions.length} chars (~${Math.round(instructions.length / 4)} tokens), agent=${AGENT_MODEL}\n`);
 
   const failedPersonaIds = new Set();
+  // Republished to Langfuse at the end of the run. Collected rather than
+  // streamed so a replay's own console output stays the primary result and
+  // publishing cannot interleave with it.
+  const traced = [];
   for (const persona of personas) {
     console.log(`\n${'='.repeat(78)}\n${persona.id} — ${persona.label}\n${'='.repeat(78)}`);
     let outcome;
@@ -934,6 +940,14 @@ async function main() {
     } catch (error) {
       console.error(`  RUN FAILED: ${error.message}`);
       failedPersonaIds.add(persona.id);
+      traced.push({
+        callId: persona.id,
+        caller: persona.id,
+        transcript: [],
+        blockers: [],
+        execution: { status: 'failed' },
+        error: String(error?.message || error)
+      });
       continue;
     }
 
@@ -954,9 +968,10 @@ async function main() {
       console.log('\n  ✓ no deterministic problems');
     }
 
+    let scored = null;
     if (grade) {
       try {
-        const scored = await gradeTranscript(
+        scored = await gradeTranscript(
           persona,
           outcome.transcript,
           outcome.problems,
@@ -978,12 +993,65 @@ async function main() {
         failedPersonaIds.add(persona.id);
       }
     }
+
+    traced.push({
+      callId: persona.id,
+      caller: persona.id,
+      turns: outcome.transcript.length,
+      transcript: outcome.transcript.map((turn) => ({
+        role: turn.role === 'client' ? 'client' : 'planner',
+        text: turn.text
+      })),
+      goals: outcome.projection.goalsAgreed || [],
+      analyses: outcome.projection.analyses.map((analysis) => analysis.description),
+      factIds: [...new Set(outcome.session.savedFactIds || [])],
+      // The deterministic problems are the real findings; the grader's opinion
+      // is a separate signal and rides as scores, not as blockers.
+      blockers: outcome.problems.map((problem, index) => ({
+        severity: 'blocking', id: 'deterministic_problem', turn: index, detail: problem
+      })),
+      execution: {
+        status: outcome.session.confirmed ? 'complete' : 'not_attempted',
+        completedModuleIds: outcome.projection.analyses.map((analysis) => analysis.description)
+      },
+      scores: scored
+        ? {
+            'judge.openness': scored.openness,
+            'judge.naturalness': scored.naturalness,
+            'judge.tangent_handling': scored.tangentHandling,
+            'judge.question_relevance': scored.questionRelevance,
+            'judge.safety': scored.safety,
+            'judge.would_demo_well': scored.wouldDemoWell ? 1 : 0
+          }
+        : {},
+      scoreNote: scored?.notes?.join(' · ') || undefined,
+      // Each persona records the incident it was written to encode. Carrying it
+      // as a tag is what lets you ask Langfuse "has D-05 come back?" instead of
+      // rereading the fixture to remember which persona covered it.
+      tags: persona.why ? [`why:${String(persona.why).slice(0, 60)}`] : [],
+      error: null
+    });
   }
 
   console.log(`\n${'='.repeat(78)}`);
   console.log(failedPersonaIds.size
     ? `${failedPersonaIds.size} persona run(s) had problems.`
     : 'All persona runs clean.');
+
+  const published = await exportRun({
+    runId: `live-replay-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+    // The live lane's own identity, not the v2 planner's: this replay drives the
+    // catalogue prompt and live toolset, so that is what makes two runs of it
+    // comparable.
+    runKey: `prompt=${LIVE_PROMPT_VERSION} agent=${AGENT_MODEL} client=${CLIENT_MODEL} grader=${GRADER_MODEL}`,
+    generatedAt: new Date().toISOString(),
+    calls: traced
+  });
+  if (published.enabled) {
+    console.log(`Published to Langfuse: ${published.calls} persona run(s), `
+      + `${published.delivered} object(s)${published.failures ? `, ${published.failures} failed` : ''}`);
+  }
+
   process.exit(failedPersonaIds.size ? 1 : 0);
 }
 
