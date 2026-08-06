@@ -642,7 +642,7 @@ function needPhrase(need) {
  * looks equally justified and the conversation drifts into generic fact
  * finding. Grouped, an unasked question has a visible owner.
  */
-function analysisLine(analysis) {
+function analysisLine(analysis, { withAssumptions = true } = {}) {
   if (typeof analysis === 'string') return `- ${analysis}.`;
   const needs = (analysis?.stillNeeded || [])
     .slice(0, MAX_NEEDS_PER_ANALYSIS)
@@ -657,8 +657,37 @@ function analysisLine(analysis) {
   // Stated as settled, not as a shorter list to work through. An approved
   // assumption is never a reason to ask, and never a reason to hold up a
   // confirmation.
-  if (assumed.length) parts.push(`Standard assumptions already supplied, never ask for these: ${assumed.join(', ')}.`);
+  if (withAssumptions && assumed.length) {
+    parts.push(`Standard assumptions already supplied, never ask for these: ${assumed.join(', ')}.`);
+  }
   return parts.join(' ');
+}
+
+/**
+ * NEEDS OUTRANK ASSUMPTIONS WHEN THE BLOCK WILL NOT FIT.
+ *
+ * These labels only started rendering when the assumption registry was fixed --
+ * before that they were all null and silently dropped. Adding roughly 150
+ * characters per analysis pushed the LAST analysis's "Needs" past the block cap,
+ * so a two-analysis meeting was told what its first analysis wanted and had the
+ * second cut mid-word ("Needs your Mortgag"). The model then never asked for the
+ * outstanding input and the plan never became runnable.
+ *
+ * An unstated assumption costs at most one avoidable question. An unstated need
+ * costs the analysis. So the needs go in first, and the assumption sentences are
+ * added only if the whole block still fits.
+ */
+function analysisBlockWithinBudget(shown, budget) {
+  const header = 'Analyses in play, and what each one still needs:';
+  const footer = 'Ask only for something an analysis above lists under Needs.';
+  const withAssumptions = [header, ...shown.map((item) => analysisLine(item)), footer].join(' ');
+  if (withAssumptions.length <= budget) return withAssumptions;
+  const needsOnly = [
+    header,
+    ...shown.map((item) => analysisLine(item, { withAssumptions: false })),
+    footer
+  ].join(' ');
+  return needsOnly.slice(0, budget);
 }
 
 export function liveVolatileStateItem(state = {}) {
@@ -672,11 +701,7 @@ export function liveVolatileStateItem(state = {}) {
   const shown = analyses.slice(0, MAX_SHOWN_ANALYSES);
   const renderedNeeds = shown.some((analysis) => (analysis?.stillNeeded || []).length > 0);
   const analysisBlock = shown.length
-    ? [
-      'Analyses in play, and what each one still needs:',
-      ...shown.map(analysisLine),
-      'Ask only for something an analysis above lists under Needs.'
-    ].join(' ')
+    ? analysisBlockWithinBudget(shown, MAX_ANALYSIS_BLOCK_CHARS)
     : 'Analyses in play: none chosen yet.';
 
   const trailing = renderedNeeds
@@ -706,9 +731,14 @@ export function liveVolatileStateItem(state = {}) {
     .slice(0, MAX_LISTED_LABELS)
     .map((factId) => getSemanticFactDefinition(factId)?.label || factId);
   if (blockedLabels.length) {
+    // SAID ONCE, THEN CARRIED SILENTLY. The first version of this directive
+    // read "say the plan is on hold until they have that", and because the
+    // directive is re-injected every turn the meeting said it every turn --
+    // trading a re-asked question for a repeated sentence, which the grader
+    // called out as awkward and repetitive across adjacent turns.
     directives.push(
       `Waiting on the client, not on you: ${blockedLabels.join(', ')}. `
-      + 'Say the plan is on hold until they have that, and do not ask for it again.'
+      + 'Do not ask for it again. Mention it only if you have not already, or if they raise it.'
     );
   }
   if (state.readyToConfirm === true) directives.push('The plan is ready for a spoken confirmation.');

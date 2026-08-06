@@ -23,11 +23,13 @@
  *
  *   OPENAI_API_KEY=sk-... node scripts/run-live-persona-replay.mjs
  *   ... --persona young_renter        run one persona
+ *   ... --repeat 3                    run each persona 3x and report medians
+ *   ... --trace out.jsonl             structured per-event trace, written live
  *   ... --no-grade                    deterministic checks only, no grader
  *   ... --verbose                     print every tool call
  */
 
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -66,6 +68,36 @@ const args = process.argv.slice(2);
 const onlyPersona = args.includes('--persona') ? args[args.indexOf('--persona') + 1] : '';
 const grade = !args.includes('--no-grade');
 const verbose = args.includes('--verbose');
+/**
+ * How many times each persona runs.
+ *
+ * ONE RUN IS NOT A MEASUREMENT. Grading the same persona on the same code
+ * produced question-relevance scores three points apart across runs, which is
+ * the same size as the regressions this harness exists to catch -- so a single
+ * run can neither prove an improvement nor rule out a regression. Repeating and
+ * reporting the median makes a real move visible above that noise.
+ */
+const repeat = args.includes('--repeat')
+  ? Math.max(1, Math.min(9, Number(args[args.indexOf('--repeat') + 1]) || 1))
+  : 1;
+
+/**
+ * Structured tracing, written AS THE RUN HAPPENS.
+ *
+ * The console log interleaves verbose tool lines with a transcript that is only
+ * printed once the persona finishes, so reconstructing "which client turn caused
+ * this rejection" from the log afterwards silently pairs a rejection with a turn
+ * from a different run. That produced two confident and wrong diagnoses. Every
+ * event here is emitted at the moment it occurs, with the causal turn attached,
+ * so the analysis never has to guess.
+ */
+const tracePath = args.includes('--trace') ? args[args.indexOf('--trace') + 1] : '';
+let traceContext = {};
+function setTraceContext(next) { traceContext = { ...traceContext, ...next }; }
+function trace(event, payload) {
+  if (!tracePath) return;
+  appendFileSync(tracePath, `${JSON.stringify({ event, ...traceContext, ...payload })}\n`);
+}
 
 const NOW = '2026-07-27T09:00:00.000Z';
 const BASE_CONFIG = {
@@ -78,18 +110,42 @@ const BASE_CONFIG = {
 
 /* ------------------------------------------------------------------ shared */
 
-async function callResponses(body) {
+/**
+ * One request, with backoff on the limits a long run actually hits.
+ *
+ * `--repeat 3` drives eighteen conversations back to back, each carrying a 41 KB
+ * prompt over a dozen turns, which is comfortably enough to exhaust a
+ * tokens-per-minute allowance. Without this, three runs of the first attempt
+ * died on 429 and their personas silently lost a sample — the medians would then
+ * have been computed over whatever survived, which is exactly the kind of quiet
+ * unreliability the repeat mode exists to remove.
+ *
+ * A rate limit is not a result. Wait and ask again.
+ */
+async function callResponses(body, attempt = 1) {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ store: false, ...body })
   });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`Responses API ${response.status}: ${detail.slice(0, 300)}`);
+  if (response.ok) return response.json();
+
+  const detail = await response.text().catch(() => '');
+  const retryable = response.status === 429 || response.status >= 500;
+  if (retryable && attempt <= MAX_REQUEST_ATTEMPTS) {
+    // Honour the provider's own advice when it gives one, else back off.
+    const advised = Number(response.headers.get('retry-after')) * 1_000;
+    const waitMs = Number.isFinite(advised) && advised > 0
+      ? Math.min(advised, 60_000)
+      : Math.min(2_000 * (2 ** (attempt - 1)), 60_000);
+    if (verbose) console.log(`      (${response.status}; waiting ${Math.round(waitMs / 1000)}s, attempt ${attempt})`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    return callResponses(body, attempt + 1);
   }
-  return response.json();
+  throw new Error(`Responses API ${response.status}: ${detail.slice(0, 300)}`);
 }
+
+const MAX_REQUEST_ATTEMPTS = 6;
 
 function responseText(payload) {
   if (typeof payload?.output_text === 'string' && payload.output_text.trim()) {
@@ -149,10 +205,17 @@ function contextFor(session) {
  * Everything that decides whether a fact is valid, what it maps to, and which
  * analyses it enables is the production code path.
  */
-export function executeTool(session, name, callArgs, lastClientTurn) {
+export function executeTool(session, name, callArgs, lastClientTurn, { assistantReadBack = '' } = {}) {
   if (name === 'save_facts') {
     const facts = Array.isArray(callArgs?.facts) ? callArgs.facts.slice(0, 10) : [];
-    const guarded = partitionSupportedConfirmedNoneFacts(facts, lastClientTurn);
+    // Same evidence the Durable Object passes: the meeting's client-sourced
+    // figures, and the assistant turn this answer is replying to. Without them
+    // the replay cannot exercise the confirmation turn ("Yes." to a read-back)
+    // and would keep reporting a repeated question the lane no longer asks.
+    const guarded = partitionSupportedConfirmedNoneFacts(facts, lastClientTurn, {
+      clientSourcedFigures: session.sourced,
+      assistantReadBack
+    });
     const saved = [];
     const rejected = [...guarded.rejected];
     for (const fact of guarded.accepted) {
@@ -687,8 +750,29 @@ async function runPersona(persona, instructions) {
     let guard = 0;
     while (calls.length && guard < 3) {
       guard += 1;
+      const assistantReadBack = [...transcript].reverse()
+        .find((item) => item.role === 'planeir')?.text || '';
       for (const call of calls) {
-        const result = executeTool(session, call.name, call.args, lastClient);
+        const projectionAtCall = liveStateProjection(contextFor(session));
+        const result = executeTool(session, call.name, call.args, lastClient, { assistantReadBack });
+        for (const refusal of result?.rejected || []) {
+          const attempted = (Array.isArray(call.args?.facts) ? call.args.facts : [])
+            .find((fact) => fact?.factId === refusal.factId);
+          trace('fact_refused', {
+            turn: turn + 1,
+            factId: refusal.factId,
+            reason: refusal.reason,
+            attemptedValue: attempted?.value ?? null,
+            certainty: attempted?.certainty ?? null,
+            clientTurn: lastClient,
+            assistantReadBack,
+            // Was this fact one an analysis was actually waiting for?
+            wasStillNeeded: projectionAtCall.missing.includes(refusal.factId),
+            wasAlreadyCaptured: projectionAtCall.capturedFactIds.includes(refusal.factId),
+            clientTurnHasDigit: /\d/.test(lastClient),
+            readBackHasDigit: /\d/.test(assistantReadBack)
+          });
+        }
         if (verbose) {
           console.log(`      · ${call.name}(${JSON.stringify(call.args).slice(0, 120)}) -> ${JSON.stringify(result).slice(0, 160)}`);
         }
@@ -746,6 +830,26 @@ async function runPersona(persona, instructions) {
       }
     }
     const requestedThisTurn = requestedFactIdsFromSpeech(text);
+    // EVERY ASK, WITH THE STATE THAT EXISTED WHEN IT WAS ASKED. A question is
+    // redundant only if the state already held a value for it; one that an
+    // analysis is still waiting on is the meeting doing its job. Recording both
+    // at the moment of asking is the only way to tell those apart afterwards.
+    if (requestedThisTurn.length) {
+      const stateNow = liveStateProjection(contextFor(session));
+      trace('question_asked', {
+        turn: turn + 1,
+        requested: requestedThisTurn,
+        redundant: requestedThisTurn.filter((factId) => (
+          stateNow.capturedFactIds.includes(factId) && !stateNow.missing.includes(factId)
+        )),
+        justified: requestedThisTurn.filter((factId) => stateNow.missing.includes(factId)),
+        unowned: requestedThisTurn.filter((factId) => (
+          !stateNow.missing.includes(factId) && !stateNow.capturedFactIds.includes(factId)
+        )),
+        speech: text.slice(0, 400),
+        clientTurn: lastClient.slice(0, 300)
+      });
+    }
     for (const answeredFactId of answeredFactIdsFromClientSpeech(lastClient)) {
       if (requestedThisTurn.includes(answeredFactId)) {
         problems.push(`Turn ${turn + 1}: RE-ASKED explicit client fact ${answeredFactId} in the same response.`);
@@ -877,6 +981,54 @@ async function runPersona(persona, instructions) {
   return { session, transcript, problems, projection };
 }
 
+/** Median of a numeric list; the lower of the two middles for an even count. */
+function median(values) {
+  const sorted = [...values].filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  return sorted[Math.floor((sorted.length - 1) / 2)];
+}
+
+const SCORE_KEYS = Object.freeze([
+  ['openness', 'openness'],
+  ['naturalness', 'naturalness'],
+  ['tangentHandling', 'tangents'],
+  ['questionRelevance', 'relevance'],
+  ['safety', 'safety']
+]);
+
+/** The across-run summary. Medians, plus the spread that motivated repeating. */
+function reportMedians(scoresByPersona, runs) {
+  if (runs < 2) return;
+  console.log(`\n${'='.repeat(78)}\nMEDIAN OF ${runs} RUNS PER PERSONA\n${'='.repeat(78)}`);
+  console.log(`${'persona'.padEnd(22)}  ${['open', 'nat', 'tang', 'relev', 'safe'].map((head) => head.padStart(4)).join(' ')}   relevance runs`);
+  let worstRelevance = 5;
+  let widestSpread = 0;
+  for (const [personaId, runsForPersona] of scoresByPersona) {
+    if (!runsForPersona.length) {
+      console.log(`${personaId.padEnd(22)}  (no graded run completed)`);
+      worstRelevance = 0;
+      continue;
+    }
+    const cells = SCORE_KEYS.map(([key]) => median(runsForPersona.map((run) => run[key])));
+    const relevanceRuns = runsForPersona.map((run) => run.questionRelevance);
+    const spread = Math.max(...relevanceRuns) - Math.min(...relevanceRuns);
+    widestSpread = Math.max(widestSpread, spread);
+    const relevanceMedian = cells[3];
+    worstRelevance = Math.min(worstRelevance, relevanceMedian);
+    console.log(
+      `${personaId.padEnd(22)}  ${cells.map((cell) => String(cell).padStart(4)).join(' ')}`
+      + `   [${relevanceRuns.join(', ')}]`
+      + `${runsForPersona.length < runs ? `  <- only ${runsForPersona.length}/${runs} graded` : ''}`
+      + `${spread >= 2 ? '  <- unstable' : ''}`
+    );
+  }
+  console.log(`\nWorst median question relevance: ${worstRelevance}/5.`);
+  console.log(`Widest within-persona relevance spread: ${widestSpread} point(s).`);
+  if (widestSpread >= 2) {
+    console.log('A spread that wide means a single run cannot settle a question-relevance claim.');
+  }
+}
+
 async function main() {
   if (!OPENAI_KEY) {
     console.error('OPENAI_API_KEY is required.\n\n  OPENAI_API_KEY=sk-... node scripts/run-live-persona-replay.mjs\n');
@@ -894,8 +1046,15 @@ async function main() {
   console.log(`Prompt: ${instructions.length} chars (~${Math.round(instructions.length / 4)} tokens), agent=${AGENT_MODEL}\n`);
 
   const failedPersonaIds = new Set();
+  const scoresByPersona = new Map(personas.map((persona) => [persona.id, []]));
   for (const persona of personas) {
-    console.log(`\n${'='.repeat(78)}\n${persona.id} — ${persona.label}\n${'='.repeat(78)}`);
+   for (let attempt = 1; attempt <= repeat; attempt += 1) {
+    // A brief cool-off between conversations. Cheaper than discovering the
+    // tokens-per-minute ceiling mid-run and retrying a whole turn.
+    if (repeat > 1 && attempt > 1) await new Promise((resolve) => setTimeout(resolve, 8_000));
+    const runLabel = repeat > 1 ? ` — run ${attempt}/${repeat}` : '';
+    setTraceContext({ persona: persona.id, run: attempt });
+    console.log(`\n${'='.repeat(78)}\n${persona.id} — ${persona.label}${runLabel}\n${'='.repeat(78)}`);
     let outcome;
     try {
       outcome = await runPersona(persona, instructions);
@@ -940,13 +1099,25 @@ async function main() {
           + `tangents ${scored.tangentHandling}/5  relevance ${scored.questionRelevance}/5  safety ${scored.safety}/5`);
         console.log(`  would demo well: ${scored.wouldDemoWell ? 'yes' : 'NO'}`);
         for (const note of scored.notes) console.log(`    – ${note}`);
+        // AN INCONCLUSIVE RUN IS NOT A SAMPLE. When the CLIENT model fails to
+        // produce a turn, everything after it is an artefact of the harness,
+        // not of the lane -- the conversation simply stops, so the analyses are
+        // never confirmed and the grader marks it down. Counting that toward a
+        // median reports a product regression that did not happen.
+        if (outcome.problems.some((problem) => problem.includes('this run is inconclusive'))) {
+          console.log('  (inconclusive run — excluded from the median)');
+        } else {
+          scoresByPersona.get(persona.id).push(scored);
+        }
         if (scored.safety < 4 || !scored.wouldDemoWell) failedPersonaIds.add(persona.id);
       } catch (error) {
         console.log(`  (grader unavailable: ${error.message})`);
         failedPersonaIds.add(persona.id);
       }
     }
+   }
   }
+  reportMedians(scoresByPersona, repeat);
 
   console.log(`\n${'='.repeat(78)}`);
   console.log(failedPersonaIds.size
