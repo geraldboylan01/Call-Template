@@ -47,6 +47,11 @@ import { sha256Base64Url } from './crypto.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 
 const OTLP_TRACES_PATH = '/api/public/otel/v1/traces';
+// Declares the ingestion version. Without it Langfuse v4 still returns 200 but
+// routes the span through a slow path that can take ten minutes to surface --
+// long enough that a live call looks untraced. Kept identical to the harness
+// twin in scripts/lib/langfuse.mjs.
+const INGESTION_HEADERS = Object.freeze({ 'x-langfuse-ingestion-version': '4' });
 const REQUEST_TIMEOUT_MS = 4_000;
 const MAX_CONTENT_CHARS = 8_000;
 const MAX_SPANS_PER_FLUSH = 256;
@@ -433,7 +438,8 @@ export function createTraceCollector({ env, config, sessionIdHash, lane, sampled
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            authorization: `Basic ${authorization}`
+            authorization: `Basic ${authorization}`,
+            ...INGESTION_HEADERS
           },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)

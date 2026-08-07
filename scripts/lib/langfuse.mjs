@@ -33,6 +33,17 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_ATTRIBUTE_CHARS = 20_000;
 
 /**
+ * WITHOUT THIS HEADER, A TRACE CAN TAKE TEN MINUTES TO APPEAR.
+ *
+ * Langfuse v4 accepts the span immediately either way -- the POST returns 200
+ * -- but routes it through a slow path unless the ingestion version is declared,
+ * and a run that polls for a couple of minutes concludes the trace was never
+ * stored. It is not a correctness flag, it is the difference between a usable
+ * feedback loop and one that looks broken.
+ */
+const INGESTION_HEADERS = Object.freeze({ 'x-langfuse-ingestion-version': '4' });
+
+/**
  * Span attribute names Langfuse maps onto its own data model.
  *
  * The `langfuse.*` namespace takes precedence over the generic OpenTelemetry
@@ -308,17 +319,30 @@ class LangfuseCollector {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: this.authorization
+          authorization: this.authorization,
+          ...INGESTION_HEADERS
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       });
-      if (!response.ok) {
+      // OTLP answers 200 even when it rejected spans, reporting the count in
+      // partialSuccess. Treating 2xx as delivery is how a silently dropped
+      // batch looks identical to a stored one.
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      this.lastResponse = { status: response.status, body: payload };
+      const rejected = Number(payload?.partialSuccess?.rejectedSpans || 0);
+      if (!response.ok || rejected > 0) {
         this.failures += 1;
         return false;
       }
       return true;
-    } catch {
+    } catch (error) {
+      this.lastResponse = { status: 0, body: null, error: String(error?.message || error) };
       this.failures += 1;
       return false;
     }

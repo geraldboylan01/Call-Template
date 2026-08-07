@@ -89,6 +89,70 @@ async function api(path, params = {}) {
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
+/**
+ * Answers "can this key pair read this host, and which project is it?" BEFORE
+ * anything is written.
+ *
+ * Run first because every later symptom looks the same from the outside: a
+ * trace that is not found reads identically whether the key was rejected, the
+ * host was wrong, the region was wrong, or the data simply has not been indexed
+ * yet. This separates the first three from the fourth up front, so a long poll
+ * is only ever spent on the one cause that a long poll can actually resolve.
+ *
+ * Returns the project identity, which is not a credential: an id and a name.
+ */
+async function preflight() {
+  const result = await api('/api/public/projects');
+
+  if (result.status === 0) {
+    return {
+      ok: false,
+      diagnosis: 'HOST UNREACHABLE',
+      detail: `Could not connect to ${host} — ${result.error}.`,
+      advice: 'Check LANGFUSE_HOST. The EU region is https://cloud.langfuse.com, the US region '
+        + 'is https://us.cloud.langfuse.com. They are separate deployments, not a setting.'
+    };
+  }
+  if (result.status === 401 || result.status === 403) {
+    return {
+      ok: false,
+      diagnosis: 'AUTHENTICATION REJECTED',
+      detail: `${host} returned ${result.status} to the public/secret key pair.`,
+      advice: 'The two keys must be the PAIR issued together for one project — a public key '
+        + 'from one project with a secret from another is rejected. Re-copy both from '
+        + 'Project → Settings → API Keys. Also confirm the keys were issued by THIS host: '
+        + 'an EU key does not work against the US region.'
+    };
+  }
+  if (result.status === 404) {
+    return {
+      ok: false,
+      diagnosis: 'WRONG HOST OR PATH',
+      detail: `${host}/api/public/projects returned 404.`,
+      advice: 'This does not look like a Langfuse deployment. Check LANGFUSE_HOST for a typo '
+        + 'or a trailing path segment.'
+    };
+  }
+  if (!result.ok) {
+    return {
+      ok: false,
+      diagnosis: `UNEXPECTED ${result.status}`,
+      detail: `${host}/api/public/projects returned ${result.status}.`,
+      advice: 'Check Langfuse status, then retry.'
+    };
+  }
+
+  const projects = Array.isArray(result.body?.data) ? result.body.data : [];
+  return {
+    ok: true,
+    projects,
+    // One project is the normal answer for a project-scoped key pair.
+    summary: projects.length
+      ? projects.map((item) => `${item.name || '(unnamed)'} [${item.id}]`).join(', ')
+      : '(the key pair authenticated but reports no project)'
+  };
+}
+
 /** First defined property from a list of candidate names. Shapes differ by API version. */
 function pick(object, ...names) {
   for (const name of names) {
@@ -111,18 +175,22 @@ function asText(value) {
 async function readObservations(traceId) {
   const v2 = await api('/api/public/v2/observations', { traceId, limit: 100 });
   if (v2.ok && Array.isArray(v2.body?.data)) {
-    return { source: '/api/public/v2/observations', observations: v2.body.data };
+    return { source: '/api/public/v2/observations', status: v2.status, observations: v2.body.data };
   }
   const legacy = await api(`/api/public/traces/${encodeURIComponent(traceId)}`);
   if (legacy.ok && legacy.body) {
     return {
       source: `/api/public/traces/{id} (deprecated; v2 said ${v2.status})`,
+      status: legacy.status,
       observations: legacy.body.observations || [],
       trace: legacy.body
     };
   }
   return {
     source: null,
+    // The status the poll loop reports and reacts to: a 401/403 will not fix
+    // itself by waiting, and a 404 on a not-yet-indexed trace will.
+    status: v2.status || legacy.status,
     observations: [],
     error: `v2 → ${v2.status}${v2.error ? ` (${v2.error})` : ''}, trace → ${legacy.status}`
   };
@@ -143,19 +211,74 @@ async function readScores(traceId) {
   return { source: null, scores: [] };
 }
 
-/** Polls until the trace appears. Ingestion is asynchronous; it is normally seconds. */
+/**
+ * Polls until the trace appears, reporting every attempt.
+ *
+ * THE WINDOW IS LONG ON PURPOSE. Langfuse v4 accepts a span immediately but,
+ * unless the request declares `x-langfuse-ingestion-version: 4`, can take up to
+ * ten minutes to surface it. We now send that header, so this should resolve in
+ * seconds — but the window has to outlast the slow path anyway, or a missing
+ * header on some future code path reads as "the trace was never stored" instead
+ * of "you did not wait long enough". Override with LANGFUSE_VERIFY_TIMEOUT_S.
+ *
+ * Each attempt prints elapsed time and the HTTP status, on its own line rather
+ * than a rewritten one, so a transcript of a failed run is diagnosable.
+ */
 async function waitForTrace(traceId, { label }) {
-  const delays = [2_000, 3_000, 5_000, 5_000, 10_000, 15_000, 20_000, 30_000];
-  let waited = 0;
-  for (const delay of delays) {
-    const found = await readObservations(traceId);
-    if (found.observations.length > 0) return found;
+  const budgetMs = Math.max(30, Number(process.env.LANGFUSE_VERIFY_TIMEOUT_S) || 720) * 1_000;
+  const startedAt = Date.now();
+  let attempt = 0;
+  let last = null;
+
+  while (Date.now() - startedAt < budgetMs) {
+    attempt += 1;
+    last = await readObservations(traceId);
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    const status = last.status === undefined ? 'n/a' : last.status;
+    console.info(
+      `  [${String(elapsed).padStart(4)}s] ${label}: attempt ${String(attempt).padStart(2)} · `
+      + `HTTP ${status} · ${last.observations.length} observation(s)`
+      + (last.source ? ` · via ${last.source}` : '')
+    );
+    if (last.observations.length > 0) return last;
+
+    // A read that is failing outright will not start working by being repeated.
+    if (last.status === 401 || last.status === 403) return last;
+
+    const remaining = budgetMs - (Date.now() - startedAt);
+    if (remaining <= 0) break;
+    // Back off gently at first, then settle at 20s so a ten-minute window is a
+    // readable number of lines rather than a hundred.
+    const delay = Math.min(20_000, 2_000 * attempt, remaining);
     await sleep(delay);
-    waited += delay;
-    process.stdout.write(`  … waiting for ${label} (${Math.round(waited / 1000)}s)\r`);
   }
-  process.stdout.write(' '.repeat(60) + '\r');
-  return readObservations(traceId);
+  return last || readObservations(traceId);
+}
+
+/**
+ * Did the data arrive at all, under any id?
+ *
+ * Run only after the window expires. Looking the trace up by id cannot tell
+ * "nothing was stored" apart from "something was stored under an id we did not
+ * predict" — and those have completely different causes. This lists what the
+ * project actually received, so the answer is visible rather than inferred.
+ */
+async function recentActivityProbe() {
+  const traces = await api('/api/public/traces', { limit: 20 });
+  if (!traces.ok) return { ok: false, status: traces.status };
+  const data = Array.isArray(traces.body?.data) ? traces.body.data : [];
+  return {
+    ok: true,
+    total: data.length,
+    // Ours are recognisable without printing anything sensitive.
+    mine: data.filter((item) => String(item.name || '').startsWith('call:verify-')
+      || String(item.sessionId || '').startsWith('verify-')),
+    newest: data.slice(0, 3).map((item) => ({
+      id: String(item.id || '').slice(0, 12),
+      name: String(item.name || '(unnamed)').slice(0, 40),
+      timestamp: item.timestamp || item.createdAt || '(no time)'
+    }))
+  };
 }
 
 /* ------------------------------------------------------------------ results */
@@ -175,8 +298,23 @@ function record({ label, sent, landed, ok, note = '' }) {
 
 /* ------------------------------------------------------- 1. the harness path */
 
-console.info(`Langfuse round-trip · host ${host}`);
-console.info(`Run id ${runId}\n`);
+console.info(`Langfuse round-trip`);
+console.info(`  host   ${host}`);
+console.info(`  region ${host.includes('us.cloud.langfuse.com') ? 'US' : host.includes('cloud.langfuse.com') ? 'EU' : 'self-hosted / custom'}`);
+console.info(`  keys   public ${publicKey.length} chars, secret ${secretKey.length} chars (values never printed)`);
+console.info(`  run id ${runId}\n`);
+
+console.info('Preflight: can this key pair read this host?');
+const identity = await preflight();
+if (!identity.ok) {
+  console.error(`\n  ✗ ${identity.diagnosis}`);
+  console.error(`    ${identity.detail}\n`);
+  console.error(`    ${identity.advice}`);
+  process.exit(1);
+}
+console.info(`  ✓ authenticated · project(s): ${identity.summary}`);
+console.info('    Both keys resolve to this project, so ingest and read-back cannot');
+console.info('    disagree about which project they are talking to.\n');
 
 const harnessRecord = {
   runId,
@@ -217,7 +355,10 @@ const exported = await exportRun(harnessRecord, { env: process.env });
 console.info(`1. harness run  → trace ${harnessTraceId}`);
 console.info(`   posted ${exported.delivered} object(s), ${exported.failures} failure(s)`);
 if (exported.failures > 0 || exported.delivered === 0) {
-  console.error('\nNothing was accepted. Check the keys and host, then re-run.');
+  console.error('\n  ✗ INGESTION REJECTED');
+  console.error('    The write itself failed, so nothing was ever stored — this is not an');
+  console.error('    indexing delay. A 2xx with rejectedSpans > 0 counts as a rejection here,');
+  console.error('    because OTLP reports partial failure in the body, not the status line.');
   process.exit(1);
 }
 
@@ -302,17 +443,55 @@ console.info(`3. worker turn (public_beta)    → trace ${publicTurn.traceId} ·
 
 /* ---------------------------------------------------------- read back */
 
-console.info('Waiting for ingestion…');
-const harness = await waitForTrace(harnessTraceId, { label: 'harness trace' });
-const test = await waitForTrace(testTurn.traceId, { label: 'test-cohort trace' });
-const pub = await waitForTrace(publicTurn.traceId, { label: 'public-cohort trace' });
+const timeoutSeconds = Math.max(30, Number(process.env.LANGFUSE_VERIFY_TIMEOUT_S) || 720);
+console.info(`Waiting for ingestion (up to ${timeoutSeconds}s; override with LANGFUSE_VERIFY_TIMEOUT_S)…`);
+const harness = await waitForTrace(harnessTraceId, { label: 'harness' });
 
 if (harness.observations.length === 0) {
-  console.error(`\nThe harness trace never appeared. ${harness.error || ''}`);
-  console.error('Ingestion was accepted, so this is either slower than the poll window or a');
-  console.error('project mismatch between the ingest key and the read key.');
-  process.exit(1);
+  // Preflight already proved the host, the credentials and the project, and the
+  // write already reported acceptance. So the causes are narrower than they look.
+  console.error('\n─────────────────────────────────────────────────────────────');
+  console.error('The harness trace did not appear. Narrowing it down:\n');
+  console.error(`  host + credentials  : OK (preflight authenticated, project ${identity.summary})`);
+  console.error(`  ingestion           : accepted, ${exported.delivered} object(s), no rejected spans`);
+  console.error(`  read-back HTTP      : ${harness.status}${harness.error ? ` — ${harness.error}` : ''}`);
+
+  if (harness.status === 401 || harness.status === 403) {
+    console.error('\n  ✗ AUTHENTICATION FAILED ON READ-BACK, having succeeded on preflight.');
+    console.error('    That points at a key with write but not read scope. Reissue the pair.');
+    process.exit(1);
+  }
+
+  console.error('\n  Checking whether the data arrived under a different id…');
+  const probe = await recentActivityProbe();
+  if (!probe.ok) {
+    console.error(`  Could not list recent traces (HTTP ${probe.status}).`);
+  } else if (probe.mine.length > 0) {
+    console.error(`\n  ✗ STORED, BUT NOT UNDER THE ID WE SENT. ${probe.mine.length} matching trace(s).`);
+    console.error('    Ingestion works; the id is being rewritten, so lookup by derived id fails.');
+    console.error('    That breaks grade attachment, which depends on a stable id. Report this.');
+    process.exit(1);
+  } else if (probe.total === 0) {
+    console.error('\n  ✗ THE PROJECT CONTAINS NO TRACES AT ALL.');
+    console.error('    Writes are being accepted and discarded. The usual cause is keys issued');
+    console.error('    on a different region than LANGFUSE_HOST: the write is accepted by the');
+    console.error(`    host you posted to (${host}) but the data lands in the project the keys`);
+    console.error('    belong to. Confirm the region you signed up on and set LANGFUSE_HOST to');
+    console.error('    match — https://cloud.langfuse.com (EU) or https://us.cloud.langfuse.com (US).');
+    process.exit(1);
+  } else {
+    console.error(`\n  ✗ STILL INDEXING. The project holds ${probe.total} other trace(s):`);
+    for (const item of probe.newest) console.error(`      ${item.timestamp}  ${item.name}`);
+    console.error('\n    So the project is live and readable, ours just has not surfaced within');
+    console.error(`    ${timeoutSeconds}s. This run sends x-langfuse-ingestion-version: 4, which is`);
+    console.error('    what keeps ingestion real-time; without it Langfuse can take ~10 minutes.');
+    console.error('    Retry with a longer window:  LANGFUSE_VERIFY_TIMEOUT_S=1200 npm run verify:langfuse');
+    process.exit(1);
+  }
 }
+
+const test = await waitForTrace(testTurn.traceId, { label: 'test-cohort' });
+const pub = await waitForTrace(publicTurn.traceId, { label: 'public-cohort' });
 
 console.info(`Read via ${harness.source}`);
 const scoreRead = await readScores(harnessTraceId);
