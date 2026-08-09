@@ -51,6 +51,7 @@ import {
 import {
   addSourcedFiguresFromText,
   createSourcedFigureSet,
+  extractFinancialFigures,
   scanAssistantSpeech
 } from '../worker/src/consumer/live/compliance.js';
 import { classifySpokenPlanConfirmation } from '../worker/src/consumer/realtime_completion.js';
@@ -703,6 +704,82 @@ async function gradeTranscript(persona, transcript, deterministicProblems, toolO
 
 /* -------------------------------------------------------------- the driver */
 
+/**
+ * DID WE KEEP WHAT THEY SAID? The one question the grader could never answer.
+ *
+ * Every figure the client speaks is ground truth -- we have their exact words --
+ * and every figure the meeting holds is in the profile. Comparing the two is
+ * deterministic, needs no model, and does not move between runs of identical
+ * code. A figure in the first set and not the second is a figure the meeting
+ * will ask for again, which is the repeated-question complaint at its source.
+ *
+ * Not every spoken number is a fact -- "six years ago", "one or two" -- so this
+ * is reported rather than asserted, and the misses are listed with the words
+ * they came from so a real gap is one line of reading away.
+ */
+/**
+ * THE BRIEF IS THE ANSWER KEY.
+ *
+ * The tester holds the client's real figures before the call starts, so the
+ * question is simply: of the things this person knows about themselves, how
+ * many did the meeting get out of them and store correctly? That is the whole
+ * job, stated as arithmetic, with no grader in the loop.
+ *
+ * It separates the two ways of failing, which need different fixes:
+ *
+ *   never asked   the figure never appears in anything the client said. The
+ *                 meeting did not go looking for it.
+ *   dropped       the client said it and it is not in the profile. The meeting
+ *                 asked, heard the answer, and lost it -- and will ask again.
+ */
+function briefCoverage(persona, session, transcript) {
+  const truth = Array.isArray(persona.groundTruth) ? persona.groundTruth : [];
+  if (!truth.length) return null;
+  const spokenText = transcript.filter((turn) => turn.role === 'client').map((turn) => turn.text).join(' ');
+  const spoken = new Set(extractFinancialFigures(spokenText));
+  const kept = new Set();
+  const walk = (node, depth = 0) => {
+    if (depth > 6 || node === null || node === undefined) return;
+    if (typeof node === 'number' && Number.isFinite(node)) { kept.add(node); return; }
+    if (Array.isArray(node)) return node.forEach((item) => walk(item, depth + 1));
+    if (typeof node === 'object') return Object.values(node).forEach((item) => walk(item, depth + 1));
+  };
+  walk(session.savedFacts.map((fact) => fact.value));
+
+  const rows = truth.map((item) => ({
+    ...item,
+    said: spoken.has(item.value),
+    // A rate may be stored as 3.6 or as 0.036; both mean the client's answer.
+    held: kept.has(item.value) || kept.has(item.value / 100)
+  }));
+  return {
+    total: rows.length,
+    held: rows.filter((row) => row.held).length,
+    dropped: rows.filter((row) => row.said && !row.held),
+    neverAsked: rows.filter((row) => !row.said && !row.held)
+  };
+}
+
+function dataCapture(session, transcript) {
+  const spoken = new Map();
+  for (const turn of transcript) {
+    if (turn.role !== 'client') continue;
+    for (const figure of extractFinancialFigures(turn.text)) {
+      if (!spoken.has(figure)) spoken.set(figure, turn.text);
+    }
+  }
+  const kept = new Set();
+  const walk = (node, depth = 0) => {
+    if (depth > 6 || node === null || node === undefined) return;
+    if (typeof node === 'number' && Number.isFinite(node)) { kept.add(node); return; }
+    if (Array.isArray(node)) return node.forEach((item) => walk(item, depth + 1));
+    if (typeof node === 'object') return Object.values(node).forEach((item) => walk(item, depth + 1));
+  };
+  walk(session.savedFacts.map((fact) => fact.value));
+  const missed = [...spoken.entries()].filter(([value]) => !kept.has(value));
+  return { stated: spoken.size, kept: spoken.size - missed.length, missed };
+}
+
 async function runPersona(persona, instructions) {
   const session = newSession();
   const transcript = [];
@@ -978,7 +1055,14 @@ async function runPersona(persona, instructions) {
     if (missing.length) problems.push(`END: client persona did not exercise advice beats: ${missing.join(', ')}.`);
   }
 
-  return { session, transcript, problems, projection };
+  return {
+    session,
+    transcript,
+    problems,
+    projection,
+    capture: dataCapture(session, transcript),
+    coverage: briefCoverage(persona, session, transcript)
+  };
 }
 
 /** Median of a numeric list; the lower of the two middles for an even count. */
@@ -1029,6 +1113,57 @@ function reportMedians(scoresByPersona, runs) {
   }
 }
 
+/**
+ * The headline number, and the only one that does not move on its own.
+ *
+ * Everything above it is a model's opinion. This is arithmetic over the
+ * client's own words, so a change here is a change in the product.
+ */
+function reportDataCapture(captureByPersona) {
+  if (!captureByPersona.size) return;
+  console.log(`\n${'='.repeat(78)}\nDATA KEPT — figures the client said, that the meeting still holds\n${'='.repeat(78)}`);
+  let statedTotal = 0;
+  let keptTotal = 0;
+  for (const [personaId, runs] of captureByPersona) {
+    const stated = runs.reduce((sum, run) => sum + run.stated, 0);
+    const kept = runs.reduce((sum, run) => sum + run.kept, 0);
+    statedTotal += stated;
+    keptTotal += kept;
+    const pct = stated ? Math.round((kept / stated) * 100) : 100;
+    console.log(`${personaId.padEnd(22)}  ${String(kept).padStart(3)}/${String(stated).padEnd(3)}  ${String(pct).padStart(3)}%`);
+  }
+  const pct = statedTotal ? Math.round((keptTotal / statedTotal) * 100) : 100;
+  console.log(`${'ALL'.padEnd(22)}  ${String(keptTotal).padStart(3)}/${String(statedTotal).padEnd(3)}  ${String(pct).padStart(3)}%`);
+}
+
+/** Of everything each client knew about themselves, how much did we get? */
+function reportBriefCoverage(coverageByPersona) {
+  if (!coverageByPersona.size) return;
+  console.log(`\n${'='.repeat(78)}\nBRIEF COVERAGE — the client's known facts, and how many we collected\n${'='.repeat(78)}`);
+  let totalAll = 0;
+  let heldAll = 0;
+  const droppedCounts = new Map();
+  for (const [personaId, runs] of coverageByPersona) {
+    const total = runs.reduce((sum, run) => sum + run.total, 0);
+    const held = runs.reduce((sum, run) => sum + run.held, 0);
+    totalAll += total;
+    heldAll += held;
+    for (const run of runs) {
+      for (const row of run.dropped) droppedCounts.set(row.label, (droppedCounts.get(row.label) || 0) + 1);
+    }
+    const pct = total ? Math.round((held / total) * 100) : 100;
+    console.log(`${personaId.padEnd(22)}  ${String(held).padStart(3)}/${String(total).padEnd(3)}  ${String(pct).padStart(3)}%`);
+  }
+  const pct = totalAll ? Math.round((heldAll / totalAll) * 100) : 100;
+  console.log(`${'ALL'.padEnd(22)}  ${String(heldAll).padStart(3)}/${String(totalAll).padEnd(3)}  ${String(pct).padStart(3)}%`);
+  if (droppedCounts.size) {
+    console.log('\nSaid by the client and NOT stored, most frequent first:');
+    for (const [label, count] of [...droppedCounts].sort((a, b) => b[1] - a[1])) {
+      console.log(`  ${String(count).padStart(3)}x  ${label}`);
+    }
+  }
+}
+
 async function main() {
   if (!OPENAI_KEY) {
     console.error('OPENAI_API_KEY is required.\n\n  OPENAI_API_KEY=sk-... node scripts/run-live-persona-replay.mjs\n');
@@ -1047,6 +1182,8 @@ async function main() {
 
   const failedPersonaIds = new Set();
   const scoresByPersona = new Map(personas.map((persona) => [persona.id, []]));
+  const captureByPersona = new Map();
+  const coverageByPersona = new Map();
   for (const persona of personas) {
    for (let attempt = 1; attempt <= repeat; attempt += 1) {
     // A brief cool-off between conversations. Cheaper than discovering the
@@ -1072,6 +1209,33 @@ async function main() {
     console.log(`\n  captured: ${[...new Set(outcome.session.savedFactIds)].join(', ') || '(none)'}`);
     console.log(`  analyses: ${outcome.projection.analyses.map((a) => a.description.slice(0, 46)).join(' | ') || '(none)'}`);
     console.log(`  still needed: ${outcome.projection.missing.join(', ') || '(none)'}`);
+    // THE DETERMINISTIC ONE. Same code, same number, every run.
+    console.log(`  DATA KEPT: ${outcome.capture.kept}/${outcome.capture.stated} figures the client actually said`);
+    for (const [value, said] of outcome.capture.missed) {
+      console.log(`    · lost ${value} from ${JSON.stringify(said.slice(0, 90))}`);
+    }
+    trace('data_capture', {
+      stated: outcome.capture.stated,
+      kept: outcome.capture.kept,
+      missed: outcome.capture.missed.map(([value, said]) => ({ value, said: said.slice(0, 120) }))
+    });
+    captureByPersona.set(persona.id, [...(captureByPersona.get(persona.id) || []), outcome.capture]);
+    if (outcome.coverage) {
+      const { total, held, dropped, neverAsked } = outcome.coverage;
+      console.log(`  BRIEF COVERAGE: ${held}/${total} of this client's known facts were collected`);
+      for (const row of dropped) {
+        console.log(`    · DROPPED  ${row.label} (${row.value}) — they said it, it is not stored`);
+      }
+      for (const row of neverAsked) {
+        console.log(`    · NOT ASKED ${row.label} (${row.value})`);
+      }
+      trace('brief_coverage', {
+        total, held,
+        dropped: dropped.map((row) => row.label),
+        neverAsked: neverAsked.map((row) => row.label)
+      });
+      coverageByPersona.set(persona.id, [...(coverageByPersona.get(persona.id) || []), outcome.coverage]);
+    }
 
     if (outcome.problems.length) {
       failedPersonaIds.add(persona.id);
@@ -1118,6 +1282,8 @@ async function main() {
    }
   }
   reportMedians(scoresByPersona, repeat);
+  reportDataCapture(captureByPersona);
+  reportBriefCoverage(coverageByPersona);
 
   console.log(`\n${'='.repeat(78)}`);
   console.log(failedPersonaIds.size

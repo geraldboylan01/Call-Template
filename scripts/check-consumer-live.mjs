@@ -2784,4 +2784,168 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
 }
 
 
+
+// 19. "BETWEEN X AND Y" IS AN ANSWER. Ranges are how people give figures they
+//     have not looked up, and the midpoint is all anyone can do with one. The
+//     machinery for that already existed; the planner simply stopped producing
+//     the shape it recognised, and each new shape silently lost a figure and
+//     bought a repeated question. Both shapes below came off a real call.
+{
+  let profile = freshProfile();
+  const config = () => livePlanningConfig(CONFIG, profile);
+  const propose = (factId, value, certainty) => planFactProposal({
+    config: config(),
+    profile,
+    state: describeConversationState(profile, config()),
+    fact: { factId, value, certainty },
+    plannerBatch: true
+  });
+  const save = (factId, value, certainty) => {
+    const proposed = propose(factId, value, certainty);
+    profile = proposed.profile;
+    return proposed.displayValue;
+  };
+
+  // A range VALUE carrying a non-range certainty. The planner labels its own
+  // output, and a mislabel must not be the reason a figure is lost.
+  const spending = propose(
+    'monthly_spending',
+    { min: 3_000, max: 3_500, currency: 'EUR', frequency: 'monthly' },
+    'approximate'
+  );
+  ok(spending.displayValue?.amount === 3_250,
+    '"about 3,000 to 3,500 a month" must be kept as its midpoint, whatever certainty the planner attached.');
+
+  // A range NESTED inside the fact's own envelope, alongside the owner it
+  // belongs to. The envelope has to survive so the figure lands on the right
+  // person.
+  save('partner_person', { displayName: 'Aoife' }, 'exact');
+  save('intended_retirement_age', { retirementAge: { min: 55, max: 57 }, owner: 'partner' }, 'range');
+  ok(profile.partner?.intendedRetirementAge === 56,
+    'A nested range must resolve to its midpoint on the owner it names.');
+  ok(profile.primaryPerson?.intendedRetirementAge === undefined,
+    'The partner\'s stated range must not be written onto the client.');
+
+  // The shapes that already worked must keep working — including the money
+  // range from the earlier incident this parser was first widened for.
+  ok(propose('monthly_spending', { min: 3_000, max: 3_500 }, 'range').displayValue?.amount === 3_250,
+    'A plain {min,max} range must still resolve to its midpoint.');
+  ok(propose('monthly_spending', { minAmount: 180_000, maxAmount: 220_000, currency: 'EUR' }, 'range')
+    .displayValue?.amount === 200_000,
+  'The {minAmount,maxAmount,currency} range must still resolve to its midpoint.');
+  ok(propose('monthly_spending', { amount: 3_500, currency: 'EUR' }, 'exact').displayValue?.amount === 3_500,
+    'An ordinary single figure must be untouched by the range path.');
+
+  // A range shape on a fact that is not numeric must not be dragged in.
+  let choiceRefused = false;
+  try {
+    propose('household_structure', { min: 'a', max: 'b' }, 'approximate');
+  } catch (_error) {
+    choiceRefused = true;
+  }
+  ok(choiceRefused, 'A non-numeric fact must never be routed through the range midpoint path.');
+}
+
+
+
+// 20. BOTH PEOPLE RETIRE, SO BOTH PENSIONS COUNT — but only once the client
+//     has said there is a second person. The readiness adapter used to loop
+//     over the owners of pensions that ALREADY existed, so a partner with
+//     nothing recorded was never asked about, and "can we afford to retire"
+//     was answered from one fund. A real call lost a 500,000 pension that way.
+{
+  let profile = freshProfile();
+  const config = () => livePlanningConfig(CONFIG, profile);
+  const save = (factId, value, certainty = 'exact') => {
+    const proposed = planFactProposal({
+      config: config(), profile,
+      state: describeConversationState(profile, config()),
+      fact: { factId, value, certainty }, plannerBatch: true
+    });
+    profile = proposed.profile;
+    return proposed;
+  };
+  const partnerAsks = () => liveStateProjection(contextFor(profile))
+    .analyses.flatMap((analysis) => analysis.stillNeeded)
+    .map((need) => need.why || '')
+    .filter((why) => /partner|Aoife/i.test(why));
+
+  save('primary_goal', { type: 'retire' });
+  save('person_current_age', 53);
+  save('pension_positions', {
+    entityId: 'p1', type: 'occupational', owner: 'primary',
+    currentValue: { amount: 360_000, currency: 'EUR' }
+  });
+
+  // NEVER ask about a person the client has not said exists.
+  ok(partnerAsks().length === 0,
+    'A partner pension must not be asked about before the client confirms a partner exists.');
+  let refusedEarly = false;
+  try {
+    save('pension_positions', { operation: 'confirm_none', owner: 'partner' });
+  } catch (error) {
+    refusedEarly = error.code === 'realtime_partner_required';
+  }
+  ok(refusedEarly, 'A partner\'s absence cannot be recorded before the partner is.');
+
+  save('partner_person', { displayName: 'Aoife' });
+  ok(partnerAsks().length === 1,
+    'Once a partner is confirmed, their pension must be asked for by name.');
+
+  // AND IT MUST BE ANSWERABLE. Without an owner-scoped none the meeting would
+  // ask forever, because a household confirm_none refuses while the client's
+  // own pension exists — which is worse than never asking.
+  save('pension_positions', { operation: 'confirm_none', owner: 'partner' });
+  ok(partnerAsks().length === 0, '"She has no pension" must stop the question for good.');
+  ok((profile.pensions || []).length === 1
+    && profile.pensions[0].currentValue?.amount === 360_000,
+  'Recording one person\'s absence must never discard the other\'s holding.');
+}
+
+
+
+// 21. RENT FROM A JOINTLY OWNED PROPERTY IS STILL INCOME. An income record
+//     carries one owner, so `joint` was refused outright and a real call lost
+//     the whole 2,250-a-month rent without anyone noticing.
+{
+  let profile = freshProfile();
+  const config = () => livePlanningConfig(CONFIG, profile);
+  const save = (factId, value) => {
+    const proposed = planFactProposal({
+      config: config(), profile,
+      state: describeConversationState(profile, config()),
+      fact: { factId, value, certainty: 'exact' }, plannerBatch: true
+    });
+    profile = proposed.profile;
+  };
+  const rental = (owner, entityId) => ({
+    entityId, type: 'rental', owner, grossAnnual: { amount: 27_000, currency: 'EUR' }
+  });
+
+  save('primary_goal', { type: 'retire' });
+  // "Joint" is a claim that there are two people, so it waits for the partner
+  // exactly as joint ownership of an asset does.
+  let refusedWithoutPartner = false;
+  try {
+    save('income_sources', rental('joint', 'r1'));
+  } catch (error) {
+    refusedWithoutPartner = error.code === 'realtime_partner_required';
+  }
+  ok(refusedWithoutPartner, 'Joint income must wait until a partner is confirmed.');
+
+  save('partner_person', { displayName: 'Aoife' });
+  save('income_sources', rental('joint', 'r2'));
+  const stored = (profile.incomeSources || []).filter((item) => item.type === 'rental');
+  ok(stored.length === 1 && stored[0].grossAnnual?.amount === 27_000,
+    'Jointly owned rental income must be recorded, not discarded.');
+  ok(stored[0].ownerId === 'household',
+    'A shared income belongs to the household, since one record cannot carry two owners.');
+
+  // The single-owner cases are untouched.
+  save('income_sources', rental('primary', 'r3'));
+  ok((profile.incomeSources || []).some((item) => item.ownerId === profile.primaryPerson.personId),
+    'An income owned by one person must still record against that person.');
+}
+
+
 console.log(`check-consumer-live: ${checks} assertions passed.`);

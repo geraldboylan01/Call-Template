@@ -708,6 +708,25 @@ export function applyProfilePatch(rawProfile, rawPatch, options = {}) {
 
 export const applyHouseholdProfilePatch = applyProfilePatch;
 
+/**
+ * The marker path recording that ONE person holds nothing in a collection.
+ *
+ * A plain confirmed-none is a claim about the whole household and refuses once
+ * anything is recorded, so a couple could never say that one of them has no
+ * pension without discarding the other's. This is the per-person form; the
+ * household form is unchanged.
+ */
+export function ownerConfirmedNonePath(collectionPath, personId) {
+  return `${collectionPath}/owner/${personId}`;
+}
+
+/** Has this person been confirmed to hold nothing in this collection? */
+export function hasOwnerConfirmedNone(profile, collectionPath, personId) {
+  if (!personId) return false;
+  const markers = profile?.assumptions?.values?.completionFacts?.confirmedNonePaths || {};
+  return markers[ownerConfirmedNonePath(collectionPath, personId)] === true;
+}
+
 export function confirmHouseholdProfile(rawProfile, { confirmedAt = new Date().toISOString() } = {}) {
   const profile = normalizeHouseholdProfile(rawProfile);
   profile.confirmedAt = assertIsoDateTime(confirmedAt, 'confirmedAt');
