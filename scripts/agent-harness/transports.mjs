@@ -20,7 +20,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,20 +39,34 @@ import {
   composeAndPersistBrief,
   recordPlanEvaluation
 } from '../../worker/src/consumer/planning_turn.js';
-import { deterministicFallbackExtraction } from '../../worker/src/consumer/planning_facts.js';
+import {
+  deterministicFallbackExtraction,
+  mapPlannerExtractionToCandidates
+} from '../../worker/src/consumer/planning_facts.js';
 import {
   beginRealtimeToolAttempt,
   completeRealtimeToolAttempt,
   getLatestRealtimeMeetingBrief,
+  listRealtimeFinalTurns,
   listRecentRealtimeFinalTurns,
   recordRealtimeFinalTurn
 } from '../../worker/src/consumer/realtime_repository.js';
 import {
   confirmAgentPlan,
+  loadAgentContext,
   processAgentTurn,
   toAgentConsumerView,
   toAgentDiagnosticView
 } from '../../worker/src/consumer/agent_session.js';
+import {
+  archiveCandidates,
+  cloneForArchive,
+  observedCanonicalFacts,
+  observedNeeds,
+  observedQuestion,
+  usageDelta,
+  usageSnapshot
+} from './observability.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -137,11 +151,16 @@ const MIGRATION_FILES = [
   '0009_add_realtime_consent_purposes', '0010_add_realtime_activation_recovery',
   '0011_add_realtime_meeting_briefs', '0012_add_realtime_planner_usage',
   '0013_complete_realtime_voice_meetings', '0014_add_agent_test_meetings',
-  '0015_add_privacy_notice_acknowledgement'
+  '0015_add_privacy_notice_acknowledgement',
+  '0016_add_planning_reconciliation'
 ];
 const MIGRATIONS = MIGRATION_FILES
   .map((name) => readFileSync(`${root}/worker/consumer-migrations/${name}.sql`, 'utf8'))
   .join('\n');
+const RECONCILIATION_MIGRATION = readFileSync(
+  `${root}/worker/consumer-migrations/0016_add_planning_reconciliation.sql`,
+  'utf8'
+);
 
 const workspace = mkdtempSync(join(tmpdir(), 'agent-harness-'));
 process.once('exit', () => rmSync(workspace, { recursive: true, force: true }));
@@ -188,6 +207,34 @@ export function openCallDatabase(databasePath) {
     sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${MIGRATIONS}` });
   }
   return databasePath;
+}
+
+/**
+ * Read an archived pre-0016 call through a disposable migrated clone.
+ *
+ * Frozen call databases are evidence artifacts. Applying an ALTER TABLE to the
+ * source merely to inspect them would invalidate the baseline, so the shadow
+ * runner gets an isolated workspace copy and only the additive reconciliation
+ * migration is applied there. The source path is never opened for writing.
+ */
+export function cloneCallDatabaseForReconciliation(sourceDatabasePath, label = 'shadow') {
+  if (!existsSync(sourceDatabasePath)) {
+    throw new Error(`Archived call database does not exist: ${sourceDatabasePath}`);
+  }
+  databaseCounter += 1;
+  const safeLabel = String(label || 'shadow').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 80);
+  const clonePath = join(workspace, `${safeLabel}-${databaseCounter}.sqlite`);
+  copyFileSync(sourceDatabasePath, clonePath);
+  const columns = sqliteCommand(clonePath, 'all', {
+    sql: 'PRAGMA table_info(consumer_realtime_final_turns)',
+    values: []
+  }).results || [];
+  if (!columns.some((column) => column.name === 'meeting_sequence')) {
+    sqliteCommand(clonePath, 'script', {
+      sql: `PRAGMA foreign_keys = ON;\n${RECONCILIATION_MIGRATION}`
+    });
+  }
+  return clonePath;
 }
 
 export function newDatabase(label) {
@@ -241,6 +288,11 @@ function comparableTurn({ transcript, diagnostics, plannerErrorCode, degraded, o
     priorityQuestionRequired: diagnostics.goals?.priorityQuestionRequired === true,
     factIds: (diagnostics.facts || []).map((f) => f.factId).sort(),
     analyses: (diagnostics.analyses || []).map((a) => a.moduleId),
+    // A blocked analysis stays on the plan instead of vanishing, so staying
+    // selected and being runnable have to be observable separately.
+    analysisAvailability: Object.fromEntries((diagnostics.analyses || [])
+      .filter((a) => a.moduleId)
+      .map((a) => [a.moduleId, a.availability ?? a.intakeStatus ?? null])),
     stillNeededFactIds: (diagnostics.stillNeeded || []).map((f) => f.factId),
     questionFactId: diagnostics.pendingQuestion?.factId ?? null,
     offerModuleId: diagnostics.activeOffer?.moduleId ?? null,
@@ -283,18 +335,25 @@ export async function runAgentScenario(
   const config = makeConfig(env);
   const { sessionId, meetingId } = await newSession(env, config);
   const turns = [];
+  const turnRecords = [];
   const transcript = [];
+  let previousSpendMicroEur = 0;
 
   for (let index = 0; index < scenario.turns.length; index += 1) {
-    const say = await client.nextMessage({ scenario, transcript, turnIndex: index, turnsSoFar: turns });
+    const beforeUsage = usageSnapshot(client.usage || {});
+    const say = await client.nextMessage({ scenario, transcript, turnIndex: index, turnsSoFar: turnRecords });
     if (!say) break;
+    const beforeContext = await loadAgentContext(env, config, sessionId, meetingId);
+    let rawExtraction = null;
     const result = await processAgentTurn(env, config, {
       sessionId, meetingId, message: say,
       deps: {
-        extractTurn: async ({ sourceTurnId, transcript: text, context }) => ({
-          extraction: await client.extractionFor({ scenario, turnIndex: index, sourceTurnId, text, context }),
-          metadata: { costMicroEur: 0 }
-        }),
+        extractTurn: async ({ sourceTurnId, transcript: text, context }) => {
+          rawExtraction = await client.extractionFor({
+            scenario, turnIndex: index, sourceTurnId, text, context
+          });
+          return { extraction: rawExtraction, metadata: { costMicroEur: 0 } };
+        },
         // Deterministic stand-in for the renderer: the server-owned question.
         // What is under test is planning, not prose. A review run passes
         // renderWithModel and gets the real thing.
@@ -306,15 +365,97 @@ export async function runAgentScenario(
         })
       }
     });
-    transcript.push({ role: 'client', text: say });
-    transcript.push({ role: 'assistant', text: result.consumer.assistantMessage });
-    turns.push(comparableTurn({
+    const afterContext = await loadAgentContext(env, config, sessionId, meetingId);
+    const storedTurns = await listRealtimeFinalTurns(env, sessionId, meetingId, 200);
+    const clientRowIndex = storedTurns.findIndex((item) => item.id === result.consumer.turnId);
+    const assistantRow = storedTurns.slice(Math.max(0, clientRowIndex + 1))
+      .find((item) => item.role === 'assistant');
+    const clientTranscript = {
+      id: result.consumer.turnId,
+      role: 'client',
+      text: say,
+      createdAt: storedTurns[clientRowIndex]?.createdAt || null
+    };
+    const assistantTranscript = {
+      id: assistantRow?.id || null,
+      role: 'assistant',
+      text: result.consumer.assistantMessage,
+      createdAt: assistantRow?.createdAt || null
+    };
+    transcript.push(clientTranscript);
+    transcript.push(assistantTranscript);
+    let mappedCandidates = [];
+    if (rawExtraction) {
+      try {
+        mappedCandidates = mapPlannerExtractionToCandidates(rawExtraction);
+      } catch (_error) {
+        // The raw extraction is still archived. Candidate mapping failure is
+        // represented by the turn's planner/rejection diagnostics.
+      }
+    }
+    const candidateObservations = archiveCandidates({
+      candidates: mappedCandidates,
+      invalidCandidates: rawExtraction?.invalidCandidates || [],
+      outcomes: result.diagnostics.candidateOutcomes || [],
+      profile: afterContext.profile,
+      askedQuestion: observedQuestion(beforeContext)
+    });
+    const question = observedQuestion(afterContext);
+    const spendMicroEur = Number(result.usage?.spendMicroEur || 0);
+    const turnRecord = comparableTurn({
       transcript: say,
       diagnostics: result.diagnostics,
       plannerErrorCode: result.diagnostics.plannerErrorCode,
       degraded: result.diagnostics.degraded,
       outcomes: result.diagnostics.candidateOutcomes
-    }));
+    });
+    turns.push(turnRecord);
+    turnRecords.push({
+      ...turnRecord,
+      clientTurnId: clientTranscript.id,
+      assistantTurnId: assistantTranscript.id,
+      questionFactInstanceId: question?.factInstanceId || null,
+      acceptedFactInstanceIds: candidateObservations
+        .filter((item) => item.accepted && item.factInstanceId)
+        .map((item) => item.factInstanceId),
+      rejectedFactInstances: candidateObservations
+        .filter((item) => item.accepted === false)
+        .map((item) => ({
+          factId: item.factId,
+          factInstanceId: item.factInstanceId,
+          entityId: item.entityId,
+          ownerId: item.ownerId,
+          rejectionCode: item.rejectionCode
+        })),
+      observation: {
+        schemaVersion: 'consumer-agent-turn-observation-v1',
+        transcript: { client: clientTranscript, assistant: assistantTranscript },
+        profiles: {
+          beforeRevision: Number(beforeContext.sessionRow.current_profile_revision),
+          before: cloneForArchive(beforeContext.profile),
+          afterRevision: Number(afterContext.sessionRow.current_profile_revision),
+          after: cloneForArchive(afterContext.profile)
+        },
+        extraction: {
+          raw: cloneForArchive(rawExtraction),
+          candidates: candidateObservations,
+          plannerErrorCode: result.diagnostics.plannerErrorCode || null,
+          degraded: result.diagnostics.degraded === true,
+          repairedCount: Number(result.diagnostics.repairedCount || 0),
+          repairAttemptFailed: result.diagnostics.repairAttemptFailed === true,
+          segmentsFailed: Number(result.diagnostics.segmentsFailed || 0)
+        },
+        question,
+        needsAfter: observedNeeds(afterContext),
+        canonicalFactsAfter: observedCanonicalFacts(afterContext),
+        usage: usageDelta(beforeUsage, usageSnapshot(client.usage || {})),
+        spendMicroEur: {
+          turn: Math.max(0, spendMicroEur - previousSpendMicroEur),
+          cumulative: spendMicroEur
+        }
+      }
+    });
+    previousSpendMicroEur = spendMicroEur;
   }
   // FINISH THE CALL. Until this ran, a persona call stopped at the last
   // question and no module ever executed -- so there was nothing to grade
@@ -357,7 +498,9 @@ export async function runAgentScenario(
       };
     }
   }
-  return { transport: 'agent', sessionId, meetingId, turns, transcript, execution, env, config };
+  return {
+    transport: 'agent', sessionId, meetingId, turns, turnRecords, transcript, execution, env, config
+  };
 }
 
 /* ------------------------------------------------------------------ */

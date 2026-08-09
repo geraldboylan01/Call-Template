@@ -132,18 +132,32 @@ function assertExpectations(scenario, mode, run) {
         `analyses after turn ${expected.mustAskForEstimateAfterTurn}: ${JSON.stringify(turn?.analyses)}`);
     }
   }
-  // An essential input the client does not have DROPS the analysis, freeing its
-  // slot -- and the drop reverses by itself when they later supply the figure.
+  // An essential input the client does not have BLOCKS the analysis without
+  // deleting it. Silently dropping it told the client nothing about why the
+  // thing they asked for went away, so the analysis now stays on the plan and
+  // reports that it cannot run reliably yet -- and it becomes runnable again by
+  // itself when they later supply the figure.
   if (expected.blocksThenRecovers) {
     const { moduleId, blockedAfterTurn, recoveredAfterTurn } = expected.blocksThenRecovers;
     const blockedTurn = run.turns[blockedAfterTurn - 1];
     const recoveredTurn = run.turns[recoveredAfterTurn - 1];
-    check(scenario.id, mode, `${moduleId} must be dropped once its essential input is unknown`,
-      blockedTurn && !blockedTurn.analyses.includes(moduleId),
+    const availability = (turn) => turn?.analysisAvailability?.[moduleId] ?? null;
+    check(scenario.id, mode, `${moduleId} must stay visible once its essential input is unknown`,
+      blockedTurn && blockedTurn.analyses.includes(moduleId),
       `analyses after turn ${blockedAfterTurn}: ${JSON.stringify(blockedTurn?.analyses)}`);
-    check(scenario.id, mode, `${moduleId} must return once the client supplies the figure`,
-      recoveredTurn && recoveredTurn.analyses.includes(moduleId),
-      `analyses after turn ${recoveredAfterTurn}: ${JSON.stringify(recoveredTurn?.analyses)}`);
+    // needs_information is specifically "blocked on something the client cannot
+    // give", as distinct from needs_facts, which is ordinary intake still in
+    // progress. Only the first should stop the meeting asking for that figure.
+    check(scenario.id, mode, `${moduleId} must report that it cannot run while the input is unknown`,
+      blockedTurn && availability(blockedTurn) === 'needs_information',
+      `availability after turn ${blockedAfterTurn}: ${availability(blockedTurn)}`);
+    // Recovery means it stops being blocked -- not that it is instantly ready,
+    // because the same analysis usually still has ordinary intake outstanding.
+    check(scenario.id, mode, `${moduleId} must stop being blocked once the client supplies the figure`,
+      recoveredTurn && recoveredTurn.analyses.includes(moduleId)
+        && availability(recoveredTurn) !== 'needs_information',
+      `analyses after turn ${recoveredAfterTurn}: ${JSON.stringify(recoveredTurn?.analyses)}, `
+        + `availability: ${availability(recoveredTurn)}`);
   }
   if (expected.expectsUnsupportedGoalMessage) {
     check(scenario.id, mode, 'must tell the client this goal has no analysis yet',
@@ -190,6 +204,30 @@ function assertParity(scenario, mode, agent, voice) {
   }
 }
 
+function assertAgentObservability(scenario, mode, run) {
+  check(scenario.id, mode, 'the agent archive has one rich observation per comparable turn',
+    run.turnRecords?.length === run.turns.length);
+  for (const [index, turn] of (run.turnRecords || []).entries()) {
+    const observation = turn.observation;
+    check(scenario.id, mode, `turn ${index + 1}: observation schema is versioned`,
+      observation?.schemaVersion === 'consumer-agent-turn-observation-v1');
+    check(scenario.id, mode, `turn ${index + 1}: transcript ids are retained`,
+      Boolean(turn.clientTurnId && turn.assistantTurnId));
+    check(scenario.id, mode, `turn ${index + 1}: profile before/after snapshots are retained`,
+      Boolean(observation?.profiles?.before && observation?.profiles?.after)
+      && Number.isFinite(observation?.profiles?.beforeRevision)
+      && Number.isFinite(observation?.profiles?.afterRevision));
+    check(scenario.id, mode, `turn ${index + 1}: exact question instance is retained`,
+      !turn.questionFactId || Boolean(turn.questionFactInstanceId));
+    check(scenario.id, mode, `turn ${index + 1}: candidate outcomes and usage are retained`,
+      Array.isArray(observation?.extraction?.candidates) && Boolean(observation?.usage));
+    if (mode === 'healthy') {
+      check(scenario.id, mode, `turn ${index + 1}: raw synthetic extraction is retained`,
+        observation?.extraction?.raw?.schemaVersion === 'PlannerExtractionV3');
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ */
 
 console.info(`[Scenarios] released modules: ${RELEASED_MODULE_IDS}`);
@@ -201,6 +239,7 @@ for (const scenario of scenarios) {
     const { agent, voice } = await runBothTransports(scenario, {
       makeClient: () => createScriptedClient({ plannerFails })
     });
+    assertAgentObservability(scenario, mode, agent);
 
     // Expected outcomes are only meaningful with a working planner: a degraded
     // turn legitimately captures less. What the degraded pass proves is PARITY

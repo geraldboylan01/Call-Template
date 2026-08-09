@@ -23,7 +23,7 @@ import {
   sumKnown
 } from './common.js';
 
-export const PENSION_ADAPTER_VERSION = '1.0.0';
+export const PENSION_ADAPTER_VERSION = '1.1.0';
 export const NET_RETIREMENT_ADAPTER_VERSION = '1.0.0';
 
 const RETIREMENT_GOALS = ['improve_pension', 'retire', 'retire_early'];
@@ -45,15 +45,62 @@ function groupPensionsByOwner(profile) {
   return grouped;
 }
 
+function ownerLabel(profile, ownerId) {
+  if (ownerId === profile.primaryPerson?.personId) return 'you';
+  if (ownerId === profile.partner?.personId) return profile.partner.displayName || 'your partner';
+  return 'this person';
+}
+
+function ownerNeed(profile, ownerId, fieldPath, reason, moduleIds, extras = {}) {
+  return {
+    ...missing(fieldPath, reason, moduleIds),
+    entityId: extras.entityId || ownerId,
+    ownerId,
+    entityLabel: extras.entityLabel || ownerLabel(profile, ownerId),
+    reasonCode: extras.reasonCode || 'required_input_missing',
+    answerPolicy: extras.answerPolicy || 'unknown_allowed',
+    ...(extras.prompt ? { prompt: extras.prompt } : {})
+  };
+}
+
+function pensionNeed(profile, pension, index, field, reason, moduleIds, extras = {}) {
+  const owner = pension.ownerId === profile.primaryPerson?.personId
+    ? 'your'
+    : profile.partner?.displayName
+      ? `your partner ${profile.partner.displayName}'s`
+      : "your partner's";
+  const label = pension.label || `${owner} ${pension.type.replaceAll('_', ' ')} pension`;
+  return ownerNeed(
+    profile,
+    pension.ownerId,
+    `/pensions/${index}/${field}`,
+    reason,
+    moduleIds,
+    {
+      ...extras,
+      entityId: pension.pensionId,
+      entityLabel: label
+    }
+  );
+}
+
+function effectiveContributionStatus(pension) {
+  if (NON_CONTRIBUTORY_PENSION_TYPES.includes(pension.type)) return 'not_applicable';
+  if (pension.contributionStatus) return pension.contributionStatus;
+  // Existing profiles predate contributionStatus. Explicitly recorded current
+  // rates are sufficient legacy evidence that this is an active arrangement;
+  // otherwise the status is genuinely unknown and is asked before percentages.
+  if (typeof pension.employeeContributionRate === 'number'
+    || typeof pension.employerContributionRate === 'number') return 'active';
+  return 'unknown';
+}
+
 export function getPensionProjectionReadiness(profile) {
   const relevant = Boolean(findGoal(profile, RETIREMENT_GOALS));
   if (!relevant) return readinessFromMissing([], { relevant: false });
   const moduleIds = ['pension_projection'];
   const requiredMissing = [];
   const grouped = groupPensionsByOwner(profile);
-  if (grouped.size === 0) {
-    requiredMissing.push(missing('/pensions', 'Add at least one pension position.', moduleIds));
-  }
   // BOTH PEOPLE RETIRE, SO BOTH PENSIONS COUNT.
   //
   // This function used to iterate only the owners of pensions that already
@@ -65,44 +112,150 @@ export function getPensionProjectionReadiness(profile) {
   // Asked ONLY once the client has confirmed a partner exists -- an unasked
   // question about a person who may not be there is worse than the gap -- and
   // silenced permanently once they say that partner has none.
-  const partnerId = profile.partner?.personId;
-  if (partnerId
-    && !grouped.has(partnerId)
-    && !hasOwnerConfirmedNone(profile, '/pensions', partnerId)) {
-    requiredMissing.push(missing(
+  const householdNone = profile.assumptions?.values?.completionFacts?.confirmedNonePaths?.['/pensions'] === true;
+  const expectedOwners = [profile.primaryPerson, profile.partner].filter((person) => person?.personId);
+  expectedOwners.forEach((person) => {
+    const ownerId = person.personId;
+    if (grouped.has(ownerId) || householdNone || hasOwnerConfirmedNone(profile, '/pensions', ownerId)) return;
+    const label = ownerId === profile.primaryPerson.personId
+      ? 'your'
+      : `${person.displayName || 'your partner'}'s`;
+    const prompt = ownerId === profile.primaryPerson.personId
+      ? 'Do you have an occupational pension, PRSA, personal pension, buyout bond or defined-benefit pension to include?'
+      : `Does ${person.displayName || 'your partner'} have an occupational pension, PRSA, personal pension, buyout bond or defined-benefit pension to include?`;
+    requiredMissing.push(ownerNeed(
+      profile,
+      ownerId,
       '/pensions',
-      `Add ${profile.partner?.displayName || 'your partner'}'s pension, or confirm they have none.`,
-      moduleIds
+      `Add ${label} pension, or confirm there is none.`,
+      moduleIds,
+      {
+        entityLabel: `${label} pensions`,
+        reasonCode: 'owner_pension_position_missing',
+        answerPolicy: 'value_or_none',
+        prompt
+      }
     ));
-  }
+  });
   grouped.forEach((pensions, ownerId) => {
     const person = personForId(profile, ownerId);
     const personPath = profile.partner?.personId === ownerId ? '/partner' : '/primaryPerson';
     if (!person) {
-      requiredMissing.push(missing('/pensions', `Pension owner ${ownerId} does not match a household person.`, moduleIds));
+      requiredMissing.push(ownerNeed(
+        profile,
+        ownerId,
+        '/pensions',
+        `Pension owner ${ownerId} does not match a household person.`,
+        moduleIds,
+        { reasonCode: 'pension_owner_invalid', answerPolicy: 'value' }
+      ));
       return;
     }
-    if (typeof person.age !== 'number') requiredMissing.push(missing(`${personPath}/age`, 'Add the current age.', moduleIds));
+    if (typeof person.age !== 'number') {
+      requiredMissing.push(ownerNeed(profile, ownerId, `${personPath}/age`, 'Add the current age.', moduleIds));
+    }
     if (typeof person.intendedRetirementAge !== 'number') {
-      requiredMissing.push(missing(`${personPath}/intendedRetirementAge`, 'Add the intended retirement age.', moduleIds));
+      requiredMissing.push(ownerNeed(
+        profile,
+        ownerId,
+        `${personPath}/intendedRetirementAge`,
+        'Add the intended retirement age.',
+        moduleIds
+      ));
     }
     if (grossEmploymentIncome(profile, ownerId) <= 0 && person.employmentStatus !== 'retired') {
-      requiredMissing.push(missing('/incomeSources', `Add current gross income for ${person.displayName || person.role}.`, moduleIds));
+      requiredMissing.push(ownerNeed(
+        profile,
+        ownerId,
+        '/incomeSources',
+        `Add current gross income for ${person.displayName || person.role}.`,
+        moduleIds,
+        { reasonCode: 'owner_income_missing' }
+      ));
     }
     pensions.forEach((pension) => {
       const index = profile.pensions.indexOf(pension);
-      if (!pension.currentValue) requiredMissing.push(missing(`/pensions/${index}/currentValue`, 'Add the current pension value.', moduleIds));
+      if (pension.type === 'defined_benefit') {
+        if (!pension.projectedAnnualIncome) {
+          requiredMissing.push(pensionNeed(
+            profile,
+            pension,
+            index,
+            'projectedAnnualIncome',
+            'Add the gross annual defined-benefit pension income.',
+            moduleIds,
+            { reasonCode: 'defined_benefit_income_missing' }
+          ));
+        }
+        if (typeof pension.benefitStartAge !== 'number') {
+          requiredMissing.push(pensionNeed(
+            profile,
+            pension,
+            index,
+            'benefitStartAge',
+            'Add the age when the defined-benefit pension starts.',
+            moduleIds,
+            { reasonCode: 'defined_benefit_start_age_missing' }
+          ));
+        }
+        return;
+      }
+      if (!pension.currentValue) {
+        requiredMissing.push(pensionNeed(
+          profile,
+          pension,
+          index,
+          'currentValue',
+          'Add the current pension value.',
+          moduleIds,
+          { reasonCode: 'pension_value_missing' }
+        ));
+      }
       // A PRESERVED POLICY CANNOT BE CONTRIBUTED TO. Asking a client what they
       // and their employer pay into a buyout bond is a question with no correct
       // answer, and the meeting repeated it because no answer could be
       // accepted. Its value still counts towards the projection; only the
       // contribution questions are dropped.
       if (NON_CONTRIBUTORY_PENSION_TYPES.includes(pension.type)) return;
-      if (typeof pension.employeeContributionRate !== 'number') {
-        requiredMissing.push(missing(`/pensions/${index}/employeeContributionRate`, 'Add the personal pension contribution rate.', moduleIds));
+      const contributionStatus = effectiveContributionStatus(pension);
+      if (contributionStatus === 'unknown') {
+        requiredMissing.push(pensionNeed(
+          profile,
+          pension,
+          index,
+          'contributionStatus',
+          'Confirm whether contributions are currently being paid into this pension.',
+          moduleIds,
+          {
+            reasonCode: 'pension_contribution_status_unknown',
+            answerPolicy: 'value',
+            prompt: `Are contributions currently being paid into ${pension.label || 'this pension'}, or is it paid up?`
+          }
+        ));
+        return;
       }
-      if (typeof pension.employerContributionRate !== 'number') {
-        requiredMissing.push(missing(`/pensions/${index}/employerContributionRate`, 'Add the employer pension contribution rate, including zero.', moduleIds));
+      if (['paid_up', 'not_applicable'].includes(contributionStatus)) return;
+      if (typeof pension.employeeContributionRate !== 'number') {
+        requiredMissing.push(pensionNeed(
+          profile,
+          pension,
+          index,
+          'employeeContributionRate',
+          'Add the personal pension contribution rate.',
+          moduleIds,
+          { reasonCode: 'pension_personal_contribution_missing' }
+        ));
+      }
+      if (pension.type === 'occupational' && typeof pension.employerContributionRate !== 'number') {
+        requiredMissing.push(pensionNeed(
+          profile,
+          pension,
+          index,
+          'employerContributionRate',
+          'Add the employer pension contribution rate, including zero.',
+          moduleIds,
+          { reasonCode: 'pension_employer_contribution_missing' }
+        ));
       }
     });
   });
@@ -122,6 +275,9 @@ export function getPensionProjectionReadiness(profile) {
   });
   const warnings = [
     'Pension balances and projected withdrawals are shown before tax. Tax and wider retirement-income needs require separate adviser review.',
+    ...(profile.pensions.some((pension) => pension.type === 'defined_benefit')
+      ? ['Defined-benefit income is included at its stated annual amount without inventing an escalation rate.']
+      : []),
     ...crossCurrencyWarnings(profile, [
       ['Pension values', profile.pensions.map((pension) => pension.currentValue)],
       ['Income values', profile.incomeSources.map((income) => income.grossAnnual)]
@@ -144,15 +300,17 @@ export function buildPensionProjectionInput(profile) {
     const statePensionFraction = includeStatePension === false
       ? 0
       : normalizeStatePensionFraction(rawFraction, 1);
+    const activePensions = ownerPensions.filter((pension) => effectiveContributionStatus(pension) === 'active');
+    const fundedPensions = ownerPensions.filter((pension) => pension.type !== 'defined_benefit');
     return {
       id: ownerId,
       title: person?.displayName ? `${person.displayName} pension` : `Pension ${index + 1}`,
       currentAge: person.age,
       retirementAge: person.intendedRetirementAge,
       currentSalary: grossEmploymentIncome(profile, ownerId),
-      currentPot: sumKnown(ownerPensions.map((pension) => moneyAmount(pension.currentValue, currency))),
-      personalPct: Math.min(1, sumKnown(ownerPensions.map((pension) => pension.employeeContributionRate))),
-      employerPct: Math.min(1, sumKnown(ownerPensions.map((pension) => pension.employerContributionRate))),
+      currentPot: sumKnown(fundedPensions.map((pension) => moneyAmount(pension.currentValue, currency))),
+      personalPct: Math.min(1, sumKnown(activePensions.map((pension) => pension.employeeContributionRate))),
+      employerPct: Math.min(1, sumKnown(activePensions.map((pension) => pension.employerContributionRate))),
       includeStatePension: statePensionFraction > 0,
       statePensionFraction,
       statePensionStartAge: getAssumption(
@@ -163,6 +321,18 @@ export function buildPensionProjectionInput(profile) {
       statePensionEscalationRate: IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate
     };
   });
+  const definedBenefitIncome = profile.pensions
+    .filter((pension) => pension.type === 'defined_benefit')
+    .map((pension) => ({
+      id: `defined-benefit-${pension.pensionId}`,
+      title: pension.label || 'Defined-benefit pension',
+      type: 'pension',
+      ownerId: pension.ownerId,
+      annualAmountToday: moneyAmount(pension.projectedAnnualIncome, currency) ?? 0,
+      startAge: pension.benefitStartAge,
+      inflationIndexed: false
+    }))
+    .filter((income) => income.annualAmountToday > 0 && typeof income.startAge === 'number');
   const otherIncomeSources = profile.incomeSources
     .filter((income) => !['employment', 'self_employment', 'state_pension'].includes(income.type))
     .map((income) => ({
@@ -175,7 +345,8 @@ export function buildPensionProjectionInput(profile) {
       ...(typeof income.endAge === 'number' ? { endAge: income.endAge } : {}),
       inflationIndexed: income.inflationIndexed !== false
     }))
-    .filter((income) => income.annualAmountToday > 0);
+    .filter((income) => income.annualAmountToday > 0)
+    .concat(definedBenefitIncome);
   return {
     currentYear: Number(profile.assumptions.calculationDateIso.slice(0, 4)),
     // Centrally controlled: neither a consumer nor an adviser can override

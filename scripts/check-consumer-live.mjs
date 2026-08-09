@@ -2432,9 +2432,9 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
 
 
 
-// 11. A FACT THE CLIENT CANNOT SUPPLY must not be rendered as both "never ask
-//     for this again" and "still needed". It blocks the plan; it is not an
-//     open question.
+// 11. A FACT THE CLIENT CANNOT SUPPLY earns one estimate request for its exact
+//     instance, then stops being rendered as an open question and blocks only
+//     the analysis that depends on it.
 {
   const session = newReplaySession();
   executeReplayTool(session, 'save_facts', {
@@ -2448,13 +2448,49 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
   }, 'I genuinely have no idea what price yet.');
   const state = executeReplayTool(session, 'get_state', {}, '');
   ok(state.unknown.includes('target_home_price'), 'An acknowledged unknown must be recorded as unknown.');
-  ok(!state.missing.includes('target_home_price'),
-    'An acknowledged unknown must not also be listed as an open question.');
-  ok(state.blocked.includes('target_home_price'),
-    'An acknowledged unknown that an analysis needs must be reported as blocking.');
-  ok(state.readyToConfirm === false,
+  ok(state.estimatePending.includes('target_home_price'),
+    'The first unknown must open one estimate request for that exact fact.');
+  ok(state.missing.includes('target_home_price'),
+    'The estimate request remains an open need until it is answered once.');
+  ok(!state.blocked.includes('target_home_price'),
+    'The first unknown must not prematurely block its analysis.');
+  // The production lane signs the exact need that prompted this reply. The
+  // lightweight replay helper has no signed-question state, so exercise the
+  // shared proposal core with that binding explicitly rather than allowing a
+  // second unscoped unknown to suppress an indexed need.
+  const planning = buildPlanningContext({
+    config: CONFIG,
+    sessionRow: sessionRowFor(session.revision),
+    profile: session.profile,
+    channel: 'live'
+  });
+  const estimateNeed = planning.state.recommendations
+    .flatMap((item) => item.requiredMissing || [])
+    .find((need) => need.factId === 'target_home_price');
+  const proposed = planFactProposal({
+    config: CONFIG,
+    profile: session.profile,
+    state: {
+      ...planning.state,
+      meetingBrief: {
+        questionBatch: {
+          primaryFact: { ...estimateNeed, status: 'estimate_requested' }
+        }
+      }
+    },
+    fact: { factId: 'target_home_price', value: null, certainty: 'unknown' },
+    plannerBatch: true
+  });
+  session.profile = proposed.profile;
+  session.revision += 1;
+  const declinedState = executeReplayTool(session, 'get_state', {}, '');
+  ok(!declinedState.missing.includes('target_home_price'),
+    'A declined estimate must not remain an open question.');
+  ok(declinedState.blocked.includes('target_home_price'),
+    'A declined estimate must report its dependent analysis as waiting.');
+  ok(declinedState.readyToConfirm === false,
     'Removing an unanswerable requirement from the ask list must not make the plan look runnable.');
-  const item = liveVolatileStateItem(state);
+  const item = liveVolatileStateItem(declinedState);
   ok(/Waiting on the client/i.test(item), 'The state note must say the plan is waiting on the client.');
   ok(/do not ask for it again/i.test(item), 'The state note must forbid re-asking a blocked item.');
   // This directive is re-injected on every turn, so an instruction to ANNOUNCE
@@ -2467,13 +2503,12 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
     'A blocked item must be mentioned once, not restated each turn.');
 }
 
-// 12. NO PARTIAL RUNS. One ready analysis alongside one that is not must never
-//     be offered on its own — the regression that produced "Would you like me
-//     to run the cash-reserve review on its own?" in the 2026-08-05 replay.
+// 12. One unavailable input blocks only its dependent analysis. The server,
+//     not the model, identifies the remaining runnable set.
 {
   const prompt = buildLiveCataloguePrompt();
-  ok(/THE ANALYSES RUN AS ONE SET/.test(prompt), 'The prompt must state that analyses run as one set.');
-  ok(/Never offer to run a subset/i.test(prompt), 'The prompt must forbid offering a subset.');
+  ok(/BLOCKS ONLY THE ANALYSIS THAT NEEDS IT/.test(prompt),
+    'The prompt must make module-specific blocking explicit.');
   const item = liveVolatileStateItem({
     captured: ['Available cash: €11,000'],
     analyses: [
@@ -2486,8 +2521,8 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
     goalsAgreed: true,
     readyToConfirm: false
   });
-  ok(/they run as one set/i.test(item),
-    'A not-ready plan must tell the model the analyses run together, not one at a time.');
+  ok(/not ready for confirmation/i.test(item),
+    'Open needs still prevent confirmation until the server marks a runnable set ready.');
 }
 
 
@@ -2524,7 +2559,7 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
     readyToConfirm: false
   });
   ok(item.length <= 1_150, 'The per-turn state item must stay within its character cap.');
-  ok(/they run as one set\.$/.test(item.trim()),
+  ok(/waiting on the client\.$/.test(item.trim()),
     'The last standing directive must survive the worst case whole, never cut mid-sentence.');
   ok(/do not gather figures\./.test(item),
     'The ORIENT directive must survive a fully contended budget.');
@@ -2634,7 +2669,7 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
     'EVERY analysis in play must have its needs stated; the last one must not be cut away.');
   ok(/3\.2%/.test(item) && /€95,000/.test(item),
     'Known figures must survive alongside a fully-loaded analysis block.');
-  ok(/they run as one set\.$/.test(item.trim()),
+  ok(/waiting on the client\.$/.test(item.trim()),
     'The standing directives must still close the item whole.');
 
   // When everything does fit, the assumptions are stated — they are only the

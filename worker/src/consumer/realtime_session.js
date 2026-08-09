@@ -27,6 +27,7 @@ import { readableSegments } from './turn_segments.js';
 import {
   applyPlannerCandidates,
   blockedOnFromOutcomes,
+  buildProvisionalPlanningNotes,
   buildRepairRequest,
   composeAndPersistBrief,
   confirmPlanSelection,
@@ -3034,7 +3035,13 @@ export class ConsumerRealtimeSession {
           confirmationEvidenceItemId: orderedFacts[0].evidenceItemId,
           sessionRow: currentSessionRow,
           profile: nextProfile,
-          stage: nextState.stage
+          stage: nextState.stage,
+          planningNotes: buildProvisionalPlanningNotes({
+            previousProfile: currentProfile,
+            profile: nextProfile,
+            fact,
+            mapped
+          })
         });
         currentProfile = committed.profile;
         currentSessionRow = committed.sessionRow;

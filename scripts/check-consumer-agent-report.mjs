@@ -8,17 +8,42 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { BLOCKER_IDS, detectBlockers, newBlockersAfterTurn, shouldAbandon } from './agent-harness/blockers.mjs';
+import {
+  BLOCKER_IDS,
+  classifyMissingInput,
+  detectBlockers,
+  detectExecutionBlockers,
+  MISSING_INPUT_CAUSES,
+  newBlockersAfterTurn,
+  shouldAbandon
+} from './agent-harness/blockers.mjs';
 import {
   buildGradingSheet, calibrate, describeCalibration, GRADE_DIMENSIONS, parseGradingSheet
 } from './agent-harness/grading.mjs';
-import { parseCaller, callerBrief } from './agent-harness/caller.mjs';
+import { parseCaller, callerBrief, loadCallerFixture } from './agent-harness/caller.mjs';
+import { archiveCandidates, usageDelta } from './agent-harness/observability.mjs';
 import {
-  applyRetention, compareRuns, loadRuns, regressionsIn, runKey, saveRun, trendFor
+  exportCall,
+  exportReconciliationShadow,
+  exportReconciliationShadowSpan,
+  traceIdForCall,
+  traceLinkForCall
+} from './agent-harness/langfuse-export.mjs';
+import { __testing as langfuseTesting } from './lib/langfuse.mjs';
+import {
+  AGENT_RUN_ARCHIVE_VERSION,
+  applyRetention,
+  compareRuns,
+  firstGoalTurn,
+  loadRuns,
+  regressionsIn,
+  runKey,
+  saveRun,
+  trendFor
 } from './agent-harness/runlog.mjs';
 import { aggregateReviews, normaliseReview, reviewCall } from './agent-judges/review.mjs';
 
@@ -74,6 +99,41 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
     bulleted.client.questions.length === 3, JSON.stringify(bulleted.client.questions));
 }
 
+{
+  const dir = mkdtempSync(join(tmpdir(), 'agent-caller-fixture-'));
+  try {
+    const callerPath = join(dir, 'retire.md');
+    const keyPath = join(dir, 'retire.answer-key.json');
+    writeFileSync(callerPath, 'Age 57. Wants to compare retiring now with retiring next year.');
+    writeFileSync(keyPath, JSON.stringify({
+      schemaVersion: 1,
+      frozenAt: '2026-08-09T00:00:00.000Z',
+      buckets: { goals: [{ id: 'retire_now_or_later' }] }
+    }));
+    const loaded = loadCallerFixture(callerPath);
+    check('an optional frozen answer key is loaded outside the caller model brief',
+      loaded.answerKey.buckets.goals[0].id === 'retire_now_or_later'
+      && Object.keys(loaded.caller.expected).length === 0);
+    check('the persona and answer key receive stable sha256 freeze hashes',
+      /^sha256:[a-f0-9]{64}$/.test(loaded.fixture.personaHash)
+      && /^sha256:[a-f0-9]{64}$/.test(loaded.fixture.answerKey.hash));
+    check('answer-key freeze metadata is retained without copying scoring truth into caller.expected',
+      loaded.fixture.answerKey.schemaVersion === 1
+      && loaded.fixture.answerKey.frozenAt === '2026-08-09T00:00:00.000Z');
+
+    writeFileSync(join(dir, 'plain.md'), 'A caller with no answer key.');
+    check('a caller without an answer key remains valid',
+      loadCallerFixture(join(dir, 'plain.md')).fixture.answerKey === null);
+    writeFileSync(join(dir, 'broken.md'), 'A caller.');
+    writeFileSync(join(dir, 'broken.answer-key.json'), '{broken');
+    check('a malformed frozen answer key fails before a paid call', (() => {
+      try { loadCallerFixture(join(dir, 'broken.md')); return false; } catch { return true; }
+    })());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /* ------------------------------------------------------------- blockers */
 
 {
@@ -91,6 +151,14 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
   check('asking twice is not yet a loop',
     !detectBlockers([turn({ questionFactId: 'a' }), turn({ questionFactId: 'a' })])
       .some((item) => item.id === 'repeated_question'));
+
+  const distinctPensions = [
+    turn({ questionFactId: 'pension_current_value', questionFactInstanceId: 'pension_current_value:p1' }),
+    turn({ questionFactId: 'pension_current_value', questionFactInstanceId: 'pension_current_value:p2' }),
+    turn({ questionFactId: 'pension_current_value', questionFactInstanceId: 'pension_current_value:p3' })
+  ];
+  check('three owner-scoped questions with one bare fact id are not a repeated-question loop',
+    !detectBlockers(distinctPensions).some((item) => item.id === 'repeated_question'));
 
   const answeredThenAsked = [
     turn({ questionFactId: 'person_current_age', acceptedFactIds: ['person_current_age'] }),
@@ -136,6 +204,352 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
   check('a call with only friction is not abandoned',
     !shouldAbandon(detectBlockers([turn({ questionFactId: 'a', rejectedFactIds: ['b'] })])));
   check('every detector has an id', BLOCKER_IDS.length >= 10 && BLOCKER_IDS.every(Boolean));
+  check('the missing-input taxonomy names every planned diagnostic layer',
+    MISSING_INPUT_CAUSES.includes('stated_but_never_extracted')
+    && MISSING_INPUT_CAUSES.includes('persisted_but_not_used')
+    && MISSING_INPUT_CAUSES.includes('wrong_owner_capture'));
+
+  const missing = { factId: 'pension_employee_contribution_rate', factInstanceId: 'pension_employee_contribution_rate:p1' };
+  check('a requirement that was never questioned is classified as never asked',
+    classifyMissingInput(missing, []).cause === 'never_asked');
+  check('a requirement with a signed instance question is classified as asked but unanswered',
+    classifyMissingInput(missing, [turn({
+      questionFactId: missing.factId,
+      questionFactInstanceId: missing.factInstanceId
+    })]).cause === 'asked_but_unanswered');
+  const rejectedTurn = turn({
+    observation: { extraction: { candidates: [{
+      factId: missing.factId,
+      factInstanceId: missing.factInstanceId,
+      accepted: false,
+      rejectionCode: 'pension_ambiguous',
+      certainty: 'exact'
+    }] } }
+  });
+  check('a rejected extracted value is distinguished from a never-asked input',
+    classifyMissingInput(missing, [rejectedTurn]).cause === 'stated_but_rejected');
+  const unknownTurn = turn({
+    observation: { extraction: { candidates: [{
+      factId: missing.factId,
+      factInstanceId: missing.factInstanceId,
+      accepted: true,
+      certainty: 'unknown'
+    }] } }
+  });
+  check('an explicit unknown is distinguished from an unanswered question',
+    classifyMissingInput(missing, [unknownTurn]).cause === 'explicit_unknown');
+  const persistedTurn = turn({
+    observation: { extraction: { candidates: [] }, canonicalFactsAfter: [{
+      factId: missing.factId,
+      factInstanceId: missing.factInstanceId
+    }] }
+  });
+  check('a persisted fact still reported missing is classified as not used',
+    classifyMissingInput(missing, [persistedTurn]).cause === 'persisted_but_not_used');
+  const executionFinding = detectExecutionBlockers({
+    status: 'needs_information', moduleIds: ['pension_projection'], gatedModuleIds: [],
+    missingForModules: [{ ...missing, moduleIds: ['pension_projection'] }]
+  }, 1, [rejectedTurn]).find((item) => item.id === 'analysis_missing_input');
+  check('execution blockers carry the concrete cause and exact instance identity',
+    executionFinding.cause === 'stated_but_rejected'
+    && executionFinding.factInstanceId === missing.factInstanceId
+    && /pension_ambiguous/.test(executionFinding.detail));
+  const unknownFindings = detectExecutionBlockers({
+    status: 'needs_information', moduleIds: ['pension_projection'], gatedModuleIds: [],
+    missingForModules: [{ ...missing, moduleIds: ['pension_projection'] }]
+  }, 1, [unknownTurn]);
+  check('a genuinely unavailable input remains visible without being called a system blocker',
+    unknownFindings.filter((item) => ['analysis_missing_input', 'analysis_did_not_run'].includes(item.id))
+      .every((item) => item.severity === 'smell'));
+}
+
+/* --------------------------------------------------------- observations */
+
+{
+  const profile = {
+    primaryPerson: { personId: 'primary-1' },
+    partner: { personId: 'partner-1' },
+    pensions: [{ pensionId: 'pension-a', ownerId: 'partner-1' }]
+  };
+  const candidates = archiveCandidates({
+    profile,
+    candidates: [{
+      candidateId: 'c1', factId: 'pension_current_value', operation: 'upsert',
+      value: { entityId: 'pension-a', owner: 'partner', amount: 50_000 },
+      certainty: 'approximate', evidenceText: 'hers is about fifty thousand'
+    }],
+    outcomes: [{
+      candidateId: 'c1', factId: 'pension_current_value', accepted: false,
+      errorCode: 'money_invalid'
+    }]
+  });
+  check('candidate observations retain value, exact evidence and rejection code',
+    candidates[0].value.amount === 50_000
+    && candidates[0].evidenceText === 'hers is about fifty thousand'
+    && candidates[0].rejectionCode === 'money_invalid');
+  check('candidate observations preserve owner and instance identity',
+    candidates[0].ownerId === 'partner-1'
+    && candidates[0].entityId === 'pension-a'
+    && candidates[0].factInstanceId === 'pension_current_value:pension-a');
+  const boundAnswer = archiveCandidates({
+    profile,
+    askedQuestion: {
+      targets: [{
+        factId: 'pension_employee_contribution_rate',
+        factInstanceId: 'pension_employee_contribution_rate:pension-a',
+        entityId: 'pension-a',
+        ownerId: 'partner-1'
+      }]
+    },
+    candidates: [{
+      candidateId: 'rate', factId: 'pension_employee_contribution_rate',
+      value: { rate: 0.08 }, certainty: 'exact', evidenceText: 'eight percent'
+    }],
+    outcomes: [{ candidateId: 'rate', factId: 'pension_employee_contribution_rate', accepted: true }]
+  });
+  check('an answer inherits the exact signed question instance in the archive',
+    boundAnswer[0].factInstanceId === 'pension_employee_contribution_rate:pension-a'
+    && boundAnswer[0].ownerId === 'partner-1');
+  const repaired = archiveCandidates({
+    candidates: [{
+      candidateId: 'first-pass', factId: 'cash_savings', value: 'not-money',
+      evidenceText: 'about fifty thousand'
+    }],
+    outcomes: [{ candidateId: 'repair-pass', factId: 'cash_savings', accepted: true }]
+  });
+  check('a repair outcome is not falsely attributed to the first-pass candidate shape',
+    repaired[0].accepted === null
+    && repaired[1].accepted === true
+    && repaired[1].source === 'repair_outcome_without_raw_extraction');
+
+  const delta = usageDelta({
+    clientCalls: 1, plannerCalls: 1,
+    client: { model: 'client-model', inputTokens: 100, outputTokens: 10, cachedInputTokens: 40 },
+    planner: { model: 'planner-model', inputTokens: 200, outputTokens: 20, cachedInputTokens: 100 },
+    plannerLatenciesMs: [500]
+  }, {
+    clientCalls: 2, plannerCalls: 2,
+    client: { model: 'client-model', inputTokens: 250, outputTokens: 25, cachedInputTokens: 90 },
+    planner: { model: 'planner-model', inputTokens: 500, outputTokens: 50, cachedInputTokens: 240 },
+    plannerLatenciesMs: [500, 750]
+  });
+  check('per-turn usage keeps cached input as a subset rather than adding it to input',
+    delta.planner.inputTokens === 300 && delta.planner.cachedInputTokens === 140);
+  check('per-turn planner latency is retained',
+    delta.planner.latencyMs === 750 && delta.planner.latenciesMs.join() === '750');
+}
+
+/* ------------------------------------------------------------- Langfuse */
+
+{
+  const makeCollector = () => new langfuseTesting.LangfuseCollector({
+    host: 'https://example.invalid', publicKey: 'pk-test', secretKey: 'sk-test',
+    release: 'test', environment: 'harness', tags: [], sessionId: 'run-1'
+  });
+  const record = { runId: 'run-1', runKey: 'test', generatedAt: '2026-08-09T12:00:00.000Z' };
+  const baseCall = {
+    callId: 'call-1', caller: 'synthetic', synthetic: true,
+    transcript: [
+      { id: 'client-1', role: 'client', text: 'I have about fifty thousand.' },
+      { id: 'assistant-1', role: 'assistant', text: 'Thanks.' }
+    ],
+    turnRecords: [{
+      clientTurnId: 'client-1', assistantTurnId: 'assistant-1',
+      observation: {
+        extraction: { raw: { semanticFacts: [{ factId: 'cash_savings', valueJson: '50000' }] }, candidates: [] },
+        profiles: { beforeRevision: 0, afterRevision: 1 }
+      }
+    }],
+    blockers: [],
+    usage: {
+      planner: {
+        model: 'planner-model', inputTokens: 200, outputTokens: 20,
+        cachedInputTokens: 150, latencyMs: 50
+      }
+    },
+    execution: { status: 'not_attempted' }
+  };
+  const syntheticCollector = makeCollector();
+  exportCall(syntheticCollector, record, { ...baseCall, contentPolicy: 'synthetic_test_content' });
+  check('synthetic Langfuse traces include a nested raw-extraction observation',
+    syntheticCollector.spans.some((span) => span.name === 'planner.extraction'));
+  const plannerSpan = syntheticCollector.spans.find((span) => span.name === 'planner');
+  check('cached input tokens stay outside the gen_ai usage namespace',
+    plannerSpan.attributes.some((item) => item.key === 'langfuse.observation.metadata.cachedInputTokens')
+    && !plannerSpan.attributes.some((item) => /gen_ai\.usage\..*cached/i.test(item.key)));
+
+  const publicCollector = makeCollector();
+  const privacySentinels = {
+    caller: 'PRIVATE_CALLER_SENTINEL_94217',
+    review: 'PRIVATE_REVIEW_SENTINEL_94218',
+    tag: 'PRIVATE_ARBITRARY_TAG_SENTINEL_94219',
+    evidence: 'PRIVATE_EVIDENCE_SENTINEL_94220',
+    value: 'PRIVATE_VALUE_SENTINEL_94221'
+  };
+  const metadataOnlyCall = {
+    ...baseCall,
+    caller: privacySentinels.caller,
+    callerPath: `/ignored/${privacySentinels.caller}.md`,
+    tags: [privacySentinels.tag],
+    review: { biggestSingleChange: privacySentinels.review },
+    turnRecords: [{
+      clientTurnId: privacySentinels.evidence,
+      assistantTurnId: privacySentinels.value,
+      questionFactInstanceId: privacySentinels.value,
+      rejectedFactInstances: [{ rejectionCode: privacySentinels.evidence }],
+      observation: {
+        extraction: {
+          raw: {
+            evidenceText: privacySentinels.evidence,
+            semanticFacts: [{ factId: 'cash_savings', valueJson: privacySentinels.value }]
+          },
+          candidates: [{ value: privacySentinels.value, evidenceText: privacySentinels.evidence }]
+        },
+        profiles: { beforeRevision: 0, afterRevision: 1 }
+      }
+    }],
+    blockers: [{ severity: 'blocking', id: privacySentinels.evidence, turn: 1 }],
+    judge: {
+      available: true, tone: 5, groundedness: 5, explains_why: 5, momentum: 5,
+      note: privacySentinels.review
+    },
+    scores: { naturalness: 5, [privacySentinels.tag]: 5 },
+    scoreNote: privacySentinels.review,
+    contentPolicy: 'metadata_only'
+  };
+  exportCall(publicCollector, {
+    ...record,
+    runKey: privacySentinels.tag
+  }, metadataOnlyCall);
+  const contentKeys = new Set([
+    'langfuse.observation.input', 'langfuse.observation.output',
+    'langfuse.trace.input', 'langfuse.trace.output'
+  ]);
+  check('metadata-only public/live traces suppress transcript and planner content',
+    !publicCollector.spans.some((span) => span.attributes.some((item) => contentKeys.has(item.key))));
+  check('metadata-only public/live traces do not create raw-extraction spans',
+    !publicCollector.spans.some((span) => span.name === 'planner.extraction'));
+  check('metadata-only public/live traces suppress caller, review, tag, evidence and value sentinels',
+    Object.values(privacySentinels)
+      .every((sentinel) => !JSON.stringify(publicCollector).includes(sentinel)));
+  check('metadata-only traces retain fixed scores but reject arbitrary score names',
+    publicCollector.pendingScores.some((score) => score.name === 'naturalness')
+    && !publicCollector.pendingScores.some((score) => score.name === privacySentinels.tag));
+
+  const nonSyntheticCollector = makeCollector();
+  exportCall(nonSyntheticCollector, record, {
+    ...metadataOnlyCall,
+    synthetic: false,
+    contentPolicy: 'synthetic_test_content'
+  });
+  check('the content policy alone never enables content for a non-synthetic call',
+    !nonSyntheticCollector.spans.some((span) => span.name === 'planner.extraction')
+    && Object.values(privacySentinels)
+      .every((sentinel) => !JSON.stringify(nonSyntheticCollector).includes(sentinel)));
+
+  const reconciliationCollector = makeCollector();
+  const reconciliationTraceId = traceIdForCall('run-1', 'call-1');
+  const reconciliation = exportReconciliationShadowSpan(reconciliationCollector, {
+    runId: 'run-1', callId: 'call-1', traceId: reconciliationTraceId,
+    checkpoint: 'full-call', synthetic: true, contentPolicy: 'synthetic_test_content',
+    finishedAt: '2026-08-09T12:00:01.000Z',
+    input: { evidence: privacySentinels.evidence },
+    output: { value: privacySentinels.value },
+    verdict: 'changes_proposed', status: 'shadow',
+    operationCount: 4, acceptedOperationCount: 3, rejectedOperationCount: 1,
+    clarificationCount: 0,
+    usage: {
+      model: 'planner-model', inputTokens: 300, outputTokens: 40,
+      cachedInputTokens: 220, latencyMs: 750
+    }
+  }, { env: { LANGFUSE_HOST: 'https://example.invalid/' } });
+  const reconciliationSpan = reconciliationCollector.spans
+    .find((span) => span.name === 'planner.reconciliation.shadow');
+  const reconciliationRoot = reconciliationCollector.spans
+    .find((span) => span.name === 'call:reconciliation-shadow');
+  check('the synthetic T2 replay appends a generation span to the deterministic call trace',
+    reconciliationSpan.traceId === reconciliationTraceId
+    && reconciliation.traceLink === `https://example.invalid/trace/${reconciliationTraceId}`
+    && reconciliationSpan.attributes.some((item) => (
+      item.key === 'langfuse.observation.type' && item.value.stringValue === 'generation'
+    )));
+  check('the T2 generation is nested below a session-grouped root observation',
+    reconciliationSpan.parentSpanId === reconciliationRoot.spanId
+    && reconciliationRoot.attributes.some((item) => (
+      item.key === 'langfuse.session.id' && item.value.stringValue === 'run-1'
+    )));
+  check('the T2 span carries model, token, cached-token, latency and operation counts',
+    reconciliationSpan.attributes.some((item) => item.key === 'gen_ai.request.model')
+    && reconciliationSpan.attributes.some((item) => item.key === 'gen_ai.usage.prompt_tokens')
+    && reconciliationSpan.attributes.some((item) => (
+      item.key === 'langfuse.observation.metadata.cachedInputTokens'
+      && item.value.intValue === '220'
+    ))
+    && reconciliationSpan.attributes.some((item) => (
+      item.key === 'langfuse.observation.metadata.latencyMs'
+      && item.value.intValue === '750'
+    ))
+    && reconciliationSpan.attributes.some((item) => (
+      item.key === 'langfuse.observation.metadata.operationCount'
+      && item.value.intValue === '4'
+    )));
+  check('the deterministic trace-link helper agrees with the T2 span',
+    traceLinkForCall('run-1', 'call-1', {
+      env: { LANGFUSE_HOST: 'https://example.invalid/' }
+    }).traceLink === reconciliation.traceLink);
+
+  const metadataReconciliationCollector = makeCollector();
+  exportReconciliationShadowSpan(metadataReconciliationCollector, {
+    runId: 'run-1', callId: 'call-2', synthetic: false,
+    contentPolicy: 'synthetic_test_content', input: privacySentinels.evidence,
+    output: privacySentinels.value, verdict: 'clean', status: 'shadow',
+    usage: { model: 'planner-model', inputTokens: 10, outputTokens: 2, latencyMs: 5 }
+  });
+  check('metadata-only T2 spans retain metrics but suppress reconciliation input and output',
+    !JSON.stringify(metadataReconciliationCollector).includes(privacySentinels.evidence)
+    && !JSON.stringify(metadataReconciliationCollector).includes(privacySentinels.value)
+    && metadataReconciliationCollector.spans.some((span) => (
+      span.name === 'planner.reconciliation.shadow'
+      && span.attributes.some((item) => item.key === 'gen_ai.usage.prompt_tokens')
+    )));
+
+  const failedExport = await exportReconciliationShadow({
+    runId: 'run-1', callId: 'call-3', synthetic: true,
+    contentPolicy: 'synthetic_test_content', usage: { model: 'planner-model' }
+  }, {
+    client: {
+      enabled: true,
+      startSpan() { throw new Error('offline test failure'); },
+      async flush() { throw new Error('must not be reached'); }
+    }
+  });
+  check('a T2 telemetry exception is reported but never thrown into the shadow runner',
+    failedExport.failures === 1 && failedExport.delivered === 0);
+
+  const shadowRunnerSource = readFileSync(
+    new URL('./run-planner-reconciliation-shadow.mjs', import.meta.url),
+    'utf8'
+  );
+  check('the shadow runner freezes the exact approved persona and answer-key hashes before replay',
+    shadowRunnerSource.includes('ee5c9806a55548d467ffe439f9a10767538968b67336e752e5e9429d71ad2b34')
+    && shadowRunnerSource.includes('a1ae6bb1992a09051bf74e77b1247d0cbaaf8f90f474f9eb985d9a5eeae6b39e')
+    && shadowRunnerSource.indexOf('assertFrozenFixtureHashes()')
+      < shadowRunnerSource.indexOf('for (const callId of calls)'));
+  check('the shadow runner reuses the canonical lazy legacy-import helper',
+    /legacyPlanningNotesFromProfile\(context\.profile\)/.test(shadowRunnerSource)
+    && !/function\s+legacyNotesFromProfile\s*\(/.test(shadowRunnerSource));
+  check('the authoritative shadow artifact keeps context, digest, outcomes and trace link',
+    /reconciliationContext:\s*input/.test(shadowRunnerSource)
+    // The digest is computed once and carried into the artifact by shorthand,
+    // so match the computation and the field separately rather than assuming
+    // the literal is written inline in the output object.
+    && /inputDigest\s*=\s*`sha256:\$\{/.test(shadowRunnerSource)
+    && /^\s*inputDigest,\s*$/m.test(shadowRunnerSource)
+    && /operationOutcomes:\s*validation\.operationOutcomes/.test(shadowRunnerSource)
+    && /traceLink/.test(shadowRunnerSource));
+  check('the shadow artifact is written before best-effort Langfuse export starts',
+    shadowRunnerSource.indexOf('writeFileSync(outputPath')
+      < shadowRunnerSource.indexOf('await exportReconciliationShadow'));
 }
 
 /* -------------------------------------------------------------- grading */
@@ -144,7 +558,11 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
   const sheet = buildGradingSheet({
     runId: 'run-1',
     calls: [
-      { callId: 'deirdre', caller: 'deirdre', turns: 6, blockerCount: 1, transcript: [{ role: 'client', text: 'hello' }] },
+      {
+        callId: 'deirdre', caller: 'deirdre', turns: 6, blockerCount: 1,
+        transcript: [{ role: 'client', text: 'hello' }],
+        langfuse: { traceUrl: 'https://cloud.langfuse.com/trace/abc123' }
+      },
       { callId: 'mary', caller: 'mary', turns: 8, blockerCount: 0, transcript: [] }
     ]
   });
@@ -152,6 +570,8 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
   check('the sheet never shows the judge its own score first',
     !/judge.*[1-5]\s*\/\s*5/i.test(sheet) && /deliberately not shown/.test(sheet));
   check('the transcript is in the sheet so you can grade what was said', sheet.includes('hello'));
+  check('the scorecard carries the deterministic Langfuse trace link',
+    sheet.includes('https://cloud.langfuse.com/trace/abc123'));
 
   // Built from GRADE_DIMENSIONS rather than a hardcoded list, so adding a
   // dimension does not silently stop exercising this.
@@ -218,6 +638,12 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
     saveRun(earlier, { dir });
     saveRun(later, { dir });
 
+    check('a run archive is explicitly versioned',
+      JSON.parse(readFileSync(loadRuns({ dir })[0].path, 'utf8')).schemaVersion === AGENT_RUN_ARCHIVE_VERSION);
+    check('turns to goal reports the actual first goal-bearing turn',
+      firstGoalTurn([turn(), turn(), turn({ goals: ['retire'] }), turn({ goals: ['retire'] })]) === 3);
+    check('a call with no captured goal has no turns-to-goal value', firstGoalTurn([turn(), turn()]) === null);
+
     const comparison = compareRuns(later, earlier);
     check('two runs of the same system are comparable', comparison.comparable);
     const byKey = Object.fromEntries(comparison.changes.map((change) => [change.key, change]));
@@ -247,7 +673,16 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
     const old = saveRun({
       runId: 'r0', runKey: key, generatedAt: '2026-01-01T00:00:00.000Z',
       metrics: { blockingFindings: 1 },
-      calls: [{ callId: 'x', transcript: [{ role: 'client', text: 'private circumstances' }] }]
+      calls: [{
+        callId: 'x',
+        transcript: [{ role: 'client', text: 'private circumstances' }],
+        turnRecords: [{
+          observation: {
+            extraction: { raw: { semanticFacts: [{ valueJson: '{"amount":50000}' }] } },
+            profiles: { before: { assets: [] }, after: { assets: [{ amount: 50_000 }] } }
+          }
+        }]
+      }]
     }, { dir });
     const longAgo = (Date.now() - 60 * 86_400_000) / 1000;
     utimesSync(old, longAgo, longAgo);
@@ -255,6 +690,8 @@ Has 12,000 saved. Wants to buy somewhere in the next few years.
     check('an old transcript is cleared', retention.transcriptsCleared === 1);
     const pruned = loadRuns({ dir }).find((run) => run.runId === 'r0');
     check('the words are gone', pruned.calls[0].transcript.length === 0 && pruned.calls[0].transcriptCleared === true);
+    check('raw extraction and profile snapshots share transcript retention',
+      pruned.calls[0].turnRecords.length === 0 && pruned.calls[0].turnRecordsCleared === true);
     check('the numbers survive for the trend', pruned.metrics.blockingFindings === 1);
 
     utimesSync(old, longAgo, longAgo);

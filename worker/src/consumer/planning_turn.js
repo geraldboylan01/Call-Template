@@ -17,6 +17,7 @@
  */
 
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
+import { resolveSemanticFact } from '../../../js/planning/semantic_facts.js';
 import { ConsumerError } from './errors.js';
 import { confirmProfileRevision, recordEvent } from './repository.js';
 import { resolveConfirmationCandidateModuleIds } from './planning_context.js';
@@ -37,6 +38,167 @@ import {
   setRealtimeMeetingPhase
 } from './realtime_repository.js';
 import { describeConversationState } from './conversation.js';
+
+const POSITION_FACT_IDS = new Set([
+  'asset_position', 'property_position', 'pension_positions',
+  'liability_position', 'mortgage_position', 'loan_position',
+  'business_position', 'income_sources', 'dependants'
+]);
+
+const POSITION_NOTE_PROJECTIONS = Object.freeze({
+  asset_position: { collection: 'assets', idKey: 'assetId' },
+  property_position: { collection: 'properties', idKey: 'propertyId' },
+  pension_positions: { collection: 'pensions', idKey: 'pensionId' },
+  liability_position: { collection: 'liabilities', idKey: 'liabilityId' },
+  mortgage_position: { collection: 'liabilities', idKey: 'liabilityId' },
+  loan_position: { collection: 'liabilities', idKey: 'liabilityId' },
+  business_position: { collection: 'businesses', idKey: 'businessId' },
+  income_sources: { collection: 'incomeSources', idKey: 'incomeId' },
+  dependants: { collection: 'dependants', idKey: 'dependantId' }
+});
+
+function ownerForFact(profile, fact, resolved) {
+  const explicitOwnerId = fact?.value?.ownerId;
+  if (typeof explicitOwnerId === 'string' && explicitOwnerId) return explicitOwnerId;
+  const owner = fact?.value?.owner;
+  if (owner === 'primary') return profile?.primaryPerson?.personId || null;
+  if (owner === 'partner') return profile?.partner?.personId || null;
+  if (owner === 'joint' || owner === 'household') return 'household';
+  if (resolved?.entityId === profile?.primaryPerson?.personId) return resolved.entityId;
+  if (resolved?.entityId === profile?.partner?.personId) return resolved.entityId;
+  for (const collection of [
+    profile?.pensions,
+    profile?.assets,
+    profile?.properties,
+    profile?.liabilities,
+    profile?.incomeSources,
+    profile?.businesses
+  ]) {
+    const record = (collection || []).find((item) => (
+      item && Object.entries(item).some(([key, value]) => key.endsWith('Id') && value === resolved?.entityId)
+    ));
+    if (typeof record?.ownerId === 'string' && record.ownerId) return record.ownerId;
+  }
+  return null;
+}
+
+function canonicalOwnerId(profile, record, fallback = null) {
+  if (typeof record?.ownerId === 'string' && record.ownerId) return record.ownerId;
+  const ownerIds = Array.isArray(record?.ownerIds) ? record.ownerIds.filter(Boolean) : [];
+  if (ownerIds.length === 1) return ownerIds[0];
+  if (ownerIds.length > 1) return 'household';
+  return fallback || null;
+}
+
+function confirmsNone(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (value.operation === 'confirm_none') return true;
+  return Array.isArray(value.items)
+    && value.items.length > 0
+    && value.items.every((item) => confirmsNone(item));
+}
+
+function changedCanonicalPositions(previousProfile, profile, projection) {
+  const before = new Map((previousProfile?.[projection.collection] || [])
+    .filter((record) => record?.[projection.idKey])
+    .map((record) => [record[projection.idKey], stableStringify(record)]));
+  return (profile?.[projection.collection] || []).filter((record) => {
+    const entityId = record?.[projection.idKey];
+    return entityId && before.get(entityId) !== stableStringify(record);
+  });
+}
+
+export function buildProvisionalPlanningNotes({ previousProfile, profile, fact, mapped }) {
+  const resolved = resolveSemanticFact({
+    factId: fact.factId,
+    fieldPath: mapped?.fieldPath || '',
+    entityId: fact?.value?.entityId || null
+  }, { profile });
+  const projection = POSITION_NOTE_PROJECTIONS[fact.factId];
+  const rawEntityId = fact?.value?.entityId || null;
+  const explicitNone = confirmsNone(fact.value);
+  const rangeValue = mapped?.derivedFromRange || null;
+  if (fact.certainty === 'unknown' || explicitNone || rangeValue) {
+    return [{
+      noteKind: 'completion',
+      factId: fact.factId,
+      factInstanceId: resolved.factInstanceId,
+      entityId: resolved.entityId,
+      ownerId: ownerForFact(profile, fact, resolved),
+      value: explicitNone ? { resolution: 'confirmed_none' }
+        : rangeValue || { resolution: 'unknown' },
+      certainty: explicitNone ? 'none' : rangeValue ? 'range' : 'unknown',
+      lifecycle: 'active',
+      reviewStatus: 'provisional',
+      source: 'realtime_note',
+      evidenceRefs: [],
+      replacesNoteIds: [],
+      reviewedAt: null
+    }];
+  }
+
+  let canonicalPositions = projection
+    ? changedCanonicalPositions(previousProfile, profile, projection)
+    : [];
+  if (projection && canonicalPositions.length === 0) {
+    canonicalPositions = (profile?.[projection.collection] || []).filter((record) => (
+      record?.[projection.idKey] === resolved.entityId
+      || (rawEntityId && String(record?.[projection.idKey] || '').endsWith(`_${rawEntityId}`))
+      || (fact?.value?.label && record?.label === fact.value.label)
+    ));
+  }
+  if (projection && canonicalPositions.length > 0) {
+    return canonicalPositions.map((canonicalPosition) => {
+      const entityId = canonicalPosition[projection.idKey];
+      return {
+        noteKind: 'position',
+        factId: fact.factId,
+        factInstanceId: `${fact.factId}:${entityId}`,
+        entityId,
+        ownerId: canonicalOwnerId(
+          profile,
+          canonicalPosition,
+          ownerForFact(profile, fact, { ...resolved, entityId })
+        ),
+        value: canonicalPosition,
+        certainty: mapped?.certainty || fact.certainty,
+        lifecycle: 'active',
+        reviewStatus: 'provisional',
+        source: 'realtime_note',
+        evidenceRefs: [],
+        replacesNoteIds: [],
+        reviewedAt: null
+      };
+    });
+  }
+
+  const entityId = resolved.entityId;
+  const resolvedIdentity = {
+    ...resolved,
+    entityId,
+    factInstanceId: entityId ? `${fact.factId}:${entityId}` : resolved.factInstanceId
+  };
+  return [{
+    // If a collection mapper could not bind one stable canonical record, keep
+    // the semantic write in the ledger but do not pretend it is projectable.
+    noteKind: 'fact',
+    factId: fact.factId,
+    factInstanceId: resolvedIdentity.factInstanceId,
+    entityId: resolvedIdentity.entityId,
+    ownerId: ownerForFact(profile, fact, resolvedIdentity),
+    value: fact.value,
+    certainty: mapped?.certainty || fact.certainty,
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    // T1 knows which finalized turn caused the write but not a server-verified
+    // exact span yet. Keep the provisional note span-free; T2 may only correct
+    // or replace it after exact quote verification against that stored turn.
+    evidenceRefs: [],
+    replacesNoteIds: [],
+    reviewedAt: null
+  }];
+}
 
 // The D15 execution rules live in planning_context.js (they are derivations of
 // planning state, and keeping them there avoids an import cycle with the
@@ -232,6 +394,7 @@ async function commitFactProposal({
   profile,
   nextProfile,
   fact,
+  mapped,
   displayValue,
   patch,
   confirmationPolicy,
@@ -261,7 +424,13 @@ async function commitFactProposal({
     confirmationEvidenceItemId: evidenceRef,
     sessionRow,
     profile: nextProfile,
-    stage: nextState.stage
+    stage: nextState.stage,
+    planningNotes: buildProvisionalPlanningNotes({
+      previousProfile: profile,
+      profile: nextProfile,
+      fact,
+      mapped
+    })
   });
   return { revision: committed.revision, proposal: created, pending: false };
 }

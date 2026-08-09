@@ -115,6 +115,11 @@ function plannerModelConfigured(value) {
   return candidate === '' || APPROVED_PLANNER_MODELS.has(candidate);
 }
 
+function plannerReconciliationMode(value) {
+  const candidate = text(value).toLowerCase();
+  return ['shadow', 'apply'].includes(candidate) ? candidate : 'legacy';
+}
+
 export const PLANNER_MODEL_ALLOWLIST = Object.freeze([...APPROVED_PLANNER_MODELS]);
 
 /**
@@ -491,6 +496,24 @@ export function getConsumerConfig(env) {
     realtimePlannerModel: plannerModel(env.CONSUMER_REALTIME_PLANNER_MODEL),
     realtimePlannerModelConfigured: plannerModelConfigured(env.CONSUMER_REALTIME_PLANNER_MODEL),
     realtimePlannerPromptVersion: text(env.CONSUMER_REALTIME_PLANNER_PROMPT_VERSION) || 'realtime-planner-v3',
+    // Additive and fail-closed: an unset or mistyped value preserves the
+    // current single-turn auditor. Tests may inject shadow/apply without any
+    // production wrangler or deployment configuration change.
+    plannerReconciliationMode: plannerReconciliationMode(env.CONSUMER_PLANNER_RECONCILIATION_MODE),
+    plannerReconciliationPromptVersion: text(env.CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION)
+      || 'planning-reconciliation-v1',
+    plannerReconciliationTimeoutMs: boundedInteger(
+      env.CONSUMER_PLANNER_RECONCILIATION_TIMEOUT_MS,
+      14_000,
+      2_500,
+      20_000
+    ),
+    plannerReconciliationMaxOutputTokens: boundedInteger(
+      env.CONSUMER_PLANNER_RECONCILIATION_MAX_OUTPUT_TOKENS,
+      6_000,
+      800,
+      8_000
+    ),
     realtimeUsageRates,
     // The conversation director is a bounded, fail-open-to-template text-model
     // pass that phrases Worker-owned speech naturally. It never changes what
@@ -596,12 +619,12 @@ export function publicConsumerConfig(config) {
       maxDurationSeconds: config.realtimeMaxDurationSeconds,
       idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
       availability: { available: config.realtimeEnabled, status: config.realtimeEnabled ? 'available' : 'unavailable' },
-      // The live lane has NO silent planner: the model itself records facts
-      // through its own tools while it speaks. Reusing the v2 sentence here
-      // would describe a component that is not running.
+      // The live model records the first draft through its own tools while it
+      // speaks. A detached auditor may review those notes later, but it never
+      // gates or delays the voice response.
       aiGeneratedDisclosure: config.realtimeEnabled
         ? (config.liveVoiceEnabled
-          ? 'Realtime AI speaks with you directly and records what you say as reviewable draft facts as the conversation goes. Deterministic code controls the analyses, saved profile and calculations.'
+          ? 'Realtime AI speaks with you directly and records what you say as reviewable draft facts as the conversation goes. A background planner may review those draft notes after each turn. Deterministic code controls the analyses, saved profile and calculations.'
           : config.realtimeConversationV2Enabled
             ? (config.realtimeSpokenCompletionEnabled
                 ? 'Realtime AI speaks with you directly while a silent planner extracts reviewable draft facts. After Planéir reads the exact prepared plan, a clear spoken confirmation authorizes only that revision. Deterministic code controls the analyses, saved profile and calculations.'

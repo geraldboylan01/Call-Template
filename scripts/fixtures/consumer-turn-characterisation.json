@@ -14,6 +14,14 @@
         "profileRevision",
         "rejections"
       ]
+    },
+    {
+      "date": "2026-08-09",
+      "change": "The pension intake question is now owner-scoped. It asked \"in your own name\", which is why a confirmed spouse's pension was never sought: the requirement knew whose pension was missing, but the spoken question threw that away and asked the primary client again. The prompt now comes from the owner-scoped need, and names buyout bond rather than AVC because a buyout bond is a distinct position the projection models and cannot be paid into. Only the pension prompt changes: unscoped questions keep their existing conversational wording, and nextQuestion still agrees with the brief.",
+      "fields": [
+        "brief.questionBatch.prompt",
+        "nextQuestion.prompt"
+      ]
     }
   ],
   "scenarios": [
@@ -288,7 +296,7 @@
           "requiresDecisionTopicQuestion": false,
           "nextQuestion": {
             "factId": "pension_positions",
-            "prompt": "What pension positions should be included in the projection?"
+            "prompt": "Do you have an occupational pension, PRSA, personal pension, buyout bond or defined-benefit pension to include?"
           },
           "moduleSlots": [
             {
@@ -366,7 +374,7 @@
             ],
             "questionBatch": {
               "topic": "pensions",
-              "prompt": "Let’s take pensions one person at a time. Do you have an occupational pension, PRSA, personal pension, AVC or defined-benefit pension in your own name?",
+              "prompt": "Do you have an occupational pension, PRSA, personal pension, buyout bond or defined-benefit pension to include?",
               "primaryFactId": "pension_positions"
             },
             "stillNeeded": [

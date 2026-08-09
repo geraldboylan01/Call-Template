@@ -17,7 +17,10 @@ import {
   containsInternalModuleTerminology
 } from '../../../js/planning/module_offers.js';
 import { assumptionLabel } from '../../../js/planning/planeir_assumptions.js';
-import { resolveSemanticFact } from '../../../js/planning/semantic_facts.js';
+import {
+  completionResponseFor,
+  resolveSemanticFact
+} from '../../../js/planning/semantic_facts.js';
 import { describeConversationState } from './conversation.js';
 import { buildConfirmedRealtimeFactSummary, buildRealtimeFactReadBack } from './realtime_fact_mapper.js';
 import { toConsumerMeetingBrief, toConversationGuide } from './realtime_planner.js';
@@ -92,6 +95,9 @@ export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
         selectionState: typeof slot.selectionState === 'string' ? slot.selectionState : 'selected',
         relatedGoalTypes: Array.isArray(slot.relatedGoalTypes)
           ? slot.relatedGoalTypes.filter((value) => typeof value === 'string').slice(0, 8)
+          : [],
+        blockingFactIds: Array.isArray(slot.blockingFactIds)
+          ? slot.blockingFactIds.filter((value) => typeof value === 'string').slice(0, 12)
           : []
       };
     });
@@ -109,7 +115,8 @@ export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
         moduleId: item.moduleId,
         description: language.shortDescription,
         status: item.readiness?.status || item.status || 'unknown',
-        assumptionsUsed: Object.freeze((item.readiness?.assumptionsUsed || [])
+        availability: item.availability || 'unknown',
+        assumptionsUsed: Object.freeze((item.readiness?.assumptionsUsed || item.assumptionsUsed || [])
           .slice(0, 8)
           .map((assumption) => Object.freeze({
             key: typeof assumption.key === 'string' ? assumption.key.slice(0, 100) : '',
@@ -122,10 +129,23 @@ export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
             value: assumption.value,
             reason: safeConsumerPlanningText(assumption.reason)
           }))),
-        requiredMissing: Object.freeze((item.readiness?.requiredMissing || [])
+        requiredMissing: Object.freeze((item.readiness?.requiredMissing || item.requiredMissing || [])
           .slice(0, 20)
           .map((missing) => {
             const semantic = resolveSemanticFact(missing, { profile, moduleId: item.moduleId });
+            const response = completionResponseFor(profile, {
+              ...missing,
+              factId: semantic.factId,
+              factInstanceId: semantic.factInstanceId,
+              entityId: semantic.entityId
+            }, { moduleId: item.moduleId });
+            const status = response?.resolution === 'unknown'
+              ? 'estimate_requested'
+              : response?.resolution === 'estimate_declined'
+                ? 'blocked_unknown'
+                : ['complete', 'confirmed_none', 'answered_range'].includes(response?.resolution)
+                  ? 'satisfied'
+                  : 'open';
             return Object.freeze({
               factId: semantic.factId,
               factInstanceId: semantic.factInstanceId,
@@ -135,6 +155,15 @@ export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
               // or, worse, renders as captured AND still needed at once.
               entityId: semantic.entityId || null,
               entityLabel: safeConsumerPlanningText(semantic.entityLabel, 60),
+              ownerId: semantic.ownerId || null,
+              prompt: safeConsumerPlanningText(semantic.questionPrompt, 220),
+              status,
+              answerPolicy: ['value', 'value_or_none', 'unknown_allowed'].includes(missing.answerPolicy)
+                ? missing.answerPolicy
+                : 'unknown_allowed',
+              reasonCode: typeof missing.reasonCode === 'string'
+                ? missing.reasonCode.slice(0, 80)
+                : 'required_input_missing',
               importance: missing.importance,
               reason: safeConsumerPlanningText(missing.reason)
             });

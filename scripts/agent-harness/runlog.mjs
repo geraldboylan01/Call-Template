@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { join } from 'node:path';
 
 export const DEFAULT_ARCHIVE_DIR = 'agent-runs';
+export const AGENT_RUN_ARCHIVE_VERSION = 'consumer-agent-run-v2';
 
 /** The versions that make two runs comparable. */
 export function runKey({ config = {}, releasedModuleIds = '', manifestVersion = '' } = {}) {
@@ -32,8 +33,17 @@ export function saveRun(record, { dir = DEFAULT_ARCHIVE_DIR } = {}) {
   mkdirSync(dir, { recursive: true });
   const stamp = (record.generatedAt || new Date().toISOString()).replace(/[:.]/g, '-');
   const path = join(dir, `${stamp}-${record.runId || 'run'}.json`);
-  writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
+  writeFileSync(path, `${JSON.stringify({
+    ...record,
+    schemaVersion: record.schemaVersion || AGENT_RUN_ARCHIVE_VERSION
+  }, null, 2)}\n`);
   return path;
+}
+
+/** The real 1-based turn where a goal first appeared, or null if none did. */
+export function firstGoalTurn(turns = []) {
+  const index = (turns || []).findIndex((turn) => (turn?.goals || []).length > 0);
+  return index < 0 ? null : index + 1;
 }
 
 export function loadRuns({ dir = DEFAULT_ARCHIVE_DIR, limit = 50 } = {}) {
@@ -156,6 +166,14 @@ export function applyRetention({
         if (call.transcript?.length) {
           call.transcript = [];
           call.transcriptCleared = true;
+          changed = true;
+        }
+        // V2 keeps raw synthetic extraction, evidence text and before/after
+        // profiles per turn. They are just as sensitive as the transcript and
+        // must not outlive the transcript retention window.
+        if (call.turnRecords?.length) {
+          call.turnRecords = [];
+          call.turnRecordsCleared = true;
           changed = true;
         }
       }

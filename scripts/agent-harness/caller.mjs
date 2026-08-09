@@ -21,7 +21,8 @@
  * used verbatim as the brief.
  */
 
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
 
 const SECTION_PATTERN = /^#{1,6}\s*(questions?|behaviours?|behavior[s]?)\s*:?\s*$/i;
@@ -83,8 +84,58 @@ export function parseCaller(text, id) {
 }
 
 export function loadCaller(path) {
+  return loadCallerFixture(path).caller;
+}
+
+function sha256(text) {
+  return `sha256:${createHash('sha256').update(text).digest('hex')}`;
+}
+
+/**
+ * Load a private caller plus its optional frozen answer key.
+ *
+ * The answer key is deliberately NOT folded into `caller.expected`: the model
+ * playing the client must never receive scoring truth. The runner keeps this
+ * return value on its own side of the boundary and archives only its hash and
+ * freeze metadata, so the ignored fixture can be checked for drift without
+ * copying private financial truth into a second file.
+ */
+export function loadCallerFixture(path) {
   const id = basename(path, extname(path)).replace(/[^a-z0-9_]+/gi, '_').toLowerCase();
-  return parseCaller(readFileSync(path, 'utf8'), id || 'caller');
+  const personaText = readFileSync(path, 'utf8');
+  const caller = parseCaller(personaText, id || 'caller');
+  const extension = extname(path);
+  const fixtureBase = extension ? path.slice(0, -extension.length) : path;
+  const answerKeyPath = `${fixtureBase}.answer-key.json`;
+  let answerKey = null;
+  let answerKeyText = null;
+  if (existsSync(answerKeyPath)) {
+    answerKeyText = readFileSync(answerKeyPath, 'utf8');
+    try {
+      answerKey = JSON.parse(answerKeyText);
+    } catch (error) {
+      throw new Error(`the frozen answer key is not valid JSON: ${error.message}`);
+    }
+    if (!answerKey || typeof answerKey !== 'object' || Array.isArray(answerKey)) {
+      throw new Error('the frozen answer key must be a JSON object');
+    }
+  }
+  return {
+    caller,
+    answerKey,
+    fixture: {
+      personaPath: path,
+      personaHash: sha256(personaText),
+      answerKey: answerKey
+        ? {
+            path: answerKeyPath,
+            hash: sha256(answerKeyText),
+            schemaVersion: answerKey.schemaVersion ?? null,
+            frozenAt: answerKey.frozenAt ?? null
+          }
+        : null
+    }
+  };
 }
 
 /**

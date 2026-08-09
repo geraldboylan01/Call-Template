@@ -1,6 +1,7 @@
 export * from './contracts.js';
 export * from './profile.js';
 export * from './semantic_facts.js';
+export * from './reconciliation.js';
 export * from './goal_plan.js';
 export * from './module_availability.js';
 export * from './module_offers.js';

@@ -209,6 +209,27 @@ const ENCRYPTED_PAYLOAD_SPECS = Object.freeze([
     aad: (row) => `consumer/realtime/fact-proposal/${row.session_id}/${row.realtime_session_id}/${row.id}/patch`
   },
   {
+    table: 'consumer_planning_notes',
+    column: 'note_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/planning-note/${row.session_id}/${row.realtime_session_id}/${row.id}`
+  },
+  {
+    table: 'consumer_planner_reconciliations',
+    column: 'input_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/planner-reconciliation/${row.session_id}/${row.realtime_session_id}/${row.id}/input`
+  },
+  {
+    table: 'consumer_planner_reconciliations',
+    column: 'output_encrypted',
+    keys: ['id'],
+    select: 'id, session_id, realtime_session_id',
+    aad: (row) => `consumer/planner-reconciliation/${row.session_id}/${row.realtime_session_id}/${row.id}/output`
+  },
+  {
     table: 'consumer_realtime_analysis_plans',
     column: 'input_encrypted',
     keys: ['id'],
@@ -2188,6 +2209,10 @@ export async function deleteSessionData(env, sessionId, reason = 'deleted') {
     db(env).prepare(`DELETE FROM consumer_realtime_voice_confirmations WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_run_provenance WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_planner_reconciliations WHERE session_id = ? AND ${lockedSessionExists}`)
+      .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
+    db(env).prepare(`DELETE FROM consumer_planning_notes WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),
     db(env).prepare(`DELETE FROM consumer_realtime_fact_proposals WHERE session_id = ? AND ${lockedSessionExists}`)
       .bind(sessionId, sessionId, timestamp, revokedCredentialHash),

@@ -13,6 +13,7 @@ import {
   publicIrishStatePensionRule
 } from '../../../js/planning/ireland_rules.js';
 import {
+  completionResponseFor,
   getSemanticFactDefinition,
   listSemanticFactDefinitions
 } from '../../../js/planning/semantic_facts.js';
@@ -223,6 +224,8 @@ Orientation context:
 - Ownership STATUS is orientation and may be emitted from clear context. Property, pension and business VALUES remain explicit-only.
 - The signed meeting jurisdiction is Ireland (IE). Use Irish terms such as occupational pension, PRSA, personal pension, AVC and defined-benefit pension.
 - A buyout bond, personal retirement bond or PRB holds benefits from a scheme the client has LEFT. Set pensionType=buyout_bond. Nobody contributes to one, so never emit a contribution rate for it.
+- A defined-benefit pension is an income promise, not an investment pot. Create its pension position with pensionType=defined_benefit and a stable entityId, but do not put the annual pension or retirement lump sum into the position amount. Emit pension_projected_annual_income, pension_benefit_start_age and pension_retirement_lump_sum as separate semantic facts with that same entityId.
+- When the client says a pension is current/ongoing or that contributions are being paid, emit pension_contribution_status=active. When it is preserved, frozen, deferred, paid-up or no longer receiving contributions, emit paid_up. Use not_applicable only for a buyout bond or defined-benefit pension, and unknown only when the client explicitly does not know the status.
 - Never introduce IRA, Roth IRA, 401(k), ISA or another foreign account list. If the client volunteers a foreign holding, preserve it generically with its country and approximate value; never relabel it as an Irish product.
 - valueJson MUST be valid JSON. A choice or text value is a quoted string such as "couple"; a number is 6.5; an object is {"age":12}. A bare unquoted word will not parse and the fact is discarded.
 - A contribution rate is a PERCENTAGE of pay: valueJson for pension_employee_contribution_rate is 6.5 when the client says six and a half percent, not 0.065. The same for pension_employer_contribution_rate.
@@ -1078,36 +1081,48 @@ function uniqueMissingFacts(state, profile = null) {
   // missing — it is answered, with "I don't know". buildQuestionPlan has always
   // applied this, but the brief built its own list and did not, so the meeting
   // kept asking. An agent-driven run caught it asking one question four times.
-  const completionFacts = profile?.assumptions?.values?.completionFacts || {};
-  // ...with ONE exception: a required fact the client did not know is asked
-  // once more, as an estimate, before the analysis that needs it is dropped.
-  // Only a declined estimate closes the question for good.
-  const estimateRequested = (factId) => completionFacts.unknownFactIds?.[factId] === true
-    && completionFacts.estimateDeclinedFactIds?.[factId] !== true;
-  const acknowledged = (factId) => (
-    (completionFacts.unknownFactIds?.[factId] === true && !estimateRequested(factId))
-    || Boolean(completionFacts.rangedFactValues?.[factId])
-  );
   for (const recommendation of state.recommendations || []) {
     // A blocked analysis has been dropped. Its remaining inputs are no longer
     // worth the client's time.
-    if (recommendation.availability === 'blocked_missing_input') continue;
+    if (['blocked_missing_input', 'needs_information'].includes(recommendation.availability)) continue;
     for (const item of recommendation.requiredMissing || []) {
       const instanceKey = `${item.factId || ''}:${item.factInstanceId || ''}`;
-      if (!item.factId || seen.has(instanceKey) || acknowledged(item.factId)) continue;
+      const response = profile ? completionResponseFor(profile, item, {
+        moduleId: recommendation.moduleId
+      }) : null;
+      const estimateRequested = response?.resolution === 'unknown';
+      const acknowledged = ['estimate_declined', 'answered_range', 'complete', 'confirmed_none']
+        .includes(response?.resolution);
+      if (!item.factId || seen.has(instanceKey) || acknowledged) continue;
       seen.add(instanceKey);
       missing.push({
         factId: item.factId,
         factInstanceId: item.factInstanceId || null,
+        entityId: item.entityId || null,
+        ownerId: item.ownerId || null,
+        entityLabel: boundedText(item.entityLabel, 120),
+        prompt: boundedText(item.prompt, 300),
+        status: estimateRequested ? 'estimate_requested' : (item.status || 'open'),
+        answerPolicy: item.answerPolicy || 'unknown_allowed',
+        reasonCode: item.reasonCode || 'required_input_missing',
         reason: boundedText(item.reason, 240),
         moduleId: recommendation.moduleId,
-        estimateRequested: estimateRequested(item.factId)
+        estimateRequested
       });
     }
   }
+  // The same fact reaches this list once per analysis that needs it, and only
+  // some of those carry an owner. Two owners genuinely are two questions, but a
+  // scoped need and an unscoped one for the same fact are the same question --
+  // and listing "pensions" twice in the brief invites asking for it twice.
+  const scopedFactIds = new Set(missing.filter((item) => item.ownerId || item.entityId)
+    .map((item) => item.factId));
+  const deduped = missing.filter((item) => (
+    Boolean(item.ownerId || item.entityId) || !scopedFactIds.has(item.factId)
+  ));
   // Drop questions this client cannot answer — asking a sole trader what their
   // employer contributes is the case this exists for.
-  return profile ? withoutInapplicableFacts(missing, profile) : missing;
+  return profile ? withoutInapplicableFacts(deduped, profile) : deduped;
 }
 
 function understoodFacts(state) {
@@ -1123,7 +1138,8 @@ function understoodFacts(state) {
 function orderedMissingFacts(state, missingFacts) {
   const order = [
     'primary_goal', 'partner_person', 'property_position', 'pension_positions',
-    'pension_current_value', 'pension_employee_contribution_rate',
+    'pension_current_value', 'pension_projected_annual_income', 'pension_benefit_start_age',
+    'pension_contribution_status', 'pension_employee_contribution_rate',
     'pension_employer_contribution_rate', 'cash_savings', 'asset_position',
     'business_position', 'mortgage_position', 'loan_position', 'liability_position', 'person_current_age',
     'intended_retirement_age', 'income_sources', 'gross_household_income',
@@ -1175,7 +1191,8 @@ function conversationalQuestion(fact, state) {
   // could give and still be useful -- a rough figure, or two numbers we can
   // work between -- and it is asked once.
   if (fact?.estimateRequested) {
-    return 'No problem if you do not know it exactly — do you have a rough idea, '
+    const subject = fact.entityLabel ? ` for ${fact.entityLabel}` : '';
+    return `No problem if you do not know it exactly${subject} — do you have a rough idea, `
       + 'even a range you think it falls between?';
   }
   const reason = boundedText(fact?.reason, 240);
@@ -1192,8 +1209,12 @@ function conversationalQuestion(fact, state) {
     property_position: 'Do you own your home, and if so, roughly what is it worth?',
     pension_positions: 'Let’s take pensions one person at a time. Do you have an occupational pension, PRSA, personal pension, AVC or defined-benefit pension in your own name?',
     pension_current_value: 'Roughly what is the current value of that pension?',
+    pension_contribution_status: 'Are contributions currently being paid into that pension, or is it paid up?',
     pension_employee_contribution_rate: 'About what percentage of your pay do you contribute to that pension?',
     pension_employer_contribution_rate: 'Does your employer contribute to that pension, and if so, about what percentage?',
+    pension_projected_annual_income: 'Roughly what annual income will that defined-benefit pension pay?',
+    pension_benefit_start_age: 'At what age will that defined-benefit pension start paying?',
+    pension_retirement_lump_sum: 'Is there a retirement lump sum with that defined-benefit pension, and if so, roughly how much?',
     cash_savings: 'Roughly how much do you currently hold in cash or savings?',
     asset_position: 'Do you have investments such as shares or investment funds, and roughly what are they worth?',
     business_position: 'Do you have any business or agricultural interests we should include, and if so, roughly what are they worth?',
@@ -1209,8 +1230,17 @@ function conversationalQuestion(fact, state) {
     target_retirement_income: 'About how much annual income would you like the household to have in retirement, in today’s money?'
   };
   const statePrompt = state.nextQuestion?.factId === factId ? state.nextQuestion.prompt : '';
+  // A need carries a prompt from two very different places. When it is scoped to
+  // a person or a named holding, that wording is the whole point -- it is what
+  // stops "your partner's pension" being asked as "one in your own name". When
+  // it is unscoped it is just the fact definition's internal requirement text,
+  // which reads like a form ("Please add each property, its use, ownership and
+  // current value") and must not displace the spoken question.
+  const scopedPrompt = fact?.ownerId || fact?.entityLabel ? fact?.prompt : '';
   const rawPrompt = propertyValuePrompt
+    || scopedPrompt
     || prompts[factId]
+    || fact?.prompt
     || statePrompt
     || getSemanticFactDefinition(factId)?.questionPrompt
     || 'Could you tell me a little more about that?';
@@ -1302,8 +1332,9 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
         })) || []
     };
   });
-  const ready = modules.length >= 1 && modules.length <= 3
-    && modules.every((module) => ['ready', 'ready_with_assumptions'].includes(module.intakeStatus));
+  const runnableModules = modules.filter((module) => module.status !== 'needs_information');
+  const ready = runnableModules.length >= 1 && runnableModules.length <= 3
+    && runnableModules.every((module) => ['ready', 'ready_with_assumptions'].includes(module.intakeStatus));
   const phase = ready && context.config?.realtimeSpokenCompletionEnabled
     ? 'awaiting_voice_confirmation'
     : ready
@@ -1355,13 +1386,29 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
   // describe in client language is not mentioned at all rather than half-named.
   const announcedDrops = new Set(state.meetingBrief?.announcedDrops || []);
   const droppedAnalysisNotices = (state.recommendations || [])
-    .filter((item) => item?.availability === 'blocked_missing_input' && !announcedDrops.has(item.moduleId))
+    .filter((item) => (
+      ['blocked_missing_input', 'needs_information'].includes(item?.availability)
+        && !announcedDrops.has(item.moduleId)
+    ))
     .slice(0, 2)
     .flatMap((item) => {
       const language = consumerLanguageForModule(item.moduleId, { profile: context.profile });
       if (!language?.confirmationDescription) return [];
-      const text = `Since you do not have that figure, I will not be able to `
-        + `${language.confirmationDescription} — but let us keep going with the rest.`;
+      const blockedNeed = (item.requiredMissing || [])
+        .find((need) => need.status === 'blocked_unknown');
+      const factLabel = blockedNeed?.factId
+        ? getSemanticFactDefinition(blockedNeed.factId)?.label
+        : '';
+      const missingInput = [
+        factLabel ? `${factLabel.charAt(0).toLowerCase()}${factLabel.slice(1)}` : 'a required input',
+        blockedNeed?.entityLabel ? `for ${blockedNeed.entityLabel}` : ''
+      ].filter(Boolean).join(' ');
+      const text = item.availability === 'needs_information'
+        ? `Because ${missingInput} is not available, I cannot reliably `
+          + `${language.confirmationDescription}. We can continue with the other ready analyses, `
+          + 'and revisit this one if you find the information later.'
+        : `Since you do not have that figure, I will not be able to `
+          + `${language.confirmationDescription} — but let us keep going with the rest.`;
       return [{ moduleId: item.moduleId, text: boundedText(text, 300) }];
     });
   const nextAnnouncedDrops = [

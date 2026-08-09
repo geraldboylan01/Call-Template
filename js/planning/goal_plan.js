@@ -12,7 +12,11 @@ import {
 } from './module_availability.js';
 import { MODULE_MANIFEST } from './module_manifest.generated.js';
 import { normalizeHouseholdProfile } from './profile.js';
-import { getSemanticFactDefinition, resolveSemanticFact } from './semantic_facts.js';
+import {
+  completionResponseFor,
+  getSemanticFactDefinition,
+  resolveSemanticFact
+} from './semantic_facts.js';
 import { withoutInapplicableFacts } from './fact_preconditions.js';
 import { readJsonPointer } from './utils.js';
 
@@ -344,9 +348,8 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null)
   // consumerAvailable boolean, so an adviser enabling an approved module takes
   // effect here rather than being overruled by stale manifest data.
   // A required input the client has told us they do not know BLOCKS this
-  // analysis. We asked, we offered to take an estimate, and they do not have
-  // one; continuing to hold a slot for an analysis that can never run would
-  // keep a more useful one out.
+  // analysis, not the rest of the plan. It stays visible in its selected slot
+  // as `needs_information`, while runnable analyses can still be confirmed.
   //
   // This is DERIVED, never stored, so it reverses by itself: the moment the
   // client volunteers the figure, the unknown marker is cleared by
@@ -361,12 +364,25 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null)
   // analysis stays in the plan while that question is outstanding. Dropping it
   // on the first "I don't know" would give up before asking the question most
   // likely to rescue it.
-  const declinedFactIds = profile.assumptions?.values?.completionFacts?.estimateDeclinedFactIds || {};
-  const blockingFactIds = [...new Set(
-    (readiness.requiredMissing || [])
-      .filter((item) => item?.importance === 'required')
-      .map((item) => resolveSemanticFact(item, { profile, moduleId }).factId)
-      .filter((factId) => declinedFactIds[factId] === true)
+  const blockingNeeds = (readiness.requiredMissing || [])
+    .filter((item) => item?.importance === 'required')
+    .map((item) => {
+      const semantic = resolveSemanticFact(item, { profile, moduleId });
+      return {
+        item,
+        semantic,
+        response: completionResponseFor(profile, {
+          ...item,
+          factId: semantic.factId,
+          factInstanceId: semantic.factInstanceId,
+          entityId: semantic.entityId
+        }, { moduleId })
+      };
+    })
+    .filter(({ response }) => response?.resolution === 'estimate_declined');
+  const blockingFactIds = [...new Set(blockingNeeds.map(({ semantic }) => semantic.factId))];
+  const blockingFactInstanceIds = [...new Set(
+    blockingNeeds.map(({ semantic }) => semantic.factInstanceId)
   )];
 
   const releaseAllowed = isConsumerVisibleModule(moduleId, {
@@ -384,12 +400,19 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null)
     };
   }
   if (blockingFactIds.length > 0) {
+    const labels = [...new Set(blockingNeeds.map(({ semantic }) => (
+      semantic.entityLabel || getSemanticFactDefinition(semantic.factId)?.label
+    )).filter(Boolean))];
     return {
-      availability: 'blocked_missing_input',
+      availability: 'needs_information',
       intakeStatus: readiness.status,
       missingFactIds,
       blockingFactIds,
-      reasons: ['This analysis needs information the client does not have.']
+      blockingFactInstanceIds,
+      reasons: [
+        `This analysis cannot be run reliably without ${labels.join(' and ') || 'a required input'}.`,
+        'Other ready analyses can still proceed, and this one can be revisited if the information becomes available.'
+      ]
     };
   }
   return {
@@ -397,6 +420,7 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null)
     intakeStatus: readiness.status,
     missingFactIds,
     blockingFactIds: [],
+    blockingFactInstanceIds: [],
     reasons: (readiness.warnings || []).slice(0, 3)
   };
 }
@@ -547,6 +571,8 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
       intakeStatus: intake.intakeStatus,
       reasons: Object.freeze([...new Set([reasonFor(selection), ...intake.reasons])]),
       missingFactIds: Object.freeze([...intake.missingFactIds]),
+      blockingFactIds: Object.freeze([...(intake.blockingFactIds || [])]),
+      blockingFactInstanceIds: Object.freeze([...(intake.blockingFactInstanceIds || [])]),
       ruleIds: Object.freeze([...selection.ruleIds])
     });
   });

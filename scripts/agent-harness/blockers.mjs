@@ -20,21 +20,94 @@
  *   smell    — worth a look; may be legitimate
  */
 
+function questionInstance(turn) {
+  return turn?.questionFactInstanceId
+    || turn?.observation?.question?.factInstanceId
+    || turn?.questionFactId
+    || null;
+}
+
+function candidateRows(turn) {
+  return turn?.observation?.extraction?.candidates || [];
+}
+
+function sameTarget(item, factId, factInstanceId) {
+  if (factInstanceId && item?.factInstanceId) return item.factInstanceId === factInstanceId;
+  return item?.factId === factId;
+}
+
+export const MISSING_INPUT_CAUSES = Object.freeze([
+  'never_asked',
+  'asked_but_unanswered',
+  'stated_but_never_extracted',
+  'stated_but_rejected',
+  'extracted_but_not_persisted',
+  'persisted_but_not_used',
+  'explicit_unknown',
+  'wrong_owner_capture',
+  'stale_reconciliation',
+  'expected_correction_missed'
+]);
+
+/**
+ * Classify a missing module input at the earliest observable broken layer.
+ *
+ * Transcript semantics that require an answer key are accepted as explicit
+ * observation markers from a scorer; the detector never guesses that a phrase
+ * means a fact. Everything else follows deterministic question/candidate/state
+ * records from the versioned turn archive.
+ */
+export function classifyMissingInput(missing = {}, turns = []) {
+  const factId = missing.factId || null;
+  const factInstanceId = missing.factInstanceId || null;
+  const explicitMarker = turns.flatMap((turn) => turn?.observation?.diagnosticMarkers || [])
+    .find((item) => sameTarget(item, factId, factInstanceId));
+  if (explicitMarker && MISSING_INPUT_CAUSES.includes(explicitMarker.cause)) {
+    return { cause: explicitMarker.cause, turn: explicitMarker.turn || null };
+  }
+  const candidates = turns.flatMap((turn, index) => candidateRows(turn).map((item) => ({
+    ...item, turn: index + 1
+  }))).filter((item) => sameTarget(item, factId, factInstanceId));
+  const unknown = candidates.find((item) => item.certainty === 'unknown');
+  if (unknown) return { cause: 'explicit_unknown', turn: unknown.turn };
+  const rejected = candidates.find((item) => item.accepted === false && item.rejectionCode);
+  if (rejected) {
+    return { cause: 'stated_but_rejected', turn: rejected.turn, rejectionCode: rejected.rejectionCode };
+  }
+  const accepted = candidates.find((item) => item.accepted === true);
+  const lastFacts = turns.at(-1)?.observation?.canonicalFactsAfter || [];
+  const persisted = lastFacts.some((item) => sameTarget(item, factId, factInstanceId));
+  if (accepted && !persisted) return { cause: 'extracted_but_not_persisted', turn: accepted.turn };
+  if (persisted) return { cause: 'persisted_but_not_used', turn: turns.length };
+  const askedAt = turns
+    .map((turn, index) => (questionInstance(turn) === (factInstanceId || factId) ? index + 1 : null))
+    .filter(Boolean);
+  return askedAt.length
+    ? { cause: 'asked_but_unanswered', turn: askedAt.at(-1), askedAt }
+    : { cause: 'never_asked', turn: null, askedAt: [] };
+}
+
 /** Detectors run against the turns so far, after each turn. */
 const DETECTORS = [
   {
     id: 'repeated_question',
     severity: 'blocking',
     detect(turns) {
-      const asked = turns.map((turn) => turn.questionFactId).filter(Boolean);
+      const asked = turns.map(questionInstance).filter(Boolean);
       const findings = [];
-      for (const factId of new Set(asked)) {
-        const at = asked.map((value, index) => (value === factId ? index + 1 : null)).filter(Boolean);
+      for (const factInstanceId of new Set(asked)) {
+        const at = turns.map((turn, index) => (
+          questionInstance(turn) === factInstanceId ? index + 1 : null
+        )).filter(Boolean);
         if (at.length >= 3) {
+          const factId = turns[at[0] - 1]?.questionFactId
+            || turns[at[0] - 1]?.observation?.question?.factId
+            || factInstanceId;
           findings.push({
-            detail: `asked for ${factId} ${at.length} times (turns ${at.join(', ')})`,
+            detail: `asked for ${factInstanceId} ${at.length} times (turns ${at.join(', ')})`,
             turn: at[at.length - 1],
-            factId
+            factId,
+            factInstanceId
           });
         }
       }
@@ -48,14 +121,20 @@ const DETECTORS = [
       const findings = [];
       const answered = new Set();
       for (const [index, turn] of turns.entries()) {
-        if (turn.questionFactId && answered.has(turn.questionFactId)) {
+        const question = questionInstance(turn);
+        if (question && answered.has(question)) {
           findings.push({
-            detail: `asked for ${turn.questionFactId} after the client had already answered it`,
+            detail: `asked for ${question} after the client had already answered it`,
             turn: index + 1,
-            factId: turn.questionFactId
+            factId: turn.questionFactId,
+            factInstanceId: question
           });
         }
-        for (const factId of turn.acceptedFactIds || []) answered.add(factId);
+        for (const factInstanceId of turn.acceptedFactInstanceIds || []) answered.add(factInstanceId);
+        // Legacy archives did not retain instance identity.
+        if (!(turn.acceptedFactInstanceIds || []).length) {
+          for (const factId of turn.acceptedFactIds || []) answered.add(factId);
+        }
       }
       return findings;
     }
@@ -232,8 +311,9 @@ export function shouldAbandon(findings) {
  *
  * @param {object|null} execution from runAgentScenario({confirmAndRun: true})
  * @param {number} atTurn the turn the call ended on, for ordering
+ * @param {Array<object>} turns versioned turn observations, when available
  */
-export function detectExecutionBlockers(execution, atTurn = 0) {
+export function detectExecutionBlockers(execution, atTurn = 0, turns = []) {
   if (!execution) return [];
   const findings = [];
   if (execution.error) {
@@ -249,23 +329,49 @@ export function detectExecutionBlockers(execution, atTurn = 0) {
     });
     return findings;
   }
+  const missingRows = execution.missingForModules || [];
+  const missingClassifications = missingRows.map((missing) => classifyMissingInput(missing, turns));
+  const unavailableOnly = missingClassifications.length > 0
+    && missingClassifications.every((item) => item.cause === 'explicit_unknown');
   if (execution.status !== 'complete') {
     findings.push({
       id: 'analysis_did_not_run',
-      severity: 'blocking',
-      detail: `the call promised ${execution.moduleIds.length} analysis/analyses `
-        + `but finished as "${execution.status}"`,
+      // An analysis that truthfully stops on a fact the client does not have is
+      // a legitimate limitation, not an application failure. It remains
+      // visible for review, while deterministic capture/persistence failures
+      // continue to block the run.
+      severity: unavailableOnly ? 'smell' : 'blocking',
+      detail: `the call promised ${(execution.moduleIds || []).length} analysis/analyses `
+        + `but finished as "${execution.status}"${unavailableOnly ? ' because the client did not know an essential input' : ''}`,
       turn: atTurn
     });
   }
-  for (const missing of execution.missingForModules || []) {
+  for (const [index, missing] of missingRows.entries()) {
+    const classification = missingClassifications[index];
+    const explanation = {
+      never_asked: 'the call never asked for it',
+      asked_but_unanswered: 'the call asked, but did not obtain an answer',
+      stated_but_never_extracted: 'the client stated it, but the planner never extracted it',
+      stated_but_rejected: `the client stated it, but the write was rejected${classification.rejectionCode ? ` (${classification.rejectionCode})` : ''}`,
+      extracted_but_not_persisted: 'the planner extracted it, but it did not persist',
+      persisted_but_not_used: 'it was persisted, but the module did not use it',
+      explicit_unknown: 'the client explicitly did not know it',
+      wrong_owner_capture: 'it was captured for the wrong owner',
+      stale_reconciliation: 'the latest transcript was not reconciled before readiness was checked',
+      expected_correction_missed: 'a stated correction was not applied'
+    }[classification.cause];
     findings.push({
       id: 'analysis_missing_input',
-      severity: 'blocking',
-      detail: `${missing.moduleIds.join(', ') || 'an analysis'} still needed `
-        + `${missing.factId || missing.fieldPath} — the call never asked for it`,
+      severity: classification.cause === 'explicit_unknown' ? 'smell' : 'blocking',
+      detail: `${(missing.moduleIds || []).join(', ') || 'an analysis'} still needed `
+        + `${missing.factInstanceId || missing.factId || missing.fieldPath} — ${explanation}`,
       turn: atTurn,
-      factId: missing.factId
+      factId: missing.factId,
+      factInstanceId: missing.factInstanceId || null,
+      entityId: missing.entityId || null,
+      ownerId: missing.ownerId || null,
+      cause: classification.cause,
+      causeTurn: classification.turn
     });
   }
   for (const moduleId of execution.gatedModuleIds || []) {

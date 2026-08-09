@@ -29,8 +29,11 @@ import {
 } from './agent-harness/blockers.mjs';
 import { createCostLedger } from './agent-harness/cost.mjs';
 import { buildGradingSheet } from './agent-harness/grading.mjs';
-import { loadCaller } from './agent-harness/caller.mjs';
-import { runKey, saveRun } from './agent-harness/runlog.mjs';
+import { loadCallerFixture } from './agent-harness/caller.mjs';
+import { exportRun, traceIdForCall } from './agent-harness/langfuse-export.mjs';
+import {
+  AGENT_RUN_ARCHIVE_VERSION, firstGoalTurn, runKey, saveRun
+} from './agent-harness/runlog.mjs';
 import { RELEASED_MODULE_IDS, runAgentScenario } from './agent-harness/transports.mjs';
 import { aggregateJudgements, createOpenAiJudge, judgeConversation } from './agent-judges/conversation.mjs';
 import { aggregateReviews, createOpenAiReviewer, reviewCall } from './agent-judges/review.mjs';
@@ -46,6 +49,11 @@ const runCeilingEur = Number(flag('ceiling', 3)) || 3;
 const outDir = flag('out', 'agent-runs');
 const noReview = args.includes('--no-review');
 const keepGoing = args.includes('--keep-going');
+const langfuseConfigured = Boolean(
+  String(process.env.LANGFUSE_PUBLIC_KEY || '').trim()
+  && String(process.env.LANGFUSE_SECRET_KEY || '').trim()
+);
+const langfuseHost = String(process.env.LANGFUSE_HOST || '').trim() || 'https://cloud.langfuse.com';
 
 const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
 if (!apiKey) {
@@ -82,8 +90,9 @@ for (const callerPath of callerPaths) {
   }
 
   let caller;
+  let fixture;
   try {
-    caller = loadCaller(callerPath);
+    ({ caller, fixture } = loadCallerFixture(callerPath));
   } catch (error) {
     console.error(`  ✗ ${callerPath}: ${error.message}`);
     continue;
@@ -132,7 +141,34 @@ for (const callerPath of callerPaths) {
     );
   } catch (error) {
     console.error(`  *** call failed: ${error?.code || error?.message}`);
-    calls.push({ callId: caller.id, caller: caller.id, error: String(error?.message || error), turns: 0 });
+    const traceId = traceIdForCall(runId, caller.id);
+    calls.push({
+      callId: caller.id,
+      caller: caller.id,
+      callerPath,
+      synthetic: true,
+      contentPolicy: 'synthetic_test_content',
+      fixture,
+      error: String(error?.message || error),
+      turns: 0,
+      transcript: [],
+      blockers: [],
+      usage: {
+        client: { ...client.usage.client, calls: client.usage.clientCalls },
+        planner: {
+          ...client.usage.planner,
+          calls: client.usage.plannerCalls,
+          latenciesMs: [...client.usage.plannerLatenciesMs],
+          latencyMs: client.usage.plannerLatenciesMs.reduce((sum, value) => sum + value, 0)
+        }
+      },
+      langfuse: {
+        traceId,
+        traceUrl: langfuseConfigured
+          ? `${langfuseHost.replace(/\/$/, '')}/trace/${traceId}`
+          : null
+      }
+    });
     continue;
   }
   lastConfig = run.config;
@@ -141,9 +177,10 @@ for (const callerPath of callerPaths) {
     console.info(`  ${entry.role === 'client' ? 'CLIENT ' : 'PLANÉIR'} ${entry.text}`);
   }
 
+  const observedTurns = run.turnRecords || run.turns;
   const findings = [
-    ...detectBlockers(run.turns),
-    ...detectExecutionBlockers(run.execution, run.turns.length)
+    ...detectBlockers(observedTurns),
+    ...detectExecutionBlockers(run.execution, run.turns.length, observedTurns)
   ];
   const last = run.turns.at(-1);
   console.info('\n  --- where the call got to ---');
@@ -195,7 +232,12 @@ for (const callerPath of callerPaths) {
     callId: caller.id,
     caller: caller.id,
     callerPath,
+    synthetic: true,
+    contentPolicy: 'synthetic_test_content',
+    fixture,
     turns: run.turns.length,
+    firstGoalTurn: firstGoalTurn(observedTurns),
+    turnRecords: observedTurns,
     goals: last?.goals || [],
     analyses: last?.analyses || [],
     factIds: last?.factIds || [],
@@ -213,6 +255,21 @@ for (const callerPath of callerPaths) {
     abandoned: liveFindings.length > 0 && run.turns.length < maxTurns,
     judge: judged,
     review,
+    usage: {
+      client: { ...client.usage.client, calls: client.usage.clientCalls },
+      planner: {
+        ...client.usage.planner,
+        calls: client.usage.plannerCalls,
+        latenciesMs: [...client.usage.plannerLatenciesMs],
+        latencyMs: client.usage.plannerLatenciesMs.reduce((sum, value) => sum + value, 0)
+      }
+    },
+    langfuse: {
+      traceId: traceIdForCall(runId, caller.id),
+      traceUrl: langfuseConfigured
+        ? `${langfuseHost.replace(/\/$/, '')}/trace/${traceIdForCall(runId, caller.id)}`
+        : null
+    },
     transcript: run.transcript,
     error: null
   });
@@ -223,8 +280,8 @@ for (const callerPath of callerPaths) {
 
 const completed = calls.filter((call) => !call.error);
 const turnsToGoal = completed
-  .map((call) => call.blockers && (call.goals || []).length ? 1 : null)
-  .filter(Boolean);
+  .map((call) => call.firstGoalTurn)
+  .filter(Number.isFinite);
 
 const metrics = {
   calls: calls.length,
@@ -256,6 +313,7 @@ const metrics = {
 };
 
 const record = {
+  schemaVersion: AGENT_RUN_ARCHIVE_VERSION,
   runId,
   generatedAt: new Date().toISOString(),
   runKey: runKey({
@@ -276,6 +334,13 @@ const archivePath = saveRun(record, { dir: outDir });
 const sheetPath = join(outDir, `${runId}-grading.md`);
 writeFileSync(sheetPath, buildGradingSheet({ runId, calls: completed }));
 
+// Telemetry begins only after the local archive is safely written. It is
+// supplemental: disabled credentials, an outage, or a rejected export cannot
+// alter the call record, its blockers, or the process exit code.
+const langfuseExport = await exportRun(record).catch(() => ({
+  enabled: langfuseConfigured, calls: 0, delivered: 0, failures: 1
+}));
+
 console.info(`${'='.repeat(72)}`);
 console.info(`[Call] ${completed.length}/${calls.length} calls completed · spend €${ledger.spentThisRunEur.toFixed(4)}`);
 console.info(`[Call] ${metrics.blockingFindings} blocking, ${metrics.frictionFindings} friction finding(s)`);
@@ -286,6 +351,10 @@ if (record.reviewThemes.recurringChanges.length) {
   }
 }
 console.info(`\n[Call] run archived   : ${archivePath}`);
+if (langfuseExport.enabled) {
+  console.info(`[Call] Langfuse export: ${langfuseExport.delivered} delivered, ${langfuseExport.failures} failed`);
+  for (const call of completed) console.info(`[Call] trace           : ${call.langfuse.traceUrl}`);
+}
 console.info(`[Call] grade it here  : ${sheetPath}`);
 console.info('[Call] then run       : node ./scripts/apply-consumer-agent-grades.mjs '
   + `${sheetPath} --run=${archivePath}`);

@@ -64,7 +64,9 @@ const INTAKE_FACTS = Object.freeze({
   [MODULE_IDS.PENSION_PROJECTION]: Object.freeze([
     'primary_goal', 'partner_person', 'pension_positions', 'person_current_age', 'intended_retirement_age',
     'income_sources', 'gross_household_income', 'pension_current_value',
+    'pension_contribution_status',
     'pension_employee_contribution_rate', 'pension_employer_contribution_rate',
+    'pension_projected_annual_income', 'pension_benefit_start_age', 'pension_retirement_lump_sum',
     'target_retirement_income'
   ]),
   [MODULE_IDS.NET_RETIREMENT]: Object.freeze([

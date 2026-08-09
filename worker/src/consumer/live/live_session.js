@@ -4,9 +4,9 @@
  * WHAT IS ABSENT IS THE POINT.
  *
  * There is no `authorizeResponse`, no `queueResponseAuthorization`, no
- * `drainResponseAuthorization`, no `pendingSessionPolicyHash`, and no silent
- * planner. The provider replies the moment the client stops speaking
- * (`create_response: true`), and this object never stands between the two.
+ * `drainResponseAuthorization`, and no `pendingSessionPolicyHash`. The
+ * provider replies the moment the client stops speaking (`create_response:
+ * true`), and the asynchronous planning auditor never stands between the two.
  *
  * The v2 Durable Object is ~3,300 lines and almost all of it exists to decide
  * whether the model is allowed to speak yet. Deleting that decision deletes
@@ -28,10 +28,13 @@ import { getConsumerConfig } from '../config.js';
 import { ConsumerError } from '../errors.js';
 import {
   appendRealtimeEvent,
+  beginRealtimeToolAttempt,
   closeRealtimeLease,
+  completeRealtimeToolAttempt,
   getRealtimeLease,
   getRealtimeProviderCallId,
   hasUnsettledRealtimeSpeechUsage,
+  recoverStalePlannerReconciliation,
   recordRealtimeFinalTurn,
   recordRealtimeUsage,
   touchRealtimeLease
@@ -44,6 +47,8 @@ import {
 import { hangupOpenAiRealtimeCall } from '../realtime_provider.js';
 import { applyPlannerCandidates } from '../planning_turn.js';
 import { extractRealtimePlannerTurn } from '../realtime_planner.js';
+import { runPlannerReconciliation } from '../planner_reconciliation.js';
+import { classifySpokenPlanConfirmation } from '../realtime_completion.js';
 import {
   classifyRealtimeProviderError,
   realtimeTranscriptionUsageFromEvent,
@@ -51,7 +56,12 @@ import {
 } from '../realtime_session.js';
 import { emitSessionSummary } from '../learning_signals.js';
 import { LIVE_PROMPT_VERSION, liveVolatileStateItem } from './catalogue_prompt.js';
-import { executeLiveTool, liveStateProjection, loadLiveContext } from './live_tools.js';
+import {
+  executeLiveTool,
+  LIVE_TOOLSET_VERSION,
+  liveStateProjection,
+  loadLiveContext
+} from './live_tools.js';
 import { redundantQuestionVerdict } from './question_guard.js';
 import {
   addSourcedFigures,
@@ -72,6 +82,9 @@ const MAX_ASSISTANT_TRANSCRIPT = 2_400;
 // association structure explicitly bounded.
 const MAX_LIVE_TURN_LEDGER_ENTRIES = 64;
 const MAX_DEFERRED_EVIDENCE_TOOL_CALLS = 32;
+const MAX_RECONCILIATION_RECOVERY_ATTEMPTS = 1;
+const MIN_RECONCILIATION_STALE_MS = 30_000;
+const RECONCILIATION_RETRY_BUFFER_MS = 5_000;
 // Two violations end the meeting. One is a slip the model corrects and moves
 // on from; a second means the correction did not take, and a demo that keeps
 // going after that is worse than one that stops politely.
@@ -82,6 +95,39 @@ function json(value, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' }
   });
+}
+
+/**
+ * Confirmation may use only a profile that includes review of the causal
+ * finalized client turn. Legacy mode deliberately preserves the previous
+ * behavior; shadow/apply fail closed until that exact turn owns the durable
+ * reconciliation watermark.
+ */
+export function plannerReconciliationPreflight(mode, causalTurnId, lease) {
+  if (mode === 'legacy') return { ready: true, reason: 'legacy' };
+  const status = String(lease?.planner_reconciliation_status || '');
+  const reviewed = ['shadow', 'applied'].includes(status)
+    && Boolean(causalTurnId)
+    && lease?.planner_reconciled_through_turn_id === causalTurnId;
+  return reviewed
+    ? { ready: true, reason: 'reviewed' }
+    : { ready: false, reason: 'reconciliation_pending' };
+}
+
+/** Map a deterministic before/after state projection to one scheduler cause. */
+export function reconciliationTriggerForProjection(before, after, savedFactIds = []) {
+  const readinessSignature = (projection) => JSON.stringify({
+    readyToConfirm: projection?.readyToConfirm === true,
+    analyses: (projection?.analyses || []).map((analysis) => analysis.status)
+  });
+  if (readinessSignature(before) !== readinessSignature(after)) return 'readiness_transition';
+  const neededFactIds = new Set((before?.analyses || [])
+    .flatMap((analysis) => analysis.stillNeeded || [])
+    .map((need) => need.factId)
+    .filter(Boolean));
+  return (savedFactIds || []).some((factId) => neededFactIds.has(factId))
+    ? 'answered_need'
+    : null;
 }
 
 async function readInternalJson(request) {
@@ -121,6 +167,13 @@ export class ConsumerLiveSession {
     this.closing = false;
     this.inResponse = false;
     this.eventChain = Promise.resolve();
+    this.reconciliationChain = Promise.resolve();
+    this.reconciliationPersistenceChain = Promise.resolve();
+    this.reconciliationDrainScheduled = false;
+    this.pendingReconciliationTurn = null;
+    this.queuedReconciliationTurn = null;
+    this.activeReconciliationTurn = null;
+    this.scheduledReconciliationTurnIds = new Set();
     this.currentResponseId = null;
     this.currentAssistantTranscript = '';
     this.lastCompletedAssistantTranscript = '';
@@ -154,6 +207,17 @@ export class ConsumerLiveSession {
       this.violationCount = Number(await this.state.storage.get('violationCount') || 0);
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
+      const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
+      if (storedReconciliationQueue?.schemaVersion === 1) {
+        this.pendingReconciliationTurn = storedReconciliationQueue.current || null;
+        this.queuedReconciliationTurn = storedReconciliationQueue.queued || null;
+      } else {
+        // Compatibility with jobs written by the first shadow scheduler.
+        this.pendingReconciliationTurn = storedReconciliationQueue;
+      }
+      for (const job of [this.pendingReconciliationTurn, this.queuedReconciliationTurn]) {
+        if (job?.throughTurnId) this.scheduledReconciliationTurnIds.add(job.throughTurnId);
+      }
       const figures = await this.state.storage.get('sourcedFigures');
       if (Array.isArray(figures)) this.sourcedFigures = { values: figures };
     });
@@ -222,6 +286,7 @@ export class ConsumerLiveSession {
     await this.state.storage.put('lease', this.meta);
     await this.connectSideband(providerCallId);
     await this.scheduleAlarm();
+    if (this.pendingReconciliationTurn) this.queueReconciliationDrain();
     await appendRealtimeEvent(this.env, {
       sessionId,
       leaseId,
@@ -340,6 +405,10 @@ export class ConsumerLiveSession {
       numericUnavailable: this.clientNumericEvidenceIncomplete,
       complianceTripped: false,
       done: false,
+      noteAcceptedCount: 0,
+      noteRejectedCount: 0,
+      reconciliationTrigger: null,
+      reconciliationPriority: false,
       turnFinalAt: Number(cause?.stoppedAt || this.turnFinalAt || 0),
       firstOutputRecorded: false
     };
@@ -469,6 +538,9 @@ export class ConsumerLiveSession {
       const context = this.responseContextForEvent(event);
       if (context) context.done = true;
       this.inResponse = [...this.responseContextsById.values()].some((response) => !response.done);
+      if (context && getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy') {
+        this.maybeScheduleReconciliation(context);
+      }
       this.pruneLiveTurnLedger();
       return this.handleUsage(event.response || {});
     }
@@ -551,13 +623,14 @@ export class ConsumerLiveSession {
     }
     await this.persistSourcedFigures();
 
-    await recordRealtimeFinalTurn(this.env, {
+    const storedTurn = await recordRealtimeFinalTurn(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
       providerItemId: itemId,
       role: 'user',
       transcript
-    }).catch(() => {});
+    }).catch(() => null);
+    if (storedTurn?.id) turn.storedTurnId = storedTurn.id;
 
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
@@ -581,7 +654,15 @@ export class ConsumerLiveSession {
     // so the v2 defect -- a model call BETWEEN the client finishing a sentence
     // and the model being allowed to speak -- cannot come back through it. Its
     // corrections land on a later turn, which is the whole point of an auditor.
-    this.state.waitUntil(this.auditTurnFacts(transcript, itemId).catch(() => {}));
+    const reconciliationMode = getConsumerConfig(this.env).plannerReconciliationMode;
+    if (reconciliationMode === 'legacy' && storedTurn?.id) {
+      this.state.waitUntil(this.auditTurnFacts(transcript, itemId, storedTurn.id).catch(() => {}));
+    } else {
+      const settledResponse = [...this.responseContextsById.values()].find((response) => (
+        response.causeItemId === itemId && response.done
+      ));
+      if (settledResponse) this.maybeScheduleReconciliation(settledResponse);
+    }
   }
 
   async markClientTranscriptionUnavailable(event = {}) {
@@ -761,7 +842,318 @@ export class ConsumerLiveSession {
       eventType: 'live.question.redundant',
       payload: { reason: verdict.reason, requested: verdict.requested.slice(0, 4) }
     }).catch(() => {});
+    if (getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy') {
+      const response = [...this.responseContextsById.values()].reverse().find((item) => item.done);
+      if (response) this.maybeScheduleReconciliation(response, 'redundant_question');
+    }
     await this.injectVolatileState().catch(() => {});
+  }
+
+  /* ------------------------------------------ transcript/note reconciliation */
+
+  maybeScheduleReconciliation(response, forcedTrigger = null) {
+    if (!response?.done || !response.causeItemId) return;
+    const turn = this.clientTurnsByItemId.get(response.causeItemId);
+    if (!turn || turn.status !== 'completed' || !turn.storedTurnId) return;
+    const hasRejectedNote = Number(response.noteRejectedCount || 0) > 0;
+    const hasNoteActivity = Number(response.noteAcceptedCount || 0) > 0 || hasRejectedNote;
+    const periodic = Number(turn.ordinal || 0) % 3 === 0;
+    const requestedTrigger = forcedTrigger || response.reconciliationTrigger;
+    if (!requestedTrigger && !hasNoteActivity && !periodic) return;
+    const trigger = requestedTrigger
+      || (hasRejectedNote ? 'rejected_note' : hasNoteActivity ? 'material_turn' : 'periodic_checkpoint');
+    this.queueReconciliation({
+      providerItemId: turn.itemId,
+      throughTurnId: turn.storedTurnId,
+      ordinal: turn.ordinal,
+      trigger
+    }, { priority: response.reconciliationPriority === true });
+    response.reconciliationTrigger = null;
+    response.reconciliationPriority = false;
+  }
+
+  reconciliationJobsMatch(left, right) {
+    return Boolean(left?.throughTurnId)
+      && left.throughTurnId === right?.throughTurnId
+      && Number(left.retryAttempt || 0) === Number(right?.retryAttempt || 0);
+  }
+
+  normalizedReconciliationJob(job) {
+    return {
+      providerItemId: String(job?.providerItemId || ''),
+      throughTurnId: String(job?.throughTurnId || ''),
+      ordinal: Number(job?.ordinal || 0),
+      trigger: String(job?.trigger || 'material_turn'),
+      retryAttempt: Math.max(0, Math.min(
+        MAX_RECONCILIATION_RECOVERY_ATTEMPTS,
+        Number(job?.retryAttempt || 0)
+      )),
+      notBeforeAt: Math.max(0, Number(job?.notBeforeAt || 0))
+    };
+  }
+
+  reconciliationQueueSnapshot() {
+    if (!this.pendingReconciliationTurn && !this.queuedReconciliationTurn) return null;
+    return {
+      schemaVersion: 1,
+      current: this.pendingReconciliationTurn,
+      queued: this.queuedReconciliationTurn
+    };
+  }
+
+  /** Persist every queue transition in order and attach it to the DO event. */
+  persistReconciliationQueue() {
+    const snapshot = this.reconciliationQueueSnapshot();
+    const persistence = this.reconciliationPersistenceChain
+      .catch(() => {})
+      .then(() => (
+        snapshot
+          ? this.state.storage.put('pendingReconciliationTurn', snapshot)
+          : this.state.storage.delete('pendingReconciliationTurn')
+      ));
+    this.reconciliationPersistenceChain = persistence;
+    this.state.waitUntil(persistence.catch(() => {}));
+    return persistence;
+  }
+
+  queueReconciliation(job, { priority = false } = {}) {
+    if (!job?.throughTurnId) return;
+    const alreadyScheduled = this.scheduledReconciliationTurnIds.has(job.throughTurnId);
+    const alreadyQueued = [
+      this.activeReconciliationTurn,
+      this.pendingReconciliationTurn,
+      this.queuedReconciliationTurn
+    ].some((candidate) => candidate?.throughTurnId === job.throughTurnId);
+    if (alreadyQueued) {
+      this.queueReconciliationDrain();
+      return;
+    }
+    if (alreadyScheduled && !priority) return;
+
+    const normalized = this.normalizedReconciliationJob({
+      ...job,
+      // A priority checkpoint after a prior terminal failure gets one fresh
+      // idempotency identity. Ordinary first attempts remain retry zero.
+      retryAttempt: alreadyScheduled ? MAX_RECONCILIATION_RECOVERY_ATTEMPTS : 0
+    });
+    this.scheduledReconciliationTurnIds.add(normalized.throughTurnId);
+    while (this.scheduledReconciliationTurnIds.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
+      this.scheduledReconciliationTurnIds.delete(this.scheduledReconciliationTurnIds.values().next().value);
+    }
+
+    const currentMustRemainDurable = Boolean(this.activeReconciliationTurn)
+      || Number(this.pendingReconciliationTurn?.notBeforeAt || 0) > 0
+      || Number(this.pendingReconciliationTurn?.retryAttempt || 0) > 0;
+    if (this.pendingReconciliationTurn && currentMustRemainDurable) {
+      if (!this.queuedReconciliationTurn
+        || priority
+        || normalized.ordinal >= Number(this.queuedReconciliationTurn.ordinal || 0)) {
+        this.queuedReconciliationTurn = normalized;
+      }
+    } else if (!this.pendingReconciliationTurn
+      || priority
+      || normalized.ordinal >= Number(this.pendingReconciliationTurn.ordinal || 0)) {
+      this.pendingReconciliationTurn = normalized;
+    }
+    this.persistReconciliationQueue();
+    this.queueReconciliationDrain();
+  }
+
+  queueReconciliationDrain() {
+    if (this.reconciliationDrainScheduled || !this.pendingReconciliationTurn) return;
+    if (Number(this.pendingReconciliationTurn.notBeforeAt || 0) > Date.now()) {
+      const scheduled = this.scheduleAlarm().catch(() => {});
+      this.state.waitUntil(scheduled);
+      return;
+    }
+    this.reconciliationDrainScheduled = true;
+    this.reconciliationChain = this.reconciliationChain
+      .catch(() => {})
+      .then(() => this.drainReconciliationQueue())
+      .catch(async () => {
+        // An unexpected scheduler/storage failure must not become a hot loop.
+        // Retain the durable job and let the alarm make a bounded later pass.
+        if (this.pendingReconciliationTurn) {
+          this.pendingReconciliationTurn = {
+            ...this.pendingReconciliationTurn,
+            notBeforeAt: Date.now() + RECONCILIATION_RETRY_BUFFER_MS
+          };
+          await this.persistReconciliationQueue().catch(() => {});
+        }
+      })
+      .finally(async () => {
+        this.activeReconciliationTurn = null;
+        this.reconciliationDrainScheduled = false;
+        if (this.pendingReconciliationTurn
+          && Number(this.pendingReconciliationTurn.notBeforeAt || 0) <= Date.now()) {
+          this.queueReconciliationDrain();
+        } else if (this.pendingReconciliationTurn) {
+          await this.scheduleAlarm().catch(() => {});
+        }
+      });
+    this.state.waitUntil(this.reconciliationChain.catch(() => {}));
+  }
+
+  async loadPlannerReconciliationContext(config) {
+    return loadLiveContext({
+      env: this.env,
+      config,
+      sessionId: this.meta.sessionId
+    });
+  }
+
+  async executePlannerReconciliation(config, context, job) {
+    return runPlannerReconciliation({
+      env: this.env,
+      config,
+      context,
+      leaseId: this.meta.leaseId,
+      throughTurnId: job.throughTurnId,
+      trigger: job.trigger,
+      retryAttempt: job.retryAttempt
+    });
+  }
+
+  async recoverPendingPlannerReconciliation(result, staleBefore) {
+    return recoverStalePlannerReconciliation(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      reconciliationId: result.reconciliationId,
+      staleBefore
+    });
+  }
+
+  async recordPlannerReconciliationEvent(payload) {
+    return appendRealtimeEvent(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      direction: 'server',
+      eventType: 'live.facts.reconciled',
+      payload
+    });
+  }
+
+  async replaceCurrentReconciliationJob(job, replacement) {
+    if (!this.reconciliationJobsMatch(this.pendingReconciliationTurn, job)) return false;
+    this.pendingReconciliationTurn = this.normalizedReconciliationJob(replacement);
+    this.activeReconciliationTurn = null;
+    await this.persistReconciliationQueue();
+    return true;
+  }
+
+  async finishCurrentReconciliationJob(job) {
+    if (!this.reconciliationJobsMatch(this.pendingReconciliationTurn, job)) return;
+    this.pendingReconciliationTurn = this.queuedReconciliationTurn;
+    this.queuedReconciliationTurn = null;
+    this.activeReconciliationTurn = null;
+    await this.persistReconciliationQueue();
+  }
+
+  async drainReconciliationQueue() {
+    while (this.pendingReconciliationTurn
+      && Number(this.pendingReconciliationTurn.notBeforeAt || 0) <= Date.now()) {
+      const job = this.pendingReconciliationTurn;
+      this.activeReconciliationTurn = job;
+      // Mark the exact current job active before awaiting its latest queued
+      // write. New triggers now coalesce behind it instead of replacing it,
+      // and the model cannot start until that durable write has settled.
+      await this.reconciliationPersistenceChain;
+      const startedAt = Date.now();
+      const config = getConsumerConfig(this.env);
+      let result = null;
+      let errorCode = '';
+      let disposition = 'terminal';
+      try {
+        if (config.plannerReconciliationMode === 'legacy') {
+          result = { status: 'legacy' };
+        } else {
+          const context = await this.loadPlannerReconciliationContext(config);
+          result = await this.executePlannerReconciliation(config, context, job);
+        }
+      } catch (error) {
+        errorCode = String(error?.code || 'planner_reconciliation_failed');
+      }
+
+      if (result?.status === 'pending') {
+        const staleAfterMs = Math.max(
+          MIN_RECONCILIATION_STALE_MS,
+          Number(config.plannerReconciliationTimeoutMs || 0) * 2 + RECONCILIATION_RETRY_BUFFER_MS
+        );
+        try {
+          if (!result.reconciliationId) throw new Error('planner_reconciliation_pending_identity_missing');
+          const recovery = await this.recoverPendingPlannerReconciliation(
+            result,
+            new Date(Date.now() - staleAfterMs).toISOString()
+          );
+          if (recovery.recovered === true) {
+            errorCode = recovery.errorCode || 'planner_reconciliation_stale_pending';
+            disposition = Number(job.retryAttempt || 0) < MAX_RECONCILIATION_RECOVERY_ATTEMPTS
+              ? 'retry'
+              : 'terminal';
+          } else if (recovery.status === 'pending') {
+            const createdAt = Date.parse(String(recovery.createdAt || result.createdAt || ''));
+            const notBeforeAt = Number.isFinite(createdAt)
+              ? Math.max(Date.now() + 1_000, createdAt + staleAfterMs)
+              : Date.now() + staleAfterMs;
+            await this.replaceCurrentReconciliationJob(job, { ...job, notBeforeAt });
+            disposition = 'wait';
+          } else if (recovery.status === 'conflicted') {
+            errorCode = recovery.errorCode || 'planner_reconciliation_stale';
+            disposition = Number(job.retryAttempt || 0) < MAX_RECONCILIATION_RECOVERY_ATTEMPTS
+              ? 'retry'
+              : 'terminal';
+          } else {
+            // A completion raced the stale check. Its durable terminal row is
+            // authoritative, so this queue item is finished without a rerun.
+            result = { ...result, status: recovery.status || 'failed' };
+          }
+        } catch (error) {
+          // Repository inspection can fail transiently. Retain the job and
+          // retry the status check later; do not issue another model call now.
+          errorCode = String(error?.code || error?.message || 'planner_reconciliation_recovery_failed');
+          await this.replaceCurrentReconciliationJob(job, {
+            ...job,
+            notBeforeAt: Date.now() + RECONCILIATION_RETRY_BUFFER_MS
+          });
+          disposition = 'wait';
+        }
+      }
+
+      const resultConflict = result?.status === 'conflicted'
+        || result?.errorCode === 'planner_reconciliation_stale';
+      const errorConflict = [
+        'planner_reconciliation_conflict',
+        'planner_reconciliation_stale',
+        'profile_revision_conflict'
+      ].includes(errorCode);
+      if (disposition === 'terminal'
+        && (resultConflict || errorConflict)
+        && Number(job.retryAttempt || 0) < MAX_RECONCILIATION_RECOVERY_ATTEMPTS) {
+        disposition = 'retry';
+      }
+
+      await this.recordPlannerReconciliationEvent({
+        mode: config.plannerReconciliationMode,
+        status: String(result?.status || (errorCode ? 'failed' : 'unknown')),
+        acceptedGroupCount: Number(result?.validation?.acceptedGroupIds?.length || 0),
+        rejectedGroupCount: Number(result?.validation?.rejectedGroups?.length || 0),
+        retryAttempt: Number(job.retryAttempt || 0),
+        errorCode,
+        latencyMs: Date.now() - startedAt
+      }).catch(() => {});
+
+      if (result?.status === 'applied') await this.injectVolatileState().catch(() => {});
+      if (disposition === 'wait') break;
+      if (disposition === 'retry') {
+        const replaced = await this.replaceCurrentReconciliationJob(job, {
+          ...job,
+          retryAttempt: Number(job.retryAttempt || 0) + 1,
+          notBeforeAt: 0
+        });
+        if (replaced) continue;
+      }
+      await this.finishCurrentReconciliationJob(job);
+    }
   }
 
   /* ----------------------------------------------------- asynchronous audit */
@@ -785,9 +1177,9 @@ export class ConsumerLiveSession {
    * provider has already moved on, the meeting is unaffected — the next turn
    * simply reads whatever did land.
    */
-  async auditTurnFacts(clientTranscript, sourceTurnId) {
+  async auditTurnFacts(clientTranscript, providerItemId, storedTurnId) {
     const transcript = String(clientTranscript || '').trim();
-    if (!transcript || !this.meta?.sessionId) return;
+    if (!transcript || !storedTurnId || !this.meta?.sessionId) return;
     const config = getConsumerConfig(this.env);
     const startedAt = Date.now();
     const loadContext = () => loadLiveContext({
@@ -797,29 +1189,68 @@ export class ConsumerLiveSession {
     });
     let applied = 0;
     let errorCode = '';
+    let attempt = null;
     try {
       const context = await loadContext();
       const extraction = await extractRealtimePlannerTurn({
         env: this.env,
         config: context.config,
         context,
-        sourceTurnId,
+        sourceTurnId: providerItemId,
         transcript,
         recentTurns: []
       });
-      const outcome = await applyPlannerCandidates({
-        env: this.env,
-        config: context.config,
-        context,
-        extraction,
-        evidenceRef: sourceTurnId,
+      attempt = await beginRealtimeToolAttempt(this.env, {
+        sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
-        toolAttemptId: null,
-        loadContext
+        providerToolCallId: `planner_${storedTurnId}`.slice(0, 160),
+        toolName: 'silent_planner',
+        toolVersion: `${context.config.realtimePlannerPromptVersion}:live-audit-1`,
+        expectedProfileRevision: Number(context.sessionRow.current_profile_revision),
+        sourceTurnId: storedTurnId,
+        arguments: {
+          schemaVersion: extraction.schemaVersion,
+          sourceTurnId: providerItemId
+        },
+        maxToolCalls: context.config.realtimeMaxToolCalls
       });
-      applied = outcome.outcomes.filter((item) => item.accepted).length;
+      if (attempt.replayed) {
+        applied = Number(attempt.result?.appliedCount || 0);
+      } else {
+        const outcome = await applyPlannerCandidates({
+          env: this.env,
+          config: context.config,
+          context,
+          extraction,
+          evidenceRef: providerItemId,
+          leaseId: this.meta.leaseId,
+          toolAttemptId: attempt.row.id,
+          loadContext
+        });
+        applied = outcome.outcomes.filter((item) => item.accepted).length;
+        await completeRealtimeToolAttempt(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          toolAttemptId: attempt.row.id,
+          status: 'succeeded',
+          result: { ok: true, appliedCount: applied },
+          errorCode: null,
+          latencyMs: Date.now() - startedAt
+        });
+      }
     } catch (error) {
       errorCode = String(error?.code || 'live_fact_audit_failed');
+      if (attempt && !attempt.replayed) {
+        await completeRealtimeToolAttempt(this.env, {
+          sessionId: this.meta.sessionId,
+          leaseId: this.meta.leaseId,
+          toolAttemptId: attempt.row.id,
+          status: 'failed',
+          result: { ok: false, errorCode },
+          errorCode,
+          latencyMs: Date.now() - startedAt
+        }).catch(() => {});
+      }
     }
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta?.sessionId,
@@ -978,28 +1409,106 @@ export class ConsumerLiveSession {
     }
 
     let result;
+    let attempt = null;
     try {
-      result = await executeLiveTool(name, args, {
+      const config = getConsumerConfig(this.env);
+      const responseContext = this.responseContextsById.get(String(event.response_id || '')) || null;
+      const causalTurn = responseContext?.causeItemId
+        ? this.clientTurnsByItemId.get(responseContext.causeItemId)
+        : null;
+      const context = await loadLiveContext({
         env: this.env,
-        config: getConsumerConfig(this.env),
-        leaseId: this.meta.leaseId,
-        evidenceRef: null,
-        // Keep the existing dependency name for the tool contract, but pass
-        // only the transcript bound to this response's causal user item.
-        latestClientTranscript: clientTranscript,
-        // Evidence for a figure the client affirmed rather than restated. Both
-        // are required together and neither is model-controlled: the sourced set
-        // holds only what the CLIENT has said, and the read-back is the turn
-        // they were answering.
-        clientSourcedFigures: this.sourcedFigures,
-        assistantReadBack: this.responseContextsById.get(String(event.response_id || ''))
-          ?.precedingAssistantTranscript || '',
-        loadContext: () => loadLiveContext({
-          env: this.env,
-          config: getConsumerConfig(this.env),
-          sessionId: this.meta.sessionId
-        })
+        config,
+        sessionId: this.meta.sessionId
       });
+      attempt = await beginRealtimeToolAttempt(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        providerToolCallId: callId,
+        toolName: name || 'invalid',
+        toolVersion: LIVE_TOOLSET_VERSION,
+        expectedProfileRevision: Number(context.sessionRow.current_profile_revision),
+        sourceTurnId: causalTurn?.storedTurnId || null,
+        arguments: args,
+        maxToolCalls: config.realtimeMaxToolCalls
+      });
+      if (attempt.replayed) {
+        result = attempt.result;
+      } else {
+        const affirmedConfirmation = name === 'confirm_and_run'
+          && classifySpokenPlanConfirmation(clientTranscript) === 'affirmed';
+        if (affirmedConfirmation && config.plannerReconciliationMode !== 'legacy') {
+          const lease = await getRealtimeLease(
+            this.env,
+            this.meta.sessionId,
+            this.meta.leaseId
+          ).catch(() => null);
+          const preflight = plannerReconciliationPreflight(
+            config.plannerReconciliationMode,
+            causalTurn?.storedTurnId || '',
+            lease
+          );
+          if (!preflight.ready) {
+            if (causalTurn?.storedTurnId && responseContext) {
+              // The response.done handler launches this after the confirming
+              // tool response has settled. The marker itself is synchronous,
+              // so no reconciler/model call enters the tool response path.
+              responseContext.reconciliationTrigger = 'pre_confirmation';
+              responseContext.reconciliationPriority = true;
+            }
+            result = {
+              ok: false,
+              code: 'reconciliation_pending',
+              retryable: true,
+              message: 'I am completing one final notes check before running the analyses. Please wait for that check and then ask for confirmation again.'
+            };
+          }
+        }
+        if (!result) {
+          result = await executeLiveTool(name, args, {
+            env: this.env,
+            config,
+            leaseId: this.meta.leaseId,
+            toolAttemptId: attempt.row.id,
+            // The proposal audit row keeps the provider item identity. Exact
+            // quote offsets remain a T2 responsibility against the stored turn.
+            evidenceRef: causalTurn?.status === 'completed' ? causalTurn.itemId : null,
+            // Keep the existing dependency name for the tool contract, but pass
+            // only the transcript bound to this response's causal user item.
+            latestClientTranscript: clientTranscript,
+            // Evidence for a figure the client affirmed rather than restated. Both
+            // are required together and neither is model-controlled: the sourced set
+            // holds only what the CLIENT has said, and the read-back is the turn
+            // they were answering.
+            clientSourcedFigures: this.sourcedFigures,
+            assistantReadBack: responseContext?.precedingAssistantTranscript || '',
+            loadContext: () => loadLiveContext({
+              env: this.env,
+              config: getConsumerConfig(this.env),
+              sessionId: this.meta.sessionId
+            })
+          });
+        }
+        if (name === 'save_facts' && result?.context && responseContext) {
+          try {
+            const derivedTrigger = reconciliationTriggerForProjection(
+              liveStateProjection(context),
+              liveStateProjection(result.context),
+              result.saved
+            );
+            if (derivedTrigger && (
+              !responseContext.reconciliationTrigger
+              || derivedTrigger === 'readiness_transition'
+            )) {
+              responseContext.reconciliationTrigger = derivedTrigger;
+            }
+          } catch (_error) {
+            // Trigger inference is observability/scheduling only. A projection
+            // failure cannot turn an already-committed fact write into a tool
+            // failure or enter the voice response path.
+          }
+        }
+      }
     } catch (error) {
       // A BROKEN TOOL CALL IS NEVER A BROKEN CONVERSATION. The model gets an
       // ordinary result telling it to carry on, not an error that stalls it.
@@ -1008,6 +1517,18 @@ export class ConsumerLiveSession {
         code: error instanceof ConsumerError ? error.code : 'live_tool_failed',
         message: 'That did not save. Do not mention it and do not ask again — keep going.'
       };
+    }
+    if (attempt && !attempt.replayed) {
+      const { context: _context, ...persistedResult } = result || {};
+      await completeRealtimeToolAttempt(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        toolAttemptId: attempt.row.id,
+        status: result?.ok === true ? 'succeeded' : 'rejected',
+        result: persistedResult,
+        errorCode: result?.ok === true ? null : String(result?.code || 'live_tool_rejected'),
+        latencyMs: Date.now() - startedAt
+      }).catch(() => {});
     }
     this.activeToolCalls = Math.max(0, this.activeToolCalls - 1);
 
@@ -1020,6 +1541,20 @@ export class ConsumerLiveSession {
     if (result?.result) {
       addSourcedFigures(this.sourcedFigures, result.result);
       await this.persistSourcedFigures();
+    }
+
+    const responseContext = this.responseContextsById.get(String(event.response_id || '')) || null;
+    if (name === 'save_facts' && responseContext) {
+      responseContext.noteAcceptedCount += Array.isArray(result?.saved) ? result.saved.length : 0;
+      responseContext.noteRejectedCount += Array.isArray(result?.rejected) ? result.rejected.length : 0;
+      if (responseContext.done && getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy') {
+        this.maybeScheduleReconciliation(responseContext);
+      }
+    }
+    if (name === 'confirm_and_run'
+      && responseContext?.done
+      && responseContext.reconciliationTrigger === 'pre_confirmation') {
+      this.maybeScheduleReconciliation(responseContext);
     }
 
     const { context: _context, sourcedValues: _values, result: _full, ...modelSafe } = result || {};
@@ -1196,10 +1731,15 @@ export class ConsumerLiveSession {
 
   async scheduleAlarm() {
     if (!this.meta) return;
+    const reconciliationDeadline = this.pendingReconciliationTurn
+      && !this.reconciliationDrainScheduled
+      ? Math.max(Date.now() + 1, Number(this.pendingReconciliationTurn.notBeforeAt || Date.now()))
+      : Number.POSITIVE_INFINITY;
     const deadline = Math.min(
       Date.parse(this.meta.hardExpiresAt),
       Date.parse(this.meta.idleExpiresAt),
-      Date.now() + SIDE_BAND_HEARTBEAT_MS
+      Date.now() + SIDE_BAND_HEARTBEAT_MS,
+      reconciliationDeadline
     );
     if (Number.isFinite(deadline)) await this.state.storage.setAlarm(deadline);
   }
@@ -1211,6 +1751,10 @@ export class ConsumerLiveSession {
       await this.terminalize(pending.status, pending.reason, pending.errorCode, pending.usageKnown === true)
         .catch(() => {});
       return;
+    }
+    if (this.pendingReconciliationTurn
+      && Number(this.pendingReconciliationTurn.notBeforeAt || 0) <= Date.now()) {
+      this.queueReconciliationDrain();
     }
     if (!this.webSocket || this.webSocket.readyState !== 1) {
       await this.terminalize('failed', 'sideband_rehydration_lost', 'live_sideband_lost', false).catch(() => {});

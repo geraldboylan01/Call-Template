@@ -69,6 +69,7 @@ export function buildGradingSheet({ runId, calls }) {
       `Caller: ${call.caller}`,
       `Turns: ${call.turns}  ·  Blockers found: ${call.blockerCount}`,
       `Analyses: ${describeExecution(call.execution)}`,
+      ...(call.langfuse?.traceUrl ? [`Langfuse trace: ${call.langfuse.traceUrl}`] : []),
       '',
       '<!-- transcript -->',
       ...(call.transcript || []).map((entry) => (

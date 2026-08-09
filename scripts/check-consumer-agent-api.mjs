@@ -620,11 +620,26 @@ async function agentContext(profile, config = CONFIG) {
     { nowIso: NOW_PBS }
   ).profile;
   assert.equal(built.pensions[0].type, 'buyout_bond', 'the type survives the profile contract');
-  const rates = getModuleReadiness('pension_projection', built).requiredMissing
-    .filter((item) => /ContributionRate/.test(item.fieldPath))
+  const pensionAsks = (profile) => getModuleReadiness('pension_projection', profile).requiredMissing
+    .filter((item) => /^\/pensions\//.test(item.fieldPath || ''))
     .map((item) => item.fieldPath);
-  assert.deepEqual(rates, ['/pensions/1/employeeContributionRate', '/pensions/1/employerContributionRate'],
-    'only the contributory pension is asked; the preserved one is not');
+  const withStatus = (status) => applyProfilePatch(built, {
+    patchId: `pen-status-${status}`,
+    operations: [{ op: 'add', path: '/pensions/1/contributionStatus', value: status, provenance: prov }]
+  }, { nowIso: NOW_PBS }).profile;
+
+  // Whether a pension is still being paid into is its own question, asked before
+  // any percentage. Assuming every non-bond pension is contributory invented two
+  // rate questions for arrangements that cannot accept a contribution at all.
+  assert.deepEqual(pensionAsks(built), ['/pensions/1/contributionStatus'],
+    'an unknown contribution status is asked before any rate, and never for the preserved bond');
+  assert.deepEqual(
+    pensionAsks(withStatus('active')),
+    ['/pensions/1/employeeContributionRate', '/pensions/1/employerContributionRate'],
+    'only the contributory pension is asked for rates; the preserved one is not'
+  );
+  assert.deepEqual(pensionAsks(withStatus('paid_up')), [],
+    'a paid-up pension is projected without contributions rather than asked for rates');
   assert.ok(NON_CONTRIBUTORY_PENSION_TYPES.includes('buyout_bond'));
   // Its value still counts — only the contribution questions are dropped.
   assert.ok(!getModuleReadiness('pension_projection', built).requiredMissing
