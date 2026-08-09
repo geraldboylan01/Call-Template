@@ -37,7 +37,7 @@ import {
   startPlannerReconciliation
 } from './realtime_repository.js';
 
-export const PLANNER_RECONCILIATION_V1 = 'ReconciliationPlanV1';
+const PLANNER_RECONCILIATION_V1 = 'ReconciliationPlanV1';
 
 const FACT_IDS = Object.freeze(
   listSemanticFactDefinitions().map((definition) => definition.factId).sort()
@@ -169,7 +169,7 @@ function parseValueJson(valueJson, operationId) {
   }
 }
 
-export function normalizeModelReconciliationPlan(raw) {
+function normalizeModelReconciliationPlan(raw) {
   const plan = {
     schemaVersion: raw?.schemaVersion,
     verdict: raw?.verdict,

@@ -1474,7 +1474,7 @@ export async function listRealtimeWriteOutcomes(env, sessionId, leaseId, through
  * caller build a conditional INSERT without ever exposing financial values in
  * plaintext columns or logs.
  */
-export async function preparePlanningNoteRecord(env, request) {
+async function preparePlanningNoteRecord(env, request) {
   const noteId = request.note?.noteId || randomId('planning_note');
   const createdAt = request.note?.createdAt || nowIso();
   const note = normalizePlanningNoteV1({
@@ -1511,7 +1511,7 @@ export async function preparePlanningNoteRecord(env, request) {
   };
 }
 
-export async function createPlanningNote(env, request) {
+async function createPlanningNote(env, request) {
   const prepared = await preparePlanningNoteRecord(env, request);
   const row = prepared.row;
   await db(env).prepare(`
@@ -1537,7 +1537,7 @@ export async function createPlanningNote(env, request) {
   return prepared.note;
 }
 
-export async function listPlanningNoteRecords(env, sessionId, leaseId, {
+async function listPlanningNoteRecords(env, sessionId, leaseId, {
   lifecycle = null,
   limit = 200
 } = {}) {

@@ -83,7 +83,7 @@ export function parseCaller(text, id) {
   };
 }
 
-export function loadCaller(path) {
+function loadCaller(path) {
   return loadCallerFixture(path).caller;
 }
 
