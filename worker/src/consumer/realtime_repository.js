@@ -2,6 +2,7 @@ import { ConsumerError, notFound } from './errors.js';
 import { redactSensitiveIdentifiers } from './validators.js';
 import { sanitizeRealtimeEventPayload } from './realtime_event_schema.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
+import { normalizePlanningNoteV1 } from '../../../js/planning/reconciliation.js';
 import {
   applyModuleDeferral,
   applyModuleReplacement,
@@ -31,6 +32,18 @@ function nowIso() {
 function safeInteger(value) {
   const number = Number(value || 0);
   return Number.isSafeInteger(number) && number >= 0 ? number : 0;
+}
+
+function planningNoteAad(sessionId, leaseId, noteId) {
+  return `consumer/planning-note/${sessionId}/${leaseId}/${noteId}`;
+}
+
+function plannerReconciliationInputAad(sessionId, leaseId, reconciliationId) {
+  return `consumer/planner-reconciliation/${sessionId}/${leaseId}/${reconciliationId}/input`;
+}
+
+function plannerReconciliationOutputAad(sessionId, leaseId, reconciliationId) {
+  return `consumer/planner-reconciliation/${sessionId}/${leaseId}/${reconciliationId}/output`;
 }
 
 export function toPublicRealtimeConsent(row) {
@@ -1294,8 +1307,13 @@ export async function recordRealtimeFinalTurn(env, request) {
       INSERT INTO consumer_realtime_final_turns (
         id, realtime_session_id, session_id, provider_item_id_hash_b64u,
         role, transcript_encrypted, transcript_hash_b64u,
-        sensitive_details_removed, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sensitive_details_removed, created_at, meeting_sequence
+      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          COALESCE((
+            SELECT MAX(meeting_sequence)
+            FROM consumer_realtime_final_turns
+            WHERE realtime_session_id = ?
+          ), 0) + 1
     `).bind(
       id,
       request.leaseId,
@@ -1305,7 +1323,8 @@ export async function recordRealtimeFinalTurn(env, request) {
       encrypted,
       transcriptHash,
       transcript !== raw ? 1 : 0,
-      nowIso()
+      nowIso(),
+      request.leaseId
     ).run();
   } catch (error) {
     const replay = await db(env).prepare(`
@@ -1332,6 +1351,7 @@ async function decryptRealtimeFinalTurnRows(env, sessionId, rows) {
       role: row.role,
       transcript: String(payload?.transcript || '').slice(0, 4_000),
       sensitiveDetailsRemoved: Number(row.sensitive_details_removed) === 1,
+      sequence: safeInteger(row.meeting_sequence),
       createdAt: row.created_at
     });
   }
@@ -1341,10 +1361,10 @@ async function decryptRealtimeFinalTurnRows(env, sessionId, rows) {
 export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 200) {
   const result = await db(env).prepare(`
     SELECT id, realtime_session_id, role, transcript_encrypted,
-           sensitive_details_removed, created_at
+           sensitive_details_removed, created_at, meeting_sequence
     FROM consumer_realtime_final_turns
     WHERE session_id = ? AND realtime_session_id = ?
-    ORDER BY created_at ASC, id ASC
+    ORDER BY meeting_sequence ASC, created_at ASC, id ASC
     LIMIT ?
   `).bind(sessionId, leaseId, Math.max(1, Math.min(200, limit))).all();
   return decryptRealtimeFinalTurnRows(env, sessionId, result.results);
@@ -1355,13 +1375,663 @@ export async function listRecentRealtimeFinalTurns(env, sessionId, leaseId, limi
   // order before handing the context window to a conversational model.
   const result = await db(env).prepare(`
     SELECT id, realtime_session_id, role, transcript_encrypted,
-           sensitive_details_removed, created_at
+           sensitive_details_removed, created_at, meeting_sequence
     FROM consumer_realtime_final_turns
     WHERE session_id = ? AND realtime_session_id = ?
-    ORDER BY created_at DESC, id DESC
+    ORDER BY meeting_sequence DESC, created_at DESC, id DESC
     LIMIT ?
   `).bind(sessionId, leaseId, Math.max(1, Math.min(200, limit))).all();
   return decryptRealtimeFinalTurnRows(env, sessionId, [...(result.results || [])].reverse());
+}
+
+/**
+ * Return a bounded transcript window ending at one exact finalized client
+ * turn. This prevents a delayed turn-N audit from consuming turn N+1 while
+ * still carrying N's watermark. The assistant turn immediately before the
+ * earliest selected client turn is retained as non-evidence question context.
+ */
+export async function listReconciliationTranscriptWindow(env, sessionId, leaseId, throughTurnId, {
+  maxClientTurns = 8,
+  referencedTurnIds = []
+} = {}) {
+  const allTurns = await listRealtimeFinalTurns(env, sessionId, leaseId, 200);
+  const watermarkIndex = allTurns.findIndex((turn) => turn.id === throughTurnId);
+  if (watermarkIndex < 0 || allTurns[watermarkIndex].role !== 'user') {
+    throw new ConsumerError(409, 'planner_reconciliation_turn_missing', 'The client turn is not available for reconciliation.');
+  }
+  const throughWatermark = allTurns.slice(0, watermarkIndex + 1);
+  const clientIndexes = throughWatermark
+    .map((turn, index) => turn.role === 'user' ? index : -1)
+    .filter((index) => index >= 0)
+    .slice(-Math.max(1, Math.min(8, Number(maxClientTurns) || 8)));
+  let start = clientIndexes[0] ?? watermarkIndex;
+  if (start > 0 && throughWatermark[start - 1].role === 'assistant') start -= 1;
+  const selectedIds = new Set(throughWatermark.slice(start).map((turn) => turn.id));
+  for (const turnId of [...new Set(referencedTurnIds)].slice(0, 24)) {
+    const index = throughWatermark.findIndex((turn) => turn.id === turnId);
+    if (index >= 0) selectedIds.add(turnId);
+  }
+  return throughWatermark.filter((turn) => selectedIds.has(turn.id));
+}
+
+/** Encrypted accepted/rejected T1 write detail bounded to one client turn. */
+export async function listRealtimeWriteOutcomes(env, sessionId, leaseId, throughTurnId, limit = 24) {
+  const result = await db(env).prepare(`
+    SELECT id, tool_name, tool_version, status, arguments_encrypted,
+           result_encrypted, error_code, expected_profile_revision,
+           profile_revision_after, created_at, completed_at
+    FROM consumer_realtime_tool_attempts
+    WHERE session_id = ? AND realtime_session_id = ?
+      AND tool_name IN ('save_facts', 'silent_planner', 'propose_facts')
+      AND source_turn_id = ?
+      AND result_encrypted IS NOT NULL
+    ORDER BY created_at ASC, id ASC
+    LIMIT ?
+  `).bind(
+    sessionId,
+    leaseId,
+    throughTurnId,
+    Math.max(1, Math.min(48, Number(limit) || 24))
+  ).all();
+  const outcomes = [];
+  for (const row of result.results || []) {
+    const [argumentsValue, resultValue] = await Promise.all([
+      decryptJson(
+        env,
+        row.arguments_encrypted,
+        `consumer/realtime/tool/${sessionId}/${leaseId}/${row.id}/arguments`
+      ),
+      decryptJson(
+        env,
+        row.result_encrypted,
+        `consumer/realtime/tool/${sessionId}/${leaseId}/${row.id}/result`
+      )
+    ]);
+    outcomes.push({
+      toolAttemptId: row.id,
+      toolName: row.tool_name,
+      toolVersion: row.tool_version,
+      status: row.status,
+      errorCode: row.error_code || null,
+      expectedProfileRevision: row.expected_profile_revision === null
+        ? null
+        : Number(row.expected_profile_revision),
+      profileRevisionAfter: row.profile_revision_after === null
+        ? null
+        : Number(row.profile_revision_after),
+      arguments: argumentsValue,
+      result: resultValue,
+      createdAt: row.created_at,
+      completedAt: row.completed_at
+    });
+  }
+  return outcomes;
+}
+
+/**
+ * Encrypt a normalized PlanningNoteV1 for use in the same D1 batch as the
+ * profile revision it projects into. Keeping preparation separate lets the
+ * caller build a conditional INSERT without ever exposing financial values in
+ * plaintext columns or logs.
+ */
+export async function preparePlanningNoteRecord(env, request) {
+  const noteId = request.note?.noteId || randomId('planning_note');
+  const createdAt = request.note?.createdAt || nowIso();
+  const note = normalizePlanningNoteV1({
+    ...request.note,
+    noteId,
+    createdAt,
+    reviewedAt: request.note?.reviewedAt || null
+  }, { nowIso: createdAt });
+  const serialized = stableStringify(note);
+  const [encrypted, hash] = await Promise.all([
+    encryptJson(
+      env,
+      note,
+      planningNoteAad(request.sessionId, request.leaseId, noteId)
+    ),
+    sha256Base64Url(serialized)
+  ]);
+  return {
+    note,
+    row: {
+      id: noteId,
+      sessionId: request.sessionId,
+      leaseId: request.leaseId,
+      noteKind: note.noteKind,
+      lifecycle: note.lifecycle,
+      reviewStatus: note.reviewStatus,
+      source: note.source,
+      profileRevision: Number(request.profileRevision),
+      encrypted,
+      hash,
+      createdAt,
+      reviewedAt: note.reviewedAt || null
+    }
+  };
+}
+
+export async function createPlanningNote(env, request) {
+  const prepared = await preparePlanningNoteRecord(env, request);
+  const row = prepared.row;
+  await db(env).prepare(`
+    INSERT INTO consumer_planning_notes (
+      id, session_id, realtime_session_id, note_kind, lifecycle,
+      review_status, source, profile_revision, note_encrypted,
+      note_hash_b64u, created_at, reviewed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    row.id,
+    row.sessionId,
+    row.leaseId,
+    row.noteKind,
+    row.lifecycle,
+    row.reviewStatus,
+    row.source,
+    row.profileRevision,
+    row.encrypted,
+    row.hash,
+    row.createdAt,
+    row.reviewedAt
+  ).run();
+  return prepared.note;
+}
+
+export async function listPlanningNoteRecords(env, sessionId, leaseId, {
+  lifecycle = null,
+  limit = 200
+} = {}) {
+  const boundedLimit = Math.max(1, Math.min(500, Number(limit) || 200));
+  const result = await db(env).prepare(`
+    SELECT id, realtime_session_id, profile_revision, lifecycle, note_encrypted
+    FROM consumer_planning_notes
+    WHERE session_id = ? AND realtime_session_id = ?
+      AND (? IS NULL OR lifecycle = ?)
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+  `).bind(sessionId, leaseId, lifecycle, lifecycle, boundedLimit).all();
+  const records = [];
+  for (const row of [...(result.results || [])].reverse()) {
+    const note = await decryptJson(
+      env,
+      row.note_encrypted,
+      planningNoteAad(sessionId, row.realtime_session_id, row.id)
+    );
+    records.push({ row, note });
+  }
+  return records;
+}
+
+export async function listPlanningNotes(env, sessionId, leaseId, options = {}) {
+  const records = await listPlanningNoteRecords(env, sessionId, leaseId, options);
+  return records.map((item) => item.note);
+}
+
+/**
+ * Lazily seed evidence-less legacy notes for canonical profile facts that
+ * predate the ledger. The profile revision predicate makes this a snapshot
+ * import; a concurrent edit aborts the reconciliation instead of mixing eras.
+ */
+export async function ensureLegacyPlanningNotes(env, request) {
+  const existing = await listPlanningNoteRecords(env, request.sessionId, request.leaseId, {
+    lifecycle: 'active',
+    limit: 500
+  });
+  const knownInstances = new Set(existing.map((item) => item.note.factInstanceId).filter(Boolean));
+  const missing = (request.notes || []).filter((note) => (
+    note?.source === 'legacy_import'
+    && note.factInstanceId
+    && !knownInstances.has(note.factInstanceId)
+  ));
+  if (missing.length === 0) return existing.map((item) => item.note);
+  const prepared = await Promise.all(missing.map((note) => preparePlanningNoteRecord(env, {
+    sessionId: request.sessionId,
+    leaseId: request.leaseId,
+    profileRevision: request.profileRevision,
+    note
+  })));
+  const statements = prepared.map(({ row }) => db(env).prepare(`
+    INSERT OR IGNORE INTO consumer_planning_notes (
+      id, session_id, realtime_session_id, note_kind, lifecycle,
+      review_status, source, profile_revision, note_encrypted,
+      note_hash_b64u, created_at, reviewed_at
+    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE EXISTS (
+      SELECT 1 FROM consumer_sessions
+      WHERE id = ? AND deleted_at IS NULL AND current_profile_revision = ?
+    ) AND EXISTS (
+      SELECT 1 FROM consumer_realtime_sessions
+      WHERE id = ? AND session_id = ? AND latest_profile_revision = ?
+    )
+  `).bind(
+    row.id,
+    row.sessionId,
+    row.leaseId,
+    row.noteKind,
+    row.lifecycle,
+    row.reviewStatus,
+    row.source,
+    row.profileRevision,
+    row.encrypted,
+    row.hash,
+    row.createdAt,
+    row.reviewedAt,
+    request.sessionId,
+    request.profileRevision,
+    request.leaseId,
+    request.sessionId,
+    request.profileRevision
+  ));
+  await db(env).batch(statements);
+  const lease = await db(env).prepare(`
+    SELECT latest_profile_revision FROM consumer_realtime_sessions
+    WHERE id = ? AND session_id = ? LIMIT 1
+  `).bind(request.leaseId, request.sessionId).first();
+  if (Number(lease?.latest_profile_revision) !== Number(request.profileRevision)) {
+    throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed during legacy note import.');
+  }
+  const imported = await listPlanningNoteRecords(env, request.sessionId, request.leaseId, {
+    lifecycle: 'active',
+    limit: 500
+  });
+  const importedInstances = new Set(imported.map((item) => item.note.factInstanceId).filter(Boolean));
+  if (missing.some((note) => !importedInstances.has(note.factInstanceId))) {
+    throw new ConsumerError(409, 'planning_note_import_conflict', 'The legacy note snapshot could not be completed.');
+  }
+  return imported.map((item) => item.note);
+}
+
+/**
+ * Begin one revision-bound reconciliation attempt. The idempotency hash is
+ * scoped to the realtime meeting, so a worker retry returns the existing row
+ * instead of spending on or applying the same audit twice.
+ */
+export async function startPlannerReconciliation(env, request) {
+  const lease = await db(env).prepare(`
+    SELECT planner_reconciliation_revision, latest_profile_revision
+    FROM consumer_realtime_sessions
+    WHERE id = ? AND session_id = ? AND status IN ('active', 'closing')
+    LIMIT 1
+  `).bind(request.leaseId, request.sessionId).first();
+  if (!lease) throw notFound('This planning meeting could not be found.');
+  if (Number(lease.latest_profile_revision) !== Number(request.baseProfileRevision)) {
+    throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed before reconciliation began.');
+  }
+  const idempotencyHash = await sha256Base64Url(String(request.idempotencyKey));
+  const existing = await db(env).prepare(`
+    SELECT * FROM consumer_planner_reconciliations
+    WHERE realtime_session_id = ? AND idempotency_key_hash_b64u = ?
+    LIMIT 1
+  `).bind(request.leaseId, idempotencyHash).first();
+  if (existing) return { row: existing, replayed: true };
+
+  const id = randomId('planner_reconciliation');
+  const revision = safeInteger(lease.planner_reconciliation_revision) + 1;
+  const timestamp = nowIso();
+  const serialized = stableStringify(request.input);
+  const [inputEncrypted, inputHash] = await Promise.all([
+    encryptJson(
+      env,
+      request.input,
+      plannerReconciliationInputAad(request.sessionId, request.leaseId, id)
+    ),
+    sha256Base64Url(serialized)
+  ]);
+  try {
+    const results = await db(env).batch([
+      db(env).prepare(`
+        INSERT INTO consumer_planner_reconciliations (
+          id, session_id, realtime_session_id, reconciliation_revision,
+          base_profile_revision, through_turn_id, trigger, mode, status,
+          idempotency_key_hash_b64u, input_encrypted, input_hash_b64u,
+          prompt_version, created_at
+        ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM consumer_realtime_sessions
+          WHERE id = ? AND session_id = ?
+            AND planner_reconciliation_revision = ?
+            AND latest_profile_revision = ?
+            AND status IN ('active', 'closing')
+        )
+      `).bind(
+        id,
+        request.sessionId,
+        request.leaseId,
+        revision,
+        request.baseProfileRevision,
+        request.throughTurnId,
+        request.trigger,
+        request.mode,
+        idempotencyHash,
+        inputEncrypted,
+        inputHash,
+        request.promptVersion,
+        timestamp,
+        request.leaseId,
+        request.sessionId,
+        revision - 1,
+        request.baseProfileRevision
+      ),
+      db(env).prepare(`
+        UPDATE consumer_realtime_sessions
+        SET planner_reconciliation_revision = ?,
+            planner_pending_through_turn_id = ?,
+            planner_reconciliation_status = 'pending',
+            last_active_at = ?
+        WHERE id = ? AND session_id = ?
+          AND planner_reconciliation_revision = ?
+          AND latest_profile_revision = ?
+          AND EXISTS (
+            SELECT 1 FROM consumer_planner_reconciliations
+            WHERE id = ? AND status = 'pending'
+          )
+      `).bind(
+        revision,
+        request.throughTurnId,
+        timestamp,
+        request.leaseId,
+        request.sessionId,
+        revision - 1,
+        request.baseProfileRevision,
+        id
+      )
+    ]);
+    if (results.some((result) => Number(result?.meta?.changes || 0) !== 1)) {
+      throw new ConsumerError(409, 'planner_reconciliation_conflict', 'A newer reconciliation already began.');
+    }
+  } catch (error) {
+    const replay = await db(env).prepare(`
+      SELECT * FROM consumer_planner_reconciliations
+      WHERE realtime_session_id = ? AND idempotency_key_hash_b64u = ?
+      LIMIT 1
+    `).bind(request.leaseId, idempotencyHash).first().catch(() => null);
+    if (replay) return { row: replay, replayed: true };
+    throw error;
+  }
+  const row = await db(env).prepare(`
+    SELECT * FROM consumer_planner_reconciliations WHERE id = ? LIMIT 1
+  `).bind(id).first();
+  return { row, replayed: false };
+}
+
+export async function completePlannerReconciliation(env, request) {
+  const timestamp = nowIso();
+  const attempt = await db(env).prepare(`
+    SELECT status, base_profile_revision
+    FROM consumer_planner_reconciliations
+    WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+    LIMIT 1
+  `).bind(request.reconciliationId, request.sessionId, request.leaseId).first();
+  if (!attempt) throw notFound('This reconciliation attempt could not be found.');
+  if (attempt.status !== 'pending') {
+    return { status: attempt.status, throughTurnId: request.throughTurnId, replayed: true };
+  }
+  const output = request.output || {};
+  const serialized = stableStringify(output);
+  const [outputEncrypted, outputHash] = await Promise.all([
+    encryptJson(
+      env,
+      output,
+      plannerReconciliationOutputAad(request.sessionId, request.leaseId, request.reconciliationId)
+    ),
+    sha256Base64Url(serialized)
+  ]);
+  const terminalStatus = ['shadow', 'applied', 'rejected', 'conflicted', 'failed'].includes(request.status)
+    ? request.status
+    : 'failed';
+  const advancesWatermark = terminalStatus === 'shadow' || terminalStatus === 'applied';
+  const sessionStatus = terminalStatus === 'shadow' || terminalStatus === 'applied'
+    ? terminalStatus
+    : 'failed';
+  const results = await db(env).batch([
+    db(env).prepare(`
+      UPDATE consumer_planner_reconciliations
+      SET status = ?, output_encrypted = ?, output_hash_b64u = ?,
+          applied_profile_revision = ?, model = ?, input_tokens = ?,
+          output_tokens = ?, cached_input_tokens = ?, latency_ms = ?,
+          operation_count = ?, accepted_operation_count = ?,
+          rejected_operation_count = ?, error_code = ?, completed_at = ?
+      WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+        AND status = 'pending'
+        AND EXISTS (
+          SELECT 1 FROM consumer_realtime_sessions
+          WHERE id = ? AND session_id = ?
+            AND planner_reconciliation_revision = ?
+            AND latest_profile_revision = ?
+        )
+    `).bind(
+      terminalStatus,
+      outputEncrypted,
+      outputHash,
+      request.appliedProfileRevision ?? null,
+      request.model || null,
+      safeInteger(request.inputTokens),
+      safeInteger(request.outputTokens),
+      safeInteger(request.cachedInputTokens),
+      safeInteger(request.latencyMs),
+      safeInteger(request.operationCount),
+      safeInteger(request.acceptedOperationCount),
+      safeInteger(request.rejectedOperationCount),
+      request.errorCode || null,
+      timestamp,
+      request.reconciliationId,
+      request.sessionId,
+      request.leaseId,
+      request.leaseId,
+      request.sessionId,
+      request.reconciliationRevision,
+      Number(attempt.base_profile_revision)
+    ),
+    db(env).prepare(`
+      UPDATE consumer_realtime_sessions
+      SET planner_reconciled_through_turn_id = CASE WHEN ? = 1 THEN ?
+            ELSE planner_reconciled_through_turn_id END,
+          planner_pending_through_turn_id = NULL,
+          planner_reconciliation_status = ?,
+          last_active_at = ?
+      WHERE id = ? AND session_id = ?
+        AND planner_reconciliation_revision = ?
+        AND latest_profile_revision = ?
+        AND EXISTS (
+          SELECT 1 FROM consumer_planner_reconciliations
+          WHERE id = ? AND status = ?
+        )
+    `).bind(
+      advancesWatermark ? 1 : 0,
+      request.throughTurnId,
+      sessionStatus,
+      timestamp,
+      request.leaseId,
+      request.sessionId,
+      request.reconciliationRevision,
+      Number(attempt.base_profile_revision),
+      request.reconciliationId,
+      terminalStatus
+    )
+  ]);
+  if (results.some((result) => Number(result?.meta?.changes || 0) !== 1)) {
+    await db(env).batch([
+      db(env).prepare(`
+        UPDATE consumer_planner_reconciliations
+        SET status = 'conflicted', output_encrypted = ?, output_hash_b64u = ?,
+            model = ?, input_tokens = ?, output_tokens = ?,
+            cached_input_tokens = ?, latency_ms = ?, operation_count = ?,
+            accepted_operation_count = 0, rejected_operation_count = ?,
+            error_code = 'planner_reconciliation_stale', completed_at = ?
+        WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+          AND status = 'pending'
+      `).bind(
+        outputEncrypted,
+        outputHash,
+        request.model || null,
+        safeInteger(request.inputTokens),
+        safeInteger(request.outputTokens),
+        safeInteger(request.cachedInputTokens),
+        safeInteger(request.latencyMs),
+        safeInteger(request.operationCount),
+        safeInteger(request.operationCount),
+        timestamp,
+        request.reconciliationId,
+        request.sessionId,
+        request.leaseId
+      ),
+      db(env).prepare(`
+        UPDATE consumer_realtime_sessions
+        SET planner_pending_through_turn_id = NULL,
+            planner_reconciliation_status = 'failed',
+            last_active_at = ?
+        WHERE id = ? AND session_id = ?
+          AND planner_reconciliation_revision = ?
+          AND EXISTS (
+            SELECT 1 FROM consumer_planner_reconciliations
+            WHERE id = ? AND status = 'conflicted'
+          )
+      `).bind(
+        timestamp,
+        request.leaseId,
+        request.sessionId,
+        request.reconciliationRevision,
+        request.reconciliationId
+      )
+    ]);
+    return {
+      status: 'conflicted',
+      throughTurnId: request.throughTurnId,
+      errorCode: 'planner_reconciliation_stale'
+    };
+  }
+  return { status: terminalStatus, throughTurnId: request.throughTurnId };
+}
+
+/**
+ * Recover an attempt that was left pending when the worker/DO stopped after
+ * reserving it but before recording a terminal result. Recovery is exact by
+ * attempt id and age-bound: a currently-running model call is never cancelled
+ * merely because another trigger observed its pending row.
+ *
+ * The attempt row is the durable source of truth. Clearing the lease cursor is
+ * conditional on this still being the lease's latest reconciliation revision,
+ * so recovering an older overlapping attempt cannot erase a newer job.
+ */
+export async function recoverStalePlannerReconciliation(env, request) {
+  const staleBeforeMs = Date.parse(String(request.staleBefore || ''));
+  if (!Number.isFinite(staleBeforeMs)) {
+    throw new ConsumerError(
+      400,
+      'planner_reconciliation_recovery_invalid',
+      'The reconciliation recovery boundary is invalid.'
+    );
+  }
+  const attempt = await db(env).prepare(`
+    SELECT id, status, reconciliation_revision, through_turn_id, created_at,
+           completed_at, error_code
+    FROM consumer_planner_reconciliations
+    WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+    LIMIT 1
+  `).bind(request.reconciliationId, request.sessionId, request.leaseId).first();
+  if (!attempt) throw notFound('This reconciliation attempt could not be found.');
+  if (attempt.status !== 'pending') {
+    return {
+      status: attempt.status,
+      recovered: false,
+      reconciliationId: attempt.id,
+      throughTurnId: attempt.through_turn_id,
+      completedAt: attempt.completed_at || null,
+      errorCode: attempt.error_code || null
+    };
+  }
+  const createdAtMs = Date.parse(String(attempt.created_at || ''));
+  if (!Number.isFinite(createdAtMs) || createdAtMs > staleBeforeMs) {
+    return {
+      status: 'pending',
+      recovered: false,
+      reconciliationId: attempt.id,
+      throughTurnId: attempt.through_turn_id,
+      createdAt: attempt.created_at
+    };
+  }
+
+  const timestamp = nowIso();
+  const results = await db(env).batch([
+    db(env).prepare(`
+      UPDATE consumer_planner_reconciliations
+      SET status = 'failed',
+          error_code = 'planner_reconciliation_stale_pending',
+          completed_at = ?
+      WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+        AND status = 'pending' AND created_at <= ?
+    `).bind(
+      timestamp,
+      attempt.id,
+      request.sessionId,
+      request.leaseId,
+      new Date(staleBeforeMs).toISOString()
+    ),
+    db(env).prepare(`
+      UPDATE consumer_realtime_sessions
+      SET planner_pending_through_turn_id = NULL,
+          planner_reconciliation_status = 'failed',
+          last_active_at = ?
+      WHERE id = ? AND session_id = ?
+        AND planner_reconciliation_revision = ?
+        AND planner_pending_through_turn_id = ?
+        AND EXISTS (
+          SELECT 1 FROM consumer_planner_reconciliations
+          WHERE id = ? AND status = 'failed'
+            AND error_code = 'planner_reconciliation_stale_pending'
+        )
+    `).bind(
+      timestamp,
+      request.leaseId,
+      request.sessionId,
+      safeInteger(attempt.reconciliation_revision),
+      attempt.through_turn_id,
+      attempt.id
+    )
+  ]);
+  if (Number(results[0]?.meta?.changes || 0) === 1) {
+    return {
+      status: 'failed',
+      recovered: true,
+      reconciliationId: attempt.id,
+      throughTurnId: attempt.through_turn_id,
+      completedAt: timestamp,
+      errorCode: 'planner_reconciliation_stale_pending'
+    };
+  }
+
+  // A completion racing recovery won the compare-and-set. Report the actual
+  // terminal state instead of pretending this caller recovered it.
+  const current = await db(env).prepare(`
+    SELECT status, through_turn_id, completed_at, error_code
+    FROM consumer_planner_reconciliations
+    WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+    LIMIT 1
+  `).bind(attempt.id, request.sessionId, request.leaseId).first();
+  return {
+    status: current?.status || 'failed',
+    recovered: false,
+    reconciliationId: attempt.id,
+    throughTurnId: current?.through_turn_id || attempt.through_turn_id,
+    completedAt: current?.completed_at || null,
+    errorCode: current?.error_code || null
+  };
+}
+
+export async function loadPlannerReconciliation(env, sessionId, leaseId, reconciliationId) {
+  const row = await db(env).prepare(`
+    SELECT * FROM consumer_planner_reconciliations
+    WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+    LIMIT 1
+  `).bind(reconciliationId, sessionId, leaseId).first();
+  if (!row) throw notFound('This planner reconciliation could not be found.');
+  const [input, output] = await Promise.all([
+    decryptJson(env, row.input_encrypted, plannerReconciliationInputAad(sessionId, leaseId, row.id)),
+    row.output_encrypted
+      ? decryptJson(env, row.output_encrypted, plannerReconciliationOutputAad(sessionId, leaseId, row.id))
+      : null
+  ]);
+  return { row, input, output };
 }
 
 export async function listRealtimeMeetings(env, sessionId, limit = 50) {
@@ -1629,10 +2299,10 @@ export async function beginRealtimeToolAttempt(env, request) {
         tool_name, tool_version, expected_profile_revision, status,
         arguments_encrypted, arguments_hash_b64u, result_encrypted,
         result_hash_b64u, analysis_run_id, profile_revision_after,
-        error_code, latency_ms, created_at, completed_at
+        error_code, latency_ms, created_at, completed_at, source_turn_id
       )
       SELECT ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?, NULL, NULL, NULL, NULL,
-             NULL, 0, ?, NULL
+             NULL, 0, ?, NULL, ?
       WHERE EXISTS (
         SELECT 1 FROM consumer_realtime_sessions
         WHERE id = ? AND session_id = ? AND status = 'active'
@@ -1649,6 +2319,7 @@ export async function beginRealtimeToolAttempt(env, request) {
       encryptedArgs,
       argsHash,
       timestamp,
+      request.sourceTurnId || null,
       request.leaseId,
       request.sessionId,
       request.maxToolCalls
@@ -1899,7 +2570,55 @@ export async function commitRealtimeFactConfirmation(env, request) {
     nextProfile,
     `consumer/profile/${request.sessionId}/${revision}`
   );
-  const results = await db(env).batch([
+  const requestedPlanningNotes = Array.isArray(request.planningNotes)
+    ? request.planningNotes
+    : request.planningNote ? [request.planningNote] : [];
+  const activePlanningNoteRecords = requestedPlanningNotes.length > 0
+    ? await listPlanningNoteRecords(env, request.sessionId, request.leaseId, {
+        lifecycle: 'active',
+        limit: 500
+      })
+    : [];
+  const requestedInstanceIds = requestedPlanningNotes.map((note) => note?.factInstanceId).filter(Boolean);
+  if (new Set(requestedInstanceIds).size !== requestedInstanceIds.length) {
+    throw new ConsumerError(
+      409,
+      'planning_note_instance_conflict',
+      'One fact write produced duplicate planning-note identities.'
+    );
+  }
+  const supersededById = new Map();
+  const planningNotes = await Promise.all(requestedPlanningNotes.map((note) => {
+    const prior = activePlanningNoteRecords.filter((item) => (
+      note?.factInstanceId && item.note?.factInstanceId === note.factInstanceId
+    ));
+    prior.forEach((item) => supersededById.set(item.note.noteId, item));
+    return preparePlanningNoteRecord(env, {
+        sessionId: request.sessionId,
+        leaseId: request.leaseId,
+        profileRevision: revision,
+        note: {
+          ...note,
+          replacesNoteIds: [...new Set([
+            ...(Array.isArray(note?.replacesNoteIds) ? note.replacesNoteIds : []),
+            ...prior.map((item) => item.note.noteId)
+          ])]
+        }
+      });
+  }));
+  const supersededPlanningNotes = await Promise.all([...supersededById.values()].map((item) => (
+    preparePlanningNoteRecord(env, {
+      sessionId: request.sessionId,
+      leaseId: request.leaseId,
+      profileRevision: Number(item.row.profile_revision),
+      note: {
+        ...item.note,
+        lifecycle: 'superseded',
+        reviewedAt: timestamp
+      }
+    })
+  )));
+  const statements = [
     db(env).prepare(`
       INSERT INTO consumer_profile_revisions (
         session_id, revision, schema_version, payload_encrypted, confirmed_at, created_at
@@ -1997,13 +2716,92 @@ export async function commitRealtimeFactConfirmation(env, request) {
       request.sessionId,
       currentRevision
     )
-  ]);
-  if ([results[0], results[1], results[2], results[4]].some((result) => Number(result?.meta?.changes || 0) !== 1)) {
+  ];
+  for (const planningNote of supersededPlanningNotes) {
+    const row = planningNote.row;
+    statements.push(db(env).prepare(`
+      UPDATE consumer_planning_notes
+      SET lifecycle = 'superseded', note_encrypted = ?, note_hash_b64u = ?,
+          reviewed_at = ?
+      WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+        AND lifecycle = 'active'
+        AND EXISTS (
+          SELECT 1 FROM consumer_sessions
+          WHERE id = ? AND current_profile_revision = ? AND deleted_at IS NULL
+        )
+        AND EXISTS (
+          SELECT 1 FROM consumer_realtime_sessions
+          WHERE id = ? AND session_id = ? AND latest_profile_revision = ?
+        )
+    `).bind(
+      row.encrypted,
+      row.hash,
+      row.reviewedAt,
+      row.id,
+      row.sessionId,
+      row.leaseId,
+      request.sessionId,
+      revision,
+      request.leaseId,
+      request.sessionId,
+      revision
+    ));
+  }
+  for (const planningNote of planningNotes) {
+    const row = planningNote.row;
+    statements.push(db(env).prepare(`
+      INSERT INTO consumer_planning_notes (
+        id, session_id, realtime_session_id, note_kind, lifecycle,
+        review_status, source, profile_revision, note_encrypted,
+        note_hash_b64u, created_at, reviewed_at
+      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM consumer_sessions
+        WHERE id = ? AND current_profile_revision = ? AND deleted_at IS NULL
+      ) AND EXISTS (
+        SELECT 1 FROM consumer_realtime_sessions
+        WHERE id = ? AND session_id = ? AND latest_profile_revision = ?
+      )
+    `).bind(
+      row.id,
+      row.sessionId,
+      row.leaseId,
+      row.noteKind,
+      row.lifecycle,
+      row.reviewStatus,
+      row.source,
+      row.profileRevision,
+      row.encrypted,
+      row.hash,
+      row.createdAt,
+      row.reviewedAt,
+      request.sessionId,
+      revision,
+      request.leaseId,
+      request.sessionId,
+      revision
+    ));
+  }
+  const results = await db(env).batch(statements);
+  const supersedeStart = 5;
+  const insertStart = supersedeStart + supersededPlanningNotes.length;
+  const requiredIndexes = [
+    0, 1, 2, 4,
+    ...supersededPlanningNotes.map((_note, index) => supersedeStart + index),
+    ...planningNotes.map((_note, index) => insertStart + index)
+  ];
+  if (requiredIndexes.some((index) => Number(results[index]?.meta?.changes || 0) !== 1)) {
     throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed before the spoken confirmation was saved. Review it again.');
   }
   const sessionRow = await db(env).prepare(`SELECT * FROM consumer_sessions WHERE id = ? LIMIT 1`)
     .bind(request.sessionId).first();
-  return { profile: nextProfile, sessionRow, revision };
+  return {
+    profile: nextProfile,
+    sessionRow,
+    revision,
+    planningNotes: planningNotes.map((item) => item.note),
+    planningNote: planningNotes[0]?.note || null
+  };
 }
 
 /**

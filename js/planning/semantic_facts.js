@@ -494,6 +494,24 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     userEffort: 2
   }),
   defineFact({
+    factId: 'pension_contribution_status',
+    aliases: ['pension.contribution_status'],
+    valueType: 'choice',
+    label: 'Pension contribution status',
+    description: 'Whether contributions are currently being paid to one pension position.',
+    mappings: [{
+      pathPattern: '/pensions/*/contributionStatus',
+      moduleIds: [MODULE_IDS.PENSION_PROJECTION]
+    }],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'pensionId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
+    questionPrompt: 'Are contributions currently being paid into this pension, or is it paid up?',
+    answerType: 'text',
+    materiality: 4,
+    ambiguity: 3,
+    userEffort: 1
+  }),
+  defineFact({
     factId: 'pension_employee_contribution_rate',
     aliases: ['pension.employee_contribution_rate'],
     label: 'Personal pension contribution rate',
@@ -508,6 +526,61 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     answerType: 'number',
     materiality: 4,
     ambiguity: 3,
+    userEffort: 2
+  }),
+  defineFact({
+    factId: 'pension_projected_annual_income',
+    aliases: ['pension.projected_annual_income', 'pension.annual_benefit'],
+    valueType: 'money',
+    sensitivity: 'restricted',
+    label: 'Defined-benefit pension income',
+    description: 'The gross annual income expected from one defined-benefit pension.',
+    mappings: [{
+      pathPattern: '/pensions/*/projectedAnnualIncome',
+      moduleIds: [MODULE_IDS.PENSION_PROJECTION]
+    }],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'pensionId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'What gross annual income is expected from this defined-benefit pension?',
+    answerType: 'money',
+    materiality: 5,
+    ambiguity: 2,
+    userEffort: 2
+  }),
+  defineFact({
+    factId: 'pension_benefit_start_age',
+    aliases: ['pension.benefit_start_age'],
+    label: 'Defined-benefit pension start age',
+    description: 'The age at which one defined-benefit pension starts paying.',
+    mappings: [{
+      pathPattern: '/pensions/*/benefitStartAge',
+      moduleIds: [MODULE_IDS.PENSION_PROJECTION]
+    }],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'pensionId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'At what age does this defined-benefit pension start paying?',
+    answerType: 'number',
+    materiality: 5,
+    ambiguity: 2,
+    userEffort: 1
+  }),
+  defineFact({
+    factId: 'pension_retirement_lump_sum',
+    aliases: ['pension.retirement_lump_sum'],
+    valueType: 'money',
+    sensitivity: 'restricted',
+    label: 'Defined-benefit retirement lump sum',
+    description: 'The retirement lump sum attached to one defined-benefit pension.',
+    mappings: [{
+      pathPattern: '/pensions/*/retirementLumpSum',
+      moduleIds: [MODULE_IDS.PENSION_PROJECTION]
+    }],
+    entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'pensionId' },
+    confirmationPolicy: FACT_CONFIRMATION_POLICIES.READ_BACK,
+    questionPrompt: 'Is there a retirement lump sum attached to this defined-benefit pension, and if so how much?',
+    answerType: 'money',
+    materiality: 4,
+    ambiguity: 2,
     userEffort: 2
   }),
   defineFact({
@@ -956,7 +1029,7 @@ function fallbackFactId(tokens) {
 function entityLabelFor(pathTokens, profile) {
   const [collection, index] = pathTokens;
   if (collection === 'partner') {
-    return String(profile?.partner?.name || '').trim() || 'your partner';
+    return String(profile?.partner?.displayName || profile?.partner?.name || '').trim() || 'your partner';
   }
   if (collection === 'primaryPerson') return 'you';
   const record = Array.isArray(profile?.[collection]) && /^\d+$/.test(String(index))
@@ -967,7 +1040,9 @@ function entityLabelFor(pathTokens, profile) {
   // Whose it is, in the second person, because the question is asked of the
   // client: "your partner's", or nothing at all when it is their own.
   const owner = profile?.partner && record.ownerId === profile.partner.personId
-    ? `${String(profile.partner.name || '').trim() || 'your partner'}'s`
+    ? String(profile.partner.displayName || profile.partner.name || '').trim()
+      ? `your partner ${String(profile.partner.displayName || profile.partner.name).trim()}'s`
+      : "your partner's"
     : 'your';
 
   const label = String(record.label || record.name || '').trim();
@@ -1003,10 +1078,19 @@ const PENSION_TYPE_WORDS = Object.freeze({
 function personaliseQuestionPrompt(prompt, label) {
   const text = String(prompt || '');
   if (!label) return text;
-  return text
+  const possessive = label === 'you'
+    ? 'your'
+    : /(?:'s|’s)$/i.test(label) ? label : `${label}'s`;
+  const personalised = text
+    .replace(/\bthis person(?:'s|’s)\b/gi, possessive)
     .replace(/\bthis person\b/gi, label)
     .replace(/\bthis (pension|property|loan|mortgage|account|policy|business)\b/gi, `${label}`)
     .replace(/\bthe (pension|property|loan|mortgage|account|policy|business)\b/gi, `${label}`);
+  if (label !== 'you') return personalised;
+  return personalised
+    .replace(/\bdoes you\b/gi, 'do you')
+    .replace(/\bhas you\b/gi, 'have you')
+    .replace(/\bis you\b/gi, 'are you');
 }
 
 function entityIdentity(definition, pathTokens, profile, explicitEntityId) {
@@ -1057,6 +1141,19 @@ function entityIdentity(definition, pathTokens, profile, explicitEntityId) {
   return { entityId: null, identityStability: 'singleton' };
 }
 
+function ownerIdentity(pathTokens, profile, item, entityId) {
+  if (typeof item?.ownerId === 'string' && item.ownerId.trim()) return item.ownerId.trim();
+  const [collection, index] = pathTokens;
+  if (collection === 'primaryPerson') return profile?.primaryPerson?.personId || entityId || null;
+  if (collection === 'partner') return profile?.partner?.personId || entityId || null;
+  const record = Array.isArray(profile?.[collection]) && /^\d+$/.test(String(index))
+    ? profile[collection][Number(index)]
+    : null;
+  if (typeof record?.ownerId === 'string' && record.ownerId) return record.ownerId;
+  if (Array.isArray(record?.ownerIds) && record.ownerIds.length === 1) return record.ownerIds[0];
+  return null;
+}
+
 function fallbackAnswerType(path) {
   if (/\/(?:age|currentAge|intendedRetirementAge|remainingTermMonths|annualInterestRate|employeeContributionRate|employerContributionRate)$/.test(path)) {
     return 'number';
@@ -1095,7 +1192,9 @@ export function resolveSemanticFact(itemOrPath, {
   const factId = definition?.factId || fallbackFactId(pathTokens);
   const identity = entityIdentity(definition, pathTokens, profile, item.entityId);
   const factInstanceId = identity.entityId ? `${factId}:${identity.entityId}` : factId;
-  const entityLabel = identity.entityId ? entityLabelFor(pathTokens, profile) : '';
+  const entityLabel = String(item.entityLabel || '').trim()
+    || (identity.entityId ? entityLabelFor(pathTokens, profile) : '');
+  const ownerId = ownerIdentity(pathTokens, profile, item, identity.entityId);
   const answerType = definition?.answerType || fallbackAnswerType(fieldPath);
   return {
     factId,
@@ -1108,7 +1207,7 @@ export function resolveSemanticFact(itemOrPath, {
     sensitivity: definition?.sensitivity || 'normal',
     confirmationPolicy: definition?.confirmationPolicy || FACT_CONFIRMATION_POLICIES.FINAL_REVIEW,
     questionPrompt: personaliseQuestionPrompt(
-      definition?.questionPrompt || item.reason || `Please provide ${fieldPath || 'the missing information'}.`,
+      item.prompt || definition?.questionPrompt || item.reason || `Please provide ${fieldPath || 'the missing information'}.`,
       entityLabel
     ),
     entityLabel,
@@ -1117,7 +1216,76 @@ export function resolveSemanticFact(itemOrPath, {
     ambiguity: definition?.ambiguity ?? 3,
     userEffort: definition?.userEffort ?? 3,
     entityId: identity.entityId,
+    ownerId,
     identityStability: identity.identityStability,
     mapped: Boolean(definition)
   };
+}
+
+
+/** Resolve a candidate or need to the exact semantic fact instance it affects. */
+export function semanticFactInstanceId(fact, profile) {
+  const factId = typeof fact?.factId === 'string' ? fact.factId : '';
+  if (!factId) return '';
+  const explicit = typeof fact?.factInstanceId === 'string' ? fact.factInstanceId.trim() : '';
+  if (explicit === factId || explicit.startsWith(`${factId}:`)) return explicit;
+  const value = fact?.value && typeof fact.value === 'object' && !Array.isArray(fact.value)
+    ? fact.value
+    : {};
+  const rawEntityId = value.entityId ?? value.id ?? fact?.entityId;
+  if (typeof rawEntityId === 'string' && rawEntityId.trim()) {
+    return `${factId}:${rawEntityId.trim()}`;
+  }
+  const rawOwner = value.ownerId ?? value.owner ?? fact?.ownerId;
+  const ownerId = rawOwner === 'primary'
+    ? profile?.primaryPerson?.personId
+    : rawOwner === 'partner'
+      ? profile?.partner?.personId
+      : rawOwner;
+  if (typeof ownerId === 'string' && ownerId.trim() && factId === 'pension_positions') {
+    return `${factId}:${ownerId.trim()}`;
+  }
+  return factId;
+}
+
+/**
+ * Read instance-scoped completion state, with legacy singleton compatibility.
+ *
+ * A legacy marker keyed only by `factId` is safe for singleton facts. It is
+ * deliberately ignored for an entity-scoped need: an old generic pension-rate
+ * marker cannot suppress every pension in a household.
+ */
+export function completionResponseFor(profile, itemOrFact, { moduleId = null } = {}) {
+  const completionFacts = profile?.assumptions?.values?.completionFacts || {};
+  const resolved = itemOrFact?.fieldPath
+    ? resolveSemanticFact(itemOrFact, { profile, moduleId })
+    : null;
+  const factId = resolved?.factId || itemOrFact?.factId || '';
+  const factInstanceId = resolved?.factInstanceId
+    || semanticFactInstanceId(itemOrFact, profile)
+    || factId;
+  const response = completionFacts.responsesByFactInstance?.[factInstanceId];
+  if (response && typeof response === 'object' && !Array.isArray(response)) {
+    return { ...response, factId, factInstanceId, source: 'fact_instance' };
+  }
+  if (!factId || factInstanceId !== factId) return null;
+  if (completionFacts.estimateDeclinedFactIds?.[factId] === true) {
+    return {
+      resolution: 'estimate_declined', attempts: 2, factId, factInstanceId, source: 'legacy'
+    };
+  }
+  if (completionFacts.unknownFactIds?.[factId] === true) {
+    return { resolution: 'unknown', attempts: 1, factId, factInstanceId, source: 'legacy' };
+  }
+  if (completionFacts.rangedFactValues?.[factId]) {
+    return {
+      resolution: 'answered_range',
+      attempts: 1,
+      range: completionFacts.rangedFactValues[factId],
+      factId,
+      factInstanceId,
+      source: 'legacy'
+    };
+  }
+  return null;
 }

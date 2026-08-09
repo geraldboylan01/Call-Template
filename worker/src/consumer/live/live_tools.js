@@ -12,11 +12,10 @@
  * If anything in this file ever grows a network call to a model, the latency
  * bug is back.
  *
- * The versioned-tool machinery from the v2 lane is deliberately NOT ported:
- * no per-call `expectedRevision`, no tool-attempt rows, no nonce binding, no
- * retry loop on rejection. Once nothing but confirm_and_run can mutate money,
- * optimistic concurrency on that one call is sufficient, and every other
- * rejection can simply be ignored by a conversation that keeps moving.
+ * The live lane does retain one encrypted tool-attempt row for idempotency and
+ * audit lineage. It does not import the v2 response-authorisation queue or put
+ * any model call in front of speech; deterministic validation and D1 writes
+ * remain the whole tool path.
  */
 
 import { ConsumerError } from '../errors.js';
@@ -1059,7 +1058,7 @@ async function executeSaveFacts(args, deps) {
       },
       evidenceRef: deps.evidenceRef || null,
       leaseId: deps.leaseId || null,
-      toolAttemptId: null,
+      toolAttemptId: deps.toolAttemptId || null,
       loadContext: deps.loadContext
     });
     outcomes.push(...applied.outcomes);
@@ -1103,17 +1102,29 @@ async function executeSaveFacts(args, deps) {
 function liveStateProjection(context) {
   const state = context.state || {};
   const captured = capturedFactMemory(context);
-  const capturedInstanceIds = new Set(captured.map((fact) => fact.instanceId));
-  const unknown = Object.entries(
-    context.profile?.assumptions?.values?.completionFacts?.unknownFactIds || {}
-  )
-    .filter(([, acknowledged]) => acknowledged === true)
-    .map(([factId]) => factId);
-  const unknownFactIds = new Set(unknown);
+  const completionResponses = context.profile?.assumptions?.values
+    ?.completionFacts?.responsesByFactInstance || {};
+  // “Unknown” is an acknowledged answer, but it is not a captured value. The
+  // first unknown must leave the exact need open for one estimate request; a
+  // declined estimate is removed below by its blocked status. Treating either
+  // as a known value here would erase the need before those rules can run.
+  const unresolvedInstanceIds = new Set(Object.entries(completionResponses)
+    .filter(([, response]) => ['unknown', 'estimate_declined'].includes(response?.resolution))
+    .map(([factInstanceId]) => factInstanceId));
+  const capturedValueFacts = captured.filter((fact) => !unresolvedInstanceIds.has(fact.instanceId));
+  const capturedInstanceIds = new Set(capturedValueFacts.map((fact) => fact.instanceId));
+  const allNeeds = (state.recommendations || [])
+    .flatMap((item) => item.requiredMissing || [])
+    .filter((need) => ['estimate_requested', 'blocked_unknown'].includes(need.status));
+  const estimateNeeds = allNeeds.filter((need) => need.status === 'estimate_requested');
+  const blockedNeeds = allNeeds.filter((need) => need.status === 'blocked_unknown');
+  const blockedInstanceIds = new Set(blockedNeeds.map(requirementInstanceId));
+  const unknown = [...new Set(allNeeds.map((need) => need.factId))];
+  const estimatePending = [...new Set(estimateNeeds.map((need) => need.factId))];
 
   const analyses = (state.recommendations || []).map((item) => ({
     description: item.description,
-    status: item.status,
+    status: item.availability || item.status,
     // RECONCILED AGAINST WHAT IS ALREADY KNOWN, PER INSTANCE.
     //
     // A requirement is only satisfied by a fact captured for the SAME entity.
@@ -1128,7 +1139,9 @@ function liveStateProjection(context) {
         instanceId: requirementInstanceId(missing),
         factId: missing.factId,
         whose: missing.entityLabel || '',
-        why: missing.reason
+        why: missing.reason,
+        prompt: missing.prompt || '',
+        status: missing.status || 'open'
       }))
       .filter((need) => !capturedInstanceIds.has(need.instanceId))
       // AND NOT SOMETHING THEY HAVE ALREADY SAID THEY CANNOT ANSWER.
@@ -1139,7 +1152,7 @@ function liveStateProjection(context) {
       // without it -- readyToConfirm below still counts it -- but presenting
       // it as an open question is asking the client to answer something they
       // have already told you they cannot.
-      .filter((need) => !unknownFactIds.has(need.factId)),
+      .filter((need) => !blockedInstanceIds.has(need.instanceId)),
     // OPTIONAL INPUTS, AND THEY STAY OPTIONAL. An assumption is a value the
     // deterministic engine already has an approved default for, so it never
     // appears in `missing` and never holds up `readyToConfirm` below. It is
@@ -1163,16 +1176,12 @@ function liveStateProjection(context) {
   // list above, but still counted against readiness: an analysis that needs a
   // figure nobody can supply is not ready, it is blocked, and offering to run
   // it would be offering a result its own inputs do not support.
-  const blocked = [...new Set((state.recommendations || [])
-    .flatMap((item) => (item.requiredMissing || []))
-    .filter((need) => (
-      unknownFactIds.has(need.factId)
-      && !capturedInstanceIds.has(requirementInstanceId(need))
-    ))
+  const blocked = [...new Set(blockedNeeds
+    .filter((need) => !capturedInstanceIds.has(requirementInstanceId(need)))
     .map((need) => need.factId))];
 
   assertNoCapturedRequirementContradiction(capturedInstanceIds, analyses);
-  assertNoUnknownRequirementContradiction(unknownFactIds, analyses);
+  assertNoUnknownRequirementContradiction(blockedInstanceIds, analyses);
 
   return {
     ok: true,
@@ -1197,8 +1206,12 @@ function liveStateProjection(context) {
     // The fact ids a VALUE is known for. Same vocabulary as `missing`, and it
     // is what the deterministic duplicate-question guard compares an assistant
     // turn against without having to re-derive the profile. See question_guard.
-    capturedFactIds: captured.filter((fact) => fact.hasValue).map((fact) => fact.factId).slice(0, 40),
+    capturedFactIds: capturedValueFacts
+      .filter((fact) => fact.hasValue)
+      .map((fact) => fact.factId)
+      .slice(0, 40),
     unknown: unknown.slice(0, 20),
+    estimatePending: estimatePending.slice(0, 20),
     // Named separately so the model can say WHY a plan is stuck without
     // re-asking: "we cannot run this until there is a rough price" reads very
     // differently from asking for the price a third time.
@@ -1209,7 +1222,8 @@ function liveStateProjection(context) {
     // Blocked counts against readiness exactly as missing does. Dropping an
     // unanswerable requirement from the ask list must never be the thing that
     // makes a plan look runnable.
-    readyToConfirm: analyses.length > 0 && missing.length === 0 && blocked.length === 0,
+    readyToConfirm: analyses.some((analysis) => analysis.status !== 'needs_information')
+      && missing.length === 0,
     deferredTopics: (state.deferredOrAdviserTopics || []).map((topic) => ({
       description: topic.description,
       reason: topic.reason
@@ -1325,10 +1339,10 @@ function assertNoCapturedRequirementContradiction(capturedInstanceIds, analyses)
  * The other way a state note can contradict itself: telling the model never to
  * ask for something again and listing it as outstanding in the same breath.
  */
-function assertNoUnknownRequirementContradiction(unknownFactIds, analyses) {
+function assertNoUnknownRequirementContradiction(blockedInstanceIds, analyses) {
   for (const analysis of analyses) {
     for (const need of analysis.stillNeeded || []) {
-      if (!unknownFactIds.has(need.factId)) continue;
+      if (!blockedInstanceIds.has(need.instanceId)) continue;
       throw new ConsumerError(
         500,
         'live_state_contradiction',

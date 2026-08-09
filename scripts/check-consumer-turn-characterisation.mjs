@@ -300,6 +300,18 @@ const CHANGE_LOG = [
       + 'field are unchanged — these fixtures each state a single goal, so the '
       + 'stated focus and mention order agree.',
     fields: ['profileRevision', 'rejections']
+  },
+  {
+    date: '2026-08-09',
+    change: 'The pension intake question is now owner-scoped. It asked "in your own '
+      + 'name", which is why a confirmed spouse\'s pension was never sought: the '
+      + 'requirement knew whose pension was missing, but the spoken question threw '
+      + 'that away and asked the primary client again. The prompt now comes from the '
+      + 'owner-scoped need, and names buyout bond rather than AVC because a buyout '
+      + 'bond is a distinct position the projection models and cannot be paid into. '
+      + 'Only the pension prompt changes: unscoped questions keep their existing '
+      + 'conversational wording, and nextQuestion still agrees with the brief.',
+    fields: ['brief.questionBatch.prompt', 'nextQuestion.prompt']
   }
 ];
 

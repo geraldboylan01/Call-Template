@@ -361,11 +361,10 @@ function conversationFlowSection() {
     'When they give the ages of several children together, save every child and currentAge in',
     'one dependants batch before moving on.',
     'When you have enough, say what you are going to run and ask them to confirm.',
-    'THE ANALYSES RUN AS ONE SET. While any analysis in play is still missing an input, none of',
-    'them can run — not even one that already has everything it needs. Never offer to run a subset,',
-    'never offer to "leave that part for another time" and run the rest, and never ask a client to',
-    'confirm a partial plan. Say plainly what is outstanding and that you will run them together',
-    'once it is there.',
+    'AN UNAVAILABLE INPUT BLOCKS ONLY THE ANALYSIS THAT NEEDS IT. After one estimate request,',
+    'state may mark an analysis as waiting on the client. Explain once that it cannot be run',
+    'reliably, why the input matters, and that it can be revisited later. Other analyses that state',
+    'marks ready may still be offered and confirmed; name exactly the ready set you will run.',
     '',
     'EVERY QUESTION MUST BELONG TO AN ANALYSIS THAT IS IN PLAY. After each save you are given a',
     'short state note listing the analyses in play and, for each one, what it still needs and why.',
@@ -504,8 +503,9 @@ function toolsSection() {
     '  Never ask for something the client just answered in that same turn, even while save_facts',
     '  is running. Move to a different missing fact and use get_state on the next turn.',
     '  When the client genuinely does not know a money or number, save value:null with',
-    '  certainty:"unknown". Never encode unknown as zero and never ask for it again in this',
-    '  meeting unless the client later volunteers it.',
+    '  certainty:"unknown". Never encode unknown as zero. If get_state keeps that exact item',
+    '  under Needs, ask once for a rough estimate or range. If it moves to Waiting, stop asking;',
+    '  only the dependent analysis is unavailable, and other ready analyses may continue.',
     '  confirm_none is a categorical claim that the position does not exist. Use it only',
     '  when the client explicitly says they have none. "I have not given you figures",',
     '  "I do not know", "leave that out" or "skip it for now" is not none: save no position',
@@ -525,10 +525,11 @@ function toolsSection() {
     '  yourself. Cheap; use it freely.',
     '  Ask for required inputs only when the latest state says they are still missing. In',
     '  particular, never ask for college scenario costs when state does not list them.',
-    '  Before saying any analysis can run, promising to run a subset, or asking for final',
+    '  Before saying any analysis can run or asking for final',
     '  confirmation, call get_state after the latest save. readyToConfirm MUST be true. A missing',
-    '  fact can serve more than one analysis, and confirm_and_run cannot silently detach an',
-    '  unfinished analysis. If state is not ready, say plainly what remains and do not ask to run.',
+    '  fact can serve more than one analysis. If state is not ready, say plainly what remains and',
+    '  do not ask to run. If state is ready, offer only the analyses it marks runnable; an analysis',
+    '  waiting on the client remains visible but is not included in that run.',
     '  A missing required client input is not something the analysis will derive for them. Do not',
     '  promise that affordability, a target or another missing input can be worked out from the',
     '  other figures; leave it open until the client supplies it.',
@@ -695,8 +696,11 @@ export function liveVolatileStateItem(state = {}) {
   const analyses = Array.isArray(state.analyses) ? state.analyses : [];
   const missing = Array.isArray(state.missing) ? state.missing : [];
   const unknown = Array.isArray(state.unknown) ? state.unknown : [];
+  const estimatePending = Array.isArray(state.estimatePending) ? state.estimatePending : [];
   const missingLabels = missing.map((factId) => getSemanticFactDefinition(factId)?.label || factId);
   const unknownLabels = unknown.map((factId) => getSemanticFactDefinition(factId)?.label || factId);
+  const estimatePendingLabels = estimatePending
+    .map((factId) => getSemanticFactDefinition(factId)?.label || factId);
 
   const shown = analyses.slice(0, MAX_SHOWN_ANALYSES);
   const renderedNeeds = shown.some((analysis) => (analysis?.stillNeeded || []).length > 0);
@@ -716,9 +720,16 @@ export function liveVolatileStateItem(state = {}) {
   // budgeted first and the descriptive block gets whatever is left, so a
   // talkative client with three analyses in play can never truncate them away.
   const directives = [];
-  if (unknownLabels.length) {
+  if (estimatePendingLabels.length) {
     directives.push(
-      `Client cannot supply now: ${unknownLabels.slice(0, MAX_LISTED_LABELS).join(', ')}. `
+      `One estimate question remains for: ${estimatePendingLabels.slice(0, MAX_LISTED_LABELS).join(', ')}. `
+      + 'Ask once for a rough figure or range, then accept that it may be unavailable.'
+    );
+  }
+  const finalUnknownLabels = unknownLabels.filter((label) => !estimatePendingLabels.includes(label));
+  if (finalUnknownLabels.length) {
+    directives.push(
+      `Client cannot supply now: ${finalUnknownLabels.slice(0, MAX_LISTED_LABELS).join(', ')}. `
       + 'Do not ask for these again in this meeting.'
     );
   }
@@ -743,13 +754,9 @@ export function liveVolatileStateItem(state = {}) {
   }
   if (state.readyToConfirm === true) directives.push('The plan is ready for a spoken confirmation.');
   if (state.readyToConfirm === false && analyses.length > 0) {
-    // THE ANALYSES RUN AS ONE SET. Spelled out because a model that can see one
-    // analysis is ready and another is not will otherwise offer the ready one
-    // on its own -- which reads as helpful and is not something this lane can
-    // do. The whole set is confirmed together or not at all.
     directives.push(
-      'The plan is not ready for confirmation yet. Do not offer to run any analysis, '
-      + 'including one that has what it needs on its own — they run as one set.'
+      'The runnable plan is not ready for confirmation yet. Keep collecting only the open Needs; '
+      + 'never invent a value for an analysis that is waiting on the client.'
     );
   }
 

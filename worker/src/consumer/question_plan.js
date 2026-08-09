@@ -1,15 +1,24 @@
 import { buildQuestionPlan as buildCanonicalQuestionPlan } from '../../../js/planning/question_plan.js';
-import { resolveSemanticFact } from '../../../js/planning/semantic_facts.js';
+import {
+  completionResponseFor,
+  resolveSemanticFact
+} from '../../../js/planning/semantic_facts.js';
 
 function acknowledgedMissing(profile, item) {
   const completionFacts = profile?.assumptions?.values?.completionFacts || {};
-  const factId = resolveSemanticFact(item, { profile }).factId;
-  if (completionFacts.rangedFactValues?.[factId]) return true;
-  if (completionFacts.unknownFactIds?.[factId] === true) {
-    // A single "I don't know" is not the end of it: the meeting comes back once
-    // to ask for an estimate. Only a declined estimate settles the fact.
-    return completionFacts.estimateDeclinedFactIds?.[factId] === true;
+  const semantic = resolveSemanticFact(item, { profile });
+  const response = completionResponseFor(profile, {
+    ...item,
+    factId: semantic.factId,
+    factInstanceId: semantic.factInstanceId,
+    entityId: semantic.entityId
+  });
+  if (['answered_range', 'complete', 'confirmed_none', 'estimate_declined'].includes(response?.resolution)) {
+    return true;
   }
+  // A first unknown is deliberately unacknowledged: it earns one estimate
+  // question for this exact fact instance.
+  if (response?.resolution === 'unknown') return false;
   if (item?.importance === 'required') return false;
   const path = String(item?.fieldPath || '');
   return Boolean(path && completionFacts.confirmedNonePaths?.[path]);
@@ -77,7 +86,11 @@ export function buildQuestionPlan(profile, recommendations) {
     facts: [{
       factId: selected.factId,
       factInstanceId: selected.factInstanceId,
-      fieldPath
+      fieldPath,
+      entityId: selected.entityId || null,
+      ownerId: selected.ownerId || null,
+      status: selected.status,
+      answerPolicy: selected.answerPolicy
     }]
   };
 }

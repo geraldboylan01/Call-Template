@@ -106,7 +106,8 @@ const MIGRATIONS = [
   '0009_add_realtime_consent_purposes', '0010_add_realtime_activation_recovery',
   '0011_add_realtime_meeting_briefs', '0012_add_realtime_planner_usage',
   '0013_complete_realtime_voice_meetings', '0014_add_agent_test_meetings',
-  '0015_add_privacy_notice_acknowledgement'
+  '0015_add_privacy_notice_acknowledgement',
+  '0016_add_planning_reconciliation'
 ].map((name) => readFileSync(`${root}/worker/consumer-migrations/${name}.sql`, 'utf8')).join('\n');
 
 /* ---------------------------------------------------------------- */

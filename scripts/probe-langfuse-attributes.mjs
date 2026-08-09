@@ -230,7 +230,50 @@ if (observations.length === 0) {
   process.exit(1);
 }
 
-const byId = new Map(observations.map((item) => [item.id, item]));
+/**
+ * Fetches one observation IN FULL.
+ *
+ * THE LIST ENDPOINT IS A SUMMARY. It returns roughly two dozen fields —
+ * id, type, name, level, latency, modelId, prices — and omits input, output,
+ * metadata, model and usage entirely. Not empty: absent. Reading candidate
+ * attributes off a list row therefore reports every one of them as unmapped,
+ * regardless of whether it mapped, which is exactly the false negative this
+ * probe produced on its first live run. Only the per-observation record has
+ * the heavy fields.
+ */
+async function readObservationDetail(id) {
+  for (const path of [
+    `/api/public/observations/${encodeURIComponent(id)}`,
+    `/api/public/v2/observations/${encodeURIComponent(id)}`
+  ]) {
+    const result = await api(path);
+    if (result.ok && result.body && typeof result.body === 'object' && !Array.isArray(result.body)) {
+      return { source: path, body: result.body };
+    }
+  }
+  return null;
+}
+
+console.info('Fetching each observation in full (the list endpoint omits input/output/model/usage)…');
+const detailById = new Map();
+let detailSource = null;
+for (const item of observations) {
+  const detail = await readObservationDetail(item.id);
+  if (detail) {
+    detailById.set(item.id, detail.body);
+    detailSource = detailSource || detail.source;
+  }
+}
+console.info(`  ${detailById.size}/${observations.length} fetched${detailSource ? ` via ${detailSource.replace(/\/[^/]+$/, '/{id}')}` : ''}`);
+if (detailById.size === 0) {
+  console.error('\n  Could not fetch any observation in full. Reporting from the summary rows,');
+  console.error('  which cannot show input/output/model/usage — treat "empty" below as unknown.');
+}
+console.info('');
+
+// Detail where we have it, summary as a last resort.
+const byId = new Map(observations.map((item) => [item.id, detailById.get(item.id) || item]));
+const usingDetail = detailById.size > 0;
 
 /* --------------------------------------------------------------------- report */
 
@@ -247,11 +290,16 @@ for (const probe of PROBES) {
       && String(got) === String(entry.candidate.expect);
     if (hit && !winners[probe.field]) winners[probe.field] = entry.candidate.name;
     const mark = !stored ? ' -- ' : hit ? ' OK ' : ' no ';
+    // "absent" and "empty" mean different things and were conflated on the
+    // first live run: a field the API never returns is not a field the
+    // attribute failed to populate.
     const detail = !stored
       ? 'span not stored'
-      : got === undefined || got === null
-        ? '(field empty)'
-        : `got ${JSON.stringify(got)}`;
+      : got === undefined
+        ? (usingDetail ? '(field absent from the record)' : '(unknown — only summary available)')
+        : got === null
+          ? '(field present but null)'
+          : `got ${JSON.stringify(got)}`;
     console.info(`  ${mark} ${entry.candidate.name.padEnd(width)}  ${detail}`);
   }
   console.info('');
@@ -282,13 +330,17 @@ console.info(`  POST /api/public/scores → HTTP ${scorePost.status} ${JSON.stri
 await sleep(4_000);
 for (const path of ['/api/public/v3/scores', '/api/public/v2/scores', '/api/public/scores']) {
   const read = await api(path, { traceId, limit: 50 });
-  const count = Array.isArray(read.body?.data) ? read.body.data.length : 'no data[] array';
-  console.info(`  GET ${path.padEnd(26)} → HTTP ${read.status}, ${count}`);
-  if (Array.isArray(read.body?.data) && read.body.data.length > 0) {
-    console.info(`      first: ${JSON.stringify(read.body.data[0]).slice(0, 240)}`);
-  } else if (read.body && !Array.isArray(read.body?.data)) {
-    console.info(`      body: ${JSON.stringify(read.body).slice(0, 240)}`);
+  const rows = Array.isArray(read.body?.data) ? read.body.data : null;
+  // Counted separately because at least one version answers 200 with a data[]
+  // array while ignoring the traceId filter — so "returned rows" and "returned
+  // OUR rows" are different questions, and only the second one matters.
+  const mine = rows ? rows.filter((item) => item.traceId === traceId) : [];
+  console.info(`  GET ${path.padEnd(26)} → HTTP ${read.status}, `
+    + `${rows ? `${rows.length} row(s), ${mine.length} for this trace` : 'no data[] array'}`);
+  if (rows && rows.length > 0 && mine.length === 0) {
+    console.info('      returns rows but none for this trace — filter ignored or not supported here');
   }
+  if (mine.length > 0) console.info(`      ours: ${JSON.stringify(mine[0]).slice(0, 240)}`);
 }
 
 console.info(`\nTrace: ${host}/trace/${traceId}`);

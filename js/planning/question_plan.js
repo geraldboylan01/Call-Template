@@ -1,4 +1,5 @@
 import {
+  completionResponseFor,
   FACT_CONFIRMATION_POLICIES,
   resolveSemanticFact
 } from './semantic_facts.js';
@@ -82,6 +83,8 @@ function createAggregate(item, source, resolution) {
     factId: resolution.factId,
     factInstanceId: resolution.factInstanceId,
     entityId: resolution.entityId,
+    ownerId: resolution.ownerId,
+    entityLabel: resolution.entityLabel,
     identityStability: resolution.identityStability,
     mapped: resolution.mapped,
     fieldPaths: new Set([resolution.fieldPath].filter(Boolean)),
@@ -98,6 +101,12 @@ function createAggregate(item, source, resolution) {
     profilePathTemplate: resolution.profilePathTemplate,
     sensitivity: resolution.sensitivity,
     questionPrompt: resolution.questionPrompt,
+    reasonCode: typeof item.reasonCode === 'string' && item.reasonCode
+      ? item.reasonCode
+      : 'required_input_missing',
+    answerPolicy: ['value', 'value_or_none', 'unknown_allowed'].includes(item.answerPolicy)
+      ? item.answerPolicy
+      : 'unknown_allowed',
     answerType: resolution.answerType,
     materiality: ranking.materiality,
     ambiguity: ranking.ambiguity,
@@ -113,6 +122,8 @@ function mergeAggregate(aggregate, item, source, resolution) {
   (Array.isArray(item.blockingModuleIds) ? item.blockingModuleIds : [])
     .forEach((moduleId) => aggregate.blockingModuleIds.add(moduleId));
   if (source.moduleId) aggregate.blockingModuleIds.add(source.moduleId);
+  if (!aggregate.ownerId && resolution.ownerId) aggregate.ownerId = resolution.ownerId;
+  if (!aggregate.entityLabel && resolution.entityLabel) aggregate.entityLabel = resolution.entityLabel;
   aggregate.importanceRank = Math.max(
     aggregate.importanceRank,
     IMPORTANCE_RANK[item.importance] || IMPORTANCE_RANK.required
@@ -130,7 +141,7 @@ function mergeAggregate(aggregate, item, source, resolution) {
   }
 }
 
-function toQuestion(aggregate) {
+function toQuestion(aggregate, profile) {
   const relatedFieldPaths = uniqueSorted([...aggregate.fieldPaths]);
   const preferredPaths = uniqueSorted([...aggregate.preferredPaths]);
   const targetPath = preferredPaths[0] || relatedFieldPaths[0];
@@ -138,8 +149,22 @@ function toQuestion(aggregate) {
   const blockingModuleIds = uniqueSorted([...aggregate.blockingModuleIds]);
   const importance = importanceFor(aggregate.importanceRank);
   const requiredBlocker = importance === 'required';
+  const response = completionResponseFor(profile, {
+    factId: aggregate.factId,
+    factInstanceId: aggregate.factInstanceId,
+    entityId: aggregate.entityId
+  });
+  const status = response?.resolution === 'unknown'
+    ? 'estimate_requested'
+    : response?.resolution === 'estimate_declined'
+      ? 'blocked_unknown'
+      : ['complete', 'confirmed_none', 'answered_range'].includes(response?.resolution)
+        ? 'satisfied'
+        : 'open';
+  const needId = stableQuestionId(aggregate.factInstanceId);
   return {
-    questionId: stableQuestionId(aggregate.factInstanceId),
+    needId,
+    questionId: needId,
     fieldPaths: targetPath ? [targetPath] : [],
     reason: reasons[0] || aggregate.questionPrompt,
     blockingModuleIds,
@@ -148,6 +173,12 @@ function toQuestion(aggregate) {
     optional: !requiredBlocker,
     factId: aggregate.factId,
     factInstanceId: aggregate.factInstanceId,
+    entityId: aggregate.entityId || null,
+    ownerId: aggregate.ownerId || null,
+    entityLabel: aggregate.entityLabel || '',
+    reasonCode: aggregate.reasonCode,
+    answerPolicy: aggregate.answerPolicy,
+    status,
     relatedFieldPaths,
     confirmationPolicy: aggregate.confirmationPolicy,
     valueType: aggregate.valueType,
@@ -165,6 +196,42 @@ function toQuestion(aggregate) {
     identityStability: aggregate.identityStability,
     mapped: aggregate.mapped
   };
+}
+
+/**
+ * Merge an unscoped need into the owner-scoped needs for the same fact.
+ *
+ * Adapters ask for the same fact at different resolutions: one names whose
+ * pensions it wants, another simply needs the household's. Left apart they
+ * become two questions about one thing, and each carries only its own analysis,
+ * so a fact that actually blocks two modules ranks as though it blocked one and
+ * loses its place in the order. Genuinely different owners still stay separate.
+ */
+function foldUnscopedIntoScoped(byFactInstance) {
+  const scopedByFactId = new Map();
+  for (const aggregate of byFactInstance.values()) {
+    if (!aggregate.entityId && !aggregate.ownerId) continue;
+    const scoped = scopedByFactId.get(aggregate.factId) || [];
+    scoped.push(aggregate);
+    scopedByFactId.set(aggregate.factId, scoped);
+  }
+  for (const [factInstanceId, aggregate] of [...byFactInstance.entries()]) {
+    if (aggregate.entityId || aggregate.ownerId) continue;
+    const scoped = scopedByFactId.get(aggregate.factId);
+    if (!scoped?.length) continue;
+    for (const target of scoped) {
+      // Only the ranking signal and the paths move across. The scoped need
+      // already states its own reason in the client's terms, and taking the
+      // unscoped wording too would put requirement text back in its place.
+      aggregate.blockingModuleIds.forEach((moduleId) => target.blockingModuleIds.add(moduleId));
+      aggregate.fieldPaths.forEach((path) => target.fieldPaths.add(path));
+      aggregate.preferredPaths.forEach((path) => target.preferredPaths.add(path));
+      target.requiredModuleBlocker = target.requiredModuleBlocker || aggregate.requiredModuleBlocker;
+      target.importanceRank = Math.max(target.importanceRank, aggregate.importanceRank);
+    }
+    byFactInstance.delete(factInstanceId);
+  }
+  return byFactInstance;
 }
 
 function compareQuestions(left, right) {
@@ -201,5 +268,7 @@ export function buildQuestionPlan(readinessInput, { profile } = {}) {
       else byFactInstance.set(resolution.factInstanceId, createAggregate(item, source, resolution));
     });
   });
-  return [...byFactInstance.values()].map(toQuestion).sort(compareQuestions);
+  return [...foldUnscopedIntoScoped(byFactInstance).values()]
+    .map((aggregate) => toQuestion(aggregate, profile))
+    .sort(compareQuestions);
 }

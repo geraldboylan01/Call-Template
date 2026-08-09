@@ -786,8 +786,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "income_sources",
       "gross_household_income",
       "pension_current_value",
+      "pension_contribution_status",
       "pension_employee_contribution_rate",
       "pension_employer_contribution_rate",
+      "pension_projected_annual_income",
+      "pension_benefit_start_age",
+      "pension_retirement_lump_sum",
       "target_retirement_income"
     ],
     "eligibility": {
@@ -1006,8 +1010,12 @@ export const MODULE_MANIFEST = Object.freeze([
       "income_sources",
       "gross_household_income",
       "pension_current_value",
+      "pension_contribution_status",
       "pension_employee_contribution_rate",
       "pension_employer_contribution_rate",
+      "pension_projected_annual_income",
+      "pension_benefit_start_age",
+      "pension_retirement_lump_sum",
       "target_retirement_income",
       "annual_net_spending",
       "asset_position"

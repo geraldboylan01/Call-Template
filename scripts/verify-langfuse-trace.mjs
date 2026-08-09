@@ -201,14 +201,58 @@ async function readTrace(traceId) {
   return result.ok ? result.body : null;
 }
 
+/**
+ * Replaces summary rows with the full observation records.
+ *
+ * THE LIST ENDPOINT OMITS THE FIELDS THIS SCRIPT ASSERTS ON. It returns id,
+ * type, name, level, latency, modelId and prices, and simply does not carry
+ * input, output, metadata, model or usage — measured against a live project,
+ * where it made every one of those assertions fail while the attributes had in
+ * fact mapped correctly. The per-observation record is the one with the
+ * payload, so every row is re-fetched before anything is asserted.
+ */
+async function withFullDetail(found) {
+  if (!found?.observations?.length) return found;
+  const detailed = [];
+  for (const row of found.observations) {
+    if (!row?.id) { detailed.push(row); continue; }
+    let full = null;
+    for (const path of [
+      `/api/public/observations/${encodeURIComponent(row.id)}`,
+      `/api/public/v2/observations/${encodeURIComponent(row.id)}`
+    ]) {
+      const result = await api(path);
+      if (result.ok && result.body && typeof result.body === 'object' && !Array.isArray(result.body)) {
+        full = result.body;
+        break;
+      }
+    }
+    detailed.push(full || row);
+  }
+  return { ...found, observations: detailed, detailFetched: true };
+}
+
+/**
+ * Scores for one trace.
+ *
+ * TAKES THE ENDPOINT THAT RETURNS OUR SCORES, not the first that answers.
+ * Measured against a live project: /v3 and /v2 both reply 200 with an empty
+ * data[], while /v1 holds the scores — so accepting the first well-formed
+ * response silently reported "no scores landed" when they had. And /v1 returns
+ * rows for the whole project regardless of the traceId parameter, so the filter
+ * has to be applied here rather than trusted.
+ */
 async function readScores(traceId) {
+  let fallback = { source: null, scores: [] };
   for (const path of ['/api/public/v3/scores', '/api/public/v2/scores', '/api/public/scores']) {
     const result = await api(path, { traceId, limit: 100 });
-    if (result.ok && Array.isArray(result.body?.data)) {
-      return { source: path, scores: result.body.data };
-    }
+    if (!result.ok || !Array.isArray(result.body?.data)) continue;
+    const mine = result.body.data.filter((item) => item.traceId === traceId);
+    if (mine.length > 0) return { source: path, scores: mine };
+    // Well-formed but empty: remember it only so the report can name something.
+    if (!fallback.source) fallback = { source: `${path} (0 for this trace)`, scores: [] };
   }
-  return { source: null, scores: [] };
+  return fallback;
 }
 
 /**
@@ -490,8 +534,17 @@ if (harness.observations.length === 0) {
   }
 }
 
-const test = await waitForTrace(testTurn.traceId, { label: 'test-cohort' });
-const pub = await waitForTrace(publicTurn.traceId, { label: 'public-cohort' });
+const testSummary = await waitForTrace(testTurn.traceId, { label: 'test-cohort' });
+const pubSummary = await waitForTrace(publicTurn.traceId, { label: 'public-cohort' });
+
+// Every assertion below reads input/output/model/usage/metadata, none of which
+// the list endpoint returns. Fetch the real records before asserting anything.
+console.info('\nFetching full observation records (the list endpoint is a summary)…');
+const harnessFull = await withFullDetail(harness);
+const test = await withFullDetail(testSummary);
+const pub = await withFullDetail(pubSummary);
+console.info(`  harness ${harnessFull.observations.length}, test ${test.observations.length}, `
+  + `public ${pub.observations.length} record(s)\n`);
 
 console.info(`Read via ${harness.source}`);
 const scoreRead = await readScores(harnessTraceId);
@@ -581,26 +634,34 @@ record({
   ok: Number(landedOutput) === 250
 });
 
-// -- THE CACHED-TOKEN / COST QUESTION (langfuse#12306)
+// -- THE CACHED-TOKEN / COST QUESTION (langfuse#12306), now settled live.
+// Langfuse sums every gen_ai.usage.* number into the total, and cached tokens
+// are a SUBSET of input_tokens — so sending them in that namespace reported
+// 3750 for a 2250-token call. They are sent as metadata instead.
 const landedCached = pick(usage, 'cachedInput', 'cached_input')
   ?? pick(usageDetails, 'cache_read_input_tokens', 'cached_input_tokens', 'cachedInputTokens');
 record({
-  label: 'cached tokens [langfuse#12306]',
-  sent: 'gen_ai.usage.cached_input_tokens = 1500',
-  landed: landedCached ?? '(ignored)',
-  // Informational: BOTH answers are actionable, neither is a failure of this run.
-  ok: null,
-  note: landedCached === undefined
-    ? 'ignored — drop the attribute or move to usage_details'
-    : 'landed — check the total below is not inflated'
+  label: 'cached tokens kept OUT of usage',
+  sent: 'not sent under gen_ai.usage.* (would be summed)',
+  landed: landedCached === undefined ? 'absent from usage' : `PRESENT = ${landedCached}`,
+  ok: landedCached === undefined,
+  note: 'anything in gen_ai.usage.* is added to the total'
+});
+const clause0Meta = clause0 ? (pick(clause0, 'metadata') || {}) : {};
+record({
+  label: 'cached tokens survive as metadata',
+  sent: 'langfuse.observation.metadata.cachedInputTokens = 1500',
+  landed: pick(clause0Meta, 'cachedInputTokens') ?? '(missing)',
+  ok: Number(pick(clause0Meta, 'cachedInputTokens')) === 1_500,
+  note: 'metadata is not summed, so the number stays visible and honest'
 });
 const landedTotal = pick(usage, 'total', 'totalTokens');
 record({
-  label: 'total tokens not inflated',
-  sent: 'input 2000 (already includes 1500 cached) + output 250',
+  label: 'total tokens correct',
+  sent: 'input 2000 (already includes 1500 cached) + output 250 = 2250',
   landed: landedTotal ?? '(no total)',
-  ok: landedTotal === undefined ? null : Number(landedTotal) <= 2_250,
-  note: Number(landedTotal) > 2_250 ? 'INFLATED — cached is being added on top of input' : ''
+  ok: landedTotal === undefined ? null : Number(landedTotal) === 2_250,
+  note: Number(landedTotal) > 2_250 ? 'INFLATED — something in gen_ai.usage.* is being added on top' : ''
 });
 const landedCost = pick(clause0 || {}, 'calculatedTotalCost', 'totalCost', 'costDetails');
 record({

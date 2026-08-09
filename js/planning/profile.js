@@ -40,8 +40,13 @@ const PENSION_TYPES = Object.freeze([
   'occupational', 'prsa', 'personal', 'defined_benefit', 'buyout_bond', 'other'
 ]);
 
+/** Whether a pension currently receives contributions. */
+export const PENSION_CONTRIBUTION_STATUSES = Object.freeze([
+  'active', 'paid_up', 'not_applicable', 'unknown'
+]);
+
 /** Pension types that cannot receive contributions, so are never asked about them. */
-export const NON_CONTRIBUTORY_PENSION_TYPES = Object.freeze(['buyout_bond']);
+export const NON_CONTRIBUTORY_PENSION_TYPES = Object.freeze(['buyout_bond', 'defined_benefit']);
 // 'holiday' is a LIFESTYLE property, not an investment one: it is nice to have
 // and is not there to earn. Without its own use it arrived as 'other' and was
 // bucketed with concentrated assets, which reads as though the family were
@@ -242,10 +247,26 @@ function normalizePension(value, index) {
     { min: 0, max: 1 }
   );
   const projectedIncome = normalizeMoney(value.projectedAnnualIncome, `${fieldName}.projectedAnnualIncome`, { optional: true });
+  const retirementLumpSum = normalizeMoney(value.retirementLumpSum, `${fieldName}.retirementLumpSum`, { optional: true });
+  const benefitStartAge = optionalNumber(
+    value.benefitStartAge,
+    `${fieldName}.benefitStartAge`,
+    { min: 18, max: 100, integer: true }
+  );
+  const contributionStatus = value.contributionStatus === null || typeof value.contributionStatus === 'undefined'
+    ? undefined
+    : enumValue(
+      value.contributionStatus,
+      PENSION_CONTRIBUTION_STATUSES,
+      `${fieldName}.contributionStatus`
+    );
   if (currentValue) pension.currentValue = currentValue;
   if (typeof employeeRate === 'number') pension.employeeContributionRate = employeeRate;
   if (typeof employerRate === 'number') pension.employerContributionRate = employerRate;
   if (projectedIncome) pension.projectedAnnualIncome = projectedIncome;
+  if (retirementLumpSum) pension.retirementLumpSum = retirementLumpSum;
+  if (typeof benefitStartAge === 'number') pension.benefitStartAge = benefitStartAge;
+  if (contributionStatus) pension.contributionStatus = contributionStatus;
   return pension;
 }
 

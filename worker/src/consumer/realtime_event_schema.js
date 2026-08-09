@@ -200,6 +200,15 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     rejectedCount: NON_CONTENT_FIELD_TYPES.INTEGER,
     latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
+  'live.facts.reconciled': event({
+    mode: NON_CONTENT_FIELD_TYPES.STRING,
+    status: NON_CONTENT_FIELD_TYPES.STRING,
+    acceptedGroupCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    rejectedGroupCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    retryAttempt: NON_CONTENT_FIELD_TYPES.INTEGER,
+    errorCode: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
   // A deterministic detector (L2/L3) cancelled a response mid-sentence.
   'live.compliance.tripped': event({
     actId: NON_CONTENT_FIELD_TYPES.STRING,

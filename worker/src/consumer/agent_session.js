@@ -367,6 +367,7 @@ export async function processAgentTurn(env, config, {
       toolName: 'silent_planner',
       toolVersion: `${config.realtimePlannerPromptVersion}:agent-1`,
       expectedProfileRevision: Number(context.sessionRow.current_profile_revision),
+      sourceTurnId: recorded.id,
       arguments: { schemaVersion: extraction.schemaVersion, sourceTurnId: turnRef },
       maxToolCalls: config.realtimeMaxToolCalls
     });

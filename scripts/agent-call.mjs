@@ -26,8 +26,16 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from 'node:path';
 
 import { detectBlockers, detectExecutionBlockers } from './agent-harness/blockers.mjs';
-import { deterministicFallbackExtraction } from '../worker/src/consumer/planning_facts.js';
-import { loadCaller } from './agent-harness/caller.mjs';
+import {
+  deterministicFallbackExtraction, mapPlannerExtractionToCandidates
+} from '../worker/src/consumer/planning_facts.js';
+import { extractSegmentedPlannerTurn } from '../worker/src/consumer/realtime_planner.js';
+import { loadCallerFixture } from './agent-harness/caller.mjs';
+import { exportRun, traceIdForCall } from './agent-harness/langfuse-export.mjs';
+import {
+  archiveCandidates, cloneForArchive, observedCanonicalFacts, observedNeeds, observedQuestion
+} from './agent-harness/observability.mjs';
+import { AGENT_RUN_ARCHIVE_VERSION, firstGoalTurn } from './agent-harness/runlog.mjs';
 import {
   makeConfig, makeEnv, newSession, openCallDatabase, RELEASED_MODULE_IDS
 } from './agent-harness/transports.mjs';
@@ -35,6 +43,7 @@ import {
   confirmAgentPlan, loadAgentContext, processAgentTurn, toAgentDiagnosticView
 } from '../worker/src/consumer/agent_session.js';
 import { getLatestAnalysis, getSessionRow } from '../worker/src/consumer/repository.js';
+import { listRealtimeFinalTurns } from '../worker/src/consumer/realtime_repository.js';
 
 const CALL_DIR = 'agent-calls';
 const POINTER = join(CALL_DIR, 'current.json');
@@ -54,6 +63,11 @@ const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
 // regex fallback captures far less than the planner, and the "reply" is the raw
 // server-owned question rather than spoken words. Never judge a call from it.
 const offline = args.includes('--offline');
+const langfuseConfigured = Boolean(
+  String(process.env.LANGFUSE_PUBLIC_KEY || '').trim()
+  && String(process.env.LANGFUSE_SECRET_KEY || '').trim()
+);
+const langfuseHost = String(process.env.LANGFUSE_HOST || '').trim() || 'https://cloud.langfuse.com';
 
 function usage(message = '') {
   if (message) console.error(`${message}\n`);
@@ -139,6 +153,22 @@ function printBlockers(findings, label = 'blockers') {
   }
 }
 
+function aggregatePlannerUsage(turns) {
+  const rows = turns
+    .map((turn) => turn?.observation?.extraction?.metadata)
+    .filter(Boolean);
+  const latenciesMs = rows.map((row) => Number(row.latencyMs)).filter(Number.isFinite);
+  return {
+    model: [...rows].reverse().find((row) => row.model)?.model || null,
+    calls: rows.filter((row) => row.model && row.model !== 'deterministic_fallback').length,
+    inputTokens: rows.reduce((sum, row) => sum + Number(row.inputTokens || 0), 0),
+    outputTokens: rows.reduce((sum, row) => sum + Number(row.outputTokens || 0), 0),
+    cachedInputTokens: rows.reduce((sum, row) => sum + Number(row.cachedInputTokens || 0), 0),
+    latenciesMs,
+    latencyMs: latenciesMs.reduce((sum, value) => sum + value, 0)
+  };
+}
+
 if (!command || ['-h', '--help', 'help'].includes(command)) usage();
 // Only SAY costs money: it is the one command that calls the planner and the
 // renderer. Starting a call, reading state, printing the transcript and running
@@ -156,9 +186,10 @@ if (command === 'start') {
   const callId = flag('id') || `call-${new Date().toISOString().slice(0, 19).replace(/[:T-]/g, '')}`;
   const callerPath = flag('caller');
   let caller = null;
+  let fixture = null;
   if (callerPath) {
     try {
-      caller = loadCaller(callerPath);
+      ({ caller, fixture } = loadCallerFixture(callerPath));
     } catch (error) {
       usage(`Could not read ${callerPath}: ${error.message}`);
     }
@@ -169,7 +200,9 @@ if (command === 'start') {
   const config = makeConfig(env);
   const { sessionId, meetingId } = await newSession(env, config);
 
-  const pointer = { callId, databasePath, sessionId, meetingId, callerPath: callerPath || null };
+  const pointer = {
+    callId, databasePath, sessionId, meetingId, callerPath: callerPath || null, fixture
+  };
   writeFileSync(POINTER, `${JSON.stringify(pointer, null, 2)}\n`);
   writeFileSync(join(CALL_DIR, `${callId}-pointer.json`), `${JSON.stringify(pointer, null, 2)}\n`);
   writeFileSync(join(CALL_DIR, `${callId}-transcript.json`), '[]\n');
@@ -199,6 +232,25 @@ if (command === 'say') {
   if (!message) usage('Say something: agent-call.mjs say "I am 52 and hoping to retire at 60"');
   const pointer = readPointer();
   const { env, config } = openCall(pointer);
+  const beforeContext = await loadAgentContext(env, config, pointer.sessionId, pointer.meetingId);
+  let rawExtraction = null;
+  let plannerMetadata = null;
+
+  const observedExtractTurn = async (options) => {
+    if (offline) {
+      rawExtraction = deterministicFallbackExtraction({
+        transcript: options.transcript,
+        profile: options.context.profile,
+        sourceTurnId: options.sourceTurnId
+      });
+      plannerMetadata = { model: 'deterministic_fallback', latencyMs: 0 };
+      return { extraction: rawExtraction, metadata: { ...plannerMetadata, costMicroEur: 0 } };
+    }
+    const planned = await extractSegmentedPlannerTurn(options);
+    rawExtraction = planned.extraction;
+    plannerMetadata = planned.metadata || null;
+    return planned;
+  };
 
   let result;
   try {
@@ -206,18 +258,15 @@ if (command === 'say') {
       sessionId: pointer.sessionId,
       meetingId: pointer.meetingId,
       message,
-      ...(offline ? { deps: {
-        extractTurn: async ({ sourceTurnId, transcript: text, context }) => ({
-          extraction: deterministicFallbackExtraction({
-            transcript: text, profile: context.profile, sourceTurnId
-          }),
-          metadata: { costMicroEur: 0 }
-        }),
+      deps: {
+        extractTurn: observedExtractTurn,
+        ...(offline ? {
         renderText: async ({ context }) => ({
           text: context.state.meetingBrief?.questionBatch?.prompt || '(no question)',
           fallback: false, decisions: [], usageMicroEur: 0, context
         })
-      } } : {})
+        } : {})
+      }
     });
   } catch (error) {
     console.error(`\nThe turn failed: ${error?.code || error?.message}`);
@@ -225,21 +274,104 @@ if (command === 'say') {
     process.exit(1);
   }
 
-  appendTranscript(pointer, { role: 'client', text: message });
-  appendTranscript(pointer, { role: 'assistant', text: result.consumer.assistantMessage });
+  const afterContext = await loadAgentContext(env, config, pointer.sessionId, pointer.meetingId);
+  const storedTurns = await listRealtimeFinalTurns(env, pointer.sessionId, pointer.meetingId, 200);
+  const clientRowIndex = storedTurns.findIndex((item) => item.id === result.consumer.turnId);
+  const assistantRow = storedTurns.slice(Math.max(0, clientRowIndex + 1))
+    .find((item) => item.role === 'assistant');
+  const clientTranscript = {
+    id: result.consumer.turnId,
+    role: 'client',
+    text: message,
+    createdAt: storedTurns[clientRowIndex]?.createdAt || null
+  };
+  const assistantTranscript = {
+    id: assistantRow?.id || null,
+    role: 'assistant',
+    text: result.consumer.assistantMessage,
+    createdAt: assistantRow?.createdAt || null
+  };
+  appendTranscript(pointer, clientTranscript);
+  appendTranscript(pointer, assistantTranscript);
 
   const diagnostics = result.diagnostics;
   const turns = readTurns(pointer);
+  let mappedCandidates = [];
+  if (rawExtraction) {
+    try {
+      mappedCandidates = mapPlannerExtractionToCandidates(rawExtraction);
+    } catch (_error) {
+      // The raw extraction and deterministic rejection still remain visible.
+    }
+  }
+  const candidateObservations = archiveCandidates({
+    candidates: mappedCandidates,
+    invalidCandidates: rawExtraction?.invalidCandidates || [],
+    outcomes: diagnostics.candidateOutcomes || [],
+    profile: afterContext.profile,
+    askedQuestion: observedQuestion(beforeContext)
+  });
+  const question = observedQuestion(afterContext);
+  const previousSpend = Number(turns.at(-1)?.observation?.spendMicroEur?.cumulative || 0);
+  const cumulativeSpend = Number(result.usage?.spendMicroEur || 0);
   turns.push({
     transcript: message,
+    clientTurnId: clientTranscript.id,
+    assistantTurnId: assistantTranscript.id,
     plannerErrorCode: diagnostics.plannerErrorCode ?? null,
     degraded: diagnostics.degraded === true,
     acceptedFactIds: (diagnostics.candidateOutcomes || []).filter((o) => o.accepted).map((o) => o.factId),
     rejectedFactIds: (diagnostics.candidateOutcomes || []).filter((o) => !o.accepted).map((o) => o.factId),
+    acceptedFactInstanceIds: candidateObservations
+      .filter((item) => item.accepted && item.factInstanceId)
+      .map((item) => item.factInstanceId),
+    rejectedFactInstances: candidateObservations
+      .filter((item) => item.accepted === false)
+      .map((item) => ({
+        factId: item.factId,
+        factInstanceId: item.factInstanceId,
+        entityId: item.entityId,
+        ownerId: item.ownerId,
+        rejectionCode: item.rejectionCode
+      })),
     goals: [...(diagnostics.goals?.active || [])],
     analyses: (diagnostics.analyses || []).map((item) => item.moduleId),
+    // A blocked analysis stays selected and visible rather than disappearing,
+    // so "is it still on the plan" and "can it actually run" are now two
+    // different questions and the scorecard has to be able to tell them apart.
+    analysisAvailability: Object.fromEntries((diagnostics.analyses || [])
+      .filter((item) => item.moduleId)
+      .map((item) => [item.moduleId, item.availability ?? item.intakeStatus ?? null])),
     factIds: (diagnostics.facts || []).map((item) => item.factId),
-    questionFactId: diagnostics.pendingQuestion?.factId ?? null
+    questionFactId: diagnostics.pendingQuestion?.factId ?? null,
+    questionFactInstanceId: question?.factInstanceId || null,
+    observation: {
+      schemaVersion: 'consumer-agent-turn-observation-v1',
+      transcript: { client: clientTranscript, assistant: assistantTranscript },
+      profiles: {
+        beforeRevision: Number(beforeContext.sessionRow.current_profile_revision),
+        before: cloneForArchive(beforeContext.profile),
+        afterRevision: Number(afterContext.sessionRow.current_profile_revision),
+        after: cloneForArchive(afterContext.profile)
+      },
+      extraction: {
+        raw: cloneForArchive(rawExtraction),
+        candidates: candidateObservations,
+        metadata: cloneForArchive(plannerMetadata),
+        plannerErrorCode: diagnostics.plannerErrorCode || null,
+        degraded: diagnostics.degraded === true,
+        repairedCount: Number(diagnostics.repairedCount || 0),
+        repairAttemptFailed: diagnostics.repairAttemptFailed === true,
+        segmentsFailed: Number(diagnostics.segmentsFailed || 0)
+      },
+      question,
+      needsAfter: observedNeeds(afterContext),
+      canonicalFactsAfter: observedCanonicalFacts(afterContext),
+      spendMicroEur: {
+        turn: Math.max(0, cumulativeSpend - previousSpend),
+        cumulative: cumulativeSpend
+      }
+    }
   });
   writeTurns(pointer, turns);
 
@@ -334,7 +466,7 @@ if (command === 'finish') {
       console.info(`${missing.moduleIds.join(', ') || 'an analysis'} needed `
         + `${missing.factId || missing.fieldPath}${missing.reason ? ` — ${missing.reason}` : ''}`);
     }
-    console.info('\nThe call never asked for these. That is the finding.');
+    console.info('\nThe final blocker report distinguishes never asked, unanswered, unknown, rejected and unused inputs.');
   }
 
   const sessionRow = await getSessionRow(env, pointer.sessionId);
@@ -349,22 +481,66 @@ if (command === 'finish') {
   }
 
   const outPath = join(CALL_DIR, `${pointer.callId}-result.json`);
-  writeFileSync(outPath, `${JSON.stringify({
+  const turns = readTurns(pointer);
+  const transcript = readTranscript(pointer);
+  const blockers = [
+    ...detectBlockers(turns),
+    ...detectExecutionBlockers(
+      { ...execution, missingForModules: execution.requiredQuestions || [], results },
+      turns.length,
+      turns
+    )
+  ];
+  const traceId = traceIdForCall(pointer.callId, pointer.callId);
+  const traceUrl = langfuseConfigured
+    ? `${langfuseHost.replace(/\/$/, '')}/trace/${traceId}`
+    : null;
+  const resultRecord = {
+    schemaVersion: 'consumer-agent-call-result-v2',
     callId: pointer.callId,
     callerPath: pointer.callerPath,
+    fixture: pointer.fixture || null,
+    synthetic: true,
+    contentPolicy: 'synthetic_test_content',
+    firstGoalTurn: firstGoalTurn(turns),
     profileRevision: Number(sessionRow?.current_profile_revision ?? 0),
     execution,
     results,
-    transcript: readTranscript(pointer),
-    blockers: [
-      ...detectBlockers(readTurns(pointer)),
-      ...detectExecutionBlockers(
-        { ...execution, missingForModules: execution.requiredQuestions || [], results },
-        readTurns(pointer).length
-      )
-    ]
-  }, null, 2)}\n`);
+    transcript,
+    turnRecords: turns,
+    usage: { planner: aggregatePlannerUsage(turns) },
+    langfuse: { traceId, traceUrl },
+    blockers
+  };
+  writeFileSync(outPath, `${JSON.stringify(resultRecord, null, 2)}\n`);
+
+  // The file above is authoritative and already complete before this optional
+  // network export begins. Telemetry failure never changes the result or exit.
+  const langfuseExport = await exportRun({
+    schemaVersion: AGENT_RUN_ARCHIVE_VERSION,
+    runId: pointer.callId,
+    runKey: `interactive-agent-call planner=${config.realtimePlannerModel || 'none'}`,
+    generatedAt: new Date().toISOString(),
+    calls: [{
+      ...resultRecord,
+      caller: pointer.callId,
+      turns: turns.length,
+      goals: turns.at(-1)?.goals || [],
+      analyses: turns.at(-1)?.analyses || [],
+      factIds: turns.at(-1)?.factIds || [],
+      execution: {
+        ...execution,
+        missingForModules: execution.requiredQuestions || [],
+        results
+      },
+      error: null
+    }]
+  }).catch(() => ({ enabled: langfuseConfigured, delivered: 0, failures: 1 }));
   console.info(`\nWritten to ${outPath} — this is the file to grade.`);
+  if (langfuseExport.enabled) {
+    console.info(`Langfuse: ${langfuseExport.delivered} delivered, ${langfuseExport.failures} failed`);
+    console.info(`Trace: ${traceUrl}`);
+  }
 }
 
 if (!['start', 'say', 'state', 'transcript', 'finish', 'list'].includes(command)) {

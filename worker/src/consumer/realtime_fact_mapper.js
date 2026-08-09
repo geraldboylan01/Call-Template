@@ -60,6 +60,7 @@ const CHOICES = Object.freeze({
   employment_context: new Set(['employee', 'self_employed', 'contractor', 'company_director', 'owner_manager', 'business_owner', 'retired', 'other']),
   retirement_status: new Set(['working', 'approaching_retirement', 'newly_retired', 'retired', 'older_retiree']),
   retirement_readiness: new Set(['on_track', 'retirement_behind', 'unsure']),
+  pension_contribution_status: new Set(['active', 'paid_up', 'not_applicable', 'unknown']),
   business_context: new Set(['no_business_interest', 'self_employed', 'company_director', 'owner_manager', 'business_owner', 'farmer'])
 });
 
@@ -780,6 +781,7 @@ function pensionIndex(profile, value, { contributionRate = false } = {}) {
       : profile.pensions;
     const contributory = scoped.filter(
       (pension) => !NON_CONTRIBUTORY_PENSION_TYPES.includes(pension.type)
+        && !['paid_up', 'not_applicable'].includes(pension.contributionStatus)
     );
     if (contributory.length === 1) {
       const only = contributory[0];
@@ -1167,15 +1169,35 @@ function mapPensionPosition(profile, fact, currency) {
         ownerId: ownerId(profile, value.owner ?? value.ownerId ?? existing?.ownerId),
         type
       };
-      const currentValue = optionalMoney(value.currentValue ?? value.amount, currency);
+      // A defined-benefit annual pension is not a pot value. Only an explicit
+      // currentValue may populate that field; the generic position `amount`
+      // is ignored for DB records so an annual benefit cannot inflate assets.
+      const currentValue = optionalMoney(
+        type === 'defined_benefit' ? value.currentValue : (value.currentValue ?? value.amount),
+        currency
+      );
       const rateOptions = { decimal: value.rateUnit === 'decimal' };
       const employeeRate = value.employeeContributionRate === null || typeof value.employeeContributionRate === 'undefined'
         ? optionalRate(value.personalContributionRate, rateOptions)
         : optionalRate(value.employeeContributionRate, rateOptions);
       const employerRate = optionalRate(value.employerContributionRate, rateOptions);
+      const contributionStatus = value.contributionStatus === null || typeof value.contributionStatus === 'undefined'
+        ? undefined
+        : normalizedChoice('pension_contribution_status', value.contributionStatus);
+      const projectedAnnualIncome = optionalMoney(value.projectedAnnualIncome ?? value.annualBenefit, currency);
+      const retirementLumpSum = optionalMoney(value.retirementLumpSum ?? value.lumpSum, currency);
+      const benefitStartAge = optionalBounded(value.benefitStartAge ?? value.startAge, {
+        min: 18, max: 100, integer: true
+      });
       if (currentValue) canonical.currentValue = currentValue;
       if (typeof employeeRate === 'number') canonical.employeeContributionRate = employeeRate;
       if (typeof employerRate === 'number') canonical.employerContributionRate = employerRate;
+      if (contributionStatus) canonical.contributionStatus = contributionStatus;
+      else if (NON_CONTRIBUTORY_PENSION_TYPES.includes(type)) canonical.contributionStatus = 'not_applicable';
+      else if (typeof employeeRate === 'number' || typeof employerRate === 'number') canonical.contributionStatus = 'active';
+      if (projectedAnnualIncome) canonical.projectedAnnualIncome = projectedAnnualIncome;
+      if (retirementLumpSum) canonical.retirementLumpSum = retirementLumpSum;
+      if (typeof benefitStartAge === 'number') canonical.benefitStartAge = benefitStartAge;
       return canonical;
     }
   })), ['pension']);
@@ -1494,12 +1516,22 @@ export function mapRealtimeFact(profile, fact) {
     };
   }
 
-  if (['pension_current_value', 'pension_employee_contribution_rate', 'pension_employer_contribution_rate'].includes(fact.factId)) {
+  const pensionScalarFields = {
+    pension_current_value: 'currentValue',
+    pension_contribution_status: 'contributionStatus',
+    pension_employee_contribution_rate: 'employeeContributionRate',
+    pension_employer_contribution_rate: 'employerContributionRate',
+    pension_projected_annual_income: 'projectedAnnualIncome',
+    pension_benefit_start_age: 'benefitStartAge',
+    pension_retirement_lump_sum: 'retirementLumpSum'
+  };
+  if (pensionScalarFields[fact.factId]) {
+    const contributionRate = ['pension_employee_contribution_rate', 'pension_employer_contribution_rate']
+      .includes(fact.factId);
     const { stableId, index, existing } = pensionIndex(profile, fact.value, {
-      contributionRate: fact.factId !== 'pension_current_value'
+      contributionRate
     });
-    const key = fact.factId === 'pension_current_value' ? 'currentValue'
-      : fact.factId === 'pension_employee_contribution_rate' ? 'employeeContributionRate' : 'employerContributionRate';
+    const key = pensionScalarFields[fact.factId];
     // "I PAY THE MAX" IS AN ANSWER. It is the Revenue age band applied to the
     // client's age, which is a rule the server owns -- the planner reports only
     // that they said "the maximum", and deterministic code derives the rate, so
@@ -1509,29 +1541,54 @@ export function mapRealtimeFact(profile, fact) {
     const maximumForAge = fact.factId === 'pension_employee_contribution_rate'
       && plainObject(fact.value)
       && fact.value.maxForAge === true;
-    const canonicalValue = fact.factId === 'pension_current_value'
+    const canonicalValue = ['pension_current_value', 'pension_projected_annual_income', 'pension_retirement_lump_sum']
+      .includes(fact.factId)
       ? money(fact.value, currency)
-      : maximumForAge
-        ? resolveMaxRelievableRate(profile, existing, fact.value)
-        : percentageRate(
-          scalarValue(fact.value, [key, 'rate']),
-          { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
-        );
-    const proposalValue = fact.factId === 'pension_current_value'
+      : fact.factId === 'pension_contribution_status'
+        ? normalizedChoice(fact.factId, scalarValue(fact.value, [key, 'status']))
+        : fact.factId === 'pension_benefit_start_age'
+          ? boundedNumber(scalarValue(fact.value, [key, 'startAge', 'age']), {
+              min: 18, max: 100, integer: true
+            })
+          : maximumForAge
+            ? resolveMaxRelievableRate(profile, existing, fact.value)
+            : percentageRate(
+              scalarValue(fact.value, [key, 'rate']),
+              { decimal: plainObject(fact.value) && fact.value.rateUnit === 'decimal' }
+            );
+    const proposalValue = ['pension_current_value', 'pension_projected_annual_income', 'pension_retirement_lump_sum']
+      .includes(fact.factId)
       ? { entityId: stableId, ...canonicalValue }
-      : { entityId: stableId, value: canonicalValue, rateUnit: 'decimal' };
+      : contributionRate
+        ? { entityId: stableId, value: canonicalValue, rateUnit: 'decimal' }
+        : { entityId: stableId, value: canonicalValue };
     if (existing) {
-      return withSpecialistReconciliationInvalidation(profile, {
+      const mapped = withSpecialistReconciliationInvalidation(profile, {
         fieldPath: `/pensions/${index}/${key}`,
         canonicalValue,
         displayValue: canonicalValue,
         proposalValue
       }, ['pension']);
+      if (contributionRate && !['active'].includes(existing.contributionStatus)) {
+        mapped.additionalPatch = {
+          ...(mapped.additionalPatch || {}),
+          [`/pensions/${index}/contributionStatus`]: 'active'
+        };
+      }
+      return mapped;
     }
     const pensionOwnerId = plainObject(fact.value)
       ? ownerId(profile, fact.value.owner ?? fact.value.ownerId)
       : primaryOwnerId;
-    const pension = { ...(existing || { pensionId: stableId, ownerId: pensionOwnerId, type: 'occupational' }), [key]: canonicalValue };
+    const defaultType = ['pension_projected_annual_income', 'pension_benefit_start_age', 'pension_retirement_lump_sum']
+      .includes(fact.factId)
+      ? 'defined_benefit'
+      : 'occupational';
+    const pension = {
+      ...(existing || { pensionId: stableId, ownerId: pensionOwnerId, type: defaultType }),
+      [key]: canonicalValue,
+      ...(contributionRate ? { contributionStatus: 'active' } : {})
+    };
     return withSpecialistReconciliationInvalidation(profile, {
       fieldPath: `/pensions/${index}`,
       canonicalValue: pension,
@@ -1746,6 +1803,12 @@ export function buildConfirmedRealtimeFactSummary(profile) {
     }, pension.pensionId);
     add('pension_current_value', `${pensionPath}/currentValue`, pension.currentValue, pension.pensionId);
     add(
+      'pension_contribution_status',
+      `${pensionPath}/contributionStatus`,
+      pension.contributionStatus,
+      pension.pensionId
+    );
+    add(
       'pension_employee_contribution_rate',
       `${pensionPath}/employeeContributionRate`,
       pension.employeeContributionRate,
@@ -1755,6 +1818,24 @@ export function buildConfirmedRealtimeFactSummary(profile) {
       'pension_employer_contribution_rate',
       `${pensionPath}/employerContributionRate`,
       pension.employerContributionRate,
+      pension.pensionId
+    );
+    add(
+      'pension_projected_annual_income',
+      `${pensionPath}/projectedAnnualIncome`,
+      pension.projectedAnnualIncome,
+      pension.pensionId
+    );
+    add(
+      'pension_benefit_start_age',
+      `${pensionPath}/benefitStartAge`,
+      pension.benefitStartAge,
+      pension.pensionId
+    );
+    add(
+      'pension_retirement_lump_sum',
+      `${pensionPath}/retirementLumpSum`,
+      pension.retirementLumpSum,
       pension.pensionId
     );
   });
@@ -1843,6 +1924,40 @@ export function buildConfirmedRealtimeFactSummary(profile) {
       status: 'saved_draft',
       revision: Number(profile.revision || 0)
     });
+  });
+  Object.entries(completionFacts.responsesByFactInstance || {}).forEach(([factInstanceId, response]) => {
+    if (!response || typeof response !== 'object') return;
+    const separator = factInstanceId.indexOf(':');
+    const factId = separator < 0 ? factInstanceId : factInstanceId.slice(0, separator);
+    const entityId = response.entityId || (separator < 0 ? null : factInstanceId.slice(separator + 1));
+    if (!factId || facts.some((fact) => (
+      fact.factId === factId && (fact.entityId || null) === (entityId || null)
+    ))) return;
+    if (['unknown', 'estimate_declined'].includes(response.resolution)) {
+      facts.push({
+        factId,
+        ...(entityId ? { entityId } : {}),
+        ...(response.ownerId ? { ownerId: response.ownerId } : {}),
+        ...(response.fieldPath ? { fieldPath: response.fieldPath } : {}),
+        value: 'Unknown',
+        certainty: 'unknown',
+        status: 'saved_draft',
+        revision: Number(profile.revision || 0)
+      });
+      return;
+    }
+    if (response.resolution === 'answered_range' && response.range) {
+      facts.push({
+        factId,
+        ...(entityId ? { entityId } : {}),
+        ...(response.ownerId ? { ownerId: response.ownerId } : {}),
+        ...(response.fieldPath ? { fieldPath: response.fieldPath } : {}),
+        value: response.range,
+        certainty: 'range',
+        status: 'saved_draft',
+        revision: Number(profile.revision || 0)
+      });
+    }
   });
   Object.entries(completionFacts.unknownFactIds || {}).forEach(([factId, acknowledged]) => {
     if (acknowledged !== true || facts.some((fact) => fact.factId === factId)) return;

@@ -18,7 +18,11 @@
 
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
 import { extractRulesOnlyProfilePatch } from '../../../js/planning/rules_only_extraction.js';
-import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
+import {
+  getSemanticFactDefinition,
+  resolveSemanticFact,
+  semanticFactInstanceId
+} from '../../../js/planning/semantic_facts.js';
 import { ConsumerError } from './errors.js';
 import {
   mapRealtimeFact,
@@ -62,7 +66,71 @@ export function boundedProposalRange(value) {
   return { min: endpoints.min, max: endpoints.max };
 }
 
-function completionFactMapping(profile, fact, normalizedRange = null) {
+function completionState(profile) {
+  const existing = profile.assumptions?.values?.completionFacts || {};
+  return {
+    ...existing,
+    unknownFactIds: { ...(existing.unknownFactIds || {}) },
+    rangedFactValues: { ...(existing.rangedFactValues || {}) },
+    estimateDeclinedFactIds: { ...(existing.estimateDeclinedFactIds || {}) },
+    responsesByFactInstance: { ...(existing.responsesByFactInstance || {}) }
+  };
+}
+
+function responseIdentity(profile, fact, fieldPath = '') {
+  const factId = fact.factId;
+  const mappedResolution = fieldPath
+    ? resolveSemanticFact({ fieldPath, entityId: fact.value?.entityId || fact.value?.id }, { profile })
+    : null;
+  // A shared storage path can represent several semantic facts (for example
+  // `/incomeSources` is both income positions and gross household income).
+  // Never let path resolution change the identity of the fact being answered.
+  const resolved = mappedResolution?.factId === factId ? mappedResolution : null;
+  let factInstanceId = resolved?.factInstanceId || semanticFactInstanceId(fact, profile) || factId;
+  // Unknown/range completion writes do not carry a canonical field path. When
+  // a semantic fact belongs to the ONE matching indexed entity already in the
+  // profile, bind it to that entity so the corresponding NeedV2 can see the
+  // response. Never guess when there is more than one candidate: that is the
+  // exact pension ambiguity instance-scoped completion is meant to prevent.
+  if (factInstanceId === factId && factId !== 'pension_positions') {
+    const definition = getSemanticFactDefinition(factId);
+    if (definition?.entity?.kind === 'indexed_collection') {
+      const pattern = definition.mappings?.find((item) => /\/\*\//.test(item.pathPattern))?.pathPattern;
+      const collectionKey = pattern?.split('/').filter(Boolean)[0];
+      const collection = collectionKey && Array.isArray(profile?.[collectionKey])
+        ? profile[collectionKey]
+        : [];
+      const idKey = definition.entity.idKey;
+      if (collection.length === 1 && typeof collection[0]?.[idKey] === 'string') {
+        factInstanceId = `${factId}:${collection[0][idKey]}`;
+      }
+    }
+  }
+  const entityId = resolved?.entityId
+    || (factInstanceId.startsWith(`${factId}:`) ? factInstanceId.slice(factId.length + 1) : null);
+  const pension = entityId
+    ? (profile.pensions || []).find((item) => item.pensionId === entityId)
+    : null;
+  const rawOwner = fact.value?.ownerId ?? fact.value?.owner;
+  const ownerId = resolved?.ownerId
+    || pension?.ownerId
+    || (rawOwner === 'primary'
+      ? profile.primaryPerson?.personId
+      : rawOwner === 'partner'
+        ? profile.partner?.personId
+        : rawOwner)
+    || null;
+  return { factId, factInstanceId, entityId, ownerId, fieldPath: fieldPath || null };
+}
+
+function currentAskedFacts(state) {
+  const batch = state?.meetingBrief?.questionBatch;
+  const signed = [batch?.primaryFact, batch?.linkedFact].filter((fact) => fact?.factId);
+  if (signed.length > 0) return signed;
+  return [state?.nextApprovedFact || state?.nextQuestion].filter((fact) => fact?.factId);
+}
+
+function completionFactMapping(profile, fact, normalizedRange = null, { state = null } = {}) {
   const definition = getSemanticFactDefinition(fact.factId);
   if (!definition) {
     throw new ConsumerError(400, 'realtime_fact_unknown', 'That semantic fact is not recognised.');
@@ -79,18 +147,8 @@ function completionFactMapping(profile, fact, normalizedRange = null) {
       'Only a numerical or monetary fact may be recorded as a range.'
     );
   }
-  const completionFacts = {
-    ...(profile.assumptions?.values?.completionFacts || {}),
-    unknownFactIds: {
-      ...(profile.assumptions?.values?.completionFacts?.unknownFactIds || {})
-    },
-    rangedFactValues: {
-      ...(profile.assumptions?.values?.completionFacts?.rangedFactValues || {})
-    },
-    estimateDeclinedFactIds: {
-      ...(profile.assumptions?.values?.completionFacts?.estimateDeclinedFactIds || {})
-    }
-  };
+  const completionFacts = completionState(profile);
+  const identity = responseIdentity(profile, fact);
   if (fact.certainty === 'unknown') {
     // ONE estimate prompt, then we stop asking. The first "I don't know" is not
     // final: the meeting comes back once for a rough idea or a range, because
@@ -99,24 +157,53 @@ function completionFactMapping(profile, fact, normalizedRange = null) {
     // declining that estimate, and that is what makes the answer final --
     // derived from what is already on record, so no separate bookkeeping write
     // is needed and both transports reach it identically.
-    if (completionFacts.unknownFactIds[fact.factId] === true) {
-      completionFacts.estimateDeclinedFactIds[fact.factId] = true;
+    const previous = completionFacts.responsesByFactInstance[identity.factInstanceId];
+    const asked = currentAskedFacts(state).find((item) => (
+      (item.factInstanceId || item.factId) === identity.factInstanceId
+    ));
+    const answersSignedEstimate = Boolean(asked)
+      && (asked.status === 'estimate_requested' || asked.estimateRequested === true);
+    // Preserve the old singleton journey while requiring exact signed scope for
+    // entity facts. A second generic "unknown" can never decline every pension.
+    const estimateDeclined = previous?.resolution === 'unknown'
+      && (identity.factInstanceId === fact.factId || answersSignedEstimate);
+    const response = {
+      resolution: estimateDeclined ? 'estimate_declined' : 'unknown',
+      attempts: Math.max(0, Number(previous?.attempts || 0)) + 1,
+      ...(identity.ownerId ? { ownerId: identity.ownerId } : {}),
+      ...(identity.entityId ? { entityId: identity.entityId } : {}),
+      ...(identity.fieldPath ? { fieldPath: identity.fieldPath } : {})
+    };
+    completionFacts.responsesByFactInstance[identity.factInstanceId] = response;
+    if (identity.factInstanceId === fact.factId) {
+      completionFacts.unknownFactIds[fact.factId] = true;
+      if (estimateDeclined) completionFacts.estimateDeclinedFactIds[fact.factId] = true;
+      else delete completionFacts.estimateDeclinedFactIds[fact.factId];
+      delete completionFacts.rangedFactValues[fact.factId];
     }
-    completionFacts.unknownFactIds[fact.factId] = true;
-    delete completionFacts.rangedFactValues[fact.factId];
     return {
       fieldPath: '/assumptions/values/completionFacts',
-      metadataPath: `/assumptions/values/completionFacts/unknownFactIds/${fact.factId}`,
+      metadataPath: '/assumptions/values/completionFacts/responsesByFactInstance',
       canonicalValue: completionFacts,
       displayValue: 'Unknown'
     };
   }
-  delete completionFacts.unknownFactIds[fact.factId];
-  delete completionFacts.estimateDeclinedFactIds[fact.factId];
-  completionFacts.rangedFactValues[fact.factId] = normalizedRange;
+  completionFacts.responsesByFactInstance[identity.factInstanceId] = {
+    resolution: 'answered_range',
+    attempts: 1,
+    range: normalizedRange,
+    ...(identity.ownerId ? { ownerId: identity.ownerId } : {}),
+    ...(identity.entityId ? { entityId: identity.entityId } : {}),
+    ...(identity.fieldPath ? { fieldPath: identity.fieldPath } : {})
+  };
+  if (identity.factInstanceId === fact.factId) {
+    delete completionFacts.unknownFactIds[fact.factId];
+    delete completionFacts.estimateDeclinedFactIds[fact.factId];
+    completionFacts.rangedFactValues[fact.factId] = normalizedRange;
+  }
   return {
     fieldPath: '/assumptions/values/completionFacts',
-    metadataPath: `/assumptions/values/completionFacts/rangedFactValues/${fact.factId}`,
+    metadataPath: '/assumptions/values/completionFacts/responsesByFactInstance',
     canonicalValue: completionFacts,
     displayValue: normalizedRange
   };
@@ -160,8 +247,8 @@ export function rangeEndpoints(value) {
   return null;
 }
 
-export function mapRealtimeProposalFact(profile, fact) {
-  if (fact.certainty === 'unknown') return completionFactMapping(profile, fact);
+export function mapRealtimeProposalFact(profile, fact, { state = null } = {}) {
+  if (fact.certainty === 'unknown') return completionFactMapping(profile, fact, null, { state });
   const endpoints = rangeEndpoints(fact.value);
   // A RANGE IS A RANGE WHATEVER THE PLANNER CALLED IT. The value is the
   // evidence of what the client said; a mislabelled certainty must not be the
@@ -203,13 +290,21 @@ export function mapRealtimeProposalFact(profile, fact) {
     certainty: 'approximate',
     value: range.rebuild(midpointEndpoint)
   });
-  const completionFacts = {
-    ...(profile.assumptions?.values?.completionFacts || {}),
-    rangedFactValues: {
-      ...(profile.assumptions?.values?.completionFacts?.rangedFactValues || {}),
-      [fact.factId]: normalizedRange
-    }
+  const completionFacts = completionState(profile);
+  const identity = responseIdentity(profile, fact, mapped.fieldPath);
+  completionFacts.responsesByFactInstance[identity.factInstanceId] = {
+    resolution: 'answered_range',
+    attempts: 1,
+    range: normalizedRange,
+    ...(identity.ownerId ? { ownerId: identity.ownerId } : {}),
+    ...(identity.entityId ? { entityId: identity.entityId } : {}),
+    fieldPath: mapped.fieldPath
   };
+  if (identity.factInstanceId === fact.factId) {
+    completionFacts.rangedFactValues[fact.factId] = normalizedRange;
+    delete completionFacts.unknownFactIds[fact.factId];
+    delete completionFacts.estimateDeclinedFactIds[fact.factId];
+  }
   return {
     ...mapped,
     additionalPatch: {
@@ -221,12 +316,18 @@ export function mapRealtimeProposalFact(profile, fact) {
   };
 }
 
-function clearCompletionFactMarker(profile, factId, fieldPath = null) {
+function clearCompletionFactMarker(profile, fact, fieldPath = null) {
   const completionFacts = profile.assumptions?.values?.completionFacts;
   if (!completionFacts) return profile;
-  if (completionFacts.unknownFactIds) delete completionFacts.unknownFactIds[factId];
-  if (completionFacts.estimateDeclinedFactIds) delete completionFacts.estimateDeclinedFactIds[factId];
-  if (completionFacts.rangedFactValues) delete completionFacts.rangedFactValues[factId];
+  const identity = responseIdentity(profile, fact, fieldPath || '');
+  if (completionFacts.responsesByFactInstance) {
+    delete completionFacts.responsesByFactInstance[identity.factInstanceId];
+  }
+  if (identity.factInstanceId === fact.factId) {
+    if (completionFacts.unknownFactIds) delete completionFacts.unknownFactIds[fact.factId];
+    if (completionFacts.estimateDeclinedFactIds) delete completionFacts.estimateDeclinedFactIds[fact.factId];
+    if (completionFacts.rangedFactValues) delete completionFacts.rangedFactValues[fact.factId];
+  }
   if (fieldPath && completionFacts.confirmedNonePaths) {
     delete completionFacts.confirmedNonePaths[fieldPath];
   }
@@ -277,7 +378,7 @@ export function applyMappedRealtimeFact(profile, fact, mapped) {
   // A midpoint keeps the range it came from on record: that is what the client
   // actually said, and the assumption notice quotes it back to them.
   if (!['unknown', 'range'].includes(certainty) && !mapped.derivedFromRange) {
-    clearCompletionFactMarker(nextProfile, fact.factId, mapped.fieldPath);
+    clearCompletionFactMarker(nextProfile, fact, mapped.fieldPath);
   }
   return normalizeHouseholdProfile(nextProfile);
 }
@@ -346,8 +447,12 @@ export function orderRealtimeFactsByDependency(facts) {
 const ENTITY_FACT_FAMILIES = Object.freeze([
   Object.freeze([
     'pension_current_value',
+    'pension_contribution_status',
     'pension_employee_contribution_rate',
-    'pension_employer_contribution_rate'
+    'pension_employer_contribution_rate',
+    'pension_projected_annual_income',
+    'pension_benefit_start_age',
+    'pension_retirement_lump_sum'
   ])
 ]);
 
@@ -359,10 +464,12 @@ function sharesEntityWith(askedFactId, candidateFactId) {
 }
 
 export function bindCandidateToAskedEntity(candidate, state, profile = null) {
-  const asked = state?.meetingBrief?.questionBatch?.primaryFact
-    || state?.nextApprovedFact
-    || state?.nextQuestion;
-  if (!asked || !candidate?.factId || !sharesEntityWith(asked.factId, candidate.factId)) {
+  const asked = currentAskedFacts(state).find((fact) => (
+    fact.factId === candidate?.factId
+  )) || currentAskedFacts(state).find((fact) => (
+    candidate?.factId && sharesEntityWith(fact.factId, candidate.factId)
+  ));
+  if (!asked || !candidate?.factId) {
     return candidate;
   }
   // factInstanceId is `${factId}:${entityId}` when the question is scoped to a
@@ -621,7 +728,7 @@ export function planFactProposal({ config, profile, state, fact, plannerBatch = 
     && !config.realtimeConversationV2Enabled) {
     throw new ConsumerError(409, 'realtime_fact_not_routed', 'That semantic fact is not used by the currently routed canary modules.');
   }
-  const mapped = mapRealtimeProposalFact(profile, fact);
+  const mapped = mapRealtimeProposalFact(profile, fact, { state });
   const patch = patchForMappedRealtimeFact(mapped);
   const configuredConfirmationPolicy = getSemanticFactDefinition(fact.factId)?.confirmationPolicy || 'final_review';
   // Conversational v2 has no mandatory spoken confirmation tool. The silent
