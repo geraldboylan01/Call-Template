@@ -634,26 +634,34 @@ record({
   ok: Number(landedOutput) === 250
 });
 
-// -- THE CACHED-TOKEN / COST QUESTION (langfuse#12306)
+// -- THE CACHED-TOKEN / COST QUESTION (langfuse#12306), now settled live.
+// Langfuse sums every gen_ai.usage.* number into the total, and cached tokens
+// are a SUBSET of input_tokens — so sending them in that namespace reported
+// 3750 for a 2250-token call. They are sent as metadata instead.
 const landedCached = pick(usage, 'cachedInput', 'cached_input')
   ?? pick(usageDetails, 'cache_read_input_tokens', 'cached_input_tokens', 'cachedInputTokens');
 record({
-  label: 'cached tokens [langfuse#12306]',
-  sent: 'gen_ai.usage.cached_input_tokens = 1500',
-  landed: landedCached ?? '(ignored)',
-  // Informational: BOTH answers are actionable, neither is a failure of this run.
-  ok: null,
-  note: landedCached === undefined
-    ? 'ignored — drop the attribute or move to usage_details'
-    : 'landed — check the total below is not inflated'
+  label: 'cached tokens kept OUT of usage',
+  sent: 'not sent under gen_ai.usage.* (would be summed)',
+  landed: landedCached === undefined ? 'absent from usage' : `PRESENT = ${landedCached}`,
+  ok: landedCached === undefined,
+  note: 'anything in gen_ai.usage.* is added to the total'
+});
+const clause0Meta = clause0 ? (pick(clause0, 'metadata') || {}) : {};
+record({
+  label: 'cached tokens survive as metadata',
+  sent: 'langfuse.observation.metadata.cachedInputTokens = 1500',
+  landed: pick(clause0Meta, 'cachedInputTokens') ?? '(missing)',
+  ok: Number(pick(clause0Meta, 'cachedInputTokens')) === 1_500,
+  note: 'metadata is not summed, so the number stays visible and honest'
 });
 const landedTotal = pick(usage, 'total', 'totalTokens');
 record({
-  label: 'total tokens not inflated',
-  sent: 'input 2000 (already includes 1500 cached) + output 250',
+  label: 'total tokens correct',
+  sent: 'input 2000 (already includes 1500 cached) + output 250 = 2250',
   landed: landedTotal ?? '(no total)',
-  ok: landedTotal === undefined ? null : Number(landedTotal) <= 2_250,
-  note: Number(landedTotal) > 2_250 ? 'INFLATED — cached is being added on top of input' : ''
+  ok: landedTotal === undefined ? null : Number(landedTotal) === 2_250,
+  note: Number(landedTotal) > 2_250 ? 'INFLATED — something in gen_ai.usage.* is being added on top' : ''
 });
 const landedCost = pick(clause0 || {}, 'calculatedTotalCost', 'totalCost', 'costDetails');
 record({
