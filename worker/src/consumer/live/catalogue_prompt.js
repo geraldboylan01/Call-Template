@@ -752,6 +752,23 @@ export function liveVolatileStateItem(state = {}) {
       + 'Do not ask for it again. Mention it only if you have not already, or if they raise it.'
     );
   }
+  // WHAT THE BACKGROUND PLANNER FOUND. It reads the finished transcript against
+  // what each analysis still needs, which is work this model cannot do while it
+  // is holding a conversation. These are the gaps it could not resolve from the
+  // transcript alone -- something said too loosely to record, or left out -- so
+  // they are the one part of this note that is a direct instruction to ask.
+  // Reserved with the standing directives rather than budgeted, because a
+  // request that gets trimmed is a question that never gets asked.
+  const plannerRequests = (Array.isArray(state.plannerRequests) ? state.plannerRequests : [])
+    .map((request) => String(request?.prompt || '').trim().slice(0, MAX_PLANNER_REQUEST_CHARS))
+    .filter(Boolean)
+    .slice(0, MAX_PLANNER_REQUESTS);
+  if (plannerRequests.length) {
+    directives.push(
+      `The background planner reviewed the transcript and needs these clarified: ${plannerRequests.join(' ')} `
+      + 'Work them into the conversation naturally when they next fit; do not read them out as a list.'
+    );
+  }
   if (state.readyToConfirm === true) directives.push('The plan is ready for a spoken confirmation.');
   if (state.readyToConfirm === false && analyses.length > 0) {
     directives.push(
@@ -800,3 +817,12 @@ export function liveVolatileStateItem(state = {}) {
 const CAPTURED_PREFIX_CHARS = 54;
 /** Label lists inside a directive stay short so the directive stays whole. */
 const MAX_LISTED_LABELS = 6;
+/**
+ * Planner clarifications carried per turn.
+ *
+ * These are reserved rather than budgeted, so the bound is what keeps them from
+ * crowding out the rest of the note. Three is a turn's worth of asking; more
+ * than that and the meeting stops sounding like a conversation.
+ */
+const MAX_PLANNER_REQUESTS = 3;
+const MAX_PLANNER_REQUEST_CHARS = 160;

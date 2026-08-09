@@ -85,6 +85,14 @@ const MAX_DEFERRED_EVIDENCE_TOOL_CALLS = 32;
 const MAX_RECONCILIATION_RECOVERY_ATTEMPTS = 1;
 const MIN_RECONCILIATION_STALE_MS = 30_000;
 const RECONCILIATION_RETRY_BUFFER_MS = 5_000;
+/**
+ * Outstanding planner clarifications kept for the speaking model.
+ *
+ * Held slightly above what one turn renders so a request is not lost while a
+ * busier one is in front of it, but still bounded: an unbounded queue of things
+ * to ask is how a conversation turns into an interrogation.
+ */
+const MAX_LIVE_PLANNER_REQUESTS = 6;
 // Two violations end the meeting. One is a slip the model corrects and moves
 // on from; a second means the correction did not take, and a demo that keeps
 // going after that is worse than one that stops politely.
@@ -172,6 +180,10 @@ export class ConsumerLiveSession {
     this.reconciliationDrainScheduled = false;
     this.pendingReconciliationTurn = null;
     this.queuedReconciliationTurn = null;
+    // What the background planner could not settle from the transcript, held
+    // for the speaking model to raise. Durable so a hibernated meeting does not
+    // quietly forget an outstanding question.
+    this.plannerRequests = [];
     this.activeReconciliationTurn = null;
     this.scheduledReconciliationTurnIds = new Set();
     this.currentResponseId = null;
@@ -207,6 +219,7 @@ export class ConsumerLiveSession {
       this.violationCount = Number(await this.state.storage.get('violationCount') || 0);
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
+      this.plannerRequests = await this.state.storage.get('plannerRequests') || [];
       const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
       if (storedReconciliationQueue?.schemaVersion === 1) {
         this.pendingReconciliationTurn = storedReconciliationQueue.current || null;
@@ -1142,7 +1155,15 @@ export class ConsumerLiveSession {
         latencyMs: Date.now() - startedAt
       }).catch(() => {});
 
-      if (result?.status === 'applied') await this.injectVolatileState().catch(() => {});
+      // The planner's half of the division of labour: it reads the finished
+      // transcript against what each analysis still needs and hands back the
+      // gaps it could not close itself. Refreshed whenever it corrected the
+      // record OR asked for something -- an applied-only refresh meant a
+      // clarification the planner raised never reached the speaking model.
+      const reconciled = await this.absorbPlannerRequests(result).catch(() => false);
+      if (result?.status === 'applied' || reconciled) {
+        await this.injectVolatileState().catch(() => {});
+      }
       if (disposition === 'wait') break;
       if (disposition === 'retry') {
         const replaced = await this.replaceCurrentReconciliationJob(job, {
@@ -1596,6 +1617,55 @@ export class ConsumerLiveSession {
     await this.touch();
   }
 
+  /**
+   * Take the clarifications the reconciler could not resolve from the
+   * transcript and hold them for the speaking model.
+   *
+   * A request is retired once the fact instance it names is no longer
+   * outstanding, so answering the client's way — in a later turn, in passing,
+   * without being asked again — clears it. Only the deterministic needs decide
+   * that; the planner never marks its own request satisfied.
+   */
+  async absorbPlannerRequests(result) {
+    const raw = Array.isArray(result?.validation?.clarificationNeeds)
+      ? result.validation.clarificationNeeds
+      : [];
+    const incoming = raw
+      .filter((need) => need?.factInstanceId && need?.prompt)
+      .map((need) => ({
+        factInstanceId: String(need.factInstanceId),
+        factId: String(need.factId || ''),
+        ownerId: need.ownerId ? String(need.ownerId) : null,
+        prompt: String(need.prompt)
+      }));
+    const byInstance = new Map(this.plannerRequests.map((item) => [item.factInstanceId, item]));
+    for (const need of incoming) byInstance.set(need.factInstanceId, need);
+    if (byInstance.size === 0) return false;
+
+    let outstanding = new Set();
+    try {
+      const projection = liveStateProjection(await loadLiveContext({
+        env: this.env,
+        config: getConsumerConfig(this.env),
+        sessionId: this.meta.sessionId
+      }));
+      outstanding = new Set((projection.analyses || [])
+        .flatMap((analysis) => analysis.stillNeeded || [])
+        .map((need) => need.instanceId));
+    } catch (_error) {
+      // Without a readable projection nothing can be retired safely, so the
+      // existing requests simply stand until the next pass.
+      outstanding = new Set(byInstance.keys());
+    }
+    const next = [...byInstance.values()]
+      .filter((request) => outstanding.has(request.factInstanceId))
+      .slice(-MAX_LIVE_PLANNER_REQUESTS);
+    const changed = JSON.stringify(next) !== JSON.stringify(this.plannerRequests);
+    this.plannerRequests = next;
+    if (changed) await this.state.storage.put('plannerRequests', next).catch(() => {});
+    return incoming.length > 0 || changed;
+  }
+
   async injectVolatileState() {
     let projection;
     try {
@@ -1632,6 +1702,8 @@ export class ConsumerLiveSession {
               // from the ask list but still holding the plan, so the note has
               // to carry them or the model sees a shorter list and no reason.
               blocked: projection.blocked,
+              // The background planner's outstanding asks.
+              plannerRequests: this.plannerRequests,
               goalsAgreed: projection.goalsAgreed,
               readyToConfirm: projection.readyToConfirm
             })

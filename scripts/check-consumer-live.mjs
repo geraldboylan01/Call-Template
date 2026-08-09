@@ -446,6 +446,39 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(liveVolatileStateItem({}).includes('nothing yet'), 'An empty state must read naturally.');
 }
 
+// THE BACKGROUND PLANNER'S HALF OF THE CONVERSATION.
+//
+// The speaking model runs the conversation and decides what to ask; the planner
+// reads the finished transcript against what each analysis still needs and hands
+// back what was said too loosely to record, or left out. Those requests only
+// change anything if they survive into the note the model is given, and they are
+// reserved rather than budgeted — a request that gets trimmed is a question that
+// never gets asked.
+{
+  const withRequests = liveVolatileStateItem({
+    captured: Array.from({ length: 60 }, (_, index) => `fact_${index}`),
+    analyses: ['work out the deposit'],
+    missing: ['cash_savings'],
+    plannerRequests: [
+      { factInstanceId: 'pension_positions:partner', prompt: 'Confirm whether the spouse has any pension.' },
+      { factInstanceId: 'pension_current_value:p1', prompt: 'Check the €1.07m was a total, not a fourth pension.' }
+    ],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+  ok(withRequests.includes('background planner'),
+    'The model must be told which asks came from the planner rather than from itself.');
+  ok(withRequests.includes('Confirm whether the spouse has any pension.'),
+    'A planner request must reach the model verbatim.');
+  ok(withRequests.includes('Check the €1.07m was a total, not a fourth pension.'),
+    'A second planner request must survive alongside the first.');
+  ok(withRequests.includes('naturally'),
+    'Planner requests must be asked conversationally, not read out as a list.');
+  ok(withRequests.length < 1_200, 'Planner requests must not blow the volatile item budget.');
+  ok(!liveVolatileStateItem({ analyses: ['x'] }).includes('background planner'),
+    'With nothing outstanding the planner must stay silent.');
+}
+
 /* ------------------------------- every question belongs to an analysis */
 
 // THE POINT OF GROUPING. A flat "still needed" list cannot say which analysis

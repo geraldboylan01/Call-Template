@@ -399,22 +399,41 @@ function entityIndex(profile, notes) {
   return entities;
 }
 
-function reconciliationNeeds(planning) {
+/**
+ * What each selected analysis still needs, in the reconciler's own vocabulary.
+ *
+ * Adapters state a requirement as a profile path and leave the semantic
+ * identity to be resolved, exactly as the question planner and the live
+ * projection do. Reading `missing.factId` directly instead sent every need
+ * through as `profile.unknown`, so the background planner was told an input was
+ * outstanding, and for whom, but never which fact it was — and it can only bind
+ * an operation to a fact it can name.
+ */
+function reconciliationNeeds(planning, profile) {
   const byInstance = new Map();
   for (const recommendation of planning.recommendations || []) {
     for (const missing of recommendation.requiredMissing || []) {
-      const factInstanceId = missing.factInstanceId || missing.factId;
+      const resolved = resolveSemanticFact(missing, {
+        profile,
+        moduleId: recommendation.moduleId
+      });
+      const factId = missing.factId || resolved.factId;
+      const entityId = missing.entityId || resolved.entityId;
+      const factInstanceId = missing.factInstanceId
+        || resolved.factInstanceId
+        || (entityId ? `${factId}:${entityId}` : factId);
       const current = byInstance.get(factInstanceId);
       const raw = {
         schemaVersion: 2,
         needId: current?.needId || `need_${factInstanceId}`.replace(/[^A-Za-z0-9_.:-]/g, '_'),
-        factId: missing.factId,
+        factId,
         factInstanceId,
-        ...(missing.entityId ? { entityId: missing.entityId } : {}),
-        ...(missing.ownerId ? { ownerId: missing.ownerId } : {}),
-        ...(missing.entityLabel ? { entityLabel: missing.entityLabel } : {}),
+        ...(entityId ? { entityId } : {}),
+        ...(missing.ownerId || resolved.ownerId ? { ownerId: missing.ownerId || resolved.ownerId } : {}),
+        ...(missing.entityLabel || resolved.entityLabel
+          ? { entityLabel: missing.entityLabel || resolved.entityLabel } : {}),
         reasonCode: missing.reasonCode || 'required_input_missing',
-        prompt: missing.prompt || missing.reason || `Please clarify ${missing.factId.replaceAll('_', ' ')}.`,
+        prompt: missing.prompt || missing.reason || `Please clarify ${String(factId).replaceAll('_', ' ')}.`,
         importance: ['required', 'recommended', 'optional'].includes(missing.importance)
           ? missing.importance
           : 'required',
@@ -452,14 +471,22 @@ function signedQuestionContext(context) {
   } : null;
 }
 
+/**
+ * Ordinary intake and a genuine block are different things to the reconciler.
+ *
+ * `needs_facts` means the meeting has simply not asked yet; `needs_information`
+ * means the client cannot supply an input and the analysis is held. Collapsing
+ * both into the latter told the planner every selected analysis was blocked,
+ * which is the state in which chasing the remaining inputs looks pointless.
+ */
 function reconciliationModuleAvailability(slot) {
-  const values = [slot?.availability, slot?.intakeStatus, slot?.status]
-    .map((value) => String(value || '').toLowerCase());
+  const availability = String(slot?.availability || '').toLowerCase();
+  if (['ready', 'needs_facts', 'needs_information', 'adviser_review_required'].includes(availability)) {
+    return availability;
+  }
+  const values = [slot?.intakeStatus, slot?.status].map((value) => String(value || '').toLowerCase());
   if (values.some((value) => ['ready', 'complete', 'runnable'].includes(value))) return 'ready';
-  if (values.some((value) => (
-    value.includes('missing') || value.includes('needs') || value.includes('blocked')
-  ))) return 'needs_information';
-  return 'needs_information';
+  return 'needs_facts';
 }
 
 export function buildPlannerReconciliationContext({
@@ -488,7 +515,7 @@ export function buildPlannerReconciliationContext({
     owners,
     entities,
     canonicalFacts: buildConfirmedRealtimeFactSummary(context.profile),
-    needs: reconciliationNeeds(planning),
+    needs: reconciliationNeeds(planning, context.profile),
     selectedAnalyses: (planning.moduleSlots || []).map((slot) => {
       const availability = reconciliationModuleAvailability(slot);
       return {
