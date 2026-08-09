@@ -1,0 +1,489 @@
+{
+  "version": "spoken-evidence-1.0.0",
+  "why": [
+    "GROUND TRUTH FOR WHAT THE MEETING IS ALLOWED TO REMEMBER.",
+    "",
+    "The persona replay has a model play the client, so it improvises and nothing",
+    "knows what the right answer was; every judgement collapses into a grader's",
+    "1-5 opinion that moved two to three points on identical code. This corpus is",
+    "the opposite: fixed words, a stated expectation, and a deterministic verdict",
+    "from the real gate. No API, no variance, runs in the ordinary gate.",
+    "",
+    "`expect: accept` means the client plainly said it and the meeting must keep",
+    "it. `expect: reject` is a SAFETY case -- a swap, an invention or an",
+    "expression of uncertainty -- and those must never start passing.",
+    "",
+    "`knownGap: true` marks an accept case the gate fails today. The list may",
+    "only shrink: the checker fails if a gap case starts passing while still",
+    "marked, so fixes have to delete the marker and prove it."
+  ],
+  "cases": [
+    {
+      "id": "income-earn-plain",
+      "said": "I earn 72000 a year before tax.",
+      "submit": [
+        {
+          "factId": "gross_household_income",
+          "value": {
+            "amount": 72000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "The plainest possible statement of income."
+    },
+    {
+      "id": "income-my-salary",
+      "said": "My salary is 72000.",
+      "submit": [
+        {
+          "factId": "gross_household_income",
+          "value": {
+            "amount": 72000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "income-gross-salary",
+      "said": "My gross salary is 72000.",
+      "submit": [
+        {
+          "factId": "income_sources",
+          "value": {
+            "entityId": "e1",
+            "type": "employment",
+            "owner": "primary",
+            "grossAnnual": {
+              "amount": 72000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "accept",
+      "knownGap": true,
+      "note": "An adjective between 'my' and 'salary' must not lose the figure."
+    },
+    {
+      "id": "income-annual-salary",
+      "said": "My gross annual salary is 72000.",
+      "submit": [
+        {
+          "factId": "income_sources",
+          "value": {
+            "entityId": "e1",
+            "type": "employment",
+            "owner": "primary",
+            "grossAnnual": {
+              "amount": 72000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "accept",
+      "knownGap": true
+    },
+    {
+      "id": "income-terse-answer",
+      "said": "About 35000 before tax.",
+      "submit": [
+        {
+          "factId": "income_sources",
+          "value": {
+            "entityId": "e1",
+            "type": "employment",
+            "owner": "primary",
+            "grossAnnual": {
+              "amount": 35000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "accept",
+      "knownGap": true,
+      "note": "Answering 'what do you earn?' without repeating the noun is normal speech."
+    },
+    {
+      "id": "income-take-home",
+      "said": "I take home 42000.",
+      "submit": [
+        {
+          "factId": "gross_household_income",
+          "value": {
+            "amount": 42000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept",
+      "knownGap": true
+    },
+    {
+      "id": "cash-savings-plain",
+      "said": "I have 11000 in savings.",
+      "submit": [
+        {
+          "factId": "cash_savings",
+          "value": {
+            "amount": 11000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "cash-savings-credit-union",
+      "said": "There is 11000 sitting in the credit union.",
+      "submit": [
+        {
+          "factId": "cash_savings",
+          "value": {
+            "amount": 11000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "pension-value-flat",
+      "said": "My pension is worth 28000.",
+      "submit": [
+        {
+          "factId": "pension_current_value",
+          "value": {
+            "amount": 28000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "pension-position-single-number",
+      "said": "It is worth about 28000.",
+      "submit": [
+        {
+          "factId": "pension_positions",
+          "value": {
+            "entityId": "p1",
+            "type": "prsa",
+            "owner": "primary",
+            "currentValue": {
+              "amount": 28000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "accept",
+      "knownGap": true,
+      "note": "The same figure as pension-value-flat, carried on the collection fact."
+    },
+    {
+      "id": "pension-value-and-contribution",
+      "said": "It is worth about 28000, and I pay 200 a month into it.",
+      "submit": [
+        {
+          "factId": "pension_current_value",
+          "value": {
+            "amount": 28000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "Two figures in one breath is how people answer; neither may be lost."
+    },
+    {
+      "id": "pension-employee-rate",
+      "said": "I contribute 5% of my salary.",
+      "submit": [
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": 5
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "pension-employer-rate",
+      "said": "My employer matches 5%.",
+      "submit": [
+        {
+          "factId": "pension_employer_contribution_rate",
+          "value": 5
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "dense-income-and-rates",
+      "said": "I am on 72000, contributing 5% with a 5% employer match.",
+      "submit": [
+        {
+          "factId": "gross_household_income",
+          "value": {
+            "amount": 72000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": 5
+        },
+        {
+          "factId": "pension_employer_contribution_rate",
+          "value": 5
+        }
+      ],
+      "expect": "accept",
+      "knownGap": true,
+      "note": "The single densest real shape: one sentence, three facts."
+    },
+    {
+      "id": "mortgage-balance-rate-term",
+      "said": "The mortgage balance is 250000 at 3.2 percent with 240 months left.",
+      "submit": [
+        {
+          "factId": "mortgage_position",
+          "value": {
+            "entityId": "m1",
+            "type": "mortgage",
+            "owner": "primary",
+            "currentBalance": {
+              "amount": 250000,
+              "currency": "EUR"
+            },
+            "annualInterestRate": 3.2,
+            "remainingTermMonths": 240
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "mortgage-rate-terse",
+      "said": "3.4%.",
+      "submit": [
+        {
+          "factId": "mortgage_annual_interest_rate",
+          "value": 3.4
+        }
+      ],
+      "expect": "accept",
+      "note": "A one-word answer to 'what rate are you on?'"
+    },
+    {
+      "id": "rent-plain",
+      "said": "My share of the rent is 900 a month.",
+      "submit": [
+        {
+          "factId": "current_monthly_rent",
+          "value": {
+            "amount": 900,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "dependant-ages",
+      "said": "They are 9 and 12.",
+      "submit": [
+        {
+          "factId": "dependants",
+          "value": {
+            "items": [
+              {
+                "label": "Child 1",
+                "currentAge": 9
+              },
+              {
+                "label": "Child 2",
+                "currentAge": 12
+              }
+            ]
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "age-plain",
+      "said": "I am 52.",
+      "submit": [
+        {
+          "factId": "person_current_age",
+          "value": 52
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "retirement-age",
+      "said": "I would like to retire at 65.",
+      "submit": [
+        {
+          "factId": "intended_retirement_age",
+          "value": 65
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "none-debts-plain",
+      "said": "I have no debts.",
+      "submit": [
+        {
+          "factId": "liability_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "none-debts-household",
+      "said": "There is no household debt to record.",
+      "submit": [
+        {
+          "factId": "liability_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "none-debts-list",
+      "said": "I have no loans, car finance, credit-card balances or other debts.",
+      "submit": [
+        {
+          "factId": "liability_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "SAFETY-swap-income-to-savings",
+      "said": "I earn 72000 a year and have 11000 saved.",
+      "submit": [
+        {
+          "factId": "cash_savings",
+          "value": {
+            "amount": 72000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "The swap this boundary exists to stop. Must never pass."
+    },
+    {
+      "id": "SAFETY-swap-savings-to-income",
+      "said": "I earn 72000 a year and have 11000 saved.",
+      "submit": [
+        {
+          "factId": "gross_household_income",
+          "value": {
+            "amount": 11000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "reject"
+    },
+    {
+      "id": "SAFETY-invented-figure",
+      "said": "3.4%.",
+      "submit": [
+        {
+          "factId": "mortgage_annual_interest_rate",
+          "value": 2.9
+        }
+      ],
+      "expect": "reject",
+      "note": "A number the client never said."
+    },
+    {
+      "id": "SAFETY-invented-money",
+      "said": "I have some savings but I would need to check.",
+      "submit": [
+        {
+          "factId": "cash_savings",
+          "value": {
+            "amount": 15000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "reject"
+    },
+    {
+      "id": "SAFETY-uncertainty-not-none",
+      "said": "I have no idea about my debts.",
+      "submit": [
+        {
+          "factId": "liability_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "Not knowing is not a categorical claim of none."
+    },
+    {
+      "id": "SAFETY-need-to-check-not-none",
+      "said": "I would need to check my debts.",
+      "submit": [
+        {
+          "factId": "liability_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "reject"
+    },
+    {
+      "id": "SAFETY-none-about-something-else",
+      "said": "I have no children.",
+      "submit": [
+        {
+          "factId": "liability_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "reject"
+    },
+    {
+      "id": "SAFETY-mortgage-rate-from-term",
+      "said": "The mortgage has 22 years left at 3.4 percent.",
+      "submit": [
+        {
+          "factId": "mortgage_annual_interest_rate",
+          "value": 22
+        }
+      ],
+      "expect": "reject",
+      "note": "The term must not be recorded as the rate."
+    }
+  ]
+}

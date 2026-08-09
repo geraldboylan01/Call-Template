@@ -6,7 +6,11 @@ import {
   getRealtimeModuleSemanticFactIds
 } from '../../../js/planning/module_registry.js';
 import { buildGoalModulePlan } from '../../../js/planning/goal_plan.js';
-import { NON_CONTRIBUTORY_PENSION_TYPES, normalizeHouseholdProfile } from '../../../js/planning/profile.js';
+import {
+  NON_CONTRIBUTORY_PENSION_TYPES,
+  normalizeHouseholdProfile,
+  ownerConfirmedNonePath
+} from '../../../js/planning/profile.js';
 import { maxRelievableContributionRatePercent } from '../../../js/pension_math.js';
 import { escapeJsonPointerToken } from '../../../js/planning/utils.js';
 
@@ -242,7 +246,7 @@ function entityOperation(value) {
   return operation;
 }
 
-function ownerId(profile, raw, { allowHousehold = false } = {}) {
+function ownerId(profile, raw, { allowHousehold = false, treatJointAsHousehold = false } = {}) {
   if (raw !== null && typeof raw !== 'undefined' && (typeof raw !== 'string' || !raw.trim())) {
     throw new ConsumerError(400, 'realtime_owner_invalid', 'That position owner is not part of the household.');
   }
@@ -257,6 +261,15 @@ function ownerId(profile, raw, { allowHousehold = false } = {}) {
     return profile.partner.personId;
   }
   if (allowHousehold && candidate === 'household') return 'household';
+  // A shared holding on a record that can only carry one owner. Requires a
+  // partner for the same reason `ownerIds` does: "joint" is a claim that there
+  // are two of them.
+  if (allowHousehold && treatJointAsHousehold && candidate === 'joint') {
+    if (!profile.partner?.personId) {
+      throw new ConsumerError(409, 'realtime_partner_required', 'Add the partner before recording joint ownership.');
+    }
+    return 'household';
+  }
   throw new ConsumerError(400, 'realtime_owner_invalid', 'That position owner is not part of the household.');
 }
 
@@ -379,6 +392,35 @@ function scopedNoneMapping(profile, fact, expectedScope, markerPath) {
   return {
     ...completionNoneMapping(profile, markerPath, fact.factId, scope),
     proposalValue: { operation: 'confirm_none', scope }
+  };
+}
+
+/**
+ * "Aoife hasn't got a pension."
+ *
+ * A plain confirm_none on a shared collection is a claim about the WHOLE
+ * household, so it refuses outright once anything is recorded -- which left a
+ * couple in an impossible position: the meeting could not be told that one of
+ * them has no pension without discarding the other's. It therefore never asked,
+ * and a retirement projection ran on one person's fund while knowing perfectly
+ * well there were two people. On a real call that omitted a 500,000 pension.
+ *
+ * The owner-scoped marker records the absence for ONE person and leaves every
+ * other holding untouched.
+ *
+ * `ownerId` is the gate on who may be named: it throws `realtime_partner_required`
+ * when there is no partner on the profile, so a partner can never be discussed --
+ * or have their absence recorded -- before the client has confirmed one exists.
+ */
+function ownerScopedNoneMapping(profile, fact, collectionPath) {
+  if (!plainObject(fact.value) || entityOperation(fact.value) !== 'confirm_none') return null;
+  const owner = fact.value.owner ?? fact.value.ownerId;
+  if (typeof owner === 'undefined' || owner === null) return null;
+  const resolvedOwnerId = ownerId(profile, owner);
+  const markerPath = ownerConfirmedNonePath(collectionPath, resolvedOwnerId);
+  return {
+    ...completionNoneMapping(profile, markerPath, fact.factId),
+    proposalValue: { operation: 'confirm_none', owner: resolvedOwnerId }
   };
 }
 
@@ -885,6 +927,9 @@ function mapPartnerPerson(profile, fact) {
 }
 
 function mapIncomeSource(profile, fact, currency) {
+  // One person's absence, not the household's. See ownerScopedNoneMapping.
+  const ownerNone = ownerScopedNoneMapping(profile, fact, '/incomeSources');
+  if (ownerNone) return ownerNone;
   const scopedNone = scopedNoneMapping(
     profile,
     fact,
@@ -910,7 +955,17 @@ function mapIncomeSource(profile, fact, currency) {
       const canonical = {
         ...(existing || {}),
         incomeId: entityId,
-        ownerId: ownerId(profile, value.owner ?? value.ownerId ?? existing?.ownerId),
+        // AN INCOME CAN BE THE HOUSEHOLD'S. Rent from a jointly owned property
+        // is the obvious case, and the planner says `joint` for it because that
+        // is what the client said. A single income record cannot carry two
+        // owners the way an asset can, so joint resolves to the household --
+        // which `ownerId` already understands. Refusing it lost the whole
+        // 2,250-a-month rent on a real call, and the meeting never noticed.
+        ownerId: ownerId(
+          profile,
+          value.owner ?? value.ownerId ?? existing?.ownerId,
+          { allowHousehold: true, treatJointAsHousehold: true }
+        ),
         type,
         label: label || existing?.label || safeLabel(`${humanise(type)} income`)
       };
@@ -927,6 +982,9 @@ function mapIncomeSource(profile, fact, currency) {
 }
 
 function mapAssetPosition(profile, fact, currency) {
+  // One person's absence, not the household's. See ownerScopedNoneMapping.
+  const ownerNone = ownerScopedNoneMapping(profile, fact, '/assets');
+  if (ownerNone) return ownerNone;
   const scopedNone = scopedNoneMapping(
     profile,
     fact,
@@ -1034,6 +1092,9 @@ function mapLiabilityPosition(profile, fact, currency) {
 }
 
 function mapPropertyPosition(profile, fact, currency) {
+  // One person's absence, not the household's. See ownerScopedNoneMapping.
+  const ownerNone = ownerScopedNoneMapping(profile, fact, '/properties');
+  if (ownerNone) return ownerNone;
   return withSpecialistReconciliationInvalidation(profile, mapCollectionEntity(profile, fact, {
     collectionKey: 'properties',
     idKey: 'propertyId',
@@ -1087,6 +1148,9 @@ function mapBusinessPosition(profile, fact, currency) {
 }
 
 function mapPensionPosition(profile, fact, currency) {
+  // One person's absence, not the household's. See ownerScopedNoneMapping.
+  const ownerNone = ownerScopedNoneMapping(profile, fact, '/pensions');
+  if (ownerNone) return ownerNone;
   return withSpecialistReconciliationInvalidation(profile, withDecimalRateProposal(mapCollectionEntity(profile, fact, {
     collectionKey: 'pensions',
     idKey: 'pensionId',

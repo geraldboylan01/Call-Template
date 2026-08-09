@@ -122,15 +122,59 @@ function completionFactMapping(profile, fact, normalizedRange = null) {
   };
 }
 
+/**
+ * "Between X and Y", in every shape the planner actually produces.
+ *
+ * Two more turned up in an agent-driven call as a 53-year-old planning to
+ * retire, and each lost a figure the client had plainly given:
+ *
+ *   {min, max, currency, frequency}   marked `approximate`, not `range`, so the
+ *                                     midpoint path below was never entered and
+ *                                     the raw {min,max} reached the mapper as a
+ *                                     value it cannot read. "We spend about
+ *                                     3,000 to 3,500 a month" was refused.
+ *
+ *   {retirementAge: {min, max},       the range nested one level inside the
+ *    owner: 'partner'}                fact's own envelope, where a top-level
+ *                                     lookup cannot see it. "My wife may go
+ *                                     until 55 or 57" was refused.
+ *
+ * `rebuild` puts a chosen endpoint back where the range came from, so the
+ * caller can map the minimum, the maximum and the midpoint through exactly the
+ * same code regardless of which shape arrived.
+ */
+export function rangeEndpoints(value) {
+  const top = boundedProposalRange(value);
+  if (top) return { min: top.min, max: top.max, rebuild: (endpoint) => endpoint };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  for (const [key, nested] of Object.entries(value)) {
+    const inner = boundedProposalRange(nested);
+    if (inner) {
+      return {
+        min: inner.min,
+        max: inner.max,
+        rebuild: (endpoint) => ({ ...value, [key]: endpoint })
+      };
+    }
+  }
+  return null;
+}
+
 export function mapRealtimeProposalFact(profile, fact) {
   if (fact.certainty === 'unknown') return completionFactMapping(profile, fact);
-  if (fact.certainty !== 'range') return mapRealtimeFact(profile, fact);
-  const range = boundedProposalRange(fact.value);
-  if (!range) {
+  const endpoints = rangeEndpoints(fact.value);
+  // A RANGE IS A RANGE WHATEVER THE PLANNER CALLED IT. The value is the
+  // evidence of what the client said; a mislabelled certainty must not be the
+  // reason a figure is lost. Restricted to numeric facts, which is the same
+  // boundary planFactProposal applies to an explicit `range`.
+  const numericFact = ['money', 'number'].includes(getSemanticFactDefinition(fact.factId)?.valueType);
+  if (fact.certainty !== 'range' && !(endpoints && numericFact)) return mapRealtimeFact(profile, fact);
+  if (!endpoints) {
     throw new ConsumerError(400, 'realtime_fact_range_invalid', 'A ranged fact requires finite minimum and maximum values.');
   }
-  const minimum = mapRealtimeFact(profile, { ...fact, certainty: 'exact', value: range.min });
-  const maximum = mapRealtimeFact(profile, { ...fact, certainty: 'exact', value: range.max });
+  const range = endpoints;
+  const minimum = mapRealtimeFact(profile, { ...fact, certainty: 'exact', value: range.rebuild(range.min) });
+  const maximum = mapRealtimeFact(profile, { ...fact, certainty: 'exact', value: range.rebuild(range.max) });
   if (minimum.fieldPath !== maximum.fieldPath) {
     throw new ConsumerError(409, 'realtime_fact_range_invalid', 'The ranged fact does not map to one stable profile field.');
   }
@@ -147,12 +191,17 @@ export function mapRealtimeProposalFact(profile, fact) {
     endpoint && typeof endpoint === 'object' && !Array.isArray(endpoint) ? endpoint.amount : endpoint
   );
   const midpoint = (numericPart(checked.min) + numericPart(checked.max)) / 2;
+  // Put the midpoint back where the range was found. For a plain top-level
+  // range that is the value itself; for a nested one it is the single key the
+  // range came out of, so the rest of the envelope -- `owner: 'partner'`, and
+  // anything else the planner attached -- survives the round trip.
+  const midpointEndpoint = range.min && typeof range.min === 'object' && !Array.isArray(range.min)
+    ? { ...range.min, amount: midpoint }
+    : midpoint;
   const mapped = mapRealtimeFact(profile, {
     ...fact,
     certainty: 'approximate',
-    value: minimum.displayValue && typeof minimum.displayValue === 'object'
-      ? { ...minimum.displayValue, amount: midpoint }
-      : midpoint
+    value: range.rebuild(midpointEndpoint)
   });
   const completionFacts = {
     ...(profile.assumptions?.values?.completionFacts || {}),

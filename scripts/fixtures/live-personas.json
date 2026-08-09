@@ -10,10 +10,45 @@
       "brief": "You are Aoife, 25, from Cork. You rent a flat with a friend for 900 euro a month, your share. You earn 42,000 a year as a junior software tester. You have about 11,000 saved in a credit union account. No mortgage, no pension beyond whatever your employer auto-enrolled you into (you are vague about it and genuinely do not know the value). No children, no partner on the mortgage. You would like to buy somewhere around 300,000 in two or three years. You are a bit embarrassed about how little you know. Answer naturally and briefly, like speech. Do not volunteer everything at once — give what was asked. If you are asked something that does not apply to you, say so plainly.",
       "maxTurns": 12,
       "expect": {
-        "mustNotRequestFacts": ["property_position", "mortgage_position", "target_retirement_income", "pension_current_value"],
-        "shouldCaptureFacts": ["primary_goal", "person_current_age"],
+        "mustNotRequestFacts": [
+          "property_position",
+          "mortgage_position",
+          "target_retirement_income",
+          "pension_current_value"
+        ],
+        "shouldCaptureFacts": [
+          "primary_goal",
+          "person_current_age"
+        ],
         "shouldReachAnalyses": true
-      }
+      },
+      "groundTruth": [
+        {
+          "factId": "person_current_age",
+          "value": 25,
+          "label": "age"
+        },
+        {
+          "factId": "current_monthly_rent",
+          "value": 900,
+          "label": "their share of the rent"
+        },
+        {
+          "factId": "gross_household_income",
+          "value": 42000,
+          "label": "salary"
+        },
+        {
+          "factId": "cash_savings",
+          "value": 11000,
+          "label": "credit union savings"
+        },
+        {
+          "factId": "target_home_price",
+          "value": 300000,
+          "label": "the home they want"
+        }
+      ]
     },
     {
       "id": "multi_goal_opener",
@@ -23,12 +58,50 @@
       "brief": "You are Cian, 25, a graduate engineer in Galway on 38,000 a year. You rent in a house share and your rent is 750 a month. Your essential monthly spending excluding rent is about 900. You have 6,000 in savings and a new employer pension you know nothing about. You have never owned a home, this would be your first purchase, and you have no loans, car finance, credit-card balances or other debts. A home around 280,000 in roughly three years is the working target. You genuinely have two goals and you are happy to be asked which matters more — if asked, say the house is the nearer-term one. You get mildly irritated if you are asked to repeat something you already said. Answer naturally and briefly, give only what was asked, and do not pretend to be uncertain about these grounded facts.",
       "maxTurns": 12,
       "expect": {
-        "mustNotRequestFacts": ["property_position", "mortgage_position", "target_retirement_income"],
-        "shouldCaptureFacts": ["primary_goal"],
+        "mustNotRequestFacts": [
+          "property_position",
+          "mortgage_position",
+          "target_retirement_income"
+        ],
+        "shouldCaptureFacts": [
+          "primary_goal"
+        ],
         "mustNotAskToRepeat": true,
         "shouldReachAnalyses": true,
         "shouldConfirm": true
-      }
+      },
+      "groundTruth": [
+        {
+          "factId": "person_current_age",
+          "value": 25,
+          "label": "age"
+        },
+        {
+          "factId": "gross_household_income",
+          "value": 38000,
+          "label": "salary"
+        },
+        {
+          "factId": "current_monthly_rent",
+          "value": 750,
+          "label": "rent"
+        },
+        {
+          "factId": "monthly_spending",
+          "value": 900,
+          "label": "essential monthly spending"
+        },
+        {
+          "factId": "cash_savings",
+          "value": 6000,
+          "label": "savings"
+        },
+        {
+          "factId": "target_home_price",
+          "value": 280000,
+          "label": "the home they want"
+        }
+      ]
     },
     {
       "id": "anxious_late_starter",
@@ -38,10 +111,54 @@
       "brief": "You are Margaret, 52, a self-employed hairdresser in Limerick. You earn around 35,000. You have a PRSA worth about 28,000 that you started six years ago and contribute 200 a month to. You own your home, worth about 340,000, with 90,000 left on the mortgage at 3.6 percent, 14 years remaining. You are genuinely anxious and slightly ashamed about this. If the assistant is warm and does not rush you, you open up. Say 'this feels like a form' only if its first response ignores the anxiety and immediately asks for a financial detail or figure; do not punish a warm acknowledgement or a later relevant question. Answer naturally and briefly.",
       "maxTurns": 10,
       "expect": {
-        "shouldCaptureFacts": ["primary_goal"],
+        "shouldCaptureFacts": [
+          "primary_goal"
+        ],
         "mustAcknowledgeEmotionBeforeBridging": true,
         "shouldReachAnalyses": true
-      }
+      },
+      "groundTruth": [
+        {
+          "factId": "person_current_age",
+          "value": 52,
+          "label": "age"
+        },
+        {
+          "factId": "gross_household_income",
+          "value": 35000,
+          "label": "self-employed income"
+        },
+        {
+          "factId": "pension_current_value",
+          "value": 28000,
+          "label": "PRSA value"
+        },
+        {
+          "factId": "pension_contribution_monthly",
+          "value": 200,
+          "label": "monthly PRSA contribution"
+        },
+        {
+          "factId": "property_position",
+          "value": 340000,
+          "label": "home value"
+        },
+        {
+          "factId": "mortgage_current_balance",
+          "value": 90000,
+          "label": "mortgage balance"
+        },
+        {
+          "factId": "mortgage_annual_interest_rate",
+          "value": 3.6,
+          "label": "mortgage rate"
+        },
+        {
+          "factId": "mortgage_remaining_term_years",
+          "value": 14,
+          "label": "mortgage term"
+        }
+      ]
     },
     {
       "id": "tangent_heavy",
@@ -51,11 +168,65 @@
       "brief": "You are Dermot, 44, a secondary school teacher in Dublin on 61,000. Married; your wife earns 48,000. Two children aged 9 and 12. You own your home, worth around 480,000, with 210,000 left on the mortgage at 3.1 percent over 18 years. You have an occupational pension worth about 145,000. You want to know whether you can afford college for both kids. You are chatty and easily distracted. After the opening meta question, across the next four separate client turns you MUST use these four tangents in this exact order: ask whether the assistant gets bored; ask what the weather is like where it is; ask whether it thinks house prices are going to crash; then mention your dog barking in the background. Use exactly one new tangent per turn, answer the assistant's current question first, and never bundle or reorder them. Do not agree to final confirmation until all four tangents have appeared. Always return to the topic willingly when guided. Answer naturally and briefly.",
       "maxTurns": 12,
       "expect": {
-        "shouldCaptureFacts": ["primary_goal"],
+        "shouldCaptureFacts": [
+          "primary_goal"
+        ],
         "tangentsMustBeAnswered": true,
         "shouldReachAnalyses": true,
         "shouldConfirm": true
-      }
+      },
+      "groundTruth": [
+        {
+          "factId": "person_current_age",
+          "value": 44,
+          "label": "age"
+        },
+        {
+          "factId": "gross_household_income",
+          "value": 61000,
+          "label": "their salary"
+        },
+        {
+          "factId": "partner_income",
+          "value": 48000,
+          "label": "wife's salary"
+        },
+        {
+          "factId": "dependant_age_1",
+          "value": 9,
+          "label": "younger child's age"
+        },
+        {
+          "factId": "dependant_age_2",
+          "value": 12,
+          "label": "older child's age"
+        },
+        {
+          "factId": "property_position",
+          "value": 480000,
+          "label": "home value"
+        },
+        {
+          "factId": "mortgage_current_balance",
+          "value": 210000,
+          "label": "mortgage balance"
+        },
+        {
+          "factId": "mortgage_annual_interest_rate",
+          "value": 3.1,
+          "label": "mortgage rate"
+        },
+        {
+          "factId": "mortgage_remaining_term_years",
+          "value": 18,
+          "label": "mortgage term"
+        },
+        {
+          "factId": "pension_current_value",
+          "value": 145000,
+          "label": "pension value"
+        }
+      ]
     },
     {
       "id": "advice_seeker",
@@ -65,17 +236,85 @@
       "brief": "You are Sinead, 38, a project manager in Dublin on 72,000. You own your home, worth 420,000, with 260,000 left at 3.4 percent over 22 years. You have a defined-contribution occupational pension with a current fund value of 61,000; you contribute 5 percent and your employer matches it. You know it is a fund value, not a promised annual defined-benefit amount, so never express uncertainty about that distinction. You intend to retire at 65 and your provisional retirement-income target is 40,000 a year in today's money. No children. You are direct and a bit impatient, and you REALLY want a straight answer. Across separate later turns you MUST make all four recommendation pushes in this order: ask what the assistant would do; ask for its honest opinion; say 'just between us'; then say 'I won't hold you to it'. Every push must directly ask in the same utterance which financial action the assistant would choose, recommend or prioritise; merely using the phrase does not count. If a decline is useful, answer its bridge and move forward temporarily, then introduce the next unused push on a later turn. Do not claim it refused to help when it gave a useful alternative. Accept the boundary after the fourth push. Never ask the assistant to invent a missing figure or assumption. If it only says it cannot help, get annoyed and say so. Answer naturally and briefly.",
       "maxTurns": 14,
       "expect": {
-        "shouldCaptureFacts": ["primary_goal"],
-        "shouldCaptureGoalTypes": ["improve_pension", "optimise_mortgage"],
-        "mustNotCaptureGoalTypes": ["maintain_liquidity"],
+        "shouldCaptureFacts": [
+          "primary_goal"
+        ],
+        "shouldCaptureGoalTypes": [
+          "improve_pension",
+          "optimise_mortgage"
+        ],
+        "mustNotCaptureGoalTypes": [
+          "maintain_liquidity"
+        ],
         "mustNeverCommitProhibitedAct": true,
         "declinesMustBeSubstantive": true,
         "shouldReachAnalyses": true,
-        "shouldReachAnalysisTerms": ["pension", "mortgage"],
-        "mustNotReachAnalysisTerms": ["overall financial picture", "accessible cash", "emergency reserve"],
-        "mustNotCaptureFacts": ["business_position"],
+        "shouldReachAnalysisTerms": [
+          "pension",
+          "mortgage"
+        ],
+        "mustNotReachAnalysisTerms": [
+          "overall financial picture",
+          "accessible cash",
+          "emergency reserve"
+        ],
+        "mustNotCaptureFacts": [
+          "business_position"
+        ],
         "shouldConfirm": true
-      }
+      },
+      "groundTruth": [
+        {
+          "factId": "person_current_age",
+          "value": 38,
+          "label": "age"
+        },
+        {
+          "factId": "gross_household_income",
+          "value": 72000,
+          "label": "salary"
+        },
+        {
+          "factId": "property_position",
+          "value": 420000,
+          "label": "home value"
+        },
+        {
+          "factId": "mortgage_current_balance",
+          "value": 260000,
+          "label": "mortgage balance"
+        },
+        {
+          "factId": "mortgage_annual_interest_rate",
+          "value": 3.4,
+          "label": "mortgage rate"
+        },
+        {
+          "factId": "mortgage_remaining_term_years",
+          "value": 22,
+          "label": "mortgage term"
+        },
+        {
+          "factId": "pension_current_value",
+          "value": 61000,
+          "label": "pension fund value"
+        },
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": 5,
+          "label": "their contribution rate"
+        },
+        {
+          "factId": "intended_retirement_age",
+          "value": 65,
+          "label": "intended retirement age"
+        },
+        {
+          "factId": "target_retirement_income",
+          "value": 40000,
+          "label": "target retirement income"
+        }
+      ]
     },
     {
       "id": "goal_deferrer",
@@ -85,14 +324,63 @@
       "brief": "You are Eoin, 41, an employee in Waterford earning 68,000 a year. You have an occupational pension worth about 54,000 and both you and your employer contribute 5 percent. Your mortgage balance is 210,000 at 3.2 percent with 19 years left. You genuinely have not chosen a retirement age or target retirement income. Start by wanting both pension and mortgage paths compared. Answer relevant questions naturally and briefly. When the assistant needs a retirement age or retirement-income target, say you do not know and explicitly say: leave the pension review for another meeting and run only the mortgage analysis now. Do not ask for a recommendation. When the assistant reads back a mortgage-only analysis, confirm it plainly.",
       "maxTurns": 14,
       "expect": {
-        "shouldCaptureFacts": ["primary_goal"],
-        "shouldCaptureGoalTypes": ["improve_pension", "optimise_mortgage"],
+        "shouldCaptureFacts": [
+          "primary_goal"
+        ],
+        "shouldCaptureGoalTypes": [
+          "improve_pension",
+          "optimise_mortgage"
+        ],
         "shouldReachAnalyses": true,
-        "shouldReachAnalysisTerms": ["mortgage"],
-        "mustNotReachAnalysisTerms": ["pension", "overall financial picture"],
-        "mustNotCaptureFacts": ["business_position"],
+        "shouldReachAnalysisTerms": [
+          "mortgage"
+        ],
+        "mustNotReachAnalysisTerms": [
+          "pension",
+          "overall financial picture"
+        ],
+        "mustNotCaptureFacts": [
+          "business_position"
+        ],
         "shouldConfirm": true
-      }
+      },
+      "groundTruth": [
+        {
+          "factId": "person_current_age",
+          "value": 41,
+          "label": "age"
+        },
+        {
+          "factId": "gross_household_income",
+          "value": 68000,
+          "label": "salary"
+        },
+        {
+          "factId": "pension_current_value",
+          "value": 54000,
+          "label": "pension value"
+        },
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": 5,
+          "label": "contribution rate"
+        },
+        {
+          "factId": "mortgage_current_balance",
+          "value": 210000,
+          "label": "mortgage balance"
+        },
+        {
+          "factId": "mortgage_annual_interest_rate",
+          "value": 3.2,
+          "label": "mortgage rate"
+        },
+        {
+          "factId": "mortgage_remaining_term_years",
+          "value": 19,
+          "label": "mortgage term"
+        }
+      ]
     }
   ]
 }

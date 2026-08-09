@@ -123,6 +123,7 @@ export class ConsumerLiveSession {
     this.eventChain = Promise.resolve();
     this.currentResponseId = null;
     this.currentAssistantTranscript = '';
+    this.lastCompletedAssistantTranscript = '';
     this.latestClientTranscript = '';
     this.turnFinalAt = 0;
     this.firstOutputRecorded = false;
@@ -327,6 +328,12 @@ export class ConsumerLiveSession {
       pendingSourceItemIds,
       sourcedFigures: { values: [...this.sourcedFigures.values] },
       assistantTranscript: '',
+      // The assistant turn this response is REPLYING to, captured now because
+      // this response is about to produce speech of its own and overwrite the
+      // running value. A save on this response that carries a figure the client
+      // affirmed needs the read-back they were saying yes to — see
+      // affirmedReadBackValues in live_tools.js.
+      precedingAssistantTranscript: this.lastCompletedAssistantTranscript,
       assistantDone: false,
       assistantItemId: '',
       reviewScheduled: false,
@@ -665,6 +672,8 @@ export class ConsumerLiveSession {
     if (!response) return;
     response.assistantTranscript = transcript.slice(0, MAX_ASSISTANT_TRANSCRIPT);
     response.assistantDone = true;
+    // What the NEXT response will have been replying to.
+    this.lastCompletedAssistantTranscript = response.assistantTranscript;
     response.assistantItemId = String(event.item_id || `${response.responseId}_assistant`);
     this.syncCurrentResponseAliases(response);
 
@@ -978,6 +987,13 @@ export class ConsumerLiveSession {
         // Keep the existing dependency name for the tool contract, but pass
         // only the transcript bound to this response's causal user item.
         latestClientTranscript: clientTranscript,
+        // Evidence for a figure the client affirmed rather than restated. Both
+        // are required together and neither is model-controlled: the sourced set
+        // holds only what the CLIENT has said, and the read-back is the turn
+        // they were answering.
+        clientSourcedFigures: this.sourcedFigures,
+        assistantReadBack: this.responseContextsById.get(String(event.response_id || ''))
+          ?.precedingAssistantTranscript || '',
         loadContext: () => loadLiveContext({
           env: this.env,
           config: getConsumerConfig(this.env),

@@ -6,7 +6,7 @@ import {
   IRISH_STATE_PENSION_CONTRIBUTORY,
   normalizeStatePensionFraction
 } from '../ireland_rules.js';
-import { NON_CONTRIBUTORY_PENSION_TYPES } from '../profile.js';
+import { NON_CONTRIBUTORY_PENSION_TYPES, hasOwnerConfirmedNone } from '../profile.js';
 import {
   annualExpenses,
   availableInvestmentAmount,
@@ -53,6 +53,27 @@ export function getPensionProjectionReadiness(profile) {
   const grouped = groupPensionsByOwner(profile);
   if (grouped.size === 0) {
     requiredMissing.push(missing('/pensions', 'Add at least one pension position.', moduleIds));
+  }
+  // BOTH PEOPLE RETIRE, SO BOTH PENSIONS COUNT.
+  //
+  // This function used to iterate only the owners of pensions that already
+  // exist, so a partner with nothing recorded was never in the loop: nothing
+  // was required, nothing was asked, and the projection quietly answered "can
+  // we afford to retire" using one person's fund. A real call lost a 500,000
+  // pension that way.
+  //
+  // Asked ONLY once the client has confirmed a partner exists -- an unasked
+  // question about a person who may not be there is worse than the gap -- and
+  // silenced permanently once they say that partner has none.
+  const partnerId = profile.partner?.personId;
+  if (partnerId
+    && !grouped.has(partnerId)
+    && !hasOwnerConfirmedNone(profile, '/pensions', partnerId)) {
+    requiredMissing.push(missing(
+      '/pensions',
+      `Add ${profile.partner?.displayName || 'your partner'}'s pension, or confirm they have none.`,
+      moduleIds
+    ));
   }
   grouped.forEach((pensions, ownerId) => {
     const person = personForId(profile, ownerId);

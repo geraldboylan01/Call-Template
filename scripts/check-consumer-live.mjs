@@ -2457,6 +2457,14 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
   const item = liveVolatileStateItem(state);
   ok(/Waiting on the client/i.test(item), 'The state note must say the plan is waiting on the client.');
   ok(/do not ask for it again/i.test(item), 'The state note must forbid re-asking a blocked item.');
+  // This directive is re-injected on every turn, so an instruction to ANNOUNCE
+  // the hold becomes an instruction to announce it repeatedly. The first
+  // version said "say the plan is on hold until they have that" and the
+  // meeting duly said it in adjacent turns.
+  ok(!/Say the plan is on hold/i.test(item),
+    'The blocked directive must not tell the model to announce the hold every turn.');
+  ok(/only if you have not already/i.test(item),
+    'A blocked item must be mentioned once, not restated each turn.');
 }
 
 // 12. NO PARTIAL RUNS. One ready analysis alongside one that is not must never
@@ -2520,7 +2528,7 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
     'The last standing directive must survive the worst case whole, never cut mid-sentence.');
   ok(/do not gather figures\./.test(item),
     'The ORIENT directive must survive a fully contended budget.');
-  ok(/do not ask for it again\./.test(item),
+  ok(/do not ask for it again\./i.test(item),
     'The blocked-item directive must survive a fully contended budget.');
 
   // And a figure is never cut mid-number when captured entries are the part
@@ -2574,6 +2582,369 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
   ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   ok(!/extractRealtimePlannerTurn|composeMeetingBrief|api\.openai\.com/.test(toolsSource),
     'The live tool executors must contain no model call of any kind.');
+}
+
+
+
+// 15. NEEDS OUTRANK ASSUMPTIONS IN THE BLOCK BUDGET. Fixing the assumption
+//     labels made them render for the first time, and the extra ~150 characters
+//     per analysis pushed the LAST analysis's Needs past the block cap — the
+//     second analysis was cut mid-word ("Needs your Mortgag"), so nothing ever
+//     asked for its outstanding input and the plan could not become runnable.
+{
+  const analyses = [
+    {
+      description: 'a projection of whether your pension may be on track',
+      status: 'missing_information',
+      stillNeeded: [
+        { factId: 'intended_retirement_age', whose: 'you', why: 'Add the intended retirement age.' },
+        { factId: 'income_sources', whose: '', why: 'Add current gross income for primary.' },
+        { factId: 'target_retirement_income', whose: '', why: 'Add target annual retirement income or current annual spending.' },
+        { factId: 'pension_employer_contribution_rate', whose: 'your PRSA', why: 'Add the employer pension contribution rate, including zero.' }
+      ],
+      mayAssume: [
+        { label: 'Long-run investment growth rate' },
+        { label: 'General inflation rate' },
+        { label: 'State Pension (Contributory) maximum rate' }
+      ]
+    },
+    {
+      description: 'a comparison of your mortgage repayment options',
+      status: 'missing_information',
+      stillNeeded: [{ factId: 'mortgage_remaining_term_months', whose: 'your Mortgage', why: 'Add the remaining mortgage term.' }],
+      mayAssume: [{ label: 'Repayment type' }]
+    }
+  ];
+  const item = liveVolatileStateItem({
+    captured: [
+      'your Mortgage — Mortgage interest rate: 3.2%',
+      'your Mortgage — Current mortgage balance: €250,000',
+      'your PRSA — Current pension value: approximately €95,000',
+      'you — Current age: 38'
+    ],
+    analyses,
+    missing: analyses.flatMap((analysis) => analysis.stillNeeded.map((need) => need.factId)),
+    unknown: [],
+    blocked: [],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+  ok(item.length <= 1_150, 'The item must stay within its cap with two fully-loaded analyses.');
+  ok(/Remaining mortgage term/i.test(item),
+    'EVERY analysis in play must have its needs stated; the last one must not be cut away.');
+  ok(/3\.2%/.test(item) && /€95,000/.test(item),
+    'Known figures must survive alongside a fully-loaded analysis block.');
+  ok(/they run as one set\.$/.test(item.trim()),
+    'The standing directives must still close the item whole.');
+
+  // When everything does fit, the assumptions are stated — they are only the
+  // thing that yields, never the thing that is dropped by default.
+  const roomy = liveVolatileStateItem({
+    captured: ['you — Current age: 38'],
+    analyses: [analyses[1]],
+    missing: ['mortgage_remaining_term_months'],
+    unknown: [],
+    blocked: [],
+    goalsAgreed: true,
+    readyToConfirm: false
+  });
+  ok(/never ask for these: Repayment type/.test(roomy),
+    'With room to spare, approved defaults must still be named.');
+}
+
+
+
+/* ------------------------------------------------------------------------ */
+/* THE FACT GATE REFUSED THINGS THE CLIENT PLAINLY SAID.                     */
+/*                                                                          */
+/* Once the memory projection was fixed, every remaining repeated question   */
+/* in the persona replay traced to a fact that FAILED TO SAVE: the client    */
+/* said it, the gate refused it, it stayed missing, and the meeting asked    */
+/* again. Both gates guard real hazards, so both fixes are narrow.           */
+/* ------------------------------------------------------------------------ */
+
+// 16. A TERSE ANSWER IS STILL AN ANSWER. "3.4%." is the most natural reply to
+//     "what rate are you on?", and it was refused while the same figure in a
+//     fuller sentence was accepted.
+{
+  const rateSession = () => {
+    const session = newReplaySession();
+    executeReplayTool(session, 'save_facts', {
+      facts: [
+        { factId: 'primary_goal', value: { type: 'optimise_mortgage' }, certainty: 'exact' },
+        { factId: 'mortgage_position', value: { entityId: 'm1', type: 'mortgage', owner: 'primary' }, certainty: 'exact' }
+      ]
+    }, 'I want to look at my mortgage.');
+    return session;
+  };
+  const saveRate = (said, value) => executeReplayTool(rateSession(), 'save_facts', {
+    facts: [{ factId: 'mortgage_annual_interest_rate', value, certainty: 'exact' }]
+  }, said).saved.length > 0;
+
+  for (const said of ['3.4%.', '3.4 percent.', 'About 3.4%.']) {
+    ok(saveRate(said, 3.4), `A bare spoken rate must be captured: ${JSON.stringify(said)}.`);
+  }
+  ok(saveRate('The rate is 3.4%.', 3.4), 'A cued rate must still be captured.');
+
+  // THE HAZARD THIS BOUNDARY EXISTS FOR IS UNCHANGED. Two numbers in one
+  // sentence must still be impossible to swap, and a number the client never
+  // said must still be impossible to save.
+  const twoNumbers = 'I earn 42000 a year and the mortgage rate is 3.4%.';
+  ok(!saveRate(twoNumbers, 42_000),
+    'An income figure must never be accepted as the mortgage rate — the swap hazard is the reason for this gate.');
+  ok(saveRate(twoNumbers, 3.4), 'The correctly bound figure in the same sentence must still save.');
+  ok(!saveRate('3.4%.', 2.9), 'A figure the client never said must still be refused.');
+}
+
+// 17. "NO DEBTS", HOWEVER THEY PHRASE IT. The prompt tells the model that an
+//     explicit "I do not have any loans or other debts" must be saved as
+//     confirm_none; the guard then refused almost every natural rendering of
+//     it, so the meeting asked a client who had said it three times a fourth.
+{
+  const denies = (said) => partitionSupportedConfirmedNoneFacts(
+    [{ factId: 'liability_position', value: { operation: 'confirm_none' }, certainty: 'exact' }],
+    said
+  ).accepted.length > 0;
+
+  for (const said of [
+    'I have no debts.',
+    'I have no household debt.',
+    'I have no outstanding liabilities.',
+    'I have no loans or other debts.',
+    'I have no loans, car finance, credit-card balances or other debts.',
+    "I don't have any loan or mortgage repayments.",
+    'There is no household debt to record.',
+    'We have no personal borrowings.'
+  ]) {
+    ok(denies(said), `A categorical denial of debt must be recordable: ${JSON.stringify(said)}.`);
+  }
+
+  // UNCERTAINTY IS NOT A DENIAL, and this is why the modifier set is closed.
+  // Allowing any word between "no" and "debts" would turn each of these into a
+  // categorical claim the client never made.
+  for (const said of [
+    'I have no idea about my debts.',
+    'I have no details on the loans.',
+    "I'm not sure about the debts.",
+    'I would need to check my debts.',
+    'No, I need to look up the balances.',
+    'I have some debts.'
+  ]) {
+    ok(!denies(said), `Uncertainty must never record a categorical "none": ${JSON.stringify(said)}.`);
+  }
+
+  // And the claim stays scoped to the fact it was made about.
+  ok(!denies('I have no children.'), 'A denial about something else must not clear the debt position.');
+}
+
+
+
+// 18. THE CONFIRMATION TURN. "So your PRSA is about EUR 28,000 — is that
+//     right?" / "Yes." That answer is worth as much as saying the number again,
+//     and the gate could not see it: a numeric leaf had to occur in the turn
+//     that caused the response, and "Yes." carries no number. The figure was
+//     refused, stayed missing, and the meeting asked a third time — which is
+//     why anxious_late_starter failed every run of the 3x sweep.
+{
+  const sourced = createSourcedFigureSet();
+  addSourcedFiguresFromText(sourced, 'My PRSA is worth about 28000 and I earn 54000 a year.');
+  const readBack = 'So your PRSA is about EUR 28,000 — is that right?';
+  const money = (amount) => [{
+    factId: 'pension_current_value',
+    value: { amount, currency: 'EUR' },
+    certainty: 'approximate'
+  }];
+  const accepts = (clientTurn, assistantReadBack, facts) => partitionSupportedLiveFacts(
+    facts, clientTurn, { clientSourcedFigures: sourced, assistantReadBack }
+  ).accepted.length > 0;
+
+  ok(accepts('Yes.', readBack, money(28_000)),
+    'A figure the client stated earlier and has now affirmed must be capturable from "Yes."');
+  ok(accepts('Yes, that is right.', readBack, money(28_000)),
+    'A fuller affirmation must behave the same way.');
+
+  // BOTH HALVES ARE LOAD-BEARING. Each of these removes exactly one of them.
+  ok(!accepts('Yes.', 'So your PRSA is about EUR 31,500 — is that right?', money(31_500)),
+    'The model must not read back a figure the CLIENT never said and then confirm its own invention.');
+  ok(!accepts('No, that is wrong.', readBack, money(28_000)),
+    'Without an affirmation there is nothing to carry over.');
+  ok(!accepts('Yes.', readBack, money(54_000)),
+    'An affirmation must not bind some OTHER past figure to this fact.');
+  ok(!accepts('Yes.', '', money(28_000)),
+    'With no read-back, an affirmation cannot say which figure it means.');
+  ok(!accepts('Yes.', readBack, money(99_999)),
+    'A figure in neither the read-back nor the client history must stay refused.');
+
+  // And the ordinary boundary is untouched when called the old way, with no
+  // affirmation evidence at all — an income figure must not land on a pension.
+  ok(partitionSupportedLiveFacts(
+    money(42_000), 'I earn 42000 a year and the mortgage rate is 3.4%.'
+  ).accepted.length === 0,
+  'The two-argument form must still refuse a figure bound to the wrong fact.');
+}
+
+
+
+// 19. "BETWEEN X AND Y" IS AN ANSWER. Ranges are how people give figures they
+//     have not looked up, and the midpoint is all anyone can do with one. The
+//     machinery for that already existed; the planner simply stopped producing
+//     the shape it recognised, and each new shape silently lost a figure and
+//     bought a repeated question. Both shapes below came off a real call.
+{
+  let profile = freshProfile();
+  const config = () => livePlanningConfig(CONFIG, profile);
+  const propose = (factId, value, certainty) => planFactProposal({
+    config: config(),
+    profile,
+    state: describeConversationState(profile, config()),
+    fact: { factId, value, certainty },
+    plannerBatch: true
+  });
+  const save = (factId, value, certainty) => {
+    const proposed = propose(factId, value, certainty);
+    profile = proposed.profile;
+    return proposed.displayValue;
+  };
+
+  // A range VALUE carrying a non-range certainty. The planner labels its own
+  // output, and a mislabel must not be the reason a figure is lost.
+  const spending = propose(
+    'monthly_spending',
+    { min: 3_000, max: 3_500, currency: 'EUR', frequency: 'monthly' },
+    'approximate'
+  );
+  ok(spending.displayValue?.amount === 3_250,
+    '"about 3,000 to 3,500 a month" must be kept as its midpoint, whatever certainty the planner attached.');
+
+  // A range NESTED inside the fact's own envelope, alongside the owner it
+  // belongs to. The envelope has to survive so the figure lands on the right
+  // person.
+  save('partner_person', { displayName: 'Aoife' }, 'exact');
+  save('intended_retirement_age', { retirementAge: { min: 55, max: 57 }, owner: 'partner' }, 'range');
+  ok(profile.partner?.intendedRetirementAge === 56,
+    'A nested range must resolve to its midpoint on the owner it names.');
+  ok(profile.primaryPerson?.intendedRetirementAge === undefined,
+    'The partner\'s stated range must not be written onto the client.');
+
+  // The shapes that already worked must keep working — including the money
+  // range from the earlier incident this parser was first widened for.
+  ok(propose('monthly_spending', { min: 3_000, max: 3_500 }, 'range').displayValue?.amount === 3_250,
+    'A plain {min,max} range must still resolve to its midpoint.');
+  ok(propose('monthly_spending', { minAmount: 180_000, maxAmount: 220_000, currency: 'EUR' }, 'range')
+    .displayValue?.amount === 200_000,
+  'The {minAmount,maxAmount,currency} range must still resolve to its midpoint.');
+  ok(propose('monthly_spending', { amount: 3_500, currency: 'EUR' }, 'exact').displayValue?.amount === 3_500,
+    'An ordinary single figure must be untouched by the range path.');
+
+  // A range shape on a fact that is not numeric must not be dragged in.
+  let choiceRefused = false;
+  try {
+    propose('household_structure', { min: 'a', max: 'b' }, 'approximate');
+  } catch (_error) {
+    choiceRefused = true;
+  }
+  ok(choiceRefused, 'A non-numeric fact must never be routed through the range midpoint path.');
+}
+
+
+
+// 20. BOTH PEOPLE RETIRE, SO BOTH PENSIONS COUNT — but only once the client
+//     has said there is a second person. The readiness adapter used to loop
+//     over the owners of pensions that ALREADY existed, so a partner with
+//     nothing recorded was never asked about, and "can we afford to retire"
+//     was answered from one fund. A real call lost a 500,000 pension that way.
+{
+  let profile = freshProfile();
+  const config = () => livePlanningConfig(CONFIG, profile);
+  const save = (factId, value, certainty = 'exact') => {
+    const proposed = planFactProposal({
+      config: config(), profile,
+      state: describeConversationState(profile, config()),
+      fact: { factId, value, certainty }, plannerBatch: true
+    });
+    profile = proposed.profile;
+    return proposed;
+  };
+  const partnerAsks = () => liveStateProjection(contextFor(profile))
+    .analyses.flatMap((analysis) => analysis.stillNeeded)
+    .map((need) => need.why || '')
+    .filter((why) => /partner|Aoife/i.test(why));
+
+  save('primary_goal', { type: 'retire' });
+  save('person_current_age', 53);
+  save('pension_positions', {
+    entityId: 'p1', type: 'occupational', owner: 'primary',
+    currentValue: { amount: 360_000, currency: 'EUR' }
+  });
+
+  // NEVER ask about a person the client has not said exists.
+  ok(partnerAsks().length === 0,
+    'A partner pension must not be asked about before the client confirms a partner exists.');
+  let refusedEarly = false;
+  try {
+    save('pension_positions', { operation: 'confirm_none', owner: 'partner' });
+  } catch (error) {
+    refusedEarly = error.code === 'realtime_partner_required';
+  }
+  ok(refusedEarly, 'A partner\'s absence cannot be recorded before the partner is.');
+
+  save('partner_person', { displayName: 'Aoife' });
+  ok(partnerAsks().length === 1,
+    'Once a partner is confirmed, their pension must be asked for by name.');
+
+  // AND IT MUST BE ANSWERABLE. Without an owner-scoped none the meeting would
+  // ask forever, because a household confirm_none refuses while the client's
+  // own pension exists — which is worse than never asking.
+  save('pension_positions', { operation: 'confirm_none', owner: 'partner' });
+  ok(partnerAsks().length === 0, '"She has no pension" must stop the question for good.');
+  ok((profile.pensions || []).length === 1
+    && profile.pensions[0].currentValue?.amount === 360_000,
+  'Recording one person\'s absence must never discard the other\'s holding.');
+}
+
+
+
+// 21. RENT FROM A JOINTLY OWNED PROPERTY IS STILL INCOME. An income record
+//     carries one owner, so `joint` was refused outright and a real call lost
+//     the whole 2,250-a-month rent without anyone noticing.
+{
+  let profile = freshProfile();
+  const config = () => livePlanningConfig(CONFIG, profile);
+  const save = (factId, value) => {
+    const proposed = planFactProposal({
+      config: config(), profile,
+      state: describeConversationState(profile, config()),
+      fact: { factId, value, certainty: 'exact' }, plannerBatch: true
+    });
+    profile = proposed.profile;
+  };
+  const rental = (owner, entityId) => ({
+    entityId, type: 'rental', owner, grossAnnual: { amount: 27_000, currency: 'EUR' }
+  });
+
+  save('primary_goal', { type: 'retire' });
+  // "Joint" is a claim that there are two people, so it waits for the partner
+  // exactly as joint ownership of an asset does.
+  let refusedWithoutPartner = false;
+  try {
+    save('income_sources', rental('joint', 'r1'));
+  } catch (error) {
+    refusedWithoutPartner = error.code === 'realtime_partner_required';
+  }
+  ok(refusedWithoutPartner, 'Joint income must wait until a partner is confirmed.');
+
+  save('partner_person', { displayName: 'Aoife' });
+  save('income_sources', rental('joint', 'r2'));
+  const stored = (profile.incomeSources || []).filter((item) => item.type === 'rental');
+  ok(stored.length === 1 && stored[0].grossAnnual?.amount === 27_000,
+    'Jointly owned rental income must be recorded, not discarded.');
+  ok(stored[0].ownerId === 'household',
+    'A shared income belongs to the household, since one record cannot carry two owners.');
+
+  // The single-owner cases are untouched.
+  save('income_sources', rental('primary', 'r3'));
+  ok((profile.incomeSources || []).some((item) => item.ownerId === profile.primaryPerson.personId),
+    'An income owned by one person must still record against that person.');
 }
 
 

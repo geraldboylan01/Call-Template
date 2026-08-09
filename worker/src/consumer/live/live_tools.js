@@ -176,6 +176,38 @@ function factLabel(factId) {
 
 /* ------------------------------------------------------------- save_facts */
 
+/**
+ * Words a client puts between "no" and "debt" when they mean it.
+ *
+ * A CLOSED SET, and that is the safety property. The obvious fix -- allowing any
+ * word or two -- also matches "no idea about my loans" and "no details on the
+ * debts", turning an admission of uncertainty into a categorical claim that the
+ * client has none. Every entry here describes debt; none of them describes not
+ * knowing.
+ */
+const DEBT_MODIFIER = '(?:household|personal|family|joint|other|outstanding|remaining|consumer|unsecured|secured|short-term|long-term|current|monthly)\\s+';
+
+/** The nouns a client uses for a debt they are denying having. */
+const DEBT_NOUN = '(?:debts?|liabilit(?:y|ies)|borrowings?)';
+
+const LIABILITY_CONFIRMED_NONE = new RegExp(
+  '\\b(?:'
+  // "no debts", "no household debt", "no outstanding liabilities"
+  + `(?:no|without)\\s+(?:any\\s+)?(?:${DEBT_MODIFIER}){0,2}${DEBT_NOUN}`
+  // "no loans or other debts"
+  + '|(?:no|without)\\s+(?:any\\s+)?loans?\\s+or\\s+(?:other\\s+)?debts?'
+  // A LIST. "no loans, car finance, credit-card balances or other debts" --
+  // the client enumerating what they do not have is the most emphatic form of
+  // the claim, and it was the one form the pattern refused.
+  + `|(?:no|without)\\s+(?:any\\s+)?loans?\\b[^.!?]{0,90}\\bor\\s+(?:any\\s+)?(?:other\\s+)?${DEBT_NOUN}`
+  // "I don't have any loan or mortgage repayments"
+  + '|(?:do not|don\'t)\\s+have\\s+(?:any\\s+)?(?:loan|mortgage|credit|card|finance|debt)[^.!?]{0,40}\\brepayments?'
+  // The original open-ended form, with its uncertainty guard intact.
+  + `|(?:do not|don't)\\s+(?:have|owe|carry)\\s+any\\s+(?!figures?|details?|balances?|amounts?|idea|clue)[^.!?]{0,100}\\b${DEBT_NOUN}\\b`
+  + ')\\b',
+  'i'
+);
+
 const CONFIRMED_NONE_SUPPORT = Object.freeze({
   partner_person:
     /\b(?:(?:no|without)\s+(?:a\s+)?(?:partner|spouse|husband|wife)|(?:do not|don't)\s+have\s+(?:a\s+)?(?:partner|spouse|husband|wife)|i(?:\s+am|'m)\s+single)\b/i,
@@ -183,8 +215,7 @@ const CONFIRMED_NONE_SUPPORT = Object.freeze({
     /\b(?:(?:no|without)\s+(?:income|earnings|wages|salary)|(?:do not|don't)\s+have\s+(?:any\s+)?(?:income|earnings|wages|salary))\b/i,
   asset_position:
     /\b(?:(?:no|without)\s+(?:cash\s+)?(?:savings?|investments?|assets?)|(?:do not|don't)\s+(?:have|own|hold)\s+(?:any\s+)?(?:cash\s+)?(?:savings?|investments?|assets?))\b/i,
-  liability_position:
-    /\b(?:(?:no|without)\s+(?:any\s+)?(?:loans?\s+or\s+(?:other\s+)?debts?|debts?|liabilit(?:y|ies))|(?:do not|don't)\s+(?:have|owe|carry)\s+any\s+(?!figures?|details?|balances?|amounts?)[^.!?]{0,100}\b(?:debts?|liabilit(?:y|ies))\b)\b/i,
+  liability_position: LIABILITY_CONFIRMED_NONE,
   mortgage_position:
     /\b(?:(?:no|without)\s+(?:a\s+)?mortgage|(?:do not|don't)\s+have\s+(?:a\s+)?mortgage)\b/i,
   loan_position:
@@ -804,10 +835,20 @@ function numericOccurrenceSupportsSlot(slot, occurrence, transcript) {
   return false;
 }
 
-function numericOccurrenceHasStrongCue(occurrence, transcript) {
-  const context = localNumberContext(transcript, occurrence);
-  return /(?:%|\b(?:age|aged|years old|child|children|kid|dependant|dependent|earn|earns|earned|income|salary|wage|gross|net|before tax|cash|saving|savings|deposit|rent|landlord|spend|spending|expense|outgoing|mortgage|loan|debt|balance|outstanding|interest|rate|repayment|pension|prsa|retire|retirement|state pension|property|home|house|price|business|college|education|worth|value)\b)/i
-    .test(context);
+const NUMERIC_SEMANTIC_CUE =
+  /\b(?:age|aged|years old|child|children|kid|dependant|dependent|earn|earns|earned|income|salary|wage|gross|net|before tax|cash|saving|savings|deposit|rent|landlord|spend|spending|expense|outgoing|mortgage|loan|debt|balance|outstanding|interest|rate|repayment|pension|prsa|retire|retirement|state pension|property|home|house|price|business|college|education|worth|value)\b/i;
+
+/**
+ * A cue that says WHICH fact a number belongs to.
+ *
+ * Deliberately excludes a bare `%`. A percent sign is a UNIT attached to the
+ * number itself; it says the figure is a rate, not which rate. Treating it as a
+ * disambiguating cue is what stopped the single-number fallback below from
+ * rescuing a terse answer: "3.4%." carries a unit, no semantics, and nothing
+ * else in the utterance to be confused with.
+ */
+function numericOccurrenceHasSemanticCue(occurrence, transcript) {
+  return NUMERIC_SEMANTIC_CUE.test(localNumberContext(transcript, occurrence));
 }
 
 /**
@@ -826,13 +867,55 @@ function numericOccurrenceHasStrongCue(occurrence, transcript) {
  * Keep these evidence checks at the untrusted live-tool boundary: the shared
  * mapper still needs to accept valid proposals from other lanes.
  */
-export function partitionSupportedLiveFacts(facts, latestClientTranscript) {
+/**
+ * THE CONFIRMATION TURN.
+ *
+ * "So your PRSA is about EUR 28,000 -- is that right?" / "Yes."
+ *
+ * That answer is worth exactly as much as saying the number again, and the rest
+ * of this boundary could not see it: the rule is that a numeric leaf must occur
+ * in the transcript that caused the response, and "Yes." contains no number. The
+ * figure was refused, stayed missing, and the meeting asked for it a third time
+ * -- which is what made anxious_late_starter fail every run of the 3x sweep.
+ *
+ * TWO CONDITIONS, AND BOTH ARE LOAD-BEARING:
+ *
+ *   1. the value is already in the meeting's CLIENT-sourced figure set, so the
+ *      client did say this number themselves at some earlier point; and
+ *   2. the value appears in the assistant's immediately preceding turn, so the
+ *      "yes" is demonstrably about THIS figure rather than some other number
+ *      the client happened to mention twenty turns ago.
+ *
+ * Condition 1 alone would let any past figure be bound to any fact on any
+ * affirmation. Condition 2 alone would let the model read back a number it
+ * invented and then confirm its own invention -- assistant speech is model
+ * output and is never evidence by itself. Together they are narrower than
+ * either, and neither can be satisfied by the model acting alone.
+ */
+function affirmedReadBackValues(transcript, assistantReadBack, clientSourcedFigures) {
+  const empty = new Set();
+  const readBack = String(assistantReadBack || '');
+  const sourced = Array.isArray(clientSourcedFigures?.values) ? clientSourcedFigures.values : null;
+  if (!readBack || !sourced?.length) return empty;
+  if (classifySpokenPlanConfirmation(transcript) !== 'affirmed') return empty;
+  const clientSaid = new Set(sourced.filter((value) => Number.isFinite(value)));
+  const readBackValues = numberOccurrences(readBack).map((occurrence) => occurrence.value);
+  return new Set(readBackValues.filter((value) => clientSaid.has(value)));
+}
+
+export function partitionSupportedLiveFacts(facts, latestClientTranscript, {
+  // Every figure the CLIENT has said so far in this meeting. Not the model's.
+  clientSourcedFigures = null,
+  // The assistant's immediately preceding turn — the one this answer replies to.
+  assistantReadBack = ''
+} = {}) {
   const submitted = Array.isArray(facts) ? facts : [];
   const transcript = String(latestClientTranscript || '')
     .replace(/[’‘]/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
   const occurrences = numberOccurrences(transcript);
+  const affirmed = affirmedReadBackValues(transcript, assistantReadBack, clientSourcedFigures);
   const numericEvidence = submitted.flatMap((fact) =>
     numericLeaves(fact?.value).map((leaf) => ({
       fact,
@@ -881,11 +964,26 @@ export function partitionSupportedLiveFacts(facts, latestClientTranscript) {
         const matchingOccurrence = supportedOccurrences.some((occurrence) =>
           Object.is(occurrence.value, leaf.value)
         );
+        // THE TERSE-ANSWER CASE. `fallbackShape` already requires that the
+        // candidate values and the transcript's numbers are the SAME single
+        // set -- so there is exactly one number in what the client said and
+        // exactly one number being saved. Nothing can be swapped with anything,
+        // which is the whole hazard this boundary exists to stop.
+        //
+        // The test used to be "no strong cue", and a bare `%` counted as one,
+        // so "3.4%." was refused while "The rate is 3.4%." was accepted. The
+        // client had answered a direct question in the most natural way there
+        // is, the figure was dropped, and the meeting asked again -- a repeated
+        // question caused by the gate rather than by the memory.
         const cueFreeFallback = fallbackShape
           && occurrences.some((occurrence) =>
             Object.is(occurrence.value, leaf.value)
-            && !numericOccurrenceHasStrongCue(occurrence, transcript)
+            && !numericOccurrenceHasSemanticCue(occurrence, transcript)
           );
+        // The client just said yes to the assistant reading this exact figure
+        // back, and it is a figure they themselves gave earlier. See
+        // affirmedReadBackValues for why both halves are required.
+        if (affirmed.has(leaf.value)) return false;
         if (!matchingOccurrence && !cueFreeFallback) return true;
         if (!matchingOccurrence) return false;
         const pathParts = leaf.path.map((part) => String(part).toLowerCase());
@@ -936,7 +1034,10 @@ function normalizedFacts(args) {
  */
 async function executeSaveFacts(args, deps) {
   const candidates = normalizedFacts(args);
-  const guarded = partitionSupportedLiveFacts(candidates, deps.latestClientTranscript);
+  const guarded = partitionSupportedLiveFacts(candidates, deps.latestClientTranscript, {
+    clientSourcedFigures: deps.clientSourcedFigures || null,
+    assistantReadBack: deps.assistantReadBack || ''
+  });
   let context = await deps.loadContext();
   const outcomes = [];
 

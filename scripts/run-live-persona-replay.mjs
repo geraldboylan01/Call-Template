@@ -23,11 +23,13 @@
  *
  *   OPENAI_API_KEY=sk-... node scripts/run-live-persona-replay.mjs
  *   ... --persona young_renter        run one persona
+ *   ... --repeat 3                    run each persona 3x and report medians
+ *   ... --trace out.jsonl             structured per-event trace, written live
  *   ... --no-grade                    deterministic checks only, no grader
  *   ... --verbose                     print every tool call
  */
 
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -49,6 +51,7 @@ import {
 import {
   addSourcedFiguresFromText,
   createSourcedFigureSet,
+  extractFinancialFigures,
   scanAssistantSpeech
 } from '../worker/src/consumer/live/compliance.js';
 import { classifySpokenPlanConfirmation } from '../worker/src/consumer/realtime_completion.js';
@@ -66,6 +69,36 @@ const args = process.argv.slice(2);
 const onlyPersona = args.includes('--persona') ? args[args.indexOf('--persona') + 1] : '';
 const grade = !args.includes('--no-grade');
 const verbose = args.includes('--verbose');
+/**
+ * How many times each persona runs.
+ *
+ * ONE RUN IS NOT A MEASUREMENT. Grading the same persona on the same code
+ * produced question-relevance scores three points apart across runs, which is
+ * the same size as the regressions this harness exists to catch -- so a single
+ * run can neither prove an improvement nor rule out a regression. Repeating and
+ * reporting the median makes a real move visible above that noise.
+ */
+const repeat = args.includes('--repeat')
+  ? Math.max(1, Math.min(9, Number(args[args.indexOf('--repeat') + 1]) || 1))
+  : 1;
+
+/**
+ * Structured tracing, written AS THE RUN HAPPENS.
+ *
+ * The console log interleaves verbose tool lines with a transcript that is only
+ * printed once the persona finishes, so reconstructing "which client turn caused
+ * this rejection" from the log afterwards silently pairs a rejection with a turn
+ * from a different run. That produced two confident and wrong diagnoses. Every
+ * event here is emitted at the moment it occurs, with the causal turn attached,
+ * so the analysis never has to guess.
+ */
+const tracePath = args.includes('--trace') ? args[args.indexOf('--trace') + 1] : '';
+let traceContext = {};
+function setTraceContext(next) { traceContext = { ...traceContext, ...next }; }
+function trace(event, payload) {
+  if (!tracePath) return;
+  appendFileSync(tracePath, `${JSON.stringify({ event, ...traceContext, ...payload })}\n`);
+}
 
 const NOW = '2026-07-27T09:00:00.000Z';
 const BASE_CONFIG = {
@@ -78,18 +111,42 @@ const BASE_CONFIG = {
 
 /* ------------------------------------------------------------------ shared */
 
-async function callResponses(body) {
+/**
+ * One request, with backoff on the limits a long run actually hits.
+ *
+ * `--repeat 3` drives eighteen conversations back to back, each carrying a 41 KB
+ * prompt over a dozen turns, which is comfortably enough to exhaust a
+ * tokens-per-minute allowance. Without this, three runs of the first attempt
+ * died on 429 and their personas silently lost a sample — the medians would then
+ * have been computed over whatever survived, which is exactly the kind of quiet
+ * unreliability the repeat mode exists to remove.
+ *
+ * A rate limit is not a result. Wait and ask again.
+ */
+async function callResponses(body, attempt = 1) {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ store: false, ...body })
   });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`Responses API ${response.status}: ${detail.slice(0, 300)}`);
+  if (response.ok) return response.json();
+
+  const detail = await response.text().catch(() => '');
+  const retryable = response.status === 429 || response.status >= 500;
+  if (retryable && attempt <= MAX_REQUEST_ATTEMPTS) {
+    // Honour the provider's own advice when it gives one, else back off.
+    const advised = Number(response.headers.get('retry-after')) * 1_000;
+    const waitMs = Number.isFinite(advised) && advised > 0
+      ? Math.min(advised, 60_000)
+      : Math.min(2_000 * (2 ** (attempt - 1)), 60_000);
+    if (verbose) console.log(`      (${response.status}; waiting ${Math.round(waitMs / 1000)}s, attempt ${attempt})`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    return callResponses(body, attempt + 1);
   }
-  return response.json();
+  throw new Error(`Responses API ${response.status}: ${detail.slice(0, 300)}`);
 }
+
+const MAX_REQUEST_ATTEMPTS = 6;
 
 function responseText(payload) {
   if (typeof payload?.output_text === 'string' && payload.output_text.trim()) {
@@ -149,10 +206,17 @@ function contextFor(session) {
  * Everything that decides whether a fact is valid, what it maps to, and which
  * analyses it enables is the production code path.
  */
-export function executeTool(session, name, callArgs, lastClientTurn) {
+export function executeTool(session, name, callArgs, lastClientTurn, { assistantReadBack = '' } = {}) {
   if (name === 'save_facts') {
     const facts = Array.isArray(callArgs?.facts) ? callArgs.facts.slice(0, 10) : [];
-    const guarded = partitionSupportedConfirmedNoneFacts(facts, lastClientTurn);
+    // Same evidence the Durable Object passes: the meeting's client-sourced
+    // figures, and the assistant turn this answer is replying to. Without them
+    // the replay cannot exercise the confirmation turn ("Yes." to a read-back)
+    // and would keep reporting a repeated question the lane no longer asks.
+    const guarded = partitionSupportedConfirmedNoneFacts(facts, lastClientTurn, {
+      clientSourcedFigures: session.sourced,
+      assistantReadBack
+    });
     const saved = [];
     const rejected = [...guarded.rejected];
     for (const fact of guarded.accepted) {
@@ -640,6 +704,82 @@ async function gradeTranscript(persona, transcript, deterministicProblems, toolO
 
 /* -------------------------------------------------------------- the driver */
 
+/**
+ * DID WE KEEP WHAT THEY SAID? The one question the grader could never answer.
+ *
+ * Every figure the client speaks is ground truth -- we have their exact words --
+ * and every figure the meeting holds is in the profile. Comparing the two is
+ * deterministic, needs no model, and does not move between runs of identical
+ * code. A figure in the first set and not the second is a figure the meeting
+ * will ask for again, which is the repeated-question complaint at its source.
+ *
+ * Not every spoken number is a fact -- "six years ago", "one or two" -- so this
+ * is reported rather than asserted, and the misses are listed with the words
+ * they came from so a real gap is one line of reading away.
+ */
+/**
+ * THE BRIEF IS THE ANSWER KEY.
+ *
+ * The tester holds the client's real figures before the call starts, so the
+ * question is simply: of the things this person knows about themselves, how
+ * many did the meeting get out of them and store correctly? That is the whole
+ * job, stated as arithmetic, with no grader in the loop.
+ *
+ * It separates the two ways of failing, which need different fixes:
+ *
+ *   never asked   the figure never appears in anything the client said. The
+ *                 meeting did not go looking for it.
+ *   dropped       the client said it and it is not in the profile. The meeting
+ *                 asked, heard the answer, and lost it -- and will ask again.
+ */
+function briefCoverage(persona, session, transcript) {
+  const truth = Array.isArray(persona.groundTruth) ? persona.groundTruth : [];
+  if (!truth.length) return null;
+  const spokenText = transcript.filter((turn) => turn.role === 'client').map((turn) => turn.text).join(' ');
+  const spoken = new Set(extractFinancialFigures(spokenText));
+  const kept = new Set();
+  const walk = (node, depth = 0) => {
+    if (depth > 6 || node === null || node === undefined) return;
+    if (typeof node === 'number' && Number.isFinite(node)) { kept.add(node); return; }
+    if (Array.isArray(node)) return node.forEach((item) => walk(item, depth + 1));
+    if (typeof node === 'object') return Object.values(node).forEach((item) => walk(item, depth + 1));
+  };
+  walk(session.savedFacts.map((fact) => fact.value));
+
+  const rows = truth.map((item) => ({
+    ...item,
+    said: spoken.has(item.value),
+    // A rate may be stored as 3.6 or as 0.036; both mean the client's answer.
+    held: kept.has(item.value) || kept.has(item.value / 100)
+  }));
+  return {
+    total: rows.length,
+    held: rows.filter((row) => row.held).length,
+    dropped: rows.filter((row) => row.said && !row.held),
+    neverAsked: rows.filter((row) => !row.said && !row.held)
+  };
+}
+
+function dataCapture(session, transcript) {
+  const spoken = new Map();
+  for (const turn of transcript) {
+    if (turn.role !== 'client') continue;
+    for (const figure of extractFinancialFigures(turn.text)) {
+      if (!spoken.has(figure)) spoken.set(figure, turn.text);
+    }
+  }
+  const kept = new Set();
+  const walk = (node, depth = 0) => {
+    if (depth > 6 || node === null || node === undefined) return;
+    if (typeof node === 'number' && Number.isFinite(node)) { kept.add(node); return; }
+    if (Array.isArray(node)) return node.forEach((item) => walk(item, depth + 1));
+    if (typeof node === 'object') return Object.values(node).forEach((item) => walk(item, depth + 1));
+  };
+  walk(session.savedFacts.map((fact) => fact.value));
+  const missed = [...spoken.entries()].filter(([value]) => !kept.has(value));
+  return { stated: spoken.size, kept: spoken.size - missed.length, missed };
+}
+
 async function runPersona(persona, instructions) {
   const session = newSession();
   const transcript = [];
@@ -687,8 +827,29 @@ async function runPersona(persona, instructions) {
     let guard = 0;
     while (calls.length && guard < 3) {
       guard += 1;
+      const assistantReadBack = [...transcript].reverse()
+        .find((item) => item.role === 'planeir')?.text || '';
       for (const call of calls) {
-        const result = executeTool(session, call.name, call.args, lastClient);
+        const projectionAtCall = liveStateProjection(contextFor(session));
+        const result = executeTool(session, call.name, call.args, lastClient, { assistantReadBack });
+        for (const refusal of result?.rejected || []) {
+          const attempted = (Array.isArray(call.args?.facts) ? call.args.facts : [])
+            .find((fact) => fact?.factId === refusal.factId);
+          trace('fact_refused', {
+            turn: turn + 1,
+            factId: refusal.factId,
+            reason: refusal.reason,
+            attemptedValue: attempted?.value ?? null,
+            certainty: attempted?.certainty ?? null,
+            clientTurn: lastClient,
+            assistantReadBack,
+            // Was this fact one an analysis was actually waiting for?
+            wasStillNeeded: projectionAtCall.missing.includes(refusal.factId),
+            wasAlreadyCaptured: projectionAtCall.capturedFactIds.includes(refusal.factId),
+            clientTurnHasDigit: /\d/.test(lastClient),
+            readBackHasDigit: /\d/.test(assistantReadBack)
+          });
+        }
         if (verbose) {
           console.log(`      · ${call.name}(${JSON.stringify(call.args).slice(0, 120)}) -> ${JSON.stringify(result).slice(0, 160)}`);
         }
@@ -746,6 +907,26 @@ async function runPersona(persona, instructions) {
       }
     }
     const requestedThisTurn = requestedFactIdsFromSpeech(text);
+    // EVERY ASK, WITH THE STATE THAT EXISTED WHEN IT WAS ASKED. A question is
+    // redundant only if the state already held a value for it; one that an
+    // analysis is still waiting on is the meeting doing its job. Recording both
+    // at the moment of asking is the only way to tell those apart afterwards.
+    if (requestedThisTurn.length) {
+      const stateNow = liveStateProjection(contextFor(session));
+      trace('question_asked', {
+        turn: turn + 1,
+        requested: requestedThisTurn,
+        redundant: requestedThisTurn.filter((factId) => (
+          stateNow.capturedFactIds.includes(factId) && !stateNow.missing.includes(factId)
+        )),
+        justified: requestedThisTurn.filter((factId) => stateNow.missing.includes(factId)),
+        unowned: requestedThisTurn.filter((factId) => (
+          !stateNow.missing.includes(factId) && !stateNow.capturedFactIds.includes(factId)
+        )),
+        speech: text.slice(0, 400),
+        clientTurn: lastClient.slice(0, 300)
+      });
+    }
     for (const answeredFactId of answeredFactIdsFromClientSpeech(lastClient)) {
       if (requestedThisTurn.includes(answeredFactId)) {
         problems.push(`Turn ${turn + 1}: RE-ASKED explicit client fact ${answeredFactId} in the same response.`);
@@ -874,7 +1055,113 @@ async function runPersona(persona, instructions) {
     if (missing.length) problems.push(`END: client persona did not exercise advice beats: ${missing.join(', ')}.`);
   }
 
-  return { session, transcript, problems, projection };
+  return {
+    session,
+    transcript,
+    problems,
+    projection,
+    capture: dataCapture(session, transcript),
+    coverage: briefCoverage(persona, session, transcript)
+  };
+}
+
+/** Median of a numeric list; the lower of the two middles for an even count. */
+function median(values) {
+  const sorted = [...values].filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  return sorted[Math.floor((sorted.length - 1) / 2)];
+}
+
+const SCORE_KEYS = Object.freeze([
+  ['openness', 'openness'],
+  ['naturalness', 'naturalness'],
+  ['tangentHandling', 'tangents'],
+  ['questionRelevance', 'relevance'],
+  ['safety', 'safety']
+]);
+
+/** The across-run summary. Medians, plus the spread that motivated repeating. */
+function reportMedians(scoresByPersona, runs) {
+  if (runs < 2) return;
+  console.log(`\n${'='.repeat(78)}\nMEDIAN OF ${runs} RUNS PER PERSONA\n${'='.repeat(78)}`);
+  console.log(`${'persona'.padEnd(22)}  ${['open', 'nat', 'tang', 'relev', 'safe'].map((head) => head.padStart(4)).join(' ')}   relevance runs`);
+  let worstRelevance = 5;
+  let widestSpread = 0;
+  for (const [personaId, runsForPersona] of scoresByPersona) {
+    if (!runsForPersona.length) {
+      console.log(`${personaId.padEnd(22)}  (no graded run completed)`);
+      worstRelevance = 0;
+      continue;
+    }
+    const cells = SCORE_KEYS.map(([key]) => median(runsForPersona.map((run) => run[key])));
+    const relevanceRuns = runsForPersona.map((run) => run.questionRelevance);
+    const spread = Math.max(...relevanceRuns) - Math.min(...relevanceRuns);
+    widestSpread = Math.max(widestSpread, spread);
+    const relevanceMedian = cells[3];
+    worstRelevance = Math.min(worstRelevance, relevanceMedian);
+    console.log(
+      `${personaId.padEnd(22)}  ${cells.map((cell) => String(cell).padStart(4)).join(' ')}`
+      + `   [${relevanceRuns.join(', ')}]`
+      + `${runsForPersona.length < runs ? `  <- only ${runsForPersona.length}/${runs} graded` : ''}`
+      + `${spread >= 2 ? '  <- unstable' : ''}`
+    );
+  }
+  console.log(`\nWorst median question relevance: ${worstRelevance}/5.`);
+  console.log(`Widest within-persona relevance spread: ${widestSpread} point(s).`);
+  if (widestSpread >= 2) {
+    console.log('A spread that wide means a single run cannot settle a question-relevance claim.');
+  }
+}
+
+/**
+ * The headline number, and the only one that does not move on its own.
+ *
+ * Everything above it is a model's opinion. This is arithmetic over the
+ * client's own words, so a change here is a change in the product.
+ */
+function reportDataCapture(captureByPersona) {
+  if (!captureByPersona.size) return;
+  console.log(`\n${'='.repeat(78)}\nDATA KEPT — figures the client said, that the meeting still holds\n${'='.repeat(78)}`);
+  let statedTotal = 0;
+  let keptTotal = 0;
+  for (const [personaId, runs] of captureByPersona) {
+    const stated = runs.reduce((sum, run) => sum + run.stated, 0);
+    const kept = runs.reduce((sum, run) => sum + run.kept, 0);
+    statedTotal += stated;
+    keptTotal += kept;
+    const pct = stated ? Math.round((kept / stated) * 100) : 100;
+    console.log(`${personaId.padEnd(22)}  ${String(kept).padStart(3)}/${String(stated).padEnd(3)}  ${String(pct).padStart(3)}%`);
+  }
+  const pct = statedTotal ? Math.round((keptTotal / statedTotal) * 100) : 100;
+  console.log(`${'ALL'.padEnd(22)}  ${String(keptTotal).padStart(3)}/${String(statedTotal).padEnd(3)}  ${String(pct).padStart(3)}%`);
+}
+
+/** Of everything each client knew about themselves, how much did we get? */
+function reportBriefCoverage(coverageByPersona) {
+  if (!coverageByPersona.size) return;
+  console.log(`\n${'='.repeat(78)}\nBRIEF COVERAGE — the client's known facts, and how many we collected\n${'='.repeat(78)}`);
+  let totalAll = 0;
+  let heldAll = 0;
+  const droppedCounts = new Map();
+  for (const [personaId, runs] of coverageByPersona) {
+    const total = runs.reduce((sum, run) => sum + run.total, 0);
+    const held = runs.reduce((sum, run) => sum + run.held, 0);
+    totalAll += total;
+    heldAll += held;
+    for (const run of runs) {
+      for (const row of run.dropped) droppedCounts.set(row.label, (droppedCounts.get(row.label) || 0) + 1);
+    }
+    const pct = total ? Math.round((held / total) * 100) : 100;
+    console.log(`${personaId.padEnd(22)}  ${String(held).padStart(3)}/${String(total).padEnd(3)}  ${String(pct).padStart(3)}%`);
+  }
+  const pct = totalAll ? Math.round((heldAll / totalAll) * 100) : 100;
+  console.log(`${'ALL'.padEnd(22)}  ${String(heldAll).padStart(3)}/${String(totalAll).padEnd(3)}  ${String(pct).padStart(3)}%`);
+  if (droppedCounts.size) {
+    console.log('\nSaid by the client and NOT stored, most frequent first:');
+    for (const [label, count] of [...droppedCounts].sort((a, b) => b[1] - a[1])) {
+      console.log(`  ${String(count).padStart(3)}x  ${label}`);
+    }
+  }
 }
 
 async function main() {
@@ -894,8 +1181,17 @@ async function main() {
   console.log(`Prompt: ${instructions.length} chars (~${Math.round(instructions.length / 4)} tokens), agent=${AGENT_MODEL}\n`);
 
   const failedPersonaIds = new Set();
+  const scoresByPersona = new Map(personas.map((persona) => [persona.id, []]));
+  const captureByPersona = new Map();
+  const coverageByPersona = new Map();
   for (const persona of personas) {
-    console.log(`\n${'='.repeat(78)}\n${persona.id} — ${persona.label}\n${'='.repeat(78)}`);
+   for (let attempt = 1; attempt <= repeat; attempt += 1) {
+    // A brief cool-off between conversations. Cheaper than discovering the
+    // tokens-per-minute ceiling mid-run and retrying a whole turn.
+    if (repeat > 1 && attempt > 1) await new Promise((resolve) => setTimeout(resolve, 8_000));
+    const runLabel = repeat > 1 ? ` — run ${attempt}/${repeat}` : '';
+    setTraceContext({ persona: persona.id, run: attempt });
+    console.log(`\n${'='.repeat(78)}\n${persona.id} — ${persona.label}${runLabel}\n${'='.repeat(78)}`);
     let outcome;
     try {
       outcome = await runPersona(persona, instructions);
@@ -913,6 +1209,33 @@ async function main() {
     console.log(`\n  captured: ${[...new Set(outcome.session.savedFactIds)].join(', ') || '(none)'}`);
     console.log(`  analyses: ${outcome.projection.analyses.map((a) => a.description.slice(0, 46)).join(' | ') || '(none)'}`);
     console.log(`  still needed: ${outcome.projection.missing.join(', ') || '(none)'}`);
+    // THE DETERMINISTIC ONE. Same code, same number, every run.
+    console.log(`  DATA KEPT: ${outcome.capture.kept}/${outcome.capture.stated} figures the client actually said`);
+    for (const [value, said] of outcome.capture.missed) {
+      console.log(`    · lost ${value} from ${JSON.stringify(said.slice(0, 90))}`);
+    }
+    trace('data_capture', {
+      stated: outcome.capture.stated,
+      kept: outcome.capture.kept,
+      missed: outcome.capture.missed.map(([value, said]) => ({ value, said: said.slice(0, 120) }))
+    });
+    captureByPersona.set(persona.id, [...(captureByPersona.get(persona.id) || []), outcome.capture]);
+    if (outcome.coverage) {
+      const { total, held, dropped, neverAsked } = outcome.coverage;
+      console.log(`  BRIEF COVERAGE: ${held}/${total} of this client's known facts were collected`);
+      for (const row of dropped) {
+        console.log(`    · DROPPED  ${row.label} (${row.value}) — they said it, it is not stored`);
+      }
+      for (const row of neverAsked) {
+        console.log(`    · NOT ASKED ${row.label} (${row.value})`);
+      }
+      trace('brief_coverage', {
+        total, held,
+        dropped: dropped.map((row) => row.label),
+        neverAsked: neverAsked.map((row) => row.label)
+      });
+      coverageByPersona.set(persona.id, [...(coverageByPersona.get(persona.id) || []), outcome.coverage]);
+    }
 
     if (outcome.problems.length) {
       failedPersonaIds.add(persona.id);
@@ -940,13 +1263,27 @@ async function main() {
           + `tangents ${scored.tangentHandling}/5  relevance ${scored.questionRelevance}/5  safety ${scored.safety}/5`);
         console.log(`  would demo well: ${scored.wouldDemoWell ? 'yes' : 'NO'}`);
         for (const note of scored.notes) console.log(`    – ${note}`);
+        // AN INCONCLUSIVE RUN IS NOT A SAMPLE. When the CLIENT model fails to
+        // produce a turn, everything after it is an artefact of the harness,
+        // not of the lane -- the conversation simply stops, so the analyses are
+        // never confirmed and the grader marks it down. Counting that toward a
+        // median reports a product regression that did not happen.
+        if (outcome.problems.some((problem) => problem.includes('this run is inconclusive'))) {
+          console.log('  (inconclusive run — excluded from the median)');
+        } else {
+          scoresByPersona.get(persona.id).push(scored);
+        }
         if (scored.safety < 4 || !scored.wouldDemoWell) failedPersonaIds.add(persona.id);
       } catch (error) {
         console.log(`  (grader unavailable: ${error.message})`);
         failedPersonaIds.add(persona.id);
       }
     }
+   }
   }
+  reportMedians(scoresByPersona, repeat);
+  reportDataCapture(captureByPersona);
+  reportBriefCoverage(coverageByPersona);
 
   console.log(`\n${'='.repeat(78)}`);
   console.log(failedPersonaIds.size
