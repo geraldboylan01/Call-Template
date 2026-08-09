@@ -1754,6 +1754,147 @@ export async function startPlannerReconciliation(env, request) {
   return { row, replayed: false };
 }
 
+/**
+ * Encrypt the reconciled profile and work out the exact ledger transitions.
+ *
+ * The validator has already decided which notes end up active, superseded or
+ * retracted, so this deliberately does NOT re-derive supersession from matching
+ * fact instances the way a spoken confirmation does. That heuristic cannot see
+ * a retraction, which produces no replacement note, or a merge, which moves
+ * notes onto a different entity — and those are exactly the corrections this
+ * path exists to make.
+ */
+async function preparePlannerReconciliationWrite(env, request) {
+  const revision = request.baseRevision + 1;
+  const nextProfile = {
+    ...request.appliedProfile,
+    revision,
+    confirmedAt: undefined,
+    updatedAt: request.timestamp
+  };
+  const payload = await encryptJson(
+    env,
+    nextProfile,
+    `consumer/profile/${request.sessionId}/${revision}`
+  );
+  const priorRecords = await listPlanningNoteRecords(env, request.sessionId, request.leaseId, {
+    limit: 500
+  });
+  const priorById = new Map(priorRecords.map((item) => [item.note.noteId, item]));
+  const resulting = Array.isArray(request.appliedNotes) ? request.appliedNotes : [];
+  const inserts = [];
+  const transitions = [];
+  for (const note of resulting) {
+    const prior = priorById.get(note.noteId);
+    if (!prior) {
+      inserts.push(note);
+    } else if (prior.note.lifecycle !== note.lifecycle || prior.note.reviewStatus !== note.reviewStatus) {
+      transitions.push({ note, priorRow: prior.row });
+    }
+  }
+  const [insertRecords, transitionRecords] = await Promise.all([
+    Promise.all(inserts.map((note) => preparePlanningNoteRecord(env, {
+      sessionId: request.sessionId,
+      leaseId: request.leaseId,
+      profileRevision: revision,
+      note
+    }))),
+    Promise.all(transitions.map(async ({ note, priorRow }) => ({
+      priorRow,
+      prepared: await preparePlanningNoteRecord(env, {
+        sessionId: request.sessionId,
+        leaseId: request.leaseId,
+        profileRevision: Number(priorRow.profile_revision),
+        note: { ...note, reviewedAt: note.reviewedAt || request.timestamp }
+      })
+    })))
+  ]);
+  return { revision, nextProfile, payload, insertRecords, transitionRecords };
+}
+
+/**
+ * The profile and ledger half of an applied reconciliation.
+ *
+ * Every statement is gated on the reconciliation row having just been marked
+ * applied in the same batch, and on the session still sitting at the revision
+ * the reconciliation was computed against, so a concurrent spoken confirmation
+ * makes the whole thing a no-op rather than a partial write.
+ */
+function plannerReconciliationWriteStatements(env, {
+  sessionId, leaseId, reconciliationId, baseRevision, timestamp, write
+}) {
+  const { revision, payload, insertRecords, transitionRecords } = write;
+  const statements = [
+    db(env).prepare(`
+      INSERT INTO consumer_profile_revisions (
+        session_id, revision, schema_version, payload_encrypted, confirmed_at, created_at
+      )
+      SELECT ?, ?, 1, ?, NULL, ?
+      WHERE EXISTS (
+        SELECT 1 FROM consumer_sessions
+        WHERE id = ? AND deleted_at IS NULL AND current_profile_revision = ?
+      ) AND EXISTS (
+        SELECT 1 FROM consumer_planner_reconciliations
+        WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+          AND status = 'applied' AND applied_profile_revision = ?
+      )
+    `).bind(
+      sessionId, revision, payload, timestamp,
+      sessionId, baseRevision,
+      reconciliationId, sessionId, leaseId, revision
+    ),
+    db(env).prepare(`
+      UPDATE consumer_sessions
+      SET current_profile_revision = ?, confirmed_profile_revision = NULL, last_active_at = ?
+      WHERE id = ? AND deleted_at IS NULL AND current_profile_revision = ?
+        AND EXISTS (
+          SELECT 1 FROM consumer_profile_revisions WHERE session_id = ? AND revision = ?
+        )
+    `).bind(revision, timestamp, sessionId, baseRevision, sessionId, revision),
+    db(env).prepare(`
+      UPDATE consumer_realtime_sessions
+      SET latest_profile_revision = ?, last_active_at = ?
+      WHERE id = ? AND session_id = ? AND status = 'active'
+        AND latest_profile_revision = ?
+    `).bind(revision, timestamp, leaseId, sessionId, baseRevision)
+  ];
+  for (const { priorRow, prepared } of transitionRecords) {
+    statements.push(db(env).prepare(`
+      UPDATE consumer_planning_notes
+      SET lifecycle = ?, review_status = ?, note_encrypted = ?, note_hash_b64u = ?, reviewed_at = ?
+      WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+        AND EXISTS (
+          SELECT 1 FROM consumer_sessions
+          WHERE id = ? AND current_profile_revision = ? AND deleted_at IS NULL
+        )
+    `).bind(
+      prepared.row.lifecycle, prepared.row.reviewStatus, prepared.row.encrypted,
+      prepared.row.hash, prepared.row.reviewedAt,
+      priorRow.id, sessionId, leaseId,
+      sessionId, revision
+    ));
+  }
+  for (const record of insertRecords) {
+    statements.push(db(env).prepare(`
+      INSERT INTO consumer_planning_notes (
+        id, session_id, realtime_session_id, note_kind, lifecycle,
+        review_status, source, profile_revision, note_encrypted,
+        note_hash_b64u, created_at, reviewed_at
+      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM consumer_sessions
+        WHERE id = ? AND current_profile_revision = ? AND deleted_at IS NULL
+      )
+    `).bind(
+      record.row.id, sessionId, leaseId, record.row.noteKind, record.row.lifecycle,
+      record.row.reviewStatus, record.row.source, record.row.profileRevision,
+      record.row.encrypted, record.row.hash, record.row.createdAt, record.row.reviewedAt,
+      sessionId, revision
+    ));
+  }
+  return statements;
+}
+
 export async function completePlannerReconciliation(env, request) {
   const timestamp = nowIso();
   const attempt = await db(env).prepare(`
@@ -1783,6 +1924,17 @@ export async function completePlannerReconciliation(env, request) {
   const sessionStatus = terminalStatus === 'shadow' || terminalStatus === 'applied'
     ? terminalStatus
     : 'failed';
+  // An applied reconciliation writes its profile and ledger in THIS batch. The
+  // two statements below pin latest_profile_revision to the revision the
+  // reconciliation started from, so the bump has to come after them or it would
+  // invalidate its own guard. Anything a T1 write changed in the meantime moves
+  // that revision and the whole batch fails closed as conflicted, which is the
+  // behaviour the shadow path already relied on.
+  const baseRevision = Number(attempt.base_profile_revision);
+  const applyWrite = terminalStatus === 'applied'
+    ? await preparePlannerReconciliationWrite(env, { ...request, baseRevision, timestamp })
+    : null;
+  const appliedProfileRevision = applyWrite ? applyWrite.revision : (request.appliedProfileRevision ?? null);
   const results = await db(env).batch([
     db(env).prepare(`
       UPDATE consumer_planner_reconciliations
@@ -1803,7 +1955,7 @@ export async function completePlannerReconciliation(env, request) {
       terminalStatus,
       outputEncrypted,
       outputHash,
-      request.appliedProfileRevision ?? null,
+      appliedProfileRevision,
       request.model || null,
       safeInteger(request.inputTokens),
       safeInteger(request.outputTokens),
@@ -1847,7 +1999,15 @@ export async function completePlannerReconciliation(env, request) {
       Number(attempt.base_profile_revision),
       request.reconciliationId,
       terminalStatus
-    )
+    ),
+    ...(applyWrite ? plannerReconciliationWriteStatements(env, {
+      sessionId: request.sessionId,
+      leaseId: request.leaseId,
+      reconciliationId: request.reconciliationId,
+      baseRevision,
+      timestamp,
+      write: applyWrite
+    }) : [])
   ]);
   if (results.some((result) => Number(result?.meta?.changes || 0) !== 1)) {
     await db(env).batch([
@@ -1900,7 +2060,16 @@ export async function completePlannerReconciliation(env, request) {
       errorCode: 'planner_reconciliation_stale'
     };
   }
-  return { status: terminalStatus, throughTurnId: request.throughTurnId };
+  return {
+    status: terminalStatus,
+    throughTurnId: request.throughTurnId,
+    ...(applyWrite ? {
+      appliedProfileRevision: applyWrite.revision,
+      profile: applyWrite.nextProfile,
+      insertedNoteCount: applyWrite.insertRecords.length,
+      transitionedNoteCount: applyWrite.transitionRecords.length
+    } : {})
+  };
 }
 
 /**

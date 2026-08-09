@@ -704,14 +704,22 @@ export async function runPlannerReconciliation({
     const applyRequested = config.plannerReconciliationMode === 'apply';
     const validationSucceeded = ['applied', 'no_change', 'needs_profile_projection', 'duplicate']
       .includes(validation.status);
-    const status = applyRequested
-      ? 'rejected'
-      : validationSucceeded ? 'shadow' : validation.status === 'conflicted' ? 'conflicted' : 'failed';
+    // Apply only writes when the validator actually produced a changed profile
+    // or ledger. `needs_profile_projection` means an accepted operation has no
+    // canonical home yet, so it stays a recorded observation rather than a
+    // half-projected write, and `no_change` has nothing to persist.
+    const writesProfile = applyRequested
+      && validation.status === 'applied'
+      && (validation.profileChanged || validation.ledgerChanged);
+    const status = !validationSucceeded
+      ? (validation.status === 'conflicted' ? 'conflicted' : 'failed')
+      : writesProfile ? 'applied' : 'shadow';
     const output = {
       schemaVersion: 1,
       plan: requested.plan,
       validation,
-      applyPromotionRequired: applyRequested
+      applyRequested,
+      applied: writesProfile
     };
     const completed = await completePlannerReconciliation(env, {
       sessionId: context.sessionRow.id,
@@ -730,9 +738,10 @@ export async function runPlannerReconciliation({
       acceptedOperationCount: validation.acceptedOperationIds.length,
       rejectedOperationCount: validation.operationOutcomes
         .filter((outcome) => outcome.status !== 'accepted').length,
-      errorCode: applyRequested
-        ? 'planner_reconciliation_apply_not_promoted'
-        : validationSucceeded ? null : `planner_reconciliation_${validation.status}`
+      // Only the operations the validator accepted reach the canonical state,
+      // and they reach it exactly as it validated them.
+      ...(writesProfile ? { appliedProfile: validation.profile, appliedNotes: validation.notes } : {}),
+      errorCode: validationSucceeded ? null : `planner_reconciliation_${validation.status}`
     });
     if (completed.status === 'conflicted') {
       return {
@@ -743,7 +752,15 @@ export async function runPlannerReconciliation({
         errorCode: completed.errorCode || 'planner_reconciliation_stale'
       };
     }
-    return { status, plan: requested.plan, validation, metadata: requested.metadata };
+    return {
+      status: completed.status,
+      plan: requested.plan,
+      validation,
+      metadata: requested.metadata,
+      appliedProfileRevision: completed.appliedProfileRevision ?? null,
+      insertedNoteCount: completed.insertedNoteCount ?? 0,
+      transitionedNoteCount: completed.transitionedNoteCount ?? 0
+    };
   } catch (error) {
     const completed = await completePlannerReconciliation(env, {
       sessionId: context.sessionRow.id,
