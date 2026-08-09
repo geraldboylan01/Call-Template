@@ -131,7 +131,10 @@ const ATTR = Object.freeze({
   responseModel: 'gen_ai.response.model',
   inputTokens: 'gen_ai.usage.prompt_tokens',
   outputTokens: 'gen_ai.usage.completion_tokens',
-  cachedInputTokens: 'gen_ai.usage.cached_input_tokens',
+  // No cachedInputTokens entry, deliberately. Every gen_ai.usage.* number is
+  // summed into the total by Langfuse, and cached tokens are a SUBSET of
+  // input_tokens rather than an addition to it, so any attribute in this
+  // namespace would double-count them. See the comment at the emit site.
   cost: 'gen_ai.usage.cost'
 });
 
@@ -304,7 +307,6 @@ export function buildGenerationSpan({
   release,
   environment
 } = {}) {
-  const masked = maskMetadata(metadata);
   const contentAllowed = traceContentAllowed(config);
 
   const attributes = attributesFrom([
@@ -318,7 +320,11 @@ export function buildGenerationSpan({
     [ATTR.responseModel, model],
     [ATTR.inputTokens, usage?.inputTokens],
     [ATTR.outputTokens, usage?.outputTokens],
-    [ATTR.cachedInputTokens, usage?.cachedInputTokens],
+    // Cached tokens are NOT sent under gen_ai.usage.*. Measured against a live
+    // project: Langfuse SUMS every gen_ai.usage.* number into the total, and
+    // OpenAI's input_tokens already contains the cached ones — so 2000 + 250 +
+    // 1500 was reported as 3750 rather than 2250, inflating every cost figure
+    // derived from it. They ride as metadata instead, below.
     [ATTR.cost, costEur]
   ]);
 
@@ -339,8 +345,16 @@ export function buildGenerationSpan({
     ]));
   }
 
+  // Cached tokens are kept, just out of the usage totals: metadata is not
+  // summed, so the number stays visible and stays honest. `cachedInputTokens`
+  // is already on METADATA_ALLOWLIST, so this survives the mask, and a call
+  // site that puts it in metadata itself still wins.
+  const maskedWithCache = maskMetadata({
+    ...(usage?.cachedInputTokens === undefined ? {} : { cachedInputTokens: usage.cachedInputTokens }),
+    ...(metadata || {})
+  });
   attributes.push(...attributesFrom(
-    Object.entries(masked).map(([key, value]) => [`${ATTR.metadataPrefix}${key}`, value])
+    Object.entries(maskedWithCache).map(([key, value]) => [`${ATTR.metadataPrefix}${key}`, value])
   ));
   // Recorded so a trace states its own disclosure level rather than leaving a
   // reader to infer from absent text whether a turn was silent or masked.

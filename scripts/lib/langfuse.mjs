@@ -71,7 +71,10 @@ const ATTR = Object.freeze({
   responseModel: 'gen_ai.response.model',
   inputTokens: 'gen_ai.usage.prompt_tokens',
   outputTokens: 'gen_ai.usage.completion_tokens',
-  cachedInputTokens: 'gen_ai.usage.cached_input_tokens',
+  // No cachedInputTokens entry, deliberately. Every gen_ai.usage.* number is
+  // summed into the total by Langfuse, and cached tokens are a SUBSET of
+  // input_tokens rather than an addition to it, so any attribute in this
+  // namespace would double-count them. See the comment at the emit site.
   cost: 'gen_ai.usage.cost'
 });
 
@@ -260,7 +263,11 @@ class LangfuseCollector {
       [ATTR.responseModel, responseModel || model],
       [ATTR.inputTokens, usage?.inputTokens],
       [ATTR.outputTokens, usage?.outputTokens],
-      [ATTR.cachedInputTokens, usage?.cachedInputTokens],
+      // Cached tokens are NOT sent under gen_ai.usage.*. Measured against a
+      // live project: Langfuse SUMS every gen_ai.usage.* number into the total,
+      // and OpenAI's input_tokens already contains the cached ones — so
+      // 2000 + 250 + 1500 was reported as 3750 rather than 2250, inflating
+      // every cost figure derived from it. They ride as metadata instead, below.
       [ATTR.cost, cost]
     ]);
 
@@ -279,7 +286,12 @@ class LangfuseCollector {
         [ATTR.environment, this.environment]
       ]));
     }
-    attributes.push(...metadataAttributes(metadata));
+    attributes.push(...metadataAttributes({
+      // Kept, just out of the usage totals. Metadata is not summed, so the
+      // number stays visible and stays honest.
+      ...(usage?.cachedInputTokens === undefined ? {} : { cachedInputTokens: usage.cachedInputTokens }),
+      ...metadata
+    }));
 
     this.spans.push({
       traceId: handle.traceId,

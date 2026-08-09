@@ -272,7 +272,22 @@ check('a public cohort skips over the threshold', shouldSampleTrace({ ...PUBLIC_
   const child = attributesOf(spans[1]);
   check('the lane rides on every span', child['langfuse.observation.metadata.lane'] === 'realtime_v2');
   check('cost maps to gen_ai.usage.cost', child['gen_ai.usage.cost'] === 0.00042);
-  check('cached tokens map', child['gen_ai.usage.cached_input_tokens'] === '80');
+  // Cached tokens must NOT appear under gen_ai.usage.*. Langfuse sums every
+  // number in that namespace into the total, and cached tokens are a subset of
+  // input_tokens, not an addition — measured live, 2000 + 250 + 1500 came back
+  // as 3750 instead of 2250. They ride as metadata, which is not summed.
+  check('cached tokens are NOT in the usage namespace',
+    child['gen_ai.usage.cached_input_tokens'] === undefined,
+    `found ${child['gen_ai.usage.cached_input_tokens']}`);
+  // String, not number: OTLP encodes an integer attribute as intValue, which
+  // proto3 JSON renders as a string. Same as the token assertions above.
+  check('cached tokens survive as metadata',
+    child['langfuse.observation.metadata.cachedInputTokens'] === '80',
+    `found ${JSON.stringify(child['langfuse.observation.metadata.cachedInputTokens'])}`);
+  check('the usage namespace carries input and output only',
+    Object.keys(child).filter((key) => key.startsWith('gen_ai.usage.')).sort().join(',')
+      === 'gen_ai.usage.completion_tokens,gen_ai.usage.cost,gen_ai.usage.prompt_tokens',
+    Object.keys(child).filter((key) => key.startsWith('gen_ai.usage.')).join(','));
 }
 
 check('an out-of-order end is clamped, not negative', (() => {
