@@ -238,7 +238,13 @@ function normalizeModelReconciliationPlan(raw) {
               normalized.value.answerPolicy,
               ['value', 'value_or_none', 'unknown_allowed'],
               'unknown_allowed'
-            )
+            ),
+            reasonCode: typeof normalized.value.reasonCode === 'string' && normalized.value.reasonCode
+              ? normalized.value.reasonCode
+              : operation.reasonCode || 'required_input_missing',
+            prompt: typeof normalized.value.prompt === 'string' && normalized.value.prompt
+              ? normalized.value.prompt
+              : `Please clarify ${String(factId || 'this').replaceAll('_', ' ')}.`
           };
         }
         return normalized;
