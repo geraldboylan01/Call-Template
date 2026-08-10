@@ -47,6 +47,12 @@ function expectedPolicyFromEnvironment(env) {
     realtimeTranscriptionModel: String(env.CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL || '').trim(),
     realtimePromptVersion: String(env.CONSUMER_BETA_REALTIME_PROMPT_VERSION || '').trim(),
     realtimeToolsetVersion: String(env.CONSUMER_BETA_REALTIME_TOOLSET_VERSION || '').trim(),
+    // The live lane runs its own prompt and its own smaller tool surface, and
+    // the deploy substitutes them into the realtime settings precisely so the
+    // lease records what actually ran. Verification has to expect the same pair
+    // or it proves the deployment wrong for being right.
+    livePromptVersion: String(env.CONSUMER_BETA_LIVE_PROMPT_VERSION || '').trim(),
+    liveToolsetVersion: String(env.CONSUMER_BETA_LIVE_TOOLSET_VERSION || '').trim(),
     realtimePricingVersion: String(env.CONSUMER_BETA_REALTIME_PRICING_VERSION || '').trim(),
     realtimeSessionBudgetMicroEur: Number.parseInt(
       String(env.CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS || ''),
@@ -154,6 +160,11 @@ export function validateConsumerDeploymentBootstrap(payload, {
   if (mode === REALTIME_VOICE_RULES_ONLY_MODE) {
     assert.equal(flags.consumerRealtimeVoiceEnabled, true, 'The realtime adviser canary is not enabled.');
     assert.equal(realtimeVoice.enabled, true, 'The realtime adviser canary is not configured.');
+    // WHICH LANE IS RUNNING DECIDES WHICH PAIR IS CORRECT. `conversationVersion`
+    // is the deployment's own statement of the lane, from the same config the
+    // prompt version comes from, so the two cannot disagree without the Worker
+    // contradicting itself.
+    const liveLane = realtimeVoice.conversationVersion === 'live';
     for (const [field, expectedField] of [
       ['noticeId', 'realtimeNoticeId'],
       ['dataPolicyId', 'realtimeDataPolicyId'],
@@ -161,8 +172,8 @@ export function validateConsumerDeploymentBootstrap(payload, {
       ['voice', 'realtimeVoice'],
       ['reasoningEffort', 'realtimeReasoningEffort'],
       ['transcriptionModel', 'realtimeTranscriptionModel'],
-      ['promptVersion', 'realtimePromptVersion'],
-      ['toolsetVersion', 'realtimeToolsetVersion'],
+      ['promptVersion', liveLane ? 'livePromptVersion' : 'realtimePromptVersion'],
+      ['toolsetVersion', liveLane ? 'liveToolsetVersion' : 'realtimeToolsetVersion'],
       ['pricingVersion', 'realtimePricingVersion']
     ]) {
       assert.ok(expectedPolicy[expectedField], `Expected ${expectedField} is required for live verification.`);

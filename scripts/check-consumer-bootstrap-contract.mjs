@@ -130,6 +130,50 @@ check('the realtime canary bootstrap satisfies the live deployment check', () =>
   );
 });
 
+// THE LIVE LANE IS VERIFIED AGAINST ITS OWN PROMPT AND TOOLSET.
+//
+// The deploy deliberately substitutes planeir-live-* into the realtime settings
+// when the live lane is on, so the lease records the prompt and the tool surface
+// that actually ran. The live check compared against the v2 orchestrator pair
+// regardless of lane, so a correct live deployment failed its own canary and was
+// rolled back -- the deployment was right and the proof was stale.
+check('the live lane is verified against its own prompt and toolset, not the v2 pair', () => {
+  const liveEnv = {
+    ...shippedConsumerEnv({ realtime: true }),
+    ...RUNTIME_BINDINGS,
+    CONSUMER_LIVE_VOICE_ENABLED: 'true',
+    CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v5',
+    CONSUMER_REALTIME_TOOLSET_VERSION: 'planeir-live-tools-v1'
+  };
+  const payload = serveBootstrap(liveEnv);
+  assert.equal(payload.realtimeVoice.conversationVersion, 'live',
+    'the fixture must actually be running the live lane');
+  const policy = {
+    ...expectedPolicyFor(liveEnv),
+    realtimePromptVersion: 'consumer-realtime-orchestrator-v9',
+    realtimeToolsetVersion: 'consumer-realtime-tools-v7',
+    livePromptVersion: 'planeir-live-conversation-v5',
+    liveToolsetVersion: 'planeir-live-tools-v1'
+  };
+  assert.equal(
+    validateConsumerDeploymentBootstrap(payload, {
+      mode: 'realtime_voice_rules_only',
+      expectedPolicy: policy
+    }),
+    true,
+    'a live deployment carrying the live pair must pass'
+  );
+  // And the check still has teeth: the v2 pair on the live lane is wrong.
+  assert.throws(
+    () => validateConsumerDeploymentBootstrap(
+      { ...payload, realtimeVoice: { ...payload.realtimeVoice, promptVersion: 'consumer-realtime-orchestrator-v9' } },
+      { mode: 'realtime_voice_rules_only', expectedPolicy: policy }
+    ),
+    /promptVersion does not match/,
+    'the v2 prompt on the live lane must still fail'
+  );
+});
+
 /* ---------------------------------------------------- the voice beta */
 
 const voiceEnv = { ...shippedConsumerEnv({ realtime: false }), ...RUNTIME_BINDINGS };
