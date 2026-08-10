@@ -28,13 +28,14 @@
  * duplicating it now would mean maintaining two copies of it.
  */
 
-import { createRealtimeVoiceCall, getSession } from './api.js';
+import { createRealtimeVoiceCall, deleteRealtimeVoiceCall, getSession } from './api.js';
 import { RealtimeOrb } from './realtime_orb.js';
 import {
   extractRealtimePlanningContext,
   isRealtimeVoiceSupported,
   normaliseRealtimeCallResponse
 } from './realtime_voice.js';
+import { getSessionId, state as journeyState } from './store.js';
 
 const MAX_CAPTION_LENGTH = 3_000;
 const MAX_TRANSCRIPT_ITEMS = 500;
@@ -133,6 +134,27 @@ export class LiveVoiceController {
     // enables it from its own state machine. This lane has none, so it says so
     // here: there is nothing to end until a meeting is running.
     if (this.stopButton) this.stopButton.disabled = !this.active;
+    this.syncShellFace();
+  }
+
+  /**
+   * THE SHELL HAS TWO FACES AND THE CSS PICKS BETWEEN THEM BY CLASS.
+   *
+   * plan.css hides the pre-call briefing under `.is-live`, and — this is the
+   * one that matters — hides `#realtimeVoiceEndButton`, the mute button and
+   * the context grid under `:not(.is-live)`. A lane that never sets the class
+   * leaves the client on the landing face for the whole meeting, WITH NO WAY
+   * TO END IT: the End button is styled out of existence while the meeting it
+   * would end is running.
+   *
+   * `has-transcript` is the same story for the transcript toggle.
+   */
+  syncShellFace() {
+    const hasTranscript = this.transcriptHistory.length > 0;
+    [this.root, this.shellElement].filter(Boolean).forEach((element) => {
+      element.classList?.toggle?.('is-live', this.active);
+      element.classList?.toggle?.('has-transcript', hasTranscript);
+    });
   }
 
   setCaption(role, text) {
@@ -154,6 +176,7 @@ export class LiveVoiceController {
     line.textContent = clean;
     this.transcriptElement.append(line);
     this.transcriptElement.scrollTop = this.transcriptElement.scrollHeight;
+    this.syncShellFace();
   }
 
   /* ------------------------------------------------------------- lifecycle */
@@ -199,6 +222,7 @@ export class LiveVoiceController {
 
       const peer = new window.RTCPeerConnection();
       this.peerConnection = peer;
+      this.setTransportState(peer.connectionState);
       stream.getAudioTracks().forEach((track) => peer.addTrack(track, stream));
 
       // The model's audio arrives over WebRTC and plays directly. The v2 lane
@@ -211,6 +235,7 @@ export class LiveVoiceController {
         this.orb?.attachRemoteStream?.(remote);
       });
       peer.addEventListener('connectionstatechange', () => {
+        this.setTransportState(peer.connectionState);
         if (['failed', 'closed'].includes(peer.connectionState) && this.active) {
           this.stop('connection_lost');
         }
@@ -254,6 +279,9 @@ export class LiveVoiceController {
     } catch (error) {
       this.active = false;
       this.teardown();
+      // A lease created moments ago is already billing. Failing between the
+      // answer and the connection must not leave it running to its alarm.
+      await this.releaseLease();
       const message = error?.name === 'NotAllowedError'
         ? 'Microphone access is needed for a live meeting.'
         : error?.message || 'The live meeting could not be started.';
@@ -263,18 +291,65 @@ export class LiveVoiceController {
     }
   }
 
+  /**
+   * TELL THE WORKER THE MEETING IS OVER.
+   *
+   * Closing the peer connection is invisible to the server: the lease stays
+   * open and the provider call stays billable until the idle alarm fires
+   * minutes later. The Worker still OWNS the hang-up — it decides it, confirms
+   * it with the provider and settles the lease — but it has to be told, and
+   * the browser is the only thing that knows the client pressed End.
+   *
+   * Idempotent by construction: the id is cleared before the request, and an
+   * already-settled lease answers the same way.
+   */
+  async releaseLease() {
+    const leaseId = this.leaseId;
+    const controlCapability = this.controlCapability;
+    this.leaseId = '';
+    this.controlCapability = '';
+    if (!leaseId || !this.sessionId) return;
+    try {
+      await deleteRealtimeVoiceCall(this.sessionId, leaseId, { controlCapability });
+    } catch (_error) { /* the Worker's idle alarm remains the backstop */ }
+  }
+
+  /**
+   * The companion already ships a hidden `<audio>` element, so use it rather
+   * than appending a second one nobody can find. Both lanes then play the
+   * model through the same node, which is what makes "is the model audible"
+   * answerable from outside the controller — by a person inspecting the page
+   * or by the activation proof.
+   */
   attachRemoteAudio(stream) {
     if (!this.remoteAudio) {
+      this.remoteAudio = document.getElementById('realtimeVoiceAudio');
+    }
+    if (!this.remoteAudio) {
       this.remoteAudio = document.createElement('audio');
-      this.remoteAudio.autoplay = true;
-      this.remoteAudio.setAttribute('playsinline', '');
       this.remoteAudio.style.display = 'none';
       document.body.append(this.remoteAudio);
     }
+    this.remoteAudio.autoplay = true;
+    this.remoteAudio.setAttribute('playsinline', '');
     this.remoteAudio.srcObject = stream;
     this.remoteAudio.play?.().catch(() => {
       this.onToast('Tap anywhere to let Planéir speak.', { tone: 'info' });
     });
+  }
+
+  /**
+   * The peer connection's own state, on the page.
+   *
+   * Nothing else reports whether media actually negotiated: the phase says
+   * what the controller believes, and an SDP answer only says the offer was
+   * accepted. This is read by the activation proof, and it is the difference
+   * between proving a live meeting connected and proving a call was created.
+   */
+  setTransportState(value) {
+    const state = String(value || 'new');
+    if (this.root) this.root.dataset.liveTransport = state;
+    this.shellElement?.setAttribute?.('data-live-transport', state);
   }
 
   async stop(reason = 'consumer_closed') {
@@ -284,8 +359,7 @@ export class LiveVoiceController {
     this.startController?.abort();
     this.teardown();
     this.setPhase('off', 'Live meeting ended.');
-    // The Worker owns provider hang-up and lease settlement; the browser only
-    // reports that it is finished.
+    await this.releaseLease();
     try {
       await getSession(this.sessionId).then((payload) => this.acceptSessionPayload(payload));
     } catch (_error) { /* the meeting is already over */ }
@@ -303,6 +377,7 @@ export class LiveVoiceController {
     this.dataChannel = null;
     this.peerConnection = null;
     this.localStream = null;
+    this.setTransportState('closed');
     this.orb?.stop?.();
   }
 
@@ -408,11 +483,28 @@ export class LiveVoiceController {
     }
   }
 
+  /**
+   * WHERE THE SESSION ID COMES FROM.
+   *
+   * The store, exactly as the v2 controller reads it. This used to read two
+   * dataset attributes — `data-session-id` on the companion and
+   * `data-consumer-session-id` on the body — and NOTHING IN THE APP HAS EVER
+   * SET EITHER. `start()` therefore returned at its session guard on every
+   * press: a toast, no provider call, no phase change. That is precisely how
+   * Deploy Worker run #295 failed, with `requests: none` and the companion
+   * still showing its unstarted status line.
+   *
+   * A locally stored id can outlive a failed session creation, so — again like
+   * the v2 lane — only a server-confirmed session counts. The datasets remain
+   * as an explicit override for harnesses that set them.
+   */
   readContext() {
-    const sessionId = this.root?.dataset?.sessionId
+    const override = this.root?.dataset?.sessionId
       || document.body?.dataset?.consumerSessionId
       || '';
-    return { sessionId: String(sessionId || '') };
+    if (override) return { sessionId: String(override) };
+    const confirmed = Boolean(journeyState.session?.id || journeyState.session?.sessionId);
+    return { sessionId: confirmed ? String(getSessionId() || '') : '' };
   }
 }
 

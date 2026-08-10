@@ -505,15 +505,44 @@ async function main() {
         sessionId,
         credential
       });
+      // Shared by every lane: the entry point, the transport and the hang-up.
       assert.equal(proof.launcherVisible, true, 'The production Talk to Planéir launcher was not proven.');
       assert.equal(proof.companionStartWired, true, 'The production Start voice control was not proven.');
-      assert.equal(proof.audibleGreetingObserved, true, 'The production companion greeting was not proven.');
       assert.equal(proof.webRtcConnected, true, 'The production WebRTC connection was not proven.');
       assert.equal(proof.sidebandConnected, true, 'The production sideband connection was not proven.');
-      if (proof.conversationVersion === 'v2') {
+      // Lane-specific, because the lanes genuinely put different things on the
+      // wire. Each branch asserts its own lane's evidence and nothing else, so
+      // a lane can never be certified by another lane's proof.
+      if (proof.conversationVersion === 'live') {
+        assert.equal(proof.liveLaneActivated, true, 'The production live conversation lane was not proven to activate.');
+        assert.equal(proof.liveTransportConnected, true, 'The production live WebRTC transport was not proven to connect.');
+        assert.equal(proof.directProviderAudioAttached, true, 'The production direct live audio stream was not proven.');
+        assert.equal(
+          proof.promptVersion,
+          'planeir-live-conversation-v5',
+          'The production live meeting did not run the pinned live prompt.'
+        );
+        assert.equal(
+          proof.toolsetVersion,
+          'planeir-live-tools-v1',
+          'The production live meeting did not run the pinned live tool surface.'
+        );
+        assert.equal(
+          proof.readOnlyToolSucceeded,
+          false,
+          'A production live meeting ran the v2 read-only tool, so the lanes are crossed.'
+        );
+        assert.equal(
+          proof.controlledSpeechObserved,
+          false,
+          'A production live meeting produced v1 Worker-composed speech, so the lanes are crossed.'
+        );
+      } else if (proof.conversationVersion === 'v2') {
+        assert.equal(proof.audibleGreetingObserved, true, 'The production companion greeting was not proven.');
         assert.equal(proof.directProviderAudioAttached, true, 'The production direct Marin audio stream was not proven.');
         assert.equal(proof.initialWelcomeSucceeded, true, 'The production server-authorized Marin welcome was not proven.');
       } else {
+        assert.equal(proof.audibleGreetingObserved, true, 'The production companion greeting was not proven.');
         assert.equal(proof.readOnlyToolSucceeded, true, 'The production read-only planning tool was not proven.');
       }
       assert.equal(proof.providerHangupConfirmed, true, 'The production provider hang-up was not proven.');

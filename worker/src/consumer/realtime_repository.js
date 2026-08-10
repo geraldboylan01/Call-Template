@@ -520,6 +520,20 @@ export async function getLatestRealtimeLease(env, sessionId) {
   `).bind(sessionId).first();
 }
 
+/**
+ * What the server can actually prove about a meeting, PER LANE.
+ *
+ * The v1/v2 lanes and the live lane write different event types for the same
+ * physical milestones, because they are driven by different Durable Objects:
+ * `realtime.*` from realtime_session.js, `live.*` from live/live_session.js.
+ * A live meeting therefore satisfies NONE of the three original columns — its
+ * sideband is up, but under `live.provider.connected`, and its tool surface is
+ * save_facts/get_state/confirm_and_run, so `get_planning_state` can never
+ * succeed. Collapsing the two vocabularies into one column would make a lane
+ * that never ran look proven, so each lane keeps its own.
+ */
+export const LIVE_TOOL_NAMES = Object.freeze(['save_facts', 'get_state', 'confirm_and_run']);
+
 export async function getRealtimeControlPlaneProof(env, sessionId, leaseId) {
   const row = await db(env).prepare(`
     SELECT
@@ -538,12 +552,50 @@ export async function getRealtimeControlPlaneProof(env, sessionId, leaseId) {
         SELECT 1 FROM consumer_realtime_events
         WHERE session_id = ? AND realtime_session_id = ?
           AND event_type = 'realtime.response.completed'
-      ) AS initial_welcome_succeeded
-  `).bind(sessionId, leaseId, sessionId, leaseId, sessionId, leaseId).first();
+      ) AS initial_welcome_succeeded,
+      EXISTS (
+        SELECT 1 FROM consumer_realtime_events
+        WHERE session_id = ? AND realtime_session_id = ?
+          AND event_type = 'live.call.activated'
+      ) AS live_call_activated,
+      EXISTS (
+        SELECT 1 FROM consumer_realtime_events
+        WHERE session_id = ? AND realtime_session_id = ?
+          AND event_type = 'live.provider.connected'
+      ) AS live_sideband_connected,
+      EXISTS (
+        SELECT 1 FROM consumer_realtime_events
+        WHERE session_id = ? AND realtime_session_id = ?
+          AND event_type = 'live.response.completed'
+      ) AS live_response_completed,
+      EXISTS (
+        SELECT 1 FROM consumer_realtime_tool_attempts
+        WHERE session_id = ? AND realtime_session_id = ?
+          AND tool_name IN (${LIVE_TOOL_NAMES.map((name) => `'${name}'`).join(', ')})
+          AND status = 'succeeded' AND completed_at IS NOT NULL
+      ) AS live_tool_succeeded
+  `).bind(
+    sessionId, leaseId,
+    sessionId, leaseId,
+    sessionId, leaseId,
+    sessionId, leaseId,
+    sessionId, leaseId,
+    sessionId, leaseId,
+    sessionId, leaseId
+  ).first();
   return {
     sidebandConnected: Number(row?.sideband_connected) === 1,
     readOnlyToolSucceeded: Number(row?.read_only_tool_succeeded) === 1,
-    initialWelcomeSucceeded: Number(row?.initial_welcome_succeeded) === 1
+    initialWelcomeSucceeded: Number(row?.initial_welcome_succeeded) === 1,
+    // The live lane's activation and sideband are deterministic: both are
+    // written before the client can say anything. A completed live response
+    // and a completed live tool call are NOT — this lane never sends
+    // `response.create`, so the model speaks when the client does. They are
+    // reported for diagnosis; the activation proof does not wait on them.
+    liveCallActivated: Number(row?.live_call_activated) === 1,
+    liveSidebandConnected: Number(row?.live_sideband_connected) === 1,
+    liveResponseCompleted: Number(row?.live_response_completed) === 1,
+    liveToolSucceeded: Number(row?.live_tool_succeeded) === 1
   };
 }
 

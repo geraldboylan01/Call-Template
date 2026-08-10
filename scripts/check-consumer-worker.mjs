@@ -546,6 +546,10 @@ for (const provenBoundary of [
   'readOnlyToolSucceeded',
   'directProviderAudioAttached',
   'initialWelcomeSucceeded',
+  // The live lane proves its own activation and transport instead of a
+  // scripted welcome: nothing in that lane forces the model to speak first.
+  'liveLaneActivated',
+  'liveTransportConnected',
   'providerHangupConfirmed'
 ]) {
   assert.match(liveAdvisorBridgeSource, new RegExp(`proof\\.${provenBoundary}`));
@@ -577,6 +581,16 @@ assert.match(realtimeInfrastructureProofSource, /x-realtime-lease-id/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.sidebandConnected, true/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.readOnlyToolSucceeded, true/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.initialWelcomeSucceeded, true/);
+// The lane is resolved, never inferred. The collapse that folded `live` into
+// `v1` and hung run #295 on a v1-only /speech wait must not come back.
+assert.doesNotMatch(
+  realtimeInfrastructureProofSource,
+  /conversationVersion\s*===\s*'v2'\s*\?\s*'v2'\s*:\s*'v1'/,
+  'The activation proof must not collapse unknown conversation versions to v1.'
+);
+assert.match(realtimeInfrastructureProofSource, /export function resolveConversationVersion/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.liveCallActivated, true/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.liveSidebandConnected, true/);
 assert.match(realtimeInfrastructureProofSource, /response\.request\(\)\.method\(\) === 'DELETE'/);
 assert.match(realtimeInfrastructureProofSource, /assert\.equal\(closedPayload\.providerHangupConfirmed, true/);
 assert.match(realtimeInfrastructureProofSource, /finally \{/);

@@ -20,7 +20,6 @@
     "js/pension_math.js:computeSftBreaches",
     "js/personal_balance_sheet.js:PERSONAL_BALANCE_SHEET_BUCKETS",
     "js/plan/api.js:getRealtimeVoiceMeetings",
-    "js/plan/live_voice.js:LiveVoiceController",
     "js/plan/store.js:clearAnalysisPlanNonce",
     "js/plan/store.js:normaliseVoiceBudget",
     "js/plan/store.js:storeAnalysisPlanNonce",

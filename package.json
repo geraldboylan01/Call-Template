@@ -36,7 +36,7 @@
     "check:consumer-voice-frontend": "node ./scripts/check-consumer-voice-frontend.mjs",
     "check:consumer-realtime": "node ./scripts/check-consumer-realtime-events.mjs && node ./scripts/check-consumer-realtime-v2-evals.mjs && node ./scripts/check-consumer-realtime.mjs",
     "check:consumer-conversation-sim": "node ./scripts/check-consumer-realtime-conversation-sim.mjs",
-    "check:consumer-live": "node ./scripts/check-consumer-live.mjs && node ./scripts/check-consumer-live-compliance.mjs",
+    "check:consumer-live": "node ./scripts/check-consumer-live.mjs && node ./scripts/check-consumer-live-compliance.mjs && node ./scripts/check-consumer-realtime-proof-lanes.mjs",
     "check:consumer-turn-characterisation": "node ./scripts/check-consumer-turn-characterisation.mjs",
     "check:consumer-shared-planning": "node ./scripts/check-consumer-shared-planning.mjs",
     "check:consumer-agent-api": "node ./scripts/check-consumer-agent-api.mjs",
