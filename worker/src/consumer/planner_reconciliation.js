@@ -157,6 +157,10 @@ function responseOutputText(response) {
   return '';
 }
 
+const isPlainObject = (value) => Boolean(value)
+  && typeof value === 'object'
+  && !Array.isArray(value);
+
 function parseValueJson(valueJson, operationId) {
   try {
     return JSON.parse(valueJson);
@@ -193,18 +197,75 @@ function normalizeModelReconciliationPlan(raw) {
         if (typeof operation.valueJson === 'string') {
           normalized.value = parseValueJson(operation.valueJson, operation.operationId);
         }
+        // A clarification carries a NeedV2, and the operation already states
+        // that need's identity in its own required fields. Asking the model to
+        // repeat it inside the value was a second chance to get it wrong, and
+        // it did: a value missing factInstanceId failed the whole plan, so one
+        // omitted field cost every other correction in the batch. Identity is
+        // taken from the operation, which is the copy that gets validated
+        // against the supplied allowlists anyway.
+        if (operation.op === 'request_clarification' && isPlainObject(normalized.value)) {
+          const factId = normalized.factId || normalized.value.factId;
+          const entityId = normalized.entityId || normalized.value.entityId;
+          // The NeedV2 goes inside a JSON string, so the structured-output
+          // schema cannot constrain any of it. Every field the model has to
+          // invent is a way to lose the whole plan: one out-of-enum
+          // `importance` discarded a batch of otherwise valid corrections. The
+          // enums are bookkeeping the server owns anyway, so they are coerced
+          // to their defaults rather than trusted. Nothing here touches a
+          // financial value, an identity or an evidence span.
+          const oneOf = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
+          normalized.value = {
+            ...normalized.value,
+            ...(factId ? { factId } : {}),
+            ...(entityId ? { entityId } : {}),
+            ...(normalized.ownerId || normalized.value.ownerId
+              ? { ownerId: normalized.ownerId || normalized.value.ownerId } : {}),
+            factInstanceId: normalized.factInstanceId
+              || normalized.value.factInstanceId
+              || (factId && entityId ? `${factId}:${entityId}` : factId || ''),
+            importance: oneOf(
+              normalized.value.importance,
+              ['required', 'recommended', 'optional'],
+              'required'
+            ),
+            status: oneOf(
+              normalized.value.status,
+              ['open', 'estimate_requested', 'blocked_unknown', 'deferred', 'satisfied'],
+              'open'
+            ),
+            answerPolicy: oneOf(
+              normalized.value.answerPolicy,
+              ['value', 'value_or_none', 'unknown_allowed'],
+              'unknown_allowed'
+            ),
+            reasonCode: typeof normalized.value.reasonCode === 'string' && normalized.value.reasonCode
+              ? normalized.value.reasonCode
+              : operation.reasonCode || 'required_input_missing',
+            prompt: typeof normalized.value.prompt === 'string' && normalized.value.prompt
+              ? normalized.value.prompt
+              : `Please clarify ${String(factId || 'this').replaceAll('_', ' ')}.`
+          };
+        }
         return normalized;
       })
     }))
   };
   try {
     return normalizeReconciliationPlanV1(plan);
-  } catch (_error) {
-    throw new ConsumerError(
+  } catch (error) {
+    // The reason the shape was refused is the only thing that makes this
+    // fixable. Swallowing it left "the planner returned an invalid plan" as the
+    // entire record of a failed reconciliation, which says nothing about which
+    // operation or which field, and the raw output is not retained anywhere.
+    const reason = String(error?.message || '').slice(0, 300);
+    const failure = new ConsumerError(
       502,
       'planner_reconciliation_output_invalid',
-      'The background planner returned an invalid reconciliation plan.'
+      `The background planner returned an invalid reconciliation plan: ${reason}`
     );
+    failure.metadata = { reason };
+    throw failure;
   }
 }
 

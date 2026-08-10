@@ -534,6 +534,72 @@ await runCase('the reconciler cannot name a fact that is not in the registry', a
   assert.equal(result.profile.assumptions.values.planning.decisionScenarios?.length ?? 0, 0);
 });
 
+// A scalar correction only counts if the analysis reads it. These are the three
+// outcomes the bridge has to keep apart: a path the registry and the entity
+// decide between them, a path that would need a guess, and a "scalar" that is
+// really a collection and must never touch it.
+await runCase('a scalar fact reaches its profile path, or stays unprojected rather than guess', async () => {
+  const scalarPlan = (operationId, factId, value, extra = {}) => ({
+    schemaVersion: 1,
+    verdict: 'changes_proposed',
+    reviewedNoteIds: [],
+    operationGroups: [{
+      groupId: operationId,
+      operations: [{
+        operationId,
+        op: 'upsert_note',
+        factId,
+        noteKind: 'fact',
+        certainty: 'exact',
+        reasonCode: 'missing_note',
+        value,
+        evidence: [{ turnId: 'turn_future', quote: 'I could retire at 58' }],
+        ...extra
+      }]
+    }]
+  });
+
+  // Owner decides between /primaryPerson and /partner.
+  const owned = await applyReconciliationPlan({
+    profile: baseProfile(),
+    notes: baseNotes(),
+    plan: scalarPlan('retire_58', 'intended_retirement_age', 58, {
+      factInstanceId: 'intended_retirement_age:primary',
+      entityId: 'primary',
+      ownerId: 'primary'
+    }),
+    ...common
+  });
+  assert.equal(owned.status, 'applied');
+  assert.deepEqual(owned.unprojectedFactOperationIds, []);
+  assert.equal(owned.profile.primaryPerson.intendedRetirementAge, 58);
+  assert.equal(owned.profile.partner?.intendedRetirementAge, undefined,
+    'an owner-scoped scalar must not also land on the other person');
+
+  // A count is not a scalar: /pensions is a collection, and writing 3 there
+  // would replace every holding with a number. Asserted on the projector so the
+  // guard is proved directly rather than through whichever validation rule
+  // happens to refuse this shape first.
+  const countNote = normalizePlanningNoteV1({
+    noteId: 'note_count',
+    noteKind: 'fact',
+    factId: 'pension_positions',
+    factInstanceId: 'pension_positions:primary_count',
+    ownerId: 'primary',
+    value: 3,
+    certainty: 'exact',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [],
+    replacesNoteIds: [],
+    createdAt: NOW
+  });
+  const projected = projectPlanningNotesToProfile(baseProfile(), [...baseNotes(), countNote]);
+  assert.equal(Array.isArray(projected.pensions), true, 'the holdings must remain a collection');
+  assert.equal(projected.pensions.length, 2, 'the holdings must be untouched by a count');
+});
+
 await runCase('future events and scenarios cannot enter current assets, income or settled retirement age', async () => {
   const plan = {
     schemaVersion: 1,
@@ -885,8 +951,18 @@ await runCase('identical figures require entity binding and accepted scalar fact
     ...common
   });
   assert.equal(bound.rejectedGroups.length, 0);
-  assert.equal(bound.status, 'needs_profile_projection');
-  assert.deepEqual(bound.unprojectedFactOperationIds, ['identical_bound']);
+  // A scalar bound to one holding now REACHES the profile. It used to be
+  // accepted into the ledger and stop there, because only positions and the
+  // planning sidecars were projected — so the reconciler could correct a
+  // pension value, record that it had, and leave the analysis reading the old
+  // one. The path is the registry's own mapping with the entity's index in its
+  // collection, so it is derived rather than guessed.
+  assert.equal(bound.status, 'applied');
+  assert.deepEqual(bound.unprojectedFactOperationIds, []);
+  assert.equal(
+    bound.profile.pensions.find((item) => item.pensionId === 'pension_old_dc').currentValue.amount,
+    319_000
+  );
 });
 
 await runCase('older transcript evidence cannot override a note backed by a newer client correction', async () => {

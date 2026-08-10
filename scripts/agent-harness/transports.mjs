@@ -51,6 +51,7 @@ import {
   listRecentRealtimeFinalTurns,
   recordRealtimeFinalTurn
 } from '../../worker/src/consumer/realtime_repository.js';
+import { runPlannerReconciliation } from '../../worker/src/consumer/planner_reconciliation.js';
 import {
   confirmAgentPlan,
   loadAgentContext,
@@ -173,6 +174,11 @@ export const RELEASED_MODULE_IDS = (readFileSync(`${root}/worker/wrangler.toml`,
 export function makeEnv(databasePath, overrides = {}) {
   return {
     CONSUMER_DB: new TestD1(databasePath),
+    // The background planner's mode follows the environment, so an automated
+    // run exercises the same lane a live meeting would. Fail-closed to legacy,
+    // exactly as the Worker does, so CI never starts making reconciler calls.
+    CONSUMER_PLANNER_RECONCILIATION_MODE:
+      process.env.CONSUMER_PLANNER_RECONCILIATION_MODE || 'legacy',
     CONSUMER_DATA_ENCRYPTION_KEY: Buffer.alloc(32, 31).toString('base64url'),
     CONSUMER_RATE_LIMIT_HASH_KEY: Buffer.alloc(32, 47).toString('base64url'),
     CONSUMER_JOURNEY_ENABLED: 'true',
@@ -365,7 +371,44 @@ export async function runAgentScenario(
         })
       }
     });
-    const afterContext = await loadAgentContext(env, config, sessionId, meetingId);
+    let afterContext = await loadAgentContext(env, config, sessionId, meetingId);
+    // THE BACKGROUND PLANNER RUNS HERE TOO. In a live meeting the Durable
+    // Object fires it once the turn settles; nothing fired it in the agent
+    // harness, so the transport used to test the system did not exercise the
+    // half of it currently under development. Same cadence as live_session: a
+    // turn that wrote or rejected a note, plus a periodic checkpoint.
+    let reconciliation = null;
+    if (config.plannerReconciliationMode !== 'legacy') {
+      const noteActivity = (result.diagnostics?.candidateOutcomes || []).length > 0;
+      if (noteActivity || (index + 1) % 3 === 0) {
+        try {
+          const outcome = await runPlannerReconciliation({
+            env,
+            config,
+            context: afterContext,
+            leaseId: meetingId,
+            throughTurnId: result.consumer.turnId,
+            trigger: noteActivity ? 'material_turn' : 'periodic_checkpoint'
+          });
+          reconciliation = {
+            status: outcome.status,
+            appliedProfileRevision: outcome.appliedProfileRevision ?? null,
+            acceptedOperationIds: outcome.validation?.acceptedOperationIds || [],
+            rejectedGroups: (outcome.validation?.rejectedGroups || [])
+              .map((group) => ({ groupId: group.groupId, code: group.code })),
+            clarificationNeeds: (outcome.validation?.clarificationNeeds || [])
+              .map((need) => ({ factInstanceId: need.factInstanceId, prompt: need.prompt }))
+          };
+        } catch (error) {
+          reconciliation = {
+            status: 'failed',
+            errorCode: String(error?.code || 'planner_reconciliation_failed'),
+            errorDetail: String(error?.message || '').slice(0, 400)
+          };
+        }
+        afterContext = await loadAgentContext(env, config, sessionId, meetingId);
+      }
+    }
     const storedTurns = await listRealtimeFinalTurns(env, sessionId, meetingId, 200);
     const clientRowIndex = storedTurns.findIndex((item) => item.id === result.consumer.turnId);
     const assistantRow = storedTurns.slice(Math.max(0, clientRowIndex + 1))
@@ -412,6 +455,9 @@ export async function runAgentScenario(
     turns.push(turnRecord);
     turnRecords.push({
       ...turnRecord,
+      // What the background planner did with this turn, so a failure can be
+      // traced to the layer that caused it rather than inferred from the reply.
+      reconciliation,
       clientTurnId: clientTranscript.id,
       assistantTurnId: assistantTranscript.id,
       questionFactInstanceId: question?.factInstanceId || null,

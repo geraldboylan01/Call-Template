@@ -1305,19 +1305,92 @@ function rejectedNeed(operation, notes, context, code) {
   });
 }
 
-function operationRequiresCurrentFactProjection(operation, baselineNotes) {
-  const currentKindNeedsBridge = (noteKind, factId) => noteKind === 'fact'
-    || (noteKind === 'position' && !POSITION_PROJECTIONS[factId]);
+const ENTITY_COLLECTION_FOR_ROOT = Object.freeze({
+  pensions: 'pensionId',
+  assets: 'assetId',
+  properties: 'propertyId',
+  liabilities: 'liabilityId',
+  incomeSources: 'incomeId',
+  businesses: 'businessId',
+  dependants: 'dependantId'
+});
+
+/**
+ * Where a scalar fact note writes in the profile, or null when that cannot be
+ * decided without guessing.
+ *
+ * A fact's registry mapping is a set of candidate paths, not one path: a fact
+ * about a person exists for the primary client and the partner, and a fact
+ * about a holding is a wildcard over its collection. The note carries the owner
+ * and entity, so the choice is determined rather than inferred — and where it
+ * is not (an unknown owner, an entity that is not on the profile, more than one
+ * candidate left) this returns null and the operation stays unprojected, which
+ * is the existing fail-closed behaviour rather than a write to a guessed path.
+ */
+function scalarProfilePathForNote(profile, note) {
+  // A collection fact is not a scalar. `pension_positions` maps to `/pensions`,
+  // so a fact-kind note carrying a count would replace the whole array with a
+  // number. Holdings are projected by the position machinery and nothing else.
+  if (POSITION_PROJECTIONS[note.factId]) return null;
+  const patterns = (getSemanticFactDefinition(note.factId)?.mappings || [])
+    .map((mapping) => mapping.pathPattern)
+    .filter((pattern) => typeof pattern === 'string' && pattern.startsWith('/'))
+    // Nor may a scalar write the root of any entity collection.
+    .filter((pattern) => !ENTITY_COLLECTION_FOR_ROOT[pattern.split('/')[1]]
+      || pattern.includes('/*/'));
+  if (patterns.length === 0) return null;
+
+  const ownerId = note.ownerId || null;
+  const isPrimary = ownerId && ownerId === profile.primaryPerson?.personId;
+  const isPartner = ownerId && ownerId === profile.partner?.personId;
+  const owned = patterns.filter((pattern) => {
+    if (pattern.startsWith('/primaryPerson')) return isPrimary || !ownerId;
+    if (pattern.startsWith('/partner')) return isPartner;
+    return true;
+  });
+  const candidates = owned.length > 0 ? owned : patterns;
+
+  const resolved = candidates.map((pattern) => {
+    if (!pattern.includes('/*')) return pattern;
+    if (!note.entityId) return null;
+    const [, root] = pattern.split('/');
+    const idKey = ENTITY_COLLECTION_FOR_ROOT[root];
+    if (!idKey) return null;
+    const index = (profile[root] || []).findIndex((record) => record?.[idKey] === note.entityId);
+    return index >= 0 ? pattern.replace('/*', `/${index}`) : null;
+  }).filter(Boolean);
+
+  return resolved.length === 1 ? resolved[0] : null;
+}
+
+/** Write a resolved scalar path, creating only the containers it names. */
+function writeProfilePath(profile, path, value) {
+  const tokens = path.split('/').slice(1);
+  let cursor = profile;
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const token = tokens[index];
+    if (!isPlainObject(cursor[token]) && !Array.isArray(cursor[token])) {
+      if (!isPlainObject(cursor[token])) cursor[token] = {};
+    }
+    cursor = cursor[token];
+  }
+  cursor[tokens[tokens.length - 1]] = cloneJson(value);
+}
+
+function operationRequiresCurrentFactProjection(operation, baselineNotes, profile) {
+  const currentKindNeedsBridge = (noteKind, factId, note) => (
+    noteKind === 'fact' && !(profile && note && scalarProfilePathForNote(profile, note))
+  ) || (noteKind === 'position' && !POSITION_PROJECTIONS[factId]);
   if (['upsert_note', 'correct_note', 'reclassify_note'].includes(operation.op)
-    && currentKindNeedsBridge(operation.noteKind, operation.factId)) return true;
+    && currentKindNeedsBridge(operation.noteKind, operation.factId, operation)) return true;
   if (['reclassify_note', 'retract_note'].includes(operation.op)) {
     const target = baselineNotes.find((note) => note.noteId === operation.targetNoteId);
-    if (target && currentKindNeedsBridge(target.noteKind, target.factId)) return true;
+    if (target && currentKindNeedsBridge(target.noteKind, target.factId, target)) return true;
   }
   if (operation.op === 'merge_entities') {
     return baselineNotes.some((note) => operation.sourceEntityIds.includes(note.entityId)
       && note.lifecycle === 'active'
-      && currentKindNeedsBridge(note.noteKind, note.factId));
+      && currentKindNeedsBridge(note.noteKind, note.factId, note));
   }
   return false;
 }
@@ -1380,6 +1453,34 @@ export function projectPlanningNotesToProfile(rawProfile, rawNotes) {
       return cloneJson(note.value);
     });
     next[projection.collection] = [...unmanaged, ...projected];
+  }
+
+  // Scalar facts. A correction to a retirement age, a spending figure or an
+  // income was accepted by the validator and then had nowhere to go: only
+  // positions and the planning sidecars were projected, so the ledger recorded
+  // the fix and the profile never saw it. Written oldest-first so a later note
+  // for the same path wins, and only where the path is unambiguous.
+  const scalarNotes = notes
+    .filter((note) => note.noteKind === 'fact' && note.lifecycle === 'active')
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt)
+      || left.noteId.localeCompare(right.noteId));
+  for (const note of scalarNotes) {
+    const path = scalarProfilePathForNote(next, note);
+    if (!path) continue;
+    // A scalar the profile contract will not accept is skipped, not fatal. The
+    // registry says where a fact lives, not what shape that field takes, so a
+    // value the reconciler was right to record can still be wrong for the slot
+    // it maps to. Failing the whole reconciliation over one of those would
+    // throw away every other correction in the batch -- the projection is a
+    // best-effort bridge, and what it cannot place stays in the ledger.
+    const trial = cloneJson(next);
+    writeProfilePath(trial, path, note.value);
+    try {
+      normalizeHouseholdProfile(trial);
+    } catch (_error) {
+      continue;
+    }
+    writeProfilePath(next, path, note.value);
   }
 
   const planning = next.assumptions.values.planning;
@@ -1651,7 +1752,7 @@ export async function applyReconciliationPlan({
   }
   const ledgerChanged = stableStringify(workingNotes) !== stableStringify(notes);
   const unprojectedFactOperationIds = acceptedOperations
-    .filter((operation) => operationRequiresCurrentFactProjection(operation, notes))
+    .filter((operation) => operationRequiresCurrentFactProjection(operation, notes, finalProfile))
     .map((operation) => operation.operationId);
   const fullyProjected = unprojectedFactOperationIds.length === 0;
   return {

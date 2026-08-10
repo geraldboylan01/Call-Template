@@ -30,6 +30,7 @@ import {
   deterministicFallbackExtraction, mapPlannerExtractionToCandidates
 } from '../worker/src/consumer/planning_facts.js';
 import { extractSegmentedPlannerTurn } from '../worker/src/consumer/realtime_planner.js';
+import { runPlannerReconciliation } from '../worker/src/consumer/planner_reconciliation.js';
 import { loadCallerFixture } from './agent-harness/caller.mjs';
 import { exportRun, traceIdForCall } from './agent-harness/langfuse-export.mjs';
 import {
@@ -63,6 +64,10 @@ const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
 // regex fallback captures far less than the planner, and the "reply" is the raw
 // server-owned question rather than spoken words. Never judge a call from it.
 const offline = args.includes('--offline');
+// The background planner runs in an agent call exactly as it does in a live
+// meeting. Defaults to the same fail-closed legacy the Worker uses, so the
+// harness only exercises it when a test deliberately asks it to.
+const reconciliationMode = flag('reconciliation', process.env.CONSUMER_PLANNER_RECONCILIATION_MODE || 'legacy');
 const langfuseConfigured = Boolean(
   String(process.env.LANGFUSE_PUBLIC_KEY || '').trim()
   && String(process.env.LANGFUSE_SECRET_KEY || '').trim()
@@ -106,7 +111,10 @@ function readPointer() {
 }
 
 function openCall(pointer) {
-  const env = makeEnv(openCallDatabase(pointer.databasePath), { OPENAI_API_KEY: apiKey });
+  const env = makeEnv(openCallDatabase(pointer.databasePath), {
+    OPENAI_API_KEY: apiKey,
+    CONSUMER_PLANNER_RECONCILIATION_MODE: reconciliationMode
+  });
   return { env, config: makeConfig(env) };
 }
 
@@ -196,7 +204,10 @@ if (command === 'start') {
   }
 
   const databasePath = join(CALL_DIR, `${callId}.sqlite`);
-  const env = makeEnv(openCallDatabase(databasePath), { OPENAI_API_KEY: apiKey });
+  const env = makeEnv(openCallDatabase(databasePath), {
+    OPENAI_API_KEY: apiKey,
+    CONSUMER_PLANNER_RECONCILIATION_MODE: reconciliationMode
+  });
   const config = makeConfig(env);
   const { sessionId, meetingId } = await newSession(env, config);
 
@@ -274,7 +285,7 @@ if (command === 'say') {
     process.exit(1);
   }
 
-  const afterContext = await loadAgentContext(env, config, pointer.sessionId, pointer.meetingId);
+  let afterContext = await loadAgentContext(env, config, pointer.sessionId, pointer.meetingId);
   const storedTurns = await listRealtimeFinalTurns(env, pointer.sessionId, pointer.meetingId, 200);
   const clientRowIndex = storedTurns.findIndex((item) => item.id === result.consumer.turnId);
   const assistantRow = storedTurns.slice(Math.max(0, clientRowIndex + 1))
@@ -302,6 +313,59 @@ if (command === 'say') {
       mappedCandidates = mapPlannerExtractionToCandidates(rawExtraction);
     } catch (_error) {
       // The raw extraction and deterministic rejection still remain visible.
+    }
+  }
+  // THE BACKGROUND PLANNER RUNS HERE TOO, OR THIS HARNESS TESTS THE OLD SYSTEM.
+  //
+  // In a live meeting the reconciler is fired from the Durable Object after the
+  // turn settles. Nothing fired it here, so an agent call exercised T1 and the
+  // shared planning core and stopped — which meant the architecture actually
+  // under development could not be tested through the workflow used to test it.
+  // The cadence mirrors live_session: a turn that wrote or rejected a note, and
+  // a periodic checkpoint, rather than every turn.
+  let reconciliation = null;
+  if (config.plannerReconciliationMode !== 'legacy') {
+    const noteActivity = (diagnostics.candidateOutcomes || []).length > 0;
+    const periodic = turns.length > 0 && (turns.length + 1) % 3 === 0;
+    if (noteActivity || periodic) {
+      const startedAt = Date.now();
+      try {
+        const outcome = await runPlannerReconciliation({
+          env,
+          config,
+          context: await loadAgentContext(env, config, pointer.sessionId, pointer.meetingId),
+          leaseId: pointer.meetingId,
+          throughTurnId: clientTranscript.id,
+          trigger: noteActivity ? 'material_turn' : 'periodic_checkpoint'
+        });
+        reconciliation = {
+          status: outcome.status,
+          appliedProfileRevision: outcome.appliedProfileRevision ?? null,
+          acceptedOperationIds: outcome.validation?.acceptedOperationIds || [],
+          rejectedGroups: (outcome.validation?.rejectedGroups || [])
+            .map((group) => ({ groupId: group.groupId, code: group.code })),
+          operationOutcomes: outcome.validation?.operationOutcomes || [],
+          clarificationNeeds: (outcome.validation?.clarificationNeeds || [])
+            .map((need) => ({ factInstanceId: need.factInstanceId, prompt: need.prompt })),
+          insertedNoteCount: outcome.insertedNoteCount ?? 0,
+          transitionedNoteCount: outcome.transitionedNoteCount ?? 0,
+          usage: outcome.metadata || null,
+          latencyMs: Date.now() - startedAt
+        };
+      } catch (error) {
+        // A reconciler failure is a finding, never a dead call: the live lane
+        // treats it the same way and the meeting carries on.
+        reconciliation = {
+          status: 'failed',
+          errorCode: String(error?.code || 'planner_reconciliation_failed'),
+          errorDetail: String(error?.message || '').slice(0, 400),
+          latencyMs: Date.now() - startedAt
+        };
+      }
+      // The corrections change what is still outstanding, so everything the
+      // archive records below must be read after them, exactly as the live
+      // meeting re-reads its state before the next question.
+      afterContext = await loadAgentContext(env, config, pointer.sessionId, pointer.meetingId);
     }
   }
   const candidateObservations = archiveCandidates({
@@ -365,6 +429,9 @@ if (command === 'say') {
         segmentsFailed: Number(diagnostics.segmentsFailed || 0)
       },
       question,
+      // What the background planner did with this turn, so a failure can be
+      // traced to the layer that caused it rather than inferred from the reply.
+      reconciliation,
       needsAfter: observedNeeds(afterContext),
       canonicalFactsAfter: observedCanonicalFacts(afterContext),
       spendMicroEur: {
