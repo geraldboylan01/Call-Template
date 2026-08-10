@@ -462,18 +462,30 @@ jobs:
           // The background reconciler. Validated here rather than left to the
           // Worker's own fallback so a typo is a failed deployment instead of a
           // silently inert reconciler that looks enabled.
+          const {
+            isPlannerReconciliationMode, resolvePlannerReconciliationMode
+          } = require('./scripts/lib/planner-reconciliation-mode.cjs');
           const reconciliationMode = envValue('CONSUMER_BETA_PLANNER_RECONCILIATION_MODE') || 'legacy';
-          if (!['legacy', 'shadow', 'apply'].includes(reconciliationMode)) {
+          if (!isPlannerReconciliationMode(reconciliationMode)) {
             throw new Error('CONSUMER_PLANNER_RECONCILIATION_MODE must be legacy, shadow or apply.');
           }
-          // It reads the transcript and the notes a live turn produced, so it
-          // cannot be more active than the lane that produces them.
-          const plannerReconciliationMode = liveVoiceToggle === 'true' ? reconciliationMode : 'legacy';
           // Gated on the Realtime canary, never on v2. This mirrors
           // worker/src/consumer/config.js, where the live lane depends on
           // realtime being active but is deliberately independent of the v1/v2
           // switch, so turning one on can never imply the other.
           const liveVoiceEnabled = realtimeEnabled && liveVoiceToggle === 'true';
+          // The reconciler reads the transcript and the notes a live turn
+          // produced, so it cannot be more active than the lane that produces
+          // them -- and that is the lane as ACTUALLY RESOLVED, not the requested
+          // toggle. Reading the toggle alone claimed apply on a deployment whose
+          // Realtime canary was off, so the generated config said legacy while
+          // the safety check expected apply, and the deploy failed closed. It
+          // was right to: apply was being asserted for a lane that was not on.
+          const plannerReconciliationMode = resolvePlannerReconciliationMode({
+            requestedMode: reconciliationMode,
+            realtimeEnabled,
+            liveVoiceRequested: liveVoiceToggle === 'true'
+          });
           const moduleOffersToggle = envValue('CONSUMER_MODULE_OFFERS_ENABLED');
           if (!['true', 'false'].includes(moduleOffersToggle)) {
             throw new Error('CONSUMER_MODULE_OFFERS_ENABLED must be exactly true or false.');
@@ -809,7 +821,11 @@ jobs:
             CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: realtimeV2Enabled ? 'true' : 'false',
             CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: spokenCompletionEnabled ? 'true' : 'false',
             CONSUMER_LIVE_VOICE_ENABLED: liveVoiceEnabled ? 'true' : 'false',
-            CONSUMER_PLANNER_RECONCILIATION_MODE: betaEnabled ? plannerReconciliationMode : 'legacy',
+            // Already resolved to legacy unless the live lane actually came up,
+            // and the substitution only runs on that same path, so this holds
+            // whether or not the generated file was rewritten. Deriving it from
+            // betaEnabled instead let the expectation and the file disagree.
+            CONSUMER_PLANNER_RECONCILIATION_MODE: plannerReconciliationMode,
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_GOAL_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_MODULE_OFFERS_ENABLED: moduleOffersEnabled ? 'true' : 'false',

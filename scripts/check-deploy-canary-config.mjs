@@ -485,4 +485,54 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
   pass(`the live lane ships dormant and records its own prompt (${codePrompt}) and toolset (${codeToolset})`);
 }
 
+
+/* -------------------------------- planner reconciliation activation */
+
+// Deploy Worker #293 aborted here: the builder resolved this mode from the
+// requested live-voice toggle while the rest of the deployment resolved the lane
+// from the Realtime canary as well, so the generated config and the safety check
+// disagreed. The rule now lives in one module, and these are the five ways it
+// has to behave. Nothing below relaxes the gate — every case that is not a fully
+// resolved live lane must come out legacy.
+{
+  const {
+    resolvePlannerReconciliationMode
+  } = await import('./lib/planner-reconciliation-mode.cjs');
+  const resolve = (over) => resolvePlannerReconciliationMode({
+    requestedMode: 'apply', realtimeEnabled: true, liveVoiceRequested: true, ...over
+  });
+
+  assert.equal(resolve({ requestedMode: undefined }), 'legacy');
+  assert.equal(resolve({ requestedMode: '' }), 'legacy');
+  pass('an unset planner reconciliation mode defaults to legacy');
+
+  assert.equal(resolve({ requestedMode: 'aply' }), 'legacy');
+  assert.equal(resolve({ requestedMode: 'APPLY' }), 'legacy');
+  assert.equal(resolve({ requestedMode: 'true' }), 'legacy');
+  pass('an invalid planner reconciliation mode fails closed to legacy');
+
+  assert.equal(resolve({ liveVoiceRequested: false }), 'legacy');
+  assert.equal(resolve({ realtimeEnabled: false }), 'legacy',
+    'the live lane is gated on the Realtime canary, so apply must be too');
+  assert.equal(resolve({ realtimeEnabled: false, liveVoiceRequested: false }), 'legacy');
+  pass('apply is refused whenever the live lane is not fully on');
+
+  assert.equal(resolve({}), 'apply');
+  assert.equal(resolve({ requestedMode: 'shadow' }), 'shadow');
+  pass('apply is allowed once the protected path has Realtime and live voice on');
+
+  // An ordinary push cannot turn this on: the mode is only ever read from the
+  // protected environment variable, and the deploy job runs in the protected
+  // production environment. Nothing in the repository can set it.
+  assert.match(workflow, /CONSUMER_BETA_PLANNER_RECONCILIATION_MODE: \$\{\{ vars\.CONSUMER_PLANNER_RECONCILIATION_MODE \|\| 'legacy' \}\}/,
+    'the mode must come from a protected repository variable and default to legacy');
+  assert.match(workflow, /environment: production/,
+    'the deploy job must run in the protected production environment');
+  assert.match(workflow, /resolvePlannerReconciliationMode\(\{/,
+    'the config builder must use the shared rule rather than its own expression');
+  assert.match(workflow, /CONSUMER_PLANNER_RECONCILIATION_MODE: plannerReconciliationMode/,
+    'the safety check must expect exactly what the builder resolved');
+  pass('an ordinary push cannot activate apply without the protected variable');
+}
+
 console.info(`\n[DeployCanary] ${passes.length} assertions passed.`);
