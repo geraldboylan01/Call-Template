@@ -26,6 +26,15 @@ import { buildConfirmedRealtimeFactSummary, buildRealtimeFactReadBack } from './
 import { toConsumerMeetingBrief, toConversationGuide } from './realtime_planner.js';
 import { realtimeJourneyPhase } from './realtime_provider.js';
 
+/**
+ * What an unresolved fact identity looks like.
+ *
+ * resolveSemanticFact falls back to a `profile.`-prefixed id built from the
+ * profile path when no registry mapping matches, so this prefix marks an
+ * identity that was never really resolved rather than one worth trusting.
+ */
+const UNRESOLVED_FACT_ID_PREFIX = 'profile.';
+
 /** Meeting phases that must not be rolled back by a later state refresh. */
 export const TERMINAL_MEETING_PHASES = Object.freeze([
   'awaiting_voice_confirmation', 'generating_modules', 'closing', 'completed',
@@ -132,7 +141,32 @@ export function toConsumerRealtimePlanningLists(state = {}, profile = {}) {
         requiredMissing: Object.freeze((item.readiness?.requiredMissing || item.requiredMissing || [])
           .slice(0, 20)
           .map((missing) => {
-            const semantic = resolveSemanticFact(missing, { profile, moduleId: item.moduleId });
+            // RESOLVE ONCE, THEN TRUST IT.
+            //
+            // Identity is derived from the adapter's profile path, and this
+            // projection deliberately does not carry that path onward. Running
+            // it a second time over an already-projected list therefore had
+            // nothing to resolve from and overwrote a perfectly good factId
+            // with `profile.unknown` — which then reached the live model as the
+            // name of the thing it was supposed to ask for, and reached the
+            // background planner as a need it could not bind an operation to.
+            // The profile path is what identity is derived from, so its absence
+            // is the signal that this item has already been through here once.
+            const resolvedAlready = !missing.fieldPath
+              && typeof missing.factId === 'string'
+              && missing.factId
+              && !missing.factId.startsWith(UNRESOLVED_FACT_ID_PREFIX);
+            const semantic = resolvedAlready
+              ? {
+                  factId: missing.factId,
+                  factInstanceId: missing.factInstanceId
+                    || (missing.entityId ? `${missing.factId}:${missing.entityId}` : missing.factId),
+                  entityId: missing.entityId || null,
+                  ownerId: missing.ownerId || null,
+                  entityLabel: missing.entityLabel || '',
+                  questionPrompt: missing.prompt || missing.reason || ''
+                }
+              : resolveSemanticFact(missing, { profile, moduleId: item.moduleId });
             const response = completionResponseFor(profile, {
               ...missing,
               factId: semantic.factId,

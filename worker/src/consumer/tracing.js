@@ -143,7 +143,7 @@ const ATTR = Object.freeze({
  * be true before a single byte leaves; the committed defaults make sure they
  * are not, so merging this changes nothing about a live call.
  */
-export function isTracingConfigured(env) {
+function isTracingConfigured(env) {
   return Boolean(
     env
     && typeof env.LANGFUSE_PUBLIC_KEY === 'string' && env.LANGFUSE_PUBLIC_KEY.trim()
@@ -166,7 +166,7 @@ export function isTracingConfigured(env) {
  * which production's cohort is deliberately not in. This reuses that gate rather
  * than inventing a second one that could disagree with it.
  */
-export function traceContentAllowed(config) {
+function traceContentAllowed(config) {
   const cohort = String(config?.cohort || '').trim().toLowerCase();
   if (!cohort) return false;
   const testCohorts = config?.agentTestCohorts;
@@ -181,7 +181,7 @@ export function traceContentAllowed(config) {
  * test calls are debuggable. Everything else is subject to the configured
  * percentage, which ships at 0.
  */
-export function shouldSampleTrace(config, roll = Math.random()) {
+function shouldSampleTrace(config, roll = Math.random()) {
   if (traceContentAllowed(config)) return true;
   const percent = Number(config?.tracingSamplePercent || 0);
   if (!(percent > 0)) return false;
@@ -189,7 +189,7 @@ export function shouldSampleTrace(config, roll = Math.random()) {
 }
 
 /** Keeps allowlisted primitives and nothing else. */
-export function maskMetadata(raw) {
+function maskMetadata(raw) {
   const masked = {};
   if (!raw || typeof raw !== 'object') return masked;
   for (const key of METADATA_ALLOWLIST) {
@@ -208,7 +208,7 @@ export function maskMetadata(raw) {
  * cohort gate -- it is the floor under it, so that the one cohort allowed to
  * export text still cannot export an identifier.
  */
-export function safeContent(value) {
+function safeContent(value) {
   if (value === undefined || value === null) return null;
   let text;
   try {
@@ -254,7 +254,7 @@ function nanos(milliseconds) {
  * and it is not something to publish to a third party. A hash groups exactly as
  * well and reverses into nothing.
  */
-export async function hashedTraceSessionId(sessionId) {
+async function hashedTraceSessionId(sessionId) {
   const value = String(sessionId || '').trim();
   if (!value) return null;
   try {
@@ -285,7 +285,7 @@ export function newSpanId() {
  * @param {object} [options.content] `{input, output}` — dropped unless allowed
  * @param {object} [options.metadata] masked to METADATA_ALLOWLIST
  */
-export function buildGenerationSpan({
+function buildGenerationSpan({
   traceId,
   spanId,
   parentSpanId,
@@ -475,7 +475,7 @@ export function createTraceCollector({ env, config, sessionIdHash, lane, sampled
  * already finished when delivery runs. A missing context is not an error --
  * it means there is nowhere safe to do the work, so the spans are dropped.
  */
-export function flushTraces(collector, ctx) {
+function flushTraces(collector, ctx) {
   if (!collector?.active) return;
   const waitUntil = typeof ctx?.waitUntil === 'function' ? ctx.waitUntil.bind(ctx) : null;
   if (!waitUntil) return;

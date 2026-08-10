@@ -37,7 +37,7 @@ import {
   startPlannerReconciliation
 } from './realtime_repository.js';
 
-export const PLANNER_RECONCILIATION_V1 = 'ReconciliationPlanV1';
+const PLANNER_RECONCILIATION_V1 = 'ReconciliationPlanV1';
 
 const FACT_IDS = Object.freeze(
   listSemanticFactDefinitions().map((definition) => definition.factId).sort()
@@ -169,7 +169,7 @@ function parseValueJson(valueJson, operationId) {
   }
 }
 
-export function normalizeModelReconciliationPlan(raw) {
+function normalizeModelReconciliationPlan(raw) {
   const plan = {
     schemaVersion: raw?.schemaVersion,
     verdict: raw?.verdict,
@@ -399,22 +399,41 @@ function entityIndex(profile, notes) {
   return entities;
 }
 
-function reconciliationNeeds(planning) {
+/**
+ * What each selected analysis still needs, in the reconciler's own vocabulary.
+ *
+ * Adapters state a requirement as a profile path and leave the semantic
+ * identity to be resolved, exactly as the question planner and the live
+ * projection do. Reading `missing.factId` directly instead sent every need
+ * through as `profile.unknown`, so the background planner was told an input was
+ * outstanding, and for whom, but never which fact it was — and it can only bind
+ * an operation to a fact it can name.
+ */
+function reconciliationNeeds(planning, profile) {
   const byInstance = new Map();
   for (const recommendation of planning.recommendations || []) {
     for (const missing of recommendation.requiredMissing || []) {
-      const factInstanceId = missing.factInstanceId || missing.factId;
+      const resolved = resolveSemanticFact(missing, {
+        profile,
+        moduleId: recommendation.moduleId
+      });
+      const factId = missing.factId || resolved.factId;
+      const entityId = missing.entityId || resolved.entityId;
+      const factInstanceId = missing.factInstanceId
+        || resolved.factInstanceId
+        || (entityId ? `${factId}:${entityId}` : factId);
       const current = byInstance.get(factInstanceId);
       const raw = {
         schemaVersion: 2,
         needId: current?.needId || `need_${factInstanceId}`.replace(/[^A-Za-z0-9_.:-]/g, '_'),
-        factId: missing.factId,
+        factId,
         factInstanceId,
-        ...(missing.entityId ? { entityId: missing.entityId } : {}),
-        ...(missing.ownerId ? { ownerId: missing.ownerId } : {}),
-        ...(missing.entityLabel ? { entityLabel: missing.entityLabel } : {}),
+        ...(entityId ? { entityId } : {}),
+        ...(missing.ownerId || resolved.ownerId ? { ownerId: missing.ownerId || resolved.ownerId } : {}),
+        ...(missing.entityLabel || resolved.entityLabel
+          ? { entityLabel: missing.entityLabel || resolved.entityLabel } : {}),
         reasonCode: missing.reasonCode || 'required_input_missing',
-        prompt: missing.prompt || missing.reason || `Please clarify ${missing.factId.replaceAll('_', ' ')}.`,
+        prompt: missing.prompt || missing.reason || `Please clarify ${String(factId).replaceAll('_', ' ')}.`,
         importance: ['required', 'recommended', 'optional'].includes(missing.importance)
           ? missing.importance
           : 'required',
@@ -452,14 +471,22 @@ function signedQuestionContext(context) {
   } : null;
 }
 
+/**
+ * Ordinary intake and a genuine block are different things to the reconciler.
+ *
+ * `needs_facts` means the meeting has simply not asked yet; `needs_information`
+ * means the client cannot supply an input and the analysis is held. Collapsing
+ * both into the latter told the planner every selected analysis was blocked,
+ * which is the state in which chasing the remaining inputs looks pointless.
+ */
 function reconciliationModuleAvailability(slot) {
-  const values = [slot?.availability, slot?.intakeStatus, slot?.status]
-    .map((value) => String(value || '').toLowerCase());
+  const availability = String(slot?.availability || '').toLowerCase();
+  if (['ready', 'needs_facts', 'needs_information', 'adviser_review_required'].includes(availability)) {
+    return availability;
+  }
+  const values = [slot?.intakeStatus, slot?.status].map((value) => String(value || '').toLowerCase());
   if (values.some((value) => ['ready', 'complete', 'runnable'].includes(value))) return 'ready';
-  if (values.some((value) => (
-    value.includes('missing') || value.includes('needs') || value.includes('blocked')
-  ))) return 'needs_information';
-  return 'needs_information';
+  return 'needs_facts';
 }
 
 export function buildPlannerReconciliationContext({
@@ -488,7 +515,7 @@ export function buildPlannerReconciliationContext({
     owners,
     entities,
     canonicalFacts: buildConfirmedRealtimeFactSummary(context.profile),
-    needs: reconciliationNeeds(planning),
+    needs: reconciliationNeeds(planning, context.profile),
     selectedAnalyses: (planning.moduleSlots || []).map((slot) => {
       const availability = reconciliationModuleAvailability(slot);
       return {
@@ -704,14 +731,22 @@ export async function runPlannerReconciliation({
     const applyRequested = config.plannerReconciliationMode === 'apply';
     const validationSucceeded = ['applied', 'no_change', 'needs_profile_projection', 'duplicate']
       .includes(validation.status);
-    const status = applyRequested
-      ? 'rejected'
-      : validationSucceeded ? 'shadow' : validation.status === 'conflicted' ? 'conflicted' : 'failed';
+    // Apply only writes when the validator actually produced a changed profile
+    // or ledger. `needs_profile_projection` means an accepted operation has no
+    // canonical home yet, so it stays a recorded observation rather than a
+    // half-projected write, and `no_change` has nothing to persist.
+    const writesProfile = applyRequested
+      && validation.status === 'applied'
+      && (validation.profileChanged || validation.ledgerChanged);
+    const status = !validationSucceeded
+      ? (validation.status === 'conflicted' ? 'conflicted' : 'failed')
+      : writesProfile ? 'applied' : 'shadow';
     const output = {
       schemaVersion: 1,
       plan: requested.plan,
       validation,
-      applyPromotionRequired: applyRequested
+      applyRequested,
+      applied: writesProfile
     };
     const completed = await completePlannerReconciliation(env, {
       sessionId: context.sessionRow.id,
@@ -730,9 +765,10 @@ export async function runPlannerReconciliation({
       acceptedOperationCount: validation.acceptedOperationIds.length,
       rejectedOperationCount: validation.operationOutcomes
         .filter((outcome) => outcome.status !== 'accepted').length,
-      errorCode: applyRequested
-        ? 'planner_reconciliation_apply_not_promoted'
-        : validationSucceeded ? null : `planner_reconciliation_${validation.status}`
+      // Only the operations the validator accepted reach the canonical state,
+      // and they reach it exactly as it validated them.
+      ...(writesProfile ? { appliedProfile: validation.profile, appliedNotes: validation.notes } : {}),
+      errorCode: validationSucceeded ? null : `planner_reconciliation_${validation.status}`
     });
     if (completed.status === 'conflicted') {
       return {
@@ -743,7 +779,15 @@ export async function runPlannerReconciliation({
         errorCode: completed.errorCode || 'planner_reconciliation_stale'
       };
     }
-    return { status, plan: requested.plan, validation, metadata: requested.metadata };
+    return {
+      status: completed.status,
+      plan: requested.plan,
+      validation,
+      metadata: requested.metadata,
+      appliedProfileRevision: completed.appliedProfileRevision ?? null,
+      insertedNoteCount: completed.insertedNoteCount ?? 0,
+      transitionedNoteCount: completed.transitionedNoteCount ?? 0
+    };
   } catch (error) {
     const completed = await completePlannerReconciliation(env, {
       sessionId: context.sessionRow.id,

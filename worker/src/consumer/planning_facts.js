@@ -230,7 +230,7 @@ function completionFactMapping(profile, fact, normalizedRange = null, { state = 
  * caller can map the minimum, the maximum and the midpoint through exactly the
  * same code regardless of which shape arrived.
  */
-export function rangeEndpoints(value) {
+function rangeEndpoints(value) {
   const top = boundedProposalRange(value);
   if (top) return { min: top.min, max: top.max, rebuild: (endpoint) => endpoint };
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;

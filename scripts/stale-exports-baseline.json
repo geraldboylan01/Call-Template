@@ -69,8 +69,6 @@
     "scripts/agent-harness/cost.mjs:MODEL_RATES",
     "scripts/agent-harness/runlog.mjs:DEFAULT_ARCHIVE_DIR",
     "scripts/agent-harness/runlog.mjs:TREND_METRICS",
-    "scripts/agent-harness/transports.mjs:newDatabase",
-    "scripts/agent-judges/conversation.mjs:JUDGE_DIMENSIONS",
     "scripts/check-consumer-live-advisor-bridge.mjs:readLiveSessionCeiling",
     "scripts/check-consumer-turn-parity-diagnostic.mjs:LIVE_TURNS",
     "scripts/check-no-stale-exports.mjs:findStaleExports",

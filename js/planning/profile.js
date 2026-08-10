@@ -41,7 +41,7 @@ const PENSION_TYPES = Object.freeze([
 ]);
 
 /** Whether a pension currently receives contributions. */
-export const PENSION_CONTRIBUTION_STATUSES = Object.freeze([
+const PENSION_CONTRIBUTION_STATUSES = Object.freeze([
   'active', 'paid_up', 'not_applicable', 'unknown'
 ]);
 

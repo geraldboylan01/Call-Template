@@ -482,7 +482,7 @@ export async function exportRun(record, { env = process.env } = {}) {
  * it onto the same shape here keeps one export path rather than two that could
  * drift apart.
  */
-export function batchAsRecord(report) {
+function batchAsRecord(report) {
   return {
     runId: report.runId,
     runKey: report.runKey,
@@ -513,7 +513,7 @@ export function batchAsRecord(report) {
   };
 }
 
-export async function exportBatch(report, options = {}) {
+async function exportBatch(report, options = {}) {
   return exportRun(batchAsRecord(report), options);
 }
 
@@ -530,7 +530,7 @@ export async function exportBatch(report, options = {}) {
  *   `{ callId, graded, scores, mean, notes }`. An ungraded entry is skipped, not
  *   posted as a zero — a blank score is a score you did not give.
  */
-export async function exportGrades(record, grades, { env = process.env } = {}) {
+async function exportGrades(record, grades, { env = process.env } = {}) {
   const client = createLangfuseClient({ env, release: record.runKey, sessionId: record.runId });
   if (!client.enabled) return { enabled: false, graded: 0, delivered: 0, failures: 0 };
 

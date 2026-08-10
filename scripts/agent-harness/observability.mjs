@@ -25,7 +25,7 @@ function ownerRefFrom(candidate = {}) {
   return value.ownerId || value.owner || (Array.isArray(value.ownerIds) ? value.ownerIds[0] : null) || null;
 }
 
-export function resolveOwnerId(profile, ownerRef, entityId = null) {
+function resolveOwnerId(profile, ownerRef, entityId = null) {
   if (ownerRef === 'primary') return profile?.primaryPerson?.personId || 'primary';
   if (ownerRef === 'partner') return profile?.partner?.personId || 'partner';
   if (ownerRef === 'joint' || ownerRef === 'household') return 'household';

@@ -423,7 +423,7 @@ class NoopCollector {
   }
 }
 
-export function isLangfuseConfigured(env = process.env) {
+function isLangfuseConfigured(env = process.env) {
   return Boolean(
     env
     && String(env.LANGFUSE_PUBLIC_KEY || '').trim()
