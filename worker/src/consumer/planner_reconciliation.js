@@ -64,6 +64,7 @@ const RECONCILIATION_SCHEMA = Object.freeze({
         type: 'object',
         properties: {
           groupId: { type: 'string', maxLength: 160 },
+          atomic: { type: 'boolean' },
           operations: {
             type: 'array',
             minItems: 1,
@@ -113,7 +114,7 @@ const RECONCILIATION_SCHEMA = Object.freeze({
             }
           }
         },
-        required: ['groupId', 'operations'],
+        required: ['groupId', 'atomic', 'operations'],
         additionalProperties: false
       }
     }
@@ -143,6 +144,12 @@ Reconciliation rules:
 - Retract or merge only when the transcript explicitly proves the note/entity is wrong or duplicated.
 - Use set_completion for an exact owner/position unknown or none answer.
 - If the transcript does not resolve an ambiguity safely, request_clarification with a complete NeedV2 value.
+
+Grouping rules:
+- A group is a unit that lands together or not at all. One failing operation discards every other operation in its group, so grouping unrelated corrections together throws away correct work.
+- Put each independent correction in its OWN group. Several corrections from one turn are normally several groups, not one.
+- Group operations together only when they describe the same note, entity or fact instance, or when applying one without the other would misstate the position.
+- Set atomic true only for that second case — operations that must land together but share no identity. Otherwise set atomic false.
 - reviewedNoteIds may contain only notes that already carry server-stored client offsets present in this context. A span-free realtime note cannot be verified by ID alone; replace it with an evidence-backed correct_note, even when its value is unchanged.
 - Never add confirmation, readiness, selected-module or execution fields.
 - If nothing needs changing or clarification, return verdict clean and no operations.`;
@@ -173,86 +180,152 @@ function parseValueJson(valueJson, operationId) {
   }
 }
 
-function normalizeModelReconciliationPlan(raw) {
+/**
+ * One operation's wire form. Throws only for that operation.
+ *
+ * `valueJson` is a JSON document inside a JSON string, so the structured-output
+ * schema cannot constrain a single character of it, and the model does
+ * occasionally emit something unparseable. That used to fail the WHOLE plan —
+ * `Reconciliation operation op7 returned invalid JSON` discarded six other
+ * correct operations that had nothing wrong with them. Same blast radius the
+ * grouping fix removed, arriving through a different door.
+ */
+function normalizeModelOperation(operation) {
+  const normalized = {
+    operationId: operation.operationId,
+    op: operation.op,
+    reasonCode: operation.reasonCode,
+    evidence: operation.evidence,
+    sourceEntityIds: operation.sourceEntityIds
+  };
+  for (const key of [
+    'targetNoteId', 'factId', 'factInstanceId', 'entityId', 'ownerId',
+    'noteKind', 'certainty', 'targetEntityId'
+  ]) {
+    if (typeof operation[key] === 'string' && operation[key]) normalized[key] = operation[key];
+  }
+  if (typeof operation.valueJson === 'string') {
+    normalized.value = parseValueJson(operation.valueJson, operation.operationId);
+  }
+  // A clarification carries a NeedV2, and the operation already states
+  // that need's identity in its own required fields. Asking the model to
+  // repeat it inside the value was a second chance to get it wrong, and
+  // it did: a value missing factInstanceId failed the whole plan, so one
+  // omitted field cost every other correction in the batch. Identity is
+  // taken from the operation, which is the copy that gets validated
+  // against the supplied allowlists anyway.
+  if (operation.op === 'request_clarification' && isPlainObject(normalized.value)) {
+    const factId = normalized.factId || normalized.value.factId;
+    const entityId = normalized.entityId || normalized.value.entityId;
+    // The NeedV2 goes inside a JSON string, so the structured-output
+    // schema cannot constrain any of it. Every field the model has to
+    // invent is a way to lose the whole plan: one out-of-enum
+    // `importance` discarded a batch of otherwise valid corrections. The
+    // enums are bookkeeping the server owns anyway, so they are coerced
+    // to their defaults rather than trusted. Nothing here touches a
+    // financial value, an identity or an evidence span.
+    const oneOf = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
+    normalized.value = {
+      ...normalized.value,
+      ...(factId ? { factId } : {}),
+      ...(entityId ? { entityId } : {}),
+      ...(normalized.ownerId || normalized.value.ownerId
+        ? { ownerId: normalized.ownerId || normalized.value.ownerId } : {}),
+      factInstanceId: normalized.factInstanceId
+        || normalized.value.factInstanceId
+        || (factId && entityId ? `${factId}:${entityId}` : factId || ''),
+      importance: oneOf(
+        normalized.value.importance,
+        ['required', 'recommended', 'optional'],
+        'required'
+      ),
+      status: oneOf(
+        normalized.value.status,
+        ['open', 'estimate_requested', 'blocked_unknown', 'deferred', 'satisfied'],
+        'open'
+      ),
+      answerPolicy: oneOf(
+        normalized.value.answerPolicy,
+        ['value', 'value_or_none', 'unknown_allowed'],
+        'unknown_allowed'
+      ),
+      reasonCode: typeof normalized.value.reasonCode === 'string' && normalized.value.reasonCode
+        ? normalized.value.reasonCode
+        : operation.reasonCode || 'required_input_missing',
+      prompt: typeof normalized.value.prompt === 'string' && normalized.value.prompt
+        ? normalized.value.prompt
+        : `Please clarify ${String(factId || 'this').replaceAll('_', ' ')}.`
+    };
+  }
+  return normalized;
+}
+
+/**
+ * The wire plan, with unusable operations dropped rather than the whole batch.
+ *
+ * An operation the server cannot even parse never reaches validation, so this
+ * is not a relaxation: it is refused exactly as before. What changed is who
+ * else it takes with it. A group that CLAIMED atomicity still loses all of its
+ * operations when one is unusable — that is what the claim means — but an
+ * unclaimed group keeps the operations that parsed.
+ */
+export function normalizeModelReconciliationPlan(raw) {
+  const droppedOperations = [];
+  const operationGroups = [];
+  for (const group of (raw?.operationGroups || [])) {
+    const atomic = group?.atomic === true;
+    const rawOperations = group?.operations || [];
+    const operations = [];
+    let atomicGroupLost = false;
+    for (const operation of rawOperations) {
+      try {
+        operations.push(normalizeModelOperation(operation));
+      } catch (error) {
+        droppedOperations.push({
+          groupId: group?.groupId || null,
+          operationId: operation?.operationId || null,
+          code: error?.code || 'planner_reconciliation_output_invalid',
+          reason: String(error?.message || '').slice(0, 200)
+        });
+        if (atomic) { atomicGroupLost = true; break; }
+      }
+    }
+    if (atomicGroupLost) {
+      for (const operation of rawOperations) {
+        const operationId = operation?.operationId || null;
+        if (droppedOperations.some((entry) => entry.operationId === operationId)) continue;
+        droppedOperations.push({
+          groupId: group?.groupId || null,
+          operationId,
+          code: 'dependency_group_rejected',
+          reason: 'An atomic group lost an operation the server could not parse.'
+        });
+      }
+      continue;
+    }
+    if (operations.length === 0) continue;
+    // `atomic` is carried through. Dropping it here silently decomposed every
+    // group the planner had deliberately claimed.
+    operationGroups.push({ groupId: group?.groupId, atomic, operations });
+  }
+
   const plan = {
     schemaVersion: raw?.schemaVersion,
-    verdict: raw?.verdict,
+    // If dropping unusable operations emptied the plan, the honest verdict is
+    // that nothing could be changed, not a `changes_proposed` with nothing in
+    // it — which the contract rightly refuses. Only a plan this function
+    // actually emptied is downgraded; a model that returns `changes_proposed`
+    // with no operations still fails, because that is its own mistake.
+    verdict: raw?.verdict === 'changes_proposed'
+      && operationGroups.length === 0
+      && droppedOperations.length > 0
+      ? 'clean'
+      : raw?.verdict,
     reviewedNoteIds: raw?.reviewedNoteIds,
-    operationGroups: (raw?.operationGroups || []).map((group) => ({
-      groupId: group.groupId,
-      operations: (group.operations || []).map((operation) => {
-        const normalized = {
-          operationId: operation.operationId,
-          op: operation.op,
-          reasonCode: operation.reasonCode,
-          evidence: operation.evidence,
-          sourceEntityIds: operation.sourceEntityIds
-        };
-        for (const key of [
-          'targetNoteId', 'factId', 'factInstanceId', 'entityId', 'ownerId',
-          'noteKind', 'certainty', 'targetEntityId'
-        ]) {
-          if (typeof operation[key] === 'string' && operation[key]) normalized[key] = operation[key];
-        }
-        if (typeof operation.valueJson === 'string') {
-          normalized.value = parseValueJson(operation.valueJson, operation.operationId);
-        }
-        // A clarification carries a NeedV2, and the operation already states
-        // that need's identity in its own required fields. Asking the model to
-        // repeat it inside the value was a second chance to get it wrong, and
-        // it did: a value missing factInstanceId failed the whole plan, so one
-        // omitted field cost every other correction in the batch. Identity is
-        // taken from the operation, which is the copy that gets validated
-        // against the supplied allowlists anyway.
-        if (operation.op === 'request_clarification' && isPlainObject(normalized.value)) {
-          const factId = normalized.factId || normalized.value.factId;
-          const entityId = normalized.entityId || normalized.value.entityId;
-          // The NeedV2 goes inside a JSON string, so the structured-output
-          // schema cannot constrain any of it. Every field the model has to
-          // invent is a way to lose the whole plan: one out-of-enum
-          // `importance` discarded a batch of otherwise valid corrections. The
-          // enums are bookkeeping the server owns anyway, so they are coerced
-          // to their defaults rather than trusted. Nothing here touches a
-          // financial value, an identity or an evidence span.
-          const oneOf = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
-          normalized.value = {
-            ...normalized.value,
-            ...(factId ? { factId } : {}),
-            ...(entityId ? { entityId } : {}),
-            ...(normalized.ownerId || normalized.value.ownerId
-              ? { ownerId: normalized.ownerId || normalized.value.ownerId } : {}),
-            factInstanceId: normalized.factInstanceId
-              || normalized.value.factInstanceId
-              || (factId && entityId ? `${factId}:${entityId}` : factId || ''),
-            importance: oneOf(
-              normalized.value.importance,
-              ['required', 'recommended', 'optional'],
-              'required'
-            ),
-            status: oneOf(
-              normalized.value.status,
-              ['open', 'estimate_requested', 'blocked_unknown', 'deferred', 'satisfied'],
-              'open'
-            ),
-            answerPolicy: oneOf(
-              normalized.value.answerPolicy,
-              ['value', 'value_or_none', 'unknown_allowed'],
-              'unknown_allowed'
-            ),
-            reasonCode: typeof normalized.value.reasonCode === 'string' && normalized.value.reasonCode
-              ? normalized.value.reasonCode
-              : operation.reasonCode || 'required_input_missing',
-            prompt: typeof normalized.value.prompt === 'string' && normalized.value.prompt
-              ? normalized.value.prompt
-              : `Please clarify ${String(factId || 'this').replaceAll('_', ' ')}.`
-          };
-        }
-        return normalized;
-      })
-    }))
+    operationGroups
   };
   try {
-    return normalizeReconciliationPlanV1(plan);
+    return { plan: normalizeReconciliationPlanV1(plan), droppedOperations };
   } catch (error) {
     // The reason the shape was refused is the only thing that makes this
     // fixable. Swallowing it left "the planner returned an invalid plan" as the
@@ -661,11 +734,12 @@ export async function requestPlannerReconciliation({ env, config, input }) {
   } catch (_error) {
     throw new ConsumerError(502, 'planner_reconciliation_output_invalid', 'The background planner returned invalid structured output.');
   }
-  const plan = normalizeModelReconciliationPlan(raw);
+  const { plan, droppedOperations } = normalizeModelReconciliationPlan(raw);
   const usage = response?.usage || {};
   return {
     plan,
     raw,
+    droppedOperations,
     metadata: {
       model,
       providerRequestId,
@@ -807,7 +881,13 @@ export async function runPlannerReconciliation({
       plan: requested.plan,
       validation,
       applyRequested,
-      applied: writesProfile
+      applied: writesProfile,
+      // Operations the server could not parse. Recorded so an unusable
+      // operation is visible as itself rather than inferred from a plan that
+      // is quietly shorter than the one the model returned.
+      ...(requested.droppedOperations?.length
+        ? { droppedOperations: requested.droppedOperations }
+        : {})
     };
     const completed = await completePlannerReconciliation(env, {
       sessionId: context.sessionRow.id,

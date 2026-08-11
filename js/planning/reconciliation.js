@@ -453,6 +453,96 @@ function normalizeOperation(raw, groupIndex, operationIndex) {
   return operation;
 }
 
+/**
+ * The identities an operation touches. Two operations are dependent when they
+ * touch any identity in common — the same note, the same entity, the same fact
+ * instance. Nothing else couples them.
+ */
+function operationDependencyKeys(operation) {
+  const keys = [];
+  if (operation.targetNoteId) keys.push(`note:${operation.targetNoteId}`);
+  if (operation.factInstanceId) keys.push(`instance:${operation.factInstanceId}`);
+  for (const entityId of [
+    operation.entityId,
+    operation.targetEntityId,
+    ...(operation.sourceEntityIds || [])
+  ]) {
+    if (entityId) keys.push(`entity:${entityId}`);
+  }
+  return keys;
+}
+
+/**
+ * ATOMICITY MUST BE EARNED, NOT ASSUMED.
+ *
+ * A group means "these land together or not at all", and that is right for
+ * operations that genuinely depend on each other. But nothing told the planner
+ * how granular a group should be, so it returned every correction for a turn in
+ * ONE group: eleven operations, one of them unsupported, and the other ten —
+ * three pension values, an income, a household correction, a summary
+ * reclassification, all independent and all correct — came back
+ * `dependency_group_rejected`.
+ *
+ * Prompt guidance alone cannot be trusted with this, because the cost of the
+ * model getting it wrong is silently discarding correct work. So the coupling
+ * is recomputed here from what the operations actually touch. Each group is
+ * decomposed into its connected components over shared note, entity and fact
+ * identities; operations that share nothing become independent groups and can
+ * no longer take each other down.
+ *
+ * This only ever REMOVES coupling the operations do not exhibit. Anything that
+ * shares an identity stays in one atomic group, and relative order is
+ * preserved, so a correction that follows an upsert on the same note still
+ * validates against it.
+ *
+ * A planner CAN still couple operations that share no identity — two facts that
+ * are only true together, where applying one alone would misstate the picture.
+ * That is what `atomic: true` is for, and it is honoured exactly as given. It
+ * has to be claimed rather than assumed, because a group that gets atomicity by
+ * accident silently discards correct work, and the planner was never told what
+ * a group meant.
+ */
+export function splitIndependentOperationGroups(groups) {
+  return groups.flatMap((group) => {
+    const operations = group.operations;
+    if (group.atomic === true || operations.length < 2) return [group];
+    const parent = operations.map((_, index) => index);
+    const find = (index) => {
+      let root = index;
+      while (parent[root] !== root) root = parent[root];
+      while (parent[index] !== root) {
+        const next = parent[index];
+        parent[index] = root;
+        index = next;
+      }
+      return root;
+    };
+    const union = (left, right) => { parent[find(left)] = find(right); };
+
+    const firstSeenBy = new Map();
+    operations.forEach((operation, index) => {
+      for (const key of operationDependencyKeys(operation)) {
+        if (firstSeenBy.has(key)) union(firstSeenBy.get(key), index);
+        else firstSeenBy.set(key, index);
+      }
+    });
+
+    const components = new Map();
+    operations.forEach((operation, index) => {
+      const root = find(index);
+      if (!components.has(root)) components.set(root, []);
+      components.get(root).push(operation);
+    });
+    if (components.size < 2) return [group];
+    // Suffixed only when a split actually happened, so an untouched group keeps
+    // the id the planner gave it and stays comparable across runs.
+    return [...components.values()].map((componentOperations, index) => ({
+      groupId: `${group.groupId}#${index + 1}`,
+      operations: componentOperations
+    }));
+  });
+}
+
 /** Normalize the bounded model-facing ReconciliationPlanV1 contract. */
 export function normalizeReconciliationPlanV1(raw) {
   if (!isPlainObject(raw)) throw new Error('ReconciliationPlanV1 must be an object.');
@@ -478,6 +568,10 @@ export function normalizeReconciliationPlanV1(raw) {
       }
       return {
         groupId: nonEmptyString(group.groupId, `${fieldName}.groupId`),
+        // Atomicity is OPT-IN. See splitIndependentOperationGroups: a group
+        // that does not claim it is decomposed by the identities its
+        // operations actually touch.
+        atomic: group.atomic === true,
         operations: group.operations.map((operation, operationIndex) => (
           normalizeOperation(operation, groupIndex, operationIndex)
         ))
@@ -1316,6 +1410,60 @@ const ENTITY_COLLECTION_FOR_ROOT = Object.freeze({
 });
 
 /**
+ * WHERE A CORRECTED SCALAR IS WRITTEN, declared rather than inferred.
+ *
+ * The semantic-fact registry lists which module READS each path. That is a
+ * different question from where a correction should be WRITTEN, and using it
+ * for both is why `monthly_spending` could never project: it maps to
+ * `/expenses/monthlyEssential`, `/expenses/annualTotal` and `/expenses`, three
+ * candidates survived, and the resolver returned null rather than guess between
+ * a monthly figure and an annual one. Correct of it — but the correction then
+ * had nowhere to go, every turn, forever.
+ *
+ * So the canonical home is stated here, explicitly and in one place. This table
+ * is deliberately SHORT and deliberately closed: a fact earns an entry only
+ * when its canonical destination is unambiguous from the fact's own meaning.
+ * `income_sources` is absent on purpose — "I earn 78,000" and "I take home
+ * 42,000" reach the same fact and different paths, and nothing in the note
+ * distinguishes them, so it must keep failing closed until the registry can
+ * tell gross from net.
+ *
+ * Adding an entry is a contract decision, reviewed like any other. Facts with a
+ * single mapping need no entry; the resolver below already determines those.
+ */
+const CANONICAL_SCALAR_PATHS = Object.freeze({
+  // The fact is named for the period it measures, so the monthly slot is the
+  // only reading of it. `/expenses/annualTotal` is `annual_net_spending`.
+  monthly_spending: '/expenses/monthlyEssential'
+});
+
+/**
+ * Does the note carry a single settled value of the type the fact declares?
+ *
+ * Only a value of the declared shape may take a canonical slot. A range keeps
+ * its endpoints and belongs in the ledger, not in a field that can hold exactly
+ * one figure; an unknown or absent value is not a correction at all.
+ */
+function scalarValueMatchesDeclaredType(note) {
+  const valueType = getSemanticFactDefinition(note.factId)?.valueType || null;
+  const value = note.value;
+  if (value === null || typeof value === 'undefined') return false;
+  if (valueType === 'money') {
+    return isPlainObject(value)
+      && Number.isFinite(value.amount)
+      && typeof value.currency === 'string'
+      && value.currency.length > 0;
+  }
+  if (valueType === 'number') return Number.isFinite(value);
+  if (valueType === 'boolean') return typeof value === 'boolean';
+  if (valueType === 'date' || valueType === 'choice') {
+    return typeof value === 'string' && value.length > 0;
+  }
+  // An entity-valued or undeclared fact has no single canonical slot.
+  return false;
+}
+
+/**
  * Where a scalar fact note writes in the profile, or null when that cannot be
  * decided without guessing.
  *
@@ -1332,6 +1480,20 @@ function scalarProfilePathForNote(profile, note) {
   // so a fact-kind note carrying a count would replace the whole array with a
   // number. Holdings are projected by the position machinery and nothing else.
   if (POSITION_PROJECTIONS[note.factId]) return null;
+  // A declared canonical home wins over the consumption mappings. See
+  // CANONICAL_SCALAR_PATHS: the registry says which modules READ a fact, which
+  // is not the same question as where a correction to it should be WRITTEN.
+  //
+  // The declared path names a slot; it does not license writing anything into
+  // it. A range, a null or a bare number where the fact declares money is still
+  // refused and stays in the ledger — a stated range is genuinely not a scalar,
+  // and turning "between €3,000 and €3,500" into a canonical figure would be
+  // inventing the number the reconciler is forbidden to invent.
+  if (Object.hasOwn(CANONICAL_SCALAR_PATHS, note.factId)) {
+    return scalarValueMatchesDeclaredType(note)
+      ? CANONICAL_SCALAR_PATHS[note.factId]
+      : null;
+  }
   const patterns = (getSemanticFactDefinition(note.factId)?.mappings || [])
     .map((mapping) => mapping.pathPattern)
     .filter((pattern) => typeof pattern === 'string' && pattern.startsWith('/'))
@@ -1432,26 +1594,64 @@ function assertPositionRecord(note, projection) {
  * paths. Only complete records for the closed position fact allowlist can
  * affect current holdings. Planning-only note kinds go exclusively to their
  * assumptions sidecars.
+ *
+ * A POSITION NOTE THIS CONTRACT CANNOT REPRESENT IS QUARANTINED, NOT FATAL.
+ *
+ * This used to throw, and throwing was a session-ending trap. The projection
+ * runs over the WHOLE ledger, not just the notes a plan touched, and the ledger
+ * is re-read every turn. So one malformed note -- typically a realtime capture
+ * whose value.ownerId disagreed with its own ownerId -- made every subsequent
+ * reconciliation fail at this final global step. Correctly validated,
+ * fully evidenced operations about entirely unrelated facts came back as
+ * `discarded_global_invariant`, forever, and the reconciler could never apply
+ * the very correction that would have repaired the note wedging it.
+ *
+ * Quarantine is strictly MORE conservative than the alternative, not less. The
+ * note is still refused the canonical profile; it is simply refused on its own
+ * rather than taking the batch with it. Its entity is left out of `managedIds`
+ * too, so whatever the profile already holds for that position survives
+ * untouched instead of being dropped along with the note that can no longer
+ * describe it. `onUnprojectable` reports each one so a quarantine is visible
+ * and repairable rather than silent.
+ *
+ * This is the policy the scalar pass below already applies, stated in its own
+ * comment. Positions were the inconsistency.
  */
-export function projectPlanningNotesToProfile(rawProfile, rawNotes) {
+export function projectPlanningNotesToProfile(rawProfile, rawNotes, { onUnprojectable = () => {} } = {}) {
   const profile = normalizeHouseholdProfile(rawProfile);
   const notes = normalizePlanningNotesV1(rawNotes);
   const next = cloneJson(profile);
 
   for (const [factId, projection] of Object.entries(POSITION_PROJECTIONS)) {
     const related = notes.filter((note) => note.factId === factId && note.noteKind === 'position');
-    const managedIds = new Set(related.map((note) => note.entityId));
-    const active = related.filter((note) => note.lifecycle === 'active');
+    const quarantined = new Set();
+    for (const note of related) {
+      if (note.lifecycle !== 'active') continue;
+      try {
+        assertPositionRecord(note, projection);
+      } catch (error) {
+        quarantined.add(note.noteId);
+        onUnprojectable({
+          noteId: note.noteId,
+          factId,
+          entityId: note.entityId || null,
+          code: error instanceof ReconciliationValidationError ? error.code : 'position_unprojectable',
+          message: error.message
+        });
+      }
+    }
+    // Quarantined notes forfeit their claim on the collection, so the record
+    // the profile already holds stays put rather than vanishing with them.
+    const usable = related.filter((note) => !quarantined.has(note.noteId));
+    const managedIds = new Set(usable.map((note) => note.entityId));
+    const active = usable.filter((note) => note.lifecycle === 'active');
     const activeIds = active.map((note) => note.entityId);
     if (new Set(activeIds).size !== activeIds.length) {
       fail('active_position_duplicate', `More than one active ${factId} note targets the same entity.`);
     }
     const unmanaged = (next[projection.collection] || [])
       .filter((record) => !managedIds.has(record[projection.idKey]));
-    const projected = active.map((note) => {
-      assertPositionRecord(note, projection);
-      return cloneJson(note.value);
-    });
+    const projected = active.map((note) => cloneJson(note.value));
     next[projection.collection] = [...unmanaged, ...projected];
   }
 
@@ -1460,10 +1660,17 @@ export function projectPlanningNotesToProfile(rawProfile, rawNotes) {
   // positions and the planning sidecars were projected, so the ledger recorded
   // the fix and the profile never saw it. Written oldest-first so a later note
   // for the same path wins, and only where the path is unambiguous.
+  // Ties break on LEDGER ORDER, not on note id. Two notes written by the same
+  // batch share a createdAt, and an alphabetical tiebreak decided which of them
+  // reached the profile by the spelling of its operation id: a correction to
+  // €6,200 lost to the €5,800 it was correcting because "corrected" sorts
+  // before "first". Ledger order is the order the operations were applied,
+  // which is the order the client said them in.
+  const ledgerPosition = new Map(notes.map((note, index) => [note.noteId, index]));
   const scalarNotes = notes
     .filter((note) => note.noteKind === 'fact' && note.lifecycle === 'active')
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt)
-      || left.noteId.localeCompare(right.noteId));
+      || ledgerPosition.get(left.noteId) - ledgerPosition.get(right.noteId));
   for (const note of scalarNotes) {
     const path = scalarProfilePathForNote(next, note);
     if (!path) continue;
@@ -1630,7 +1837,9 @@ export async function applyReconciliationPlan({
   const operationOutcomes = [];
   const acceptedOperations = [];
 
-  for (const group of plan.operationGroups) {
+  // After the plan hash, so idempotency still keys off exactly what the model
+  // returned; the decomposition is a validation detail, not a different plan.
+  for (const group of splitIndependentOperationGroups(plan.operationGroups)) {
     let groupNotes = [...workingNotes];
     const groupNeeds = [];
     let rejection = null;
@@ -1656,6 +1865,38 @@ export async function applyReconciliationPlan({
         const need = rejectedNeed(operation, groupNotes, context, rejection.code);
         if (need) groupNeeds.push(need);
         break;
+      }
+    }
+    // THE PROFILE INVARIANTS, CHECKED PER GROUP RATHER THAN ONCE AT THE END.
+    //
+    // These invariants are not negotiable and are not relaxed here: a group
+    // whose notes cannot project into a valid HouseholdProfile is still
+    // refused in full. What changes is WHO ELSE it takes down. Checking only
+    // after every accepted group had been merged made the first invalid note
+    // fail the entire batch — observed live as one operation proposing
+    // `"type": "pension"` (not a pension type) discarding six independent and
+    // entirely valid operations: an age, an income, a spending correction, a
+    // retirement scenario, a summary and a clarification.
+    //
+    // The check is cumulative, so a group that is only invalid in combination
+    // with an earlier one is attributed to the later group — the one that
+    // introduced the conflict. The final whole-profile projection below still
+    // runs and still fails closed; it should now have nothing left to catch.
+    if (!rejection) {
+      try {
+        projectPlanningNotesToProfile(profile, groupNotes);
+      } catch (error) {
+        const culprit = group.operations.at(-1);
+        rejection = {
+          groupId: group.groupId,
+          operationId: culprit.operationId,
+          code: error instanceof ReconciliationValidationError
+            ? error.code
+            : 'profile_invariant_failed',
+          message: error.message
+        };
+        const need = rejectedNeed(culprit, workingNotes, context, rejection.code);
+        if (need) groupNeeds.push(need);
       }
     }
     if (rejection) {
@@ -1703,8 +1944,14 @@ export async function applyReconciliationPlan({
   });
 
   let projected;
+  // Reported, never fatal. A quarantined note is a repair target for the next
+  // pass, so it has to reach the caller rather than disappearing into a
+  // best-effort projection.
+  const unprojectableNotes = [];
   try {
-    projected = projectPlanningNotesToProfile(profile, workingNotes);
+    projected = projectPlanningNotesToProfile(profile, workingNotes, {
+      onUnprojectable: (entry) => unprojectableNotes.push(entry)
+    });
   } catch (error) {
     return {
       ...baseline,
@@ -1767,6 +2014,10 @@ export async function applyReconciliationPlan({
     ledgerChanged,
     acceptedGroupIds,
     acceptedOperationIds,
+    // Ledger notes the position contract cannot represent. They are excluded
+    // from the canonical profile and listed here so the next pass can repair
+    // them; they no longer take the rest of the batch down with them.
+    unprojectableNotes,
     rejectedGroups,
     operationOutcomes,
     reviewOutcomes,

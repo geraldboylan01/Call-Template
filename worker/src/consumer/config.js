@@ -502,9 +502,26 @@ export function getConsumerConfig(env) {
     plannerReconciliationMode: plannerReconciliationMode(env.CONSUMER_PLANNER_RECONCILIATION_MODE),
     plannerReconciliationPromptVersion: text(env.CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION)
       || 'planning-reconciliation-v1',
+    // MEASURED, NOT GUESSED. 14s was the median of the real runtime, so it
+    // failed about half of all attempts by construction. Five samples against a
+    // live call's own payload (26.6 KB in, ~1.0-2.1k tokens out) ran
+    // 11.6 / 13.2 / 13.5 / 17.4 / 18.5 seconds: min 11.6, median 13.5, max
+    // 18.5. Two of the five exceeded 14s; none exceeded 20s.
+    //
+    // The reconciler is background work behind `waitUntil` and can never delay
+    // a spoken reply, so a ceiling that abandons a nearly-finished call buys
+    // nothing and costs the whole correction. The upper bound is unchanged at
+    // 20s, so this widens no safety envelope and a runaway call is still cut
+    // off; it moves the default off the median and onto the far side of the
+    // observed distribution.
+    //
+    // Headroom over the slowest observed sample is only ~8%, and n=5 is small.
+    // If timeouts persist, cut the output rather than raise this again --
+    // latency tracks output tokens, and 98% of the total is the model call
+    // (deterministic validation and projection together take 22 ms).
     plannerReconciliationTimeoutMs: boundedInteger(
       env.CONSUMER_PLANNER_RECONCILIATION_TIMEOUT_MS,
-      14_000,
+      20_000,
       2_500,
       20_000
     ),

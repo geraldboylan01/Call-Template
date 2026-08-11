@@ -13,7 +13,8 @@ import {
   normalizePlanningNoteV1,
   normalizePlanningNotesV1,
   normalizeReconciliationPlanV1,
-  projectPlanningNotesToProfile
+  projectPlanningNotesToProfile,
+  splitIndependentOperationGroups
 } from '../js/planning/reconciliation.js';
 import { createHouseholdProfile, normalizeHouseholdProfile } from '../js/planning/profile.js';
 
@@ -143,6 +144,21 @@ const turns = [
     finalized: true,
     sequence: 11,
     text: 'Her public-sector pension starts in December this year.'
+  },
+  // Appended, never inserted: cases below index into `turns` positionally.
+  {
+    turnId: 'turn_spend_first',
+    role: 'user',
+    finalized: true,
+    sequence: 12,
+    text: 'We spend about €5,800 a month.'
+  },
+  {
+    turnId: 'turn_spend_corrected',
+    role: 'user',
+    finalized: true,
+    sequence: 13,
+    text: 'Actually, make that €6,200 a month.'
   }
 ];
 
@@ -664,6 +680,12 @@ await runCase('one unsupported operation rejects its whole dependency group but 
     operationGroups: [
       {
         groupId: 'atomic_invalid',
+        // DECLARED atomicity. These two operations share no note, entity or
+        // fact instance, so identity alone would treat them as independent and
+        // the valid one would survive. The planner is asserting they belong
+        // together, and a claimed group is honoured exactly as given -- which
+        // is what this case exists to prove.
+        atomic: true,
         operations: [
           {
             operationId: 'future_would_be_valid',
@@ -1203,7 +1225,11 @@ await runCase('stale revisions and model-owned control fields fail closed', asyn
   assert.equal(rejected.rejectedGroups[0].code, 'control_field_forbidden');
 });
 
-await runCase('a whole-profile invariant failure rolls back an otherwise accepted correction', async () => {
+// The invariant is attributed to the group that breaks it, so a single-group
+// plan whose one operation cannot project reports `no_change` with that group
+// rejected — the same shape as any other rejected-only plan. Nothing is
+// written, the note is not created, and the profile does not move.
+await runCase('an invariant-breaking correction is rejected and nothing is applied', async () => {
   const result = await applyReconciliationPlan({
     profile: baseProfile(),
     notes: baseNotes(),
@@ -1236,13 +1262,428 @@ await runCase('a whole-profile invariant failure rolls back an otherwise accepte
     },
     ...common
   });
-  assert.equal(result.status, 'failed');
+  assert.equal(result.status, 'no_change');
   assert.equal(result.profile.revision, 0);
   assert.equal(result.profile.pensions[0].type, 'occupational');
   assert.equal(result.notes.some((note) => note.noteId === 'recon_invalid_pension_type'), false);
   assert.equal(result.rejectedGroups.at(-1).code, 'profile_invariant_failed');
-  assert.equal(result.operationOutcomes[0].status, 'discarded_global_invariant');
+  // Attributed to its own group and operation rather than to a global `*`.
+  assert.equal(result.rejectedGroups.at(-1).groupId, 'invalid_pension_type');
+  assert.equal(result.operationOutcomes[0].status, 'rejected');
+  assert.equal(result.acceptedOperationIds.length, 0);
 });
+
+// Grouping is recomputed from what the operations touch, so the planner cannot
+// couple correct work to incorrect work by accident.
+await runCase('dependency groups are decomposed by identity unless atomicity is claimed', async () => {
+  const op = (operationId, over = {}) => ({
+    operationId, op: 'upsert_note', targetNoteId: '', factId: 'monthly_spending',
+    factInstanceId: '', entityId: '', ownerId: '', noteKind: 'fact',
+    certainty: 'exact', targetEntityId: '', sourceEntityIds: [],
+    value: { amount: 1, currency: 'EUR' }, reasonCode: 'missing_note',
+    evidence: [{ turnId: 'turn_range', quote: 'x' }], ...over
+  });
+
+  // Nothing shared: three independent groups.
+  const independent = splitIndependentOperationGroups([{
+    groupId: 'mixed',
+    atomic: false,
+    operations: [op('a'), op('b'), op('c')]
+  }]);
+  assert.deepEqual(independent.map((group) => group.groupId), ['mixed#1', 'mixed#2', 'mixed#3']);
+
+  // Shared entity keeps two together; the third stands alone.
+  const partly = splitIndependentOperationGroups([{
+    groupId: 'partly',
+    atomic: false,
+    operations: [op('a', { entityId: 'pension_x' }), op('b', { entityId: 'pension_x' }), op('c')]
+  }]);
+  assert.equal(partly.length, 2);
+  assert.deepEqual(partly[0].operations.map((item) => item.operationId), ['a', 'b']);
+  assert.deepEqual(partly[1].operations.map((item) => item.operationId), ['c']);
+
+  // Transitive coupling: a-b share a note, b-c share an entity, so all three
+  // are one component even though a and c share nothing directly.
+  const chained = splitIndependentOperationGroups([{
+    groupId: 'chained',
+    atomic: false,
+    operations: [
+      op('a', { targetNoteId: 'note_1' }),
+      op('b', { targetNoteId: 'note_1', entityId: 'pension_x' }),
+      op('c', { entityId: 'pension_x' })
+    ]
+  }]);
+  assert.equal(chained.length, 1);
+  assert.equal(chained[0].groupId, 'chained');
+
+  // A claimed group is never decomposed, whatever its operations touch.
+  const claimed = splitIndependentOperationGroups([{
+    groupId: 'claimed',
+    atomic: true,
+    operations: [op('a'), op('b')]
+  }]);
+  assert.equal(claimed.length, 1);
+  assert.equal(claimed[0].groupId, 'claimed');
+
+  // An unsplit group keeps the planner's own id, so runs stay comparable.
+  const single = splitIndependentOperationGroups([{
+    groupId: 'single', atomic: false, operations: [op('a')]
+  }]);
+  assert.deepEqual(single.map((group) => group.groupId), ['single']);
+
+  // Atomicity is opt-in: a plan that says nothing is not atomic.
+  const normalized = normalizeReconciliationPlanV1({
+    schemaVersion: 1, verdict: 'changes_proposed', reviewedNoteIds: [],
+    operationGroups: [{ groupId: 'unclaimed', operations: [op('a')] }]
+  });
+  assert.equal(normalized.operationGroups[0].atomic, false);
+});
+
+// PHASE 1 SUCCESS CRITERION: a later explicit correction replaces the earlier
+// value, reaches the canonical profile, and is not blocked by an unrelated
+// invalid operation sitting in the same plan.
+//
+// This is the end-to-end shape the whole reconciler exists for, and until now
+// none of it landed: the correction had no canonical path to be written to, and
+// the unrelated failure discarded it anyway.
+await runCase('a later scalar correction applies and an unrelated invalid operation cannot block it', async () => {
+  // What the live voice lane left behind: a draft note carrying the first
+  // figure the client gave.
+  const spendFirst = normalizePlanningNoteV1({
+    noteId: 'note_spend_first',
+    noteKind: 'fact',
+    factId: 'monthly_spending',
+    factInstanceId: 'monthly_spending',
+    value: { amount: 5_800, currency: 'EUR' },
+    certainty: 'approximate',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [evidenceRef(
+      turns.find((turn) => turn.turnId === 'turn_spend_first'),
+      'We spend about €5,800 a month.'
+    )],
+    replacesNoteIds: [],
+    createdAt: NOW
+  });
+
+  const result = await applyReconciliationPlan({
+    profile: baseProfile(),
+    notes: [...baseNotes(), spendFirst],
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      // ONE group, as the planner actually returns them. Nothing here claims
+      // atomicity, and the correction shares no note, entity or fact instance
+      // with the invalid operation, so it must not be taken down with it.
+      operationGroups: [{
+        groupId: 'turn_corrections',
+        operations: [
+          {
+            // The voice lane already wrote €5,800 (note_spend_first, below).
+            // This is the reconciler catching the client's later correction.
+            operationId: 'spend_corrected',
+            op: 'correct_note',
+            targetNoteId: 'note_spend_first',
+            factId: 'monthly_spending',
+            factInstanceId: 'monthly_spending',
+            noteKind: 'fact',
+            value: { amount: 6_200, currency: 'EUR' },
+            certainty: 'exact',
+            reasonCode: 'explicit_correction',
+            evidence: [{ turnId: 'turn_spend_corrected', quote: 'Actually, make that €6,200 a month.' }]
+          },
+          {
+            // Unrelated and invalid: a figure that appears in no quote. Before
+            // the grouping fix this discarded both corrections above.
+            operationId: 'invented_pension_value',
+            op: 'correct_note',
+            targetNoteId: 'note_old_dc',
+            factId: 'pension_positions',
+            entityId: 'pension_old_dc',
+            ownerId: 'primary',
+            noteKind: 'position',
+            value: {
+              pensionId: 'pension_old_dc', ownerId: 'primary', type: 'occupational',
+              label: 'Old DC pension', currentValue: { amount: 999_000, currency: 'EUR' }
+            },
+            certainty: 'approximate',
+            reasonCode: 'incorrect_value',
+            evidence: [{ turnId: 'turn_pensions', quote: 'My old DC pension is about €319k.' }]
+          }
+        ]
+      }]
+    },
+    ...common
+  });
+
+  // THE CORRECTION IS CANONICAL. €6,200 wins, €5,800 does not survive.
+  assert.equal(result.status, 'applied');
+  assert.equal(result.profileChanged, true);
+  assert.equal(result.profile.expenses.monthlyEssential.amount, 6_200);
+  assert.equal(result.profile.revision, 1);
+
+  // The invalid operation is still refused, on its own.
+  assert.equal(
+    result.rejectedGroups.some((group) => group.code === 'numeric_value_unsupported'),
+    true,
+    'The unsupported figure must still be rejected.'
+  );
+  assert.equal(result.acceptedOperationIds.includes('invented_pension_value'), false);
+  assert.equal(result.profile.pensions[0].currentValue.amount, 319_000);
+
+  // ...and it did not take the corrections with it.
+  assert.equal(result.acceptedOperationIds.includes('spend_corrected'), true);
+  assert.equal(
+    result.operationOutcomes.some((outcome) => outcome.code === 'dependency_group_rejected'),
+    false,
+    'Independent operations must not be discarded for a sibling failure.'
+  );
+
+  // The superseded value is no longer an active note.
+  const activeSpending = result.notes.filter((note) => (
+    note.factId === 'monthly_spending' && note.lifecycle === 'active'
+  ));
+  assert.equal(activeSpending.length, 1);
+  assert.equal(activeSpending[0].value.amount, 6_200);
+});
+
+// THE INVARIANT FAILURE THAT DISCARDED SIX GOOD OPERATIONS.
+//
+// Recovered verbatim from r4-medium reconciliation revision 1:
+//   pensions[1].type must be one of: occupational, prsa, personal,
+//   defined_benefit, buyout_bond, other.
+// introduced by a single `upsert_note` proposing `"type": "pension"`. Nine
+// operations were proposed, zero were accepted, and an age, an income, a
+// spending correction, a retirement scenario, a summary and a clarification —
+// none of them touching a pension — came back `discarded_global_invariant`.
+await runCase('a profile invariant failure rejects only the group that causes it', async () => {
+  const spendQuote = 'Actually, make that €6,200 a month.';
+  const result = await applyReconciliationPlan({
+    profile: baseProfile(),
+    notes: baseNotes(),
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [
+        {
+          groupId: 'g_spending',
+          operations: [{
+            operationId: 'op_spending',
+            op: 'upsert_note',
+            factId: 'monthly_spending',
+            factInstanceId: 'monthly_spending',
+            noteKind: 'fact',
+            value: { amount: 6_200, currency: 'EUR' },
+            certainty: 'exact',
+            reasonCode: 'explicit_correction',
+            evidence: [{ turnId: 'turn_spend_corrected', quote: spendQuote }]
+          }]
+        },
+        {
+          // The exact defect: `pension` is not a member of the pension type
+          // enum, so this note passes operation validation — the entity, owner
+          // and evidence are all real — and fails only when the ledger is
+          // projected into a profile. That is what makes it a whole-profile
+          // invariant failure rather than an operation-level rejection.
+          groupId: 'g_bad_pension',
+          operations: [{
+            operationId: 'op_bad_pension',
+            op: 'correct_note',
+            targetNoteId: 'note_old_dc',
+            factId: 'pension_positions',
+            factInstanceId: 'pension_positions:pension_old_dc',
+            entityId: 'pension_old_dc',
+            ownerId: 'primary',
+            noteKind: 'position',
+            value: {
+              pensionId: 'pension_old_dc', ownerId: 'primary', type: 'pension',
+              label: 'Old DC pension', currentValue: { amount: 319_000, currency: 'EUR' }
+            },
+            certainty: 'approximate',
+            reasonCode: 'incorrect_classification',
+            evidence: [{ turnId: 'turn_pensions', quote: 'My old DC pension is about €319k.' }]
+          }]
+        }
+      ]
+    },
+    ...common
+  });
+
+  // The unrelated correction survives and reaches the canonical profile.
+  assert.equal(result.status, 'applied');
+  assert.deepEqual(result.acceptedOperationIds, ['op_spending']);
+  assert.equal(result.profile.expenses.monthlyEssential.amount, 6_200);
+
+  // The offending group is refused, attributed to itself, and nothing invalid
+  // is written: the invariant is enforced exactly as before.
+  const rejected = result.rejectedGroups.find((group) => group.groupId === 'g_bad_pension');
+  assert.ok(rejected, 'The invalid group must be rejected by name, not globally.');
+  assert.equal(rejected.code, 'profile_invariant_failed');
+  // The invalid type never reaches the profile: the existing value stands.
+  assert.equal(result.profile.pensions[0].type, 'occupational');
+
+  // No global `*` rejection, and nothing discarded for someone else's failure.
+  assert.equal(result.rejectedGroups.some((group) => group.groupId === '*'), false);
+  assert.equal(
+    result.operationOutcomes.some((outcome) => outcome.status === 'discarded_global_invariant'),
+    false,
+    'An unrelated operation must not be discarded for another group\'s invariant failure.'
+  );
+});
+
+// Atomicity inside the offending group is still absolute: a group whose own
+// operations depend on each other loses all of them together.
+await runCase('an invariant failure still rolls back its whole group', async () => {
+  const result = await applyReconciliationPlan({
+    profile: baseProfile(),
+    notes: baseNotes(),
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{
+        groupId: 'g_same_entity',
+        operations: [
+          {
+            operationId: 'op_valid_sibling',
+            op: 'correct_note',
+            targetNoteId: 'note_old_dc',
+            factId: 'pension_positions',
+            factInstanceId: 'pension_positions:pension_old_dc',
+            entityId: 'pension_old_dc',
+            ownerId: 'primary',
+            noteKind: 'position',
+            value: {
+              pensionId: 'pension_old_dc', ownerId: 'primary', type: 'occupational',
+              label: 'Old DC pension', currentValue: { amount: 319_000, currency: 'EUR' }
+            },
+            certainty: 'approximate',
+            reasonCode: 'explicit_correction',
+            evidence: [{ turnId: 'turn_pensions', quote: 'My old DC pension is about €319k.' }]
+          },
+          {
+            // Same entity, so identity keeps these two in one group.
+            operationId: 'op_breaks_invariant',
+            op: 'correct_note',
+            targetNoteId: 'note_old_dc',
+            factId: 'pension_positions',
+            factInstanceId: 'pension_positions:pension_old_dc',
+            entityId: 'pension_old_dc',
+            ownerId: 'primary',
+            noteKind: 'position',
+            value: { pensionId: 'pension_old_dc', ownerId: 'primary', type: 'pension' },
+            certainty: 'approximate',
+            reasonCode: 'incorrect_classification',
+            evidence: [{ turnId: 'turn_pensions', quote: 'My old DC pension is about €319k.' }]
+          }
+        ]
+      }]
+    },
+    ...common
+  });
+  assert.deepEqual(result.acceptedOperationIds, []);
+  assert.equal(result.profile.pensions[0].type, 'occupational');
+  assert.equal(result.profile.revision, 0);
+});
+
+// THE SESSION-ENDING WEDGE. The projection runs over the WHOLE ledger, not
+// just the notes a plan touched, and the ledger is re-read every turn. A single
+// malformed realtime capture -- one whose value.ownerId disagreed with its own
+// ownerId -- therefore made the FINAL global step throw on every subsequent
+// reconciliation, and every correctly validated, fully evidenced operation came
+// back `discarded_global_invariant`. The reconciler could never apply the one
+// correction that would have repaired the note that was blocking it.
+//
+// Observed live: three calls, five reconciler invocations, zero applied
+// operations, `* -> position_owner_mismatch` with six operations discarded.
+await runCase('one malformed ledger note is quarantined instead of disabling the reconciler', async () => {
+  const wedgeQuote = 'My old DC pension is about €319k.';
+  // Not introduced by the plan: already sitting in the ledger, exactly as a
+  // realtime capture leaves it. The plan below never touches this note.
+  const malformed = normalizePlanningNoteV1({
+    noteId: 'note_owner_conflict',
+    noteKind: 'position',
+    factId: 'pension_positions',
+    factInstanceId: 'pension_positions:pension_conflicted',
+    entityId: 'pension_conflicted',
+    ownerId: 'partner',
+    value: {
+      pensionId: 'pension_conflicted',
+      ownerId: 'primary',
+      type: 'occupational',
+      label: 'Conflicted pension',
+      currentValue: { amount: 50_000, currency: 'EUR' }
+    },
+    certainty: 'approximate',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [evidenceRef(turns[0], wedgeQuote)],
+    replacesNoteIds: [],
+    createdAt: NOW
+  });
+
+  const result = await applyReconciliationPlan({
+    profile: baseProfile(),
+    notes: [...baseNotes(), malformed],
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{
+        groupId: 'unrelated_correction',
+        operations: [{
+          operationId: 'unrelated_correction',
+          op: 'reclassify_note',
+          targetNoteId: 'note_pension_total',
+          factId: 'pension_positions',
+          entityId: 'pension_stated_total',
+          ownerId: 'primary',
+          noteKind: 'summary',
+          value: { amount: 1_070_000, currency: 'EUR' },
+          certainty: 'approximate',
+          reasonCode: 'aggregate_summary',
+          evidence: [{ turnId: 'turn_pensions', quote: 'Total pensions are about €1.07 million.' }]
+        }]
+      }]
+    },
+    ...common
+  });
+
+  // The unrelated operation survives. Before the fix this was
+  // `discarded_global_invariant` / `profile_invariant_failed`.
+  assert.equal(result.operationOutcomes[0].status, 'accepted');
+  assert.deepEqual(result.acceptedOperationIds, ['unrelated_correction']);
+  assert.equal(
+    result.rejectedGroups.some((group) => group.groupId === '*'),
+    false,
+    'A quarantined ledger note must not produce a global rejection.'
+  );
+
+  // FAIL CLOSED ON THE NOTE ITSELF. It is still refused the canonical profile,
+  // and it is reported so the next pass can repair it rather than silently
+  // dropping it.
+  assert.equal(result.profile.pensions.some((row) => row.pensionId === 'pension_conflicted'), false);
+  assert.deepEqual(
+    result.unprojectableNotes.map((entry) => [entry.noteId, entry.code]),
+    [['note_owner_conflict', 'position_owner_mismatch']]
+  );
+
+  // The records the ledger CAN describe are untouched by the quarantine.
+  assert.equal(
+    result.profile.pensions.find((row) => row.pensionId === 'pension_old_dc')?.currentValue?.amount,
+    319_000
+  );
+});
+
+// (The plan-introduced invariant boundary is covered by the two cases above:
+// a single invalid group is rejected and nothing is applied, and a group whose
+// operations depend on each other loses all of them together. It used to roll
+// the whole BATCH back, which is what "rejects only the group that causes it"
+// now replaces.)
 
 await runCase('the compact age-57 corpus reconciles positions, semantics, future money and unsettled scenarios safely', async () => {
   const result = await applyReconciliationPlan({

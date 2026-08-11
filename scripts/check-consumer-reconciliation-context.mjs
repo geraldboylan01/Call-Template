@@ -8,7 +8,8 @@ import {
 } from '../js/planning/index.js';
 import {
   buildPlannerReconciliationContext,
-  legacyPlanningNotesFromProfile
+  legacyPlanningNotesFromProfile,
+  normalizeModelReconciliationPlan
 } from '../worker/src/consumer/planner_reconciliation.js';
 import {
   beginRealtimeToolAttempt,
@@ -266,5 +267,108 @@ const writes = await listRealtimeWriteOutcomes(env, sessionId, meetingId, userTu
 assert.equal(writes.length, 1, 'T1 outcomes must bind to the exact stored source turn');
 assert.equal(writes[0].result.ordinal, 9);
 assert.equal(writes[0].arguments.sourceTurnId, userTurns[8]);
+
+/* ------------------------------------------------------------------------ */
+/* AN UNPARSEABLE OPERATION LOSES ITSELF, NOT THE BATCH.                      */
+/*                                                                            */
+/* `valueJson` is a JSON document inside a JSON string, so the structured      */
+/* output schema constrains none of it. Observed live: one malformed value on  */
+/* `op7` returned `planner_reconciliation_output_invalid` and discarded six    */
+/* other correct operations in the same response.                             */
+/* ------------------------------------------------------------------------ */
+{
+  const operation = (operationId, valueJson) => ({
+    operationId,
+    op: 'upsert_note',
+    targetNoteId: '',
+    factId: 'monthly_spending',
+    factInstanceId: 'monthly_spending',
+    entityId: '',
+    ownerId: '',
+    noteKind: 'fact',
+    certainty: 'exact',
+    targetEntityId: '',
+    sourceEntityIds: [],
+    valueJson,
+    reasonCode: 'missing_note',
+    evidence: [{ turnId: 'turn_1', quote: 'we spend 6,200 a month' }]
+  });
+
+  const { plan, droppedOperations } = normalizeModelReconciliationPlan({
+    schemaVersion: 1,
+    verdict: 'changes_proposed',
+    reviewedNoteIds: [],
+    operationGroups: [{
+      groupId: 'mixed',
+      atomic: false,
+      operations: [
+        operation('good_1', JSON.stringify({ amount: 6_200, currency: 'EUR' })),
+        // Exactly the shape observed: not JSON at all.
+        operation('bad', '{amount: 6200, currency: EUR}'),
+        operation('good_2', JSON.stringify({ amount: 5_800, currency: 'EUR' }))
+      ]
+    }]
+  });
+
+  const survivors = plan.operationGroups.flatMap((group) => group.operations)
+    .map((item) => item.operationId);
+  assert.deepEqual(survivors, ['good_1', 'good_2'], 'parseable operations must survive a malformed sibling');
+  assert.equal(droppedOperations.length, 1);
+  assert.equal(droppedOperations[0].operationId, 'bad');
+  assert.equal(droppedOperations[0].code, 'planner_reconciliation_output_invalid');
+
+  // A CLAIMED group still loses everything: that is what the claim means.
+  const claimed = normalizeModelReconciliationPlan({
+    schemaVersion: 1,
+    verdict: 'changes_proposed',
+    reviewedNoteIds: [],
+    operationGroups: [{
+      groupId: 'claimed',
+      atomic: true,
+      operations: [
+        operation('claimed_good', JSON.stringify({ amount: 6_200, currency: 'EUR' })),
+        operation('claimed_bad', 'not json')
+      ]
+    }]
+  });
+  assert.equal(claimed.plan.operationGroups.length, 0, 'an atomic group loses all of its operations');
+  assert.deepEqual(
+    claimed.droppedOperations.map((entry) => [entry.operationId, entry.code]),
+    [['claimed_bad', 'planner_reconciliation_output_invalid'], ['claimed_good', 'dependency_group_rejected']]
+  );
+
+  // `atomic` must reach the validator. Dropping it here silently decomposed
+  // every group the planner had deliberately claimed.
+  const carried = normalizeModelReconciliationPlan({
+    schemaVersion: 1,
+    verdict: 'changes_proposed',
+    reviewedNoteIds: [],
+    operationGroups: [
+      { groupId: 'claims', atomic: true, operations: [operation('a', JSON.stringify({ amount: 1, currency: 'EUR' }))] },
+      { groupId: 'does_not', atomic: false, operations: [operation('b', JSON.stringify({ amount: 2, currency: 'EUR' }))] }
+    ]
+  });
+  assert.deepEqual(carried.plan.operationGroups.map((group) => group.atomic), [true, false]);
+
+  // A response whose every operation is unusable is an empty plan, not a throw.
+  const allBad = normalizeModelReconciliationPlan({
+    schemaVersion: 1,
+    verdict: 'changes_proposed',
+    reviewedNoteIds: [],
+    operationGroups: [{ groupId: 'all_bad', atomic: false, operations: [operation('x', '<<<')] }]
+  });
+  assert.deepEqual(allBad.plan.operationGroups, []);
+  assert.equal(allBad.droppedOperations.length, 1);
+  assert.equal(allBad.plan.verdict, 'clean', 'an emptied plan reports that nothing could be changed');
+
+  // ...but a model that returns changes_proposed with no operations of its own
+  // is still making a mistake, and must still fail.
+  assert.throws(
+    () => normalizeModelReconciliationPlan({
+      schemaVersion: 1, verdict: 'changes_proposed', reviewedNoteIds: [], operationGroups: []
+    }),
+    /invalid reconciliation plan/
+  );
+}
 
 console.info('[ConsumerReconciliationContext] PASS: needs, signed questions, bounded turns, new identities and T1 outcomes');
