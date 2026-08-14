@@ -315,6 +315,30 @@ function getRouteConfig(pathname) {
     };
   }
 
+  if (pathname === '/api/advisor/modules') {
+    return {
+      methods: 'GET,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/advisor/module-drafts') {
+    return {
+      methods: 'GET,POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/advisor\/module-drafts\/module_draft_[A-Za-z0-9-]{20,80}\/(generate|validate|preview|export-patch)$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/advisor\/module-drafts\/module_draft_[A-Za-z0-9-]{20,80}$/.test(pathname)) {
+    return {
+      methods: 'GET,PATCH,OPTIONS'
+    };
+  }
+
   if (/^\/api\/advisor\/module-assets\/[^/]+\/[^/]+$/.test(pathname)) {
     return {
       methods: 'GET,PUT,DELETE,OPTIONS'
@@ -7546,9 +7570,18 @@ export default {
     const routeConfig = getRouteConfig(pathname);
     const origin = getCorsOrigin(request, env);
     const requestHeaders = getAllowedRequestHeaders(request);
+    const isModuleCataloguePath = pathname === '/api/advisor/modules'
+      || pathname.startsWith('/api/advisor/module-drafts');
 
     if (origin === false) {
-      return jsonResponse({ error: 'Origin not allowed.' }, 403, null, routeConfig?.methods, requestHeaders);
+      return jsonResponse(
+        { error: 'Origin not allowed.' },
+        403,
+        null,
+        routeConfig?.methods,
+        requestHeaders,
+        isModuleCataloguePath ? noStoreHeaders() : undefined
+      );
     }
 
     if (request.method === 'OPTIONS') {
@@ -7609,6 +7642,32 @@ export default {
             ...securityHeaders({ ...noStoreHeaders(), ...(extraHeaders || {}) })
           }
         })
+      });
+    }
+
+    if (isModuleCataloguePath) {
+      const methods = routeConfig?.methods || 'OPTIONS';
+      if (!origin) {
+        return jsonResponse({ error: 'Origin not allowed.' }, 403, null, methods, requestHeaders, noStoreHeaders());
+      }
+      const advisorAccess = await requireAdvisorSession(request, env, origin, methods, {
+        requireCsrf: request.method !== 'GET',
+        rateScope: 'advisor-module-catalogue',
+        rateLimitMax: 40
+      });
+      if (advisorAccess.response) return advisorAccess.response;
+      const { handleModuleCatalogueRequest } = await import('./advisor/module_catalogue.js');
+      return handleModuleCatalogueRequest(request, env, {
+        pathname,
+        actor: 'advisor',
+        respond: (data, status, allowedMethods, extraHeaders) => jsonResponse(
+          data,
+          status,
+          origin,
+          allowedMethods,
+          requestHeaders,
+          { ...noStoreHeaders(), ...(extraHeaders || {}) }
+        )
       });
     }
 

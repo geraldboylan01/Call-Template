@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://api.planeir.ie https://call-canvas-session-worker.geraldboylan.workers.dev; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    />
+    <meta name="call-canvas-worker-base-url" content="https://call-canvas-session-worker.geraldboylan.workers.dev" />
+    <meta
+      name="description"
+      content="Planeir adviser module catalogue authoring: review all modules, validate drafts, preview routing and export repository patches."
+    />
+    <title>Planeir Module Catalogue</title>
+    <link rel="icon" type="image/png" href="../favicon.png" />
+    <link rel="stylesheet" href="../styles/base.css" />
+    <link rel="stylesheet" href="../styles/module_catalogue.css" />
+  </head>
+  <body class="access-manager-page module-catalogue-page is-auth-locked">
+    <div id="moduleCatalogueApp">
+      <header class="topbar" aria-label="Module catalogue controls">
+        <div class="topbar-left">
+          <a class="app-home-link" href="../" aria-label="Return to Planeir website">
+            <img
+              class="app-home-link-image"
+              src="../assets/brand/planeir-wordmark-light.svg"
+              alt=""
+              width="1330"
+              height="384"
+              decoding="async"
+            />
+          </a>
+          <a class="ui-button" href="./index.html">Back to session</a>
+          <a class="ui-button" href="./clients.html">Client Pipeline</a>
+          <a class="ui-button" href="./analytics.html">Call Analytics</a>
+        </div>
+        <div class="topbar-right">
+          <span id="advisorAuthStatus" class="session-status">Advisor sign-in not checked</span>
+          <button id="advisorLogoutBtn" class="ui-button is-hidden" type="button">Log Out</button>
+        </div>
+      </header>
+
+      <main id="catalogueShell" class="module-catalogue-shell">
+        <section class="module-catalogue-heading">
+          <div>
+            <p class="access-manager-eyebrow">Advisor tools</p>
+            <h1 class="access-manager-title">Module Catalogue</h1>
+            <p class="module-catalogue-subtitle">
+              The committed manifest remains live-call authority. Drafts are review work only; exporting never changes code or calls.
+            </p>
+          </div>
+          <button id="refreshCatalogueBtn" class="ui-button" type="button">Refresh</button>
+        </section>
+
+        <p id="catalogueStatus" class="module-catalogue-notice" aria-live="polite">Loading the committed catalogue.</p>
+        <p id="provisioningNotice" class="module-catalogue-notice is-warning is-hidden" aria-live="polite"></p>
+
+        <section class="module-filter-bar" aria-label="Catalogue filters">
+          <label>
+            Implementation
+            <select id="implementationFilter">
+              <option value="all">All</option>
+              <option value="engine">Engine</option>
+              <option value="template_only">Template only</option>
+              <option value="routing_label">Routing label</option>
+              <option value="capability">Capability</option>
+              <option value="planned">Planned</option>
+            </select>
+          </label>
+          <label>
+            Routing
+            <select id="routingFilter">
+              <option value="all">All</option>
+              <option value="routable">Consumer routable</option>
+              <option value="not_routable">Not consumer routable</option>
+            </select>
+          </label>
+          <label>
+            Availability
+            <select id="availabilityFilter">
+              <option value="all">All</option>
+              <option value="consumer">Consumer visible</option>
+              <option value="adviser">Adviser available</option>
+              <option value="adviser_only">Adviser only</option>
+              <option value="unavailable">Unavailable</option>
+            </select>
+          </label>
+          <label>
+            Readiness
+            <select id="readinessFilter">
+              <option value="all">All</option>
+              <option value="approved">Approved</option>
+              <option value="remediation_required">Remediation required</option>
+              <option value="not_reviewed">Not reviewed</option>
+              <option value="not_applicable">Not applicable</option>
+            </select>
+          </label>
+          <label class="module-search-label">
+            Search
+            <input id="moduleSearchInput" type="search" placeholder="Name, module ID or goal" />
+          </label>
+        </section>
+
+        <div class="module-catalogue-grid">
+          <section class="module-list-panel" aria-labelledby="catalogueListTitle">
+            <div class="module-panel-heading">
+              <h2 id="catalogueListTitle">Committed catalogue</h2>
+              <span id="moduleCount">0 modules</span>
+            </div>
+            <div id="moduleList" class="module-list" role="list"></div>
+          </section>
+
+          <section class="module-authoring-panel" aria-labelledby="authoringTitle">
+            <div class="module-panel-heading">
+              <div>
+                <p class="access-manager-eyebrow">Draft workspace</p>
+                <h2 id="authoringTitle">Select a module or draft</h2>
+              </div>
+              <select id="draftSelect" class="module-draft-select" aria-label="Open saved draft">
+                <option value="">Saved drafts</option>
+              </select>
+            </div>
+
+            <div class="module-actions module-create-actions">
+              <button id="createManifestEditBtn" class="ui-button draft-action" type="button">Create Manifest Edit</button>
+              <button id="createGoalProposalBtn" class="ui-button draft-action" type="button">Create Goal Proposal</button>
+              <button id="createRecognitionVariantBtn" class="ui-button draft-action" type="button">Create Recognition Variant</button>
+              <button id="createEngineSpecificationBtn" class="ui-button draft-action" type="button">Create Engine Specification</button>
+            </div>
+
+            <div class="module-draft-meta">
+              <span id="draftKindBadge">No draft</span>
+              <span id="draftRevisionBadge">Revision —</span>
+              <span id="draftStatusBadge">Status —</span>
+            </div>
+
+            <label class="module-field">
+              AI drafting brief
+              <textarea id="generationBrief" rows="3" placeholder="Describe the bounded change you want drafted for human review."></textarea>
+            </label>
+            <div class="module-actions">
+              <button id="generateDraftBtn" class="ui-button draft-action" type="button">Generate Draft</button>
+            </div>
+
+            <label class="module-field">
+              Draft payload JSON
+              <textarea id="draftPayload" rows="18" spellcheck="false" placeholder="Create or select a draft."></textarea>
+            </label>
+
+            <div class="module-actions">
+              <button id="saveDraftBtn" class="ui-button draft-action" type="button">Save Draft</button>
+              <button id="validateDraftBtn" class="ui-button draft-action" type="button">Validate</button>
+              <button id="exportPatchBtn" class="ui-button draft-action" type="button">Export Patch</button>
+            </div>
+
+            <label class="module-field">
+              Routing preview household profile JSON
+              <textarea id="previewProfile" rows="7" spellcheck="false">{"goals":[{"goalId":"preview-goal","type":"understand_position","title":"Understand position","priority":"high","status":"active"}]}</textarea>
+            </label>
+            <div class="module-actions">
+              <button id="previewRoutingBtn" class="ui-button draft-action" type="button">Preview Routing</button>
+              <button id="compareCommittedBtn" class="ui-button draft-action" type="button">Compare With Committed</button>
+            </div>
+
+            <section class="module-result-panel" aria-labelledby="validationTitle">
+              <div class="module-panel-heading">
+                <h3 id="validationTitle">Validation and comparison</h3>
+                <button id="viewAuditBtn" class="ui-button draft-action" type="button">View Audit History</button>
+              </div>
+              <pre id="validationOutput">No validation run yet.</pre>
+              <pre id="previewOutput" class="is-hidden">No preview run yet.</pre>
+              <pre id="auditOutput" class="is-hidden">No audit history yet.</pre>
+            </section>
+
+            <section class="module-result-panel" aria-labelledby="exportTitle">
+              <h3 id="exportTitle">Review export</h3>
+              <div class="module-actions">
+                <button id="copyManifestBtn" class="ui-button draft-action" type="button">Copy Manifest</button>
+                <button id="copyPatchBtn" class="ui-button draft-action" type="button">Copy Patch</button>
+                <button id="downloadPatchBtn" class="ui-button draft-action" type="button">Download Patch</button>
+                <button id="copyImplementationBriefBtn" class="ui-button draft-action" type="button">Copy Implementation Brief</button>
+              </div>
+              <pre id="exportOutput">Validate the current revision before exporting.</pre>
+            </section>
+          </section>
+        </div>
+      </main>
+
+      <div id="toastHost" class="toast-host" aria-live="polite"></div>
+    </div>
+
+    <div id="advisorAuthLayer" class="session-unlock-layer is-hidden" aria-hidden="true">
+      <div class="session-unlock-card" role="dialog" aria-modal="true" aria-labelledby="advisorAuthTitle">
+        <h1 id="advisorAuthTitle">Advisor sign in</h1>
+        <p class="session-unlock-hint">Sign in to review and author Planeir module catalogue drafts.</p>
+        <input
+          id="advisorAuthPasswordInput"
+          class="session-unlock-input"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Advisor password"
+          aria-label="Advisor password"
+        />
+        <div class="session-unlock-actions">
+          <button id="advisorAuthLoginBtn" class="ui-button" type="button">Sign In</button>
+        </div>
+        <p id="advisorAuthError" class="session-unlock-error" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <script type="module" src="../js/module_catalogue_manager.js"></script>
+  </body>
+</html>

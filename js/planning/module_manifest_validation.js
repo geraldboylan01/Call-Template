@@ -280,7 +280,7 @@ export function validateModuleManifest(manifest, label = 'module manifest') {
   return manifest;
 }
 
-/** Parse and validate the machine block plus bounded prose from one authored Markdown document. */
+/** Parse and validate the machine block plus bounded prose from one authored Markdown catalogue file. */
 export function parseAuthoredModuleDocument(source, label = 'module manifest') {
   const markerIndex = source.indexOf(MANIFEST_MARKER);
   if (markerIndex < 0) fail(`${label} is missing the ${MANIFEST_MARKER} marker.`);

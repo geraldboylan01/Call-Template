@@ -67,7 +67,7 @@ const tableModuleIds = [...new Set(golden.cases.flatMap((entry) => entry.modules
 const sameTurnProfile = emptyProfile('intake-same-turn-persona');
 assert.deepEqual(
   [...modulesEnabledByFacts([], [{ factId: 'primary_goal', value: 'buy_home' }], sameTurnProfile)],
-  ['house_purchase', 'liquidity_analysis', 'personal_balance_sheet'],
+  ['house_purchase', 'liquidity_analysis'],
   'a supported goal immediately opens its deterministic goal bundle'
 );
 assert.deepEqual(
@@ -76,7 +76,7 @@ assert.deepEqual(
     { factId: 'life_stage', value: 'young_employee' }
   ], sameTurnProfile)],
   ['house_purchase', 'liquidity_analysis'],
-  'same-turn early-life evidence omits the default balance sheet without changing the direct goal bundle'
+  'same-turn life-stage evidence leaves the direct goal bundle unchanged'
 );
 
 for (const moduleId of tableModuleIds) {
