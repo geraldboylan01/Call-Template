@@ -2611,14 +2611,11 @@ assert.ok(!realtimeToolsForState(factContext.state)
 // circumstances. The persona catalogue that used to gate this is gone.
 factContext = await factDurable.planningContext();
 assert.equal(factContext.state.personaAssessment, undefined);
-// Goal routing leads with the analyses the stated goal selected, and the balance
-// sheet trails them. It is pinned last precisely so it never displaces a goal the
-// client actually stated -- it is the one analysis every profile can support, and
-// ordering it first would let it crowd out the reason they called.
+// buy_home routes directly to House Purchase, with Liquidity as its declared
+// companion. The balance sheet is no longer pinned into narrow goal bundles.
 assert.deepEqual(factContext.state.moduleSlots.map((slot) => slot.moduleId), [
   'house_purchase',
-  'liquidity_analysis',
-  'personal_balance_sheet'
+  'liquidity_analysis'
 ]);
 
 // Unknown and ranged numerical answers are retained as conservative completion

@@ -295,8 +295,8 @@
           "requiresGoalPriorityQuestion": false,
           "requiresDecisionTopicQuestion": false,
           "nextQuestion": {
-            "factId": "pension_positions",
-            "prompt": "Do you have an occupational pension, PRSA, personal pension, buyout bond or defined-benefit pension to include?"
+            "factId": "target_retirement_income",
+            "prompt": "What annual retirement income would the household like, in today's money?"
           },
           "moduleSlots": [
             {
@@ -313,41 +313,20 @@
                 "pension_positions",
                 "target_retirement_income"
               ]
-            },
-            {
-              "slot": 2,
-              "moduleId": "personal_balance_sheet",
-              "source": "balance_sheet_default",
-              "selectionState": "selected",
-              "availability": "needs_facts",
-              "intakeStatus": "missing_information",
-              "relatedGoalTypes": [
-                "improve_pension"
-              ],
-              "missingFactIds": [
-                "asset_position",
-                "liability_position",
-                "monthly_spending",
-                "property_position",
-                "pension_positions",
-                "business_position"
-              ]
             }
           ],
           "moduleOpportunities": [],
           "capacity": {
             "maximumAnalyses": 3,
-            "used": 2,
+            "used": 1,
             "atLimit": false,
             "overflowModuleIds": [],
             "replaceableModuleIds": [
-              "pension_projection",
-              "personal_balance_sheet"
+              "pension_projection"
             ]
           },
           "executionModuleIds": [
-            "pension_projection",
-            "personal_balance_sheet"
+            "pension_projection"
           ],
           "withheldOpportunityModuleIds": [],
           "brief": {
@@ -363,13 +342,6 @@
                 "label": "a projection of whether your pension may be on track",
                 "status": "needs_facts",
                 "intakeStatus": "missing_information"
-              },
-              {
-                "slot": 2,
-                "moduleId": "personal_balance_sheet",
-                "label": "a review of your overall financial picture",
-                "status": "needs_facts",
-                "intakeStatus": "missing_information"
               }
             ],
             "questionBatch": {
@@ -379,12 +351,7 @@
             },
             "stillNeeded": [
               "pension_positions",
-              "target_retirement_income",
-              "property_position",
-              "asset_position",
-              "business_position",
-              "liability_position",
-              "monthly_spending"
+              "target_retirement_income"
             ],
             "moduleOffer": null,
             "capacityDecision": null,
@@ -419,8 +386,8 @@
           "requiresGoalPriorityQuestion": false,
           "requiresDecisionTopicQuestion": false,
           "nextQuestion": {
-            "factId": "monthly_spending",
-            "prompt": "About how much does the household spend each month on essentials, excluding rent and housing debt?"
+            "factId": "mortgage_position",
+            "prompt": "Which current mortgage should be analysed?"
           },
           "moduleSlots": [
             {
@@ -436,41 +403,20 @@
               "missingFactIds": [
                 "mortgage_position"
               ]
-            },
-            {
-              "slot": 2,
-              "moduleId": "personal_balance_sheet",
-              "source": "balance_sheet_default",
-              "selectionState": "selected",
-              "availability": "needs_facts",
-              "intakeStatus": "missing_information",
-              "relatedGoalTypes": [
-                "optimise_mortgage"
-              ],
-              "missingFactIds": [
-                "asset_position",
-                "liability_position",
-                "monthly_spending",
-                "property_position",
-                "pension_positions",
-                "business_position"
-              ]
             }
           ],
           "moduleOpportunities": [],
           "capacity": {
             "maximumAnalyses": 3,
-            "used": 2,
+            "used": 1,
             "atLimit": false,
             "overflowModuleIds": [],
             "replaceableModuleIds": [
-              "mortgage_analysis",
-              "personal_balance_sheet"
+              "mortgage_analysis"
             ]
           },
           "executionModuleIds": [
-            "mortgage_analysis",
-            "personal_balance_sheet"
+            "mortgage_analysis"
           ],
           "withheldOpportunityModuleIds": [],
           "brief": {
@@ -486,13 +432,6 @@
                 "label": "a comparison of your mortgage repayment options",
                 "status": "needs_facts",
                 "intakeStatus": "missing_information"
-              },
-              {
-                "slot": 2,
-                "moduleId": "personal_balance_sheet",
-                "label": "a review of your overall financial picture",
-                "status": "needs_facts",
-                "intakeStatus": "missing_information"
               }
             ],
             "questionBatch": {
@@ -501,13 +440,7 @@
               "primaryFactId": "mortgage_position"
             },
             "stillNeeded": [
-              "mortgage_position",
-              "property_position",
-              "pension_positions",
-              "asset_position",
-              "business_position",
-              "liability_position",
-              "monthly_spending"
+              "mortgage_position"
             ],
             "moduleOffer": null,
             "capacityDecision": null,
