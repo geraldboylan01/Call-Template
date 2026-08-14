@@ -1023,7 +1023,12 @@ export class ConsumerLiveSession {
       leaseId: this.meta.leaseId,
       throughTurnId: job.throughTurnId,
       trigger: job.trigger,
-      retryAttempt: job.retryAttempt
+      retryAttempt: job.retryAttempt,
+      // What lets a validated correction survive the client answering the next
+      // question while the planner was still thinking. Deterministic re-
+      // projection only: this never issues another model call, so it cannot
+      // extend the background pass into anything the reply path waits on.
+      loadContext: () => this.loadPlannerReconciliationContext(config)
     });
   }
 

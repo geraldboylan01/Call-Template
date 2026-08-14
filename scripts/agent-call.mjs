@@ -34,7 +34,8 @@ import { runPlannerReconciliation } from '../worker/src/consumer/planner_reconci
 import { loadCallerFixture } from './agent-harness/caller.mjs';
 import { exportRun, traceIdForCall } from './agent-harness/langfuse-export.mjs';
 import {
-  archiveCandidates, cloneForArchive, observedCanonicalFacts, observedNeeds, observedQuestion
+  archiveCandidates, cloneForArchive, observedCanonicalFacts, observedDeterministicNeeds,
+  observedNeeds, observedQuestion
 } from './agent-harness/observability.mjs';
 import { AGENT_RUN_ARCHIVE_VERSION, firstGoalTurn } from './agent-harness/runlog.mjs';
 import {
@@ -336,7 +337,8 @@ if (command === 'say') {
           context: await loadAgentContext(env, config, pointer.sessionId, pointer.meetingId),
           leaseId: pointer.meetingId,
           throughTurnId: clientTranscript.id,
-          trigger: noteActivity ? 'material_turn' : 'periodic_checkpoint'
+          trigger: noteActivity ? 'material_turn' : 'periodic_checkpoint',
+          loadContext: () => loadAgentContext(env, config, pointer.sessionId, pointer.meetingId)
         });
         reconciliation = {
           status: outcome.status,
@@ -433,6 +435,9 @@ if (command === 'say') {
       // traced to the layer that caused it rather than inferred from the reply.
       reconciliation,
       needsAfter: observedNeeds(afterContext),
+      // Derived from the module adapters rather than from the persisted brief,
+      // so "what changed after reconciliation" is answerable from one record.
+      deterministicNeedsAfter: observedDeterministicNeeds(afterContext),
       canonicalFactsAfter: observedCanonicalFacts(afterContext),
       spendMicroEur: {
         turn: Math.max(0, cumulativeSpend - previousSpend),

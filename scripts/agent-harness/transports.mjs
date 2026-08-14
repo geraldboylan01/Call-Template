@@ -63,6 +63,7 @@ import {
   archiveCandidates,
   cloneForArchive,
   observedCanonicalFacts,
+  observedDeterministicNeeds,
   observedNeeds,
   observedQuestion,
   usageDelta,
@@ -388,7 +389,8 @@ export async function runAgentScenario(
             context: afterContext,
             leaseId: meetingId,
             throughTurnId: result.consumer.turnId,
-            trigger: noteActivity ? 'material_turn' : 'periodic_checkpoint'
+            trigger: noteActivity ? 'material_turn' : 'periodic_checkpoint',
+            loadContext: () => loadAgentContext(env, config, sessionId, meetingId)
           });
           reconciliation = {
             status: outcome.status,
@@ -493,6 +495,9 @@ export async function runAgentScenario(
         },
         question,
         needsAfter: observedNeeds(afterContext),
+      // Derived from the module adapters rather than from the persisted brief,
+      // so "what changed after reconciliation" is answerable from one record.
+      deterministicNeedsAfter: observedDeterministicNeeds(afterContext),
         canonicalFactsAfter: observedCanonicalFacts(afterContext),
         usage: usageDelta(beforeUsage, usageSnapshot(client.usage || {})),
         spendMicroEur: {

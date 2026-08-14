@@ -1948,6 +1948,33 @@ function plannerReconciliationWriteStatements(env, {
         AND latest_profile_revision = ?
     `).bind(revision, timestamp, leaseId, sessionId, baseRevision)
   ];
+  // A REVISION NUMBER IS NOT PROOF THAT THIS BATCH WON.
+  //
+  // The two ledger statements below used to be gated on
+  // `current_profile_revision = revision` alone, on the reasoning that the new
+  // revision can only exist because the statement above it just created it.
+  // That is false in the one case that matters most. `revision` is
+  // `baseRevision + 1`, and the commonest concurrent event by far is exactly
+  // ONE ordinary fact write landing while the planner was thinking — which
+  // moves the session to `baseRevision + 1` as well. The numbers then coincide,
+  // the profile half is correctly refused, and the ledger half commits anyway
+  // against a revision this reconciliation never computed against.
+  //
+  // Measured: a conflicted reconciliation left the note ledger saying the
+  // stated total was a summary while the profile still carried it as a third
+  // pension. Nothing reported a fault — the row said `conflicted`, which is
+  // supposed to mean nothing was written.
+  //
+  // The reconciliation row is the authority instead. Its own update is gated on
+  // the lease CAS, so it reaches `applied` only when this batch genuinely won,
+  // and `applied_profile_revision` pins that to this exact write. A concurrent
+  // writer cannot coincide with it.
+  const ledgerGuard = `
+        AND EXISTS (
+          SELECT 1 FROM consumer_planner_reconciliations
+          WHERE id = ? AND session_id = ? AND realtime_session_id = ?
+            AND status = 'applied' AND applied_profile_revision = ?
+        )`;
   for (const { priorRow, prepared } of transitionRecords) {
     statements.push(db(env).prepare(`
       UPDATE consumer_planning_notes
@@ -1956,12 +1983,13 @@ function plannerReconciliationWriteStatements(env, {
         AND EXISTS (
           SELECT 1 FROM consumer_sessions
           WHERE id = ? AND current_profile_revision = ? AND deleted_at IS NULL
-        )
+        )${ledgerGuard}
     `).bind(
       prepared.row.lifecycle, prepared.row.reviewStatus, prepared.row.encrypted,
       prepared.row.hash, prepared.row.reviewedAt,
       priorRow.id, sessionId, leaseId,
-      sessionId, revision
+      sessionId, revision,
+      reconciliationId, sessionId, leaseId, revision
     ));
   }
   for (const record of insertRecords) {
@@ -1974,12 +2002,13 @@ function plannerReconciliationWriteStatements(env, {
       WHERE EXISTS (
         SELECT 1 FROM consumer_sessions
         WHERE id = ? AND current_profile_revision = ? AND deleted_at IS NULL
-      )
+      )${ledgerGuard}
     `).bind(
       record.row.id, sessionId, leaseId, record.row.noteKind, record.row.lifecycle,
       record.row.reviewStatus, record.row.source, record.row.profileRevision,
       record.row.encrypted, record.row.hash, record.row.createdAt, record.row.reviewedAt,
-      sessionId, revision
+      sessionId, revision,
+      reconciliationId, sessionId, leaseId, revision
     ));
   }
   return statements;

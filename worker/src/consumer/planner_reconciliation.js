@@ -888,18 +888,24 @@ async function recordReconciliationUsage(env, config, sessionId, leaseId, metada
 }
 
 /**
- * Run one persisted reconciliation. Shadow mode validates and records the exact
- * would-be ledger/profile but never mutates them. Apply mode remains fail-
- * closed until the shadow promotion gate is explicitly completed.
+ * Run one persisted reconciliation attempt. Shadow mode validates and records
+ * the exact would-be ledger/profile but never mutates them. Apply mode remains
+ * fail-closed until the shadow promotion gate is explicitly completed.
+ *
+ * `preparedPlan` is a plan this session ALREADY obtained from the model. Passing
+ * it re-runs the deterministic half against fresh state without spending a
+ * second model call — see runPlannerReconciliation for why that matters.
  */
-export async function runPlannerReconciliation({
+async function runPlannerReconciliationAttempt({
   env,
   config,
   context,
   leaseId,
   throughTurnId,
   trigger = 'material_turn',
-  retryAttempt = 0
+  retryAttempt = 0,
+  rebaseAttempt = 0,
+  preparedPlan = null
 }) {
   if (config.plannerReconciliationMode === 'legacy') return { status: 'legacy' };
   let notes = await listPlanningNotes(env, context.sessionRow.id, leaseId, { limit: 500 });
@@ -930,6 +936,10 @@ export async function runPlannerReconciliation({
     voiceWriteOutcomes
   });
   const retryIdentity = Math.max(0, Math.min(1, Number(retryAttempt) || 0));
+  // A rebase runs at a NEW base revision, so it already gets a distinct
+  // identity; the suffix is only added when one is needed, which keeps every
+  // first attempt's key byte-identical to the one it has always had.
+  const rebaseIdentity = Math.max(0, Number(rebaseAttempt) || 0);
   const started = await startPlannerReconciliation(env, {
     sessionId: context.sessionRow.id,
     leaseId,
@@ -937,7 +947,8 @@ export async function runPlannerReconciliation({
     throughTurnId,
     trigger,
     mode: config.plannerReconciliationMode,
-    idempotencyKey: `${leaseId}:${throughTurnId}:${context.profile.revision}:${config.plannerReconciliationPromptVersion}:retry-${retryIdentity}`,
+    idempotencyKey: `${leaseId}:${throughTurnId}:${context.profile.revision}:${config.plannerReconciliationPromptVersion}:retry-${retryIdentity}`
+      + (rebaseIdentity > 0 ? `:rebase-${rebaseIdentity}` : ''),
     promptVersion: config.plannerReconciliationPromptVersion,
     input
   });
@@ -957,14 +968,21 @@ export async function runPlannerReconciliation({
   const attempt = started.row;
   let requested;
   try {
-    requested = await requestPlannerReconciliation({ env, config, input });
-    await recordReconciliationUsage(
-      env,
-      config,
-      context.sessionRow.id,
-      leaseId,
-      requested.metadata
-    ).catch(() => {});
+    if (preparedPlan) {
+      // The model already answered. Only the deterministic half re-runs, and
+      // its usage was metered when that answer arrived — metering it again per
+      // rebase would bill one planner call several times over.
+      requested = preparedPlan;
+    } else {
+      requested = await requestPlannerReconciliation({ env, config, input });
+      await recordReconciliationUsage(
+        env,
+        config,
+        context.sessionRow.id,
+        leaseId,
+        requested.metadata
+      ).catch(() => {});
+    }
     const validation = await applyReconciliationPlan({
       profile: context.profile,
       notes,
@@ -1044,6 +1062,9 @@ export async function runPlannerReconciliation({
         plan: requested.plan,
         validation,
         metadata: requested.metadata,
+        // The plan the model produced, carried out whole so a rebase can reuse
+        // it. Without this the only way back from a conflict is another call.
+        requested,
         errorCode: completed.errorCode || 'planner_reconciliation_stale'
       };
     }
@@ -1052,6 +1073,7 @@ export async function runPlannerReconciliation({
       plan: requested.plan,
       validation,
       metadata: requested.metadata,
+      requested,
       appliedProfileRevision: completed.appliedProfileRevision ?? null,
       insertedNoteCount: completed.insertedNoteCount ?? 0,
       transitionedNoteCount: completed.transitionedNoteCount ?? 0
@@ -1078,9 +1100,113 @@ export async function runPlannerReconciliation({
     if (completed?.status === 'conflicted') {
       return {
         status: 'conflicted',
+        ...(requested ? { requested } : {}),
         errorCode: completed.errorCode || 'planner_reconciliation_stale'
       };
     }
     throw error;
   }
+}
+
+/**
+ * How many times a validated plan may be re-projected onto newer canonical
+ * state before the attempt is abandoned.
+ *
+ * A rebase is deterministic validation plus a D1 batch — tens of milliseconds
+ * against the model call's fifteen to twenty seconds — so the window in which a
+ * client turn can overtake it is a rounding error by comparison. Two is enough
+ * for a very unlucky meeting and small enough that a genuinely contended
+ * session gives up rather than spinning.
+ */
+const MAX_RECONCILIATION_REBASE_ATTEMPTS = 2;
+
+/**
+ * REBASE THE PLANNER'S ANSWER; DO NOT THROW IT AWAY.
+ *
+ * The completion is a whole-profile write at `baseRevision + 1`, so it MUST
+ * fail closed when the base has moved — writing that snapshot over a newer
+ * revision would erase every fact the client supplied in the meantime. That
+ * part is right and is unchanged.
+ *
+ * What was wrong was the consequence. In a live meeting the client keeps
+ * talking and `save_facts` keeps landing, so one ordinary turn arriving during
+ * the fifteen-to-twenty-second model call bumped `latest_profile_revision` and
+ * discarded a fully validated batch — measured: an `applied` reconciliation
+ * that removed a phantom EUR 658,000 pension became `conflicted` and left the
+ * phantom in the profile, purely because the client answered the next question.
+ * The correction was then never applied, `injectVolatileState` was never
+ * reached, and the conversation went on asking for what the planner had already
+ * worked out. The feedback loop could not close because nothing ever landed.
+ *
+ * The model's answer does not go stale when the profile moves; only its
+ * PROJECTION does. So on a conflict this reloads canonical state and re-runs
+ * the deterministic half — `applyReconciliationPlan` — against the newer
+ * profile and the newer notes, with the SAME plan. No second model call, no
+ * second token spend, and nothing anywhere near the reply path.
+ *
+ * This is not a weakening. Every operation is re-validated in full against the
+ * state it will actually be written onto: evidence re-checked against stored
+ * turns, identities re-checked against the current catalogue, correction
+ * targets required to still exist. An operation that genuinely contradicts what
+ * the client has since said now fails validation on the rebase — a correct
+ * fail-closed rejection of that one operation, instead of collateral damage to
+ * every unrelated correction beside it.
+ *
+ * `loadContext` is optional. Without it the behaviour is exactly what it was:
+ * one attempt, and a conflict is terminal.
+ */
+export async function runPlannerReconciliation({
+  env,
+  config,
+  context,
+  leaseId,
+  throughTurnId,
+  trigger = 'material_turn',
+  retryAttempt = 0,
+  loadContext = null
+}) {
+  let currentContext = context;
+  let preparedPlan = null;
+  let outcome = null;
+  const rebasedFromRevisions = [];
+
+  for (let rebaseAttempt = 0; rebaseAttempt <= MAX_RECONCILIATION_REBASE_ATTEMPTS; rebaseAttempt += 1) {
+    const baseRevision = Number(currentContext?.profile?.revision);
+    try {
+      outcome = await runPlannerReconciliationAttempt({
+        env,
+        config,
+        context: currentContext,
+        leaseId,
+        throughTurnId,
+        trigger,
+        retryAttempt,
+        rebaseAttempt,
+        preparedPlan
+      });
+    } catch (error) {
+      // `startPlannerReconciliation` refuses to open an attempt whose base has
+      // already moved. That is the same conflict arriving earlier, so it is
+      // rebasable on exactly the same terms — but only when there is a plan to
+      // rebase; a first attempt that cannot even start has nothing to reuse.
+      if (error?.code !== 'profile_revision_conflict' || !preparedPlan || !loadContext) throw error;
+      outcome = { status: 'conflicted', errorCode: 'planner_reconciliation_stale', requested: preparedPlan };
+    }
+
+    if (outcome?.requested) preparedPlan = outcome.requested;
+    if (outcome?.status !== 'conflicted') break;
+    if (!loadContext || !preparedPlan || rebaseAttempt === MAX_RECONCILIATION_REBASE_ATTEMPTS) break;
+
+    const refreshed = await loadContext().catch(() => null);
+    // Nothing to rebase ONTO. If canonical state did not actually move, the
+    // conflict came from somewhere the deterministic pass cannot fix, and
+    // re-running it would only produce the same refusal again.
+    if (!refreshed || Number(refreshed.profile?.revision) === baseRevision) break;
+    rebasedFromRevisions.push(baseRevision);
+    currentContext = refreshed;
+  }
+
+  return rebasedFromRevisions.length > 0
+    ? { ...outcome, rebasedFromRevisions }
+    : outcome;
 }

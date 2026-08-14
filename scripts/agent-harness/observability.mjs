@@ -199,6 +199,37 @@ export function observedCanonicalFacts(context = {}) {
   });
 }
 
+/**
+ * What is still outstanding according to the DETERMINISTIC module adapters.
+ *
+ * `observedNeeds` below reads `meetingBrief.stillNeeded`, and the brief is a
+ * signed artefact composed mid-turn — before that turn's reconciliation has
+ * run. So an archive that records only the brief can show a need alongside the
+ * very canonical fact that satisfies it, which is exactly what
+ * `person_current_age:primary` did in the r11 batch: needed and captured in the
+ * same record, with `/primaryPerson/age` set to 57.
+ *
+ * That is a stale RECORD, not a stale question — the brief is recomposed from
+ * the profile on the next turn, and the live lane never reads a brief at all.
+ * But it made the archive impossible to reason about, and Phase 3's whole
+ * measurement is "did readiness change after reconciliation". This is the same
+ * derivation the live lane's projection and the reconciler's own needs list use,
+ * so before/after can be compared against one source of truth.
+ */
+export function observedDeterministicNeeds(context = {}) {
+  return (context?.state?.recommendations || []).flatMap((item) => (
+    (item?.requiredMissing || []).map((need) => ({
+      factId: need?.factId || null,
+      factInstanceId: need?.factInstanceId || need?.factId || null,
+      entityId: need?.entityId || null,
+      ownerId: need?.ownerId || null,
+      moduleId: item?.moduleId || null,
+      status: need?.status || 'open',
+      importance: need?.importance || null
+    }))
+  ));
+}
+
 export function observedNeeds(context = {}) {
   const rows = context?.state?.meetingBrief?.stillNeeded || [];
   return rows.map((need) => {
