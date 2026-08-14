@@ -333,13 +333,26 @@ function optionalRemainingTermMonths(value, { required = false } = {}) {
   return boundedNumber(yearsValue, { min: 1, max: 100, integer: true }) * 12;
 }
 
+const OWNER_ENVELOPE_KEYS = new Set(['owner', 'ownerId', 'ownerIds', 'owners', 'personId', 'entityId']);
+
 function scalarValue(value, keys = []) {
   if (!plainObject(value)) return value;
   for (const key of keys) {
     if (Object.hasOwn(value, key)) return value[key];
   }
   if (Object.hasOwn(value, 'value')) return value.value;
-  return value;
+  // THE SAME ENVELOPE, UNDER A KEY WE DID NOT NAME. Both models describe a
+  // fact rather than state it -- `{"structure":"couple"}`, `{"status":
+  // "working"}`, `{"include":true}` -- and the named-key list can only ever
+  // chase the spellings already seen. Where one non-owner key is left and it
+  // holds a scalar, the envelope IS the scalar, and reading it invents
+  // nothing. Anything with two live keys ({amount,currency}, {min,max}) is
+  // left alone: a range is genuinely not a scalar, and the caller's own
+  // coercion still has the final say on whatever comes back.
+  const remaining = Object.keys(value).filter((key) => !OWNER_ENVELOPE_KEYS.has(key));
+  if (remaining.length !== 1) return value;
+  const only = value[remaining[0]];
+  return only !== null && typeof only === 'object' ? value : only;
 }
 
 function completionNoneMapping(profile, markerPath, factId, scope = null) {
@@ -753,7 +766,7 @@ function resolveMaxRelievableRate(profile, existing, value) {
   return rate;
 }
 
-function pensionIndex(profile, value, { contributionRate = false } = {}) {
+function pensionIndex(profile, value, { contributionRate = false, monetary = false } = {}) {
   const selectedId = selectedEntityId(value, 'pension', profile.pensions, 'pensionId');
   // A BUYOUT BOND CANNOT RECEIVE CONTRIBUTIONS. It holds benefits from a scheme
   // the client has left, so when they name a rate and hold exactly one pension
@@ -810,8 +823,39 @@ function pensionIndex(profile, value, { contributionRate = false } = {}) {
   }
   const stableId = selectedId || 'pension_realtime_primary';
   const index = stableCollectionIndex(profile.pensions, (pension) => pension.pensionId === stableId);
-  if (!selectedId && index === profile.pensions.length && profile.pensions.length > 0) {
-    throw new ConsumerError(409, 'realtime_pension_review_required', 'Existing pension positions require visual review before using an aggregate spoken value.');
+  if (!selectedId && index === profile.pensions.length) {
+    // AN ATTRIBUTE CANNOT CONJURE THE THING IT DESCRIBES.
+    //
+    // `pension_current_value` and its siblings are properties OF a pension.
+    // Naming no pension, and matching none on record, this used to mint one
+    // under a fixed id whenever the collection happened to be empty -- so
+    // "there's about a million in the pensions", a statement about the whole
+    // set, created a €1,000,000 holding. The three real pensions arrived next
+    // turn and nothing retired the placeholder: four holdings, €2.07m, from a
+    // client with €1.07m.
+    //
+    // With pensions already on record this was always refused (below). The
+    // empty collection was the hole, and emptiness is not evidence that the
+    // client owns exactly one pension worth whatever figure they just said.
+    // A new holding is created by `pension_positions`, which is the fact that
+    // means "here is a pension" -- and a total is a summary, not either.
+    //
+    // Scoped to the attributes that carry MONEY, because those are the ones a
+    // spurious holding adds into what the analysis sums. A contribution rate
+    // reaching an empty collection is a different question with a different
+    // history, and is left exactly as it was.
+    //
+    // This reads no amounts and compares nothing against sibling values.
+    if (profile.pensions.length > 0) {
+      throw new ConsumerError(409, 'realtime_pension_review_required', 'Existing pension positions require visual review before using an aggregate spoken value.');
+    }
+    if (monetary) {
+      throw new ConsumerError(
+        409,
+        'realtime_pension_entity_unresolved',
+        'A pension value must say which pension it belongs to.'
+      );
+    }
   }
   return { stableId, index, existing: profile.pensions[index] };
 }
@@ -1528,8 +1572,11 @@ export function mapRealtimeFact(profile, fact) {
   if (pensionScalarFields[fact.factId]) {
     const contributionRate = ['pension_employee_contribution_rate', 'pension_employer_contribution_rate']
       .includes(fact.factId);
+    const monetary = ['pension_current_value', 'pension_projected_annual_income', 'pension_retirement_lump_sum']
+      .includes(fact.factId);
     const { stableId, index, existing } = pensionIndex(profile, fact.value, {
-      contributionRate
+      contributionRate,
+      monetary
     });
     const key = pensionScalarFields[fact.factId];
     // "I PAY THE MAX" IS AN ANSWER. It is the Revenue age band applied to the

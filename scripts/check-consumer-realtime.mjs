@@ -2881,6 +2881,39 @@ assert.equal(partnerStatePension.canonicalValue.statePensionFraction.partner_rea
 assert.equal(partnerStatePension.canonicalValue.includeStatePension.partner_realtime, true);
 assert.ok(!factProfile.pensions.some((pension) => pension.pensionId === 'pension_realtime_primary'));
 
+// AN ATTRIBUTE CANNOT CONJURE THE THING IT DESCRIBES.
+//
+// "There's about a million in the pensions" is a statement about the whole set.
+// It arrived as `pension_current_value` with no entity id, and against an empty
+// pensions collection the mapper minted a €1,000,000 holding under a fixed
+// placeholder id. The three real pensions arrived on the next turn and nothing
+// retired the placeholder, so Pension Projection read four holdings totalling
+// €2.07m for a client with €1.07m.
+//
+// A new pension is created by `pension_positions`. An empty collection is not
+// evidence that the client owns exactly one pension worth whatever figure they
+// just said out loud.
+{
+  const emptyPensionProfile = { ...factProfile, pensions: [] };
+  assert.throws(
+    () => mapRealtimeFact(emptyPensionProfile, {
+      factId: 'pension_current_value',
+      value: { amount: 1_000_000, currency: 'EUR' },
+      certainty: 'approximate'
+    }),
+    (error) => error.code === 'realtime_pension_entity_unresolved',
+    'an unidentified pension value must not mint a holding'
+  );
+  // Naming the pension is still a create. The client said which one it is.
+  const named = mapRealtimeFact(emptyPensionProfile, {
+    factId: 'pension_current_value',
+    value: { entityId: 'zurich_prsa', amount: 415_000, currency: 'EUR' },
+    certainty: 'exact'
+  });
+  assert.equal(named.fieldPath, '/pensions/0');
+  assert.deepEqual(named.canonicalValue.currentValue, { amount: 415_000, currency: 'EUR' });
+}
+
 // ONE PENSION IS NOT AMBIGUOUS. A spoken figure with no entity id must attach
 // to the single position on record. Refusing it made the meeting ask a question
 // it could never accept an answer to: an agent-driven call as a Cork nurse was

@@ -1690,7 +1690,45 @@ export async function ensureLegacyPlanningNotes(env, request) {
   if (missing.some((note) => !importedInstances.has(note.factInstanceId))) {
     throw new ConsumerError(409, 'planning_note_import_conflict', 'The legacy note snapshot could not be completed.');
   }
-  return imported.map((item) => item.note);
+  return retireStaleLegacyPlanningNotes(env, request, imported.map((item) => item.note));
+}
+
+/**
+ * Drop legacy snapshots of entities the profile no longer holds.
+ *
+ * A legacy note is a pure snapshot of profile state with no evidence of its
+ * own, imported once and never revisited. When an aggregate placeholder was
+ * reclassified as a stated summary, its position left `/pensions` -- but the
+ * snapshot stayed active, so the retired placeholder went on supplying an
+ * entity to the reconciler's catalogue AND a required `contribution status`
+ * need for a pension that no longer existed. The client would have been asked
+ * about a holding they never had.
+ *
+ * Only evidence-free `legacy_import` notes are retired here, and only when
+ * their entity has genuinely left the profile. A note the client's own words
+ * back is never touched by this.
+ */
+async function retireStaleLegacyPlanningNotes(env, request, notes) {
+  const live = new Set(
+    (request.notes || [])
+      .map((note) => note.entityId)
+      .filter(Boolean)
+  );
+  const stale = notes.filter((note) => (
+    note.source === 'legacy_import'
+    && note.lifecycle === 'active'
+    && note.entityId
+    && !live.has(note.entityId)
+    && (note.evidenceRefs || []).length === 0
+  ));
+  if (stale.length === 0) return notes;
+  const staleIds = new Set(stale.map((note) => note.noteId));
+  await db(env).batch(stale.map((note) => db(env).prepare(`
+    UPDATE consumer_planning_notes
+    SET lifecycle = 'superseded'
+    WHERE id = ? AND session_id = ? AND realtime_session_id = ? AND lifecycle = 'active'
+  `).bind(note.noteId, request.sessionId, request.leaseId)));
+  return notes.filter((note) => !staleIds.has(note.noteId));
 }
 
 /**

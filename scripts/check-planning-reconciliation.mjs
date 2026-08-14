@@ -159,6 +159,27 @@ const turns = [
     finalized: true,
     sequence: 13,
     text: 'Actually, make that €6,200 a month.'
+  },
+  {
+    turnId: 'turn_aggregate_first',
+    role: 'user',
+    finalized: true,
+    sequence: 14,
+    text: "There's about a million across the pensions I think."
+  },
+  {
+    turnId: 'turn_named_after',
+    role: 'user',
+    finalized: true,
+    sequence: 15,
+    text: "The pensions: one's about 319,000, the Zurich one is 415,000 and the work one is 339,000."
+  },
+  {
+    turnId: 'turn_coincidental_holding',
+    role: 'user',
+    finalized: true,
+    sequence: 16,
+    text: 'I also hold a separate buyout bond worth 1,073,000 in my own name.'
   }
 ];
 
@@ -1902,6 +1923,322 @@ await runCase('the standalone projector also keeps summary-shaped money outside 
   const projected = projectPlanningNotesToProfile(profile, notes);
   assert.deepEqual(projected.pensions.map((pension) => pension.pensionId), ['pension_old_dc']);
   assert.equal(projected.assumptions.values.planning.statedSummaries.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// A STATED TOTAL IS NOT A HOLDING.
+//
+// "There's about a million in the pensions" reached `/pensions` as a €1,000,000
+// position beside three real ones, and Pension Projection was handed €2.07m for
+// a client with €1.07m. The arithmetic was right and the canonical input was
+// not, which is the worst shape a defect can take here.
+//
+// The rule these cases pin down is a CLASSIFICATION rule, never an arithmetic
+// one: an operation the planner marks `aggregate_summary` must be a summary
+// note, and a summary never projects into a positions collection. Case 3 is the
+// guard on the guard -- a real holding whose value coincidentally equals the sum
+// of its siblings stays a holding.
+// ---------------------------------------------------------------------------
+
+const AGGREGATE_TURNS = ['turn_aggregate_first', 'turn_named_after', 'turn_coincidental_holding']
+  .map((turnId) => turns.find((turn) => turn.turnId === turnId));
+
+/** A profile holding the three real pensions and nothing else. */
+function threePensionProfile() {
+  const profile = createHouseholdProfile({
+    profileId: 'profile_three_pensions',
+    primaryPersonId: 'primary',
+    nowIso: NOW,
+    calculationDateIso: '2026-08-09'
+  });
+  return normalizeHouseholdProfile({
+    ...profile,
+    pensions: [
+      { pensionId: 'pension_old_dc', ownerId: 'primary', type: 'occupational', currentValue: { amount: 319_000, currency: 'EUR' } },
+      { pensionId: 'pension_zurich', ownerId: 'primary', type: 'prsa', currentValue: { amount: 415_000, currency: 'EUR' } },
+      { pensionId: 'pension_work', ownerId: 'primary', type: 'occupational', currentValue: { amount: 339_000, currency: 'EUR' } }
+    ]
+  });
+}
+
+function threePensionNotes() {
+  return [
+    ['pension_old_dc', 319_000, 'occupational', "one's about 319,000"],
+    ['pension_zurich', 415_000, 'prsa', 'the Zurich one is 415,000'],
+    ['pension_work', 339_000, 'occupational', 'the work one is 339,000']
+  ].map(([pensionId, amount, type, quote]) => normalizePlanningNoteV1({
+    noteId: `note_${pensionId}`,
+    noteKind: 'position',
+    factId: 'pension_positions',
+    factInstanceId: `pension_positions:${pensionId}`,
+    entityId: pensionId,
+    ownerId: 'primary',
+    value: { pensionId, ownerId: 'primary', type, currentValue: { amount, currency: 'EUR' } },
+    certainty: 'approximate',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [evidenceRef(AGGREGATE_TURNS[1], quote)],
+    replacesNoteIds: [],
+    createdAt: NOW
+  }, { nowIso: NOW }));
+}
+
+const aggregateCommon = {
+  transcriptTurns: turns,
+  sessionId: 'session_aggregate',
+  transcriptWatermark: 'turn_coincidental_holding',
+  baseProfileRevision: 0,
+  nowIso: LATER,
+  // The blank slot the server offers for one omitted holding, as the catalogue
+  // supplies it in a real call.
+  entities: [{
+    entityId: 'recon_slot_pension_positions_1',
+    label: 'new pension 1',
+    ownerIds: [],
+    factIds: ['pension_positions'],
+    collection: 'pensions',
+    aliases: ['pension'],
+    newEntitySlot: true
+  }]
+};
+
+/** Total pension money the deterministic module would read from the profile. */
+function pensionTotal(profile) {
+  return (profile.pensions || []).reduce((sum, pension) => sum + (pension.currentValue?.amount || 0), 0);
+}
+
+await runCase('three named pensions plus a stated total keep exactly three positions, total only as a summary', async () => {
+  const result = await applyReconciliationPlan({
+    profile: threePensionProfile(),
+    notes: threePensionNotes(),
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{
+        groupId: 'group_total',
+        atomic: false,
+        operations: [{
+          operationId: 'op_total',
+          op: 'upsert_note',
+          reasonCode: 'aggregate_summary',
+          noteKind: 'summary',
+          factId: 'pension_current_value',
+          factInstanceId: 'pension_current_value',
+          certainty: 'approximate',
+          value: { amount: 1_000_000, currency: 'EUR' },
+          evidence: [{ turnId: 'turn_aggregate_first', quote: 'about a million across the pensions' }],
+          sourceEntityIds: []
+        }]
+      }]
+    },
+    ...aggregateCommon
+  });
+  assert.deepEqual(result.acceptedOperationIds, ['op_total']);
+  assert.deepEqual(
+    result.profile.pensions.map((pension) => pension.pensionId),
+    ['pension_old_dc', 'pension_zurich', 'pension_work'],
+    'the stated total must not become a fourth holding'
+  );
+  assert.equal(pensionTotal(result.profile), 1_073_000);
+  const summaries = result.profile.assumptions.values.planning.statedSummaries;
+  assert.equal(summaries.length, 1, 'the total is kept, as a summary');
+  assert.equal(summaries[0].value.amount, 1_000_000);
+  assert.equal(summaries[0].evidenceRefs.length, 1, 'the aggregate keeps its provenance');
+});
+
+await runCase('an aggregate classified as a position is refused rather than projected as a holding', async () => {
+  const result = await applyReconciliationPlan({
+    profile: threePensionProfile(),
+    notes: threePensionNotes(),
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{
+        groupId: 'group_total_as_position',
+        atomic: false,
+        operations: [{
+          operationId: 'op_total_as_position',
+          op: 'upsert_note',
+          // The plan says "aggregate" in one field and "holding" in the other.
+          // The noteKind is what projects, so the mismatch used to win.
+          reasonCode: 'aggregate_summary',
+          noteKind: 'position',
+          factId: 'pension_positions',
+          factInstanceId: 'pension_positions:recon_slot_pension_positions_1',
+          entityId: 'recon_slot_pension_positions_1',
+          ownerId: 'primary',
+          certainty: 'approximate',
+          value: { ownerId: 'primary', type: 'other', currentValue: { amount: 1_000_000, currency: 'EUR' } },
+          evidence: [{ turnId: 'turn_aggregate_first', quote: 'about a million across the pensions' }],
+          sourceEntityIds: []
+        }]
+      }]
+    },
+    ...aggregateCommon
+  });
+  assert.equal(result.rejectedGroups[0].code, 'aggregate_not_a_position');
+  assert.equal(pensionTotal(result.profile), 1_073_000, 'the module must never see the total added to the holdings');
+});
+
+await runCase('an aggregate stated first is resolved by the named holdings and left as a summary, not a position', async () => {
+  // The live lane recorded the aggregate as a placeholder holding before any
+  // pension was named. The named holdings arrive next, and the repair path is
+  // reclassify_note: the placeholder stops being a position and survives as the
+  // stated total it always was.
+  const placeholder = normalizePlanningNoteV1({
+    noteId: 'note_placeholder_total',
+    noteKind: 'position',
+    factId: 'pension_positions',
+    factInstanceId: 'pension_positions:pension_realtime_primary',
+    entityId: 'pension_realtime_primary',
+    ownerId: 'primary',
+    value: {
+      pensionId: 'pension_realtime_primary',
+      ownerId: 'primary',
+      type: 'occupational',
+      currentValue: { amount: 1_000_000, currency: 'EUR' }
+    },
+    certainty: 'approximate',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [evidenceRef(AGGREGATE_TURNS[0], 'about a million across the pensions')],
+    replacesNoteIds: [],
+    createdAt: NOW
+  }, { nowIso: NOW });
+  const profile = normalizeHouseholdProfile({
+    ...threePensionProfile(),
+    pensions: [
+      { pensionId: 'pension_realtime_primary', ownerId: 'primary', type: 'occupational', currentValue: { amount: 1_000_000, currency: 'EUR' } },
+      ...threePensionProfile().pensions
+    ]
+  });
+  assert.equal(pensionTotal(profile), 2_073_000, 'the observed double count is the starting state');
+
+  const result = await applyReconciliationPlan({
+    profile,
+    notes: [placeholder, ...threePensionNotes()],
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{
+        groupId: 'group_resolve_placeholder',
+        atomic: false,
+        operations: [{
+          operationId: 'op_resolve_placeholder',
+          op: 'reclassify_note',
+          reasonCode: 'aggregate_summary',
+          targetNoteId: 'note_placeholder_total',
+          noteKind: 'summary',
+          factId: 'pension_positions',
+          factInstanceId: 'pension_positions:pension_realtime_primary',
+          entityId: 'pension_realtime_primary',
+          ownerId: 'primary',
+          certainty: 'approximate',
+          value: { amount: 1_000_000, currency: 'EUR' },
+          evidence: [{ turnId: 'turn_aggregate_first', quote: 'about a million across the pensions' }],
+          sourceEntityIds: []
+        }]
+      }]
+    },
+    ...aggregateCommon
+  });
+  assert.deepEqual(result.acceptedOperationIds, ['op_resolve_placeholder']);
+  assert.deepEqual(
+    result.profile.pensions.map((pension) => pension.pensionId),
+    ['pension_old_dc', 'pension_zurich', 'pension_work'],
+    'the placeholder must leave the holdings once the real pensions are named'
+  );
+  assert.equal(pensionTotal(result.profile), 1_073_000, 'the double count is repaired');
+  assert.equal(result.profile.assumptions.values.planning.statedSummaries.length, 1);
+});
+
+await runCase('a real holding whose value coincidentally equals the sum of the others is NOT refused', async () => {
+  // 319,000 + 415,000 + 339,000 = 1,073,000. An arithmetic guard would refuse
+  // this buyout bond for matching that sum. The client said it is a separate
+  // holding they own, and it is one.
+  const result = await applyReconciliationPlan({
+    profile: threePensionProfile(),
+    notes: threePensionNotes(),
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{
+        groupId: 'group_coincidental',
+        atomic: false,
+        operations: [{
+          operationId: 'op_coincidental',
+          op: 'upsert_note',
+          reasonCode: 'missing_note',
+          noteKind: 'position',
+          factId: 'pension_positions',
+          factInstanceId: 'pension_positions:recon_slot_pension_positions_1',
+          entityId: 'recon_slot_pension_positions_1',
+          ownerId: 'primary',
+          certainty: 'exact',
+          value: { ownerId: 'primary', type: 'buyout_bond', currentValue: { amount: 1_073_000, currency: 'EUR' } },
+          evidence: [{
+            turnId: 'turn_coincidental_holding',
+            quote: 'I also hold a separate buyout bond worth 1,073,000 in my own name'
+          }],
+          sourceEntityIds: []
+        }]
+      }]
+    },
+    ...aggregateCommon
+  });
+  assert.deepEqual(result.rejectedGroups, [], 'no arithmetic coincidence may refuse a stated holding');
+  assert.deepEqual(result.acceptedOperationIds, ['op_coincidental']);
+  assert.equal(result.profile.pensions.length, 4);
+  assert.equal(pensionTotal(result.profile), 2_146_000);
+});
+
+await runCase('approximate aggregate wording stays a summary and the module sees no double counting', async () => {
+  const result = await applyReconciliationPlan({
+    profile: threePensionProfile(),
+    notes: threePensionNotes(),
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{
+        groupId: 'group_approx_total',
+        atomic: false,
+        operations: [{
+          operationId: 'op_approx_total',
+          op: 'upsert_note',
+          reasonCode: 'aggregate_summary',
+          noteKind: 'summary',
+          factId: 'pension_current_value',
+          factInstanceId: 'pension_current_value',
+          certainty: 'approximate',
+          value: { amount: 1_000_000, currency: 'EUR', qualifier: 'about' },
+          evidence: [{ turnId: 'turn_aggregate_first', quote: 'about a million across the pensions' }],
+          sourceEntityIds: []
+        }]
+      }]
+    },
+    ...aggregateCommon
+  });
+  assert.deepEqual(result.acceptedOperationIds, ['op_approx_total']);
+  const summaries = result.profile.assumptions.values.planning.statedSummaries;
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].certainty, 'approximate', 'the uncertainty survives');
+  assert.equal(summaries[0].value.qualifier, 'about');
+  // What Pension Projection actually reads: three holdings, €1.073m, and no
+  // trace of the €1m the client estimated out loud.
+  assert.equal(result.profile.pensions.length, 3);
+  assert.equal(pensionTotal(result.profile), 1_073_000);
+  assert.equal(
+    result.profile.pensions.some((pension) => pension.currentValue?.amount === 1_000_000),
+    false,
+    'the stated total is not readable as a holding'
+  );
 });
 
 console.log('Planning reconciliation checks passed.');

@@ -13,18 +13,26 @@ import {
   RECONCILIATION_OPERATIONS,
   RECONCILIATION_REASON_CODES,
   applyReconciliationPlan,
+  buildReconciliationIdentityCatalogue,
   normalizeNeedV2,
   normalizePlanningNotesV1,
   normalizeReconciliationPlanV1
 } from '../../../js/planning/reconciliation.js';
 import {
+  getSemanticFactDefinition,
   listSemanticFactDefinitions,
   resolveSemanticFact
 } from '../../../js/planning/semantic_facts.js';
+import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
 import { ConsumerError } from './errors.js';
 import { stableStringify } from './crypto.js';
 import { toConsumerRealtimePlanningLists } from './planning_context.js';
-import { buildConfirmedRealtimeFactSummary } from './realtime_fact_mapper.js';
+import {
+  buildConfirmedRealtimeFactSummary,
+  mapRealtimeFact,
+  realtimeChoiceVocabulary,
+  realtimeFactValueVocabulary
+} from './realtime_fact_mapper.js';
 import { plannerContextSlice } from './realtime_planner.js';
 import {
   completePlannerReconciliation,
@@ -132,6 +140,9 @@ Evidence rules:
 - Every operation must quote an exact, contiguous client span from the cited turn.
 - Every proposed number must appear in its cited quote. Do not calculate totals, dates, percentages, midpoints or conversions.
 - Use only supplied note, entity, owner and fact identities. Never invent an identity or JSON path.
+- An entity is valid for a fact only when the entity's factIds list that fact. Resolve a spoken reference by matching it against entity labels and aliases; where two entities match equally well, request_clarification instead of picking one.
+- A fact in singletonFactIds has ONE household-wide slot. Give it entity householdScopeEntityId or no entity at all. Never attach it to the partner or to a position: there is no per-person slot, and naming one would overwrite the client's own value with somebody else's.
+- Where factContracts gives a fact choices, the value must be exactly one of those terms. Do not describe the answer in your own words or add extra keys. If no term fits the evidence, request_clarification.
 - An entity marked newEntitySlot is a server-issued identity for one omitted position. Use one only when exact client evidence establishes that distinct position, and copy that slot ID into the canonical record's entity ID field.
 - A partner or joint owner is valid only when that owner exists in the supplied household.
 - Preserve uncertainty, ranges, explicit none and which person/position they concern.
@@ -141,9 +152,12 @@ Reconciliation rules:
 - Correct a wrong value or owner with correct_note and cite the corrective wording.
 - Reclassify totals as summary, expected amounts as future_event, and unresolved alternatives as scenario_option.
 - A stated total is not another holding. A future inheritance is not a current asset. A candidate retirement age is not a settled target.
+- CLASSIFY EVERY AMOUNT AS ONE OR THE OTHER. A statement describing an individual holding ("the Zurich one is 415,000") is noteKind position. A statement describing a total, combined value, or the set as a whole ("about a million across the pensions", "altogether", "between them") is reasonCode aggregate_summary AND noteKind summary — the two must agree, and an aggregate_summary carrying any other noteKind is refused. Record the total; do not also record it as a holding, and do not split it into one holding per policy.
+- Where a total was already written as a holding, repair it with reclassify_note to summary from that same note. That keeps the client's words and their evidence while taking the figure out of the holdings the analysis adds up.
 - Retract or merge only when the transcript explicitly proves the note/entity is wrong or duplicated.
 - Use set_completion for an exact owner/position unknown or none answer.
 - If the transcript does not resolve an ambiguity safely, request_clarification with a complete NeedV2 value.
+- selectedAnalyses[].inputs is what each analysis needs. Prioritise inputs marked missing whose evidence the client has already given; an input marked satisfied needs no further operation. Information no analysis consumes is still worth keeping as an evidence-backed note, and is not a failure.
 
 Grouping rules:
 - A group is a unit that lands together or not at all. One failing operation discards every other operation in its group, so grouping unrelated corrections together throws away correct work.
@@ -327,11 +341,51 @@ export function normalizeModelReconciliationPlan(raw) {
   try {
     return { plan: normalizeReconciliationPlanV1(plan), droppedOperations };
   } catch (error) {
-    // The reason the shape was refused is the only thing that makes this
-    // fixable. Swallowing it left "the planner returned an invalid plan" as the
-    // entire record of a failed reconciliation, which says nothing about which
-    // operation or which field, and the raw output is not retained anywhere.
+    // ONE UNUSABLE GROUP IS NOT AN UNUSABLE PLAN.
+    //
+    // The per-operation loop above catches wire-shape errors, but the contract
+    // normalizer runs afterwards over the whole plan and is all-or-nothing, so
+    // a single `reclassify_note` missing its `targetNoteId` failed the entire
+    // reconciliation. Observed live: four groups returned, three of them
+    // perfectly valid, and the turn recorded nothing at all. That is the same
+    // blast radius the per-operation parsing fix removed, one layer up.
+    //
+    // Re-normalize each group ALONE against the same contract. Nothing is
+    // relaxed -- a group that cannot satisfy the contract is still refused in
+    // full, and is reported as dropped rather than disappearing.
+    const salvaged = [];
+    for (const group of operationGroups) {
+      try {
+        normalizeReconciliationPlanV1({ ...plan, verdict: 'changes_proposed', operationGroups: [group] });
+        salvaged.push(group);
+      } catch (groupError) {
+        for (const operation of group.operations) {
+          droppedOperations.push({
+            groupId: group.groupId || null,
+            operationId: operation.operationId || null,
+            code: 'planner_reconciliation_output_invalid',
+            reason: String(groupError?.message || '').slice(0, 200)
+          });
+        }
+      }
+    }
     const reason = String(error?.message || '').slice(0, 300);
+    if (salvaged.length > 0) {
+      try {
+        return {
+          plan: normalizeReconciliationPlanV1({
+            ...plan,
+            verdict: 'changes_proposed',
+            operationGroups: salvaged
+          }),
+          droppedOperations
+        };
+      } catch (_residual) {
+        // Fall through: the refusal is in the plan envelope, not one group.
+      }
+    }
+    // Nothing survived, or the envelope itself is wrong. The reason the shape
+    // was refused is the only thing that makes this fixable.
     const failure = new ConsumerError(
       502,
       'planner_reconciliation_output_invalid',
@@ -342,42 +396,44 @@ export function normalizeModelReconciliationPlan(raw) {
   }
 }
 
-function ownerIndex(profile) {
-  const owners = [{
-    ownerId: profile.primaryPerson.personId,
-    role: 'primary',
-    label: profile.primaryPerson.displayName || 'you',
-    aliases: ['I', 'me', 'my', 'mine', profile.primaryPerson.displayName].filter(Boolean)
-  }];
-  if (profile.partner) {
-    owners.push({
-      ownerId: 'household',
-      role: 'household',
-      label: 'the household',
-      aliases: ['we', 'our', 'joint', 'jointly', 'household']
-    });
-    owners.push({
-      ownerId: profile.partner.personId,
-      role: 'partner',
-      label: profile.partner.displayName || 'your partner',
-      aliases: [
-        'partner', 'spouse', 'wife', 'husband', 'she', 'he', 'her', 'his',
-        profile.partner.displayName
-      ].filter(Boolean)
-    });
-  }
-  return owners;
-}
+const OWNER_HINT_KEYS = Object.freeze(['owner', 'ownerId', 'ownerIds', 'owners', 'personId']);
 
-const ENTITY_COLLECTIONS = Object.freeze([
-  ['pensions', 'pensionId'],
-  ['assets', 'assetId'],
-  ['properties', 'propertyId'],
-  ['liabilities', 'liabilityId'],
-  ['incomeSources', 'incomeId'],
-  ['businesses', 'businessId'],
-  ['dependants', 'dependantId']
-]);
+/**
+ * ONE CANONICALISATION FOR BOTH LANES.
+ *
+ * The live lane already turns a conversational fact value into the canonical
+ * one -- `{"age": 57, "owner": "primary"}` into `57` at `/primaryPerson/age`,
+ * a spoken choice into the vocabulary term, a rate into a fraction. The
+ * reconciler wrote its note values into the profile raw, so the identical
+ * sentence produced a canonical value down one lane and a dropped write down
+ * the other. Every observed call lost the client's own age that way.
+ *
+ * The note carries the owner separately from the value, so hand the mapper an
+ * owner it would otherwise have to assume -- but only into an object that does
+ * not already state one, and never by reshaping a scalar or a money value.
+ *
+ * `null` and refusal are different answers and the projector treats them
+ * differently. A fact outside the mapper's remit returns null, so the raw note
+ * value is still projected exactly as it was before this adapter existed. A
+ * fact the mapper OWNS but whose value it rejects returns a refusal, and that
+ * is final -- no raw fallback smuggles an unvalidated value into the slot.
+ */
+function mapReconciledFactValue(profile, note) {
+  const value = isPlainObject(note.value) && note.ownerId
+    && !OWNER_HINT_KEYS.some((key) => Object.hasOwn(note.value, key))
+    ? { ...note.value, ownerId: note.ownerId }
+    : note.value;
+  try {
+    return mapRealtimeFact(profile, {
+      factId: note.factId,
+      value,
+      ...(note.entityId ? { entityId: note.entityId } : {}),
+      ...(note.ownerId ? { ownerId: note.ownerId } : {})
+    });
+  } catch (error) {
+    return error?.code === 'realtime_fact_not_supported' ? null : { refused: true };
+  }
+}
 
 const LEGACY_POSITION_COLLECTIONS = Object.freeze([
   ['assets', 'assetId', () => 'asset_position', (item) => (
@@ -477,62 +533,6 @@ export function legacyPlanningNotesFromProfile(profile) {
   return normalizePlanningNotesV1(notes, { nowIso: createdAt });
 }
 
-function entityIndex(profile, notes) {
-  const entities = [];
-  for (const [collection, idKey] of ENTITY_COLLECTIONS) {
-    for (const record of profile[collection] || []) {
-      if (!record?.[idKey]) continue;
-      const ownerIds = Array.isArray(record.ownerIds)
-        ? record.ownerIds
-        : record.ownerId ? [record.ownerId] : [];
-      entities.push({
-        entityId: record[idKey],
-        label: record.label || record[idKey],
-        ownerIds,
-        collection,
-        aliases: []
-      });
-    }
-  }
-  for (const note of notes) {
-    if (!note.entityId || entities.some((entity) => entity.entityId === note.entityId)) continue;
-    entities.push({
-      entityId: note.entityId,
-      label: note.value?.label || note.entityId,
-      ownerIds: note.ownerId ? [note.ownerId] : [],
-      factIds: [note.factId],
-      collection: 'planning_notes',
-      aliases: []
-    });
-  }
-  const slots = [
-    ['asset_position', 'assets', 'asset'],
-    ['liability_position', 'liabilities', 'liability'],
-    ['mortgage_position', 'liabilities', 'mortgage'],
-    ['loan_position', 'liabilities', 'loan'],
-    ['income_sources', 'incomeSources', 'income source'],
-    ['pension_positions', 'pensions', 'pension'],
-    ['property_position', 'properties', 'property'],
-    ['business_position', 'businesses', 'business']
-  ];
-  for (const [factId, collection, label] of slots) {
-    for (let index = 1; index <= 4; index += 1) {
-      const entityId = `recon_slot_${factId}_${index}`;
-      if (entities.some((entity) => entity.entityId === entityId)) continue;
-      entities.push({
-        entityId,
-        label: `new ${label} ${index}`,
-        ownerIds: [],
-        factIds: [factId],
-        collection,
-        aliases: [label],
-        newEntitySlot: true
-      });
-    }
-  }
-  return entities;
-}
-
 /**
  * What each selected analysis still needs, in the reconciler's own vocabulary.
  *
@@ -582,6 +582,100 @@ function reconciliationNeeds(planning, profile) {
     }
   }
   return [...byInstance.values()];
+}
+
+const POSITION_SLOT_FACT_IDS = Object.freeze([
+  'asset_position', 'liability_position', 'mortgage_position', 'loan_position',
+  'income_sources', 'pension_positions', 'property_position', 'business_position'
+]);
+
+/**
+ * WHAT EACH SELECTED ANALYSIS ACTUALLY NEEDS, and what it already has.
+ *
+ * The planner used to be told only that an analysis was `needs_facts`, with a
+ * `blockingFactIds` array that was empty in every observed call. So it could
+ * see that something was missing and never which canonical input, which is the
+ * one thing that decides whether a spoken figure is worth canonicalising now.
+ *
+ * Readiness is keyed off validated canonical values and the deterministic need
+ * list, never off freeform notes: a fact is `satisfied` only when it holds a
+ * canonical value, and `missing` only when a module adapter says so.
+ */
+function moduleInputContract(moduleId, canonicalFacts, needs) {
+  const contract = getPlanningModuleDefinition(moduleId)?.intakeContract;
+  if (!contract || contract.status !== 'approved') return [];
+  const satisfied = new Set(canonicalFacts.map((fact) => fact.factId));
+  const missing = new Map();
+  for (const need of needs) {
+    if (!(need.blockingModuleIds || []).includes(moduleId)) continue;
+    const entry = missing.get(need.factId) || { importance: need.importance, instances: [] };
+    entry.instances.push(need.factInstanceId);
+    missing.set(need.factId, entry);
+  }
+  return contract.semanticFactIds.map((factId) => {
+    const outstanding = missing.get(factId);
+    return {
+      factId,
+      status: outstanding ? 'missing' : satisfied.has(factId) ? 'satisfied' : 'not_supplied',
+      ...(outstanding ? { missingInstances: outstanding.instances.slice(0, 6) } : {})
+    };
+  });
+}
+
+/** Blank-slot collections worth offering: the ones a selected analysis reads. */
+function positionFactIdsForModules(selectedAnalyses) {
+  const wanted = new Set(selectedAnalyses.flatMap((analysis) => (
+    analysis.inputs.map((input) => input.factId)
+  )));
+  const offered = POSITION_SLOT_FACT_IDS.filter((factId) => wanted.has(factId));
+  return offered.length > 0 ? offered : null;
+}
+
+/**
+ * The value shape each fact accepts, so canonicalisation is not guesswork.
+ *
+ * A choice fact has a closed vocabulary and the reconciler was never shown it,
+ * so it described the answer instead of naming it -- "permanent IT developer"
+ * arrived as `{employmentType, occupation}` for a slot that holds one term.
+ *
+ * Only facts in play, and only those with a CLOSED vocabulary. A fact whose
+ * value type the schema and the evidence rules already pin down learns nothing
+ * from an entry here, and the latency budget has about a second of headroom:
+ * everything in this prompt has to earn its tokens.
+ */
+function factValueContracts(factIds) {
+  const vocabulary = realtimeChoiceVocabulary();
+  const contracts = [];
+  for (const factId of [...new Set(factIds.filter(Boolean))].sort()) {
+    if (!getSemanticFactDefinition(factId)) continue;
+    const choices = vocabulary[factId] || realtimeFactValueVocabulary(factId);
+    if (!choices) continue;
+    contracts.push({ factId, choices });
+  }
+  return contracts;
+}
+
+/**
+ * Entities the ledger has retired, which must leave the catalogue.
+ *
+ * An aggregate reclassified to a summary stops being a holding, but its
+ * evidence-free legacy snapshot stayed active and kept the entity alive: the
+ * placeholder went on generating a required `pension_contribution_status` need
+ * for a pension that no longer existed. An entity whose only remaining active
+ * notes are summaries or completions is not a position any more.
+ */
+function retiredEntityIdsFromNotes(notes) {
+  const byEntity = new Map();
+  for (const note of notes) {
+    if (!note?.entityId || note.lifecycle !== 'active') continue;
+    const kinds = byEntity.get(note.entityId) || new Set();
+    kinds.add(note.noteKind);
+    byEntity.set(note.entityId, kinds);
+  }
+  return [...byEntity.entries()]
+    .filter(([, kinds]) => kinds.size > 0
+      && [...kinds].every((kind) => ['summary', 'scenario_option', 'future_event'].includes(kind)))
+    .map(([entityId]) => entityId);
 }
 
 function signedQuestionContext(context) {
@@ -638,30 +732,49 @@ export function buildPlannerReconciliationContext({
     sequence: Number.isSafeInteger(turn.sequence) ? turn.sequence : sequence
   }));
   const planning = toConsumerRealtimePlanningLists(context.state, context.profile);
-  const owners = ownerIndex(context.profile);
-  const entities = entityIndex(context.profile, notes);
+  const canonicalFacts = buildConfirmedRealtimeFactSummary(context.profile);
+  const needs = reconciliationNeeds(planning, context.profile);
+  const moduleSlots = planning.moduleSlots || [];
+  const selectedAnalyses = moduleSlots.map((slot) => {
+    const availability = reconciliationModuleAvailability(slot);
+    return {
+      moduleId: slot.moduleId,
+      description: slot.description,
+      availability,
+      runnable: availability === 'ready',
+      intakeStatus: slot.intakeStatus,
+      selectionState: slot.selectionState,
+      inputs: moduleInputContract(slot.moduleId, canonicalFacts, needs)
+    };
+  });
+  const catalogue = buildReconciliationIdentityCatalogue(context.profile, notes, {
+    // Four blank slots per collection for eight collections was 32 of the 40
+    // catalogue entries, nearly all of them never used. Two each, and only for
+    // collections an analysis on the table actually reads, pays for the input
+    // contract below without spending the latency budget.
+    slotsPerCollection: 2,
+    slotFactIds: positionFactIdsForModules(selectedAnalyses),
+    retiredEntityIds: retiredEntityIdsFromNotes(notes)
+  });
   return {
     schemaVersion: 1,
     throughTurnId,
     profileRevision: Number(context.profile.revision),
     transcriptTurns: recent,
     notes,
-    owners,
-    entities,
-    canonicalFacts: buildConfirmedRealtimeFactSummary(context.profile),
-    needs: reconciliationNeeds(planning, context.profile),
-    selectedAnalyses: (planning.moduleSlots || []).map((slot) => {
-      const availability = reconciliationModuleAvailability(slot);
-      return {
-        moduleId: slot.moduleId,
-        description: slot.description,
-        availability,
-        runnable: availability === 'ready',
-        intakeStatus: slot.intakeStatus,
-        selectionState: slot.selectionState,
-        blockingFactIds: slot.blockingFactIds
-      };
-    }),
+    owners: catalogue.owners,
+    entities: catalogue.entities,
+    singletonFactIds: catalogue.singletonFactIds,
+    householdScopeEntityId: catalogue.householdScopeEntityId,
+    factContracts: factValueContracts([
+      ...canonicalFacts.map((fact) => fact.factId),
+      ...needs.map((need) => need.factId),
+      ...notes.map((note) => note.factId),
+      ...selectedAnalyses.flatMap((analysis) => analysis.inputs.map((input) => input.factId))
+    ]),
+    canonicalFacts,
+    needs,
+    selectedAnalyses,
     currentQuestion: signedQuestionContext(context),
     voiceWriteOutcomes
   };
@@ -861,17 +974,31 @@ export async function runPlannerReconciliation({
       transcriptWatermark: throughTurnId,
       baseProfileRevision: context.profile.revision,
       owners: input.owners,
-      entities: input.entities
+      entities: input.entities,
+      mapFactValue: mapReconciledFactValue
     });
     const applyRequested = config.plannerReconciliationMode === 'apply';
     const validationSucceeded = ['applied', 'no_change', 'needs_profile_projection', 'duplicate']
       .includes(validation.status);
-    // Apply only writes when the validator actually produced a changed profile
-    // or ledger. `needs_profile_projection` means an accepted operation has no
-    // canonical home yet, so it stays a recorded observation rather than a
-    // half-projected write, and `no_change` has nothing to persist.
+    // Apply writes whenever the validator produced a changed profile or ledger.
+    // `no_change` has nothing to persist.
+    //
+    // `needs_profile_projection` used to block the write. It means SOME accepted
+    // operation has no canonical home -- a spending figure quoted without a
+    // currency, a fact whose only mapping is a collection root -- and holding
+    // the whole batch for it discards every operation that projected perfectly
+    // well. Measured: one such operation cost nine accepted writes on one turn
+    // and seven on another, the same blast radius the grouping and per-group
+    // invariant work removed at the group level, arriving one layer down.
+    //
+    // The profile returned here is normalized and valid; it simply contains
+    // less than the ledger does. That gap is real either way, and refusing to
+    // write does not close it -- it just loses the rest of the batch too. The
+    // unprojected operations stay in the ledger, reported in
+    // `unprojectedFactOperationIds` and `unprojectableNotes`, which is what
+    // makes them a repair target for the next pass.
     const writesProfile = applyRequested
-      && validation.status === 'applied'
+      && ['applied', 'needs_profile_projection'].includes(validation.status)
       && (validation.profileChanged || validation.ledgerChanged);
     const status = !validationSucceeded
       ? (validation.status === 'conflicted' ? 'conflicted' : 'failed')

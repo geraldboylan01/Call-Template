@@ -1,5 +1,5 @@
 import { normalizeHouseholdProfile } from './profile.js';
-import { getSemanticFactDefinition } from './semantic_facts.js';
+import { getSemanticFactDefinition, listSemanticFactDefinitions } from './semantic_facts.js';
 import {
   assertIsoDateTime,
   assertJsonCompatible,
@@ -988,6 +988,68 @@ function ownerRecords(profile, suppliedOwners = []) {
   return new Map(records.map((record) => [record.ownerId, record]));
 }
 
+/**
+ * The scope every fact is written at, derived from the registry.
+ *
+ * Three scopes, and a fact belongs to exactly one. A SINGLETON has one slot for
+ * the whole household -- `/assumptions/values/persona/employmentContext` holds
+ * one term, not one per person -- so it takes no entity. A PERSON fact has a
+ * slot per person and is keyed by `personId`. Everything else is a position or
+ * a collection member, keyed by its own entity.
+ *
+ * This used to be a two-item literal on the person entity, so every other
+ * person-shaped fact the planner named was refused as an entity/fact mismatch,
+ * and the household scope did not exist at all: `household` was a valid OWNER
+ * and never a valid ENTITY, which refused six correct operations per batch. A
+ * derivation cannot drift from the registry the way that literal did.
+ */
+const SCOPE_COLLECTION_ROOTS = new Set([
+  'pensions', 'assets', 'properties', 'liabilities',
+  'incomeSources', 'businesses', 'dependants', 'goals'
+]);
+
+let factScopeCache = null;
+function factScopes() {
+  if (factScopeCache) return factScopeCache;
+  const singleton = [];
+  const person = [];
+  for (const definition of listSemanticFactDefinitions()) {
+    if (POSITION_PROJECTIONS[definition.factId]) continue;
+    if (definition.entity?.kind === 'root_object' && definition.entity.idKey === 'personId') {
+      person.push(definition.factId);
+      continue;
+    }
+    if (definition.entity) continue;
+    const patterns = (definition.mappings || []).map((mapping) => mapping.pathPattern || '');
+    // A fact whose home is an array root is a member of that collection, not a
+    // single household slot. `goals` is one of those roots even though nothing
+    // keys an entity off it here, so it is named alongside the rest rather
+    // than falling through and turning `primary_goal` into a singleton.
+    if (patterns.some((pattern) => SCOPE_COLLECTION_ROOTS.has(pattern.split('/')[1]))) continue;
+    singleton.push(definition.factId);
+  }
+  factScopeCache = Object.freeze({
+    singleton: Object.freeze(singleton),
+    person: Object.freeze(person)
+  });
+  return factScopeCache;
+}
+
+/**
+ * The household-wide scope. A singleton fact may name it instead of an entity.
+ * Callers read it off the catalogue's `householdScopeEntityId` rather than
+ * importing it, so the constant stays module-local.
+ */
+const HOUSEHOLD_SCOPE_ENTITY_ID = 'household';
+
+export function singletonFactIds() {
+  return [...factScopes().singleton];
+}
+
+function isSingletonFact(factId) {
+  return factScopes().singleton.includes(factId);
+}
+
 function profileEntityRecords(profile) {
   const result = [];
   for (const [factId, projection] of Object.entries(POSITION_PROJECTIONS)) {
@@ -1008,9 +1070,15 @@ function profileEntityRecords(profile) {
       });
     }
   }
+  const { singleton, person } = factScopes();
+  // The primary client IS the household's singleton subject, so naming them on
+  // a singleton fact resolves to the same slot as naming no entity at all and
+  // is accepted. The partner is NOT: "herself is still working" has no
+  // canonical home, and coercing it would overwrite the client's own
+  // retirement status with their partner's. That stays refused.
   result.push({
     entityId: profile.primaryPerson.personId,
-    factIds: ['person_current_age', 'intended_retirement_age'],
+    factIds: [...person, ...singleton],
     ownerIds: [profile.primaryPerson.personId],
     label: profile.primaryPerson.displayName || 'you',
     collection: 'people'
@@ -1018,13 +1086,113 @@ function profileEntityRecords(profile) {
   if (profile.partner) {
     result.push({
       entityId: profile.partner.personId,
-      factIds: ['partner_person', 'person_current_age', 'intended_retirement_age'],
+      factIds: [...person],
       ownerIds: [profile.partner.personId],
       label: profile.partner.displayName || 'your partner',
       collection: 'people'
     });
   }
+  result.push({
+    entityId: HOUSEHOLD_SCOPE_ENTITY_ID,
+    factIds: [...singleton],
+    ownerIds: [],
+    label: 'the household',
+    collection: 'household',
+    aliases: ['we', 'our', 'joint', 'household']
+  });
   return result;
+}
+
+const NEW_ENTITY_SLOTS = Object.freeze([
+  ['asset_position', 'assets', 'asset'],
+  ['liability_position', 'liabilities', 'liability'],
+  ['mortgage_position', 'liabilities', 'mortgage'],
+  ['loan_position', 'liabilities', 'loan'],
+  ['income_sources', 'incomeSources', 'income source'],
+  ['pension_positions', 'pensions', 'pension'],
+  ['property_position', 'properties', 'property'],
+  ['business_position', 'businesses', 'business']
+]);
+
+/**
+ * ONE CATALOGUE, sent to the planner and enforced by the validator.
+ *
+ * These were two lists. The worker built one to put in the prompt and this
+ * module built another to judge the answer against, and they disagreed: the
+ * planner was never shown the primary person yet was refused for naming facts
+ * on them, and was never told which fact types an entity accepts at all. A
+ * planner cannot resolve a spoken reference safely against a catalogue it
+ * cannot see, and a rule the prompt never states is not a contract -- it is a
+ * trap. Both sides now read the same object.
+ *
+ * The planner may still PROPOSE any mapping in here; validation is unchanged
+ * and still refuses invented entities, impossible owners, wrong entity types
+ * and unresolvable references.
+ *
+ * @param {object} profile Normalized household profile.
+ * @param {Array} notes Ledger notes, whose entities join the catalogue.
+ * @param {object} [options]
+ * @param {number} [options.slotsPerCollection] Blank slots offered per collection.
+ * @param {string[]|null} [options.slotFactIds] Restrict slots to these position facts.
+ * @param {string[]} [options.retiredEntityIds] Entities that must not be offered.
+ */
+export function buildReconciliationIdentityCatalogue(profile, notes = [], {
+  slotsPerCollection = 2,
+  slotFactIds = null,
+  retiredEntityIds = []
+} = {}) {
+  const normalized = normalizeHouseholdProfile(profile);
+  const retired = new Set(retiredEntityIds);
+  const entities = [];
+  const seen = new Set();
+  const push = (record) => {
+    if (!record.entityId || seen.has(record.entityId) || retired.has(record.entityId)) return;
+    seen.add(record.entityId);
+    entities.push(record);
+  };
+  for (const record of profileEntityRecords(normalized)) {
+    push({ aliases: [], ...record });
+  }
+  for (const note of notes) {
+    if (!note?.entityId || note.lifecycle !== 'active') continue;
+    const existing = entities.find((entity) => entity.entityId === note.entityId);
+    if (existing) {
+      existing.factIds = [...new Set([...(existing.factIds || []), note.factId])];
+      continue;
+    }
+    push({
+      entityId: note.entityId,
+      label: note.value?.label || note.entityId,
+      ownerIds: note.ownerId ? [note.ownerId] : [],
+      factIds: [note.factId],
+      collection: 'planning_notes',
+      aliases: []
+    });
+  }
+  const slots = slotFactIds
+    ? NEW_ENTITY_SLOTS.filter(([factId]) => slotFactIds.includes(factId))
+    : NEW_ENTITY_SLOTS;
+  for (const [factId, collection, label] of slots) {
+    for (let index = 1; index <= slotsPerCollection; index += 1) {
+      push({
+        entityId: `recon_slot_${factId}_${index}`,
+        label: `new ${label} ${index}`,
+        ownerIds: [],
+        factIds: [factId],
+        collection,
+        aliases: [label],
+        newEntitySlot: true
+      });
+    }
+  }
+  return {
+    owners: [...ownerRecords(normalized).values()],
+    entities,
+    // Facts with one household-wide slot. They take no entity; the household
+    // scope or the primary client resolves to that same slot.
+    singletonFactIds: singletonFactIds(),
+    householdScopeEntityId: HOUSEHOLD_SCOPE_ENTITY_ID
+  };
 }
 
 function entityRecords(profile, suppliedEntities = []) {
@@ -1188,10 +1356,18 @@ function positionRecordFromOperation(operation, targetNote, entityId, ownerId) {
 }
 
 function noteFromOperation(operation, targetNote, evidenceRefs, nowIso) {
-  const factInstanceId = operation.factInstanceId
-    || (targetNote?.factId === operation.factId ? targetNote.factInstanceId : null)
-    || (operation.entityId ? `${operation.factId}:${operation.entityId}` : operation.factId);
-  const entityId = operation.entityId || targetNote?.entityId || null;
+  // A singleton has one household-wide slot, so the scope it was NAMED at is
+  // not part of its identity. The planner may reach it via the household scope
+  // or via the primary client; both are stored the same unentitied way the
+  // live lane already writes them, so one fact cannot end up as three ledger
+  // instances that no need id ever matches.
+  const singleton = isSingletonFact(operation.factId);
+  const factInstanceId = singleton
+    ? operation.factId
+    : operation.factInstanceId
+      || (targetNote?.factId === operation.factId ? targetNote.factInstanceId : null)
+      || (operation.entityId ? `${operation.factId}:${operation.entityId}` : operation.factId);
+  const entityId = singleton ? null : (operation.entityId || targetNote?.entityId || null);
   const ownerId = operation.ownerId || targetNote?.ownerId || null;
   const value = operation.noteKind === 'position' && entityId
     ? positionRecordFromOperation(operation, targetNote, entityId, ownerId)
@@ -1296,6 +1472,38 @@ function applyValidatedOperation(notes, operation, targetNote, evidenceRefs, now
   return { notes: next, clarificationNeeds: [] };
 }
 
+/**
+ * A STATED TOTAL IS NOT A HOLDING, and the plan has to say which it is.
+ *
+ * `aggregate_summary` has been a legal reasonCode since the contract was
+ * written, and `summary` has been a legal noteKind, but nothing tied them
+ * together. So a plan could say "this is the client's aggregate" in the
+ * reasonCode and "this is a holding" in the noteKind, and the second one won
+ * because the noteKind is what projects. Observed live: "there's about a
+ * million in the pensions" landed in `/pensions` beside the three real ones,
+ * and Pension Projection was handed €2.07m for a client with €1.07m. The
+ * deterministic arithmetic was right; the canonical input was not.
+ *
+ * The classification is the planner's to make and this is only its
+ * enforcement. Nothing here inspects amounts, compares an operation against
+ * its siblings, or reads the wording -- a holding whose value happens to equal
+ * the sum of the others is a holding, and stays one.
+ */
+function assertAggregateIsNotAPosition(operation, targetNote) {
+  const aggregate = operation.reasonCode === 'aggregate_summary';
+  const noteKind = operation.noteKind || targetNote?.noteKind || null;
+  if (aggregate && noteKind && noteKind !== 'summary') {
+    fail(
+      'aggregate_not_a_position',
+      `Operation ${operation.operationId} is classified aggregate_summary, so it must be a summary note, not ${noteKind}.`
+    );
+  }
+  // Deliberately not enforced here: an aggregate that already landed as a
+  // position is repaired by `reclassify_note` from that very entity, so the
+  // repair path necessarily names a position. Refusing it would close the only
+  // route back out of the mistake this rule exists to prevent.
+}
+
 function validateOperation(operation, notes, context) {
   const targetNote = operation.targetNoteId
     ? notes.find((note) => note.noteId === operation.targetNoteId)
@@ -1357,6 +1565,7 @@ function validateOperation(operation, notes, context) {
     return { targetNote, evidenceRefs };
   }
 
+  assertAggregateIsNotAPosition(operation, targetNote);
   assertKnownIdentity(operation, targetNote, context.owners, context.entities, evidenceRefs);
   const grounding = assertNumericGrounding(operation, targetNote, evidenceRefs);
   assertDateGrounding(operation, targetNote, evidenceRefs);
@@ -1617,7 +1826,67 @@ function assertPositionRecord(note, projection) {
  * This is the policy the scalar pass below already applies, stated in its own
  * comment. Positions were the inconsistency.
  */
-export function projectPlanningNotesToProfile(rawProfile, rawNotes, { onUnprojectable = () => {} } = {}) {
+/**
+ * The canonical values a scalar note may take, best candidate first.
+ *
+ * The reconciler used to write `note.value` straight into the profile slot,
+ * while the live lane ran the same conversational value through a per-fact
+ * mapper first. So the two lanes disagreed about what a fact value IS. The
+ * planner describes a fact -- `{"age": 57, "owner": "primary"}` -- and
+ * `/primaryPerson/age` holds a number, so the write failed normalization and
+ * was skipped in silence: a REQUIRED pension input, accepted and applied,
+ * discarded on the way to the profile in every observed call.
+ *
+ * `mapFactValue` is the live lane's own mapper, injected rather than imported
+ * so this module keeps no dependency on the worker. It only ever supplies a
+ * candidate: it cannot widen where a fact may be written, because the path was
+ * already decided by `scalarProfilePathForNote` and a value it refuses still
+ * falls back to the raw one.
+ *
+ * Three rails keep an injected mapper from writing somewhere it was not asked
+ * to. Its value is used ONLY when its own `fieldPath` agrees with the path
+ * resolved here -- two independent resolvers reaching the same slot -- because
+ * a mapper that means `/goals/0` must never have its value written to
+ * `/goals`. A null canonical value is dropped: a deletion is what a
+ * `completion` note and its sidecar are for, and must not arrive through the
+ * scalar bridge. And a mapper that OWNS a fact has the last word on it: when
+ * it refuses the value, there is no raw fallback.
+ *
+ * That last rail is what stops a descriptive object reaching a slot with no
+ * shape of its own. `/assumptions/values/persona/*` holds vocabulary terms and
+ * the profile contract cannot tell one string from another, so a raw
+ * `{"employmentType":"permanent","occupation":"IT developer"}` normalises
+ * cleanly and lands as canonical nonsense. The mapper knows the vocabulary;
+ * where it says no, the note stays in the ledger as evidence and the fact
+ * stays uncanonicalised, which is the honest answer.
+ */
+function canonicalScalarCandidates(profile, note, path, mapFactValue) {
+  const candidates = [];
+  if (mapFactValue) {
+    let mapped = null;
+    try {
+      mapped = mapFactValue(profile, note);
+    } catch (_error) {
+      mapped = { refused: true };
+    }
+    if (isPlainObject(mapped) && mapped.refused === true) return [];
+    if (isPlainObject(mapped)
+      && mapped.fieldPath === path
+      && mapped.canonicalValue !== null
+      && typeof mapped.canonicalValue !== 'undefined') {
+      candidates.push(mapped.canonicalValue);
+    }
+  }
+  candidates.push(note.value);
+  return candidates.filter((value, index) => (
+    index === 0 || stableStringify(value) !== stableStringify(candidates[0])
+  ));
+}
+
+export function projectPlanningNotesToProfile(rawProfile, rawNotes, {
+  onUnprojectable = () => {},
+  mapFactValue = null
+} = {}) {
   const profile = normalizeHouseholdProfile(rawProfile);
   const notes = normalizePlanningNotesV1(rawNotes);
   const next = cloneJson(profile);
@@ -1680,14 +1949,36 @@ export function projectPlanningNotesToProfile(rawProfile, rawNotes, { onUnprojec
     // it maps to. Failing the whole reconciliation over one of those would
     // throw away every other correction in the batch -- the projection is a
     // best-effort bridge, and what it cannot place stays in the ledger.
-    const trial = cloneJson(next);
-    writeProfilePath(trial, path, note.value);
-    try {
-      normalizeHouseholdProfile(trial);
-    } catch (_error) {
-      continue;
+    //
+    // Skipped is not the same as unobserved, though. This used to `continue`
+    // in silence, so a required module input could be accepted, applied and
+    // dropped while the result reported `fullyProjected: true`. Every skip is
+    // now reported through the same channel as a quarantined position, which
+    // is what makes the loss measurable instead of invisible.
+    let written = false;
+    let failure = null;
+    for (const value of canonicalScalarCandidates(next, note, path, mapFactValue)) {
+      const trial = cloneJson(next);
+      writeProfilePath(trial, path, value);
+      try {
+        normalizeHouseholdProfile(trial);
+      } catch (error) {
+        failure = failure || error;
+        continue;
+      }
+      writeProfilePath(next, path, value);
+      written = true;
+      break;
     }
-    writeProfilePath(next, path, note.value);
+    if (!written) {
+      onUnprojectable({
+        noteId: note.noteId,
+        factId: note.factId,
+        entityId: note.entityId || null,
+        code: 'scalar_value_unprojectable',
+        message: `Note ${note.noteId} holds no value ${path} accepts: ${failure?.message || 'unknown'}`
+      });
+    }
   }
 
   const planning = next.assumptions.values.planning;
@@ -1754,6 +2045,10 @@ export async function applyReconciliationPlan({
   appliedPlanHashes = [],
   owners = [],
   entities = [],
+  // The live lane's fact mapper, injected by the worker. Absent, the projection
+  // writes raw note values exactly as before, which keeps this module free of
+  // any worker import and every existing caller behaving identically.
+  mapFactValue = null,
   nowIso = new Date().toISOString()
 }) {
   const profile = normalizeHouseholdProfile(rawProfile);
@@ -1884,7 +2179,7 @@ export async function applyReconciliationPlan({
     // runs and still fails closed; it should now have nothing left to catch.
     if (!rejection) {
       try {
-        projectPlanningNotesToProfile(profile, groupNotes);
+        projectPlanningNotesToProfile(profile, groupNotes, { mapFactValue });
       } catch (error) {
         const culprit = group.operations.at(-1);
         rejection = {
@@ -1950,7 +2245,8 @@ export async function applyReconciliationPlan({
   const unprojectableNotes = [];
   try {
     projected = projectPlanningNotesToProfile(profile, workingNotes, {
-      onUnprojectable: (entry) => unprojectableNotes.push(entry)
+      onUnprojectable: (entry) => unprojectableNotes.push(entry),
+      mapFactValue
     });
   } catch (error) {
     return {
