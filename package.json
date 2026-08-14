@@ -9,6 +9,7 @@
     "check:planning-playbooks": "node ./scripts/generate-planning-playbook-manifest.mjs --check",
     "generate:module-manifest": "node ./scripts/generate-module-manifest.mjs",
     "check:module-manifest": "node ./scripts/generate-module-manifest.mjs --check",
+    "check:module-catalogue-authoring": "node ./scripts/check-module-catalogue-authoring.mjs",
     "generate:brand-harp": "node ./scripts/generate-planeir-harp-assets.mjs --png",
     "generate:advisor-auth": "node ./scripts/generate-advisor-auth.mjs",
     "generate:consumer-key": "node ./scripts/generate-consumer-data-key.mjs",

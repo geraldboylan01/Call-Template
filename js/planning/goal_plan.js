@@ -60,9 +60,9 @@ const GOAL_LABELS = Object.freeze({
  */
 const ROUTES = buildRoutesFromManifest();
 
-function buildRoutesFromManifest() {
+function buildRoutesFromManifest(manifest = MODULE_MANIFEST) {
   const byGoal = {};
-  for (const entry of MODULE_MANIFEST) {
+  for (const entry of manifest) {
     if (!entry.routing?.consumerRoutable) continue;
     for (const goal of entry.routing.goals || []) {
       (byGoal[goal.type] ||= []).push({
@@ -84,8 +84,8 @@ function buildRoutesFromManifest() {
 }
 
 /** Modules the manifest pins into a plan that still has room for them. */
-function pinnedModuleIds() {
-  return MODULE_MANIFEST
+function pinnedModuleIds(manifest = MODULE_MANIFEST) {
+  return manifest
     .filter((entry) => entry.routing?.pinned === 'when_eligible')
     .map((entry) => entry.moduleId);
 }
@@ -229,9 +229,9 @@ export const MAX_CONSUMER_ANALYSES = 3;
 
 const MANIFEST_ORDER = new Map(MODULE_MANIFEST.map((entry, index) => [entry.moduleId, index]));
 
-function manifestOrder(moduleId) {
-  const index = MANIFEST_ORDER.get(moduleId);
-  return Number.isInteger(index) ? index : MANIFEST_ORDER.size;
+function manifestOrder(moduleId, order = MANIFEST_ORDER) {
+  const index = order.get(moduleId);
+  return Number.isInteger(index) ? index : order.size;
 }
 
 /**
@@ -334,7 +334,7 @@ function addRoute(byModuleId, route, goalType) {
   if (SOURCE_RANK[route.source] > SOURCE_RANK[existing.source]) existing.source = route.source;
 }
 
-function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null) {
+function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null, candidateManifest = null) {
   const definition = getPlanningModuleDefinition(moduleId);
   const readiness = getModuleIntakeReadiness(moduleId, profile);
   const missingFactIds = [...new Set(withoutInapplicableFacts(
@@ -386,7 +386,7 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null)
   )];
 
   const releaseAllowed = isConsumerVisibleModule(moduleId, {
-    allowedModuleIds, adviserOverrides
+    allowedModuleIds, adviserOverrides, candidateManifest
   });
   if (!releaseAllowed) {
     return {
@@ -466,12 +466,21 @@ export function toPublicGoalAssessment(assessment) {
 }
 
 /** Build the deterministic one-to-three-module plan. Model output never supplies module ids. */
-export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverrides = null } = {}) {
+export function buildGoalModulePlan(rawProfile, {
+  allowedModuleIds,
+  adviserOverrides = null,
+  candidateManifest = null
+} = {}) {
   const profile = normalizeHouseholdProfile(rawProfile);
+  const catalogue = Array.isArray(candidateManifest) ? candidateManifest : MODULE_MANIFEST;
+  const routes = Array.isArray(candidateManifest) ? buildRoutesFromManifest(catalogue) : ROUTES;
+  const order = Array.isArray(candidateManifest)
+    ? new Map(catalogue.map((entry, index) => [entry.moduleId, index]))
+    : MANIFEST_ORDER;
   const goals = activeGoals(profile);
   const activeGoalTypes = [...new Set(goals.map((goal) => goal.type))];
-  const supportedGoalTypes = activeGoalTypes.filter((goalType) => ROUTES[goalType]);
-  const unsupportedGoalTypes = activeGoalTypes.filter((goalType) => !ROUTES[goalType]);
+  const supportedGoalTypes = activeGoalTypes.filter((goalType) => routes[goalType]);
+  const unsupportedGoalTypes = activeGoalTypes.filter((goalType) => !routes[goalType]);
   const selectedFocus = selectedPrimaryGoal(profile, goals);
 
   // Every supported goal is routed. A primary goal changes where its modules
@@ -479,7 +488,7 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   // review has two real goals, and dropping one because it lost a focus question
   // is how a meeting quietly stops serving half of what was asked for.
   const byModuleId = new Map();
-  supportedGoalTypes.forEach((goalType) => ROUTES[goalType].forEach((route) => addRoute(byModuleId, route, goalType)));
+  supportedGoalTypes.forEach((goalType) => routes[goalType].forEach((route) => addRoute(byModuleId, route, goalType)));
 
   // Manifest-pinned modules are candidates too, ranked in the lowest tier so
   // they yield to anything the client actually asked for. A pin fills space
@@ -487,7 +496,7 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   // whose only goal has no consumer analysis still gets a clarifying question
   // rather than a balance sheet nobody asked for.
   const hasRoutedGoal = byModuleId.size > 0;
-  for (const moduleId of hasRoutedGoal ? pinnedModuleIds() : []) {
+  for (const moduleId of hasRoutedGoal ? pinnedModuleIds(catalogue) : []) {
     if (byModuleId.has(moduleId) || !isPlanningModuleSelectable(moduleId)) continue;
     if (moduleId === MODULE_IDS.PERSONAL_BALANCE_SHEET && !shouldAddBalanceSheet(profile, supportedGoalTypes)) continue;
     byModuleId.set(moduleId, {
@@ -499,7 +508,7 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   }
 
   const allowed = Array.isArray(allowedModuleIds) ? new Set(allowedModuleIds) : null;
-  const visibility = { allowedModuleIds: allowed, adviserOverrides };
+  const visibility = { allowedModuleIds: allowed, adviserOverrides, candidateManifest };
   const accepted = acceptedModuleIds(profile);
   const declined = declinedModuleIds(profile);
   const confirmed = confirmedModuleIds(profile);
@@ -535,7 +544,7 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
       || declined.has(selection.moduleId)) {
       return false;
     }
-    const intake = intakeFor(selection.moduleId, profile, allowed, adviserOverrides);
+    const intake = intakeFor(selection.moduleId, profile, allowed, adviserOverrides, candidateManifest);
     if (intake.availability === 'blocked_missing_input') {
       blockedSelections.push(Object.freeze({
         moduleId: selection.moduleId,
@@ -550,14 +559,14 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   const ranked = [...eligible].sort((left, right) => (
     candidateTier(left, selectedFocus) - candidateTier(right, selectedFocus)
     || goalRank(left, goals) - goalRank(right, goals)
-    || manifestOrder(left.moduleId) - manifestOrder(right.moduleId)
+    || manifestOrder(left.moduleId, order) - manifestOrder(right.moduleId, order)
   ));
   const selections = ranked.slice(0, MAX_CONSUMER_ANALYSES);
   // Anything relevant that did not fit. Recorded, never deleted.
   const overflowSelections = ranked.slice(MAX_CONSUMER_ANALYSES);
 
   const moduleSlots = selections.map((selection, index) => {
-    const intake = intakeFor(selection.moduleId, profile, allowed, adviserOverrides);
+    const intake = intakeFor(selection.moduleId, profile, allowed, adviserOverrides, candidateManifest);
     const isAccepted = selection.source === 'client_accepted_offer';
     return Object.freeze({
       slot: index + 1,
@@ -588,14 +597,14 @@ export function buildGoalModulePlan(rawProfile, { allowedModuleIds, adviserOverr
   const selectedIds = new Set(moduleSlots.map((slot) => slot.moduleId));
   const moduleOpportunities = [];
   const withheldOpportunities = [];
-  for (const entry of MODULE_MANIFEST) {
+  for (const entry of catalogue) {
     if (selectedIds.has(entry.moduleId) || isPlanningCapability(entry.moduleId)) continue;
     // A deferred or replaced analysis has already been decided on. Re-offering
     // it would be pressing the client to reconsider within the same cycle.
     if (deferredForLater.has(entry.moduleId) || replaced.has(entry.moduleId)) continue;
     const reason = suggestionReasonFor(profile, entry);
     if (!reason) continue;
-    const intake = intakeFor(entry.moduleId, profile, allowed, adviserOverrides);
+    const intake = intakeFor(entry.moduleId, profile, allowed, adviserOverrides, candidateManifest);
     const base = {
       moduleId: entry.moduleId,
       relevanceReason: reason,

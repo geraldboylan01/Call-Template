@@ -27,12 +27,19 @@ export const CONSUMER_GATES = Object.freeze([
 
 const MANIFEST_BY_ID = new Map(MODULE_MANIFEST.map((entry) => [entry.moduleId, entry]));
 
-export function getModuleManifest(moduleId) {
-  return MANIFEST_BY_ID.get(moduleId) || null;
+function candidateManifestById(candidateManifest) {
+  return new Map(candidateManifest.map((entry) => [entry.moduleId, entry]));
 }
 
-export function listModuleManifests() {
-  return [...MODULE_MANIFEST];
+export function getModuleManifest(moduleId, { candidateManifest = null } = {}) {
+  const byId = Array.isArray(candidateManifest)
+    ? candidateManifestById(candidateManifest)
+    : MANIFEST_BY_ID;
+  return byId.get(moduleId) || null;
+}
+
+export function listModuleManifests({ candidateManifest = null } = {}) {
+  return [...(Array.isArray(candidateManifest) ? candidateManifest : MODULE_MANIFEST)];
 }
 
 /**
@@ -45,9 +52,10 @@ export function listModuleManifests() {
  */
 export function effectiveConsumerAvailability(moduleId, {
   allowedModuleIds = null,
-  adviserOverrides = null
+  adviserOverrides = null,
+  candidateManifest = null
 } = {}) {
-  const entry = getModuleManifest(moduleId);
+  const entry = getModuleManifest(moduleId, { candidateManifest });
   if (!entry) {
     return Object.freeze({ visible: false, blockedBy: 'unknown_module', gates: Object.freeze({}) });
   }
@@ -79,8 +87,8 @@ export function isConsumerVisibleModule(moduleId, options) {
  * sees. Switching one ON requires platform approval and a runnable engine, so a
  * UI or API cannot expose an unapproved analysis by flipping a flag.
  */
-export function validateAdviserConsumerToggle(moduleId, enabled) {
-  const entry = getModuleManifest(moduleId);
+export function validateAdviserConsumerToggle(moduleId, enabled, { candidateManifest = null } = {}) {
+  const entry = getModuleManifest(moduleId, { candidateManifest });
   if (!entry) {
     return Object.freeze({ ok: false, code: 'unknown_module', message: 'That module does not exist.' });
   }
@@ -126,8 +134,8 @@ function adviserConsumerLanguage(entry) {
   });
 }
 
-export function adviserCatalogueEntry(moduleId, options) {
-  const entry = getModuleManifest(moduleId);
+export function adviserCatalogueEntry(moduleId, options = {}) {
+  const entry = getModuleManifest(moduleId, options);
   if (!entry) return null;
   const effective = effectiveConsumerAvailability(moduleId, options);
   return Object.freeze({
@@ -156,8 +164,8 @@ export function adviserCatalogueEntry(moduleId, options) {
   });
 }
 
-export function listAdviserCatalogue(options) {
-  return MODULE_MANIFEST
+export function listAdviserCatalogue(options = {}) {
+  return listModuleManifests(options)
     .filter((entry) => entry.availability.adviser === true)
     .map((entry) => adviserCatalogueEntry(entry.moduleId, options));
 }

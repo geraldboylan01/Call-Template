@@ -43,9 +43,9 @@ function factSatisfied(profile, factId) {
 }
 
 /** Flatten the manifest into goal → module edges for the execution-time router. */
-function manifestRoutingEdges() {
+function manifestRoutingEdges(manifest = MODULE_MANIFEST) {
   const edges = [];
-  for (const entry of MODULE_MANIFEST) {
+  for (const entry of manifest) {
     for (const goal of [...(entry.routing?.goals || []), ...(entry.routing?.adviserGoals || [])]) {
       edges.push({
         moduleId: entry.moduleId,
@@ -120,7 +120,8 @@ function addRecommendation(byId, moduleId, {
 /** Deterministic goal/circumstance-to-module routing with no model authority. */
 export function recommendModules(rawProfile, {
   text = '',
-  userSelectedModuleIds = []
+  userSelectedModuleIds = [],
+  candidateManifest = null
 } = {}) {
   const profile = normalizeHouseholdProfile(rawProfile);
   const goals = detectGoalCandidates(profile, { text });
@@ -130,7 +131,9 @@ export function recommendModules(rawProfile, {
   // routing does, so the analyses a conversation selects cannot drift from the
   // analyses this execution-time fallback would run. Only the priority and
   // required/recommended policy is local to this router.
-  for (const edge of manifestRoutingEdges()) {
+  for (const edge of manifestRoutingEdges(
+    Array.isArray(candidateManifest) ? candidateManifest : MODULE_MANIFEST
+  )) {
     const goal = goals.find((candidate) => candidate.type === edge.goalType);
     if (!goal) continue;
     if (edge.requiresFact && !factSatisfied(profile, edge.requiresFact)) continue;

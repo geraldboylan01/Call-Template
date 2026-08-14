@@ -1,0 +1,1191 @@
+{
+  "overall_position": {
+    "buildGoalModulePlan": {
+      "selectionPolicyVersion": "goal-routing-1.0.0",
+      "catalogueVersion": "planning-playbooks-1.0.0",
+      "profileRevision": 1,
+      "goalAssessment": {
+        "primaryGoalType": "understand_position",
+        "activeGoalTypes": [
+          "understand_position"
+        ],
+        "deferredGoalTypes": [],
+        "evidenceFactIds": [
+          "primary_goal"
+        ],
+        "confidence": "high"
+      },
+      "moduleSlots": [
+        {
+          "slot": 1,
+          "moduleId": "personal_balance_sheet",
+          "source": "goal_direct",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "understand_position"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Selected directly for understanding your overall position."
+          ],
+          "missingFactIds": [
+            "asset_position",
+            "liability_position",
+            "monthly_spending",
+            "property_position",
+            "pension_positions",
+            "business_position"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.understand_position.personal_balance_sheet.direct.v1"
+          ]
+        }
+      ],
+      "blockedModules": [],
+      "moduleOpportunities": [],
+      "withheldOpportunities": [],
+      "executionModuleIds": [
+        "personal_balance_sheet"
+      ],
+      "capacity": {
+        "maximumAnalyses": 3,
+        "used": 1,
+        "atLimit": false,
+        "overflowModuleIds": [],
+        "replaceableModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      "planningCycle": 1,
+      "requiresGoalPriorityQuestion": false,
+      "requiresDecisionTopicQuestion": false,
+      "deferredGoalTypes": []
+    },
+    "recommendModules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "priority": 100,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "The stated goal maps to this analysis.",
+          "The confirmed profile contains the goal “understand_position”.",
+          "A reconciled personal balance sheet provides a useful view of the household’s overall position."
+        ],
+        "triggeredRuleIds": [
+          "manifest.understand_position.personal_balance_sheet.v1",
+          "profile.goal.understand_position.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/assets",
+              "reason": "Add the household assets and current values, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/liabilities",
+              "reason": "Add the household debts and current balances, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/expenses/monthlyEssential",
+              "reason": "Add what the household spends in a typical month, so reserves can be expressed as months of cover.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "assumed"
+            }
+          ],
+          "assumptionsUsed": [],
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "homeowner_without_mortgage": {
+    "buildGoalModulePlan": {
+      "selectionPolicyVersion": "goal-routing-1.0.0",
+      "catalogueVersion": "planning-playbooks-1.0.0",
+      "profileRevision": 1,
+      "goalAssessment": {
+        "primaryGoalType": "understand_position",
+        "activeGoalTypes": [
+          "understand_position"
+        ],
+        "deferredGoalTypes": [],
+        "evidenceFactIds": [
+          "primary_goal"
+        ],
+        "confidence": "high"
+      },
+      "moduleSlots": [
+        {
+          "slot": 1,
+          "moduleId": "personal_balance_sheet",
+          "source": "goal_direct",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "understand_position"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Selected directly for understanding your overall position."
+          ],
+          "missingFactIds": [
+            "asset_position",
+            "liability_position",
+            "monthly_spending",
+            "property_position",
+            "pension_positions",
+            "business_position"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.understand_position.personal_balance_sheet.direct.v1"
+          ]
+        }
+      ],
+      "blockedModules": [],
+      "moduleOpportunities": [
+        {
+          "moduleId": "mortgage_analysis",
+          "relevanceReason": "You have a mortgage, so I can look at the rate and remaining term alongside the overall picture.",
+          "supportingFactIds": [
+            "property_status"
+          ],
+          "missingFactIds": [],
+          "clientBenefit": "show your current mortgage repayment path and compare the alternatives — changing the term, switching, or making extra repayments",
+          "ruleIds": [
+            "manifest.offer.mortgage_analysis.v1"
+          ],
+          "state": "offerable",
+          "effectiveConsumerAvailability": {
+            "visible": true,
+            "gates": {
+              "runnable_engine": true,
+              "platform_consumer_approved": true,
+              "adviser_consumer_enabled": true,
+              "release_allowlist": true
+            }
+          }
+        }
+      ],
+      "withheldOpportunities": [],
+      "executionModuleIds": [
+        "personal_balance_sheet"
+      ],
+      "capacity": {
+        "maximumAnalyses": 3,
+        "used": 1,
+        "atLimit": false,
+        "overflowModuleIds": [],
+        "replaceableModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      "planningCycle": 1,
+      "requiresGoalPriorityQuestion": false,
+      "requiresDecisionTopicQuestion": false,
+      "deferredGoalTypes": []
+    },
+    "recommendModules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "priority": 100,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "The stated goal maps to this analysis.",
+          "The confirmed profile contains the goal “understand_position”.",
+          "A reconciled personal balance sheet provides a useful view of the household’s overall position."
+        ],
+        "triggeredRuleIds": [
+          "manifest.understand_position.personal_balance_sheet.v1",
+          "profile.goal.understand_position.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/assets",
+              "reason": "Add the household assets and current values, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/liabilities",
+              "reason": "Add the household debts and current balances, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/expenses/monthlyEssential",
+              "reason": "Add what the household spends in a typical month, so reserves can be expressed as months of cover.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "assumed"
+            }
+          ],
+          "assumptionsUsed": [],
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "recorded_mortgage": {
+    "buildGoalModulePlan": {
+      "selectionPolicyVersion": "goal-routing-1.0.0",
+      "catalogueVersion": "planning-playbooks-1.0.0",
+      "profileRevision": 1,
+      "goalAssessment": {
+        "primaryGoalType": "understand_position",
+        "activeGoalTypes": [
+          "understand_position"
+        ],
+        "deferredGoalTypes": [],
+        "evidenceFactIds": [
+          "primary_goal"
+        ],
+        "confidence": "high"
+      },
+      "moduleSlots": [
+        {
+          "slot": 1,
+          "moduleId": "personal_balance_sheet",
+          "source": "goal_direct",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "understand_position"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Selected directly for understanding your overall position."
+          ],
+          "missingFactIds": [
+            "asset_position",
+            "monthly_spending",
+            "property_position",
+            "pension_positions",
+            "business_position"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.understand_position.personal_balance_sheet.direct.v1"
+          ]
+        }
+      ],
+      "blockedModules": [],
+      "moduleOpportunities": [
+        {
+          "moduleId": "mortgage_analysis",
+          "relevanceReason": "You have a mortgage, so I can look at the rate and remaining term alongside the overall picture.",
+          "supportingFactIds": [
+            "position:mortgage"
+          ],
+          "missingFactIds": [],
+          "clientBenefit": "show your current mortgage repayment path and compare the alternatives — changing the term, switching, or making extra repayments",
+          "ruleIds": [
+            "manifest.offer.mortgage_analysis.v1"
+          ],
+          "state": "offerable",
+          "effectiveConsumerAvailability": {
+            "visible": true,
+            "gates": {
+              "runnable_engine": true,
+              "platform_consumer_approved": true,
+              "adviser_consumer_enabled": true,
+              "release_allowlist": true
+            }
+          }
+        }
+      ],
+      "withheldOpportunities": [],
+      "executionModuleIds": [
+        "personal_balance_sheet"
+      ],
+      "capacity": {
+        "maximumAnalyses": 3,
+        "used": 1,
+        "atLimit": false,
+        "overflowModuleIds": [],
+        "replaceableModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      "planningCycle": 1,
+      "requiresGoalPriorityQuestion": false,
+      "requiresDecisionTopicQuestion": false,
+      "deferredGoalTypes": []
+    },
+    "recommendModules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "priority": 100,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "The stated goal maps to this analysis.",
+          "The confirmed profile contains the goal “understand_position”.",
+          "A reconciled personal balance sheet provides a useful view of the household’s overall position."
+        ],
+        "triggeredRuleIds": [
+          "manifest.understand_position.personal_balance_sheet.v1",
+          "profile.goal.understand_position.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/assets",
+              "reason": "Add the household assets and current values, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/expenses/monthlyEssential",
+              "reason": "Add what the household spends in a typical month, so reserves can be expressed as months of cover.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "assumed"
+            }
+          ],
+          "assumptionsUsed": [],
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "dependants_without_education_intent": {
+    "buildGoalModulePlan": {
+      "selectionPolicyVersion": "goal-routing-1.0.0",
+      "catalogueVersion": "planning-playbooks-1.0.0",
+      "profileRevision": 1,
+      "goalAssessment": {
+        "primaryGoalType": "understand_position",
+        "activeGoalTypes": [
+          "understand_position"
+        ],
+        "deferredGoalTypes": [],
+        "evidenceFactIds": [
+          "primary_goal"
+        ],
+        "confidence": "high"
+      },
+      "moduleSlots": [
+        {
+          "slot": 1,
+          "moduleId": "personal_balance_sheet",
+          "source": "goal_direct",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "understand_position"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Selected directly for understanding your overall position."
+          ],
+          "missingFactIds": [
+            "asset_position",
+            "liability_position",
+            "monthly_spending",
+            "property_position",
+            "pension_positions",
+            "business_position"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.understand_position.personal_balance_sheet.direct.v1"
+          ]
+        }
+      ],
+      "blockedModules": [],
+      "moduleOpportunities": [
+        {
+          "moduleId": "college_funding",
+          "relevanceReason": "You have children to plan for, so I can put education costs alongside this.",
+          "supportingFactIds": [
+            "dependant_count",
+            "position:dependants"
+          ],
+          "missingFactIds": [],
+          "clientBenefit": "estimate what college is likely to cost using our standard living-at-home and living-away figures, and show the saving needed to fund four years for each child",
+          "ruleIds": [
+            "manifest.offer.college_funding.v1"
+          ],
+          "state": "offerable",
+          "effectiveConsumerAvailability": {
+            "visible": true,
+            "gates": {
+              "runnable_engine": true,
+              "platform_consumer_approved": true,
+              "adviser_consumer_enabled": true,
+              "release_allowlist": true
+            }
+          }
+        }
+      ],
+      "withheldOpportunities": [
+        {
+          "moduleId": "protection_analysis",
+          "relevanceReason": "People depend on your income, so protection is worth reviewing with Gerry.",
+          "supportingFactIds": [
+            "dependant_count",
+            "position:dependants"
+          ],
+          "missingFactIds": [],
+          "clientBenefit": "",
+          "ruleIds": [
+            "manifest.offer.protection_analysis.v1"
+          ],
+          "state": "unavailable",
+          "blockedBy": "runnable_engine"
+        }
+      ],
+      "executionModuleIds": [
+        "personal_balance_sheet"
+      ],
+      "capacity": {
+        "maximumAnalyses": 3,
+        "used": 1,
+        "atLimit": false,
+        "overflowModuleIds": [],
+        "replaceableModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      "planningCycle": 1,
+      "requiresGoalPriorityQuestion": false,
+      "requiresDecisionTopicQuestion": false,
+      "deferredGoalTypes": []
+    },
+    "recommendModules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "priority": 100,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "The stated goal maps to this analysis.",
+          "The confirmed profile contains the goal “understand_position”.",
+          "A reconciled personal balance sheet provides a useful view of the household’s overall position."
+        ],
+        "triggeredRuleIds": [
+          "manifest.understand_position.personal_balance_sheet.v1",
+          "profile.goal.understand_position.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/assets",
+              "reason": "Add the household assets and current values, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/liabilities",
+              "reason": "Add the household debts and current balances, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/expenses/monthlyEssential",
+              "reason": "Add what the household spends in a typical month, so reserves can be expressed as months of cover.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "assumed"
+            }
+          ],
+          "assumptionsUsed": [],
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "explicit_education_intent": {
+    "buildGoalModulePlan": {
+      "selectionPolicyVersion": "goal-routing-1.0.0",
+      "catalogueVersion": "planning-playbooks-1.0.0",
+      "profileRevision": 1,
+      "goalAssessment": {
+        "primaryGoalType": "understand_position",
+        "activeGoalTypes": [
+          "understand_position"
+        ],
+        "deferredGoalTypes": [],
+        "evidenceFactIds": [
+          "primary_goal"
+        ],
+        "confidence": "high"
+      },
+      "moduleSlots": [
+        {
+          "slot": 1,
+          "moduleId": "personal_balance_sheet",
+          "source": "goal_direct",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "understand_position"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Selected directly for understanding your overall position."
+          ],
+          "missingFactIds": [
+            "asset_position",
+            "liability_position",
+            "monthly_spending",
+            "property_position",
+            "pension_positions",
+            "business_position"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.understand_position.personal_balance_sheet.direct.v1"
+          ]
+        }
+      ],
+      "blockedModules": [],
+      "moduleOpportunities": [
+        {
+          "moduleId": "college_funding",
+          "relevanceReason": "You have children to plan for, so I can put education costs alongside this.",
+          "supportingFactIds": [
+            "education_funding_intent"
+          ],
+          "missingFactIds": [],
+          "clientBenefit": "estimate what college is likely to cost using our standard living-at-home and living-away figures, and show the saving needed to fund four years for each child",
+          "ruleIds": [
+            "manifest.offer.college_funding.v1"
+          ],
+          "state": "offerable",
+          "effectiveConsumerAvailability": {
+            "visible": true,
+            "gates": {
+              "runnable_engine": true,
+              "platform_consumer_approved": true,
+              "adviser_consumer_enabled": true,
+              "release_allowlist": true
+            }
+          }
+        }
+      ],
+      "withheldOpportunities": [],
+      "executionModuleIds": [
+        "personal_balance_sheet"
+      ],
+      "capacity": {
+        "maximumAnalyses": 3,
+        "used": 1,
+        "atLimit": false,
+        "overflowModuleIds": [],
+        "replaceableModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      "planningCycle": 1,
+      "requiresGoalPriorityQuestion": false,
+      "requiresDecisionTopicQuestion": false,
+      "deferredGoalTypes": []
+    },
+    "recommendModules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "priority": 100,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "The stated goal maps to this analysis.",
+          "The confirmed profile contains the goal “understand_position”.",
+          "A reconciled personal balance sheet provides a useful view of the household’s overall position."
+        ],
+        "triggeredRuleIds": [
+          "manifest.understand_position.personal_balance_sheet.v1",
+          "profile.goal.understand_position.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/assets",
+              "reason": "Add the household assets and current values, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/liabilities",
+              "reason": "Add the household debts and current balances, or confirm that there are none.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/expenses/monthlyEssential",
+              "reason": "Add what the household spends in a typical month, so reserves can be expressed as months of cover.",
+              "blockingModuleIds": [
+                "personal_balance_sheet"
+              ],
+              "importance": "assumed"
+            }
+          ],
+          "assumptionsUsed": [],
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "home_purchase": {
+    "buildGoalModulePlan": {
+      "selectionPolicyVersion": "goal-routing-1.0.0",
+      "catalogueVersion": "planning-playbooks-1.0.0",
+      "profileRevision": 1,
+      "goalAssessment": {
+        "primaryGoalType": "buy_home",
+        "activeGoalTypes": [
+          "buy_home"
+        ],
+        "deferredGoalTypes": [],
+        "evidenceFactIds": [
+          "primary_goal"
+        ],
+        "confidence": "high"
+      },
+      "moduleSlots": [
+        {
+          "slot": 1,
+          "moduleId": "house_purchase",
+          "source": "goal_direct",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "buy_home"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Selected directly for buying a home."
+          ],
+          "missingFactIds": [
+            "target_home_price",
+            "income_sources",
+            "cash_savings",
+            "monthly_spending",
+            "current_monthly_rent",
+            "lending_category",
+            "liability_position"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.buy_home.house_purchase.direct.v1"
+          ]
+        },
+        {
+          "slot": 2,
+          "moduleId": "liquidity_analysis",
+          "source": "goal_companion",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "buy_home"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Included because it is needed alongside buying a home."
+          ],
+          "missingFactIds": [
+            "cash_savings",
+            "monthly_spending",
+            "retirement_status"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.buy_home.liquidity_analysis.companion.v1"
+          ]
+        },
+        {
+          "slot": 3,
+          "moduleId": "personal_balance_sheet",
+          "source": "balance_sheet_default",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "buy_home"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Included to put the selected goals in the context of the household’s overall position."
+          ],
+          "missingFactIds": [
+            "asset_position",
+            "liability_position",
+            "monthly_spending",
+            "property_position",
+            "pension_positions",
+            "business_position"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.pinned.personal_balance_sheet.v1"
+          ]
+        }
+      ],
+      "blockedModules": [],
+      "moduleOpportunities": [],
+      "withheldOpportunities": [],
+      "executionModuleIds": [
+        "house_purchase",
+        "liquidity_analysis",
+        "personal_balance_sheet"
+      ],
+      "capacity": {
+        "maximumAnalyses": 3,
+        "used": 3,
+        "atLimit": true,
+        "overflowModuleIds": [],
+        "replaceableModuleIds": [
+          "house_purchase",
+          "liquidity_analysis",
+          "personal_balance_sheet"
+        ]
+      },
+      "planningCycle": 1,
+      "requiresGoalPriorityQuestion": false,
+      "requiresDecisionTopicQuestion": false,
+      "deferredGoalTypes": []
+    },
+    "recommendModules": [
+      {
+        "moduleId": "house_purchase",
+        "priority": 120,
+        "source": "deterministic_rule",
+        "status": "required",
+        "rationale": [
+          "A home-purchase goal requires the house-purchase planner.",
+          "The confirmed profile contains the goal “buy_home”.",
+          "The household has an active home-purchase goal.",
+          "The planner keeps emergency cash separate from deposit capacity."
+        ],
+        "triggeredRuleIds": [
+          "manifest.buy_home.house_purchase.v1",
+          "profile.goal.buy_home.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/goals/0/targetAmount",
+              "reason": "Add an approximate target property price.",
+              "blockingModuleIds": [
+                "house_purchase"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/incomeSources",
+              "reason": "Add gross annual household income.",
+              "blockingModuleIds": [
+                "house_purchase"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/assets",
+              "reason": "Add current cash savings for the deposit journey.",
+              "blockingModuleIds": [
+                "house_purchase"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/expenses/monthlyEssential",
+              "reason": "Add essential monthly spending excluding rent and housing debt so the reserve is protected.",
+              "blockingModuleIds": [
+                "house_purchase"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/expenses/currentMonthlyRent",
+              "reason": "Add current monthly rent, or enter none if there is no rent.",
+              "blockingModuleIds": [
+                "house_purchase"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/assumptions/values/housePurchase/lendingCategory",
+              "reason": "Is this a first-time-buyer application, a fresh-start application, or a second/subsequent purchase?",
+              "blockingModuleIds": [
+                "house_purchase"
+              ],
+              "importance": "required"
+            }
+          ],
+          "assumptionsUsed": [
+            {
+              "key": "purchaseCosts",
+              "value": "dated engine defaults",
+              "reason": "The existing deterministic engine owns buying-cost estimates."
+            },
+            {
+              "key": "mortgageIllustration",
+              "value": "dated engine defaults",
+              "reason": "The existing engine owns its illustration rate and term."
+            },
+            {
+              "key": "targetPurchaseDate",
+              "value": null,
+              "reason": "No target date was provided; affordability still runs without a deadline."
+            }
+          ],
+          "warnings": []
+        }
+      },
+      {
+        "moduleId": "liquidity_analysis",
+        "priority": 110,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "The deposit should be shown after protecting an emergency reserve.",
+          "The confirmed profile contains the goal “buy_home”.",
+          "A protected cash reserve should be separated from the home deposit."
+        ],
+        "triggeredRuleIds": [
+          "manifest.buy_home.liquidity_analysis.v1",
+          "profile.goal.buy_home.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/assets",
+              "reason": "Add the current cash available to the household.",
+              "blockingModuleIds": [
+                "liquidity_analysis"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/expenses/annualTotal",
+              "reason": "Add annual or monthly household spending.",
+              "blockingModuleIds": [
+                "liquidity_analysis"
+              ],
+              "importance": "required"
+            },
+            {
+              "fieldPath": "/assumptions/values/persona/retirementStatus",
+              "reason": "Confirm whether the household is working or retired so the correct cash-reserve guide is used.",
+              "blockingModuleIds": [
+                "liquidity_analysis"
+              ],
+              "importance": "required"
+            }
+          ],
+          "assumptionsUsed": [],
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "retirement": {
+    "buildGoalModulePlan": {
+      "selectionPolicyVersion": "goal-routing-1.0.0",
+      "catalogueVersion": "planning-playbooks-1.0.0",
+      "profileRevision": 1,
+      "goalAssessment": {
+        "primaryGoalType": "retire",
+        "activeGoalTypes": [
+          "retire"
+        ],
+        "deferredGoalTypes": [],
+        "evidenceFactIds": [
+          "primary_goal"
+        ],
+        "confidence": "high"
+      },
+      "moduleSlots": [
+        {
+          "slot": 1,
+          "moduleId": "pension_projection",
+          "source": "goal_direct",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "retire"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Selected directly for planning retirement.",
+            "Pension balances and projected withdrawals are shown before tax. Tax and wider retirement-income needs require separate adviser review."
+          ],
+          "missingFactIds": [
+            "pension_positions",
+            "target_retirement_income"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.retire.pension_projection.direct.v1"
+          ]
+        },
+        {
+          "slot": 2,
+          "moduleId": "personal_balance_sheet",
+          "source": "balance_sheet_default",
+          "selectionState": "selected",
+          "relatedGoalTypes": [
+            "retire"
+          ],
+          "availability": "needs_facts",
+          "intakeStatus": "missing_information",
+          "reasons": [
+            "Included to put the selected goals in the context of the household’s overall position."
+          ],
+          "missingFactIds": [
+            "asset_position",
+            "liability_position",
+            "monthly_spending",
+            "property_position",
+            "pension_positions",
+            "business_position"
+          ],
+          "blockingFactIds": [],
+          "blockingFactInstanceIds": [],
+          "ruleIds": [
+            "manifest.pinned.personal_balance_sheet.v1"
+          ]
+        }
+      ],
+      "blockedModules": [],
+      "moduleOpportunities": [],
+      "withheldOpportunities": [],
+      "executionModuleIds": [
+        "pension_projection",
+        "personal_balance_sheet"
+      ],
+      "capacity": {
+        "maximumAnalyses": 3,
+        "used": 2,
+        "atLimit": false,
+        "overflowModuleIds": [],
+        "replaceableModuleIds": [
+          "pension_projection",
+          "personal_balance_sheet"
+        ]
+      },
+      "planningCycle": 1,
+      "requiresGoalPriorityQuestion": false,
+      "requiresDecisionTopicQuestion": false,
+      "deferredGoalTypes": []
+    },
+    "recommendModules": [
+      {
+        "moduleId": "pension_projection",
+        "priority": 110,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "Retirement needs a pre-tax pension projection where pension data exists.",
+          "The confirmed profile contains the goal “retire”.",
+          "A pension projection is relevant to the retirement goal, but remains gated for consumer release."
+        ],
+        "triggeredRuleIds": [
+          "manifest.retire.pension_projection.v1",
+          "profile.goal.retire.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/pensions",
+              "reason": "Add your pension, or confirm there is none.",
+              "blockingModuleIds": [
+                "pension_projection"
+              ],
+              "importance": "required",
+              "entityId": "primary",
+              "ownerId": "primary",
+              "entityLabel": "your pensions",
+              "reasonCode": "owner_pension_position_missing",
+              "answerPolicy": "value_or_none",
+              "prompt": "Do you have an occupational pension, PRSA, personal pension, buyout bond or defined-benefit pension to include?"
+            },
+            {
+              "fieldPath": "/assumptions/values/retirement/targetIncomeToday",
+              "reason": "Add target annual retirement income or current annual spending.",
+              "blockingModuleIds": [
+                "pension_projection"
+              ],
+              "importance": "required"
+            }
+          ],
+          "assumptionsUsed": [
+            {
+              "key": "investmentGrowthRate",
+              "value": 0.05,
+              "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.1.0)"
+            },
+            {
+              "key": "inflationRate",
+              "value": 0.02,
+              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.1.0)"
+            },
+            {
+              "key": "statePensionContributory",
+              "value": 15563.6,
+              "reason": "ie-planning-rules-2026.01, effective January 2026. Maximum gross rate only; actual entitlement depends on each person’s PRSI record."
+            }
+          ],
+          "warnings": [
+            "Pension balances and projected withdrawals are shown before tax. Tax and wider retirement-income needs require separate adviser review."
+          ]
+        }
+      },
+      {
+        "moduleId": "net_retirement_cashflow",
+        "priority": 105,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "Retirement also needs a separate after-tax spending and income view.",
+          "The confirmed profile contains the goal “retire”.",
+          "Retirement spending needs a separate after-tax cash-flow view; pension balances are pre-tax."
+        ],
+        "triggeredRuleIds": [
+          "manifest.retire.net_retirement_cashflow.v1",
+          "profile.goal.retire.v1"
+        ],
+        "readiness": {
+          "status": "missing_information",
+          "requiredMissing": [
+            {
+              "fieldPath": "/expenses/annualTotal",
+              "reason": "Add annual net household spending.",
+              "blockingModuleIds": [
+                "net_retirement_cashflow"
+              ],
+              "importance": "required"
+            }
+          ],
+          "assumptionsUsed": [
+            {
+              "key": "inflationRate",
+              "value": 0.02,
+              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.1.0)"
+            },
+            {
+              "key": "presentValueRate",
+              "value": 0.04,
+              "reason": "Existing net retirement engine default."
+            }
+          ],
+          "warnings": [
+            "This adapter uses only after-tax income values; gross-only income is excluded from net cash-flow."
+          ]
+        }
+      }
+    ]
+  },
+  "unsupported_wealth_transfer": {
+    "buildGoalModulePlan": {
+      "selectionPolicyVersion": "goal-routing-1.0.0",
+      "catalogueVersion": "planning-playbooks-1.0.0",
+      "profileRevision": 1,
+      "goalAssessment": {
+        "primaryGoalType": "transfer_wealth",
+        "activeGoalTypes": [
+          "transfer_wealth"
+        ],
+        "deferredGoalTypes": [
+          "transfer_wealth"
+        ],
+        "evidenceFactIds": [
+          "primary_goal"
+        ],
+        "confidence": "high"
+      },
+      "moduleSlots": [],
+      "blockedModules": [],
+      "moduleOpportunities": [],
+      "withheldOpportunities": [],
+      "executionModuleIds": [],
+      "capacity": {
+        "maximumAnalyses": 3,
+        "used": 0,
+        "atLimit": false,
+        "overflowModuleIds": [],
+        "replaceableModuleIds": []
+      },
+      "planningCycle": 1,
+      "requiresGoalPriorityQuestion": false,
+      "requiresDecisionTopicQuestion": false,
+      "deferredGoalTypes": [
+        "transfer_wealth"
+      ]
+    },
+    "recommendModules": [
+      {
+        "moduleId": "cat_analysis",
+        "priority": 100,
+        "source": "deterministic_rule",
+        "status": "recommended",
+        "rationale": [
+          "Wealth transfer remains adviser-only until dated CAT rules are code-owned.",
+          "The confirmed profile contains the goal “transfer_wealth”.",
+          "Consumer use waits for deterministic, date-versioned rules and tests."
+        ],
+        "triggeredRuleIds": [
+          "manifest.transfer_wealth.cat_analysis.v1",
+          "profile.goal.transfer_wealth.v1"
+        ],
+        "readiness": {
+          "status": "adviser_review_required",
+          "requiredMissing": [],
+          "assumptionsUsed": [],
+          "warnings": [
+            "cat_analysis remains adviser-only. Consumer use waits for deterministic, date-versioned rules and tests."
+          ]
+        }
+      }
+    ]
+  }
+}

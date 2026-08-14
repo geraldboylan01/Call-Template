@@ -43,14 +43,27 @@ const INTERNAL_MODULE_TERMS = Object.freeze([
   ))
   .map(normalizedTerminology));
 
+function internalModuleTerms(candidateManifest) {
+  if (!Array.isArray(candidateManifest)) return INTERNAL_MODULE_TERMS;
+  return [
+    ...candidateManifest.flatMap((manifest) => [manifest.moduleId, manifest.name]),
+    ...Object.values(MODULE_IDS),
+    ...LEGACY_FORMAL_MODULE_TERMS
+  ]
+    .filter((value, index, values) => (
+      typeof value === 'string' && value && values.indexOf(value) === index
+    ))
+    .map(normalizedTerminology);
+}
+
 /**
  * Detect catalogue names or ids in prose before it reaches a consumer surface.
  * This is a boundary check for legacy/model-authored copy, not a substitute for
  * composing new copy from the validated descriptors below.
  */
-export function containsInternalModuleTerminology(value) {
+export function containsInternalModuleTerminology(value, { candidateManifest = null } = {}) {
   const text = normalizedTerminology(value);
-  return Boolean(text) && INTERNAL_MODULE_TERMS.some((term) => text.includes(term));
+  return Boolean(text) && internalModuleTerms(candidateManifest).some((term) => text.includes(term));
 }
 
 function sentence(text) {
@@ -78,8 +91,8 @@ function offerClauseApplies(clause, profile) {
  * that may be shown or spoken to a client. Missing metadata has no fallback to
  * the formal module name: an incomplete module stays silent.
  */
-export function consumerLanguageForModule(moduleId, { profile } = {}) {
-  const manifest = getModuleManifest(moduleId);
+export function consumerLanguageForModule(moduleId, { profile, candidateManifest = null } = {}) {
+  const manifest = getModuleManifest(moduleId, { candidateManifest });
   const language = manifest?.consumerLanguage;
   if (
     !manifest
@@ -198,16 +211,16 @@ export function anchorPhrase(supportingFactIds, profile) {
  *   module has no validated client language — in both cases it is better to
  *   stay quiet than to sound like an advert.
  */
-export function composeModuleOffer(opportunity, { profile } = {}) {
+export function composeModuleOffer(opportunity, { profile, candidateManifest = null } = {}) {
   if (!opportunity || opportunity.state !== 'offerable') return null;
-  const manifest = getModuleManifest(opportunity.moduleId);
-  const language = consumerLanguageForModule(opportunity.moduleId, { profile });
+  const manifest = getModuleManifest(opportunity.moduleId, { candidateManifest });
+  const language = consumerLanguageForModule(opportunity.moduleId, { profile, candidateManifest });
   if (!language) return null;
 
   // A client who asked for the analysis outright is already anchored — their own
   // request is the reason. Only a circumstance-driven offer needs a fact quoted
   // back, because that is the one the client did not ask for.
-  const goalAnchor = goalAnchorPhrase(opportunity.moduleId, profile);
+  const goalAnchor = goalAnchorPhrase(opportunity.moduleId, profile, { candidateManifest });
   const anchor = goalAnchor || anchorPhrase(opportunity.supportingFactIds, profile);
   if (!anchor) return null;
   return Object.freeze({
@@ -247,8 +260,8 @@ const GOAL_REQUEST_PHRASES = Object.freeze({
  * The client's own request as an anchor, when a goal they stated is one this
  * module directly serves.
  */
-export function goalAnchorPhrase(moduleId, profile) {
-  const manifest = getModuleManifest(moduleId);
+export function goalAnchorPhrase(moduleId, profile, { candidateManifest = null } = {}) {
+  const manifest = getModuleManifest(moduleId, { candidateManifest });
   const served = new Set((manifest?.routing?.goals || []).map((goal) => goal.type));
   const stated = (profile?.goals || [])
     .filter((goal) => !['completed', 'paused'].includes(goal.status))
@@ -263,9 +276,9 @@ export function goalAnchorPhrase(moduleId, profile) {
  * One at a time: a client asked to choose between three analyses at once will
  * either pick none or agree to all of them without hearing what they are.
  */
-export function nextModuleOffer(plan, { profile } = {}) {
+export function nextModuleOffer(plan, { profile, candidateManifest = null } = {}) {
   for (const opportunity of plan?.moduleOpportunities || []) {
-    const offer = composeModuleOffer(opportunity, { profile });
+    const offer = composeModuleOffer(opportunity, { profile, candidateManifest });
     if (offer) return offer;
   }
   return null;
@@ -295,17 +308,17 @@ function upperInitial(text) {
  *
  * @returns {null|{spoken, currentModuleIds, candidateModuleId, ...}}
  */
-export function composeCapacityChoice(plan, { profile } = {}) {
+export function composeCapacityChoice(plan, { profile, candidateManifest = null } = {}) {
   if (!plan?.capacity?.atLimit) return null;
   const candidateId = plan.capacity.overflowModuleIds?.[0]
     || plan.moduleOpportunities?.find((item) => item.state === 'offerable')?.moduleId
     || null;
   if (!candidateId) return null;
-  const candidate = consumerLanguageForModule(candidateId, { profile });
+  const candidate = consumerLanguageForModule(candidateId, { profile, candidateManifest });
   if (!candidate) return null;
 
   const current = (plan.moduleSlots || []).map((slot) => {
-    const language = consumerLanguageForModule(slot.moduleId, { profile });
+    const language = consumerLanguageForModule(slot.moduleId, { profile, candidateManifest });
     return language
       ? Object.freeze({ moduleId: slot.moduleId, description: language.shortDescription })
       : null;
@@ -318,7 +331,7 @@ export function composeCapacityChoice(plan, { profile } = {}) {
   const currentDescriptions = Object.freeze(current.map((item) => item.description));
   const candidateDescription = candidate.shortDescription;
   const opportunity = plan.moduleOpportunities?.find((item) => item.moduleId === candidateId);
-  const anchor = goalAnchorPhrase(candidateId, profile)
+  const anchor = goalAnchorPhrase(candidateId, profile, { candidateManifest })
     || (opportunity ? anchorPhrase(opportunity.supportingFactIds, profile) : null);
   if (!anchor) return null;
   const why = `${upperInitial(candidateDescription)} could also be useful because ${lowerInitial(anchor)}.`;
@@ -384,9 +397,9 @@ export function applyModuleDeferral(planning = {}, moduleId) {
  * each module is in it, so the confirmation can be read out rather than
  * presented as a list of internal ids.
  */
-export function confirmationSummary(plan) {
+export function confirmationSummary(plan, { candidateManifest = null } = {}) {
   const modules = (plan?.moduleSlots || []).flatMap((slot) => {
-    const language = consumerLanguageForModule(slot.moduleId);
+    const language = consumerLanguageForModule(slot.moduleId, { candidateManifest });
     if (!language) return [];
     return [{
       moduleId: slot.moduleId,
