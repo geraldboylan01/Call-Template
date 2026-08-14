@@ -73,37 +73,42 @@ const cases = [
       id: 'goal-established-buyer', age: 38, goals: [goal('buy_home')],
       assets: [{ assetId: 'investment-1', ownerIds: ['primary'], type: 'investment', label: 'Investments', currentValue: { amount: 20_000, currency: 'EUR' }, liquid: true }]
     }),
-    expected: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.LIQUIDITY, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    expected: [MODULE_IDS.HOUSE_PURCHASE, MODULE_IDS.LIQUIDITY]
   },
   {
     name: 'pension review',
     profile: profile({ id: 'goal-pension', age: 40, goals: [goal('improve_pension')] }),
-    expected: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    expected: [MODULE_IDS.PENSION_PROJECTION]
   },
   {
     name: 'retirement',
     profile: profile({ id: 'goal-retirement', age: 52, goals: [goal('retire')] }),
     // net_retirement_cashflow is gated pending review, so it must not take a slot.
-    expected: [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    expected: [MODULE_IDS.PENSION_PROJECTION]
   },
   {
     name: 'existing mortgage',
     profile: profile({ id: 'goal-mortgage', age: 42, goals: [goal('optimise_mortgage')] }),
-    expected: [MODULE_IDS.MORTGAGE, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    expected: [MODULE_IDS.MORTGAGE]
   },
   {
     name: 'personal loan',
     profile: profile({ id: 'goal-loan', age: 35, goals: [goal('manage_loan')] }),
-    expected: [MODULE_IDS.LOAN, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    expected: [MODULE_IDS.LOAN]
   },
   {
     name: 'education funding',
     profile: profile({ id: 'goal-education', age: 41, goals: [goal('fund_education')] }),
-    expected: [MODULE_IDS.COLLEGE_FUNDING, MODULE_IDS.PERSONAL_BALANCE_SHEET]
+    expected: [MODULE_IDS.COLLEGE_FUNDING]
   },
   {
     name: 'young explicit full-position review',
     profile: profile({ id: 'goal-young-position', age: 23, goals: [goal('understand_position')] }),
+    expected: [MODULE_IDS.PERSONAL_BALANCE_SHEET]
+  },
+  {
+    name: 'explicit wealth-building review',
+    profile: profile({ id: 'goal-build-wealth', age: 36, goals: [goal('build_wealth')] }),
     expected: [MODULE_IDS.PERSONAL_BALANCE_SHEET]
   }
 ];
@@ -195,7 +200,7 @@ corrected = applyProfilePatch(corrected, {
   [mappedCorrection.fieldPath]: mappedCorrection.canonicalValue
 }, [], 'ai_extraction');
 assert.deepEqual(corrected.goals.filter((item) => item.status === 'active').map((item) => item.type), ['retire']);
-assert.deepEqual(moduleIds(corrected), [MODULE_IDS.PENSION_PROJECTION, MODULE_IDS.PERSONAL_BALANCE_SHEET]);
+assert.deepEqual(moduleIds(corrected), [MODULE_IDS.PENSION_PROJECTION]);
 
 const selectableIds = listSelectablePlanningModuleDefinitions().map((item) => item.id).sort();
 assert.deepEqual(selectableIds, [

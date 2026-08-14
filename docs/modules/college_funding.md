@@ -34,18 +34,11 @@
     "adviserGoals": [],
     "suggestedWhen": [
       {
-        "reason": "You have children to plan for, so I can put education costs alongside this.",
+        "reason": "You want to help with education costs, so I can put the future funding requirement alongside this.",
         "anyOf": [
           {
             "fact": "education_funding_intent",
             "equals": true
-          },
-          {
-            "fact": "dependant_count",
-            "min": 1
-          },
-          {
-            "profileHas": "dependants"
           }
         ]
       }

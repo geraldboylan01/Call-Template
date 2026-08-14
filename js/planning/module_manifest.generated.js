@@ -283,18 +283,11 @@ export const MODULE_MANIFEST = Object.freeze([
       "adviserGoals": [],
       "suggestedWhen": [
         {
-          "reason": "You have children to plan for, so I can put education costs alongside this.",
+          "reason": "You want to help with education costs, so I can put the future funding requirement alongside this.",
           "anyOf": [
             {
               "fact": "education_funding_intent",
               "equals": true
-            },
-            {
-              "fact": "dependant_count",
-              "min": 1
-            },
-            {
-              "profileHas": "dependants"
             }
           ]
         }
@@ -596,12 +589,6 @@ export const MODULE_MANIFEST = Object.freeze([
           "reason": "You have a mortgage, so I can look at the rate and remaining term alongside the overall picture.",
           "anyOf": [
             {
-              "fact": "property_status",
-              "in": [
-                "homeowner"
-              ]
-            },
-            {
               "profileHas": "mortgage"
             }
           ]
@@ -866,7 +853,7 @@ export const MODULE_MANIFEST = Object.freeze([
       ],
       "adviserGoals": [],
       "suggestedWhen": [],
-      "pinned": "when_eligible",
+      "pinned": "never",
       "priorityBoost": 0
     },
     "requiredFacts": [
@@ -912,7 +899,7 @@ export const MODULE_MANIFEST = Object.freeze([
     },
     "purpose": "Everything the household owns minus everything it owes, bucketed into lifestyle assets, spendable reserves, long-term retirement funding and concentrated assets.",
     "whenToUse": "The client wants the full picture: where they stand overall, what they are worth, whether they are doing okay, or how to build wealth from here.",
-    "whenNotToUse": "Do not add it as background context to a narrow goal when the household has little to show. Asking a renter with no pension what their home and business interests are worth is how a first meeting starts to feel like a form. Its inclusion is controlled by the pinned setting, not by prose.",
+    "whenNotToUse": "Do not add it as background context to a narrow goal. It is selected only when the client directly wants to understand their overall position or build wealth from their current position.",
     "clientSignals": []
   },
   {

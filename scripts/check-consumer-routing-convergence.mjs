@@ -50,7 +50,12 @@ function check(name, fn) {
   }
 }
 
-function profileFor(goalTypes, { age = 45, persona = {} } = {}) {
+function profileFor(goalTypes, {
+  age = 45,
+  persona = {},
+  liabilities = [],
+  dependants = []
+} = {}) {
   const base = createHouseholdProfile({
     profileId: `converge-${goalTypes.join('-')}`,
     nowIso: NOW,
@@ -63,6 +68,8 @@ function profileFor(goalTypes, { age = 45, persona = {} } = {}) {
     goals: goalTypes.map((type, index) => ({
       goalId: `goal-${type}-${index}`, type, title: type, priority: 'high', status: 'active'
     })),
+    liabilities,
+    dependants,
     assumptions: { ...base.assumptions, values: { ...base.assumptions.values, persona } }
   });
 }
@@ -313,8 +320,14 @@ check('retirement_goal_analysis stays adviser-selection-only', () => {
 // 6. Consumer visibility is a hard filter.
 // ---------------------------------------------------------------------------
 
-function planFor(persona = {}, planning = {}, goals = ['understand_position'], adviserOverrides = null) {
-  const profile = profileFor(goals, { persona });
+function planFor(
+  persona = {},
+  planning = {},
+  goals = ['understand_position'],
+  adviserOverrides = null,
+  profileData = {}
+) {
+  const profile = profileFor(goals, { persona, ...profileData });
   const withPlanning = normalizeHouseholdProfile({
     ...profile,
     assumptions: {
@@ -326,6 +339,15 @@ function planFor(persona = {}, planning = {}, goals = ['understand_position'], a
 }
 
 const RICH = { propertyStatus: 'homeowner', hasPension: true, dependantCount: 2 };
+const RECORDED_MORTGAGE = [{
+  liabilityId: 'mortgage-1',
+  ownerIds: ['primary'],
+  type: 'mortgage',
+  label: 'Home mortgage',
+  currentBalance: { amount: 180_000, currency: 'EUR' },
+  annualInterestRate: 0.04,
+  remainingTermMonths: 240
+}];
 /** Everything a consumer surface is allowed to see. */
 function consumerFacing(plan) {
   return JSON.stringify({ slots: plan.moduleSlots, opportunities: plan.moduleOpportunities });
@@ -356,12 +378,16 @@ check('a module with no runnable engine is never consumer-visible', () => {
 });
 
 check('an adviser-disabled module is never offered', () => {
-  const off = planFor(RICH, {}, ['understand_position'], { mortgage_analysis: false });
+  const off = planFor(RICH, {}, ['understand_position'], { mortgage_analysis: false }, {
+    liabilities: RECORDED_MORTGAGE
+  });
   assert.ok(!off.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
   const withheld = off.withheldOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
   assert.equal(withheld.blockedBy, 'adviser_consumer_enabled');
 
-  const on = planFor(RICH, {}, ['understand_position'], { mortgage_analysis: true });
+  const on = planFor(RICH, {}, ['understand_position'], { mortgage_analysis: true }, {
+    liabilities: RECORDED_MORTGAGE
+  });
   assert.ok(on.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
 });
 
@@ -418,6 +444,23 @@ check('the approved modules are platform-approved and adviser-enabled by default
   assert.equal(hiddenRetirement.consumerLanguage, undefined);
 });
 
+check('net retirement cash flow remains adviser-routable and consumer-gated', () => {
+  const retirement = profileFor(['retire']);
+  const recommendations = recommendModules(retirement).map((item) => item.moduleId);
+  assert.ok(recommendations.includes('net_retirement_cashflow'),
+    'the adviser/execution router must keep the retirement cash-flow companion');
+  assert.equal(typeof getPlanningModuleDefinition('net_retirement_cashflow').run, 'function');
+  const entry = MODULE_MANIFEST.find((item) => item.moduleId === 'net_retirement_cashflow');
+  assert.deepEqual(entry.routing.goals, [
+    { type: 'retire', role: 'companion' },
+    { type: 'retire_early', role: 'companion' }
+  ]);
+  assert.equal(entry.availability.consumer, false);
+  assert.equal(entry.availability.platformConsumerApproved, false);
+  assert.ok(!APPROVED_MODULES.includes('net_retirement_cashflow'));
+  assert.ok(!conversationModules(retirement).has('net_retirement_cashflow'));
+});
+
 check('the adviser catalogue keeps formal names and exposes controlled client language', () => {
   const balanceSheet = adviserCatalogueEntry(MODULE_IDS.PERSONAL_BALANCE_SHEET);
   assert.equal(balanceSheet.name, 'Personal balance sheet');
@@ -449,46 +492,66 @@ check('understand_position starts on the Personal Balance Sheet alone', () => {
   assert.deepEqual(plan.executionModuleIds, [MODULE_IDS.PERSONAL_BALANCE_SHEET]);
 });
 
-check('an opportunity appears only once the circumstance emerges', () => {
+check('homeownership alone does not offer mortgage analysis; a recorded mortgage does', () => {
   const before = planFor({}, {}, ['understand_position'], { mortgage_analysis: true });
   assert.ok(!before.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
-  const after = planFor({ propertyStatus: 'homeowner' }, {}, ['understand_position'], { mortgage_analysis: true });
+  const homeowner = planFor({ propertyStatus: 'homeowner' }, {}, ['understand_position'], {
+    mortgage_analysis: true
+  });
+  assert.ok(!homeowner.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+  const after = planFor({}, {}, ['understand_position'], { mortgage_analysis: true }, {
+    liabilities: RECORDED_MORTGAGE
+  });
   assert.ok(after.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
 });
 
 check('every offer carries a reason, supporting facts and a benefit descriptor', () => {
-  const plan = planFor({ propertyStatus: 'homeowner' }, {}, ['understand_position'], { mortgage_analysis: true });
+  const plan = planFor({}, {}, ['understand_position'], { mortgage_analysis: true }, {
+    liabilities: RECORDED_MORTGAGE
+  });
   const offer = plan.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
   assert.ok(offer.relevanceReason.length > 20, 'an offer must be explainable');
-  assert.ok(offer.supportingFactIds.includes('property_status'),
+  assert.ok(offer.supportingFactIds.includes('position:mortgage'),
     'an offer must name the accumulated facts that make it relevant');
   assert.ok(offer.clientBenefit.length > 20, 'an offer must state the benefit in plain language');
   assert.equal(offer.effectiveConsumerAvailability.visible, true);
 });
 
 check('identical accumulated state produces stable opportunities', () => {
-  const persona = { propertyStatus: 'homeowner' };
   const overrides = { mortgage_analysis: true };
-  const first = planFor(persona, {}, ['understand_position'], overrides);
-  const second = planFor(persona, {}, ['understand_position'], overrides);
+  const mortgageProfile = { liabilities: RECORDED_MORTGAGE };
+  const first = planFor({}, {}, ['understand_position'], overrides, mortgageProfile);
+  const second = planFor({}, {}, ['understand_position'], overrides, mortgageProfile);
   assert.deepEqual(
     second.moduleOpportunities.map((item) => `${item.moduleId}:${item.state}`),
     first.moduleOpportunities.map((item) => `${item.moduleId}:${item.state}`)
   );
   // Unrelated later evidence must not drop an earlier opportunity.
-  const widened = planFor({ ...persona, dependantCount: 2 }, {}, ['understand_position'], overrides);
+  const widened = planFor({ dependantCount: 2 }, {}, ['understand_position'], overrides, mortgageProfile);
   assert.ok(widened.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+  assert.ok(!widened.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.COLLEGE_FUNDING));
+});
+
+check('dependants alone do not offer college funding; explicit education intent does', () => {
+  const dependantsOnly = planFor({ dependantCount: 2 });
+  assert.ok(!dependantsOnly.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.COLLEGE_FUNDING));
+  const explicitIntent = planFor({ dependantCount: 2, educationFunding: true });
+  const offer = explicitIntent.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.COLLEGE_FUNDING);
+  assert.ok(offer);
+  assert.deepEqual(offer.supportingFactIds, ['education_funding_intent']);
 });
 
 // ---------------------------------------------------------------------------
 // 8. Accept, decline, confirm, execute.
 // ---------------------------------------------------------------------------
 
-const OFFERED = { propertyStatus: 'homeowner' };
+const OFFERED = {};
 const ENABLE_MORTGAGE = { mortgage_analysis: true };
 
 check('declining a module removes it from execution and marks it declined', () => {
-  const plan = planFor(OFFERED, { declinedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE);
+  const plan = planFor(OFFERED, { declinedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE, {
+    liabilities: RECORDED_MORTGAGE
+  });
   const offer = plan.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
   assert.equal(offer.state, 'declined');
   assert.ok(!plan.executionModuleIds.includes(MODULE_IDS.MORTGAGE));
@@ -496,7 +559,9 @@ check('declining a module removes it from execution and marks it declined', () =
 });
 
 check('accepting a module is not enough to execute it', () => {
-  const plan = planFor(OFFERED, { acceptedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE);
+  const plan = planFor(OFFERED, { acceptedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE, {
+    liabilities: RECORDED_MORTGAGE
+  });
   // An accepted offer occupies a slot so its question queue opens, but it is
   // marked accepted rather than selected and cannot execute yet.
   const slot = plan.moduleSlots.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
@@ -513,7 +578,8 @@ check('confirming the final set promotes an accepted module to selected', () => 
     OFFERED,
     { acceptedModuleIds: [MODULE_IDS.MORTGAGE], confirmedModuleIds: [MODULE_IDS.MORTGAGE] },
     ['understand_position'],
-    ENABLE_MORTGAGE
+    ENABLE_MORTGAGE,
+    { liabilities: RECORDED_MORTGAGE }
   );
   const slot = plan.moduleSlots.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
   assert.ok(slot, 'a confirmed accepted module must become selected');
@@ -523,7 +589,9 @@ check('confirming the final set promotes an accepted module to selected', () => 
 });
 
 check('confirmation cannot smuggle in a module the client never accepted', () => {
-  const plan = planFor(OFFERED, { confirmedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE);
+  const plan = planFor(OFFERED, { confirmedModuleIds: [MODULE_IDS.MORTGAGE] }, ['understand_position'], ENABLE_MORTGAGE, {
+    liabilities: RECORDED_MORTGAGE
+  });
   assert.ok(
     !plan.executionModuleIds.includes(MODULE_IDS.MORTGAGE),
     'confirmation without acceptance must not execute a module'

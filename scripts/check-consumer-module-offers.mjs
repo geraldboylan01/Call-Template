@@ -141,19 +141,19 @@ const HOMEOWNER = { propertyStatus: 'homeowner' };
 // ---------------------------------------------------------------------------
 
 check('an offer names a circumstance the client actually supplied', () => {
-  const { profile, plan } = planFor({ persona: HOMEOWNER });
+  const { profile, plan } = planFor({ liabilities: WITH_MORTGAGE });
   const offer = nextModuleOffer(plan, { profile });
-  assert.ok(offer, 'a homeowner should be offered something');
+  assert.ok(offer, 'a recorded mortgage should produce an offer');
   assert.equal(offer.moduleId, MODULE_IDS.MORTGAGE);
-  assert.equal(offer.anchor, 'you own your home');
+  assert.equal(offer.anchor, 'you have a mortgage');
   assert.equal(offer.anchorSource, 'circumstance');
-  assert.match(offer.spokenOffer, /^You mentioned you own your home\. We can /);
+  assert.match(offer.spokenOffer, /^You mentioned you have a mortgage\. We can /);
   assert.match(offer.spokenOffer, /Would you like to examine that\?$/);
   assertNoInternalTerminology(offer.spokenOffer, 'circumstance-based offer');
 });
 
 check('the offer description and question come from the module manifest', () => {
-  const { profile, plan } = planFor({ persona: HOMEOWNER });
+  const { profile, plan } = planFor({ liabilities: WITH_MORTGAGE });
   const offer = nextModuleOffer(plan, { profile });
   const manifestLanguage = getModuleManifest(MODULE_IDS.MORTGAGE).consumerLanguage;
   assert.equal(offer.offerDescription, manifestLanguage.consumerOfferDescription);
@@ -198,13 +198,27 @@ check('an offer that cannot be anchored to a stated fact is not made', () => {
 
 check('only one module is offered at a time', () => {
   const { profile, plan } = planFor({
-    persona: { ...HOMEOWNER, hasPension: true, dependantCount: 2 }
+    persona: { hasPension: true, dependantCount: 2, educationFunding: true },
+    liabilities: WITH_MORTGAGE
   });
   assert.ok(plan.moduleOpportunities.length > 1, 'this client has several relevant modules');
   const offer = nextModuleOffer(plan, { profile });
   assert.ok(offer && typeof offer.spokenOffer === 'string');
   assert.equal((offer.spokenOffer.match(/\?/g) || []).length, 1, 'one offer asks one decision question');
   assert.ok(offer.spokenOffer.endsWith(offer.offerQuestion));
+});
+
+check('homeownership and dependants alone do not create mortgage or college offers', () => {
+  const { plan } = planFor({ persona: { ...HOMEOWNER, dependantCount: 2 } });
+  assert.ok(!plan.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.MORTGAGE));
+  assert.ok(!plan.moduleOpportunities.some((item) => item.moduleId === MODULE_IDS.COLLEGE_FUNDING));
+});
+
+check('explicit education intent creates a college offer', () => {
+  const { plan } = planFor({ persona: { dependantCount: 2, educationFunding: true } });
+  const opportunity = plan.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.COLLEGE_FUNDING);
+  assert.ok(opportunity);
+  assert.deepEqual(opportunity.supportingFactIds, ['education_funding_intent']);
 });
 
 check('every approved module resolves to manifest-owned client language', () => {
@@ -378,6 +392,7 @@ check('accepting a module activates its required-fact collection', () => {
 check('declining a module prevents its questions and its execution', () => {
   const { profile, plan } = planFor({
     persona: HOMEOWNER,
+    liabilities: WITH_MORTGAGE,
     planning: { declinedModuleIds: [MODULE_IDS.MORTGAGE] }
   });
   const declined = plan.moduleOpportunities.find((item) => item.moduleId === MODULE_IDS.MORTGAGE);
@@ -395,6 +410,7 @@ check('declining a module prevents its questions and its execution', () => {
 check('an accepted module does not execute before the set is confirmed', () => {
   const { plan } = planFor({
     persona: HOMEOWNER,
+    liabilities: WITH_MORTGAGE,
     planning: { acceptedModuleIds: [MODULE_IDS.MORTGAGE] }
   });
   assert.ok(!plan.executionModuleIds.includes(MODULE_IDS.MORTGAGE));
@@ -403,6 +419,7 @@ check('an accepted module does not execute before the set is confirmed', () => {
 check('the confirmation uses outcome phrases while retaining exact module ids', () => {
   const { plan } = planFor({
     persona: HOMEOWNER,
+    liabilities: WITH_MORTGAGE,
     planning: {
       acceptedModuleIds: [MODULE_IDS.MORTGAGE],
       confirmedModuleIds: [MODULE_IDS.MORTGAGE]
@@ -440,6 +457,7 @@ check('a hidden analysis cannot be smuggled into final confirmation', () => {
 check('execution runs exactly the confirmed set', async () => {
   const { profile, plan } = planFor({
     persona: HOMEOWNER,
+    liabilities: WITH_MORTGAGE,
     planning: {
       acceptedModuleIds: [MODULE_IDS.MORTGAGE],
       confirmedModuleIds: [MODULE_IDS.MORTGAGE]
@@ -460,8 +478,8 @@ check('execution runs exactly the confirmed set', async () => {
 // ---------------------------------------------------------------------------
 
 check('the same accumulated state produces the same offer', () => {
-  const first = planFor({ persona: HOMEOWNER });
-  const second = planFor({ persona: HOMEOWNER });
+  const first = planFor({ persona: HOMEOWNER, liabilities: WITH_MORTGAGE });
+  const second = planFor({ persona: HOMEOWNER, liabilities: WITH_MORTGAGE });
   assert.equal(
     nextModuleOffer(first.plan, { profile: first.profile }).spokenOffer,
     nextModuleOffer(second.plan, { profile: second.profile }).spokenOffer
@@ -469,8 +487,8 @@ check('the same accumulated state produces the same offer', () => {
 });
 
 check('an offer survives an unrelated later turn', () => {
-  const before = planFor({ persona: HOMEOWNER });
-  const after = planFor({ persona: { ...HOMEOWNER, hasPension: true } });
+  const before = planFor({ persona: HOMEOWNER, liabilities: WITH_MORTGAGE });
+  const after = planFor({ persona: { ...HOMEOWNER, hasPension: true }, liabilities: WITH_MORTGAGE });
   const stillOffered = after.plan.moduleOpportunities.map((item) => item.moduleId);
   assert.ok(
     stillOffered.includes(MODULE_IDS.MORTGAGE),
@@ -480,7 +498,7 @@ check('an offer survives an unrelated later turn', () => {
 });
 
 check('an offer is composed from the profile, never from a transcript', () => {
-  const { profile, plan } = planFor({ persona: HOMEOWNER });
+  const { profile, plan } = planFor({ persona: HOMEOWNER, liabilities: WITH_MORTGAGE });
   const offer = nextModuleOffer(plan, { profile });
   // Composition takes only the plan and the profile. There is no transcript
   // parameter to pass, so however fast the voice replies, it cannot change which

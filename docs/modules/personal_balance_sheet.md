@@ -37,7 +37,7 @@
     ],
     "adviserGoals": [],
     "suggestedWhen": [],
-    "pinned": "when_eligible",
+    "pinned": "never",
     "priorityBoost": 0
   },
   "requiredFacts": [
@@ -94,7 +94,7 @@ The client wants the full picture: where they stand overall, what they are worth
 
 ## When not to use
 
-Do not add it as background context to a narrow goal when the household has little to show. Asking a renter with no pension what their home and business interests are worth is how a first meeting starts to feel like a form. Its inclusion is controlled by the pinned setting, not by prose.
+Do not add it as background context to a narrow goal. It is selected only when the client directly wants to understand their overall position or build wealth from their current position.
 
 ## Client signals
 

@@ -159,30 +159,7 @@
         }
       ],
       "blockedModules": [],
-      "moduleOpportunities": [
-        {
-          "moduleId": "mortgage_analysis",
-          "relevanceReason": "You have a mortgage, so I can look at the rate and remaining term alongside the overall picture.",
-          "supportingFactIds": [
-            "property_status"
-          ],
-          "missingFactIds": [],
-          "clientBenefit": "show your current mortgage repayment path and compare the alternatives — changing the term, switching, or making extra repayments",
-          "ruleIds": [
-            "manifest.offer.mortgage_analysis.v1"
-          ],
-          "state": "offerable",
-          "effectiveConsumerAvailability": {
-            "visible": true,
-            "gates": {
-              "runnable_engine": true,
-              "platform_consumer_approved": true,
-              "adviser_consumer_enabled": true,
-              "release_allowlist": true
-            }
-          }
-        }
-      ],
+      "moduleOpportunities": [],
       "withheldOpportunities": [],
       "executionModuleIds": [
         "personal_balance_sheet"
@@ -424,31 +401,7 @@
         }
       ],
       "blockedModules": [],
-      "moduleOpportunities": [
-        {
-          "moduleId": "college_funding",
-          "relevanceReason": "You have children to plan for, so I can put education costs alongside this.",
-          "supportingFactIds": [
-            "dependant_count",
-            "position:dependants"
-          ],
-          "missingFactIds": [],
-          "clientBenefit": "estimate what college is likely to cost using our standard living-at-home and living-away figures, and show the saving needed to fund four years for each child",
-          "ruleIds": [
-            "manifest.offer.college_funding.v1"
-          ],
-          "state": "offerable",
-          "effectiveConsumerAvailability": {
-            "visible": true,
-            "gates": {
-              "runnable_engine": true,
-              "platform_consumer_approved": true,
-              "adviser_consumer_enabled": true,
-              "release_allowlist": true
-            }
-          }
-        }
-      ],
+      "moduleOpportunities": [],
       "withheldOpportunities": [
         {
           "moduleId": "protection_analysis",
@@ -581,7 +534,7 @@
       "moduleOpportunities": [
         {
           "moduleId": "college_funding",
-          "relevanceReason": "You have children to plan for, so I can put education costs alongside this.",
+          "relevanceReason": "You want to help with education costs, so I can put the future funding requirement alongside this.",
           "supportingFactIds": [
             "education_funding_intent"
           ],
@@ -737,33 +690,6 @@
           "ruleIds": [
             "manifest.buy_home.liquidity_analysis.companion.v1"
           ]
-        },
-        {
-          "slot": 3,
-          "moduleId": "personal_balance_sheet",
-          "source": "balance_sheet_default",
-          "selectionState": "selected",
-          "relatedGoalTypes": [
-            "buy_home"
-          ],
-          "availability": "needs_facts",
-          "intakeStatus": "missing_information",
-          "reasons": [
-            "Included to put the selected goals in the context of the household’s overall position."
-          ],
-          "missingFactIds": [
-            "asset_position",
-            "liability_position",
-            "monthly_spending",
-            "property_position",
-            "pension_positions",
-            "business_position"
-          ],
-          "blockingFactIds": [],
-          "blockingFactInstanceIds": [],
-          "ruleIds": [
-            "manifest.pinned.personal_balance_sheet.v1"
-          ]
         }
       ],
       "blockedModules": [],
@@ -771,18 +697,16 @@
       "withheldOpportunities": [],
       "executionModuleIds": [
         "house_purchase",
-        "liquidity_analysis",
-        "personal_balance_sheet"
+        "liquidity_analysis"
       ],
       "capacity": {
         "maximumAnalyses": 3,
-        "used": 3,
-        "atLimit": true,
+        "used": 2,
+        "atLimit": false,
         "overflowModuleIds": [],
         "replaceableModuleIds": [
           "house_purchase",
-          "liquidity_analysis",
-          "personal_balance_sheet"
+          "liquidity_analysis"
         ]
       },
       "planningCycle": 1,
@@ -966,50 +890,21 @@
           "ruleIds": [
             "manifest.retire.pension_projection.direct.v1"
           ]
-        },
-        {
-          "slot": 2,
-          "moduleId": "personal_balance_sheet",
-          "source": "balance_sheet_default",
-          "selectionState": "selected",
-          "relatedGoalTypes": [
-            "retire"
-          ],
-          "availability": "needs_facts",
-          "intakeStatus": "missing_information",
-          "reasons": [
-            "Included to put the selected goals in the context of the household’s overall position."
-          ],
-          "missingFactIds": [
-            "asset_position",
-            "liability_position",
-            "monthly_spending",
-            "property_position",
-            "pension_positions",
-            "business_position"
-          ],
-          "blockingFactIds": [],
-          "blockingFactInstanceIds": [],
-          "ruleIds": [
-            "manifest.pinned.personal_balance_sheet.v1"
-          ]
         }
       ],
       "blockedModules": [],
       "moduleOpportunities": [],
       "withheldOpportunities": [],
       "executionModuleIds": [
-        "pension_projection",
-        "personal_balance_sheet"
+        "pension_projection"
       ],
       "capacity": {
         "maximumAnalyses": 3,
-        "used": 2,
+        "used": 1,
         "atLimit": false,
         "overflowModuleIds": [],
         "replaceableModuleIds": [
-          "pension_projection",
-          "personal_balance_sheet"
+          "pension_projection"
         ]
       },
       "planningCycle": 1,

@@ -37,12 +37,6 @@
         "reason": "You have a mortgage, so I can look at the rate and remaining term alongside the overall picture.",
         "anyOf": [
           {
-            "fact": "property_status",
-            "in": [
-              "homeowner"
-            ]
-          },
-          {
             "profileHas": "mortgage"
           }
         ]

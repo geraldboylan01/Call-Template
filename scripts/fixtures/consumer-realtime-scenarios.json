@@ -105,9 +105,17 @@
         }
       ],
       "expected": {
+        "forbiddenModuleIds": [
+          "personal_balance_sheet"
+        ],
         "mustNeverAskFactIds": [
           "pension_employer_contribution_rate",
-          "pension_employee_contribution_rate"
+          "pension_employee_contribution_rate",
+          "asset_position",
+          "liability_position",
+          "property_position",
+          "business_position",
+          "monthly_spending"
         ],
         "mustAskFirstFactId": "pension_positions"
       }
@@ -142,10 +150,18 @@
         }
       ],
       "expected": {
+        "forbiddenModuleIds": [
+          "personal_balance_sheet"
+        ],
         "mustNeverAskFactIds": [
           "current_monthly_rent",
           "target_home_price",
-          "lending_category"
+          "lending_category",
+          "asset_position",
+          "property_position",
+          "business_position",
+          "pension_positions",
+          "monthly_spending"
         ],
         "mustAskFirstFactId": "mortgage_position"
       }

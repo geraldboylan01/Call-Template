@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  MODULE_IDS,
   applyProfilePatch,
+  buildGoalModulePlan,
   createHouseholdProfile,
   extractRulesOnlyProfilePatch,
   getPlanningModuleDefinition,
@@ -76,6 +78,12 @@ function assertModules(testCase, profile) {
     assert.equal(definition.consumerAvailable, expected.consumerAvailable, `${testCase.id}: consumer gate`);
     assert.equal(releaseGate(definition), expected.releaseGate, `${testCase.id}: derived release gate`);
   });
+  assert.deepEqual(
+    buildGoalModulePlan(profile, { allowedModuleIds: Object.values(MODULE_IDS) })
+      .moduleSlots.map((slot) => slot.moduleId),
+    testCase.expected.consumerPlanModuleIds,
+    `${testCase.id}: consumer plan module order`
+  );
 }
 
 function assertProfileExpectations(testCase, profile) {

@@ -117,9 +117,9 @@ function saveFact(profile, factId, value, certainty = 'exact') {
   return proposed.profile;
 }
 
-// A focused live conversation must not inherit the shared planner's pinned
-// overall-position review. That review is available only when the client
-// explicitly asks to understand the wider picture.
+// A focused live conversation must not acquire an overall-position review as
+// background analysis. The manifest now selects it only for its two direct
+// goals, so the volatile item and fact queue must stay narrow as well.
 {
   const focused = newReplaySession();
   const goalSave = executeReplayTool(focused, 'save_facts', {
@@ -141,6 +141,13 @@ function saveFact(profile, factId, value, certainty = 'exact') {
   checks += 1;
   ok(!focusedState.missing.includes('asset_position') && !focusedState.missing.includes('business_position'),
     'A focused pension/mortgage comparison must not force wider-picture asset or business intake.');
+  const focusedVolatileState = liveVolatileStateItem(focusedState);
+  ok(!focusedVolatileState.includes('overall financial picture'),
+    'The per-turn volatile item must not advertise a background wider-picture analysis for narrow goals.');
+  for (const factId of ['asset_position', 'business_position', 'property_position']) {
+    ok(!focusedVolatileState.includes(getSemanticFactDefinition(factId).label),
+      `The per-turn volatile item must not carry removed balance-sheet fact ${factId} for narrow goals.`);
+  }
 
   const focusedHome = newReplaySession();
   executeReplayTool(focusedHome, 'save_facts', {

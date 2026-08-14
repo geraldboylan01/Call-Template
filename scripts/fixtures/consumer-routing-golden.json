@@ -15,6 +15,10 @@
         "goalTypes": [
           "buy_home"
         ],
+        "consumerPlanModuleIds": [
+          "house_purchase",
+          "liquidity_analysis"
+        ],
         "modules": [
           {
             "moduleId": "house_purchase",
@@ -55,6 +59,9 @@
           "retire",
           "improve_pension"
         ],
+        "consumerPlanModuleIds": [
+          "pension_projection"
+        ],
         "modules": [
           {
             "moduleId": "pension_projection",
@@ -89,6 +96,9 @@
         "goalTypes": [
           "optimise_mortgage"
         ],
+        "consumerPlanModuleIds": [
+          "mortgage_analysis"
+        ],
         "modules": [
           {
             "moduleId": "mortgage_analysis",
@@ -114,6 +124,9 @@
       "expected": {
         "goalTypes": [
           "fund_education"
+        ],
+        "consumerPlanModuleIds": [
+          "college_funding"
         ],
         "modules": [
           {
@@ -145,6 +158,11 @@
           "buy_home",
           "retire_early",
           "fund_education"
+        ],
+        "consumerPlanModuleIds": [
+          "house_purchase",
+          "liquidity_analysis",
+          "pension_projection"
         ],
         "modules": [
           {
@@ -208,6 +226,10 @@
         "goalTypes": [
           "buy_home"
         ],
+        "consumerPlanModuleIds": [
+          "house_purchase",
+          "liquidity_analysis"
+        ],
         "modules": [
           {
             "moduleId": "house_purchase",
@@ -245,6 +267,10 @@
       "expected": {
         "goalTypes": [
           "buy_home"
+        ],
+        "consumerPlanModuleIds": [
+          "house_purchase",
+          "liquidity_analysis"
         ],
         "modules": [
           {
@@ -287,6 +313,7 @@
         "goalTypes": [
           "transfer_wealth"
         ],
+        "consumerPlanModuleIds": [],
         "modules": [
           {
             "moduleId": "cat_analysis",
@@ -312,6 +339,7 @@
         "goalTypes": [
           "business_planning"
         ],
+        "consumerPlanModuleIds": [],
         "modules": [
           {
             "moduleId": "business_owner_analysis",
@@ -337,6 +365,7 @@
         "goalTypes": [
           "agricultural_planning"
         ],
+        "consumerPlanModuleIds": [],
         "modules": [
           {
             "moduleId": "agricultural_relief",

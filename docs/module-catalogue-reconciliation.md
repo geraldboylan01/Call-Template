@@ -245,7 +245,7 @@ behaviourally, not what a declaration claims.
 
 | User-facing name | Internal ID | Implementation type | Engine | Adviser | Consumer | Auto-routing | Current output | Recommended long-term treatment |
 |---|---|---|---|---|---|---|---|---|
-| Personal balance sheet | `personal_balance_sheet` | Runnable engine | ✅ | ✅ | ✅ | `understand_position`, `build_wealth` (direct) + **pinned when eligible** | `generated.pbsInputs` | Keep. Replace the hardcoded default-add with the manifest `pinned` setting; make it adviser-tunable in P6. |
+| Personal balance sheet | `personal_balance_sheet` | Runnable engine | ✅ | ✅ | ✅ | `understand_position`, `build_wealth` (direct); **never pinned** | `generated.pbsInputs` | Keep for its two direct goals. Do not add it as background analysis to narrower goals. |
 | Liquidity reserve | `liquidity_analysis` | Runnable engine | ✅ | ✅ | ✅ | `maintain_liquidity` (direct), `buy_home` (companion) | `generated.liquidityPlan` | Keep as-is. The only `active` module and the most mature. |
 | House purchase planner | `house_purchase` | Runnable engine | ✅ | ✅ | ✅ | `buy_home` (direct) | `generated.housePurchaseInputs` | Keep. Scenario-aware. Add P2 `factPreconditions` so a homeowner is never asked rent. |
 | Pension projection | `pension_projection` | Runnable engine | ✅ | ✅ | ❌ | `improve_pension`, `retire`, `retire_early` (direct) | `generated.pensionInputs` | Promote to `consumerAvailable` once the employer-contribution precondition lands. Scenario-aware. |
@@ -263,8 +263,8 @@ behaviourally, not what a declaration claims.
 | Scenario analysis | `scenario_analysis` | **Capability** | ❌ | ❌ | ❌ | none | — | Never a module. Represent as `scenarioAware` on House purchase, Pension projection and Net retirement cash flow. Consider removing the placeholder id entirely in P2. |
 
 **Totals:** 8 runnable engines · 6 template-only · 1 routing label · 1 capability.
-15 adviser-available · 3 consumer-available · 8 auto-routed (of which 1 is
-pinned rather than goal-routed).
+15 adviser-available · 3 consumer-available · 8 auto-routed; all eight are
+goal-routed and none is pinned.
 
 **The non-runnable entries must never surface as runnable reports.** Nine of the
 sixteen have no engine. `implementation.status` is the field that distinguishes
@@ -380,10 +380,16 @@ what live clients are shown. Flagged for Gerry rather than taken unilaterally:
 > sheet only. If yes, add `understand_position` to `liquidity_analysis`'s
 > `routing.goals` and the conversation will follow.
 
-**Answered 2026-07-25.** The Personal Balance Sheet stays the strong default,
-but the journey is no longer confined to it. Companion analyses are now
-*suggested* from accumulated circumstances and confirmed by the client before
-anything extra runs — see §12.
+**Refined 2026-08-14.** The Personal Balance Sheet is selected only for its
+direct `understand_position` and `build_wealth` goals. It is no longer pinned
+behind narrower goals. Companion analyses are still *suggested* from accumulated
+circumstances and confirmed by the client before anything extra runs — see §12.
+
+The same refinement tightened two suggestion predicates. Homeownership alone
+does not imply a mortgage analysis; an actual recorded mortgage does. Having
+dependants alone does not imply college funding; an explicit education-funding
+intention does. This keeps recognition broad while ensuring an offer is tied to
+the need the analysis actually serves.
 
 Everything else in P2 is behaviour-preserving. Route rule ids changed form
 (`route.buy_home.v1` → `manifest.buy_home.house_purchase.v1`); they are recorded
@@ -409,11 +415,12 @@ structural guarantee behind "do not silently execute additional modules".
 ### How a suggestion arises
 
 Manifests carry `routing.suggestedWhen`: a client-facing `reason` plus `anyOf`
-conditions over **accumulated profile state** — circumstance facts
-(`property_status`, `has_pension`, `dependant_count`, …) resolved through their
-existing `semantic_facts` path mappings, and `profileHas` predicates over
-recorded positions (`mortgage`, `pension`, `loan`, `cash`, `dependants`,
-`business`, `property`).
+conditions over **accumulated profile state** — circumstance facts such as
+`has_pension` and `education_funding_intent`, resolved through their existing
+`semantic_facts` path mappings, and `profileHas` predicates over recorded
+positions (`mortgage`, `pension`, `loan`, `cash`, `dependants`, `business`,
+`property`). A predicate is module-specific: `mortgage_analysis` requires a
+recorded mortgage and `college_funding` requires explicit education intent.
 
 Because the predicates read the profile rather than a turn, a suggestion appears
 when the evidence exists and not before — the voice model can stay immediate and
@@ -430,9 +437,18 @@ understand_position, nothing else known
 
 … client mentions they own their home and have a pension
   selected : personal_balance_sheet          EXECUTES: personal_balance_sheet
+  suggested: pension_projection
+
+… an actual mortgage liability is recorded
+  selected : personal_balance_sheet          EXECUTES: personal_balance_sheet
   suggested: mortgage_analysis, pension_projection
 
 … client mentions two children
+  selected : personal_balance_sheet          EXECUTES: personal_balance_sheet
+  suggested: mortgage_analysis, pension_projection
+  deferred : protection_analysis             (relevant, but no engine)
+
+… client says they intend to fund education
   selected : personal_balance_sheet          EXECUTES: personal_balance_sheet
   suggested: college_funding, mortgage_analysis, pension_projection
   deferred : protection_analysis             (relevant, but no engine)
