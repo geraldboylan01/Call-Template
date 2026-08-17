@@ -174,22 +174,36 @@ pass('the live lane and the background reconciler agree, because they share the 
 
 {
   // The basis rule says nothing about whether the FIGURE is real. That is the
-  // live numeric guard's job and it still refuses a crowded sentence it cannot
-  // bind — which is why the income in that case is repaired by the reconciler
-  // rather than captured live.
-  const crowded = "I'm on 95,000 a year. I put in 6 percent and the company puts in 8 percent.";
-  const guarded = partitionSupportedLiveFacts(
-    [{
-      factId: 'income_sources',
-      value: { operation: 'upsert', entityId: 'job1', type: 'employment', owner: 'primary', amount: 95_000 },
-      certainty: 'exact'
-    }],
-    crowded,
-    { clientSourcedFigures: { values: [] }, assistantReadBack: '' }
+  // live numeric guard's job, and it still refuses what it cannot bind.
+  //
+  // This case used to be "I'm on 95,000 a year. I put in 6 percent and the
+  // company puts in 8 percent." — refused, and the income left for the
+  // reconciler to repair. That refusal was a DEFECT, not a safety property:
+  // "I'm on 95,000 a year" is a plain salary statement, the percentages sit in
+  // a separate clause and are not amounts, and the fast lane now captures it.
+  // What must still fail closed is a figure that genuinely cannot be attributed.
+  const income = (amount) => [{
+    factId: 'income_sources',
+    value: { operation: 'upsert', entityId: 'job1', type: 'employment', owner: 'primary', amount },
+    certainty: 'exact'
+  }];
+  const guard = (amount, said) => partitionSupportedLiveFacts(
+    income(amount), said, { clientSourcedFigures: { values: [] }, assistantReadBack: '' }
   );
-  assert.equal(guarded.accepted.length, 0,
+
+  const collective = guard(95_000, 'We are on 95,000 and 40,000 between us.');
+  assert.equal(collective.accepted.length, 0,
     'the numeric guard must still fail closed on an unbindable figure');
-  assert.equal(guarded.rejected[0]?.reason, 'live_numeric_fact_unsupported');
+  assert.equal(collective.rejected[0]?.reason, 'live_numeric_fact_unsupported');
+
+  // The swap this boundary exists to stop: a contribution rate recorded as pay.
+  const crowded = "I'm on 95,000 a year. I put in 6 percent and the company puts in 8 percent.";
+  assert.equal(guard(6, crowded).accepted.length, 0,
+    'a contribution percentage must never be captured as the salary');
+  assert.equal(guard(88_000, crowded).accepted.length, 0,
+    'nor a figure the client never said');
+  assert.equal(guard(95_000, crowded).accepted.length, 1,
+    'while the salary the client plainly stated is captured live');
 
   // A figure the client never said is still refused, gross default or not.
   assert.equal(refusalFrom({ amount: 123_456 }, "I'm on 95,000 a year") === null, true,

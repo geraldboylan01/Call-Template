@@ -158,6 +158,21 @@
           ]
         },
         {
+          "client": "My partner has no pension of their own.",
+          "speech": "Understood. And what income would you want a year in retirement?",
+          "saveFacts": [
+            {
+              "factId": "pension_positions",
+              "value": {
+                "operation": "confirm_none",
+                "owner": "partner"
+              },
+              "certainty": "exact"
+            }
+          ],
+          "comment": "The opening line puts a partner on the record, so the module asks for the partner's pension too — exactly as pension_medium does. This turn was not needed while the live lane was refusing \"My partner is 59\"; once that age is captured, the conversation has to resolve the partner's pension the way a real one does."
+        },
+        {
           "client": "I'd want about 45,000 a year.",
           "speech": "Forty-five thousand a year. Let me check where that leaves us.",
           "saveFacts": [

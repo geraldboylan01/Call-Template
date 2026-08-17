@@ -165,14 +165,20 @@ try {
     pass('ownership separates a wrong owner from a partner never mentioned');
   }
 
-  /* The same three states, end to end, from runs that really happened. */
+  /* The verdict, end to end, from a run that really happened.
+   *
+   * This asserted `null` until the live lane stopped refusing "My partner is
+   * 59" — the easy persona states the partner in its opening line, so once
+   * that age is captured there IS an ownership judgement to make, and it must
+   * be the right one. The n/a state is covered directly above, where it can be
+   * constructed rather than waited for. */
   {
     const reached = JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8'));
-    assert.equal(reached.ownership.correct, null,
-      'the easy persona never establishes the partner it claims, so ownership is n/a');
+    assert.equal(reached.ownership.correct, true,
+      'the easy persona states both ages, so both must be captured and correctly owned');
     assert.equal(reached.criteriaFailed.includes('ownership_correct'), false,
-      'and an unresolved partner must not be reported as a wrong owner');
-    pass('a real run with an unmentioned partner reports ownership n/a, not failed');
+      'and a correctly owned household must not be reported as a failure');
+    pass('a real run captures both stated ages and owns them correctly');
   }
 
   /* No secrets. */

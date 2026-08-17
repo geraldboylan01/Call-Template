@@ -65,7 +65,6 @@
         }
       ],
       "expect": "accept",
-      "knownGap": true,
       "note": "An adjective between 'my' and 'salary' must not lose the figure."
     },
     {
@@ -85,8 +84,7 @@
           }
         }
       ],
-      "expect": "accept",
-      "knownGap": true
+      "expect": "accept"
     },
     {
       "id": "income-terse-answer",
@@ -106,7 +104,6 @@
         }
       ],
       "expect": "accept",
-      "knownGap": true,
       "note": "Answering 'what do you earn?' without repeating the noun is normal speech."
     },
     {
@@ -121,8 +118,7 @@
           }
         }
       ],
-      "expect": "accept",
-      "knownGap": true
+      "expect": "accept"
     },
     {
       "id": "cash-savings-plain",
@@ -243,8 +239,7 @@
         }
       ],
       "expect": "accept",
-      "knownGap": true,
-      "note": "The single densest real shape: one sentence, three facts."
+      "note": "The single densest real shape: one sentence, three facts. Closed by the \"I'm on X\" salary idiom."
     },
     {
       "id": "mortgage-balance-rate-term",
@@ -482,6 +477,132 @@
       ],
       "expect": "reject",
       "note": "The term must not be recorded as the rate."
+    },
+    {
+      "id": "partner-age-third-person",
+      "said": "I'm 57 and I'm married. My partner is 59.",
+      "submit": [
+        {
+          "factId": "partner_person",
+          "value": {
+            "operation": "upsert",
+            "age": 59
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "The commonest way anyone states a partner's age. The cue list held only first-person forms, so this was refused on seven turns of the paid runs."
+    },
+    {
+      "id": "partner-age-pronoun",
+      "said": "She's 59; I'm 57.",
+      "submit": [
+        {
+          "factId": "partner_person",
+          "value": {
+            "operation": "upsert",
+            "age": 59
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "In a two-person household the primary is 'I' and the other person is 'she'/'they'."
+    },
+    {
+      "id": "partner-age-after-dash",
+      "said": "They're 59 now — so just two years older than me.",
+      "submit": [
+        {
+          "factId": "partner_person",
+          "value": {
+            "operation": "upsert",
+            "age": 59
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "A dash narrows the clause, which must not cost the sentence its owner cue."
+    },
+    {
+      "id": "SAFETY-collective-ages",
+      "said": "We're 57 and 59.",
+      "submit": [
+        {
+          "factId": "partner_person",
+          "value": {
+            "operation": "upsert",
+            "age": 59
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "Two ages, no attribution. Which is whose is a guess, so it must fail closed."
+    },
+    {
+      "id": "SAFETY-collective-ages-stated",
+      "said": "Our ages are 57 and 59.",
+      "submit": [
+        {
+          "factId": "partner_person",
+          "value": {
+            "operation": "upsert",
+            "age": 59
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "As above. Collective phrasing is not evidence of who is which age."
+    },
+    {
+      "id": "income-on-a-year",
+      "said": "I'm on 95000 a year.",
+      "submit": [
+        {
+          "factId": "income_sources",
+          "value": {
+            "grossAnnual": {
+              "amount": 95000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "How a salary is stated here. Carried none of earn/income/salary/wage/gross/net."
+    },
+    {
+      "id": "income-correction-across-dash",
+      "said": "Sorry, I said 92000 — I meant 95000 gross a year.",
+      "submit": [
+        {
+          "factId": "income_sources",
+          "value": {
+            "grossAnnual": {
+              "amount": 95000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "The same sentence with 'but' in place of the dash was accepted, which is not a distinction the client was making."
+    },
+    {
+      "id": "SAFETY-correction-keeps-the-old-figure",
+      "said": "Sorry, I said 92000 — I meant 95000 gross a year.",
+      "submit": [
+        {
+          "factId": "income_sources",
+          "value": {
+            "grossAnnual": {
+              "amount": 88000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "A figure the client never said, in a sentence full of figures they did."
     }
   ]
 }

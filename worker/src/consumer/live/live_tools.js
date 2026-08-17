@@ -702,7 +702,15 @@ function numericSlot(fact, leaf) {
 function localNumberContext(transcript, occurrence) {
   const barriers = [
     ...transcript.matchAll(
-      /[.!?;\n]|,(?!\d)|\b(?:but|whereas|while|with)\b|\band\s+(?=(?:i|we|my|the|there|have|hold|own|owe|pay|rent|earn|salary|income|savings?|cash|work|occupational|prsa|pension|mortgage|loan)\b)/gi
+      // An em or en dash separates clauses in speech exactly as "but" does.
+      // Without it, "I said €92,000 — I meant €95,000 gross" kept BOTH figures
+      // in scope of the income cue, the ambiguity rule below saw two supported
+      // numbers and refused the correction. The same sentence with "but"
+      // instead of the dash was accepted, which is not a distinction the
+      // client was making.
+      // A SPACED hyphen is the same dash in a transcript that spells it "-";
+      // an unspaced one is a compound word or a negative number and is not.
+      /[.!?;\n–—]|\s-\s|,(?!\d)|\b(?:but|whereas|while|with)\b|\band\s+(?=(?:i|we|my|the|there|have|hold|own|owe|pay|rent|earn|salary|income|savings?|cash|work|occupational|prsa|pension|mortgage|loan)\b)/gi
     )
   ];
   let start = 0;
@@ -721,11 +729,28 @@ function localNumberContext(transcript, occurrence) {
 function ownerCueMatches(slot, context) {
   const qualifiers = slot.split(':').slice(1);
   if (qualifiers.includes('primary')) {
-    return /\b(?:i|i'm|i am)\b/i.test(context)
-      || /\bmy\s+(?:income|salary|wage|pay|earnings|age|pension)\b/i.test(context);
+    // "my gross salary" is the same claim as "my salary". Requiring the noun to
+    // sit immediately after "my" dropped the figure whenever the client put an
+    // ordinary adjective in between.
+    if (/\b(?:i|i'm|i am)\b/i.test(context)
+      || /\bmy\s+(?:\w+\s+){0,2}(?:income|salary|wage|pay|earnings|age|pension)\b/i.test(context)) {
+      return true;
+    }
+    // THE TERSE ANSWER. "About 35,000 before tax" answers "what do you earn?"
+    // without naming anyone, and naming yourself again is not how people speak.
+    // Absent any OTHER person in the clause, the speaker is the subject — but
+    // the moment someone else is mentioned this must not guess, because
+    // "my partner earns 40,000" would otherwise be recorded as the client's.
+    return !/\b(?:partner|spouse|husband|wife|boyfriend|girlfriend|they're|they are|she's|she is|he's|he is|son|daughter|child|children)\b/i
+      .test(context);
   }
   if (qualifiers.includes('partner')) {
-    return /\b(?:partner|spouse|husband|wife|boyfriend|girlfriend)\b/i.test(context);
+    // In a two-person household the primary is "I" and the other person is
+    // "they"/"she"/"he", so a third-person pronoun IS the partner cue. Without
+    // this, "She's 59; I'm 57" and "They're 59 now" carried no owner evidence
+    // once the clause was narrowed to the figure, and were refused.
+    return /\b(?:partner|spouse|husband|wife|boyfriend|girlfriend)\b/i.test(context)
+      || /\b(?:they're|they are|she's|she is|he's|he is)\b/i.test(context);
   }
   if (qualifiers.includes('joint')) return /\b(?:we|our|household|joint)\b/i.test(context);
   return true;
@@ -748,9 +773,14 @@ function numericOccurrenceSupportsSlot(slot, occurrence, transcript) {
   const amountLike = hasCurrency || Math.abs(occurrence.value) >= 100;
 
   if (base === 'income') {
+    // "I'm on 95,000 a year" is how people state a salary here, and carried no
+    // cue at all: not earn, income, salary, wage, gross or net. It was refused
+    // in the paid runs while "before tax" in the very next sentence passed.
     if (!amountLike
-      || !/\b(?:earn(?:s|ed|ing)?|income|salary|wage|gross|net|before tax|self-employ|paid|rent)\b/i
-        .test(context)) return false;
+      || !(/\b(?:earn(?:s|ed|ing)?|income|salary|wage|gross|net|before tax|self-employ|paid|rent)\b/i
+        .test(context)
+        || /\b(?:i'm|i am|he's|she's|they're)\s+on\b/i.test(context)
+        || /\btakes?[\s-]home\b/i.test(context))) return false;
     const qualifiers = slot.split(':').slice(1);
     const subtype = qualifiers.find((item) =>
       !['primary', 'partner', 'joint'].includes(item)
@@ -887,10 +917,18 @@ function numericOccurrenceSupportsSlot(slot, occurrence, transcript) {
         .test(context);
   }
   if (base === 'current_age') {
+    // FIRST PERSON WAS THE ONLY PERSON. The cue list read "I'm 57" and nothing
+    // else, so "My partner is 59" — the single most common way anyone states a
+    // partner's age — carried no cue at all and was refused on seven turns
+    // across the paid runs. Third-person attributions are as explicit as first;
+    // `ownerCueMatches` has already established whose age this is.
+    const statesAnAge = /\b(?:age|aged|years old|i'm|i am|we are|they're|they are|she's|she is|he's|he is)\b/i
+      .test(context)
+      || /\b(?:partner|spouse|husband|wife)\b[^.!?]{0,20}\b(?:is|turns|turned)\b/i.test(context);
     return Number.isInteger(occurrence.value)
       && occurrence.value >= 16
       && occurrence.value <= 120
-      && /\b(?:age|aged|years old|i'm|i am|we are)\b/i.test(context)
+      && statesAnAge
       && !/\b(?:retire|retirement)\b/i.test(context);
   }
   if (base === 'retirement_age') {
