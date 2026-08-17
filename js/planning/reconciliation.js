@@ -1,5 +1,9 @@
 import { normalizeHouseholdProfile } from './profile.js';
-import { getSemanticFactDefinition, listSemanticFactDefinitions } from './semantic_facts.js';
+import {
+  canonicalCollectionFields,
+  getSemanticFactDefinition,
+  listSemanticFactDefinitions
+} from './semantic_facts.js';
 import {
   assertIsoDateTime,
   assertJsonCompatible,
@@ -101,7 +105,7 @@ export const NEED_STATUSES = Object.freeze([
   'satisfied'
 ]);
 
-const NEED_IMPORTANCES = Object.freeze(['required', 'recommended', 'optional']);
+export const NEED_IMPORTANCES = Object.freeze(['required', 'recommended', 'optional']);
 const RECONCILIATION_VERDICTS = Object.freeze([
   'clean',
   'changes_proposed',
@@ -166,16 +170,62 @@ const CONTROL_OWNED_KEYS = new Set([
   'selectedModules'
 ]);
 
-const POSITION_PROJECTIONS = Object.freeze({
-  asset_position: Object.freeze({ collection: 'assets', idKey: 'assetId', ownerKey: 'ownerIds' }),
-  liability_position: Object.freeze({ collection: 'liabilities', idKey: 'liabilityId', ownerKey: 'ownerIds' }),
-  mortgage_position: Object.freeze({ collection: 'liabilities', idKey: 'liabilityId', ownerKey: 'ownerIds' }),
-  loan_position: Object.freeze({ collection: 'liabilities', idKey: 'liabilityId', ownerKey: 'ownerIds' }),
-  income_sources: Object.freeze({ collection: 'incomeSources', idKey: 'incomeId', ownerKey: 'ownerId' }),
-  pension_positions: Object.freeze({ collection: 'pensions', idKey: 'pensionId', ownerKey: 'ownerId' }),
-  property_position: Object.freeze({ collection: 'properties', idKey: 'propertyId', ownerKey: 'ownerIds' }),
-  business_position: Object.freeze({ collection: 'businesses', idKey: 'businessId', ownerKey: 'ownerIds' }),
-  dependants: Object.freeze({ collection: 'dependants', idKey: 'dependantId', ownerKey: null })
+/**
+ * Which facts hold a position, and the shape of the record each one takes.
+ *
+ * EXPORTED SO THE PROMPT AND THE VALIDATOR CANNOT DISAGREE. The reconciler
+ * prompt used to describe this shape in prose — "copy that slot ID into the
+ * canonical record's entity ID field" — and there is no `entityId` field in a
+ * canonical record; income sources carry `incomeId`, pensions `pensionId`.
+ * A real planner model followed that sentence literally, wrote `value.entityId`,
+ * and `assertPositionRecord` refused every entity it proposed. Telling the model
+ * what this constant already says is the only way those two stay in step.
+ *
+ * `requiredKeys` is the smallest record `normalizeHouseholdProfile` will accept
+ * for that collection. It is written out rather than introspected because the
+ * normalizer is imperative and has no schema to read — but it is not trusted:
+ * check-planner-fact-contracts proves, for every collection, that this exact set
+ * normalizes and that dropping ANY member of it fails. A field added to the
+ * profile contract without being added here fails that audit rather than
+ * surviving as a shape the planner is told is complete and is not.
+ */
+export const POSITION_PROJECTIONS = Object.freeze({
+  asset_position: Object.freeze({
+    collection: 'assets', idKey: 'assetId', ownerKey: 'ownerIds',
+    requiredKeys: Object.freeze(['assetId', 'type', 'label'])
+  }),
+  liability_position: Object.freeze({
+    collection: 'liabilities', idKey: 'liabilityId', ownerKey: 'ownerIds',
+    requiredKeys: Object.freeze(['liabilityId', 'type', 'label'])
+  }),
+  mortgage_position: Object.freeze({
+    collection: 'liabilities', idKey: 'liabilityId', ownerKey: 'ownerIds',
+    requiredKeys: Object.freeze(['liabilityId', 'type', 'label'])
+  }),
+  loan_position: Object.freeze({
+    collection: 'liabilities', idKey: 'liabilityId', ownerKey: 'ownerIds',
+    requiredKeys: Object.freeze(['liabilityId', 'type', 'label'])
+  }),
+  income_sources: Object.freeze({
+    collection: 'incomeSources', idKey: 'incomeId', ownerKey: 'ownerId',
+    requiredKeys: Object.freeze(['incomeId', 'ownerId', 'type', 'label'])
+  }),
+  pension_positions: Object.freeze({
+    collection: 'pensions', idKey: 'pensionId', ownerKey: 'ownerId',
+    requiredKeys: Object.freeze(['pensionId', 'ownerId', 'type'])
+  }),
+  property_position: Object.freeze({
+    collection: 'properties', idKey: 'propertyId', ownerKey: 'ownerIds',
+    requiredKeys: Object.freeze(['propertyId', 'use'])
+  }),
+  business_position: Object.freeze({
+    collection: 'businesses', idKey: 'businessId', ownerKey: 'ownerIds',
+    requiredKeys: Object.freeze(['businessId', 'label', 'agricultural'])
+  }),
+  dependants: Object.freeze({
+    collection: 'dependants', idKey: 'dependantId', ownerKey: null,
+    requiredKeys: Object.freeze(['dependantId'])
+  })
 });
 
 const ENTITY_COLLECTION_FACT_IDS = Object.freeze({
@@ -1460,14 +1510,36 @@ function applyValidatedOperation(notes, operation, targetNote, evidenceRefs, now
   }
 
   let next = [...notes];
-  if (targetNote) {
-    next = replaceNote(next, targetNote.noteId, (note) => normalizePlanningNoteV1({
+  // AN UPSERT ON AN EXISTING HOLDING IS AN UPDATE OF IT, NOT A SECOND ONE.
+  //
+  // A position is identified by its entity, so an `upsert_note` naming an
+  // entity that already holds an active position note is describing that same
+  // holding. Pushing a second note for it produced two active positions for one
+  // pension and the whole batch then failed `active_position_duplicate` — which
+  // is exactly what a real planner hit when it created an income record and then
+  // sent a second operation to fill in the amount. Superseding the predecessor
+  // is the same thing a correction does, so the invariant is never broken and
+  // the duplicate protection below never has to catch this.
+  const supersedes = targetNote || (operation.op === 'upsert_note'
+    && operation.noteKind === 'position'
+    && operation.entityId
+    ? notes.find((note) => note.noteKind === 'position'
+      && note.factId === operation.factId
+      && note.entityId === operation.entityId
+      && note.lifecycle === 'active')
+    : null);
+  if (supersedes) {
+    next = replaceNote(next, supersedes.noteId, (note) => normalizePlanningNoteV1({
       ...note,
       lifecycle: 'superseded',
       reviewStatus: 'planner_corrected',
       reviewedAt: nowIso
     }, { nowIso }));
   }
+  // The new note is still built from the OPERATION, not merged with what it
+  // replaces: an upsert states the record it wants, and quietly retaining
+  // fields the planner did not restate would carry stale values forward under
+  // a correction the client asked for.
   next.push(noteFromOperation(operation, targetNote, evidenceRefs, nowIso));
   return { notes: next, clarificationNeeds: [] };
 }
@@ -1684,6 +1756,72 @@ function scalarValueMatchesDeclaredType(note) {
  * candidate left) this returns null and the operation stays unprojected, which
  * is the existing fail-closed behaviour rather than a write to a guessed path.
  */
+/**
+ * WHERE A FACT MAY BE WRITTEN, AS DATA.
+ *
+ * Stated here rather than anywhere else because this file is what ENFORCES it:
+ * `POSITION_PROJECTIONS` decides which facts are collections,
+ * `scalarProfilePathForNote` decides which have a scalar home, and both are two
+ * lines away. A second description of these rules kept next to the prompt would
+ * be a copy that drifts, and drift is exactly the failure this exists to stop —
+ * three paid probes went on a prompt sentence that described a record field
+ * (`entityId`) no record has ever had.
+ *
+ * `target` is the only question a caller needs to ask:
+ *   position  the fact IS a collection; its note value is the canonical record
+ *   scalar    the fact has a single canonical slot; its note value is the value
+ *   none      the fact has no canonical home at all, so it may be kept as
+ *             evidence but must never be advertised as canonically writable
+ */
+export function canonicalFactContract(factId, definition) {
+  if (!definition) return null;
+  const projection = POSITION_PROJECTIONS[factId];
+  if (projection) {
+    return Object.freeze({
+      factId,
+      target: 'position',
+      noteKind: 'position',
+      collection: projection.collection,
+      idKey: projection.idKey,
+      ownerKey: projection.ownerKey,
+      requiredKeys: projection.requiredKeys,
+      // Read from the registry's own path patterns, never listed by hand: this
+      // is what says a pension's money is `currentValue` and an income's is
+      // `grossAnnual`/`netAnnual`.
+      valueFields: Object.freeze(canonicalCollectionFields()[projection.collection] || []),
+      valueType: definition.valueType
+    });
+  }
+  // The same filter `scalarProfilePathForNote` applies: a mapping onto the ROOT
+  // of an entity collection is not a scalar slot, it is the collection itself.
+  const scalarPatterns = (definition.mappings || [])
+    .map((mapping) => mapping.pathPattern)
+    .filter((pattern) => typeof pattern === 'string' && pattern.startsWith('/'))
+    .filter((pattern) => !ENTITY_COLLECTION_FOR_ROOT[pattern.split('/')[1]]
+      || pattern.includes('/*/'))
+    // `/goals` is a collection too, and one this bridge does not manage — the
+    // goal plan owns it. It is absent from ENTITY_COLLECTION_FOR_ROOT because
+    // nothing there needs an id key for it, so a naive read of the mappings
+    // called `primary_goal` a writable scalar. It is not: every paid probe
+    // reported `primary_goal: scalar_value_unprojectable` on every single pass,
+    // because the reconciler kept being told it could write a slot that has
+    // never accepted a value from here.
+    .filter((pattern) => pattern.split('/')[1] !== 'goals');
+  const writable = Object.hasOwn(CANONICAL_SCALAR_PATHS, factId) || scalarPatterns.length > 0;
+  // A scalar under `/collection/*/field` lives INSIDE a position: it has no home
+  // of its own until that position exists. `pension_current_value` is the case
+  // that matters — it is a value about a pension, and naming it a position was
+  // one of the three shapes a real planner got wrong.
+  const scoped = scalarPatterns.find((pattern) => pattern.includes('/*/'));
+  return Object.freeze({
+    factId,
+    target: writable ? 'scalar' : 'none',
+    noteKind: 'fact',
+    ...(scoped ? { entityCollection: scoped.split('/')[1] } : {}),
+    valueType: definition.valueType
+  });
+}
+
 function scalarProfilePathForNote(profile, note) {
   // A collection fact is not a scalar. `pension_positions` maps to `/pensions`,
   // so a fact-kind note carrying a count would replace the whole array with a
@@ -1870,17 +2008,52 @@ function canonicalScalarCandidates(profile, note, path, mapFactValue) {
       mapped = { refused: true };
     }
     if (isPlainObject(mapped) && mapped.refused === true) return [];
-    if (isPlainObject(mapped)
-      && mapped.fieldPath === path
-      && mapped.canonicalValue !== null
-      && typeof mapped.canonicalValue !== 'undefined') {
-      candidates.push(mapped.canonicalValue);
-    }
+    const canonical = mappedValueForPath(mapped, path);
+    if (canonical !== null && typeof canonical !== 'undefined') candidates.push(canonical);
   }
   candidates.push(note.value);
   return candidates.filter((value, index) => (
     index === 0 || stableStringify(value) !== stableStringify(candidates[0])
   ));
+}
+
+/**
+ * The mapper's own value for EXACTLY this slot, or undefined.
+ *
+ * WHY A PREFIX IS NOT A WIDENING. Some facts canonicalise as a named field
+ * inside a parent object: the mapper answers for `/assumptions/values/retirement`
+ * with `{targetIncomeToday: 45000}`, while `scalarProfilePathForNote` resolves
+ * the leaf `/assumptions/values/retirement/targetIncomeToday`. A bare `===`
+ * comparison called those two answers a disagreement and dropped the mapped
+ * value, so `target_retirement_income` fell through to the RAW note value and
+ * `{amount: 45000, currency: "EUR"}` was written into a slot that holds a bare
+ * number. It normalised cleanly — the profile contract cannot tell one object
+ * from another there — and the pension analysis then refused to run against its
+ * own required input, reporting `analysis_missing_information` on a figure the
+ * client had stated plainly. Same family as the `/primaryPerson/age` loss this
+ * bridge was built for, one level of nesting further out.
+ *
+ * The rail the `===` was protecting still holds, because the direction matters.
+ * Only a mapper answering for an ANCESTOR of the resolved path is unwrapped, and
+ * only by walking the exact remaining segments through plain objects — so the
+ * value returned is the one the mapper itself placed at that precise slot, not
+ * an inference about it. A mapper answering for something NARROWER than the
+ * resolved path is still refused: `/goals/0` may not be written to `/goals`.
+ * Anything the walk cannot resolve returns undefined and the caller falls back
+ * exactly as it did before, so no other fact changes behaviour.
+ */
+function mappedValueForPath(mapped, path) {
+  if (!isPlainObject(mapped) || typeof mapped.fieldPath !== 'string') return undefined;
+  if (mapped.fieldPath === path) return mapped.canonicalValue;
+  // An empty or root fieldPath would address the whole profile. That is the
+  // widening this function exists to refuse.
+  if (mapped.fieldPath.length <= 1 || !path.startsWith(`${mapped.fieldPath}/`)) return undefined;
+  let cursor = mapped.canonicalValue;
+  for (const token of path.slice(mapped.fieldPath.length + 1).split('/')) {
+    if (!isPlainObject(cursor) || !Object.hasOwn(cursor, token)) return undefined;
+    cursor = cursor[token];
+  }
+  return cursor;
 }
 
 export function projectPlanningNotesToProfile(rawProfile, rawNotes, {

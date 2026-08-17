@@ -207,26 +207,74 @@ const LIABILITY_CONFIRMED_NONE = new RegExp(
   'i'
 );
 
+/**
+ * "MY PARTNER DOESN'T HAVE A PENSION" IS THE SAME ANSWER AS "NO PENSION".
+ *
+ * These patterns knew `don't have` and not `doesn't have`, and required the
+ * object to follow the negation immediately. On the first real live-model call
+ * the client said "My partner doesn't have a pension of their own", the lane
+ * refused it, the model asked again, the client said "Yes", the lane refused
+ * that too — four turns of the same question, and the analysis never became
+ * ready. The client had answered twice.
+ *
+ * So the negation grammar is written ONCE here and shared by every fact, rather
+ * than nine near-identical regexes each missing a different conjugation:
+ *
+ *   subject   i / we / he / she / they / my partner|spouse|husband|wife
+ *   negation  do not | don't | does not | doesn't | did not | didn't
+ *   verb      per fact — most are `have`, property is `own`, business adds `run`
+ *   object    per fact, with up to three describing words allowed before it, so
+ *             "no OCCUPATIONAL pension" reads as a no-pension answer
+ *
+ * `other` is excluded from those describing words on purpose: "no other
+ * pensions" is a statement about the rest, not a categorical none.
+ */
+const NONE_SUBJECT = String.raw`(?:(?:i|we|he|she|they)|my\s+(?:partner|spouse|husband|wife))\s+`;
+const NONE_NEGATION = String.raw`(?:do(?:es)?\s+not|do(?:es)?n't|did\s+not|didn't)`;
+const NONE_QUALIFIER = String.raw`(?:(?!other)[A-Za-z-]+\s+){0,3}`;
+
+/** One fact's "the client said there are none" pattern, built from its object. */
+function confirmedNonePattern(object, { verbs = 'have', extra = '' } = {}) {
+  const determiner = String.raw`(?:a\s+|an\s+|any\s+|their\s+|his\s+|her\s+|its\s+)?`;
+  const gap = `${determiner}${NONE_QUALIFIER}`;
+  const negated = `(?:${NONE_SUBJECT})?${NONE_NEGATION}\\s+(?:${verbs})\\s+`;
+  return new RegExp(
+    '\\b(?:'
+      // "no pension", "has no occupational pension", "without any pensions".
+      // "no OTHER pensions" is excluded here rather than inside the qualifier:
+      // it is a statement about the rest of the set, not a categorical none,
+      // and the exclusion has to bind to the word right after "no".
+      + `(?:no|without)\\s+(?!(?:other|further|additional|more)\\b)${gap}${object}`
+      // "doesn't have a pension", "my partner does not own any property"
+      + `|${negated}${gap}${object}`
+      // "no, they don't have one" — the object as a bare pronoun
+      + `|${negated}(?:one|any)\\b`
+      + (extra ? `|${extra}` : '')
+      + ')',
+    'iu'
+  );
+}
+
 const CONFIRMED_NONE_SUPPORT = Object.freeze({
-  partner_person:
-    /\b(?:(?:no|without)\s+(?:a\s+)?(?:partner|spouse|husband|wife)|(?:do not|don't)\s+have\s+(?:a\s+)?(?:partner|spouse|husband|wife)|i(?:\s+am|'m)\s+single)\b/i,
-  income_sources:
-    /\b(?:(?:no|without)\s+(?:income|earnings|wages|salary)|(?:do not|don't)\s+have\s+(?:any\s+)?(?:income|earnings|wages|salary))\b/i,
-  asset_position:
-    /\b(?:(?:no|without)\s+(?:cash\s+)?(?:savings?|investments?|assets?)|(?:do not|don't)\s+(?:have|own|hold)\s+(?:any\s+)?(?:cash\s+)?(?:savings?|investments?|assets?))\b/i,
+  partner_person: confirmedNonePattern('(?:partner|spouse|husband|wife)', {
+    extra: String.raw`i(?:\s+am|'m)\s+single`
+  }),
+  income_sources: confirmedNonePattern('(?:income|earnings|wages|salary)'),
+  asset_position: confirmedNonePattern('(?:cash\\s+)?(?:savings?|investments?|assets?)', {
+    verbs: 'have|own|hold'
+  }),
   liability_position: LIABILITY_CONFIRMED_NONE,
-  mortgage_position:
-    /\b(?:(?:no|without)\s+(?:a\s+)?mortgage|(?:do not|don't)\s+have\s+(?:a\s+)?mortgage)\b/i,
-  loan_position:
-    /\b(?:(?:no|without)\s+(?:any\s+)?loans?|(?:do not|don't)\s+have\s+(?:any\s+)?loans?)\b/i,
-  property_position:
-    /\b(?:(?:no|without)\s+(?:any\s+)?(?:property|properties|home|house)|(?:do not|don't)\s+own\s+(?:any\s+)?(?:property|properties|home|house))\b/i,
-  business_position:
-    /\b(?:(?:no|without)\s+(?:a\s+|any\s+)?(?:business(?:es)?|compan(?:y|ies)|business interests?)|(?:do not|don't)\s+(?:have|own|run)\s+(?:a\s+|any\s+)?(?:business(?:es)?|compan(?:y|ies)|business interests?))\b/i,
-  pension_positions:
-    /\b(?:(?:no|without)\s+(?:a\s+|any\s+)?(?:pensions?|retirement funds?)|(?:do not|don't)\s+have\s+(?:a\s+|any\s+)?(?:pensions?|retirement funds?))\b/i,
-  dependants:
-    /\b(?:(?:no|without)\s+(?:dependants?|dependents?|children)|(?:do not|don't)\s+have\s+(?:any\s+)?(?:dependants?|dependents?|children))\b/i
+  mortgage_position: confirmedNonePattern('mortgages?'),
+  loan_position: confirmedNonePattern('loans?'),
+  property_position: confirmedNonePattern('(?:property|properties|home|house)', {
+    verbs: 'own|have'
+  }),
+  business_position: confirmedNonePattern(
+    '(?:business(?:es)?|compan(?:y|ies)|business\\s+interests?)',
+    { verbs: 'have|own|run' }
+  ),
+  pension_positions: confirmedNonePattern('(?:pensions?|retirement\\s+funds?)'),
+  dependants: confirmedNonePattern('(?:dependants?|dependents?|children|kids)')
 });
 
 const CONFIRMED_NONE_CORRECTION_OBJECTS = Object.freeze({
@@ -324,6 +372,30 @@ function confirmedNoneHasPresenceConflict(factId, transcript) {
     return true;
   }
   return false;
+}
+
+/**
+ * "YES" TO A QUESTION THAT ITSELF STATED THE NONE.
+ *
+ * The client had already said their partner has no pension. The lane refused
+ * it, the model asked "your partner has no pension at all?", the client said
+ * "Yes" — and the lane refused that too, because a bare affirmation contains no
+ * pension wording of its own. Four turns of the same question.
+ *
+ * The proposition the client agreed to is in the ASSISTANT's read-back, which
+ * this lane already carries for exactly this purpose with figures. Two things
+ * must both hold, and neither is negotiable: the read-back must itself state
+ * the categorical none for THIS fact, and the client's words must be an
+ * unambiguous affirmation by the same deterministic classifier that gates
+ * running the analyses. A hedged "yes, I think so" is not an answer, and stays
+ * refused.
+ */
+function confirmedNoneAffirmedByReadBack(factId, transcript, assistantReadBack) {
+  const readBack = String(assistantReadBack || '');
+  if (!readBack) return false;
+  if (classifySpokenPlanConfirmation(String(transcript || '')) !== 'affirmed') return false;
+  const pattern = CONFIRMED_NONE_SUPPORT[factId];
+  return Boolean(pattern && pattern.test(readBack));
 }
 
 function confirmedNoneIsSupported(factId, transcript) {
@@ -772,14 +844,40 @@ function numericOccurrenceSupportsSlot(slot, occurrence, transcript) {
       && /\b(?:payment|repay|pay each month|monthly)\b/i.test(context);
   }
   if (base === 'pension_value') {
+    // THE FIGURE IS EVIDENCED BY THE BASE CUE, NOT BY THE SUBTYPE WORD.
+    // An amount, not a percentage, next to pension/prsa/pot/fund/worth is what
+    // makes this a pension value.
     if (!(amountLike && !hasPercent
       && /\b(?:pension|prsa|pot|fund|worth|value|built up)\b/i.test(context))) return false;
     const subtype = slot.split(':')[1];
-    if (subtype === 'prsa') return /\bprsa\b/i.test(context);
-    if (subtype === 'occupational') return /\b(?:occupational|workplace|work pension)\b/i.test(context);
-    if (subtype === 'personal') return /\bpersonal pension\b/i.test(context);
-    if (subtype === 'defined_benefit') return /\b(?:defined benefit|final salary)\b/i.test(context);
-    return true;
+    if (!subtype) return true;
+
+    // THE SUBTYPE IS THE MODEL'S CLASSIFICATION, NOT A CLAIM ABOUT THE WORDS
+    // THE CLIENT USED. Requiring the transcript to contain it demanded adviser
+    // vocabulary no client speaks: "My pension is worth €319,000" was refused
+    // `live_numeric_fact_unsupported` purely because the model had correctly
+    // typed the company scheme as `occupational`. The same sentence with no
+    // type was accepted. Two paid runs lost their pension entirely this way —
+    // the position was refused, the `pension_current_value` that followed had
+    // nothing to attach to, readiness never closed and no module ever ran.
+    //
+    // So the subtype cues DISAMBIGUATE, they do not gate: they matter only when
+    // the surrounding words name a DIFFERENT kind of pension and the figure
+    // could otherwise land on the wrong one. With a single kind in play there
+    // is nothing to confuse, and the base cue above already carries the
+    // evidence.
+    const SUBTYPE_CUES = {
+      prsa: /\bprsa\b/i,
+      occupational: /\b(?:occupational|workplace|work pension|company pension)\b/i,
+      personal: /\bpersonal pension\b/i,
+      defined_benefit: /\b(?:defined benefit|final salary)\b/i
+    };
+    const own = SUBTYPE_CUES[subtype];
+    if (!own) return true;
+    if (own.test(context)) return true;
+    // Named as something else in the same breath — fail closed, as before.
+    return !Object.entries(SUBTYPE_CUES)
+      .some(([name, pattern]) => name !== subtype && pattern.test(context));
   }
   if (base === 'retirement_income') {
     return amountLike
@@ -948,7 +1046,8 @@ export function partitionSupportedLiveFacts(facts, latestClientTranscript, {
       continue;
     }
     const supported = !requestsConfirmedNone(fact?.value)
-      || confirmedNoneIsSupported(factId, transcript);
+      || confirmedNoneIsSupported(factId, transcript)
+      || confirmedNoneAffirmedByReadBack(factId, transcript, assistantReadBack);
     if (!supported) {
       rejected.push({ factId, reason: 'live_confirm_none_unsupported' });
       continue;
@@ -1031,6 +1130,56 @@ function normalizedFacts(args) {
  * reloaded profile, so one bad fact cannot discard the rest of a good answer —
  * the behaviour the v2 lane spent several incidents arriving at.
  */
+/**
+ * DID THE CLIENT JUST SAY WHETHER IT IS THE SAME PENSION?
+ *
+ * The mapper can tell that a newly mentioned pension is indistinguishable from
+ * one already recorded, and it cannot tell which — the answer only exists with
+ * the client. This reads their answer from what they actually said, and from a
+ * plain affirmation to an assistant turn that asked the question.
+ *
+ * Deliberately narrow. Anything that is not a clear answer returns null and the
+ * write stays refused, because "probably the same" is not an identity.
+ */
+// Qualifiers are allowed between the word that decides it and the noun, so
+// "a separate OLD OCCUPATIONAL pension" reads as separate.
+const IDENTITY_QUALIFIER = String.raw`(?:[A-Za-z-]+\s+){0,3}`;
+const IDENTITY_SAME = new RegExp(
+  String.raw`\b(?:the\s+)?same\s+${IDENTITY_QUALIFIER}(?:one|pension|scheme|fund)\b`
+  + String.raw`|\bthat(?:'s| is)\s+the\s+same\b`
+  + String.raw`|\bone\s+i\s+(?:already\s+)?mentioned\b`, 'i'
+);
+const IDENTITY_DISTINCT = new RegExp(
+  String.raw`\b(?:separate|different|another|second|other)\s+${IDENTITY_QUALIFIER}(?:one|pension|scheme|fund)\b`
+  + String.raw`|\bnot\s+the\s+same\b`, 'i'
+);
+const ASSISTANT_ASKED_IDENTITY = /\bsame\s+(?:pension|one|scheme)\b|\bseparate\s+(?:pension|one|scheme)\b|\banother\s+pension\b/i;
+// "maybe", "might be", "or a different one" — a hedge is not an identity.
+const IDENTITY_HEDGE = /\b(?:might|maybe|perhaps|possibly|not sure|no idea|i think|could be)\b|\bor\s+a\b/i;
+
+export function pensionIdentityDirective(transcript, assistantReadBack) {
+  const said = String(transcript || '');
+  // A hedged answer is no answer, whichever way it leans.
+  if (IDENTITY_HEDGE.test(said)) return null;
+  const distinct = IDENTITY_DISTINCT.test(said);
+  const same = IDENTITY_SAME.test(said);
+  if (distinct && same) return null;
+  if (distinct) return 'distinct';
+  if (same) return 'same';
+
+  // A bare "yes" only counts against an assistant turn that actually put the
+  // question — and only when that turn put ONE proposition. "Is it the same, or
+  // a separate one?" answered "yes" means nothing, so it stays unresolved.
+  const readBack = String(assistantReadBack || '');
+  if (!ASSISTANT_ASKED_IDENTITY.test(readBack)) return null;
+  if (classifySpokenPlanConfirmation(said) !== 'affirmed') return null;
+  const askedSame = IDENTITY_SAME.test(readBack) || /\bsame\s+pension\b/i.test(readBack);
+  const askedDistinct = IDENTITY_DISTINCT.test(readBack);
+  if (askedSame && askedDistinct) return null;
+  if (askedDistinct) return 'distinct';
+  return askedSame ? 'same' : null;
+}
+
 async function executeSaveFacts(args, deps) {
   const candidates = normalizedFacts(args);
   const guarded = partitionSupportedLiveFacts(candidates, deps.latestClientTranscript, {
@@ -1039,6 +1188,10 @@ async function executeSaveFacts(args, deps) {
   });
   let context = await deps.loadContext();
   const outcomes = [];
+  const identityDirective = pensionIdentityDirective(
+    deps.latestClientTranscript,
+    deps.assistantReadBack
+  );
 
   // Focus can change inside one batched answer (for example, two goals plus
   // the client's chosen priority). Recompute the live module projection before
@@ -1051,7 +1204,18 @@ async function executeSaveFacts(args, deps) {
       context,
       extraction: {
         goalCandidates: [],
-        semanticFacts: [candidate],
+        // The turn this answer came from, carried alongside the fact so shared
+        // canonicalisation can read the client's wording — gross versus
+        // take-home income is decided from what they said, not from which key
+        // the model chose. The reconciler passes the same thing from its stored
+        // evidence spans, so both lanes read one sentence one way.
+        semanticFacts: [{
+          ...candidate,
+          evidenceText: String(deps.latestClientTranscript || ''),
+          // Whether the client has said this is the same pension or a separate
+          // one. Read from their words, never inferred from the figures.
+          ...(identityDirective ? { identityDirective } : {})
+        }],
         positions: [],
         sectionCompletions: [],
         invalidCandidates: []
@@ -1075,11 +1239,19 @@ async function executeSaveFacts(args, deps) {
       .filter((item) => !item.accepted && item.factId)
       .map((item) => ({ factId: item.factId, reason: item.errorCode }))
   ];
+  // AN UNRESOLVED IDENTITY IS NOT AN ORDINARY REJECTION. Canonical state is
+  // untouched and the conversation carries on, but the analyses must not run
+  // over a holding that might be double-counted, so it is reported separately
+  // for the lane to hold.
+  const identityAmbiguities = outcomes
+    .filter((item) => !item.accepted && item.errorCode === 'realtime_pension_identity_ambiguous')
+    .map((item) => ({ factId: item.factId, candidateId: item.details?.candidateId || null }));
 
   return {
     ok: true,
     saved,
     rejected,
+    ...(identityAmbiguities.length ? { identityAmbiguities } : {}),
     // Anything that saved is available to later responses. The Durable Object
     // folds these into the global sourced-figure set, while its response-start
     // snapshot prevents this response from laundering a model-invented value.
@@ -1291,7 +1463,13 @@ function capturedFactMemory(context) {
     const label = factLabel(fact.factId);
     const rendered = renderableFactValue(fact.factId, fact.value, currency);
     const qualifier = rendered && fact.certainty === 'approximate' ? 'approximately ' : '';
-    const subject = whose ? `${whose} — ${label}` : label;
+    // THE ID, NOT JUST THE NAME. The model was shown "your company pension" and
+    // never the identity behind it, so every later mention invented a fresh
+    // entityId and one pension became two holdings. It cannot reuse an identity
+    // it has never been told.
+    const subject = whose
+      ? `${whose}${fact.entityId ? ` [${fact.entityId}]` : ''} — ${label}`
+      : label;
     entries.push({
       instanceId,
       factId: fact.factId,

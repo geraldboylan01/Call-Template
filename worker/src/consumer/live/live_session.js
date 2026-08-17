@@ -111,15 +111,85 @@ function json(value, status = 200) {
  * behavior; shadow/apply fail closed until that exact turn owns the durable
  * reconciliation watermark.
  */
-export function plannerReconciliationPreflight(mode, causalTurnId, lease) {
+/**
+ * MAY THE ANALYSES RUN YET?
+ *
+ * THE RULE: no client turn that changed planning state may still be awaiting
+ * review when a deterministic module runs. Nothing more, and nothing less.
+ *
+ * IT USED TO ASK SOMETHING STRICTER AND IMPOSSIBLE. The test was
+ * `planner_reconciled_through_turn_id === causalTurnId` — the confirming turn
+ * itself had to have been reconciled. But reconciliation for a turn is
+ * scheduled from `response.done`, and the `confirm_and_run` call for that turn
+ * arrives on `response.function_call_arguments.done`, which always comes first.
+ * The watermark was therefore always exactly one turn behind the turn being
+ * confirmed, on every attempt, forever:
+ *
+ *     attempt 1  causal=turn_10  watermark=turn_10   (advanced by the refusal)
+ *     attempt 2  causal=turn_11  watermark=turn_11
+ *     attempt 3  causal=turn_12  watermark=turn_12
+ *
+ * `confirm_and_run` could not succeed in `shadow` or `apply` at all, so the
+ * deterministic module could never run with the reconciler on. It survived
+ * because this function was unit-tested as a pure predicate against hand-built
+ * lease rows — correct in isolation, unreachable in sequence — and because
+ * production runs `legacy`, where the first line returns before any of it.
+ *
+ * WHY THE STRICTER TEST WAS ALSO THE WRONG QUESTION. "Yes, go ahead" carries no
+ * facts. Demanding that a pure confirmation be reconciled asks the planner to
+ * review a turn with nothing in it to review. What matters is whether anything
+ * MATERIAL is outstanding — and the session tracks exactly that, because the
+ * same note activity that marks a turn material is what schedules its
+ * reconciliation in the first place.
+ *
+ * FAIL-CLOSED IS PRESERVED IN BOTH DIRECTIONS. A material turn leaves the
+ * outstanding set only when a reconciliation through it reaches `shadow` or
+ * `applied`; a stale, conflicted or failed pass clears nothing, so it still
+ * blocks. And a confirming turn that DOES carry a correction marks itself
+ * material before this runs, so it blocks itself.
+ *
+ * @param {string} mode
+ * @param {object|null} lease
+ * @param {Array<{turnId: string, ordinal: number}>} unreviewedMaterialTurns
+ */
+export function plannerReconciliationPreflight(
+  mode,
+  lease,
+  unreviewedMaterialTurns = [],
+  unresolvedIdentities = []
+) {
   if (mode === 'legacy') return { ready: true, reason: 'legacy' };
-  const status = String(lease?.planner_reconciliation_status || '');
-  const reviewed = ['shadow', 'applied'].includes(status)
-    && Boolean(causalTurnId)
-    && lease?.planner_reconciled_through_turn_id === causalTurnId;
-  return reviewed
-    ? { ready: true, reason: 'reviewed' }
-    : { ready: false, reason: 'reconciliation_pending' };
+  // AN UNRESOLVED IDENTITY IS OUTSTANDING MATERIAL WORK TOO. A pension the lane
+  // could not tell apart from one already recorded may be the same holding or a
+  // second, and running the analyses over that guess either double-counts a pot
+  // the client does not have or loses one they do. Handled by the SAME gate,
+  // not a second one — the answer is the same: not yet.
+  const identities = (Array.isArray(unresolvedIdentities) ? unresolvedIdentities : [])
+    .map((entry) => String(entry?.factId || '')).filter(Boolean);
+  if (identities.length > 0) {
+    return { ready: false, reason: 'identity_unresolved', outstandingFactIds: identities };
+  }
+  const outstanding = (Array.isArray(unreviewedMaterialTurns) ? unreviewedMaterialTurns : [])
+    .map((entry) => String(entry?.turnId || ''))
+    .filter(Boolean);
+  if (outstanding.length > 0) {
+    return {
+      ready: false,
+      reason: 'reconciliation_pending',
+      outstandingTurnIds: outstanding.slice(0, MAX_LIVE_TURN_LEDGER_ENTRIES)
+    };
+  }
+  // A reconciliation still in flight has not decided anything yet. It is only
+  // ever material work that is queued here, so waiting one turn for it is the
+  // same fail-closed answer, reached before its outcome is known.
+  if (lease?.planner_pending_through_turn_id) {
+    return {
+      ready: false,
+      reason: 'reconciliation_pending',
+      outstandingTurnIds: [String(lease.planner_pending_through_turn_id)]
+    };
+  }
+  return { ready: true, reason: 'reviewed' };
 }
 
 /** Map a deterministic before/after state projection to one scheduler cause. */
@@ -184,6 +254,15 @@ export class ConsumerLiveSession {
     // for the speaking model to raise. Durable so a hibernated meeting does not
     // quietly forget an outstanding question.
     this.plannerRequests = [];
+    // Client turns that changed planning state and have not yet been reviewed.
+    // Durable for the same reason `plannerRequests` is: a hibernated meeting
+    // that forgot them would let the analyses run over an unreviewed
+    // correction, which is the one thing the confirmation gate exists to stop.
+    this.unreviewedMaterialTurns = [];
+    // Positions the lane could not tell apart from one already recorded.
+    // Durable for the same reason the material turns are: a hibernated meeting
+    // that forgot one would run the analyses over a possible double-count.
+    this.unresolvedIdentities = [];
     this.activeReconciliationTurn = null;
     this.scheduledReconciliationTurnIds = new Set();
     this.currentResponseId = null;
@@ -220,6 +299,8 @@ export class ConsumerLiveSession {
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
       this.plannerRequests = await this.state.storage.get('plannerRequests') || [];
+      this.unreviewedMaterialTurns = await this.state.storage.get('unreviewedMaterialTurns') || [];
+      this.unresolvedIdentities = await this.state.storage.get('unresolvedIdentities') || [];
       const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
       if (storedReconciliationQueue?.schemaVersion === 1) {
         this.pendingReconciliationTurn = storedReconciliationQueue.current || null;
@@ -885,6 +966,70 @@ export class ConsumerLiveSession {
     response.reconciliationPriority = false;
   }
 
+  /**
+   * Record that a client turn changed planning state.
+   *
+   * Deliberately the SAME condition that schedules the turn's reconciliation —
+   * a note accepted or rejected — so the set of turns that must be reviewed and
+   * the set of turns that get reviewed can never drift apart. A rejection
+   * counts: the fast lane refusing a figure is precisely the case the auditor
+   * exists to repair, and running the analyses over it would run them over a
+   * gap the client has already filled aloud.
+   */
+  markMaterialTurn(turn) {
+    if (!turn?.storedTurnId) return;
+    if (this.unreviewedMaterialTurns.some((entry) => entry.turnId === turn.storedTurnId)) return;
+    this.unreviewedMaterialTurns = [
+      ...this.unreviewedMaterialTurns,
+      { turnId: turn.storedTurnId, ordinal: Number(turn.ordinal || 0) }
+    ].slice(-MAX_LIVE_TURN_LEDGER_ENTRIES);
+    this.state.waitUntil(
+      this.state.storage.put('unreviewedMaterialTurns', this.unreviewedMaterialTurns).catch(() => {})
+    );
+  }
+
+  /**
+   * Retire the material turns a completed reconciliation has now reviewed.
+   *
+   * A pass through turn N reviews the whole transcript up to N, so it clears
+   * every material turn at or before that ordinal — not just an exact id match.
+   * Ordinals, not ids, because the reviewed turn is frequently not itself
+   * material (a periodic checkpoint), and an id comparison would leave earlier
+   * material turns outstanding for the rest of the meeting.
+   */
+  async clearReviewedMaterialTurns(ordinal) {
+    const reviewedThrough = Number(ordinal || 0);
+    if (!reviewedThrough) return;
+    const remaining = this.unreviewedMaterialTurns
+      .filter((entry) => Number(entry.ordinal || 0) > reviewedThrough);
+    if (remaining.length === this.unreviewedMaterialTurns.length) return;
+    this.unreviewedMaterialTurns = remaining;
+    await this.state.storage.put('unreviewedMaterialTurns', remaining).catch(() => {});
+  }
+
+  /**
+   * Hold, or release, an unresolved position identity.
+   *
+   * Recorded when the lane cannot tell a newly mentioned holding from one it
+   * already has, and cleared the moment a save for that fact succeeds — which
+   * is exactly what happens once the client says "the same one" or "a separate
+   * one", because either answer lets the write through. Nothing here inspects
+   * amounts, and nothing merges: the conversation resolves it, not this.
+   */
+  async recordIdentityAmbiguities(ambiguities, savedFactIds) {
+    const resolved = new Set(savedFactIds);
+    const next = [
+      ...this.unresolvedIdentities.filter((entry) => !resolved.has(entry.factId)),
+      ...ambiguities
+        .filter((entry) => entry?.factId && !resolved.has(entry.factId))
+        .map((entry) => ({ factId: String(entry.factId), candidateId: entry.candidateId || null }))
+    ].filter((entry, index, all) => all.findIndex((item) => item.factId === entry.factId) === index)
+      .slice(-MAX_LIVE_PLANNER_REQUESTS);
+    if (JSON.stringify(next) === JSON.stringify(this.unresolvedIdentities)) return;
+    this.unresolvedIdentities = next;
+    await this.state.storage.put('unresolvedIdentities', next).catch(() => {});
+  }
+
   reconciliationJobsMatch(left, right) {
     return Boolean(left?.throughTurnId)
       && left.throughTurnId === right?.throughTurnId
@@ -1165,6 +1310,13 @@ export class ConsumerLiveSession {
       // gaps it could not close itself. Refreshed whenever it corrected the
       // record OR asked for something -- an applied-only refresh meant a
       // clarification the planner raised never reached the speaking model.
+      // Only a pass that actually reached a reviewed verdict retires material
+      // work. `pending`, `conflicted` and `failed` clear nothing, so unresolved
+      // material state keeps blocking the analyses — which is the whole point.
+      if (result?.status === 'shadow' || result?.status === 'applied') {
+        await this.clearReviewedMaterialTurns(job.ordinal).catch(() => {});
+      }
+
       const reconciled = await this.absorbPlannerRequests(result).catch(() => false);
       if (result?.status === 'applied' || reconciled) {
         await this.injectVolatileState().catch(() => {});
@@ -1471,8 +1623,9 @@ export class ConsumerLiveSession {
           ).catch(() => null);
           const preflight = plannerReconciliationPreflight(
             config.plannerReconciliationMode,
-            causalTurn?.storedTurnId || '',
-            lease
+            lease,
+            this.unreviewedMaterialTurns,
+            this.unresolvedIdentities
           );
           if (!preflight.ready) {
             if (causalTurn?.storedTurnId && responseContext) {
@@ -1571,9 +1724,32 @@ export class ConsumerLiveSession {
 
     const responseContext = this.responseContextsById.get(String(event.response_id || '')) || null;
     if (name === 'save_facts' && responseContext) {
-      responseContext.noteAcceptedCount += Array.isArray(result?.saved) ? result.saved.length : 0;
-      responseContext.noteRejectedCount += Array.isArray(result?.rejected) ? result.rejected.length : 0;
-      if (responseContext.done && getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy') {
+      const savedCount = Array.isArray(result?.saved) ? result.saved.length : 0;
+      const rejectedCount = Array.isArray(result?.rejected) ? result.rejected.length : 0;
+      // An identity the lane could not resolve becomes outstanding; a later
+      // save that DOES land for the same fact is the resolution, whichever way
+      // the client answered, so it clears.
+      await this.recordIdentityAmbiguities(
+        result?.identityAmbiguities || [],
+        Array.isArray(result?.saved) ? result.saved : []
+      ).catch(() => {});
+      responseContext.noteAcceptedCount += savedCount;
+      responseContext.noteRejectedCount += rejectedCount;
+      const reconciling = getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy';
+      // The turn becomes material from this moment, which is what lets note
+      // activity on the confirming turn hold the barrier: the save runs before
+      // the confirm in the same response, so the marker is already set when the
+      // gate reads it.
+      //
+      // Not tracked in legacy at all. Nothing there ever reviews a turn, so a
+      // legacy meeting would accumulate outstanding work it can never retire
+      // and pay a durable write per turn for a set no one reads.
+      if (reconciling && (savedCount > 0 || rejectedCount > 0)) {
+        this.markMaterialTurn(responseContext.causeItemId
+          ? this.clientTurnsByItemId.get(responseContext.causeItemId)
+          : null);
+      }
+      if (responseContext.done && reconciling) {
         this.maybeScheduleReconciliation(responseContext);
       }
     }
@@ -1707,8 +1883,19 @@ export class ConsumerLiveSession {
               // from the ask list but still holding the plan, so the note has
               // to carry them or the model sees a shorter list and no reason.
               blocked: projection.blocked,
-              // The background planner's outstanding asks.
-              plannerRequests: this.plannerRequests,
+              // The background planner's outstanding asks, plus any holding the
+              // lane could not tell apart from one already recorded. The model
+              // has to ask which it is before the analyses can run, so it has
+              // to be told.
+              plannerRequests: [
+                ...this.plannerRequests,
+                ...this.unresolvedIdentities.map((entry) => ({
+                  factInstanceId: `${entry.factId}:identity`,
+                  factId: entry.factId,
+                  ownerId: null,
+                  prompt: 'Is that the same pension already recorded, or a separate one?'
+                }))
+              ],
               goalsAgreed: projection.goalsAgreed,
               readyToConfirm: projection.readyToConfirm
             })

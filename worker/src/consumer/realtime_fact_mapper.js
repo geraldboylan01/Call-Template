@@ -13,6 +13,7 @@ import {
 } from '../../../js/planning/profile.js';
 import { maxRelievableContributionRatePercent } from '../../../js/pension_math.js';
 import { escapeJsonPointerToken } from '../../../js/planning/utils.js';
+import { resolveIncomeBasis, statesSubAnnualCadence } from '../../../js/planning/income_basis.js';
 
 const INTAKE_FACT_PATHS = Object.freeze({
   self_description: ['selfDescription', 'choice'],
@@ -232,6 +233,79 @@ function collectionEntityId(collection, idKey, prefix, supplied, fallbackLabel =
   const exact = typeof supplied === 'string' ? supplied.trim() : '';
   if (exact && collection.some((item) => item?.[idKey] === exact)) return exact;
   return canonicalEntityId(prefix, supplied, fallbackLabel);
+}
+
+/**
+ * IS THIS THE HOLDING WE ALREADY HAVE, OR A SECOND ONE?
+ *
+ * The reuse check above only ever matched a supplied string against a CANONICAL
+ * id — and the live model is never shown canonical ids, so it supplies short
+ * ones and the check could never fire. On the first real live call the model
+ * said `primary` on one turn and `primary_occupational` on another, and one
+ * pension became two holdings, each carrying the same €319,000.
+ *
+ * IDENTITY IS MATCHED, NEVER INFERRED. Three exact tests, in order, and none of
+ * them looks at the amount: a coincidence of value is not evidence that two
+ * holdings are one, and two people can hold identical pensions.
+ *
+ *   1. the supplied string IS an existing canonical id
+ *   2. it canonicalises to one — the same deterministic function that minted
+ *      it, so re-supplying `occ1` resolves to `pension_realtime_occ1`
+ *   3. its label matches an existing holding's, case-insensitively
+ *
+ * @returns {{entityId: string}|{ambiguous: true}|null} null when there is
+ *   nothing to be confused with and a fresh identity is safe.
+ */
+function resolvePositionIdentity(collection, { idKey, prefix, supplied, label, ownerId: owner, type }) {
+  const active = collection.filter((item) => item && item[idKey]);
+  if (active.length === 0) return null;
+
+  const trimmed = typeof supplied === 'string' ? supplied.trim() : '';
+  if (trimmed) {
+    const direct = active.find((item) => item[idKey] === trimmed);
+    if (direct) return { entityId: direct[idKey] };
+    let canonicalised = '';
+    try {
+      canonicalised = canonicalEntityId(prefix, trimmed, label);
+    } catch (_error) {
+      canonicalised = '';
+    }
+    const roundTripped = canonicalised && active.find((item) => item[idKey] === canonicalised);
+    if (roundTripped) return { entityId: roundTripped[idKey] };
+  }
+
+  const wanted = String(label || '').trim().toLowerCase();
+  if (wanted) {
+    const byLabel = active.find((item) => String(item.label || '').trim().toLowerCase() === wanted);
+    if (byLabel) return { entityId: byLabel[idKey] };
+  }
+
+  // NOTHING MATCHED — WHICH IS AMBIGUITY, NOT A VERDICT.
+  //
+  // A second occupational pension carrying a new id is indistinguishable, here,
+  // from one pension mentioned again under a new id: both are "same owner, same
+  // type, unmatched id". Value cannot break the tie — a coincidence of amount
+  // is not identity, and two real pensions may hold the same figure.
+  //
+  // This function REPORTS that, and decides nothing. An earlier version refused
+  // the write on this collision and rejected a client who genuinely named an
+  // old scheme and a current one in separate turns; the caller now asks the
+  // client instead, which is the only place the answer actually exists.
+  const candidate = active.find((item) => item.ownerId === owner
+    && String(item.type || '') === String(type || ''));
+  if (!candidate) return null;
+
+  // TWO NAMES ARE TWO THINGS. A client who says "an old occupational pension"
+  // and then "my current occupational pension" has distinguished them, and the
+  // model carries that as a label. Where BOTH holdings are explicitly named and
+  // the names differ, that is identity evidence and there is nothing to ask.
+  // Absent a name on either side there is nothing to go on, and it stays a
+  // question — this never reads the amount.
+  const named = String(label || '').trim().toLowerCase();
+  const candidateName = String(candidate.label || '').trim().toLowerCase();
+  if (named && candidateName && named !== candidateName) return null;
+
+  return { ambiguous: true, candidateId: candidate[idKey] };
 }
 
 function entityOperation(value) {
@@ -993,8 +1067,44 @@ function mapIncomeSource(profile, fact, currency) {
       if (!['employment', 'self_employment', 'rental', 'pension', 'state_pension', 'other'].includes(type)) {
         throw new ConsumerError(400, 'realtime_income_type_invalid', 'That income type requires visual review.');
       }
-      const grossAnnual = optionalMoney(value.grossAnnual ?? value.gross, currency);
-      const netAnnual = optionalMoney(value.netAnnual ?? value.net, currency);
+      let grossAnnual = optionalMoney(value.grossAnnual ?? value.gross, currency);
+      let netAnnual = optionalMoney(value.netAnnual ?? value.net, currency);
+
+      // THE BASIS IS DECIDED FROM THE CLIENT'S WORDS, NOT FROM WHICH KEY THE
+      // CALLER PICKED. Both lanes arrive here, so both get the same reading of
+      // the same sentence — see js/planning/income_basis.js for the rule.
+      const evidenceText = String(fact.evidenceText || '');
+      const stated = grossAnnual ? 'gross' : netAnnual ? 'net' : null;
+      if (stated && evidenceText) {
+        const checked = resolveIncomeBasis({ statedBasis: stated, evidenceText });
+        if (checked.refused) {
+          throw new ConsumerError(400, 'realtime_income_basis_unclear',
+            'Whether that income is gross or take-home needs to be confirmed.');
+        }
+      }
+      // An amount with no basis attached. This is the shape a planner naturally
+      // produces from "I am on 95,000 a year", and refusing it is what forced an
+      // unnecessary gross-or-net question on a client who had just said.
+      if (!stated) {
+        const unbased = optionalMoney(value.annualAmount ?? value.amount, currency);
+        if (unbased) {
+          // No annualisation rule exists for these slots, so a monthly figure is
+          // refused rather than multiplied. Inventing the conversion here would
+          // be inventing the number.
+          if (statesSubAnnualCadence(evidenceText)) {
+            throw new ConsumerError(400, 'realtime_income_period_unsupported',
+              'That income was given for a shorter period than a year and needs confirming as an annual figure.');
+          }
+          const resolved = resolveIncomeBasis({ statedBasis: null, evidenceText });
+          if (resolved.refused) {
+            throw new ConsumerError(400, 'realtime_income_basis_unclear',
+              'Whether that income is gross or take-home needs to be confirmed.');
+          }
+          if (resolved.basis === 'gross') grossAnnual = unbased;
+          else netAnnual = unbased;
+        }
+      }
+
       if (!existing && !grossAnnual && !netAnnual) {
         throw new ConsumerError(400, 'realtime_income_value_required', 'A new income source needs a gross or net annual amount.');
       }
@@ -1197,12 +1307,47 @@ function mapPensionPosition(profile, fact, currency) {
   // One person's absence, not the household's. See ownerScopedNoneMapping.
   const ownerNone = ownerScopedNoneMapping(profile, fact, '/pensions');
   if (ownerNone) return ownerNone;
+  // PENSIONS ONLY, DELIBERATELY. Identity resolution is scoped to the one
+  // collection where a duplicate was actually observed; the other collections
+  // keep today's behaviour until the same evidence exists for them.
+  const upsert = plainObject(fact.value)
+    && !Array.isArray(fact.value)
+    && entityOperation(fact.value) === 'upsert';
+  if (upsert) {
+    const rawLabel = fact.value.label ?? fact.value.displayName ?? fact.value.title;
+    const identity = resolvePositionIdentity(profile.pensions || [], {
+      idKey: 'pensionId',
+      prefix: 'pension',
+      supplied: fact.value.entityId || fact.value.id || fact.value.pensionId,
+      label: typeof rawLabel === 'string' ? rawLabel : '',
+      ownerId: ownerId(profile, fact.value.owner ?? fact.value.ownerId, { allowHousehold: true }),
+      type: String(fact.value.type || '').trim().toLowerCase()
+    });
+    // THE CLIENT'S OWN ANSWER, WHERE THEY HAVE GIVEN ONE. `identityDirective`
+    // is set by the live tool from the transcript — never inferred here, and
+    // never from the amount.
+    const directive = String(fact.identityDirective || '');
+    if (identity?.ambiguous && directive === 'same') {
+      fact = { ...fact, value: { ...fact.value, entityId: identity.candidateId } };
+    } else if (identity?.ambiguous && directive !== 'distinct') {
+      // Neither matched nor answered: refuse THIS WRITE while leaving canonical
+      // state exactly as it was, and hand the caller the candidate so it can
+      // ask which pension this is. The conversation carries on regardless — a
+      // rejected fact is an ordinary outcome on this lane.
+      const error = new ConsumerError(409, 'realtime_pension_identity_ambiguous',
+        'That could be the pension already recorded or a separate one.');
+      error.details = { candidateId: identity.candidateId };
+      throw error;
+    } else if (identity?.entityId) {
+      fact = { ...fact, value: { ...fact.value, entityId: identity.entityId } };
+    }
+  }
   return withSpecialistReconciliationInvalidation(profile, withDecimalRateProposal(mapCollectionEntity(profile, fact, {
     collectionKey: 'pensions',
     idKey: 'pensionId',
     idPrefix: 'pension',
     allowConfirmedNone: true,
-    buildValue: ({ value, existing, entityId }) => {
+    buildValue: ({ value, existing, entityId, label }) => {
       const type = String(value.type || existing?.type || '').trim().toLowerCase();
       if (!['occupational', 'prsa', 'personal', 'defined_benefit', 'buyout_bond', 'other'].includes(type)) {
         throw new ConsumerError(400, 'realtime_pension_type_invalid', 'That pension type requires visual review.');
@@ -1211,7 +1356,15 @@ function mapPensionPosition(profile, fact, currency) {
         ...(existing || {}),
         pensionId: entityId,
         ownerId: ownerId(profile, value.owner ?? value.ownerId ?? existing?.ownerId),
-        type
+        type,
+        // A STABLE NAME, so a later turn can be matched by what it is called
+        // rather than by an id the model invents afresh each time. ONLY a name
+        // the client or model actually supplied: deriving one from the type
+        // gave every occupational pension the same label, which makes the
+        // label useless as identity and two real pensions look like one.
+        ...(existing?.label || (typeof label === 'string' && label)
+          ? { label: existing?.label || label }
+          : {})
       };
       // A defined-benefit annual pension is not a pot value. Only an explicit
       // currentValue may populate that field; the generic position `amount`

@@ -1630,10 +1630,31 @@ export async function ensureLegacyPlanningNotes(env, request) {
     limit: 500
   });
   const knownInstances = new Set(existing.map((item) => item.note.factInstanceId).filter(Boolean));
+  // A POSITION IS ITS ENTITY, NOT ITS INSTANCE ID.
+  //
+  // This seeder only ever asked whether a note with the same `factInstanceId`
+  // existed. Once a planner operation moved a holding to a different instance
+  // id — a correction that re-identifies an entity does exactly that — the
+  // snapshot no longer recognised its own record and seeded a SECOND active
+  // position note for the same pension. From that point every later
+  // reconciliation in the meeting failed `active_position_duplicate` at the
+  // whole-profile projection, and because no group had introduced the conflict
+  // the per-group containment could not attribute it: the failure was global
+  // and took unrelated, correct repairs down with it.
+  //
+  // The duplicate protection itself is untouched. This stops the duplicate
+  // being CREATED, which is the only place it can be stopped without either
+  // relaxing an invariant or losing work.
+  const knownPositions = new Set(existing
+    .filter((item) => item.note.noteKind === 'position' && item.note.entityId)
+    .map((item) => `${item.note.factId}:${item.note.entityId}`));
   const missing = (request.notes || []).filter((note) => (
     note?.source === 'legacy_import'
     && note.factInstanceId
     && !knownInstances.has(note.factInstanceId)
+    && !(note.noteKind === 'position'
+      && note.entityId
+      && knownPositions.has(`${note.factId}:${note.entityId}`))
   ));
   if (missing.length === 0) return existing.map((item) => item.note);
   const prepared = await Promise.all(missing.map((note) => preparePlanningNoteRecord(env, {

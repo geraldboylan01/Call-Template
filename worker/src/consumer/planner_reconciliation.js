@@ -9,10 +9,15 @@
 
 import {
   PLANNING_NOTE_CERTAINTIES,
+  NEED_ANSWER_POLICIES,
+  NEED_IMPORTANCES,
+  NEED_STATUSES,
   PLANNING_NOTE_KINDS,
+  POSITION_PROJECTIONS,
   RECONCILIATION_OPERATIONS,
   RECONCILIATION_REASON_CODES,
   applyReconciliationPlan,
+  canonicalFactContract,
   buildReconciliationIdentityCatalogue,
   normalizeNeedV2,
   normalizePlanningNotesV1,
@@ -24,6 +29,7 @@ import {
   resolveSemanticFact
 } from '../../../js/planning/semantic_facts.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
+import { CURRENCY_CODES } from '../../../js/planning/contracts.js';
 import { ConsumerError } from './errors.js';
 import { stableStringify } from './crypto.js';
 import { toConsumerRealtimePlanningLists } from './planning_context.js';
@@ -131,7 +137,8 @@ const RECONCILIATION_SCHEMA = Object.freeze({
   additionalProperties: false
 });
 
-const SYSTEM_PROMPT = `You are Planéir's background planning-note reconciler.
+/** Exported so a test can assert the prompt binds to the contracts it is sent. */
+export const RECONCILIATION_SYSTEM_PROMPT = `You are Planéir's background planning-note reconciler.
 
 The realtime voice model has already written provisional notes. Compare those notes with the finalized transcript and the current deterministic needs. Return only the closed ReconciliationPlanV1 operations in the schema.
 
@@ -139,11 +146,18 @@ Evidence rules:
 - Only finalized CLIENT transcript turns are evidence. Assistant text, current notes, requirements and profile state are context, never evidence.
 - Every operation must quote an exact, contiguous client span from the cited turn.
 - Every proposed number must appear in its cited quote. Do not calculate totals, dates, percentages, midpoints or conversions.
+- CITE THE NARROWEST SPAN THAT STILL IDENTIFIES THE NUMBER: the shortest stored client span holding the exact figure AND the words saying what it refers to, excluding unrelated numbers. A quote carrying other figures cannot bind yours to its entity and is refused as ambiguous. From "I'm on 95,000 a year. I put in 6 percent and the company puts in 8 percent." cite "I'm on 95,000 a year". Narrow by trimming, never by rewriting, and never past the describing words — a bare figure has nothing left to bind it.
 - Use only supplied note, entity, owner and fact identities. Never invent an identity or JSON path.
 - An entity is valid for a fact only when the entity's factIds list that fact. Resolve a spoken reference by matching it against entity labels and aliases; where two entities match equally well, request_clarification instead of picking one.
 - A fact in singletonFactIds has ONE household-wide slot. Give it entity householdScopeEntityId or no entity at all. Never attach it to the partner or to a position: there is no per-person slot, and naming one would overwrite the client's own value with somebody else's.
 - Where factContracts gives a fact choices, the value must be exactly one of those terms. Do not describe the answer in your own words or add extra keys. If no term fits the evidence, request_clarification.
-- An entity marked newEntitySlot is a server-issued identity for one omitted position. Use one only when exact client evidence establishes that distinct position, and copy that slot ID into the canonical record's entity ID field.
+- Use exactly the noteKind valueContracts gives each fact. A value ABOUT a position is not one: pension_current_value is noteKind fact, not position.
+- To change an existing holding use correct_note with its targetNoteId; an upsert_note on an entity that already holds an active position updates it. Either way your record REPLACES the old one, so restate every field you still want, including the money.
+- A position value IS the canonical record, shaped by that fact's entry in positionContracts: its requiredKeys, its idKey set to the operation's entityId, its owner under its ownerKey. Any other detail goes in one of that entry's valueFields, using that exact name — a figure under a name not listed there is written nowhere. There is no entityId field inside a canonical record.
+- valueContracts gives the canonical shape of every fact you may write. A fact absent from it has no canonical home: keep it as an evidenced note, never invent a slot for it.
+- Money is {"amount": <number from the quote>, "currency": <a listed code>} — both keys, every time, including money nested inside a position record (grossAnnual, netAnnual, currentValue, monthlyPayment). Money without its currency reaches nothing.
+- The SERVER decides gross versus net from the client's words, not you. Never ask which an ordinary salary is — record it. If you cannot tell which annual key to use, send the figure as "amount" in the income record and the server places it.
+- An entity marked newEntitySlot is a server-issued identity for one omitted position. Use one only when exact client evidence establishes that position.
 - A partner or joint owner is valid only when that owner exists in the supplied household.
 - Preserve uncertainty, ranges, explicit none and which person/position they concern.
 
@@ -152,11 +166,11 @@ Reconciliation rules:
 - Correct a wrong value or owner with correct_note and cite the corrective wording.
 - Reclassify totals as summary, expected amounts as future_event, and unresolved alternatives as scenario_option.
 - A stated total is not another holding. A future inheritance is not a current asset. A candidate retirement age is not a settled target.
-- CLASSIFY EVERY AMOUNT AS ONE OR THE OTHER. A statement describing an individual holding ("the Zurich one is 415,000") is noteKind position. A statement describing a total, combined value, or the set as a whole ("about a million across the pensions", "altogether", "between them") is reasonCode aggregate_summary AND noteKind summary — the two must agree, and an aggregate_summary carrying any other noteKind is refused. Record the total; do not also record it as a holding, and do not split it into one holding per policy.
+- CLASSIFY EVERY AMOUNT AS ONE OR THE OTHER. An individual holding ("the Zurich one is 415,000") is noteKind position. A total or combined value ("about a million across the pensions", "altogether", "between them") is reasonCode aggregate_summary AND noteKind summary — both, or it is refused. Record the total; never also as a holding, and never split into one holding per policy.
 - Where a total was already written as a holding, repair it with reclassify_note to summary from that same note. That keeps the client's words and their evidence while taking the figure out of the holdings the analysis adds up.
 - Retract or merge only when the transcript explicitly proves the note/entity is wrong or duplicated.
 - Use set_completion for an exact owner/position unknown or none answer.
-- If the transcript does not resolve an ambiguity safely, request_clarification with a complete NeedV2 value.
+- If the transcript does not resolve an ambiguity safely, request_clarification with a NeedV2 shaped by clarificationContract. Its entityId/ownerId/entityLabel are optional and may name ONLY an identity already in this context — asking about someone who does not exist yet is normal, so omit them rather than inventing one.
 - selectedAnalyses[].inputs is what each analysis needs. Prioritise inputs marked missing whose evidence the client has already given; an input marked satisfied needs no further operation. Information no analysis consumes is still worth keeping as an evidence-backed note, and is not a failure.
 
 Grouping rules:
@@ -418,7 +432,7 @@ const OWNER_HINT_KEYS = Object.freeze(['owner', 'ownerId', 'ownerIds', 'owners',
  * fact the mapper OWNS but whose value it rejects returns a refusal, and that
  * is final -- no raw fallback smuggles an unvalidated value into the slot.
  */
-function mapReconciledFactValue(profile, note) {
+export function mapReconciledFactValue(profile, note) {
   const value = isPlainObject(note.value) && note.ownerId
     && !OWNER_HINT_KEYS.some((key) => Object.hasOwn(note.value, key))
     ? { ...note.value, ownerId: note.ownerId }
@@ -428,7 +442,13 @@ function mapReconciledFactValue(profile, note) {
       factId: note.factId,
       value,
       ...(note.entityId ? { entityId: note.entityId } : {}),
-      ...(note.ownerId ? { ownerId: note.ownerId } : {})
+      ...(note.ownerId ? { ownerId: note.ownerId } : {}),
+      // The client's own words for this note, so shared canonicalisation rules
+      // that read the wording — gross versus take-home income — reach the same
+      // conclusion here as they do on the live lane. The quotes are server-
+      // stored spans of finalized client turns, so this cannot smuggle in
+      // assistant text or anything the client did not say.
+      evidenceText: (note.evidenceRefs || []).map((ref) => ref.quote).filter(Boolean).join(' ')
     });
   } catch (error) {
     return error?.code === 'realtime_fact_not_supported' ? null : { refused: true };
@@ -656,6 +676,116 @@ function factValueContracts(factIds) {
 }
 
 /**
+ * Which of the facts in play hold a position, and the record shape each takes.
+ *
+ * WHY THIS IS DATA AND NOT A SENTENCE. The prompt already had a sentence about
+ * it, and the sentence was wrong: it told the model to copy an identity into
+ * "the canonical record's entity ID field", which does not exist. A real planner
+ * model wrote `value.entityId` on every entity it proposed and the projector
+ * refused all of them. The same model also marked the SCALAR
+ * `pension_current_value` as a position, because nothing told it which facts are
+ * collections — and a position note for a non-position fact falls between both
+ * projectors, so it is accepted and silently does nothing.
+ *
+ * Both answers already existed in `POSITION_PROJECTIONS`, the constant the
+ * validator enforces. This hands the model that same constant rather than a
+ * paraphrase of it, for the same reason `factValueContracts` exists: the last
+ * time this prompt described a shape instead of naming it, the model invented
+ * its own keys for a closed slot.
+ */
+function positionContracts(factIds) {
+  const contracts = [];
+  for (const factId of [...new Set(factIds.filter(Boolean))].sort()) {
+    const projection = POSITION_PROJECTIONS[factId];
+    if (!projection) continue;
+    contracts.push({ factId, idKey: projection.idKey, ownerKey: projection.ownerKey });
+  }
+  return contracts;
+}
+
+/**
+ * THE FULL PLANNER-FACING CONTRACT, DERIVED — never written out by hand.
+ *
+ * Exported so the offline conformance audit can check the shapes this promises
+ * against the shapes the projector actually accepts, for every fact in play. The
+ * whole point is that there is ONE derivation: three paid probes were spent
+ * discovering, one layer at a time, that the prompt's prose disagreed with the
+ * projector about the record's id field, about which facts are positions, and
+ * then about whether a money value needs its currency. Prose cannot be tested.
+ * This can.
+ */
+export function plannerFactContracts(factIds) {
+  const contracts = [];
+  const vocabulary = realtimeChoiceVocabulary();
+  for (const factId of [...new Set(factIds.filter(Boolean))].sort()) {
+    const definition = getSemanticFactDefinition(factId);
+    const contract = canonicalFactContract(factId, definition);
+    // A fact with no canonical home is kept as evidence and must not be
+    // advertised as somewhere the planner can write.
+    if (!contract || contract.target === 'none') continue;
+    const choices = vocabulary[factId] || realtimeFactValueVocabulary(factId);
+    const entry = {
+      factId,
+      target: contract.target,
+      noteKind: contract.noteKind,
+      valueType: contract.valueType,
+      // A scalar that lives inside a position has no home until that position
+      // exists, and must name it.
+      ...(contract.entityCollection ? { inCollection: contract.entityCollection } : {})
+    };
+    if (contract.target === 'position') {
+      entry.idKey = contract.idKey;
+      entry.ownerKey = contract.ownerKey;
+      entry.requiredKeys = contract.requiredKeys;
+      entry.valueFields = contract.valueFields;
+    }
+    if (choices) entry.choices = choices;
+    // MONEY IS THE ONE VALUE TYPE THE SCHEMA CANNOT PIN DOWN. `valueJson` is a
+    // free string, so nothing stops `{"amount": 95000}` — which normalizes
+    // nowhere, because currency is required. A real planner omitted it twice in
+    // one run, inside a position record and again on a scalar.
+    if (contract.valueType === 'money') entry.money = MONEY_SHAPE;
+    contracts.push(entry);
+  }
+  return contracts;
+}
+
+/** The only money shape any canonical slot accepts, nested or not. */
+const MONEY_SHAPE = Object.freeze({ amount: 'number', currency: CURRENCY_CODES });
+
+/**
+ * THE SHAPE OF A QUESTION THE PLANNER WANTS TO ASK.
+ *
+ * `request_clarification` carries a NeedV2, and the model was never shown what
+ * one looks like. On a paid probe it wanted to ask whether a partner should be
+ * included, invented `entityId: "partner"` for a person the household does not
+ * yet contain, and `normalizeNeedV2` refused it — twice, in the same run. So the
+ * planner's fail-closed path could not actually fail closed: the one operation
+ * whose whole purpose is "I cannot resolve this safely, please ask" was itself
+ * unusable.
+ *
+ * The refusal is right and stays. What was missing is that the identity fields
+ * are OPTIONAL, and that when supplied they must name something the catalogue
+ * already contains — which is exactly the thing a model asking about a
+ * not-yet-existing person cannot do, and does not need to.
+ */
+const CLARIFICATION_CONTRACT = Object.freeze({
+  op: 'request_clarification',
+  valueIs: 'NeedV2',
+  required: Object.freeze([
+    'schemaVersion', 'needId', 'factId', 'factInstanceId',
+    'reasonCode', 'prompt', 'importance', 'blockingModuleIds', 'answerPolicy', 'status'
+  ]),
+  schemaVersion: 2,
+  importance: NEED_IMPORTANCES,
+  answerPolicy: NEED_ANSWER_POLICIES,
+  status: NEED_STATUSES,
+  // Optional, and only ever an identity the catalogue already lists. Asking
+  // about something that does not exist yet is the normal case: omit them.
+  optionalIdentity: Object.freeze(['entityId', 'ownerId', 'entityLabel'])
+});
+
+/**
  * Entities the ledger has retired, which must leave the catalogue.
  *
  * An aggregate reclassified to a summary stops being a holding, but its
@@ -747,6 +877,13 @@ export function buildPlannerReconciliationContext({
       inputs: moduleInputContract(slot.moduleId, canonicalFacts, needs)
     };
   });
+  /** Every fact this pass could touch: what is known, what is missing, what is noted. */
+  const inPlayFactIds = [
+    ...canonicalFacts.map((fact) => fact.factId),
+    ...needs.map((need) => need.factId),
+    ...notes.map((note) => note.factId),
+    ...selectedAnalyses.flatMap((analysis) => analysis.inputs.map((input) => input.factId))
+  ];
   const catalogue = buildReconciliationIdentityCatalogue(context.profile, notes, {
     // Four blank slots per collection for eight collections was 32 of the 40
     // catalogue entries, nearly all of them never used. Two each, and only for
@@ -766,12 +903,13 @@ export function buildPlannerReconciliationContext({
     entities: catalogue.entities,
     singletonFactIds: catalogue.singletonFactIds,
     householdScopeEntityId: catalogue.householdScopeEntityId,
-    factContracts: factValueContracts([
-      ...canonicalFacts.map((fact) => fact.factId),
-      ...needs.map((need) => need.factId),
-      ...notes.map((note) => note.factId),
-      ...selectedAnalyses.flatMap((analysis) => analysis.inputs.map((input) => input.factId))
-    ]),
+    factContracts: factValueContracts(inPlayFactIds),
+    positionContracts: positionContracts(inPlayFactIds),
+    // The derived contract, from the constants the projector itself enforces.
+    // `factContracts` and `positionContracts` remain because the prompt already
+    // names them; this carries what neither of them could say — the value shape.
+    valueContracts: plannerFactContracts(inPlayFactIds),
+    clarificationContract: CLARIFICATION_CONTRACT,
     canonicalFacts,
     needs,
     selectedAnalyses,
@@ -801,7 +939,7 @@ export async function requestPlannerReconciliation({ env, config, input }) {
         max_output_tokens: config.plannerReconciliationMaxOutputTokens,
         reasoning: { effort: 'low' },
         input: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: RECONCILIATION_SYSTEM_PROMPT },
           { role: 'user', content: stableStringify(input) }
         ],
         text: {

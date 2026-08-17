@@ -637,6 +637,231 @@ await runCase('a scalar fact reaches its profile path, or stays unprojected rath
   assert.equal(projected.pensions.length, 2, 'the holdings must be untouched by a count');
 });
 
+// ---------------------------------------------------------------------------
+// A FACT WHOSE CANONICAL HOME IS A FIELD INSIDE A PARENT OBJECT.
+//
+// `target_retirement_income` resolves to the leaf
+// `/assumptions/values/retirement/targetIncomeToday`, but the live lane's mapper
+// answers for the PARENT, `/assumptions/values/retirement`, with
+// `{targetIncomeToday: 45000}`. A `===` comparison read that as a disagreement,
+// dropped the mapped value, and fell back to the RAW note value -- so
+// `{amount: 45000, currency: "EUR"}` was written into a slot that holds a bare
+// number. It normalised cleanly, because the profile contract cannot tell one
+// object from another there, and Pension Projection then refused to run against
+// its own required input with `analysis_missing_information` -- on a figure the
+// client had stated plainly and the live lane had canonicalised correctly.
+//
+// The direction of the relationship is the whole safety argument, so all three
+// refusals are pinned here beside the fix.
+// ---------------------------------------------------------------------------
+
+await runCase('a mapper answering for a parent path canonicalises the leaf, and only downwards', async () => {
+  const targetIncomeNote = (value) => normalizePlanningNoteV1({
+    noteId: 'note_target_income',
+    noteKind: 'fact',
+    factId: 'target_retirement_income',
+    factInstanceId: 'target_retirement_income',
+    value,
+    certainty: 'exact',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [],
+    replacesNoteIds: [],
+    createdAt: NOW
+  });
+  const leaf = '/assumptions/values/retirement/targetIncomeToday';
+  const money = { amount: 45_000, currency: 'EUR' };
+  const readLeaf = (profile) => profile.assumptions.values.retirement?.targetIncomeToday;
+
+  // Without a mapper the raw money object is all there is, which is the
+  // behaviour every other fact keeps. Stated so the fix below is visibly the
+  // mapper's doing and not a change to the bridge's default.
+  assert.deepEqual(
+    readLeaf(projectPlanningNotesToProfile(baseProfile(), [...baseNotes(), targetIncomeNote(money)])),
+    money,
+    'with no mapper the bridge still writes exactly what the note holds'
+  );
+
+  // THE FIX: the mapper answers for the parent, and the leaf gets the number.
+  const parentMapper = () => ({
+    fieldPath: '/assumptions/values/retirement',
+    canonicalValue: { targetIncomeToday: 45_000 },
+    displayValue: money
+  });
+  assert.equal(
+    readLeaf(projectPlanningNotesToProfile(
+      baseProfile(), [...baseNotes(), targetIncomeNote(money)], { mapFactValue: parentMapper }
+    )),
+    45_000,
+    'a parent-path mapping must canonicalise the leaf it actually contains'
+  );
+
+  // REFUSAL 1 — the mapper answers for something NARROWER than the resolved
+  // path. `/goals/0` must never be written to `/goals`; the raw value stands.
+  const narrowerMapper = () => ({
+    fieldPath: `${leaf}/deeper`,
+    canonicalValue: 1,
+    displayValue: money
+  });
+  assert.deepEqual(
+    readLeaf(projectPlanningNotesToProfile(
+      baseProfile(), [...baseNotes(), targetIncomeNote(money)], { mapFactValue: narrowerMapper }
+    )),
+    money,
+    'a mapping narrower than the resolved path must not be unwrapped into it'
+  );
+
+  // REFUSAL 2 — an ancestor whose canonical object does not actually carry the
+  // remaining segment. Nothing is inferred; the raw value stands.
+  const missingSegmentMapper = () => ({
+    fieldPath: '/assumptions/values/retirement',
+    canonicalValue: { somethingElse: 1 },
+    displayValue: money
+  });
+  assert.deepEqual(
+    readLeaf(projectPlanningNotesToProfile(
+      baseProfile(), [...baseNotes(), targetIncomeNote(money)], { mapFactValue: missingSegmentMapper }
+    )),
+    money,
+    'an ancestor mapping missing the leaf segment must not be guessed at'
+  );
+
+  // REFUSAL 3 — a root-ish fieldPath would address the whole profile.
+  const rootMapper = () => ({
+    fieldPath: '/',
+    canonicalValue: { assumptions: { values: { retirement: { targetIncomeToday: 1 } } } },
+    displayValue: money
+  });
+  assert.deepEqual(
+    readLeaf(projectPlanningNotesToProfile(
+      baseProfile(), [...baseNotes(), targetIncomeNote(money)], { mapFactValue: rootMapper }
+    )),
+    money,
+    'a root mapping must never be walked into an arbitrary slot'
+  );
+
+  // And an explicit refusal still has the last word: no raw fallback.
+  const refusingMapper = () => ({ refused: true });
+  assert.equal(
+    readLeaf(projectPlanningNotesToProfile(
+      baseProfile(), [...baseNotes(), targetIncomeNote(money)], { mapFactValue: refusingMapper }
+    )),
+    undefined,
+    'a mapper that owns a fact and refuses its value must leave the slot empty'
+  );
+});
+
+// ---------------------------------------------------------------------------
+// THE TWO SHAPES A REAL PLANNER MODEL GOT WRONG.
+//
+// A paid probe against gpt-5.6-luna produced both, and neither failed loudly:
+//
+//   1. `{entityId, ownerId, type, grossAnnual}` for an income position. The
+//      prompt said to copy the identity into "the canonical record's entity ID
+//      field" and no record has one — income sources carry `incomeId`. The
+//      record is malformed, so nothing reaches /incomeSources.
+//   2. `pension_current_value` emitted as noteKind position. It is a value ABOUT
+//      a pension, not a pension. The position projector only walks
+//      POSITION_PROJECTIONS keys and the scalar projector only takes
+//      noteKind 'fact', so the note falls between the two: accepted, applied,
+//      and canonically invisible.
+//
+// The projector is right in both cases. These pin its behaviour so the contract
+// the prompt now hands the model cannot drift away from what is enforced here.
+// ---------------------------------------------------------------------------
+
+await runCase('a position record is keyed by its own id field, and only a position fact may be one', async () => {
+  const positionNote = (over) => normalizePlanningNoteV1({
+    noteId: 'note_shape',
+    noteKind: 'position',
+    factId: 'income_sources',
+    factInstanceId: 'income_sources:income_probe',
+    entityId: 'income_probe',
+    ownerId: 'primary',
+    certainty: 'exact',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [],
+    replacesNoteIds: [],
+    createdAt: NOW,
+    ...over
+  });
+  const incomes = (profile) => (profile.incomeSources || [])
+    .map((item) => ({ incomeId: item.incomeId, gross: item.grossAnnual?.amount }));
+
+  // 1. THE MODEL'S SHAPE: `entityId` inside the record. Quarantined, and the
+  //    quarantine is reported rather than swallowed.
+  const wrongKey = [];
+  const withEntityId = projectPlanningNotesToProfile(
+    baseProfile(),
+    [...baseNotes(), positionNote({
+      value: {
+        entityId: 'income_probe', ownerId: 'primary', type: 'employment',
+        grossAnnual: { amount: 95_000, currency: 'EUR' }
+      }
+    })],
+    { onUnprojectable: (entry) => wrongKey.push(entry) }
+  );
+  assert.deepEqual(incomes(withEntityId), [],
+    'a record keyed by entityId is not a canonical income source and must not reach the profile');
+  assert.equal(wrongKey.some((entry) => entry.code === 'position_entity_mismatch'), true,
+    'and the mismatch must be reported, not silently dropped');
+
+  // 2. THE CORRECT SHAPE: `incomeId`, equal to the note's entityId. Canonical.
+  const withIncomeId = projectPlanningNotesToProfile(
+    baseProfile(),
+    [...baseNotes(), positionNote({
+      value: {
+        incomeId: 'income_probe', ownerId: 'primary', type: 'employment',
+        label: 'Employment income', grossAnnual: { amount: 95_000, currency: 'EUR' }
+      }
+    })]
+  );
+  assert.deepEqual(incomes(withIncomeId), [{ incomeId: 'income_probe', gross: 95_000 }],
+    'an accepted entity operation must actually become canonical');
+
+  // 3. PENSIONS USE THEIR OWN KEY, so the rule is per-collection and not a
+  //    single shared spelling that happens to work for income.
+  const pensionNote = positionNote({
+    noteId: 'note_pension_shape',
+    factId: 'pension_positions',
+    factInstanceId: 'pension_positions:pension_probe',
+    entityId: 'pension_probe',
+    value: {
+      pensionId: 'pension_probe', ownerId: 'primary', type: 'occupational',
+      currentValue: { amount: 319_000, currency: 'EUR' }
+    }
+  });
+  const withPension = projectPlanningNotesToProfile(baseProfile(), [...baseNotes(), pensionNote]);
+  assert.equal(
+    withPension.pensions.find((item) => item.pensionId === 'pension_probe')?.currentValue?.amount,
+    319_000,
+    'a pension position record is keyed by pensionId'
+  );
+
+  // 4. A SCALAR FACT MAY NOT BE A POSITION. `pension_current_value` marked
+  //    `position` reaches neither projector; the value stays where the client's
+  //    words put it and the slot is untouched.
+  const scalarAsPosition = positionNote({
+    noteId: 'note_scalar_as_position',
+    factId: 'pension_current_value',
+    factInstanceId: 'pension_current_value:pension_old_dc',
+    entityId: 'pension_old_dc',
+    value: { amount: 999_999, currency: 'EUR' }
+  });
+  const before = baseProfile();
+  const after = projectPlanningNotesToProfile(before, [...baseNotes(), scalarAsPosition]);
+  assert.deepEqual(
+    after.pensions.map((item) => item.currentValue?.amount),
+    before.pensions.map((item) => item.currentValue?.amount),
+    'a scalar fact emitted as a position must not reach the holdings it names'
+  );
+  assert.equal(after.pensions.some((item) => item.currentValue?.amount === 999_999), false,
+    'and its figure must not appear anywhere in the collection');
+});
+
 await runCase('future events and scenarios cannot enter current assets, income or settled retirement age', async () => {
   const plan = {
     schemaVersion: 1,

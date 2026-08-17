@@ -183,9 +183,7 @@
           }
         }
       ],
-      "expect": "accept",
-      "knownGap": true,
-      "note": "The same figure as pension-value-flat, carried on the collection fact."
+      "expect": "accept"
     },
     {
       "id": "pension-value-and-contribution",

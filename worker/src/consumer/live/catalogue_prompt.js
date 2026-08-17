@@ -21,6 +21,7 @@
 
 import { MODULE_MANIFEST } from '../../../../js/planning/module_manifest.generated.js';
 import {
+  canonicalCollectionFields,
   getSemanticFactDefinition,
   listSemanticFactDefinitions
 } from '../../../../js/planning/semantic_facts.js';
@@ -75,6 +76,25 @@ function joinWithinBudget(entries, budget, separator = '; ') {
 
 const MONEY_VALUE_SHAPE = '{"amount": <numeric amount copied from the client>, "currency": "EUR"}';
 
+/**
+ * The canonical field names for a collection, read from the semantic registry.
+ *
+ * WHAT THIS DOES NOT SOLVE, STATED PLAINLY: the registry says which fields a
+ * COLLECTION holds, and which fact owns each one. It does not encode which of
+ * them may travel INLINE inside another fact's tool value — `pension_positions`
+ * has no sub-mappings of its own, yet the live mapper accepts `currentValue`
+ * inside it. That membership lives in the mapper's builders and nowhere else.
+ * So the names below are generated where the registry genuinely owns them, and
+ * check-consumer-live asserts that every field name this prompt mentions is a
+ * real field of that collection — the registry cannot be contradicted, even
+ * where it cannot yet generate the whole sentence.
+ */
+function registryFieldList(collection) {
+  const fields = canonicalCollectionFields()[collection] || [];
+  if (fields.length <= 1) return fields[0] || '';
+  return `${fields.slice(0, -1).join(', ')} or ${fields.at(-1)}`;
+}
+
 const STRUCTURED_FACT_VALUE_GUIDANCE = Object.freeze({
   primary_goal:
     '{"type": "<one allowed goal>"}; only when the client explicitly replaces or defers a saved goal, '
@@ -85,7 +105,12 @@ const STRUCTURED_FACT_VALUE_GUIDANCE = Object.freeze({
   income_sources:
     'one upsert object, or {"items":[...]}, with entityId "<short tool-only id>", '
     + 'type employment|self_employment|rental|pension|state_pension|other, owner primary|partner, '
-    + 'and grossAnnual or netAnnual as a money object; no income: {"operation":"confirm_none"}',
+    // THE FIELD NAMES COME FROM THE REGISTRY, NOT FROM THIS SENTENCE. They were
+    // written out here AND stated as `/incomeSources/*​/grossAnnual` in
+    // semantic_facts.js, and were about to be written a third time for the
+    // reconciler. `canonicalCollectionFields` is the one place that knows them.
+    + `and ${registryFieldList('incomeSources')} as a money object`
+    + '; no income: {"operation":"confirm_none"}',
   asset_position:
     'one upsert object, or {"items":[...]}, with entityId "<short tool-only id>", '
     + 'type cash|investment|other, owner primary|partner|joint, currentValue as a money object and '
@@ -111,10 +136,24 @@ const STRUCTURED_FACT_VALUE_GUIDANCE = Object.freeze({
     'one upsert object, or {"items":[...]}, with entityId "<short tool-only id>", '
     + 'owner primary|partner|joint, agricultural true|false, and optional estimatedValue as a money object; '
     + 'no business: {"operation":"confirm_none"}',
+  // Identity reuse is stated once, beside the positions it governs.
   pension_positions:
     'one upsert object, or {"items":[...]}, with entityId "<short tool-only id>", '
     + 'type occupational|prsa|personal|defined_benefit|other, owner primary|partner, and any client-stated '
     + 'currentValue, employeeContributionRate or employerContributionRate; '
+    // The captured list shows each known holding's id in square brackets.
+    // Inventing a fresh one for a pension already recorded is how one pension
+    // became two holdings on a real call.
+    // Collective phrasing describes the household, not who owns what. A live
+    // call read "there's only the one pension between us" as a PARTNER pension
+    // and invented a holding nobody has.
+    + '"we", "our pension" and "between us" describe the household and are NOT evidence that a holding '
+    + 'belongs to the partner — record it for the person the transcript actually names, and if it names '
+    + 'nobody, say what you heard and leave the owner for later rather than guessing; '
+    + 'a pension with no value is not a holding: if the client cannot say what it is worth, ask, do not save an empty one; '
+    + 'when adding to a pension already listed in your captured state, reuse the exact entityId shown '
+    + 'in square brackets beside it rather than inventing a new one; only use a new id for a genuinely '
+    + 'different pension; '
     + 'no pension: {"operation":"confirm_none"}',
   dependants:
     'one upsert object, or {"items":[...]}, with a short label and currentAge. When the client '

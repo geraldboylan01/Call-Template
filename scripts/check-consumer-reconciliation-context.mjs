@@ -7,6 +7,7 @@ import {
   normalizeHouseholdProfile
 } from '../js/planning/index.js';
 import {
+  RECONCILIATION_SYSTEM_PROMPT,
   buildPlannerReconciliationContext,
   legacyPlanningNotesFromProfile,
   normalizeModelReconciliationPlan
@@ -371,4 +372,106 @@ assert.equal(writes[0].arguments.sourceTurnId, userTurns[8]);
   );
 }
 
-console.info('[ConsumerReconciliationContext] PASS: needs, signed questions, bounded turns, new identities and T1 outcomes');
+/* ------------------------------------------- the position record contract */
+
+/**
+ * WHAT THE MODEL IS TOLD ABOUT POSITION RECORDS.
+ *
+ * The prompt used to describe this in prose, and the prose was wrong: it said to
+ * copy an identity into "the canonical record's entity ID field", and no
+ * canonical record has one — income sources carry `incomeId`, pensions
+ * `pensionId`. A real planner model followed that sentence literally, wrote
+ * `value.entityId` on every entity it proposed, and the projector refused all of
+ * them. The same run marked the scalar `pension_current_value` as a position,
+ * because nothing said which facts are collections; a position note for a
+ * non-position fact falls between both projectors and is accepted while doing
+ * nothing at all.
+ *
+ * So the contract is now DATA, derived from the same constant the validator
+ * enforces. These assertions are what stop the two drifting apart again.
+ */
+{
+  const positioned = buildPlannerReconciliationContext({
+    context,
+    turns: [{ id: 'turn-client', role: 'user', transcript: 'I earn 95,000 gross.', sequence: 1 }],
+    notes: [
+      { factId: 'income_sources' },
+      { factId: 'pension_positions' },
+      { factId: 'pension_current_value' },
+      { factId: 'person_current_age' }
+    ],
+    throughTurnId: 'turn-client',
+    voiceWriteOutcomes: []
+  });
+  const contractFor = (factId) => positioned.positionContracts
+    .find((entry) => entry.factId === factId);
+
+  assert.deepEqual(contractFor('income_sources'), {
+    factId: 'income_sources', idKey: 'incomeId', ownerKey: 'ownerId'
+  }, 'an income position record is keyed by incomeId, never by entityId');
+  assert.deepEqual(contractFor('pension_positions'), {
+    factId: 'pension_positions', idKey: 'pensionId', ownerKey: 'ownerId'
+  }, 'a pension position record is keyed by pensionId');
+  assert.equal(contractFor('pension_current_value'), undefined,
+    'pension_current_value is a value ABOUT a pension, not a pension: it is a scalar fact '
+    + 'and must never be offered to the model as something that may be a position');
+  assert.equal(contractFor('person_current_age'), undefined,
+    'an ordinary scalar carries no position contract');
+  assert.ok(positioned.positionContracts.every((entry) => entry.idKey && entry.ownerKey),
+    'every offered contract must name both keys, or it teaches the model half a shape');
+
+  // THE SHAPE OF A QUESTION. `request_clarification` is the reconciler's
+  // fail-closed path, and a real planner could not use it: it invented an
+  // entity id for a person the household did not contain, because nothing said
+  // the identity fields were optional.
+  assert.equal(positioned.clarificationContract.op, 'request_clarification');
+  assert.equal(positioned.clarificationContract.schemaVersion, 2);
+  for (const field of ['needId', 'factId', 'factInstanceId', 'prompt', 'importance', 'status']) {
+    assert.ok(positioned.clarificationContract.required.includes(field),
+      `the clarification contract must name ${field} as required`);
+  }
+  for (const field of ['entityId', 'ownerId']) {
+    assert.ok(positioned.clarificationContract.optionalIdentity.includes(field),
+      `${field} must be advertised as optional, or the model invents one`);
+    assert.equal(positioned.clarificationContract.required.includes(field), false,
+      `${field} must not be advertised as required`);
+  }
+  assert.ok(positioned.clarificationContract.importance.length > 0
+    && positioned.clarificationContract.answerPolicy.length > 0
+    && positioned.clarificationContract.status.length > 0,
+  'the closed vocabularies must travel with the contract');
+
+  // The prompt must actually bind to the data, or the data is decoration.
+  assert.match(RECONCILIATION_SYSTEM_PROMPT, /positionContracts/,
+    'the prompt must name the contract list it is handing the model');
+  assert.match(RECONCILIATION_SYSTEM_PROMPT, /clarificationContract/,
+    'the prompt must name the clarification contract too');
+
+  /**
+   * THE RULES THAT CANNOT BE DERIVED, AND SO CANNOT BE TRIMMED.
+   *
+   * The prompt was cut by 16% once the contracts carried the shapes it had been
+   * describing in prose. Everything below states something no structured field
+   * says — a semantic or safety rule, each one bought with a real defect — so a
+   * future trim that reaches them fails here rather than in a paid probe.
+   */
+  for (const [rule, why] of [
+    [/narrowest span/i, 'evidence width: a quote with unrelated numbers cannot bind'],
+    [/trimming, never by rewriting/i, 'evidence must stay an exact stored span'],
+    [/currency/i, 'money needs both keys, including nested inside a record'],
+    [/no entityId field inside a canonical record/i, 'the misconception that refused every entity'],
+    [/SERVER decides gross versus net/i, 'income basis is decided deterministically, not asked about'],
+    [/REPLACES the old one/i, 'an upsert is not a merge'],
+    [/aggregate_summary AND noteKind summary/i, 'a stated total is not a holding'],
+    [/singletonFactIds/i, 'a household-wide slot must not be attached to a person'],
+    [/does not exist yet is normal/i, 'a clarification may omit identities it cannot name'],
+    [/own group/i, 'grouping decides blast radius'],
+    [/reviewedNoteIds/i, 'a span-free note cannot be verified by id alone']
+  ]) {
+    assert.match(RECONCILIATION_SYSTEM_PROMPT, rule, `the prompt lost a rule — ${why}`);
+  }
+  assert.doesNotMatch(RECONCILIATION_SYSTEM_PROMPT, /canonical record's entity ID field/,
+    'the sentence that told the model to write a field that does not exist must stay gone');
+}
+
+console.info('[ConsumerReconciliationContext] PASS: needs, signed questions, bounded turns, new identities, position contracts and T1 outcomes');

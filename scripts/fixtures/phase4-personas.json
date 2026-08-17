@@ -1,0 +1,391 @@
+{
+  "version": "phase4-personas-1",
+  "synthetic": true,
+  "note": "Synthetic Phase 4 end-to-end personas. The same person at three difficulty levels so results are comparable. No real client content.",
+  "personas": [
+    {
+      "id": "pension_easy",
+      "level": "easy",
+      "targetModule": "pension_projection",
+      "person": "Synthetic person: 57, married, partner 59. One occupational pension. Articulate, states figures plainly with correct labels.",
+      "expectation": "Every module-critical input is supplied clearly. The only thing the background planner has to repair is the primary age, which the live lane hears in the first sentence but does not canonicalise — the exact defect Phase 3 was built for.",
+      "turns": [
+        {
+          "client": "I'm 57 and I'm married. My partner is 59. I'd like to get my pension sorted out before I retire.",
+          "speech": "Thanks for that. Let's look at your pension together. When were you hoping to retire?",
+          "saveFacts": [
+            {
+              "factId": "primary_goal",
+              "value": {
+                "type": "improve_pension"
+              },
+              "certainty": "exact"
+            },
+            {
+              "factId": "partner_person",
+              "value": {
+                "operation": "upsert",
+                "entityId": "partner",
+                "age": 59
+              },
+              "certainty": "exact"
+            }
+          ],
+          "comment": "THE SCRIPTED DEFECT: the partner's age is canonicalised and the client's own age is not, even though they said it first. This reproduces the production failure rather than papering over it."
+        },
+        {
+          "client": "I'd like to retire at 62 if the numbers work.",
+          "speech": "Sixty-two, noted. What is your occupational pension worth at the moment?",
+          "saveFacts": [
+            {
+              "factId": "intended_retirement_age",
+              "value": 62,
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "The occupational pension is worth about 319,000 right now.",
+          "speech": "Three hundred and nineteen thousand. And what are you earning, and what goes in each month?",
+          "saveFacts": [
+            {
+              "factId": "pension_positions",
+              "value": {
+                "operation": "upsert",
+                "entityId": "occ1",
+                "type": "occupational",
+                "owner": "primary",
+                "currentValue": {
+                  "amount": 319000,
+                  "currency": "EUR"
+                }
+              },
+              "certainty": "approximate"
+            }
+          ],
+          "reconciliation": {
+            "repairs": [
+              {
+                "groupId": "primary_age",
+                "operationId": "primary_age",
+                "factId": "person_current_age",
+                "factInstanceId": "person_current_age:primary",
+                "entityId": "primary",
+                "ownerId": "primary",
+                "value": {
+                  "age": 57
+                },
+                "quote": "I'm 57",
+                "reasonCode": "missing_note"
+              }
+            ]
+          },
+          "comment": "The planner reads the transcript window, finds the age the live lane missed, and repairs it. The quote must be an exact contiguous span of turn 1 or the real validator rejects it."
+        },
+        {
+          "client": "I'm on 95,000 a year. I put in 6 percent and the company puts in 8 percent.",
+          "speech": "Ninety-five thousand, six percent from you and eight from the company. Is that pension still being paid into now?",
+          "saveFacts": [
+            {
+              "factId": "gross_household_income",
+              "value": {
+                "amount": 95000,
+                "currency": "EUR"
+              },
+              "certainty": "exact"
+            },
+            {
+              "factId": "income_sources",
+              "value": {
+                "operation": "upsert",
+                "entityId": "job1",
+                "type": "employment",
+                "owner": "primary",
+                "grossAnnual": {
+                  "amount": 95000,
+                  "currency": "EUR"
+                }
+              },
+              "certainty": "exact"
+            },
+            {
+              "factId": "pension_employee_contribution_rate",
+              "value": 6,
+              "certainty": "exact"
+            },
+            {
+              "factId": "pension_employer_contribution_rate",
+              "value": 8,
+              "certainty": "exact"
+            }
+          ],
+          "reconciliation": {
+            "repairs": [
+              {
+                "groupId": "primary_income",
+                "operationId": "primary_income",
+                "factId": "income_sources",
+                "factInstanceId": "income_sources:recon_slot_income_sources_1",
+                "entityId": "recon_slot_income_sources_1",
+                "ownerId": "primary",
+                "noteKind": "position",
+                "value": {
+                  "incomeId": "recon_slot_income_sources_1",
+                  "ownerId": "primary",
+                  "type": "employment",
+                  "label": "Employment income",
+                  "grossAnnual": {
+                    "amount": 95000,
+                    "currency": "EUR"
+                  }
+                },
+                "quote": "95,000",
+                "reasonCode": "missing_note"
+              }
+            ]
+          },
+          "comment": "The live lane refuses this figure: three numbers in one turn and no salary cue next to the 95,000, so the numeric guard fails closed with live_numeric_fact_unsupported. That refusal is the fast lane working as designed — and repairing it from the transcript afterwards is precisely what the background planner is for. This is the rejected_note trigger doing its job."
+        },
+        {
+          "client": "Yes, it's still being paid into every month.",
+          "speech": "Good. And roughly what annual income would you want in retirement, in today's money?",
+          "saveFacts": [
+            {
+              "factId": "pension_contribution_status",
+              "value": "active",
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "I'd want about 45,000 a year.",
+          "speech": "Forty-five thousand a year. Let me check where that leaves us.",
+          "saveFacts": [
+            {
+              "factId": "target_retirement_income",
+              "value": {
+                "amount": 45000,
+                "currency": "EUR"
+              },
+              "certainty": "approximate"
+            }
+          ],
+          "getState": true
+        }
+      ],
+      "brief": "You are Margaret Doyle, 57, and you want your pension sorted before you retire. You are articulate and organised: you answer the question you were asked, give figures plainly and correctly labelled, and you do not wander. You volunteer the relevant number as soon as it is asked for.\n\nThe financial truth, identical in all three personas: you are 57, married, and your partner is 59. You have ONE pension, an occupational scheme worth 319,000 euro. You want to retire at 62. You earn 95,000 euro a year gross. You pay in 6 percent and your employer pays 8 percent, and it is still being paid into. You would like about 45,000 euro a year in retirement, in today's money. Your partner has no pension of their own. You have no other pensions, and no other figures beyond these. If asked anything this brief does not cover, say plainly that you do not know.",
+      "groundTruth": {
+        "primaryAge": 57,
+        "partnerAge": 59,
+        "intendedRetirementAge": 62,
+        "pensionCount": 1,
+        "pensionValue": 319000,
+        "grossAnnual": 95000,
+        "employeeRate": 0.06,
+        "employerRate": 0.08,
+        "targetRetirementIncome": 45000
+      },
+      "opening": "I'm 57 and I'm married. My partner is 59. I'd like to get my pension sorted out before I retire."
+    },
+    {
+      "id": "pension_easy_direct",
+      "level": "easy",
+      "targetModule": "pension_projection",
+      "person": "The same synthetic person as pension_easy, phrased so the live lane captures every module-critical input itself.",
+      "expectation": "A CONTROL, not a scenario. pension_easy deliberately needs the background planner to close two gaps, so a failure there could belong to the reconciler or to anything downstream of it. This one needs no repair at all, which isolates confirm_and_run and deterministic module execution from the reconciler entirely. Same person, same figures, same module, same expected arithmetic.",
+      "turns": [
+        {
+          "client": "I'm 57 and I want to get my pension sorted out before I retire.",
+          "speech": "Let's do that. Is there a partner we should include?",
+          "saveFacts": [
+            {
+              "factId": "primary_goal",
+              "value": {
+                "type": "improve_pension"
+              },
+              "certainty": "exact"
+            },
+            {
+              "factId": "person_current_age",
+              "value": 57,
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "My partner is 59.",
+          "speech": "Noted. When were you hoping to retire?",
+          "saveFacts": [
+            {
+              "factId": "partner_person",
+              "value": {
+                "operation": "upsert",
+                "entityId": "partner",
+                "age": 59
+              },
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "I'd like to retire at 62 if the numbers work.",
+          "speech": "Sixty-two. What is your occupational pension worth at the moment?",
+          "saveFacts": [
+            {
+              "factId": "intended_retirement_age",
+              "value": 62,
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "The occupational pension is worth about 319,000 right now.",
+          "speech": "Three hundred and nineteen thousand. What are you earning?",
+          "saveFacts": [
+            {
+              "factId": "pension_positions",
+              "value": {
+                "operation": "upsert",
+                "entityId": "occ1",
+                "type": "occupational",
+                "owner": "primary",
+                "currentValue": {
+                  "amount": 319000,
+                  "currency": "EUR"
+                }
+              },
+              "certainty": "approximate"
+            }
+          ]
+        },
+        {
+          "client": "I earn 95,000 gross a year from my job.",
+          "speech": "Ninety-five thousand gross. And what goes into the pension each month?",
+          "saveFacts": [
+            {
+              "factId": "income_sources",
+              "value": {
+                "operation": "upsert",
+                "entityId": "job1",
+                "type": "employment",
+                "owner": "primary",
+                "grossAnnual": {
+                  "amount": 95000,
+                  "currency": "EUR"
+                }
+              },
+              "certainty": "exact"
+            },
+            {
+              "factId": "gross_household_income",
+              "value": {
+                "amount": 95000,
+                "currency": "EUR"
+              },
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "I put in 6 percent and the company puts in 8 percent.",
+          "speech": "Six and eight. Is it still being paid into now?",
+          "saveFacts": [
+            {
+              "factId": "pension_employee_contribution_rate",
+              "value": 6,
+              "certainty": "exact"
+            },
+            {
+              "factId": "pension_employer_contribution_rate",
+              "value": 8,
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "Yes, it's still being paid into every month.",
+          "speech": "Good. Roughly what annual income would you want in retirement, in today's money?",
+          "saveFacts": [
+            {
+              "factId": "pension_contribution_status",
+              "value": "active",
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "I'd want about 45,000 a year.",
+          "speech": "Forty-five thousand a year. Does your partner have a pension of their own?",
+          "saveFacts": [
+            {
+              "factId": "target_retirement_income",
+              "value": {
+                "amount": 45000,
+                "currency": "EUR"
+              },
+              "certainty": "approximate"
+            }
+          ]
+        },
+        {
+          "client": "My partner has no pension of their own.",
+          "speech": "Understood. Let me check where that leaves us.",
+          "saveFacts": [
+            {
+              "factId": "pension_positions",
+              "value": {
+                "operation": "confirm_none",
+                "owner": "partner"
+              },
+              "certainty": "exact"
+            }
+          ],
+          "getState": true,
+          "comment": "A partner on the record means the module asks for the partner's pension too. A categorical 'none' is the only thing that closes it — an omission would not, which is the aggregate-vs-absence distinction working correctly."
+        }
+      ]
+    },
+    {
+      "id": "pension_medium",
+      "level": "medium",
+      "targetModule": "pension_projection",
+      "person": "Margaret Doyle, 57 — the same household as pension_easy, told differently.",
+      "expectation": "Same financial truth, different delivery. What varies is how hard the facts are to hear, not what they are, so a difference in outcome is a difference in the lane and not in the case.",
+      "brief": "You are Margaret Doyle, 57, and you want your pension sorted before you retire. You talk the way people actually talk: you answer in a roundabout way, sometimes give two things at once, and sometimes correct yourself a moment later. Twice in the conversation, give a figure slightly wrong and then correct it in a LATER turn — say 'sorry, I said 62, I meant 63 — no, 62, 62 is right' or 'actually the pension is more like 319 than 300'. Refer back to things indirectly: 'the one I mentioned', 'that figure I gave you'. Never invent a number the brief does not contain; corrections must land back on the true figure.\n\nThe financial truth, identical in all three personas: you are 57, married, and your partner is 59. You have ONE pension, an occupational scheme worth 319,000 euro. You want to retire at 62. You earn 95,000 euro a year gross. You pay in 6 percent and your employer pays 8 percent, and it is still being paid into. You would like about 45,000 euro a year in retirement, in today's money. Your partner has no pension of their own. You have no other pensions, and no other figures beyond these. If asked anything this brief does not cover, say plainly that you do not know.",
+      "turns": [],
+      "groundTruth": {
+        "primaryAge": 57,
+        "partnerAge": 59,
+        "intendedRetirementAge": 62,
+        "pensionCount": 1,
+        "pensionValue": 319000,
+        "grossAnnual": 95000,
+        "employeeRate": 0.06,
+        "employerRate": 0.08,
+        "targetRetirementIncome": 45000
+      },
+      "opening": "I'm 57 — well, 57 last month. I want to get the pension sorted before I finish up."
+    },
+    {
+      "id": "pension_hard",
+      "level": "hard",
+      "targetModule": "pension_projection",
+      "person": "Margaret Doyle, 57 — the same household as pension_easy, told differently.",
+      "expectation": "Same financial truth, different delivery. What varies is how hard the facts are to hear, not what they are, so a difference in outcome is a difference in the lane and not in the case.",
+      "brief": "You are Margaret Doyle, 57, and you are vague, anxious and easily sidetracked. You rarely give a clean figure first time: say 'somewhere around three hundred and twenty' before settling on the real number when pressed. Mix yourself up with your partner — say 'we' and 'our pension' when you mean yours, and let the assistant work out whose is whose. Wander off topic at least twice (the weather, whether any of this is worth doing, how your sister managed her retirement) before coming back. Express uncertainty about when you will actually retire: 'maybe 62, maybe I'll keep going, I honestly don't know' — but if pressed for the plan, 62 is the answer. Never invent a figure the brief does not contain: if you do not know, say so.\n\nThe financial truth, identical in all three personas: you are 57, married, and your partner is 59. You have ONE pension, an occupational scheme worth 319,000 euro. You want to retire at 62. You earn 95,000 euro a year gross. You pay in 6 percent and your employer pays 8 percent, and it is still being paid into. You would like about 45,000 euro a year in retirement, in today's money. Your partner has no pension of their own. You have no other pensions, and no other figures beyond these. If asked anything this brief does not cover, say plainly that you do not know.",
+      "turns": [],
+      "groundTruth": {
+        "primaryAge": 57,
+        "partnerAge": 59,
+        "intendedRetirementAge": 62,
+        "pensionCount": 1,
+        "pensionValue": 319000,
+        "grossAnnual": 95000,
+        "employeeRate": 0.06,
+        "employerRate": 0.08,
+        "targetRetirementIncome": 45000
+      },
+      "opening": "I suppose I'm wondering about the pension really. We're both getting on, I'm 57."
+    }
+  ]
+}

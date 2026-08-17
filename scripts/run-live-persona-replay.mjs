@@ -148,7 +148,7 @@ async function callResponses(body, attempt = 1) {
 
 const MAX_REQUEST_ATTEMPTS = 6;
 
-function responseText(payload) {
+export function responseText(payload) {
   if (typeof payload?.output_text === 'string' && payload.output_text.trim()) {
     return payload.output_text.trim();
   }
@@ -161,7 +161,7 @@ function responseText(payload) {
   return '';
 }
 
-function responseToolCalls(payload) {
+export function responseToolCalls(payload) {
   return (Array.isArray(payload?.output) ? payload.output : [])
     .filter((item) => item?.type === 'function_call' && typeof item.name === 'string')
     .map((item) => {
@@ -280,7 +280,15 @@ export function executeTool(session, name, callArgs, lastClientTurn, { assistant
 
 /* --------------------------------------------------------- the two players */
 
-async function agentTurn({ instructions, input }) {
+/**
+ * THE TWO PLAYERS, EXPORTED SO THERE IS ONLY ONE OF EACH.
+ *
+ * run-live-call.mjs drives the same real live prompt and the same real live
+ * tools against the actual Durable Object. It reuses these rather than growing
+ * a second copy: two implementations of "how the assistant model is called"
+ * would drift, and the harness would stop testing what this one tests.
+ */
+export async function agentTurn({ instructions, input }) {
   return callResponses({
     model: AGENT_MODEL,
     reasoning: { effort: 'low' },
@@ -298,7 +306,7 @@ async function agentTurn({ instructions, input }) {
   });
 }
 
-async function clientTurn(persona, transcript) {
+export async function clientTurn(persona, transcript) {
   const turnDirective = clientTurnDirective(persona, transcript);
   const payload = await callResponses({
     model: CLIENT_MODEL,

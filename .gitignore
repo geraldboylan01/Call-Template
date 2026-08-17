@@ -18,3 +18,4 @@ callers/*
 !callers/EXAMPLE.md
 agent-calls/
 dermot-preview-session.json
+diagnostics/

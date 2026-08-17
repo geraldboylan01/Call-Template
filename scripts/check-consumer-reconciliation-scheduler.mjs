@@ -120,22 +120,69 @@ async function schedulerSession(label, initial = {}) {
 
 /* ---------------------------- confirmation barrier and legacy audit wiring */
 
-assert.deepEqual(plannerReconciliationPreflight('legacy', '', null), {
+/**
+ * THE GATE ASKS WHETHER ANYTHING MATERIAL IS OUTSTANDING.
+ *
+ * It used to ask whether the CONFIRMING turn had been reconciled, which no
+ * conversation can ever satisfy — reconciliation for a turn is scheduled at
+ * `response.done` and the tool call arrives before it, so the watermark sits
+ * one turn behind forever and `confirm_and_run` could not succeed in `shadow`
+ * or `apply` at all. These cases pin the sequence, not just the predicate.
+ */
+
+// 4. Legacy is untouched: no reconciler, no barrier, whatever else is passed.
+assert.deepEqual(plannerReconciliationPreflight('legacy', null, []), {
   ready: true,
   reason: 'legacy'
 });
-assert.equal(plannerReconciliationPreflight('shadow', 'turn-1', {
-  planner_reconciliation_status: 'shadow',
+assert.equal(plannerReconciliationPreflight('legacy', null, [
+  { turnId: 'turn-9', ordinal: 9 }
+]).ready, true, 'legacy must not consult material state at all');
+
+// 1. A pure confirmation, every material turn already reviewed.
+for (const mode of ['shadow', 'apply']) {
+  assert.deepEqual(plannerReconciliationPreflight(mode, {
+    planner_reconciliation_status: 'shadow',
+    planner_reconciled_through_turn_id: 'turn-1'
+  }, []), { ready: true, reason: 'reviewed' },
+  `${mode}: a confirmation carrying no facts must not require a review of itself`);
+}
+
+// 2. A material turn from earlier in the call is still unreviewed.
+for (const mode of ['shadow', 'apply']) {
+  const verdict = plannerReconciliationPreflight(mode, {
+    planner_reconciliation_status: 'shadow',
+    planner_reconciled_through_turn_id: 'turn-1'
+  }, [{ turnId: 'turn-2', ordinal: 2 }]);
+  assert.equal(verdict.ready, false, `${mode}: an unreviewed material turn must block`);
+  assert.equal(verdict.reason, 'reconciliation_pending');
+  assert.deepEqual(verdict.outstandingTurnIds, ['turn-2'],
+    'the refusal must name what it is waiting for');
+}
+
+// 3. The confirming turn carries its own correction, so it blocks itself.
+//    (The sequence that produces this — save_facts marking the turn material
+//    before confirm_and_run reads the gate — is asserted end to end below.)
+for (const mode of ['shadow', 'apply']) {
+  assert.equal(plannerReconciliationPreflight(mode, {
+    planner_reconciliation_status: 'applied',
+    planner_reconciled_through_turn_id: 'turn-4'
+  }, [{ turnId: 'turn-5', ordinal: 5 }]).ready, false,
+  `${mode}: a correction made while confirming must be reviewed before anything runs`);
+}
+
+// 5. A stale or failed pass retires nothing, so its material turn keeps blocking.
+assert.equal(plannerReconciliationPreflight('apply', {
+  planner_reconciliation_status: 'failed',
   planner_reconciled_through_turn_id: 'turn-1'
-}).ready, true);
-assert.equal(plannerReconciliationPreflight('shadow', 'turn-2', {
-  planner_reconciliation_status: 'shadow',
-  planner_reconciled_through_turn_id: 'turn-1'
-}).ready, false);
-assert.equal(plannerReconciliationPreflight('apply', 'turn-1', {
+}, [{ turnId: 'turn-2', ordinal: 2 }]).ready, false,
+'a failed reconciliation must not release the barrier');
+
+// An in-flight pass has decided nothing yet, so it is not yet a clean bill.
+assert.equal(plannerReconciliationPreflight('apply', {
   planner_reconciliation_status: 'pending',
-  planner_reconciled_through_turn_id: 'turn-1'
-}).ready, false);
+  planner_pending_through_turn_id: 'turn-3'
+}, []).ready, false, 'a reconciliation still running must block');
 assert.equal(reconciliationTriggerForProjection({
   readyToConfirm: false,
   analyses: [{ status: 'needs_information', stillNeeded: [{ factId: 'cash_savings' }] }]

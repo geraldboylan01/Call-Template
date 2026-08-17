@@ -1162,6 +1162,44 @@ function fallbackAnswerType(path) {
   return 'text';
 }
 
+/**
+ * THE CANONICAL FIELDS EACH COLLECTION RECORD HOLDS, DERIVED FROM THE MAPPINGS.
+ *
+ * ONE SOURCE FOR A NAME THAT WAS ABOUT TO HAVE FOUR. That a pension's money
+ * lives in `currentValue`, and an income's in `grossAnnual` or `netAnnual`, is
+ * already stated here — as the `/pensions/*​/currentValue` and
+ * `/incomeSources/*​/grossAnnual` path patterns. It was ALSO hand-written as
+ * prose in the live prompt, was about to be hand-written a third time for the
+ * reconciler, and is documented a fourth time in the prompt pack for a
+ * different layer entirely.
+ *
+ * Not knowing the name cost three paid probes: a real planner wrote a perfectly
+ * shaped income record carrying `amount` because nothing told it the key, and
+ * the projector wrote it raw and dropped the field. So the names are read from
+ * the registry that defines them, by every surface that needs to state them.
+ *
+ * @returns {Record<string, string[]>} collection name -> canonical field names
+ */
+export function canonicalCollectionFields() {
+  const byCollection = {};
+  for (const definition of SEMANTIC_FACT_CATALOGUE) {
+    for (const mapping of definition.mappings || []) {
+      const pattern = mapping?.pathPattern;
+      // Only `/collection/*/field` says anything about a RECORD's shape. A
+      // collection root is the collection itself, and a plain scalar path
+      // belongs to the household, not to a member of a collection.
+      if (typeof pattern !== 'string' || !pattern.includes('/*/')) continue;
+      const [, collection, , ...rest] = pattern.split('/');
+      const field = rest.join('.');
+      if (!collection || !field) continue;
+      byCollection[collection] = byCollection[collection] || [];
+      if (!byCollection[collection].includes(field)) byCollection[collection].push(field);
+    }
+  }
+  for (const collection of Object.keys(byCollection)) byCollection[collection].sort();
+  return byCollection;
+}
+
 export function getSemanticFactDefinition(factId) {
   return FACTS_BY_ID.get(factId) || null;
 }
