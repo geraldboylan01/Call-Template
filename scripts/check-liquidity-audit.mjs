@@ -438,6 +438,62 @@ const cash = (assetId, ownerIds, amount, label = 'Savings') => ({
   pass('a couple who have both retired get the retired guide');
 }
 
+{
+  // THE MIXED HOUSEHOLD. The larger buffer exists because earned income has
+  // stopped, so a household with an earner is a working household. This read
+  // `primaryPerson` alone, which told a retired client with a working partner
+  // to hold twenty-four months of spending rather than six.
+  const couple = (primaryStatus, partnerStatus) => profileOf({
+    assets: [cash('a1', ['household'], 12_000)],
+    primaryPerson: { personId: 'primary', role: 'primary', employmentStatus: primaryStatus, age: 68 },
+    partner: { personId: 'partner', role: 'partner', employmentStatus: partnerStatus, age: 59 }
+  });
+  const retiredFirst = couple('retired', 'employee');
+  const workingFirst = couple('employee', 'retired');
+  assert.equal(resolveLiquidityCohort(retiredFirst), 'working');
+  assert.equal(resolveLiquidityCohort(workingFirst), 'working');
+  assert.equal(
+    resolveLiquidityCohort(retiredFirst),
+    resolveLiquidityCohort(workingFirst),
+    'and the answer cannot depend on which of them was entered first'
+  );
+  const input = buildLiquidityInput(retiredFirst);
+  assert.equal(input.targetBufferMonths, WORKING.targetBufferMonths);
+  assert.equal(
+    computeLiquidityReserve(input).targetCash,
+    12_000,
+    '2,000 a month times six, not the 48,000 the retired guide would have asked for'
+  );
+  pass('a household with one earner is a working household, whichever way round it was entered');
+}
+
+{
+  // One known earner settles it even where the other's position was never
+  // established: the household demonstrably has earned income.
+  const profile = profileOf({
+    assets: [cash('a1', ['household'], 12_000)],
+    primaryPerson: { personId: 'primary', role: 'primary', employmentStatus: 'unknown', age: 63 },
+    partner: { personId: 'partner', role: 'partner', employmentStatus: 'employee', age: 58 }
+  });
+  assert.equal(resolveLiquidityCohort(profile), 'working');
+  assert.equal(getLiquidityReadiness(profile).status, 'ready_with_assumptions',
+    'and the module no longer asks a question the household has already answered');
+  pass('one known earner settles the cohort even where the other position is unknown');
+}
+
+{
+  // A stated household retirement status is a statement about the household,
+  // so it still outranks the per-person reading.
+  const profile = profileOf({
+    assets: [cash('a1', ['household'], 12_000)],
+    primaryPerson: { personId: 'primary', role: 'primary', employmentStatus: 'employee', age: 66 },
+    partner: { personId: 'partner', role: 'partner', employmentStatus: 'employee', age: 64 },
+    assumptions: { calculationDateIso: TODAY, values: { persona: { retirementStatus: 'older_retiree' } } }
+  });
+  assert.equal(resolveLiquidityCohort(profile), 'retired');
+  pass('a stated household retirement status still outranks the per-person reading');
+}
+
 /* ------------------------------------------------------- input contract */
 
 {

@@ -27,6 +27,35 @@ const WORKING_EMPLOYMENT_CONTEXTS = new Set([
   'employed', 'employee', 'self_employed', 'contractor', 'company_director', 'owner_manager'
 ]);
 
+/** One person's own position, from their employment record and their pay. */
+function personCohort(profile, person) {
+  if (!person) return null;
+  const employmentStatus = String(person.employmentStatus || '').trim().toLowerCase();
+  if (employmentStatus === 'retired') return 'retired';
+  if (['employee', 'self_employed', 'contractor'].includes(employmentStatus)) return 'working';
+  // Employment income is single-owner, so this is genuinely this person's pay
+  // and not a household figure standing in for it.
+  if (person.personId && grossEmploymentIncome(profile, person.personId) > 0) return 'working';
+  return null;
+}
+
+/**
+ * WHICH RESERVE GUIDE APPLIES TO THIS HOUSEHOLD.
+ *
+ * The buffer is larger in retirement because earned income has stopped. A
+ * household where somebody is still earning has not stopped earning, so the
+ * retired guide applies only when EVERY adult has retired -- which is what the
+ * policy's own wording says: "a working household", "a retired household".
+ *
+ * This used to read `primaryPerson` alone, which is not a rule so much as an
+ * accident of who was entered first: a retired client with a working partner
+ * was told to hold twenty-four months of spending in cash rather than six --
+ * four times the target on the same facts -- and entering the couple the other
+ * way round produced the opposite answer.
+ *
+ * A stated household retirement status still wins where the client has given
+ * one; it is a statement about the household, not about one person.
+ */
 export function resolveLiquidityCohort(profile) {
   const persona = profile?.assumptions?.values?.persona || {};
   const retirementStatus = String(persona.retirementStatus || '').trim().toLowerCase();
@@ -37,12 +66,12 @@ export function resolveLiquidityCohort(profile) {
   if (employmentContext === 'retired') return 'retired';
   if (WORKING_EMPLOYMENT_CONTEXTS.has(employmentContext)) return 'working';
 
-  const employmentStatus = String(profile?.primaryPerson?.employmentStatus || '').trim().toLowerCase();
-  if (employmentStatus === 'retired') return 'retired';
-  if (['employee', 'self_employed', 'contractor'].includes(employmentStatus)) return 'working';
-
-  const primaryPersonId = profile?.primaryPerson?.personId;
-  if (primaryPersonId && grossEmploymentIncome(profile, primaryPersonId) > 0) return 'working';
+  const people = [profile?.primaryPerson, profile?.partner].filter(Boolean);
+  const cohorts = people.map((person) => personCohort(profile, person));
+  // One earner is enough to make this a working household, even where the
+  // other's position was never established.
+  if (cohorts.includes('working')) return 'working';
+  if (cohorts.length > 0 && cohorts.every((cohort) => cohort === 'retired')) return 'retired';
   return null;
 }
 

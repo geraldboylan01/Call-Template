@@ -34,7 +34,7 @@ Verified against the registry, not assumed.
 
 | Module | Kind | Status | Engine | Consumer | Prereq | `validateInput` |
 | --- | --- | --- | --- | --- | --- | --- |
-| `liquidity_analysis` | calculation | active | `liquidity_reserve.js` | yes | — | no |
+| `liquidity_analysis` | calculation | active | `liquidity_reserve.js` | yes | — | **yes** |
 | `house_purchase` | calculation | beta | `house_purchase/engine.js` | yes | `liquidity_analysis` | **yes** |
 | `pension_projection` | calculation | beta | `pension_math.js` | yes | — | no |
 | `net_retirement_cashflow` | calculation | beta | `net_retirement_math.js` | **no** | — | no |
@@ -113,8 +113,8 @@ module size.
 | --- | --- | --- |
 | 1 | `house_purchase` | Done. Known failure, conversational side already proven. |
 | 2 | `personal_balance_sheet` | **Done.** Ownership never double-counts; the engine now refuses a position supplied twice. |
-| 3 | `liquidity_analysis` | Next. `house_purchase`'s prerequisite, so its correctness is load-bearing for a module already audited, and its reserve policy is now known to agree with the balance sheet's. Small engine, fast to close. |
-| 4 | `mortgage_math` (shared engine) | One deep amortisation audit serving two modules. Highest reuse per unit of effort. |
+| 3 | `liquidity_analysis` | **Done.** Arithmetic proved independently; an uncomparable reserve no longer reads as a pass, and the cohort rule no longer depends on who was entered first. |
+| 4 | `mortgage_math` (shared engine) | Next. One deep amortisation audit serving two modules. Highest reuse per unit of effort. |
 | 5 | `mortgage_analysis` + `loan_analysis` | Selection, mapping and output contract only, on the engine proven at step 4. |
 | 6 | `pension_projection` | Largest assumption surface and the product-type rules (PRB, DB, ARF) that must not blur. |
 | 7 | `net_retirement_cashflow` | Shares retirement assumptions with step 6; audit after them, and note it is adviser-path only. |
@@ -155,38 +155,49 @@ Independent arithmetic is the real check; the difference is asserted for what
 it is worth and no more. No rounding tolerance is used, because every amount in
 these cases is a whole number of euro — a tolerance would only hide error.
 
-### 3. `liquidity_analysis`
+### 3. `liquidity_analysis` — AUDITED
 
-**Key outputs:** `currentCash`, `monthlyExpenditure`, `monthsCovered`,
-`minimumCash`, `targetCash`, `surplusCash`/`shortfallCash`.
+Checked against arithmetic written separately from the engine, in
+`scripts/check-liquidity-audit.mjs`. 27 checks. An existing test compares the
+adapter against `computeLiquidityReserve(input)`; that proves the adapter has
+not drifted from the engine and is **not** evidence the engine is right.
 
-**Input-contract invariants:** `monthsCovered === currentCash /
-monthlyExpenditure`; `minimumCash === monthlyExpenditure × minimumBufferMonths`
-and likewise for target; exactly one of surplus/shortfall is non-zero;
-`currentCash` matches the same cash population `house_purchase` uses.
+**What was already right.** €12,000 against €2,000 a month is 6.0 months, a
+€6,000 floor and a €12,000 target; read as retired the same household targets
+€48,000 and reports a true €36,000 shortfall. The 3/6 and 12/24 guides come
+from the versioned policy, are applied once, and the run is stamped with the
+policy version. Zero or unknown spending yields nulls rather than `Infinity`.
+The target can never fall below the floor. An annual spending figure gives an
+identical reserve to the monthly one. Cash is a household total, so ownership
+shape changes nothing and a jointly held holding counts once; investments and
+property never inflate the reserve; foreign currency is excluded and disclosed.
+Liquidity and the balance sheet agree on spending, spendable cash and months of
+cover.
 
-**Hand-checkable case:** €12,000 cash, €2,000/month spending, working
-household → 6.0 months covered, €6,000 minimum, €12,000 target, zero
-shortfall. Every number checkable mentally.
+**Defect 1 — a gap of zero is a claim.** `surplusCash` and `shortfallCash` both
+fell back to `0` whenever the target or the cash could not be established, and
+every reader downstream decides the household is fine by asking whether the
+shortfall is above zero. A household whose monthly spending had never been
+captured was told, in a positive tone, that its reserve was at or above target.
+Unknown is now `null` — falsy in the same `> 0` guards those readers already
+use — and the engine states its own `position`, including `'unknown'`.
 
-**Realistic case:** couple with €25,000 across three accounts and €4,100/month
-spending.
+**Defect 2 — the cohort ignored the partner.** `resolveLiquidityCohort` read
+`primaryPerson` alone, so a retired client with a working partner was told to
+hold 24 months of spending rather than 6 — four times the target on the same
+facts — and entering the couple the other way round produced the opposite
+answer. The retired guide now applies only when **every** adult has retired,
+which is what the policy's own wording says ("a working household", "a retired
+household") and why the buffer is larger in retirement at all: earned income
+has stopped. A stated household retirement status still outranks the per-person
+reading. **This was a product decision, taken by the owner, not a judgement
+made here.**
 
-**Edge cases:** zero spending (division by zero must not yield `Infinity` in
-an output); zero cash; retired status flipping the 3/6 buffer to 12/24;
-spending known only as an annual total.
-
-**Household/ownership risks:** low — it aggregates. Confirm it aggregates
-**once**, including `'household'`-owned and unattributed cash.
-
-**Assumption risks:** the 3/6 and 12/24 buffers and `policyVersion` must come
-from `PLANEIR_ASSUMPTIONS.liquidity` and be applied once. Retired-vs-working
-selection is the switch to test, including a couple where only one person is
-retired.
-
-**Carried-forward:** the essential-versus-total monthly spending definition
-(item C) blocks this module by design. Fail-closed is correct — do not
-substitute one for the other to make a test pass.
+**Also added.** An input contract. The engine is deliberately forgiving — right
+for a renderer handling a half-filled form, wrong as the last word before a
+client is given a number: a buffer override of `-3` or `0` silently became the
+policy default, so an adviser could type one figure and the illustration use
+another. That now reports as `module_input_invalid`.
 
 ### 4. `mortgage_math` — shared engine, deep audit
 
@@ -340,8 +351,9 @@ costs and the 18/4 start and duration come from the same versioned record.
 
 ## Cross-cutting work, once, for every module
 
-- **Adopt `validateInput` across the registry.** `house_purchase` and
-  `personal_balance_sheet` declare it; the remaining six do not. Each module declaring its own normaliser moves an input
+- **Adopt `validateInput` across the registry.** `house_purchase`,
+  `personal_balance_sheet` and `liquidity_analysis` declare it; the remaining
+  five do not. Each module declaring its own normaliser moves an input
   contract breach out of the run phase, where it otherwise masquerades as an
   engine crash. Do this as each module is audited.
 - **Reconcile aggregate against decomposition** wherever both exist.
