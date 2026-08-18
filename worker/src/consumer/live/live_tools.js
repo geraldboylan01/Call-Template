@@ -29,6 +29,11 @@ import { classifySpokenPlanConfirmation } from '../realtime_completion.js';
 import { getCurrentProfile, getSessionRow } from '../repository.js';
 import { buildConfirmedRealtimeFactSummary, formattedFactValue } from '../realtime_fact_mapper.js';
 import { MODULE_IDS } from '../../../../js/planning/contracts.js';
+import {
+  MODULE_FAILURE_CODES,
+  MODULE_FAILURE_CODE_VALUES,
+  clientFailureMessage
+} from '../../../../js/planning/module_failures.js';
 import { getSemanticFactDefinition, resolveSemanticFact } from '../../../../js/planning/semantic_facts.js';
 
 const MAX_FACTS_PER_CALL = 10;
@@ -1621,15 +1626,77 @@ async function executeConfirmAndRun(_args, deps) {
     expectedRevision
   });
 
+  const status = executed.analysisPlan?.status || 'unknown';
+  if (status !== 'complete') {
+    // A run that did not complete used to come back as a bare `ok:false` with
+    // no reason at all, so the meeting had nothing to say and nothing to act
+    // on. It now names the reason and carries a sentence the client can hear.
+    const code = status === 'needs_information'
+      ? MODULE_FAILURE_CODES.READINESS_NOT_MET
+      : (executed.failureCode || MODULE_FAILURE_CODES.UNKNOWN);
+    return {
+      ok: false,
+      code,
+      status,
+      failedModuleId: executed.failedModuleId || null,
+      retryable: code === MODULE_FAILURE_CODES.READINESS_NOT_MET,
+      speakableText: executed.result?.speakableText || clientFailureMessage(code),
+      message: clientFailureMessage(code),
+      completedCount: (executed.result?.completedModuleIds || []).length
+    };
+  }
   return {
-    ok: executed.analysisPlan?.status === 'complete',
-    status: executed.analysisPlan?.status || 'unknown',
+    ok: true,
+    status,
     // Deterministic, server-owned copy. The model must speak it as given and
     // must never recompute or embellish anything in it.
     speakableText: executed.result?.speakableText || '',
     completedCount: (executed.result?.completedModuleIds || []).length,
     navigationTarget: '/plan/#results',
     result: executed.result || null
+  };
+}
+
+/**
+ * Codes that describe why the analysis could not run and are worth telling the
+ * client about. Anything else is an infrastructure fault, which the client
+ * hears as a generic failure rather than as a fact they need to supply.
+ */
+const CONFIRM_AND_RUN_STATE_CODES = Object.freeze({
+  analysis_plan_empty: MODULE_FAILURE_CODES.UNSUPPORTED_STATE,
+  decision_topic_required: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  goal_priority_required: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  analysis_missing_information: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  analysis_module_failed: MODULE_FAILURE_CODES.EXECUTION_FAILED,
+  analysis_not_ready: MODULE_FAILURE_CODES.EXECUTION_FAILED,
+  profile_confirmation_required: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  profile_revision_conflict: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  analysis_plan_not_confirmed: MODULE_FAILURE_CODES.READINESS_NOT_MET
+});
+
+/**
+ * Turn a thrown analysis failure into an ordinary structured tool result.
+ *
+ * Without this the throw reached the session's catch-all, which answers every
+ * broken tool with "That did not save. Do not mention it and do not ask again"
+ * -- correct for a fact write nobody is waiting on, and exactly wrong for the
+ * one call the client just agreed to and is waiting to hear the answer from.
+ *
+ * `diagnosticCode` is the server's own code and is recorded, not spoken.
+ */
+function confirmAndRunFailure(error) {
+  const consumerCode = error instanceof ConsumerError ? error.code : null;
+  const code = (error instanceof ConsumerError && MODULE_FAILURE_CODE_VALUES.includes(error.details?.failureCode))
+    ? error.details.failureCode
+    : (CONFIRM_AND_RUN_STATE_CODES[consumerCode] || MODULE_FAILURE_CODES.UNKNOWN);
+  return {
+    ok: false,
+    code,
+    diagnosticCode: consumerCode || 'live_tool_failed',
+    failedModuleId: error instanceof ConsumerError ? (error.details?.failedModuleId || null) : null,
+    retryable: code === MODULE_FAILURE_CODES.READINESS_NOT_MET,
+    speakableText: clientFailureMessage(code),
+    message: clientFailureMessage(code)
   };
 }
 
@@ -1653,7 +1720,11 @@ export async function executeLiveTool(name, args, deps) {
   assertLiveToolName(name);
   if (name === 'save_facts') return executeSaveFacts(args, deps);
   if (name === 'get_state') return liveStateProjection(await deps.loadContext());
-  return executeConfirmAndRun(args, deps);
+  try {
+    return await executeConfirmAndRun(args, deps);
+  } catch (error) {
+    return confirmAndRunFailure(error);
+  }
 }
 
-export { liveStateProjection };
+export { confirmAndRunFailure, liveStateProjection };

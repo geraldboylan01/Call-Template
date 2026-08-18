@@ -1,5 +1,6 @@
 import { MODULE_IDS } from './contracts.js';
 import { normalizeHouseholdProfile } from './profile.js';
+import { MODULE_FAILURE_CODES, ModuleFailureError } from './module_failures.js';
 import { liquidityConversationGuidance } from '../liquidity_reserve.js';
 import { pensionConversationGuidance } from '../pension_math.js';
 import {
@@ -10,7 +11,8 @@ import {
 import {
   buildHousePurchaseInput,
   getHousePurchaseReadiness,
-  runHousePurchaseAnalysis
+  runHousePurchaseAnalysis,
+  validateHousePurchaseInput
 } from './adapters/house_purchase.js';
 import {
   buildNetRetirementInput,
@@ -362,6 +364,7 @@ register({
   canRun: getHousePurchaseReadiness,
   explainSelection: () => ['The household has an active home-purchase goal.', 'The planner keeps emergency cash separate from deposit capacity.'],
   buildInput: buildHousePurchaseInput,
+  validateInput: validateHousePurchaseInput,
   run: runHousePurchaseAnalysis
 });
 
@@ -855,19 +858,72 @@ export function getModuleReadiness(moduleId, rawProfile) {
   return definition.canRun(normalizeHouseholdProfile(rawProfile));
 }
 
-export async function runPlanningModule(moduleId, rawProfile, context) {
-  const definition = getPlanningModuleDefinition(moduleId);
-  if (!definition) throw new Error(`Unknown planning module: ${moduleId}`);
-  if (typeof definition.run !== 'function' || typeof definition.buildInput !== 'function') {
-    throw new Error(`${moduleId} does not have a deterministic runtime engine.`);
+/**
+ * Build a module's engine input and hold it to the engine's own contract.
+ *
+ * The phase matters, not just the throw. An input that fails the engine's
+ * schema is a mapping defect in this layer; an engine that throws on input it
+ * accepted is a calculation defect. They read identically from the outside, so
+ * the boundary is drawn here, once, for every module.
+ *
+ * `validateInput` is the module's own normaliser. Declaring it moves an input
+ * contract breach out of the run phase, where it would otherwise masquerade as
+ * an engine crash.
+ */
+export function buildPlanningModuleInput(definition, profile) {
+  let input;
+  try {
+    input = definition.buildInput(profile);
+    if (typeof definition.validateInput === 'function') definition.validateInput(input);
+  } catch (error) {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.INPUT_INVALID,
+      definition.id,
+      error instanceof Error ? error.message : String(error),
+      error
+    );
   }
+  return input;
+}
+
+function assertRunnableModule(moduleId) {
+  const definition = getPlanningModuleDefinition(moduleId);
+  if (!definition) {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.UNSUPPORTED_STATE,
+      moduleId,
+      `Unknown planning module: ${moduleId}`
+    );
+  }
+  if (typeof definition.run !== 'function' || typeof definition.buildInput !== 'function') {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.UNSUPPORTED_STATE,
+      moduleId,
+      `${moduleId} does not have a deterministic runtime engine.`
+    );
+  }
+  return definition;
+}
+
+export async function runPlanningModule(moduleId, rawProfile, context) {
+  const definition = assertRunnableModule(moduleId);
   const profile = normalizeHouseholdProfile(rawProfile);
-  const input = definition.buildInput(profile);
-  return definition.run(input, {
-    ...context,
-    moduleVersion: definition.moduleVersion,
-    baseCurrency: profile.preferences.baseCurrency
-  });
+  const input = buildPlanningModuleInput(definition, profile);
+  try {
+    return await definition.run(input, {
+      ...context,
+      moduleVersion: definition.moduleVersion,
+      baseCurrency: profile.preferences.baseCurrency
+    });
+  } catch (error) {
+    if (error instanceof ModuleFailureError) throw error;
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.EXECUTION_FAILED,
+      moduleId,
+      error instanceof Error ? error.message : String(error),
+      error
+    );
+  }
 }
 
 /**
@@ -877,13 +933,9 @@ export async function runPlanningModule(moduleId, rawProfile, context) {
  * scoping, readiness, and engine/module versions are bound by the Worker layer.
  */
 export async function getPlanningModuleRunIdentity(moduleId, rawProfile, context = {}) {
-  const definition = getPlanningModuleDefinition(moduleId);
-  if (!definition) throw new Error(`Unknown planning module: ${moduleId}`);
-  if (typeof definition.run !== 'function' || typeof definition.buildInput !== 'function') {
-    throw new Error(`${moduleId} does not have a deterministic runtime engine.`);
-  }
+  const definition = assertRunnableModule(moduleId);
   const profile = normalizeHouseholdProfile(rawProfile);
-  const input = definition.buildInput(profile);
+  const input = buildPlanningModuleInput(definition, profile);
   const scenarioOverrides = context.scenarioOverrides || {};
   const dependencyPaths = [...new Set([
     ...definition.requiredProfilePaths,

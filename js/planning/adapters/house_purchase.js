@@ -1,6 +1,7 @@
 import {
   computeHousePurchaseProjection,
-  createDefaultHousePurchaseInputs
+  createDefaultHousePurchaseInputs,
+  normalizeHousePurchaseInputs
 } from '../../house_purchase/index.js';
 import {
   baseCurrency,
@@ -56,6 +57,58 @@ function applicantFor(profile, person, index) {
   };
 }
 
+function roundCents(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function cashAssetsInBaseCurrency(profile, currency) {
+  return (profile.assets || [])
+    .filter((asset) => asset.type === 'cash')
+    .map((asset) => ({ asset, amount: moneyAmount(asset.currentValue, currency) }))
+    .filter((entry) => entry.amount !== null);
+}
+
+// Cash names an applicant only when the client attributed it to that person.
+// Joint cash ("we have 25,000 saved") is stored against the household, so it
+// belongs to the buyers together rather than to each of them in full.
+function applicantOwnersOfCash(asset, applicantIds) {
+  const named = applicantIds.filter((id) => asset.ownerIds.includes(id));
+  return named.length > 0 ? named : applicantIds;
+}
+
+function hasSharedCash(profile, currency, applicantIds) {
+  if (applicantIds.length < 2) return false;
+  return cashAssetsInBaseCurrency(profile, currency)
+    .some(({ asset }) => applicantOwnersOfCash(asset, applicantIds).length > 1);
+}
+
+// `cashSavingsContributions` is a decomposition of `currentCashSavings`, not a
+// second measurement of it: the engine contract requires the rows to total the
+// household cash exactly, and the engine itself never reads the split. So the
+// household total stays counted once and is shared between the owners a cash
+// holding actually has -- attributing a joint holding to both applicants in
+// full would double the household's deposit on paper.
+function cashSavingsContributions(profile, applicants, currency, totalCash) {
+  const applicantIds = applicants.map((applicant) => applicant.id);
+  if (applicantIds.length === 0) return [];
+  const shares = new Map(applicantIds.map((id) => [id, 0]));
+  for (const { asset, amount } of cashAssetsInBaseCurrency(profile, currency)) {
+    const owners = applicantOwnersOfCash(asset, applicantIds);
+    const share = amount / owners.length;
+    owners.forEach((id) => shares.set(id, shares.get(id) + share));
+  }
+  const rows = applicantIds.map((id) => ({ ownerId: id, amount: roundCents(shares.get(id)) }));
+  // Rounding each share to the cent can leave a fraction over. It settles on
+  // the largest row so the split still totals the household cash exactly, which
+  // is the invariant the engine checks.
+  const residual = roundCents(totalCash - rows.reduce((total, row) => total + row.amount, 0));
+  if (residual !== 0) {
+    const target = rows.reduce((best, row) => (row.amount > best.amount ? row : best), rows[0]);
+    target.amount = roundCents(target.amount + residual);
+  }
+  return rows;
+}
+
 export function getHousePurchaseReadiness(profile) {
   const moduleIds = ['house_purchase'];
   const goal = findGoal(profile, 'buy_home');
@@ -107,6 +160,13 @@ export function getHousePurchaseReadiness(profile) {
     { key: 'purchaseCosts', value: 'dated engine defaults', reason: 'The existing deterministic engine owns buying-cost estimates.' },
     { key: 'mortgageIllustration', value: 'dated engine defaults', reason: 'The existing engine owns its illustration rate and term.' }
   ];
+  if (hasSharedCash(profile, baseCurrency(profile), people.map((person) => person.personId))) {
+    assumptionsUsed.push({
+      key: 'cashSavingsContributions',
+      value: 'shared evenly between the buyers',
+      reason: 'Cash held jointly was not attributed to one buyer, so the split shown is even. It does not change the illustration.'
+    });
+  }
   if (!goal.targetDate) {
     assumptionsUsed.push({ key: 'targetPurchaseDate', value: null, reason: 'No target date was provided; affordability still runs without a deadline.' });
   }
@@ -142,6 +202,7 @@ export function buildHousePurchaseInput(profile) {
   const applicants = people.map((person, index) => applicantFor(profile, person, index));
   const currency = baseCurrency(profile);
   const netIncomeAnnual = netHouseholdIncome(profile);
+  const totalCash = cashAmount(profile);
   const monthlyEssential = moneyAmount(profile.expenses?.monthlyEssential, currency)
     ?? (moneyAmount(profile.expenses?.annualTotal, currency) === null
       ? null
@@ -162,13 +223,8 @@ export function buildHousePurchaseInput(profile) {
     lendingCategory: buyerStatus,
     applicationType: people.length > 1 ? 'joint' : 'single',
     applicants,
-    currentCashSavings: cashAmount(profile),
-    cashSavingsContributions: applicants.map((applicant) => ({
-      ownerId: applicant.id,
-      amount: (profile.assets || [])
-        .filter((asset) => asset.type === 'cash' && asset.ownerIds.includes(applicant.id))
-        .reduce((total, asset) => total + (moneyAmount(asset.currentValue, currency) || 0), 0)
-    })),
+    currentCashSavings: totalCash,
+    cashSavingsContributions: cashSavingsContributions(profile, applicants, currency, totalCash),
     amountRingfencedForOtherGoals: Number.isFinite(settings.amountRingfencedForOtherGoals)
       ? settings.amountRingfencedForOtherGoals
       : 0,
@@ -199,6 +255,15 @@ export function buildHousePurchaseInput(profile) {
     helpToBuy: { ...defaults.helpToBuy, ...(settings.helpToBuy || {}) },
     firstHomeScheme: { ...defaults.firstHomeScheme, ...(settings.firstHomeScheme || {}) }
   };
+}
+
+/**
+ * Hold the generated payload to the engine's own contract before the engine
+ * sees it, so a mapping defect in this file is reported as an invalid input
+ * rather than as an engine crash.
+ */
+export function validateHousePurchaseInput(input) {
+  normalizeHousePurchaseInputs(input);
 }
 
 export async function runHousePurchaseAnalysis(input, context) {
