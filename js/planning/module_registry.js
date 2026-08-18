@@ -40,7 +40,8 @@ import {
 import {
   buildPersonalBalanceSheetInput,
   getPersonalBalanceSheetReadiness,
-  runPersonalBalanceSheet
+  runPersonalBalanceSheet,
+  validatePersonalBalanceSheetInput
 } from './adapters/personal_balance_sheet.js';
 import { readJsonPointer, sha256Json } from './utils.js';
 import {
@@ -595,6 +596,7 @@ register({
   canRun: getPersonalBalanceSheetReadiness,
   explainSelection: () => ['A reconciled personal balance sheet provides a useful view of the household’s overall position.'],
   buildInput: buildPersonalBalanceSheetInput,
+  validateInput: validatePersonalBalanceSheetInput,
   run: runPersonalBalanceSheet
 });
 

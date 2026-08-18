@@ -41,7 +41,7 @@ Verified against the registry, not assumed.
 | `mortgage_analysis` | calculation | beta | `mortgage_math.js` | yes | — | no |
 | `loan_analysis` | calculation | beta | `mortgage_math.js` | yes | — | no |
 | `college_funding` | calculation | beta | `college_funding_math.js` | yes | — | no |
-| `personal_balance_sheet` | calculation | beta | `personal_balance_sheet.js` | yes | — | no |
+| `personal_balance_sheet` | calculation | beta | `personal_balance_sheet.js` | yes | — | **yes** |
 
 Two corrections to the working list:
 
@@ -56,6 +56,21 @@ Two corrections to the working list:
 
 `retirement_goal_analysis` and `scenario_analysis` are compositions with no
 engine of their own, and the adviser-only relief modules are out of scope.
+
+## Ownership model
+
+| Thing | Owner field | Arity | `'household'` |
+| --- | --- | --- | --- |
+| `employment`, `self_employment` income | `ownerIds` | exactly one real person | invalid |
+| `pension`, `state_pension` income | `ownerIds` | exactly one real person | invalid |
+| `rental`, `other` income | `ownerIds` | one or two real people | invalid |
+| pension positions | `ownerId` | exactly one real person | invalid |
+| assets, liabilities, properties, businesses | `ownerIds` | one or more | **legal** |
+| combined household figures | `householdIncome` (not a position) | n/a | n/a |
+
+A combined household figure may answer a module contract that asks for a
+combined household figure. It can never satisfy a readiness requirement for a
+specific person's income.
 
 ## The defect class Phase 5 exists to find
 
@@ -76,17 +91,18 @@ Two consequences for the rest of the audit:
 1. **Wherever a module computes both a household total and a per-owner split,
    assert that the split reconciles to the total.** That single invariant is
    the highest-yield test in this phase.
-2. **A silent version of this defect is already latent.** `ownerId: 'household'`
-   is a legal value on the singular-owner collections (`incomeSources`,
-   `pensions`), and `normalizeHouseholdProfile` accepts it, but every
-   per-person consumer matches on a person id and so cannot see it. A
-   household-owned income counts in `netHouseholdIncome` while contributing
-   zero to every applicant's `grossAnnualIncome`. Today both modules probed
-   fail closed at readiness rather than producing a wrong number
-   (`house_purchase` blocks on "no applicant has income"; `pension_projection`
-   returns `missing_information`), so this is latent, not live — but it is the
-   same defect with the loud failure removed. Each module's audit must state
-   explicitly what it does with a `'household'`-owned singular record.
+2. **The silent version of this defect is closed.** `ownerId: 'household'` was
+   a legal value on the singular-owner collections, and every per-person
+   consumer matched on a person id and so could not see it: a household-owned
+   income counted in `netHouseholdIncome` while contributing zero to every
+   applicant's `grossAnnualIncome`. Ownership now follows what the thing is —
+   single-owner for salaries, trades, pensions in payment, State Pension
+   entitlements and pension positions; `ownerIds` naming both real people for
+   genuinely joint income; and a `householdIncome` aggregate that is not a
+   position and can never answer "what does each of you earn?". The pseudo-owner
+   remains legal only on the `ownerIds` collections (assets, liabilities,
+   properties, businesses), where "the household owns this" needs no per-person
+   decomposition to be correct.
 
 ## Audit order
 
@@ -96,8 +112,8 @@ module size.
 | # | Module | Why here |
 | --- | --- | --- |
 | 1 | `house_purchase` | Done. Known failure, conversational side already proven. |
-| 2 | **`personal_balance_sheet`** | The remaining home of the defect class above, and the one place it fails silently. See recommendation below. |
-| 3 | `liquidity_analysis` | `house_purchase`'s prerequisite, so its correctness is load-bearing for a module already audited. Small engine, fast to close. |
+| 2 | `personal_balance_sheet` | **Done.** Ownership never double-counts; the engine now refuses a position supplied twice. |
+| 3 | `liquidity_analysis` | Next. `house_purchase`'s prerequisite, so its correctness is load-bearing for a module already audited, and its reserve policy is now known to agree with the balance sheet's. Small engine, fast to close. |
 | 4 | `mortgage_math` (shared engine) | One deep amortisation audit serving two modules. Highest reuse per unit of effort. |
 | 5 | `mortgage_analysis` + `loan_analysis` | Selection, mapping and output contract only, on the engine proven at step 4. |
 | 6 | `pension_projection` | Largest assumption surface and the product-type rules (PRB, DB, ARF) that must not blur. |
@@ -106,45 +122,38 @@ module size.
 
 ## Per-module audit specifications
 
-### 2. `personal_balance_sheet`
+### 2. `personal_balance_sheet` — AUDITED
 
-**Key outputs to verify independently:** `grossAssets`, `totalLiabilities`,
-`netWorth`, `spendableReserves`, `reserveMonths`, per-bucket totals.
+Every figure was checked against arithmetic written separately from the engine,
+in `scripts/check-personal-balance-sheet-audit.mjs`. 19 checks.
 
-**Input-contract invariants:**
-- `grossAssets - totalLiabilities - netWorth === 0`. The engine already
-  computes this as `reconciliationDifference`; the audit holds it at zero
-  rather than merely reporting it.
-- Bucket totals sum to `grossAssets` with no holding in two buckets and none
-  in none.
-- Every asset, liability, property and business in the profile appears exactly
-  once; count the inputs and the classified outputs and compare.
-- A property and its `associatedLiabilityIds` mortgage are not netted twice.
+**What was already right.** PBS reads no ownership at all: it aggregates each
+position once from its own collection, so a joint holding cannot be doubled by
+having two owners. A joint €100,000 asset contributes €100,000. A partner-only
+holding appears at full value without being reassigned. The generic/specialist
+overlap guard works — a home recorded both as a property asset and as a
+property record blocks the sheet until someone says which it is, and the
+unreviewed record stays out either way. Negative net worth is reported, not
+clamped. A holding with no value, or one in another currency, fails closed and
+names the field; the cross-currency reason says the currency rather than
+claiming the figure is missing. PBS and `liquidity_analysis` draw the same
+monthly-spending basis, so their months-of-cover figures agree.
 
-**Hand-checkable case:** one €300,000 property, one €200,000 mortgage, one
-€10,000 cash holding. Net worth is €110,000. Nothing else.
+**The defect found.** The engine guarded its buckets, its signs and its
+finiteness but never that a position appears once. The same €50,000 holding
+supplied twice became €100,000 of net worth — and `reconciliationDifference`
+still read zero, because doubling both sides of a consistent sum keeps it
+consistent. Fixed by asserting position identity, where identity is the source
+collection **plus** the id: a cash holding and a business interest may
+legitimately share an id while being two different things, and rejecting that
+would refuse a correct balance sheet.
 
-**Realistic case:** couple, jointly owned home with mortgage, one individually
-owned car loan, joint cash, one individually held investment, one pension.
-
-**Edge cases:** zero assets; liabilities exceeding assets (negative net worth
-must be reported, not floored at zero); an asset with no `currentValue`; a
-liability with no balance; cross-currency holdings excluded consistently from
-both the bucket and the total.
-
-**Household/ownership risks — the priority here.** This module reads every
-`ownerIds` collection. Test each holding under all four ownership shapes:
-sole, both-persons, `'household'`, and empty. A joint holding must contribute
-its value **once** to household net worth. If a per-owner view exists, it must
-reconcile to the household total.
-
-**Assumption risks:** `spendableReserves` and `reserveMonths` must draw the
-same liquidity policy as `liquidity_analysis`, from `planeir_assumptions.js`,
-applied once. Two modules deriving a reserve from two copies of the rule is a
-divergence waiting to happen.
-
-**Shared engine:** none, but its reserve concept overlaps `liquidity_analysis`
-— verify they agree rather than testing each in isolation.
+**On `reconciliationDifference`.** It is not an oracle. The engine computes
+`netWorth = gross - liabilities` and then `difference = gross - liabilities -
+netWorth`, so it is zero by construction and can only catch a rounding slip.
+Independent arithmetic is the real check; the difference is asserted for what
+it is worth and no more. No rounding tolerance is used, because every amount in
+these cases is a whole number of euro — a tolerance would only hide error.
 
 ### 3. `liquidity_analysis`
 
@@ -331,8 +340,8 @@ costs and the 18/4 start and duration come from the same versioned record.
 
 ## Cross-cutting work, once, for every module
 
-- **Adopt `validateInput` across the registry.** Only `house_purchase`
-  declares it today. Each module declaring its own normaliser moves an input
+- **Adopt `validateInput` across the registry.** `house_purchase` and
+  `personal_balance_sheet` declare it; the remaining six do not. Each module declaring its own normaliser moves an input
   contract breach out of the run phase, where it otherwise masquerades as an
   engine crash. Do this as each module is audited.
 - **Reconcile aggregate against decomposition** wherever both exist.

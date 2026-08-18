@@ -31,6 +31,36 @@ function rounded(value) {
 }
 
 /**
+ * COUNT EACH HOLDING ONCE. That is the entire promise of a balance sheet, and
+ * it was the one thing this engine did not check.
+ *
+ * Everything else here was already guarded -- buckets must reconcile to gross
+ * assets, amounts must be finite and non-negative -- but the same position
+ * supplied twice was summed without complaint, so one 50,000 holding became
+ * 100,000 of net worth and the reconciliation identity still balanced perfectly.
+ * A wrong balance sheet that passes its own consistency check is exactly the
+ * plausible-but-wrong figure this module has to be incapable of producing.
+ *
+ * Identity is the source collection PLUS the id, not the id alone: a cash
+ * holding and a business interest may legitimately carry the same id while
+ * being two entirely different things, and rejecting that would refuse a
+ * correct balance sheet.
+ */
+function assertDistinctPositions(positions, kind) {
+  const seen = new Set();
+  for (const position of positions) {
+    const identity = `${position.source}:${position.id}`;
+    if (seen.has(identity)) {
+      throw new Error(
+        `Personal Balance Sheet ${kind} ${position.id} from ${position.source} was supplied more than once; `
+        + 'each position must be counted exactly once.'
+      );
+    }
+    seen.add(identity);
+  }
+}
+
+/**
  * Pure, code-owned Personal Balance Sheet engine.
  *
  * The adapter is responsible for currency filtering and reconciliation. This
@@ -52,6 +82,8 @@ export function computePersonalBalanceSheet({
       throw new Error(`Unsupported Personal Balance Sheet bucket: ${position.bucket}`);
     }
   }
+  assertDistinctPositions(assets, 'asset');
+  assertDistinctPositions(liabilities, 'liability');
 
   const buckets = Object.fromEntries(BUCKET_ORDER.map((bucket) => [bucket, {
     total: rounded(assets.filter((position) => position.bucket === bucket).reduce((sum, position) => sum + position.amount, 0)),
