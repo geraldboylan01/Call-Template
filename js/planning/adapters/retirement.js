@@ -387,6 +387,68 @@ export function buildPensionProjectionInput(profile) {
   };
 }
 
+/**
+ * The pension module's own input contract.
+ *
+ * The engine validates most of its own fields, but it is deliberately
+ * forgiving about the two things this adapter is responsible for getting
+ * right: what belongs in a pot, and who owns it. Those are checked here,
+ * before the engine sees the payload, so a mapping defect reports as an
+ * invalid input rather than as an engine crash or -- worse -- as a projection
+ * that ran on a wrong number.
+ */
+export function validatePensionProjectionInput(input) {
+  if (!input || typeof input !== 'object') {
+    throw new Error('generated.pensionInputs must be an object.');
+  }
+  if (!Array.isArray(input.pensions) || input.pensions.length === 0) {
+    throw new Error('generated.pensionInputs.pensions must name at least one household member.');
+  }
+  const seen = new Set();
+  for (const member of input.pensions) {
+    // A member IS a person here. Two members with one id would double a
+    // household's retirement resources without any position being duplicated.
+    if (!member?.id || seen.has(member.id)) {
+      throw new Error('generated.pensionInputs.pensions must name each household member exactly once.');
+    }
+    seen.add(member.id);
+    for (const [field, value] of [
+      ['currentPot', member.currentPot],
+      ['currentSalary', member.currentSalary],
+      ['personalPct', member.personalPct],
+      ['employerPct', member.employerPct]
+    ]) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`generated.pensionInputs.pensions[${member.id}].${field} must be a finite number.`);
+      }
+      if (value < 0) {
+        throw new Error(`generated.pensionInputs.pensions[${member.id}].${field} must not be negative.`);
+      }
+    }
+    // A contribution rate is a fraction of salary. Anything above 1 is a
+    // percentage that was never divided down, and would silently project a
+    // pension many times the client's pay.
+    for (const field of ['personalPct', 'employerPct']) {
+      if (member[field] > 1) {
+        throw new Error(`generated.pensionInputs.pensions[${member.id}].${field} must be a fraction of salary, not a percentage.`);
+      }
+    }
+    for (const field of ['currentAge', 'retirementAge']) {
+      const age = member[field];
+      if (!Number.isInteger(age) || age < 0 || age > 120) {
+        throw new Error(`generated.pensionInputs.pensions[${member.id}].${field} must be an age between 0 and 120.`);
+      }
+    }
+    if (member.retirementAge < member.currentAge) {
+      throw new Error(`generated.pensionInputs.pensions[${member.id}].retirementAge must not be before currentAge.`);
+    }
+  }
+  if (typeof input.growthRate !== 'number' || !Number.isFinite(input.growthRate) || input.growthRate <= -1) {
+    throw new Error('generated.pensionInputs.growthRate must be a finite rate greater than -1.');
+  }
+  computePensionProjection(input);
+}
+
 export async function runPensionProjection(input, context) {
   const projection = computePensionProjection(input, { scenarioId: context.scenarioOverrides?.scenarioId || '' });
   return createModuleRunResult({

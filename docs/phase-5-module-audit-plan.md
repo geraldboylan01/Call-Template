@@ -36,7 +36,7 @@ Verified against the registry, not assumed.
 | --- | --- | --- | --- | --- | --- | --- |
 | `liquidity_analysis` | calculation | active | `liquidity_reserve.js` | yes | — | **yes** |
 | `house_purchase` | calculation | beta | `house_purchase/engine.js` | yes | `liquidity_analysis` | **yes** |
-| `pension_projection` | calculation | beta | `pension_math.js` | yes | — | no |
+| `pension_projection` | calculation | beta | `pension_math.js` | yes | — | **yes** |
 | `net_retirement_cashflow` | calculation | beta | `net_retirement_math.js` | **no** | — | no |
 | `mortgage_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
 | `loan_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
@@ -116,8 +116,8 @@ module size.
 | 3 | `liquidity_analysis` | **Done.** Arithmetic proved independently; an uncomparable reserve no longer reads as a pass, and the cohort rule no longer depends on who was entered first. |
 | 4 | `mortgage_math` (shared engine) | **Done.** Payment and schedule match an independently written annuity; payoff detection no longer depends on float luck. |
 | 5 | `mortgage_analysis` + `loan_analysis` | **Done alongside step 4.** Selection, mapping, type separation and output contract, on the proven engine. |
-| 6 | `pension_projection` | Next. Largest assumption surface and the product-type rules (PRB, DB, ARF) that must not blur. |
-| 7 | `net_retirement_cashflow` | Shares retirement assumptions with step 6; audit after them, and note it is adviser-path only. |
+| 6 | `pension_projection` | **Done.** Timing measured before anything rested on it; PRB, DB and State Pension treatments all proved. |
+| 7 | `net_retirement_cashflow` | Next. Shares the adapter file but NOT the engine with step 6; adviser-path only. |
 | 8 | `college_funding` | Self-contained, one non-standard assumption (education inflation), lowest blast radius. |
 
 ## Per-module audit specifications
@@ -253,50 +253,69 @@ mortgage is analysed once at its full balance. Both run end to end against
 independently computed figures. The amortisation maths is **not** re-tested per
 module.
 
-### 6. `pension_projection`
+### 6. `pension_projection` — AUDITED
 
-**Key outputs:** `projectedPotAtRetirement`, `projectedPotAtIncomeStart`,
-`requiredPot`, `gapVsRequired`/`surplusVsRequired`, `retirementYear`,
-`depletionAgeProjected`.
+Checked against a pot accumulated from first principles in
+`scripts/check-pension-projection-audit.mjs`, importing nothing from
+`pension_math.js` except the versioned constants it verifies were applied.
+21 checks, in three layers: hand-checkable micro-cases, reference-calculator
+cases, then realistic households.
 
-**Reference calculation:** future value of a pot plus a contribution stream,
-written independently: `FV = P(1+g)^n + Σ C(1+g)^(n-t)`.
+**Timing, measured before anything rested on it.** Growth periods equal
+`retirementAge − currentAge`: €100,000 at 5% goes 100,000 → 105,000 → 110,250.
+A contribution is made in every year where age is below the retirement age, so
+the retirement year itself receives none. Contributions are added **before**
+that year's growth, so the first contribution earns growth immediately.
+Salary escalates from the second year, so the first contribution is a share of
+today's pay — the first/last-year off-by-one is not present in either place.
 
-**Invariants:** exactly one of gap/surplus is non-zero; `retirementYear`
-follows from current age and intended retirement age; contributions apply for
-the correct number of periods (the off-by-one on the first and last year is
-the likeliest arithmetic defect); growth is applied once per period.
+**Product types, all correct.** A DC pot and its contributions aggregate once
+per person. A PRB grows but receives no contribution **even when the record
+carries contribution rates**. A paid-up scheme behaves the same way. A
+defined-benefit pension is income exactly once and never a pot — proved with a
+DB record carrying a `currentValue` of €999,999, which contributes nothing to
+the pot; a DB with no stated income adds nothing rather than adding zero. State
+Pension never enters a funded pot, is counted once per eligible person, takes
+its start age and escalation from the rules catalogue, and stays individually
+switchable.
 
-**Hand-checkable case:** €100,000 pot, no contributions, 5% growth, 1 year →
-€105,000. Then 2 years → €110,250. Any deviation localises a compounding bug
-immediately.
+**Ownership holds.** Every pension stays attached to its own person while the
+household resources combine: separate ages, retirement ages, pots and salaries
+per member, with nothing leaking across owners. A partner with no pension
+recorded is asked about rather than treated as zero.
 
-**Realistic case:** age 45, €150,000 pot, €1,000/month combined contribution,
-retirement at 65.
+**Two things deliberately NOT recorded as defects**, having been tested rather
+than assumed — both looked like defects first:
 
-**Edge cases:** already at retirement age (zero periods); zero pot with
-contributions only; zero contributions; retirement age below current age.
+- With staggered retirement the combined pot at the later reference year is
+  *smaller* than the sum of each pot at its own retirement. That is the earlier
+  retiree funding the household through the bridge years. Setting the target
+  income to zero leaves both pots intact, which is asserted in both directions.
+- A retired pot shrinks slightly against pure growth. That is ARF minimum
+  drawdown, the documented post-retirement treatment.
 
-**Product-type correctness — the priority here:**
-- Contribution-capable and non-contributory products stay distinct.
-  `NON_CONTRIBUTORY_PENSION_TYPES` already names `buyout_bond` and
-  `defined_benefit`; assert a PRB/buyout bond receives **no** ongoing
-  contributions even when a household contribution figure exists.
-- A defined-benefit pension is treated as an income stream, not a funded pot.
-  It must never be added to `projectedPotAtRetirement`.
-- ARF remains a post-retirement drawdown treatment unless the data model
-  deliberately changes.
+**Defect found — a malformed profile reported as an unknown failure.**
+`runPlanningModule` normalised the profile *before* the labelled input phase,
+so a profile the schema refuses (a retirement age already behind the client)
+surfaced as `unknown_module_failure` — which the taxonomy defines as "treat as
+a defect and read the detail". It is an invalid input and now says so. **Blast
+radius: every module**, since the wrapper is shared; fixed once there.
 
-**Household/ownership risks:** pensions carry a singular `ownerId`. Per-person
-pots stay per-person and are not silently merged; an absent partner's pension
-is not treated as zero unless explicitly confirmed; and a `'household'`-owned
-pension must be handled explicitly rather than disappearing from every
-per-owner view.
+**Assumption sourcing — one observation, not a defect.** Growth and inflation
+come from `PLANEIR_ASSUMPTIONS` and are applied exactly once; State Pension
+comes from `IRISH_STATE_PENSION_CONTRIBUTORY`. The **ARF minimum drawdown rates
+(4% / 5% over 70 / 6% above €2m) are hardcoded constants in `pension_math.js`**
+rather than living in the versioned rules catalogue alongside the State Pension
+figures. They are correct today and applied once, but they are dated Irish
+rules in a file that is not the rules file. Worth moving when the ARF treatment
+is next revisited.
 
-**Assumption risks:** growth, inflation, State Pension and contribution
-treatment must all come from the versioned rules and be applied exactly once.
-State Pension is the highest-risk item — verify it is added once, at the right
-age, on the right basis, and not double-counted against target income.
+**Blast radius into step 7.** `net_retirement_math.js` is a genuinely separate
+engine — it shares the adapter *file* with pension projection but none of the
+accumulation, ARF or State Pension code. Nothing found here propagates to it.
+One thing for that audit to check: DB pensions reach `pension_projection` as
+income sourced from `/pensions`, while `buildNetRetirementInput` reads only
+`/incomeSources`, so the two modules may not see the same DB income.
 
 ### 7. `net_retirement_cashflow`
 
@@ -358,10 +377,8 @@ costs and the 18/4 start and duration come from the same versioned record.
 
 ## Cross-cutting work, once, for every module
 
-- **Adopt `validateInput` across the registry.** `house_purchase`,
-  `personal_balance_sheet`, `liquidity_analysis`, `mortgage_analysis` and
-  `loan_analysis` declare it; `pension_projection`, `net_retirement_cashflow`
-  and `college_funding` do not. Each module declaring its own normaliser moves an input
+- **Adopt `validateInput` across the registry.** Six of eight declare it;
+  `net_retirement_cashflow` and `college_funding` do not. Each module declaring its own normaliser moves an input
   contract breach out of the run phase, where it otherwise masquerades as an
   engine crash. Do this as each module is audited.
 - **Reconcile aggregate against decomposition** wherever both exist.

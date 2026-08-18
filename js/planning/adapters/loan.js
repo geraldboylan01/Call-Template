@@ -7,43 +7,53 @@ import {
   getAssumption,
   missing,
   moneyAmount,
-  readinessFromMissing
+  readinessFromMissing,
+  selectLiabilityOfType
 } from './common.js';
 
 export const LOAN_ADAPTER_VERSION = '1.0.0';
 
 function selectLoan(profile) {
-  const selectedId = getAssumption(profile, 'loan.liabilityId');
-  return profile.liabilities.find((item) => item.type === 'loan' && item.liabilityId === selectedId)
-    || profile.liabilities.find((item) => item.type === 'loan')
-    || null;
+  return selectLiabilityOfType(
+    profile,
+    'loan',
+    getAssumption(profile, 'loan.liabilityId')
+  );
 }
 
 /**
- * Which loan this run is about.
+ * Name the loan under analysis when the household holds more than one.
  *
- * `selectLoan` falls back to the first matching liability, so a household with
- * two of them got an analysis of one and nothing on the page said which. The
- * choice is declared instead: the figures are right for a real loan of
- * theirs, and the client can now see whether it is the one they meant.
+ * By the time this runs the client has chosen -- an undecided household never
+ * reaches a result at all -- so this records WHICH of theirs was analysed
+ * rather than papering over a choice nobody made.
  */
-function loanSelectionAssumption(profile, selected) {
-  const candidates = profile.liabilities.filter((item) => item.type === 'loan');
-  if (!selected || candidates.length < 2) return [];
+function loanSelectionAssumption(selection) {
+  if (!selection.selected || selection.candidates.length < 2) return [];
   return [{
     key: 'analysedLoan',
-    value: selected.label || selected.liabilityId,
-    reason: `The household holds ${candidates.length} loans; this analysis covers that one.`
+    value: selection.selected.label || selection.selected.liabilityId,
+    reason: `The household holds ${selection.candidates.length} loans; this analysis covers the one that was chosen.`
   }];
 }
 
 export function getLoanReadiness(profile) {
-  const loan = selectLoan(profile);
-  const relevant = Boolean(findGoal(profile, 'manage_loan')) || Boolean(loan);
+  const selection = selectLoan(profile);
+  const loan = selection.selected;
+  const relevant = Boolean(findGoal(profile, 'manage_loan')) || selection.candidates.length > 0;
   if (!relevant) return readinessFromMissing([], { relevant: false });
   const moduleIds = ['loan_analysis'];
   const requiredMissing = [];
-  if (!loan) {
+  if (selection.ambiguous) {
+    // ASK, DO NOT GUESS. Same rule as the mortgage: several loans and no stated
+    // choice is a question, not a tie broken by recording order.
+    requiredMissing.push(missing(
+      '/assumptions/values/loan/liabilityId',
+      `Which loan should this analysis cover: ${selection.candidates
+        .map((item) => item.label || item.liabilityId).join(', ')}?`,
+      moduleIds
+    ));
+  } else if (!loan) {
     requiredMissing.push(missing('/liabilities', 'Add the non-housing loan to analyse.', moduleIds));
   } else {
     const index = profile.liabilities.indexOf(loan);
@@ -58,17 +68,24 @@ export function getLoanReadiness(profile) {
   return readinessFromMissing(requiredMissing, {
     assumptionsUsed: [
       { key: 'repaymentType', value: 'repayment', reason: 'The deterministic loan engine supports amortising repayment loans.' },
-      ...loanSelectionAssumption(profile, loan)
+      ...loanSelectionAssumption(selection)
     ],
     warnings: crossCurrencyWarnings(profile, [['Loan values', loan ? [loan.currentBalance, loan.monthlyPayment] : []]])
   });
 }
 
 export function buildLoanInput(profile) {
-  const loan = selectLoan(profile);
-  // Readiness already refuses this, so reaching here means a direct caller
-  // skipped it. Say what is absent rather than dereferencing null and
-  // reporting a TypeError as the module's diagnostic.
+  const selection = selectLoan(profile);
+  const loan = selection.selected;
+  // Readiness already refuses both of these, so reaching here means a direct
+  // caller skipped it. Say what is wrong rather than dereferencing null, and
+  // never resolve an undecided choice just because someone called in directly.
+  if (selection.ambiguous) {
+    throw new Error(
+      `generated.loanInputs cannot be built: the profile holds ${selection.candidates.length} loans `
+      + 'and none has been chosen for analysis.'
+    );
+  }
   if (!loan) {
     throw new Error('generated.loanInputs cannot be built: the profile holds no loan to analyse.');
   }

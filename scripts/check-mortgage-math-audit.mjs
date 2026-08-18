@@ -376,24 +376,108 @@ const debt = (liabilityId, type, balance, rate, months, ownerIds = ['primary']) 
   pass('a loan never reaches mortgage analysis and a mortgage never reaches loan analysis');
 }
 
+/* ------------------------------------------- which liability, and who decided */
+
 {
-  // Selection with two candidates: the explicit choice wins, and whichever is
-  // analysed is named, because the figures alone do not say which it was.
-  const two = [debt('m1', 'mortgage', 280_000, 0.039, 324), debt('m2', 'mortgage', 95_000, 0.052, 120)];
-  const chosen = buildMortgageInput(profileOf(two, { mortgage: { liabilityId: 'm2' } }));
-  assert.equal(chosen.currentBalance, 95_000, 'the named mortgage is the one analysed');
-
-  const readiness = getMortgageReadiness(profileOf(two));
-  const declared = readiness.assumptionsUsed.find((item) => item.key === 'analysedMortgage');
-  assert.ok(declared, 'with two mortgages, the one analysed is declared');
-  assert.match(declared.reason, /2 mortgages/);
-
-  const single = getMortgageReadiness(profileOf([two[0]]));
+  // ONE CANDIDATE NEEDS NO QUESTION.
+  const single = profileOf([debt('m1', 'mortgage', 280_000, 0.039, 324)]);
+  assert.equal(getMortgageReadiness(single).status, 'ready_with_assumptions');
+  assert.equal(buildMortgageInput(single).currentBalance, 280_000);
   assert.ok(
-    !single.assumptionsUsed.some((item) => item.key === 'analysedMortgage'),
-    'with one mortgage there is nothing to disambiguate'
+    !getMortgageReadiness(single).assumptionsUsed.some((item) => item.key === 'analysedMortgage'),
+    'and nothing is claimed about a choice that was never needed'
   );
-  pass('with two mortgages the analysed one is named; with one, nothing is claimed');
+  // A stale selection id pointing at nothing still resolves to the only
+  // mortgage there is, because there is no ambiguity to resolve.
+  const stale = profileOf([debt('m1', 'mortgage', 280_000, 0.039, 324)], { mortgage: { liabilityId: 'gone' } });
+  assert.equal(buildMortgageInput(stale).currentBalance, 280_000);
+  pass('one eligible mortgage proceeds without an unnecessary question');
+}
+
+{
+  // SEVERAL CANDIDATES AND NO CHOICE IS A QUESTION, NOT A TIE-BREAK.
+  const two = [debt('m1', 'mortgage', 280_000, 0.039, 324), debt('m2', 'mortgage', 95_000, 0.052, 120)];
+  const readiness = getMortgageReadiness(profileOf(two));
+  assert.equal(readiness.status, 'missing_information', 'the module stays unready');
+  const need = readiness.requiredMissing.find(
+    (item) => item.fieldPath === '/assumptions/values/mortgage/liabilityId'
+  );
+  assert.ok(need, 'and surfaces the need that makes the conversation ask');
+  assert.match(need.reason, /Which mortgage/);
+  assert.match(need.reason, /mortgage m1/);
+  assert.match(need.reason, /mortgage m2/, 'naming both so the client can answer');
+  assert.throws(
+    () => buildMortgageInput(profileOf(two)),
+    /none has been chosen/,
+    'and a direct caller cannot resolve it either'
+  );
+  pass('two mortgages with no stated choice keep the module unready and ask which');
+}
+
+{
+  // ORDER CANNOT DECIDE. This is the property the old first-match fallback
+  // violated: reordering the collection changed which mortgage was analysed.
+  const forward = [debt('m1', 'mortgage', 280_000, 0.039, 324), debt('m2', 'mortgage', 95_000, 0.052, 120)];
+  const reversed = [debt('m2', 'mortgage', 95_000, 0.052, 120), debt('m1', 'mortgage', 280_000, 0.039, 324)];
+
+  assert.equal(getMortgageReadiness(profileOf(forward)).status, 'missing_information');
+  assert.equal(
+    getMortgageReadiness(profileOf(reversed)).status,
+    'missing_information',
+    'undecided either way round'
+  );
+
+  // And once chosen, the same mortgage is analysed whichever order it sits in.
+  const chosen = { mortgage: { liabilityId: 'm2' } };
+  assert.equal(buildMortgageInput(profileOf(forward, chosen)).currentBalance, 95_000);
+  assert.equal(
+    buildMortgageInput(profileOf(reversed, chosen)).currentBalance,
+    95_000,
+    'selection follows the stable liability id, never the array position'
+  );
+  const declared = getMortgageReadiness(profileOf(reversed, chosen))
+    .assumptionsUsed.find((item) => item.key === 'analysedMortgage');
+  assert.ok(declared, 'the chosen mortgage is named in the output');
+  assert.match(declared.value, /m2/);
+  pass('array order cannot determine which mortgage is analysed, chosen or not');
+}
+
+{
+  // A selection naming a mortgage that is not there does not silently fall
+  // back to another one.
+  const two = [debt('m1', 'mortgage', 280_000, 0.039, 324), debt('m2', 'mortgage', 95_000, 0.052, 120)];
+  const stale = profileOf(two, { mortgage: { liabilityId: 'sold-last-year' } });
+  assert.equal(getMortgageReadiness(stale).status, 'missing_information');
+  assert.throws(() => buildMortgageInput(stale), /none has been chosen/);
+  pass('a stale selection id re-asks rather than quietly analysing a different mortgage');
+}
+
+{
+  // THE SAME RULE FOR LOANS, and the two kinds stay separate while it applies.
+  const twoLoans = [debt('l1', 'loan', 15_000, 0.079, 60), debt('l2', 'loan', 4_000, 0.099, 24)];
+  assert.equal(getLoanReadiness(profileOf(twoLoans)).status, 'missing_information');
+  assert.throws(() => buildLoanInput(profileOf(twoLoans)), /none has been chosen/);
+  assert.equal(
+    buildLoanInput(profileOf([...twoLoans].reverse(), { loan: { liabilityId: 'l2' } })).currentBalance,
+    4_000,
+    'and the chosen loan wins regardless of order'
+  );
+  assert.equal(
+    getMortgageReadiness(profileOf(twoLoans)).status,
+    'not_relevant',
+    'two car loans never make mortgage analysis relevant'
+  );
+
+  // An undecided pair of mortgages must not block the loan, or vice versa.
+  const mixed = profileOf([
+    debt('m1', 'mortgage', 280_000, 0.039, 324),
+    debt('m2', 'mortgage', 95_000, 0.052, 120),
+    debt('l1', 'loan', 15_000, 0.079, 60)
+  ]);
+  assert.equal(getMortgageReadiness(mixed).status, 'missing_information', 'the mortgages are still undecided');
+  assert.equal(getLoanReadiness(mixed).status, 'ready_with_assumptions', 'the single loan is not');
+  assert.equal(buildLoanInput(mixed).currentBalance, 15_000, 'and it is the car loan, not a mortgage');
+  pass('loans follow the same rule, and an undecided mortgage never blocks the loan');
 }
 
 {

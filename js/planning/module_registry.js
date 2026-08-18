@@ -21,7 +21,8 @@ import {
   getNetRetirementReadiness,
   getPensionProjectionReadiness,
   runNetRetirementCashflow,
-  runPensionProjection
+  runPensionProjection,
+  validatePensionProjectionInput
 } from './adapters/retirement.js';
 import {
   buildMortgageInput,
@@ -401,6 +402,7 @@ register({
   canRun: getPensionProjectionReadiness,
   explainSelection: () => ['A pension projection is relevant to the retirement goal, but remains gated for consumer release.'],
   buildInput: buildPensionProjectionInput,
+  validateInput: validatePensionProjectionInput,
   run: runPensionProjection
 });
 
@@ -878,6 +880,29 @@ export function getModuleReadiness(moduleId, rawProfile) {
  * contract breach out of the run phase, where it would otherwise masquerade as
  * an engine crash.
  */
+/**
+ * Normalise the profile a module is about to run on.
+ *
+ * A profile that cannot be normalised is an invalid input to the module in
+ * exactly the sense the failure codes mean, but it threw before the input
+ * builder was reached, so it used to surface as `unknown_module_failure` --
+ * which the taxonomy defines as "treat as a defect and read the detail". A
+ * retirement age behind the client's current age is not a defect in our code;
+ * it is a profile the module cannot accept, and it should say so.
+ */
+function normalizeProfileForModule(moduleId, rawProfile) {
+  try {
+    return normalizeHouseholdProfile(rawProfile);
+  } catch (error) {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.INPUT_INVALID,
+      moduleId,
+      error instanceof Error ? error.message : String(error),
+      error
+    );
+  }
+}
+
 export function buildPlanningModuleInput(definition, profile) {
   let input;
   try {
@@ -915,7 +940,7 @@ function assertRunnableModule(moduleId) {
 
 export async function runPlanningModule(moduleId, rawProfile, context) {
   const definition = assertRunnableModule(moduleId);
-  const profile = normalizeHouseholdProfile(rawProfile);
+  const profile = normalizeProfileForModule(moduleId, rawProfile);
   const input = buildPlanningModuleInput(definition, profile);
   try {
     return await definition.run(input, {
@@ -942,7 +967,7 @@ export async function runPlanningModule(moduleId, rawProfile, context) {
  */
 export async function getPlanningModuleRunIdentity(moduleId, rawProfile, context = {}) {
   const definition = assertRunnableModule(moduleId);
-  const profile = normalizeHouseholdProfile(rawProfile);
+  const profile = normalizeProfileForModule(moduleId, rawProfile);
   const input = buildPlanningModuleInput(definition, profile);
   const scenarioOverrides = context.scenarioOverrides || {};
   const dependencyPaths = [...new Set([

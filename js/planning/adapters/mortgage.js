@@ -7,43 +7,54 @@ import {
   getAssumption,
   missing,
   moneyAmount,
-  readinessFromMissing
+  readinessFromMissing,
+  selectLiabilityOfType
 } from './common.js';
 
 export const MORTGAGE_ADAPTER_VERSION = '1.0.0';
 
 function selectMortgage(profile) {
-  const selectedId = getAssumption(profile, 'mortgage.liabilityId');
-  return profile.liabilities.find((liability) => liability.type === 'mortgage' && liability.liabilityId === selectedId)
-    || profile.liabilities.find((liability) => liability.type === 'mortgage')
-    || null;
+  return selectLiabilityOfType(
+    profile,
+    'mortgage',
+    getAssumption(profile, 'mortgage.liabilityId')
+  );
 }
 
 /**
- * Which mortgage this run is about.
+ * Name the mortgage under analysis when the household holds more than one.
  *
- * `selectMortgage` falls back to the first matching liability, so a household with
- * two of them got an analysis of one and nothing on the page said which. The
- * choice is declared instead: the figures are right for a real mortgage of
- * theirs, and the client can now see whether it is the one they meant.
+ * By the time this runs the client has chosen -- an undecided household never
+ * reaches a result at all -- so this records WHICH of theirs was analysed
+ * rather than papering over a choice nobody made.
  */
-function mortgageSelectionAssumption(profile, selected) {
-  const candidates = profile.liabilities.filter((item) => item.type === 'mortgage');
-  if (!selected || candidates.length < 2) return [];
+function mortgageSelectionAssumption(selection) {
+  if (!selection.selected || selection.candidates.length < 2) return [];
   return [{
     key: 'analysedMortgage',
-    value: selected.label || selected.liabilityId,
-    reason: `The household holds ${candidates.length} mortgages; this analysis covers that one.`
+    value: selection.selected.label || selection.selected.liabilityId,
+    reason: `The household holds ${selection.candidates.length} mortgages; this analysis covers the one that was chosen.`
   }];
 }
 
 export function getMortgageReadiness(profile) {
-  const mortgage = selectMortgage(profile);
-  const relevant = Boolean(findGoal(profile, 'optimise_mortgage')) || Boolean(mortgage);
+  const selection = selectMortgage(profile);
+  const mortgage = selection.selected;
+  const relevant = Boolean(findGoal(profile, 'optimise_mortgage'))
+    || selection.candidates.length > 0;
   if (!relevant) return readinessFromMissing([], { relevant: false });
   const moduleIds = ['mortgage_analysis'];
   const requiredMissing = [];
-  if (!mortgage) {
+  if (selection.ambiguous) {
+    // ASK, DO NOT GUESS. Two mortgages and no stated choice is a question for
+    // the client, not a tie broken by whichever was recorded first.
+    requiredMissing.push(missing(
+      '/assumptions/values/mortgage/liabilityId',
+      `Which mortgage should this analysis cover: ${selection.candidates
+        .map((item) => item.label || item.liabilityId).join(', ')}?`,
+      moduleIds
+    ));
+  } else if (!mortgage) {
     requiredMissing.push(missing('/liabilities', 'Add the mortgage to analyse.', moduleIds));
   } else {
     const index = profile.liabilities.indexOf(mortgage);
@@ -57,7 +68,7 @@ export function getMortgageReadiness(profile) {
   }
   const assumptionsUsed = [
     { key: 'repaymentType', value: 'repayment', reason: 'The current deterministic engine supports amortising repayment mortgages only.' },
-    ...mortgageSelectionAssumption(profile, mortgage)
+    ...mortgageSelectionAssumption(selection)
   ];
   const warnings = [
     'Interest-only mortgages are not supported in v1.',
@@ -67,10 +78,17 @@ export function getMortgageReadiness(profile) {
 }
 
 export function buildMortgageInput(profile) {
-  const mortgage = selectMortgage(profile);
-  // Readiness already refuses this, so reaching here means a direct caller
-  // skipped it. Say what is absent rather than dereferencing null and
-  // reporting a TypeError as the module's diagnostic.
+  const selection = selectMortgage(profile);
+  const mortgage = selection.selected;
+  // Readiness already refuses both of these, so reaching here means a direct
+  // caller skipped it. Say what is wrong rather than dereferencing null, and
+  // never resolve an undecided choice just because someone called in directly.
+  if (selection.ambiguous) {
+    throw new Error(
+      `generated.mortgageInputs cannot be built: the profile holds ${selection.candidates.length} mortgages `
+      + 'and none has been chosen for analysis.'
+    );
+  }
   if (!mortgage) {
     throw new Error('generated.mortgageInputs cannot be built: the profile holds no mortgage to analyse.');
   }
