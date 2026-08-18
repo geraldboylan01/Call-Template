@@ -1,4 +1,4 @@
-import { computeMortgageProjection } from '../../mortgage_math.js';
+import { computeMortgageProjection, normalizeMortgageInputs } from '../../mortgage_math.js';
 import {
   baseCurrency,
   createModuleRunResult,
@@ -17,6 +17,24 @@ function selectLoan(profile) {
   return profile.liabilities.find((item) => item.type === 'loan' && item.liabilityId === selectedId)
     || profile.liabilities.find((item) => item.type === 'loan')
     || null;
+}
+
+/**
+ * Which loan this run is about.
+ *
+ * `selectLoan` falls back to the first matching liability, so a household with
+ * two of them got an analysis of one and nothing on the page said which. The
+ * choice is declared instead: the figures are right for a real loan of
+ * theirs, and the client can now see whether it is the one they meant.
+ */
+function loanSelectionAssumption(profile, selected) {
+  const candidates = profile.liabilities.filter((item) => item.type === 'loan');
+  if (!selected || candidates.length < 2) return [];
+  return [{
+    key: 'analysedLoan',
+    value: selected.label || selected.liabilityId,
+    reason: `The household holds ${candidates.length} loans; this analysis covers that one.`
+  }];
 }
 
 export function getLoanReadiness(profile) {
@@ -38,13 +56,22 @@ export function getLoanReadiness(profile) {
     }
   }
   return readinessFromMissing(requiredMissing, {
-    assumptionsUsed: [{ key: 'repaymentType', value: 'repayment', reason: 'The deterministic loan engine supports amortising repayment loans.' }],
+    assumptionsUsed: [
+      { key: 'repaymentType', value: 'repayment', reason: 'The deterministic loan engine supports amortising repayment loans.' },
+      ...loanSelectionAssumption(profile, loan)
+    ],
     warnings: crossCurrencyWarnings(profile, [['Loan values', loan ? [loan.currentBalance, loan.monthlyPayment] : []]])
   });
 }
 
 export function buildLoanInput(profile) {
   const loan = selectLoan(profile);
+  // Readiness already refuses this, so reaching here means a direct caller
+  // skipped it. Say what is absent rather than dereferencing null and
+  // reporting a TypeError as the module's diagnostic.
+  if (!loan) {
+    throw new Error('generated.loanInputs cannot be built: the profile holds no loan to analyse.');
+  }
   const settings = getAssumption(profile, 'loan', {});
   return {
     loanKind: 'loan',
@@ -57,6 +84,16 @@ export function buildLoanInput(profile) {
     oneOffOverpayment: Number.isFinite(settings.oneOffOverpayment) ? settings.oneOffOverpayment : 0,
     annualOverpayment: Number.isFinite(settings.annualOverpayment) ? settings.annualOverpayment : 0
   };
+}
+
+/**
+ * Hold the generated payload to the engine's own contract before the engine
+ * sees it, so a mapping defect here reports as an invalid input rather than
+ * as an engine crash. Both modules share one engine, so both share one
+ * contract.
+ */
+export function validateLoanInput(input) {
+  normalizeMortgageInputs(input, { defaultLoanKind: 'loan' });
 }
 
 export async function runLoanAnalysis(input, context) {

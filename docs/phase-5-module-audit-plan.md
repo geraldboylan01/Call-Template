@@ -38,8 +38,8 @@ Verified against the registry, not assumed.
 | `house_purchase` | calculation | beta | `house_purchase/engine.js` | yes | `liquidity_analysis` | **yes** |
 | `pension_projection` | calculation | beta | `pension_math.js` | yes | — | no |
 | `net_retirement_cashflow` | calculation | beta | `net_retirement_math.js` | **no** | — | no |
-| `mortgage_analysis` | calculation | beta | `mortgage_math.js` | yes | — | no |
-| `loan_analysis` | calculation | beta | `mortgage_math.js` | yes | — | no |
+| `mortgage_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
+| `loan_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
 | `college_funding` | calculation | beta | `college_funding_math.js` | yes | — | no |
 | `personal_balance_sheet` | calculation | beta | `personal_balance_sheet.js` | yes | — | **yes** |
 
@@ -114,9 +114,9 @@ module size.
 | 1 | `house_purchase` | Done. Known failure, conversational side already proven. |
 | 2 | `personal_balance_sheet` | **Done.** Ownership never double-counts; the engine now refuses a position supplied twice. |
 | 3 | `liquidity_analysis` | **Done.** Arithmetic proved independently; an uncomparable reserve no longer reads as a pass, and the cohort rule no longer depends on who was entered first. |
-| 4 | `mortgage_math` (shared engine) | Next. One deep amortisation audit serving two modules. Highest reuse per unit of effort. |
-| 5 | `mortgage_analysis` + `loan_analysis` | Selection, mapping and output contract only, on the engine proven at step 4. |
-| 6 | `pension_projection` | Largest assumption surface and the product-type rules (PRB, DB, ARF) that must not blur. |
+| 4 | `mortgage_math` (shared engine) | **Done.** Payment and schedule match an independently written annuity; payoff detection no longer depends on float luck. |
+| 5 | `mortgage_analysis` + `loan_analysis` | **Done alongside step 4.** Selection, mapping, type separation and output contract, on the proven engine. |
+| 6 | `pension_projection` | Next. Largest assumption surface and the product-type rules (PRB, DB, ARF) that must not blur. |
 | 7 | `net_retirement_cashflow` | Shares retirement assumptions with step 6; audit after them, and note it is adviser-path only. |
 | 8 | `college_funding` | Self-contained, one non-standard assumption (education inflation), lowest blast radius. |
 
@@ -199,52 +199,59 @@ client is given a number: a buffer override of `-3` or `0` silently became the
 policy default, so an adviser could type one figure and the illustration use
 another. That now reports as `module_input_invalid`.
 
-### 4. `mortgage_math` — shared engine, deep audit
+### 4. `mortgage_math` — AUDITED (with modules 5)
 
-**Key outputs:** `openingBalance`, `paymentUsedMonthly`, `payoffYear`,
-`totalInterestLifetime`, `totalPaidLifetime`, and the amortisation schedule.
+Checked against a reference implementation written from the annuity formula
+`P = B·i / (1 − (1+i)^−n)`, plus a schedule re-simulated period by period, both
+in `scripts/check-mortgage-math-audit.mjs` and importing nothing from the code
+under test. 23 checks covering the engine and both modules over it.
 
-**Reference calculation:** implement the standard annuity payment
-`P = B·i / (1 - (1+i)^-n)` in the test file, deliberately separate from
-`mortgage_math.js`, and compare. This is the clearest case in Phase 5 for an
-independent reference implementation.
+**What was already right.** The payment matches the independent annuity to
+machine precision, and lifetime interest, principal and total paid match a
+re-simulated schedule. `totalPaid = interest + principal` holds across five
+rate and term combinations, every period charges the rate on its own opening
+balance, the payment splits exactly into interest plus principal, and the
+annual rollup reconciles to the monthly schedule. The rate convention is
+nominal (annual ÷ 12), applied consistently by both the payment function and
+the schedule — asserted explicitly so a future switch to an effective-rate
+conversion has to be deliberate. Zero rate, a one-month term, a payment above
+the balance, one-off and annual overpayments all behave correctly; an annual
+overpayment shortens the term at an unchanged payment. Negative amortisation,
+a zero or negative balance, a negative rate, a missing term and interest-only
+are all refused rather than modelled.
 
-**Invariants:** the schedule's closing balance reaches zero at `payoffYear`;
-`totalPaidLifetime === totalInterestLifetime + openingBalance`; every period's
-interest equals `balance × periodic rate`; principal plus interest equals the
-payment each period.
+**Defect 1 — payoff detection was a coin flip.** It required the balance to
+reach EXACTLY zero, which floating-point arithmetic reaches only by luck.
+Across €250,000 over 25 years at rates from 1% to 6%, **half** the runs
+finished with a residue like 0.00000000012 and were reported as never repaid —
+in prose, on the same screen as "Remaining balance at term end: €0.00". The
+summary literally read "not fully repaid … leaving €0.00 outstanding". Money is
+measured to the cent, so anything below half a cent is now settled, and the
+sweep is pinned as a regression.
 
-**Hand-checkable case:** €100,000 at 0% over 10 years → €833.33/month, zero
-total interest, `totalPaid === 100,000`. The zero-rate case also guards the
-annuity formula's division-by-zero branch.
+**Defect 2 — a null dereference where a diagnostic belonged.** Building an
+input for a profile with no matching liability threw
+`Cannot read properties of null`. Readiness refuses this, so only a direct
+caller reaches it, but every other audited module fails with a sentence naming
+what is absent. It now does too.
 
-**Realistic case:** €280,000 at 3.9% over 27 years remaining.
+**Defect 3 — a silent pick between two mortgages.** `selectMortgage` falls back
+to the first matching liability, so a household with two got an analysis of one
+and nothing said which. The choice is now declared in `assumptionsUsed` when
+there is more than one candidate. **Whether it should instead ask which
+mortgage the client means is left open** — the figures are correct for a real
+mortgage of theirs, and choosing between "name it" and "ask" is a product call.
 
-**Edge cases:** zero interest rate; term of one month; a stated payment below
-the interest accrual (negative amortisation — must be refused or reported, not
-silently looped forever); a payment above the balance; overpayments; balance
-already zero.
+### 5. `mortgage_analysis` and `loan_analysis` — AUDITED
 
-**Assumption risks:** rate conversion is the classic defect — confirm whether
-the annual rate is divided by 12 or converted geometrically, and that one
-convention is used consistently. Confirm the term is remaining, not original.
-
-### 5. `mortgage_analysis` and `loan_analysis`
-
-Do **not** re-test the amortisation maths. Test only what differs:
-
-- **Selection:** `selectMortgage` prefers the liability named by
-  `assumptions.values.mortgage.liabilityId`, then falls back to the first
-  liability of that type. Test with two mortgages present — the fallback
-  picking an arbitrary one is a real risk worth pinning.
-- **Type separation:** a `loan` liability must never reach `mortgage_analysis`
-  and vice versa.
-- **Mapping:** balance, rate and remaining term reach the engine unmodified
-  and in the right units (rate as a fraction, term in months).
-- **Output contract:** the semantic result exposes the engine's numbers
-  unchanged.
-- **Household/ownership:** a jointly owned mortgage is analysed once, at full
-  balance, not once per owner — the direct analogue of the cash-split defect.
+Audited alongside the engine rather than separately, since the plan already
+scoped them to what differs. Both map balance, rate and term without rescaling
+(rate stays a fraction, months convert to years) and stamp their own loan kind.
+Type separation holds in both directions: a loan never makes mortgage analysis
+relevant and a mortgage never makes loan analysis relevant. A jointly owned
+mortgage is analysed once at its full balance. Both run end to end against
+independently computed figures. The amortisation maths is **not** re-tested per
+module.
 
 ### 6. `pension_projection`
 
@@ -352,8 +359,9 @@ costs and the 18/4 start and duration come from the same versioned record.
 ## Cross-cutting work, once, for every module
 
 - **Adopt `validateInput` across the registry.** `house_purchase`,
-  `personal_balance_sheet` and `liquidity_analysis` declare it; the remaining
-  five do not. Each module declaring its own normaliser moves an input
+  `personal_balance_sheet`, `liquidity_analysis`, `mortgage_analysis` and
+  `loan_analysis` declare it; `pension_projection`, `net_retirement_cashflow`
+  and `college_funding` do not. Each module declaring its own normaliser moves an input
   contract breach out of the run phase, where it otherwise masquerades as an
   engine crash. Do this as each module is audited.
 - **Reconcile aggregate against decomposition** wherever both exist.

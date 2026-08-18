@@ -26,12 +26,14 @@ import {
 import {
   buildMortgageInput,
   getMortgageReadiness,
-  runMortgageAnalysis
+  runMortgageAnalysis,
+  validateMortgageInput
 } from './adapters/mortgage.js';
 import {
   buildLoanInput,
   getLoanReadiness,
-  runLoanAnalysis
+  runLoanAnalysis,
+  validateLoanInput
 } from './adapters/loan.js';
 import {
   buildCollegeFundingInput,
@@ -461,6 +463,7 @@ register({
   canRun: getMortgageReadiness,
   explainSelection: () => ['An existing mortgage or mortgage-optimisation goal makes amortisation analysis relevant.'],
   buildInput: buildMortgageInput,
+  validateInput: validateMortgageInput,
   run: runMortgageAnalysis
 });
 
@@ -484,6 +487,7 @@ register({
   canRun: getLoanReadiness,
   explainSelection: () => ['A non-housing loan goal maps to the deterministic repayment and interest engine.'],
   buildInput: buildLoanInput,
+  validateInput: validateLoanInput,
   run: runLoanAnalysis
 });
 

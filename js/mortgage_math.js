@@ -80,6 +80,21 @@ function round2(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * WHEN A DEBT IS SETTLED.
+ *
+ * Money is measured to the cent, so a balance of 0.00000000012 is not an
+ * outstanding mortgage -- it is the residue of adding three hundred floats
+ * together. Payoff detection required the balance to reach exactly zero, which
+ * float arithmetic reaches only by luck: across 250,000 borrowed over 25 years
+ * at rates from 1% to 6%, half of the runs came out non-zero and every one of
+ * those told the client, in prose, that the mortgage would NOT be repaid --
+ * on the same screen as "Remaining balance at term end: 0.00".
+ *
+ * Half a cent is the threshold because nothing smaller can be owed.
+ */
+const SETTLEMENT_EPSILON = 0.005;
+
 function formatEuro(amount) {
   return new Intl.NumberFormat('en-IE', {
     style: 'currency',
@@ -314,7 +329,7 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
   const monthlySchedule = [];
   let balance = openingBalance;
 
-  for (let monthIndex = 0; monthIndex < term.monthCount && balance > 0; monthIndex += 1) {
+  for (let monthIndex = 0; monthIndex < term.monthCount && balance > SETTLEMENT_EPSILON; monthIndex += 1) {
     const periodDate = addUtcMonths(term.startMonthDate, monthIndex);
     const year = periodDate.getUTCFullYear();
 
@@ -359,6 +374,10 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
   const totalInterestLifetime = monthlySchedule.reduce((sum, month) => sum + month.interestPaid, 0);
   const totalPrincipalLifetime = monthlySchedule.reduce((sum, month) => sum + month.principalPaid, 0);
   const totalPaidLifetime = monthlySchedule.reduce((sum, month) => sum + month.totalPaid, 0);
+
+  // Settled is settled: report nothing outstanding rather than a fraction of a
+  // cent that the display rounds to zero while the prose calls it a debt.
+  if (balance <= SETTLEMENT_EPSILON) balance = 0;
 
   const payoffMonth = balance <= 0 && monthlySchedule.length > 0
     ? monthlySchedule[monthlySchedule.length - 1]
