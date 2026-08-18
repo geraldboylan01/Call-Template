@@ -12,6 +12,7 @@ import {
   findGoal,
   getAssumption,
   grossEmploymentIncome,
+  householdAggregateNetIncome,
   missing,
   moneyAmount,
   netHouseholdIncome,
@@ -160,6 +161,19 @@ export function getHousePurchaseReadiness(profile) {
     { key: 'purchaseCosts', value: 'dated engine defaults', reason: 'The existing deterministic engine owns buying-cost estimates.' },
     { key: 'mortgageIllustration', value: 'dated engine defaults', reason: 'The existing engine owns its illustration rate and term.' }
   ];
+  // The affordability side of this module asks for a combined household
+  // take-home figure, so a stated aggregate may answer it. It is declared,
+  // because it is a household figure standing in for the sum of positions --
+  // and it never answers the applicant-income requirement above, which is
+  // checked per person against employment income only.
+  if ((profile.incomeSources || []).every((income) => !income.netAnnual)
+    && householdAggregateNetIncome(profile) !== null) {
+    assumptionsUsed.push({
+      key: 'monthlyNetHouseholdIncome',
+      value: 'stated household total',
+      reason: 'Take-home pay was given as a combined household figure rather than per person.'
+    });
+  }
   if (hasSharedCash(profile, baseCurrency(profile), people.map((person) => person.personId))) {
     assumptionsUsed.push({
       key: 'cashSavingsContributions',

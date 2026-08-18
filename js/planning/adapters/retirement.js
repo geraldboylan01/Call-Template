@@ -286,6 +286,17 @@ export function getPensionProjectionReadiness(profile) {
   return readinessFromMissing(requiredMissing, { assumptionsUsed, warnings });
 }
 
+/**
+ * The earliest intended retirement age among a position's owners, or null when
+ * none of them has stated one.
+ */
+function earliestOwnerRetirementAge(profile, ownerIds) {
+  const ages = (ownerIds || [])
+    .map((ownerId) => personForId(profile, ownerId)?.intendedRetirementAge)
+    .filter((age) => typeof age === 'number');
+  return ages.length > 0 ? Math.min(...ages) : null;
+}
+
 export function buildPensionProjectionInput(profile) {
   const currency = baseCurrency(profile);
   const grouped = groupPensionsByOwner(profile);
@@ -339,9 +350,15 @@ export function buildPensionProjectionInput(profile) {
       id: income.incomeId,
       title: income.label,
       type: income.type,
-      ownerId: income.ownerId,
+      ownerIds: [...income.ownerIds],
+      // The engine wants ONE timeline for the income, and a jointly owned
+      // rent has two owners with two retirement ages. It starts at the
+      // EARLIEST of them: the rent does not pause because the later retiree is
+      // still working, and assuming the later age would drop real income out
+      // of the early years of the projection. The amount itself is counted
+      // once here, not once per owner.
       annualAmountToday: moneyAmount(income.netAnnual, currency) ?? moneyAmount(income.grossAnnual, currency) ?? 0,
-      startAge: income.startAge ?? personForId(profile, income.ownerId)?.intendedRetirementAge ?? pensions[0]?.retirementAge,
+      startAge: income.startAge ?? earliestOwnerRetirementAge(profile, income.ownerIds) ?? pensions[0]?.retirementAge,
       ...(typeof income.endAge === 'number' ? { endAge: income.endAge } : {}),
       inflationIndexed: income.inflationIndexed !== false
     }))

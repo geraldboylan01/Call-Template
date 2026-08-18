@@ -447,7 +447,10 @@ household = applyMapped(household, 'income_sources', [
   }
 ]);
 assert.equal(household.incomeSources.length, 2, 'joint incomes are stored as owner-specific repeatable positions');
-assert.deepEqual(household.incomeSources.map((item) => item.ownerId), ['primary', 'partner_realtime']);
+// A salary is one person's, so each record names exactly one owner. Reading
+// the list rather than a singular field is what lets rent from a jointly owned
+// property name both people without a salary ever being able to.
+assert.deepEqual(household.incomeSources.map((item) => item.ownerIds), [['primary'], ['partner_realtime']]);
 assert.throws(
   () => mapRealtimeFact(household, { factId: 'gross_household_income', value: 120_000 }),
   (error) => error?.code === 'realtime_joint_income_breakdown_required'

@@ -35,9 +35,20 @@ export function ownershipVerdict(profile, truth = {}) {
   const contradicts = (stated, captured) =>
     Number.isFinite(stated) && Number.isFinite(captured) && captured !== stated;
 
+  // A position names its owner singularly or as a list depending on whether it
+  // can be jointly held. Reading only the singular field scored every income
+  // as mis-owned the moment income moved to a list.
+  const ownersOf = (item) => (Array.isArray(item.ownerIds)
+    ? item.ownerIds
+    : (item.ownerId ? [item.ownerId] : []));
+  const notPrimary = (item) => {
+    const owners = ownersOf(item);
+    return owners.length === 0 || owners.some((owner) => owner !== primaryId);
+  };
+
   const wrong = [
-    pensions.some((item) => item.ownerId !== primaryId),
-    incomes.some((item) => item.ownerId !== primaryId),
+    pensions.some(notPrimary),
+    incomes.some(notPrimary),
     contradicts(truth.primaryAge, age(profile?.primaryPerson)),
     contradicts(truth.partnerAge, age(profile?.partner))
   ].some(Boolean);

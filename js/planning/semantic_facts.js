@@ -1039,7 +1039,15 @@ function entityLabelFor(pathTokens, profile) {
 
   // Whose it is, in the second person, because the question is asked of the
   // client: "your partner's", or nothing at all when it is their own.
-  const owner = profile?.partner && record.ownerId === profile.partner.personId
+  // A record names its owner singularly or as a list depending on whether the
+  // position can be jointly held. Reading only one of the two silently lost the
+  // owner on whichever collection used the other.
+  const recordOwnerIds = Array.isArray(record.ownerIds)
+    ? record.ownerIds
+    : (record.ownerId ? [record.ownerId] : []);
+  const owner = profile?.partner
+    && recordOwnerIds.length === 1
+    && recordOwnerIds[0] === profile.partner.personId
     ? String(profile.partner.displayName || profile.partner.name || '').trim()
       ? `your partner ${String(profile.partner.displayName || profile.partner.name).trim()}'s`
       : "your partner's"

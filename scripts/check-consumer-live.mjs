@@ -3013,13 +3013,33 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
   const stored = (profile.incomeSources || []).filter((item) => item.type === 'rental');
   ok(stored.length === 1 && stored[0].grossAnnual?.amount === 27_000,
     'Jointly owned rental income must be recorded, not discarded.');
-  ok(stored[0].ownerId === 'household',
-    'A shared income belongs to the household, since one record cannot carry two owners.');
+  // A shared income names BOTH real people, once. It used to be recorded
+  // against a household pseudo-owner, which named nobody and so was invisible
+  // to every per-person view -- a couple could show full household income and
+  // zero mortgage capacity from the same profile.
+  ok([...(stored[0].ownerIds || [])].sort().join(',')
+    === [profile.primaryPerson.personId, profile.partner.personId].sort().join(','),
+    'A shared income is attributed to both real owners, not to a household pseudo-owner.');
 
   // The single-owner cases are untouched.
   save('income_sources', rental('primary', 'r3'));
-  ok((profile.incomeSources || []).some((item) => item.ownerId === profile.primaryPerson.personId),
-    'An income owned by one person must still record against that person.');
+  ok((profile.incomeSources || []).some((item) => (
+    item.ownerIds.length === 1 && item.ownerIds[0] === profile.primaryPerson.personId
+  )), 'An income owned by one person must still record against that person alone.');
+
+  // AND A SALARY CANNOT TAKE THAT ROUTE. "We earn 150,000 between us" is a
+  // fact about the household, not evidence of either person's pay, so it is
+  // refused rather than recorded as somebody's salary.
+  let refusedJointSalary = false;
+  try {
+    save('income_sources', {
+      entityId: 'salary-joint', type: 'employment', owner: 'joint',
+      grossAnnual: { amount: 150_000, currency: 'EUR' }
+    });
+  } catch (error) {
+    refusedJointSalary = error.code === 'realtime_individual_income_required';
+  }
+  ok(refusedJointSalary, 'A joint salary must be refused, since neither person stated their own.');
 }
 
 

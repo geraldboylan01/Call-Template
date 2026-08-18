@@ -66,6 +66,7 @@ export const PROFILE_PATCH_ROOTS = Object.freeze([
   'assets',
   'liabilities',
   'incomeSources',
+  'householdIncome',
   'expenses',
   'pensions',
   'properties',

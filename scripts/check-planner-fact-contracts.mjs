@@ -591,9 +591,18 @@ console.info('[PlannerFactContracts] PASS: the planner contract matches what the
     'a shared field name must not be treated as identifying a collection');
 
   // Identity and ownership rules are untouched by any of this.
-  assert.equal(contracts.find((e) => e.factId === 'income_sources').ownerKey, 'ownerId');
+  //
+  // Income moved to `ownerIds` when rent from a jointly owned property stopped
+  // being disguised as a household pseudo-owner: a joint income is one record
+  // naming both real people, the same shape a joint property already used.
+  // Whether a given income type may actually carry two owners is enforced by
+  // the profile schema, not by the owner key.
+  assert.equal(contracts.find((e) => e.factId === 'income_sources').ownerKey, 'ownerIds',
+    'joint-capable collections must keep their ownerIds identity');
   assert.equal(contracts.find((e) => e.factId === 'property_position').ownerKey, 'ownerIds',
     'joint-capable collections must keep their ownerIds identity');
+  assert.equal(contracts.find((e) => e.factId === 'pension_positions').ownerKey, 'ownerId',
+    'a pension belongs to one person, so it keeps the singular owner key');
   assert.equal(contracts.find((e) => e.factId === 'pension_positions').idKey, 'pensionId');
 
   pass('both prompt surfaces derive canonical field names from one registry');

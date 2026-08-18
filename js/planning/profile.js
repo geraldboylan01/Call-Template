@@ -31,6 +31,41 @@ import {
 const ASSET_TYPES = Object.freeze(['cash', 'investment', 'property', 'pension', 'business', 'agricultural', 'other']);
 const LIABILITY_TYPES = Object.freeze(['mortgage', 'loan', 'credit_card', 'other']);
 const INCOME_TYPES = Object.freeze(['employment', 'self_employment', 'rental', 'pension', 'state_pension', 'other']);
+
+// WHO AN INCOME CAN BELONG TO IS A PROPERTY OF WHAT THE INCOME IS.
+//
+// A salary, a trade, a pension in payment and a State Pension entitlement are
+// each one person's. There is no such thing as a joint salary: "we earn 150,000
+// between us" is a fact about the household, not about either person, and
+// splitting it would invent two salaries nobody stated.
+//
+// Rent from a jointly owned property genuinely does belong to both people, and
+// so may other non-employment income. Those are recorded ONCE with both owners
+// named -- never duplicated per person, and never disguised as a household
+// pseudo-owner.
+export const SINGLE_OWNER_INCOME_TYPES = Object.freeze([
+  'employment', 'self_employment', 'pension', 'state_pension'
+]);
+// `other` is deliberately permissive. Refusing a second owner on an
+// unclassified income loses a real client figure, while permitting one never
+// forces an attribution the client did not state.
+export const JOINT_CAPABLE_INCOME_TYPES = Object.freeze(['rental', 'other']);
+
+// The two lists must partition INCOME_TYPES: a type that appears in neither
+// would silently fall through to the permissive branch, which is how a joint
+// salary would get in.
+for (const type of INCOME_TYPES) {
+  const single = SINGLE_OWNER_INCOME_TYPES.includes(type);
+  const joint = JOINT_CAPABLE_INCOME_TYPES.includes(type);
+  if (single === joint) {
+    throw new Error(`Income type ${type} must be exactly one of single-owner or joint-capable.`);
+  }
+}
+
+/** Whether an income of this type may legitimately belong to two people. */
+export function isJointCapableIncomeType(type) {
+  return JOINT_CAPABLE_INCOME_TYPES.includes(type) && !SINGLE_OWNER_INCOME_TYPES.includes(type);
+}
 // A buyout bond (personal retirement bond) holds benefits transferred out of a
 // scheme the person has left. It is PRESERVED: nobody contributes to it, by
 // anyone, ever. Without a way to say so, a client with one was asked what they
@@ -188,13 +223,43 @@ function normalizeLiability(value, index) {
   return liability;
 }
 
+/**
+ * Read an income's owners, accepting the singular `ownerId` older records were
+ * written with.
+ *
+ * `ownerId: 'primary'` becoming `ownerIds: ['primary']` is a change of shape,
+ * not of meaning, so it migrates silently. `ownerId: 'household'` is a
+ * different matter: it was a stand-in for "we did not establish whose this is",
+ * and turning it into two named owners would manufacture ownership the client
+ * never stated. That is refused rather than reinterpreted.
+ */
+function normalizeIncomeOwners(value, fieldName, type) {
+  const supplied = typeof value.ownerIds !== 'undefined' ? value.ownerIds : value.ownerId;
+  const raw = Array.isArray(supplied) ? supplied : [supplied];
+  const ownerIds = normalizeStringIds(raw.filter((entry) => typeof entry !== 'undefined'), `${fieldName}.ownerIds`);
+  if (ownerIds.length === 0) {
+    throw new Error(`${fieldName}.ownerIds must name at least one household person.`);
+  }
+  if (ownerIds.includes('household')) {
+    throw new Error(
+      `${fieldName}.ownerIds cannot be the household: income belongs to a named person, `
+      + 'and a combined household figure belongs in householdIncome.'
+    );
+  }
+  if (ownerIds.length > 1 && !isJointCapableIncomeType(type)) {
+    throw new Error(`${fieldName}.ownerIds must name exactly one person for ${type} income.`);
+  }
+  return ownerIds;
+}
+
 function normalizeIncome(value, index) {
   const fieldName = `incomeSources[${index}]`;
   if (!isPlainObject(value)) throw new Error(`${fieldName} must be an object.`);
+  const type = enumValue(value.type, INCOME_TYPES, `${fieldName}.type`);
   const income = {
     incomeId: nonEmptyString(value.incomeId, `${fieldName}.incomeId`),
-    ownerId: nonEmptyString(value.ownerId, `${fieldName}.ownerId`),
-    type: enumValue(value.type, INCOME_TYPES, `${fieldName}.type`),
+    ownerIds: normalizeIncomeOwners(value, fieldName, type),
+    type,
     label: nonEmptyString(value.label, `${fieldName}.label`)
   };
   const grossAnnual = normalizeMoney(value.grossAnnual, `${fieldName}.grossAnnual`, { optional: true });
@@ -225,12 +290,42 @@ function normalizeExpenses(value) {
   return result;
 }
 
+/**
+ * A COMBINED HOUSEHOLD FIGURE IS NOT AN INCOME SOURCE.
+ *
+ * "Between us we take home about 7,000 a month" is real evidence and worth
+ * keeping, but it names no position and no person. Recorded as an income
+ * source it would become somebody's salary -- one that neither person stated
+ * and no lender would recognise. It lives here instead, beside `expenses`,
+ * which is the shape the profile already uses for a household-level money
+ * summary that belongs to nobody in particular.
+ *
+ * A module may read it only where its contract asks for a combined household
+ * figure. It can never answer "what does each of you earn?".
+ */
+function normalizeHouseholdIncome(value) {
+  if (!isPlainObject(value)) throw new Error('householdIncome must be an object.');
+  const result = {};
+  for (const key of ['netMonthly', 'netAnnual', 'grossAnnual']) {
+    const money = normalizeMoney(value[key], `householdIncome.${key}`, { optional: true });
+    if (money) result[key] = money;
+  }
+  return result;
+}
+
 function normalizePension(value, index) {
   const fieldName = `pensions[${index}]`;
   if (!isPlainObject(value)) throw new Error(`${fieldName} must be an object.`);
+  const ownerId = nonEmptyString(value.ownerId, `${fieldName}.ownerId`);
+  // A pension is one person's, always. Pension Projection combines household
+  // retirement resources downstream, but the positions it combines each stay
+  // attached to the person whose pension it is.
+  if (ownerId === 'household') {
+    throw new Error(`${fieldName}.ownerId must be one household person; a pension cannot be jointly owned.`);
+  }
   const pension = {
     pensionId: nonEmptyString(value.pensionId, `${fieldName}.pensionId`),
-    ownerId: nonEmptyString(value.ownerId, `${fieldName}.ownerId`),
+    ownerId,
     type: enumValue(value.type, PENSION_TYPES, `${fieldName}.type`)
   };
   const label = optionalString(value.label, `${fieldName}.label`);
@@ -462,6 +557,7 @@ export function createHouseholdProfile({
     assets: [],
     liabilities: [],
     incomeSources: [],
+    householdIncome: {},
     expenses: {},
     pensions: [],
     properties: [],
@@ -494,6 +590,7 @@ export function normalizeHouseholdProfile(raw) {
     assets: assertUniqueIds((raw.assets ?? []).map(normalizeAsset), 'assets', 'assetId'),
     liabilities: assertUniqueIds((raw.liabilities ?? []).map(normalizeLiability), 'liabilities', 'liabilityId'),
     incomeSources: assertUniqueIds((raw.incomeSources ?? []).map(normalizeIncome), 'incomeSources', 'incomeId'),
+    householdIncome: normalizeHouseholdIncome(raw.householdIncome ?? {}),
     expenses: normalizeExpenses(raw.expenses ?? {}),
     pensions: assertUniqueIds((raw.pensions ?? []).map(normalizePension), 'pensions', 'pensionId'),
     properties: assertUniqueIds((raw.properties ?? []).map(normalizeProperty), 'properties', 'propertyId'),
@@ -525,7 +622,7 @@ export function normalizeHouseholdProfile(raw) {
   });
   assertOwners(profile.assets, 'assets');
   assertOwners(profile.liabilities, 'liabilities');
-  assertOwners(profile.incomeSources, 'incomeSources', 'ownerId');
+  assertOwners(profile.incomeSources, 'incomeSources');
   assertOwners(profile.pensions, 'pensions', 'ownerId');
   assertOwners(profile.properties, 'properties');
   assertOwners(profile.businesses, 'businesses');

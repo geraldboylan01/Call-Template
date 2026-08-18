@@ -485,8 +485,9 @@ async function contributionDetails(r) {
 
   // Income was stated for the client only, so it must not have acquired a
   // partner owner along the way.
-  assert.ok((after.incomeSources || []).every((item) => item.ownerId === primaryId),
-    'income stated by the client must not be reassigned to the partner');
+  assert.ok((after.incomeSources || []).every((item) => (
+    item.ownerIds.length === 1 && item.ownerIds[0] === primaryId
+  )), 'income stated by the client must not be reassigned to, or shared with, the partner');
 
   r.planner.restore();
   pass('D — primary and partner facts keep their owners through the whole call');

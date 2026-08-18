@@ -59,18 +59,45 @@ export function personForId(profile, ownerId) {
   return null;
 }
 
+/**
+ * One person's own employment and self-employment income.
+ *
+ * Employment income is single-owner by schema, so `ownerIds` holds exactly one
+ * person here and no holding can be counted for two people. A combined
+ * household figure is deliberately not reachable from this function: it is not
+ * anybody's salary, and a module asking what one applicant earns must not be
+ * answered with what the couple earns together.
+ */
 export function grossEmploymentIncome(profile, ownerId) {
   const currency = baseCurrency(profile);
   return sumKnown((profile.incomeSources || [])
-    .filter((income) => income.ownerId === ownerId && ['employment', 'self_employment'].includes(income.type))
+    .filter((income) => income.ownerIds.includes(ownerId) && ['employment', 'self_employment'].includes(income.type))
     .map((income) => moneyAmount(income.grossAnnual, currency)));
 }
 
+/**
+ * Combined household net income.
+ *
+ * Each source counts ONCE regardless of how many owners it names, so jointly
+ * owned rent is not doubled by being owned twice. Where no source carries a net
+ * figure, a household aggregate the client stated is used instead -- that is
+ * the one place an aggregate is allowed to answer, because the question itself
+ * is about the household rather than about a person.
+ */
 export function netHouseholdIncome(profile) {
   const currency = baseCurrency(profile);
   const values = (profile.incomeSources || []).map((income) => moneyAmount(income.netAnnual, currency));
-  if (!values.some((value) => value !== null)) return null;
-  return sumKnown(values);
+  if (values.some((value) => value !== null)) return sumKnown(values);
+  return householdAggregateNetIncome(profile);
+}
+
+/** The stated combined figure alone, with no per-source fallback. */
+export function householdAggregateNetIncome(profile) {
+  const currency = baseCurrency(profile);
+  const annual = moneyAmount(profile.householdIncome?.netAnnual, currency);
+  if (annual !== null) return annual;
+  const monthly = moneyAmount(profile.householdIncome?.netMonthly, currency);
+  return monthly === null ? null : monthly * 12;
 }
 
 export function getAssumption(profile, path, fallback) {
