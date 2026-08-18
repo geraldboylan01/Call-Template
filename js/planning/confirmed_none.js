@@ -75,6 +75,22 @@ function confirmedNonePattern(object, { verbs = 'have', extra = '' } = {}) {
   const determiner = String.raw`(?:a\s+|an\s+|any\s+|their\s+|his\s+|her\s+|its\s+)?`;
   const gap = `${determiner}${NONE_QUALIFIER}`;
   const negated = `(?:${NONE_SUBJECT})?${NONE_NEGATION}\\s+(?:${verbs})\\s+`;
+  // "NEITHER OF US" IS A NEGATION IN ITS OWN RIGHT. A cross-module run heard
+  // "No, neither of us owns or has an interest in a business" — as categorical
+  // as a client gets — and refused it, because the subject list held only
+  // "I/we/he/she/they" and the negation list only "do not/don't". The clause is
+  // bounded and may not cross a sentence end or a comma, so a later "but we do
+  // have one" cannot be swept in.
+  // Third-person forms, because "neither of us HAS" is the natural phrasing and
+  // "have" + "s" is not a word.
+  const thirdPerson = verbs.split('|')
+    .map((verb) => (verb === 'have' ? 'has' : `${verb}s`))
+    .join('|');
+  // The span may not cross a COMMA either: "neither of us owns a house, but we
+  // do have a business" must not read as having no business. Only the clause
+  // the negation actually governs counts.
+  const neitherOfUs = `(?:neither|none)\\s+of\\s+(?:us|them)\\s+`
+    + `(?:${verbs}|${thirdPerson})\\b[^.!?;,]{0,40}?${gap}${object}`;
   return new RegExp(
     '\\b(?:'
       // "no pension", "has no occupational pension", "without any pensions".
@@ -84,6 +100,9 @@ function confirmedNonePattern(object, { verbs = 'have', extra = '' } = {}) {
       + `(?:no|without)\\s+(?!(?:other|further|additional|more)\\b)${gap}${object}`
       // "doesn't have a pension", "my partner does not own any property"
       + `|${negated}${gap}${object}`
+      // "neither of us owns a business", "neither of us has an interest in one"
+      + `|${neitherOfUs}`
+      + `|(?:neither|none)\\s+of\\s+(?:us|them)\\s+(?:${verbs}|${thirdPerson})\\s+(?:one|any)\\b`
       // "no, they don't have one" — the object as a bare pronoun
       + `|${negated}(?:one|any)\\b`
       + (extra ? `|${extra}` : '')

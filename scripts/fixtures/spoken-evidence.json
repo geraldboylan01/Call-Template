@@ -693,6 +693,150 @@
       ],
       "expect": "reject",
       "note": "Two rates, no attribution, and the client says outright they cannot attribute them."
+    },
+    {
+      "id": "mortgage-rate-on-idiom",
+      "said": "There is about 240000 left, I am on 4.1 percent, and there are 22 years to go.",
+      "submit": [
+        {
+          "factId": "mortgage_position",
+          "value": {
+            "operation": "upsert",
+            "entityId": "m1",
+            "type": "mortgage",
+            "owner": "primary",
+            "annualInterestRate": 4.1
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "\"I'm on 4.1 percent\" is the same idiom as \"I'm on 95,000 a year\", and failed the same way: the word mortgage stays in the previous clause. `at` was already allowed here; `on` is the commoner form."
+    },
+    {
+      "id": "mortgage-position-three-figures",
+      "said": "There is about 240000 left, I am on 4.1 percent, and there are 22 years to go.",
+      "submit": [
+        {
+          "factId": "mortgage_position",
+          "value": {
+            "operation": "upsert",
+            "entityId": "m1",
+            "type": "mortgage",
+            "owner": "primary",
+            "currentBalance": {
+              "amount": 240000,
+              "currency": "EUR"
+            },
+            "annualInterestRate": 4.1,
+            "remainingTermYears": 22
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "Balance, rate and term in one natural sentence - the shape a mortgage client actually speaks."
+    },
+    {
+      "id": "SAFETY-mortgage-rate-is-not-a-pension-rate",
+      "said": "I am on 4.1 percent.",
+      "submit": [
+        {
+          "factId": "pension_employer_contribution_rate",
+          "value": {
+            "rate": 8,
+            "rateUnit": "percent"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "A mortgage rate must never be recorded as an employer pension contribution."
+    },
+    {
+      "id": "SAFETY-pension-contribution-is-not-a-mortgage-rate",
+      "said": "I put in 6 percent to my pension.",
+      "submit": [
+        {
+          "factId": "mortgage_position",
+          "value": {
+            "operation": "upsert",
+            "entityId": "m1",
+            "type": "mortgage",
+            "owner": "primary",
+            "annualInterestRate": 6
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "And the reverse: a contribution rate is not the cost of borrowing."
+    },
+    {
+      "id": "none-neither-of-us-business",
+      "said": "No, neither of us owns or has an interest in a business, farm, or other agricultural asset.",
+      "submit": [
+        {
+          "factId": "business_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "As categorical as a client gets, and refused: the subject list held only I/we/he/she/they and the negation list only do-not/don't. It stalled a personal balance sheet permanently."
+    },
+    {
+      "id": "none-neither-of-us-pension",
+      "said": "Neither of us has a pension.",
+      "submit": [
+        {
+          "factId": "pension_positions",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "The natural third-person form: 'have' + 's' is not a word."
+    },
+    {
+      "id": "SAFETY-neither-of-us-then-a-holding",
+      "said": "Neither of us owns a house, but we do have a business.",
+      "submit": [
+        {
+          "factId": "business_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "The negation governs its own clause only. Sweeping past the comma would record no business for a client who just said they have one."
+    },
+    {
+      "id": "SAFETY-neither-of-us-wrong-collection",
+      "said": "Neither of us owns a business.",
+      "submit": [
+        {
+          "factId": "pension_positions",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "An absence of one thing is not an absence of another."
+    },
+    {
+      "id": "SAFETY-neither-of-us-uncertain",
+      "said": "I am not sure whether either of us has a business.",
+      "submit": [
+        {
+          "factId": "business_position",
+          "value": {
+            "operation": "confirm_none"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "Not knowing is not the same as not having."
     }
   ]
 }

@@ -198,7 +198,42 @@
         "grossAnnual": 95000,
         "employeeRate": 0.06,
         "employerRate": 0.08,
-        "targetRetirementIncome": 45000
+        "targetRetirementIncome": 45000,
+        "figures": [
+          {
+            "name": "intendedRetirementAge",
+            "path": "/primaryPerson/intendedRetirementAge",
+            "expected": 62
+          },
+          {
+            "name": "pensionValue",
+            "path": "/pensions/0/currentValue/amount",
+            "expected": 319000
+          },
+          {
+            "name": "employeeRate",
+            "path": "/pensions/0/employeeContributionRate",
+            "expected": 0.06
+          },
+          {
+            "name": "employerRate",
+            "path": "/pensions/0/employerContributionRate",
+            "expected": 0.08
+          },
+          {
+            "name": "grossAnnual",
+            "path": "/incomeSources/0/grossAnnual/amount",
+            "expected": 95000
+          }
+        ],
+        "expectedCounts": {
+          "pensions": 1,
+          "incomeSources": 1
+        },
+        "headline": {
+          "datasetLabel": "Pot (current)",
+          "expected": 319000
+        }
       },
       "opening": "I'm 57 and I'm married. My partner is 59. I'd like to get my pension sorted out before I retire."
     },
@@ -377,7 +412,42 @@
         "grossAnnual": 95000,
         "employeeRate": 0.06,
         "employerRate": 0.08,
-        "targetRetirementIncome": 45000
+        "targetRetirementIncome": 45000,
+        "figures": [
+          {
+            "name": "intendedRetirementAge",
+            "path": "/primaryPerson/intendedRetirementAge",
+            "expected": 62
+          },
+          {
+            "name": "pensionValue",
+            "path": "/pensions/0/currentValue/amount",
+            "expected": 319000
+          },
+          {
+            "name": "employeeRate",
+            "path": "/pensions/0/employeeContributionRate",
+            "expected": 0.06
+          },
+          {
+            "name": "employerRate",
+            "path": "/pensions/0/employerContributionRate",
+            "expected": 0.08
+          },
+          {
+            "name": "grossAnnual",
+            "path": "/incomeSources/0/grossAnnual/amount",
+            "expected": 95000
+          }
+        ],
+        "expectedCounts": {
+          "pensions": 1,
+          "incomeSources": 1
+        },
+        "headline": {
+          "datasetLabel": "Pot (current)",
+          "expected": 319000
+        }
       },
       "opening": "I'm 57 — well, 57 last month. I want to get the pension sorted before I finish up."
     },
@@ -398,9 +468,374 @@
         "grossAnnual": 95000,
         "employeeRate": 0.06,
         "employerRate": 0.08,
-        "targetRetirementIncome": 45000
+        "targetRetirementIncome": 45000,
+        "figures": [
+          {
+            "name": "intendedRetirementAge",
+            "path": "/primaryPerson/intendedRetirementAge",
+            "expected": 62
+          },
+          {
+            "name": "pensionValue",
+            "path": "/pensions/0/currentValue/amount",
+            "expected": 319000
+          },
+          {
+            "name": "employeeRate",
+            "path": "/pensions/0/employeeContributionRate",
+            "expected": 0.06
+          },
+          {
+            "name": "employerRate",
+            "path": "/pensions/0/employerContributionRate",
+            "expected": 0.08
+          },
+          {
+            "name": "grossAnnual",
+            "path": "/incomeSources/0/grossAnnual/amount",
+            "expected": 95000
+          }
+        ],
+        "expectedCounts": {
+          "pensions": 1,
+          "incomeSources": 1
+        },
+        "headline": {
+          "datasetLabel": "Pot (current)",
+          "expected": 319000
+        }
       },
       "opening": "I suppose I'm wondering about the pension really. We're both getting on, I'm 57."
+    },
+    {
+      "id": "liquidity_easy",
+      "level": "easy",
+      "targetModule": "liquidity_analysis",
+      "person": "41, working, wants to know if the rainy-day fund is enough",
+      "brief": "You are 41 and still working. You have about EUR 18,000 in savings and spend about EUR 2,600 a month. You want to know whether your emergency fund is enough. Answer naturally and briefly. Do not volunteer figures you were not asked for.",
+      "opening": "I want to know whether the savings I have would actually cover me if something went wrong.",
+      "expectation": "The scalar-only module. No entity binding at all, so it isolates module-agnosticism in the harness from the entity machinery pension exercised.",
+      "turns": [
+        {
+          "client": "I want to know whether the savings I have would actually cover me if something went wrong.",
+          "speech": "That is worth knowing. Roughly how much do you have set aside, and what do you spend in a typical month?",
+          "saveFacts": [
+            {
+              "factId": "primary_goal",
+              "value": {
+                "type": "maintain_liquidity"
+              },
+              "certainty": "exact"
+            },
+            {
+              "factId": "retirement_status",
+              "value": "working",
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "I have about 18,000 saved, and I spend around 2,600 a month.",
+          "speech": "Eighteen thousand set aside against two thousand six hundred a month. Let me check where that leaves you.",
+          "saveFacts": [
+            {
+              "factId": "cash_savings",
+              "value": {
+                "amount": 18000,
+                "currency": "EUR"
+              },
+              "certainty": "approximate"
+            },
+            {
+              "factId": "monthly_spending",
+              "value": {
+                "amount": 2600,
+                "currency": "EUR"
+              },
+              "certainty": "approximate"
+            }
+          ],
+          "getState": true
+        }
+      ],
+      "groundTruth": {
+        "figures": [
+          {
+            "name": "cashSavings",
+            "path": "/assets/0/currentValue/amount",
+            "expected": 18000
+          }
+        ],
+        "expectedCounts": {
+          "assets": 1
+        },
+        "owners": {
+          "assets": "primary"
+        }
+      }
+    },
+    {
+      "id": "mortgage_easy",
+      "level": "easy",
+      "targetModule": "mortgage_analysis",
+      "person": "38, one mortgage, wants to know whether to switch",
+      "brief": "You are 38 with one mortgage: about EUR 240,000 left, on 4.1 percent, with 22 years to run. You want to know whether switching is worth it. Answer naturally, give figures when asked, and do not volunteer anything you were not asked about.",
+      "opening": "I have been wondering whether I should switch my mortgage or just leave it alone.",
+      "expectation": "One liability entity with three numeric slots. Proves the entity binding hardened on pensions works on a different collection.",
+      "turns": [
+        {
+          "client": "I am 38 and I have been wondering whether I should switch my mortgage or just leave it alone.",
+          "speech": "Worth checking. What is left on it, what rate are you paying, and how long is left to run?",
+          "saveFacts": [
+            {
+              "factId": "primary_goal",
+              "value": {
+                "type": "optimise_mortgage"
+              },
+              "certainty": "exact"
+            },
+            {
+              "factId": "person_current_age",
+              "value": {
+                "age": 38
+              },
+              "certainty": "exact"
+            }
+          ]
+        },
+        {
+          "client": "There is about 240,000 left, I am on 4.1 percent, and there are 22 years to go.",
+          "speech": "Two hundred and forty thousand at 4.1 percent over twenty-two years. Let me look at that.",
+          "saveFacts": [
+            {
+              "factId": "mortgage_position",
+              "value": {
+                "operation": "upsert",
+                "entityId": "m1",
+                "type": "mortgage",
+                "owner": "primary",
+                "currentBalance": {
+                  "amount": 240000,
+                  "currency": "EUR"
+                },
+                "annualInterestRate": 4.1,
+                "remainingTermYears": 22
+              },
+              "certainty": "approximate"
+            }
+          ],
+          "getState": true
+        }
+      ],
+      "groundTruth": {
+        "primaryAge": 38,
+        "figures": [
+          {
+            "name": "mortgageBalance",
+            "path": "/liabilities/0/currentBalance/amount",
+            "expected": 240000
+          },
+          {
+            "name": "mortgageRate",
+            "path": "/liabilities/0/annualInterestRate",
+            "expected": 0.041
+          }
+        ],
+        "expectedCounts": {
+          "liabilities": 1
+        },
+        "owners": {
+          "liabilities": "primary"
+        }
+      }
+    },
+    {
+      "id": "mortgage_medium",
+      "level": "medium",
+      "targetModule": "mortgage_analysis",
+      "person": "38, one mortgage, misremembers the rate and corrects it",
+      "brief": "You are 38 with one mortgage: about EUR 240,000 left with 22 years to run. When first asked the interest rate say it is 4.5 percent. Two turns later, correct yourself: say you checked and it is actually 4.1 percent. Answer naturally and do not volunteer figures you were not asked for.",
+      "opening": "I want to know if my mortgage is costing me more than it should.",
+      "expectation": "The correction path OUTSIDE pensions. 4.5 must be superseded by 4.1, and supersededFigures must catch it if it is not.",
+      "turns": [],
+      "groundTruth": {
+        "primaryAge": 38,
+        "figures": [
+          {
+            "name": "mortgageBalance",
+            "path": "/liabilities/0/currentBalance/amount",
+            "expected": 240000
+          },
+          {
+            "name": "mortgageRate",
+            "path": "/liabilities/0/annualInterestRate",
+            "expected": 0.041
+          }
+        ],
+        "expectedCounts": {
+          "liabilities": 1
+        },
+        "owners": {
+          "liabilities": "primary"
+        }
+      }
+    },
+    {
+      "id": "college_easy",
+      "level": "easy",
+      "targetModule": "college_funding",
+      "person": "44, one child, wants to know the cost of college",
+      "brief": "You are 44 with one child, a daughter aged 8. You want to know what college will cost and whether you are saving enough. You think it is around EUR 12,000 a year today. Answer naturally.",
+      "opening": "I would like to work out what college is going to cost for my daughter.",
+      "expectation": "Entity binding on the DEPENDANTS collection, which has no owner key at all - a shape pension never exercised.",
+      "turns": [],
+      "groundTruth": {
+        "primaryAge": 44,
+        "figures": [
+          {
+            "name": "childAge",
+            "path": "/dependants/0/currentAge",
+            "expected": 8
+          }
+        ],
+        "expectedCounts": {
+          "dependants": 1
+        }
+      }
+    },
+    {
+      "id": "college_medium",
+      "level": "medium",
+      "targetModule": "college_funding",
+      "person": "44, two children close in age",
+      "brief": "You are 44 with two children: a daughter aged 8 and a son aged 11. You want to know what college will cost for both. You think it is about EUR 12,000 a year each in today's money. Answer naturally, and refer to them by name or age rather than repeating everything each time.",
+      "opening": "We are trying to work out what college will cost for the two children.",
+      "expectation": "MULTI-ENTITY binding where the entities are near-identical. Two children must not become three dependants, and each age must land on the right child.",
+      "turns": [],
+      "groundTruth": {
+        "primaryAge": 44,
+        "figures": [],
+        "expectedCounts": {
+          "dependants": 2
+        }
+      }
+    },
+    {
+      "id": "pbs_easy",
+      "level": "easy",
+      "targetModule": "personal_balance_sheet",
+      "person": "46, wants an overall picture",
+      "brief": "You are 46. You own your home, worth about EUR 420,000, with about EUR 180,000 left on the mortgage. You have about EUR 25,000 in savings and a pension worth about EUR 90,000. You spend about EUR 3,200 a month. You want to see where you stand overall. Answer naturally.",
+      "opening": "I would like to get a clear picture of where we actually stand financially.",
+      "expectation": "SEVERAL collections populated in one conversation - property, liability, asset, pension. Proves they do not contaminate each other.",
+      "turns": [],
+      "groundTruth": {
+        "primaryAge": 46,
+        "figures": [
+          {
+            "name": "propertyValue",
+            "path": "/properties/0/currentValue/amount",
+            "expected": 420000
+          },
+          {
+            "name": "mortgageBalance",
+            "path": "/liabilities/0/currentBalance/amount",
+            "expected": 180000
+          },
+          {
+            "name": "savings",
+            "path": "/assets/0/currentValue/amount",
+            "expected": 25000
+          },
+          {
+            "name": "pensionValue",
+            "path": "/pensions/0/currentValue/amount",
+            "expected": 90000
+          }
+        ],
+        "expectedCounts": {
+          "properties": 1,
+          "liabilities": 1,
+          "assets": 1,
+          "pensions": 1
+        },
+        "owners": {
+          "properties": "primary",
+          "liabilities": "primary",
+          "assets": "primary",
+          "pensions": "primary"
+        }
+      }
+    },
+    {
+      "id": "pbs_medium",
+      "level": "medium",
+      "targetModule": "personal_balance_sheet",
+      "person": "46, married, talks about everything as ours",
+      "brief": "You are 46 and married. Talk about your finances the way couples do - say 'our house', 'we have', 'between us'. The house is worth about EUR 420,000 and is in both your names. The mortgage of about EUR 180,000 is joint. You have about EUR 25,000 saved between you. Your own pension is worth about EUR 90,000 and it is yours alone. Your partner is 44. Answer naturally.",
+      "opening": "We would like to see where we stand overall, the two of us together.",
+      "expectation": "HOUSEHOLD LANGUAGE and joint ownership. 'Ours' must become joint ownership where it is true and must not invent a partner holding where it is not.",
+      "turns": [],
+      "groundTruth": {
+        "primaryAge": 46,
+        "partnerAge": 44,
+        "figures": [
+          {
+            "name": "propertyValue",
+            "path": "/properties/0/currentValue/amount",
+            "expected": 420000
+          },
+          {
+            "name": "mortgageBalance",
+            "path": "/liabilities/0/currentBalance/amount",
+            "expected": 180000
+          }
+        ],
+        "expectedCounts": {
+          "properties": 1,
+          "liabilities": 1,
+          "assets": 1,
+          "pensions": 1
+        },
+        "owners": {
+          "properties": "joint",
+          "liabilities": "joint",
+          "assets": "joint",
+          "pensions": "primary"
+        }
+      }
+    },
+    {
+      "id": "house_purchase_medium",
+      "level": "medium",
+      "targetModule": "house_purchase",
+      "person": "31, buying with a partner, two incomes",
+      "brief": "You are 31 and buying your first home with your partner, who is 30. You earn EUR 62,000 gross and your partner earns EUR 48,000 gross. You have EUR 55,000 saved between you and pay EUR 1,450 a month in rent. You are looking at houses around EUR 400,000 and spend about EUR 2,900 a month. Answer naturally.",
+      "opening": "We are hoping to buy our first place and want to know what we can realistically afford.",
+      "expectation": "JOINT INCOME attribution, which pension never meaningfully exercised: two incomes, two people, and neither may absorb the other's salary.",
+      "turns": [],
+      "groundTruth": {
+        "primaryAge": 31,
+        "partnerAge": 30,
+        "figures": [
+          {
+            "name": "primaryIncome",
+            "path": "/incomeSources/0/grossAnnual/amount",
+            "expected": 62000
+          },
+          {
+            "name": "targetHomePrice",
+            "path": "/assumptions/values/planning/targetHomePrice/amount",
+            "expected": 400000
+          }
+        ],
+        "expectedCounts": {
+          "incomeSources": 2
+        },
+        "owners": {
+          "incomeSources": "joint"
+        }
+      }
     }
   ]
 }

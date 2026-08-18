@@ -46,7 +46,14 @@ import { getCurrentProfile, getLatestAnalysis, getSessionRow } from '../worker/s
 import { buildLiveCataloguePrompt } from '../worker/src/consumer/live/catalogue_prompt.js';
 import { euroCostFor } from './agent-harness/cost.mjs';
 import { createDiagnostics, newRunId } from './live-harness/diagnostics.mjs';
-import { arithmeticVerdict, ownershipVerdict, supersededFigures } from './live-harness/metrics.mjs';
+import {
+  arithmeticVerdict,
+  extraPositions,
+  falsePositiveFigures,
+  headlineFigure,
+  ownershipVerdict,
+  supersededFigures
+} from './live-harness/metrics.mjs';
 // ONE IMPLEMENTATION OF EACH PLAYER. These are the persona replay's own
 // functions, driving the same real live prompt and the same real live tools; a
 // second copy here would drift from the harness it is meant to agree with.
@@ -618,28 +625,17 @@ planner.restore();
  */
 const truth = persona.groundTruth || {};
 const finalNeeds = stillNeeded(await projection());
-const pensions = finalProfile.pensions || [];
-const incomes = finalProfile.incomeSources || [];
 const primaryId = finalProfile.primaryPerson?.personId;
 const partnerId = finalProfile.partner?.personId;
-const money = (value) => Number(value?.amount ?? NaN);
 
-// A canonical figure the persona never had. The truth is one household with one
-// of each, so anything beyond it was invented somewhere in the lane.
-const falsePositiveFacts = [
-  pensions.length > (truth.pensionCount ?? 1),
-  incomes.length > 1,
-  Number.isFinite(truth.pensionValue)
-    && pensions.some((item) => Number.isFinite(money(item.currentValue))
-      && money(item.currentValue) !== truth.pensionValue)
-].filter(Boolean).length;
+// A canonical figure the persona never had, or a position beyond what they
+// hold. Both counted per collection from the persona's declared counts.
+const falsePositiveFacts = falsePositiveFigures(finalProfile, truth);
 
 // An aggregate that became a holding shows up as an extra position, which is
 // exactly the failure the classification rules exist to stop.
-const aggregateAsPosition = Math.max(0, pensions.length - (truth.pensionCount ?? 1));
+const aggregateAsPosition = extraPositions(finalProfile, truth);
 
-// Three-state: false is a holding in the wrong name, null is a conversation
-// that never established what this judges. See scripts/live-harness/metrics.mjs.
 const ownershipCorrect = ownershipVerdict(finalProfile, truth);
 
 // A correction that never superseded leaves the WRONG figure canonical. Checked
@@ -678,20 +674,20 @@ const plannerSpendEur = plannerRows.reduce((total, row) => total + euroCostFor({
   cachedInputTokens: Number(row.cached_input_tokens || 0)
 }), 0);
 
-const pensionResult = (analysis?.results || []).find((item) => item.moduleId === 'pension_projection');
+// THE PERSONA'S MODULE, NOT A HARD-CODED ONE. A successful mortgage run scored
+// moduleCompleted=false here because the harness asked whether
+// `pension_projection` was in the results, and every criterion downstream of
+// that failed with it.
+const TARGET_MODULE = persona.targetModule || 'pension_projection';
+const targetResult = (analysis?.results || []).find((item) => item.moduleId === TARGET_MODULE);
 // NULL WHEN NOTHING RAN. `false` used to mean both "calculated the wrong
 // number" and "calculated nothing", so a batch reporting arithmetic 2/5
 // could not say whether any client had been given a wrong figure. Those are
 // different severities and must not share a value.
-const openingPot = (() => {
-  if (!pensionResult) return null;
-  const chart = (pensionResult.charts || []).find((item) => Array.isArray(item.datasets)
-    && item.datasets.some((set) => set.label === 'Pot (current)'));
-  return chart?.datasets.find((set) => set.label === 'Pot (current)')?.data?.[0] ?? null;
-})();
-// Three-state: null when no module ran, or when the persona states no figure
-// to check against. See scripts/live-harness/metrics.mjs.
-const moduleArithmeticCorrect = arithmeticVerdict(openingPot, truth.pensionValue);
+// The headline the PERSONA names, so a new module needs a fixture entry rather
+// than a branch here. No declared headline means no arithmetic score.
+const openingPot = headlineFigure(targetResult, truth.headline);
+const moduleArithmeticCorrect = arithmeticVerdict(openingPot, truth.headline?.expected);
 
 // THE EXACT STATE THE MODULE WAS GIVEN, and what the client actually said it
 // should be. This is the pair that answers "did a wrong number reach a client".
@@ -735,7 +731,8 @@ const measured = {
   supersededFigures: supersededNames,
   reconciliation: reconciliationSummary,
   confirmed: confirmResult?.ok === true,
-  moduleCompleted: Boolean(pensionResult),
+  moduleCompleted: Boolean(targetResult),
+  targetModule: TARGET_MODULE,
   moduleArithmeticCorrect,
   spendEur: plannerSpendEur,
   plannerTokens,
@@ -760,9 +757,9 @@ line(`  planner tokens       : ${plannerTokens.input} in (${plannerTokens.cached
 line(`  planner spend        : €${plannerSpendEur.toFixed(4)}`);
 
 diagnostics.record('module_output', {
-  moduleId: pensionResult?.moduleId || null,
+  moduleId: targetResult?.moduleId || null,
   openingPot,
-  expectedOpeningPot: truth.pensionValue ?? null,
+  expectedOpeningPot: truth.headline?.expected ?? null,
   correct: moduleArithmeticCorrect
 });
 

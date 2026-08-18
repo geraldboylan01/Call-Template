@@ -743,9 +743,13 @@ function numericOccurrenceSupportsSlot(slot, occurrence, transcript) {
         && /\b(?:contribut(?:e|es|ed|ing|ion|ions)?|put in|pay in)\b[^.!?;]{0,40}(?:%|percent|per cent)/i
           .test(transcript);
     }
+    // "I'm ON 4.1 percent" is the same idiom as "I'm on 95,000 a year", and it
+    // failed the same way: the client answers a question about their mortgage
+    // and the word "mortgage" stays in the previous clause. `at` was already
+    // allowed here; `on` is the commoner form and was not.
     return /\b(?:rate|interest|mortgage|loan|debt)\b/i.test(context)
       || (
-        /\bat\s*$/i.test(before)
+        /\b(?:at|on)\s*$/i.test(before)
         && !/\b(?:pension|employer|employee|contribut|salary|income)\b/i.test(context)
       );
   }
