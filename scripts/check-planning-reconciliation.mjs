@@ -16,7 +16,11 @@ import {
   projectPlanningNotesToProfile,
   splitIndependentOperationGroups
 } from '../js/planning/reconciliation.js';
-import { createHouseholdProfile, normalizeHouseholdProfile } from '../js/planning/profile.js';
+import {
+  createHouseholdProfile,
+  hasOwnerConfirmedNone,
+  normalizeHouseholdProfile
+} from '../js/planning/profile.js';
 
 const NOW = '2026-08-09T10:00:00.000Z';
 const LATER = '2026-08-09T10:05:00.000Z';
@@ -1151,6 +1155,415 @@ await runCase('a reconciler-created canonical date is rejected when the client s
   assert.equal(result.status, 'no_change');
   assert.equal(result.rejectedGroups[0].code, 'date_value_unsupported');
   assert.equal(result.profile.assumptions.values.planning.futureEvents?.length ?? 0, 0);
+});
+
+await runCase('a stated absence reaches the marker that readiness reads, and an unstated one never does', async () => {
+  /* ELEVEN OF TWELVE entity_fact_mismatch REFUSALS WERE THIS ONE WRITE.
+   *
+   * The planner recording "my partner has no pension of their own" against the
+   * partner, refused because a person is not valid for a pensions-collection
+   * fact. One paid run retried it six times and never reached a module.
+   *
+   * The planner was right: canonical confirmed-none is keyed by collection AND
+   * PERSON — /pensions/owner/<personId> — and there is no pension entity to
+   * point at, which is what "none" means.
+   *
+   * AND FIXING ONLY THAT WOULD HAVE BEEN WORSE. Completion notes projected into
+   * the `completions` sidecar and nowhere else, while every reader of an
+   * absence looks at completionFacts.confirmedNonePaths. Accepting the note
+   * without writing the marker would have turned a visible refusal into a
+   * silent no-op: the planner would stop retrying and readiness would stay
+   * open with nothing in the audit trail to say why. */
+  const profile = normalizeHouseholdProfile({
+    ...baseProfile(),
+    pensions: [{
+      pensionId: 'pension_primary_occ', ownerId: 'primary', type: 'occupational',
+      currentValue: { amount: 319_000, currency: 'EUR' }
+    }]
+  });
+  const SAID = 'My partner has no pension of their own.';
+  const noneOperation = (over = {}) => ({
+    operationId: 'op_none', op: 'set_completion', factId: 'pension_positions',
+    factInstanceId: 'pension_positions:partner', noteKind: 'completion',
+    value: { resolution: 'confirmed_none' }, certainty: 'exact',
+    reasonCode: 'explicit_none',
+    evidence: [{ turnId: 'turn_none', quote: SAID }],
+    ...over
+  });
+  const attempt = async (operation, text = SAID) => {
+    const result = await applyReconciliationPlan({
+      profile, notes: [],
+      plan: {
+        schemaVersion: 1, verdict: 'changes_proposed', reviewedNoteIds: [],
+        operationGroups: [{ groupId: 'none', operations: [operation] }]
+      },
+      ...common,
+      transcriptTurns: [...turns,
+        { turnId: 'turn_none', role: 'user', finalized: true, sequence: 96, text }],
+      transcriptWatermark: 'turn_none'
+    });
+    return {
+      code: result.rejectedGroups[0]?.code ?? null,
+      markers: result.profile.assumptions?.values?.completionFacts?.confirmedNonePaths || {},
+      profile: result.profile
+    };
+  };
+
+  /* SHOULD RECORD — exactly the operation the paid runs kept sending. */
+  const partner = await attempt(noneOperation({ entityId: 'partner', ownerId: 'partner' }));
+  assert.equal(partner.code, null, 'a person is the right scope for their own absence');
+  assert.equal(partner.markers['/pensions/owner/partner'], true,
+    'and it must reach the marker readiness reads, not only the sidecar');
+  assert.equal(hasOwnerConfirmedNone(partner.profile, '/pensions', 'partner'), true,
+    'so the canonical reader agrees the partner holds none');
+
+  /* ONE PERSON'S ABSENCE IS NOT THE OTHER'S. */
+  assert.equal(hasOwnerConfirmedNone(partner.profile, '/pensions', 'primary'), false,
+    "the partner having none must never close the client's own need");
+
+  /* HOUSEHOLD-WIDE — no owner named, so the whole collection is empty. */
+  const HOUSEHOLD_SAID = 'We have no pensions at all.';
+  const household = await attempt(
+    noneOperation({
+      ownerId: undefined, entityId: undefined,
+      evidence: [{ turnId: 'turn_none', quote: HOUSEHOLD_SAID }]
+    }),
+    HOUSEHOLD_SAID
+  );
+  assert.equal(household.code, null, 'a household-wide none is allowed');
+  assert.equal(household.markers['/pensions'], true, 'and marks the collection itself');
+
+  /* A NARROW CITATION OF A CLEAR SENTENCE. Evidence rules push the planner
+   * toward the tightest span, so "no pension of their own" can arrive as a
+   * fragment that no longer reads as a negation by itself. The question is
+   * whether the CLIENT said there were none — a property of what they said,
+   * not of how tightly it was quoted. Nine refusals in the 2026-08-18 paid
+   * batch were this, on turns where the client had said it twice. */
+  const REAL_TURN = 'No, my partner has no pension of their own, no occupational pension, '
+    + 'PRSA or personal pension.';
+  for (const fragment of ['no pension of their own', 'PRSA or personal pension']) {
+    const narrow = await attempt(
+      noneOperation({
+        entityId: 'partner', ownerId: 'partner',
+        evidence: [{ turnId: 'turn_none', quote: fragment }]
+      }),
+      REAL_TURN
+    );
+    assert.equal(narrow.code, null,
+      `a narrow citation of a turn that plainly states the absence must bind (${fragment})`);
+    assert.equal(narrow.markers['/pensions/owner/partner'], true,
+      'and must still reach the marker');
+  }
+
+  /* MUST FAIL CLOSED — an absence the client never stated. The quote is a real
+   * span of a real turn, and says the opposite. */
+  const unsaid = await attempt(
+    noneOperation({
+      entityId: 'partner', ownerId: 'partner',
+      evidence: [{ turnId: 'turn_none', quote: 'My partner has a big pension.' }]
+    }),
+    'My partner has a big pension.'
+  );
+  assert.equal(unsaid.code, 'completion_none_unsupported',
+    'citing a real quote that says the opposite must not record an absence');
+  assert.equal(unsaid.markers['/pensions/owner/partner'], undefined,
+    'and must leave no marker behind');
+
+  /* MUST FAIL CLOSED — the exemption is for completions only. An ordinary
+   * pension write still cannot be aimed at a person. */
+  const ordinary = await attempt({
+    operationId: 'op_position', op: 'upsert_note', factId: 'pension_positions',
+    factInstanceId: 'pension_positions:partner', noteKind: 'position',
+    entityId: 'partner', ownerId: 'partner',
+    value: {
+      pensionId: 'partner', ownerId: 'partner', type: 'occupational',
+      currentValue: { amount: 50_000, currency: 'EUR' }
+    },
+    certainty: 'exact', reasonCode: 'missing_note',
+    evidence: [{ turnId: 'turn_none', quote: SAID }]
+  });
+  assert.equal(ordinary.code, 'entity_fact_mismatch',
+    'a holding still needs a holding to attach to');
+});
+
+await runCase('a person is named by the pronoun in the clause holding the number, and a mixed sentence binds neither loosely', async () => {
+  /* THE PRIMARY CLIENT COULD NEVER SATISFY THIS CHECK.
+   *
+   * Their label is "you" — three characters, dropped by significantCueTerms'
+   * length rule — so the cue list was EMPTY and quoteHasCue returned false for
+   * every sentence ever spoken. The check refused correct and incorrect
+   * attributions identically, which is a dead rule rather than a fail-closed
+   * one. The partner, labelled "your partner", worked fine; the asymmetry is
+   * the tell.
+   *
+   * A person is named by grammar, and the grammar is LOCAL: "she's retiring at
+   * 62 and I'm going at 65" attributes each number by the pronoun in its own
+   * clause. Reading the whole quote finds both pronouns and would bind either
+   * number to either person. */
+  const profile = normalizeHouseholdProfile({
+    ...baseProfile(),
+    pensions: [{
+      pensionId: 'pension_sole', ownerId: 'primary', type: 'occupational',
+      currentValue: { amount: 319_000, currency: 'EUR' }
+    }]
+  });
+  const ageOperation = (entityId, value) => ({
+    operationId: 'op_age', op: 'upsert_note', factId: 'intended_retirement_age',
+    factInstanceId: `intended_retirement_age:${entityId}`,
+    entityId, ownerId: entityId, noteKind: 'fact', value,
+    certainty: 'exact', reasonCode: 'missing_note',
+    evidence: [{ turnId: 'turn_people', quote: null }]
+  });
+  const said = async (text, operation) => {
+    const result = await applyReconciliationPlan({
+      profile, notes: [],
+      plan: {
+        schemaVersion: 1, verdict: 'changes_proposed', reviewedNoteIds: [],
+        operationGroups: [{
+          groupId: 'ages',
+          operations: [{ ...operation, evidence: [{ turnId: 'turn_people', quote: text }] }]
+        }]
+      },
+      ...common,
+      transcriptTurns: [...turns,
+        { turnId: 'turn_people', role: 'user', finalized: true, sequence: 98, text }],
+      transcriptWatermark: 'turn_people'
+    });
+    return result.rejectedGroups[0]?.code ?? null;
+  };
+
+  /* SHOULD BIND — the client speaks about themselves. */
+  assert.equal(await said("I'm retiring at 62 and I have 3 children.", ageOperation('primary', 62)), null,
+    'a first-person clause names the client');
+  assert.equal(await said('Use 62 for me, not 65.', ageOperation('primary', 62)), null,
+    '"for me" names them just as well');
+
+  /* THE MIXED SENTENCE — each number belongs to the person in ITS clause. */
+  const MIXED = "She's retiring at 62 and I'm going at 65.";
+  assert.equal(await said(MIXED, ageOperation('primary', 65)), null,
+    "the client's own figure binds to the client");
+  assert.equal(await said(MIXED, ageOperation('partner', 62)), null,
+    "and the partner's to the partner");
+  assert.equal(await said(MIXED, ageOperation('primary', 62)), 'numeric_entity_binding_ambiguous',
+    "the PARTNER's figure must never land on the client");
+  assert.equal(await said(MIXED, ageOperation('partner', 65)), 'numeric_entity_binding_ambiguous',
+    "nor the client's on the partner");
+
+  /* COLLECTIVE — attributes nothing to anybody, so neither may have it. */
+  const COLLECTIVE = "We're retiring at 62 and 65.";
+  for (const entityId of ['primary', 'partner']) {
+    assert.equal(await said(COLLECTIVE, ageOperation(entityId, 62)), 'numeric_entity_binding_ambiguous',
+      `a collective statement gives ${entityId} no claim to either figure`);
+  }
+});
+
+await runCase('a product that cannot receive contributions is neither a candidate for one nor a target of one', async () => {
+  /* A buy-out bond takes no ongoing contribution — the profile has said so in
+   * NON_CONTRIBUTORY_PENSION_TYPES all along, and the live lane already refuses
+   * to ask about them. Counting one as a RIVAL made "I contribute 6% and my
+   * employer contributes 8%" ambiguous between an occupational pension and a
+   * PRB, when only one of them could ever have received it. */
+  const RATE_QUOTE = 'I contribute 6% and my employer contributes 8%.';
+  const withPensions = (pensions) => normalizeHouseholdProfile({ ...baseProfile(), pensions });
+  const occupational = {
+    pensionId: 'pension_occ', ownerId: 'primary', type: 'occupational',
+    currentValue: { amount: 319_000, currency: 'EUR' }
+  };
+  const rateOperation = (entityId) => ({
+    operationId: 'op_rate', op: 'upsert_note',
+    factId: 'pension_employee_contribution_rate',
+    factInstanceId: `pension_employee_contribution_rate:${entityId}`,
+    entityId, ownerId: 'primary', noteKind: 'fact', value: 6,
+    certainty: 'exact', reasonCode: 'missing_note',
+    evidence: [{ turnId: 'turn_rate', quote: RATE_QUOTE }]
+  });
+  const attempt = async (pensions, operation) => {
+    const result = await applyReconciliationPlan({
+      profile: withPensions(pensions), notes: [],
+      plan: {
+        schemaVersion: 1, verdict: 'changes_proposed', reviewedNoteIds: [],
+        operationGroups: [{ groupId: 'rate', operations: [operation] }]
+      },
+      ...common,
+      transcriptTurns: [...turns,
+        { turnId: 'turn_rate', role: 'user', finalized: true, sequence: 97, text: RATE_QUOTE }],
+      transcriptWatermark: 'turn_rate'
+    });
+    return result.rejectedGroups[0]?.code ?? null;
+  };
+
+  const bond = {
+    pensionId: 'pension_prb', ownerId: 'primary', type: 'buyout_bond',
+    currentValue: { amount: 80_000, currency: 'EUR' }
+  };
+  const definedBenefit = {
+    pensionId: 'pension_db', ownerId: 'primary', type: 'defined_benefit',
+    projectedAnnualIncome: { amount: 30_000, currency: 'EUR' }
+  };
+
+  /* SHOULD BIND — the ineligible product is not a rival. */
+  assert.equal(await attempt([occupational, bond], rateOperation('pension_occ')), null,
+    'a buy-out bond cannot compete for a contribution rate');
+  assert.equal(await attempt([occupational, definedBenefit], rateOperation('pension_occ')), null,
+    'nor can a defined benefit scheme');
+
+  /* MUST FAIL CLOSED — the rate must never reach the bond by any route. */
+  assert.equal(await attempt([occupational, bond], rateOperation('pension_prb')),
+    'contribution_not_supported_by_product',
+    'a contribution rate aimed at a buy-out bond is refused outright');
+  assert.equal(await attempt([bond], rateOperation('pension_prb')),
+    'contribution_not_supported_by_product',
+    'including when it is the only pension on the record');
+
+  /* MUST FAIL CLOSED — two products that CAN both receive contributions. */
+  assert.equal(await attempt([occupational, {
+    pensionId: 'pension_prsa', ownerId: 'primary', type: 'prsa',
+    currentValue: { amount: 80_000, currency: 'EUR' }
+  }], rateOperation('pension_occ')), 'numeric_entity_binding_ambiguous',
+  'two contribution-capable pensions stay ambiguous until the client says which');
+});
+
+await runCase('a figure binds to the only holding that could own it, and stops binding the moment a second exists', async () => {
+  /* THE REAL CASE, FROM THE PAID RUNS.
+   *
+   * "I'm paying in 6%, with my employer paying 7% as far as I remember."
+   *
+   * Two rates in the cited span, so the binding check demanded a word from the
+   * entity's label — "pension" — inside that span. The client had named the
+   * pension in the previous sentence and there was only ONE pension on the
+   * record, so there was no alternative they could have meant. Eleven writes
+   * across the paid runs were refused this way; every one was re-proposed and
+   * accepted a pass later, so the rule cost planner passes rather than data.
+   *
+   * WHICH ENTITY IS COUNTED FROM STATE. The second half of this case is the
+   * half that matters: add a second pension and the cue is required again. */
+  const onePension = normalizeHouseholdProfile({
+    ...baseProfile(),
+    pensions: [{
+      pensionId: 'pension_realtime_primary_occupational_1',
+      ownerId: 'primary',
+      type: 'occupational',
+      currentValue: { amount: 319_000, currency: 'EUR' }
+    }]
+  });
+  const noteFor = (pension, noteId) => normalizePlanningNoteV1({
+    noteId,
+    noteKind: 'position',
+    factId: 'pension_positions',
+    factInstanceId: `pension_positions:${pension.pensionId}`,
+    entityId: pension.pensionId,
+    ownerId: 'primary',
+    value: pension,
+    certainty: 'exact',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [],
+    replacesNoteIds: [],
+    createdAt: NOW
+  });
+  const NARROW_QUOTE = "I'm paying in 6%, with my employer paying 7% as far as I remember.";
+  const rateOperation = (entityId) => ({
+    operationId: 'op_employee_rate',
+    op: 'upsert_note',
+    factId: 'pension_employee_contribution_rate',
+    factInstanceId: `pension_employee_contribution_rate:${entityId}`,
+    entityId,
+    ownerId: 'primary',
+    noteKind: 'fact',
+    value: 6,
+    certainty: 'exact',
+    reasonCode: 'missing_note',
+    evidence: [{ turnId: 'turn_rates', quote: NARROW_QUOTE }]
+  });
+  const attempt = (profile, notes, operation) => applyReconciliationPlan({
+    profile,
+    notes,
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{ groupId: 'rates', operations: [operation] }]
+    },
+    ...common,
+    transcriptTurns: [...turns,
+      { turnId: 'turn_rates', role: 'user', finalized: true, sequence: 99, text: NARROW_QUOTE },
+      { turnId: 'turn_ages', role: 'user', finalized: true, sequence: 100,
+        text: 'Use 62, please, sorry - I said 63, I meant 62.' }
+    ],
+    transcriptWatermark: 'turn_ages'
+  });
+
+  /* SHOULD BIND — one pension, so "which pension" has one possible answer. */
+  const sole = await attempt(onePension, [noteFor(onePension.pensions[0], 'note_sole')],
+    rateOperation('pension_realtime_primary_occupational_1'));
+  assert.equal(sole.rejectedGroups.length, 0,
+    'a rate must bind to the only pension on the record without naming it again');
+
+  /* MUST FAIL CLOSED — a second pension makes the question real. */
+  const twoPensions = normalizeHouseholdProfile({
+    ...onePension,
+    pensions: [...onePension.pensions, {
+      pensionId: 'pension_realtime_old_scheme',
+      ownerId: 'primary',
+      type: 'personal',
+      currentValue: { amount: 50_000, currency: 'EUR' }
+    }]
+  });
+  const twoNotes = [
+    noteFor(twoPensions.pensions[0], 'note_first'),
+    noteFor(twoPensions.pensions[1], 'note_second')
+  ];
+  for (const [label, entityId] of [
+    ['the pension it means', 'pension_realtime_primary_occupational_1'],
+    ['the other pension', 'pension_realtime_old_scheme']
+  ]) {
+    const ambiguous = await attempt(twoPensions, twoNotes, rateOperation(entityId));
+    assert.equal(ambiguous.rejectedGroups[0]?.code, 'numeric_entity_binding_ambiguous',
+      `with two pensions the same quote must be refused, including for ${label}`);
+  }
+
+  /* MUST FAIL CLOSED — the figure already sits on another entity, however few
+   * candidates there are. This trigger is deliberately independent. */
+  const duplicated = await attempt(onePension, [
+    noteFor(onePension.pensions[0], 'note_sole'),
+    normalizePlanningNoteV1({
+      noteId: 'note_elsewhere',
+      noteKind: 'fact',
+      factId: 'pension_employer_contribution_rate',
+      factInstanceId: 'pension_employer_contribution_rate:pension_old_dc',
+      entityId: 'pension_old_dc',
+      ownerId: 'primary',
+      value: 6,
+      certainty: 'exact',
+      lifecycle: 'active',
+      reviewStatus: 'provisional',
+      source: 'realtime_note',
+      evidenceRefs: [],
+      replacesNoteIds: [],
+      createdAt: NOW
+    })
+  ], rateOperation('pension_realtime_primary_occupational_1'));
+  assert.equal(duplicated.rejectedGroups[0]?.code, 'numeric_entity_binding_ambiguous',
+    'a figure already recorded against another entity must still be tied to this one');
+
+  /* MUST FAIL CLOSED — a person's figure still needs the person named, because
+   * a household always has more than one candidate person. */
+  const partnerAge = await attempt(onePension, [noteFor(onePension.pensions[0], 'note_sole')], {
+    operationId: 'op_partner_retirement',
+    op: 'upsert_note',
+    factId: 'intended_retirement_age',
+    factInstanceId: 'intended_retirement_age:partner',
+    entityId: 'partner',
+    ownerId: 'partner',
+    noteKind: 'fact',
+    value: 62,
+    certainty: 'exact',
+    reasonCode: 'missing_note',
+    evidence: [{ turnId: 'turn_ages', quote: 'Use 62, please, sorry - I said 63, I meant 62.' }]
+  });
+  assert.equal(partnerAge.rejectedGroups[0]?.code, 'numeric_entity_binding_ambiguous',
+    "a retirement age must not attach to the partner on a quote that never mentions them");
 });
 
 await runCase('identical figures require entity binding and accepted scalar facts remain fail-closed', async () => {

@@ -603,6 +603,96 @@
       ],
       "expect": "reject",
       "note": "A figure the client never said, in a sentence full of figures they did."
+    },
+    {
+      "id": "retirement-income-when-we-stop",
+      "said": "I'd like to know whether our pension could give us around 45000 a year when we stop.",
+      "submit": [
+        {
+          "factId": "target_retirement_income",
+          "value": {
+            "amount": 45000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "Stopping work is retiring. Refused for want of the word 'retire', while the same figure with NO context passed through the terse-answer fallback - so adding context made it less acceptable."
+    },
+    {
+      "id": "retirement-income-finish-up",
+      "said": "We'd like about 45000 a year when we finish up.",
+      "submit": [
+        {
+          "factId": "target_retirement_income",
+          "value": {
+            "amount": 45000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "The same vernacular, in the form the personas actually use."
+    },
+    {
+      "id": "SAFETY-spending-is-not-retirement-income",
+      "said": "We spend about 45000 a year.",
+      "submit": [
+        {
+          "factId": "target_retirement_income",
+          "value": {
+            "amount": 45000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "An annual figure is not a retirement target just for being annual."
+    },
+    {
+      "id": "SAFETY-salary-is-not-retirement-income",
+      "said": "I earn 45000 a year before tax.",
+      "submit": [
+        {
+          "factId": "target_retirement_income",
+          "value": {
+            "amount": 45000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "Today's salary is not the income wanted after stopping work."
+    },
+    {
+      "id": "contribution-rates-attributed",
+      "said": "I pay 6% and my employer pays 8%.",
+      "submit": [
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": {
+            "rate": 6,
+            "rateUnit": "percent"
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "Explicit attribution of each rate to its payer."
+    },
+    {
+      "id": "SAFETY-contribution-rates-muddled",
+      "said": "It's 6% and 8%, but I get muddled about whose is whose.",
+      "submit": [
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": {
+            "rate": 6,
+            "rateUnit": "percent"
+          }
+        }
+      ],
+      "expect": "reject",
+      "note": "Two rates, no attribution, and the client says outright they cannot attribute them."
     }
   ]
 }

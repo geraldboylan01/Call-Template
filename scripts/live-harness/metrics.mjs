@@ -63,3 +63,59 @@ export function arithmeticVerdict(result, expected) {
   if (!Number.isFinite(Number(expected))) return null;
   return Number(result) === Number(expected);
 }
+
+/**
+ * How many figures the client corrected are still canonical at their OLD value?
+ *
+ * COVER EVERY FIGURE THE PERSONA STATES, NOT TWO OF THEM. This checked the
+ * retirement age and the gross income and nothing else. A paid run where the
+ * client said "I pay in 7 percent" and then "sorry, 6 percent is right" ended
+ * with 0.07 canonical, the module ran on it, and the batch reported
+ * correction_superseded 3/3 — because contribution rates were not among the
+ * figures it looked at. A supersession metric that covers some of the
+ * corrections is worse than none: it reports success over silent loss.
+ */
+/** Did the client actually say this figure, in digits or with separators? */
+function spokenInTranscript(value, transcript) {
+  const text = String(transcript || '');
+  if (!text) return true; // No transcript supplied: fall back to the plain comparison.
+  const plain = String(value);
+  const grouped = Number(value).toLocaleString('en-US');
+  const pattern = new RegExp(`(?<![\\d.,])(?:${plain}|${grouped.replace(/,/g, '[,.\\s]?')})(?![\\d.,]*\\d)`);
+  // Rates are stated as percentages: 0.06 canonical is "6" or "6%" spoken.
+  const asPercent = Number(value) > 0 && Number(value) < 1
+    ? new RegExp(`(?<![\\d.,])${Math.round(Number(value) * 100)}\\s*(?:%|per\\s?cent)`, 'i')
+    : null;
+  return pattern.test(text) || Boolean(asPercent && asPercent.test(text));
+}
+
+export function supersededFigures(profile, truth = {}, transcript = '') {
+  const money = (value) => Number(value?.amount ?? NaN);
+  const pension = (profile?.pensions || [])[0] || {};
+  const incomes = profile?.incomeSources || [];
+  const stale = [
+    ['intendedRetirementAge', truth.intendedRetirementAge,
+      profile?.primaryPerson?.intendedRetirementAge],
+    ['employeeRate', truth.employeeRate, pension.employeeContributionRate],
+    ['employerRate', truth.employerRate, pension.employerContributionRate],
+    ['pensionValue', truth.pensionValue, money(pension.currentValue)]
+  ].filter(([, stated, captured]) => {
+    // Both sides must exist: a figure the persona never states cannot be stale,
+    // and one the conversation never reached is missing rather than superseded
+    // — module_critical_capture reports that.
+    if (!Number.isFinite(stated) || !Number.isFinite(Number(captured))) return false;
+    if (Number(captured) === stated) return false;
+    // AND THE CLIENT MUST ACTUALLY HAVE SAID THE FIGURE. A synthetic client
+    // that says "around €300,000" and never corrects it has not superseded
+    // anything: the lane captured what was said and the module used it. Scoring
+    // that as a lost correction reports a persona wandering off its brief as a
+    // product failure — a paid run was flagged exactly this way.
+    return spokenInTranscript(stated, transcript);
+  }).map(([name]) => name);
+
+  if (Number.isFinite(truth.grossAnnual) && incomes.length > 0
+    && !incomes.some((item) => money(item.grossAnnual) === truth.grossAnnual)) {
+    stale.push('grossAnnual');
+  }
+  return stale;
+}

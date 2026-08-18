@@ -46,7 +46,7 @@ import { getCurrentProfile, getLatestAnalysis, getSessionRow } from '../worker/s
 import { buildLiveCataloguePrompt } from '../worker/src/consumer/live/catalogue_prompt.js';
 import { euroCostFor } from './agent-harness/cost.mjs';
 import { createDiagnostics, newRunId } from './live-harness/diagnostics.mjs';
-import { arithmeticVerdict, ownershipVerdict } from './live-harness/metrics.mjs';
+import { arithmeticVerdict, ownershipVerdict, supersededFigures } from './live-harness/metrics.mjs';
 // ONE IMPLEMENTATION OF EACH PLAYER. These are the persona replay's own
 // functions, driving the same real live prompt and the same real live tools; a
 // second copy here would drift from the harness it is meant to agree with.
@@ -644,13 +644,13 @@ const ownershipCorrect = ownershipVerdict(finalProfile, truth);
 
 // A correction that never superseded leaves the WRONG figure canonical. Checked
 // against the truth, so a persona that corrects itself must end up correct.
-const supersessionFailures = [
-  Number.isFinite(truth.intendedRetirementAge)
-    && finalProfile.primaryPerson?.intendedRetirementAge !== undefined
-    && Number(finalProfile.primaryPerson.intendedRetirementAge) !== truth.intendedRetirementAge,
-  Number.isFinite(truth.grossAnnual) && incomes.length > 0
-    && !incomes.some((item) => money(item.grossAnnual) === truth.grossAnnual)
-].filter(Boolean).length;
+// Every figure the persona corrects, named rather than counted, so a failing
+// run says WHICH correction was lost. See scripts/live-harness/metrics.mjs.
+// The client's own words, so a figure they never said is not scored as a
+// correction they lost.
+const clientTranscript = trace.turns.map((turn) => turn.client || '').join('\n');
+const supersededNames = supersededFigures(finalProfile, truth, clientTranscript);
+const supersessionFailures = supersededNames.length;
 
 const reconciliationSummary = {
   total: reconciliationOutcomes.length,
@@ -732,6 +732,7 @@ const measured = {
   ownership: { correct: ownershipCorrect, primaryId, partnerId },
   aggregateAsPosition,
   supersessionFailures,
+  supersededFigures: supersededNames,
   reconciliation: reconciliationSummary,
   confirmed: confirmResult?.ok === true,
   moduleCompleted: Boolean(pensionResult),

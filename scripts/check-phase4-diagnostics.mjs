@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DIAGNOSTICS_ROOT, renderTimeline } from './live-harness/diagnostics.mjs';
-import { ownershipVerdict } from './live-harness/metrics.mjs';
+import { ownershipVerdict, supersededFigures } from './live-harness/metrics.mjs';
 
 const pass = (message) => console.info(`[Phase4Diagnostics] PASS: ${message}`);
 const runner = fileURLToPath(new URL('./run-live-call.mjs', import.meta.url));
@@ -179,6 +179,69 @@ try {
     assert.equal(reached.criteriaFailed.includes('ownership_correct'), false,
       'and a correctly owned household must not be reported as a failure');
     pass('a real run captures both stated ages and owns them correctly');
+  }
+
+  /* ------------------------------------------------------------------ *
+   * A CORRECTION THAT WAS LOST MUST BE REPORTED AS LOST.
+   *
+   * A paid run heard "I pay in 7 percent", then "sorry, 6 percent is right",
+   * ended with 0.07 canonical and ran the module on it. The batch reported
+   * correction_superseded 3/3, because this metric looked only at the
+   * retirement age and the gross income. Silent loss reported as success is
+   * worse than no metric at all.
+   * ------------------------------------------------------------------ */
+  {
+    const truth = { primaryAge: 57, intendedRetirementAge: 62, pensionValue: 319_000,
+      employeeRate: 0.06, employerRate: 0.08, grossAnnual: 95_000 };
+    const household = (pension = {}, over = {}) => ({
+      primaryPerson: { personId: 'primary', age: 57, intendedRetirementAge: 62 },
+      pensions: [{ pensionId: 'p1', ownerId: 'primary',
+        currentValue: { amount: 319_000, currency: 'EUR' },
+        employeeContributionRate: 0.06, employerContributionRate: 0.08, ...pension }],
+      incomeSources: [{ incomeSourceId: 'i1', ownerId: 'primary',
+        grossAnnual: { amount: 95_000, currency: 'EUR' } }],
+      ...over
+    });
+
+    // Every case below supplies the transcript, because a figure the client
+    // never said cannot be one they corrected.
+    const SAID = 'I retire at 62. The pension is 319,000. I pay 6 percent, my employer pays 8 percent. I earn 95,000.';
+    const lost = (profile, transcript = SAID) => supersededFigures(profile, truth, transcript);
+
+    assert.deepEqual(lost(household()), [],
+      'a household matching everything the client last said has lost nothing');
+
+    /* A FIGURE THE CLIENT NEVER SAID IS NOT A LOST CORRECTION.
+     * A paid run's synthetic client said "around €300,000" and never corrected
+     * it. The lane captured 300,000 and the module used 300,000 — faithful, and
+     * flagged as a supersession failure purely for differing from the persona's
+     * brief. That reports a wandering persona as a product defect. */
+    assert.deepEqual(
+      lost(household({ currentValue: { amount: 300_000, currency: 'EUR' } }),
+        'The pension is around 300,000 at the moment.'),
+      [], 'a figure the client never said is not a correction they lost');
+
+    // The real case, exactly: the corrected rate never landed.
+    assert.deepEqual(lost(household({ employeeContributionRate: 0.07 })),
+      ['employeeRate'], 'a superseded contribution rate must be named, not silently passed');
+    assert.deepEqual(lost(household({ employerContributionRate: 0.07 })),
+      ['employerRate'], 'and so must the employer rate');
+    assert.deepEqual(lost(household({ currentValue: { amount: 300_000, currency: 'EUR' } })),
+      ['pensionValue'], 'and a pension value left at the pre-correction figure');
+    assert.deepEqual(
+      lost(household({}, { primaryPerson: { personId: 'primary', intendedRetirementAge: 63 } })),
+      ['intendedRetirementAge'], 'and the retirement age this metric already covered');
+    // The original loss, in the client's own words.
+    assert.deepEqual(
+      lost(household({ employeeContributionRate: 0.07 }),
+        'I pay in 7 percent. Sorry, I said 7 percent earlier, 6 percent is right.'),
+      ['employeeRate'], 'the correction that started all this must still be caught');
+
+    // A figure never reached is MISSING, not stale — module_critical_capture
+    // reports that, and counting it here would report one gap twice.
+    assert.deepEqual(lost(household({ employeeContributionRate: undefined })), [],
+      'a rate the conversation never reached is missing, not superseded');
+    pass('every figure the client corrects is checked, and named when it is stale');
   }
 
   /* No secrets. */

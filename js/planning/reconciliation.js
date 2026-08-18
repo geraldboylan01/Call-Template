@@ -1,4 +1,16 @@
-import { normalizeHouseholdProfile } from './profile.js';
+import {
+  NON_CONTRIBUTORY_PENSION_TYPES,
+  normalizeHouseholdProfile,
+  ownerConfirmedNonePath
+} from './profile.js';
+// The SAME test the live lane applies to a confirm_none tool call. A completion
+// note writes the marker that decides whether a module may run without knowing
+// a person's holdings, so it must clear the same bar.
+import {
+  CONFIRMED_NONE_SUPPORT,
+  DENIED_ABSENCE_PREFIX,
+  NON_CURRENT_ABSENCE_PREFIX
+} from './confirmed_none.js';
 import {
   canonicalCollectionFields,
   getSemanticFactDefinition,
@@ -936,6 +948,136 @@ function numericValueAppearsInOtherEntity(value, entityId, notes) {
     && numericLeaves(note.value).some((leaf) => numbersEqual(leaf.value, value)));
 }
 
+/**
+ * The clause a number sits in, not the whole sentence it was quoted from.
+ *
+ * WHY A PERSON NEEDS THIS AND A PENSION DOES NOT. A pension can be named — the
+ * entity cue looks for its label in the quote. A person cannot: the primary
+ * client's label is "you", which no client ever says about themselves, and
+ * which `significantCueTerms` drops anyway for being under four characters. So
+ * the cue list for the primary was EMPTY and `quoteHasCue` returned false for
+ * every sentence ever spoken — the check refused correct and incorrect
+ * attributions identically, which is not a fail-closed rule, it is a dead one.
+ *
+ * The evidence a person's figure needs is grammatical, and it is LOCAL: "she's
+ * retiring at 62 and I'm going at 65" attributes each number by the pronoun in
+ * its own clause. Reading the whole quote would find both pronouns and bind
+ * either number to either person. Same reasoning, and the same barriers, as the
+ * live lane's localNumberContext.
+ */
+const CLAUSE_BARRIERS = /[.!?;\n\u2013\u2014]|\s-\s|,(?!\d)|\b(?:but|whereas|while|with)\b|\band\s+(?=(?:i|we|my|she|he|they|her|his|their)\b)/gi;
+
+function clausesAroundNumber(text, value) {
+  const haystack = String(text || '');
+  // Digits only: quotes are exact transcript spans, and a spelled-out number
+  // that cannot be located must fall through to a refusal rather than a guess.
+  const needle = new RegExp(`(?<![\\d.,])${regexEscape(String(value))}(?![\\d.,]*\\d)`, 'g');
+  const hits = [...haystack.matchAll(needle)];
+  if (!hits.length) return [];
+  const barriers = [...haystack.matchAll(CLAUSE_BARRIERS)];
+  return hits.map((hit) => {
+    let start = 0;
+    let end = haystack.length;
+    for (const barrier of barriers) {
+      const barrierEnd = barrier.index + barrier[0].length;
+      if (barrierEnd <= hit.index) start = Math.max(start, barrierEnd);
+      else if (barrier.index >= hit.index + hit[0].length) { end = barrier.index; break; }
+    }
+    return haystack.slice(start, end).toLowerCase();
+  });
+}
+
+const FIRST_PERSON_CUE = /\b(?:i|i'm|im|me|my|myself|mine)\b/i;
+// "we"/"our" are deliberately absent from BOTH lists: a collective statement
+// attributes nothing to anybody, so "we're retiring at 62 and 65" must stay
+// refused for either person.
+const OTHER_PERSON_CUE = /\b(?:she|she's|he|he's|they|they're|her|hers|his|him|their|theirs|partner|spouse|husband|wife|boyfriend|girlfriend)\b/i;
+
+/**
+ * Does the clause holding this number attribute it to this person, and only to
+ * them? A clause naming both is not evidence for either.
+ */
+function clauseAttributesTo(role, quotes, values) {
+  const wanted = role === 'primary' ? FIRST_PERSON_CUE : OTHER_PERSON_CUE;
+  const competing = role === 'primary' ? OTHER_PERSON_CUE : FIRST_PERSON_CUE;
+  return values.every((value) => {
+    const clauses = clausesAroundNumber(quotes, value);
+    if (!clauses.length) return false;
+    return clauses.some((clause) => wanted.test(clause) && !competing.test(clause));
+  });
+}
+
+/**
+ * The entities a fact could actually belong to.
+ *
+ * CONTRIBUTION FACTS AND PRODUCTS THAT CANNOT RECEIVE CONTRIBUTIONS. A buy-out
+ * bond (PRB) takes no ongoing contributions — the profile already says so, in
+ * NON_CONTRIBUTORY_PENSION_TYPES, and the live lane already refuses to ask
+ * about them. Counting one as a rival for "I contribute 6% and my employer
+ * contributes 8%" would make an occupational pension plus a PRB look like two
+ * candidates and refuse a write that has exactly one possible home.
+ *
+ * This is a DOMAIN constraint, decided from canonical state, not a hint to a
+ * model. Two pensions that can both receive contributions stay ambiguous.
+ */
+const CONTRIBUTION_FACT_IDS = new Set([
+  'pension_employee_contribution_rate',
+  'pension_employer_contribution_rate'
+]);
+
+function candidateEntitiesFor(factId, entities) {
+  const all = [...entities.values()].filter((candidate) => !candidate.newEntitySlot
+    && (candidate.factIds || []).includes(factId));
+  if (!CONTRIBUTION_FACT_IDS.has(factId)) return all;
+  return all.filter((candidate) => !(
+    candidate.collection === 'pensions'
+    && NON_CONTRIBUTORY_PENSION_TYPES.includes(String(candidate.pensionType || ''))
+  ));
+}
+
+/**
+ * A product that cannot receive contributions must never be given one.
+ *
+ * A buy-out bond (PRB) takes no ongoing employee or employer contribution —
+ * `NON_CONTRIBUTORY_PENSION_TYPES` in the profile already says so, and the live
+ * lane already refuses to ask about them. This is the same rule at the write
+ * boundary, so a rate cannot reach one by any route: not from a wide quote, not
+ * from a planner that picked the wrong holding, and not because it happened to
+ * be the only pension on the record.
+ *
+ * DETERMINISTIC, FROM CANONICAL STATE. It reads the stored product type; it
+ * does not infer eligibility from wording.
+ */
+/**
+ * A recorded absence must be an absence the client actually stated.
+ *
+ * This marker closes a module's need for a person's holdings, so it is the one
+ * completion whose evidence has to be read rather than merely cited.
+ */
+function assertCompletionNoneEvidence(operation, evidenceRefs, turnIndex) {
+  if (operation.noteKind !== 'completion') return;
+  if (!completionAssertsNone(operation.value)) return;
+  if (!collectionPathForFact(operation.factId)) return;
+  if (evidenceAssertsNone(operation.factId, evidenceRefs, turnIndex)) return;
+  fail(
+    'completion_none_unsupported',
+    `Operation ${operation.operationId} records no ${operation.factId} without the client saying so.`
+  );
+}
+
+function assertContributionProductEligibility(operation, targetNote, entities) {
+  if (!CONTRIBUTION_FACT_IDS.has(operation.factId)) return;
+  const entityId = operation.entityId || targetNote?.entityId;
+  const entity = entityId ? entities.get(entityId) : null;
+  if (!entity || entity.collection !== 'pensions') return;
+  const type = String(entity.pensionType || '');
+  if (!NON_CONTRIBUTORY_PENSION_TYPES.includes(type)) return;
+  fail(
+    'contribution_not_supported_by_product',
+    `Operation ${operation.operationId} puts ${operation.factId} on ${entityId}, a ${type} that cannot receive contributions.`
+  );
+}
+
 function assertNumericSemanticBinding(operation, targetNote, evidenceRefs, grounding, notes, entities) {
   if (grounding.changed.length === 0) return;
   const quotes = evidenceRefs.map((ref) => ref.quote).join(' ');
@@ -957,7 +1099,38 @@ function assertNumericSemanticBinding(operation, targetNote, evidenceRefs, groun
     const duplicatedElsewhere = proposedValues.some((value) => (
       numericValueAppearsInOtherEntity(value, entityId, notes)
     ));
-    if ((duplicatedElsewhere || hasExtraEvidenceNumbers) && !quoteHasCue(quotes, entityCues)) {
+    // WHICH ENTITY, WHEN THERE IS ONLY ONE, IS NOT A QUESTION.
+    //
+    // `hasExtraEvidenceNumbers` means the cited span mentions figures besides
+    // the one being written — "I'm paying in 6%, with my employer paying 7%".
+    // That is a reason to ask WHICH FIGURE, and `numeric_value_unsupported`
+    // and the fact-level check below both police it. It is not, by itself, a
+    // reason to ask WHICH PENSION when the household holds exactly one: the
+    // client cannot name an alternative that does not exist, and demanding the
+    // word "pension" inside the quoted clause refused eleven writes across the
+    // paid runs whose attribution was never in doubt. Each was re-proposed and
+    // accepted a pass later with a wider quote, so the rule cost planner passes
+    // rather than data — but it cost them for no safety gained.
+    //
+    // AMBIGUITY IS COUNTED FROM STATE, NOT FROM THE SENTENCE. The moment a
+    // second holding of the same kind exists, or a second person could own the
+    // fact, the cue is required again. `duplicatedElsewhere` is left as an
+    // independent trigger: a figure that already sits on another entity must
+    // still be tied to this one however few candidates there are.
+    const candidates = candidateEntitiesFor(operation.factId, entities);
+    const soleCandidate = !entity?.newEntitySlot
+      && entity
+      && candidates.length === 1
+      // ...and it must be THIS entity. Being the only eligible holding is not a
+      // reason to accept a write aimed at a different, ineligible one.
+      && candidates[0]?.entityId === entity.entityId;
+    const ambiguousEntity = duplicatedElsewhere || (hasExtraEvidenceNumbers && !soleCandidate);
+    // A PERSON IS NAMED BY GRAMMAR, NOT BY A LABEL. See clausesAroundNumber:
+    // the primary client's label is "you", so the label cue can never be met
+    // and the pronoun in the number's own clause is the only real evidence.
+    const boundByClause = entity?.collection === 'people'
+      && clauseAttributesTo(entity.role, quotes, proposedValues);
+    if (ambiguousEntity && !quoteHasCue(quotes, entityCues) && !boundByClause) {
       fail(
         'numeric_entity_binding_ambiguous',
         `Operation ${operation.operationId} does not bind its numeric evidence to entity ${entityId}.`
@@ -1116,7 +1289,10 @@ function profileEntityRecords(profile) {
         factIds: [...new Set([factId, ...(ENTITY_COLLECTION_FACT_IDS[projection.collection] || [])])],
         ownerIds,
         label: record.label || entityId,
-        collection: projection.collection
+        collection: projection.collection,
+        // Carried so binding can apply product rules — a buy-out bond is not a
+        // candidate for a contribution rate. See candidateEntitiesFor.
+        ...(projection.collection === 'pensions' ? { pensionType: record.type } : {})
       });
     }
   }
@@ -1131,7 +1307,8 @@ function profileEntityRecords(profile) {
     factIds: [...person, ...singleton],
     ownerIds: [profile.primaryPerson.personId],
     label: profile.primaryPerson.displayName || 'you',
-    collection: 'people'
+    collection: 'people',
+    role: 'primary'
   });
   if (profile.partner) {
     result.push({
@@ -1139,7 +1316,8 @@ function profileEntityRecords(profile) {
       factIds: [...person],
       ownerIds: [profile.partner.personId],
       label: profile.partner.displayName || 'your partner',
-      collection: 'people'
+      collection: 'people',
+      role: 'partner'
     });
   }
   result.push({
@@ -1275,9 +1453,68 @@ function entityRecords(profile, suppliedEntities = []) {
     if (raw.label) existing.label = String(raw.label);
     if (raw.collection) existing.collection = String(raw.collection);
     if (raw.newEntitySlot === true) existing.newEntitySlot = true;
+    // Carried through the normaliser because binding needs them: `role` tells
+    // the client from their partner when a pronoun is the only evidence, and
+    // `pensionType` decides whether a product can receive contributions at all.
+    // Both are dropped silently if not listed here, and a dropped `role`
+    // inverts the pronoun test rather than disabling it.
+    if (raw.role) existing.role = String(raw.role);
+    if (raw.pensionType) existing.pensionType = String(raw.pensionType);
     records.set(entityId, existing);
   }
   return records;
+}
+
+/** The profile collection a position fact lives in, as a JSON pointer. */
+function collectionPathForFact(factId) {
+  const projection = POSITION_PROJECTIONS[factId];
+  return projection ? `/${projection.collection}` : null;
+}
+
+/**
+ * Does this completion note assert that there is NOTHING to record?
+ *
+ * Only an explicit, recognised "none". A completion note is a general shape and
+ * most of them record progress rather than absence; writing a confirmed-none
+ * marker from an unrecognised value would close a need nobody answered.
+ */
+const COMPLETION_NONE_VALUES = new Set(['none', 'confirmed_none', 'confirmed-none']);
+
+/**
+ * Does the CITED EVIDENCE actually say there are none?
+ *
+ * The quote already has to be an exact span of a real client turn, but an exact
+ * span can still fail to support the claim: a probe recorded "my partner has no
+ * pension" against the quote "My partner has a big pension." and the marker was
+ * written. Being unable to reach this rule at all is what previously hid that
+ * -- `entity_fact_mismatch` refused every one of these, correct and incorrect
+ * alike.
+ */
+function evidenceAssertsNone(factId, evidenceRefs, turnIndex) {
+  const pattern = CONFIRMED_NONE_SUPPORT[factId];
+  if (!pattern) return false;
+  return evidenceRefs.some((ref) => {
+    // THE CLIENT'S SENTENCE, NOT THE PLANNER'S CITATION. The live lane reads
+    // the whole turn, and evidence rules push the planner toward the narrowest
+    // span that identifies the fact -- so "no pension of their own" can be
+    // cited as a fragment that no longer reads as a negation on its own. The
+    // question is whether the CLIENT said there were none, which is a property
+    // of what they said, not of how tightly it was quoted.
+    const turn = turnIndex?.get(ref?.turnId);
+    const text = String(turn?.text || ref?.quote || '');
+    if (!pattern.test(text)) return false;
+    // "It isn't true that they have no pension", "they used to have none".
+    const prefix = text.slice(0, text.search(pattern) + 1);
+    return !DENIED_ABSENCE_PREFIX.test(prefix) && !NON_CURRENT_ABSENCE_PREFIX.test(prefix);
+  });
+}
+
+function completionAssertsNone(value) {
+  const asText = (input) => String(input || '').trim().toLowerCase();
+  if (typeof value === 'string') return COMPLETION_NONE_VALUES.has(asText(value));
+  if (!isPlainObject(value)) return false;
+  return [value.resolution, value.status, value.completion]
+    .some((candidate) => COMPLETION_NONE_VALUES.has(asText(candidate)));
 }
 
 function assertKnownIdentity(operation, targetNote, owners, entities, evidenceRefs) {
@@ -1303,7 +1540,18 @@ function assertKnownIdentity(operation, targetNote, owners, entities, evidenceRe
       fail('entity_owner_mismatch', `Entity ${effectiveEntityId} is not assigned to owner ${effectiveOwnerId}.`);
     }
   }
-  if (entity && operation.factId && entity.factIds.length > 0 && !entity.factIds.includes(operation.factId)) {
+  // "NOBODY HOLDS ANY OF THESE" IS ABOUT THE PERSON, NOT ABOUT A HOLDING.
+  //
+  // A completion note saying the partner has no pension has no pension entity
+  // to point at -- that is what "none" means -- and the canonical model agrees:
+  // the marker is keyed by collection AND PERSON, `/pensions/owner/<personId>`.
+  // Refusing the person here sent eleven writes back across the paid runs, one
+  // run retrying the same one six times and never reaching a module.
+  const personScopedCompletion = operation.noteKind === 'completion'
+    && entity?.collection === 'people'
+    && Boolean(collectionPathForFact(operation.factId));
+  if (entity && operation.factId && entity.factIds.length > 0
+    && !entity.factIds.includes(operation.factId) && !personScopedCompletion) {
     fail('entity_fact_mismatch', `Entity ${effectiveEntityId} is not valid for fact ${operation.factId}.`);
   }
   if (entity?.newEntitySlot) {
@@ -1639,6 +1887,8 @@ function validateOperation(operation, notes, context) {
 
   assertAggregateIsNotAPosition(operation, targetNote);
   assertKnownIdentity(operation, targetNote, context.owners, context.entities, evidenceRefs);
+  assertContributionProductEligibility(operation, targetNote, context.entities);
+  assertCompletionNoneEvidence(operation, evidenceRefs, context.turnIndex);
   const grounding = assertNumericGrounding(operation, targetNote, evidenceRefs);
   assertDateGrounding(operation, targetNote, evidenceRefs);
   assertNumericSemanticBinding(
@@ -2169,6 +2419,37 @@ export function projectPlanningNotesToProfile(rawProfile, rawNotes, {
     if (sidecarAlreadyExists || unmanaged.length > 0 || projected.length > 0) {
       planning[sidecarKey] = [...unmanaged, ...projected];
     }
+  }
+
+  // A COMPLETION NOTE MUST REACH THE MARKER THAT READINESS READS.
+  //
+  // Completion notes landed in the `completions` sidecar and nowhere else,
+  // while every reader of "this person holds none of these" -- module intake,
+  // hasOwnerConfirmedNone, the question plan -- looks at
+  // `completionFacts.confirmedNonePaths`. So the reconciler had NO route to the
+  // marker the live lane writes directly through confirm_none: accepting the
+  // note changed nothing a module could see.
+  //
+  // Scoped exactly as the canonical model scopes it: to one person when the
+  // note names an owner, household-wide when it does not. One person's absence
+  // says nothing about anyone else's.
+  const noneMarkers = {};
+  for (const note of notes) {
+    if (note.noteKind !== 'completion' || note.lifecycle !== 'active') continue;
+    if (!completionAssertsNone(note.value)) continue;
+    const collectionPath = collectionPathForFact(note.factId);
+    if (!collectionPath) continue;
+    const ownerIsPerson = note.ownerId && note.ownerId !== HOUSEHOLD_SCOPE_ENTITY_ID;
+    noneMarkers[ownerIsPerson
+      ? ownerConfirmedNonePath(collectionPath, note.ownerId)
+      : collectionPath] = true;
+  }
+  if (Object.keys(noneMarkers).length > 0) {
+    const completionFacts = next.assumptions.values.completionFacts || {};
+    next.assumptions.values.completionFacts = {
+      ...completionFacts,
+      confirmedNonePaths: { ...(completionFacts.confirmedNonePaths || {}), ...noneMarkers }
+    };
   }
   return normalizeHouseholdProfile(next);
 }
