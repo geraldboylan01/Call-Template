@@ -14,16 +14,27 @@ function formatMonths(value) {
 
 function liquidityHighlight(result) {
   const semantic = result.semanticResult;
-  const shortfall = semantic.shortfallCash || 0;
+  const shortfall = semantic.shortfallCash;
+  // A reserve we could not compare is not a reserve that passed. Reading the
+  // engine's own verdict keeps "we never established your spending" from being
+  // reported to the client as "at or above target", in a positive tone.
+  const position = semantic.position
+    || (shortfall > 0 ? 'below_target' : 'at_or_above_target');
+  const unknown = position === 'unknown';
+  const below = position === 'below_target';
   return {
     id: 'liquidity-position',
     moduleId: result.moduleId,
-    title: shortfall > 0 ? 'Cash reserve needs attention' : 'Cash reserve is at or above target',
-    message: shortfall > 0
-      ? `Current cash covers ${formatMonths(semantic.monthsCovered)}. The deterministic reserve target is ${formatMoney(semantic.targetCash, semantic.currency)}, leaving a ${formatMoney(shortfall, semantic.currency)} gap.`
-      : `Current cash covers ${formatMonths(semantic.monthsCovered)} and is at least the ${formatMoney(semantic.targetCash, semantic.currency)} target.`,
-    tone: shortfall > 0 ? 'attention' : 'positive',
-    priority: shortfall > 0 ? 95 : 60,
+    title: unknown
+      ? 'Cash reserve could not be compared'
+      : (below ? 'Cash reserve needs attention' : 'Cash reserve is at or above target'),
+    message: unknown
+      ? 'There was not enough about cash or monthly spending to compare the reserve against its target.'
+      : (below
+        ? `Current cash covers ${formatMonths(semantic.monthsCovered)}. The deterministic reserve target is ${formatMoney(semantic.targetCash, semantic.currency)}, leaving a ${formatMoney(shortfall, semantic.currency)} gap.`
+        : `Current cash covers ${formatMonths(semantic.monthsCovered)} and is at least the ${formatMoney(semantic.targetCash, semantic.currency)} target.`),
+    tone: below ? 'attention' : (unknown ? 'neutral' : 'positive'),
+    priority: below ? 95 : 60,
     numericFacts: {
       currentCash: semantic.currentCash,
       monthsCovered: semantic.monthsCovered,

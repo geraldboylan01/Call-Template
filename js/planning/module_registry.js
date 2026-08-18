@@ -6,7 +6,8 @@ import { pensionConversationGuidance } from '../pension_math.js';
 import {
   buildLiquidityInput,
   getLiquidityReadiness,
-  runLiquidityAnalysis
+  runLiquidityAnalysis,
+  validateLiquidityInput
 } from './adapters/liquidity.js';
 import {
   buildHousePurchaseInput,
@@ -331,6 +332,7 @@ register({
     ? ['A protected cash reserve should be separated from the home deposit.']
     : ['Cash resilience is relevant to the household goal.'],
   buildInput: buildLiquidityInput,
+  validateInput: validateLiquidityInput,
   run: runLiquidityAnalysis
 });
 

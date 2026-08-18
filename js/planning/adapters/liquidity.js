@@ -123,6 +123,36 @@ export function buildLiquidityInput(profile) {
   };
 }
 
+/**
+ * The module's own input contract.
+ *
+ * The engine is deliberately forgiving -- it coerces anything unusable to
+ * `null` and falls back to policy -- which is right for a renderer handling a
+ * half-filled form, and wrong as the last word before a client is given a
+ * number. A buffer override of `-3` or `0` silently became the policy default,
+ * so an adviser could type one figure and the illustration use another without
+ * anyone being told.
+ */
+export function validateLiquidityInput(input) {
+  const finiteOrNull = (value, field) => {
+    if (value === null || typeof value === 'undefined') return;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`liquidity input ${field} must be a finite number when present.`);
+    }
+    if (value < 0) throw new Error(`liquidity input ${field} must not be negative.`);
+  };
+  finiteOrNull(input?.currentCash, 'currentCash');
+  finiteOrNull(input?.monthlyExpenditure, 'monthlyExpenditure');
+  finiteOrNull(input?.annualExpenditure, 'annualExpenditure');
+  for (const field of ['minimumBufferMonths', 'targetBufferMonths']) {
+    const value = input?.[field];
+    if (value === null || typeof value === 'undefined') continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      throw new Error(`liquidity input ${field} must be a positive number of months when present.`);
+    }
+  }
+}
+
 export async function runLiquidityAnalysis(input, context) {
   const reserve = computeLiquidityReserve(input);
   const currency = context.baseCurrency || 'EUR';
@@ -171,7 +201,10 @@ export async function runLiquidityAnalysis(input, context) {
       targetCash: reserve.targetCash,
       surplusCash: reserve.surplusCash,
       shortfallCash: reserve.shortfallCash,
-      position: reserve.shortfallCash > 0 ? 'below_target' : 'at_or_above_target'
+      // The engine's own verdict, including when it cannot reach one. Deriving
+      // this from a falsy shortfall is what turned "we never established your
+      // spending" into "your reserve is at or above target".
+      position: reserve.position
     }
   });
 }

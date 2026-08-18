@@ -71,6 +71,20 @@ export function computeLiquidityReserve({
     ? cash / monthly
     : null;
 
+  // A GAP OF ZERO IS A CLAIM. Both figures used to fall back to 0 when the
+  // target or the cash was unknown, and every reader downstream decides the
+  // household is fine by asking whether the shortfall is above zero -- so a
+  // household whose spending we had never established was told its reserve was
+  // at or above target. That is worse than a wrong number: it is a
+  // reassurance, and it reads exactly like a calculated one.
+  //
+  // Unknown is now `null`, which is falsy in the same `> 0` guards those
+  // readers already use, and `position` says so out loud rather than leaving
+  // each caller to infer it from an absence.
+  const comparable = cash !== null && targetCash !== null;
+  const surplusCash = comparable ? Math.max(0, cash - targetCash) : null;
+  const shortfallCash = comparable ? Math.max(0, targetCash - cash) : null;
+
   return {
     clientStatus: policy.clientStatus,
     policyVersion: LIQUIDITY_RESERVE_POLICY.policyVersion,
@@ -82,8 +96,11 @@ export function computeLiquidityReserve({
     minimumCash,
     targetCash,
     monthsCovered,
-    surplusCash: cash !== null && targetCash !== null ? Math.max(0, cash - targetCash) : 0,
-    shortfallCash: cash !== null && targetCash !== null ? Math.max(0, targetCash - cash) : 0
+    surplusCash,
+    shortfallCash,
+    position: comparable
+      ? (shortfallCash > 0 ? 'below_target' : 'at_or_above_target')
+      : 'unknown'
   };
 }
 
