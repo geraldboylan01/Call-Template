@@ -1,6 +1,8 @@
 import {
   IRELAND_RULES_CATALOGUE_VERSION,
+  IRISH_ARF_MINIMUM_DRAWDOWN,
   IRISH_STATE_PENSION_CONTRIBUTORY,
+  irishArfMinimumRate,
   normalizeStatePensionFraction
 } from './planning/ireland_rules.js';
 
@@ -12,7 +14,6 @@ const DEFAULT_INCOME_MODE = 'target';
 const DEFAULT_AFFORDABLE_END_AGES = Object.freeze([100]);
 const STATE_PENSION_ANNUAL_TODAY = IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur;
 const STATE_PENSION_START_AGE = IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge;
-const ARF_HIGH_VALUE_THRESHOLD = 2000000;
 const REQUIRED_POT_TOLERANCE_EUR = 25;
 const HOUSEHOLD_OWNER_IDS = new Set(['household', 'joint', 'family']);
 
@@ -810,11 +811,10 @@ function buildIncomeBreakdownAtYear(inputs, year) {
   };
 }
 
+// The dated Irish rule lives in the rules catalogue; this only supplies the
+// member's age for the year being simulated.
 function arfMinimumRate(member, year, currentYear, openingBalance) {
-  if (openingBalance > ARF_HIGH_VALUE_THRESHOLD) {
-    return 0.06;
-  }
-  return ageAtYear(member, year, currentYear) >= 70 ? 0.05 : 0.04;
+  return irishArfMinimumRate(ageAtYear(member, year, currentYear), openingBalance);
 }
 
 function withdrawProRata(balances, desiredAmount, eligibleIndexes) {
@@ -1075,7 +1075,7 @@ function findRequiredStartingBalances(inputs, referenceBalances) {
   }
 
   const breakpoints = shares
-    .map((share) => (share > 0 ? ARF_HIGH_VALUE_THRESHOLD / share : null))
+    .map((share) => (share > 0 ? IRISH_ARF_MINIMUM_DRAWDOWN.highValueThresholdEur / share : null))
     .filter((value) => Number.isFinite(value) && value > 0 && value < high)
     .flatMap((value) => [value * 0.999, value, value * 1.001]);
   const intervalEnds = [...new Set([0, ...breakpoints, high])]

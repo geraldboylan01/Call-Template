@@ -21,6 +21,7 @@ import {
   getNetRetirementReadiness,
   getPensionProjectionReadiness,
   runNetRetirementCashflow,
+  validateNetRetirementInput,
   runPensionProjection,
   validatePensionProjectionInput
 } from './adapters/retirement.js';
@@ -442,6 +443,7 @@ register({
   canRun: getNetRetirementReadiness,
   explainSelection: () => ['Retirement spending needs a separate after-tax cash-flow view; pension balances are pre-tax.'],
   buildInput: buildNetRetirementInput,
+  validateInput: validateNetRetirementInput,
   run: runNetRetirementCashflow
 });
 

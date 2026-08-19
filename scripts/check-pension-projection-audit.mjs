@@ -45,7 +45,11 @@ import {
   validatePensionProjectionInput
 } from '../js/planning/adapters/retirement.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
-import { IRISH_STATE_PENSION_CONTRIBUTORY } from '../js/planning/ireland_rules.js';
+import {
+  IRISH_ARF_MINIMUM_DRAWDOWN,
+  IRISH_STATE_PENSION_CONTRIBUTORY,
+  irishArfMinimumRate
+} from '../js/planning/ireland_rules.js';
 import { runPlanningModule } from '../js/planning/module_registry.js';
 import { MODULE_FAILURE_CODES, classifyModuleFailure } from '../js/planning/module_failures.js';
 
@@ -529,6 +533,42 @@ const memberFor = (input, ownerId) => {
     'one growth period at the approved rate, applied exactly once'
   );
   pass('growth and inflation come from the versioned assumptions and are applied exactly once');
+}
+
+{
+  // THE ARF RULES NOW LIVE IN THE RULES CATALOGUE, not as constants inside the
+  // engine. The move changed no value: the rates and the threshold are exactly
+  // what the engine applied before, and the projection below is pinned to a
+  // figure computed when they were still hardcoded.
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.baseRate, 0.04);
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.higherRate, 0.05);
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.higherRateFromAge, 70);
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.highValueRate, 0.06);
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.highValueThresholdEur, 2_000_000);
+
+  // The bands, including that a high-value fund outranks the age band.
+  assert.equal(irishArfMinimumRate(65, 500_000), 0.04, 'under 70, ordinary fund');
+  assert.equal(irishArfMinimumRate(70, 500_000), 0.05, 'from 70, ordinary fund');
+  assert.equal(irishArfMinimumRate(65, 2_500_000), 0.06, 'a high-value fund at any age');
+  assert.equal(irishArfMinimumRate(75, 2_500_000), 0.06);
+  assert.equal(irishArfMinimumRate(65, 2_000_000), 0.04, 'the threshold is exclusive');
+
+  // And the projection is unchanged. This figure was recorded from a run made
+  // while the rates were still hardcoded in pension_math.js.
+  const staggered = computePensionProjection({
+    ...ENGINE_BASE, targetIncomeToday: 0,
+    pensions: [
+      engineMember({ id: 'primary', currentAge: 50, retirementAge: 52, currentPot: 100_000 }),
+      engineMember({ id: 'partner', title: 'Partner', currentAge: 60, retirementAge: 65, currentPot: 100_000 })
+    ]
+  });
+  close(
+    staggered.debug.projectedPotCurrent,
+    240_545.38,
+    CENT,
+    'the drawdown result is identical to the pre-move run'
+  );
+  pass('the ARF drawdown rules moved to the versioned catalogue without changing a single output');
 }
 
 /* ---------------------------------------------------- 7. the input contract */

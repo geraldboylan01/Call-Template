@@ -37,7 +37,7 @@ Verified against the registry, not assumed.
 | `liquidity_analysis` | calculation | active | `liquidity_reserve.js` | yes | — | **yes** |
 | `house_purchase` | calculation | beta | `house_purchase/engine.js` | yes | `liquidity_analysis` | **yes** |
 | `pension_projection` | calculation | beta | `pension_math.js` | yes | — | **yes** |
-| `net_retirement_cashflow` | calculation | beta | `net_retirement_math.js` | **no** | — | no |
+| `net_retirement_cashflow` | calculation | beta | `net_retirement_math.js` | **no** | — | **yes** |
 | `mortgage_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
 | `loan_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
 | `college_funding` | calculation | beta | `college_funding_math.js` | yes | — | no |
@@ -117,8 +117,8 @@ module size.
 | 4 | `mortgage_math` (shared engine) | **Done.** Payment and schedule match an independently written annuity; payoff detection no longer depends on float luck. |
 | 5 | `mortgage_analysis` + `loan_analysis` | **Done alongside step 4.** Selection, mapping, type separation and output contract, on the proven engine. |
 | 6 | `pension_projection` | **Done.** Timing measured before anything rested on it; PRB, DB and State Pension treatments all proved. |
-| 7 | `net_retirement_cashflow` | Next. Shares the adapter file but NOT the engine with step 6; adviser-path only. |
-| 8 | `college_funding` | Self-contained, one non-standard assumption (education inflation), lowest blast radius. |
+| 7 | `net_retirement_cashflow` | **Done.** The gross/net boundary is structural, not incidental; arithmetic proved row by row. |
+| 8 | `college_funding` | Next, and last. Self-contained, one non-standard assumption (education inflation), lowest blast radius. |
 
 ## Per-module audit specifications
 
@@ -301,14 +301,14 @@ surfaced as `unknown_module_failure` — which the taxonomy defines as "treat as
 a defect and read the detail". It is an invalid input and now says so. **Blast
 radius: every module**, since the wrapper is shared; fixed once there.
 
-**Assumption sourcing — one observation, not a defect.** Growth and inflation
-come from `PLANEIR_ASSUMPTIONS` and are applied exactly once; State Pension
-comes from `IRISH_STATE_PENSION_CONTRIBUTORY`. The **ARF minimum drawdown rates
-(4% / 5% over 70 / 6% above €2m) are hardcoded constants in `pension_math.js`**
-rather than living in the versioned rules catalogue alongside the State Pension
-figures. They are correct today and applied once, but they are dated Irish
-rules in a file that is not the rules file. Worth moving when the ARF treatment
-is next revisited.
+**Assumption sourcing — since resolved.** Growth and inflation come from
+`PLANEIR_ASSUMPTIONS` and are applied exactly once; State Pension comes from
+`IRISH_STATE_PENSION_CONTRIBUTORY`. The ARF minimum drawdown rates were
+hardcoded constants in `pension_math.js` — dated Irish rules in a file that is
+not the rules file. They now live in the catalogue as
+`IRISH_ARF_MINIMUM_DRAWDOWN` with `irishArfMinimumRate()`, at exactly their
+previous values, pinned by a regression asserting the drawdown result is
+identical to a figure recorded before the move.
 
 **Blast radius into step 7.** `net_retirement_math.js` is a genuinely separate
 engine — it shares the adapter *file* with pension projection but none of the
@@ -317,33 +317,63 @@ One thing for that audit to check: DB pensions reach `pension_projection` as
 income sourced from `/pensions`, while `buildNetRetirementInput` reads only
 `/incomeSources`, so the two modules may not see the same DB income.
 
-### 7. `net_retirement_cashflow`
+### 7. `net_retirement_cashflow` — AUDITED
 
-**Key outputs:** `requiredNetFundToday`, `firstYearShortfall`,
-`surplusVsRequired`/`gapVsRequired`.
+Checked against a required-fund calculation written from first principles in
+`scripts/check-net-retirement-audit.mjs`, importing nothing from
+`net_retirement_math.js`. 18 checks.
 
-**Invariants:** the required fund discounts the income need at the versioned
-inflation rate over the right horizon; the first-year shortfall equals target
-income minus guaranteed income for year one; exactly one of gap/surplus is
-non-zero.
+**What it is for**, from the playbook rather than inferred: it compares the
+household's NET spending need with NET recurring income and converts the annual
+shortfalls into the required NET investment fund today. The playbook says it
+exists precisely "where pension taxation is too uncertain for a true net-income
+pension projection", that "all income and expenditure figures are treated as
+after-tax net amounts", and it names using `generated.pensionInputs` here as an
+anti-pattern.
 
-**Hand-checkable case:** target €40,000/year, guaranteed €15,000/year → first
-year shortfall exactly €25,000, before any discounting.
+**The pension gap is the design, and it holds.** Gross pension pots and gross DB
+or State Pension income do not flow in from `/pensions`, and must not: a €20,000
+gross DB pension becoming €20,000 of spendable income would understate the
+requirement by exactly the tax nobody deducted, and the answer would still look
+reasonable. Verified structurally:
 
-**Realistic case:** couple, both State Pensions, one DB pension, one DC pot.
+| Source | Reaches the net fund? |
+| --- | --- |
+| cash | yes |
+| investment marked liquid | yes |
+| investment marked illiquid | no |
+| investment with liquidity unstated | no (fail-closed) |
+| pension-typed asset | **no** |
+| pension position in `/pensions` | **no** |
+| property, business | no |
 
-**Edge cases:** guaranteed income exceeding the target (surplus, not negative
-shortfall); zero guaranteed income; retirement already begun.
+Income follows the same gate: only a **stated net amount** becomes income. A
+source carrying only `grossAnnual` is excluded rather than read as net; where
+both are stated the net figure wins. A client-supplied net DB or net State
+Pension amount *is* counted, at its net figure — that is the supported route.
 
-**Household/ownership risks:** two State Pensions for a couple must be counted
-once each, not once per household member per person. A single-person household
-must not receive a partner's State Pension.
+**Arithmetic.** Year zero is today, un-inflated and undiscounted; each later
+year carries one period of each. A forty-one-year projection matches the
+reference row by row and in total. Income start and end ages are exact. A
+surplus year is reported and deliberately does not offset a later shortfall.
 
-**Assumption risks:** shares retirement assumptions with `pension_projection`
-— assert both read the same versioned values rather than testing each against
-its own expectation. Audit immediately after step 6 while that context is live.
+**Scenarios.** Keep-versus-sell works exactly once in each direction: selling
+the rental raises the requirement by precisely the lost rent and the fund by
+precisely the stated proceeds, with neither double counted. Overrides and
+additional sources apply only to what they name, and the base scenario is
+unaffected by the existence of others. Note the engine does **not** infer the
+link between losing an income and gaining proceeds — the scenario author states
+both. That is deliberate flexibility, not a defect, but it means a malformed
+scenario could state one without the other.
 
-**Note:** adviser-path only (`consumerAvailable: false`).
+**Failing closed.** Unknown spending stays `null`, blocks readiness and is
+refused by the contract — it never becomes zero, which would report a household
+as needing no fund at all. An unknown fund withholds the surplus/gap comparison
+rather than asserting either. No recorded liquid assets errs toward showing a
+gap, which is the conservative direction.
+
+**No defects found.** The module was already correct on every axis tested. It
+gains a `validateInput` contract and this audit.
 
 ### 8. `college_funding`
 
@@ -377,8 +407,8 @@ costs and the 18/4 start and duration come from the same versioned record.
 
 ## Cross-cutting work, once, for every module
 
-- **Adopt `validateInput` across the registry.** Six of eight declare it;
-  `net_retirement_cashflow` and `college_funding` do not. Each module declaring its own normaliser moves an input
+- **Adopt `validateInput` across the registry.** Seven of eight declare it;
+  only `college_funding` does not. Each module declaring its own normaliser moves an input
   contract breach out of the run phase, where it otherwise masquerades as an
   engine crash. Do this as each module is audited.
 - **Reconcile aggregate against decomposition** wherever both exist.

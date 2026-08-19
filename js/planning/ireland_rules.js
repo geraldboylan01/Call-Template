@@ -18,6 +18,50 @@ export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
   grossAmountNotice: 'State Pension figures are gross and must not be described as net income unless a module explicitly applies a tax conversion.'
 });
 
+/**
+ * Approved Retirement Fund minimum drawdown.
+ *
+ * These are dated Irish rules, so they belong beside the State Pension figures
+ * in this catalogue rather than as constants inside a calculation engine.
+ * Moving them changed no value: the rates and the high-value threshold are
+ * exactly what `pension_math.js` applied before, and the pension projection is
+ * pinned against unchanged output.
+ */
+export const IRISH_ARF_MINIMUM_DRAWDOWN = Object.freeze({
+  ruleId: 'ie.arf.minimum_drawdown',
+  jurisdiction: 'IE',
+  effectiveFrom: '2026-01-01',
+  /** Standard minimum drawdown before the higher-age band. */
+  baseRate: 0.04,
+  /** From this age the higher standard rate applies. */
+  higherRateFromAge: 70,
+  higherRate: 0.05,
+  /** A fund above this value draws the high-value rate at any age. */
+  highValueThresholdEur: 2_000_000,
+  highValueRate: 0.06,
+  source: Object.freeze({
+    title: 'Revenue — Approved Retirement Funds (ARFs)',
+    url: 'https://www.revenue.ie/en/jobs-and-pensions/pensions/approved-retirement-funds.aspx'
+  }),
+  grossAmountNotice: 'ARF withdrawals are gross and subject to income tax, USC and PRSI; they must not be described as net income unless a module explicitly applies a tax conversion.'
+});
+
+/**
+ * The minimum a fund of this size must draw down at this age.
+ *
+ * The high-value band wins over the age band, which is the order the rules
+ * apply in: a fund above the threshold draws the higher rate whatever the
+ * holder's age.
+ */
+export function irishArfMinimumRate(age, openingBalance) {
+  if (openingBalance > IRISH_ARF_MINIMUM_DRAWDOWN.highValueThresholdEur) {
+    return IRISH_ARF_MINIMUM_DRAWDOWN.highValueRate;
+  }
+  return age >= IRISH_ARF_MINIMUM_DRAWDOWN.higherRateFromAge
+    ? IRISH_ARF_MINIMUM_DRAWDOWN.higherRate
+    : IRISH_ARF_MINIMUM_DRAWDOWN.baseRate;
+}
+
 export function normalizeStatePensionFraction(value, fallback = 1) {
   const candidate = Number(value);
   if (!Number.isFinite(candidate)) return fallback;

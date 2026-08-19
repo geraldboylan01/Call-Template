@@ -531,6 +531,39 @@ export function buildNetRetirementInput(profile) {
   };
 }
 
+/**
+ * The net cash-flow module's input contract.
+ *
+ * THE ONE THING THIS MODULE MUST NEVER DO IS MIX GROSS WITH NET. Every figure
+ * it takes is after tax: the spending need, each income source, and the
+ * discount rate. A gross pension balance or a gross DB payment arriving here
+ * would understate the funding requirement by exactly the tax that was never
+ * deducted, and the output would still look entirely reasonable.
+ *
+ * `availableInvestmentFundToday` may be null, deliberately: an unknown fund
+ * withholds the comparison rather than asserting a surplus or a gap.
+ */
+export function validateNetRetirementInput(input) {
+  if (!input || typeof input !== 'object') {
+    throw new Error('generated.netRetirementInputs must be an object.');
+  }
+  const finite = (value, field, { nullable = false } = {}) => {
+    if (nullable && (value === null || typeof value === 'undefined')) return;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`generated.netRetirementInputs.${field} must be a finite number.`);
+    }
+    if (value < 0) throw new Error(`generated.netRetirementInputs.${field} must not be negative.`);
+  };
+  // Spending is the whole basis of the requirement. An unknown one must never
+  // become zero, which would report a household as needing nothing.
+  finite(input.annualExpenditureToday, 'annualExpenditureToday');
+  finite(input.availableInvestmentFundToday, 'availableInvestmentFundToday', { nullable: true });
+  for (const source of Array.isArray(input.incomeSources) ? input.incomeSources : []) {
+    finite(source?.annualAmountToday, `incomeSources[${source?.id}].annualAmountToday`);
+  }
+  computeNetRetirementProjection(input);
+}
+
 export async function runNetRetirementCashflow(input, context) {
   const projection = computeNetRetirementProjection(input, { scenarioId: context.scenarioOverrides?.scenarioId || '' });
   return createModuleRunResult({
