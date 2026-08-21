@@ -899,11 +899,11 @@ async function readAdvisorSession(request, env) {
 }
 
 function buildAdvisorSessionCookie(token, maxAgeSeconds = Math.floor(ADVISOR_SESSION_TTL_MS / 1000)) {
-  return `${ADVISOR_SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${Math.max(0, maxAgeSeconds)}`;
+  return `${ADVISOR_SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.max(0, maxAgeSeconds)}`;
 }
 
 function buildExpiredAdvisorSessionCookie() {
-  return `${ADVISOR_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`;
+  return `${ADVISOR_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
 async function deriveAdvisorPasswordHash(password, saltBytes) {

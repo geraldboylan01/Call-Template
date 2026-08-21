@@ -406,10 +406,15 @@ async function handleAdvisorLoginSubmit() {
       throw new Error(payload?.error || `Sign-in failed (${response.status}).`);
     }
 
-    advisorAuthState.enabled = payload?.authEnabled === true;
-    advisorAuthState.authenticated = payload?.authenticated === true;
-    advisorAuthState.csrfToken = String(payload?.csrfToken || '');
-    advisorAuthState.expiresAt = payload?.expiresAt || null;
+    const verifiedSession = await fetchAdvisorAuthSession();
+    if (verifiedSession?.authenticated !== true) {
+      throw new Error('Sign-in was accepted, but this browser did not retain the secure session cookie. Check that cookies are enabled for planeir.ie and try again.');
+    }
+
+    advisorAuthState.enabled = verifiedSession.authEnabled === true;
+    advisorAuthState.authenticated = true;
+    advisorAuthState.csrfToken = String(verifiedSession.csrfToken || '');
+    advisorAuthState.expiresAt = verifiedSession.expiresAt || null;
     if (advisorAuthPasswordInput) {
       advisorAuthPasswordInput.value = '';
     }

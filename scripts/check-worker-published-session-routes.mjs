@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-const DEFAULT_WORKER_BASE_URL = 'https://call-canvas-session-worker.geraldboylan.workers.dev';
+const DEFAULT_WORKER_BASE_URL = 'https://api.planeir.ie';
 const DEFAULT_SMOKE_ORIGIN = 'https://planeir.ie';
 const MAX_ATTEMPTS = 5;
 const RETRY_DELAY_MS = 3_000;

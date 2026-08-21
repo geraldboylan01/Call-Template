@@ -41,7 +41,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
-      WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL || 'https://call-canvas-session-worker.geraldboylan.workers.dev' }}
+      WORKER_BASE_URL: ${{ vars.WORKER_BASE_URL || 'https://api.planeir.ie' }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
       RUN_PAID_VOICE_PROVIDER_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_voice_provider_smoke == true && 'true' || 'false' }}
       RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_realtime_infrastructure_proof == true && 'true' || 'false' }}
