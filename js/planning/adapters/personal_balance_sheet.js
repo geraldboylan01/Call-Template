@@ -172,7 +172,13 @@ function incompletePositionValues(profile, currency) {
 function assertCompletePositionValues(profile, currency) {
   const incomplete = incompletePositionValues(profile, currency);
   if (incomplete.length > 0) {
-    throw new Error(`Personal Balance Sheet position values are incomplete: ${incomplete.map((item) => item.fieldPath).join(', ')}.`);
+    // The reasons, not just the paths: a direct caller bypassing readiness
+    // otherwise learns only that something was "incomplete", which reads as a
+    // missing figure even when the real problem is a holding recorded in
+    // another currency.
+    throw new Error(`Personal Balance Sheet position values are incomplete: ${
+      incomplete.map((item) => `${item.fieldPath} (${item.reason})`).join(' ')
+    }`);
   }
 }
 
@@ -343,6 +349,16 @@ export function buildPersonalBalanceSheetInput(profile) {
       ['Liabilities', profile.liabilities.map((liability) => liability.currentBalance)]
     ])
   };
+}
+
+/**
+ * Hold the generated payload to the engine's own contract before the engine
+ * sees it, so a mapping defect here reports as an invalid input rather than as
+ * an engine crash. The engine is pure, so running it twice costs nothing but
+ * tells the two apart.
+ */
+export function validatePersonalBalanceSheetInput(input) {
+  computePersonalBalanceSheet(input);
 }
 
 export async function runPersonalBalanceSheet(input, context) {

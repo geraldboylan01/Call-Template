@@ -407,7 +407,7 @@ assert.equal(writes[0].arguments.sourceTurnId, userTurns[8]);
     .find((entry) => entry.factId === factId);
 
   assert.deepEqual(contractFor('income_sources'), {
-    factId: 'income_sources', idKey: 'incomeId', ownerKey: 'ownerId'
+    factId: 'income_sources', idKey: 'incomeId', ownerKey: 'ownerIds'
   }, 'an income position record is keyed by incomeId, never by entityId');
   assert.deepEqual(contractFor('pension_positions'), {
     factId: 'pension_positions', idKey: 'pensionId', ownerKey: 'ownerId'

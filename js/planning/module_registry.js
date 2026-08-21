@@ -1,16 +1,19 @@
 import { MODULE_IDS } from './contracts.js';
 import { normalizeHouseholdProfile } from './profile.js';
+import { MODULE_FAILURE_CODES, ModuleFailureError } from './module_failures.js';
 import { liquidityConversationGuidance } from '../liquidity_reserve.js';
 import { pensionConversationGuidance } from '../pension_math.js';
 import {
   buildLiquidityInput,
   getLiquidityReadiness,
-  runLiquidityAnalysis
+  runLiquidityAnalysis,
+  validateLiquidityInput
 } from './adapters/liquidity.js';
 import {
   buildHousePurchaseInput,
   getHousePurchaseReadiness,
-  runHousePurchaseAnalysis
+  runHousePurchaseAnalysis,
+  validateHousePurchaseInput
 } from './adapters/house_purchase.js';
 import {
   buildNetRetirementInput,
@@ -18,27 +21,33 @@ import {
   getNetRetirementReadiness,
   getPensionProjectionReadiness,
   runNetRetirementCashflow,
-  runPensionProjection
+  validateNetRetirementInput,
+  runPensionProjection,
+  validatePensionProjectionInput
 } from './adapters/retirement.js';
 import {
   buildMortgageInput,
   getMortgageReadiness,
-  runMortgageAnalysis
+  runMortgageAnalysis,
+  validateMortgageInput
 } from './adapters/mortgage.js';
 import {
   buildLoanInput,
   getLoanReadiness,
-  runLoanAnalysis
+  runLoanAnalysis,
+  validateLoanInput
 } from './adapters/loan.js';
 import {
   buildCollegeFundingInput,
   getCollegeFundingReadiness,
-  runCollegeFundingAnalysis
+  runCollegeFundingAnalysis,
+  validateCollegeFundingInput
 } from './adapters/college_funding.js';
 import {
   buildPersonalBalanceSheetInput,
   getPersonalBalanceSheetReadiness,
-  runPersonalBalanceSheet
+  runPersonalBalanceSheet,
+  validatePersonalBalanceSheetInput
 } from './adapters/personal_balance_sheet.js';
 import { readJsonPointer, sha256Json } from './utils.js';
 import {
@@ -328,6 +337,7 @@ register({
     ? ['A protected cash reserve should be separated from the home deposit.']
     : ['Cash resilience is relevant to the household goal.'],
   buildInput: buildLiquidityInput,
+  validateInput: validateLiquidityInput,
   run: runLiquidityAnalysis
 });
 
@@ -362,6 +372,7 @@ register({
   canRun: getHousePurchaseReadiness,
   explainSelection: () => ['The household has an active home-purchase goal.', 'The planner keeps emergency cash separate from deposit capacity.'],
   buildInput: buildHousePurchaseInput,
+  validateInput: validateHousePurchaseInput,
   run: runHousePurchaseAnalysis
 });
 
@@ -393,6 +404,7 @@ register({
   canRun: getPensionProjectionReadiness,
   explainSelection: () => ['A pension projection is relevant to the retirement goal, but remains gated for consumer release.'],
   buildInput: buildPensionProjectionInput,
+  validateInput: validatePensionProjectionInput,
   run: runPensionProjection
 });
 
@@ -432,6 +444,7 @@ register({
   canRun: getNetRetirementReadiness,
   explainSelection: () => ['Retirement spending needs a separate after-tax cash-flow view; pension balances are pre-tax.'],
   buildInput: buildNetRetirementInput,
+  validateInput: validateNetRetirementInput,
   run: runNetRetirementCashflow
 });
 
@@ -455,6 +468,7 @@ register({
   canRun: getMortgageReadiness,
   explainSelection: () => ['An existing mortgage or mortgage-optimisation goal makes amortisation analysis relevant.'],
   buildInput: buildMortgageInput,
+  validateInput: validateMortgageInput,
   run: runMortgageAnalysis
 });
 
@@ -478,6 +492,7 @@ register({
   canRun: getLoanReadiness,
   explainSelection: () => ['A non-housing loan goal maps to the deterministic repayment and interest engine.'],
   buildInput: buildLoanInput,
+  validateInput: validateLoanInput,
   run: runLoanAnalysis
 });
 
@@ -501,6 +516,7 @@ register({
   canRun: getCollegeFundingReadiness,
   explainSelection: () => ['A stated education-funding question makes child-level timing relevant.'],
   buildInput: buildCollegeFundingInput,
+  validateInput: validateCollegeFundingInput,
   run: runCollegeFundingAnalysis
 });
 
@@ -592,6 +608,7 @@ register({
   canRun: getPersonalBalanceSheetReadiness,
   explainSelection: () => ['A reconciled personal balance sheet provides a useful view of the household’s overall position.'],
   buildInput: buildPersonalBalanceSheetInput,
+  validateInput: validatePersonalBalanceSheetInput,
   run: runPersonalBalanceSheet
 });
 
@@ -855,19 +872,95 @@ export function getModuleReadiness(moduleId, rawProfile) {
   return definition.canRun(normalizeHouseholdProfile(rawProfile));
 }
 
-export async function runPlanningModule(moduleId, rawProfile, context) {
-  const definition = getPlanningModuleDefinition(moduleId);
-  if (!definition) throw new Error(`Unknown planning module: ${moduleId}`);
-  if (typeof definition.run !== 'function' || typeof definition.buildInput !== 'function') {
-    throw new Error(`${moduleId} does not have a deterministic runtime engine.`);
+/**
+ * Build a module's engine input and hold it to the engine's own contract.
+ *
+ * The phase matters, not just the throw. An input that fails the engine's
+ * schema is a mapping defect in this layer; an engine that throws on input it
+ * accepted is a calculation defect. They read identically from the outside, so
+ * the boundary is drawn here, once, for every module.
+ *
+ * `validateInput` is the module's own normaliser. Declaring it moves an input
+ * contract breach out of the run phase, where it would otherwise masquerade as
+ * an engine crash.
+ */
+/**
+ * Normalise the profile a module is about to run on.
+ *
+ * A profile that cannot be normalised is an invalid input to the module in
+ * exactly the sense the failure codes mean, but it threw before the input
+ * builder was reached, so it used to surface as `unknown_module_failure` --
+ * which the taxonomy defines as "treat as a defect and read the detail". A
+ * retirement age behind the client's current age is not a defect in our code;
+ * it is a profile the module cannot accept, and it should say so.
+ */
+function normalizeProfileForModule(moduleId, rawProfile) {
+  try {
+    return normalizeHouseholdProfile(rawProfile);
+  } catch (error) {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.INPUT_INVALID,
+      moduleId,
+      error instanceof Error ? error.message : String(error),
+      error
+    );
   }
-  const profile = normalizeHouseholdProfile(rawProfile);
-  const input = definition.buildInput(profile);
-  return definition.run(input, {
-    ...context,
-    moduleVersion: definition.moduleVersion,
-    baseCurrency: profile.preferences.baseCurrency
-  });
+}
+
+export function buildPlanningModuleInput(definition, profile) {
+  let input;
+  try {
+    input = definition.buildInput(profile);
+    if (typeof definition.validateInput === 'function') definition.validateInput(input);
+  } catch (error) {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.INPUT_INVALID,
+      definition.id,
+      error instanceof Error ? error.message : String(error),
+      error
+    );
+  }
+  return input;
+}
+
+function assertRunnableModule(moduleId) {
+  const definition = getPlanningModuleDefinition(moduleId);
+  if (!definition) {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.UNSUPPORTED_STATE,
+      moduleId,
+      `Unknown planning module: ${moduleId}`
+    );
+  }
+  if (typeof definition.run !== 'function' || typeof definition.buildInput !== 'function') {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.UNSUPPORTED_STATE,
+      moduleId,
+      `${moduleId} does not have a deterministic runtime engine.`
+    );
+  }
+  return definition;
+}
+
+export async function runPlanningModule(moduleId, rawProfile, context) {
+  const definition = assertRunnableModule(moduleId);
+  const profile = normalizeProfileForModule(moduleId, rawProfile);
+  const input = buildPlanningModuleInput(definition, profile);
+  try {
+    return await definition.run(input, {
+      ...context,
+      moduleVersion: definition.moduleVersion,
+      baseCurrency: profile.preferences.baseCurrency
+    });
+  } catch (error) {
+    if (error instanceof ModuleFailureError) throw error;
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.EXECUTION_FAILED,
+      moduleId,
+      error instanceof Error ? error.message : String(error),
+      error
+    );
+  }
 }
 
 /**
@@ -877,13 +970,9 @@ export async function runPlanningModule(moduleId, rawProfile, context) {
  * scoping, readiness, and engine/module versions are bound by the Worker layer.
  */
 export async function getPlanningModuleRunIdentity(moduleId, rawProfile, context = {}) {
-  const definition = getPlanningModuleDefinition(moduleId);
-  if (!definition) throw new Error(`Unknown planning module: ${moduleId}`);
-  if (typeof definition.run !== 'function' || typeof definition.buildInput !== 'function') {
-    throw new Error(`${moduleId} does not have a deterministic runtime engine.`);
-  }
-  const profile = normalizeHouseholdProfile(rawProfile);
-  const input = definition.buildInput(profile);
+  const definition = assertRunnableModule(moduleId);
+  const profile = normalizeProfileForModule(moduleId, rawProfile);
+  const input = buildPlanningModuleInput(definition, profile);
   const scenarioOverrides = context.scenarioOverrides || {};
   const dependencyPaths = [...new Set([
     ...definition.requiredProfilePaths,

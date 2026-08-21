@@ -219,8 +219,8 @@ export const POSITION_PROJECTIONS = Object.freeze({
     requiredKeys: Object.freeze(['liabilityId', 'type', 'label'])
   }),
   income_sources: Object.freeze({
-    collection: 'incomeSources', idKey: 'incomeId', ownerKey: 'ownerId',
-    requiredKeys: Object.freeze(['incomeId', 'ownerId', 'type', 'label'])
+    collection: 'incomeSources', idKey: 'incomeId', ownerKey: 'ownerIds',
+    requiredKeys: Object.freeze(['incomeId', 'type', 'label'])
   }),
   pension_positions: Object.freeze({
     collection: 'pensions', idKey: 'pensionId', ownerKey: 'ownerId',
@@ -1646,9 +1646,16 @@ function positionRecordFromOperation(operation, targetNote, entityId, ownerId) {
     record.label = inheritedLabel;
   }
   if (ownerId && projection.ownerKey === 'ownerId') record.ownerId = ownerId;
-  if (ownerId && projection.ownerKey === 'ownerIds') {
-    const owners = Array.isArray(record.ownerIds) ? record.ownerIds : [];
-    record.ownerIds = owners.includes(ownerId) ? owners : [...owners, ownerId];
+  if (projection.ownerKey === 'ownerIds') {
+    // One owner field on the canonical record. A legacy singular `ownerId` is
+    // folded into the list and removed, so nothing downstream has to decide
+    // which of two owner fields to believe.
+    const owners = Array.isArray(record.ownerIds)
+      ? [...record.ownerIds]
+      : (typeof record.ownerId === 'string' && record.ownerId ? [record.ownerId] : []);
+    delete record.ownerId;
+    if (ownerId && !owners.includes(ownerId)) owners.push(ownerId);
+    if (owners.length > 0) record.ownerIds = owners;
   }
   return record;
 }
@@ -2180,9 +2187,16 @@ function assertPositionRecord(note, projection) {
   if (projection.ownerKey === 'ownerId' && note.ownerId && note.value.ownerId !== note.ownerId) {
     fail('position_owner_mismatch', `Position note ${note.noteId} has conflicting owner identities.`);
   }
-  if (projection.ownerKey === 'ownerIds' && note.ownerId
-    && (!Array.isArray(note.value.ownerIds) || !note.value.ownerIds.includes(note.ownerId))) {
-    fail('position_owner_mismatch', `Position note ${note.noteId} value must include its ownerId.`);
+  if (projection.ownerKey === 'ownerIds' && note.ownerId) {
+    // A record may still name its single owner the older way. That is the same
+    // claim written differently, so it is read rather than quarantined; only a
+    // record naming a DIFFERENT owner is a genuine conflict.
+    const recordOwners = Array.isArray(note.value.ownerIds)
+      ? note.value.ownerIds
+      : (typeof note.value.ownerId === 'string' && note.value.ownerId ? [note.value.ownerId] : []);
+    if (!recordOwners.includes(note.ownerId)) {
+      fail('position_owner_mismatch', `Position note ${note.noteId} value must include its ownerId.`);
+    }
   }
 }
 

@@ -53,24 +53,77 @@ export function findGoal(profile, types) {
     .sort((left, right) => (priority[right.priority] || 0) - (priority[left.priority] || 0))[0] || null;
 }
 
+/**
+ * PICK THE LIABILITY THIS RUN IS ABOUT, OR ADMIT THAT IT IS NOT DECIDED.
+ *
+ * Selection used to fall back to the first liability of the right type, so a
+ * household with two mortgages got an analysis of one of them decided by array
+ * order -- reorder the collection and a different mortgage is analysed, with
+ * nothing on the page saying which. Naming the chosen one afterwards made that
+ * visible but did not make it right: the client never chose.
+ *
+ * So the fallback is gone. One candidate needs no question. Several candidates
+ * with an explicit choice is answered. Several with no choice is UNDECIDED, and
+ * the caller turns that into a question rather than a guess.
+ *
+ * `selectedId` is matched against the stable liability id, never a position.
+ */
+export function selectLiabilityOfType(profile, type, selectedId) {
+  const candidates = (profile.liabilities || []).filter((liability) => liability.type === type);
+  const named = selectedId
+    ? candidates.find((liability) => liability.liabilityId === selectedId) || null
+    : null;
+  if (named) return { selected: named, candidates, ambiguous: false };
+  if (candidates.length === 1) return { selected: candidates[0], candidates, ambiguous: false };
+  if (candidates.length === 0) return { selected: null, candidates, ambiguous: false };
+  return { selected: null, candidates, ambiguous: true };
+}
+
 export function personForId(profile, ownerId) {
   if (profile.primaryPerson?.personId === ownerId) return profile.primaryPerson;
   if (profile.partner?.personId === ownerId) return profile.partner;
   return null;
 }
 
+/**
+ * One person's own employment and self-employment income.
+ *
+ * Employment income is single-owner by schema, so `ownerIds` holds exactly one
+ * person here and no holding can be counted for two people. A combined
+ * household figure is deliberately not reachable from this function: it is not
+ * anybody's salary, and a module asking what one applicant earns must not be
+ * answered with what the couple earns together.
+ */
 export function grossEmploymentIncome(profile, ownerId) {
   const currency = baseCurrency(profile);
   return sumKnown((profile.incomeSources || [])
-    .filter((income) => income.ownerId === ownerId && ['employment', 'self_employment'].includes(income.type))
+    .filter((income) => income.ownerIds.includes(ownerId) && ['employment', 'self_employment'].includes(income.type))
     .map((income) => moneyAmount(income.grossAnnual, currency)));
 }
 
+/**
+ * Combined household net income.
+ *
+ * Each source counts ONCE regardless of how many owners it names, so jointly
+ * owned rent is not doubled by being owned twice. Where no source carries a net
+ * figure, a household aggregate the client stated is used instead -- that is
+ * the one place an aggregate is allowed to answer, because the question itself
+ * is about the household rather than about a person.
+ */
 export function netHouseholdIncome(profile) {
   const currency = baseCurrency(profile);
   const values = (profile.incomeSources || []).map((income) => moneyAmount(income.netAnnual, currency));
-  if (!values.some((value) => value !== null)) return null;
-  return sumKnown(values);
+  if (values.some((value) => value !== null)) return sumKnown(values);
+  return householdAggregateNetIncome(profile);
+}
+
+/** The stated combined figure alone, with no per-source fallback. */
+export function householdAggregateNetIncome(profile) {
+  const currency = baseCurrency(profile);
+  const annual = moneyAmount(profile.householdIncome?.netAnnual, currency);
+  if (annual !== null) return annual;
+  const monthly = moneyAmount(profile.householdIncome?.netMonthly, currency);
+  return monthly === null ? null : monthly * 12;
 }
 
 export function getAssumption(profile, path, fallback) {

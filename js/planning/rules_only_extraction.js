@@ -221,7 +221,7 @@ export function extractRulesOnlyProfilePatch(text, {
     if (!money) return;
     const annualMoney = { ...money, amount: /month/i.test(period || '') ? money.amount * 12 : money.amount };
     const existing = findExisting(profile, 'incomeSources', (income) => (
-      income.ownerId === ownerId && ['employment', 'self_employment'].includes(income.type)
+      income.ownerIds.includes(ownerId) && ['employment', 'self_employment'].includes(income.type)
     ));
     if (existing) operations.push(opFor(profile, `/incomeSources/${existing.index}/grossAnnual`, annualMoney));
     else operations.push({
@@ -229,7 +229,7 @@ export function extractRulesOnlyProfilePatch(text, {
       path: '/incomeSources/-',
       value: {
         incomeId: unusedCollectionId(profile, operations, 'incomeSources', 'incomeId', `rules-${ownerId}-employment`),
-        ownerId,
+        ownerIds: [ownerId],
         type: 'employment',
         label,
         grossAnnual: annualMoney

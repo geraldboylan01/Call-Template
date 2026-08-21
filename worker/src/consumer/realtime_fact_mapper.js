@@ -7,6 +7,7 @@ import {
 } from '../../../js/planning/module_registry.js';
 import { buildGoalModulePlan } from '../../../js/planning/goal_plan.js';
 import {
+  isJointCapableIncomeType,
   NON_CONTRIBUTORY_PENSION_TYPES,
   normalizeHouseholdProfile,
   ownerConfirmedNonePath
@@ -346,6 +347,52 @@ function ownerId(profile, raw, { allowHousehold = false, treatJointAsHousehold =
     return 'household';
   }
   throw new ConsumerError(400, 'realtime_owner_invalid', 'That position owner is not part of the household.');
+}
+
+/**
+ * Resolve the owners of one income source, held to what the income type can
+ * actually be.
+ *
+ * `joint` on a joint-capable income names both real people. `joint` on a
+ * salary is refused outright: the client has described a household total, and
+ * the honest answer is to ask each person's figure rather than to record a
+ * salary neither of them stated.
+ */
+function incomeOwnerIds(profile, value, existing, type) {
+  const supplied = value.ownerIds ?? value.owners ?? value.owner ?? value.ownerId;
+  if (typeof supplied === 'undefined' && Array.isArray(existing?.ownerIds)) {
+    return [...existing.ownerIds];
+  }
+  const choices = Array.isArray(supplied) ? supplied : [supplied];
+  const jointCapable = isJointCapableIncomeType(type);
+  const resolved = [];
+  for (const choice of choices) {
+    const candidate = String(choice ?? 'primary').trim().toLowerCase();
+    if (candidate === 'joint' || candidate === 'household') {
+      if (!jointCapable) {
+        throw new ConsumerError(
+          409,
+          'realtime_individual_income_required',
+          'A combined figure does not establish either person\u2019s income; record each person\u2019s amount separately.'
+        );
+      }
+      if (!profile.partner?.personId) {
+        throw new ConsumerError(409, 'realtime_partner_required', 'Add the partner before recording joint income.');
+      }
+      resolved.push(profile.primaryPerson.personId, profile.partner.personId);
+      continue;
+    }
+    resolved.push(ownerId(profile, choice));
+  }
+  const unique = [...new Set(resolved)];
+  if (unique.length > 1 && !jointCapable) {
+    throw new ConsumerError(
+      409,
+      'realtime_individual_income_required',
+      'That income belongs to one person; record each person\u2019s amount separately.'
+    );
+  }
+  return unique;
 }
 
 function ownerIds(profile, value) {
@@ -993,10 +1040,15 @@ function mapPartnerPerson(profile, fact) {
     }
     const partnerId = profile.partner?.personId;
     if (partnerId) {
+      // Each collection is asked in ITS OWN owner shape. Income moved to a list
+      // of owners; asking it for a singular `ownerId` matched nothing, so a
+      // partner holding their own salary -- or sharing a rent -- passed this
+      // guard and was removed out from under an income that still named them.
+      // Pensions are singular by design and stay that way.
       const linked = [
         ...(profile.assets || []).filter((item) => item.ownerIds?.includes(partnerId)),
         ...(profile.liabilities || []).filter((item) => item.ownerIds?.includes(partnerId)),
-        ...(profile.incomeSources || []).filter((item) => item.ownerId === partnerId),
+        ...(profile.incomeSources || []).filter((item) => item.ownerIds?.includes(partnerId)),
         ...(profile.pensions || []).filter((item) => item.ownerId === partnerId),
         ...(profile.properties || []).filter((item) => item.ownerIds?.includes(partnerId)),
         ...(profile.businesses || []).filter((item) => item.ownerIds?.includes(partnerId))
@@ -1111,17 +1163,19 @@ function mapIncomeSource(profile, fact, currency) {
       const canonical = {
         ...(existing || {}),
         incomeId: entityId,
-        // AN INCOME CAN BE THE HOUSEHOLD'S. Rent from a jointly owned property
-        // is the obvious case, and the planner says `joint` for it because that
-        // is what the client said. A single income record cannot carry two
-        // owners the way an asset can, so joint resolves to the household --
-        // which `ownerId` already understands. Refusing it lost the whole
-        // 2,250-a-month rent on a real call, and the meeting never noticed.
-        ownerId: ownerId(
-          profile,
-          value.owner ?? value.ownerId ?? existing?.ownerId,
-          { allowHousehold: true, treatJointAsHousehold: true }
-        ),
+        // AN INCOME CAN BELONG TO BOTH OF THEM. Rent from a jointly owned
+        // property is the obvious case, and the planner says `joint` for it
+        // because that is what the client said. Refusing it lost the whole
+        // 2,250-a-month rent on a real call and the meeting never noticed.
+        //
+        // It is recorded ONCE, naming both real people -- the same way a joint
+        // asset is. It is NOT recorded against a household pseudo-owner, which
+        // named nobody and so was invisible to every per-person view, and it is
+        // NOT duplicated per person, which would double the household's income.
+        // A salary cannot take this path at all: `incomeOwnerIds` refuses a
+        // second owner on employment, because there is no such thing as a joint
+        // salary and splitting one would invent a figure nobody stated.
+        ownerIds: incomeOwnerIds(profile, value, existing, type),
         type,
         label: label || existing?.label || safeLabel(`${humanise(type)} income`)
       };
@@ -1940,7 +1994,7 @@ export function buildConfirmedRealtimeFactSummary(profile) {
     `/incomeSources/${index}`,
     {
       entityId: item.incomeId,
-      ownerId: item.ownerId,
+      ownerIds: [...item.ownerIds],
       type: item.type,
       label: item.label,
       ...(item.grossAnnual ? { grossAnnual: item.grossAnnual } : {}),

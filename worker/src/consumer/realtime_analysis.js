@@ -1,5 +1,9 @@
 import { runStoredConsumerAnalysis } from './analysis.js';
 import { ConsumerError } from './errors.js';
+import {
+  MODULE_FAILURE_CODES,
+  clientFailureMessage
+} from '../../../js/planning/module_failures.js';
 import { getCurrentProfile, getSessionRow } from './repository.js';
 import { consumerLanguageForModule } from '../../../js/planning/module_offers.js';
 import { describeConversationState } from './conversation.js';
@@ -231,6 +235,35 @@ export async function confirmAndRunRealtimeAnalysisPlan({
       idempotentReplay: false
     };
   } catch (error) {
+    // A module that broke gets its own terminal outcome. It is not retried as
+    // a question to the client, and the engine's own diagnostic never travels:
+    // only the failure code and a client-safe sentence leave this layer.
+    if (error instanceof ConsumerError && error.code === 'analysis_module_failed') {
+      const failureCode = error.details?.failureCode || MODULE_FAILURE_CODES.UNKNOWN;
+      const result = {
+        speakableText: clientFailureMessage(failureCode),
+        promptVersion: config.realtimePromptVersion,
+        toolsetVersion: config.realtimeToolsetVersion,
+        calculationVersion: null,
+        completedModuleIds: []
+      };
+      const failed = await completeRealtimeAnalysisPlan(env, {
+        sessionId,
+        planId,
+        status: 'failed',
+        result,
+        analysisRunId: error.details?.analysis?.id || null,
+        errorCode: failureCode
+      });
+      return {
+        analysisPlan: toPublicRealtimeAnalysisPlan(failed, confirmed.input),
+        analysis: error.details?.analysis || null,
+        failureCode,
+        failedModuleId: error.details?.failedModuleId || null,
+        result,
+        idempotentReplay: false
+      };
+    }
     if (error instanceof ConsumerError && error.code === 'analysis_missing_information') {
       const result = {
         speakableText: 'More information is needed before the deterministic analysis can run.',

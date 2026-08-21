@@ -2863,7 +2863,8 @@ const partnerSalary = factProfile.incomeSources.find(
   (income) => income.incomeId === 'income_realtime_partner_salary'
 );
 assert.ok(partnerSalary, 'the named partner salary is addressed by id, not by position');
-assert.equal(partnerSalary.ownerId, factProfile.partner.personId);
+// A salary names exactly one owner, and it is the partner's.
+assert.deepEqual(partnerSalary.ownerIds, [factProfile.partner.personId]);
 assert.equal(factProfile.pensions.length, 1, 'the scalar must update the named position without creating a default pension');
 assert.equal(factProfile.pensions[0].pensionId, 'pension_realtime_workplace');
 assert.equal(factProfile.pensions[0].ownerId, factProfile.partner.personId);

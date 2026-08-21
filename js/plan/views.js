@@ -1168,6 +1168,9 @@ function getMetrics(item) {
       { label: 'Current cash', value: semantic.currentCash, format: 'currency', currency },
       { label: 'Spending covered', value: semantic.monthsCovered, format: 'months' },
       { label: 'Target reserve', value: semantic.targetCash, format: 'currency', currency },
+      // Both figures are null when the reserve could not be compared, and the
+      // filter below then drops the row entirely rather than captioning an
+      // absent number as cash above target.
       semantic.shortfallCash > 0
         ? { label: 'Cash gap to target', value: semantic.shortfallCash, format: 'currency', currency }
         : { label: 'Cash above target', value: semantic.surplusCash, format: 'currency', currency }

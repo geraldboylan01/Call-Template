@@ -27,6 +27,35 @@ const WORKING_EMPLOYMENT_CONTEXTS = new Set([
   'employed', 'employee', 'self_employed', 'contractor', 'company_director', 'owner_manager'
 ]);
 
+/** One person's own position, from their employment record and their pay. */
+function personCohort(profile, person) {
+  if (!person) return null;
+  const employmentStatus = String(person.employmentStatus || '').trim().toLowerCase();
+  if (employmentStatus === 'retired') return 'retired';
+  if (['employee', 'self_employed', 'contractor'].includes(employmentStatus)) return 'working';
+  // Employment income is single-owner, so this is genuinely this person's pay
+  // and not a household figure standing in for it.
+  if (person.personId && grossEmploymentIncome(profile, person.personId) > 0) return 'working';
+  return null;
+}
+
+/**
+ * WHICH RESERVE GUIDE APPLIES TO THIS HOUSEHOLD.
+ *
+ * The buffer is larger in retirement because earned income has stopped. A
+ * household where somebody is still earning has not stopped earning, so the
+ * retired guide applies only when EVERY adult has retired -- which is what the
+ * policy's own wording says: "a working household", "a retired household".
+ *
+ * This used to read `primaryPerson` alone, which is not a rule so much as an
+ * accident of who was entered first: a retired client with a working partner
+ * was told to hold twenty-four months of spending in cash rather than six --
+ * four times the target on the same facts -- and entering the couple the other
+ * way round produced the opposite answer.
+ *
+ * A stated household retirement status still wins where the client has given
+ * one; it is a statement about the household, not about one person.
+ */
 export function resolveLiquidityCohort(profile) {
   const persona = profile?.assumptions?.values?.persona || {};
   const retirementStatus = String(persona.retirementStatus || '').trim().toLowerCase();
@@ -37,12 +66,12 @@ export function resolveLiquidityCohort(profile) {
   if (employmentContext === 'retired') return 'retired';
   if (WORKING_EMPLOYMENT_CONTEXTS.has(employmentContext)) return 'working';
 
-  const employmentStatus = String(profile?.primaryPerson?.employmentStatus || '').trim().toLowerCase();
-  if (employmentStatus === 'retired') return 'retired';
-  if (['employee', 'self_employed', 'contractor'].includes(employmentStatus)) return 'working';
-
-  const primaryPersonId = profile?.primaryPerson?.personId;
-  if (primaryPersonId && grossEmploymentIncome(profile, primaryPersonId) > 0) return 'working';
+  const people = [profile?.primaryPerson, profile?.partner].filter(Boolean);
+  const cohorts = people.map((person) => personCohort(profile, person));
+  // One earner is enough to make this a working household, even where the
+  // other's position was never established.
+  if (cohorts.includes('working')) return 'working';
+  if (cohorts.length > 0 && cohorts.every((cohort) => cohort === 'retired')) return 'retired';
   return null;
 }
 
@@ -123,6 +152,36 @@ export function buildLiquidityInput(profile) {
   };
 }
 
+/**
+ * The module's own input contract.
+ *
+ * The engine is deliberately forgiving -- it coerces anything unusable to
+ * `null` and falls back to policy -- which is right for a renderer handling a
+ * half-filled form, and wrong as the last word before a client is given a
+ * number. A buffer override of `-3` or `0` silently became the policy default,
+ * so an adviser could type one figure and the illustration use another without
+ * anyone being told.
+ */
+export function validateLiquidityInput(input) {
+  const finiteOrNull = (value, field) => {
+    if (value === null || typeof value === 'undefined') return;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`liquidity input ${field} must be a finite number when present.`);
+    }
+    if (value < 0) throw new Error(`liquidity input ${field} must not be negative.`);
+  };
+  finiteOrNull(input?.currentCash, 'currentCash');
+  finiteOrNull(input?.monthlyExpenditure, 'monthlyExpenditure');
+  finiteOrNull(input?.annualExpenditure, 'annualExpenditure');
+  for (const field of ['minimumBufferMonths', 'targetBufferMonths']) {
+    const value = input?.[field];
+    if (value === null || typeof value === 'undefined') continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      throw new Error(`liquidity input ${field} must be a positive number of months when present.`);
+    }
+  }
+}
+
 export async function runLiquidityAnalysis(input, context) {
   const reserve = computeLiquidityReserve(input);
   const currency = context.baseCurrency || 'EUR';
@@ -171,7 +230,10 @@ export async function runLiquidityAnalysis(input, context) {
       targetCash: reserve.targetCash,
       surplusCash: reserve.surplusCash,
       shortfallCash: reserve.shortfallCash,
-      position: reserve.shortfallCash > 0 ? 'below_target' : 'at_or_above_target'
+      // The engine's own verdict, including when it cannot reach one. Deriving
+      // this from a falsy shortfall is what turned "we never established your
+      // spending" into "your reserve is at or above target".
+      position: reserve.position
     }
   });
 }

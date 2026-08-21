@@ -1,4 +1,4 @@
-import { computeMortgageProjection } from '../../mortgage_math.js';
+import { computeMortgageProjection, normalizeMortgageInputs } from '../../mortgage_math.js';
 import {
   baseCurrency,
   createModuleRunResult,
@@ -7,25 +7,54 @@ import {
   getAssumption,
   missing,
   moneyAmount,
-  readinessFromMissing
+  readinessFromMissing,
+  selectLiabilityOfType
 } from './common.js';
 
 export const MORTGAGE_ADAPTER_VERSION = '1.0.0';
 
 function selectMortgage(profile) {
-  const selectedId = getAssumption(profile, 'mortgage.liabilityId');
-  return profile.liabilities.find((liability) => liability.type === 'mortgage' && liability.liabilityId === selectedId)
-    || profile.liabilities.find((liability) => liability.type === 'mortgage')
-    || null;
+  return selectLiabilityOfType(
+    profile,
+    'mortgage',
+    getAssumption(profile, 'mortgage.liabilityId')
+  );
+}
+
+/**
+ * Name the mortgage under analysis when the household holds more than one.
+ *
+ * By the time this runs the client has chosen -- an undecided household never
+ * reaches a result at all -- so this records WHICH of theirs was analysed
+ * rather than papering over a choice nobody made.
+ */
+function mortgageSelectionAssumption(selection) {
+  if (!selection.selected || selection.candidates.length < 2) return [];
+  return [{
+    key: 'analysedMortgage',
+    value: selection.selected.label || selection.selected.liabilityId,
+    reason: `The household holds ${selection.candidates.length} mortgages; this analysis covers the one that was chosen.`
+  }];
 }
 
 export function getMortgageReadiness(profile) {
-  const mortgage = selectMortgage(profile);
-  const relevant = Boolean(findGoal(profile, 'optimise_mortgage')) || Boolean(mortgage);
+  const selection = selectMortgage(profile);
+  const mortgage = selection.selected;
+  const relevant = Boolean(findGoal(profile, 'optimise_mortgage'))
+    || selection.candidates.length > 0;
   if (!relevant) return readinessFromMissing([], { relevant: false });
   const moduleIds = ['mortgage_analysis'];
   const requiredMissing = [];
-  if (!mortgage) {
+  if (selection.ambiguous) {
+    // ASK, DO NOT GUESS. Two mortgages and no stated choice is a question for
+    // the client, not a tie broken by whichever was recorded first.
+    requiredMissing.push(missing(
+      '/assumptions/values/mortgage/liabilityId',
+      `Which mortgage should this analysis cover: ${selection.candidates
+        .map((item) => item.label || item.liabilityId).join(', ')}?`,
+      moduleIds
+    ));
+  } else if (!mortgage) {
     requiredMissing.push(missing('/liabilities', 'Add the mortgage to analyse.', moduleIds));
   } else {
     const index = profile.liabilities.indexOf(mortgage);
@@ -38,7 +67,8 @@ export function getMortgageReadiness(profile) {
     }
   }
   const assumptionsUsed = [
-    { key: 'repaymentType', value: 'repayment', reason: 'The current deterministic engine supports amortising repayment mortgages only.' }
+    { key: 'repaymentType', value: 'repayment', reason: 'The current deterministic engine supports amortising repayment mortgages only.' },
+    ...mortgageSelectionAssumption(selection)
   ];
   const warnings = [
     'Interest-only mortgages are not supported in v1.',
@@ -48,7 +78,20 @@ export function getMortgageReadiness(profile) {
 }
 
 export function buildMortgageInput(profile) {
-  const mortgage = selectMortgage(profile);
+  const selection = selectMortgage(profile);
+  const mortgage = selection.selected;
+  // Readiness already refuses both of these, so reaching here means a direct
+  // caller skipped it. Say what is wrong rather than dereferencing null, and
+  // never resolve an undecided choice just because someone called in directly.
+  if (selection.ambiguous) {
+    throw new Error(
+      `generated.mortgageInputs cannot be built: the profile holds ${selection.candidates.length} mortgages `
+      + 'and none has been chosen for analysis.'
+    );
+  }
+  if (!mortgage) {
+    throw new Error('generated.mortgageInputs cannot be built: the profile holds no mortgage to analyse.');
+  }
   const settings = getAssumption(profile, 'mortgage', {});
   return {
     loanKind: 'mortgage',
@@ -61,6 +104,16 @@ export function buildMortgageInput(profile) {
     oneOffOverpayment: Number.isFinite(settings.oneOffOverpayment) ? settings.oneOffOverpayment : 0,
     annualOverpayment: Number.isFinite(settings.annualOverpayment) ? settings.annualOverpayment : 0
   };
+}
+
+/**
+ * Hold the generated payload to the engine's own contract before the engine
+ * sees it, so a mapping defect here reports as an invalid input rather than
+ * as an engine crash. Both modules share one engine, so both share one
+ * contract.
+ */
+export function validateMortgageInput(input) {
+  normalizeMortgageInputs(input, { defaultLoanKind: 'mortgage' });
 }
 
 export async function runMortgageAnalysis(input, context) {

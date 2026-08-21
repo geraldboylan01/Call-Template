@@ -28,7 +28,6 @@
     "js/planning/adapters/common.js:projectionParts",
     "js/planning/adapters/house_purchase.js:HOUSE_PURCHASE_ADAPTER_VERSION",
     "js/planning/adapters/liquidity.js:LIQUIDITY_ADAPTER_VERSION",
-    "js/planning/adapters/liquidity.js:resolveLiquidityCohort",
     "js/planning/adapters/loan.js:LOAN_ADAPTER_VERSION",
     "js/planning/adapters/mortgage.js:MORTGAGE_ADAPTER_VERSION",
     "js/planning/adapters/personal_balance_sheet.js:PERSONAL_BALANCE_SHEET_ADAPTER_VERSION",

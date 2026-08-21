@@ -286,6 +286,33 @@ export function getPensionProjectionReadiness(profile) {
   return readinessFromMissing(requiredMissing, { assumptionsUsed, warnings });
 }
 
+/**
+ * WHOSE CLOCK AN INCOME'S TIMELINE IS MEASURED AGAINST.
+ *
+ * A jointly owned rent has two owners with two retirement ages. It starts at
+ * the EARLIEST of them: the rent does not pause because the later retiree is
+ * still working, and assuming the later age would drop real income out of the
+ * early years of the projection.
+ *
+ * The PERSON is returned, not just the age, because an age is only a calendar
+ * year relative to somebody's current age. Handing the engine a bare age let it
+ * pick the reference person out of its own pension members, and an income can
+ * belong to somebody who holds no pension at all. A couple who both held
+ * pensions got no projection whatsoever; a household where only one did got the
+ * rent measured against the wrong person's clock, and that one did not fail --
+ * it moved the income seven years earlier and said nothing.
+ */
+function earliestRetiringOwner(profile, ownerIds) {
+  const owners = (ownerIds || [])
+    .map((ownerId) => personForId(profile, ownerId))
+    .filter(Boolean);
+  const stated = owners.filter((person) => typeof person.intendedRetirementAge === 'number');
+  if (stated.length === 0) return owners[0] ?? null;
+  return stated.reduce((earliest, person) => (
+    person.intendedRetirementAge < earliest.intendedRetirementAge ? person : earliest
+  ));
+}
+
 export function buildPensionProjectionInput(profile) {
   const currency = baseCurrency(profile);
   const grouped = groupPensionsByOwner(profile);
@@ -333,18 +360,42 @@ export function buildPensionProjectionInput(profile) {
       inflationIndexed: false
     }))
     .filter((income) => income.annualAmountToday > 0 && typeof income.startAge === 'number');
+  const projectionYear = Number(profile.assumptions.calculationDateIso.slice(0, 4));
   const otherIncomeSources = profile.incomeSources
     .filter((income) => !['employment', 'self_employment', 'state_pension'].includes(income.type))
-    .map((income) => ({
-      id: income.incomeId,
-      title: income.label,
-      type: income.type,
-      ownerId: income.ownerId,
-      annualAmountToday: moneyAmount(income.netAnnual, currency) ?? moneyAmount(income.grossAnnual, currency) ?? 0,
-      startAge: income.startAge ?? personForId(profile, income.ownerId)?.intendedRetirementAge ?? pensions[0]?.retirementAge,
-      ...(typeof income.endAge === 'number' ? { endAge: income.endAge } : {}),
-      inflationIndexed: income.inflationIndexed !== false
-    }))
+    .map((income) => {
+      // THE TIMELINE IS RESOLVED HERE, NOT IN THE ENGINE. The engine knows only
+      // its pension members, and this income can belong to somebody who holds
+      // no pension; this adapter holds the whole profile and can read the right
+      // person's age. The amount is counted once, not once per owner.
+      const reference = earliestRetiringOwner(profile, income.ownerIds);
+      const fallbackMember = pensions[0];
+      const referenceAge = reference?.age ?? fallbackMember?.currentAge;
+      const startAge = income.startAge
+        ?? reference?.intendedRetirementAge
+        ?? fallbackMember?.retirementAge;
+      const yearFor = (age) => (typeof age === 'number' && typeof referenceAge === 'number'
+        ? projectionYear + (age - referenceAge)
+        : null);
+      const startYear = yearFor(startAge);
+      const endYear = typeof income.endAge === 'number' ? yearFor(income.endAge) : null;
+      return {
+        id: income.incomeId,
+        title: income.label,
+        type: income.type,
+        // The engine's contract for an income is a single owner, because one
+        // income is one timeline. Where the income is genuinely joint, that is
+        // the owner whose retirement age set the timeline.
+        ownerId: reference?.personId ?? fallbackMember?.id,
+        annualAmountToday: moneyAmount(income.netAnnual, currency) ?? moneyAmount(income.grossAnnual, currency) ?? 0,
+        // Omitted rather than sent as null when it cannot be resolved, so the
+        // engine's own "must include startYear or startAge" contract still
+        // fires instead of this inventing a year.
+        ...(Number.isFinite(startYear) ? { startYear } : {}),
+        ...(Number.isFinite(endYear) ? { endYear } : {}),
+        inflationIndexed: income.inflationIndexed !== false
+      };
+    })
     .filter((income) => income.annualAmountToday > 0)
     .concat(definedBenefitIncome);
   return {
@@ -368,6 +419,68 @@ export function buildPensionProjectionInput(profile) {
       source: IRISH_STATE_PENSION_CONTRIBUTORY.source.url
     }
   };
+}
+
+/**
+ * The pension module's own input contract.
+ *
+ * The engine validates most of its own fields, but it is deliberately
+ * forgiving about the two things this adapter is responsible for getting
+ * right: what belongs in a pot, and who owns it. Those are checked here,
+ * before the engine sees the payload, so a mapping defect reports as an
+ * invalid input rather than as an engine crash or -- worse -- as a projection
+ * that ran on a wrong number.
+ */
+export function validatePensionProjectionInput(input) {
+  if (!input || typeof input !== 'object') {
+    throw new Error('generated.pensionInputs must be an object.');
+  }
+  if (!Array.isArray(input.pensions) || input.pensions.length === 0) {
+    throw new Error('generated.pensionInputs.pensions must name at least one household member.');
+  }
+  const seen = new Set();
+  for (const member of input.pensions) {
+    // A member IS a person here. Two members with one id would double a
+    // household's retirement resources without any position being duplicated.
+    if (!member?.id || seen.has(member.id)) {
+      throw new Error('generated.pensionInputs.pensions must name each household member exactly once.');
+    }
+    seen.add(member.id);
+    for (const [field, value] of [
+      ['currentPot', member.currentPot],
+      ['currentSalary', member.currentSalary],
+      ['personalPct', member.personalPct],
+      ['employerPct', member.employerPct]
+    ]) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`generated.pensionInputs.pensions[${member.id}].${field} must be a finite number.`);
+      }
+      if (value < 0) {
+        throw new Error(`generated.pensionInputs.pensions[${member.id}].${field} must not be negative.`);
+      }
+    }
+    // A contribution rate is a fraction of salary. Anything above 1 is a
+    // percentage that was never divided down, and would silently project a
+    // pension many times the client's pay.
+    for (const field of ['personalPct', 'employerPct']) {
+      if (member[field] > 1) {
+        throw new Error(`generated.pensionInputs.pensions[${member.id}].${field} must be a fraction of salary, not a percentage.`);
+      }
+    }
+    for (const field of ['currentAge', 'retirementAge']) {
+      const age = member[field];
+      if (!Number.isInteger(age) || age < 0 || age > 120) {
+        throw new Error(`generated.pensionInputs.pensions[${member.id}].${field} must be an age between 0 and 120.`);
+      }
+    }
+    if (member.retirementAge < member.currentAge) {
+      throw new Error(`generated.pensionInputs.pensions[${member.id}].retirementAge must not be before currentAge.`);
+    }
+  }
+  if (typeof input.growthRate !== 'number' || !Number.isFinite(input.growthRate) || input.growthRate <= -1) {
+    throw new Error('generated.pensionInputs.growthRate must be a finite rate greater than -1.');
+  }
+  computePensionProjection(input);
 }
 
 export async function runPensionProjection(input, context) {
@@ -450,6 +563,39 @@ export function buildNetRetirementInput(profile) {
     incomeSources,
     scenarios: [{ id: 'base', title: 'Current position' }]
   };
+}
+
+/**
+ * The net cash-flow module's input contract.
+ *
+ * THE ONE THING THIS MODULE MUST NEVER DO IS MIX GROSS WITH NET. Every figure
+ * it takes is after tax: the spending need, each income source, and the
+ * discount rate. A gross pension balance or a gross DB payment arriving here
+ * would understate the funding requirement by exactly the tax that was never
+ * deducted, and the output would still look entirely reasonable.
+ *
+ * `availableInvestmentFundToday` may be null, deliberately: an unknown fund
+ * withholds the comparison rather than asserting a surplus or a gap.
+ */
+export function validateNetRetirementInput(input) {
+  if (!input || typeof input !== 'object') {
+    throw new Error('generated.netRetirementInputs must be an object.');
+  }
+  const finite = (value, field, { nullable = false } = {}) => {
+    if (nullable && (value === null || typeof value === 'undefined')) return;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`generated.netRetirementInputs.${field} must be a finite number.`);
+    }
+    if (value < 0) throw new Error(`generated.netRetirementInputs.${field} must not be negative.`);
+  };
+  // Spending is the whole basis of the requirement. An unknown one must never
+  // become zero, which would report a household as needing nothing.
+  finite(input.annualExpenditureToday, 'annualExpenditureToday');
+  finite(input.availableInvestmentFundToday, 'availableInvestmentFundToday', { nullable: true });
+  for (const source of Array.isArray(input.incomeSources) ? input.incomeSources : []) {
+    finite(source?.annualAmountToday, `incomeSources[${source?.id}].annualAmountToday`);
+  }
+  computeNetRetirementProjection(input);
 }
 
 export async function runNetRetirementCashflow(input, context) {

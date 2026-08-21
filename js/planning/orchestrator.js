@@ -9,6 +9,11 @@ import {
   runPlanningModule
 } from './module_registry.js';
 import { normalizeHouseholdProfile } from './profile.js';
+import {
+  MODULE_FAILURE_CODES,
+  classifyModuleFailure,
+  moduleFailureDetail
+} from './module_failures.js';
 import { buildQuestionPlan } from './question_plan.js';
 import { recommendModules } from './routing_rules.js';
 import { summarizeAnalysisResults } from './result_summary.js';
@@ -173,7 +178,18 @@ export async function runConsumerAnalysis({
       errors.push({ moduleId: selected.moduleId, code: 'analysis_aborted', message: 'Analysis was aborted.' });
       break;
     }
-    if (!RUNNABLE_READINESS.has(selected.readiness.status)) continue;
+    if (!RUNNABLE_READINESS.has(selected.readiness.status)) {
+      // A selected module that never became runnable used to drop out with no
+      // trace, so a caller could only infer it from a short results array. It
+      // is recorded as an ordinary failure now, which is what it is.
+      errors.push({
+        moduleId: selected.moduleId,
+        code: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+        message: `${selected.moduleId} readiness is ${selected.readiness.status}; it was not run.`,
+        readinessStatus: selected.readiness.status
+      });
+      continue;
+    }
     try {
       const moduleContext = {
         calculationDateIso: effectiveCalculationDate,
@@ -214,10 +230,12 @@ export async function runConsumerAnalysis({
         }));
       }
     } catch (error) {
+      // `message` is the engine's own diagnostic. It stays server-side: the
+      // client-facing wording is derived from `code`, never from this text.
       errors.push({
         moduleId: selected.moduleId,
-        code: 'module_run_failed',
-        message: error?.message || String(error)
+        code: classifyModuleFailure(error),
+        message: moduleFailureDetail(error)
       });
     }
   }

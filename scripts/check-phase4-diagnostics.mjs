@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { DIAGNOSTICS_ROOT, renderTimeline } from './live-harness/diagnostics.mjs';
 import { ownershipVerdict, supersededFigures } from './live-harness/metrics.mjs';
 import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
+import { POSITION_PROJECTIONS } from '../js/planning/reconciliation.js';
 
 const pass = (message) => console.info(`[Phase4Diagnostics] PASS: ${message}`);
 const runner = fileURLToPath(new URL('./run-live-call.mjs', import.meta.url));
@@ -131,7 +132,7 @@ try {
     const household = (over = {}) => ({
       primaryPerson: { personId: 'primary', age: 57 },
       pensions: [{ pensionId: 'p1', ownerId: 'primary' }],
-      incomeSources: [{ incomeSourceId: 'i1', ownerId: 'primary' }],
+      incomeSources: [{ incomeSourceId: 'i1', ownerIds: ['primary'] }],
       ...over
     });
     const truth = { primaryAge: 57, partnerAge: 59 };
@@ -144,7 +145,7 @@ try {
     }), truth), false, "a holding in the partner's name is WRONG, not unresolved");
     assert.equal(ownershipVerdict(household({
       partner: { personId: 'partner', age: 59 },
-      incomeSources: [{ incomeSourceId: 'i1', ownerId: 'partner' }]
+      incomeSources: [{ incomeSourceId: 'i1', ownerIds: ['partner'] }]
     }), truth), false, 'an income in the wrong name is wrong too');
     assert.equal(ownershipVerdict(household({
       partner: { personId: 'partner', age: 61 }
@@ -209,7 +210,7 @@ try {
       pensions: [{ pensionId: 'p1', ownerId: 'primary',
         currentValue: { amount: 319_000, currency: 'EUR' },
         employeeContributionRate: 0.06, employerContributionRate: 0.08, ...pension }],
-      incomeSources: [{ incomeSourceId: 'i1', ownerId: 'primary',
+      incomeSources: [{ incomeSourceId: 'i1', ownerIds: ['primary'],
         grossAnnual: { amount: 95_000, currency: 'EUR' } }],
       ...over
     });
@@ -278,8 +279,15 @@ try {
       primaryPerson: { personId: 'primary', age: 46 },
       partner: { personId: 'partner', age: 44 }
     };
+    // WHICH OWNER FIELD A COLLECTION USES IS NOT RESTATED HERE. It is already
+    // declared in POSITION_PROJECTIONS, which is what the metric itself reads.
+    // A hardcoded list said pensions and incomeSources were both singular; when
+    // income moved to a list of owners this went on building the old shape, the
+    // metric looked for the new one and found no owner at all, and a record in
+    // the partner's name scored as correctly owned.
     const owned = (collection, ownerValue) => {
-      const key = collection === 'pensions' || collection === 'incomeSources' ? 'ownerId' : 'ownerIds';
+      const key = Object.values(POSITION_PROJECTIONS)
+        .find((projection) => projection.collection === collection)?.ownerKey;
       const idKey = { liabilities: 'liabilityId', properties: 'propertyId', assets: 'assetId',
         pensions: 'pensionId', incomeSources: 'incomeSourceId' }[collection];
       return { ...people, [collection]: [{ [idKey]: 'x1',
