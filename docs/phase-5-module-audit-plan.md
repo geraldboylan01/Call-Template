@@ -19,9 +19,9 @@ it still resolve.
 Every deterministic module Planéir can run has now been audited against
 arithmetic written separately from the engine under test. Across eight modules:
 
-- **Nine defects were found and fixed.** Six produced a wrong or misleading
-  number; three produced a wrong or unusable failure. Every one is pinned by a
-  regression that fails if it returns.
+- **Twelve defects were found and fixed** — nine by the audits themselves, three
+  more in review afterwards (see *Blast radius found in review*). Every one is
+  pinned by a regression that fails if it returns.
 - **Two of the nine were cross-module**, in the shared run wrapper, and were
   fixed once for all eight.
 - **All eight runnable modules now declare a `validateInput` contract**, so a
@@ -31,7 +31,7 @@ arithmetic written separately from the engine under test. Across eight modules:
   and are now asserted in both directions so a later change cannot quietly
   "fix" them into something wrong.
 - **Two open product decisions were closed by the owner**, not decided here.
-- **166 deterministic checks** were added across eight new audit suites, all
+- **169 deterministic checks** were added across eight new audit suites, all
   wired into `npm run check:consumer`.
 
 What this does *not* establish: the compositions (`retirement_goal_analysis`,
@@ -219,6 +219,37 @@ plan for a dependant nobody had. An *absent* `children` key genuinely does mean
 legacy shape is verified still working. **Blast radius: college funding only** —
 no other engine has a legacy-default path of this kind.
 
+## Blast radius found in review
+
+Three more defects surfaced when this branch was reviewed, after the audits had
+finished. All three are the same shape, and all three come from this phase's own
+change: **income moved from a singular `ownerId` to a list, and three consumers
+went on asking for the singular field.** None of them failed loudly. Each read
+"no owner" and carried on.
+
+| Where | What happened |
+| --- | --- |
+| `adapters/retirement.js` | Other income was handed to the engine as a bare age, leaving the engine to pick the reference person from its own pension members. A couple who both held pensions got no projection at all; a household where only one did got the income dated against the wrong person — **seven years early in the reproduction, with no error** |
+| `realtime_fact_mapper.js` | The partner-removal guard matched no income, so a partner could be removed out from under their own salary or a shared rent |
+| `worker/…/validators.js` | `householdIncome` reached the canonical patch contract but not the worker's allowlist, so every save came back "Profile path is not allowed" |
+
+Two things are worth recording beyond the fixes.
+
+**The pension audit's 22 checks did not catch the first one.** Its two-member
+cases carried no rental income and its other-income cases had one member, so the
+one combination that breaks was never built. The regression now builds it.
+
+**CI was green while all three were live.** They were found by review, not by the
+suite. A passing suite is evidence about the cases it contains and nothing more —
+which is the same lesson as the live-harness metric that scored a mis-owned
+income as correct because it was reading a field that no longer existed.
+
+The fix for the first is worth keeping in mind for any future engine boundary:
+**an age is only a calendar year relative to somebody's current age.** The
+adapter resolves the timeline now, because it holds the whole profile; the engine
+knows only its pension members, and an income can belong to somebody who holds no
+pension at all.
+
 ### Also closed, alongside the numbered nine
 
 - **A liquidity buffer override of `-3` or `0` silently became the policy
@@ -322,12 +353,12 @@ before the move.
 
 ## The regression estate
 
-Eight new suites, 166 deterministic checks, all in `npm run check:consumer`.
+Eight new suites, 169 deterministic checks, all in `npm run check:consumer`.
 
 | Suite | Checks | What it holds |
 | --- | --- | --- |
 | `check-module-input-contracts.mjs` | 23 | House Purchase cash partition; the failure taxonomy |
-| `check-ownership-model.mjs` | 15 | Income and pension ownership invariants |
+| `check-ownership-model.mjs` | 18 | Income and pension ownership invariants, and the three consumers that had to follow |
 | `check-personal-balance-sheet-audit.mjs` | 19 | PBS arithmetic; no double counting |
 | `check-liquidity-audit.mjs` | 27 | Reserve arithmetic, cohort rule, stated position |
 | `check-mortgage-math-audit.mjs` | 27 | Annuity engine; mortgage and loan routing |
