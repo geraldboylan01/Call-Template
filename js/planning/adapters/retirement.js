@@ -287,14 +287,30 @@ export function getPensionProjectionReadiness(profile) {
 }
 
 /**
- * The earliest intended retirement age among a position's owners, or null when
- * none of them has stated one.
+ * WHOSE CLOCK AN INCOME'S TIMELINE IS MEASURED AGAINST.
+ *
+ * A jointly owned rent has two owners with two retirement ages. It starts at
+ * the EARLIEST of them: the rent does not pause because the later retiree is
+ * still working, and assuming the later age would drop real income out of the
+ * early years of the projection.
+ *
+ * The PERSON is returned, not just the age, because an age is only a calendar
+ * year relative to somebody's current age. Handing the engine a bare age let it
+ * pick the reference person out of its own pension members, and an income can
+ * belong to somebody who holds no pension at all. A couple who both held
+ * pensions got no projection whatsoever; a household where only one did got the
+ * rent measured against the wrong person's clock, and that one did not fail --
+ * it moved the income seven years earlier and said nothing.
  */
-function earliestOwnerRetirementAge(profile, ownerIds) {
-  const ages = (ownerIds || [])
-    .map((ownerId) => personForId(profile, ownerId)?.intendedRetirementAge)
-    .filter((age) => typeof age === 'number');
-  return ages.length > 0 ? Math.min(...ages) : null;
+function earliestRetiringOwner(profile, ownerIds) {
+  const owners = (ownerIds || [])
+    .map((ownerId) => personForId(profile, ownerId))
+    .filter(Boolean);
+  const stated = owners.filter((person) => typeof person.intendedRetirementAge === 'number');
+  if (stated.length === 0) return owners[0] ?? null;
+  return stated.reduce((earliest, person) => (
+    person.intendedRetirementAge < earliest.intendedRetirementAge ? person : earliest
+  ));
 }
 
 export function buildPensionProjectionInput(profile) {
@@ -344,24 +360,42 @@ export function buildPensionProjectionInput(profile) {
       inflationIndexed: false
     }))
     .filter((income) => income.annualAmountToday > 0 && typeof income.startAge === 'number');
+  const projectionYear = Number(profile.assumptions.calculationDateIso.slice(0, 4));
   const otherIncomeSources = profile.incomeSources
     .filter((income) => !['employment', 'self_employment', 'state_pension'].includes(income.type))
-    .map((income) => ({
-      id: income.incomeId,
-      title: income.label,
-      type: income.type,
-      ownerIds: [...income.ownerIds],
-      // The engine wants ONE timeline for the income, and a jointly owned
-      // rent has two owners with two retirement ages. It starts at the
-      // EARLIEST of them: the rent does not pause because the later retiree is
-      // still working, and assuming the later age would drop real income out
-      // of the early years of the projection. The amount itself is counted
-      // once here, not once per owner.
-      annualAmountToday: moneyAmount(income.netAnnual, currency) ?? moneyAmount(income.grossAnnual, currency) ?? 0,
-      startAge: income.startAge ?? earliestOwnerRetirementAge(profile, income.ownerIds) ?? pensions[0]?.retirementAge,
-      ...(typeof income.endAge === 'number' ? { endAge: income.endAge } : {}),
-      inflationIndexed: income.inflationIndexed !== false
-    }))
+    .map((income) => {
+      // THE TIMELINE IS RESOLVED HERE, NOT IN THE ENGINE. The engine knows only
+      // its pension members, and this income can belong to somebody who holds
+      // no pension; this adapter holds the whole profile and can read the right
+      // person's age. The amount is counted once, not once per owner.
+      const reference = earliestRetiringOwner(profile, income.ownerIds);
+      const fallbackMember = pensions[0];
+      const referenceAge = reference?.age ?? fallbackMember?.currentAge;
+      const startAge = income.startAge
+        ?? reference?.intendedRetirementAge
+        ?? fallbackMember?.retirementAge;
+      const yearFor = (age) => (typeof age === 'number' && typeof referenceAge === 'number'
+        ? projectionYear + (age - referenceAge)
+        : null);
+      const startYear = yearFor(startAge);
+      const endYear = typeof income.endAge === 'number' ? yearFor(income.endAge) : null;
+      return {
+        id: income.incomeId,
+        title: income.label,
+        type: income.type,
+        // The engine's contract for an income is a single owner, because one
+        // income is one timeline. Where the income is genuinely joint, that is
+        // the owner whose retirement age set the timeline.
+        ownerId: reference?.personId ?? fallbackMember?.id,
+        annualAmountToday: moneyAmount(income.netAnnual, currency) ?? moneyAmount(income.grossAnnual, currency) ?? 0,
+        // Omitted rather than sent as null when it cannot be resolved, so the
+        // engine's own "must include startYear or startAge" contract still
+        // fires instead of this inventing a year.
+        ...(Number.isFinite(startYear) ? { startYear } : {}),
+        ...(Number.isFinite(endYear) ? { endYear } : {}),
+        inflationIndexed: income.inflationIndexed !== false
+      };
+    })
     .filter((income) => income.annualAmountToday > 0)
     .concat(definedBenefitIncome);
   return {

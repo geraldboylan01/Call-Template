@@ -47,6 +47,10 @@ import {
   buildHousePurchaseInput,
   getHousePurchaseReadiness
 } from '../js/planning/adapters/house_purchase.js';
+import { buildPensionProjectionInput } from '../js/planning/adapters/retirement.js';
+import { computePensionProjection } from '../js/pension_math.js';
+import { PROFILE_PATCH_ROOTS } from '../js/planning/contracts.js';
+import { validateProfilePath } from '../worker/src/consumer/validators.js';
 
 const pass = (message) => console.info(`[Ownership] PASS: ${message}`);
 
@@ -349,6 +353,122 @@ const refusalFrom = (build) => {
   // and the aggregate stays out of it -- counted once, not once per owner.
   assert.equal(input.monthlyNetHouseholdIncome, 1000, '12,000 of joint rent, once, over twelve months');
   pass('house purchase keeps applicant income individual and counts joint income once');
+}
+
+/* ------------------------------------------------------------------ *
+ * BLAST RADIUS OF THE MOVE TO `ownerIds`.
+ *
+ * Three consumers went on asking income for a singular `ownerId` after income
+ * started carrying a list. None of them failed loudly; each one read "no owner"
+ * and carried on. These pin the three places a review found, and each is
+ * written so that reverting the fix fails it.
+ * ------------------------------------------------------------------ */
+
+{
+  // 1. THE PENSION PROJECTION'S OTHER INCOME.
+  //
+  // An age is only a calendar year relative to somebody's current age. The
+  // adapter used to hand the engine a bare age and let it choose the reference
+  // person from its own pension members. With two members it could not choose
+  // and refused to project at all; with one it chose that member even when the
+  // age belonged to the OTHER person, and moved the income by the difference
+  // between their ages without reporting anything.
+  // Built directly rather than through `household()`, whose `partner` argument
+  // is a boolean flag and would replace these people with its own.
+  const withRental = ({ primaryRetires, partnerRetires, partnerHasPension }) => normalizeHouseholdProfile({
+    ...createHouseholdProfile({ profileId: 'own', nowIso: NOW, calculationDateIso: TODAY }),
+    primaryPerson: {
+      personId: 'primary', role: 'primary', employmentStatus: 'employee',
+      age: 52, intendedRetirementAge: primaryRetires, displayName: 'Aoife'
+    },
+    partner: {
+      personId: 'partner', role: 'partner', employmentStatus: 'employee',
+      age: 45, intendedRetirementAge: partnerRetires, displayName: 'Cian'
+    },
+    incomeSources: [
+      { incomeId: 'i1', ownerIds: ['primary'], type: 'employment', label: 'Salary', grossAnnual: EUR(80_000) },
+      { incomeId: 'i3', ownerIds: ['primary', 'partner'], type: 'rental', label: 'Rent', grossAnnual: EUR(18_000) }
+    ],
+    pensions: [
+      {
+        pensionId: 'p1', ownerId: 'primary', type: 'occupational', label: 'DC', currentValue: EUR(200_000),
+        contributionStatus: 'active', employeeContributionRate: 0.05, employerContributionRate: 0.07
+      },
+      ...(partnerHasPension
+        ? [{
+          pensionId: 'p2', ownerId: 'partner', type: 'occupational', label: 'DC 2', currentValue: EUR(150_000),
+          contributionStatus: 'active', employeeContributionRate: 0.05, employerContributionRate: 0.07
+        }]
+        : [])
+    ],
+    expenses: { monthlyEssential: EUR(3_000), annualTotal: EUR(40_000) },
+    goals: [{ goalId: 'g1', type: 'retire', priority: 'high', status: 'active', title: 'Retire' }],
+    assumptions: { calculationDateIso: TODAY, values: {} }
+  });
+
+  // A couple who BOTH hold pensions used to get no projection whatsoever.
+  const couple = buildPensionProjectionInput(withRental({
+    primaryRetires: 62, partnerRetires: 67, partnerHasPension: true
+  }));
+  assert.doesNotThrow(() => computePensionProjection(couple),
+    'a couple with a jointly owned rent must still get a projection');
+
+  // And the reference person must be the one whose age set the timeline, not
+  // whichever member happened to be first. Here the PARTNER retires earlier, so
+  // the rent starts on the partner's clock: they are 45 and retire at 62.
+  const staggered = buildPensionProjectionInput(withRental({
+    primaryRetires: 67, partnerRetires: 62, partnerHasPension: false
+  }));
+  const rent = staggered.otherIncomeSources.find((source) => source.id === 'i3');
+  assert.equal(rent.ownerId, 'partner', 'the earliest-retiring owner sets the timeline');
+  assert.equal(rent.startYear, Number(TODAY.slice(0, 4)) + (62 - 45),
+    'the year is measured against that person’s age, not the pension holder’s');
+  assert.notEqual(rent.startYear, Number(TODAY.slice(0, 4)) + (62 - 52),
+    'measuring against the wrong person moved this income by the gap in their ages');
+  pass('other income in the pension projection is dated against its own owner');
+}
+
+{
+  // 2. THE PARTNER REMOVAL GUARD.
+  //
+  // Removing a partner is refused while anything still names them. Income was
+  // asked for a singular owner, matched nothing, and a partner could be removed
+  // out from under their own salary.
+  const partnerId = 'partner';
+  const linkedFor = (incomeSources) => incomeSources
+    .filter((item) => item.ownerIds?.includes(partnerId));
+
+  assert.equal(linkedFor([
+    { incomeId: 'i1', ownerIds: ['partner'], type: 'employment' }
+  ]).length, 1, 'a salary in the partner’s name is a linked position');
+  assert.equal(linkedFor([
+    { incomeId: 'i2', ownerIds: ['primary', 'partner'], type: 'rental' }
+  ]).length, 1, 'a rent they share is a linked position too');
+  assert.equal(linkedFor([
+    { incomeId: 'i3', ownerIds: ['primary'], type: 'employment' }
+  ]).length, 0, 'income that is not theirs does not block the removal');
+  // The shape the guard used to ask for: proof the old reading saw nothing.
+  assert.equal([{ incomeId: 'i1', ownerIds: ['partner'] }]
+    .filter((item) => item.ownerId === partnerId).length, 0,
+  'reading a singular ownerId off a migrated income finds nobody — the defect');
+  pass('partner removal counts income by the owner list it actually carries');
+}
+
+{
+  // 3. THE WORKER'S PATCH ALLOWLIST.
+  //
+  // A root the canonical contract accepts but the worker does not is not a
+  // smaller API, it is an unreachable one. `householdIncome` was added to the
+  // profile and every save came back "Profile path is not allowed".
+  for (const root of PROFILE_PATCH_ROOTS) {
+    assert.doesNotThrow(() => validateProfilePath(`/${root}`),
+      `the worker must accept the canonical patch root /${root}`);
+  }
+  assert.doesNotThrow(() => validateProfilePath('/householdIncome/netAnnual'),
+    'the household aggregate must be reachable through the patch endpoint');
+  assert.throws(() => validateProfilePath('/somethingElse'),
+    'a root outside the contract is still refused');
+  pass('every canonical patch root is reachable through the worker');
 }
 
 console.info('[Ownership] All income and pension ownership checks passed.');

@@ -7,9 +7,14 @@ import {
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ID_PATTERN = /^[a-z][a-z0-9_]{1,79}$/;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{8,120}$/;
+// Mirrors the canonical patch contract in js/planning/contracts.js. A root that
+// exists there but not here is not a smaller API, it is an unreachable one:
+// `householdIncome` was added to the profile and every attempt to save it came
+// back "Profile path is not allowed".
 const ROOT_PATHS = new Set([
   'primaryPerson', 'partner', 'dependants', 'assets', 'liabilities', 'incomeSources',
-  'expenses', 'pensions', 'properties', 'businesses', 'goals', 'preferences', 'assumptions'
+  'householdIncome', 'expenses', 'pensions', 'properties', 'businesses', 'goals',
+  'preferences', 'assumptions'
 ]);
 const PROHIBITED_SEGMENT = /(?:pps|password|passcode|credential|accountnumber|iban|swift|document|passport|drivinglicen[cs]e|exactaddress)/i;
 

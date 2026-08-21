@@ -1040,10 +1040,15 @@ function mapPartnerPerson(profile, fact) {
     }
     const partnerId = profile.partner?.personId;
     if (partnerId) {
+      // Each collection is asked in ITS OWN owner shape. Income moved to a list
+      // of owners; asking it for a singular `ownerId` matched nothing, so a
+      // partner holding their own salary -- or sharing a rent -- passed this
+      // guard and was removed out from under an income that still named them.
+      // Pensions are singular by design and stay that way.
       const linked = [
         ...(profile.assets || []).filter((item) => item.ownerIds?.includes(partnerId)),
         ...(profile.liabilities || []).filter((item) => item.ownerIds?.includes(partnerId)),
-        ...(profile.incomeSources || []).filter((item) => item.ownerId === partnerId),
+        ...(profile.incomeSources || []).filter((item) => item.ownerIds?.includes(partnerId)),
         ...(profile.pensions || []).filter((item) => item.ownerId === partnerId),
         ...(profile.properties || []).filter((item) => item.ownerIds?.includes(partnerId)),
         ...(profile.businesses || []).filter((item) => item.ownerIds?.includes(partnerId))
