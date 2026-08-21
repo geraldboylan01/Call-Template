@@ -1,81 +1,93 @@
-# Phase 5 — deterministic module audit plan
+# Phase 5 — deterministic module audit: closing summary
 
 Phase 4 proved the conversational architecture: speech reaches a canonical
 profile, corrections supersede stale facts, readiness closes, and the right
-module is selected. Phase 5 asks the next question and only that question:
+module is selected. Phase 5 asked the next question of the module layer, and
+only that question:
 
 > Given a correct canonical client profile, does each module receive the
 > correct inputs, apply the correct assumptions, execute safely, and produce
 > the correct financial result?
 
-A perfect conversation is not enough. This phase treats the module layer as
-independently untrustworthy until proven otherwise.
+A perfect conversation is not enough. This phase treated the module layer as
+independently untrustworthy until proven otherwise. This document is the
+closing record of what it established — kept at its original path so links to
+it still resolve.
 
-## Testing philosophy
+## What Phase 5 established
 
-Deterministic-first, and independent of the implementation being tested.
+Every deterministic module Planéir can run has now been audited against
+arithmetic written separately from the engine under test. Across eight modules:
 
-- Expected values come from a **reference calculation written separately from
-  the production engine**, or from a case simple enough to check by hand. A
-  module is never "correct" because it returned `ok:true`, because the number
-  looked reasonable, or because it matched what the same engine produced last
-  week.
-- Where rounding makes exact equality wrong, state an explicit tolerance
-  rather than loosening the assertion.
-- Assert on **semantic identity, never array position**. A Phase 4 evaluator
-  defect was reading `incomeSources[0]`; resolve rows by id or owner instead.
-- Every bug found answers four questions: what was wrong, which
-  financial/data-model assumption caused it, could it affect other modules,
-  and what regression prevents recurrence.
+- **Nine defects were found and fixed.** Six produced a wrong or misleading
+  number; three produced a wrong or unusable failure. Every one is pinned by a
+  regression that fails if it returns.
+- **Two of the nine were cross-module**, in the shared run wrapper, and were
+  fixed once for all eight.
+- **All eight runnable modules now declare a `validateInput` contract**, so a
+  breach of a module's input contract is reported as an input defect rather
+  than surfacing as an engine crash.
+- **Three behaviours that looked like defects were tested and proved correct**,
+  and are now asserted in both directions so a later change cannot quietly
+  "fix" them into something wrong.
+- **Two open product decisions were closed by the owner**, not decided here.
+- **166 deterministic checks** were added across eight new audit suites, all
+  wired into `npm run check:consumer`.
 
-## Current runnable inventory
+What this does *not* establish: the compositions (`retirement_goal_analysis`,
+`scenario_analysis`) have no engine of their own and were not separately
+audited; adviser-only relief modules were out of scope; and this phase tested
+calculation, not presentation. The phase ran entirely on deterministic checks —
+no live model calls were needed to reproduce any defect.
+
+## What was audited
 
 Verified against the registry, not assumed.
 
 | Module | Kind | Status | Engine | Consumer | Prereq | `validateInput` |
 | --- | --- | --- | --- | --- | --- | --- |
-| `liquidity_analysis` | calculation | active | `liquidity_reserve.js` | yes | — | **yes** |
-| `house_purchase` | calculation | beta | `house_purchase/engine.js` | yes | `liquidity_analysis` | **yes** |
-| `pension_projection` | calculation | beta | `pension_math.js` | yes | — | **yes** |
-| `net_retirement_cashflow` | calculation | beta | `net_retirement_math.js` | **no** | — | **yes** |
-| `mortgage_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
-| `loan_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
-| `college_funding` | calculation | beta | `college_funding_math.js` | yes | — | **yes** |
-| `personal_balance_sheet` | calculation | beta | `personal_balance_sheet.js` | yes | — | **yes** |
+| `liquidity_analysis` | calculation | active | `liquidity_reserve.js` | yes | — | yes |
+| `house_purchase` | calculation | beta | `house_purchase/engine.js` | yes | `liquidity_analysis` | yes |
+| `pension_projection` | calculation | beta | `pension_math.js` | yes | — | yes |
+| `net_retirement_cashflow` | calculation | beta | `net_retirement_math.js` | **no** | — | yes |
+| `mortgage_analysis` | calculation | beta | `mortgage_math.js` | yes | — | yes |
+| `loan_analysis` | calculation | beta | `mortgage_math.js` | yes | — | yes |
+| `college_funding` | calculation | beta | `college_funding_math.js` | yes | — | yes |
+| `personal_balance_sheet` | calculation | beta | `personal_balance_sheet.js` | yes | — | yes |
 
-Two corrections to the working list:
+Two facts about that list that shaped the work:
 
 - **`net_retirement_cashflow` is runnable but not consumer-available.** It has
-  an engine and executes, but `consumerAvailable` is false, so it never runs
-  through the consumer path. Audit it as an adviser-path engine; do not assume
-  a consumer regression exercises it.
-- **`mortgage_analysis` and `loan_analysis` still share one engine.** Both call
-  `computeMortgageProjection` from `js/mortgage_math.js`. Test the amortisation
-  engine deeply **once**; for the two modules test only selection, mapping and
+  an engine and executes, but `consumerAvailable` is false, so no consumer
+  regression exercises it. It was audited as an adviser-path engine.
+- **`mortgage_analysis` and `loan_analysis` share one engine.** Both call
+  `computeMortgageProjection`. The amortisation engine was tested deeply once;
+  the two modules were tested only on selection, mapping, type separation and
   the output contract.
 
-`retirement_goal_analysis` and `scenario_analysis` are compositions with no
-engine of their own, and the adviser-only relief modules are out of scope.
+## How it was tested
 
-## Ownership model
+The standard used throughout, recorded here because later phases inherit it.
 
-| Thing | Owner field | Arity | `'household'` |
-| --- | --- | --- | --- |
-| `employment`, `self_employment` income | `ownerIds` | exactly one real person | invalid |
-| `pension`, `state_pension` income | `ownerIds` | exactly one real person | invalid |
-| `rental`, `other` income | `ownerIds` | one or two real people | invalid |
-| pension positions | `ownerId` | exactly one real person | invalid |
-| assets, liabilities, properties, businesses | `ownerIds` | one or more | **legal** |
-| combined household figures | `householdIncome` (not a position) | n/a | n/a |
+- Expected values came from a **reference calculation written separately from
+  the production engine**, or from a case simple enough to check by hand. Each
+  audit suite imports nothing from the engine it checks except the versioned
+  constants it verifies were applied. A module was never called "correct"
+  because it returned `ok:true`, because the number looked reasonable, or
+  because it matched what the same engine produced last week.
+- Where rounding made exact equality wrong, an explicit tolerance was stated
+  rather than the assertion loosened. Where every amount was a whole number of
+  euro, no tolerance was used — one would only have hidden error.
+- Assertions resolve rows by **semantic identity, never array position**. A
+  Phase 4 evaluator defect was reading `incomeSources[0]`; nothing here does.
+- Every defect answers four questions: what was wrong, which financial or
+  data-model assumption caused it, whether it could affect other modules, and
+  what regression prevents recurrence.
 
-A combined household figure may answer a module contract that asks for a
-combined household figure. It can never satisfy a readiness requirement for a
-specific person's income.
+## The defect class this phase existed to find
 
-## The defect class Phase 5 exists to find
-
-The House Purchase failure was not a one-off. Its shape generalises, and the
-generalisation is the thing to hunt:
+The House Purchase failure that opened the phase was not a one-off. Its shape
+generalises, and the generalisation was the thing hunted:
 
 > **A household aggregate and its per-owner decomposition are computed by two
 > different rules that are never reconciled against each other.**
@@ -86,359 +98,300 @@ applicants and was counted twice; household-held cash matched neither and
 disappeared. The engine's own contract caught it — loudly, which is why it was
 findable at all.
 
-Two consequences for the rest of the audit:
+Two things followed, and both are now closed:
 
 1. **Wherever a module computes both a household total and a per-owner split,
-   assert that the split reconciles to the total.** That single invariant is
-   the highest-yield test in this phase.
-2. **The silent version of this defect is closed.** `ownerId: 'household'` was
-   a legal value on the singular-owner collections, and every per-person
-   consumer matched on a person id and so could not see it: a household-owned
-   income counted in `netHouseholdIncome` while contributing zero to every
-   applicant's `grossAnnualIncome`. Ownership now follows what the thing is —
-   single-owner for salaries, trades, pensions in payment, State Pension
-   entitlements and pension positions; `ownerIds` naming both real people for
-   genuinely joint income; and a `householdIncome` aggregate that is not a
-   position and can never answer "what does each of you earn?". The pseudo-owner
-   remains legal only on the `ownerIds` collections (assets, liabilities,
-   properties, businesses), where "the household owns this" needs no per-person
-   decomposition to be correct.
+   the split is asserted to reconcile to the total.** That single invariant was
+   the highest-yield test in the phase.
+2. **The silent version of the defect is gone.** `ownerId: 'household'` used to
+   be legal on the singular-owner collections, and every per-person consumer
+   matched on a person id and so could not see it: a household-owned income
+   counted in `netHouseholdIncome` while contributing zero to every applicant's
+   `grossAnnualIncome`. Ownership now follows what the thing is.
 
-## Audit order
+## Defects found and fixed
 
-Ordered by where a wrong answer is most likely and least visible, not by
-module size.
+| # | Module | What was wrong | Regression |
+| --- | --- | --- | --- |
+| 1 | `house_purchase` | The per-owner cash split was a filter, not a partition: joint cash counted twice, household-held cash vanished | `check-module-input-contracts` |
+| 2 | every module | A module crash was reported to the client as `analysis_missing_information`, with a bare `ok:false` behind it | `check-module-input-contracts` |
+| 3 | `personal_balance_sheet` | The same holding supplied twice was summed silently, and `reconciliationDifference` still read zero | `check-personal-balance-sheet-audit` |
+| 4 | `liquidity_analysis` | An uncomparable reserve reported as at or above target, in a positive tone | `check-liquidity-audit` |
+| 5 | `liquidity_analysis` | The cohort read `primaryPerson` alone: order-dependent, and a 4× difference in target | `check-liquidity-audit` |
+| 6 | `mortgage_math` | Payoff detection required exactly zero, so half of realistic mortgages were reported never repaid | `check-mortgage-math-audit` |
+| 7 | `mortgage_analysis`, `loan_analysis` | A null dereference where a diagnostic belonged | `check-mortgage-math-audit` |
+| 8 | every module | A profile the schema refuses surfaced as `unknown_module_failure`, not `module_input_invalid` | `check-pension-projection-audit` |
+| 9 | `college_funding` | `children: []` invented a 13-year-old and produced a college plan for a dependant nobody had | `check-college-funding-audit` |
 
-| # | Module | Why here |
-| --- | --- | --- |
-| 1 | `house_purchase` | Done. Known failure, conversational side already proven. |
-| 2 | `personal_balance_sheet` | **Done.** Ownership never double-counts; the engine now refuses a position supplied twice. |
-| 3 | `liquidity_analysis` | **Done.** Arithmetic proved independently; an uncomparable reserve no longer reads as a pass, and the cohort rule no longer depends on who was entered first. |
-| 4 | `mortgage_math` (shared engine) | **Done.** Payment and schedule match an independently written annuity; payoff detection no longer depends on float luck. |
-| 5 | `mortgage_analysis` + `loan_analysis` | **Done alongside step 4.** Selection, mapping, type separation and output contract, on the proven engine. |
-| 6 | `pension_projection` | **Done.** Timing measured before anything rested on it; PRB, DB and State Pension treatments all proved. |
-| 7 | `net_retirement_cashflow` | **Done.** The gross/net boundary is structural, not incidental; arithmetic proved row by row. |
-| 8 | `college_funding` | **Done.** Every runnable module is now audited. |
+### 1. The cash split was a filter, not a partition
 
-## Per-module audit specifications
+`cashSavingsContributions` re-filtered every cash holding per applicant instead
+of dividing it between them. It now partitions: each holding is divided among
+whichever applicants own it, the rows are rounded to the cent, and any residual
+from rounding is placed on the largest row so the split always sums to the
+household total the engine was given. **Blast radius:** any adapter deriving a
+per-owner split from a household total — which is why invariant 1 above was
+applied to every subsequent module.
 
-### 2. `personal_balance_sheet` — AUDITED
+### 2. A crash reported as missing information
 
-Every figure was checked against arithmetic written separately from the engine,
-in `scripts/check-personal-balance-sheet-audit.mjs`. 19 checks.
+Any throw inside a module run reached the client as
+`analysis_missing_information`, which tells a client to supply facts they have
+already supplied, and hides a defect from whoever could fix it. Phase 5 added a
+structured failure vocabulary in `js/planning/module_failures.js`:
+`module_input_invalid`, `module_execution_failed`, `readiness_not_met`,
+`unsupported_state`, `unknown_module_failure`.
 
-**What was already right.** PBS reads no ownership at all: it aggregates each
-position once from its own collection, so a joint holding cannot be doubled by
-having two owners. A joint €100,000 asset contributes €100,000. A partner-only
-holding appears at full value without being reassigned. The generic/specialist
-overlap guard works — a home recorded both as a property asset and as a
-property record blocks the sheet until someone says which it is, and the
-unreviewed record stays out either way. Negative net worth is reported, not
-clamped. A holding with no value, or one in another currency, fails closed and
-names the field; the cross-currency reason says the currency rather than
-claiming the figure is missing. PBS and `liquidity_analysis` draw the same
-monthly-spending basis, so their months-of-cover figures agree.
+Two properties of that module matter more than the codes:
 
-**The defect found.** The engine guarded its buckets, its signs and its
-finiteness but never that a position appears once. The same €50,000 holding
-supplied twice became €100,000 of net worth — and `reconciliationDifference`
-still read zero, because doubling both sides of a consistent sum keeps it
-consistent. Fixed by asserting position identity, where identity is the source
-collection **plus** the id: a cash holding and a business interest may
-legitimately share an id while being two different things, and rejecting that
-would refuse a correct balance sheet.
+- **The classifier reads a carried code and never sniffs messages.** Message
+  sniffing is how a classifier silently starts lying when an engine reworks its
+  wording.
+- **Two audiences are kept apart.** `detail` carries the engine's own text and
+  stays server-side; `clientFailureMessage(code)` is what a client may see, and
+  names no fields and no stacks.
 
-**On `reconciliationDifference`.** It is not an oracle. The engine computes
-`netWorth = gross - liabilities` and then `difference = gross - liabilities -
-netWorth`, so it is zero by construction and can only catch a rounding slip.
-Independent arithmetic is the real check; the difference is asserted for what
-it is worth and no more. No rounding tolerance is used, because every amount in
-these cases is a whole number of euro — a tolerance would only hide error.
+### 3. A balance sheet that counted a holding twice
 
-### 3. `liquidity_analysis` — AUDITED
+The engine guarded its buckets, its signs and its finiteness, but never that a
+position appears once. The same €50,000 holding supplied twice became €100,000
+of net worth — and `reconciliationDifference` still read zero, because doubling
+both sides of a consistent sum keeps it consistent. Fixed by asserting position
+identity, where identity is the source collection **plus** the id: a cash
+holding and a business interest may legitimately share an id while being two
+different things, and rejecting that would refuse a correct balance sheet.
 
-Checked against arithmetic written separately from the engine, in
-`scripts/check-liquidity-audit.mjs`. 27 checks. An existing test compares the
-adapter against `computeLiquidityReserve(input)`; that proves the adapter has
-not drifted from the engine and is **not** evidence the engine is right.
+`reconciliationDifference` is not an oracle, and the audit treats it as what it
+is. The engine computes `netWorth = gross − liabilities` and then
+`difference = gross − liabilities − netWorth`, so it is zero by construction
+and can only catch a rounding slip. Independent arithmetic is the real check.
 
-**What was already right.** €12,000 against €2,000 a month is 6.0 months, a
-€6,000 floor and a €12,000 target; read as retired the same household targets
-€48,000 and reports a true €36,000 shortfall. The 3/6 and 12/24 guides come
-from the versioned policy, are applied once, and the run is stamped with the
-policy version. Zero or unknown spending yields nulls rather than `Infinity`.
-The target can never fall below the floor. An annual spending figure gives an
-identical reserve to the monthly one. Cash is a household total, so ownership
-shape changes nothing and a jointly held holding counts once; investments and
-property never inflate the reserve; foreign currency is excluded and disclosed.
-Liquidity and the balance sheet agree on spending, spendable cash and months of
-cover.
+### 4. A gap of zero is a claim
 
-**Defect 1 — a gap of zero is a claim.** `surplusCash` and `shortfallCash` both
-fell back to `0` whenever the target or the cash could not be established, and
-every reader downstream decides the household is fine by asking whether the
-shortfall is above zero. A household whose monthly spending had never been
-captured was told, in a positive tone, that its reserve was at or above target.
-Unknown is now `null` — falsy in the same `> 0` guards those readers already
-use — and the engine states its own `position`, including `'unknown'`.
+`surplusCash` and `shortfallCash` both fell back to `0` whenever the target or
+the cash could not be established, and every reader downstream decides the
+household is fine by asking whether the shortfall is above zero. A household
+whose monthly spending had never been captured was told, in a positive tone,
+that its reserve was at or above target. Unknown is now `null` — falsy in the
+same `> 0` guards those readers already use — and the engine states its own
+`position`, including `'unknown'`.
 
-**Defect 2 — the cohort ignored the partner.** `resolveLiquidityCohort` read
-`primaryPerson` alone, so a retired client with a working partner was told to
-hold 24 months of spending rather than 6 — four times the target on the same
-facts — and entering the couple the other way round produced the opposite
-answer. The retired guide now applies only when **every** adult has retired,
-which is what the policy's own wording says ("a working household", "a retired
-household") and why the buffer is larger in retirement at all: earned income
-has stopped. A stated household retirement status still outranks the per-person
-reading. **This was a product decision, taken by the owner, not a judgement
-made here.**
+### 5. The cohort ignored the partner
 
-**Also added.** An input contract. The engine is deliberately forgiving — right
-for a renderer handling a half-filled form, wrong as the last word before a
-client is given a number: a buffer override of `-3` or `0` silently became the
-policy default, so an adviser could type one figure and the illustration use
-another. That now reports as `module_input_invalid`.
+`resolveLiquidityCohort` read `primaryPerson` alone, so a retired client with a
+working partner was told to hold 24 months of spending rather than 6 — four
+times the target on the same facts — and entering the couple the other way
+round produced the opposite answer. See **Product decisions** below for the
+rule that replaced it.
 
-### 4. `mortgage_math` — AUDITED (with modules 5)
+### 6. Payoff detection was a coin flip
 
-Checked against a reference implementation written from the annuity formula
-`P = B·i / (1 − (1+i)^−n)`, plus a schedule re-simulated period by period, both
-in `scripts/check-mortgage-math-audit.mjs` and importing nothing from the code
-under test. 23 checks covering the engine and both modules over it.
+It required the balance to reach exactly zero, which floating-point arithmetic
+reaches only by luck. Across €250,000 over 25 years at rates from 1% to 6%,
+**51 of 101 runs** finished with a residue like 0.00000000012 and were reported
+as never repaid — in prose, on the same screen as "Remaining balance at term
+end: €0.00". The summary literally read "not fully repaid … leaving €0.00
+outstanding". Money is measured to the cent, so anything below half a cent is
+now settled, and the sweep is pinned as a regression.
 
-**What was already right.** The payment matches the independent annuity to
-machine precision, and lifetime interest, principal and total paid match a
-re-simulated schedule. `totalPaid = interest + principal` holds across five
-rate and term combinations, every period charges the rate on its own opening
-balance, the payment splits exactly into interest plus principal, and the
-annual rollup reconciles to the monthly schedule. The rate convention is
-nominal (annual ÷ 12), applied consistently by both the payment function and
-the schedule — asserted explicitly so a future switch to an effective-rate
-conversion has to be deliberate. Zero rate, a one-month term, a payment above
-the balance, one-off and annual overpayments all behave correctly; an annual
-overpayment shortens the term at an unchanged payment. Negative amortisation,
-a zero or negative balance, a negative rate, a missing term and interest-only
-are all refused rather than modelled.
+### 7. A null dereference where a diagnostic belonged
 
-**Defect 1 — payoff detection was a coin flip.** It required the balance to
-reach EXACTLY zero, which floating-point arithmetic reaches only by luck.
-Across €250,000 over 25 years at rates from 1% to 6%, **half** the runs
-finished with a residue like 0.00000000012 and were reported as never repaid —
-in prose, on the same screen as "Remaining balance at term end: €0.00". The
-summary literally read "not fully repaid … leaving €0.00 outstanding". Money is
-measured to the cent, so anything below half a cent is now settled, and the
-sweep is pinned as a regression.
-
-**Defect 2 — a null dereference where a diagnostic belonged.** Building an
-input for a profile with no matching liability threw
+Building an input for a profile with no matching liability threw
 `Cannot read properties of null`. Readiness refuses this, so only a direct
-caller reaches it, but every other audited module fails with a sentence naming
+caller reached it, but every other audited module fails with a sentence naming
 what is absent. It now does too.
 
-**Defect 3 — a silent pick between two mortgages.** `selectMortgage` falls back
-to the first matching liability, so a household with two got an analysis of one
-and nothing said which. The choice is now declared in `assumptionsUsed` when
-there is more than one candidate. **Whether it should instead ask which
-mortgage the client means is left open** — the figures are correct for a real
-mortgage of theirs, and choosing between "name it" and "ask" is a product call.
+### 8. A malformed profile reported as an unknown failure
 
-### 5. `mortgage_analysis` and `loan_analysis` — AUDITED
+`runPlanningModule` normalised the profile *before* the labelled input phase, so
+a profile the schema refuses — a retirement age already behind the client —
+surfaced as `unknown_module_failure`, which the taxonomy defines as "treat as a
+defect and read the detail". It is an invalid input and now says so.
+**Blast radius: every module**, since the wrapper is shared; fixed once there.
 
-Audited alongside the engine rather than separately, since the plan already
-scoped them to what differs. Both map balance, rate and term without rescaling
-(rate stays a fraction, months convert to years) and stamp their own loan kind.
-Type separation holds in both directions: a loan never makes mortgage analysis
-relevant and a mortgage never makes loan analysis relevant. A jointly owned
-mortgage is analysed once at its full balance. Both run end to end against
-independently computed figures. The amortisation maths is **not** re-tested per
-module.
+### 9. The phantom child
 
-### 6. `pension_projection` — AUDITED
+`children: []` — an explicit statement that there are no children — fell
+through to the legacy `childrenCount`/`childCurrentAge` path, which invented one
+child aged thirteen and produced a **€20,000 today / €25,832 nominal** college
+plan for a dependant nobody had. An *absent* `children` key genuinely does mean
+"legacy shape"; an *empty* one means "none". They are now told apart, and the
+legacy shape is verified still working. **Blast radius: college funding only** —
+no other engine has a legacy-default path of this kind.
 
-Checked against a pot accumulated from first principles in
-`scripts/check-pension-projection-audit.mjs`, importing nothing from
-`pension_math.js` except the versioned constants it verifies were applied.
-21 checks, in three layers: hand-checkable micro-cases, reference-calculator
-cases, then realistic households.
+### Also closed, alongside the numbered nine
 
-**Timing, measured before anything rested on it.** Growth periods equal
-`retirementAge − currentAge`: €100,000 at 5% goes 100,000 → 105,000 → 110,250.
-A contribution is made in every year where age is below the retirement age, so
-the retirement year itself receives none. Contributions are added **before**
-that year's growth, so the first contribution earns growth immediately.
-Salary escalates from the second year, so the first contribution is a share of
-today's pay — the first/last-year off-by-one is not present in either place.
+- **A liquidity buffer override of `-3` or `0` silently became the policy
+  default**, so an adviser could type one figure and the illustration use
+  another. The engine is deliberately forgiving, which is right for a renderer
+  handling a half-filled form and wrong as the last word before a client is
+  given a number. It now reports as `module_input_invalid`.
+- **`college_funding` refuses an inflation rate that is not the approved
+  education rate**, so the general rate can never be substituted silently.
 
-**Product types, all correct.** A DC pot and its contributions aggregate once
-per person. A PRB grows but receives no contribution **even when the record
-carries contribution rates**. A paid-up scheme behaves the same way. A
-defined-benefit pension is income exactly once and never a pot — proved with a
-DB record carrying a `currentValue` of €999,999, which contributes nothing to
-the pot; a DB with no stated income adds nothing rather than adding zero. State
-Pension never enters a funded pot, is counted once per eligible person, takes
-its start age and escalation from the rules catalogue, and stays individually
-switchable.
+## Deliberately not defects
 
-**Ownership holds.** Every pension stays attached to its own person while the
-household resources combine: separate ages, retirement ages, pots and salaries
-per member, with nothing leaking across owners. A partner with no pension
-recorded is asked about rather than treated as zero.
+Three behaviours looked wrong on first reading and were proved correct by
+testing rather than by assumption. Each is now asserted in both directions, so
+a later change cannot quietly turn one into a real defect.
 
-**Two things deliberately NOT recorded as defects**, having been tested rather
-than assumed — both looked like defects first:
-
-- With staggered retirement the combined pot at the later reference year is
-  *smaller* than the sum of each pot at its own retirement. That is the earlier
-  retiree funding the household through the bridge years. Setting the target
-  income to zero leaves both pots intact, which is asserted in both directions.
-- A retired pot shrinks slightly against pure growth. That is ARF minimum
+- **A staggered-retirement household's combined pot is smaller at the later
+  reference year than the sum of each pot at its own retirement.** That is the
+  earlier retiree funding the household through the bridge years. Setting the
+  target income to zero leaves both pots intact.
+- **A retired pot shrinks slightly against pure growth.** That is ARF minimum
   drawdown, the documented post-retirement treatment.
+- **A surplus year in `net_retirement_cashflow` does not offset a later
+  shortfall.** Each year's gap is funded on its own terms.
 
-**Defect found — a malformed profile reported as an unknown failure.**
-`runPlanningModule` normalised the profile *before* the labelled input phase,
-so a profile the schema refuses (a retirement age already behind the client)
-surfaced as `unknown_module_failure` — which the taxonomy defines as "treat as
-a defect and read the detail". It is an invalid input and now says so. **Blast
-radius: every module**, since the wrapper is shared; fixed once there.
+And one design boundary, confirmed against the playbook rather than inferred:
 
-**Assumption sourcing — since resolved.** Growth and inflation come from
-`PLANEIR_ASSUMPTIONS` and are applied exactly once; State Pension comes from
-`IRISH_STATE_PENSION_CONTRIBUTORY`. The ARF minimum drawdown rates were
-hardcoded constants in `pension_math.js` — dated Irish rules in a file that is
-not the rules file. They now live in the catalogue as
-`IRISH_ARF_MINIMUM_DRAWDOWN` with `irishArfMinimumRate()`, at exactly their
-previous values, pinned by a regression asserting the drawdown result is
-identical to a figure recorded before the move.
+- **`net_retirement_cashflow` does not read `/pensions`, and must not.** It
+  compares NET spending need with NET recurring income, and exists precisely
+  where pension taxation is too uncertain for a true net-income projection. A
+  €20,000 gross DB pension becoming €20,000 of spendable income would
+  understate the requirement by exactly the tax nobody deducted, and the answer
+  would still look reasonable. Only a **stated net amount** becomes income
+  there; a source carrying only `grossAnnual` is excluded rather than read as
+  net. Verified structurally: cash and liquid investments reach the net fund;
+  illiquid investments, investments with liquidity unstated, pension-typed
+  assets, pension positions, property and business do not.
 
-**Blast radius into step 7.** `net_retirement_math.js` is a genuinely separate
-engine — it shares the adapter *file* with pension projection but none of the
-accumulation, ARF or State Pension code. Nothing found here propagates to it.
-One thing for that audit to check: DB pensions reach `pension_projection` as
-income sourced from `/pensions`, while `buildNetRetirementInput` reads only
-`/incomeSources`, so the two modules may not see the same DB income.
+The consequence is that a DB pension can reach `pension_projection` as income
+sourced from `/pensions` while `buildNetRetirementInput` never sees it. That is
+the intended boundary, not a gap to close, but it is worth knowing when the two
+modules' figures are read side by side.
 
-### 7. `net_retirement_cashflow` — AUDITED
+## Product decisions taken
 
-Checked against a required-fund calculation written from first principles in
-`scripts/check-net-retirement-audit.mjs`, importing nothing from
-`net_retirement_math.js`. 18 checks.
+Two decisions belonged to the owner and were taken by the owner, not here.
 
-**What it is for**, from the playbook rather than inferred: it compares the
-household's NET spending need with NET recurring income and converts the annual
-shortfalls into the required NET investment fund today. The playbook says it
-exists precisely "where pension taxation is too uncertain for a true net-income
-pension projection", that "all income and expenditure figures are treated as
-after-tax net amounts", and it names using `generated.pensionInputs` here as an
-anti-pattern.
+- **The retired liquidity guide applies only when every adult has retired.**
+  That is what the policy's own wording says ("a working household", "a retired
+  household") and why the buffer is larger in retirement at all: earned income
+  has stopped. A stated household retirement status still outranks the
+  per-person reading.
+- **Where more than one mortgage could validly be analysed, Planéir asks which
+  one rather than selecting silently.** Selection uses stable entity identity,
+  not array position; reversing the order of the liabilities changes nothing.
+  `selectLiabilityOfType` returns the candidates and whether the choice is
+  ambiguous, with no first-match fallback.
 
-**The pension gap is the design, and it holds.** Gross pension pots and gross DB
-or State Pension income do not flow in from `/pensions`, and must not: a €20,000
-gross DB pension becoming €20,000 of spendable income would understate the
-requirement by exactly the tax nobody deducted, and the answer would still look
-reasonable. Verified structurally:
+## Ownership model, as it now stands
 
-| Source | Reaches the net fund? |
-| --- | --- |
-| cash | yes |
-| investment marked liquid | yes |
-| investment marked illiquid | no |
-| investment with liquidity unstated | no (fail-closed) |
-| pension-typed asset | **no** |
-| pension position in `/pensions` | **no** |
-| property, business | no |
+| Thing | Owner field | Arity | `'household'` |
+| --- | --- | --- | --- |
+| `employment`, `self_employment` income | `ownerIds` | exactly one real person | invalid |
+| `pension`, `state_pension` income | `ownerIds` | exactly one real person | invalid |
+| `rental`, `other` income | `ownerIds` | one or two real people | invalid |
+| pension positions | `ownerId` | exactly one real person | invalid |
+| assets, liabilities, properties, businesses | `ownerIds` | one or more | **legal** |
+| combined household figures | `householdIncome` (not a position) | n/a | n/a |
 
-Income follows the same gate: only a **stated net amount** becomes income. A
-source carrying only `grossAnnual` is excluded rather than read as net; where
-both are stated the net figure wins. A client-supplied net DB or net State
-Pension amount *is* counted, at its net figure — that is the supported route.
+The pseudo-owner remains legal only on the `ownerIds` collections, where "the
+household owns this" needs no per-person decomposition to be correct. A
+combined household figure may answer a module contract that asks for a combined
+household figure. It can never satisfy a readiness requirement for a specific
+person's income.
 
-**Arithmetic.** Year zero is today, un-inflated and undiscounted; each later
-year carries one period of each. A forty-one-year projection matches the
-reference row by row and in total. Income start and end ages are exact. A
-surplus year is reported and deliberately does not offset a later shortfall.
+The partition of `INCOME_TYPES` into single-owner and joint-capable is asserted
+at load time, so adding an income type without deciding its ownership arity
+fails immediately rather than defaulting to whichever branch runs first.
 
-**Scenarios.** Keep-versus-sell works exactly once in each direction: selling
-the rental raises the requirement by precisely the lost rent and the fund by
-precisely the stated proceeds, with neither double counted. Overrides and
-additional sources apply only to what they name, and the base scenario is
-unaffected by the existence of others. Note the engine does **not** infer the
-link between losing an income and gaining proceeds — the scenario author states
-both. That is deliberate flexibility, not a defect, but it means a malformed
-scenario could state one without the other.
+**On migrating historical state.** A legacy singular `ownerId` naming a real
+person migrates silently — it is the same claim in a different shape. A legacy
+`ownerId: 'household'` on a singular-owner collection does **not** migrate: it
+fails loudly, because turning it into two named owners would manufacture
+ownership the client never stated. One existing test pinned the old behaviour
+by asserting `ownerId === 'household'` for shared income; it was rewritten to
+assert both real owners, plus a new case proving a joint *salary* is refused.
 
-**Failing closed.** Unknown spending stays `null`, blocks readiness and is
-refused by the contract — it never becomes zero, which would report a household
-as needing no fund at all. An unknown fund withholds the surplus/gap comparison
-rather than asserting either. No recorded liquid assets errs toward showing a
-gap, which is the conservative direction.
+## Assumptions and rules
 
-**No defects found.** The module was already correct on every axis tested. It
-gains a `validateInput` contract and this audit.
+Growth and inflation come from `PLANEIR_ASSUMPTIONS`, State Pension from
+`IRISH_STATE_PENSION_CONTRIBUTORY`, and each is applied exactly once — asserted,
+not assumed. Every assumption a module uses is declared back to the client with
+its basis.
 
-### 8. `college_funding` — AUDITED
+The ARF minimum drawdown rates were hardcoded constants in `pension_math.js` —
+dated Irish rules living in a file that is not the rules file. They now sit in
+the versioned catalogue as `IRISH_ARF_MINIMUM_DRAWDOWN`, read through
+`irishArfMinimumRate()`, **at exactly their previous values**, pinned by a
+regression asserting the drawdown result is identical to a figure recorded
+before the move.
 
-Checked against a year-by-year household bill built from first principles in
-`scripts/check-college-funding-audit.mjs`, importing nothing from
-`college_funding_math.js`. 15 checks.
+## The regression estate
 
-**What was already right.** A 17-year-old living at home costs exactly €5,200
-in the first year — €5,000 inflated one year at the **education** rate — and
-€5,408, €5,624.32, €5,849.29 after that, over 2027–2030. The start age (18),
-duration (4 years) and the €5,000/€15,000 scenario costs all come from the
-versioned assumptions, and every one is declared back to the client with its
-basis. Living away scales the cost without moving the timeline.
+Eight new suites, 166 deterministic checks, all in `npm run check:consumer`.
 
-**The peak is right, which is the module's whole point.** A 17-year-old and a
-14-year-old overlap in exactly one year (2030), and that year's household cost
-is two children at once — asserted to be **greater than the final, most-inflated
-year**, which is what a naive maximum over one inflating series would have
-returned. Three closely spaced children peak at three attending. Children far
-enough apart leave gap years that cost precisely nothing.
+| Suite | Checks | What it holds |
+| --- | --- | --- |
+| `check-module-input-contracts.mjs` | 23 | House Purchase cash partition; the failure taxonomy |
+| `check-ownership-model.mjs` | 15 | Income and pension ownership invariants |
+| `check-personal-balance-sheet-audit.mjs` | 19 | PBS arithmetic; no double counting |
+| `check-liquidity-audit.mjs` | 27 | Reserve arithmetic, cohort rule, stated position |
+| `check-mortgage-math-audit.mjs` | 27 | Annuity engine; mortgage and loan routing |
+| `check-pension-projection-audit.mjs` | 22 | Pension timing, product types, ARF relocation |
+| `check-net-retirement-audit.mjs` | 18 | Net cashflow; the gross/net boundary |
+| `check-college-funding-audit.mjs` | 15 | College timing, overlap peak, phantom child |
 
-**Costs are per child.** A second parent creates neither a second child nor a
-larger bill; each dependant becomes exactly one child, resolved by id.
+Detail worth keeping about what those checks prove:
 
-**Defect found — the phantom child.** `children: []` — an explicit statement
-that there are no children — fell through to the legacy
-`childrenCount`/`childCurrentAge` path, which invented one child aged thirteen
-and produced a **€20,000 today / €25,832 nominal** college plan for a dependant
-nobody had. An *absent* `children` key genuinely does mean "legacy shape"; an
-*empty* one means "none". They are now told apart, and the legacy shape is
-verified still working (`childrenCount: 2, age 10` → 2034–2037). Blast radius:
-college funding only — no other engine has a legacy-default path of this kind.
+- **Timing was measured before anything rested on it.** Pension growth periods
+  equal `retirementAge − currentAge`; a contribution is made in every year where
+  age is below the retirement age, so the retirement year itself receives none;
+  contributions are added before that year's growth; salary escalates from the
+  second year. The first/last-year off-by-one is not present in either place.
+- **Product types separate.** A PRB grows but receives no contribution even when
+  the record carries contribution rates. A DB pension is income exactly once and
+  never a pot — proved with a DB record carrying a `currentValue` of €999,999
+  that contributes nothing. State Pension never enters a funded pot.
+- **The rate convention is nominal** (annual ÷ 12), applied consistently by both
+  the payment function and the schedule — asserted explicitly, so a future
+  switch to an effective-rate conversion has to be deliberate.
+- **The college peak is a household peak.** A 17-year-old and a 14-year-old
+  overlap in exactly one year, and that year is asserted to cost more than the
+  final, most-inflated year — which is what a naive maximum over one inflating
+  series would have returned.
+- **Modules that share a basis agree.** PBS and `liquidity_analysis` draw the
+  same monthly-spending basis, so their months-of-cover figures reconcile.
+- **Failing closed is tested as behaviour, not hoped for.** Unknown spending
+  stays `null` and blocks readiness rather than becoming zero; a child already
+  past the college start age is refused rather than costed at a deflated
+  past-year price; cross-currency holdings are excluded and disclosed by
+  currency rather than reported as missing.
 
-**Edge cases fail closed.** A child already at or past the start age is refused
-rather than costed at a *deflated* past-year price, which a negative year offset
-would otherwise produce. Negative, fractional and duplicated children are all
-refused. A household with no dependants is asked for them and never receives an
-invented projection.
+## What Phase 5 changed in production code
 
-**Input contract.** Refuses no children, duplicates, an adult age, and — the
-distinctive one — an inflation rate that is not the approved education rate, so
-the general rate can never be substituted silently.
+Engines: `college_funding_math.js`, `liquidity_reserve.js`, `mortgage_math.js`,
+`pension_math.js`, `personal_balance_sheet.js`.
 
-## Cross-cutting work, once, for every module
+Planning layer: `module_failures.js` (new), `module_registry.js`, `profile.js`,
+`ireland_rules.js`, `contracts.js`, `orchestrator.js`, `result_summary.js`,
+`reconciliation.js`, and the `house_purchase`, `liquidity`, `mortgage`, `loan`,
+`retirement`, `college_funding`, `personal_balance_sheet` and `common` adapters.
 
-- **Adopt `validateInput` across the registry.** **Complete** — all eight
-  runnable modules declare an input contract. Each module declaring its own normaliser moves an input
-  contract breach out of the run phase, where it otherwise masquerades as an
-  engine crash. Do this as each module is audited.
-- **Reconcile aggregate against decomposition** wherever both exist.
-- **State the `'household'` owner behaviour** for every module that reads a
-  singular-owner collection, and decide whether the profile schema should keep
-  admitting a value that no per-person consumer handles.
-- **Confirm assumptions are read from the versioned record, not re-stated**,
-  and applied exactly once.
+## Carried forward
 
-## Explicitly out of scope
+Cross-cutting work that Phase 5 completed is not repeated here; what remains
+open is:
 
-Carried forward from Phase 4 and not reopened by this phase unless a module
-audit proves a real architectural dependency:
+- **The scenario-level invariant in `net_retirement_cashflow`.** The engine does
+  not infer the link between losing an income and gaining sale proceeds — the
+  scenario author states both. That is deliberate flexibility, and keep-versus-
+  sell is proved to work exactly once in each direction. But it means a
+  malformed scenario could state one without the other. Best folded into
+  whatever next touches scenarios.
+- **Whether the profile schema should keep admitting `'household'`** on the
+  `ownerIds` collections indefinitely. It is correct there today; the question
+  is whether it stays worth the exception.
+
+Carried forward from Phase 4, and not reopened by this phase:
 
 - **A.** Deterministic evidence rules versus natural speech. The likely
   long-term direction is semantic interpretation plus exact transcript
   evidence plus deterministic ownership validation, rather than enumerating
-  regex phrasings. Not a Phase 5 calculation concern.
+  regex phrasings. Not a calculation concern.
 - **B.** Collection completeness. "That is the only property we own" is not
   "we own no property"; that belongs in a `completedPaths` mechanism, not
   `confirmedNone`. Do not conflate "no items" with "no additional items".
@@ -449,4 +402,4 @@ audit proves a real architectural dependency:
 - **D.** Dense-sentence numeric evidence refusal.
 - **E.** Evaluator defects, not product defects: array-order assumptions and
   the expectation that joint savings belong to the primary rather than the
-  household. Both are already reflected in how the Phase 5 tests assert.
+  household. Both are reflected in how the Phase 5 tests assert.
