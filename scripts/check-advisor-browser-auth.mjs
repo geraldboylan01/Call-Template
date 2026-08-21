@@ -66,7 +66,7 @@ assert.match(
 
 const deployWorkflow = read('.github/workflows/deploy-worker.yml');
 assert.ok(
-  deployWorkflow.includes(`WORKER_BASE_URL: \${{ vars.WORKER_BASE_URL || '${API_ORIGIN}' }}`),
+  deployWorkflow.includes(`WORKER_BASE_URL: "${API_ORIGIN}"`),
   'Production deployment smoke tests must exercise the same-site API hostname.'
 );
 

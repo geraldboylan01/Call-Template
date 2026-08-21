@@ -44,6 +44,12 @@ cd worker
 npx wrangler d1 migrations apply planeir-leads --local
 ```
 
+Production browser traffic uses the Worker custom domain `https://api.planeir.ie`.
+Keeping the site and API under the same registrable domain is required for the
+secure advisor session cookie to work in browsers that block third-party
+cookies, including Safari. The `workers.dev` hostname remains enabled only as a
+deployment and diagnostics endpoint; production pages must not use it.
+
 ## Consumer Planning Journey (Feature Flagged)
 
 `/plan/` is a separate consumer-facing guided planning experience. It does not

@@ -598,7 +598,7 @@ assert.match(realtimeInfrastructureProofSource, /await browser\.close\(\)/);
 assert.doesNotMatch(realtimeInfrastructureProofSource, /OPENAI_API_KEY|api\.openai\.com/);
 
 const requiredPlanHeaders = new Headers({
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://call-canvas-session-worker.geraldboylan.workers.dev; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.planeir.ie; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
@@ -606,21 +606,21 @@ const requiredPlanHeaders = new Headers({
   'Strict-Transport-Security': 'max-age=31556952'
 });
 assert.equal(validatePlanSecurityHeaders(requiredPlanHeaders, {
-  workerOrigin: 'https://call-canvas-session-worker.geraldboylan.workers.dev'
+  workerOrigin: 'https://api.planeir.ie'
 }), true);
 assert.throws(() => validatePlanSecurityHeaders(new Headers({
   ...Object.fromEntries(requiredPlanHeaders.entries()),
   'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'"
 }), {
-  workerOrigin: 'https://call-canvas-session-worker.geraldboylan.workers.dev'
+  workerOrigin: 'https://api.planeir.ie'
 }));
 const missingFrameProtectionHeaders = new Headers(requiredPlanHeaders);
 missingFrameProtectionHeaders.delete('X-Frame-Options');
 assert.throws(() => validatePlanSecurityHeaders(missingFrameProtectionHeaders, {
-  workerOrigin: 'https://call-canvas-session-worker.geraldboylan.workers.dev'
+  workerOrigin: 'https://api.planeir.ie'
 }));
 
-const desiredHeaderRule = buildConsumerPlanHeaderRule('https://call-canvas-session-worker.geraldboylan.workers.dev');
+const desiredHeaderRule = buildConsumerPlanHeaderRule('https://api.planeir.ie');
 assert.equal(desiredHeaderRule.ref, 'planeir_consumer_plan_security_headers_v1');
 assert.equal(desiredHeaderRule.action, 'rewrite');
 assert.equal(desiredHeaderRule.enabled, true);
