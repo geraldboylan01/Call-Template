@@ -69,6 +69,39 @@ export function buildCollegeFundingInput(profile) {
   };
 }
 
+/**
+ * The module's own input contract.
+ *
+ * College costs are per CHILD, and every figure here is a Planéir assumption
+ * rather than something the client supplied, so the two things that can go
+ * wrong are both about who is being funded: a household with no dependants
+ * must not receive a projection, and one child must not be counted twice.
+ */
+export function validateCollegeFundingInput(input) {
+  if (!input || typeof input !== 'object') {
+    throw new Error('generated.collegeFundingInputs must be an object.');
+  }
+  if (!Array.isArray(input.children) || input.children.length === 0) {
+    throw new Error('generated.collegeFundingInputs.children must name at least one child.');
+  }
+  const seen = new Set();
+  for (const child of input.children) {
+    if (!child?.id || seen.has(child.id)) {
+      throw new Error('generated.collegeFundingInputs.children must name each child exactly once.');
+    }
+    seen.add(child.id);
+    if (!Number.isInteger(child.currentAge) || child.currentAge < 0 || child.currentAge > 30) {
+      throw new Error(`generated.collegeFundingInputs.children[${child.id}].currentAge must be an age between 0 and 30.`);
+    }
+  }
+  // Education costs rise faster than general prices; using the general rate
+  // here would understate every future year, so the two are held apart.
+  if (input.inflationRate !== PLANEIR_ASSUMPTIONS.inflation.educationRate) {
+    throw new Error('generated.collegeFundingInputs.inflationRate must be the approved education inflation rate.');
+  }
+  computeCollegeFundingProjection(input);
+}
+
 export async function runCollegeFundingAnalysis(input, context) {
   const projection = computeCollegeFundingProjection(input);
   return createModuleRunResult({

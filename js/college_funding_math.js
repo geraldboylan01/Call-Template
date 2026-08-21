@@ -144,7 +144,19 @@ function normalizeChild(rawChild, index) {
 }
 
 function normalizeChildren(raw) {
-  if (!Array.isArray(raw.children) || raw.children.length === 0) {
+  // AN EMPTY LIST IS AN ANSWER, NOT A MISSING QUESTION.
+  //
+  // `children` being absent means the caller is using the older
+  // `childrenCount`/`childCurrentAge` shape, and falling through to that legacy
+  // path is correct. `children: []` says something different -- there are no
+  // children -- and it used to fall through to the very same path, which then
+  // invented one child aged thirteen and produced a 20,000 college plan for a
+  // dependant nobody had. A household with no children is not a household with
+  // a default child.
+  if (Array.isArray(raw.children) && raw.children.length === 0) {
+    throw new Error('generated.collegeFundingInputs.children must name at least one child when provided.');
+  }
+  if (!Array.isArray(raw.children)) {
     return null;
   }
 

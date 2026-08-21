@@ -40,7 +40,8 @@ import {
 import {
   buildCollegeFundingInput,
   getCollegeFundingReadiness,
-  runCollegeFundingAnalysis
+  runCollegeFundingAnalysis,
+  validateCollegeFundingInput
 } from './adapters/college_funding.js';
 import {
   buildPersonalBalanceSheetInput,
@@ -515,6 +516,7 @@ register({
   canRun: getCollegeFundingReadiness,
   explainSelection: () => ['A stated education-funding question makes child-level timing relevant.'],
   buildInput: buildCollegeFundingInput,
+  validateInput: validateCollegeFundingInput,
   run: runCollegeFundingAnalysis
 });
 

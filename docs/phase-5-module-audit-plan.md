@@ -40,7 +40,7 @@ Verified against the registry, not assumed.
 | `net_retirement_cashflow` | calculation | beta | `net_retirement_math.js` | **no** | — | **yes** |
 | `mortgage_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
 | `loan_analysis` | calculation | beta | `mortgage_math.js` | yes | — | **yes** |
-| `college_funding` | calculation | beta | `college_funding_math.js` | yes | — | no |
+| `college_funding` | calculation | beta | `college_funding_math.js` | yes | — | **yes** |
 | `personal_balance_sheet` | calculation | beta | `personal_balance_sheet.js` | yes | — | **yes** |
 
 Two corrections to the working list:
@@ -118,7 +118,7 @@ module size.
 | 5 | `mortgage_analysis` + `loan_analysis` | **Done alongside step 4.** Selection, mapping, type separation and output contract, on the proven engine. |
 | 6 | `pension_projection` | **Done.** Timing measured before anything rested on it; PRB, DB and State Pension treatments all proved. |
 | 7 | `net_retirement_cashflow` | **Done.** The gross/net boundary is structural, not incidental; arithmetic proved row by row. |
-| 8 | `college_funding` | Next, and last. Self-contained, one non-standard assumption (education inflation), lowest blast radius. |
+| 8 | `college_funding` | **Done.** Every runnable module is now audited. |
 
 ## Per-module audit specifications
 
@@ -375,40 +375,52 @@ gap, which is the conservative direction.
 **No defects found.** The module was already correct on every axis tested. It
 gains a `validateInput` contract and this audit.
 
-### 8. `college_funding`
+### 8. `college_funding` — AUDITED
 
-**Key outputs:** `firstCollegeYear`, `finalCollegeYear`, `fundingPeriodYears`,
-`costTodayRange`, `nominalCostRange`, `peakAnnualCostRange`.
+Checked against a year-by-year household bill built from first principles in
+`scripts/check-college-funding-audit.mjs`, importing nothing from
+`college_funding_math.js`. 15 checks.
 
-**Invariants:** `finalCollegeYear - firstCollegeYear + 1 === durationYears`
-(4); `firstCollegeYear` follows from the dependant's age and `startAge` (18);
-nominal cost equals today's cost inflated at the **education** rate (4%), not
-the general rate (2%); ranges are ordered low ≤ high.
+**What was already right.** A 17-year-old living at home costs exactly €5,200
+in the first year — €5,000 inflated one year at the **education** rate — and
+€5,408, €5,624.32, €5,849.29 after that, over 2027–2030. The start age (18),
+duration (4 years) and the €5,000/€15,000 scenario costs all come from the
+versioned assumptions, and every one is declared back to the client with its
+basis. Living away scales the cost without moving the timeline.
 
-**Hand-checkable case:** one child aged 17, living at home (€5,000/year today),
-4% education inflation → first year cost €5,200 in one year's time. Directly
-checkable.
+**The peak is right, which is the module's whole point.** A 17-year-old and a
+14-year-old overlap in exactly one year (2030), and that year's household cost
+is two children at once — asserted to be **greater than the final, most-inflated
+year**, which is what a naive maximum over one inflating series would have
+returned. Three closely spaced children peak at three attending. Children far
+enough apart leave gap years that cost precisely nothing.
 
-**Realistic case:** two children aged 8 and 11, one living away, one at home.
+**Costs are per child.** A second parent creates neither a second child nor a
+larger bill; each dependant becomes exactly one child, resolved by id.
 
-**Edge cases:** child already 18 or older (zero funding period); child aged 0;
-two children with overlapping college years — the peak annual cost must
-capture the overlap, which is the module's whole point and its likeliest bug;
-no dependants.
+**Defect found — the phantom child.** `children: []` — an explicit statement
+that there are no children — fell through to the legacy
+`childrenCount`/`childCurrentAge` path, which invented one child aged thirteen
+and produced a **€20,000 today / €25,832 nominal** college plan for a dependant
+nobody had. An *absent* `children` key genuinely does mean "legacy shape"; an
+*empty* one means "none". They are now told apart, and the legacy shape is
+verified still working (`childrenCount: 2, age 10` → 2034–2037). Blast radius:
+college funding only — no other engine has a legacy-default path of this kind.
 
-**Household/ownership risks:** dependants have no owner, so the risk is
-per-child rather than per-owner. Assert costs are per child and not applied
-once per parent.
+**Edge cases fail closed.** A child already at or past the start age is refused
+rather than costed at a *deflated* past-year price, which a negative year offset
+would otherwise produce. Negative, fractional and duplicated children are all
+refused. A household with no dependants is asked for them and never receives an
+invented projection.
 
-**Assumption risks:** the education inflation rate (4%) must be sourced from
-`PLANEIR_ASSUMPTIONS.inflation.educationRate` and applied exactly once, and
-must not be silently replaced by the general rate. The €5,000/€15,000 scenario
-costs and the 18/4 start and duration come from the same versioned record.
+**Input contract.** Refuses no children, duplicates, an adult age, and — the
+distinctive one — an inflation rate that is not the approved education rate, so
+the general rate can never be substituted silently.
 
 ## Cross-cutting work, once, for every module
 
-- **Adopt `validateInput` across the registry.** Seven of eight declare it;
-  only `college_funding` does not. Each module declaring its own normaliser moves an input
+- **Adopt `validateInput` across the registry.** **Complete** — all eight
+  runnable modules declare an input contract. Each module declaring its own normaliser moves an input
   contract breach out of the run phase, where it otherwise masquerades as an
   engine crash. Do this as each module is audited.
 - **Reconcile aggregate against decomposition** wherever both exist.
