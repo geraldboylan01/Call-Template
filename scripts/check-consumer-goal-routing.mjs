@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 
+import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
+
 import {
   GOAL_ROUTING_POLICY_VERSION,
   MODULE_IDS,
@@ -246,6 +248,42 @@ for (const plan of [overloadedPlan, focusedPlan, broadPlan, unsupportedPlan, gat
   assert.equal(plan.selectionPolicyVersion, GOAL_ROUTING_POLICY_VERSION);
   assert.ok(plan.moduleSlots.length <= 3);
   assert.equal(new Set(plan.moduleSlots.map((slot) => slot.moduleId)).size, plan.moduleSlots.length);
+}
+
+/* ------------------------------------------------------------------------ *
+ * LOAN ANALYSIS AND MORTGAGE ANALYSIS ARE ONE ENGINE AND TWO PRODUCTS.
+ *
+ * They share mortgage_math.js, which is why Phase 4 spends one paid discovery
+ * call on mortgage rather than two. That is a TESTING economy and must never
+ * become a product one: a client asking about a car loan is owed Loan Analysis,
+ * not a mortgage report. This asserts the distinction the optimisation could
+ * quietly erode — separate ids, separate goals, separate client-facing names.
+ * ------------------------------------------------------------------------ */
+{
+  const modules = MODULE_MANIFEST.modules || Object.values(MODULE_MANIFEST);
+  const byId = (moduleId) => modules.find((module) => module.moduleId === moduleId);
+  const loan = byId('loan_analysis');
+  const mortgage = byId('mortgage_analysis');
+
+  assert.ok(loan && mortgage, 'both modules must exist in the manifest');
+  assert.notEqual(loan.moduleId, mortgage.moduleId, 'they are separate module identities');
+  assert.notEqual(loan.name, mortgage.name, 'and carry different client-facing names');
+  assert.notEqual(
+    loan.implementation?.outputKey,
+    mortgage.implementation?.outputKey,
+    'and write to separate output contracts'
+  );
+
+  const goalsFor = (module) => (module.routing?.goals || []).map((goal) => goal.type);
+  const loanGoals = goalsFor(loan);
+  const mortgageGoals = goalsFor(mortgage);
+  assert.ok(loanGoals.includes('manage_loan'), 'a loan goal routes to loan analysis');
+  assert.ok(mortgageGoals.includes('optimise_mortgage'), 'a mortgage goal routes to mortgage analysis');
+  assert.equal(loanGoals.some((goal) => mortgageGoals.includes(goal)), false,
+    'and no goal routes to both, so a car loan can never surface a mortgage report');
+
+  assert.ok(loan.availability?.consumer, 'loan analysis stays available to consumers');
+  assert.ok(loan.routing?.consumerRoutable, 'and stays routable, despite not being in the paid matrix');
 }
 
 console.info('[ConsumerGoalRouting] Goal-led module policy, catalogue intersection, corrections and variable slots passed.');

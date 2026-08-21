@@ -19,7 +19,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DIAGNOSTICS_ROOT, renderTimeline } from './live-harness/diagnostics.mjs';
-import { ownershipVerdict } from './live-harness/metrics.mjs';
+import { ownershipVerdict, supersededFigures } from './live-harness/metrics.mjs';
+import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
 
 const pass = (message) => console.info(`[Phase4Diagnostics] PASS: ${message}`);
 const runner = fileURLToPath(new URL('./run-live-call.mjs', import.meta.url));
@@ -179,6 +180,172 @@ try {
     assert.equal(reached.criteriaFailed.includes('ownership_correct'), false,
       'and a correctly owned household must not be reported as a failure');
     pass('a real run captures both stated ages and owns them correctly');
+  }
+
+  /* ------------------------------------------------------------------ *
+   * A CORRECTION THAT WAS LOST MUST BE REPORTED AS LOST.
+   *
+   * A paid run heard "I pay in 7 percent", then "sorry, 6 percent is right",
+   * ended with 0.07 canonical and ran the module on it. The batch reported
+   * correction_superseded 3/3, because this metric looked only at the
+   * retirement age and the gross income. Silent loss reported as success is
+   * worse than no metric at all.
+   * ------------------------------------------------------------------ */
+  {
+    // The persona declares WHICH figures matter and where they live, so this
+    // same code scores a mortgage rate or a college contribution. No module
+    // name appears anywhere in the metric.
+    const truth = {
+      primaryAge: 57,
+      figures: [
+        { name: 'intendedRetirementAge', path: '/primaryPerson/intendedRetirementAge', expected: 62 },
+        { name: 'pensionValue', path: '/pensions/0/currentValue/amount', expected: 319_000 },
+        { name: 'employeeRate', path: '/pensions/0/employeeContributionRate', expected: 0.06 },
+        { name: 'employerRate', path: '/pensions/0/employerContributionRate', expected: 0.08 }
+      ]
+    };
+    const household = (pension = {}, over = {}) => ({
+      primaryPerson: { personId: 'primary', age: 57, intendedRetirementAge: 62 },
+      pensions: [{ pensionId: 'p1', ownerId: 'primary',
+        currentValue: { amount: 319_000, currency: 'EUR' },
+        employeeContributionRate: 0.06, employerContributionRate: 0.08, ...pension }],
+      incomeSources: [{ incomeSourceId: 'i1', ownerId: 'primary',
+        grossAnnual: { amount: 95_000, currency: 'EUR' } }],
+      ...over
+    });
+
+    const SAID = 'I retire at 62. The pension is 319,000. I pay 6 percent, my employer pays 8 percent.';
+    const lost = (profile, transcript = SAID) => supersededFigures(profile, truth, transcript);
+
+    assert.deepEqual(lost(household()), [],
+      'a household matching everything the client last said has lost nothing');
+
+    /* A FIGURE THE CLIENT NEVER SAID IS NOT A LOST CORRECTION.
+     * A paid run's synthetic client said "around EUR 300,000" and never
+     * corrected it. The lane captured 300,000 and the module used 300,000 —
+     * faithful, and flagged as a supersession failure purely for differing from
+     * the persona's brief. That reports a wandering persona as a defect. */
+    assert.deepEqual(
+      lost(household({ currentValue: { amount: 300_000, currency: 'EUR' } }),
+        'The pension is around 300,000 at the moment.'),
+      [], 'a figure the client never said is not a correction they lost');
+
+    assert.deepEqual(lost(household({ employeeContributionRate: 0.07 })),
+      ['employeeRate'], 'a superseded contribution rate must be named, not silently passed');
+    assert.deepEqual(lost(household({ currentValue: { amount: 300_000, currency: 'EUR' } })),
+      ['pensionValue'], 'and a pension value left at the pre-correction figure');
+    assert.deepEqual(
+      lost(household({}, { primaryPerson: { personId: 'primary', intendedRetirementAge: 63 } })),
+      ['intendedRetirementAge'], 'and the retirement age this metric already covered');
+    // The original loss, in the client's own words.
+    assert.deepEqual(
+      lost(household({ employeeContributionRate: 0.07 }),
+        'I pay in 7 percent. Sorry, I said 7 percent earlier, 6 percent is right.'),
+      ['employeeRate'], 'the correction that started all this must still be caught');
+
+    // A figure never reached is MISSING, not stale.
+    assert.deepEqual(lost(household({ employeeContributionRate: undefined })), [],
+      'a rate the conversation never reached is missing, not superseded');
+
+    /* THE SAME METRIC, ON A MODULE THAT IS NOT A PENSION. No new evaluator
+     * code: a mortgage rate is a figure with a path like any other. */
+    const mortgageTruth = {
+      figures: [{ name: 'mortgageRate', path: '/liabilities/0/annualInterestRate', expected: 0.041 }]
+    };
+    const withRate = (rate) => ({
+      primaryPerson: { personId: 'primary' },
+      liabilities: [{ liabilityId: 'l1', ownerIds: ['primary'], annualInterestRate: rate }]
+    });
+    assert.deepEqual(
+      supersededFigures(withRate(0.045), mortgageTruth, 'It is 4.5 percent. Sorry, it is 4.1 percent.'),
+      ['mortgageRate'], 'a lost mortgage correction is caught by the same code as a pension one');
+    assert.deepEqual(
+      supersededFigures(withRate(0.041), mortgageTruth, 'It is 4.5 percent. Sorry, it is 4.1 percent.'),
+      [], 'and a mortgage correction that landed is not reported');
+    pass('every figure the client corrects is checked, and named when it is stale');
+  }
+
+  /* ------------------------------------------------------------------ *
+   * OWNERSHIP ACROSS COLLECTIONS, NOT JUST PENSIONS.
+   *
+   * The metric understood pensions and incomeSources. Every other collection a
+   * module uses — liabilities, properties, assets, businesses — was invisible,
+   * so a mortgage in the wrong name scored as correct ownership.
+   * ------------------------------------------------------------------ */
+  {
+    const truth = { primaryAge: 46, partnerAge: 44 };
+    const people = {
+      primaryPerson: { personId: 'primary', age: 46 },
+      partner: { personId: 'partner', age: 44 }
+    };
+    const owned = (collection, ownerValue) => {
+      const key = collection === 'pensions' || collection === 'incomeSources' ? 'ownerId' : 'ownerIds';
+      const idKey = { liabilities: 'liabilityId', properties: 'propertyId', assets: 'assetId',
+        pensions: 'pensionId', incomeSources: 'incomeSourceId' }[collection];
+      return { ...people, [collection]: [{ [idKey]: 'x1',
+        [key]: key === 'ownerIds' ? [ownerValue] : ownerValue }] };
+    };
+
+    for (const collection of ['liabilities', 'properties', 'assets', 'pensions', 'incomeSources']) {
+      assert.equal(ownershipVerdict(owned(collection, 'primary'), truth), true,
+        `a ${collection} record owned by the client is correct`);
+      assert.equal(ownershipVerdict(owned(collection, 'partner'), truth), false,
+        `a ${collection} record in the partner's name must be caught — it was invisible before`);
+    }
+    pass('ownership is judged across every owned collection, not only pensions');
+
+    /* JOINT IS DECLARED, NOT GUESSED. A jointly held house legitimately carries
+     * both names; the persona says so and either owner is then accepted. */
+    const joint = { ...people, properties: [{ propertyId: 'p1', ownerIds: ['primary', 'partner'] }] };
+    assert.equal(ownershipVerdict(joint, { ...truth, owners: { properties: 'joint' } }), true,
+      'a joint holding the persona declares joint is correctly owned');
+    assert.equal(ownershipVerdict(joint, truth), false,
+      'and the same holding is wrong when the persona said it was the client\'s alone');
+    pass('joint ownership is accepted only where the persona declares it');
+
+    /* DEPENDANTS HAVE NO OWNER. Scoring them would fail every college run. */
+    const children = { ...people, dependants: [{ dependantId: 'd1', currentAge: 8 }] };
+    assert.equal(ownershipVerdict(children, truth), true,
+      'a dependant has no owner key, so it cannot be misowned');
+    pass('collections without an owner are not scored for ownership');
+  }
+
+  /* ------------------------------------------------------------------ *
+   * EVERY PERSONA MUST BE SCORABLE BEFORE IT IS PAID FOR.
+   *
+   * A persona whose declared path does not resolve, or whose target module is
+   * not runnable, produces a page of failures that say nothing about the
+   * product — which is what happened when the harness looked for
+   * `pension_projection` in a mortgage run.
+   * ------------------------------------------------------------------ */
+  {
+    const dataset = JSON.parse(readFileSync(
+      fileURLToPath(new URL('./fixtures/phase4-personas.json', import.meta.url)), 'utf8'));
+    const runnable = new Set((MODULE_MANIFEST.modules || Object.values(MODULE_MANIFEST))
+      .filter((module) => module.availability?.consumer && module.implementation?.hasRunnableEngine)
+      .map((module) => module.moduleId));
+
+    for (const persona of dataset.personas) {
+      assert.ok(persona.targetModule, `${persona.id} must declare the module it is testing`);
+      assert.ok(runnable.has(persona.targetModule),
+        `${persona.id} targets ${persona.targetModule}, which is not a runnable consumer module`);
+      const truth = persona.groundTruth || {};
+      for (const figure of truth.figures || []) {
+        assert.ok(figure.name && figure.path, `${persona.id} figures need a name and a path`);
+        assert.ok(figure.path.startsWith('/'), `${persona.id}: ${figure.path} must be a profile path`);
+        assert.ok(Number.isFinite(figure.expected),
+          `${persona.id}: ${figure.name} must state the figure the client ends up with`);
+      }
+      for (const collection of Object.keys(truth.expectedCounts || {})) {
+        assert.ok(Number.isFinite(truth.expectedCounts[collection]),
+          `${persona.id}: expectedCounts.${collection} must be a number`);
+      }
+      if (truth.headline) {
+        assert.ok(truth.headline.datasetLabel,
+          `${persona.id}: a declared headline needs the dataset label to read`);
+      }
+    }
+    pass(`all ${dataset.personas.length} personas declare a runnable module and scorable ground truth`);
   }
 
   /* No secrets. */
