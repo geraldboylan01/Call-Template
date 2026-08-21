@@ -30,7 +30,7 @@ const resultPath = process.argv[2];
 assert.ok(resultPath, 'Usage: node ./scripts/publish-agent-call.mjs <result.json>');
 
 const baseUrl = String(process.env.WORKER_BASE_URL
-  || 'https://call-canvas-session-worker.geraldboylan.workers.dev').replace(/\/+$/, '');
+  || 'https://api.planeir.ie').replace(/\/+$/, '');
 const origin = String(process.env.SMOKE_ORIGIN || 'https://planeir.ie');
 const password = String(process.env.ADVISOR_SMOKE_PASSWORD || '').trim();
 assert.ok(password, 'ADVISOR_SMOKE_PASSWORD is required to store a published session.');
