@@ -53,6 +53,7 @@ const {
 } = await import('../js/plan/realtime_voice.js');
 const {
   getAnalysisPlanNonce,
+  hasCurrentRealtimeVoiceConsent,
   mergePayload,
   mergeVoicePayload,
   normaliseBootstrap,
@@ -67,6 +68,36 @@ function assertClientOutcomeLabel(value, message) {
   const label = String(value || '');
   assert.doesNotMatch(label, FORMAL_CONSUMER_MODULE_NAMES, `${message}: formal module name leaked`);
   assert.doesNotMatch(label, INTERNAL_CONSUMER_MODULE_IDS, `${message}: internal module id leaked`);
+}
+
+{
+  const previousBootstrap = journeyState.bootstrap;
+  const previousRealtimeConsent = journeyState.voice.realtimeConsent;
+  try {
+    journeyState.bootstrap = {
+      ...previousBootstrap,
+      voiceRealtimeNoticeId: 'realtime-notice-current-check',
+      voiceRealtimeDataPolicyId: 'realtime-data-policy-current-check',
+      voiceRealtimePolicyVersion: 'consumer-policy-current-check'
+    };
+    journeyState.voice.realtimeConsent = {
+      granted: true,
+      current: false,
+      noticeId: 'realtime-notice-current-check',
+      dataPolicyId: 'realtime-data-policy-current-check',
+      policyVersion: 'consumer-policy-current-check'
+    };
+    assert.equal(
+      hasCurrentRealtimeVoiceConsent(),
+      false,
+      'A Worker-stale Live voice receipt must reopen the visible disclosure before microphone access.'
+    );
+    journeyState.voice.realtimeConsent.current = true;
+    assert.equal(hasCurrentRealtimeVoiceConsent(), true);
+  } finally {
+    journeyState.bootstrap = previousBootstrap;
+    journeyState.voice.realtimeConsent = previousRealtimeConsent;
+  }
 }
 
 assert.equal(isLikelyIncompleteVoiceCaption('Yes, my home is'), true);
@@ -842,6 +873,16 @@ assert.match(planIndexSource, /id="realtimeVoiceTranscriptHistory"[\s\S]*aria-li
 assert.match(planIndexSource, /id="realtimeVoiceFactsList"/);
 assert.match(planIndexSource, /id="realtimeVoiceModulesList"/);
 assert.match(planIndexSource, /id="realtimeVoiceConsentDialog"/);
+assert.match(
+  realtimeSource,
+  /Older Safari builds expose <dialog> incompletely[\s\S]*dialog\.setAttribute\('open', ''\)/,
+  'Safari must retain a styled disclosure fallback when showModal is unavailable or fails.'
+);
+assert.match(
+  planCssSource,
+  /\.plan-dialog\[open\][\s\S]*position:\s*fixed[\s\S]*z-index:\s*120/,
+  'The non-native Safari disclosure fallback must stay visible above the meeting shell.'
+);
 assert.match(appSource, /root:\s*document\.getElementById\('realtimeVoiceCompanion'\)/);
 assert.match(realtimeSource, /openCompanion\(\{ focus = true \} = \{\}\)/);
 assert.match(realtimeSource, /collapseCompanion\(\{ restoreFocus = true \} = \{\}\)/);

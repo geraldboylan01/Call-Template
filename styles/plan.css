@@ -2387,12 +2387,23 @@ body.realtime-voice-open {
 .plan-dialog {
   width: min(calc(100% - 1.5rem), 560px);
   max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 0;
   border: 1px solid var(--plan-border-strong);
   border-radius: var(--plan-radius-lg);
   color: var(--plan-text);
   background: var(--plan-surface-solid);
   box-shadow: 0 30px 100px rgba(0, 0, 0, 0.66);
+}
+
+.plan-dialog[open] {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  z-index: 120;
+  margin: 0;
+  transform: translate(-50%, -50%);
 }
 
 .plan-dialog::backdrop {

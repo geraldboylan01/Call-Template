@@ -1475,7 +1475,7 @@ export class RealtimeVoiceController {
       // A stale voice disclosure must not dead-end the meeting. Clear the
       // outdated local consent and reopen the current disclosure so one tap
       // re-agrees and reconnects.
-      if (error instanceof ConsumerApiError && error.code === 'realtime_consent_required') {
+      if (error?.code === 'realtime_consent_required') {
         clearRealtimeVoiceConsent();
         this.setPhase('off', 'The meeting notice was updated. Please review it again to continue.');
         this.openConsentDialog();
@@ -3142,8 +3142,16 @@ export class RealtimeVoiceController {
       error.textContent = '';
     }
     document.body.classList.add('dialog-open');
-    if (typeof dialog.showModal === 'function') dialog.showModal();
-    else dialog.setAttribute('open', '');
+    if (!dialog.open) {
+      try {
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+      } catch (_error) {
+        // Older Safari builds expose <dialog> incompletely. The styled `open`
+        // fallback still presents the disclosure and keeps the user unblocked.
+        dialog.setAttribute('open', '');
+      }
+    }
     window.requestAnimationFrame(() => checkbox.focus());
   }
 
