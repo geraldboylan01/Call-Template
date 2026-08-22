@@ -775,11 +775,20 @@ export function clearRealtimeVoiceConsent() {
 export function hasCurrentRealtimeVoiceConsent() {
   const consent = getRealtimeVoiceConsent();
   if (consent?.granted !== true) return false;
+  // The Worker is authoritative because its current-consent check also covers
+  // the data-processing policy and privacy URL. Older clients only compared
+  // the notice and policy version, which could leave the Start button unlocked
+  // while the Worker correctly rejected the call with a consent gate.
+  if (consent.current === false) return false;
   const expectedNoticeId = String(state.bootstrap?.voiceRealtimeNoticeId || '');
+  const expectedDataPolicyId = String(state.bootstrap?.voiceRealtimeDataPolicyId || '');
   const expectedPolicyVersion = String(state.bootstrap?.voiceRealtimePolicyVersion || '');
   if (!expectedNoticeId || !expectedPolicyVersion) return false;
-  return String(consent.noticeId || '') === expectedNoticeId
-    && String(consent.policyVersion || '') === expectedPolicyVersion;
+  if (String(consent.noticeId || '') !== expectedNoticeId
+    || String(consent.policyVersion || '') !== expectedPolicyVersion) return false;
+  if (expectedDataPolicyId && consent.dataPolicyId
+    && String(consent.dataPolicyId) !== expectedDataPolicyId) return false;
+  return true;
 }
 
 export function clearSessionAccess() {

@@ -46,18 +46,20 @@ function plannerReconciliationOutputAad(sessionId, leaseId, reconciliationId) {
   return `consumer/planner-reconciliation/${sessionId}/${leaseId}/${reconciliationId}/output`;
 }
 
-export function toPublicRealtimeConsent(row) {
+export function toPublicRealtimeConsent(row, config) {
   return row
     ? {
         granted: Number(row.granted) === 1,
+        current: realtimeConsentIsCurrent(row, config),
         noticeId: row.notice_id,
+        dataPolicyId: row.data_policy_id,
         policyVersion: row.policy_version,
         privacyNoticeUrl: row.privacy_notice_url,
         capturedAt: row.captured_at,
         withdrawnAt: row.withdrawn_at || null,
         updatedAt: row.updated_at
       }
-    : { granted: false };
+    : { granted: false, current: false };
 }
 
 export function toPublicRealtimeLease(row) {

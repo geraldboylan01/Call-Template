@@ -769,7 +769,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         });
       }
       return respond({
-        realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
+        realtimeConsent: toPublicRealtimeConsent(realtimeConsent, config),
         realtimeLease: toPublicRealtimeLease(realtimeLease),
         realtimeVoiceAvailability: realtimeVoiceBudgetPayload(
           await getConsumerProviderBudget(env, sessionRow.id),
@@ -1049,7 +1049,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         voiceConsent: toPublicVoiceConsent(voiceConsent),
         voiceAvailability: voiceBudgetPayload(voiceBudget, config),
         realtimeVoiceAvailability: realtimeVoiceBudgetPayload(voiceBudget, realtimeLease, config),
-        realtimeConsent: toPublicRealtimeConsent(realtimeConsent),
+        realtimeConsent: toPublicRealtimeConsent(realtimeConsent, config),
         realtimeLease: toPublicRealtimeLease(realtimeLease),
         realtimeMeetings,
         realtimeTurns,

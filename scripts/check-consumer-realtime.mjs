@@ -96,6 +96,7 @@ import {
   saveRealtimeMeetingBrief,
   finalizeRealtimeControlMessage,
   verifyRealtimeControlCapability,
+  toPublicRealtimeConsent,
   toPublicRealtimeConsentPurposes,
   toPublicRealtimeAnalysisPlan
 } from '../worker/src/consumer/realtime_repository.js';
@@ -1688,11 +1689,20 @@ const sessionRow = await getSessionRow(env, sessionId);
 await setRealtimeConsent(env, sessionRow, config, true);
 const currentRealtimeConsent = await getRealtimeConsent(env, sessionId);
 assert.equal(realtimeConsentIsCurrent(currentRealtimeConsent, config), true);
+assert.equal(toPublicRealtimeConsent(currentRealtimeConsent, config).current, true);
+assert.equal(
+  toPublicRealtimeConsent(currentRealtimeConsent, config).dataPolicyId,
+  config.realtimeDataPolicyId
+);
 assert.equal(realtimeConsentIsCurrent({
   ...currentRealtimeConsent,
   notice_id: 'realtime-voice-adviser-test-v1',
   data_policy_id: 'openai-realtime-audio-adviser-test-v1'
 }, config), false, 'The superseded €2 disclosure receipt must not authorize a €10 Live voice meeting.');
+assert.equal(toPublicRealtimeConsent({
+  ...currentRealtimeConsent,
+  data_policy_id: 'openai-realtime-audio-adviser-test-v1'
+}, config).current, false, 'The browser must be told when an otherwise granted Live voice receipt is stale.');
 
 let purposeConsents = await setRealtimeConsentPurposes(env, sessionRow, config, {
   live_voice_processing: true,
