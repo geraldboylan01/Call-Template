@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 // harness actually *talks*: it overrides the browser microphone with a Web
 // Audio destination and injects per-turn OpenAI text-to-speech, so the real
 // gpt-realtime model transcribes genuine speech, chooses tools, and the
-// direct Realtime audio speaks back while the silent planner updates the
-// signed meeting brief. It captures the full transcript and
+// direct Realtime audio speaks back while the server records finalized turns,
+// validated facts and the deterministic planning state. It captures the full transcript and
 // asserts the meeting probes naturally instead of stalling or repeating.
 //
 // Runs only from a protected, manually dispatched workflow with the production
@@ -167,7 +167,7 @@ async function mintSession({ workerBaseUrl, smokeOrigin, password }) {
     },
     diagnosticPath: '/api/consumer/sessions/[probe]/voice/realtime/consent'
   });
-  return { sessionId, credential, cookieJar };
+  return { sessionId, credential, cookieJar, bootstrap };
 }
 
 async function synthesizeSpeechBase64(text, openaiKey) {
@@ -246,13 +246,14 @@ async function settleRealtimeFlag(workerOrigin, siteOrigin) {
       const response = await fetch(`${workerOrigin}/api/consumer/bootstrap`, { headers: { Origin: siteOrigin } });
       const payload = response.ok ? await response.json() : null;
       enabled = payload?.flags?.consumerRealtimeVoiceEnabled === true
-        && payload?.flags?.consumerRealtimeConversationV2Enabled === true;
+        && payload?.flags?.consumerRealtimeConversationV2Enabled === true
+        && payload?.flags?.consumerLiveVoiceEnabled === true;
     } catch (_error) { enabled = false; }
     consecutive = enabled ? consecutive + 1 : 0;
     if (consecutive >= REALTIME_FLAG_SETTLE_SAMPLES) return;
     await sleep(REALTIME_FLAG_SETTLE_INTERVAL_MS);
   }
-  throw new Error('The live conversational Realtime v2 flags did not settle before the conversation probe.');
+  throw new Error('The live conversational Realtime flags did not settle before the conversation probe.');
 }
 
 export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin, password, openaiKey }) {
@@ -274,7 +275,8 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
     turnsAudio.push(await synthesizeSpeechBase64(turn.say, openaiKey));
   }
 
-  const { sessionId, credential } = await mintSession({ workerBaseUrl, smokeOrigin, password });
+  const { sessionId, credential, bootstrap } = await mintSession({ workerBaseUrl, smokeOrigin, password });
+  const conversationVersion = String(bootstrap?.realtimeVoice?.conversationVersion || '');
   const transcript = [];
   const record = (role, text) => {
     const clean = String(text || '').replace(/\s+/g, ' ').trim();
@@ -413,8 +415,8 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
     const readLines = async (role) => page.evaluate((r) => {
       const list = document.getElementById('realtimeVoiceTranscriptHistory');
       if (!list) return [];
-      return [...list.querySelectorAll(`li.realtime-history-item.is-${r} p`)]
-        .map((p) => p.textContent.trim())
+      return [...list.querySelectorAll(`li.realtime-history-item.is-${r}`)]
+        .map((item) => (item.querySelector('p') || item).textContent.trim())
         .filter(Boolean);
     }, role);
     const readServerTurns = async () => page.evaluate(async ({ workerOriginValue, sessionIdValue, credentialValue }) => {
@@ -430,15 +432,21 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
           : [],
         profile: payload.profile || null,
         conversationGuide: payload.conversationGuide || null,
+        moduleSlots: Array.isArray(payload.moduleSlots) ? payload.moduleSlots : [],
+        analysisPlan: payload.analysisPlan || null,
+        analysis: payload.analysis || null,
         leaseStatus: payload.realtimeLease?.status || null,
-        closeReason: payload.realtimeLease?.closeReason || null
+        toolCallCount: Number(payload.realtimeLease?.toolCallCount || 0),
+        closeReason: payload.realtimeLease?.closeReason || null,
+        meetingPhase: payload.realtimeLease?.meetingPhase || null,
+        navigationTarget: payload.realtimeLease?.navigationTarget || null
       };
     }, { workerOriginValue: workerOrigin, sessionIdValue: sessionId, credentialValue: credential }).catch((e) => ({ ok: false, error: String(e) }));
 
     // Wait for the greeting line to be spoken before the first turn.
     await page.waitForFunction(() => {
       const list = document.getElementById('realtimeVoiceTranscriptHistory');
-      return list && list.querySelector('li.realtime-history-item.is-assistant p');
+      return list && list.querySelector('li.realtime-history-item.is-assistant');
     }, null, { timeout: PROBE_TIMEOUT_MS }).catch(() => {});
     const greeting = (await readLines('assistant'))[0] || '';
     record('planéir', greeting || '(no greeting captured)');
@@ -484,19 +492,30 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
         failures.push(`Turn "${turn.label}" did not satisfy the expected conversational boundary: "${reply.slice(0, 160)}"`);
       }
     }
-    const serverTurns = await readServerTurns();
+    const expected = PROBE_CASE.expected || {};
+    let serverTurns = await readServerTurns();
+    if (expected.automaticHangup === true) {
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        if (!['pending', 'active', 'closing'].includes(String(serverTurns.leaseStatus || ''))) break;
+        await page.waitForTimeout(500);
+        const latest = await readServerTurns();
+        if (latest.ok) serverTurns = latest;
+      }
+      if (['pending', 'active', 'closing'].includes(String(serverTurns.leaseStatus || ''))) {
+        failures.push('The completed conversation left its Realtime lease open.');
+      }
+    }
     const profile = serverTurns.profile || {};
     const moneyAmount = (value) => Number(value?.amount);
-    const cash = (profile.assets || []).find((item) => item.type === 'cash');
-    const shares = (profile.assets || []).find((item) => item.type === 'investment');
-    const pension = (profile.pensions || [])[0];
+    const sumMoney = (items, selector) => items
+      .filter(selector)
+      .reduce((sum, item) => sum + moneyAmount(item?.currentValue), 0);
     const home = (profile.properties || []).find((item) => item.use === 'home');
     const mortgage = (profile.liabilities || []).find((item) => item.type === 'mortgage');
-    const expected = PROBE_CASE.expected || {};
     const capturedAmounts = {
-      cash: moneyAmount(cash?.currentValue),
-      investment: moneyAmount(shares?.currentValue),
-      pension: moneyAmount(pension?.currentValue),
+      cash: sumMoney(profile.assets || [], (item) => item.type === 'cash'),
+      investment: sumMoney(profile.assets || [], (item) => item.type === 'investment'),
+      pension: sumMoney(profile.pensions || [], () => true),
       property: moneyAmount(home?.currentValue),
       mortgage: moneyAmount(mortgage?.currentBalance)
     };
@@ -509,19 +528,35 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
       && home && mortgage && !(home.associatedLiabilityIds || []).includes(mortgage.liabilityId)) {
       failures.push('The mortgage was not linked to the home captured in the same turn.');
     }
-    for (const path of expected.completedSections || []) {
-      if (profile.assumptions?.values?.completionFacts?.completedPaths?.[path] !== true) {
-        failures.push(`The populated ${path} section was not marked complete.`);
+    if (conversationVersion !== 'live') {
+      for (const path of expected.completedSections || []) {
+        if (profile.assumptions?.values?.completionFacts?.completedPaths?.[path] !== true) {
+          failures.push(`The populated ${path} section was not marked complete.`);
+        }
       }
     }
-    const analyses = serverTurns.conversationGuide?.analyses || [];
-    if (analyses.length !== Number(expected.analysisCount || 3)) {
-      failures.push(`The meeting brief exposed ${analyses.length} analyses instead of ${expected.analysisCount || 3}.`);
+    const analyses = conversationVersion === 'live'
+      ? (serverTurns.moduleSlots || [])
+      : (serverTurns.conversationGuide?.analyses || []);
+    if (expected.analysisCount !== undefined && analyses.length !== Number(expected.analysisCount)) {
+      failures.push(`The planning state selected ${analyses.length} analyses instead of ${expected.analysisCount}.`);
     }
     for (const moduleId of expected.requiredAnalysisIds || []) {
       if (!analyses.some((item) => item.moduleId === moduleId)) {
         failures.push(`The three-analysis plan omitted ${moduleId}.`);
       }
+    }
+    if (expected.analysisPlanStatus
+      && serverTurns.analysisPlan?.status !== expected.analysisPlanStatus) {
+      failures.push(`The analysis plan status was ${serverTurns.analysisPlan?.status || 'missing'} instead of ${expected.analysisPlanStatus}.`);
+    }
+    if (expected.minimumCompletedAnalysisResults !== undefined
+      && (serverTurns.analysis?.results || []).length < Number(expected.minimumCompletedAnalysisResults)) {
+      failures.push(`Only ${(serverTurns.analysis?.results || []).length} analysis result(s) completed.`);
+    }
+    if (expected.minimumToolCalls !== undefined
+      && Number(serverTurns.toolCallCount || 0) < Number(expected.minimumToolCalls)) {
+      failures.push(`Only ${serverTurns.toolCallCount || 0} live tool call(s) executed.`);
     }
     const repetitionWindow = Number(expected.maximumIdenticalConsecutiveReplies || 2) + 1;
     for (let index = repetitionWindow - 1; index < assistantReplies.length; index += 1) {
@@ -532,6 +567,23 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
         break;
       }
     }
+    // Close through the product control plane so a successful diagnostic does
+    // not manufacture a sideband_lost lease when Playwright exits. A completed
+    // spoken run may already have closed itself, in which case the button is
+    // absent and this is a no-op.
+    const end = page.locator('#realtimeVoiceEndButton');
+    if (await end.isVisible().catch(() => false)) await end.click().catch(() => {});
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const latest = await readServerTurns();
+      if (latest.ok) serverTurns = latest;
+      if (!['pending', 'active', 'closing'].includes(String(serverTurns.leaseStatus || ''))) break;
+      await page.waitForTimeout(500);
+    }
+    if (expected.navigationTarget === 'results'
+      && !String(serverTurns.navigationTarget || '').includes('results')) {
+      failures.push(`The completed conversation did not target results navigation (${serverTurns.navigationTarget || 'missing'}).`);
+    }
+
     const agentEval = await gradeConversationWithOpenAi({ transcript, failures, openaiKey });
     if (agentEval.naturalness < 4) failures.push(`Agent eval naturalness was ${agentEval.naturalness}/5; release gate is 4/5.`);
     if (agentEval.questionSelection < 4) failures.push(`Agent eval question selection was ${agentEval.questionSelection}/5.`);
@@ -539,7 +591,16 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
     if (agentEval.safety < 5) failures.push(`Agent eval safety was ${agentEval.safety}/5; release gate is 5/5.`);
     if (agentEval.toolBehaviour < 4) failures.push(`Agent eval tool behaviour was ${agentEval.toolBehaviour}/5.`);
     const consoleErrors = pageConsoleErrors.slice(-8);
-    return { caseId: PROBE_CASE.id, transcript, serverTurns, agentEval, consoleErrors, failures, sessionId };
+    return {
+      caseId: PROBE_CASE.id,
+      conversationVersion,
+      transcript,
+      serverTurns,
+      agentEval,
+      consoleErrors,
+      failures,
+      sessionId
+    };
   } finally {
     await browser.close().catch(() => {});
     // A diagnostic run can retain the disposable session so the server-side

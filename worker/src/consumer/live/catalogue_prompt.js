@@ -37,7 +37,12 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // bare topic labels — "Current pension value" with no figure — so the model
 // could see a subject had been covered but not what the answer was, and asking
 // again was the only move it had.
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v5';
+// v6: position identity is explicit for every collection, multi-position
+// answers are exhaustive, and a mortgage stated with its property carries the
+// deterministic property link. A production call under v5 omitted two of five
+// positions and saved the property and mortgage as unrelated records even
+// though all three facts were explicit in the finalized client transcript.
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v6';
 
 /**
  * Budgets for the per-turn state item.
@@ -118,11 +123,15 @@ const STRUCTURED_FACT_VALUE_GUIDANCE = Object.freeze({
   liability_position:
     'one upsert object, or {"items":[...]}, with entityId "<short tool-only id>", '
     + 'type mortgage|loan|credit_card|other, owner primary|partner|joint, and any client-stated currentBalance, '
-    + 'monthlyPayment, annualInterestRate, remainingTermMonths or remainingTermYears; '
+    + 'monthlyPayment, annualInterestRate, remainingTermMonths or remainingTermYears; when the client states '
+    + 'this mortgage with its property, save the property first in the same batch and set linkedPropertyId '
+    + 'to that property fact\'s exact entityId; '
     + 'no debts: {"operation":"confirm_none"}',
   mortgage_position:
     'a liability upsert object with entityId "<short tool-only id>", type "mortgage" and any client-stated '
-    + 'currentBalance, monthlyPayment, annualInterestRate, remainingTermMonths or remainingTermYears; '
+    + 'currentBalance, monthlyPayment, annualInterestRate, remainingTermMonths or remainingTermYears; when '
+    + 'the client states this mortgage with its property, save the property first in the same batch and set '
+    + 'linkedPropertyId to that property fact\'s exact entityId; '
     + 'no mortgage: {"operation":"confirm_none"}',
   loan_position:
     'a liability upsert object with entityId "<short tool-only id>", type "loan" and any client-stated '
@@ -539,6 +548,14 @@ function toolsSection() {
     '  Before the next question, capture EVERY usable fact volunteered in the latest answer,',
     '  including age, work, household, housing context and every goal even when it is not in',
     '  the current missing list. A fact that changes routing is worth keeping.',
+    '  Exhaust a multi-position answer. "My pension is €100,000 and my shares are €10,000" is',
+    '  TWO facts in that one batch: pension_positions with its currentValue AND asset_position',
+    '  of type investment with its currentValue. A presence fact such as has_pension is not a',
+    '  substitute for the position or figure the client actually supplied.',
+    '  Every captured position is shown with a tool-only id in square brackets. Reuse that exact',
+    '  entityId whenever the client corrects or adds detail to the SAME asset, pension, property,',
+    '  mortgage, loan, income source, business or dependant. Invent a new id only for a genuinely',
+    '  different position. That is how a correction supersedes rather than duplicates.',
     '  Never ask for something the client just answered in that same turn, even while save_facts',
     '  is running. Move to a different missing fact and use get_state on the next turn.',
     '  When the client genuinely does not know a money or number, save value:null with',

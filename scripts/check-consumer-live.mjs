@@ -405,6 +405,14 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'The prompt must keep server-supplied college scenarios out of client intake.');
   ok(prompt.includes('save every child and currentAge'),
     'The prompt must save all volunteered child ages before moving on.');
+  ok(prompt.includes('TWO facts in that one batch')
+    && prompt.includes('pension_positions')
+    && prompt.includes('asset_position'),
+  'The prompt must exhaust a client answer containing several independent positions.');
+  ok(prompt.includes('Reuse that exact') && prompt.includes('supersedes rather than duplicates'),
+    'The prompt must reuse a captured position identity when a client corrects its value.');
+  ok(prompt.includes('linkedPropertyId') && prompt.includes('save the property first'),
+    'The prompt must bind a mortgage to the property stated in the same answer.');
   ok(!prompt.includes('Meaning:'), 'The prompt must not carry ready-made Meaning questions.');
   ok(!prompt.includes(getSemanticFactDefinition('income_sources').questionPrompt),
     'The prompt must not reproduce the income catalogue question.');
@@ -630,6 +638,29 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     (error) => error?.code === 'realtime_fact_value_invalid'
   );
   checks += 1;
+}
+
+// A property and its mortgage stated together must become one linked position
+// pair. The tool-facing key is intentionally explicit in the v6 prompt; this
+// pins the deterministic mapper that gives that key its effect.
+{
+  let profile = saveFact(freshProfile(), 'property_position', {
+    entityId: 'family_home',
+    use: 'home',
+    owner: 'primary',
+    currentValue: { amount: 500_000, currency: 'EUR' }
+  });
+  profile = saveFact(profile, 'mortgage_position', {
+    entityId: 'family_mortgage',
+    type: 'mortgage',
+    owner: 'primary',
+    linkedPropertyId: 'family_home',
+    currentBalance: { amount: 350_000, currency: 'EUR' }
+  });
+  ok(profile.properties.length === 1 && profile.liabilities.length === 1,
+    'The linked property/mortgage batch must preserve one of each position.');
+  ok(profile.properties[0].associatedLiabilityIds.includes(profile.liabilities[0].liabilityId),
+    'linkedPropertyId must add the canonical mortgage id to the property association.');
 }
 
 {

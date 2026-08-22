@@ -59,6 +59,7 @@
         "completedSections": ["/assets"],
         "analysisCount": 3,
         "requiredAnalysisIds": ["personal_balance_sheet"],
+        "minimumToolCalls": 4,
         "maximumIdenticalConsecutiveReplies": 2
       }
     },
@@ -84,8 +85,9 @@
       ],
       "expected": {
         "positions": { "cash": 12000, "investment": 10000, "pension": 100000 },
-        "analysisCount": 3,
+        "analysisCount": 1,
         "requiredAnalysisIds": ["personal_balance_sheet"],
+        "minimumToolCalls": 2,
         "maximumIdenticalConsecutiveReplies": 2
       }
     },
@@ -169,7 +171,7 @@
         }
       ],
       "expected": {
-        "analysisCount": 3,
+        "analysisCount": 1,
         "requiredAnalysisIds": ["personal_balance_sheet"],
         "maximumIdenticalConsecutiveReplies": 2
       }
@@ -237,6 +239,9 @@
         "statePensionStartAge": 66,
         "statePensionEscalationRate": 0.02,
         "confirmationDecision": "affirmed",
+        "analysisPlanStatus": "complete",
+        "minimumCompletedAnalysisResults": 1,
+        "minimumToolCalls": 6,
         "completionPhases": [
           "awaiting_voice_confirmation",
           "generating_modules",

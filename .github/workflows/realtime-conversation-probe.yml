@@ -18,6 +18,17 @@ on:
         required: false
         default: false
         type: boolean
+      probe_case_id:
+        description: Focused spoken regression case to run
+        required: true
+        default: new_parent_full_regression
+        type: choice
+        options:
+          - new_parent_full_regression
+          - correction_and_multi_fact
+          - short_answers_and_fragments_do_not_loop
+          - detour_and_safety
+          - spoken_retirement_completion
 
 permissions:
   contents: read
@@ -37,6 +48,7 @@ jobs:
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       KEEP_PROBE_SESSION: ${{ inputs.keep_probe_session == true && 'true' || 'false' }}
+      PROBE_CASE_ID: ${{ inputs.probe_case_id }}
     steps:
       - name: Validate dispatch
         run: |
