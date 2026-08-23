@@ -125,7 +125,7 @@ jobs:
       # lease row records whichever pair the deployment is configured with. Left
       # on the v2 values a live meeting would file itself under a prompt it
       # never ran and a seven-tool surface it does not have.
-      CONSUMER_BETA_LIVE_PROMPT_VERSION: "planeir-live-conversation-v6"
+      CONSUMER_BETA_LIVE_PROMPT_VERSION: "planeir-live-conversation-v7"
       CONSUMER_BETA_LIVE_TOOLSET_VERSION: "planeir-live-tools-v1"
       CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
       # Adviser-demo envelope: €10 per session (warn at €7.50) inside the
@@ -778,7 +778,7 @@ jobs:
               // than none: it would be believed.
               if (liveVoiceEnabled) {
                 const fixedLiveValues = {
-                  CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v6'],
+                  CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v7'],
                   CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1']
                 };
                 for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedLiveValues)) {

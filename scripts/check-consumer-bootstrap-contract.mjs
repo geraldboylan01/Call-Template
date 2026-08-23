@@ -142,7 +142,7 @@ check('the live lane is verified against its own prompt and toolset, not the v2 
     ...shippedConsumerEnv({ realtime: true }),
     ...RUNTIME_BINDINGS,
     CONSUMER_LIVE_VOICE_ENABLED: 'true',
-    CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v6',
+    CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v7',
     CONSUMER_REALTIME_TOOLSET_VERSION: 'planeir-live-tools-v1'
   };
   const payload = serveBootstrap(liveEnv);
@@ -152,7 +152,7 @@ check('the live lane is verified against its own prompt and toolset, not the v2 
     ...expectedPolicyFor(liveEnv),
     realtimePromptVersion: 'consumer-realtime-orchestrator-v9',
     realtimeToolsetVersion: 'consumer-realtime-tools-v7',
-    livePromptVersion: 'planeir-live-conversation-v6',
+    livePromptVersion: 'planeir-live-conversation-v7',
     liveToolsetVersion: 'planeir-live-tools-v1'
   };
   assert.equal(

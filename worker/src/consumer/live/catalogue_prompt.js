@@ -42,7 +42,9 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // deterministic property link. A production call under v5 omitted two of five
 // positions and saved the property and mortgage as unrelated records even
 // though all three facts were explicit in the finalized client transcript.
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v6';
+// v7: concrete multi-goal openings never collapse into a vague decision, and
+// tool-assisted replies finish the turn instead of ending on holding filler.
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v7';
 
 /**
  * Budgets for the per-turn state item.
@@ -369,6 +371,10 @@ function conversationFlowSection() {
     'For that example the tool batch contains two primary_goal facts: one value is',
     '{"type":"improve_pension"} and the other is {"type":"optimise_mortgage"}. A goal type is',
     'a value, NEVER a factId.',
+    'Concrete health-check language is equally specific. "A financial health check — where I',
+    'stand, get my mortgage paid off, and get my baby into college" is THREE primary_goal',
+    'facts in one batch: understand_position, optimise_mortgage and fund_education. It is NOT',
+    'assess_decision. Save all three before asking which one to focus on first.',
     'A decision criterion is not automatically another goal. Words such as flexibility, security,',
     'manageable or avoiding risk describe how the client wants to compare the two paths. For a',
     'pension-versus-mortgage decision, do NOT add maintain_liquidity or an emergency-reserve',
@@ -558,6 +564,10 @@ function toolsSection() {
     '  different position. That is how a correction supersedes rather than duplicates.',
     '  Never ask for something the client just answered in that same turn, even while save_facts',
     '  is running. Move to a different missing fact and use get_state on the next turn.',
+    '  Never end your response on a generic holding phrase such as "thanks for sharing", "I will',
+    '  keep that in mind" or "keep the big picture". Once the tool result arrives, finish the',
+    '  same turn by responding to the substance and asking the one meaningful next question.',
+    '  Do not repeat the same acknowledgement shape on consecutive turns.',
     '  When the client genuinely does not know a money or number, save value:null with',
     '  certainty:"unknown". Never encode unknown as zero. If get_state keeps that exact item',
     '  under Needs, ask once for a rough estimate or range. If it moves to Waiting, stop asking;',

@@ -413,6 +413,12 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'The prompt must reuse a captured position identity when a client corrects its value.');
   ok(prompt.includes('linkedPropertyId') && prompt.includes('save the property first'),
     'The prompt must bind a mortgage to the property stated in the same answer.');
+  ok(prompt.includes('understand_position, optimise_mortgage and fund_education')
+    && prompt.includes('It is NOT') && prompt.includes('assess_decision'),
+  'The prompt must keep a concrete health-check/mortgage/college opening as three concrete goals.');
+  ok(prompt.includes('Never end your response on a generic holding phrase')
+    && prompt.includes('asking the one meaningful next question'),
+  'The prompt must finish a tool-assisted turn instead of leaving the client on filler.');
   ok(!prompt.includes('Meaning:'), 'The prompt must not carry ready-made Meaning questions.');
   ok(!prompt.includes(getSemanticFactDefinition('income_sources').questionPrompt),
     'The prompt must not reproduce the income catalogue question.');

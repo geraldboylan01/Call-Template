@@ -866,6 +866,69 @@ await runCase('a position record is keyed by its own id field, and only a positi
     'and its figure must not appear anywhere in the collection');
 });
 
+await runCase('position-ledger projection preserves a canonical home-mortgage edge', () => {
+  const linked = normalizeHouseholdProfile({
+    ...baseProfile(),
+    properties: [{
+      propertyId: 'property_family_home',
+      ownerIds: ['primary'],
+      use: 'home',
+      associatedLiabilityIds: ['liability_home_mortgage'],
+      currentValue: { amount: 500_000, currency: 'EUR' }
+    }],
+    liabilities: [{
+      liabilityId: 'liability_home_mortgage',
+      ownerIds: ['primary'],
+      type: 'mortgage',
+      label: 'Mortgage',
+      currentBalance: { amount: 350_000, currency: 'EUR' }
+    }]
+  });
+  const positionNote = (over) => normalizePlanningNoteV1({
+    noteId: over.noteId,
+    noteKind: 'position',
+    factId: over.factId,
+    factInstanceId: `${over.factId}:${over.entityId}`,
+    entityId: over.entityId,
+    ownerId: 'primary',
+    certainty: 'exact',
+    lifecycle: 'active',
+    reviewStatus: 'provisional',
+    source: 'realtime_note',
+    evidenceRefs: [],
+    replacesNoteIds: [],
+    createdAt: NOW,
+    value: over.value
+  });
+  const projected = projectPlanningNotesToProfile(linked, [
+    positionNote({
+      noteId: 'note_family_home',
+      factId: 'property_position',
+      entityId: 'property_family_home',
+      // This is the real ledger shape: the cross-position edge is not stored
+      // in the property note even though it is already canonical in profile.
+      value: {
+        propertyId: 'property_family_home', ownerIds: ['primary'], use: 'home',
+        associatedLiabilityIds: [], currentValue: { amount: 500_000, currency: 'EUR' }
+      }
+    }),
+    positionNote({
+      noteId: 'note_home_mortgage',
+      factId: 'mortgage_position',
+      entityId: 'liability_home_mortgage',
+      value: {
+        liabilityId: 'liability_home_mortgage', ownerIds: ['primary'], type: 'mortgage',
+        label: 'Mortgage', currentBalance: { amount: 350_000, currency: 'EUR' }
+      }
+    })
+  ]);
+  assert.deepEqual(
+    projected.properties[0].associatedLiabilityIds,
+    ['liability_home_mortgage'],
+    'a background reconciliation must not erase a valid cross-position edge'
+  );
+});
+
 await runCase('future events and scenarios cannot enter current assets, income or settled retirement age', async () => {
   const plan = {
     schemaVersion: 1,

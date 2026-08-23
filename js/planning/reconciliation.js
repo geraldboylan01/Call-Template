@@ -2361,6 +2361,32 @@ export function projectPlanningNotesToProfile(rawProfile, rawNotes, {
     next[projection.collection] = [...unmanaged, ...projected];
   }
 
+  // A property-to-liability association is a CROSS-POSITION EDGE, not a
+  // property note value. The live mapper writes that edge to canonical state
+  // when the client states a home and its mortgage together, but the planning
+  // ledger stores the two position notes independently. Rebuilding every
+  // position collection from those notes therefore replaced the linked home
+  // with the note's original `associatedLiabilityIds: []` and silently erased
+  // a valid relationship on the next background reconciliation.
+  //
+  // Preserve only edges that were already canonical and whose two endpoints
+  // still survive this projection. This cannot invent a relationship, and it
+  // drops a stale edge when its liability has genuinely been removed.
+  const projectedLiabilityIds = new Set(
+    (next.liabilities || []).map((liability) => liability.liabilityId)
+  );
+  const priorPropertyById = new Map(
+    (profile.properties || []).map((property) => [property.propertyId, property])
+  );
+  next.properties = (next.properties || []).map((property) => {
+    const prior = priorPropertyById.get(property.propertyId);
+    const associatedLiabilityIds = [...new Set([
+      ...(prior?.associatedLiabilityIds || []),
+      ...(property.associatedLiabilityIds || [])
+    ])].filter((liabilityId) => projectedLiabilityIds.has(liabilityId));
+    return { ...property, associatedLiabilityIds };
+  });
+
   // Scalar facts. A correction to a retirement age, a spending figure or an
   // income was accepted by the validator and then had nowhere to go: only
   // positions and the planning sidecars were projected, so the ledger recorded

@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 // OPENAI_API_KEY (for TTS) and ADVISOR_SMOKE_PASSWORD (to mint a session).
 const PROBE_TIMEOUT_MS = 60_000;
 const TURN_REPLY_TIMEOUT_MS = 30_000;
+const ASSISTANT_REPLY_SETTLE_MS = 6_000;
 const PROPAGATION_RETRY_MS = 12_000;
 const MAX_START_ATTEMPTS = 5;
 const REALTIME_FLAG_SETTLE_SAMPLES = 3;
@@ -469,10 +470,23 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
 
       let newAssistant = [];
       const replyDeadline = Date.now() + TURN_REPLY_TIMEOUT_MS;
+      let replyQuietDeadline = 0;
+      let lastAssistantCount = beforeAssistant;
       while (Date.now() < replyDeadline) {
         await page.waitForTimeout(1_000);
         const current = await readLines('assistant');
-        if (current.length > beforeAssistant) { newAssistant = current.slice(beforeAssistant); break; }
+        if (current.length > lastAssistantCount) {
+          newAssistant = current.slice(beforeAssistant);
+          lastAssistantCount = current.length;
+          replyQuietDeadline = Date.now() + ASSISTANT_REPLY_SETTLE_MS;
+        }
+        // Realtime may speak a short acknowledgement, call save_facts, then
+        // continue with the substantive reply after the tool result. Moving
+        // to the next injected user turn on the FIRST caption interrupted that
+        // continuation and graded the product on filler a real client would
+        // have heard followed by a question. Settle only after the assistant
+        // transcript has been quiet long enough for the tool round-trip.
+        if (newAssistant.length > 0 && Date.now() >= replyQuietDeadline) break;
       }
       const heardUser = (await readLines('user')).slice(beforeUser);
       if (heardUser.length) record('you (model heard)', heardUser.join(' '));
