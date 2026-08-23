@@ -72,6 +72,27 @@ const funds = 'Jointly we have 80,000 in Zurich Prisma 4 and 12,000 in Prisma 5.
 const fundSegments = segmentClientTurn(funds);
 check('the three-fund answer is read in pieces', fundSegments.length > 1);
 
+// The paid production proof stated two independent positions and the planner
+// returned only the first. Exactly two figures are normally readable together,
+// but a pension and an investment are separate holdings and must each get a
+// focused read. This is intentionally narrower than splitting every pair:
+// home and mortgage must stay together so their entity link survives.
+const pensionAndShares = 'I also have a pension worth €100,000 at the minute, and stocks and shares of €10,000.';
+const pensionAndSharesSegments = segmentClientTurn(pensionAndShares);
+check('an independently valued pension and investment are read separately',
+  pensionAndSharesSegments.length === 2, JSON.stringify(pensionAndSharesSegments));
+check('the pension segment keeps its value and label',
+  pensionAndSharesSegments.some((segment) => /pension/i.test(segment) && segment.includes('100,000')),
+  JSON.stringify(pensionAndSharesSegments));
+check('the investment segment keeps its value and label',
+  pensionAndSharesSegments.some((segment) => /stocks and shares/i.test(segment) && segment.includes('10,000')),
+  JSON.stringify(pensionAndSharesSegments));
+
+const linkedHomeAndMortgage = 'I also have a house worth €500,000, with a mortgage balance of €350,000.';
+check('a coupled home and mortgage remain one read for entity linking',
+  segmentClientTurn(linkedHomeAndMortgage).length === 1,
+  JSON.stringify(segmentClientTurn(linkedHomeAndMortgage)));
+
 /* --------------------------------- a number is never cut from its label */
 
 // THE DANGEROUS CUT. "80,000 in Zurich Prisma 4" split into "80,000" and "in
@@ -106,7 +127,7 @@ check('a bounded read still covers the whole answer',
   many.join(' ').includes('Item number 30'), 'no clause may be dropped to fit the ceiling');
 
 // Nothing may be silently discarded: every word said must survive somewhere.
-for (const source of [income, funds, rambling]) {
+for (const source of [income, funds, pensionAndShares, linkedHomeAndMortgage, rambling]) {
   const rejoined = segmentClientTurn(source).join(' ').replace(/\s+/g, ' ');
   const original = source.replace(/\s+/g, ' ');
   check('segmenting loses no words', rejoined.length >= original.length - 8,
@@ -180,6 +201,14 @@ check('a turn fails outright only when every piece fails',
   /if \(succeeded\.length === 0\)/.test(planner));
 check('spend does not depend on how many pieces a sentence made',
   /inputTokens: sum\('inputTokens'\)/.test(planner));
+check('the planner is explicitly exhaustive for independent valued holdings',
+  /one positions item for EVERY independently valued holding/.test(planner)
+    && /pension worth €100,000 and stocks and shares worth €10,000 are two positions/.test(planner),
+  'the exact paid-production omission must remain part of the planner contract');
+check('the planner maps the concrete three-goal opening without a decision fallback',
+  /understand_position, optimise_mortgage and fund_education/.test(planner)
+    && /Never emit more than one primary goal from a turn/.test(planner),
+  'the multi-goal production opener must retain both classification and ordering guidance');
 
 for (const [transport, file] of [
   ['text', 'worker/src/consumer/agent_session.js'],

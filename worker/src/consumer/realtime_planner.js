@@ -247,11 +247,13 @@ Goals:
 - Emit one goalCandidates item for every supported or legacy goal clearly present in this turn. Use fund_education for college or university funding and manage_loan for a non-housing loan.
 - Do not duplicate goals in semanticFacts; primary_goal and primary_goal_focus are created by deterministic server code from goalCandidates.
 - A vague reference to a financial decision is assess_decision. Never turn it into fund_education without education evidence.
-- priorityHint=primary only when the client explicitly says that goal comes first or is today’s focus. Use secondary only when explicitly described as later or less important.
+- Concrete aims are never a vague assess_decision. "A financial health check / understand where I stand, pay off my mortgage, and eventually put the baby through college" emits understand_position, optimise_mortgage and fund_education — all three, once each.
+- priorityHint=primary when the client explicitly says a goal comes first or is today's focus, or leads with "I really want" that goal before naming other aims. Use secondary when explicitly described as later, eventually or less important. In the example above, understand_position is primary and fund_education is secondary; the mortgage goal is unspecified. Never emit more than one primary goal from a turn.
 - For an explicit correction, put the earlier goal type in correctionTarget when it is clear. Otherwise leave correctionTarget empty.
 
 Financial positions:
 - Use positions for cash, investments, property, pensions, mortgages, loans, businesses, INCOME, and other assets.
+- Emit one positions item for EVERY independently valued holding in the finalized turn. Before returning, compare the explicit holding-and-amount pairs in the turn with the positions array: a pension worth €100,000 and stocks and shares worth €10,000 are two positions, not one. Never drop the second holding merely because both were stated in one sentence.
 - A salary, wage, rental income or pension in payment is a position with kind=income and an incomeType. Never emit income_sources as a semantic fact: it needs a stable entity identity that only a position can carry, so a semantic-fact version is discarded and the client's figure is lost. One position per earner.
 - amountJson is either an empty string or an exact JSON money object such as {"amount":10000,"currency":"EUR"}. Never put a bare number in amountJson.
 - country is empty for ordinary Irish positions. For a consumer-volunteered foreign holding, set it to the stated country and use a generic label such as "Foreign investment".

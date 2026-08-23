@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { shouldReflectTurn } from '../worker/src/consumer/realtime_provider.js';
+
 // A real-model live conversation probe. Unlike the infrastructure proof (which
 // proves the WebRTC/sideband/hang-up plumbing with a silent fake mic), this
 // harness actually *talks*: it overrides the browser microphone with a Web
@@ -472,8 +474,18 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
       const replyDeadline = Date.now() + TURN_REPLY_TIMEOUT_MS;
       let replyQuietDeadline = 0;
       let lastAssistantCount = beforeAssistant;
+      let expectedAssistantLines = 1;
       while (Date.now() < replyDeadline) {
         await page.waitForTimeout(1_000);
+        const currentUser = await readLines('user');
+        const finalizedClientText = currentUser.slice(beforeUser).join(' ').trim() || turn.say;
+        // The live lane deliberately speaks twice for a substantive turn: a
+        // short reflection immediately, then the planner-backed answer. The
+        // old harness treated the reflection as the whole reply after six
+        // quiet seconds and injected the next caller turn while the planner
+        // was still working. That synthetic barge-in repeatedly cancelled the
+        // useful answer and graded temporary holding speech as the product.
+        expectedAssistantLines = shouldReflectTurn(finalizedClientText) ? 2 : 1;
         const current = await readLines('assistant');
         if (current.length > lastAssistantCount) {
           newAssistant = current.slice(beforeAssistant);
@@ -486,7 +498,7 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
         // continuation and graded the product on filler a real client would
         // have heard followed by a question. Settle only after the assistant
         // transcript has been quiet long enough for the tool round-trip.
-        if (newAssistant.length > 0 && Date.now() >= replyQuietDeadline) break;
+        if (newAssistant.length >= expectedAssistantLines && Date.now() >= replyQuietDeadline) break;
       }
       const heardUser = (await readLines('user')).slice(beforeUser);
       if (heardUser.length) record('you (model heard)', heardUser.join(' '));

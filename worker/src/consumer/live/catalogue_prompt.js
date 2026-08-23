@@ -44,7 +44,10 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // though all three facts were explicit in the finalized client transcript.
 // v7: concrete multi-goal openings never collapse into a vague decision, and
 // tool-assisted replies finish the turn instead of ending on holding filler.
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v7';
+// v8: the silent planner now mirrors those multi-goal semantics and exhaustive
+// independent-position capture, and the production proof waits for the
+// planner-backed half of a reflected turn before speaking again.
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v8';
 
 /**
  * Budgets for the per-turn state item.

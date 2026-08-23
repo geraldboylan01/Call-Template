@@ -84,7 +84,7 @@ const CONFIG = Object.freeze({
   maxMessageLength: 4_000,
   agentTestSessionBudgetMicroEur: 500_000,
   cohort: 'automated_test',
-  realtimePlannerPromptVersion: 'realtime-planner-v3'
+  realtimePlannerPromptVersion: 'realtime-planner-v4'
 });
 
 const passes = [];

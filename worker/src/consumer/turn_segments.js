@@ -43,6 +43,22 @@ import { figuresAreGrounded } from './spoken_figures.js';
  */
 const MAX_FIGURES_PER_SEGMENT = 2;
 
+/**
+ * Two figures are normally safe in one planner read when they describe one
+ * position (salary plus bonus) or one coupled pair (home plus mortgage). The
+ * paid live probe exposed the important exception: a pension value followed by
+ * a separate stocks-and-shares value produced only the pension candidate. Both
+ * figures were explicit, but the turn never crossed the generic three-figure
+ * density threshold, so the independent holdings were presented as one item.
+ *
+ * Keep this deliberately semantic and narrow. Splitting every two-figure turn
+ * would tear a property away from its mortgage and could lose the deterministic
+ * link between them. A pension and an investment are independent positions and
+ * each clause can stand alone, so they should always earn separate reads.
+ */
+const INDEPENDENT_PENSION_INVESTMENT_PAIR =
+  /(?=.*\b(?:pension|prsa|retirement bond|buyout bond)\b)(?=.*\b(?:stocks?|shares?|investments?|funds?)\b)/i;
+
 /** A backstop for prose that carries no figures at all but rambles. */
 const MAX_SEGMENT_CHARS = 220;
 
@@ -96,7 +112,10 @@ function carriesItsOwnMeaning(piece) {
 }
 
 function tooDense(piece) {
-  return figureCount(piece) > MAX_FIGURES_PER_SEGMENT || piece.length > MAX_SEGMENT_CHARS;
+  const figures = figureCount(piece);
+  return figures > MAX_FIGURES_PER_SEGMENT
+    || (figures > 1 && INDEPENDENT_PENSION_INVESTMENT_PAIR.test(piece))
+    || piece.length > MAX_SEGMENT_CHARS;
 }
 
 /**

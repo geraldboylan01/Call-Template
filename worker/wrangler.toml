@@ -156,7 +156,7 @@ CONSUMER_REALTIME_MAX_RESPONSES = "100"
 CONSUMER_REALTIME_MAX_TOOL_CALLS = "60"
 CONSUMER_REALTIME_PLANNER_TIMEOUT_MS = "8000"
 CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS = "12000"
-CONSUMER_REALTIME_PLANNER_PROMPT_VERSION = "realtime-planner-v3"
+CONSUMER_REALTIME_PLANNER_PROMPT_VERSION = "realtime-planner-v4"
 # The background note reconciler. "legacy" keeps the original single-turn
 # auditor, "shadow" records what it would change without writing, and "apply"
 # commits the operations its deterministic validator accepted. It never runs
