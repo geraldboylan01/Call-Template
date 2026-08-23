@@ -600,4 +600,16 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
   assert.deepEqual(requests, [], 'A second End press must not reissue the hang-up.');
 }
 
+const conversationProbeSource = source('scripts/run-consumer-realtime-conversation-probe.mjs');
+assert.doesNotMatch(
+  conversationProbeSource,
+  /flags\?\.consumerLiveVoiceEnabled/,
+  'The paid conversation probe must not wait on a private live-voice flag that the public bootstrap does not expose.'
+);
+assert.match(
+  conversationProbeSource,
+  /realtimeVoice\?\.conversationVersion === 'live'/,
+  'The paid conversation probe must settle the public bootstrap using the authoritative advertised live lane.'
+);
+
 console.log('Realtime activation proof lane checks passed.');

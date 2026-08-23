@@ -247,7 +247,8 @@ async function settleRealtimeFlag(workerOrigin, siteOrigin) {
       const payload = response.ok ? await response.json() : null;
       enabled = payload?.flags?.consumerRealtimeVoiceEnabled === true
         && payload?.flags?.consumerRealtimeConversationV2Enabled === true
-        && payload?.flags?.consumerLiveVoiceEnabled === true;
+        && payload?.realtimeVoice?.enabled === true
+        && payload?.realtimeVoice?.conversationVersion === 'live';
     } catch (_error) { enabled = false; }
     consecutive = enabled ? consecutive + 1 : 0;
     if (consecutive >= REALTIME_FLAG_SETTLE_SAMPLES) return;
