@@ -29,6 +29,12 @@
  */
 
 import { createRealtimeVoiceCall, deleteRealtimeVoiceCall, getSession } from './api.js';
+import {
+  bindConsentForm,
+  beginConsentRecovery,
+  isConsentRequiredError,
+  submitConsent
+} from './live_voice_consent.js';
 import { RealtimeOrb } from './realtime_orb.js';
 import {
   extractRealtimePlanningContext,
@@ -80,6 +86,15 @@ export class LiveVoiceController {
     this.onStopBoundedVoice = onStopBoundedVoice;
     this.onToast = onToast;
     this.onSessionUnavailable = onSessionUnavailable;
+
+    // THE DISCLOSURE HAS TO BE REACHABLE FROM THIS LANE.
+    //
+    // This controller is the only one `createVoiceLaneController` builds when
+    // the deployment runs the live lane, and the v2 controller that used to
+    // own the disclosure is never constructed. Binding the form here is what
+    // makes accepting it possible at all: without it the dialog could be put
+    // on screen and ticking the box would do nothing.
+    this.unbindConsentForm = bindConsentForm((form) => this.acceptDisclosure(form));
 
     this.active = false;
     this.generation = 0;
@@ -282,6 +297,25 @@ export class LiveVoiceController {
       // A lease created moments ago is already billing. Failing between the
       // answer and the connection must not leave it running to its alarm.
       await this.releaseLease();
+      // A STALE DISCLOSURE MUST NOT DEAD-END THE MEETING.
+      //
+      // The Worker refuses the call until the client has agreed to the CURRENT
+      // disclosure. Reporting that as an ordinary failure left the client with
+      // "Review and accept the current live voice disclosure before starting."
+      // and nothing on screen to accept — the meeting could be neither started
+      // nor re-agreed, and pressing Start again produced the same dead end.
+      if (isConsentRequiredError(error)) {
+        const opened = beginConsentRecovery(this.readDisclosure());
+        this.setPhase('off', opened
+          ? 'Please review the updated meeting notice to continue.'
+          : 'Live meeting ended.');
+        if (!opened) {
+          // Never leave an error the client cannot act on: if the disclosure
+          // is genuinely not on this page, say what to do instead.
+          this.onToast('The live meeting notice could not be opened. Reload the page to review it, or continue by typing.', { tone: 'error' });
+        }
+        return;
+      }
       const message = error?.name === 'NotAllowedError'
         ? 'Microphone access is needed for a live meeting.'
         : error?.message || 'The live meeting could not be started.';
@@ -498,6 +532,32 @@ export class LiveVoiceController {
    * the v2 lane — only a server-confirmed session counts. The datasets remain
    * as an explicit override for harnesses that set them.
    */
+  /** The disclosure this deployment is asking the client to agree to. */
+  readDisclosure() {
+    const bootstrap = journeyState.bootstrap || {};
+    return {
+      sessionId: this.readContext()?.sessionId || '',
+      noticeId: String(bootstrap.voiceRealtimeNoticeId || ''),
+      policyVersion: String(bootstrap.voiceRealtimePolicyVersion || ''),
+      privacyNoticeUrl: String(bootstrap.voiceRealtimePrivacyNoticeUrl || '')
+    };
+  }
+
+  /** Agreement submitted from the disclosure: record it, then start. */
+  async acceptDisclosure(form) {
+    const accepted = await submitConsent(form, {
+      ...this.readDisclosure(),
+      onVoicePayload: (payload) => this.onVoicePayload(payload),
+      onAccepted: () => {
+        // They pressed Start and then agreed. Continue into the meeting rather
+        // than asking for a second press.
+        this.setPhase('connecting', 'Connecting your private meeting…');
+        window.requestAnimationFrame(() => this.start());
+      }
+    });
+    return accepted;
+  }
+
   readContext() {
     const override = this.root?.dataset?.sessionId
       || document.body?.dataset?.consumerSessionId

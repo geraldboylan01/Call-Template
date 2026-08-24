@@ -2184,6 +2184,64 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'An adversarial advice-seeking persona must exist.');
 }
 
+/* ------------------------------------- the live lane can reach its disclosure */
+
+/**
+ * THE DEAD END THIS LANE SHIPPED WITH.
+ *
+ * `createVoiceLaneController` builds ONLY `live_voice.js` when the deployment
+ * runs the live lane — the v2 controller, which owned the Live voice
+ * disclosure, is never constructed. So on the live lane the disclosure could
+ * not be opened and its form was never bound: a client whose receipt went
+ * stale saw "Review and accept the current live voice disclosure before
+ * starting." with nothing on screen to accept, and every retry repeated it.
+ *
+ * Two earlier fixes missed this because both landed in `realtime_voice.js`,
+ * which production does not run. These assertions are therefore about the LIVE
+ * client specifically.
+ */
+{
+  const liveClient = readFileSync(
+    fileURLToPath(new URL('../js/plan/live_voice.js', import.meta.url)),
+    'utf8'
+  );
+  const laneSource = readFileSync(
+    fileURLToPath(new URL('../js/plan/voice_lane.js', import.meta.url)),
+    'utf8'
+  );
+  const sharedConsent = readFileSync(
+    fileURLToPath(new URL('../js/plan/live_voice_consent.js', import.meta.url)),
+    'utf8'
+  );
+
+  ok(/isConsentRequiredError\(error\)/.test(liveClient),
+    'The live lane must recognise a Worker consent refusal instead of reporting it as an ordinary failure.');
+  ok(/beginConsentRecovery\(/.test(liveClient),
+    'A consent refusal must clear the stale receipt and put the disclosure on screen.');
+  ok(/bindConsentForm\(/.test(liveClient),
+    'The live lane must bind the disclosure form, or agreeing to it does nothing.');
+  ok(/submitConsent\(/.test(liveClient),
+    'The live lane must be able to record agreement to the current disclosure.');
+
+  // The recovery must not be able to leave the client with an error and no
+  // way to act on it -- that is the whole defect.
+  ok(/could not be opened[\s\S]{0,120}continue by typing/i.test(liveClient),
+    'If the disclosure genuinely cannot be shown, the live lane must say what to do instead.');
+
+  // The disclosure is shared page chrome. Keeping one implementation is what
+  // stops the next fix landing on a lane nobody runs.
+  ok(/from '\.\/live_voice_consent\.js'/.test(liveClient),
+    'The live lane must use the shared disclosure, not a private copy.');
+  ok(/showModal/.test(sharedConsent) && /setAttribute\('open'/.test(sharedConsent),
+    'The shared disclosure keeps the Safari <dialog> fallback.');
+  ok(/clearRealtimeVoiceConsent\(\)/.test(sharedConsent),
+    'Recovery must discard the receipt the Worker has just rejected.');
+
+  // And the lane really is the one production builds.
+  ok(/lane === LIVE_LANE[\s\S]{0,80}LiveVoiceLaneAdapter/.test(laneSource),
+    'The live lane must still be the controller built for a live deployment.');
+}
+
 /* --------------------------------------------- the client dropped its baggage */
 
 // These are contracts, not style. Each names something that actively harmed
