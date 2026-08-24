@@ -495,13 +495,13 @@ export function getConsumerConfig(env) {
     // a server-side allowlist, and never client-selectable.
     realtimePlannerModel: plannerModel(env.CONSUMER_REALTIME_PLANNER_MODEL),
     realtimePlannerModelConfigured: plannerModelConfigured(env.CONSUMER_REALTIME_PLANNER_MODEL),
-    realtimePlannerPromptVersion: text(env.CONSUMER_REALTIME_PLANNER_PROMPT_VERSION) || 'realtime-planner-v4',
+    realtimePlannerPromptVersion: text(env.CONSUMER_REALTIME_PLANNER_PROMPT_VERSION) || 'realtime-planner-v5',
     // Additive and fail-closed: an unset or mistyped value preserves the
     // current single-turn auditor. Tests may inject shadow/apply without any
     // production wrangler or deployment configuration change.
     plannerReconciliationMode: plannerReconciliationMode(env.CONSUMER_PLANNER_RECONCILIATION_MODE),
     plannerReconciliationPromptVersion: text(env.CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION)
-      || 'planning-reconciliation-v1',
+      || 'planning-reconciliation-v2',
     // MEASURED, NOT GUESSED. 14s was the median of the real runtime, so it
     // failed about half of all attempts by construction. Five samples against a
     // live call's own payload (26.6 KB in, ~1.0-2.1k tokens out) ran

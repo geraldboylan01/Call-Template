@@ -1,5 +1,10 @@
 import { ConsumerError } from './errors.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
+import {
+  classifyGoalPriorityHint,
+  getGoalTitle,
+  goalProfilePriority
+} from '../../../js/planning/goal_catalogue.js';
 import { getSemanticFactDefinition } from '../../../js/planning/semantic_facts.js';
 import {
   getPlanningModulesForSemanticFact,
@@ -64,23 +69,6 @@ const CHOICES = Object.freeze({
   retirement_readiness: new Set(['on_track', 'retirement_behind', 'unsure']),
   pension_contribution_status: new Set(['active', 'paid_up', 'not_applicable', 'unknown']),
   business_context: new Set(['no_business_interest', 'self_employed', 'company_director', 'owner_manager', 'business_owner', 'farmer'])
-});
-
-const GOAL_DEFINITIONS = Object.freeze({
-  buy_home: { title: 'Buy a home' },
-  maintain_liquidity: { title: 'Maintain an emergency cash reserve' },
-  understand_position: { title: 'Understand my current position' },
-  build_wealth: { title: 'Build long-term wealth' },
-  improve_pension: { title: 'Improve pension readiness' },
-  retire: { title: 'Plan for retirement' },
-  retire_early: { title: 'Explore early retirement' },
-  optimise_mortgage: { title: 'Review the mortgage path' },
-  manage_loan: { title: 'Review a non-housing loan' },
-  fund_education: { title: 'Fund children’s education' },
-  assess_decision: { title: 'Assess a financial decision' },
-  transfer_wealth: { title: 'Plan a wealth transfer' },
-  business_planning: { title: 'Plan around a business interest' },
-  agricultural_planning: { title: 'Plan around agricultural assets' }
 });
 
 // The Realtime model maps free speech onto server-owned vocabularies. It can
@@ -177,7 +165,7 @@ function goalType(value) {
     : typeof value?.type === 'string'
       ? value.type.trim().toLowerCase()
       : '';
-  if (!GOAL_TYPES.includes(candidate) || !GOAL_DEFINITIONS[candidate]) {
+  if (!GOAL_TYPES.includes(candidate)) {
     throw new ConsumerError(400, 'realtime_goal_invalid', 'That goal is not available in the realtime canary.');
   }
   return candidate;
@@ -692,6 +680,10 @@ function projectPersonaFacts(profile, facts) {
   for (const fact of facts || []) {
     if (fact?.factId === 'primary_goal') {
       const type = goalType(fact.value);
+      const proposedPriorityHint = plainObject(fact.value) ? fact.value.priorityHint : null;
+      const priorityHint = String(fact.evidenceText || '').trim()
+        ? classifyGoalPriorityHint(type, fact.evidenceText)
+        : proposedPriorityHint;
       const correctionTarget = plainObject(fact.value) && GOAL_TYPES.includes(fact.value.correctionTarget)
         ? fact.value.correctionTarget : null;
       const correctionIndex = correctionTarget
@@ -708,8 +700,8 @@ function projectPersonaFacts(profile, facts) {
         projected.goals.push({
           goalId: `goal_realtime_${type}`,
           type,
-          title: GOAL_DEFINITIONS[type].title,
-          priority: 'high',
+          title: getGoalTitle(type),
+          priority: goalProfilePriority(priorityHint),
           status: 'active'
         });
       } else if (correctionIndex >= 0) {
@@ -717,8 +709,8 @@ function projectPersonaFacts(profile, facts) {
           ...projected.goals[index],
           goalId: `goal_realtime_${type}`,
           type,
-          title: GOAL_DEFINITIONS[type].title,
-          priority: 'high',
+          title: getGoalTitle(type),
+          priority: goalProfilePriority(priorityHint, projected.goals[index]?.priority),
           status: 'active'
         };
       }
@@ -1634,6 +1626,10 @@ export function mapRealtimeFact(profile, fact) {
 
   if (fact.factId === 'primary_goal') {
     const type = goalType(fact.value);
+    const proposedPriorityHint = plainObject(fact.value) ? fact.value.priorityHint : null;
+    const priorityHint = String(fact.evidenceText || '').trim()
+      ? classifyGoalPriorityHint(type, fact.evidenceText)
+      : proposedPriorityHint;
     const correctionTarget = plainObject(fact.value) && GOAL_TYPES.includes(fact.value.correctionTarget)
       ? fact.value.correctionTarget : null;
     const correctionIndex = correctionTarget
@@ -1659,11 +1655,11 @@ export function mapRealtimeFact(profile, fact) {
         ...(existing || {}),
         goalId: correctionIndex >= 0 || !existing ? `goal_realtime_${type}` : existing.goalId,
         type,
-        title: GOAL_DEFINITIONS[type].title,
-        // Neutral by default. Explicit client priority is expressed through
-        // primary_goal_focus. Marking every goal "high" made the priority sort
-        // inert and silently collapsed ranking to mention order.
-        priority: 'medium',
+        title: getGoalTitle(type),
+        // Explicit ordering from the finalized turn survives as profile rank.
+        // A neutral repeat preserves the existing rank instead of silently
+        // demoting a goal the client already prioritised.
+        priority: goalProfilePriority(priorityHint, existing?.priority),
         status: 'active'
       },
       displayValue: type

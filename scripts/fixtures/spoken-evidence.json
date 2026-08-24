@@ -242,6 +242,38 @@
       "note": "The single densest real shape: one sentence, three facts. Closed by the \"I'm on X\" salary idiom."
     },
     {
+      "id": "equal-rates-employer-first-spoken",
+      "said": "The company contributes six percent; I contribute six percent.",
+      "submit": [
+        {
+          "factId": "pension_employer_contribution_rate",
+          "value": 6
+        },
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": 6
+        }
+      ],
+      "expect": "accept",
+      "note": "Equal values remain distinct when role order is reversed and amounts are spoken as words."
+    },
+    {
+      "id": "equal-rates-employee-first-paraphrase",
+      "said": "I put in 4%, whereas the employer adds 4%.",
+      "submit": [
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": 4
+        },
+        {
+          "factId": "pension_employer_contribution_rate",
+          "value": 4
+        }
+      ],
+      "expect": "accept",
+      "note": "Local role cues bind repeated equal percentages across a different construction."
+    },
+    {
       "id": "mortgage-balance-rate-term",
       "said": "The mortgage balance is 250000 at 3.2 percent with 240 months left.",
       "submit": [

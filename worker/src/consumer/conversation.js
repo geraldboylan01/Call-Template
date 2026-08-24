@@ -1,6 +1,13 @@
 import { applyProfilePatch as applyCanonicalProfilePatch } from '../../../js/planning/profile.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import {
+  classifyGoalPriorityHint,
+  getGoalTitle,
+  goalEvidenceMatches,
+  goalProfilePriority,
+  normalizeGoalCandidatePriorities
+} from '../../../js/planning/goal_catalogue.js';
+import {
   buildGoalModulePlan,
   getGoalLabel,
   goalPlanRecommendations
@@ -23,40 +30,6 @@ import {
   toConsumerSession
 } from './repository.js';
 import { buildQuestionPlan, stageFromQuestionPlan } from './question_plan.js';
-
-const GOAL_TITLES = Object.freeze({
-  understand_position: 'Understand my current position',
-  maintain_liquidity: 'Maintain an emergency cash reserve',
-  buy_home: 'Buy a home',
-  build_wealth: 'Build long-term wealth',
-  improve_pension: 'Improve pension readiness',
-  retire: 'Plan for retirement',
-  retire_early: 'Explore early retirement',
-  optimise_mortgage: 'Review the mortgage path',
-  manage_loan: 'Review or repay a non-housing loan',
-  fund_education: 'Fund children’s education',
-  assess_decision: 'Assess a financial decision',
-  transfer_wealth: 'Plan a wealth transfer',
-  business_planning: 'Plan around a business interest',
-  agricultural_planning: 'Plan around agricultural assets'
-});
-
-const GOAL_EVIDENCE = Object.freeze({
-  understand_position: /\b(?:understand|overview|position|finances)\b/i,
-  maintain_liquidity: /\b(?:liquidity|emergency fund|cash reserve|rainy day)\b/i,
-  buy_home: /\b(?:buy|purchase).{0,25}\b(?:home|house|property)\b|\bfirst[- ]time buyer\b/i,
-  build_wealth: /\b(?:build|grow|create).{0,25}\b(?:wealth|investments?|portfolio)\b/i,
-  improve_pension: /\b(?:pension|prsa)\b/i,
-  retire: /\bretir(?:e|ement|ing)\b/i,
-  retire_early: /\b(?:early retirement|retire early)\b/i,
-  optimise_mortgage: /\b(?:mortgage|home loan)\b/i,
-  manage_loan: /\b(?:personal|car|student|business|non[- ]housing) loan\b|\b(?:repay|pay off|review).{0,20}\bloan\b/i,
-  fund_education: /\b(?:college|university|education).{0,30}\b(?:fund|funding|fees|costs?|pay)\b|\b(?:fund|funding|pay).{0,30}\b(?:college|university|education)\b/i,
-  assess_decision: /\b(?:decision|compare|weigh up|options?)\b/i,
-  transfer_wealth: /\b(?:inheritance|gift|transfer wealth|estate)\b/i,
-  business_planning: /\b(?:business|company|shareholding)\b/i,
-  agricultural_planning: /\b(?:farm|agricultural|farmland)\b/i
-});
 
 const SELF_DESCRIPTION_EVIDENCE = Object.freeze({
   student: /\bstudent\b/i,
@@ -252,10 +225,11 @@ function candidateGoalPatch(profile, candidates, message) {
   const existing = new Map(profile.goals.map((goal, index) => [goal.type, index]));
   const patch = {};
   let index = profile.goals.length;
-  for (const candidate of candidates || []) {
+  for (const candidate of normalizeGoalCandidatePriorities(candidates)) {
     const goalType = candidate?.goalType || candidate?.type;
     if (!GOAL_TYPES.includes(goalType) || !['high', 'medium'].includes(candidate.confidence)) continue;
-    if (!GOAL_EVIDENCE[goalType]?.test(message)) continue;
+    if (!goalEvidenceMatches(goalType, message)) continue;
+    const priorityHint = classifyGoalPriorityHint(goalType, message);
     const correctionTarget = GOAL_TYPES.includes(candidate.correctionTarget) ? candidate.correctionTarget : null;
     const correctionIndex = correctionTarget !== null ? existing.get(correctionTarget) : undefined;
     if (typeof correctionIndex === 'number' && correctionTarget !== goalType) {
@@ -266,25 +240,34 @@ function candidateGoalPatch(profile, candidates, message) {
         patch[`/goals/${correctionIndex}`] = {
           ...profile.goals[correctionIndex],
           type: goalType,
-          title: GOAL_TITLES[goalType],
-          priority: candidate.confidence === 'high' ? 'high' : 'medium',
+          title: getGoalTitle(goalType),
+          priority: goalProfilePriority(priorityHint),
           status: 'exploring'
         };
         existing.delete(correctionTarget);
         existing.set(goalType, correctionIndex);
       }
     } else if (!existing.has(goalType)) {
-    patch[`/goals/${index}`] = {
-      goalId: `ai-draft-${goalType}-${index + 1}`,
-      type: goalType,
-      title: GOAL_TITLES[goalType],
-      priority: candidate.confidence === 'high' ? 'high' : 'medium',
-      status: 'exploring'
-    };
+      patch[`/goals/${index}`] = {
+        goalId: `ai-draft-${goalType}-${index + 1}`,
+        type: goalType,
+        title: getGoalTitle(goalType),
+        priority: goalProfilePriority(priorityHint),
+        status: 'exploring'
+      };
       existing.set(goalType, index);
       index += 1;
+    } else if (['primary', 'secondary'].includes(priorityHint)) {
+      // An explicit later ranking is meaningful even when the goal was already
+      // recorded on an earlier turn. Neutral repeats leave the existing rank
+      // untouched; only fresh ordering evidence changes it.
+      const existingIndex = existing.get(goalType);
+      patch[`/goals/${existingIndex}`] = {
+        ...profile.goals[existingIndex],
+        priority: goalProfilePriority(priorityHint, profile.goals[existingIndex]?.priority)
+      };
     }
-    if (candidate.priorityHint === 'primary') {
+    if (priorityHint === 'primary') {
       patch['/assumptions/values/planning'] = {
         ...(profile.assumptions.values.planning || {}),
         primaryGoalType: goalType
@@ -353,9 +336,7 @@ export function extractContextBoundPatch(profile, question, message) {
     if (matches.length === 1) return { [path]: matches[0] };
   }
   if (path === '/assumptions/values/planning/primaryGoalType') {
-    const matches = Object.entries(GOAL_EVIDENCE)
-      .filter(([, pattern]) => pattern.test(message))
-      .map(([value]) => value);
+    const matches = GOAL_TYPES.filter((value) => goalEvidenceMatches(value, message));
     const narrowed = matches.includes('retire_early')
       ? matches.filter((value) => value !== 'retire')
       : matches;

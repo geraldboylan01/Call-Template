@@ -5,6 +5,10 @@ import {
   validateProfilePath
 } from './validators.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
+import {
+  classifyGoalPriorityHint,
+  normalizeGoalCandidatePriorities
+} from '../../../js/planning/goal_catalogue.js';
 
 const OUTPUT_SCHEMA = Object.freeze({
   type: 'object',
@@ -195,12 +199,15 @@ function validateStructuredOutput(value) {
     assistantMessage: value.assistantMessage.trim(),
     patch,
     provenance,
-    goalCandidates: value.goalCandidates.slice(0, 8).map((item) => ({
-      goalType: item.goalType,
-      confidence: ['high', 'medium', 'low'].includes(item.confidence) ? item.confidence : 'low',
-      priorityHint: ['primary', 'secondary'].includes(item.priorityHint) ? item.priorityHint : 'unspecified',
-      evidenceText: typeof item.evidenceText === 'string' ? item.evidenceText.slice(0, 500) : '',
-      correctionTarget: GOAL_TYPES.includes(item.correctionTarget) ? item.correctionTarget : ''
+    goalCandidates: normalizeGoalCandidatePriorities(value.goalCandidates.slice(0, 8).map((item) => {
+      const evidenceText = typeof item.evidenceText === 'string' ? item.evidenceText.slice(0, 500) : '';
+      return {
+        goalType: item.goalType,
+        confidence: ['high', 'medium', 'low'].includes(item.confidence) ? item.confidence : 'low',
+        priorityHint: classifyGoalPriorityHint(item.goalType, evidenceText),
+        evidenceText,
+        correctionTarget: GOAL_TYPES.includes(item.correctionTarget) ? item.correctionTarget : ''
+      };
     })),
     ambiguities: Array.isArray(value.ambiguities) ? value.ambiguities.slice(0, 12) : [],
     suggestedNextIntent: typeof value.suggestedNextIntent === 'string' ? value.suggestedNextIntent.slice(0, 120) : ''

@@ -54,6 +54,7 @@ import {
 } from './agent_repository.js';
 import { deterministicFallbackExtraction } from './planning_facts.js';
 import { redactSensitiveIdentifiers } from './validators.js';
+import { valueEvidenceCoverage } from '../../../js/planning/value_evidence.js';
 
 export const AGENT_CHANNEL = 'agent_test';
 
@@ -355,9 +356,11 @@ export async function processAgentTurn(env, config, {
   }
 
   let outcomes = [];
+  let sourcedValueEvidence = [];
   let repairedCount = 0;
   let repairAttemptFailed = false;
   if (extraction) {
+    const evidenceCoverage = degraded ? null : valueEvidenceCoverage(safeMessage, extraction);
     // The same silent-planner attempt row the voice meeting opens, so an agent
     // turn leaves an identical audit trail and fact proposals bind to it.
     const attempt = await beginRealtimeToolAttempt(env, {
@@ -376,18 +379,20 @@ export async function processAgentTurn(env, config, {
       config,
       context,
       extraction,
+      transcript: safeMessage,
       evidenceRef: turnRef,
       leaseId: meetingId,
       toolAttemptId: attempt.row.id,
       loadContext: () => loadAgentContext(env, config, sessionId, meetingId)
     });
     outcomes = applied.outcomes;
+    sourcedValueEvidence = applied.sourcedValueEvidence;
     context = applied.context;
 
     // ONE narrow second pass, only over what the first could not record, and
     // only when the planner itself ran. A degraded turn used the deterministic
     // extractor, which has no model to re-ask.
-    const repair = degraded ? null : buildRepairRequest(outcomes);
+    const repair = degraded ? null : buildRepairRequest(outcomes, evidenceCoverage);
     if (repair) {
       try {
         const repaired = await extractRealtimePlannerTurn({
@@ -408,6 +413,8 @@ export async function processAgentTurn(env, config, {
           config,
           context,
           extraction: repaired.extraction,
+          transcript: safeMessage,
+          allowedEvidenceIds: repair.allowedEvidenceIds,
           evidenceRef: `${turnRef}-repair`,
           leaseId: meetingId,
           toolAttemptId: attempt.row.id,
@@ -418,6 +425,12 @@ export async function processAgentTurn(env, config, {
         // renderer is told the truth: a value recovered on the second pass was
         // recorded, and must be confirmed rather than apologised for.
         outcomes = mergeRepairOutcomes(outcomes, reapplied.outcomes);
+        sourcedValueEvidence = [
+          ...sourcedValueEvidence,
+          ...reapplied.sourcedValueEvidence
+        ].filter((item, index, all) => (
+          all.findIndex((candidate) => candidate.evidenceId === item.evidenceId) === index
+        ));
         repairedCount = reapplied.outcomes.filter((item) => item.accepted === true).length;
       } catch (_error) {
         // A failed repair leaves the first pass's outcomes exactly as they were.
@@ -429,7 +442,7 @@ export async function processAgentTurn(env, config, {
       leaseId: meetingId,
       toolAttemptId: attempt.row.id,
       status: 'succeeded',
-      result: { ok: true, sourceTurnId: turnRef, outcomes },
+      result: { ok: true, sourceTurnId: turnRef, outcomes, sourcedValueEvidence },
       errorCode: null,
       latencyMs: 0
     }).catch(() => {});

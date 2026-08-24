@@ -13,7 +13,7 @@
 import { ConsumerError } from '../../worker/src/consumer/errors.js';
 
 /** Expand a scenario's shorthand extraction into a full PlannerExtractionV3. */
-export function toPlannerExtraction(sourceTurnId, shorthand = {}) {
+export function toPlannerExtraction(sourceTurnId, shorthand = {}, evidenceText = 'scenario evidence') {
   return {
     schemaVersion: 'PlannerExtractionV3',
     sourceTurnId,
@@ -22,7 +22,7 @@ export function toPlannerExtraction(sourceTurnId, shorthand = {}) {
       goalType: typeof goal === 'string' ? goal : goal.type,
       confidence: (typeof goal === 'object' && goal.confidence) || 'high',
       priorityHint: (typeof goal === 'object' && goal.priorityHint) || 'unspecified',
-      evidenceText: 'scenario evidence',
+      evidenceText,
       correctionTarget: (typeof goal === 'object' && goal.correctionTarget) || ''
     })),
     semanticFacts: (shorthand.facts || []).map((fact, index) => ({
@@ -31,7 +31,7 @@ export function toPlannerExtraction(sourceTurnId, shorthand = {}) {
       factId: fact.factId,
       value: fact.value,
       certainty: fact.certainty || 'exact',
-      evidenceText: 'scenario evidence',
+      evidenceText,
       correctionTarget: fact.correctionTarget || ''
     })),
     positions: (shorthand.positions || []).map((position, index) => ({
@@ -48,7 +48,7 @@ export function toPlannerExtraction(sourceTurnId, shorthand = {}) {
       pensionType: position.pensionType || null,
       agricultural: null,
       certainty: position.certainty || 'exact',
-      evidenceText: 'scenario evidence',
+      evidenceText,
       correctionTarget: ''
     })),
     sectionCompletions: shorthand.sectionCompletions || [],
@@ -66,11 +66,11 @@ export function createScriptedClient({ plannerFails = false } = {}) {
     async nextMessage({ scenario, turnIndex }) {
       return scenario.turns[turnIndex]?.say ?? null;
     },
-    async extractionFor({ scenario, turnIndex, sourceTurnId }) {
+    async extractionFor({ scenario, turnIndex, sourceTurnId, text }) {
       if (plannerFails) {
         throw new ConsumerError(502, 'realtime_planner_request_failed', 'simulated provider outage');
       }
-      return toPlannerExtraction(sourceTurnId, scenario.turns[turnIndex]?.extraction || {});
+      return toPlannerExtraction(sourceTurnId, scenario.turns[turnIndex]?.extraction || {}, text);
     }
   };
 }

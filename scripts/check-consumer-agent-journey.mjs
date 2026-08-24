@@ -25,6 +25,8 @@ import { containsInternalModuleTerminology } from '../js/planning/module_offers.
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
 import { createConsumerCredential } from '../worker/src/consumer/crypto.js';
 import { createSessionRecord, getCurrentProfile, getSessionRow } from '../worker/src/consumer/repository.js';
+import { executeLiveTool } from '../worker/src/consumer/live/live_tools.js';
+import { beginRealtimeToolAttempt } from '../worker/src/consumer/realtime_repository.js';
 import {
   confirmAgentPlan,
   createAgentTestSession,
@@ -169,7 +171,7 @@ function pass(message) {
 /* Stubs: the two model calls, and nothing else.                     */
 /* ---------------------------------------------------------------- */
 
-function extraction(sourceTurnId, { goals = [], facts = [], positions = [] } = {}) {
+function extraction(sourceTurnId, { goals = [], facts = [], positions = [] } = {}, evidenceText = '') {
   return {
     sourceTurnId,
     goalCandidates: goals.map((goal, index) => ({
@@ -177,7 +179,7 @@ function extraction(sourceTurnId, { goals = [], facts = [], positions = [] } = {
       goalType: goal.type,
       confidence: 'high',
       priorityHint: goal.priorityHint || 'unspecified',
-      evidenceText: 'scripted evidence',
+      evidenceText,
       correctionTarget: ''
     })),
     semanticFacts: facts.map((fact, index) => ({
@@ -186,7 +188,7 @@ function extraction(sourceTurnId, { goals = [], facts = [], positions = [] } = {
       factId: fact.factId,
       value: fact.value,
       certainty: fact.certainty || 'exact',
-      evidenceText: 'scripted evidence',
+      evidenceText,
       correctionTarget: ''
     })),
     positions: positions.map((position, index) => ({
@@ -203,7 +205,7 @@ function extraction(sourceTurnId, { goals = [], facts = [], positions = [] } = {
       pensionType: position.pensionType || null,
       agricultural: null,
       certainty: 'exact',
-      evidenceText: 'scripted evidence',
+      evidenceText,
       correctionTarget: ''
     })),
     sectionCompletions: [],
@@ -216,10 +218,10 @@ function extraction(sourceTurnId, { goals = [], facts = [], positions = [] } = {
 
 function scriptedPlanner(script) {
   let index = 0;
-  return async ({ sourceTurnId }) => {
+  return async ({ sourceTurnId, transcript }) => {
     const step = script[Math.min(index, script.length - 1)];
     index += 1;
-    return { extraction: extraction(sourceTurnId, step), metadata: { costMicroEur: 1_000 } };
+    return { extraction: extraction(sourceTurnId, step, transcript), metadata: { costMicroEur: 1_000 } };
   };
 }
 
@@ -275,7 +277,7 @@ async function newAgentSession(label) {
   const first = await processAgentTurn(env, config, {
     sessionId,
     meetingId,
-    message: 'I am 52, I own my home with a mortgage on it, and I want to sort my pension out.',
+    message: 'I am 52. My home is worth about €500,000 and the mortgage on it is about €250,000. I want to sort my pension out.',
     deps: { extractTurn: planner, renderText: scriptedRenderer }
   });
 
@@ -339,7 +341,7 @@ async function newAgentSession(label) {
   }, {}]);
   await processAgentTurn(env, config, {
     sessionId, meetingId,
-    message: 'I own my home with a mortgage and want to sort my pension.',
+    message: 'My home is worth about €500,000 and the mortgage on it is about €250,000. I want to sort my pension.',
     deps: { extractTurn: planner, renderText: scriptedRenderer }
   });
   const declined = await resolveAgentOffer(env, config, { sessionId, meetingId, decision: 'declined' });
@@ -386,7 +388,7 @@ async function atCapacitySession(label) {
   }, {}]);
   const turn = await processAgentTurn(env, config, {
     sessionId, meetingId,
-    message: 'I want to understand where I stand overall, review the mortgage, and plan for my two children’s college. I own the home, have a pension.',
+    message: 'I want to understand where I stand overall, review the mortgage, and plan for my two children’s college. My home is worth about €500,000, its mortgage is about €250,000, and my pension is about €120,000.',
     deps: { extractTurn: planner, renderText: scriptedRenderer }
   });
   return { sessionId, meetingId, turn };
@@ -581,7 +583,7 @@ async function atCapacitySession(label) {
   }, {}]);
   await processAgentTurn(env, config, {
     sessionId, meetingId,
-    message: 'I own my home with a mortgage and want to sort my pension.',
+    message: 'My home is worth about €500,000 and the mortgage on it is about €250,000. I want to sort my pension.',
     deps: { extractTurn: planner, renderText: scriptedRenderer }
   });
   await resolveAgentOffer(env, config, { sessionId, meetingId, decision: 'accepted' });
@@ -618,6 +620,59 @@ async function atCapacitySession(label) {
   const profile = await getCurrentProfile(env, sessionRow);
   assert.ok(profile, 'the profile decrypts through the shared repository');
   pass('the agent transport builds shared planning state with no realtime consent and no lease');
+}
+
+{
+  // The live semantic guard can prove an explicitly anaphoric match even
+  // though one spoken value supports two canonical rate fields. That guarded
+  // fact must survive the complete shared commit path; re-running the silent
+  // planner's one-occurrence/one-candidate grounder here would drop it.
+  const { sessionId, meetingId } = await newAgentSession('live-anaphoric-rate');
+  const transcript = 'My workplace pension is worth €61,000. I contribute 5% and my employer matches that.';
+  const before = await loadAgentContext(env, config, sessionId, meetingId);
+  const attempt = await beginRealtimeToolAttempt(env, {
+    sessionId,
+    leaseId: meetingId,
+    providerToolCallId: 'live-anaphoric-rate-call',
+    toolName: 'save_facts',
+    toolVersion: 'planeir-live-tools-v1',
+    expectedProfileRevision: Number(before.sessionRow.current_profile_revision),
+    arguments: { factCount: 1 },
+    maxToolCalls: config.realtimeMaxToolCalls
+  });
+  const result = await executeLiveTool('save_facts', {
+    facts: [{
+      factId: 'pension_positions',
+      value: {
+        entityId: 'workplace_pension',
+        type: 'occupational',
+        owner: 'primary',
+        currentValue: { amount: 61_000, currency: 'EUR' },
+        employeeContributionRate: 5,
+        employerContributionRate: 5
+      },
+      certainty: 'exact'
+    }]
+  }, {
+    env,
+    config,
+    latestClientTranscript: transcript,
+    clientSourcedFigures: null,
+    assistantReadBack: '',
+    evidenceRef: 'live-anaphoric-rate-turn',
+    leaseId: meetingId,
+    toolAttemptId: attempt.row.id,
+    loadContext: () => loadAgentContext(env, config, sessionId, meetingId)
+  });
+  assert.deepEqual(result.rejected, [], 'the already-grounded live fact is not rejected by a second grounder');
+  assert.deepEqual(result.saved, ['pension_positions']);
+  const sessionRow = await getSessionRow(env, sessionId);
+  const profile = await getCurrentProfile(env, sessionRow);
+  const pension = profile.pensions.find((item) => item.type === 'occupational');
+  assert.equal(pension?.currentValue?.amount, 61_000);
+  assert.equal(pension?.employeeContributionRate, 0.05);
+  assert.equal(pension?.employerContributionRate, 0.05);
+  pass('a live anaphoric employer match survives strict grounding and the full shared commit path');
 }
 
 /* ================================================================== */

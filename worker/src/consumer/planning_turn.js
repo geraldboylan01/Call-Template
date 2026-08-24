@@ -18,6 +18,11 @@
 
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { resolveSemanticFact } from '../../../js/planning/semantic_facts.js';
+import {
+  boundedUncoveredValueEvidence,
+  groundPlannerExtraction,
+  valueEvidenceCoverage
+} from '../../../js/planning/value_evidence.js';
 import { ConsumerError } from './errors.js';
 import { confirmProfileRevision, recordEvent } from './repository.js';
 import { resolveConfirmationCandidateModuleIds } from './planning_context.js';
@@ -232,7 +237,8 @@ const REPAIRABLE_REJECTIONS = Object.freeze({
   realtime_pension_review_required: 'pension_ambiguous',
   realtime_planner_candidate_money_invalid: 'money_invalid',
   realtime_planner_candidate_invalid: 'value_invalid',
-  realtime_planner_output_invalid: 'value_invalid'
+  realtime_planner_output_invalid: 'value_invalid',
+  realtime_planner_candidate_evidence_unsupported: 'evidence_unsupported'
 });
 
 /**
@@ -273,8 +279,8 @@ export function blockedOnFromOutcomes(outcomes = []) {
   return null;
 }
 
-export function buildRepairRequest(outcomes = []) {
-  const failedItems = outcomes
+export function buildRepairRequest(outcomes = [], coverage = null) {
+  const repairableFailures = outcomes
     .filter((outcome) => outcome.accepted !== true)
     .map((outcome) => {
       const reason = REPAIRABLE_REJECTIONS[outcome.errorCode];
@@ -282,13 +288,32 @@ export function buildRepairRequest(outcomes = []) {
         ? { candidateId: outcome.candidateId || null, factId: outcome.factId || null, reason }
         : null;
     })
-    .filter(Boolean)
-    .slice(0, 8);
-  if (failedItems.length === 0) return null;
+    .filter(Boolean);
+  const failedItems = repairableFailures.slice(0, 8);
+  const bounded = boundedUncoveredValueEvidence(coverage, {
+    // One repair request has one eight-item budget. A full refusal batch must
+    // not acquire a ninth item through the omission path.
+    limit: Math.max(0, 8 - failedItems.length)
+  });
+  const uncoveredEvidence = bounded.items;
+  if (failedItems.length === 0 && uncoveredEvidence.length === 0) return null;
+  const failedCandidateIds = new Set(failedItems.map((item) => item.candidateId).filter(Boolean));
+  const allowedEvidenceIds = [...new Set([
+    ...uncoveredEvidence.map((item) => item.evidenceId),
+    ...((coverage?.covered || [])
+      .filter((item) => failedCandidateIds.has(item.candidateId))
+      .map((item) => item.evidenceId))
+  ])];
   return {
-    instruction: 'Re-read the same client turn and emit ONLY these items, fixing the stated reason. '
-      + 'Emit nothing else. Never invent a value the turn does not support.',
-    failedItems
+    instruction: 'Re-read the same finalized client turn once. Review ONLY the refused candidates and '
+      + 'occurrence-addressed uncovered evidence listed here. Classify an uncovered occurrence from its '
+      + 'exact context; it is not automatically a holding. Emit only canonical candidates supported by '
+      + 'that turn, with exact evidence. Emit nothing else and never invent or calculate a value.',
+    failedItems,
+    uncoveredEvidence,
+    allowedEvidenceIds,
+    overflowCount: Math.max(0, repairableFailures.length - failedItems.length)
+      + bounded.overflowCount
   };
 }
 
@@ -300,13 +325,59 @@ export function buildRepairRequest(outcomes = []) {
  * for something the client can see was understood.
  */
 export function mergeRepairOutcomes(original = [], repaired = []) {
-  const recoveredFactIds = new Set(
-    repaired.filter((item) => item.accepted === true && item.factId).map((item) => item.factId)
-  );
-  const stillFailing = original.filter((item) => (
-    item.accepted === true || !recoveredFactIds.has(item.factId)
-  ));
-  return [...stillFailing, ...repaired];
+  const acceptedRepairs = repaired.filter((item) => item.accepted === true);
+  const recoveredOriginalIndexes = new Set();
+  const recoveredCandidateIds = new Map();
+  const originalFailures = original
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.accepted !== true);
+  for (const repair of acceptedRepairs) {
+    // Extraction schemas number each pass from one, so a repair's position-1
+    // can collide with an ACCEPTED position-1 from the first pass while really
+    // recovering failed position-2. Candidate identity is authoritative only
+    // when it names an outstanding failure of the same fact (or one side lacks
+    // a fact id, as malformed money candidates often do).
+    let recovered = originalFailures.find(({ item, index }) => (
+      !recoveredOriginalIndexes.has(index)
+      && repair.candidateId
+      && item.candidateId === repair.candidateId
+      && (!repair.factId || !item.factId || repair.factId === item.factId)
+    ));
+    if (!recovered && repair.factId) {
+      // Fact-id fallback is a consumed multiset, not a Set. One accepted repair
+      // removes one failed same-fact sibling and no more.
+      recovered = originalFailures.find(({ item, index }) => (
+        !recoveredOriginalIndexes.has(index) && item.factId === repair.factId
+      ));
+    }
+    if (recovered) {
+      recoveredOriginalIndexes.add(recovered.index);
+      // Preserve first-pass identity in the merged audit/result. A repair pass
+      // restarts schema numbering at one, so leaving its regenerated id intact
+      // can create two accepted position-1 outcomes and no position-2.
+      if (recovered.item.candidateId) {
+        recoveredCandidateIds.set(repair, recovered.item.candidateId);
+      }
+    }
+  }
+  const stillFailing = original.filter((_item, index) => !recoveredOriginalIndexes.has(index));
+  const usedCandidateIds = new Set(stillFailing.map((item) => item.candidateId).filter(Boolean));
+  const normalizedRepairs = repaired.map((item) => {
+    const recoveredId = recoveredCandidateIds.get(item);
+    let candidateId = recoveredId || item.candidateId;
+    if (candidateId && usedCandidateIds.has(candidateId)) {
+      const base = `${candidateId}-repair`;
+      candidateId = base;
+      let suffix = 2;
+      while (usedCandidateIds.has(candidateId)) {
+        candidateId = `${base}-${suffix}`;
+        suffix += 1;
+      }
+    }
+    if (candidateId) usedCandidateIds.add(candidateId);
+    return candidateId && candidateId !== item.candidateId ? { ...item, candidateId } : item;
+  });
+  return [...stillFailing, ...normalizedRepairs];
 }
 
 export async function applyPlannerCandidates({
@@ -314,13 +385,18 @@ export async function applyPlannerCandidates({
   config,
   context,
   extraction,
+  transcript = null,
+  allowedEvidenceIds = null,
   evidenceRef,
   leaseId = null,
   toolAttemptId = null,
   loadContext
 }) {
-  const candidates = mapPlannerExtractionToCandidates(extraction);
-  const outcomes = (extraction.invalidCandidates || []).map((item) => ({
+  const groundedExtraction = transcript === null
+    ? extraction
+    : groundPlannerExtraction(extraction, transcript, { allowedEvidenceIds });
+  const candidates = mapPlannerExtractionToCandidates(groundedExtraction);
+  const outcomes = (groundedExtraction.invalidCandidates || []).map((item) => ({
     candidateId: item.candidateId,
     // The planner knows which fact it was trying to write even when the value
     // will not parse. Reporting null made every such rejection anonymous.
@@ -337,7 +413,8 @@ export async function applyPlannerCandidates({
     const fact = {
       factId: candidate.factId,
       value: candidate.value,
-      certainty: candidate.certainty
+      certainty: candidate.certainty,
+      evidenceText: candidate.evidenceText || ''
     };
     try {
       const proposed = planFactProposal({
@@ -378,7 +455,22 @@ export async function applyPlannerCandidates({
       });
     }
   }
-  return { context: current, outcomes, candidateCount: candidates.length };
+  const acceptedCandidateIds = new Set(
+    outcomes.filter((item) => item.accepted === true && item.candidateId)
+      .map((item) => item.candidateId)
+  );
+  const sourcedValueEvidence = transcript === null ? [] : valueEvidenceCoverage(
+    transcript,
+    groundedExtraction
+  ).covered
+    .filter((item) => acceptedCandidateIds.has(item.candidateId))
+    .map((item) => ({ evidenceId: item.evidenceId, candidateId: item.candidateId }));
+  return {
+    context: current,
+    outcomes,
+    candidateCount: candidates.length,
+    sourcedValueEvidence
+  };
 }
 
 /**

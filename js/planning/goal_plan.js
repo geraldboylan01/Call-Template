@@ -1,4 +1,5 @@
 import { GOAL_TYPES, MODULE_IDS } from './contracts.js';
+import { getGoalClientPhrase } from './goal_catalogue.js';
 import {
   getModuleIntakeReadiness,
   getPlanningModuleDefinition,
@@ -28,23 +29,6 @@ const EARLY_LIFE_STAGES = new Set(['student', 'early_adult', 'graduate', 'young_
 const NON_OWNING_PROPERTY_STATUSES = new Set([
   'renter', 'first_time_buyer', 'buying_soon', 'delaying_purchase', 'no_property'
 ]);
-
-const GOAL_LABELS = Object.freeze({
-  understand_position: 'understanding your overall position',
-  maintain_liquidity: 'building cash resilience',
-  buy_home: 'buying a home',
-  build_wealth: 'building wealth',
-  improve_pension: 'improving your pension position',
-  retire: 'planning retirement',
-  retire_early: 'planning early retirement',
-  optimise_mortgage: 'reviewing your mortgage',
-  manage_loan: 'reviewing or repaying your loan',
-  fund_education: 'funding education',
-  assess_decision: 'assessing a financial decision',
-  transfer_wealth: 'transferring wealth',
-  business_planning: 'business planning',
-  agricultural_planning: 'agricultural planning'
-});
 
 /**
  * Consumer goal routes, derived from the adviser-authored module manifests.
@@ -426,7 +410,7 @@ function intakeFor(moduleId, profile, allowedModuleIds, adviserOverrides = null,
 }
 
 function reasonFor(selection) {
-  const goals = selection.relatedGoalTypes.map((type) => GOAL_LABELS[type] || type).join(' and ');
+  const goals = selection.relatedGoalTypes.map(getGoalClientPhrase).join(' and ');
   if (selection.source === 'goal_companion') return `Included because it is needed alongside ${goals}.`;
   if (selection.source === 'balance_sheet_default') return 'Included to put the selected goals in the context of the household’s overall position.';
   return `Selected directly for ${goals}.`;
@@ -746,5 +730,5 @@ export function goalPlanRecommendations(plan, rawProfile) {
 }
 
 export function getGoalLabel(goalType) {
-  return GOAL_LABELS[goalType] || goalType;
+  return getGoalClientPhrase(goalType);
 }

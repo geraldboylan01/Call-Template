@@ -50,8 +50,8 @@ export function scriptedPlanner(planFor, { latencyMs = 0 } = {}) {
     // else fails the whole plan, which is how a harness that invented its own
     // vocabulary produced five `failed` reconciliations and blamed the Worker.
     const plan = instruction === null || instruction === undefined
-      ? { schemaVersion: 1, verdict: 'clean', reviewedNoteIds: [], operationGroups: [] }
-      : buildPlan(instruction, turns, context.notes || []);
+      ? buildPlan({ verdict: 'clean', repairs: [] }, turns, context.notes || [], context)
+      : buildPlan(instruction, turns, context.notes || [], context);
     calls.push({
       at: startedAt,
       latencyMs: Date.now() - startedAt,
@@ -119,7 +119,7 @@ function* jsonDocumentsIn(value, depth = 0) {
   }
 }
 
-function buildPlan(instruction, turns, notes) {
+function buildPlan(instruction, turns, notes, context) {
   const repairs = Array.isArray(instruction.repairs) ? instruction.repairs : [];
   const operationGroups = repairs.map((repair, index) => {
     const quote = String(repair.quote || '');
@@ -160,10 +160,30 @@ function buildPlan(instruction, turns, notes) {
       }]
     };
   });
+  const operations = operationGroups.flatMap((group) => group.operations);
+  const valueEvidenceDispositions = (context?.uncoveredValueEvidence || []).map((item) => {
+    const turn = turns.find((candidate) => candidate.turnId === item.turnId);
+    const matching = operations.filter((operation) => (operation.evidence || []).some((ref) => {
+      if (!turn || ref.turnId !== item.turnId) return false;
+      const start = turn.text.indexOf(ref.quote);
+      return start >= 0 && start <= item.start && start + ref.quote.length >= item.end;
+    }));
+    if (matching.length === 0) {
+      return { evidenceId: item.evidenceId, disposition: 'not_current_fact', operationIds: [] };
+    }
+    return {
+      evidenceId: item.evidenceId,
+      disposition: matching.every((operation) => operation.op === 'request_clarification')
+        ? 'clarification_proposed'
+        : 'operation_proposed',
+      operationIds: matching.map((operation) => operation.operationId)
+    };
+  });
   return {
     schemaVersion: 1,
     verdict: instruction.verdict || (operationGroups.length ? 'changes_proposed' : 'clean'),
     reviewedNoteIds: instruction.reviewedNoteIds || [],
+    valueEvidenceDispositions,
     operationGroups
   };
 }

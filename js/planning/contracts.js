@@ -3,6 +3,8 @@
  * DOM-free so the browser journey and the Worker can share the same policy.
  */
 
+import { GOAL_TYPES as CATALOGUE_GOAL_TYPES } from './goal_catalogue.js';
+
 export const HOUSEHOLD_PROFILE_SCHEMA_VERSION = 1;
 export const CONSUMER_PLANNING_RULES_VERSION = 'consumer-routing-2.0.0';
 export const CONSUMER_CALCULATION_VERSION = 'consumer-calculation-1.0.0';
@@ -19,22 +21,9 @@ export const EMPLOYMENT_STATUSES = Object.freeze([
   'unknown'
 ]);
 
-export const GOAL_TYPES = Object.freeze([
-  'understand_position',
-  'maintain_liquidity',
-  'buy_home',
-  'build_wealth',
-  'improve_pension',
-  'retire',
-  'retire_early',
-  'optimise_mortgage',
-  'manage_loan',
-  'fund_education',
-  'assess_decision',
-  'transfer_wealth',
-  'business_planning',
-  'agricultural_planning'
-]);
+// Compatibility export. Goal meaning and labels live in goal_catalogue.js;
+// this module remains the public contract surface used throughout the app.
+export const GOAL_TYPES = CATALOGUE_GOAL_TYPES;
 
 export const GOAL_PRIORITIES = Object.freeze(['high', 'medium', 'low']);
 export const GOAL_STATUSES = Object.freeze(['exploring', 'active', 'completed', 'paused']);

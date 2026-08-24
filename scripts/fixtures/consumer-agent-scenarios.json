@@ -23,7 +23,7 @@
             "goals": [
               {
                 "type": "buy_home",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "facts": [
@@ -168,7 +168,7 @@
             "goals": [
               {
                 "type": "improve_pension",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "facts": [
@@ -225,12 +225,12 @@
       },
       "turns": [
         {
-          "say": "I'm 42, I own my house and I want to review the mortgage \u2014 I think the rate is poor.",
+          "say": "I'm 42, I own my house, it's worth about €400,000 and the mortgage is about €220,000. I want to review the mortgage because I think the rate is poor.",
           "extraction": {
             "goals": [
               {
                 "type": "optimise_mortgage",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "facts": [
@@ -308,7 +308,7 @@
             "goals": [
               {
                 "type": "understand_position",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "facts": [
@@ -461,7 +461,7 @@
             "goals": [
               {
                 "type": "understand_position",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "facts": [

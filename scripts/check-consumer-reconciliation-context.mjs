@@ -6,11 +6,13 @@ import {
   createHouseholdProfile,
   normalizeHouseholdProfile
 } from '../js/planning/index.js';
+import { extractValueEvidence } from '../js/planning/value_evidence.js';
 import {
   RECONCILIATION_SYSTEM_PROMPT,
   buildPlannerReconciliationContext,
   legacyPlanningNotesFromProfile,
-  normalizeModelReconciliationPlan
+  normalizeModelReconciliationPlan,
+  validateValueEvidenceDispositions
 } from '../worker/src/consumer/planner_reconciliation.js';
 import {
   beginRealtimeToolAttempt,
@@ -190,9 +192,122 @@ assert.equal(
   'a ready independent analysis remains explicitly runnable'
 );
 assert.deepEqual(built.voiceWriteOutcomes, voiceWriteOutcomes);
+assert.deepEqual(built.uncoveredValueEvidence, [],
+  'a turn with no explicit value carries no omission-repair obligation');
 assert.ok(built.entities.some((entity) => (
   entity.newEntitySlot === true && entity.factIds.includes('pension_positions')
 )), 'the server must supply bounded identities for positions T1 omitted entirely');
+
+{
+  const gapTranscript = 'The credit union has €14,000 and the bakery is worth €120,000.';
+  const gapEvidence = extractValueEvidence(gapTranscript);
+  const gap = buildPlannerReconciliationContext({
+    context,
+    turns: [{
+      id: 'turn-value-gap',
+      role: 'user',
+      transcript: gapTranscript,
+      sequence: 2
+    }],
+    notes: [],
+    throughTurnId: 'turn-value-gap',
+    voiceWriteOutcomes: [{
+      result: { sourcedValueEvidence: [{ evidenceId: gapEvidence[0].evidenceId }] }
+    }]
+  });
+  assert.equal(gap.uncoveredValueEvidence.length, 1,
+    'a partial fast-lane write must expose the omitted occurrence to T2');
+  assert.equal(gap.uncoveredValueEvidence[0].normalizedValue, 120_000);
+  assert.match(gap.uncoveredValueEvidence[0].evidenceId, /^turn-value-gap:value:\d+:\d+$/,
+    'T2 work is bound to source offsets rather than a category-pair heuristic');
+  assert.ok(gap.entities.some((entity) => (
+    entity.newEntitySlot === true && entity.factIds.includes('business_position')
+  )), 'an unrelated volunteered holding receives a bounded server-owned identity slot');
+  assert.ok(gap.valueContracts.some((contract) => contract.factId === 'business_position'),
+    'gap-mode contracts are not limited to analyses already selected');
+
+  const recoveryOperation = {
+    operationId: 'recover-bakery',
+    op: 'upsert_note',
+    evidence: [{
+      turnId: 'turn-value-gap',
+      quote: 'the bakery is worth €120,000.'
+    }]
+  };
+  const recoveryPlan = {
+    operationGroups: [{ groupId: 'recover-business', atomic: false, operations: [recoveryOperation] }]
+  };
+  const recoveryRaw = {
+    valueEvidenceDispositions: [{
+      evidenceId: gap.uncoveredValueEvidence[0].evidenceId,
+      disposition: 'operation_proposed',
+      operationIds: ['recover-bakery']
+    }]
+  };
+  assert.doesNotThrow(() => validateValueEvidenceDispositions({
+    raw: recoveryRaw,
+    plan: recoveryPlan,
+    input: gap,
+    acceptedOperationIds: ['recover-bakery']
+  }), 'a disposition grounded in the exact uncovered occurrence must close the audit obligation');
+  assert.throws(() => validateValueEvidenceDispositions({
+    raw: { valueEvidenceDispositions: [] },
+    plan: recoveryPlan,
+    input: gap
+  }), /did not disposition every uncovered value/i,
+  'T2 cannot return clean while silently omitting an uncovered occurrence');
+  assert.equal(validateValueEvidenceDispositions({
+    raw: recoveryRaw,
+    plan: recoveryPlan,
+    input: gap,
+    acceptedOperationIds: []
+  }).complete, false,
+  'a rejected operation leaves the material-turn review incomplete without hiding accepted sibling work');
+}
+
+{
+  const earlierTranscript = 'Cash is €11,000 and my consulting business is worth €90,000.';
+  const laterTranscript = 'Salary is €70,000 and the annual bonus is €8,000.';
+  const coalesced = buildPlannerReconciliationContext({
+    context,
+    turns: [{
+      id: 'turn-earlier-gap',
+      role: 'user',
+      transcript: earlierTranscript,
+      sequence: 1
+    }, {
+      id: 'turn-later-gap',
+      role: 'user',
+      transcript: laterTranscript,
+      sequence: 2
+    }],
+    notes: [],
+    throughTurnId: 'turn-later-gap',
+    reviewTurnIds: ['turn-earlier-gap', 'turn-later-gap'],
+    voiceWriteOutcomes: [{
+      sourceTurnId: 'turn-earlier-gap',
+      result: {
+        sourcedValueEvidence: [{ evidenceId: extractValueEvidence(earlierTranscript)[0].evidenceId }]
+      }
+    }, {
+      sourceTurnId: 'turn-later-gap',
+      result: {
+        sourcedValueEvidence: [{ evidenceId: extractValueEvidence(laterTranscript)[0].evidenceId }]
+      }
+    }]
+  });
+  assert.deepEqual(
+    coalesced.uncoveredValueEvidence.map((item) => item.normalizedValue),
+    [90_000, 8_000],
+    'a later coalesced checkpoint must retain uncovered values from every outstanding material turn'
+  );
+  assert.deepEqual(
+    coalesced.uncoveredValueEvidence.map((item) => item.turnId),
+    ['turn-earlier-gap', 'turn-later-gap'],
+    'each aggregated obligation remains namespaced to its own finalized turn'
+  );
+  assert.deepEqual(coalesced.missingReviewTurnIds, []);
+}
 
 const single = normalizeHouseholdProfile({ ...profile, partner: undefined });
 const singleContext = buildPlannerReconciliationContext({

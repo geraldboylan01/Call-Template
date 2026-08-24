@@ -118,14 +118,14 @@ jobs:
       # change, and an unset variable deploys the inert legacy path. The Worker
       # also fails closed to legacy on any value it does not recognise.
       CONSUMER_BETA_PLANNER_RECONCILIATION_MODE: ${{ vars.CONSUMER_PLANNER_RECONCILIATION_MODE || 'legacy' }}
-      CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION: "planning-reconciliation-v1"
+      CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION: "planning-reconciliation-v2"
       CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v9"
       CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v7"
       # The live lane runs a different prompt and a different toolset, and the
       # lease row records whichever pair the deployment is configured with. Left
       # on the v2 values a live meeting would file itself under a prompt it
       # never ran and a seven-tool surface it does not have.
-      CONSUMER_BETA_LIVE_PROMPT_VERSION: "planeir-live-conversation-v8"
+      CONSUMER_BETA_LIVE_PROMPT_VERSION: "planeir-live-conversation-v9"
       CONSUMER_BETA_LIVE_TOOLSET_VERSION: "planeir-live-tools-v1"
       CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
       # Adviser-demo envelope: €10 per session (warn at €7.50) inside the
@@ -739,7 +739,7 @@ jobs:
                 CONSUMER_REALTIME_REASONING_EFFORT: ['CONSUMER_BETA_REALTIME_REASONING_EFFORT', 'low'],
                 CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
                 CONSUMER_REALTIME_PLANNER_MODEL: ['CONSUMER_BETA_REALTIME_PLANNER_MODEL', 'gpt-5.6-luna'],
-                CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION: ['CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION', 'planning-reconciliation-v1'],
+                CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION: ['CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION', 'planning-reconciliation-v2'],
                 CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_REALTIME_PROMPT_VERSION', 'consumer-realtime-orchestrator-v9'],
                 CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_REALTIME_TOOLSET_VERSION', 'consumer-realtime-tools-v7'],
                 CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
@@ -778,7 +778,7 @@ jobs:
               // than none: it would be believed.
               if (liveVoiceEnabled) {
                 const fixedLiveValues = {
-                  CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v8'],
+                  CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v9'],
                   CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1']
                 };
                 for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedLiveValues)) {

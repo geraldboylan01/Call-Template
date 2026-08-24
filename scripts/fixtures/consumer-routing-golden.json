@@ -55,10 +55,9 @@
         "I'm 45 and want to retire at 62. I earn €90k a year. My pension pot is €220k, I contribute 8% and my employer contributes 6%. My retirement income target is €50k a year. We spend €3,500 per month."
       ],
       "expected": {
-        "goalTypes": [
-          "retire",
-          "improve_pension"
-        ],
+      "goalTypes": [
+        "retire"
+      ],
         "consumerPlanModuleIds": [
           "pension_projection"
         ],
@@ -193,20 +192,20 @@
             "releaseGate": "consumer_enabled"
           },
           {
-            "moduleId": "liquidity_analysis",
-            "selectionStatus": "recommended",
-            "routeRuleId": "manifest.buy_home.liquidity_analysis.v1",
-            "readinessStatus": "missing_information",
-            "releaseStatus": "active",
-            "consumerAvailable": true,
-            "releaseGate": "consumer_enabled"
-          },
-          {
             "moduleId": "college_funding",
             "selectionStatus": "recommended",
             "routeRuleId": "manifest.fund_education.college_funding.v1",
             "readinessStatus": "missing_information",
             "releaseStatus": "beta",
+            "consumerAvailable": true,
+            "releaseGate": "consumer_enabled"
+          },
+          {
+            "moduleId": "liquidity_analysis",
+            "selectionStatus": "recommended",
+            "routeRuleId": "manifest.buy_home.liquidity_analysis.v1",
+            "readinessStatus": "missing_information",
+            "releaseStatus": "active",
             "consumerAvailable": true,
             "releaseGate": "consumer_enabled"
           }

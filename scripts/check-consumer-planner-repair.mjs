@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { buildRepairRequest, mergeRepairOutcomes } from '../worker/src/consumer/planning_turn.js';
+import { valueEvidenceCoverage } from '../js/planning/value_evidence.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 let checks = 0;
@@ -61,9 +62,43 @@ check('the reason is carried, not the value',
 check('the fact it was trying to write is named',
   ambiguous.failedItems[0].factId === 'pension_employee_contribution_rate');
 check('it is told to emit nothing else',
-  /ONLY these items/.test(ambiguous.instruction) && /Emit nothing else/.test(ambiguous.instruction));
+  /Review ONLY/.test(ambiguous.instruction) && /Emit nothing else/i.test(ambiguous.instruction));
 check('it is forbidden from inventing a value',
-  /Never invent a value the turn does not support/.test(ambiguous.instruction));
+  /never invent or calculate a value/i.test(ambiguous.instruction));
+
+const omitted = buildRepairRequest([], valueEvidenceCoverage(
+  'Cash is €14,000 and a business is worth €120,000.',
+  [{ amount: 14_000, currency: 'EUR' }]
+));
+check('a candidate omitted entirely is now repairable', omitted.uncoveredEvidence.length === 1);
+check('the omitted occurrence carries offsets rather than a category pair',
+  /^value:\d+:\d+$/.test(omitted.uncoveredEvidence[0].evidenceId)
+    && omitted.uncoveredEvidence[0].normalizedValue === 120_000);
+
+const mixedRepairTranscript = 'Cash is €14,000 and the business is worth €120,000.';
+const mixedRepairCoverage = valueEvidenceCoverage(mixedRepairTranscript, {
+  semanticFacts: [],
+  positions: [{
+    candidateId: 'position-1',
+    amount: { amount: 14_000, currency: 'EUR' },
+    evidenceText: 'Cash is €14,000'
+  }]
+});
+const rejectedAndOmitted = buildRepairRequest([{
+  candidateId: 'position-1',
+  factId: 'asset_position',
+  accepted: false,
+  errorCode: 'realtime_planner_candidate_evidence_unsupported'
+}], mixedRepairCoverage);
+check('a rejected plus omitted turn remains one bounded repair',
+  rejectedAndOmitted.failedItems.length === 1
+    && rejectedAndOmitted.uncoveredEvidence.length === 1);
+check('mixed repair keeps both exact occurrence ids allowlisted',
+  rejectedAndOmitted.allowedEvidenceIds.length === 2
+    && mixedRepairCoverage.evidence.every((item) => (
+      rejectedAndOmitted.allowedEvidenceIds.includes(item.evidenceId)
+    )),
+  JSON.stringify(rejectedAndOmitted));
 
 const money = buildRepairRequest([
   { candidateId: 'position-1', accepted: false, errorCode: 'realtime_planner_candidate_money_invalid' }
@@ -84,6 +119,24 @@ const many = buildRepairRequest(Array.from({ length: 30 }, (_, index) => ({
   candidateId: `fact-${index}`, accepted: false, errorCode: 'realtime_planner_candidate_money_invalid'
 })));
 check('the repair request is bounded', many.failedItems.length <= 8, String(many.failedItems.length));
+check('refused candidates outside the bound remain observable',
+  many.overflowCount === 22, JSON.stringify(many));
+const manyWithOmissions = buildRepairRequest(
+  Array.from({ length: 8 }, (_, index) => ({
+    candidateId: `failed-${index}`,
+    accepted: false,
+    errorCode: 'realtime_planner_candidate_money_invalid'
+  })),
+  valueEvidenceCoverage(
+    Array.from({ length: 4 }, (_, index) => `Holding ${String.fromCharCode(65 + index)} is €${index + 1},000`).join('; '),
+    []
+  )
+);
+check('failed candidates and omissions share one eight-item request budget',
+  manyWithOmissions.failedItems.length + manyWithOmissions.uncoveredEvidence.length === 8,
+  JSON.stringify(manyWithOmissions));
+check('omissions outside a full request remain observable as overflow',
+  manyWithOmissions.overflowCount === 4, JSON.stringify(manyWithOmissions));
 
 /* ------------------------------------------------------- merging back */
 
@@ -115,6 +168,45 @@ check('an unrecovered sibling still reports as failed',
 check('the recovered sibling is not double-counted',
   partial.filter((item) => item.factId === 'a').length === 1);
 
+const sameFactSiblings = mergeRepairOutcomes(
+  [
+    { candidateId: 'position-1', factId: 'asset_position', accepted: false, errorCode: 'realtime_planner_candidate_money_invalid' },
+    { candidateId: 'position-2', factId: 'asset_position', accepted: false, errorCode: 'realtime_planner_candidate_money_invalid' }
+  ],
+  [{ candidateId: 'position-1', factId: 'asset_position', accepted: true }]
+);
+check('repairing one same-fact holding does not erase its sibling',
+  sameFactSiblings.some((item) => item.candidateId === 'position-2' && item.accepted === false));
+
+const shiftedSameFact = mergeRepairOutcomes(
+  [
+    { candidateId: 'position-1', factId: 'asset_position', accepted: true },
+    { candidateId: 'position-2', factId: 'asset_position', accepted: false, errorCode: 'realtime_planner_candidate_money_invalid' }
+  ],
+  // A repair pass numbers its first emitted position from one again. This id
+  // collides with the already-accepted sibling, not with the item it recovered.
+  [{ candidateId: 'position-1', factId: 'asset_position', accepted: true }]
+);
+check('a shifted repair id recovers one failed same-fact sibling',
+  shiftedSameFact.every((item) => item.accepted === true)
+    && shiftedSameFact.length === 2,
+  JSON.stringify(shiftedSameFact));
+check('the recovered sibling keeps its original candidate identity',
+  shiftedSameFact.map((item) => item.candidateId).join(',') === 'position-1,position-2',
+  JSON.stringify(shiftedSameFact));
+
+const shiftedAcrossFacts = mergeRepairOutcomes(
+  [
+    { candidateId: 'position-1', factId: 'property_position', accepted: false, errorCode: 'realtime_planner_candidate_money_invalid' },
+    { candidateId: 'position-2', factId: 'asset_position', accepted: false, errorCode: 'realtime_planner_candidate_money_invalid' }
+  ],
+  [{ candidateId: 'position-1', factId: 'asset_position', accepted: true }]
+);
+check('a regenerated id cannot erase a different-fact failure',
+  shiftedAcrossFacts.some((item) => item.factId === 'property_position' && item.accepted === false)
+    && !shiftedAcrossFacts.some((item) => item.factId === 'asset_position' && item.accepted === false),
+  JSON.stringify(shiftedAcrossFacts));
+
 /* --------------------------------------------- how it is wired, both ways */
 
 const agent = readFileSync(`${root}scripts/../worker/src/consumer/agent_session.js`, 'utf8');
@@ -129,6 +221,11 @@ for (const [transport, source] of [['text', agent], ['voice', voice]]) {
     'the client is already waiting; a slow repair is worth less than moving on');
   check(`${transport} merges rather than replaces the outcomes`,
     /mergeRepairOutcomes\(/.test(source));
+  check(`${transport} always applies the bounded occurrence allowlist`,
+    /allowedEvidenceIds: repair\.allowedEvidenceIds/.test(source));
+  check(`${transport} persists accepted occurrence provenance for the background audit`,
+    /sourcedValueEvidence/.test(source),
+    'a bare accepted number cannot distinguish equal-valued source occurrences');
 }
 // A degraded turn used the deterministic extractor, which has no model to re-ask.
 check('text never repairs a deterministic fallback turn',

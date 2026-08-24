@@ -246,7 +246,7 @@ await runCase('rules-only extraction captures common home and liquidity language
   assert.equal(profile.fieldMetadata['/goals/0/targetAmount/amount'].certainty, 'approximate');
 });
 
-await runCase('rules-only extraction captures retirement goals, pot and contribution rates', () => {
+await runCase('rules-only extraction captures the retirement goal, pot and contribution rates', () => {
   const profile = retirementProfile();
   assert.equal(profile.primaryPerson.age, 45);
   assert.equal(profile.primaryPerson.intendedRetirementAge, 62);
@@ -255,7 +255,8 @@ await runCase('rules-only extraction captures retirement goals, pot and contribu
   assert.equal(profile.pensions[0].employerContributionRate, 0.06);
   assert.equal(profile.assumptions.values.retirement.targetIncomeToday, 50000);
   assert.ok(profile.goals.some((goal) => goal.type === 'retire'));
-  assert.ok(profile.goals.some((goal) => goal.type === 'improve_pension'));
+  assert.ok(!profile.goals.some((goal) => goal.type === 'improve_pension'),
+    'stating a pension value and current rates must not invent a separate pension-improvement goal');
 });
 
 await runCase('rules-only fallback returns no invented values for unbounded prose', () => {

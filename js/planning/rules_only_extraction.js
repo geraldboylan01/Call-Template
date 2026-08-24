@@ -1,4 +1,9 @@
 import { createHouseholdProfile, createProfilePatch, normalizeHouseholdProfile } from './profile.js';
+import {
+  detectCatalogueGoalCandidates,
+  getGoalTitle,
+  goalProfilePriority
+} from './goal_catalogue.js';
 import { readJsonPointer } from './utils.js';
 
 export const RULES_ONLY_EXTRACTION_VERSION = 'rules-extraction-2.0.0';
@@ -87,57 +92,7 @@ function addCandidate(candidates, candidate) {
 }
 
 export function detectRulesOnlyGoalCandidates(text) {
-  const normalized = String(text || '').trim();
-  const candidates = [];
-  const add = (type, priority, ruleId, rationale) => addCandidate(candidates, {
-    type,
-    priority,
-    confidence: 'high',
-    triggeredRuleIds: [ruleId],
-    rationale: [rationale]
-  });
-  if (/\b(?:buy|buying|purchase|purchasing|get)\b.{0,30}\b(?:first\s+)?(?:home|house|property)\b|\bfirst[- ]time buyer\b/i.test(normalized)) {
-    add('buy_home', 100, 'text.buy_home.v1', 'The message explicitly describes buying a home.');
-  }
-  if (/\b(?:emergency fund|rainy day fund|cash buffer|cash reserve|liquidity|enough (?:cash|savings)|financial cushion)\b/i.test(normalized)) {
-    add('maintain_liquidity', 95, 'text.liquidity.v1', 'The message asks about cash resilience or an emergency reserve.');
-  }
-  if (/\b(?:retire early|early retirement|financial independence|fire)\b/i.test(normalized)) {
-    add('retire_early', 100, 'text.retire_early.v1', 'The message explicitly describes early retirement.');
-  } else if (/\b(?:retire|retirement)\b/i.test(normalized)) {
-    add('retire', 90, 'text.retire.v1', 'The message explicitly describes retirement.');
-  }
-  if (/\b(?:pension|prsa)\b/i.test(normalized)) {
-    add('improve_pension', 85, 'text.pension.v1', 'The message explicitly mentions a pension.');
-  }
-  if (/\b(?:overpay|pay off|clear|reduce|refinance|switch)\b.{0,25}\bmortgage\b|\bmortgage\b.{0,25}\b(?:overpay|pay off|clear|reduce|refinance|switch)\b/i.test(normalized)) {
-    add('optimise_mortgage', 90, 'text.mortgage.v1', 'The message asks about changing an existing mortgage path.');
-  }
-  if (/\b(?:personal|car|student|business|non[- ]housing) loan\b|\b(?:repay|pay off|clear|reduce|review)\b.{0,25}\bloan\b/i.test(normalized)) {
-    add('manage_loan', 90, 'text.loan.v1', 'The message asks about a non-housing loan.');
-  }
-  if (/\b(?:college|university|third[- ]level|education fund|education funding)\b/i.test(normalized)) {
-    add('fund_education', 85, 'text.education.v1', 'The message asks about education funding.');
-  }
-  if (/\b(?:overall position|financial position|financial overview|how (?:am i|are we) doing|complete financial review|full financial review)\b/i.test(normalized)) {
-    add('understand_position', 85, 'text.position.v1', 'The message asks for an overall view of the household position.');
-  }
-  if (/\b(?:build|grow|create)\b.{0,25}\b(?:wealth|investments?|portfolio)\b/i.test(normalized)) {
-    add('build_wealth', 80, 'text.wealth.v1', 'The message describes building long-term wealth.');
-  }
-  if (/\b(?:financial decision|weigh up|compare my options|compare our options)\b/i.test(normalized)) {
-    add('assess_decision', 70, 'text.decision.v1', 'The message mentions a financial decision without a supported topic.');
-  }
-  if (/\b(?:inheritance planning|estate planning|transfer(?:ring)? wealth|capital acquisitions tax|cat planning|gift(?:ing)? assets?)\b/i.test(normalized)) {
-    add('transfer_wealth', 80, 'text.transfer_wealth.v1', 'The message explicitly asks about a gift, estate or wealth transfer.');
-  }
-  if (/\b(?:business succession|business planning|business relief|company succession|company shares?|shareholding)\b/i.test(normalized)) {
-    add('business_planning', 80, 'text.business_planning.v1', 'The message explicitly asks about planning around a business interest.');
-  }
-  if (/\b(?:farm succession|farm planning|agricultural planning|agricultural relief|agricultural assets?|farmland)\b/i.test(normalized)) {
-    add('agricultural_planning', 80, 'text.agricultural_planning.v1', 'The message explicitly asks about agricultural assets or succession.');
-  }
-  return candidates.sort((left, right) => right.priority - left.priority || left.type.localeCompare(right.type));
+  return detectCatalogueGoalCandidates(text);
 }
 
 /**
@@ -175,23 +130,13 @@ export function extractRulesOnlyProfilePatch(text, {
   const approximateProvenance = { ...provenance, confidence: 'medium', certainty: 'approximate' };
 
   goalCandidates.forEach((candidate) => {
-    const titles = {
-      buy_home: 'Buy a home',
-      maintain_liquidity: 'Maintain an emergency cash reserve',
-      retire: 'Plan for retirement',
-      retire_early: 'Explore early retirement',
-      improve_pension: 'Improve pension readiness',
-      optimise_mortgage: 'Optimise the mortgage',
-      manage_loan: 'Review or repay a non-housing loan',
-      fund_education: 'Fund children’s education',
-      understand_position: 'Understand my current position',
-      build_wealth: 'Build long-term wealth',
-      assess_decision: 'Assess a financial decision',
-      transfer_wealth: 'Plan a wealth transfer',
-      business_planning: 'Plan around a business interest',
-      agricultural_planning: 'Plan around agricultural assets'
-    };
-    addGoalOperation(profile, operations, candidate.type, titles[candidate.type], candidate.priority >= 90 ? 'high' : 'medium');
+    addGoalOperation(
+      profile,
+      operations,
+      candidate.type,
+      getGoalTitle(candidate.type),
+      goalProfilePriority(candidate.priorityHint)
+    );
   });
 
   const primaryAge = findMatch(normalized, /\b(?:i am|i'm|i’m|aged|my age is)\s*(\d{1,3})\b/i);

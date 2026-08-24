@@ -618,14 +618,17 @@ export async function runVoiceScenario(scenario, { client, envOverrides = {} } =
       });
       const before = context;
       const applied = await applyPlannerCandidates({
-        env, config, context, extraction,
+        env, config, context, extraction, transcript: say,
         evidenceRef: turnRef, leaseId: meetingId, toolAttemptId: attempt.row.id, loadContext
       });
       outcomes = applied.outcomes;
       context = applied.context;
       await completeRealtimeToolAttempt(env, {
         sessionId, leaseId: meetingId, toolAttemptId: attempt.row.id,
-        status: 'succeeded', result: { ok: true }, errorCode: null, latencyMs: 0
+        status: 'succeeded',
+        result: { ok: true, sourcedValueEvidence: applied.sourcedValueEvidence },
+        errorCode: null,
+        latencyMs: 0
       }).catch(() => {});
       await recordPlanEvaluation({
         env, sessionId, previousState: before.state, nextState: context.state

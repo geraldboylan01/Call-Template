@@ -156,14 +156,14 @@ CONSUMER_REALTIME_MAX_RESPONSES = "100"
 CONSUMER_REALTIME_MAX_TOOL_CALLS = "60"
 CONSUMER_REALTIME_PLANNER_TIMEOUT_MS = "8000"
 CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS = "12000"
-CONSUMER_REALTIME_PLANNER_PROMPT_VERSION = "realtime-planner-v4"
+CONSUMER_REALTIME_PLANNER_PROMPT_VERSION = "realtime-planner-v5"
 # The background note reconciler. "legacy" keeps the original single-turn
 # auditor, "shadow" records what it would change without writing, and "apply"
 # commits the operations its deterministic validator accepted. It never runs
 # before the assistant speaks, so this only changes what happens after a turn.
 # An unset or misspelled value falls back to legacy.
 CONSUMER_PLANNER_RECONCILIATION_MODE = "legacy"
-CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION = "planning-reconciliation-v1"
+CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION = "planning-reconciliation-v2"
 # The silent planner has its own approved model, validated against a
 # server-side allowlist. It previously inherited the AI-intake default model,
 # so retuning intake silently retuned the planner.

@@ -48,6 +48,7 @@ import { hangupOpenAiRealtimeCall } from '../realtime_provider.js';
 import { applyPlannerCandidates } from '../planning_turn.js';
 import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
+import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
 import { classifySpokenPlanConfirmation } from '../realtime_completion.js';
 import {
   classifyRealtimeProviderError,
@@ -501,6 +502,7 @@ export class ConsumerLiveSession {
       done: false,
       noteAcceptedCount: 0,
       noteRejectedCount: 0,
+      acceptedValueEvidence: [],
       reconciliationTrigger: null,
       reconciliationPriority: false,
       turnFinalAt: Number(cause?.stoppedAt || this.turnFinalAt || 0),
@@ -951,8 +953,13 @@ export class ConsumerLiveSession {
     if (!turn || turn.status !== 'completed' || !turn.storedTurnId) return;
     const hasRejectedNote = Number(response.noteRejectedCount || 0) > 0;
     const hasNoteActivity = Number(response.noteAcceptedCount || 0) > 0 || hasRejectedNote;
+    const valueCoverage = valueEvidenceCoverage(turn.transcript, response.acceptedValueEvidence || []);
+    const hasValueCoverageGap = valueCoverage.uncovered.length > 0;
+    if (hasValueCoverageGap) this.markMaterialTurn(turn);
     const periodic = Number(turn.ordinal || 0) % 3 === 0;
-    const requestedTrigger = forcedTrigger || response.reconciliationTrigger;
+    const requestedTrigger = forcedTrigger
+      || response.reconciliationTrigger
+      || (hasValueCoverageGap ? 'value_coverage_gap' : null);
     if (!requestedTrigger && !hasNoteActivity && !periodic) return;
     const trigger = requestedTrigger
       || (hasRejectedNote ? 'rejected_note' : hasNoteActivity ? 'material_turn' : 'periodic_checkpoint');
@@ -1046,6 +1053,9 @@ export class ConsumerLiveSession {
         MAX_RECONCILIATION_RECOVERY_ATTEMPTS,
         Number(job?.retryAttempt || 0)
       )),
+      reviewTurnIds: [...new Set((Array.isArray(job?.reviewTurnIds) ? job.reviewTurnIds : [])
+        .map((turnId) => String(turnId || ''))
+        .filter(Boolean))].slice(-MAX_LIVE_TURN_LEDGER_ENTRIES),
       notBeforeAt: Math.max(0, Number(job?.notBeforeAt || 0))
     };
   }
@@ -1090,6 +1100,13 @@ export class ConsumerLiveSession {
 
     const normalized = this.normalizedReconciliationJob({
       ...job,
+      // A later checkpoint may replace a queued earlier one. Carry the exact
+      // outstanding material-turn identities so coalescing broadens the audit
+      // watermark without erasing an earlier omission obligation.
+      reviewTurnIds: this.unreviewedMaterialTurns
+        .filter((entry) => Number(entry.ordinal || 0) <= Number(job.ordinal || 0))
+        .map((entry) => entry.turnId)
+        .concat(String(job.throughTurnId || '')),
       // A priority checkpoint after a prior terminal failure gets one fresh
       // idempotency identity. Ordinary first attempts remain retry zero.
       retryAttempt: alreadyScheduled ? MAX_RECONCILIATION_RECOVERY_ATTEMPTS : 0
@@ -1167,6 +1184,7 @@ export class ConsumerLiveSession {
       context,
       leaseId: this.meta.leaseId,
       throughTurnId: job.throughTurnId,
+      reviewTurnIds: job.reviewTurnIds,
       trigger: job.trigger,
       retryAttempt: job.retryAttempt,
       // What lets a validated correction survive the client answering the next
@@ -1313,7 +1331,11 @@ export class ConsumerLiveSession {
       // Only a pass that actually reached a reviewed verdict retires material
       // work. `pending`, `conflicted` and `failed` clear nothing, so unresolved
       // material state keeps blocking the analyses — which is the whole point.
-      if (result?.status === 'shadow' || result?.status === 'applied') {
+      const valueEvidenceReviewComplete = result?.valueEvidenceReviewComplete
+        ?? result?.output?.valueEvidenceReview?.complete
+        ?? true;
+      if ((result?.status === 'shadow' || result?.status === 'applied')
+        && valueEvidenceReviewComplete !== false) {
         await this.clearReviewedMaterialTurns(job.ordinal).catch(() => {});
       }
 
@@ -1400,6 +1422,7 @@ export class ConsumerLiveSession {
           config: context.config,
           context,
           extraction,
+          transcript,
           evidenceRef: providerItemId,
           leaseId: this.meta.leaseId,
           toolAttemptId: attempt.row.id,
@@ -1411,7 +1434,11 @@ export class ConsumerLiveSession {
           leaseId: this.meta.leaseId,
           toolAttemptId: attempt.row.id,
           status: 'succeeded',
-          result: { ok: true, appliedCount: applied },
+          result: {
+            ok: true,
+            appliedCount: applied,
+            sourcedValueEvidence: outcome.sourcedValueEvidence
+          },
           errorCode: null,
           latencyMs: Date.now() - startedAt
         });
@@ -1726,6 +1753,12 @@ export class ConsumerLiveSession {
     if (name === 'save_facts' && responseContext) {
       const savedCount = Array.isArray(result?.saved) ? result.saved.length : 0;
       const rejectedCount = Array.isArray(result?.rejected) ? result.rejected.length : 0;
+      if (Array.isArray(result?.sourcedValueEvidence)) {
+        responseContext.acceptedValueEvidence = [
+          ...(responseContext.acceptedValueEvidence || []),
+          ...result.sourcedValueEvidence
+        ];
+      }
       // An identity the lane could not resolve becomes outstanding; a later
       // save that DOES land for the same fact is the resolution, whichever way
       // the client answered, so it clears.
@@ -1759,7 +1792,13 @@ export class ConsumerLiveSession {
       this.maybeScheduleReconciliation(responseContext);
     }
 
-    const { context: _context, sourcedValues: _values, result: _full, ...modelSafe } = result || {};
+    const {
+      context: _context,
+      sourcedValues: _values,
+      sourcedValueEvidence: _evidence,
+      result: _full,
+      ...modelSafe
+    } = result || {};
     try {
       this.sendProvider({
         type: 'conversation.item.create',

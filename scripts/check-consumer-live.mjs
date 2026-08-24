@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { GOAL_TYPES, MODULE_IDS } from '../js/planning/contracts.js';
 import { getSemanticFactDefinition } from '../js/planning/semantic_facts.js';
 import { createHouseholdProfile, normalizeHouseholdProfile } from '../js/planning/profile.js';
+import { extractValueEvidence, valueEvidenceCoverage } from '../js/planning/value_evidence.js';
 import { describeConversationState } from '../worker/src/consumer/conversation.js';
 import { buildPlanningContext } from '../worker/src/consumer/planning_context.js';
 import { planFactProposal } from '../worker/src/consumer/planning_facts.js';
@@ -405,17 +406,17 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'The prompt must keep server-supplied college scenarios out of client intake.');
   ok(prompt.includes('save every child and currentAge'),
     'The prompt must save all volunteered child ages before moving on.');
-  ok(prompt.includes('TWO facts in that one batch')
-    && prompt.includes('pension_positions')
-    && prompt.includes('asset_position'),
-  'The prompt must exhaust a client answer containing several independent positions.');
+  ok(prompt.includes('one canonical position for every independently')
+    && prompt.includes('values repeat or categories are unrelated'),
+  'The prompt must express general multi-position exhaustiveness without a transcript fixture.');
   ok(prompt.includes('Reuse that exact') && prompt.includes('supersedes rather than duplicates'),
     'The prompt must reuse a captured position identity when a client corrects its value.');
   ok(prompt.includes('linkedPropertyId') && prompt.includes('save the property first'),
     'The prompt must bind a mortgage to the property stated in the same answer.');
-  ok(prompt.includes('understand_position, optimise_mortgage and fund_education')
-    && prompt.includes('It is NOT') && prompt.includes('assess_decision'),
-  'The prompt must keep a concrete health-check/mortgage/college opening as three concrete goals.');
+  ok(prompt.includes('Catalogue-derived goal meanings:')
+    && prompt.includes('use assess_decision only')
+    && prompt.includes('Mentioning a balance, product, child, property, business'),
+  'The prompt must derive goal classification from general catalogue boundaries.');
   ok(prompt.includes('Never end your response on a generic holding phrase')
     && prompt.includes('asking the one meaningful next question'),
   'The prompt must finish a tool-assisted turn instead of leaving the client on filler.');
@@ -1926,6 +1927,31 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   const twoPensions = partitionSupportedLiveFacts(twoPensionFacts, twoPensionsTranscript);
   ok(twoPensions.accepted.length === 2 && twoPensions.rejected.length === 0,
     'Two explicitly typed pension values must bind to their matching pension descriptions.');
+  const equalHoldingTranscript = 'Rainy-day cash is €25,000 and my workplace pension is €25,000.';
+  const equalHoldingEvidence = extractValueEvidence(equalHoldingTranscript);
+  const savedPensionOnly = partitionSupportedLiveFacts([{
+    candidateId: 'saved-pension',
+    factId: 'pension_positions',
+    value: {
+      entityId: 'equal_pension',
+      type: 'occupational',
+      owner: 'primary',
+      currentValue: { amount: 25_000, currency: 'EUR' }
+    },
+    certainty: 'exact'
+  }], equalHoldingTranscript);
+  assert.deepEqual(
+    savedPensionOnly.acceptedValueEvidence.map((item) => item.evidenceId),
+    [equalHoldingEvidence[1].evidenceId],
+    'an accepted equal pension value must retain the pension occurrence, not greedily claim cash'
+  );
+  const pensionOnlyCoverage = valueEvidenceCoverage(
+    equalHoldingTranscript,
+    savedPensionOnly.acceptedValueEvidence
+  );
+  ok(pensionOnlyCoverage.uncovered.length === 1
+    && /cash/i.test(pensionOnlyCoverage.uncovered[0].contextText),
+  'coverage must repair the unsaved equal-valued cash holding in the other direction');
   const swappedPensions = partitionSupportedLiveFacts([
     {
       ...twoPensionFacts[0],

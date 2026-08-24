@@ -16,6 +16,7 @@ import {
   getSemanticFactDefinition,
   listSemanticFactDefinitions
 } from './semantic_facts.js';
+import { extractValueEvidence } from './value_evidence.js';
 import {
   assertIsoDateTime,
   assertJsonCompatible,
@@ -899,6 +900,104 @@ function changedDateLikeLeaves(operation, targetNote) {
     .map(([path, value]) => ({ path, value }));
 }
 
+function moneyLeaves(value, found = [], path = []) {
+  if (!value || typeof value !== 'object') return found;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => moneyLeaves(item, found, [...path, String(index)]));
+    return found;
+  }
+  if (Number.isFinite(value.amount) && typeof value.currency === 'string') {
+    found.push({
+      path: path.join('.'),
+      amount: value.amount,
+      currency: value.currency
+    });
+    return found;
+  }
+  Object.entries(value).forEach(([key, item]) => moneyLeaves(item, found, [...path, key]));
+  return found;
+}
+
+function changedMoneyLeaves(operation, targetNote) {
+  if (!Object.hasOwn(operation, 'value')) return [];
+  const proposed = moneyLeaves(operation.value);
+  if (!targetNote || !['correct_note', 'reclassify_note'].includes(operation.op)) return proposed;
+  const current = new Map(moneyLeaves(targetNote.value).map((item) => [item.path, item]));
+  return proposed.filter((item) => {
+    const prior = current.get(item.path);
+    return !prior
+      || !numbersEqual(prior.amount, item.amount)
+      || prior.currency !== item.currency;
+  });
+}
+
+const EVIDENCE_CURRENCY_TOKENS = Object.freeze({
+  '€': 'EUR', eur: 'EUR', euro: 'EUR', euros: 'EUR',
+  '£': 'GBP', gbp: 'GBP', pound: 'GBP', pounds: 'GBP', sterling: 'GBP',
+  '$': 'USD', usd: 'USD', dollar: 'USD', dollars: 'USD'
+});
+const EVIDENCE_CURRENCY_PATTERN = /(€|£|\$|\bEUR\b|\bGBP\b|\bUSD\b|\beuros?\b|\bpounds?\b|\bsterling\b|\bdollars?\b)/giu;
+
+function normalizedEvidenceCurrency(token) {
+  return EVIDENCE_CURRENCY_TOKENS[String(token || '').toLowerCase()] || null;
+}
+
+/**
+ * Currency belongs to a numeric occurrence, not to the quote as a whole.
+ *
+ * A wide citation may legitimately carry several money values. Pooling every
+ * currency in that citation allowed the euro symbol on cash to authorise EUR on
+ * a sterling account. Read only tokens attached to this occurrence. Where the
+ * client states no currency at all, the signed Irish planning jurisdiction's
+ * deterministic default is EUR; an omitted token never authorises GBP or USD.
+ */
+function occurrenceCurrencies(text, occurrence) {
+  const currencies = new Set();
+  for (const match of String(occurrence.raw || '').matchAll(EVIDENCE_CURRENCY_PATTERN)) {
+    const currency = normalizedEvidenceCurrency(match[0]);
+    if (currency) currencies.add(currency);
+  }
+  if (occurrence.currency) currencies.add(occurrence.currency);
+
+  // The spoken-number parser begins at the first number word, so a prefix such
+  // as "sterling thirty-five thousand" sits just outside occurrence.raw.
+  const before = String(text).slice(Math.max(0, occurrence.start - 24), occurrence.start);
+  const prefix = /(€|£|\$|EUR|GBP|USD|euros?|pounds?|sterling|dollars?)\s*$/iu.exec(before);
+  const prefixCurrency = normalizedEvidenceCurrency(prefix?.[1]);
+  if (prefixCurrency) currencies.add(prefixCurrency);
+
+  const after = String(text).slice(occurrence.end, occurrence.end + 24);
+  const suffix = /^\s*(€|£|\$|EUR|GBP|USD|euros?|pounds?|sterling|dollars?)(?=\s|$|[.,;!?])/iu.exec(after);
+  const suffixCurrency = normalizedEvidenceCurrency(suffix?.[1]);
+  if (suffixCurrency) currencies.add(suffixCurrency);
+  return currencies;
+}
+
+function evidencedCurrenciesForAmount(amount, evidenceRefs) {
+  const currencies = new Set();
+  let matchedOccurrence = false;
+  for (const ref of evidenceRefs) {
+    const quote = String(ref.quote || '');
+    const occurrences = extractValueEvidence(quote, { includeSuperseded: true })
+      .filter((item) => item.kind === 'money' && numbersEqual(item.value, amount));
+    for (const occurrence of occurrences) {
+      matchedOccurrence = true;
+      const explicit = occurrenceCurrencies(quote, occurrence);
+      if (explicit.size === 0) currencies.add('EUR');
+      else explicit.forEach((currency) => currencies.add(currency));
+    }
+  }
+  // Small unadorned values such as "900 a month" deliberately sit outside the
+  // broad financial-value inventory, but the reconciliation number grounder
+  // still locates them. They receive the same EUR-only jurisdiction default.
+  if (!matchedOccurrence && evidenceRefs.some((ref) => (
+    groundedNumbers(ref.quote).some((value) => numbersEqual(value, amount))
+  ))) {
+    currencies.add('EUR');
+  }
+  return currencies;
+}
+
 function assertNumericGrounding(operation, targetNote, evidenceRefs) {
   const supported = evidenceRefs.flatMap((ref) => groundedNumbers(ref.quote));
   const changed = changedNumericLeaves(operation, targetNote);
@@ -908,6 +1007,29 @@ function assertNumericGrounding(operation, targetNote, evidenceRefs) {
     fail(
       'numeric_value_unsupported',
       `Operation ${operation.operationId} includes uncited numeric values at ${unsupported.map((item) => item.path).join(', ')}.`
+    );
+  }
+  const changedMoney = changedMoneyLeaves(operation, targetNote);
+  const ambiguousCurrencies = [];
+  const unsupportedCurrencies = [];
+  for (const item of changedMoney) {
+    const evidenced = evidencedCurrenciesForAmount(item.amount, evidenceRefs);
+    if (evidenced.size > 1) {
+      ambiguousCurrencies.push({ ...item, evidenced: [...evidenced].sort() });
+    } else if (evidenced.size === 0 || !evidenced.has(item.currency)) {
+      unsupportedCurrencies.push({ ...item, evidenced: [...evidenced] });
+    }
+  }
+  if (ambiguousCurrencies.length > 0) {
+    fail(
+      'currency_value_ambiguous',
+      `Operation ${operation.operationId} cites the same amount with conflicting currencies at ${ambiguousCurrencies.map((item) => `${item.path || 'value'}.currency`).join(', ')}.`
+    );
+  }
+  if (unsupportedCurrencies.length > 0) {
+    fail(
+      'currency_value_unsupported',
+      `Operation ${operation.operationId} uses a currency not attached to its cited amount at ${unsupportedCurrencies.map((item) => `${item.path || 'value'}.currency`).join(', ')}.`
     );
   }
   return { changed, supported };
@@ -1094,7 +1216,9 @@ function assertNumericSemanticBinding(operation, targetNote, evidenceRefs, groun
     const entityCues = significantCueTerms(
       entity?.label,
       ...(entity?.aliases || []),
-      ...(entity?.newEntitySlot ? [operation.value?.label] : [])
+      ...(entity?.newEntitySlot ? [operation.value?.label] : []),
+      ...(entity?.collection === 'properties' ? ['property', 'home', 'house', 'place'] : []),
+      ...(entity?.collection === 'liabilities' ? ['mortgage', 'loan', 'debt', 'finance'] : [])
     );
     const duplicatedElsewhere = proposedValues.some((value) => (
       numericValueAppearsInOtherEntity(value, entityId, notes)
@@ -1145,6 +1269,212 @@ function assertNumericSemanticBinding(operation, targetNote, evidenceRefs, groun
       fail(
         'numeric_fact_binding_ambiguous',
         `Operation ${operation.operationId} cites multiple figures without binding them to ${operation.factId}.`
+      );
+    }
+  }
+}
+
+const GENERIC_LIABILITY_CUES = new Set([
+  'mortgage', 'home loan', 'loan', 'debt', 'liability', 'finance'
+]);
+
+function relationshipClauses(text) {
+  return String(text || '')
+    .split(/[.!?;\n]+|\s+[\u2013\u2014]\s+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function cuePattern(cues) {
+  const terms = [...new Set(cues
+    .filter((cue) => typeof cue === 'string' && cue.trim())
+    .map((cue) => cue.trim()))]
+    .sort((left, right) => right.length - left.length)
+    .map((cue) => regexEscape(cue).replaceAll(' ', '\\s+'));
+  return terms.length > 0 ? `(?:${terms.join('|')})` : '(?!)';
+}
+
+function propertyCuesFor(operation, propertyEntity) {
+  const useCues = {
+    home: ['home', 'house', 'our place', 'my place'],
+    rental: ['rental property', 'rental flat', 'investment property'],
+    farm: ['farm', 'farm property', 'land'],
+    business: ['business property', 'commercial property', 'business premises'],
+    other: ['property']
+  };
+  return [...new Set([
+    propertyEntity?.label,
+    ...(propertyEntity?.aliases || []),
+    operation.value?.label,
+    ...(useCues[String(operation.value?.use || '').toLowerCase()] || [])
+  ].filter(Boolean))];
+}
+
+function liabilityCuesFor(entity, endpoint) {
+  const liabilityType = String(endpoint?.value?.type || entity?.liabilityType || '').toLowerCase();
+  const factCues = endpoint?.factId === 'mortgage_position' || liabilityType === 'mortgage'
+    ? ['mortgage', 'home loan']
+    : endpoint?.factId === 'loan_position' || liabilityType === 'loan' ? ['loan'] : [];
+  return [...new Set([
+    entity?.label,
+    ...(entity?.aliases || []),
+    endpoint?.value?.label,
+    endpoint?.value?.type,
+    ...factCues
+  ].filter(Boolean))];
+}
+
+function endpointNumberBindsClause(endpoint, clause) {
+  if (!endpoint || !Object.hasOwn(endpoint, 'value')) return false;
+  const values = numericLeaves(endpoint.value).map((item) => item.value);
+  if (values.length === 0) return false;
+  const cited = groundedNumbers(clause);
+  return values.some((value) => cited.some((candidate) => numbersEqual(value, candidate)));
+}
+
+function liabilityIdentityBindsClause(liabilityId, entity, endpoint, clause, entities, cues) {
+  const specific = cues.filter((cue) => (
+    !GENERIC_LIABILITY_CUES.has(String(cue).trim().toLowerCase())
+      && !/^new\s+(?:mortgage|loan|liability)\s+\d+$/i.test(String(cue).trim())
+  ));
+  if (quoteContainsAlias(clause, specific)) return true;
+  if (endpointNumberBindsClause(endpoint, clause)) return true;
+  if (entity.newEntitySlot) return false;
+
+  // A generic "the mortgage" is identity-safe only when it resolves to one
+  // known liability. Two mortgages need a label or the endpoint's own figure.
+  const matching = [...entities.values()].filter((candidate) => (
+    candidate.collection === 'liabilities' && candidate.newEntitySlot !== true
+      && quoteContainsAlias(clause, liabilityCuesFor(candidate, null))
+  ));
+  return matching.length === 1 && matching[0].entityId === liabilityId;
+}
+
+function clauseExplicitlyLinksTarget(clause, propertyCues, liabilityCues, {
+  allowPropertyPronoun = false
+} = {}) {
+  const property = cuePattern(propertyCues);
+  const liability = cuePattern(liabilityCues);
+  const propertyOrPronoun = allowPropertyPronoun
+    ? `(?:${property}|it|this|that)`
+    : property;
+  const targetFirst = [
+    new RegExp(`\\b${liability}\\b[^.!?;]{0,50}\\b(?:is\\s+)?(?:secured|charged)\\s+(?:on|against|over)\\s+(?:the\\s+|our\\s+|my\\s+)?${propertyOrPronoun}\\b`, 'iu'),
+    new RegExp(`\\b${liability}\\b[^.!?;]{0,30}\\b(?:on|against|over)\\s+(?:the\\s+|our\\s+|my\\s+)?${property}\\b`, 'iu'),
+    new RegExp(`\\b${liability}\\b[^.!?;]{0,40}\\b(?:linked|attached)\\s+to\\s+(?:the\\s+|our\\s+|my\\s+)?${propertyOrPronoun}\\b`, 'iu'),
+    new RegExp(`\\b${liability}\\b[^.!?;]{0,40}\\bassociated\\s+with\\s+(?:the\\s+|our\\s+|my\\s+)?${propertyOrPronoun}\\b`, 'iu')
+  ];
+  if (targetFirst.some((pattern) => pattern.test(clause))) return true;
+
+  // For "the home has a mortgage", the target must be the first liability
+  // noun after the relationship verb. This prevents "the home has a mortgage;
+  // the car loan is 18k" from linking the car merely because both appear nearby.
+  const propertyFirst = new RegExp(
+    `\\b${propertyOrPronoun}\\b[^.!?;]{0,35}\\b(?:has|have|with|carries|carrying|subject\\s+to)\\b`
+      + '\\s+(?:an?\\s+|the\\s+)?(?:outstanding\\s+)?(?:[\u20ac\u00a3$]?\\s*\\d[\\d,.]*\\s+)?'
+      + `\\b${liability}\\b`,
+    'iu'
+  );
+  return propertyFirst.test(clause);
+}
+
+function expandedOwnerSet(rawOwnerIds, owners) {
+  const people = [...owners.values()]
+    .filter((owner) => owner.role === 'primary' || owner.role === 'partner')
+    .map((owner) => owner.ownerId);
+  const expanded = new Set();
+  for (const ownerId of rawOwnerIds.filter(Boolean)) {
+    if (ownerId === 'household') people.forEach((personId) => expanded.add(personId));
+    else expanded.add(ownerId);
+  }
+  return expanded;
+}
+
+function relationshipOwnerSet(operation, entity, owners) {
+  const valueOwnerIds = Array.isArray(operation?.value?.ownerIds)
+    ? operation.value.ownerIds
+    : (typeof operation?.value?.ownerId === 'string' ? [operation.value.ownerId] : []);
+  const raw = valueOwnerIds.length > 0
+    ? [...valueOwnerIds, operation?.ownerId]
+    : operation?.ownerId
+      ? [operation.ownerId]
+      : [...(entity?.ownerIds || [])];
+  return expandedOwnerSet(raw, owners);
+}
+
+function sameOwnerSet(left, right) {
+  return left.size > 0
+    && right.size > 0
+    && left.size === right.size
+    && [...left].every((ownerId) => right.has(ownerId));
+}
+
+/**
+ * A property-liability edge is accepted only as a known-identity relationship.
+ * If either endpoint is new, both endpoint operations must share one atomic
+ * group so a half-created home/mortgage pair can never land.
+ */
+function assertPropertyLiabilityRelationship(operation, targetNote, group, evidenceRefs, entities, owners) {
+  if (operation.factId !== 'property_position' || !isPlainObject(operation.value)) return;
+  if (!Object.hasOwn(operation.value, 'associatedLiabilityIds')) return;
+  const ids = operation.value.associatedLiabilityIds;
+  if (!Array.isArray(ids)
+    || ids.length > 6
+    || ids.some((id) => typeof id !== 'string' || !id)
+    || new Set(ids).size !== ids.length) {
+    fail('property_liability_relationship_invalid', 'A property relationship must name unique known liability ids.');
+  }
+  // Each relationship must be carried by one exact evidence quote. Never
+  // stitch independently quoted fragments together: doing so could manufacture
+  // adjacency that the client did not state. A single quote may still contain
+  // a safe immediately-previous property clause for anaphora such as "It has a
+  // mortgage" or "the mortgage is secured against it".
+  const clauseGroups = evidenceRefs.map((ref) => relationshipClauses(ref.quote));
+  const propertyEntity = entities.get(operation.entityId || targetNote?.entityId);
+  const propertyCues = propertyCuesFor(operation, propertyEntity);
+  for (const liabilityId of ids) {
+    const entity = entities.get(liabilityId);
+    if (!entity || entity.collection !== 'liabilities') {
+      fail('property_liability_relationship_unknown', `Relationship target ${liabilityId} is not a known liability.`);
+    }
+    const endpoint = group.operations.find((candidate) => (
+      candidate.entityId === liabilityId
+      && ['liability_position', 'mortgage_position', 'loan_position'].includes(candidate.factId)
+    ));
+    const newEndpoint = entity.newEntitySlot === true || propertyEntity?.newEntitySlot === true;
+    if (newEndpoint && (!endpoint || group.atomic !== true)) {
+      fail(
+        'property_liability_relationship_not_atomic',
+        'A relationship with a new property or liability must create both endpoints in one atomic group.'
+      );
+    }
+    const liabilityCues = liabilityCuesFor(entity, endpoint);
+    const relationshipIsBound = clauseGroups.some((clauses) => (
+      clauses.some((clause, index) => {
+        if (!liabilityIdentityBindsClause(liabilityId, entity, endpoint, clause, entities, liabilityCues)) {
+          return false;
+        }
+        const propertyNamedHere = quoteContainsAlias(clause, propertyCues);
+        const propertyNamedImmediatelyBefore = index > 0
+          && quoteContainsAlias(clauses[index - 1], propertyCues);
+        return clauseExplicitlyLinksTarget(clause, propertyCues, liabilityCues, {
+          allowPropertyPronoun: !propertyNamedHere && propertyNamedImmediatelyBefore
+        });
+      })
+    ));
+    if (!relationshipIsBound) {
+      fail(
+        'property_liability_relationship_evidence_missing',
+        `Property relationship evidence does not bind liability ${liabilityId} to this property.`
+      );
+    }
+
+    const propertyOwners = relationshipOwnerSet(operation, propertyEntity, owners);
+    const liabilityOwners = relationshipOwnerSet(endpoint, entity, owners);
+    if (!sameOwnerSet(propertyOwners, liabilityOwners)) {
+      fail(
+        'property_liability_relationship_owner_mismatch',
+        'A property and linked liability must have the same confirmed owner set.'
       );
     }
   }
@@ -1292,7 +1622,10 @@ function profileEntityRecords(profile) {
         collection: projection.collection,
         // Carried so binding can apply product rules — a buy-out bond is not a
         // candidate for a contribution rate. See candidateEntitiesFor.
-        ...(projection.collection === 'pensions' ? { pensionType: record.type } : {})
+        ...(projection.collection === 'pensions' ? { pensionType: record.type } : {}),
+        // A generic "the mortgage" can resolve to one existing mortgage without
+        // confusing it with a car loan, but only from canonical product type.
+        ...(projection.collection === 'liabilities' ? { liabilityType: record.type } : {})
       });
     }
   }
@@ -1460,6 +1793,7 @@ function entityRecords(profile, suppliedEntities = []) {
     // inverts the pronoun test rather than disabling it.
     if (raw.role) existing.role = String(raw.role);
     if (raw.pensionType) existing.pensionType = String(raw.pensionType);
+    if (raw.liabilityType) existing.liabilityType = String(raw.liabilityType);
     records.set(entityId, existing);
   }
   return records;
@@ -1831,7 +2165,7 @@ function assertAggregateIsNotAPosition(operation, targetNote) {
   // route back out of the mistake this rule exists to prevent.
 }
 
-function validateOperation(operation, notes, context) {
+function validateOperation(operation, notes, context, group) {
   const targetNote = operation.targetNoteId
     ? notes.find((note) => note.noteId === operation.targetNoteId)
     : null;
@@ -1905,6 +2239,14 @@ function validateOperation(operation, notes, context) {
     grounding,
     notes,
     context.entities
+  );
+  assertPropertyLiabilityRelationship(
+    operation,
+    targetNote,
+    group,
+    evidenceRefs,
+    context.entities,
+    context.owners
   );
   return { targetNote, evidenceRefs };
 }
@@ -2634,7 +2976,7 @@ export async function applyReconciliationPlan({
     let rejection = null;
     for (const operation of group.operations) {
       try {
-        const { targetNote, evidenceRefs } = validateOperation(operation, groupNotes, context);
+        const { targetNote, evidenceRefs } = validateOperation(operation, groupNotes, context, group);
         const applied = applyValidatedOperation(
           groupNotes,
           operation,

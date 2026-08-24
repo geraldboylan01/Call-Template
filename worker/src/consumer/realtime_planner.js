@@ -8,6 +8,11 @@ import {
 } from '../../../js/planning/module_offers.js';
 import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import {
+  classifyGoalPriorityHint,
+  goalClassificationPrompt,
+  normalizeGoalCandidatePriorities
+} from '../../../js/planning/goal_catalogue.js';
+import {
   IRISH_STATE_PENSION_CONTRIBUTORY,
   normalizeStatePensionFraction,
   publicIrishStatePensionRule
@@ -213,6 +218,7 @@ Boundaries:
 - Do not extract credentials, account numbers, PPS numbers, exact addresses, or identity-document details.
 - When the client says they are a new parent, have a newborn, or just had a baby, the evidence may support household_structure=family and new_parent_status=true. Do not emit a persona label.
 - Numeric, monetary, and financial-position VALUES must be explicit in the finalized turn. Never infer an amount.
+- For every candidate carrying a numeric value, evidenceText must be one unique exact contiguous span copied from finalizedClientTurn, narrow enough to bind the value to its subject and owner. Never paraphrase numeric evidence.
 
 Orientation context:
 - Orientation facts describe the client's situation rather than their money, and the analyses selected for them depend on these. Emit them whenever the turn clearly supports them, at certainty exact when stated outright and approximate when clearly implied. Do not ask the client to choose from a category list and do not emit a persona label.
@@ -238,22 +244,26 @@ Orientation context:
 Repair pass:
 - When the user payload contains repairRequest, the SAME client turn was already read once and some items could not be recorded. Re-read that turn and emit ONLY the listed items. Do not re-emit anything already recorded, and do not add anything new.
 - repairRequest.failedItems gives the item and the reason it was refused. Fix that specific reason.
+- repairRequest.uncoveredEvidence gives occurrence-addressed explicit values that the first read did not account for. Review every item, using its exact context to classify it. An item may be a holding, income, debt, rate, aggregate, scenario, correction or another supported fact; it is a review obligation, not permission to assume a category. Emit a candidate only when the finalized turn supports the canonical fact.
 - pension_ambiguous means the client holds more than one pension and the value did not say which. Look again at the turn and set entityId or linkedEntityId to the pension it belongs to, using context.profileSummary to match by label. A rate stated right after naming a current or ongoing scheme belongs to that scheme, never to a buyout bond. If the turn genuinely does not say, emit nothing for it.
 - money_invalid means amountJson did not parse. Emit it again as {"amount":80000,"currency":"EUR"} with the currency the client is speaking in; the meeting jurisdiction is Ireland, so EUR unless they named another.
 - value_invalid means valueJson did not parse. Emit valid JSON of the right shape for that fact.
 - Never invent a value to satisfy a repair. If the turn does not support it, emit nothing.
 
 Goals:
-- Emit one goalCandidates item for every supported or legacy goal clearly present in this turn. Use fund_education for college or university funding and manage_loan for a non-housing loan.
+- Emit one goalCandidates item for every distinct catalogue goal clearly present in this turn.
 - Do not duplicate goals in semanticFacts; primary_goal and primary_goal_focus are created by deterministic server code from goalCandidates.
-- A vague reference to a financial decision is assess_decision. Never turn it into fund_education without education evidence.
-- Concrete aims are never a vague assess_decision. "A financial health check / understand where I stand, pay off my mortgage, and eventually put the baby through college" emits understand_position, optimise_mortgage and fund_education — all three, once each.
-- priorityHint=primary when the client explicitly says a goal comes first or is today's focus, or leads with "I really want" that goal before naming other aims. Use secondary when explicitly described as later, eventually or less important. In the example above, understand_position is primary and fund_education is secondary; the mortgage goal is unspecified. Never emit more than one primary goal from a turn.
+- A concrete comparison may contain several catalogue goals. Emit every concrete underlying goal and use assess_decision only when the subject of the choice remains genuinely vague.
+- Merely mentioning a product, balance, child, property, business or farm is context, not a goal. Goal evidence must express an outcome or planning intent.
+- priorityHint=primary only for explicit relative ranking or present-focus cues such as main/top/first priority, focus today or start with. Use secondary only for explicit defer/order cues such as later, eventually, after that, less urgent or can wait. Ordinary desire and mention order do not establish priority. Never emit more than one primary goal from a turn.
 - For an explicit correction, put the earlier goal type in correctionTarget when it is clear. Otherwise leave correctionTarget empty.
+
+Catalogue-derived goal meanings:
+${goalClassificationPrompt()}
 
 Financial positions:
 - Use positions for cash, investments, property, pensions, mortgages, loans, businesses, INCOME, and other assets.
-- Emit one positions item for EVERY independently valued holding in the finalized turn. Before returning, compare the explicit holding-and-amount pairs in the turn with the positions array: a pension worth €100,000 and stocks and shares worth €10,000 are two positions, not one. Never drop the second holding merely because both were stated in one sentence.
+- Emit one positions item for every independently valued holding in the finalized turn. Before returning, account for every explicit value-bearing occurrence; equal values on different holdings remain separate candidates. Never drop a later holding merely because several were stated in one sentence.
 - A salary, wage, rental income or pension in payment is a position with kind=income and an incomeType. Never emit income_sources as a semantic fact: it needs a stable entity identity that only a position can carry, so a semantic-fact version is discarded and the client's figure is lost. One position per earner.
 - amountJson is either an empty string or an exact JSON money object such as {"amount":10000,"currency":"EUR"}. Never put a bare number in amountJson.
 - country is empty for ordinary Irish positions. For a consumer-volunteered foreign holding, set it to the stated country and use a generic label such as "Foreign investment".
@@ -420,13 +430,17 @@ export function validatePlannerExtraction(value, sourceTurnId) {
   return Object.freeze({
     schemaVersion: PLANNER_EXTRACTION_V3,
     sourceTurnId,
-    goalCandidates: goals.map((item, index) => ({
-      candidateId: `goal-${index + 1}`,
-      goalType: GOAL_TYPES.includes(item?.goalType) ? item.goalType : null,
-      confidence: ['high', 'medium', 'low'].includes(item?.confidence) ? item.confidence : 'low',
-      priorityHint: ['primary', 'secondary'].includes(item?.priorityHint) ? item.priorityHint : 'unspecified',
-      evidenceText: boundedText(item?.evidenceText),
-      correctionTarget: GOAL_TYPES.includes(item?.correctionTarget) ? item.correctionTarget : ''
+    goalCandidates: normalizeGoalCandidatePriorities(goals.map((item, index) => {
+      const goalType = GOAL_TYPES.includes(item?.goalType) ? item.goalType : null;
+      const evidenceText = boundedText(item?.evidenceText);
+      return {
+        candidateId: `goal-${index + 1}`,
+        goalType,
+        confidence: ['high', 'medium', 'low'].includes(item?.confidence) ? item.confidence : 'low',
+        priorityHint: classifyGoalPriorityHint(goalType, evidenceText),
+        evidenceText,
+        correctionTarget: GOAL_TYPES.includes(item?.correctionTarget) ? item.correctionTarget : ''
+      };
     })).filter((item) => item.goalType && item.evidenceText),
     semanticFacts,
     positions: positionCandidates,

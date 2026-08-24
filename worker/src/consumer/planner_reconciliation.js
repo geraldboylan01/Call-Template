@@ -30,6 +30,11 @@ import {
 } from '../../../js/planning/semantic_facts.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
 import { CURRENCY_CODES } from '../../../js/planning/contracts.js';
+import { classifyGoalPriorityHint } from '../../../js/planning/goal_catalogue.js';
+import {
+  boundedUncoveredValueEvidence,
+  valueEvidenceCoverage
+} from '../../../js/planning/value_evidence.js';
 import { ConsumerError } from './errors.js';
 import { stableStringify } from './crypto.js';
 import { toConsumerRealtimePlanningLists } from './planning_context.js';
@@ -70,6 +75,27 @@ const RECONCILIATION_SCHEMA = Object.freeze({
       type: 'array',
       maxItems: 200,
       items: { type: 'string', maxLength: 160 }
+    },
+    valueEvidenceDispositions: {
+      type: 'array',
+      maxItems: 12,
+      items: {
+        type: 'object',
+        properties: {
+          evidenceId: { type: 'string', maxLength: 360 },
+          disposition: {
+            type: 'string',
+            enum: ['operation_proposed', 'clarification_proposed', 'not_current_fact']
+          },
+          operationIds: {
+            type: 'array',
+            maxItems: 6,
+            items: { type: 'string', maxLength: 160 }
+          }
+        },
+        required: ['evidenceId', 'disposition', 'operationIds'],
+        additionalProperties: false
+      }
     },
     operationGroups: {
       type: 'array',
@@ -133,7 +159,10 @@ const RECONCILIATION_SCHEMA = Object.freeze({
       }
     }
   },
-  required: ['schemaVersion', 'verdict', 'reviewedNoteIds', 'operationGroups'],
+  required: [
+    'schemaVersion', 'verdict', 'reviewedNoteIds',
+    'valueEvidenceDispositions', 'operationGroups'
+  ],
   additionalProperties: false
 });
 
@@ -160,6 +189,8 @@ Evidence rules:
 - An entity marked newEntitySlot is a server-issued identity for one omitted position. Use one only when exact client evidence establishes that position.
 - A partner or joint owner is valid only when that owner exists in the supplied household.
 - Preserve uncertainty, ranges, explicit none and which person/position they concern.
+- uncoveredValueEvidence is a deterministic, occurrence-addressed inventory of explicit values the fast lane did not account for. Review EVERY listed item exactly once and return one valueEvidenceDispositions entry with its exact evidenceId. It is a review obligation, not a guessed category: use its exact context to decide whether it is a current fact, holding, income component, debt, rate, aggregate, scenario, future value, correction or something safely left as evidenced context. Never create a write merely because an item is listed.
+- Use operation_proposed only when operationIds names the write(s) that recover that exact occurrence. Use clarification_proposed only when operationIds names request_clarification operation(s) needed to place it safely. Use not_current_fact, with no operation ids, only when the occurrence is genuinely an aggregate, scenario, superseded value, identifier, historical/future context or otherwise not a current canonical fact. The server checks exact one-to-one coverage, operation acceptance and that each operation's quote encloses the named source occurrence; an omitted, duplicated, unrelated or rejected disposition fails the whole review.
 
 Reconciliation rules:
 - Put an omitted evidenced fact in upsert_note.
@@ -178,6 +209,7 @@ Grouping rules:
 - Put each independent correction in its OWN group. Several corrections from one turn are normally several groups, not one.
 - Group operations together only when they describe the same note, entity or fact instance, or when applying one without the other would misstate the position.
 - Set atomic true only for that second case — operations that must land together but share no identity. Otherwise set atomic false.
+- When exact evidence says a liability is secured on or belongs to a stated property, preserve the edge in the property_position value as associatedLiabilityIds containing the supplied liability entity id. If either endpoint uses a newEntitySlot, create/correct both endpoints in the SAME atomic group; the server rejects a dangling, cross-owner or evidence-free relationship. Do not infer a link from proximity alone.
 - reviewedNoteIds may contain only notes that already carry server-stored client offsets present in this context. A span-free realtime note cannot be verified by ID alone; replace it with an evidence-backed correct_note, even when its value is unchanged.
 - Never add confirmation, readiness, selected-module or execution fields.
 - If nothing needs changing or clarification, return verdict clean and no operations.`;
@@ -410,6 +442,93 @@ export function normalizeModelReconciliationPlan(raw) {
   }
 }
 
+function valueEvidenceFailure(message) {
+  throw new ConsumerError(
+    502,
+    'planner_reconciliation_value_evidence_incomplete',
+    message
+  );
+}
+
+function operationEnclosesEvidence(operation, item, input) {
+  const turn = (input?.transcriptTurns || []).find((candidate) => candidate.turnId === item.turnId);
+  if (!turn || !Number.isSafeInteger(item.start) || !Number.isSafeInteger(item.end)) return false;
+  return (operation?.evidence || []).some((ref) => {
+    if (ref.turnId !== item.turnId || typeof ref.quote !== 'string' || !ref.quote) return false;
+    const quoteStart = turn.text.indexOf(ref.quote);
+    if (quoteStart < 0 || turn.text.indexOf(ref.quote, quoteStart + 1) >= 0) return false;
+    return quoteStart <= item.start && quoteStart + ref.quote.length >= item.end;
+  });
+}
+
+/**
+ * The paid T2 pass may classify an uncovered value, but it cannot silently
+ * omit one. This binds every model disposition to the deterministic occurrence
+ * inventory and, for writes/clarifications, to an operation whose exact quote
+ * encloses that occurrence. Passing acceptedOperationIds additionally proves
+ * those operations survived the ordinary strict reconciliation validator.
+ */
+export function validateValueEvidenceDispositions({
+  raw,
+  plan,
+  input,
+  acceptedOperationIds = null
+}) {
+  const expected = Array.isArray(input?.uncoveredValueEvidence)
+    ? input.uncoveredValueEvidence
+    : [];
+  const supplied = Array.isArray(raw?.valueEvidenceDispositions)
+    ? raw.valueEvidenceDispositions
+    : [];
+  const expectedIds = new Set(expected.map((item) => item.evidenceId));
+  const suppliedIds = supplied.map((item) => String(item?.evidenceId || ''));
+  if (suppliedIds.some((id) => !id)
+    || new Set(suppliedIds).size !== suppliedIds.length
+    || suppliedIds.length !== expectedIds.size
+    || suppliedIds.some((id) => !expectedIds.has(id))) {
+    valueEvidenceFailure('The background planner did not disposition every uncovered value exactly once.');
+  }
+  const operations = new Map((plan?.operationGroups || [])
+    .flatMap((group) => group.operations || [])
+    .map((operation) => [operation.operationId, operation]));
+  const accepted = acceptedOperationIds ? new Set(acceptedOperationIds) : null;
+  const rejectedOperationIds = [];
+  for (const disposition of supplied) {
+    const item = expected.find((candidate) => candidate.evidenceId === disposition.evidenceId);
+    const operationIds = Array.isArray(disposition.operationIds) ? disposition.operationIds : [];
+    if (new Set(operationIds).size !== operationIds.length) {
+      valueEvidenceFailure(`Value evidence ${disposition.evidenceId} repeats an operation identity.`);
+    }
+    if (disposition.disposition === 'not_current_fact') {
+      if (operationIds.length !== 0) {
+        valueEvidenceFailure(`Non-current evidence ${disposition.evidenceId} cannot name a write.`);
+      }
+      continue;
+    }
+    if (operationIds.length === 0) {
+      valueEvidenceFailure(`Value evidence ${disposition.evidenceId} has no recovery operation.`);
+    }
+    for (const operationId of operationIds) {
+      const operation = operations.get(operationId);
+      if (!operation || !operationEnclosesEvidence(operation, item, input)) {
+        valueEvidenceFailure(`Operation ${operationId} is not grounded in value evidence ${disposition.evidenceId}.`);
+      }
+      const clarification = operation.op === 'request_clarification';
+      if ((disposition.disposition === 'clarification_proposed') !== clarification) {
+        valueEvidenceFailure(`Operation ${operationId} does not match its value-evidence disposition.`);
+      }
+      if (accepted && !accepted.has(operationId)) {
+        rejectedOperationIds.push(operationId);
+      }
+    }
+  }
+  return {
+    dispositions: supplied,
+    complete: rejectedOperationIds.length === 0,
+    rejectedOperationIds: [...new Set(rejectedOperationIds)]
+  };
+}
+
 const OWNER_HINT_KEYS = Object.freeze(['owner', 'ownerId', 'ownerIds', 'owners', 'personId']);
 
 /**
@@ -433,10 +552,19 @@ const OWNER_HINT_KEYS = Object.freeze(['owner', 'ownerId', 'ownerIds', 'owners',
  * is final -- no raw fallback smuggles an unvalidated value into the slot.
  */
 export function mapReconciledFactValue(profile, note) {
-  const value = isPlainObject(note.value) && note.ownerId
+  const evidenceText = (note.evidenceRefs || []).map((ref) => ref.quote).filter(Boolean).join(' ');
+  let value = isPlainObject(note.value) && note.ownerId
     && !OWNER_HINT_KEYS.some((key) => Object.hasOwn(note.value, key))
     ? { ...note.value, ownerId: note.ownerId }
     : note.value;
+  if (note.factId === 'primary_goal') {
+    const goalType = typeof value === 'string' ? value : value?.type;
+    value = {
+      ...(isPlainObject(value) ? value : {}),
+      type: goalType,
+      priorityHint: classifyGoalPriorityHint(goalType, evidenceText)
+    };
+  }
   try {
     return mapRealtimeFact(profile, {
       factId: note.factId,
@@ -448,7 +576,7 @@ export function mapReconciledFactValue(profile, note) {
       // conclusion here as they do on the live lane. The quotes are server-
       // stored spans of finalized client turns, so this cannot smuggle in
       // assistant text or anything the client did not say.
-      evidenceText: (note.evidenceRefs || []).map((ref) => ref.quote).filter(Boolean).join(' ')
+      evidenceText
     });
   } catch (error) {
     return error?.code === 'realtime_fact_not_supported' ? null : { refused: true };
@@ -738,6 +866,13 @@ export function plannerFactContracts(factIds) {
       entry.ownerKey = contract.ownerKey;
       entry.requiredKeys = contract.requiredKeys;
       entry.valueFields = contract.valueFields;
+      if (factId === 'property_position') {
+        entry.relationshipFields = [{
+          field: 'associatedLiabilityIds',
+          value: 'array of known liability entity ids',
+          requires: 'explicit property-liability wording; atomic endpoint group when either endpoint is new'
+        }];
+      }
     }
     if (choices) entry.choices = choices;
     // MONEY IS THE ONE VALUE TYPE THE SCHEMA CANNOT PIN DOWN. `valueJson` is a
@@ -852,6 +987,7 @@ export function buildPlannerReconciliationContext({
   turns,
   notes,
   throughTurnId,
+  reviewTurnIds = null,
   voiceWriteOutcomes = []
 }) {
   const recent = turns.map((turn, sequence) => ({
@@ -862,6 +998,56 @@ export function buildPlannerReconciliationContext({
     sequence: Number.isSafeInteger(turn.sequence) ? turn.sequence : sequence
   }));
   const planning = toConsumerRealtimePlanningLists(context.state, context.profile);
+  const requestedReviewTurnIds = [...new Set(
+    (Array.isArray(reviewTurnIds) && reviewTurnIds.length > 0 ? reviewTurnIds : [throughTurnId])
+      .map((turnId) => String(turnId || ''))
+      .filter(Boolean)
+  )];
+  const requestedReviewSet = new Set(requestedReviewTurnIds);
+  const reviewTurns = recent.filter((turn) => (
+    turn.role === 'user' && requestedReviewSet.has(turn.turnId)
+  ));
+  const uncovered = [];
+  for (const turn of reviewTurns) {
+    const outcomes = voiceWriteOutcomes.filter((outcome) => (
+      String(outcome?.sourceTurnId || throughTurnId) === turn.turnId
+    ));
+    // Only server-issued occurrence provenance can retire an occurrence. A
+    // legacy bare value such as {amount: 25000} cannot distinguish which of two
+    // equal-valued holdings was actually saved, so treating it as coverage
+    // would recreate the exact omission this audit exists to catch. Older
+    // attempts without provenance are safely re-reviewed against canonical
+    // state and the strict reconciliation validators.
+    const acceptedFastValues = outcomes.flatMap((outcome) => (
+      Array.isArray(outcome?.result?.sourcedValueEvidence)
+        ? outcome.result.sourcedValueEvidence
+        : []
+    ));
+    const coverage = valueEvidenceCoverage(turn.text, acceptedFastValues);
+    uncovered.push(...coverage.uncovered.map((item) => ({
+      ...item,
+      evidenceId: `${turn.turnId}:${item.evidenceId}`,
+      turnId: turn.turnId
+    })));
+  }
+  const boundedRaw = boundedUncoveredValueEvidence({ uncovered }, { limit: 12 });
+  const uncoveredById = new Map(uncovered.map((item) => [item.evidenceId, item]));
+  const boundedCoverage = {
+    ...boundedRaw,
+    items: boundedRaw.items.map((item) => {
+      const source = uncoveredById.get(item.evidenceId);
+      return {
+        ...item,
+        turnId: source?.turnId || null,
+        start: source?.start ?? null,
+        end: source?.end ?? null
+      };
+    })
+  };
+  const missingReviewTurnIds = requestedReviewTurnIds.filter((turnId) => (
+    !reviewTurns.some((turn) => turn.turnId === turnId)
+  ));
+  const hasValueCoverageGap = boundedCoverage.items.length > 0;
   const canonicalFacts = buildConfirmedRealtimeFactSummary(context.profile);
   const needs = reconciliationNeeds(planning, context.profile);
   const moduleSlots = planning.moduleSlots || [];
@@ -882,15 +1068,28 @@ export function buildPlannerReconciliationContext({
     ...canonicalFacts.map((fact) => fact.factId),
     ...needs.map((need) => need.factId),
     ...notes.map((note) => note.factId),
-    ...selectedAnalyses.flatMap((analysis) => analysis.inputs.map((input) => input.factId))
+    ...selectedAnalyses.flatMap((analysis) => analysis.inputs.map((input) => input.factId)),
+    ...(hasValueCoverageGap
+      ? listSemanticFactDefinitions()
+        .filter((definition) => ['money', 'number'].includes(definition.valueType)
+          || (Object.hasOwn(POSITION_PROJECTIONS, definition.factId)
+            && POSITION_PROJECTIONS[definition.factId].ownerKey))
+        .map((definition) => definition.factId)
+      : [])
   ];
   const catalogue = buildReconciliationIdentityCatalogue(context.profile, notes, {
     // Four blank slots per collection for eight collections was 32 of the 40
-    // catalogue entries, nearly all of them never used. Two each, and only for
-    // collections an analysis on the table actually reads, pays for the input
-    // contract below without spending the latency budget.
-    slotsPerCollection: 2,
-    slotFactIds: positionFactIdsForModules(selectedAnalyses),
+    // catalogue entries, nearly all of them never used. Ordinary reviews keep
+    // two and only the analysis-relevant collections. A deterministic value
+    // gap temporarily exposes up to four per collection (bounded by the gap
+    // count), so three omitted peer holdings can be recovered without restoring
+    // an unbounded identity catalogue.
+    slotsPerCollection: hasValueCoverageGap
+      ? Math.min(4, Math.max(2, boundedCoverage.items.length))
+      : 2,
+    slotFactIds: hasValueCoverageGap
+      ? POSITION_SLOT_FACT_IDS
+      : positionFactIdsForModules(selectedAnalyses),
     retiredEntityIds: retiredEntityIdsFromNotes(notes)
   });
   return {
@@ -914,7 +1113,11 @@ export function buildPlannerReconciliationContext({
     needs,
     selectedAnalyses,
     currentQuestion: signedQuestionContext(context),
-    voiceWriteOutcomes
+    voiceWriteOutcomes,
+    reviewTurnIds: requestedReviewTurnIds,
+    missingReviewTurnIds,
+    uncoveredValueEvidence: boundedCoverage.items,
+    uncoveredValueEvidenceOverflowCount: boundedCoverage.overflowCount
   };
 }
 
@@ -986,6 +1189,7 @@ export async function requestPlannerReconciliation({ env, config, input }) {
     throw new ConsumerError(502, 'planner_reconciliation_output_invalid', 'The background planner returned invalid structured output.');
   }
   const { plan, droppedOperations } = normalizeModelReconciliationPlan(raw);
+  validateValueEvidenceDispositions({ raw, plan, input });
   const usage = response?.usage || {};
   return {
     plan,
@@ -1040,6 +1244,7 @@ async function runPlannerReconciliationAttempt({
   context,
   leaseId,
   throughTurnId,
+  reviewTurnIds = null,
   trigger = 'material_turn',
   retryAttempt = 0,
   rebaseAttempt = 0,
@@ -1056,23 +1261,51 @@ async function runPlannerReconciliationAttempt({
   const referencedTurnIds = notes.flatMap((note) => (
     Array.isArray(note.evidenceRefs) ? note.evidenceRefs.map((ref) => ref.turnId) : []
   ));
-  const [turns, voiceWriteOutcomes] = await Promise.all([
-    listReconciliationTranscriptWindow(
+  const auditedTurnIds = [...new Set(
+    (Array.isArray(reviewTurnIds) && reviewTurnIds.length > 0 ? reviewTurnIds : [throughTurnId])
+      .map((turnId) => String(turnId || ''))
+      .filter(Boolean)
+  )];
+  const turns = await listReconciliationTranscriptWindow(
+    env,
+    context.sessionRow.id,
+    leaseId,
+    throughTurnId,
+    { maxClientTurns: 8, referencedTurnIds: [...referencedTurnIds, ...auditedTurnIds] }
+  );
+  const outcomeGroups = await Promise.all(auditedTurnIds.map(async (sourceTurnId) => {
+    const outcomes = await listRealtimeWriteOutcomes(
       env,
       context.sessionRow.id,
       leaseId,
-      throughTurnId,
-      { maxClientTurns: 8, referencedTurnIds }
-    ),
-    listRealtimeWriteOutcomes(env, context.sessionRow.id, leaseId, throughTurnId, 24)
-  ]);
+      sourceTurnId,
+      24
+    );
+    return outcomes.map((outcome) => ({ ...outcome, sourceTurnId }));
+  }));
+  const voiceWriteOutcomes = outcomeGroups.flat();
   const input = buildPlannerReconciliationContext({
     context,
     turns,
     notes,
     throughTurnId,
+    reviewTurnIds: auditedTurnIds,
     voiceWriteOutcomes
   });
+  if (input.missingReviewTurnIds.length > 0) {
+    throw new ConsumerError(
+      409,
+      'planner_reconciliation_review_turn_missing',
+      'An outstanding material turn is outside the retained reconciliation transcript.'
+    );
+  }
+  if (input.uncoveredValueEvidenceOverflowCount > 0) {
+    throw new ConsumerError(
+      409,
+      'planner_reconciliation_value_evidence_overflow',
+      'The bounded reconciliation pass cannot safely review every uncovered value in this checkpoint.'
+    );
+  }
   const retryIdentity = Math.max(0, Math.min(1, Number(retryAttempt) || 0));
   // A rebase runs at a NEW base revision, so it already gets a distinct
   // identity; the suffix is only added when one is needed, which keeps every
@@ -1133,6 +1366,12 @@ async function runPlannerReconciliationAttempt({
       entities: input.entities,
       mapFactValue: mapReconciledFactValue
     });
+    const valueEvidenceReview = validateValueEvidenceDispositions({
+      raw: requested.raw,
+      plan: requested.plan,
+      input,
+      acceptedOperationIds: validation.acceptedOperationIds
+    });
     const applyRequested = config.plannerReconciliationMode === 'apply';
     const validationSucceeded = ['applied', 'no_change', 'needs_profile_projection', 'duplicate']
       .includes(validation.status);
@@ -1163,6 +1402,7 @@ async function runPlannerReconciliationAttempt({
       schemaVersion: 1,
       plan: requested.plan,
       validation,
+      valueEvidenceReview,
       applyRequested,
       applied: writesProfile,
       // Operations the server could not parse. Recorded so an unusable
@@ -1212,6 +1452,8 @@ async function runPlannerReconciliationAttempt({
       validation,
       metadata: requested.metadata,
       requested,
+      valueEvidenceReviewComplete: valueEvidenceReview.complete,
+      rejectedValueEvidenceOperationIds: valueEvidenceReview.rejectedOperationIds,
       appliedProfileRevision: completed.appliedProfileRevision ?? null,
       insertedNoteCount: completed.insertedNoteCount ?? 0,
       transitionedNoteCount: completed.transitionedNoteCount ?? 0
@@ -1299,6 +1541,7 @@ export async function runPlannerReconciliation({
   context,
   leaseId,
   throughTurnId,
+  reviewTurnIds = null,
   trigger = 'material_turn',
   retryAttempt = 0,
   loadContext = null
@@ -1317,6 +1560,7 @@ export async function runPlannerReconciliation({
         context: currentContext,
         leaseId,
         throughTurnId,
+        reviewTurnIds,
         trigger,
         retryAttempt,
         rebaseAttempt,

@@ -35,6 +35,8 @@ import {
   clientFailureMessage
 } from '../../../../js/planning/module_failures.js';
 import { getSemanticFactDefinition, resolveSemanticFact } from '../../../../js/planning/semantic_facts.js';
+import { classifyGoalPriorityHint } from '../../../../js/planning/goal_catalogue.js';
+import { extractValueEvidence } from '../../../../js/planning/value_evidence.js';
 
 const MAX_FACTS_PER_CALL = 10;
 
@@ -592,7 +594,7 @@ function numericSlot(fact, leaf) {
   return null;
 }
 
-function localNumberContext(transcript, occurrence) {
+function localNumberSpan(transcript, occurrence) {
   const barriers = [
     ...transcript.matchAll(
       // An em or en dash separates clauses in speech exactly as "but" does.
@@ -616,7 +618,11 @@ function localNumberContext(transcript, occurrence) {
       break;
     }
   }
-  return transcript.slice(start, end).toLowerCase();
+  return { start, end, text: transcript.slice(start, end) };
+}
+
+function localNumberContext(transcript, occurrence) {
+  return localNumberSpan(transcript, occurrence).text.toLowerCase();
 }
 
 function ownerCueMatches(slot, context) {
@@ -888,6 +894,95 @@ function numericOccurrenceHasSemanticCue(occurrence, transcript) {
   return NUMERIC_SEMANTIC_CUE.test(localNumberContext(transcript, occurrence));
 }
 
+const GENERIC_POSITION_LABEL_TERMS = new Set([
+  'account', 'asset', 'business', 'cash', 'company', 'debt', 'fund', 'home',
+  'house', 'income', 'investment', 'loan', 'mortgage', 'pension', 'property',
+  'salary', 'savings', 'shares', 'workplace'
+]);
+
+function candidateDiscriminatorTerms(fact) {
+  const labels = [];
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    for (const [key, item] of Object.entries(value)) {
+      if (['label', 'name', 'provider'].includes(key) && typeof item === 'string') labels.push(item);
+      else if (item && typeof item === 'object') visit(item);
+    }
+  };
+  visit(fact?.value);
+  return [...new Set(labels.flatMap((label) => (
+    label.toLowerCase().match(/[a-z][a-z0-9'-]{1,}/g) || []
+  )).filter((term) => !GENERIC_POSITION_LABEL_TERMS.has(term)))];
+}
+
+function labelBoundOccurrences(fact, occurrences, transcript) {
+  const terms = candidateDiscriminatorTerms(fact);
+  if (terms.length === 0 || occurrences.length <= 1) return occurrences;
+  const matched = occurrences.filter((occurrence) => {
+    const context = localNumberContext(transcript, occurrence);
+    return terms.some((term) => context.includes(term));
+  });
+  return matched.length > 0 ? matched : occurrences;
+}
+
+/**
+ * Some slots deliberately support an anaphoric fallback. For example, in
+ * "I contribute 5% and my employer matches that", the one spoken percentage
+ * is evidence for both contribution rates. When the client instead states two
+ * percentages, an explicit local role cue is stronger than that fallback and
+ * must bind each occurrence to its own role. This is occurrence/role
+ * precedence, not a value- or phrase-specific exception.
+ */
+function roleBoundOccurrences(slot, occurrences, transcript) {
+  if (occurrences.length <= 1) return occurrences;
+  const base = String(slot || '').split(':')[0];
+  const locallyMatchesRole = base === 'employer_pension_rate'
+    ? (context) => /\b(?:employer|company|match)\b/i.test(context)
+    : base === 'employee_pension_rate'
+      ? (context) => (
+        /\b(?:i|we|employee|contribut(?:e|es|ed|ing|ion|ions)?|put in|pay in)\b/i.test(context)
+        && !/\b(?:employer|company|match)\b/i.test(context)
+      )
+      : null;
+  if (!locallyMatchesRole) return occurrences;
+  const matched = occurrences.filter((occurrence) => (
+    locallyMatchesRole(localNumberContext(transcript, occurrence))
+  ));
+  return matched.length > 0 ? matched : occurrences;
+}
+
+function liveValueEvidenceBindings(facts, transcript, occurrences) {
+  const inventory = extractValueEvidence(transcript);
+  const used = new Set();
+  const bindings = [];
+  for (const fact of facts) {
+    for (const leaf of numericLeaves(fact?.value)) {
+      const slot = numericSlot(fact, leaf);
+      if (!slot) continue;
+      const semantic = occurrences.filter((occurrence) => (
+        numericOccurrenceSupportsSlot(slot, occurrence, transcript)
+        && Object.is(occurrence.value, leaf.value)
+      ));
+      const roleBound = roleBoundOccurrences(slot, semantic, transcript);
+      const candidates = labelBoundOccurrences(fact, roleBound, transcript);
+      const occurrence = candidates.find((item) => !used.has(`${item.start}:${item.end}`));
+      if (!occurrence) continue;
+      const evidence = inventory.find((item) => (
+        item.start <= occurrence.start && item.end >= occurrence.end
+      ));
+      if (!evidence || used.has(evidence.evidenceId)) continue;
+      used.add(`${occurrence.start}:${occurrence.end}`);
+      used.add(evidence.evidenceId);
+      bindings.push({
+        evidenceId: evidence.evidenceId,
+        candidateId: fact.candidateId || null
+      });
+    }
+  }
+  return bindings;
+}
+
 /**
  * `confirm_none` completes a required section, so an unsupported call can make
  * an analysis look ready using a categorical claim the client never made.
@@ -949,8 +1044,10 @@ export function partitionSupportedLiveFacts(facts, latestClientTranscript, {
   const submitted = Array.isArray(facts) ? facts : [];
   const transcript = String(latestClientTranscript || '')
     .replace(/[’‘]/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+    // Preserve character offsets for accepted value-evidence provenance.
+    // Normalising each whitespace character (rather than collapsing runs)
+    // keeps the live guard readable without changing occurrence identities.
+    .replace(/\s/g, ' ');
   const occurrences = numberOccurrences(transcript);
   const affirmed = affirmedReadBackValues(transcript, assistantReadBack, clientSourcedFigures);
   const numericEvidence = submitted.flatMap((fact) =>
@@ -999,9 +1096,12 @@ export function partitionSupportedLiveFacts(facts, latestClientTranscript, {
         const supportedOccurrences = occurrences.filter((occurrence) =>
           numericOccurrenceSupportsSlot(slot, occurrence, transcript)
         );
-        const matchingOccurrence = supportedOccurrences.some((occurrence) =>
+        const roleBound = roleBoundOccurrences(slot, supportedOccurrences, transcript);
+        const boundOccurrences = labelBoundOccurrences(fact, roleBound, transcript);
+        const matchingOccurrences = boundOccurrences.filter((occurrence) =>
           Object.is(occurrence.value, leaf.value)
         );
+        const matchingOccurrence = matchingOccurrences.length > 0;
         // THE TERSE-ANSWER CASE. `fallbackShape` already requires that the
         // candidate values and the transcript's numbers are the SAME single
         // set -- so there is exactly one number in what the client said and
@@ -1029,8 +1129,10 @@ export function partitionSupportedLiveFacts(facts, latestClientTranscript, {
           || pathParts.includes('min')
           || pathParts.includes('max')
           || String(fact?.certainty || '').toLowerCase() === 'range';
-        return !unordered
-          && new Set(supportedOccurrences.map((occurrence) => occurrence.value)).size > 1;
+        return !unordered && (
+          matchingOccurrences.length > 1
+          || new Set(boundOccurrences.map((occurrence) => occurrence.value)).size > 1
+        );
       });
     if (unsupportedNumber) {
       rejected.push({ factId, reason: 'live_numeric_fact_unsupported' });
@@ -1039,27 +1141,47 @@ export function partitionSupportedLiveFacts(facts, latestClientTranscript, {
     accepted.push(fact);
   }
 
-  return { accepted, rejected };
+  const verdict = { accepted, rejected };
+  // Compatibility: callers historically compared the enumerable verdict
+  // shape exactly. Provenance is an internal server-side attachment, not a
+  // fourth public result field.
+  Object.defineProperty(verdict, 'acceptedValueEvidence', {
+    value: liveValueEvidenceBindings(accepted, transcript, occurrences),
+    enumerable: false
+  });
+  return verdict;
 }
 
 // Kept as a compatibility export for callers and tests that predate the
 // numeric evidence gate. Its behaviour now includes every live evidence check.
 export const partitionSupportedConfirmedNoneFacts = partitionSupportedLiveFacts;
 
-function normalizedFacts(args) {
+function normalizedFacts(args, transcript = '') {
   const facts = Array.isArray(args?.facts) ? args.facts : [];
   if (!facts.length) {
     throw new ConsumerError(400, 'live_facts_required', 'save_facts needs at least one fact.');
   }
-  return facts.slice(0, MAX_FACTS_PER_CALL).map((fact, index) => ({
-    candidateId: `live-${index}`,
-    operation: 'upsert',
-    factId: String(fact?.factId || '').slice(0, 120),
-    value: fact?.value,
-    certainty: String(fact?.certainty || 'exact'),
-    evidenceText: '',
-    correctionTarget: ''
-  }));
+  return facts.slice(0, MAX_FACTS_PER_CALL).map((fact, index) => {
+    const factId = String(fact?.factId || '').slice(0, 120);
+    const rawValue = fact?.value;
+    const goalType = factId === 'primary_goal'
+      ? (typeof rawValue === 'string' ? rawValue : rawValue?.type)
+      : null;
+    const value = goalType ? {
+      ...(rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue) ? rawValue : {}),
+      type: goalType,
+      priorityHint: classifyGoalPriorityHint(goalType, transcript)
+    } : rawValue;
+    return {
+      candidateId: `live-${index}`,
+      operation: 'upsert',
+      factId,
+      value,
+      certainty: String(fact?.certainty || 'exact'),
+      evidenceText: transcript,
+      correctionTarget: ''
+    };
+  });
 }
 
 /**
@@ -1121,7 +1243,7 @@ export function pensionIdentityDirective(transcript, assistantReadBack) {
 }
 
 async function executeSaveFacts(args, deps) {
-  const candidates = normalizedFacts(args);
+  const candidates = normalizedFacts(args, deps.latestClientTranscript);
   const guarded = partitionSupportedLiveFacts(candidates, deps.latestClientTranscript, {
     clientSourcedFigures: deps.clientSourcedFigures || null,
     assistantReadBack: deps.assistantReadBack || ''
@@ -1160,6 +1282,13 @@ async function executeSaveFacts(args, deps) {
         sectionCompletions: [],
         invalidCandidates: []
       },
+      // partitionSupportedLiveFacts above is this lane's strict causal
+      // numeric/slot/owner grounder. Do not run the silent-planner occurrence
+      // grounder a second time here: the live guard can prove an explicit
+      // anaphoric relationship such as "I contribute 5% and my employer
+      // matches that", where one spoken occurrence legitimately supports two
+      // canonical rate fields. The shared mapper and proposal validators still
+      // run below, unchanged.
       evidenceRef: deps.evidenceRef || null,
       leaseId: deps.leaseId || null,
       toolAttemptId: deps.toolAttemptId || null,
@@ -1198,6 +1327,8 @@ async function executeSaveFacts(args, deps) {
     sourcedValues: guarded.accepted
       .filter((candidate) => acceptedCandidateIds.has(candidate.candidateId))
       .map((candidate) => candidate.value),
+    sourcedValueEvidence: (guarded.acceptedValueEvidence || [])
+      .filter((item) => acceptedCandidateIds.has(item.candidateId)),
     context
   };
 }

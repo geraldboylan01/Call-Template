@@ -223,6 +223,7 @@ assert.match(liveSource, /completeRealtimeToolAttempt\(this\.env/,
 
 {
   const { session, durable } = await schedulerSession('reconciliation-scheduler-durable');
+  session.unreviewedMaterialTurns = [{ turnId: 'turn-1', ordinal: 1 }];
   const first = deferred();
   const calls = [];
   session.executePlannerReconciliation = async (_config, _context, job) => {
@@ -240,6 +241,10 @@ assert.match(liveSource, /completeRealtimeToolAttempt\(this\.env/,
   assert.equal(stored.current.throughTurnId, 'turn-1',
     'an executing job must remain in durable storage');
 
+  session.unreviewedMaterialTurns = [
+    { turnId: 'turn-1', ordinal: 1 },
+    { turnId: 'turn-2', ordinal: 2 }
+  ];
   session.queueReconciliation({
     providerItemId: 'provider-2', throughTurnId: 'turn-2', ordinal: 2, trigger: 'material_turn'
   });
@@ -249,6 +254,8 @@ assert.match(liveSource, /completeRealtimeToolAttempt\(this\.env/,
     'coalescing must not overwrite the in-flight durable job');
   assert.equal(stored.queued.throughTurnId, 'turn-2',
     'a later trigger must be durably retained behind the in-flight job');
+  assert.deepEqual(stored.queued.reviewTurnIds, ['turn-1', 'turn-2'],
+    'a coalesced checkpoint must retain every earlier material-turn audit obligation');
 
   first.resolve();
   await session.reconciliationChain;
@@ -385,7 +392,7 @@ async function startAttempt(fixture, suffix, throughTurnId = `turn-${suffix}`) {
     trigger: 'material_turn',
     mode: 'shadow',
     idempotencyKey: `scheduler-test:${suffix}`,
-    promptVersion: 'planning-reconciliation-v1',
+    promptVersion: 'planning-reconciliation-v2',
     input: { schemaVersion: 1, suffix }
   });
 }

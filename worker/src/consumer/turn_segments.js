@@ -1,4 +1,6 @@
 import { figuresAreGrounded } from './spoken_figures.js';
+import { extractValueEvidence } from '../../../js/planning/value_evidence.js';
+import { normalizeGoalCandidatePriorities } from '../../../js/planning/goal_catalogue.js';
 
 /**
  * A client turn, read in pieces rather than all at once.
@@ -43,22 +45,6 @@ import { figuresAreGrounded } from './spoken_figures.js';
  */
 const MAX_FIGURES_PER_SEGMENT = 2;
 
-/**
- * Two figures are normally safe in one planner read when they describe one
- * position (salary plus bonus) or one coupled pair (home plus mortgage). The
- * paid live probe exposed the important exception: a pension value followed by
- * a separate stocks-and-shares value produced only the pension candidate. Both
- * figures were explicit, but the turn never crossed the generic three-figure
- * density threshold, so the independent holdings were presented as one item.
- *
- * Keep this deliberately semantic and narrow. Splitting every two-figure turn
- * would tear a property away from its mortgage and could lose the deterministic
- * link between them. A pension and an investment are independent positions and
- * each clause can stand alone, so they should always earn separate reads.
- */
-const INDEPENDENT_PENSION_INVESTMENT_PAIR =
-  /(?=.*\b(?:pension|prsa|retirement bond|buyout bond)\b)(?=.*\b(?:stocks?|shares?|investments?|funds?)\b)/i;
-
 /** A backstop for prose that carries no figures at all but rambles. */
 const MAX_SEGMENT_CHARS = 220;
 
@@ -94,7 +80,11 @@ const CLAUSE_BOUNDARIES = [
 
 /** Every number-looking token in a piece. */
 function figureCount(text) {
-  return (String(text).match(/\d[\d,.]*/g) || []).length;
+  const source = String(text);
+  return Math.max(
+    (source.match(/\d[\d,.]*/g) || []).length,
+    extractValueEvidence(source).length
+  );
 }
 
 /**
@@ -107,14 +97,13 @@ function figureCount(text) {
  * carrying a figure must also carry enough words to name what the figure is.
  */
 function carriesItsOwnMeaning(piece) {
-  if (!/\d/.test(piece)) return true;
+  if (!/\d/.test(piece) && extractValueEvidence(piece).length === 0) return true;
   return (piece.match(/[A-Za-z][A-Za-z'\u2019-]{2,}/g) || []).length >= 2;
 }
 
 function tooDense(piece) {
   const figures = figureCount(piece);
   return figures > MAX_FIGURES_PER_SEGMENT
-    || (figures > 1 && INDEPENDENT_PENSION_INVESTMENT_PAIR.test(piece))
     || piece.length > MAX_SEGMENT_CHARS;
 }
 
@@ -221,6 +210,16 @@ export function shouldSegmentTurn(transcript) {
  * numbers its own candidates from one, so without this the second segment's
  * "position-1" would collide with the first's and one would be lost.
  */
+function mergeGoalReading(existing, incoming) {
+  if (!existing) return incoming;
+  // Repeating a goal without ranking language cannot erase an order the client
+  // already stated. A later explicit rank can refine an earlier neutral read,
+  // but two segmented snippets are not enough evidence to treat repetition as
+  // a correction of an already explicit order.
+  if (['primary', 'secondary'].includes(existing?.priorityHint)) return existing;
+  return ['primary', 'secondary'].includes(incoming?.priorityHint) ? incoming : existing;
+}
+
 export function mergeSegmentExtractions(extractions, sourceTurnId) {
   const usable = (extractions || []).filter(Boolean);
   if (usable.length === 0) return null;
@@ -233,10 +232,9 @@ export function mergeSegmentExtractions(extractions, sourceTurnId) {
 
   usable.forEach((extraction, segmentIndex) => {
     for (const goal of extraction.goalCandidates || []) {
-      // A goal named in several clauses is one goal. Keep the first sighting's
-      // priority hint: "I want to retire early, and also look at the mortgage"
-      // states its own order.
-      if (!goals.has(goal.goalType)) goals.set(goal.goalType, goal);
+      // A goal named in several clauses is one goal; later explicit ordering
+      // refines a neutral earlier mention without duplicating the goal.
+      goals.set(goal.goalType, mergeGoalReading(goals.get(goal.goalType), goal));
     }
     for (const fact of extraction.semanticFacts || []) {
       facts.set(fact.factId, fact);
@@ -262,7 +260,7 @@ export function mergeSegmentExtractions(extractions, sourceTurnId) {
   return Object.freeze({
     schemaVersion: usable[0].schemaVersion,
     sourceTurnId,
-    goalCandidates: renumber([...goals.values()], 'goal'),
+    goalCandidates: normalizeGoalCandidatePriorities(renumber([...goals.values()], 'goal')),
     semanticFacts: renumber([...facts.values()], 'fact'),
     positions: renumber([...positions.values()], 'position'),
     invalidCandidates,
@@ -371,10 +369,10 @@ export function unionWithWholeTurnRead(clauseMerged, wholeExtraction) {
     ...clauseMerged,
     // A clause is the more focused reading of the same words, so it wins every
     // conflict. The whole-turn read only fills gaps.
-    goalCandidates: renumber([
+    goalCandidates: normalizeGoalCandidatePriorities(renumber([
       ...(clauseMerged.goalCandidates || []),
       ...(wholeExtraction.goalCandidates || []).filter((goal) => !knownGoals.has(goal.goalType))
-    ], 'goal'),
+    ], 'goal')),
     semanticFacts: renumber([
       ...(clauseMerged.semanticFacts || []),
       ...(wholeExtraction.semanticFacts || []).filter((fact) => !knownFacts.has(fact.factId))

@@ -39,6 +39,7 @@ import {
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
 import { describeConversationState } from './conversation.js';
 import { ConsumerError } from './errors.js';
+import { valueEvidenceCoverage } from '../../../js/planning/value_evidence.js';
 import {
   getCurrentProfile,
   getSessionRow,
@@ -1684,7 +1685,11 @@ export class ConsumerRealtimeSession {
     return true;
   }
 
-  async applyPlannerExtraction(extraction, { turnOrdinal = this.plannerTurnOrdinal } = {}) {
+  async applyPlannerExtraction(extraction, {
+    turnOrdinal = this.plannerTurnOrdinal,
+    transcript = null,
+    allowedEvidenceIds = null
+  } = {}) {
     const context = await this.planningContext();
     // Candidate mapping is deterministic and transport-independent.
     const candidates = mapPlannerExtractionToCandidates(extraction);
@@ -1694,6 +1699,7 @@ export class ConsumerRealtimeSession {
       accepted: false,
       errorCode: item.errorCode
     }));
+    let sourcedValueEvidence = [];
     if (candidates.length > 0) {
       const attempt = await beginRealtimeToolAttempt(this.env, {
         sessionId: this.meta.sessionId,
@@ -1723,6 +1729,8 @@ export class ConsumerRealtimeSession {
           config: context.config,
           context,
           extraction,
+          transcript,
+          allowedEvidenceIds,
           evidenceRef: extraction.sourceTurnId,
           leaseId: this.meta.leaseId,
           toolAttemptId: attempt.row.id,
@@ -1731,6 +1739,7 @@ export class ConsumerRealtimeSession {
         // applyPlannerCandidates already carries the planner's own invalid
         // candidates, so its outcome list is authoritative for this batch.
         outcomes = applied.outcomes;
+        sourcedValueEvidence = applied.sourcedValueEvidence;
         await completeRealtimeToolAttempt(this.env, {
           sessionId: this.meta.sessionId,
           leaseId: this.meta.leaseId,
@@ -1740,7 +1749,8 @@ export class ConsumerRealtimeSession {
             ok: true,
             schemaVersion: extraction.schemaVersion,
             sourceTurnId: extraction.sourceTurnId,
-            outcomes
+            outcomes,
+            sourcedValueEvidence
           },
           errorCode: null,
           latencyMs: 0
@@ -1761,7 +1771,7 @@ export class ConsumerRealtimeSession {
     // must never become the active conversation brief after a newer turn has
     // already advanced the meeting.
     if (normalizedOrdinal < this.latestPlannerBriefOrdinal) {
-      return { brief: this.latestMeetingBrief, outcomes, stale: true };
+      return { brief: this.latestMeetingBrief, outcomes, sourcedValueEvidence, stale: true };
     }
     this.latestPlannerBriefOrdinal = normalizedOrdinal;
     await this.state.storage.put('latestPlannerBriefOrdinal', normalizedOrdinal);
@@ -1774,7 +1784,7 @@ export class ConsumerRealtimeSession {
       isStale: () => this.latestPlannerBriefOrdinal !== normalizedOrdinal
     });
     if (composed.stale) {
-      return { brief: this.latestMeetingBrief, outcomes, stale: true };
+      return { brief: this.latestMeetingBrief, outcomes, sourcedValueEvidence, stale: true };
     }
     const brief = composed.brief;
     if (brief.phase === 'awaiting_voice_confirmation') {
@@ -1782,11 +1792,11 @@ export class ConsumerRealtimeSession {
       await this.state.storage.put('phase', this.currentPhase);
     }
     if (this.latestPlannerBriefOrdinal !== normalizedOrdinal) {
-      return { brief: this.latestMeetingBrief, outcomes, stale: true };
+      return { brief: this.latestMeetingBrief, outcomes, sourcedValueEvidence, stale: true };
     }
     this.latestMeetingBrief = brief;
     await this.state.storage.put('latestMeetingBrief', brief);
-    return { brief, outcomes };
+    return { brief, outcomes, sourcedValueEvidence };
   }
 
   async recordPlannerUsage(metadata, config) {
@@ -1833,7 +1843,10 @@ export class ConsumerRealtimeSession {
       // visible rather than being silently masked by the fallback.
       this.degradedPlannerTurns += 1;
       await this.state.storage.put('degradedPlannerTurns', this.degradedPlannerTurns).catch(() => {});
-      const applied = await this.applyPlannerExtraction(extraction, { turnOrdinal });
+      const applied = await this.applyPlannerExtraction(extraction, {
+        turnOrdinal,
+        transcript
+      });
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -1894,7 +1907,10 @@ export class ConsumerRealtimeSession {
       // where the words would no longer match anything the client said.
       this.clearTurnPrefetch(itemId);
       await this.recordPlannerUsage(planned.metadata, context.config);
-      const applied = await this.applyPlannerExtraction(planned.extraction, { turnOrdinal });
+      const applied = await this.applyPlannerExtraction(planned.extraction, {
+        turnOrdinal,
+        transcript
+      });
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -2077,7 +2093,7 @@ export class ConsumerRealtimeSession {
 
     let applied;
     try {
-      applied = await this.applyPlannerExtraction(planned.extraction, { turnOrdinal });
+      applied = await this.applyPlannerExtraction(planned.extraction, { turnOrdinal, transcript });
     } catch (error) {
       const code = error instanceof ConsumerError ? error.code : 'realtime_planner_apply_failed';
       await appendRealtimeEvent(this.env, {
@@ -2093,7 +2109,8 @@ export class ConsumerRealtimeSession {
 
     // ONE narrow second pass over only what could not be recorded. On a clean
     // turn buildRepairRequest returns null and nothing extra is spent.
-    const repair = buildRepairRequest(applied.outcomes);
+    const evidenceCoverage = valueEvidenceCoverage(transcript, planned.extraction);
+    const repair = buildRepairRequest(applied.outcomes, evidenceCoverage);
     if (repair) {
       try {
         const repairContext = await this.planningContext();
@@ -2111,8 +2128,22 @@ export class ConsumerRealtimeSession {
           timeoutMs: Math.min(8_000, repairContext.config.realtimePlannerTimeoutMs)
         });
         await this.recordPlannerUsage(repaired.metadata, repairContext.config);
-        const reapplied = await this.applyPlannerExtraction(repaired.extraction, { turnOrdinal });
-        applied = { ...reapplied, outcomes: mergeRepairOutcomes(applied.outcomes, reapplied.outcomes) };
+        const reapplied = await this.applyPlannerExtraction(repaired.extraction, {
+          turnOrdinal,
+          transcript,
+          allowedEvidenceIds: repair.allowedEvidenceIds
+        });
+        const sourcedValueEvidence = [
+          ...(applied.sourcedValueEvidence || []),
+          ...(reapplied.sourcedValueEvidence || [])
+        ].filter((item, index, all) => (
+          all.findIndex((candidate) => candidate.evidenceId === item.evidenceId) === index
+        ));
+        applied = {
+          ...reapplied,
+          outcomes: mergeRepairOutcomes(applied.outcomes, reapplied.outcomes),
+          sourcedValueEvidence
+        };
       } catch (_error) {
         // A failed repair leaves the first pass exactly as it was.
         await appendRealtimeEvent(this.env, {

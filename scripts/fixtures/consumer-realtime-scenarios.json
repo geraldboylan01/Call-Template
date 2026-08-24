@@ -13,7 +13,7 @@
             "goalCandidates": [
               {
                 "type": "buy_home",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "semanticFacts": [
@@ -81,7 +81,7 @@
             "goalCandidates": [
               {
                 "type": "improve_pension",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "semanticFacts": [
@@ -131,7 +131,7 @@
             "goalCandidates": [
               {
                 "type": "optimise_mortgage",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "semanticFacts": [
@@ -177,7 +177,7 @@
             "goalCandidates": [
               {
                 "type": "understand_position",
-                "priorityHint": "primary"
+                "priorityHint": "unspecified"
               }
             ],
             "semanticFacts": [

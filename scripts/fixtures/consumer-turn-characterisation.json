@@ -30,7 +30,7 @@
       "turns": [
         {
           "label": "open",
-          "profileRevision": 6,
+          "profileRevision": 5,
           "stage": "targeted_fact_gathering",
           "goals": [
             {
@@ -151,7 +151,7 @@
         },
         {
           "label": "savings",
-          "profileRevision": 7,
+          "profileRevision": 6,
           "stage": "targeted_fact_gathering",
           "goals": [
             {
@@ -275,7 +275,7 @@
       "turns": [
         {
           "label": "open",
-          "profileRevision": 6,
+          "profileRevision": 5,
           "stage": "targeted_fact_gathering",
           "goals": [
             {
@@ -366,7 +366,7 @@
       "turns": [
         {
           "label": "open",
-          "profileRevision": 5,
+          "profileRevision": 4,
           "stage": "targeted_fact_gathering",
           "goals": [
             {
@@ -455,7 +455,7 @@
       "turns": [
         {
           "label": "open",
-          "profileRevision": 6,
+          "profileRevision": 5,
           "stage": "targeted_fact_gathering",
           "goals": [
             {

@@ -2942,4 +2942,390 @@ await runCase('approximate aggregate wording stays a summary and the module sees
   );
 });
 
+await runCase('money currency is bound to its own occurrence and an unstated currency defaults only to EUR', async () => {
+  const profile = baseProfile();
+  const mixedTurn = {
+    turnId: 'turn_mixed_currencies',
+    role: 'user',
+    finalized: true,
+    sequence: 101,
+    text: 'The UK account is worth £35,000 and cash is €8,000.'
+  };
+  const defaultTurn = {
+    turnId: 'turn_default_currency',
+    role: 'user',
+    finalized: true,
+    sequence: 102,
+    text: 'The reserve account contains 35,000.'
+  };
+  const ambiguousTurn = {
+    turnId: 'turn_ambiguous_currency',
+    role: 'user',
+    finalized: true,
+    sequence: 103,
+    text: 'The first account is £35,000 and the second account is €35,000.'
+  };
+  const entity = (entityId, label) => ({
+    entityId,
+    factIds: ['asset_position'],
+    ownerIds: [],
+    aliases: [label],
+    label,
+    collection: 'assets',
+    newEntitySlot: true
+  });
+  const plan = ({ operationId, entityId, label, amount, currency, turn, quote = turn.text }) => ({
+    schemaVersion: 1,
+    verdict: 'changes_proposed',
+    reviewedNoteIds: [],
+    operationGroups: [{
+      groupId: `group_${operationId}`,
+      atomic: false,
+      operations: [{
+        operationId,
+        op: 'upsert_note',
+        reasonCode: 'missing_note',
+        noteKind: 'position',
+        factId: 'asset_position',
+        factInstanceId: `asset_position:${entityId}`,
+        entityId,
+        ownerId: 'primary',
+        certainty: 'exact',
+        value: {
+          type: 'investment',
+          label,
+          currentValue: { amount, currency }
+        },
+        evidence: [{ turnId: turn.turnId, quote }]
+      }]
+    }]
+  });
+  const apply = ({ operationId, entityId, label, amount = 35_000, currency, turn }) => (
+    applyReconciliationPlan({
+      profile,
+      notes: [],
+      plan: plan({ operationId, entityId, label, amount, currency, turn }),
+      transcriptTurns: [turn],
+      sessionId: `session_${operationId}`,
+      transcriptWatermark: turn.turnId,
+      baseProfileRevision: profile.revision,
+      entities: [entity(entityId, label)]
+    })
+  );
+
+  const sterling = await apply({
+    operationId: 'currency_sterling',
+    entityId: 'asset_uk',
+    label: 'UK account',
+    currency: 'GBP',
+    turn: mixedTurn
+  });
+  assert.deepEqual(sterling.rejectedGroups, [], 'the pound sign attached to 35,000 supports GBP');
+  assert.equal(sterling.profile.assets[0]?.currentValue?.currency, 'GBP');
+
+  const pooledEuro = await apply({
+    operationId: 'currency_wrong_pooled_euro',
+    entityId: 'asset_uk_wrong',
+    label: 'UK account',
+    currency: 'EUR',
+    turn: mixedTurn
+  });
+  assert.equal(
+    pooledEuro.rejectedGroups[0]?.code,
+    'currency_value_unsupported',
+    'EUR on the unrelated cash occurrence must not authorise EUR on the sterling account'
+  );
+
+  const defaultEuro = await apply({
+    operationId: 'currency_default_eur',
+    entityId: 'asset_reserve_eur',
+    label: 'reserve account',
+    currency: 'EUR',
+    turn: defaultTurn
+  });
+  assert.deepEqual(defaultEuro.rejectedGroups, [], 'an unqualified amount uses the signed IE/EUR default');
+
+  const defaultCannotInventGbp = await apply({
+    operationId: 'currency_default_not_gbp',
+    entityId: 'asset_reserve_gbp',
+    label: 'reserve account',
+    currency: 'GBP',
+    turn: defaultTurn
+  });
+  assert.equal(defaultCannotInventGbp.rejectedGroups[0]?.code, 'currency_value_unsupported');
+
+  const sameAmountTwoCurrencies = await apply({
+    operationId: 'currency_same_amount_ambiguous',
+    entityId: 'asset_first',
+    label: 'first account',
+    currency: 'GBP',
+    turn: ambiguousTurn
+  });
+  assert.equal(
+    sameAmountTwoCurrencies.rejectedGroups[0]?.code,
+    'currency_value_ambiguous',
+    'a wide quote with the same amount in two currencies must be narrowed, not guessed'
+  );
+});
+
+await runCase('property-liability relationships bind the actual target, require atomic new endpoints and compare owner sets', async () => {
+  const profile = baseProfile();
+  const ownerId = profile.primaryPerson.personId;
+  const propertyId = 'recon_property_home';
+  const mortgageId = 'recon_liability_mortgage';
+  const carLoanId = 'recon_liability_car';
+  const validTurn = {
+    turnId: 'turn_relationship_valid',
+    role: 'user',
+    finalized: true,
+    sequence: 110,
+    text: 'Our home is worth €480,000; the mortgage secured against it is €210,000.'
+  };
+  const unrelatedTurn = {
+    turnId: 'turn_relationship_unrelated',
+    role: 'user',
+    finalized: true,
+    sequence: 111,
+    text: 'Our home is worth €480,000 and has a mortgage. The car loan is €18,000.'
+  };
+  const pronounTurn = {
+    turnId: 'turn_relationship_pronoun',
+    role: 'user',
+    finalized: true,
+    sequence: 112,
+    text: 'Our home is worth €480,000. It has a mortgage of €210,000.'
+  };
+  const propertyEntity = {
+    entityId: propertyId,
+    factIds: ['property_position'],
+    ownerIds: [],
+    aliases: ['home', 'house', 'our home'],
+    label: 'home',
+    collection: 'properties',
+    newEntitySlot: true
+  };
+  const liabilityEntity = (entityId, label, factId) => ({
+    entityId,
+    factIds: [factId, 'liability_position'],
+    ownerIds: [],
+    aliases: [label],
+    label,
+    collection: 'liabilities',
+    newEntitySlot: true
+  });
+  const relationshipPlan = ({
+    turn,
+    liabilityId,
+    liabilityFactId,
+    liabilityLabel,
+    liabilityType,
+    liabilityAmount,
+    atomic
+  }) => ({
+    schemaVersion: 1,
+    verdict: 'changes_proposed',
+    reviewedNoteIds: [],
+    operationGroups: [{
+      groupId: `group_${liabilityId}`,
+      atomic,
+      operations: [{
+        operationId: `property_${liabilityId}`,
+        op: 'upsert_note',
+        reasonCode: 'missing_note',
+        noteKind: 'position',
+        factId: 'property_position',
+        factInstanceId: `property_position:${propertyId}`,
+        entityId: propertyId,
+        ownerId,
+        certainty: 'exact',
+        value: {
+          use: 'home',
+          label: 'home',
+          currentValue: { amount: 480_000, currency: 'EUR' },
+          associatedLiabilityIds: [liabilityId]
+        },
+        evidence: [{ turnId: turn.turnId, quote: turn.text }]
+      }, {
+        operationId: `liability_${liabilityId}`,
+        op: 'upsert_note',
+        reasonCode: 'missing_note',
+        noteKind: 'position',
+        factId: liabilityFactId,
+        factInstanceId: `${liabilityFactId}:${liabilityId}`,
+        entityId: liabilityId,
+        ownerId,
+        certainty: 'exact',
+        value: {
+          type: liabilityType,
+          label: liabilityLabel,
+          currentBalance: { amount: liabilityAmount, currency: 'EUR' }
+        },
+        evidence: [{ turnId: turn.turnId, quote: turn.text }]
+      }]
+    }]
+  });
+  const applyNewPair = ({ turn, liabilityId, liabilityFactId, liabilityLabel, liabilityType, liabilityAmount, atomic }) => (
+    applyReconciliationPlan({
+      profile,
+      notes: [],
+      plan: relationshipPlan({
+        turn, liabilityId, liabilityFactId, liabilityLabel, liabilityType, liabilityAmount, atomic
+      }),
+      transcriptTurns: [turn],
+      sessionId: `session_${liabilityId}_${atomic}`,
+      transcriptWatermark: turn.turnId,
+      baseProfileRevision: profile.revision,
+      entities: [propertyEntity, liabilityEntity(liabilityId, liabilityLabel, liabilityFactId)]
+    })
+  );
+
+  const valid = await applyNewPair({
+    turn: validTurn,
+    liabilityId: mortgageId,
+    liabilityFactId: 'mortgage_position',
+    liabilityLabel: 'mortgage',
+    liabilityType: 'mortgage',
+    liabilityAmount: 210_000,
+    atomic: true
+  });
+  assert.deepEqual(valid.rejectedGroups, [], 'an explicitly secured home/mortgage pair is accepted');
+  assert.deepEqual(valid.profile.properties[0]?.associatedLiabilityIds, [mortgageId]);
+
+  const pronounLinked = await applyNewPair({
+    turn: pronounTurn,
+    liabilityId: mortgageId,
+    liabilityFactId: 'mortgage_position',
+    liabilityLabel: 'mortgage',
+    liabilityType: 'mortgage',
+    liabilityAmount: 210_000,
+    atomic: true
+  });
+  assert.deepEqual(pronounLinked.rejectedGroups, [],
+    'an immediate property back-reference preserves an explicitly stated home/mortgage edge');
+
+  const stitchedPlan = relationshipPlan({
+    turn: pronounTurn,
+    liabilityId: mortgageId,
+    liabilityFactId: 'mortgage_position',
+    liabilityLabel: 'mortgage',
+    liabilityType: 'mortgage',
+    liabilityAmount: 210_000,
+    atomic: true
+  });
+  stitchedPlan.operationGroups[0].operations[0].evidence = [{
+    turnId: pronounTurn.turnId,
+    quote: 'Our home is worth €480,000'
+  }, {
+    turnId: pronounTurn.turnId,
+    quote: 'has a mortgage of €210,000'
+  }];
+  const stitchedFragments = await applyReconciliationPlan({
+    profile,
+    notes: [],
+    plan: stitchedPlan,
+    transcriptTurns: [pronounTurn],
+    sessionId: 'session_relationship_stitched_fragments',
+    transcriptWatermark: pronounTurn.turnId,
+    baseProfileRevision: profile.revision,
+    entities: [propertyEntity, liabilityEntity(mortgageId, 'mortgage', 'mortgage_position')]
+  });
+  assert.equal(
+    stitchedFragments.rejectedGroups[0]?.code,
+    'property_liability_relationship_evidence_missing',
+    'separate exact quotes cannot be stitched into a relationship the cited spans do not carry'
+  );
+
+  const nonAtomic = await applyNewPair({
+    turn: validTurn,
+    liabilityId: mortgageId,
+    liabilityFactId: 'mortgage_position',
+    liabilityLabel: 'mortgage',
+    liabilityType: 'mortgage',
+    liabilityAmount: 210_000,
+    atomic: false
+  });
+  assert.equal(nonAtomic.rejectedGroups[0]?.code, 'property_liability_relationship_not_atomic');
+
+  const unrelatedCar = await applyNewPair({
+    turn: unrelatedTurn,
+    liabilityId: carLoanId,
+    liabilityFactId: 'loan_position',
+    liabilityLabel: 'car loan',
+    liabilityType: 'loan',
+    liabilityAmount: 18_000,
+    atomic: true
+  });
+  assert.equal(
+    unrelatedCar.rejectedGroups[0]?.code,
+    'property_liability_relationship_evidence_missing',
+    'a mortgage mentioned elsewhere cannot link a separately stated car loan to the home'
+  );
+
+  const ownerProfile = normalizeHouseholdProfile({
+    ...profile,
+    properties: [{
+      propertyId: 'family_home',
+      ownerIds: ['primary', 'partner'],
+      use: 'home',
+      label: 'family home',
+      associatedLiabilityIds: [],
+      currentValue: { amount: 480_000, currency: 'EUR' }
+    }],
+    liabilities: [{
+      liabilityId: 'home_mortgage',
+      ownerIds: ['primary'],
+      type: 'mortgage',
+      label: 'home mortgage',
+      currentBalance: { amount: 210_000, currency: 'EUR' }
+    }]
+  });
+  const ownerTurn = {
+    turnId: 'turn_relationship_owner_set',
+    role: 'user',
+    finalized: true,
+    sequence: 113,
+    text: 'The family home is worth €480,000 and has the €210,000 home mortgage secured against it.'
+  };
+  const ownerMismatch = await applyReconciliationPlan({
+    profile: ownerProfile,
+    notes: [],
+    plan: {
+      schemaVersion: 1,
+      verdict: 'changes_proposed',
+      reviewedNoteIds: [],
+      operationGroups: [{
+        groupId: 'group_relationship_owner_set',
+        atomic: false,
+        operations: [{
+          operationId: 'property_relationship_owner_set',
+          op: 'upsert_note',
+          reasonCode: 'missing_note',
+          noteKind: 'position',
+          factId: 'property_position',
+          factInstanceId: 'property_position:family_home',
+          entityId: 'family_home',
+          certainty: 'exact',
+          value: {
+            ownerIds: ['primary', 'partner'],
+            use: 'home',
+            label: 'family home',
+            currentValue: { amount: 480_000, currency: 'EUR' },
+            associatedLiabilityIds: ['home_mortgage']
+          },
+          evidence: [{ turnId: ownerTurn.turnId, quote: ownerTurn.text }]
+        }]
+      }]
+    },
+    transcriptTurns: [ownerTurn],
+    sessionId: 'session_relationship_owner_set',
+    transcriptWatermark: ownerTurn.turnId,
+    baseProfileRevision: ownerProfile.revision
+  });
+  assert.equal(
+    ownerMismatch.rejectedGroups[0]?.code,
+    'property_liability_relationship_owner_mismatch',
+    'one overlapping owner is insufficient: the expanded owner sets must be equal'
+  );
+});
+
 console.log('Planning reconciliation checks passed.');

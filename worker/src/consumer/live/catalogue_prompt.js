@@ -20,6 +20,7 @@
  */
 
 import { MODULE_MANIFEST } from '../../../../js/planning/module_manifest.generated.js';
+import { goalClassificationPrompt } from '../../../../js/planning/goal_catalogue.js';
 import {
   canonicalCollectionFields,
   getSemanticFactDefinition,
@@ -44,10 +45,11 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // though all three facts were explicit in the finalized client transcript.
 // v7: concrete multi-goal openings never collapse into a vague decision, and
 // tool-assisted replies finish the turn instead of ending on holding filler.
-// v8: the silent planner now mirrors those multi-goal semantics and exhaustive
-// independent-position capture, and the production proof waits for the
-// planner-backed half of a reflected turn before speaking again.
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v8';
+// v8: the production proof waits for the planner-backed half of a reflected
+// turn before speaking again. v9 removes incident-shaped extraction examples;
+// goal meanings now come from the central catalogue and finalized-turn value
+// omissions are recovered by deterministic coverage plus reconciliation.
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v9';
 
 /**
  * Budgets for the per-turn state item.
@@ -368,20 +370,20 @@ function conversationFlowSection() {
     'because they said too much. When they choose, save primary_goal_focus using the exact same',
     'goal vocabulary as primary_goal. Do not start gathering figures until that focus is saved.',
     'A comparison can name a concrete goal on each side. Save every concrete underlying goal',
-    'separately: pension saving versus mortgage overpayment is improve_pension AND',
-    'optimise_mortgage. Do not replace concrete goals with assess_decision; use assess_decision',
-    'only while the subject of a decision is genuinely still vague.',
-    'For that example the tool batch contains two primary_goal facts: one value is',
-    '{"type":"improve_pension"} and the other is {"type":"optimise_mortgage"}. A goal type is',
-    'a value, NEVER a factId.',
-    'Concrete health-check language is equally specific. "A financial health check — where I',
-    'stand, get my mortgage paid off, and get my baby into college" is THREE primary_goal',
-    'facts in one batch: understand_position, optimise_mortgage and fund_education. It is NOT',
-    'assess_decision. Save all three before asking which one to focus on first.',
+    'separately. Do not replace concrete goals with assess_decision; use assess_decision only',
+    'while the subject of a decision is genuinely still vague. A goal type is a value inside a',
+    'primary_goal fact, NEVER a factId. Mentioning a balance, product, child, property, business',
+    'or farm without an outcome is context rather than a goal.',
+    'Use only explicit ranking cues for order: main/top/first priority, focus today or start with',
+    'may establish one primary goal; later, eventually, after that, less urgent or can wait may',
+    'establish a secondary goal. Ordinary desire and mention order establish no relative rank.',
+    '',
+    'Catalogue-derived goal meanings:',
+    ...goalClassificationPrompt().split('\n'),
     'A decision criterion is not automatically another goal. Words such as flexibility, security,',
     'manageable or avoiding risk describe how the client wants to compare the two paths. For a',
-    'pension-versus-mortgage decision, do NOT add maintain_liquidity or an emergency-reserve',
-    'analysis merely because the client wants flexibility; add it only if they explicitly ask to',
+    'comparison, do NOT add maintain_liquidity or an emergency-reserve analysis merely because',
+    'the client wants flexibility; add it only if they explicitly ask to',
     'plan an emergency reserve as a separate outcome.',
     'If the client later explicitly says to leave one saved goal for another meeting and continue',
     'with the other, save the chosen goal again with correctionTarget set to the deferred goal,',
@@ -557,10 +559,9 @@ function toolsSection() {
     '  Before the next question, capture EVERY usable fact volunteered in the latest answer,',
     '  including age, work, household, housing context and every goal even when it is not in',
     '  the current missing list. A fact that changes routing is worth keeping.',
-    '  Exhaust a multi-position answer. "My pension is €100,000 and my shares are €10,000" is',
-    '  TWO facts in that one batch: pension_positions with its currentValue AND asset_position',
-    '  of type investment with its currentValue. A presence fact such as has_pension is not a',
-    '  substitute for the position or figure the client actually supplied.',
+    '  Exhaust a multi-position answer: save one canonical position for every independently',
+    '  valued holding or income stream, even when values repeat or categories are unrelated.',
+    '  A presence fact is never a substitute for the position or figure the client supplied.',
     '  Every captured position is shown with a tool-only id in square brackets. Reuse that exact',
     '  entityId whenever the client corrects or adds detail to the SAME asset, pension, property,',
     '  mortgage, loan, income source, business or dependant. Invent a new id only for a genuinely',

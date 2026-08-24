@@ -17,6 +17,7 @@
  */
 
 import { normalizeHouseholdProfile } from '../../../js/planning/profile.js';
+import { normalizeGoalCandidatePriorities } from '../../../js/planning/goal_catalogue.js';
 import { extractRulesOnlyProfilePatch } from '../../../js/planning/rules_only_extraction.js';
 import {
   getSemanticFactDefinition,
@@ -543,7 +544,7 @@ function inheritOwnerFromNamedPension(facts, positions) {
 }
 
 export function mapPlannerExtractionToCandidates(extraction) {
-  const mappedGoals = (extraction.goalCandidates || [])
+  const mappedGoals = normalizeGoalCandidatePriorities(extraction.goalCandidates)
     .filter((candidate) => ['high', 'medium'].includes(candidate.confidence))
     .flatMap((candidate) => [{
       candidateId: candidate.candidateId,
@@ -551,6 +552,7 @@ export function mapPlannerExtractionToCandidates(extraction) {
       factId: 'primary_goal',
       value: {
         type: candidate.goalType,
+        priorityHint: candidate.priorityHint,
         ...(candidate.correctionTarget ? { correctionTarget: candidate.correctionTarget } : {})
       },
       certainty: candidate.confidence === 'high' ? 'exact' : 'approximate',
@@ -660,7 +662,9 @@ export function deterministicFallbackExtraction({ transcript, profile, sourceTur
       candidateId: `fallback-goal-${index + 1}`,
       goalType: candidate.type,
       confidence: candidate.confidence,
-      priorityHint: 'unspecified',
+      priorityHint: ['primary', 'secondary'].includes(candidate.priorityHint)
+        ? candidate.priorityHint
+        : 'unspecified',
       evidenceText: (candidate.rationale || [])[0] || 'Stated in this turn.',
       correctionTarget: ''
     }));
