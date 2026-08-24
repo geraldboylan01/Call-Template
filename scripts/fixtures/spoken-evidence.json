@@ -242,6 +242,102 @@
       "note": "The single densest real shape: one sentence, three facts. Closed by the \"I'm on X\" salary idiom."
     },
     {
+      "id": "equal-salary-and-bonus",
+      "said": "My salary is 60000 and the bonus is 60000 as well.",
+      "submit": [
+        {
+          "factId": "gross_household_income",
+          "value": {
+            "amount": 60000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "Same value twice in one sentence, different components. Repetition is not ambiguity."
+    },
+    {
+      "id": "equal-amounts-different-currencies",
+      "said": "We have 20000 euro in savings here and 20000 pounds in savings in the UK.",
+      "submit": [
+        {
+          "factId": "asset_position",
+          "value": {
+            "operation": "upsert",
+            "entityId": "ie_cash",
+            "type": "cash",
+            "owner": "primary",
+            "label": "Irish savings",
+            "currentValue": {
+              "amount": 20000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "Equal numbers under different currencies stay distinct holdings. Phrased with an explicit savings cue so this case tests the currency dimension only — the cue-free variant is the separate, already-recorded evidence-vocabulary gap."
+    },
+    {
+      "id": "equal-holdings-reversed-order",
+      "said": "Beta fund is 25000 and Alpha fund is 25000.",
+      "submit": [
+        {
+          "factId": "asset_position",
+          "value": {
+            "operation": "upsert",
+            "entityId": "beta",
+            "type": "investment",
+            "owner": "primary",
+            "label": "Beta fund",
+            "currentValue": {
+              "amount": 25000,
+              "currency": "EUR"
+            }
+          }
+        },
+        {
+          "factId": "asset_position",
+          "value": {
+            "operation": "upsert",
+            "entityId": "alpha",
+            "type": "investment",
+            "owner": "primary",
+            "label": "Alpha fund",
+            "currentValue": {
+              "amount": 25000,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "expect": "accept",
+      "note": "Two equal-valued holdings, named in reverse order, remain two facts."
+    },
+    {
+      "id": "salary-with-equal-employee-and-employer-rates",
+      "said": "I earn 84000, I put in 7% and the company puts in 7%.",
+      "submit": [
+        {
+          "factId": "gross_household_income",
+          "value": {
+            "amount": 84000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "factId": "pension_employee_contribution_rate",
+          "value": 7
+        },
+        {
+          "factId": "pension_employer_contribution_rate",
+          "value": 7
+        }
+      ],
+      "expect": "accept",
+      "note": "Salary plus two equal rates: the densest equal-value shape that reaches production."
+    },
+    {
       "id": "equal-rates-employer-first-spoken",
       "said": "The company contributes six percent; I contribute six percent.",
       "submit": [

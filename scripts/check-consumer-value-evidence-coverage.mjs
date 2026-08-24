@@ -276,11 +276,65 @@ const equalExtraction = {
   sectionCompletions: [],
   invalidCandidates: []
 };
+// A live candidate cites its whole finalized turn by construction. Two equal
+// holdings in that turn are two occurrences and two candidates: the one-to-one
+// assignment is what proves them distinct, and the width of the quote proves
+// nothing either way. Refusing both here was the regression that also dropped
+// "contributing 5% with a 5% employer match".
 const equalGrounded = groundPlannerExtraction(equalExtraction, equalTranscript);
-check('equal-valued full-turn candidates require narrower subject-bearing evidence',
-  equalGrounded.positions.length === 0
-    && equalGrounded.invalidCandidates.length === 2,
+check('equal-valued full-turn siblings both survive on one-to-one assignment',
+  equalGrounded.positions.length === 2 && equalGrounded.invalidCandidates.length === 0,
   JSON.stringify(equalGrounded));
+// PROVENANCE NAMES AN OCCURRENCE; IT NEVER ASSERTS A VALUE, AND IT NEVER
+// MULTIPLIES ONE. A binding resolved upstream still spends the candidate's own
+// value budget: a candidate holding one €25,000 cannot be credited with both
+// €25,000 occurrences in the turn, because that would erase the second
+// holding's omission — the exact thing this inventory exists to catch.
+{
+  const occurrences = extractValueEvidence(equalTranscript);
+  const single = {
+    semanticFacts: [],
+    positions: [{
+      candidateId: 'only-one',
+      amount: money(25_000),
+      evidenceText: 'Alpha fund is €25,000'
+    }]
+  };
+  const misbound = valueEvidenceCoverage(equalTranscript, single, {
+    // Deliberately points at the OTHER occurrence: same value, wrong holding.
+    provenance: [{ evidenceId: occurrences[1].evidenceId, candidateId: 'only-one' }]
+  });
+  check('one candidate value cannot cover two equal occurrences via provenance',
+    misbound.covered.length === 1 && misbound.uncovered.length === 1,
+    JSON.stringify(misbound.covered.map((item) => item.evidenceId)));
+  // Provenance alone, with no candidate values to spend, is the whole claim —
+  // this is how the background audit reports what the fast lane already wrote.
+  const provenanceOnly = valueEvidenceCoverage(equalTranscript, [
+    { evidenceId: occurrences[0].evidenceId, candidateId: 'live-0' },
+    { evidenceId: occurrences[1].evidenceId, candidateId: 'live-1' }
+  ]);
+  check('accepted write provenance alone still retires both occurrences',
+    provenanceOnly.covered.length === 2 && provenanceOnly.uncovered.length === 0);
+}
+
+const equalCoverage = valueEvidenceCoverage(equalTranscript, equalGrounded);
+check('each equal-valued sibling consumes its own source occurrence',
+  equalCoverage.uncovered.length === 0
+    && new Set(equalCoverage.covered.map((item) => item.evidenceId)).size === 2,
+  JSON.stringify(equalCoverage.covered));
+// The other direction is the invention guard, and it must not have moved: one
+// stated amount can satisfy exactly one candidate, however many claim it.
+const singleStatedValue = groundPlannerExtraction({
+  ...equalExtraction,
+  positions: equalExtraction.positions.map((position) => ({
+    ...position,
+    evidenceText: 'Alpha fund is €25,000'
+  }))
+}, 'Alpha fund is €25,000.');
+check('one stated amount cannot satisfy two candidates',
+  singleStatedValue.positions.length === 1
+    && singleStatedValue.invalidCandidates[0]?.errorCode === 'realtime_planner_candidate_evidence_unsupported',
+  JSON.stringify(singleStatedValue));
 const narrowlyGroundedEquals = groundPlannerExtraction({
   ...equalExtraction,
   positions: equalExtraction.positions.map((position) => ({

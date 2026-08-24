@@ -80,3 +80,48 @@ conversation, never by review.
 The same three-part shape is likely the answer for both: semantic
 interpretation for the phrasing, exact transcript evidence for the claim, and
 deterministic validation for owner, entity and scope.
+
+---
+
+## Instance 3 — the goal evidence catalogue
+
+`js/planning/goal_catalogue.js` replaced four scattered goal maps with one
+vocabulary, which is a real improvement: `GOAL_TYPES`, titles, client phrases,
+the evidence rule and the prompt text now all derive from one record set, and
+the module manifest still owns goal → analysis routing.
+
+**The enumeration problem moved rather than closed.** Each catalogue entry
+carries an `evidence` regex, and several were visibly tuned to individual
+sentences — `get(?:ting)? (?:around|round) to (?:start|starting…)` for "I never
+got round to starting a pension", `biggest concern` for "the loan is my biggest
+concern", `will last` for "whether our savings will last". That is the same
+unbounded work as Instances 1 and 2, in one file instead of four.
+
+Why it is still better, and why it is not the answer:
+
+- The model proposes the classification and the regex only VALIDATES it, so a
+  phrasing nobody enumerated fails closed to "no goal recorded" rather than to
+  a wrong goal. Order is now read deterministically from the client's own
+  words, and two competing primaries collapse to unspecified rather than to
+  whichever the model listed first.
+- But a goal has no numeric or entity anchor to validate against. Ownership and
+  scope validation — the deterministic half that makes Instance 1's and 2's
+  three-part shape work — has nothing to bind to here. So goals are the one
+  place where "semantic interpretation plus deterministic validation" currently
+  reduces to "semantic interpretation plus phrase enumeration".
+
+Not to be redesigned as part of this work. Recorded so the next person does not
+mistake the consolidation for a closure.
+
+## Open product decision — partial ownership of a linked mortgage
+
+`assertPropertyLiabilityRelationship` requires a property and its linked
+liability to carry the SAME owner set (`sameOwnerSet`). A jointly owned home
+with a mortgage in one name is ordinary in Ireland, and today that link is
+refused: both positions are still created, they are simply not related to each
+other, so the atomic home–mortgage guarantee does not apply to them.
+
+The alternatives are "identical owner sets" (today) and "liability owners are a
+subset of property owners". This is a product and legal-modelling decision about
+what Planéir is willing to assert about security over a jointly held asset, not
+a defect, and the behaviour is deliberately unchanged pending that decision.

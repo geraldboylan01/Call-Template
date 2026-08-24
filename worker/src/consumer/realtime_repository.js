@@ -1759,6 +1759,31 @@ async function retireStaleLegacyPlanningNotes(env, request, notes) {
  * scoped to the realtime meeting, so a worker retry returns the existing row
  * instead of spending on or applying the same audit twice.
  */
+/**
+ * The trigger vocabulary the reconciliation table will actually accept.
+ *
+ * Kept beside the write rather than only in the migration, because the failure
+ * mode is silent and total: `trigger` carries a closed CHECK constraint, so a
+ * cause the schema has not heard of does not degrade — the INSERT throws and
+ * the whole checkpoint dies before the model is called. That is exactly what
+ * happened to `value_coverage_gap`, the signal the omission-recovery mechanism
+ * was built on: it could never once run on its own trigger.
+ *
+ * A new cause is worth naming, and naming one should never be able to break
+ * the reconciler. An unrecognised trigger is recorded as the generic material
+ * cause instead of failing the pass.
+ */
+const PERSISTABLE_RECONCILIATION_TRIGGERS = new Set([
+  'material_turn', 'rejected_note', 'answered_need', 'redundant_question',
+  'periodic_checkpoint', 'readiness_transition', 'pre_confirmation',
+  'agent_shadow_replay', 'value_coverage_gap', 'material_backlog'
+]);
+
+export function persistableReconciliationTrigger(trigger) {
+  const value = String(trigger || '');
+  return PERSISTABLE_RECONCILIATION_TRIGGERS.has(value) ? value : 'material_turn';
+}
+
 export async function startPlannerReconciliation(env, request) {
   const lease = await db(env).prepare(`
     SELECT planner_reconciliation_revision, latest_profile_revision
@@ -1780,6 +1805,7 @@ export async function startPlannerReconciliation(env, request) {
 
   const id = randomId('planner_reconciliation');
   const revision = safeInteger(lease.planner_reconciliation_revision) + 1;
+  const trigger = persistableReconciliationTrigger(request.trigger);
   const timestamp = nowIso();
   const serialized = stableStringify(request.input);
   const [inputEncrypted, inputHash] = await Promise.all([
@@ -1813,7 +1839,7 @@ export async function startPlannerReconciliation(env, request) {
         revision,
         request.baseProfileRevision,
         request.throughTurnId,
-        request.trigger,
+        trigger,
         request.mode,
         idempotencyHash,
         inputEncrypted,
@@ -2037,6 +2063,33 @@ function plannerReconciliationWriteStatements(env, {
   return statements;
 }
 
+/**
+ * The per-pass occurrence funnel, as plain counts.
+ *
+ * WHY COLUMNS AND NOT THE OUTPUT BLOB. Every one of these numbers is already
+ * derivable from `output_encrypted` — but only by decrypting and parsing each
+ * row one at a time, which is not an analysis, it is an archaeology project.
+ * Real-user testing needs "of the figures the fast lane missed, what share did
+ * the bounded review actually recover", answerable in one query on day one.
+ *
+ * COUNTS ONLY. No amount, currency, label, fact id or transcript offset enters
+ * a plaintext column. Occurrence detail stays in the encrypted output exactly
+ * where it already lives; this adds classification, not a second copy of the
+ * client's financial information.
+ */
+function valueOutcomeCounts(outcomes) {
+  const source = outcomes && typeof outcomes === 'object' ? outcomes : {};
+  return {
+    covered: source.covered,
+    uncovered: source.uncovered,
+    recovered: source.recovered,
+    clarified: source.clarified,
+    notCurrentFact: source.notCurrentFact,
+    unresolved: source.unresolved,
+    deferred: source.deferred
+  };
+}
+
 export async function completePlannerReconciliation(env, request) {
   const timestamp = nowIso();
   const attempt = await db(env).prepare(`
@@ -2050,6 +2103,7 @@ export async function completePlannerReconciliation(env, request) {
     return { status: attempt.status, throughTurnId: request.throughTurnId, replayed: true };
   }
   const output = request.output || {};
+  const counts = valueOutcomeCounts(request.valueOutcomes);
   const serialized = stableStringify(output);
   const [outputEncrypted, outputHash] = await Promise.all([
     encryptJson(
@@ -2084,7 +2138,11 @@ export async function completePlannerReconciliation(env, request) {
           applied_profile_revision = ?, model = ?, input_tokens = ?,
           output_tokens = ?, cached_input_tokens = ?, latency_ms = ?,
           operation_count = ?, accepted_operation_count = ?,
-          rejected_operation_count = ?, error_code = ?, completed_at = ?
+          rejected_operation_count = ?, error_code = ?,
+          covered_value_count = ?, uncovered_value_count = ?,
+          recovered_value_count = ?, clarified_value_count = ?,
+          not_current_fact_count = ?, unresolved_value_count = ?,
+          deferred_value_count = ?, completed_at = ?
       WHERE id = ? AND session_id = ? AND realtime_session_id = ?
         AND status = 'pending'
         AND EXISTS (
@@ -2107,6 +2165,13 @@ export async function completePlannerReconciliation(env, request) {
       safeInteger(request.acceptedOperationCount),
       safeInteger(request.rejectedOperationCount),
       request.errorCode || null,
+      safeInteger(counts.covered),
+      safeInteger(counts.uncovered),
+      safeInteger(counts.recovered),
+      safeInteger(counts.clarified),
+      safeInteger(counts.notCurrentFact),
+      safeInteger(counts.unresolved),
+      safeInteger(counts.deferred),
       timestamp,
       request.reconciliationId,
       request.sessionId,

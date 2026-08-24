@@ -23,6 +23,7 @@ import { detectRulesOnlyGoalCandidates } from '../js/planning/rules_only_extract
 import { mapPlannerExtractionToCandidates } from '../worker/src/consumer/planning_facts.js';
 import { mapRealtimeFact } from '../worker/src/consumer/realtime_fact_mapper.js';
 import { mergeSegmentExtractions } from '../worker/src/consumer/turn_segments.js';
+import { validatePlannerExtraction } from '../worker/src/consumer/realtime_planner.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 let checks = 0;
@@ -173,6 +174,31 @@ check('a general real-focus correction establishes priority without a fixture se
     'manage_loan',
     'Forget the other topic for now — the real focus is dealing with this expensive loan.'
   ) === 'primary');
+
+// The ranking cue and the goal evidence are often in different clauses, so a
+// narrow model citation loses the order the client actually stated. Both lanes
+// must read the whole finalized turn.
+{
+  const turn = 'My main priority is clearing the mortgage, and I would also like to fund college.';
+  const fromQuote = validatePlannerExtraction({
+    schemaVersion: 'planner_extraction_v3',
+    goalCandidates: [{ goalType: 'optimise_mortgage', confidence: 'high', evidenceText: 'clearing the mortgage' }],
+    semanticFacts: [], positions: [], sectionCompletions: [], invalidCandidates: []
+  }, 'turn-quote');
+  check('a narrow quote alone cannot see the ranking cue',
+    fromQuote.goalCandidates[0]?.priorityHint === 'unspecified',
+    JSON.stringify(fromQuote.goalCandidates));
+  const fromTurn = validatePlannerExtraction({
+    schemaVersion: 'planner_extraction_v3',
+    goalCandidates: [{ goalType: 'optimise_mortgage', confidence: 'high', evidenceText: 'clearing the mortgage' }],
+    semanticFacts: [], positions: [], sectionCompletions: [], invalidCandidates: []
+  }, 'turn-whole', turn);
+  check('the planner lane reads order from the whole turn, as the typed lane does',
+    fromTurn.goalCandidates[0]?.priorityHint === 'primary',
+    JSON.stringify(fromTurn.goalCandidates));
+  check('both lanes agree on the same words',
+    fromTurn.goalCandidates[0]?.priorityHint === classifyGoalPriorityHint('optimise_mortgage', turn));
+}
 
 check('several model primaries fail closed instead of becoming last-write-wins',
   normalizeGoalCandidatePriorities([

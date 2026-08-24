@@ -154,15 +154,18 @@ const MIGRATION_FILES = [
   '0011_add_realtime_meeting_briefs', '0012_add_realtime_planner_usage',
   '0013_complete_realtime_voice_meetings', '0014_add_agent_test_meetings',
   '0015_add_privacy_notice_acknowledgement',
-  '0016_add_planning_reconciliation'
+  '0016_add_planning_reconciliation',
+  '0017_widen_reconciliation_trigger'
 ];
 const MIGRATIONS = MIGRATION_FILES
   .map((name) => readFileSync(`${root}/worker/consumer-migrations/${name}.sql`, 'utf8'))
   .join('\n');
-const RECONCILIATION_MIGRATION = readFileSync(
-  `${root}/worker/consumer-migrations/0016_add_planning_reconciliation.sql`,
-  'utf8'
-);
+// The reconciliation tables plus every later migration that reshapes them, so
+// a harness database carries the same trigger vocabulary the Worker writes.
+const RECONCILIATION_MIGRATION = [
+  '0016_add_planning_reconciliation',
+  '0017_widen_reconciliation_trigger'
+].map((name) => readFileSync(`${root}/worker/consumer-migrations/${name}.sql`, 'utf8')).join('\n');
 
 const workspace = mkdtempSync(join(tmpdir(), 'agent-harness-'));
 process.once('exit', () => rmSync(workspace, { recursive: true, force: true }));

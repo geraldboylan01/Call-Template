@@ -367,7 +367,17 @@ function parseMoneyJson(value) {
   return { amount, currency };
 }
 
-export function validatePlannerExtraction(value, sourceTurnId) {
+/**
+ * @param {object} value the model's structured output
+ * @param {string} sourceTurnId
+ * @param {string} finalizedTranscript the whole client turn. Goal ORDER is read
+ *   from it rather than from the model's chosen quote: a narrow citation such
+ *   as "pay off the mortgage" drops the ranking cue in "my main priority is",
+ *   and the deterministic classifier would then report no order for a client
+ *   who plainly stated one. The conversational lane already reads the whole
+ *   message; this makes both lanes read the same words.
+ */
+export function validatePlannerExtraction(value, sourceTurnId, finalizedTranscript = '') {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new ConsumerError(502, 'realtime_planner_output_invalid', 'The silent meeting planner returned an invalid result.');
   }
@@ -437,7 +447,10 @@ export function validatePlannerExtraction(value, sourceTurnId) {
         candidateId: `goal-${index + 1}`,
         goalType,
         confidence: ['high', 'medium', 'low'].includes(item?.confidence) ? item.confidence : 'low',
-        priorityHint: classifyGoalPriorityHint(goalType, evidenceText),
+        priorityHint: classifyGoalPriorityHint(
+          goalType,
+          String(finalizedTranscript || '').trim() || evidenceText
+        ),
         evidenceText,
         correctionTarget: GOAL_TYPES.includes(item?.correctionTarget) ? item.correctionTarget : ''
       };
@@ -911,7 +924,11 @@ async function requestPlannerExtraction({
   let extraction;
   try {
     extraction = withSafeTurnClassifications(
-      validatePlannerExtraction(JSON.parse(responseOutputText(response)), sourceTurnId),
+      validatePlannerExtraction(
+        JSON.parse(responseOutputText(response)),
+        sourceTurnId,
+        safeTranscript
+      ),
       safeTranscript,
       context
     );

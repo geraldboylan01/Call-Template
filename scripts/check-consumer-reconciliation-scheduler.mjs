@@ -11,6 +11,7 @@ import {
 import {
   completePlannerReconciliation,
   loadPlannerReconciliation,
+  persistableReconciliationTrigger,
   recoverStalePlannerReconciliation,
   startPlannerReconciliation
 } from '../worker/src/consumer/realtime_repository.js';
@@ -220,6 +221,46 @@ assert.match(liveSource, /completeRealtimeToolAttempt\(this\.env/,
   'legacy audit must make its attempt terminal');
 
 /* ---------------- durable queue remains until terminal and coalesces safely */
+
+/**
+ * THE TRIGGER VOCABULARY IS A SCHEMA CONSTRAINT, NOT A LABEL.
+ *
+ * `trigger` carries a closed CHECK constraint, so a cause the database has not
+ * heard of does not degrade — the INSERT throws and the checkpoint dies before
+ * the model is called. That is what happened to `value_coverage_gap`: the
+ * signal the whole omission-recovery mechanism was built on could never once
+ * run on its own trigger, and recovery only happened when an unrelated cause
+ * fired on the same turn. Every trigger the Worker can emit is pinned against
+ * the migration here, and an unknown one degrades instead of failing.
+ */
+{
+  const migration = readFileSync(
+    new URL('../worker/consumer-migrations/0017_widen_reconciliation_trigger.sql', import.meta.url),
+    'utf8'
+  );
+  const allowed = new Set(
+    (migration.match(/trigger IN \(([\s\S]*?)\)\)/) || [])[1]
+      ?.match(/'([a-z_]+)'/g)?.map((value) => value.replaceAll("'", '')) || []
+  );
+  assert.ok(allowed.size >= 10, `the migration must define the trigger vocabulary: ${[...allowed]}`);
+  const emitted = [...liveSource.matchAll(/trigger:\s*'([a-z_]+)'/g)].map((match) => match[1]);
+  const emittedLiterals = [...liveSource.matchAll(/\?\s*'([a-z_]+)'\s*:/g)].map((match) => match[1]);
+  for (const trigger of new Set([...emitted, ...emittedLiterals])) {
+    if (!/^(?:material_turn|rejected_note|answered_need|redundant_question|periodic_checkpoint|readiness_transition|pre_confirmation|agent_shadow_replay|value_coverage_gap|material_backlog)$/.test(trigger)) continue;
+    assert.ok(allowed.has(trigger),
+      `the live lane emits trigger "${trigger}" but the schema refuses it`);
+  }
+  assert.ok(allowed.has('value_coverage_gap'),
+    'the omission-recovery signal must be a persistable trigger');
+  assert.ok(allowed.has('material_backlog'),
+    'the backlog checkpoint that opens the confirmation barrier must be persistable');
+  assert.equal(persistableReconciliationTrigger('value_coverage_gap'), 'value_coverage_gap');
+  assert.equal(persistableReconciliationTrigger('material_backlog'), 'material_backlog');
+  // Naming a new cause must never be able to kill the reconciler again.
+  assert.equal(persistableReconciliationTrigger('a_cause_nobody_migrated'), 'material_turn');
+  assert.equal(persistableReconciliationTrigger(''), 'material_turn');
+  console.log('[ReconciliationScheduler] PASS: every emitted trigger is one the schema accepts');
+}
 
 {
   const { session, durable } = await schedulerSession('reconciliation-scheduler-durable');

@@ -16,7 +16,7 @@ import {
   getSemanticFactDefinition,
   listSemanticFactDefinitions
 } from './semantic_facts.js';
-import { extractValueEvidence } from './value_evidence.js';
+import { extractNumericOccurrences, extractValueEvidence } from './value_evidence.js';
 import {
   assertIsoDateTime,
   assertJsonCompatible,
@@ -739,14 +739,6 @@ function assertStoredNoteEvidence(note, turnIndex) {
   }
 }
 
-const SPOKEN_NUMBER_VALUES = Object.freeze({
-  zero: 0, one: 1, two: 2, both: 2, three: 3, four: 4, five: 5,
-  six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11,
-  twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
-  seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30,
-  forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90
-});
-const SPOKEN_NUMBER_SCALES = Object.freeze({ hundred: 100, thousand: 1_000, million: 1_000_000 });
 
 function numericLeaves(value, found = [], path = []) {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -766,87 +758,23 @@ function numericLeaves(value, found = [], path = []) {
   return found;
 }
 
-function spokenNumbers(text) {
-  const tokens = [...String(text).toLowerCase().matchAll(/\p{L}+/gu)].map((match) => match[0]);
-  const values = [];
-  for (let start = 0; start < tokens.length; start += 1) {
-    const first = tokens[start];
-    if (!Object.hasOwn(SPOKEN_NUMBER_VALUES, first)
-      && !(first === 'a' && Object.hasOwn(SPOKEN_NUMBER_SCALES, tokens[start + 1]))) continue;
-    let total = 0;
-    let group = 0;
-    let decimal = '';
-    let point = false;
-    let consumed = 0;
-    for (let index = start; index < tokens.length; index += 1) {
-      const token = tokens[index];
-      if (token === 'and' && consumed > 0 && !point) {
-        const next = tokens[index + 1];
-        if (Object.hasOwn(SPOKEN_NUMBER_VALUES, next) || Object.hasOwn(SPOKEN_NUMBER_SCALES, next)) {
-          consumed += 1;
-          continue;
-        }
-        break;
-      }
-      if (token === 'point' && consumed > 0 && !point) {
-        point = true;
-        consumed += 1;
-        continue;
-      }
-      if (point) {
-        const digit = SPOKEN_NUMBER_VALUES[token];
-        if (!Number.isInteger(digit) || digit < 0 || digit > 9) break;
-        decimal += String(digit);
-        consumed += 1;
-        continue;
-      }
-      if (token === 'a' && Object.hasOwn(SPOKEN_NUMBER_SCALES, tokens[index + 1])) {
-        group += 1;
-        consumed += 1;
-        continue;
-      }
-      if (Object.hasOwn(SPOKEN_NUMBER_VALUES, token)) {
-        group += SPOKEN_NUMBER_VALUES[token];
-        consumed += 1;
-        continue;
-      }
-      if (!Object.hasOwn(SPOKEN_NUMBER_SCALES, token)) break;
-      const scale = SPOKEN_NUMBER_SCALES[token];
-      if (scale === 100) group = (group || 1) * scale;
-      else {
-        total += (group || 1) * scale;
-        group = 0;
-      }
-      consumed += 1;
-    }
-    if (!consumed || (point && !decimal)) continue;
-    values.push(Number(`${total + group}${decimal ? `.${decimal}` : ''}`));
-    start += consumed - 1;
-  }
-  return values;
-}
-
+/**
+ * Every number the client said, as values.
+ *
+ * Derived from the one shared occurrence scan rather than a second parser of
+ * its own. Two independent scanners drifted apart in exactly the way that is
+ * invisible until one of them refuses a figure the other accepted, and there
+ * were three of them before this. A percent contributes both its face value
+ * and its fraction, because canonical rate fields are stored either way.
+ */
 function groundedNumbers(text) {
   const values = [];
-  const pattern = /(?<![\p{L}\p{N}_])-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\s*(?:k|thousand|m|million|bn|billion)?(?![\p{L}\p{N}_])/giu;
-  for (const match of String(text).matchAll(pattern)) {
-    const raw = match[0].trim();
-    const numberMatch = raw.match(/^-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/);
-    if (!numberMatch) continue;
-    const base = Number(numberMatch[0].replaceAll(',', ''));
-    const suffix = raw.slice(numberMatch[0].length).trim().toLowerCase();
-    const scale = ['k', 'thousand'].includes(suffix) ? 1_000
-      : ['m', 'million'].includes(suffix) ? 1_000_000
-        : ['bn', 'billion'].includes(suffix) ? 1_000_000_000
-          : 1;
-    const scaled = base * scale;
-    if (Number.isFinite(scaled)) values.push(scaled);
-    const after = String(text).slice((match.index ?? 0) + match[0].length);
-    if (/^\s*(?:%|percent\b|per\s+cent\b)/i.test(after) && Number.isFinite(base / 100)) {
-      values.push(base / 100);
+  for (const occurrence of extractNumericOccurrences(text)) {
+    values.push(occurrence.value);
+    if (occurrence.kind === 'percent' && Number.isFinite(occurrence.value / 100)) {
+      values.push(occurrence.value / 100);
     }
   }
-  values.push(...spokenNumbers(text));
   return values;
 }
 

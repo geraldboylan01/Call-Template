@@ -387,6 +387,11 @@ export async function applyPlannerCandidates({
   extraction,
   transcript = null,
   allowedEvidenceIds = null,
+  // Occurrence bindings already resolved upstream. The live numeric guard knows
+  // the slot, the owner cues and the position label, so its answer to "which
+  // occurrence is this figure" is better than anything this layer can recover
+  // from a quote — and the live lane quotes the whole finalized turn.
+  valueEvidenceProvenance = [],
   evidenceRef,
   leaseId = null,
   toolAttemptId = null,
@@ -394,7 +399,10 @@ export async function applyPlannerCandidates({
 }) {
   const groundedExtraction = transcript === null
     ? extraction
-    : groundPlannerExtraction(extraction, transcript, { allowedEvidenceIds });
+    : groundPlannerExtraction(extraction, transcript, {
+      allowedEvidenceIds,
+      provenance: valueEvidenceProvenance
+    });
   const candidates = mapPlannerExtractionToCandidates(groundedExtraction);
   const outcomes = (groundedExtraction.invalidCandidates || []).map((item) => ({
     candidateId: item.candidateId,
@@ -461,7 +469,8 @@ export async function applyPlannerCandidates({
   );
   const sourcedValueEvidence = transcript === null ? [] : valueEvidenceCoverage(
     transcript,
-    groundedExtraction
+    groundedExtraction,
+    { provenance: valueEvidenceProvenance }
   ).covered
     .filter((item) => acceptedCandidateIds.has(item.candidateId))
     .map((item) => ({ evidenceId: item.evidenceId, candidateId: item.candidateId }));

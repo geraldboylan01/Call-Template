@@ -82,6 +82,17 @@ const MAX_ASSISTANT_TRANSCRIPT = 2_400;
 // headroom for cancelled/correction responses while making every transient
 // association structure explicitly bounded.
 const MAX_LIVE_TURN_LEDGER_ENTRIES = 64;
+
+/**
+ * How many bounded reviews one uncovered occurrence may have before the
+ * meeting stops asking about it.
+ *
+ * Two: one ordinary review, and one more in case the first pass was refused
+ * for a reason a second look can fix (a stale base, a malformed operation).
+ * A third would be a retry loop with extra steps, and every attempt is a paid
+ * model call the client is not waiting on but is paying for.
+ */
+const MAX_VALUE_EVIDENCE_REVIEW_ATTEMPTS = 2;
 const MAX_DEFERRED_EVIDENCE_TOOL_CALLS = 32;
 const MAX_RECONCILIATION_RECOVERY_ATTEMPTS = 1;
 const MIN_RECONCILIATION_STALE_MS = 30_000;
@@ -264,6 +275,12 @@ export class ConsumerLiveSession {
     // Durable for the same reason the material turns are: a hibernated meeting
     // that forgot one would run the analyses over a possible double-count.
     this.unresolvedIdentities = [];
+    // How many bounded reviews each uncovered occurrence has already had, and
+    // which ones are finished being asked about. Durable for the same reason
+    // the material turns are: a hibernated meeting that forgot them would
+    // start the review budget again and could never finish.
+    this.valueEvidenceReviewAttempts = {};
+    this.terminallyUnresolvedEvidence = [];
     this.activeReconciliationTurn = null;
     this.scheduledReconciliationTurnIds = new Set();
     this.currentResponseId = null;
@@ -302,6 +319,8 @@ export class ConsumerLiveSession {
       this.plannerRequests = await this.state.storage.get('plannerRequests') || [];
       this.unreviewedMaterialTurns = await this.state.storage.get('unreviewedMaterialTurns') || [];
       this.unresolvedIdentities = await this.state.storage.get('unresolvedIdentities') || [];
+      this.valueEvidenceReviewAttempts = await this.state.storage.get('valueEvidenceReviewAttempts') || {};
+      this.terminallyUnresolvedEvidence = await this.state.storage.get('terminallyUnresolvedEvidence') || [];
       const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
       if (storedReconciliationQueue?.schemaVersion === 1) {
         this.pendingReconciliationTurn = storedReconciliationQueue.current || null;
@@ -954,15 +973,34 @@ export class ConsumerLiveSession {
     const hasRejectedNote = Number(response.noteRejectedCount || 0) > 0;
     const hasNoteActivity = Number(response.noteAcceptedCount || 0) > 0 || hasRejectedNote;
     const valueCoverage = valueEvidenceCoverage(turn.transcript, response.acceptedValueEvidence || []);
-    const hasValueCoverageGap = valueCoverage.uncovered.length > 0;
+    // An occurrence that has spent its review budget is still uncovered and
+    // still absent from the profile — but it is no longer outstanding WORK, so
+    // it neither schedules another paid review nor holds the barrier. Whether
+    // an analysis can run without the fact it would have supplied is a
+    // readiness question, and readiness still answers it.
+    const reviewableGap = this.reviewableValueEvidence(valueCoverage, turn.storedTurnId);
+    const hasValueCoverageGap = reviewableGap.length > 0;
     if (hasValueCoverageGap) this.markMaterialTurn(turn);
     const periodic = Number(turn.ordinal || 0) % 3 === 0;
     const requestedTrigger = forcedTrigger
       || response.reconciliationTrigger
       || (hasValueCoverageGap ? 'value_coverage_gap' : null);
-    if (!requestedTrigger && !hasNoteActivity && !periodic) return;
+    // OUTSTANDING WORK IS ITSELF A REASON TO RUN.
+    //
+    // Material turns hold the confirmation barrier, and until now only NEW
+    // note activity, a NEW value gap or the every-third-turn checkpoint could
+    // schedule the review that retires them. A backlog therefore waited on
+    // unrelated future activity to clear, which is how one refused recovery
+    // could sit closed across a long stretch of conversation. Scheduling on
+    // the backlog itself is what makes the barrier's opening a guarantee
+    // rather than a hope; it cannot loop, because a job is deduplicated by
+    // its turn id and only a new client turn creates a new one.
+    const backlog = this.unreviewedMaterialTurns.length > 0;
+    if (!requestedTrigger && !hasNoteActivity && !periodic && !backlog) return;
     const trigger = requestedTrigger
-      || (hasRejectedNote ? 'rejected_note' : hasNoteActivity ? 'material_turn' : 'periodic_checkpoint');
+      || (hasRejectedNote ? 'rejected_note'
+        : hasNoteActivity ? 'material_turn'
+          : periodic ? 'periodic_checkpoint' : 'material_backlog');
     this.queueReconciliation({
       providerItemId: turn.itemId,
       throughTurnId: turn.storedTurnId,
@@ -993,6 +1031,81 @@ export class ConsumerLiveSession {
     this.state.waitUntil(
       this.state.storage.put('unreviewedMaterialTurns', this.unreviewedMaterialTurns).catch(() => {})
     );
+  }
+
+  /**
+   * Spend one bounded review attempt on every occurrence this pass presented.
+   *
+   * WHY A BUDGET AT ALL. The strict reconciliation validator refusing an
+   * operation is the system working, not a transient fault — some figures
+   * genuinely cannot be placed against a person, an entity and a collection
+   * from what the client said. Treating that refusal as "still outstanding"
+   * held the confirmation barrier shut for the rest of the meeting, so a
+   * client who mentioned one awkward number could never run any analysis.
+   *
+   * An occurrence that survives its budget is recorded as terminally
+   * unresolved: still NOT captured, still absent from the canonical profile,
+   * and still blocking — through READINESS — any analysis that needs the fact
+   * it would have supplied. What it stops doing is holding back the analyses
+   * that never needed it.
+   */
+  async spendValueEvidenceReviews(reviewedIds, resolvedIds) {
+    const reviewed = (Array.isArray(reviewedIds) ? reviewedIds : [])
+      .map((id) => String(id || '')).filter(Boolean);
+    if (reviewed.length === 0) return false;
+    const resolved = new Set((Array.isArray(resolvedIds) ? resolvedIds : [])
+      .map((id) => String(id || '')).filter(Boolean));
+    const attempts = { ...this.valueEvidenceReviewAttempts };
+    const terminal = new Set(this.terminallyUnresolvedEvidence);
+    let stillReviewable = false;
+    for (const evidenceId of reviewed) {
+      // A resolved occurrence keeps no budget: it is either recovered into the
+      // profile or reasoned away, and either answer is final.
+      if (resolved.has(evidenceId)) {
+        delete attempts[evidenceId];
+        continue;
+      }
+      const spent = Number(attempts[evidenceId] || 0) + 1;
+      if (spent >= MAX_VALUE_EVIDENCE_REVIEW_ATTEMPTS) {
+        delete attempts[evidenceId];
+        terminal.add(evidenceId);
+      } else {
+        attempts[evidenceId] = spent;
+        stillReviewable = true;
+      }
+    }
+    const trimmedTerminal = [...terminal].slice(-MAX_LIVE_TURN_LEDGER_ENTRIES);
+    const changed = JSON.stringify(attempts) !== JSON.stringify(this.valueEvidenceReviewAttempts)
+      || JSON.stringify(trimmedTerminal) !== JSON.stringify(this.terminallyUnresolvedEvidence);
+    if (!changed) return stillReviewable;
+    const newlyTerminal = trimmedTerminal
+      .filter((id) => !this.terminallyUnresolvedEvidence.includes(id));
+    this.valueEvidenceReviewAttempts = attempts;
+    this.terminallyUnresolvedEvidence = trimmedTerminal;
+    await this.state.storage.put('valueEvidenceReviewAttempts', attempts).catch(() => {});
+    await this.state.storage.put('terminallyUnresolvedEvidence', trimmedTerminal).catch(() => {});
+    if (newlyTerminal.length === 0) return stillReviewable;
+    // Recorded, never silently dropped: an occurrence nothing could place is a
+    // fact the client gave and the meeting did not keep.
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta?.sessionId,
+      leaseId: this.meta?.leaseId,
+      direction: 'server',
+      eventType: 'live.value_evidence.unresolved',
+      payload: {
+        evidenceIds: newlyTerminal.slice(0, 12),
+        attempts: MAX_VALUE_EVIDENCE_REVIEW_ATTEMPTS
+      }
+    }).catch(() => {});
+    return stillReviewable;
+  }
+
+  /** Whether an uncovered occurrence still has review budget left. */
+  reviewableValueEvidence(coverage, turnId) {
+    const terminal = new Set(this.terminallyUnresolvedEvidence);
+    return (coverage?.uncovered || []).filter((item) => (
+      !terminal.has(`${turnId}:${item.evidenceId}`)
+    ));
   }
 
   /**
@@ -1185,6 +1298,7 @@ export class ConsumerLiveSession {
       leaseId: this.meta.leaseId,
       throughTurnId: job.throughTurnId,
       reviewTurnIds: job.reviewTurnIds,
+      terminallyUnresolvedEvidenceIds: this.terminallyUnresolvedEvidence,
       trigger: job.trigger,
       retryAttempt: job.retryAttempt,
       // What lets a validated correction survive the client answering the next
@@ -1244,6 +1358,7 @@ export class ConsumerLiveSession {
       let result = null;
       let errorCode = '';
       let disposition = 'terminal';
+      let errorReviewedValueEvidenceIds = [];
       try {
         if (config.plannerReconciliationMode === 'legacy') {
           result = { status: 'legacy' };
@@ -1253,6 +1368,12 @@ export class ConsumerLiveSession {
         }
       } catch (error) {
         errorCode = String(error?.code || 'planner_reconciliation_failed');
+        // A failed pass still consumed a look at these occurrences. Counting it
+        // is what stops a model that reliably chokes on one awkward figure from
+        // being asked about it for the rest of the meeting.
+        errorReviewedValueEvidenceIds = Array.isArray(error?.reviewedValueEvidenceIds)
+          ? error.reviewedValueEvidenceIds
+          : [];
       }
 
       if (result?.status === 'pending') {
@@ -1331,11 +1452,17 @@ export class ConsumerLiveSession {
       // Only a pass that actually reached a reviewed verdict retires material
       // work. `pending`, `conflicted` and `failed` clear nothing, so unresolved
       // material state keeps blocking the analyses — which is the whole point.
-      const valueEvidenceReviewComplete = result?.valueEvidenceReviewComplete
-        ?? result?.output?.valueEvidenceReview?.complete
-        ?? true;
+      //
+      // Every occurrence this pass put in front of the model spends one of its
+      // bounded attempts, whether the pass succeeded, was refused or failed.
+      // That is what guarantees the outstanding set shrinks, and with it that
+      // the confirmation barrier always opens eventually.
+      const valueEvidenceStillReviewable = await this.spendValueEvidenceReviews(
+        result?.reviewedValueEvidenceIds ?? errorReviewedValueEvidenceIds,
+        result?.resolvedValueEvidenceIds
+      ).catch(() => false);
       if ((result?.status === 'shadow' || result?.status === 'applied')
-        && valueEvidenceReviewComplete !== false) {
+        && !valueEvidenceStillReviewable) {
         await this.clearReviewedMaterialTurns(job.ordinal).catch(() => {});
       }
 

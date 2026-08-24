@@ -151,7 +151,9 @@ function spokenTokensAreAdjacent(text, previous, current) {
   return /^[ \t]*(?:[-‐‑][ \t]*)?$/.test(gap);
 }
 
-function occurrence(text, { start, end, value, kind, currency = null, unit = null }) {
+function occurrence(text, {
+  start, end, value, kind, currency = null, unit = null, financial = true
+}) {
   const bounds = clauseBounds(text, start, end);
   return Object.freeze({
     evidenceId: `value:${start}:${end}`,
@@ -162,6 +164,12 @@ function occurrence(text, { start, end, value, kind, currency = null, unit = nul
     kind,
     currency,
     unit,
+    // Whether this occurrence is an explicit FINANCIAL value, as opposed to a
+    // number the client merely said. Both are inventoried from one parse; only
+    // the financial ones carry a capture obligation. See
+    // extractNumericOccurrences for why the distinction has to be recorded
+    // rather than filtered away at the source.
+    financial,
     contextStart: bounds.start,
     contextEnd: bounds.end,
     contextText: text.slice(bounds.start, bounds.end).trim(),
@@ -188,7 +196,6 @@ function digitOccurrences(text) {
       percent,
       scaled: scale > 1
     });
-    if (!valueBearing || yearLike) continue;
     const adjacent = adjacentUnit(text, match.index + match[0].length);
     const termLike = !currency && !percent
       && termValueContext(text, match.index, match.index + match[0].length, adjacent);
@@ -198,7 +205,8 @@ function digitOccurrences(text) {
       value,
       kind: percent ? 'percent' : termLike ? 'number' : 'money',
       currency,
-      unit: percent ? 'percent' : adjacent
+      unit: percent ? 'percent' : adjacent,
+      financial: valueBearing && !yearLike
     }));
   }
   return found;
@@ -287,7 +295,7 @@ function spokenOccurrences(text) {
       // numeric threshold, while an explicit currency remains authoritative.
       scaled: usedScale && Math.abs(value) >= 1_000
     });
-    if (!Number.isFinite(value) || !valueBearing) continue;
+    if (!Number.isFinite(value)) continue;
     const occurrenceStart = currencyPrefix
       ? tokens[start].start - currencyPrefix[0].length
       : tokens[start].start;
@@ -301,7 +309,8 @@ function spokenOccurrences(text) {
       value,
       kind: percentMatch ? 'percent' : termLike ? 'number' : 'money',
       currency,
-      unit: percentMatch ? 'percent' : adjacent
+      unit: percentMatch ? 'percent' : adjacent,
+      financial: valueBearing
     }));
     start += consumed - 1;
   }
@@ -325,15 +334,31 @@ function withCorrectionState(text, occurrences) {
   });
 }
 
-/** Return active, occurrence-addressed value evidence in source order. */
-export function extractValueEvidence(transcript, { includeSuperseded = false } = {}) {
+/**
+ * EVERY number the client said, occurrence-addressed, financial or not.
+ *
+ * This is the single numeric scan the rest of the system builds on. Callers
+ * that need "was this figure actually spoken" read this; callers that need
+ * "which explicit financial values carry a capture obligation" read
+ * extractValueEvidence, which is the financial subset of the same parse.
+ *
+ * Keeping both views on one parse is deliberate. Separate scanners drift, and
+ * the drift is invisible until one of them refuses a figure the other accepted.
+ */
+export function extractNumericOccurrences(transcript) {
   const text = String(transcript || '');
-  const ordered = [...digitOccurrences(text), ...spokenOccurrences(text)]
+  return [...digitOccurrences(text), ...spokenOccurrences(text)]
     .sort((left, right) => left.start - right.start || left.end - right.end)
     // A word parser and digit parser cannot normally overlap, but keep the
     // invariant explicit so every source span has one identity.
     .filter((item, index, all) => !all.slice(0, index)
       .some((other) => other.start === item.start && other.end === item.end));
+}
+
+/** Return active, occurrence-addressed FINANCIAL evidence in source order. */
+export function extractValueEvidence(transcript, { includeSuperseded = false } = {}) {
+  const text = String(transcript || '');
+  const ordered = extractNumericOccurrences(text).filter((item) => item.financial);
   const classified = withCorrectionState(text, ordered);
   return classified.filter((item) => includeSuperseded || !item.superseded);
 }
@@ -427,14 +452,40 @@ function numericValueMatches(leaf, item) {
  * One-to-one multiset coverage. Matching consumes an occurrence, so two
  * distinct €25k holdings remain two obligations even when their values match.
  */
-export function valueEvidenceCoverage(transcript, extractedOrValues) {
+export function valueEvidenceCoverage(transcript, extractedOrValues, {
+  provenance: suppliedProvenance = []
+} = {}) {
   const evidence = extractValueEvidence(transcript);
   const leaves = candidateRecords(extractedOrValues).flatMap(recordLeaves);
   const provenance = new Map();
-  for (const record of provenanceRecords(extractedOrValues)) {
+  const leafValuesByCandidate = new Map();
+  for (const leaf of leaves) {
+    const candidateId = leaf.record.candidateId;
+    if (!candidateId) continue;
+    if (!leafValuesByCandidate.has(candidateId)) leafValuesByCandidate.set(candidateId, []);
+    leafValuesByCandidate.get(candidateId).push(leaf);
+  }
+  const records = [
+    // An occurrence binding resolved upstream — by the live numeric guard,
+    // which knows the slot, the owner cues and the position label — is the
+    // authoritative answer to "which occurrence is this". Re-deriving it here
+    // from the quote alone is how a whole-turn citation turned two legitimate
+    // equal values into one unresolvable ambiguity.
+    ...provenanceRecords(suppliedProvenance),
+    ...provenanceRecords(extractedOrValues)
+  ];
+  for (const record of records) {
     // Evidence ids identify one source occurrence. A duplicate record must not
     // manufacture extra coverage, so the first accepted provenance wins.
-    if (!provenance.has(record.evidenceId)) provenance.set(record.evidenceId, record);
+    if (provenance.has(record.evidenceId)) continue;
+    // Provenance names an occurrence; it never asserts a value. A record whose
+    // candidate holds no leaf matching that occurrence is ignored rather than
+    // trusted, so a wrong binding cannot launder a figure into coverage.
+    const claimed = leafValuesByCandidate.get(record.candidateId);
+    const occurrenceHere = evidence.find((item) => item.evidenceId === record.evidenceId);
+    if (claimed && occurrenceHere
+      && !claimed.some((leaf) => valuesMatch(leaf, occurrenceHere))) continue;
+    provenance.set(record.evidenceId, record);
   }
   const usedLeaves = new Set();
   const covered = [];
@@ -442,6 +493,31 @@ export function valueEvidenceCoverage(transcript, extractedOrValues) {
   for (const item of evidence) {
     const exact = provenance.get(item.evidenceId);
     if (exact) {
+      // A resolved occurrence CONSUMES its leaf, exactly as a value match does.
+      //
+      // The candidate's own values are still the budget. Without this, one
+      // candidate holding a single €25,000 could be credited with both
+      // €25,000 occurrences in a turn and the second holding's omission would
+      // disappear — the precise failure this inventory exists to catch.
+      //
+      // When the caller supplied provenance alone, with no candidate values to
+      // check against (the background audit passes accepted write records),
+      // there is no budget to spend and the provenance is the whole claim.
+      const claimed = leafValuesByCandidate.get(exact.candidateId);
+      const leafIndex = claimed
+        ? leaves.findIndex((leaf, index) => (
+          !usedLeaves.has(index)
+          && leaf.record.candidateId === exact.candidateId
+          && valuesMatch(leaf, item)
+        ))
+        : -1;
+      if (claimed && leafIndex < 0) {
+        // Every value this candidate holds is already accounted for elsewhere,
+        // so it cannot also account for this occurrence.
+        uncovered.push(item);
+        continue;
+      }
+      if (leafIndex >= 0) usedLeaves.add(leafIndex);
       covered.push({ ...item, candidateId: exact.candidateId || null });
       continue;
     }
@@ -496,21 +572,30 @@ export function boundedUncoveredValueEvidence(coverage, { limit = 8 } = {}) {
  * The returned extraction is safe to pass through the ordinary mapper.
  */
 export function groundPlannerExtraction(extraction, transcript, {
-  allowedEvidenceIds = null
+  allowedEvidenceIds = null,
+  provenance = []
 } = {}) {
   if (!extraction) return extraction;
   const text = String(transcript || '');
   const allowed = allowedEvidenceIds ? new Set(allowedEvidenceIds) : null;
   const invalidCandidates = [...(extraction.invalidCandidates || [])];
-  const semanticFacts = (extraction.semanticFacts || []).map((candidate, index) => ({
-    ...candidate,
-    candidateId: `__ground_fact_${index}`
-  }));
-  const positions = (extraction.positions || []).map((candidate, index) => ({
-    ...candidate,
-    candidateId: `__ground_position_${index}`
-  }));
-  const globalCoverage = valueEvidenceCoverage(text, { semanticFacts, positions });
+  const internalIdByOriginal = new Map();
+  const relabel = (candidate, candidateId) => {
+    if (candidate.candidateId && !internalIdByOriginal.has(candidate.candidateId)) {
+      internalIdByOriginal.set(candidate.candidateId, candidateId);
+    }
+    return { ...candidate, candidateId };
+  };
+  const semanticFacts = (extraction.semanticFacts || [])
+    .map((candidate, index) => relabel(candidate, `__ground_fact_${index}`));
+  const positions = (extraction.positions || [])
+    .map((candidate, index) => relabel(candidate, `__ground_position_${index}`));
+  const globalCoverage = valueEvidenceCoverage(text, { semanticFacts, positions }, {
+    provenance: (Array.isArray(provenance) ? provenance : []).map((record) => ({
+      ...record,
+      candidateId: internalIdByOriginal.get(record?.candidateId) ?? record?.candidateId
+    }))
+  });
   const coveredByCandidate = new Map();
   for (const item of globalCoverage.covered) {
     const existing = coveredByCandidate.get(item.candidateId) || [];
@@ -537,23 +622,38 @@ export function groundPlannerExtraction(extraction, transcript, {
       || quotedEvidence.some((item) => leaves.some((leaf) => numericValueMatches(leaf, item)));
     if (!financial) return true;
     const internalId = kind === 'position' ? `__ground_position_${index}` : `__ground_fact_${index}`;
-    // Global one-to-one assignment is essential for repeated equal values: two
-    // €25k candidates consume two source occurrences instead of both claiming
-    // the first one.
+    // Global one-to-one assignment is what keeps repeated equal values honest:
+    // two €25k candidates consume two source occurrences, and a single stated
+    // €25k can satisfy only one of them. That assignment — not the width of
+    // the quote — is the ambiguity test. A live candidate cites its whole
+    // finalized turn by construction, so requiring the value to appear once
+    // inside the quote refused every legitimate repeated figure, including
+    // "contributing 5% with a 5% employer match".
     const covered = coveredByCandidate.get(internalId) || [];
-    // A wide quote containing the same value twice cannot prove which holding,
-    // owner or income component this candidate describes. Reject it and let
-    // the one bounded repair cite a narrower subject-bearing span. Different
-    // values may still share a full-turn quote because each leaf identifies a
-    // unique occurrence there.
-    const uniquelyBound = leaves.every((leaf) => (
-      quotedEvidence.filter((item) => valuesMatch(leaf, item)).length === 1
+    // INVENTORY MISS IS NOT AN EVIDENCE FAILURE.
+    //
+    // The financial inventory recognises an unmarked low amount only beside a
+    // financial subject it knows, so "the creche is 900 a month" produces no
+    // occurrence at all. That means "this layer cannot classify it", not "the
+    // client never said it" — the same distinction the reconciliation number
+    // grounder already makes. Such a leaf is grounded against the plain
+    // numeric scan instead, and carries no coverage obligation. It keeps the
+    // Irish jurisdiction default: an unqualified amount is EUR and can never
+    // authorise a foreign currency.
+    const inventoried = leaves.filter((leaf) => (
+      quotedEvidence.some((item) => numericValueMatches(leaf, item))
     ));
-    const coveredAll = exact && uniquelyBound && covered.length >= leaves.length;
+    const unclassified = leaves.filter((leaf) => !inventoried.includes(leaf));
+    const quotedNumbers = exact ? extractNumericOccurrences(quote) : [];
+    const unclassifiedGrounded = unclassified.every((leaf) => (
+      (!leaf.currency || leaf.currency === 'EUR')
+      && quotedNumbers.some((item) => numericValueMatches(leaf, item))
+    ));
+    const coveredAll = exact && covered.length >= inventoried.length;
     const sourceIds = covered.map((item) => item.evidenceId);
     const withinRepair = !allowed || (sourceIds.length > 0
       && sourceIds.every((id) => allowed.has(id)));
-    if (exact && coveredAll && withinRepair) return true;
+    if (exact && coveredAll && unclassifiedGrounded && withinRepair) return true;
     invalidCandidates.push({
       candidateId: candidate.candidateId || null,
       factId: kind === 'position' ? null : candidate.factId || null,

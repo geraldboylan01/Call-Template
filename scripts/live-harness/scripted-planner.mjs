@@ -31,7 +31,11 @@ export function scriptedPlanner(planFor, { latencyMs = 0 } = {}) {
     const request = safeJson(init?.body) || {};
     const context = reconciliationContextFrom(request);
     const turns = context.transcriptTurns || [];
-    const instruction = planFor({ turns, notes: context.notes || [], request });
+    // The whole reconciliation context, so a test can aim a repair at the exact
+    // server-issued identity slot and source occurrence the Worker offered —
+    // rather than guessing at them, which is indistinguishable from a planner
+    // that proposed nothing.
+    const instruction = planFor({ turns, notes: context.notes || [], request, context });
     const startedAt = Date.now();
     if (latencyMs > 0) await new Promise((resolve) => setTimeout(resolve, latencyMs));
 
@@ -56,7 +60,13 @@ export function scriptedPlanner(planFor, { latencyMs = 0 } = {}) {
       at: startedAt,
       latencyMs: Date.now() - startedAt,
       operationCount: plan.operationGroups.reduce((total, group) => total + group.operations.length, 0),
-      verdict: plan.verdict
+      verdict: plan.verdict,
+      // Recorded so a test can tell a REAL recovery from the harness quietly
+      // declining an occurrence. An end-to-end proof that a missed figure is
+      // recovered must not be satisfiable by an auto-generated
+      // `not_current_fact`, so the disposition mix is observable here.
+      uncoveredValueEvidenceCount: (context?.uncoveredValueEvidence || []).length,
+      valueEvidenceDispositions: plan.valueEvidenceDispositions.map((item) => item.disposition)
     });
 
     return new Response(JSON.stringify({

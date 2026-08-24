@@ -493,6 +493,8 @@ export function validateValueEvidenceDispositions({
     .map((operation) => [operation.operationId, operation]));
   const accepted = acceptedOperationIds ? new Set(acceptedOperationIds) : null;
   const rejectedOperationIds = [];
+  const resolvedEvidenceIds = [];
+  const unresolved = new Set();
   for (const disposition of supplied) {
     const item = expected.find((candidate) => candidate.evidenceId === disposition.evidenceId);
     const operationIds = Array.isArray(disposition.operationIds) ? disposition.operationIds : [];
@@ -503,6 +505,9 @@ export function validateValueEvidenceDispositions({
       if (operationIds.length !== 0) {
         valueEvidenceFailure(`Non-current evidence ${disposition.evidenceId} cannot name a write.`);
       }
+      // A reasoned "this is not a canonical fact" IS a resolution. The
+      // occurrence has been reviewed and answered; it is not outstanding work.
+      resolvedEvidenceIds.push(disposition.evidenceId);
       continue;
     }
     if (operationIds.length === 0) {
@@ -519,13 +524,34 @@ export function validateValueEvidenceDispositions({
       }
       if (accepted && !accepted.has(operationId)) {
         rejectedOperationIds.push(operationId);
+        unresolved.add(disposition.evidenceId);
       }
     }
+    if (!unresolved.has(disposition.evidenceId)) resolvedEvidenceIds.push(disposition.evidenceId);
   }
+  const byDisposition = (kind) => supplied.filter((item) => (
+    item.disposition === kind && !unresolved.has(item.evidenceId)
+  )).length;
   return {
     dispositions: supplied,
     complete: rejectedOperationIds.length === 0,
-    rejectedOperationIds: [...new Set(rejectedOperationIds)]
+    rejectedOperationIds: [...new Set(rejectedOperationIds)],
+    // The occurrence funnel for this pass, classified by how each reviewed
+    // value ended. Counts only; the occurrences themselves stay in the
+    // encrypted output.
+    counts: Object.freeze({
+      uncovered: expectedIds.size,
+      recovered: byDisposition('operation_proposed'),
+      clarified: byDisposition('clarification_proposed'),
+      notCurrentFact: byDisposition('not_current_fact'),
+      unresolved: unresolved.size
+    }),
+    // Per-occurrence outcome, so a meeting can bound how many times it re-asks
+    // about a value nothing has been able to place. `complete` alone could
+    // only ever say "something failed", never which occurrence.
+    reviewedEvidenceIds: [...expectedIds],
+    resolvedEvidenceIds: [...new Set(resolvedEvidenceIds)],
+    unresolvedEvidenceIds: [...unresolved]
   };
 }
 
@@ -988,6 +1014,12 @@ export function buildPlannerReconciliationContext({
   notes,
   throughTurnId,
   reviewTurnIds = null,
+  // Occurrences this meeting has already reviewed to its bounded limit without
+  // being able to place them safely. They are NOT covered and are never
+  // recorded as captured; they are finished being asked about. Presenting them
+  // again would spend a paid review on a question already answered "no", and
+  // would hold the confirmation barrier shut for the rest of the call.
+  terminallyUnresolvedEvidenceIds = [],
   voiceWriteOutcomes = []
 }) {
   const recent = turns.map((turn, sequence) => ({
@@ -1008,6 +1040,11 @@ export function buildPlannerReconciliationContext({
     turn.role === 'user' && requestedReviewSet.has(turn.turnId)
   ));
   const uncovered = [];
+  // How many explicit values the fast lane DID account for on the reviewed
+  // turns. Without it the funnel has a numerator and no denominator: "three
+  // values were missed" means something very different in a turn of four than
+  // in a turn of thirty.
+  let coveredValueEvidenceCount = 0;
   for (const turn of reviewTurns) {
     const outcomes = voiceWriteOutcomes.filter((outcome) => (
       String(outcome?.sourceTurnId || throughTurnId) === turn.turnId
@@ -1024,13 +1061,19 @@ export function buildPlannerReconciliationContext({
         : []
     ));
     const coverage = valueEvidenceCoverage(turn.text, acceptedFastValues);
+    coveredValueEvidenceCount += coverage.covered.length;
     uncovered.push(...coverage.uncovered.map((item) => ({
       ...item,
       evidenceId: `${turn.turnId}:${item.evidenceId}`,
       turnId: turn.turnId
     })));
   }
-  const boundedRaw = boundedUncoveredValueEvidence({ uncovered }, { limit: 12 });
+  const terminal = new Set((Array.isArray(terminallyUnresolvedEvidenceIds)
+    ? terminallyUnresolvedEvidenceIds
+    : []).map((id) => String(id || '')).filter(Boolean));
+  const reviewable = uncovered.filter((item) => !terminal.has(item.evidenceId));
+  const terminallyUnresolved = uncovered.filter((item) => terminal.has(item.evidenceId));
+  const boundedRaw = boundedUncoveredValueEvidence({ uncovered: reviewable }, { limit: 12 });
   const uncoveredById = new Map(uncovered.map((item) => [item.evidenceId, item]));
   const boundedCoverage = {
     ...boundedRaw,
@@ -1116,8 +1159,22 @@ export function buildPlannerReconciliationContext({
     voiceWriteOutcomes,
     reviewTurnIds: requestedReviewTurnIds,
     missingReviewTurnIds,
+    coveredValueEvidenceCount,
     uncoveredValueEvidence: boundedCoverage.items,
-    uncoveredValueEvidenceOverflowCount: boundedCoverage.overflowCount
+    // Deferred to the next checkpoint, not lost and not silently covered. The
+    // set strictly shrinks because every reviewed occurrence either resolves
+    // or spends one of its bounded attempts.
+    uncoveredValueEvidenceOverflowCount: boundedCoverage.overflowCount,
+    // Reviewed to the bounded limit and still unplaceable. Reported so the
+    // meeting can see what was never captured, and excluded from the review
+    // obligation so it cannot hold the confirmation barrier shut.
+    terminallyUnresolvedValueEvidence: terminallyUnresolved.slice(0, 12).map((item) => ({
+      evidenceId: item.evidenceId,
+      turnId: item.turnId,
+      valueText: item.raw,
+      normalizedValue: item.value,
+      currency: item.currency
+    }))
   };
 }
 
@@ -1245,6 +1302,7 @@ async function runPlannerReconciliationAttempt({
   leaseId,
   throughTurnId,
   reviewTurnIds = null,
+  terminallyUnresolvedEvidenceIds = [],
   trigger = 'material_turn',
   retryAttempt = 0,
   rebaseAttempt = 0,
@@ -1290,6 +1348,7 @@ async function runPlannerReconciliationAttempt({
     notes,
     throughTurnId,
     reviewTurnIds: auditedTurnIds,
+    terminallyUnresolvedEvidenceIds,
     voiceWriteOutcomes
   });
   if (input.missingReviewTurnIds.length > 0) {
@@ -1299,13 +1358,15 @@ async function runPlannerReconciliationAttempt({
       'An outstanding material turn is outside the retained reconciliation transcript.'
     );
   }
-  if (input.uncoveredValueEvidenceOverflowCount > 0) {
-    throw new ConsumerError(
-      409,
-      'planner_reconciliation_value_evidence_overflow',
-      'The bounded reconciliation pass cannot safely review every uncovered value in this checkpoint.'
-    );
-  }
+  // OVERFLOW DEGRADES, IT DOES NOT INVALIDATE.
+  //
+  // Failing the whole checkpoint on a thirteenth uncovered value threw away
+  // the twelve this pass could have reviewed AND every unrelated correction
+  // travelling with them — and because the same occurrences are recomputed
+  // next time, it failed identically for the rest of the meeting. The pass now
+  // reviews its bounded twelve and reports the remainder, which the next
+  // checkpoint picks up.
+  const presentedValueEvidenceIds = input.uncoveredValueEvidence.map((item) => item.evidenceId);
   const retryIdentity = Math.max(0, Math.min(1, Number(retryAttempt) || 0));
   // A rebase runs at a NEW base revision, so it already gets a distinct
   // identity; the suffix is only added when one is needed, which keeps every
@@ -1429,6 +1490,15 @@ async function runPlannerReconciliationAttempt({
       acceptedOperationCount: validation.acceptedOperationIds.length,
       rejectedOperationCount: validation.operationOutcomes
         .filter((outcome) => outcome.status !== 'accepted').length,
+      // The occurrence funnel, so real-user testing can measure the mechanism
+      // rather than infer it. `covered` is how many explicit values the fast
+      // lane accounted for on the reviewed turns; `deferred` is how many this
+      // bounded pass could not fit and left for the next checkpoint.
+      valueOutcomes: {
+        ...valueEvidenceReview.counts,
+        covered: input.coveredValueEvidenceCount,
+        deferred: input.uncoveredValueEvidenceOverflowCount
+      },
       // Only the operations the validator accepted reach the canonical state,
       // and they reach it exactly as it validated them.
       ...(writesProfile ? { appliedProfile: validation.profile, appliedNotes: validation.notes } : {}),
@@ -1454,6 +1524,10 @@ async function runPlannerReconciliationAttempt({
       requested,
       valueEvidenceReviewComplete: valueEvidenceReview.complete,
       rejectedValueEvidenceOperationIds: valueEvidenceReview.rejectedOperationIds,
+      reviewedValueEvidenceIds: valueEvidenceReview.reviewedEvidenceIds,
+      resolvedValueEvidenceIds: valueEvidenceReview.resolvedEvidenceIds,
+      unresolvedValueEvidenceIds: valueEvidenceReview.unresolvedEvidenceIds,
+      valueEvidenceOverflowCount: input.uncoveredValueEvidenceOverflowCount,
       appliedProfileRevision: completed.appliedProfileRevision ?? null,
       insertedNoteCount: completed.insertedNoteCount ?? 0,
       transitionedNoteCount: completed.transitionedNoteCount ?? 0
@@ -1475,15 +1549,31 @@ async function runPlannerReconciliationAttempt({
       operationCount: 0,
       acceptedOperationCount: 0,
       rejectedOperationCount: 0,
+      // A FAILED PASS STILL HAD WORK IN FRONT OF IT. Leaving these at zero
+      // would make a review that crashed indistinguishable from one that had
+      // nothing to review, which is the "different outcomes, same status"
+      // collapse this schema exists to prevent. The occurrences were shown and
+      // none of them resolved, so that is exactly what is recorded.
+      valueOutcomes: {
+        covered: input.coveredValueEvidenceCount,
+        uncovered: presentedValueEvidenceIds.length,
+        unresolved: presentedValueEvidenceIds.length,
+        deferred: input.uncoveredValueEvidenceOverflowCount
+      },
       errorCode: error instanceof ConsumerError ? error.code : 'planner_reconciliation_failed'
     }).catch(() => null);
     if (completed?.status === 'conflicted') {
       return {
         status: 'conflicted',
         ...(requested ? { requested } : {}),
+        reviewedValueEvidenceIds: presentedValueEvidenceIds,
         errorCode: completed.errorCode || 'planner_reconciliation_stale'
       };
     }
+    // Which occurrences this pass had put in front of the model, so a failure
+    // still spends one of their bounded review attempts. Without this a model
+    // that reliably fails on one awkward value would be asked about it forever.
+    error.reviewedValueEvidenceIds = presentedValueEvidenceIds;
     throw error;
   }
 }
@@ -1542,6 +1632,7 @@ export async function runPlannerReconciliation({
   leaseId,
   throughTurnId,
   reviewTurnIds = null,
+  terminallyUnresolvedEvidenceIds = [],
   trigger = 'material_turn',
   retryAttempt = 0,
   loadContext = null
@@ -1561,6 +1652,7 @@ export async function runPlannerReconciliation({
         leaseId,
         throughTurnId,
         reviewTurnIds,
+        terminallyUnresolvedEvidenceIds,
         trigger,
         retryAttempt,
         rebaseAttempt,

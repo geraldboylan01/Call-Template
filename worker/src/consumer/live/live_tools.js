@@ -926,32 +926,6 @@ function labelBoundOccurrences(fact, occurrences, transcript) {
   return matched.length > 0 ? matched : occurrences;
 }
 
-/**
- * Some slots deliberately support an anaphoric fallback. For example, in
- * "I contribute 5% and my employer matches that", the one spoken percentage
- * is evidence for both contribution rates. When the client instead states two
- * percentages, an explicit local role cue is stronger than that fallback and
- * must bind each occurrence to its own role. This is occurrence/role
- * precedence, not a value- or phrase-specific exception.
- */
-function roleBoundOccurrences(slot, occurrences, transcript) {
-  if (occurrences.length <= 1) return occurrences;
-  const base = String(slot || '').split(':')[0];
-  const locallyMatchesRole = base === 'employer_pension_rate'
-    ? (context) => /\b(?:employer|company|match)\b/i.test(context)
-    : base === 'employee_pension_rate'
-      ? (context) => (
-        /\b(?:i|we|employee|contribut(?:e|es|ed|ing|ion|ions)?|put in|pay in)\b/i.test(context)
-        && !/\b(?:employer|company|match)\b/i.test(context)
-      )
-      : null;
-  if (!locallyMatchesRole) return occurrences;
-  const matched = occurrences.filter((occurrence) => (
-    locallyMatchesRole(localNumberContext(transcript, occurrence))
-  ));
-  return matched.length > 0 ? matched : occurrences;
-}
-
 function liveValueEvidenceBindings(facts, transcript, occurrences) {
   const inventory = extractValueEvidence(transcript);
   const used = new Set();
@@ -964,8 +938,7 @@ function liveValueEvidenceBindings(facts, transcript, occurrences) {
         numericOccurrenceSupportsSlot(slot, occurrence, transcript)
         && Object.is(occurrence.value, leaf.value)
       ));
-      const roleBound = roleBoundOccurrences(slot, semantic, transcript);
-      const candidates = labelBoundOccurrences(fact, roleBound, transcript);
+      const candidates = labelBoundOccurrences(fact, semantic, transcript);
       const occurrence = candidates.find((item) => !used.has(`${item.start}:${item.end}`));
       if (!occurrence) continue;
       const evidence = inventory.find((item) => (
@@ -1096,8 +1069,7 @@ export function partitionSupportedLiveFacts(facts, latestClientTranscript, {
         const supportedOccurrences = occurrences.filter((occurrence) =>
           numericOccurrenceSupportsSlot(slot, occurrence, transcript)
         );
-        const roleBound = roleBoundOccurrences(slot, supportedOccurrences, transcript);
-        const boundOccurrences = labelBoundOccurrences(fact, roleBound, transcript);
+        const boundOccurrences = labelBoundOccurrences(fact, supportedOccurrences, transcript);
         const matchingOccurrences = boundOccurrences.filter((occurrence) =>
           Object.is(occurrence.value, leaf.value)
         );
@@ -1129,10 +1101,17 @@ export function partitionSupportedLiveFacts(facts, latestClientTranscript, {
           || pathParts.includes('min')
           || pathParts.includes('max')
           || String(fact?.certainty || '').toLowerCase() === 'range';
-        return !unordered && (
-          matchingOccurrences.length > 1
-          || new Set(boundOccurrences.map((occurrence) => occurrence.value)).size > 1
-        );
+        // AMBIGUITY IS TWO DIFFERENT VALUES, NOT ONE VALUE SAID TWICE.
+        //
+        // If several occurrences support this slot and they all carry the same
+        // figure, the figure is grounded whichever one the client meant, so
+        // there is nothing to refuse. Treating a repeat as ambiguous dropped
+        // the employer half of "contributing 5% with a 5% employer match" —
+        // a figure the client plainly stated, which the meeting then asks for
+        // again. Which occurrence each accepted fact consumed is a provenance
+        // question, answered by liveValueEvidenceBindings below.
+        return !unordered
+          && new Set(boundOccurrences.map((occurrence) => occurrence.value)).size > 1;
       });
     if (unsupportedNumber) {
       rejected.push({ factId, reason: 'live_numeric_fact_unsupported' });
