@@ -769,26 +769,54 @@ export function getRealtimeVoiceConsent() {
 }
 
 export function clearRealtimeVoiceConsent() {
+  // CLEAR EVERY COPY THE READER CAN SEE.
+  //
+  // getRealtimeVoiceConsent falls back to the receipt restored with the
+  // session, so nulling the voice copy alone left the fallback to hand the
+  // same stale receipt straight back. The Worker would refuse the call, the
+  // controller would "clear" the consent, the client would still believe it
+  // held a current one, and openConsentDialog would take its already-granted
+  // early return — so the disclosure never opened and the meeting could not
+  // be started or re-agreed. Every retry repeated it.
   state.voice.realtimeConsent = null;
+  if (state.session && typeof state.session === 'object') {
+    delete state.session.realtimeVoiceConsent;
+    delete state.session.voiceRealtimeConsent;
+    if (state.session.voice && typeof state.session.voice === 'object') {
+      delete state.session.voice.realtimeConsent;
+    }
+  }
 }
 
 export function hasCurrentRealtimeVoiceConsent() {
   const consent = getRealtimeVoiceConsent();
   if (consent?.granted !== true) return false;
-  // The Worker is authoritative because its current-consent check also covers
-  // the data-processing policy and privacy URL. Older clients only compared
-  // the notice and policy version, which could leave the Start button unlocked
-  // while the Worker correctly rejected the call with a consent gate.
   if (consent.current === false) return false;
+  if (consent.withdrawnAt) return false;
   const expectedNoticeId = String(state.bootstrap?.voiceRealtimeNoticeId || '');
-  const expectedDataPolicyId = String(state.bootstrap?.voiceRealtimeDataPolicyId || '');
   const expectedPolicyVersion = String(state.bootstrap?.voiceRealtimePolicyVersion || '');
   if (!expectedNoticeId || !expectedPolicyVersion) return false;
-  if (String(consent.noticeId || '') !== expectedNoticeId
-    || String(consent.policyVersion || '') !== expectedPolicyVersion) return false;
-  if (expectedDataPolicyId && consent.dataPolicyId
-    && String(consent.dataPolicyId) !== expectedDataPolicyId) return false;
-  return true;
+  // COMPARE EVERY FIELD THE DISCLOSURE DECLARES, AND FAIL TOWARDS SHOWING IT.
+  //
+  // The Worker compares five things: granted, notice, data policy, policy
+  // version and privacy URL. A receipt that predates one of them used to skip
+  // the comparison and pass here while the Worker refused the call — an
+  // unresolvable disagreement, because the only way to obtain a fresh receipt
+  // is the dialog this function decides whether to skip.
+  //
+  // A field the bootstrap does not declare cannot be compared and is left
+  // alone; a field it DOES declare must be present and equal. Being wrong in
+  // this direction shows the disclosure one extra time, which costs a tap.
+  // Being wrong in the other direction is the dead end above.
+  const declared = [
+    [expectedNoticeId, consent.noticeId],
+    [expectedPolicyVersion, consent.policyVersion],
+    [String(state.bootstrap?.voiceRealtimeDataPolicyId || ''), consent.dataPolicyId],
+    [String(state.bootstrap?.voiceRealtimePrivacyNoticeUrl || ''), consent.privacyNoticeUrl]
+  ];
+  return declared.every(([expected, held]) => (
+    !expected || String(held || '') === expected
+  ));
 }
 
 export function clearSessionAccess() {

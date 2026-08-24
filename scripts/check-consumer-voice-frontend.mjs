@@ -52,7 +52,9 @@ const {
   RealtimeVoiceController
 } = await import('../js/plan/realtime_voice.js');
 const {
+  clearRealtimeVoiceConsent,
   getAnalysisPlanNonce,
+  getRealtimeVoiceConsent,
   hasCurrentRealtimeVoiceConsent,
   mergePayload,
   mergeVoicePayload,
@@ -97,6 +99,152 @@ function assertClientOutcomeLabel(value, message) {
   } finally {
     journeyState.bootstrap = previousBootstrap;
     journeyState.voice.realtimeConsent = previousRealtimeConsent;
+  }
+}
+
+/**
+ * THE SAFARI DEAD END: an error with nothing to accept.
+ *
+ * Reported from production. Starting a call showed "Review and accept the
+ * current live voice disclosure before starting." and no disclosure ever
+ * appeared, so the meeting could not be started OR re-agreed, and every retry
+ * repeated it. Two independent defects combined:
+ *
+ *   1. clearRealtimeVoiceConsent() nulled only the voice copy, while
+ *      getRealtimeVoiceConsent() falls back to the receipt restored with the
+ *      SESSION. The clear was invisible to every reader, so the client went on
+ *      believing it held a current receipt.
+ *   2. hasCurrentRealtimeVoiceConsent() compared fewer fields than the Worker,
+ *      so a receipt predating one of them passed here and was refused there —
+ *      a disagreement the client could never resolve, because the only way to
+ *      get a fresh receipt is the dialog it had decided to skip.
+ *
+ * openConsentDialog() then took its already-granted early return and never
+ * opened. Hence: an error, and nothing to accept.
+ */
+{
+  const previousBootstrap = journeyState.bootstrap;
+  const previousConsent = journeyState.voice.realtimeConsent;
+  const previousSession = journeyState.session;
+  const disclosure = {
+    voiceRealtimeNoticeId: 'realtime-notice-deadend',
+    voiceRealtimeDataPolicyId: 'realtime-data-policy-deadend',
+    voiceRealtimePolicyVersion: 'consumer-policy-deadend',
+    voiceRealtimePrivacyNoticeUrl: 'https://planeir.ie/privacy'
+  };
+  const fullReceipt = {
+    granted: true,
+    noticeId: 'realtime-notice-deadend',
+    dataPolicyId: 'realtime-data-policy-deadend',
+    policyVersion: 'consumer-policy-deadend',
+    privacyNoticeUrl: 'https://planeir.ie/privacy'
+  };
+  try {
+    journeyState.bootstrap = { ...previousBootstrap, ...disclosure };
+
+    // A complete, matching receipt must still be honoured. Being wrong in this
+    // direction would ask every client to re-consent on every call.
+    journeyState.session = { id: 'sess-deadend' };
+    journeyState.voice.realtimeConsent = { ...fullReceipt };
+    assert.equal(hasCurrentRealtimeVoiceConsent(), true,
+      'A receipt matching every declared field must not be forced back through the disclosure.');
+
+    // Defect 2: a receipt predating a field the disclosure declares is stale,
+    // because the Worker compares that field and will refuse the call.
+    for (const missing of ['dataPolicyId', 'privacyNoticeUrl', 'noticeId', 'policyVersion']) {
+      const receipt = { ...fullReceipt };
+      delete receipt[missing];
+      journeyState.voice.realtimeConsent = receipt;
+      assert.equal(hasCurrentRealtimeVoiceConsent(), false,
+        `A receipt with no ${missing} must reopen the disclosure rather than fail at the Worker.`);
+    }
+
+    // A withdrawn receipt is not a current one.
+    journeyState.voice.realtimeConsent = { ...fullReceipt, withdrawnAt: '2026-08-22T00:00:00.000Z' };
+    assert.equal(hasCurrentRealtimeVoiceConsent(), false,
+      'A withdrawn Live voice receipt must not unlock the meeting.');
+
+    // Defect 1: the clear must be visible to the reader. The session-restored
+    // copy is exactly what Safari was handing back after every failed start.
+    journeyState.session = { id: 'sess-deadend', realtimeVoiceConsent: { ...fullReceipt } };
+    journeyState.voice.realtimeConsent = { ...fullReceipt };
+    assert.equal(hasCurrentRealtimeVoiceConsent(), true);
+    clearRealtimeVoiceConsent();
+    assert.equal(getRealtimeVoiceConsent(), null,
+      'Clearing consent must clear the session-restored copy too, or the fallback resurrects it.');
+    assert.equal(hasCurrentRealtimeVoiceConsent(), false,
+      'After a Worker consent refusal the client must agree it has no current receipt.');
+
+    // And the same for the older key spelling and the nested session shape.
+    for (const shape of [
+      { voiceRealtimeConsent: { ...fullReceipt } },
+      { voice: { realtimeConsent: { ...fullReceipt } } }
+    ]) {
+      journeyState.session = { id: 'sess-deadend', ...shape };
+      journeyState.voice.realtimeConsent = { ...fullReceipt };
+      clearRealtimeVoiceConsent();
+      assert.equal(hasCurrentRealtimeVoiceConsent(), false,
+        `A ${Object.keys(shape)[0]} receipt must not survive a clear.`);
+    }
+  } finally {
+    journeyState.bootstrap = previousBootstrap;
+    journeyState.voice.realtimeConsent = previousConsent;
+    journeyState.session = previousSession;
+  }
+}
+
+/**
+ * THE LAST LINE OF DEFENCE. Even if the client's view of its receipt is wrong
+ * for a reason nobody has thought of yet, a Worker consent refusal must still
+ * put a disclosure on screen. Without the force flag openConsentDialog takes
+ * its already-granted shortcut and the client is left with an error and no way
+ * to act on it — which is the bug as the user experienced it.
+ */
+{
+  const previousBootstrap = journeyState.bootstrap;
+  const previousConsent = journeyState.voice.realtimeConsent;
+  const previousSession = journeyState.session;
+  const previousGetElementById = document.getElementById;
+  const elements = {
+    realtimeVoiceConsentDialog: { open: false, showModal() { this.open = true; }, setAttribute() { this.open = true; } },
+    realtimeVoiceConsentAcknowledgement: { checked: true, disabled: false, focus() {} }
+  };
+  try {
+    journeyState.bootstrap = {
+      ...previousBootstrap,
+      enabled: true,
+      voiceRealtimeEnabled: true,
+      cohort: 'adviser_test',
+      voiceRealtimeNoticeId: 'realtime-notice-force',
+      voiceRealtimePolicyVersion: 'consumer-policy-force',
+      voiceRealtimePrivacyNoticeUrl: 'https://planeir.ie/privacy'
+    };
+    journeyState.session = { id: 'sess-force' };
+    // The client wrongly believes this is current; the Worker has just refused.
+    journeyState.voice.realtimeConsent = {
+      granted: true,
+      noticeId: 'realtime-notice-force',
+      policyVersion: 'consumer-policy-force',
+      privacyNoticeUrl: 'https://planeir.ie/privacy'
+    };
+    document.getElementById = (id) => elements[id] || null;
+    const controller = new RealtimeVoiceController({ root: null });
+    controller.onToast = () => {};
+
+    controller.openConsentDialog();
+    assert.equal(elements.realtimeVoiceConsentDialog.open, false,
+      'An ordinary open must still short-circuit when the client believes consent is current.');
+
+    controller.openConsentDialog({ force: true });
+    assert.equal(elements.realtimeVoiceConsentDialog.open, true,
+      'A Worker consent refusal must put the disclosure on screen even so — an error the client cannot act on is the defect.');
+    assert.equal(elements.realtimeVoiceConsentAcknowledgement.checked, false,
+      'The acknowledgement must be re-ticked deliberately, never carried over.');
+  } finally {
+    document.getElementById = previousGetElementById;
+    journeyState.bootstrap = previousBootstrap;
+    journeyState.voice.realtimeConsent = previousConsent;
+    journeyState.session = previousSession;
   }
 }
 
@@ -1409,7 +1557,10 @@ realtimeController.updateUi();
     journeyState.voice.realtimeConsent = {
       granted: true,
       noticeId: 'realtime-notice-start-cancel',
-      policyVersion: 'consumer-start-cancel-v1'
+      policyVersion: 'consumer-start-cancel-v1',
+      // The Worker always returns this alongside the receipt and both sides
+      // derive it from one config value, so a realistic receipt carries it.
+      privacyNoticeUrl: 'https://planeir.ie/privacy'
     };
     journeyState.voice.realtimeBudget = {
       limitMicroEur: 2_000_000,

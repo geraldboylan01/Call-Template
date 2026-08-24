@@ -1478,7 +1478,9 @@ export class RealtimeVoiceController {
       if (error?.code === 'realtime_consent_required') {
         clearRealtimeVoiceConsent();
         this.setPhase('off', 'The meeting notice was updated. Please review it again to continue.');
-        this.openConsentDialog();
+        // Forced: the Worker has just told us this receipt is not current, so
+        // whatever the client still believes about it is wrong by definition.
+        this.openConsentDialog({ force: true });
         return;
       }
       this.setPhase('error', `${message} You can try again or continue by typing.`, { error: message });
@@ -3113,13 +3115,20 @@ export class RealtimeVoiceController {
     await this.onNavigate('results');
   }
 
-  openConsentDialog() {
+  /**
+   * @param {{force?: boolean}} [options] `force` is used when the SERVER has
+   *   just refused the call for consent. In that case the client's own view of
+   *   its receipt is known to be wrong, so the already-granted shortcut below
+   *   must not be trusted — taking it is what left the client with an error
+   *   and nothing to accept.
+   */
+  openConsentDialog({ force = false } = {}) {
     const context = realtimeContext();
     if (!context.eligible || !context.configured || !context.sessionId) {
       this.onToast('Live voice cannot start until its separate disclosure is configured.', { error: true });
       return;
     }
-    if (context.consentGranted) {
+    if (context.consentGranted && !force) {
       this.statusText = 'You’re ready to go. Press the button to begin your meeting.';
       this.updateUi();
       return;
