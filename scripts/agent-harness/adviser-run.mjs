@@ -20,7 +20,7 @@
  * the live lane.
  */
 
-import { runConsumerAnalysis } from '../../js/planning/orchestrator.js';
+import { runPlanningModule } from '../../js/planning/module_registry.js';
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0
@@ -72,29 +72,36 @@ export function describeFigure(row) {
 }
 
 async function runOne(profile, moduleId, scenarioOverrides) {
-  // A module that cannot run is a FINDING, not a crash. runConsumerAnalysis
-  // already collects per-module failures into `errors`; the outer catch is for
-  // the profile-level failures that happen before any module is reached.
+  // THE ADVISER/ENGINE PATH, NOT THE CONSUMER ONE.
+  //
+  // runConsumerAnalysis applies the consumer routing gate, so it refuses
+  // net_retirement_cashflow with `module_not_consumer_available` -- that module
+  // is adviser-routable but platformConsumerApproved: false, and it must stay
+  // that way. runPlanningModule gates on assertRunnableModule instead, which
+  // asks whether the module HAS AN ENGINE rather than whether it is approved
+  // for the public product. So a teaching call can exercise the adviser
+  // capability without opening a consumer gate, and the consumer path keeps
+  // refusing the module exactly as before.
   try {
-    const analysis = await runConsumerAnalysis({
-      profile,
-      moduleIds: [moduleId],
-      ...(Object.keys(scenarioOverrides).length ? { scenarioOverrides: { [moduleId]: scenarioOverrides } } : {})
+    const result = await runPlanningModule(moduleId, profile, {
+      calculationVersion: 'apprentice',
+      scenarioOverrides
     });
-    const result = (analysis.results || []).find((item) => item.moduleId === moduleId) || null;
-    const failure = (analysis.errors || []).find((item) => item.moduleId === moduleId) || null;
     return {
-      ran: Boolean(result),
-      figures: result ? headlineFigures(result.semanticResult) : {},
-      scenarioSnapshotHash: result?.scenarioSnapshotHash || null,
-      error: failure ? { code: failure.code, message: failure.message } : null
+      ran: true,
+      figures: headlineFigures(result?.semanticResult),
+      error: null
     };
   } catch (error) {
+    // A module that cannot run is a FINDING, not a crash: a missing required
+    // fact mid-call is exactly what a teaching case wants on the record.
     return {
       ran: false,
       figures: {},
-      scenarioSnapshotHash: null,
-      error: { code: error?.code || 'analysis_failed', message: String(error?.message || error) }
+      error: {
+        code: error?.code || 'analysis_failed',
+        message: String(error?.message || error).slice(0, 300)
+      }
     };
   }
 }
