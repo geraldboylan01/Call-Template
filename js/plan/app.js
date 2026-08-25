@@ -24,7 +24,6 @@ import {
   getRealtimeVoiceConsent,
   getSessionId,
   getStoredSessionAccess,
-  getVoiceConsent,
   mergePayload,
   preparePendingSessionAccess,
   resetJourneyState,
@@ -35,12 +34,7 @@ import {
   state,
   storeSessionAccess
 } from './store.js';
-import { LIVE_LANE, createVoiceLaneController, resolveVoiceLane } from './voice_lane.js';
-import {
-  captureConversationDraft,
-  createVoiceController,
-  restoreConversationDraft
-} from './voice.js';
+import { createLiveVoiceLaneController } from './voice_lane.js';
 import {
   findProfileField,
   getAvailableViews,
@@ -78,8 +72,6 @@ const closePrivacyControlsButton = document.getElementById('closePrivacyControls
 const withdrawAiConsentButton = document.getElementById('withdrawAiConsentButton');
 const revokeHandoffButton = document.getElementById('revokeHandoffButton');
 const handoffPrivacyCopy = document.getElementById('handoffPrivacyCopy');
-const withdrawVoiceConsentButton = document.getElementById('withdrawVoiceConsentButton');
-const voicePrivacyCopy = document.getElementById('voicePrivacyCopy');
 const realtimeVoicePrivacyCopy = document.getElementById('realtimeVoicePrivacyCopy');
 const withdrawRealtimeVoiceConsentButton = document.getElementById('withdrawRealtimeVoiceConsentButton');
 const removeItemDialog = document.getElementById('removeItemDialog');
@@ -98,30 +90,6 @@ let pendingPlanConfirm = null;
 let planPrepareGeneration = 0;
 let realtimeRenderQueued = false;
 
-const voiceController = createVoiceController({
-  root: appRoot,
-  currentQuestion: () => activeConversationQuestion(),
-  onVoicePayload: (payload) => mergePayload(payload),
-  onConsentChanged: (payload) => {
-    const draft = captureConversationDraft(appRoot);
-    mergePayload(payload);
-    if (privacyControlsDialog?.open || privacyControlsDialog?.hasAttribute('open')) {
-      closeDialog(privacyControlsDialog);
-    }
-    if (state.bootstrap?.enabled) {
-      renderCurrentJourney();
-    } else {
-      renderProcessingPaused();
-    }
-    restoreConversationDraft(appRoot, draft);
-  },
-  onToast: (message, options) => showToast(message, options),
-  onSessionUnavailable: (error) => recoverUnavailableSession(error)
-});
-
-// The options are shared by both lanes; only the controller built from them
-// differs. Held apart from the construction below so the lane can be decided
-// once the bootstrap has told us which one this deployment runs.
 const realtimeVoiceControllerOptions = {
   root: document.getElementById('realtimeVoiceCompanion'),
   onVoicePayload: (payload) => {
@@ -140,19 +108,18 @@ const realtimeVoiceControllerOptions = {
     setView(destination);
     renderCurrentJourney({ focus: true });
   },
-  onStopBoundedVoice: () => voiceController.cancelActiveVoice(),
   onToast: (message, options) => showToast(message, options),
-  onSessionUnavailable: (error) => recoverUnavailableSession(error)
+  onSessionUnavailable: (error) => recoverUnavailableSession(error),
+  onFailure: ({ message = '', reason = 'runtime-failure', transcript = '' } = {}) => {
+    console.warn('[planeir] live call failed', { reason });
+    renderUnavailable(appRoot, { message, liveMeetingFailure: true, transcript });
+    syncHeader();
+  }
 };
 
-// Built with the controlled lane so every call site below has something real
-// to talk to before the bootstrap lands, and rebuilt as the live lane if that
-// is what this deployment runs. Rebuilding is safe because neither controller
-// touches the page until `bind()`, which happens once, after the swap.
-let realtimeVoiceController = createVoiceLaneController({
-  lane: 'controlled',
-  ...realtimeVoiceControllerOptions
-});
+// There is no runtime lane selection. The live controller is the only active
+// browser call implementation; the previous controlled client is archived.
+const realtimeVoiceController = createLiveVoiceLaneController(realtimeVoiceControllerOptions);
 
 function firstDefined(...values) {
   return values.find((value) => value !== undefined && value !== null);
@@ -163,6 +130,36 @@ function unwrap(payload) {
     return payload.data;
   }
   return payload && typeof payload === 'object' ? payload : {};
+}
+
+function captureConversationDraft(root = document) {
+  const input = root?.querySelector?.('#conversationInput');
+  if (!input) return null;
+  return {
+    value: String(input.value || ''),
+    selectionStart: Number.isInteger(input.selectionStart) ? input.selectionStart : null,
+    selectionEnd: Number.isInteger(input.selectionEnd) ? input.selectionEnd : null,
+    selectionDirection: ['forward', 'backward', 'none'].includes(input.selectionDirection)
+      ? input.selectionDirection
+      : 'none'
+  };
+}
+
+function restoreConversationDraft(root = document, snapshot = null) {
+  if (!snapshot || typeof snapshot !== 'object') return false;
+  const input = root?.querySelector?.('#conversationInput');
+  if (!input) return false;
+  input.value = String(snapshot.value || '');
+  if (typeof input.setSelectionRange === 'function'
+    && Number.isInteger(snapshot.selectionStart)
+    && Number.isInteger(snapshot.selectionEnd)) {
+    const maximum = input.value.length;
+    const start = Math.min(maximum, Math.max(0, snapshot.selectionStart));
+    const end = Math.min(maximum, Math.max(start, snapshot.selectionEnd));
+    input.setSelectionRange(start, end, snapshot.selectionDirection || 'none');
+  }
+  input.dispatchEvent?.(new Event('input', { bubbles: true }));
+  return true;
 }
 
 function newIdempotencyKey() {
@@ -246,7 +243,6 @@ function maybeAutoOpenRealtimeMeeting() {
 
 function renderCurrentJourney({ focus = false } = {}) {
   renderJourney(appRoot, state);
-  voiceController.afterRender();
   realtimeVoiceController.sync(state);
   maybeAutoOpenRealtimeMeeting();
   syncHeader();
@@ -268,6 +264,7 @@ function renderCurrentJourney({ focus = false } = {}) {
 const MEETING_UNAVAILABLE_MESSAGES = Object.freeze({
   'unsupported-browser': 'This browser can’t run the live meeting. Please try again in a recent version of Chrome, Edge, or Safari.',
   'service-off': 'Your live meeting isn’t switched on at the moment. Nothing you have entered has been lost — get in touch and we’ll open it for you.',
+  'no-session': 'The live meeting could not find an active planning session. Please try again.',
   'consent-refresh': 'Please review the updated privacy notice before your meeting starts.'
 });
 
@@ -277,7 +274,10 @@ function enterMeetingOrFail({ focus = false } = {}) {
     // Flags only, no personal data. Without this the failure page cannot tell
     // an operator which gate closed.
     console.warn('[planeir] live meeting unavailable', realtimeVoiceController.meetingUnavailableDetail());
-    renderUnavailable(appRoot, { message: MEETING_UNAVAILABLE_MESSAGES[reason] || '' });
+    renderUnavailable(appRoot, {
+      message: MEETING_UNAVAILABLE_MESSAGES[reason] || '',
+      liveMeetingFailure: true
+    });
     syncHeader();
     return;
   }
@@ -531,7 +531,6 @@ function renderProcessingPaused() {
   renderUnavailable(appRoot, {
     message: 'Planning updates are temporarily paused. Your private access is still available, and Privacy controls remain open for AI or adviser-handoff withdrawal and permanent deletion.'
   });
-  voiceController.afterRender();
   realtimeVoiceController.sync(state);
   syncHeader();
 }
@@ -544,7 +543,6 @@ function resetToOnboarding({ error = '', toast = '' } = {}) {
   });
   document.body.classList.remove('dialog-open');
   clearSessionAccess();
-  voiceController.reset();
   realtimeVoiceController.reset({ notifyServer: false });
   resetJourneyState();
   editingField = null;
@@ -674,8 +672,6 @@ async function submitTurn(message) {
   if (realtimeVoiceController.isLive()) {
     void realtimeVoiceController.end({ reason: 'typed_fallback' });
   }
-  voiceController.cancelActiveVoice();
-
   setBusy(true);
   renderCurrentJourney();
   if (!pendingTurn || pendingTurn.message !== cleanMessage) {
@@ -872,17 +868,11 @@ function openPrivacyControls() {
     ? 'Stop AI assistance for this session. Future messages will use fixed questions and rules-only extraction; deterministic calculations remain available.'
     : 'AI assistance is off for this session. Messages use fixed questions and rules-only extraction; deterministic calculations remain available.';
   withdrawAiConsentButton.hidden = !aiActive && Boolean(state.session);
-  const voiceActive = getVoiceConsent()?.granted === true;
-  withdrawVoiceConsentButton.hidden = !voiceActive;
-  voicePrivacyCopy.hidden = !voiceActive;
-  if (voiceActive) {
-    voicePrivacyCopy.textContent = 'Short voice processing is active for its disclosure version. Turning it off stops future bounded microphone transcription and generated question playback; typed answers remain available.';
-  }
   const realtimeVoiceActive = getRealtimeVoiceConsent()?.granted === true;
   withdrawRealtimeVoiceConsentButton.hidden = !realtimeVoiceActive;
   realtimeVoicePrivacyCopy.hidden = !realtimeVoiceActive;
   if (realtimeVoiceActive) {
-    realtimeVoicePrivacyCopy.textContent = 'Live voice is separately active. Turning it off immediately closes any live microphone session and stops future automatic spoken turns and voice-triggered planning tools; short voice and typing remain available.';
+    realtimeVoicePrivacyCopy.textContent = 'Turning Live voice off immediately closes any live microphone session and stops future automatic spoken turns and voice-triggered planning tools; typed answers remain available.';
   }
   const handoffStatus = String(state.handoff?.status || '').toLowerCase();
   const canWithdrawHandoff = ['pending', 'failed', 'linked', 'delivered'].includes(handoffStatus);
@@ -1141,10 +1131,6 @@ async function handleRunAnalysis() {
     pendingPlanConfirm = null;
     setBusy(false);
     applyResponse(payload, { action: 'analysis', focus: true });
-    // A completed REST confirmation can finish while the Realtime model is
-    // silent. Play the exact Worker-issued result authorization immediately;
-    // the controller ignores it when no live lease is active.
-    void realtimeVoiceController.playWorkerSpeechFromPayload(payload);
     if (state.analysis) {
       showToast('Your educational analysis is ready.');
     }
@@ -1221,7 +1207,6 @@ async function handleHandoff(form) {
 
 async function handleDeleteSession() {
   await realtimeVoiceController.end({ reason: 'deletion' });
-  voiceController.cancelActiveVoice({ reason: 'deletion', refreshBudget: false });
   confirmDeleteButton.disabled = true;
   confirmDeleteButton.textContent = 'Deleting…';
   try {
@@ -1230,7 +1215,6 @@ async function handleDeleteSession() {
     resetJourneyState();
     pendingTurn = null;
     closeDialog(deleteSessionDialog);
-    voiceController.reset({ refreshBudget: false });
     realtimeVoiceController.reset({ notifyServer: false });
     confirmDeleteButton.disabled = false;
     confirmDeleteButton.textContent = 'Delete permanently';
@@ -1255,13 +1239,6 @@ function handleRootClick(event) {
     return;
   }
   const action = button.dataset.action;
-  if (voiceController.handles(action)) {
-    if (realtimeVoiceController.isLive()) {
-      void realtimeVoiceController.end({ reason: 'bounded_fallback' });
-    }
-    voiceController.handleAction(action);
-    return;
-  }
   if (action === 'navigate') {
     setView(button.dataset.view || 'conversation');
     renderCurrentJourney({ focus: true });
@@ -1269,6 +1246,13 @@ function handleRootClick(event) {
   }
   if (action === 'reload-page') {
     window.location.reload();
+    return;
+  }
+  if (action === 'copy-failed-live-transcript') {
+    const transcript = document.getElementById('failedLiveCallTranscript')?.value || '';
+    copyTextToClipboard(transcript)
+      .then(() => showToast('The full transcript was copied to your clipboard.'))
+      .catch((error) => showToast(getErrorMessage(error), { error: true }));
     return;
   }
   if (action === 'open-terms') {
@@ -1358,10 +1342,8 @@ function handleComposerShortcut(event) {
 }
 
 function bindEvents() {
-  voiceController.bind();
-  // The realtime controller binds in `boot`, not here: which lane owns the
-  // companion is not known until the bootstrap has been read, and binding the
-  // wrong one would leave listeners on the page for a lane that never runs.
+  // The one live controller binds in `boot` after its bootstrap gates exist.
+  // There is no runtime lane selection.
   appRoot.addEventListener('click', handleRootClick);
   appRoot.addEventListener('submit', handleRootSubmit);
   appRoot.addEventListener('keydown', handleComposerShortcut);
@@ -1389,7 +1371,6 @@ function bindEvents() {
   privacyControlsButton.addEventListener('click', openPrivacyControls);
   closePrivacyControlsButton.addEventListener('click', () => closeDialog(privacyControlsDialog));
   withdrawAiConsentButton.addEventListener('click', handleWithdrawAiConsent);
-  withdrawVoiceConsentButton.addEventListener('click', () => voiceController.withdrawConsent());
   withdrawRealtimeVoiceConsentButton.addEventListener('click', async () => {
     await realtimeVoiceController.withdrawConsent();
     if (privacyControlsDialog?.open || privacyControlsDialog?.hasAttribute('open')) {
@@ -1407,7 +1388,6 @@ function bindEvents() {
   });
   deleteSessionButton.addEventListener('click', () => {
     void realtimeVoiceController.end({ reason: 'deletion' });
-    voiceController.cancelActiveVoice({ reason: 'deletion', refreshBudget: false });
     openDialog(deleteSessionDialog);
   });
   confirmDeleteButton.addEventListener('click', handleDeleteSession);
@@ -1422,12 +1402,6 @@ async function boot() {
     }
     const bootstrapPayload = await getBootstrap();
     const bootstrap = setBootstrap(bootstrapPayload);
-    if (resolveVoiceLane(bootstrap) === LIVE_LANE) {
-      realtimeVoiceController = createVoiceLaneController({
-        lane: LIVE_LANE,
-        ...realtimeVoiceControllerOptions
-      });
-    }
     realtimeVoiceController.bind();
     syncTermsDialog(bootstrap);
     const bootstrapRoot = unwrap(bootstrapPayload);

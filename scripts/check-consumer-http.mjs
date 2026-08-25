@@ -72,18 +72,19 @@ const preflight = await request('/api/consumer/sessions', {
 });
 assert.match(preflight.response.headers.get('access-control-allow-headers') || '', /X-Consumer-Invite/i);
 
-const voiceUploadPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/transcriptions', {
+const removedVoiceUploadPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/transcriptions', {
   method: 'OPTIONS',
-  expectedStatus: 204,
+  expectedStatus: 404,
   extraHeaders: {
     'Access-Control-Request-Method': 'POST',
     'Access-Control-Request-Headers': 'content-type,x-consumer-session,x-voice-duration-ms,x-voice-request-id'
   }
 });
-const voiceAllowedHeaders = voiceUploadPreflight.response.headers.get('access-control-allow-headers') || '';
-assert.match(voiceAllowedHeaders, /X-Consumer-Session/i);
-assert.match(voiceAllowedHeaders, /X-Voice-Duration-Ms/i);
-assert.match(voiceAllowedHeaders, /X-Voice-Request-Id/i);
+assert.equal(
+  removedVoiceUploadPreflight.response.headers.get('access-control-allow-methods'),
+  null,
+  'The removed bounded transcription route must not advertise any allowed method.'
+);
 
 const realtimeControlPreflight = await request('/api/consumer/sessions/cs_AAAAAAAAAAAAAAAAAAAA/voice/realtime/calls/rt_AAAAAAAAAAAAAAAAAAAA', {
   method: 'OPTIONS',

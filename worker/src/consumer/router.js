@@ -93,11 +93,8 @@ import { LIVE_TOOLSET_VERSION } from './live/live_tools.js';
 import { requireConsumerSession } from './session_auth.js';
 import {
   getVoiceConsent,
-  setVoiceConsent,
-  toPublicVoiceConsent,
-  voiceConsentIsCurrent
+  toPublicVoiceConsent
 } from './voice_repository.js';
-import { speakConsumerQuestion, transcribeConsumerVoice } from './voice_provider.js';
 import {
   applyProfilePatch,
   validateAnalysisBody,
@@ -108,9 +105,7 @@ import {
   validateProfilePatchBody,
   validateRealtimeAnalysisPlanBody,
   validateRealtimeConsentBody,
-  validateTurnBody,
-  validateVoiceConsentBody,
-  validateVoiceSpeechBody
+  validateTurnBody
 } from './validators.js';
 
 const MAX_REQUEST_BODY_BYTES = 100_000;
@@ -144,62 +139,32 @@ function consumerPlanBaseUrl(env) {
 }
 
 export function isAdvisorRulesOnlyPreviewConfig(config) {
-  const allowedModules = [...(config?.allowedModules || [])].sort().join(',');
-  return config?.journeyEnabled === true
-    && config?.moduleRoutingEnabled === true
-    && config?.aiRequested !== true
-    && config?.aiEnabled !== true
-    && config?.voiceRequested !== true
-    && config?.voiceEnabled !== true
-    && config?.handoffRequested !== true
-    && config?.handoffEnabled !== true
-    && config?.publicAccessEnabled !== true
-    && config?.inviteAccessConfigured === true
-    && config?.cohort === 'adviser_test'
-    && allowedModules === APPROVED_CONSUMER_MODULE_KEY;
-}
-
-function hasApprovedAdvisorVoiceTransport(config) {
-  const allowedModules = [...(config?.allowedModules || [])].sort().join(',');
-  return config?.journeyEnabled === true
-    && config?.moduleRoutingEnabled === true
-    && config?.aiRequested !== true
-    && config?.aiEnabled !== true
-    && config?.voiceRequested === true
-    && config?.voiceConfigured === true
-    && config?.voiceEnabled === true
-    && config?.publicAccessEnabled !== true
-    && config?.inviteAccessConfigured === true
-    && config?.cohort === 'adviser_test'
-    && ['voice-adviser-test-v1', 'voice-openai-audio-adviser-test-v2'].includes(config?.voiceNoticeId)
-    && config?.voiceDataPolicyId === 'openai-audio-adviser-test-v1'
-    && config?.voiceTranscriptionModel === 'gpt-4o-mini-transcribe'
-    && config?.voiceSpeechModel === 'tts-1-hd'
-    && config?.voiceName === 'nova'
-    && config?.voicePricingVersion === 'openai-audio-eur-safety-2026-07-13-v2'
-    && config?.voiceSessionBudgetMicroEur === 2_000_000
-    && config?.voiceDailyBudgetMicroEur === 20_000_000
-    && config?.voiceTranscriptionReservationMicroEur === 100_000
-    && config?.voiceSpeechReservationMicroEur === 100_000
-    && config?.voiceMaxAudioBytes === 1_000_000
-    && config?.voiceMaxDurationSeconds === 45
-    && config?.voiceMaxSpeechCharacters === 1_200
-    && allowedModules === APPROVED_CONSUMER_MODULE_KEY;
-}
-
-export function isAdvisorVoicePreviewConfig(config) {
-  return hasApprovedAdvisorVoiceTransport(config)
+  return hasApprovedAdvisorPlanningAccess(config)
     && config?.realtimeRequested !== true
     && config?.realtimeEnabled !== true
+    && config?.liveVoiceEnabled !== true
     && config?.handoffRequested !== true
     && config?.handoffEnabled !== true;
 }
 
+function hasApprovedAdvisorPlanningAccess(config) {
+  const allowedModules = [...(config?.allowedModules || [])].sort().join(',');
+  return config?.journeyEnabled === true
+    && config?.moduleRoutingEnabled === true
+    && config?.aiRequested !== true
+    && config?.aiEnabled !== true
+    && config?.publicAccessEnabled !== true
+    && config?.inviteAccessConfigured === true
+    && config?.cohort === 'adviser_test'
+    && allowedModules === APPROVED_CONSUMER_MODULE_KEY;
+}
+
 export function isAdvisorRealtimePreviewConfig(config) {
-  return hasApprovedAdvisorVoiceTransport(config)
+  return hasApprovedAdvisorPlanningAccess(config)
     && config?.realtimeRequested === true
     && config?.realtimeConfigured === true
     && config?.realtimeEnabled === true
+    && config?.liveVoiceEnabled === true
     && config?.handoffRequested !== true
     && config?.handoffEnabled !== true
     && ['realtime-voice-adviser-test-v2', 'realtime-voice-openai-audio-adviser-test-v3'].includes(config?.realtimeNoticeId)
@@ -208,22 +173,9 @@ export function isAdvisorRealtimePreviewConfig(config) {
     && config?.realtimeVoice === 'marin'
     && config?.realtimeReasoningEffort === 'low'
     && config?.realtimeTranscriptionModel === 'gpt-4o-mini-transcribe'
-    // The prompt and toolset identities belong to the LANE, not to the
-    // transport. Everything else pinned here -- model, voice, reasoning
-    // effort, transcription model, pricing, the whole spend envelope and the
-    // duration caps -- is identical whichever lane runs, and none of it
-    // relaxes. Only these two differ, because the live lane genuinely runs a
-    // different prompt and a three-tool surface, and the lease records
-    // whichever pair the deployment is configured with.
-    && (config?.liveVoiceEnabled === true
-      ? config?.realtimePromptVersion === LIVE_PROMPT_VERSION
-        && config?.realtimeToolsetVersion === LIVE_TOOLSET_VERSION
-      : config?.realtimePromptVersion === 'consumer-realtime-orchestrator-v9'
-        && config?.realtimeToolsetVersion === 'consumer-realtime-tools-v7')
+    && config?.realtimePromptVersion === LIVE_PROMPT_VERSION
+    && config?.realtimeToolsetVersion === LIVE_TOOLSET_VERSION
     && config?.realtimePricingVersion === 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'
-    && config?.realtimeSpeechModel === 'gpt-4o-mini-tts'
-    && config?.realtimeSpeechVoice === 'marin'
-    && config?.realtimeSpeechRateMicroEurPerMillionCharacters === 30_000_000
     // Approved adviser-demo envelope: €10 session allowance (warn €7.50,
     // dispatch stop €9.70) inside the €50 UTC-day ceiling, 15-minute meetings,
     // 3-minute silence timeout with a spoken warning 45 seconds beforehand.
@@ -242,7 +194,6 @@ export function isAdvisorRealtimePreviewConfig(config) {
 
 export function isAdvisorProtectedPreviewConfig(config) {
   return isAdvisorRulesOnlyPreviewConfig(config)
-    || isAdvisorVoicePreviewConfig(config)
     || isAdvisorRealtimePreviewConfig(config);
 }
 
@@ -264,11 +215,9 @@ export async function createAdvisorConsumerInvite(env, options = {}) {
     url: url.toString(),
     expiresAt: invite.expiresAt,
     maxUses: 1,
-    mode: config.realtimeEnabled
+    mode: config.liveVoiceEnabled
       ? 'realtime_voice_rules_only'
-      : config.voiceEnabled
-        ? 'voice_assisted_rules_only'
-        : 'rules_only'
+      : 'rules_only'
   });
 }
 
@@ -381,12 +330,6 @@ function routeMatch(pathname) {
   if (analysisPlanMatch) {
     return { kind: 'analysis_plan', sessionId: analysisPlanMatch[1], methods: ['PUT'] };
   }
-  const voiceMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/(consent|transcriptions|speech)$/.exec(pathname);
-  if (voiceMatch) {
-    const [, sessionId, operation] = voiceMatch;
-    const voiceMethods = { consent: ['PATCH'], transcriptions: ['POST'], speech: ['POST'] };
-    return { kind: `voice_${operation}`, sessionId, methods: voiceMethods[operation] };
-  }
   const match = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})(?:\/(turns|profile|confirm|analyses|publish|handoffs|consent))?$/.exec(pathname);
   if (!match) return null;
   const [, sessionId, child] = match;
@@ -417,13 +360,6 @@ async function assertAudienceAccess(request, env, config) {
     throw new ConsumerError(503, 'consumer_audience_unavailable', 'This planning journey is not accepting new sessions right now.');
   }
   return verifyConsumerInvite(provided, env, config);
-}
-
-function assertVoiceAvailability(config) {
-  if (!config.voiceEnabled
-    || !(isAdvisorVoicePreviewConfig(config) || isAdvisorRealtimePreviewConfig(config))) {
-    throw new ConsumerError(503, 'consumer_voice_unavailable', 'Voice is not available right now. You can continue by typing.');
-  }
 }
 
 function assertRealtimeAvailability(config) {
@@ -522,12 +458,6 @@ export function realtimeVoiceBudgetPayload(providerBudget, lease, config) {
   return voiceBudgetPayload(providerBudget, {
     voiceSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur
   });
-}
-
-function questionText(question) {
-  if (typeof question === 'string') return question.trim();
-  if (!question || typeof question !== 'object') return '';
-  return String(question.prompt || question.question || question.text || question.message || '').trim();
 }
 
 function publicConversationState(state) {
@@ -727,24 +657,6 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         { cursor, limit }
       );
       return respond(transcript, 200, methods);
-    }
-
-    if (route.kind === 'voice_consent') {
-      const body = validateVoiceConsentBody(await readJson(request), {
-        noticeId: config.voiceNoticeId,
-        policyVersion: config.consentPolicyVersion,
-        privacyNoticeUrl: config.privacyNoticeUrl
-      });
-      if (body.granted) {
-        assertProcessingAvailability(config);
-        assertVoiceAvailability(config);
-      }
-      const voiceConsent = await setVoiceConsent(env, sessionRow, config, body.granted);
-      const budget = await getConsumerProviderBudget(env, sessionRow.id);
-      return respond({
-        voiceConsent: toPublicVoiceConsent(voiceConsent),
-        voiceAvailability: voiceBudgetPayload(budget, config)
-      }, 200, methods);
     }
 
     if (route.kind === 'realtime_consent') {
@@ -1135,7 +1047,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           sessionId: sessionRow.id,
           offerSdp,
           state,
-          ...(config.liveVoiceEnabled ? { sessionConfig: buildLiveSessionConfig(config) } : {})
+          sessionConfig: buildLiveSessionConfig(config)
         });
         providerCallId = providerCall.providerCallId;
         lease = await activateRealtimeLease(env, sessionRow.id, lease.id, providerCallId);
@@ -1154,9 +1066,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           'X-Realtime-Dispatch-Stop-Micro-Eur': String(lease.dispatch_stop_eur_micros),
           'X-Realtime-Activation-Id': activationId,
           'X-Realtime-Control-Capability': controlCapability,
-          'X-Realtime-Conversation-Version': config.liveVoiceEnabled
-            ? 'live'
-            : config.realtimeConversationV2Enabled ? 'v2' : 'v1',
+          'X-Realtime-Conversation-Version': 'live',
           'Access-Control-Expose-Headers': [
             'X-Realtime-Lease-Id',
             'X-Realtime-Hard-Expires-At',
@@ -1310,42 +1220,6 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }, 200, methods);
     }
 
-
-    if (route.kind === 'voice_transcriptions' || route.kind === 'voice_speech') {
-      assertVoiceAvailability(config);
-      const voiceConsent = await getVoiceConsent(env, sessionRow.id);
-      if (!voiceConsentIsCurrent(voiceConsent, config)) {
-        throw new ConsumerError(403, 'voice_consent_required', 'Review and accept the current microphone disclosure before using voice.');
-      }
-      await rateLimit(env, 'consumer-voice-session', sessionRow.id, 60 * 1000, 12);
-      if (route.kind === 'voice_transcriptions') {
-        const { voiceBudget, ...result } = await transcribeConsumerVoice({
-          env, config, sessionRow, request
-        });
-        // The provider figures stop here. The transcription route was still
-        // handing the browser limit/spent/remaining after every other consumer
-        // surface had been reduced to availability, so a person on a planning
-        // call could read what their call was costing. The ledger still needs
-        // the numbers; the client only needs to know it may continue.
-        return respond({ ...result, voiceAvailability: voiceBudgetPayload(voiceBudget, config) }, 200, methods);
-      }
-      const body = validateVoiceSpeechBody(await readJson(request));
-      const state = describeConversationState(profile, config);
-      const result = await speakConsumerQuestion({
-        env,
-        config,
-        sessionRow,
-        idempotencyKey: body.idempotencyKey,
-        text: questionText(state.nextQuestion)
-      });
-      if (typeof respondBinary !== 'function') {
-        throw new ConsumerError(503, 'voice_response_unavailable', 'Spoken playback is not available. You can read the question on screen.');
-      }
-      return respondBinary(result.audio, 200, methods, {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': String(result.audio.byteLength)
-      });
-    }
 
     if (route.kind === 'turns') {
       await rateLimit(env, 'consumer-turn-session', sessionRow.id, 60 * 1000, 15);

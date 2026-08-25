@@ -10,67 +10,22 @@ const MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS = 10;
 // The live lane's WebRTC negotiation, measured from the SDP answer. Separate
 // from PROOF_TIMEOUT_MS because it is a transport wait, not a provider wait.
 const LIVE_TRANSPORT_TIMEOUT_MS = 30_000;
-// How long the live lane is watched for model speech. This is an OBSERVATION,
-// not a gate — see LANE_PROOFS.live.assistantSpeechIsProof.
+// How long the live lane is watched for model speech. This is an observation,
+// not an activation gate.
 const LIVE_SPEECH_OBSERVATION_MS = 6_000;
 
-/** The prompt and toolset the non-live lanes are pinned to (router.js). */
-const CONTROLLED_PROMPT_VERSION = 'consumer-realtime-orchestrator-v9';
-const CONTROLLED_TOOLSET_VERSION = 'consumer-realtime-tools-v7';
-
 /**
- * WHAT EACH LANE HAS TO PROVE, AND WHY THEY DIFFER.
+ * THE ONE ACTIVE CALL PROOF.
  *
- * The three lanes are not three configurations of one flow. They put different
- * things on the wire, so a proof written for one is silently vacuous against
- * another — which is exactly how Deploy Worker run #295 failed: `live` was
- * folded into `v1` by a `=== 'v2' ? 'v2' : 'v1'` expression, and the proof
- * then sat waiting 45 seconds for a `POST .../speech` that only the v1 lane
- * has ever sent.
- *
- * So the lane is data, and every lane-shaped decision below reads it from
- * here. Adding a fourth lane means adding a row; it can never mean falling
- * back to someone else's proof.
+ * Historical v1/v2 proof branches were removed with the controlled lane. An
+ * activation which announces anything except `live` fails before a paid call;
+ * it can never fall back to evidence from an archived implementation.
  */
 export const LANE_PROOFS = Object.freeze({
-  v1: Object.freeze({
-    lane: 'v1',
-    promptVersion: CONTROLLED_PROMPT_VERSION,
-    toolsetVersion: CONTROLLED_TOOLSET_VERSION,
-    // Worker-composed TTS, fetched over `POST .../speech` and played from a
-    // blob. Nothing else produces that request.
-    expectsControlledSpeech: true,
-    expectsDirectProviderAudio: false,
-    expectsMicBadge: true,
-    // Server-composed copy, so the wording is the Worker's and can be asserted.
-    assistantSpeechIsProof: true,
-    expectsLiveTransportState: false,
-    transcriptToggleIsWired: true,
-    requiredControlPlaneFields: Object.freeze(['sidebandConnected', 'readOnlyToolSucceeded'])
-  }),
-  v2: Object.freeze({
-    lane: 'v2',
-    promptVersion: CONTROLLED_PROMPT_VERSION,
-    toolsetVersion: CONTROLLED_TOOLSET_VERSION,
-    expectsControlledSpeech: false,
-    expectsDirectProviderAudio: true,
-    expectsMicBadge: true,
-    // The welcome is server-authorized, so it is guaranteed to arrive.
-    assistantSpeechIsProof: true,
-    expectsLiveTransportState: false,
-    transcriptToggleIsWired: true,
-    requiredControlPlaneFields: Object.freeze(['sidebandConnected', 'initialWelcomeSucceeded'])
-  }),
   live: Object.freeze({
     lane: 'live',
     promptVersion: LIVE_PROMPT_VERSION,
     toolsetVersion: LIVE_TOOLSET_VERSION,
-    expectsControlledSpeech: false,
-    expectsDirectProviderAudio: true,
-    // `realtimeMicBadge` is driven by the v2 controller's state machine.
-    // live_voice.js has none: the microphone is live from the moment the
-    // answer is applied, and the badge is never touched.
-    expectsMicBadge: false,
     // THE ONE THING THIS LANE CANNOT PROMISE. live_provider.js sets
     // `create_response: true` and live_session.js deliberately sends no
     // `response.create` — the provider replies when the CLIENT stops speaking.
@@ -79,12 +34,6 @@ export const LANE_PROOFS = Object.freeze({
     // is stricter, not looser: the lane's own activation and sideband events,
     // the negotiated peer connection, and the prompt/toolset pinned on the
     // lease the meeting actually ran under.
-    assistantSpeechIsProof: false,
-    expectsLiveTransportState: true,
-    // The live adapter binds the launcher, collapse and backdrop only; the
-    // transcript toggle belongs to the v2 controller. Clicking it here does
-    // nothing, so the transcript is read from the DOM instead.
-    transcriptToggleIsWired: false,
     requiredControlPlaneFields: Object.freeze(['liveCallActivated', 'liveSidebandConnected'])
   })
 });
@@ -125,25 +74,10 @@ export function laneProofPlan(conversationVersion) {
  */
 export function assertControlPlaneProvesLane(proof, conversationVersion) {
   const plan = laneProofPlan(conversationVersion);
-  if (conversationVersion === 'live') {
-    assert.equal(proof.liveCallActivated, true, 'The live conversation lane never activated its meeting.');
-    assert.equal(proof.liveSidebandConnected, true, 'The live provider sideband was not proven.');
-    // The live tool surface is save_facts/get_state/confirm_and_run. If the
-    // v2 lane's read-only tool had somehow run, this meeting was not the lane
-    // it claimed to be.
-    assert.equal(
-      proof.readOnlyToolSucceeded,
-      false,
-      'A live meeting ran the v2 lane\'s get_planning_state tool, so the lanes are crossed.'
-    );
-  } else {
-    assert.equal(proof.sidebandConnected, true, 'The authenticated provider sideband was not proven.');
-    if (conversationVersion === 'v2') {
-      assert.equal(proof.initialWelcomeSucceeded, true, 'The server-authorized Marin welcome did not complete.');
-    } else {
-      assert.equal(proof.readOnlyToolSucceeded, true, 'The forced get_planning_state tool did not succeed.');
-    }
-  }
+  assert.equal(proof.liveCallActivated, true, 'The live conversation lane never activated its meeting.');
+  assert.equal(proof.liveSidebandConnected, true, 'The live provider sideband was not proven.');
+  assert.equal(proof.readOnlyToolSucceeded, false,
+    'A live meeting ran an archived controlled-lane tool, so the implementations are crossed.');
   return plan;
 }
 
@@ -152,7 +86,7 @@ export function assertControlPlaneProvesLane(proof, conversationVersion) {
  *
  * Separate from the per-step assertions on purpose: those prove the milestones
  * happened, this proves they were the RIGHT lane's milestones. It is the check
- * that a `live` run silently satisfying the v1 evidence would fail.
+ * that a live run carrying evidence from an archived implementation fails.
  */
 export function assertLaneProofResult(result) {
   const plan = laneProofPlan(result?.conversationVersion);
@@ -171,29 +105,12 @@ export function assertLaneProofResult(result) {
     plan.toolsetVersion,
     `The ${plan.lane} meeting did not run the ${plan.toolsetVersion} tool surface.`
   );
-  // THE FALLBACK THAT CAUSED THIS. A live meeting missing its own activation
-  // marker means the live branch never ran; a live meeting carrying v1
-  // evidence means the two lanes are crossed.
-  assert.equal(
-    result.liveLaneActivated,
-    plan.lane === 'live',
-    'The live activation marker must be set for exactly the live lane.'
-  );
-  assert.equal(
-    result.liveTransportConnected,
-    plan.expectsLiveTransportState,
-    'The live transport marker must be set for exactly the live lane.'
-  );
-  assert.equal(
-    plan.lane === 'live' && result.readOnlyToolSucceeded,
-    false,
-    'The live lane must never be certified by the v1 read-only tool proof.'
-  );
-  assert.equal(
-    plan.lane === 'live' && result.controlledSpeechObserved,
-    false,
-    'The live lane must never be certified by v1 Worker-composed speech.'
-  );
+  assert.equal(result.liveLaneActivated, true, 'The live activation marker is required.');
+  assert.equal(result.liveTransportConnected, true, 'The live transport marker is required.');
+  assert.equal(result.readOnlyToolSucceeded, false,
+    'The live lane must never be certified by an archived controlled-lane tool.');
+  assert.equal(result.controlledSpeechObserved, false,
+    'The live lane must never produce archived Worker-composed speech.');
   return result;
 }
 // Cloudflare rolls a fresh Worker version out isolate-by-isolate, so the free
@@ -270,7 +187,7 @@ export async function runRealtimeInfrastructureProof({
       // Resolved OUTSIDE the transport guard, and only for a bootstrap that
       // reports Realtime enabled. A network failure costs one sample; a
       // deployment announcing a lane this proof cannot verify throws out of
-      // the loop and stops the activation. Neither is ever defaulted to v1.
+      // the loop and stops the activation. It is never defaulted.
       const sampledVersion = enabled ? resolveConversationVersion(payload) : '';
       if (enabled) {
         consecutiveEnabledSamples = sampledVersion === previousEnabledVersion
@@ -290,7 +207,7 @@ export async function runRealtimeInfrastructureProof({
       true,
       'The live Realtime flag did not settle across consecutive bootstrap samples before the paid Start attempt.'
     );
-    // Every lane-shaped decision from here reads this plan. Resolving it once,
+    // Every proof decision from here reads this plan. Resolving it once,
     // before the first paid Start attempt, means an unverifiable lane costs
     // nothing and an unknown one has already thrown.
     const plan = laneProofPlan(conversationVersion);
@@ -386,20 +303,6 @@ export async function runRealtimeInfrastructureProof({
     let leaseIdentity = { promptVersion: '', toolsetVersion: '' };
     let assistantSpeechObserved = false;
     try {
-      // ARMED FOR THE v1 LANE ONLY. `POST .../speech` is Worker-composed TTS,
-      // which exists in no other lane. Arming it for `live` is what turned a
-      // healthy deployment into a 45-second timeout in run #295.
-      const controlledSpeechPromise = plan.expectsControlledSpeech
-        ? page.waitForResponse((response) => {
-            const url = new URL(response.url());
-            return response.request().method() === 'POST'
-              && url.pathname.startsWith(`${endpointPath}/rt_`)
-              && url.pathname.endsWith('/speech');
-          }, { timeout: PROOF_TIMEOUT_MS }).then(
-            (response) => ({ response, error: null }),
-            (error) => ({ response: null, error })
-          )
-        : null;
       let created = null;
       for (let attempt = 1; attempt <= MAX_PROPAGATION_ATTEMPTS; attempt += 1) {
         const createdPromise = page.waitForResponse((response) => {
@@ -529,7 +432,7 @@ export async function runRealtimeInfrastructureProof({
       // THE LANE IDENTITY ON THE LEASE THE MEETING RAN UNDER. Not the
       // bootstrap's advertised configuration — the row the Worker wrote when
       // it reserved the budget and opened the provider call. A live meeting
-      // recorded against the v2 prompt would be describing a surface this lane
+      // recorded against an archived prompt would be describing a surface this lane
       // has never had.
       assert.equal(
         observed.lease.promptVersion,
@@ -547,136 +450,36 @@ export async function runRealtimeInfrastructureProof({
       // actually negotiated. An SDP answer only says the offer was accepted;
       // `data-live-transport` is the peer connection's own state, published by
       // live_voice.js, and it reaches `connected` only when audio is flowing.
-      if (plan.expectsLiveTransportState) {
-        await page.waitForFunction(() => (
-          document.getElementById('realtimeVoiceCompanion')?.dataset?.liveTransport === 'connected'
-        ), null, { timeout: LIVE_TRANSPORT_TIMEOUT_MS });
-        await page.waitForFunction(() => {
-          const shell = document.getElementById('realtimeVoiceShell');
-          return ['listening', 'user_speaking', 'responding', 'assistant_speaking']
-            .includes(String(shell?.dataset?.realtimePhase || ''));
-        }, null, { timeout: LIVE_TRANSPORT_TIMEOUT_MS });
-      }
+      await page.waitForFunction(() => (
+        document.getElementById('realtimeVoiceCompanion')?.dataset?.liveTransport === 'connected'
+      ), null, { timeout: LIVE_TRANSPORT_TIMEOUT_MS });
+      await page.waitForFunction(() => {
+        const shell = document.getElementById('realtimeVoiceShell');
+        return ['listening', 'user_speaking', 'responding', 'assistant_speaking']
+          .includes(String(shell?.dataset?.realtimePhase || ''));
+      }, null, { timeout: LIVE_TRANSPORT_TIMEOUT_MS });
 
-      if (plan.expectsControlledSpeech) {
-        const controlledSpeechOutcome = await controlledSpeechPromise;
-        if (controlledSpeechOutcome.error) {
-          const leaseDiagnostic = await page.evaluate(async ({
-            workerOriginValue,
-            endpointPathValue,
-            leaseIdValue,
-            credentialValue,
-            controlCapabilityValue
-          }) => {
-            const response = await fetch(`${workerOriginValue}${endpointPathValue}/${encodeURIComponent(leaseIdValue)}`, {
-              headers: {
-                Accept: 'application/json',
-                'X-Consumer-Session': credentialValue,
-                'X-Realtime-Control-Capability': controlCapabilityValue
-              }
-            });
-            const payload = response.ok ? await response.json() : {};
-            const lease = payload.realtimeLease || {};
-            return {
-              httpStatus: response.status,
-              status: String(lease.status || 'unknown').slice(0, 40),
-              closeReason: String(lease.closeReason || 'unknown').slice(0, 100),
-              errorCode: String(lease.errorCode || 'none').slice(0, 120),
-              controlPresent: Boolean(payload.realtimeControl)
-            };
-          }, {
-            workerOriginValue: workerOrigin,
-            endpointPathValue: endpointPath,
-            leaseIdValue: leaseId,
-            credentialValue: credential,
-            controlCapabilityValue: controlCapability
-          }).catch(() => ({
-            httpStatus: 0,
-            status: 'unavailable',
-            closeReason: 'unavailable',
-            errorCode: 'unavailable',
-            controlPresent: false
-          }));
-          throw new Error(
-            `${controlledSpeechOutcome.error.message} `
-            + `(lease HTTP ${leaseDiagnostic.httpStatus}; ${leaseDiagnostic.status}; `
-            + `${leaseDiagnostic.closeReason}; ${leaseDiagnostic.errorCode}; `
-            + `control present: ${leaseDiagnostic.controlPresent}).`
-          );
-        }
-        const controlledSpeech = controlledSpeechOutcome.response;
-        assert.equal(controlledSpeech.status(), 200, 'The Worker-owned greeting speech request failed.');
-        assert.match(
-          String(controlledSpeech.headers()['content-type'] || ''),
-          /^audio\/mpeg(?:;|$)/i,
-          'The Worker-owned greeting did not return MP3 audio.'
-        );
-        assert.match(
-          String(controlledSpeech.headers()['x-realtime-speech-id'] || ''),
-          /^speech_[A-Za-z0-9_-]{20,80}$/,
-          'The greeting response was not bound to a Worker-issued speech ID.'
-        );
-      }
-
-      if (plan.assistantSpeechIsProof) {
-        // The transcript is collapsed by default in the meeting layout; open it
-        // before verifying the greeting caption.
-        const captionCardHidden = await page.evaluate(() => (
-          document.getElementById('realtimeVoiceCaptionCard')?.hidden === true
+      // Observed, never gated: the fake microphone may remain silent.
+      const speechDeadline = Date.now() + LIVE_SPEECH_OBSERVATION_MS;
+      while (Date.now() < speechDeadline && !assistantSpeechObserved) {
+        assistantSpeechObserved = await page.evaluate(() => Boolean(
+          document.querySelector('#realtimeVoiceTranscriptHistory .is-assistant')
         ));
-        if (captionCardHidden) {
-          await page.locator('#realtimeVoiceTranscriptToggle').click();
-        }
-        await page.locator('#realtimeVoiceTranscriptHistory .is-assistant').first().waitFor({
-          state: 'visible',
-          timeout: PROOF_TIMEOUT_MS
-        });
-        const assistantGreeting = String(await page.locator('#realtimeVoiceTranscriptHistory .is-assistant p').first().textContent() || '').trim();
-        assert.match(assistantGreeting, /Planéir/i, 'The greeting did not introduce Planéir.');
-        assistantSpeechObserved = true;
-      } else {
-        // OBSERVED, NEVER GATED. This lane speaks when the client does, and
-        // the proof's microphone is a fake device that says nothing. Recorded
-        // so an operator reading the run can tell "the model chose not to
-        // open" from "the meeting never connected" — which the transport and
-        // control-plane assertions above have already decided. Read from the
-        // DOM rather than through the collapse toggle, which no live-lane
-        // controller binds.
-        const speechDeadline = Date.now() + LIVE_SPEECH_OBSERVATION_MS;
-        while (Date.now() < speechDeadline && !assistantSpeechObserved) {
-          assistantSpeechObserved = await page.evaluate(() => Boolean(
-            document.querySelector('#realtimeVoiceTranscriptHistory .is-assistant')
-          ));
-          if (!assistantSpeechObserved) await page.waitForTimeout(500);
-        }
+        if (!assistantSpeechObserved) await page.waitForTimeout(500);
       }
 
-      const audioReady = await page.evaluate((expectsDirectProviderAudioValue) => {
+      const audioReady = await page.evaluate(() => {
         const audio = document.getElementById('realtimeVoiceAudio');
         if (!audio) return false;
-        if (expectsDirectProviderAudioValue) {
-          // The provider's own track, live on the shared companion element.
-          return audio.srcObject instanceof MediaStream
-            && audio.srcObject.getAudioTracks().some((track) => track.readyState === 'live')
-            && audio.paused === false;
-        }
-        return audio.srcObject === null
-          && /^speech_[A-Za-z0-9_-]{20,80}$/.test(String(audio.dataset.controlledSpeechId || ''))
-          && audio.dataset.controlledSpeechPlayed === 'true'
-          && String(audio.currentSrc || audio.src || '').startsWith('blob:');
-      }, plan.expectsDirectProviderAudio);
+        return audio.srcObject instanceof MediaStream
+          && audio.srcObject.getAudioTracks().some((track) => track.readyState === 'live')
+          && audio.paused === false;
+      });
       assert.equal(
         audioReady,
         true,
-        plan.expectsDirectProviderAudio
-          ? `The direct provider audio stream was not attached and playing on the ${conversationVersion} lane.`
-          : 'The separately generated greeting MP3 was not played in the companion.'
+        'The direct provider audio stream was not attached and playing on the live lane.'
       );
-      if (plan.expectsMicBadge && conversationVersion === 'v2') {
-        await page.waitForFunction(() => (
-          document.getElementById('realtimeMicBadge')?.textContent === 'Mic on'
-        ), null, { timeout: PROOF_TIMEOUT_MS });
-      }
 
       const closedPromise = page.waitForResponse((response) => {
         const url = new URL(response.url());
@@ -742,16 +545,13 @@ export async function runRealtimeInfrastructureProof({
       launcherVisible: true,
       companionStartWired: true,
       audibleGreetingObserved: assistantSpeechObserved,
-      controlledSpeechObserved: plan.expectsControlledSpeech,
-      directProviderAudioAttached: plan.expectsDirectProviderAudio,
+      controlledSpeechObserved: false,
+      directProviderAudioAttached: true,
       webRtcConnected: true,
-      sidebandConnected: conversationVersion === 'live'
-        ? controlPlaneProof.liveSidebandConnected === true
-        : controlPlaneProof.sidebandConnected === true,
+      sidebandConnected: controlPlaneProof.liveSidebandConnected === true,
       readOnlyToolSucceeded: controlPlaneProof.readOnlyToolSucceeded === true,
-      initialWelcomeSucceeded: controlPlaneProof.initialWelcomeSucceeded === true,
       liveLaneActivated: controlPlaneProof.liveCallActivated === true,
-      liveTransportConnected: plan.expectsLiveTransportState,
+      liveTransportConnected: true,
       liveResponseCompleted: controlPlaneProof.liveResponseCompleted === true,
       liveToolSucceeded: controlPlaneProof.liveToolSucceeded === true,
       providerHangupConfirmed: true

@@ -1,17 +1,22 @@
+/**
+ * LEGACY ARCHIVE — REMOVED 45-SECOND BOUNDED RECORDING CLIENT.
+ *
+ * This feature has no active UI, consent dialog, fallback control, or runtime
+ * import. Do not restore it as a fallback. It is retained only as historical
+ * implementation reference; active voice calls use `../live_voice.js`.
+ */
+
 import {
   ConsumerApiError,
-  getSession,
-  speakNextQuestion,
-  transcribeVoice,
-  updateVoiceConsent
-} from './api.js';
+  getSession
+} from '../api.js';
 import {
   getSessionId,
   getVoiceConsent,
   hasCurrentVoiceConsent,
   mergeVoicePayload,
   state
-} from './store.js';
+} from '../store.js';
 
 const ADVISER_TEST_COHORT = 'adviser_test';
 const HARD_MAX_RECORDING_MS = 45_000;
@@ -27,6 +32,19 @@ const RECORDING_MIME_TYPES = Object.freeze([
   'audio/mp4'
 ]);
 const ACCESSIBLE_COUNTDOWN_THRESHOLDS = Object.freeze([15, 5]);
+
+// The production API and Worker routes were deleted. Keeping these local
+// fail-closed stubs lets the historical source remain readable and importable
+// without leaving a callable endpoint or a path future code could reuse.
+function removedBoundedVoiceRoute() {
+  throw new ConsumerApiError('The retired 45-second voice route has been removed.', {
+    code: 'bounded_voice_removed'
+  });
+}
+
+const updateVoiceConsent = removedBoundedVoiceRoute;
+const transcribeVoice = removedBoundedVoiceRoute;
+const speakNextQuestion = removedBoundedVoiceRoute;
 
 function firstDefined(...values) {
   return values.find((value) => value !== undefined && value !== null);

@@ -1,4 +1,7 @@
 /**
+ * ACTIVE LIVE PROMPT. References to v2 below describe the archived controlled
+ * implementation for historical context; they are not an active call lane.
+ *
  * The live lane's system prompt.
  *
  * WHY THIS FILE LOOKS THE WAY IT DOES

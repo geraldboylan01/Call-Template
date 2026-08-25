@@ -359,24 +359,6 @@ export function withdrawAiConsent(sessionId) {
   });
 }
 
-export function updateVoiceConsent(sessionId, {
-  granted,
-  noticeId,
-  policyVersion,
-  privacyNoticeUrl
-}) {
-  return request(pathForSession(sessionId, '/voice/consent'), {
-    method: 'PATCH',
-    authenticated: true,
-    body: {
-      granted: granted === true,
-      noticeId: String(noticeId || ''),
-      policyVersion: String(policyVersion || ''),
-      privacyNoticeUrl: String(privacyNoticeUrl || '')
-    }
-  });
-}
-
 export function updateRealtimeVoiceConsent(sessionId, {
   granted,
   noticeId,
@@ -392,43 +374,6 @@ export function updateRealtimeVoiceConsent(sessionId, {
       policyVersion: String(policyVersion || ''),
       privacyNoticeUrl: String(privacyNoticeUrl || '')
     }
-  });
-}
-
-export function transcribeVoice(sessionId, {
-  audio,
-  durationMs,
-  idempotencyKey,
-  signal
-}) {
-  if (!(audio instanceof Blob) || audio.size === 0) {
-    throw new ConsumerApiError('The recording did not contain any audio.', {
-      code: 'empty_voice_recording'
-    });
-  }
-  const boundedDurationMs = String(Math.max(0, Math.round(Number(durationMs) || 0)));
-  return request(pathForSession(sessionId, '/voice/transcriptions'), {
-    method: 'POST',
-    authenticated: true,
-    rawBody: audio,
-    requestHeaders: {
-      'Content-Type': String(audio.type || 'application/octet-stream'),
-      'X-Voice-Duration-Ms': boundedDurationMs,
-      'X-Voice-Request-Id': String(idempotencyKey || '')
-    },
-    signal,
-    timeoutMs: 60_000
-  });
-}
-
-export function speakNextQuestion(sessionId, { idempotencyKey, signal } = {}) {
-  return request(pathForSession(sessionId, '/voice/speech'), {
-    method: 'POST',
-    authenticated: true,
-    body: { idempotencyKey: String(idempotencyKey || '') },
-    signal,
-    timeoutMs: 45_000,
-    responseType: 'blob'
   });
 }
 

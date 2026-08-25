@@ -428,11 +428,13 @@ const env = {
   CONSUMER_DATA_ENCRYPTION_KEY: dataKey,
   CONSUMER_RATE_LIMIT_HASH_KEY: rateKey,
   CONSUMER_REALTIME_SESSIONS: {},
+  CONSUMER_LIVE_SESSIONS: {},
   OPENAI_API_KEY: 'sk-test-realtime-provider-key',
   CONSUMER_JOURNEY_ENABLED: 'true',
   CONSUMER_AI_INTAKE_ENABLED: 'false',
   CONSUMER_VOICE_ENABLED: 'false',
   CONSUMER_REALTIME_VOICE_ENABLED: 'true',
+  CONSUMER_LIVE_VOICE_ENABLED: 'true',
   CONSUMER_VOICE_SPEECH_MODEL: 'tts-1-hd',
   CONSUMER_VOICE_NAME: 'nova',
   CONSUMER_VOICE_TIMEOUT_MS: '25000',
@@ -453,8 +455,8 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'consumer-realtime-orchestrator-v9',
-  CONSUMER_REALTIME_TOOLSET_VERSION: 'consumer-realtime-tools-v7',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v9',
+  CONSUMER_REALTIME_TOOLSET_VERSION: 'planeir-live-tools-v1',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
   CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '750',
@@ -1852,7 +1854,7 @@ const postEnv = {
   CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS: '2000',
   CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: '10',
   CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS: '10',
-  CONSUMER_REALTIME_SESSIONS: {
+  CONSUMER_LIVE_SESSIONS: {
     idFromName: (name) => name,
     get: () => ({
       fetch: async () => new Response(JSON.stringify({ ok: true }), {
@@ -1863,7 +1865,7 @@ const postEnv = {
   }
 };
 const postConfig = getConsumerConfig(postEnv);
-assert.equal(postConfig.voiceEnabled, true, JSON.stringify({
+assert.equal(postConfig.voiceEnabled, false, JSON.stringify({
   voiceRequested: postConfig.voiceRequested,
   voiceConfigured: postConfig.voiceConfigured,
   voiceEnabled: postConfig.voiceEnabled
@@ -4741,7 +4743,7 @@ const realtimeMigrationSource = source('worker/consumer-migrations/0005_add_cons
 const realtimeControlMigrationSource = source('worker/consumer-migrations/0007_add_realtime_control_inbox.sql');
 const realtimePurposeConsentMigrationSource = source('worker/consumer-migrations/0009_add_realtime_consent_purposes.sql');
 const realtimeCompletionMigrationSource = source('worker/consumer-migrations/0013_complete_realtime_voice_meetings.sql');
-const realtimeVoiceFrontendSource = source('js/plan/realtime_voice.js');
+const realtimeVoiceFrontendSource = source('js/plan/legacy/controlled_realtime_voice.js');
 const planningApiSource = source('js/plan/api.js');
 const planningViewsSource = source('js/plan/views.js');
 const liveBridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
@@ -4838,13 +4840,13 @@ assert.doesNotMatch(
 );
 assert.match(
   workflowSource,
-  /CONSUMER_REALTIME_CONVERSATION_V2_ENABLED:\s*\$\{\{ vars\.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED \|\| 'true' \}\}/,
-  'The active adviser canary must default to direct Marin v2 while retaining the protected false rollback.'
+  /CONSUMER_REALTIME_CONVERSATION_V2_ENABLED:\s*"false"/,
+  'The archived controlled conversation must remain pinned off in every deployment.'
 );
 assert.match(
   workflowSource,
-  /CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED:\s*\$\{\{ vars\.CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED \|\| 'false' \}\}/,
-  'Spoken completion must remain independently opt-in with visual confirmation as rollback.'
+  /CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED:\s*"false"/,
+  'The archived controlled spoken-completion path must remain pinned off.'
 );
 assert.match(routerSource, /listRealtimeMeetings/);
 assert.match(routerSource, /realtime_meeting_transcript/);

@@ -127,17 +127,9 @@
 
           <div class="realtime-voice-layout">
             <div class="realtime-orb-stage">
-              <button
-                id="realtimeVoiceTurnButton"
-                class="realtime-voice-orb"
-                type="button"
-                aria-describedby="realtimeVoiceStatus realtimeVoiceTrustCopy"
-                aria-label="Finish your turn"
-                aria-disabled="true"
-                disabled
-              >
+              <div class="realtime-voice-orb" aria-hidden="true">
                 <canvas id="realtimeVoiceOrbCanvas" class="realtime-orb-canvas" data-live-orb aria-hidden="true"></canvas>
-              </button>
+              </div>
               <span id="realtimeVoiceOrbLabel" class="realtime-orb-label" role="status" aria-live="polite">Ready when you are</span>
               <div class="realtime-orb-copy">
                 <p
@@ -249,6 +241,14 @@
                   <span class="realtime-caption-eyebrow">Transcript</span>
                   <h3 id="realtimeCaptionTitle">Your conversation</h3>
                 </div>
+                <button
+                  id="realtimeVoiceTranscriptCopyButton"
+                  class="quiet-button"
+                  type="button"
+                  disabled
+                >
+                  Copy transcript
+                </button>
               </div>
               <ol
                 id="realtimeVoiceTranscriptHistory"
@@ -271,65 +271,31 @@
               </div>
             </section>
 
-            <div class="realtime-context-grid" aria-label="Live planning context">
-              <details class="realtime-context-card realtime-device-card">
-                <summary class="realtime-context-heading">
-                  <span>Microphone</span>
-                  <strong id="realtimeVoiceDeviceSummary">Browser default</strong>
-                </summary>
-                <div class="realtime-device-controls">
-                  <label for="realtimeVoiceMicrophoneSelect">Microphone source</label>
-                  <select id="realtimeVoiceMicrophoneSelect" aria-describedby="realtimeVoiceDeviceStatus">
-                    <option value="">Browser default</option>
-                  </select>
-                  <button id="realtimeVoiceRefreshDevicesButton" class="quiet-button" type="button">
-                    Refresh microphones
-                  </button>
-                  <p id="realtimeVoiceDeviceStatus" role="status" aria-live="polite">
-                    Your browser’s default microphone will be used.
-                  </p>
-                </div>
-              </details>
+            <form id="liveVoiceTextForm" class="live-voice-text-card" aria-labelledby="liveVoiceTextTitle">
+              <div>
+                <span class="realtime-caption-eyebrow">Same live call</span>
+                <h3 id="liveVoiceTextTitle">Prefer to type?</h3>
+                <p>Your message goes into this live conversation. It does not open another call system.</p>
+              </div>
+              <label for="liveVoiceTextInput">Message Planéir</label>
+              <textarea
+                id="liveVoiceTextInput"
+                name="liveVoiceTextInput"
+                rows="4"
+                maxlength="4000"
+                placeholder="Type what you’d like to say…"
+                disabled
+              ></textarea>
+              <button id="liveVoiceTextSendButton" class="secondary-button" type="submit" disabled>
+                Send to live call
+              </button>
+            </form>
 
-              <details class="realtime-context-card realtime-understanding-card">
-                <summary class="realtime-context-heading">
-                  <span id="realtimeFactsTitle">What I’ve understood</span>
-                  <strong id="realtimeVoiceFactsValue">0</strong>
-                </summary>
-                <ul id="realtimeVoiceFactsList" class="realtime-context-list" aria-labelledby="realtimeFactsTitle">
-                  <li class="is-empty">What you tell me will appear here as we talk.</li>
-                </ul>
-                <p id="realtimeVoiceNarrative" class="realtime-context-note">
-                  I’ll build a short, reviewable picture of what matters to you as we talk.
-                </p>
-              </details>
-
-              <details class="realtime-context-card realtime-analyses-card">
-                <summary class="realtime-context-heading">
-                  <span id="realtimeModulesTitle">Your focus areas</span>
-                  <strong id="realtimeVoiceModulesValue">0</strong>
-                </summary>
-                <ol id="realtimeVoiceModulesList" class="realtime-context-list realtime-module-slots" aria-labelledby="realtimeModulesTitle">
-                  <li class="is-empty is-module-slot"><span>Listening for your goals…</span></li>
-                </ol>
-                <p id="realtimeVoicePlanStatus" class="realtime-context-note">
-                  Provisional — the analysis plan may update transparently as your goals or facts change.
-                </p>
-              </details>
-
-              <section class="realtime-context-card realtime-next-objective-card" aria-labelledby="realtimeNextNeedTitle">
-                <h3 id="realtimeNextNeedTitle" class="realtime-context-heading">What I still need and why</h3>
-                <p id="realtimeVoiceNextNeed" class="realtime-context-note">I’ll show the next useful fact here.</p>
-              </section>
-            </div>
           </div>
 
           <div class="realtime-voice-controls" aria-label="Meeting controls">
             <button id="realtimeVoiceStartButton" class="primary-button" type="button" data-live-start>
               Start your Planéir meeting
-            </button>
-            <button id="realtimeVoiceMuteButton" class="secondary-button" type="button" disabled>
-              Mute
             </button>
             <button id="realtimeVoiceEndButton" class="secondary-button realtime-end-button" type="button" data-live-stop disabled>
               End meeting
@@ -343,24 +309,7 @@
             >
               Show transcript
             </button>
-            <button id="realtimeVoiceFocusComposerButton" class="quiet-button" type="button">
-              Type instead
-            </button>
-            <button id="realtimeVoiceResumeAudioButton" class="quiet-button" type="button" hidden>
-              Play voice audio
-            </button>
-            <button id="realtimeVoiceReviewButton" class="primary-button" type="button" disabled>
-              Review information
-            </button>
           </div>
-
-          <details class="realtime-companion-fallback">
-            <summary>Prefer another way?</summary>
-            <p>You can continue with the written journey or use the optional 45-second recording flow.</p>
-            <button id="realtimeVoiceBoundedFallbackButton" class="quiet-button" type="button">
-              Use 45-second voice
-            </button>
-          </details>
 
           <p id="realtimeVoiceTrustCopy" class="realtime-voice-trust-copy">
             Planéir is an AI companion for financial education, not a person or a regulated adviser.
@@ -407,7 +356,6 @@
           You can stop AI assistance at any time. Future messages will use fixed questions and rules-only extraction;
           tested code will continue to perform every calculation.
         </p>
-        <p id="voicePrivacyCopy" hidden></p>
         <p id="realtimeVoicePrivacyCopy" hidden></p>
         <p id="handoffPrivacyCopy" hidden></p>
         <p id="privacyControlsError" class="field-error" role="alert" hidden></p>
@@ -416,49 +364,12 @@
           <button id="withdrawAiConsentButton" class="primary-button destructive" type="button">
             Stop AI assistance
           </button>
-          <button id="withdrawVoiceConsentButton" class="primary-button destructive" type="button" hidden>
-            Stop short voice processing
-          </button>
           <button id="withdrawRealtimeVoiceConsentButton" class="primary-button destructive" type="button" hidden>
             Stop Live voice
           </button>
           <button id="revokeHandoffButton" class="primary-button destructive" type="button" hidden>
             Withdraw adviser handoff
           </button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog id="voiceConsentDialog" class="plan-dialog" aria-labelledby="voiceConsentTitle">
-      <form id="voiceConsentForm" class="dialog-card voice-consent-card">
-        <p class="section-kicker">Optional adviser-test feature</p>
-        <h2 id="voiceConsentTitle">Enable short voice recording for this session?</h2>
-        <p>
-          Short voice is optional. Audio you deliberately record is sent to OpenAI for transcription, and
-          question playback uses an AI-generated voice. Recording stops when you press the control again or
-          after 45 seconds. You can always continue by typing.
-        </p>
-        <ul class="voice-consent-facts">
-          <li>The transcript is placed in the answer box for you to review and edit; it is never submitted automatically.</li>
-          <li>Planéir does not store the raw recording; the finalized transcript is stored only if you submit it.</li>
-          <li>You can withdraw voice consent at any time and continue by typing.</li>
-          <li>Do not speak PPS numbers, passwords, PINs, full account or card numbers, exact addresses, or identity-document details.</li>
-        </ul>
-        <label class="check-row" for="voiceConsentAcknowledgement">
-          <input id="voiceConsentAcknowledgement" name="voiceConsentAcknowledgement" type="checkbox" required />
-          <span>
-            <strong>I agree to OpenAI processing audio I deliberately record for short voice</strong>
-            <small>I understand that audio I deliberately record will be processed to create a transcript, and that I must review it before continuing.</small>
-          </span>
-        </label>
-        <p class="consent-detail">
-          Read the <a id="voiceConsentPrivacyLink" href="./privacy.html#optional-voice" target="_blank" rel="noopener noreferrer">voice privacy details</a>.
-          <span id="voiceConsentPolicy"></span>
-        </p>
-        <p id="voiceConsentError" class="field-error" role="alert" hidden></p>
-        <div class="dialog-actions">
-          <button id="cancelVoiceConsentButton" class="secondary-button" type="button">Keep using text</button>
-          <button class="primary-button" type="submit">Agree and enable voice</button>
         </div>
       </form>
     </dialog>

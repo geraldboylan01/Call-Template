@@ -46,8 +46,6 @@ const bootstrapAnnouncing = (conversationVersion) => ({
 
 /* ------------------------------------------------ the lane is resolved, not guessed */
 
-assert.equal(resolveConversationVersion(bootstrapAnnouncing('v1')), 'v1');
-assert.equal(resolveConversationVersion(bootstrapAnnouncing('v2')), 'v2');
 assert.equal(resolveConversationVersion(bootstrapAnnouncing('live')), 'live');
 
 // THE REGRESSION ITSELF. `live` must not resolve to `v1`.
@@ -58,7 +56,7 @@ assert.notEqual(
 );
 
 // FAIL CLOSED. No default, no nearest match, no empty-string fallback.
-for (const unknown of ['v3', 'live-2', 'LIVE', 'v1.5', 'liveish', '', null, undefined, 42, {}]) {
+for (const unknown of ['v1', 'v2', 'v3', 'live-2', 'LIVE', 'v1.5', 'liveish', '', null, undefined, 42, {}]) {
   assert.throws(
     () => resolveConversationVersion({
       flags: { consumerRealtimeVoiceEnabled: true },
@@ -80,73 +78,11 @@ assert.equal(resolveConversationVersion(bootstrapAnnouncing(' live ')), 'live');
 assert.throws(() => laneProofPlan('v3'), /No activation proof is defined/);
 assert.throws(() => laneProofPlan(''), /No activation proof is defined/);
 
-/* ------------------------------------- each lane waits for its own transport */
+/* ---------------------------------------- only the live proof plan can exist */
 
-const v1 = laneProofPlan('v1');
-const v2 = laneProofPlan('v2');
 const live = laneProofPlan('live');
-
-// v1 is the ONLY lane that waits for Worker-composed speech. This is the exact
-// wait that hung run #295.
-assert.equal(v1.expectsControlledSpeech, true, 'v1 must still prove Worker-composed speech.');
-assert.equal(v2.expectsControlledSpeech, false);
-assert.equal(
-  live.expectsControlledSpeech,
-  false,
-  'The live lane must never wait for v1-only /speech behaviour.'
-);
-
-// v1 plays a Worker-generated MP3; v2 and live play the provider's own track.
-assert.equal(v1.expectsDirectProviderAudio, false);
-assert.equal(v2.expectsDirectProviderAudio, true);
-assert.equal(live.expectsDirectProviderAudio, true);
-
-// Only the live lane publishes and proves a peer-connection state, because it
-// is the only lane whose model speech cannot be forced.
-assert.equal(live.expectsLiveTransportState, true, 'The live lane must prove its WebRTC transport connected.');
-assert.equal(v1.expectsLiveTransportState, false);
-assert.equal(v2.expectsLiveTransportState, false);
-
-// The mic badge and transcript toggle belong to the v2 controller's state
-// machine; live_voice.js binds neither.
-assert.equal(live.expectsMicBadge, false);
-assert.equal(live.transcriptToggleIsWired, false);
-assert.equal(v1.transcriptToggleIsWired, true);
-assert.equal(v2.transcriptToggleIsWired, true);
-
-// The live lane cannot promise model speech: nothing sends `response.create`.
-assert.equal(v1.assistantSpeechIsProof, true);
-assert.equal(v2.assistantSpeechIsProof, true);
-assert.equal(
-  live.assistantSpeechIsProof,
-  false,
-  'The live lane must not gate on speech it never forces.'
-);
-
-/* ------------------------------------------ three distinct control-plane gates */
-
-const controlPlaneFieldSets = Object.values(LANE_PROOFS)
-  .map((plan) => [...plan.requiredControlPlaneFields].sort().join('+'));
-assert.equal(
-  new Set(controlPlaneFieldSets).size,
-  controlPlaneFieldSets.length,
-  'Each lane must be proven by a distinct set of control-plane milestones.'
-);
+assert.deepEqual(Object.keys(LANE_PROOFS), ['live']);
 assert.deepEqual([...live.requiredControlPlaneFields], ['liveCallActivated', 'liveSidebandConnected']);
-assert.deepEqual([...v1.requiredControlPlaneFields], ['sidebandConnected', 'readOnlyToolSucceeded']);
-assert.deepEqual([...v2.requiredControlPlaneFields], ['sidebandConnected', 'initialWelcomeSucceeded']);
-
-// The live milestones share no field with either controlled lane, so a live
-// meeting can never be waved through by v1/v2 evidence and vice versa.
-for (const controlled of [v1, v2]) {
-  for (const field of live.requiredControlPlaneFields) {
-    assert.equal(
-      controlled.requiredControlPlaneFields.includes(field),
-      false,
-      `${field} must not be shared with the ${controlled.lane} lane.`
-    );
-  }
-}
 
 /* -------------------------------- a lane that did not start cannot be certified */
 
@@ -161,15 +97,7 @@ const controlPlane = (overrides = {}) => ({
   ...overrides
 });
 
-// The healthy shapes pass.
-assertControlPlaneProvesLane(
-  controlPlane({ sidebandConnected: true, readOnlyToolSucceeded: true }),
-  'v1'
-);
-assertControlPlaneProvesLane(
-  controlPlane({ sidebandConnected: true, initialWelcomeSucceeded: true }),
-  'v2'
-);
+// The healthy live shape passes.
 assertControlPlaneProvesLane(
   controlPlane({ liveCallActivated: true, liveSidebandConnected: true }),
   'live'
@@ -205,45 +133,31 @@ assert.throws(
     controlPlane({ liveCallActivated: true, liveSidebandConnected: true, readOnlyToolSucceeded: true }),
     'live'
   ),
-  /lanes are crossed/
+  /implementations are crossed/
 );
 
-// The controlled lanes are equally unable to borrow live evidence.
-assert.throws(
-  () => assertControlPlaneProvesLane(
-    controlPlane({ liveCallActivated: true, liveSidebandConnected: true }),
-    'v1'
-  ),
-  /sideband was not proven/
-);
-assert.throws(
-  () => assertControlPlaneProvesLane(
-    controlPlane({ sidebandConnected: true, readOnlyToolSucceeded: true }),
-    'v2'
-  ),
-  /Marin welcome did not complete/
-);
+assert.throws(() => assertControlPlaneProvesLane(controlPlane(), 'v1'), /No activation proof is defined/);
+assert.throws(() => assertControlPlaneProvesLane(controlPlane(), 'v2'), /No activation proof is defined/);
 assert.throws(() => assertControlPlaneProvesLane(controlPlane(), 'v3'), /No activation proof is defined/);
 
 /* ------------------------------------- the reported result must match the lane */
 
-const proofResult = (conversationVersion, overrides = {}) => {
-  const plan = laneProofPlan(conversationVersion);
+const proofResult = (overrides = {}) => {
+  const plan = laneProofPlan('live');
   return {
-    conversationVersion,
+    conversationVersion: 'live',
     promptVersion: plan.promptVersion,
     toolsetVersion: plan.toolsetVersion,
     launcherVisible: true,
     companionStartWired: true,
-    audibleGreetingObserved: plan.assistantSpeechIsProof,
-    controlledSpeechObserved: plan.expectsControlledSpeech,
-    directProviderAudioAttached: plan.expectsDirectProviderAudio,
+    audibleGreetingObserved: false,
+    controlledSpeechObserved: false,
+    directProviderAudioAttached: true,
     webRtcConnected: true,
     sidebandConnected: true,
-    readOnlyToolSucceeded: conversationVersion === 'v1',
-    initialWelcomeSucceeded: conversationVersion === 'v2',
-    liveLaneActivated: conversationVersion === 'live',
-    liveTransportConnected: conversationVersion === 'live',
+    readOnlyToolSucceeded: false,
+    liveLaneActivated: true,
+    liveTransportConnected: true,
     liveResponseCompleted: false,
     liveToolSucceeded: false,
     providerHangupConfirmed: true,
@@ -251,44 +165,33 @@ const proofResult = (conversationVersion, overrides = {}) => {
   };
 };
 
-for (const lane of ['v1', 'v2', 'live']) {
-  assertLaneProofResult(proofResult(lane));
-}
+assertLaneProofResult(proofResult());
 
 // A live result missing its activation marker means the live branch never ran.
 assert.throws(
-  () => assertLaneProofResult(proofResult('live', { liveLaneActivated: false })),
-  /must be set for exactly the live lane/
-);
-// A v1 result carrying the live marker means the lane was misreported.
-assert.throws(
-  () => assertLaneProofResult(proofResult('v1', { liveLaneActivated: true })),
-  /must be set for exactly the live lane/
+  () => assertLaneProofResult(proofResult({ liveLaneActivated: false })),
+  /live activation marker is required/i
 );
 // A live result that never proved its transport.
 assert.throws(
-  () => assertLaneProofResult(proofResult('live', { liveTransportConnected: false })),
-  /transport marker must be set for exactly the live lane/
+  () => assertLaneProofResult(proofResult({ liveTransportConnected: false })),
+  /live transport marker is required/i
 );
 // A live result carrying v1 evidence.
 assert.throws(
-  () => assertLaneProofResult(proofResult('live', { readOnlyToolSucceeded: true })),
-  /never be certified by the v1 read-only tool proof/
+  () => assertLaneProofResult(proofResult({ readOnlyToolSucceeded: true })),
+  /archived controlled-lane tool/
 );
 assert.throws(
-  () => assertLaneProofResult(proofResult('live', { controlledSpeechObserved: true })),
-  /never be certified by v1 Worker-composed speech/
+  () => assertLaneProofResult(proofResult({ controlledSpeechObserved: true })),
+  /archived Worker-composed speech/
 );
-// The sideband gate still binds every lane.
-for (const lane of ['v1', 'v2', 'live']) {
-  assert.throws(
-    () => assertLaneProofResult(proofResult(lane, { sidebandConnected: false })),
-    /sideband was not proven/,
-    `${lane} must fail when the provider sideband is unproven.`
-  );
-}
+assert.throws(
+  () => assertLaneProofResult(proofResult({ sidebandConnected: false })),
+  /sideband was not proven/
+);
 // An unknown lane cannot produce a certifiable result at all.
-assert.throws(() => assertLaneProofResult(proofResult('v1', { conversationVersion: 'v3' })), /No activation proof is defined/);
+assert.throws(() => assertLaneProofResult(proofResult({ conversationVersion: 'v3' })), /No activation proof is defined/);
 
 /* ------------------------------------------------- the pinned live identities */
 
@@ -298,26 +201,18 @@ assert.equal(live.toolsetVersion, 'planeir-live-tools-v1');
 // cannot leave the activation proof verifying a version nothing runs.
 assert.equal(live.promptVersion, LIVE_PROMPT_VERSION);
 assert.equal(live.toolsetVersion, LIVE_TOOLSET_VERSION);
-// The controlled lanes keep their own pair, and the two pairs stay distinct.
-assert.equal(v1.promptVersion, 'consumer-realtime-orchestrator-v9');
-assert.equal(v1.toolsetVersion, 'consumer-realtime-tools-v7');
-assert.equal(v1.promptVersion, v2.promptVersion, 'The controlled lanes share one prompt identity.');
-assert.equal(v1.toolsetVersion, v2.toolsetVersion, 'The controlled lanes share one tool surface.');
-assert.notEqual(live.promptVersion, v2.promptVersion);
-assert.notEqual(live.toolsetVersion, v2.toolsetVersion);
-
 // A live meeting recorded under the wrong prompt or tool surface is not a live
 // meeting, whatever its control plane says.
 assert.throws(
-  () => assertLaneProofResult(proofResult('live', { promptVersion: 'consumer-realtime-orchestrator-v9' })),
+  () => assertLaneProofResult(proofResult({ promptVersion: 'consumer-realtime-orchestrator-v9' })),
   /did not run the planeir-live-conversation-v9 prompt/
 );
 assert.throws(
-  () => assertLaneProofResult(proofResult('live', { toolsetVersion: 'consumer-realtime-tools-v7' })),
+  () => assertLaneProofResult(proofResult({ toolsetVersion: 'consumer-realtime-tools-v7' })),
   /did not run the planeir-live-tools-v1 tool surface/
 );
 assert.throws(
-  () => assertLaneProofResult(proofResult('live', { promptVersion: '' })),
+  () => assertLaneProofResult(proofResult({ promptVersion: '' })),
   /did not run the planeir-live-conversation-v9 prompt/
 );
 
@@ -347,7 +242,7 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
     'The lane must never be resolved by collapsing unknown versions to v1.'
   );
   assert.match(proofSource, /export function resolveConversationVersion/);
-  assert.match(proofSource, /plan\.expectsControlledSpeech/);
+  assert.doesNotMatch(proofSource, /expectsControlledSpeech|controlledSpeechPromise|x-realtime-speech-id/);
   // The lane the call actually ran must be checked against the lane announced.
   assert.match(proofSource, /x-realtime-conversation-version/);
 
@@ -361,7 +256,7 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
   }
 
   const bridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
-  assert.match(bridgeSource, /proof\.conversationVersion === 'live'/, 'The bridge must assert the live lane on its own terms.');
+  assert.match(bridgeSource, /proof\.conversationVersion, 'live'/, 'The bridge must assert the live lane on its own terms.');
   assert.match(bridgeSource, /proof\.liveLaneActivated/);
   assert.match(bridgeSource, /planeir-live-conversation-v9/);
   assert.match(bridgeSource, /planeir-live-tools-v1/);
@@ -375,7 +270,7 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
   assert.match(
     liveClientSource,
     /getElementById\('realtimeVoiceAudio'\)/,
-    'Both lanes must play the model through the shared companion audio element.'
+    'The live lane must play the model through the companion audio element.'
   );
 }
 
@@ -524,7 +419,12 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
   storage.set('planeir.consumer.credential.v1', 'cs_stubsession000000000001.stub-credential');
 
   const toasts = [];
-  const controller = new LiveVoiceController({ root, onToast: (message) => toasts.push(message) });
+  const failures = [];
+  const controller = new LiveVoiceController({
+    root,
+    onToast: (message) => toasts.push(message),
+    onFailure: (failure) => failures.push(failure)
+  });
 
   // NO CONFIRMED SESSION: the guard is right to refuse, and refusing must not
   // look like a started meeting.
@@ -536,7 +436,9 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
     false,
     'No provider call may be created without a confirmed session.'
   );
-  assert.equal(toasts.length, 1, 'The refusal must tell the client something.');
+  assert.equal(failures.length, 1, 'The refusal must open the explicit live-call failure page.');
+  assert.equal(failures[0].reason, 'no-session');
+  assert.equal(toasts.length, 0, 'A call failure must not be reduced to a transient toast.');
   assert.equal(controller.active, false);
 
   // A SERVER-CONFIRMED SESSION: the lane starts, which run #295 could not do.

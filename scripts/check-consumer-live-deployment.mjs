@@ -5,7 +5,7 @@ import { APPROVED_CONSUMER_MODULE_IDS } from '../worker/src/consumer/config.js';
 import { DEPLOY_VERIFICATION_HEADER } from '../worker/src/consumer/router.js';
 
 const DORMANT_MODE = 'dormant';
-const VOICE_ASSISTED_RULES_ONLY_MODE = 'voice_assisted_rules_only';
+const RULES_ONLY_MODE = 'rules_only';
 const REALTIME_VOICE_RULES_ONLY_MODE = 'realtime_voice_rules_only';
 // Imported, never restated. This assertion is what failed deploy #274: the
 // allowlist was widened in the Worker config and left at two modules here, so a
@@ -73,7 +73,7 @@ export function validateConsumerDeploymentBootstrap(payload, {
 } = {}) {
   assert(payload && typeof payload === 'object', 'Consumer bootstrap must be a JSON object.');
   assert.ok(
-    [DORMANT_MODE, VOICE_ASSISTED_RULES_ONLY_MODE, REALTIME_VOICE_RULES_ONLY_MODE].includes(mode),
+    [DORMANT_MODE, RULES_ONLY_MODE, REALTIME_VOICE_RULES_ONLY_MODE].includes(mode),
     `Unsupported consumer deployment mode: ${mode}`
   );
 
@@ -108,9 +108,10 @@ export function validateConsumerDeploymentBootstrap(payload, {
   }
 
   assert.equal(flags.consumerJourneyEnabled, true, 'The protected beta must enable the master journey.');
-  assert.equal(flags.consumerVoiceEnabled, true, 'The protected beta must enable only the reviewed voice transport.');
+  assert.equal(flags.consumerVoiceEnabled, false, 'The removed 45-second voice lane must remain disabled.');
   assert.equal(flags.consumerModuleRoutingEnabled, true, 'The protected beta must enable deterministic module routing.');
-  assert.equal(voice.enabled, true, 'The protected beta voice transport is not configured.');
+  assert.equal(voice.enabled, false, 'The removed recorder must not be exposed by the protected beta.');
+  assert.equal(voice.availability?.status, 'removed', 'The bootstrap must identify the old recorder as removed.');
   assert.equal(payload.cohort, 'adviser_test', 'The protected beta cohort must be adviser_test.');
   assert.deepEqual(
     sortedStrings(payload.allowedModules),
@@ -134,37 +135,14 @@ export function validateConsumerDeploymentBootstrap(payload, {
   }
   assert.ok(expectedPolicy.aiNoticeId, 'Expected aiNoticeId is required for live verification.');
   assert.equal(ai.noticeId, expectedPolicy.aiNoticeId, 'Live AI notice ID does not match the protected environment.');
-  for (const [field, expectedField] of [
-    ['noticeId', 'voiceNoticeId'],
-    ['dataPolicyId', 'voiceDataPolicyId'],
-    ['transcriptionModel', 'voiceTranscriptionModel'],
-    ['speechModel', 'voiceSpeechModel'],
-    ['voice', 'voiceName'],
-    ['pricingVersion', 'voicePricingVersion']
-  ]) {
-    assert.ok(expectedPolicy[expectedField], `Expected ${expectedField} is required for live verification.`);
-    assert.equal(voice[field], expectedPolicy[expectedField], `Live voice ${field} does not match the protected environment.`);
-  }
-  // The spend envelope is deliberately NOT here. It is verified against the
-  // protected deployment-envelope route by validateConsumerDeploymentEnvelope,
-  // because publishing our cost ceilings on an unauthenticated endpoint tells
-  // anyone who asks what a call costs us and what to aim at.
-  assert.equal(
-    voice.sessionBudgetMicroEur,
-    undefined,
-    'The public bootstrap must not expose the voice spend envelope.'
-  );
   assert.ok(Number.isInteger(expectedPolicy.sessionTtlDays), 'Expected sessionTtlDays is required for live verification.');
   assert.equal(payload.limits?.sessionTtlDays, expectedPolicy.sessionTtlDays, 'Live session TTL does not match the protected environment.');
 
   if (mode === REALTIME_VOICE_RULES_ONLY_MODE) {
     assert.equal(flags.consumerRealtimeVoiceEnabled, true, 'The realtime adviser canary is not enabled.');
     assert.equal(realtimeVoice.enabled, true, 'The realtime adviser canary is not configured.');
-    // WHICH LANE IS RUNNING DECIDES WHICH PAIR IS CORRECT. `conversationVersion`
-    // is the deployment's own statement of the lane, from the same config the
-    // prompt version comes from, so the two cannot disagree without the Worker
-    // contradicting itself.
-    const liveLane = realtimeVoice.conversationVersion === 'live';
+    assert.equal(realtimeVoice.conversationVersion, 'live',
+      'The archived controlled lane must never be published as the active conversation version.');
     for (const [field, expectedField] of [
       ['noticeId', 'realtimeNoticeId'],
       ['dataPolicyId', 'realtimeDataPolicyId'],
@@ -172,8 +150,8 @@ export function validateConsumerDeploymentBootstrap(payload, {
       ['voice', 'realtimeVoice'],
       ['reasoningEffort', 'realtimeReasoningEffort'],
       ['transcriptionModel', 'realtimeTranscriptionModel'],
-      ['promptVersion', liveLane ? 'livePromptVersion' : 'realtimePromptVersion'],
-      ['toolsetVersion', liveLane ? 'liveToolsetVersion' : 'realtimeToolsetVersion'],
+      ['promptVersion', 'livePromptVersion'],
+      ['toolsetVersion', 'liveToolsetVersion'],
       ['pricingVersion', 'realtimePricingVersion']
     ]) {
       assert.ok(expectedPolicy[expectedField], `Expected ${expectedField} is required for live verification.`);
@@ -230,17 +208,8 @@ export function validateConsumerDeploymentEnvelope(payload, {
     return true;
   }
 
-  assert.ok(
-    Number.isSafeInteger(expectedPolicy.voiceSessionBudgetMicroEur)
-      && expectedPolicy.voiceSessionBudgetMicroEur > 0,
-    'Expected voiceSessionBudgetMicroEur is required for live verification.'
-  );
-  assert.equal(voice.enabled, true, 'The protected beta voice envelope is not live.');
-  assert.equal(
-    voice.sessionBudgetMicroEur,
-    expectedPolicy.voiceSessionBudgetMicroEur,
-    'Live voice session budget does not match the protected environment.'
-  );
+  assert.equal(voice.enabled, false, 'The removed recorder must not have a live deployment envelope.');
+  assert.equal(voice.sessionBudgetMicroEur, null, 'The removed recorder must expose no spend envelope.');
 
   if (mode === REALTIME_VOICE_RULES_ONLY_MODE) {
     assert.ok(
@@ -257,6 +226,9 @@ export function validateConsumerDeploymentEnvelope(payload, {
     assert.equal(realtimeVoice.dispatchStopMicroEur, 9_700_000, 'Live realtime dispatch stop changed.');
     assert.equal(realtimeVoice.warnThresholdMicroEur, 7_500_000, 'Live realtime warning threshold changed.');
     assert.equal(realtimeVoice.safetyReserveMicroEur, 300_000, 'Live realtime safety reserve changed.');
+  } else {
+    assert.equal(realtimeVoice.enabled, false, 'Typed rules-only mode must not expose a call envelope.');
+    assert.equal(realtimeVoice.sessionBudgetMicroEur, null, 'Typed rules-only mode must expose no call budget.');
   }
   return true;
 }

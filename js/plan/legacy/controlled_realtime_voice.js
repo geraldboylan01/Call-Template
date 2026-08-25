@@ -1,3 +1,12 @@
+/**
+ * LEGACY ARCHIVE — PREVIOUS CONTROLLED REALTIME CALL CLIENT.
+ *
+ * DO NOT import this file from production UI code and do not fix current call
+ * behaviour here. Active calls use `../live_voice.js` through
+ * `../voice_lane.js`. This implementation is retained only to explain and
+ * test how the earlier Worker-controlled speech/turn lane behaved.
+ */
+
 import {
   ConsumerApiError,
   createRealtimeVoiceCall,
@@ -7,7 +16,7 @@ import {
   getRealtimeVoiceMeetingTranscript,
   speakRealtimeAuthorized,
   updateRealtimeVoiceConsent
-} from './api.js';
+} from '../api.js';
 import {
   clearRealtimeVoiceConsent,
   getRealtimeVoiceConsent,
@@ -15,13 +24,13 @@ import {
   hasCurrentRealtimeVoiceConsent,
   mergeVoicePayload,
   state
-} from './store.js';
-import { getSemanticFactDefinition } from '../planning/semantic_facts.js';
+} from '../store.js';
+import { getSemanticFactDefinition } from '../../planning/semantic_facts.js';
 import {
   consumerLanguageForModule,
   containsInternalModuleTerminology
-} from '../planning/module_offers.js';
-import { RealtimeOrb } from './realtime_orb.js';
+} from '../../planning/module_offers.js';
+import { RealtimeOrb } from '../realtime_orb.js';
 
 const ADVISER_TEST_COHORT = 'adviser_test';
 const DEFAULT_SESSION_LIMIT_MICRO_EUR = 2_000_000;
@@ -541,7 +550,7 @@ export function extractRealtimePlanningContext(payload, currentState = state) {
   };
 }
 
-export function isRealtimeVoiceSupported(win = window, nav = navigator) {
+function isRealtimeVoiceSupported(win = window, nav = navigator) {
   return Boolean(
     win?.isSecureContext
     && typeof win?.RTCPeerConnection === 'function'
@@ -618,7 +627,7 @@ function realtimeContext() {
  * and get the same answer, rather than growing a second copy of the gate logic
  * that drifts the first time one of these conditions changes.
  */
-export function realtimeMeetingAvailable() {
+function realtimeMeetingAvailable() {
   const context = realtimeContext();
   return context.eligible
     && context.configured
@@ -628,7 +637,7 @@ export function realtimeMeetingAvailable() {
 }
 
 /** Why the meeting cannot open, so the failure page can say something actionable. */
-export function realtimeMeetingUnavailableReason() {
+function realtimeMeetingUnavailableReason() {
   const context = realtimeContext();
   if (!isRealtimeVoiceSupported()) return 'unsupported-browser';
   if (!context.eligible || !context.configured) return 'service-off';
@@ -643,7 +652,7 @@ export function realtimeMeetingUnavailableReason() {
  * safe to log. `eligible` is split out because a single false there is the most
  * common cause and the hardest to tell apart from the others.
  */
-export function realtimeMeetingUnavailableDetail() {
+function realtimeMeetingUnavailableDetail() {
   const context = realtimeContext();
   const bootstrap = state.bootstrap || {};
   return {
@@ -667,7 +676,7 @@ export function realtimeMeetingUnavailableDetail() {
  * same disabled-while-in-flight handling. Only "end the meeting" and the
  * post-withdraw chrome differ, so those are the two callbacks.
  */
-export async function withdrawRealtimeVoiceConsent({
+async function withdrawRealtimeVoiceConsent({
   endMeeting = async () => {},
   afterWithdraw = () => {},
   onVoicePayload = () => {},
@@ -1008,6 +1017,7 @@ export class RealtimeVoiceController {
     this.element('realtimeVoiceBoundedFallbackButton')?.addEventListener('click', () => this.focusBoundedVoice());
     this.element('realtimeVoiceReviewButton')?.addEventListener('click', () => this.reviewAndConfirm());
     this.element('realtimeVoiceTranscriptToggle')?.addEventListener('click', () => this.toggleTranscript());
+    this.element('realtimeVoiceTranscriptCopyButton')?.addEventListener('click', () => this.copyTranscript());
     this.element('realtimeVoiceMicrophoneSelect')?.addEventListener('change', (event) => {
       this.selectMicrophone(event.currentTarget?.value || '');
     });
@@ -1218,6 +1228,7 @@ export class RealtimeVoiceController {
     const launcherStatus = this.element('realtimeVoiceLauncherStatus');
     const panel = this.element('realtimeVoiceShell');
     const transcriptToggle = this.element('realtimeVoiceTranscriptToggle');
+    const transcriptCopy = this.element('realtimeVoiceTranscriptCopyButton');
     const transcriptCard = this.element('realtimeVoiceCaptionCard');
     const microphoneSelect = this.element('realtimeVoiceMicrophoneSelect');
     const refreshDevices = this.element('realtimeVoiceRefreshDevicesButton');
@@ -1243,6 +1254,7 @@ export class RealtimeVoiceController {
         ? 'Hide transcript'
         : (this.active ? 'Show transcript' : 'View saved transcript');
     }
+    if (transcriptCopy) transcriptCopy.disabled = !hasTranscript;
     if (start) {
       start.disabled = this.active
         || context.journeyBusy
@@ -2821,6 +2833,21 @@ export class RealtimeVoiceController {
     }
   }
 
+  async copyTranscript() {
+    const transcript = this.transcriptHistory
+      .map((item) => `${item.role === 'user' ? 'You' : 'Planéir (AI)'}: ${item.text}`)
+      .join('\n\n');
+    if (!transcript) return;
+    try {
+      await navigator.clipboard.writeText(transcript);
+      this.onToast('The full transcript was copied to your clipboard.');
+    } catch (_error) {
+      this.onToast('The transcript could not be copied automatically. You can still select and copy it from this panel.', {
+        error: true
+      });
+    }
+  }
+
   revealTranscript() {
     if (this.transcriptHistory.length === 0) return;
     const card = this.element('realtimeVoiceCaptionCard');
@@ -3041,7 +3068,7 @@ export class RealtimeVoiceController {
     turns.forEach((turn) => {
       const id = cleanText(turn?.id, 120);
       const role = turn?.role === 'assistant' ? 'assistant' : turn?.role === 'user' ? 'user' : '';
-      const text = cleanText(turn?.transcript || turn?.text);
+      const text = cleanText(turn?.transcript || turn?.text, 4_000);
       if (!role || !text || (id && existingIds.has(id))) return;
       // Reconcile one local finalized caption with its authoritative server id.
       // Do not collapse later turns merely because the client gave the same

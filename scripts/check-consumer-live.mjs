@@ -50,7 +50,8 @@ import {
 } from '../worker/src/consumer/live/compliance.js';
 import {
   ConsumerLiveSession,
-  sourceClientFiguresForActiveResponse
+  sourceClientFiguresForActiveResponse,
+  typedClientTurnFromEvent
 } from '../worker/src/consumer/live/live_session.js';
 import {
   adviceBoundaryFamily,
@@ -116,6 +117,30 @@ function saveFact(profile, factId, value, certainty = 'exact') {
     plannerBatch: true
   });
   return proposed.profile;
+}
+
+// Typing is another input method inside the live connection. Only a finalized
+// user text item may enter the same server-side turn ledger as spoken audio.
+assert.deepEqual(typedClientTurnFromEvent({
+  type: 'conversation.item.created',
+  item: {
+    id: 'msg_live_typed_001',
+    type: 'message',
+    role: 'user',
+    content: [{ type: 'input_text', text: '  My pension is about €42,000.  ' }]
+  }
+}), {
+  itemId: 'msg_live_typed_001',
+  transcript: 'My pension is about €42,000.'
+});
+checks += 1;
+for (const event of [
+  { type: 'conversation.item.created', item: { id: 'assistant', type: 'message', role: 'assistant', content: [{ type: 'text', text: 'No.' }] } },
+  { type: 'conversation.item.created', item: { id: 'tool', type: 'function_call', role: 'user', content: [{ type: 'input_text', text: 'No.' }] } },
+  { type: 'conversation.item.created', item: { id: 'empty', type: 'message', role: 'user', content: [] } }
+]) {
+  ok(typedClientTurnFromEvent(event) === null,
+    'Only a non-empty user text message may be recorded as a typed live turn.');
 }
 
 // A focused live conversation must not acquire an overall-position review as
@@ -2237,9 +2262,11 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(/clearRealtimeVoiceConsent\(\)/.test(sharedConsent),
     'Recovery must discard the receipt the Worker has just rejected.');
 
-  // And the lane really is the one production builds.
-  ok(/lane === LIVE_LANE[\s\S]{0,80}LiveVoiceLaneAdapter/.test(laneSource),
-    'The live lane must still be the controller built for a live deployment.');
+  // And the live lane is now the only controller production can build.
+  ok(/createLiveVoiceLaneController[\s\S]{0,120}new LiveVoiceLaneAdapter/.test(laneSource),
+    'Production must construct the live controller directly.');
+  ok(!/resolveVoiceLane|LIVE_LANE|createRealtimeVoiceController/.test(laneSource),
+    'The active adapter must not retain a controlled/live lane selector.');
 }
 
 /* --------------------------------------------- the client dropped its baggage */
@@ -2275,23 +2302,27 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(!/OPENAI|api[_-]?key/i.test(code), 'The live client must never handle provider credentials.');
 
   // It must remain a fraction of the size of what it replaced.
-  const v2Client = readFileSync(fileURLToPath(new URL('../js/plan/realtime_voice.js', import.meta.url)), 'utf8');
+  const v2Client = readFileSync(fileURLToPath(new URL('../js/plan/legacy/controlled_realtime_voice.js', import.meta.url)), 'utf8');
   ok(client.length * 4 < v2Client.length,
     'The live client must stay far smaller than the v2 controller it replaces.');
 
-  // Same option surface, so it is a drop-in for the existing app wiring.
-  for (const option of ['onVoicePayload', 'onPlanningPayload', 'onNavigate', 'onStopBoundedVoice', 'onToast', 'onSessionUnavailable']) {
-    ok(client.includes(option), `The live controller must accept ${option} like the v2 controller.`);
+  // Keep only the callbacks used by the active application. The removed
+  // recorder must not survive as a hidden stop-or-fallback hook.
+  for (const option of ['onVoicePayload', 'onPlanningPayload', 'onNavigate', 'onToast', 'onSessionUnavailable', 'onFailure']) {
+    ok(client.includes(option), `The live controller must accept the active ${option} callback.`);
   }
+  ok(!client.includes('onStopBoundedVoice'),
+    'The live controller must not retain a hook into the removed 45-second recorder.');
 }
 
-/* ------------------------------- one companion, two lanes, one adapter */
+/* ------------------------------- one companion, one live lane, one adapter */
 
 {
   const adapter = readFileSync(fileURLToPath(new URL('../js/plan/voice_lane.js', import.meta.url)), 'utf8');
   const client = readFileSync(fileURLToPath(new URL('../js/plan/live_voice.js', import.meta.url)), 'utf8');
   const app = readFileSync(fileURLToPath(new URL('../js/plan/app.js', import.meta.url)), 'utf8');
   const markup = readFileSync(fileURLToPath(new URL('../plan/index.html', import.meta.url)), 'utf8');
+  const views = readFileSync(fileURLToPath(new URL('../js/plan/views.js', import.meta.url)), 'utf8');
 
   // THE LIFECYCLE TRAP. `teardown()` closes the peer connection but never
   // clears `active`, and `start()` returns immediately while `active` is set.
@@ -2304,46 +2335,54 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(/transcriptHistory = \[\]/.test(resetBody) && /hidden = true/.test(resetBody),
     'reset must clear the transcript and hide the companion even when no meeting was running.');
 
-  // The adapter carries the v2-shaped surface so live_voice.js does not have to.
+  // The adapter carries the app-facing surface while the live controller owns
+  // the WebRTC call itself.
   for (const method of [
     'bind', 'sync', 'openCompanion', 'isLive', 'isMeetingAvailable',
     'meetingUnavailableReason', 'meetingUnavailableDetail', 'end', 'reset',
-    'withdrawConsent', 'playWorkerSpeechFromPayload'
+    'withdrawConsent'
   ]) {
     ok(new RegExp(`\\b${method}\\s*\\(`).test(adapter),
-      `The adapter must answer ${method}(), which app.js calls on whichever lane is running.`);
+      `The active live adapter must answer ${method}().`);
   }
-  // (That the live client itself carries no `playWorkerSpeechFromPayload` is
-  // already asserted above, against comment-stripped source.)
+  ok(!adapter.includes('playWorkerSpeechFromPayload'),
+    'The active adapter must not expose controlled-lane speech playback.');
 
-  // ONE GATE, NOT TWO. Availability and consent read session state, not
-  // controller state, so both lanes must call the same helpers.
+  // ONE GATE. Availability and consent read session state, not controller
+  // state, and use names which make the live-only contract unambiguous.
   for (const shared of [
-    'realtimeMeetingAvailable', 'realtimeMeetingUnavailableReason',
-    'realtimeMeetingUnavailableDetail', 'withdrawRealtimeVoiceConsent'
+    'liveMeetingAvailable', 'liveMeetingUnavailableReason',
+    'liveMeetingUnavailableDetail', 'withdrawLiveVoiceConsent'
   ]) {
-    ok(adapter.includes(shared), `The adapter must reuse ${shared} rather than reimplementing the gate.`);
+    ok(adapter.includes(shared), `The adapter must use the live-only ${shared} gate.`);
   }
+  ok(/selectedRealtimeMeeting\?\.turns[\s\S]{0,300}replaceTranscript\(savedTurns\)/.test(adapter),
+    'The live companion must restore a saved transcript from app state after reload.');
 
-  // The lane is chosen before a call exists, because the controller is what
-  // creates the call.
-  ok(/resolveVoiceLane\(bootstrap\)/.test(app),
-    'app.js must choose the lane from the bootstrap, not from the call response.');
-  ok(app.indexOf('resolveVoiceLane(bootstrap)') > app.indexOf('await getBootstrap()'),
-    'The lane can only be resolved after the bootstrap has been read.');
-  ok(!/^\s*realtimeVoiceController\.bind\(\);/m.test(app.slice(app.indexOf('function bindEvents()'), app.indexOf('async function boot()'))),
-    'The realtime controller must not bind before the lane is known.');
+  // There is no runtime lane choice. The app constructs exactly one live
+  // adapter and binds it after bootstrap state has been installed.
+  ok(/import \{ createLiveVoiceLaneController \} from '\.\/voice_lane\.js'/.test(app),
+    'app.js must import the live-only factory.');
+  ok(/const realtimeVoiceController = createLiveVoiceLaneController\(/.test(app),
+    'app.js must construct the live-only adapter directly.');
+  ok(!/resolveVoiceLane|LIVE_LANE|createVoiceLaneController/.test(app),
+    'app.js must not choose between live and controlled lanes.');
+  ok(app.indexOf('realtimeVoiceController.bind()') > app.indexOf('await getBootstrap()'),
+    'The live adapter must bind after bootstrap state has been read.');
 
-  // The shared companion carries both contracts at once.
+  // The companion exposes only the active live controller contract.
   for (const hook of [
     'data-live-start', 'data-live-stop', 'data-live-status',
     'data-live-caption="user"', 'data-live-caption="assistant"',
     'data-live-transcript', 'data-live-orb'
   ]) {
-    ok(markup.includes(hook), `The shared companion must expose ${hook} for the live controller.`);
+    ok(markup.includes(hook), `The live companion must expose ${hook} for the live controller.`);
   }
   for (const id of ['realtimeVoiceStartButton', 'realtimeVoiceEndButton', 'realtimeVoiceShell']) {
-    ok(markup.includes(`id="${id}"`), `Adding live hooks must not remove the v2 id ${id}.`);
+    ok(markup.includes(`id="${id}"`), `The live companion must expose ${id}.`);
+  }
+  for (const id of ['liveVoiceTextForm', 'liveVoiceTextInput', 'liveVoiceTextSendButton']) {
+    ok(markup.includes(`id="${id}"`), `The live call must expose its ${id} typing control.`);
   }
 
   // Two bugs that would have made the shared companion look broken rather than
@@ -2360,6 +2399,60 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'Transcript lines must use the class the stylesheet defines.');
   ok(/createElement\('li'\)/.test(clientCode),
     'Transcript lines go into an <ol>, so they must be list items.');
+
+  // Production runs this controller, so the shared transcript controls must
+  // be bound here rather than only in the retired controlled lane.
+  ok(/transcriptToggle\?\.addEventListener\('click'/.test(clientCode),
+    'The live lane must bind the Show transcript button.');
+  ok(/transcriptCopyButton\?\.addEventListener\('click'/.test(clientCode),
+    'The live lane must bind the Copy transcript button.');
+  ok(/getRealtimeVoiceMeetingTranscript/.test(clientCode) && /do\s*\{[\s\S]{0,900}\}\s*while\s*\(cursor\)/.test(clientCode),
+    'A finished live call must page through the entire authoritative saved transcript.');
+  const stopBody = clientCode.slice(clientCode.indexOf('async stop('), clientCode.indexOf('\n  teardown() {', clientCode.indexOf('async stop(')));
+  ok(/const meetingId = this\.leaseId/.test(stopBody) && /loadServerTranscript\(sessionId, meetingId\)/.test(stopBody),
+    'stop() must retain the meeting id long enough to reload its saved transcript after releasing the lease.');
+  ok(/revealTranscript\(\)/.test(stopBody),
+    'A finished live call must reveal the restored transcript for review.');
+  ok(/type:\s*'conversation\.item\.create'[\s\S]{0,400}type:\s*'response\.create'/.test(clientCode),
+    'Typing must send a user item and request a response through the same live data channel.');
+  ok(/onFailure/.test(clientCode) && /renderUnavailable\(appRoot,[\s\S]{0,120}liveMeetingFailure:\s*true/.test(app),
+    'A live runtime failure must replace the meeting with the explicit failure page.');
+  ok(/has not switched to an older call system/.test(views),
+    'The failure page must explicitly say that no older call system was used.');
+
+  // The previous controlled client remains legible for humans and LLMs, but
+  // is structurally quarantined from production. The 45-second recorder is
+  // retained only as historical source and cannot appear as a UI or route.
+  const archiveReadme = readFileSync(fileURLToPath(new URL('../js/plan/legacy/README.md', import.meta.url)), 'utf8');
+  const legacyControlled = readFileSync(fileURLToPath(new URL('../js/plan/legacy/controlled_realtime_voice.js', import.meta.url)), 'utf8');
+  const legacyBounded = readFileSync(fileURLToPath(new URL('../js/plan/legacy/bounded_voice_45s.js', import.meta.url)), 'utf8');
+  const api = readFileSync(fileURLToPath(new URL('../js/plan/api.js', import.meta.url)), 'utf8');
+  const config = readFileSync(fileURLToPath(new URL('../worker/src/consumer/config.js', import.meta.url)), 'utf8');
+  const router = readFileSync(fileURLToPath(new URL('../worker/src/consumer/router.js', import.meta.url)), 'utf8');
+  const activeSources = [adapter, client, app, markup, views, api, router];
+
+  ok(/LEGACY ARCHIVE[\s\S]*PREVIOUS CONTROLLED REALTIME CALL CLIENT/.test(legacyControlled),
+    'The previous controlled client must identify itself as legacy archive code.');
+  ok(/LEGACY ARCHIVE[\s\S]*REMOVED 45-SECOND BOUNDED RECORDING CLIENT/.test(legacyBounded),
+    'The removed bounded recorder must identify itself as historical and removed.');
+  ok(/Never\s+import it into the active application[\s\S]*production dependency[\s\S]*architecture violation/i.test(archiveReadme),
+    'The archive README must explicitly prohibit production dependencies.');
+  for (const source of activeSources) {
+    ok(!/(?:from|import\()\s*['"][^'"]*legacy\//.test(source),
+      'Production call code must not import from js/plan/legacy/.');
+  }
+  ok(!/45-second|short voice|bounded voice|id="voiceConsentDialog"|realtimeVoiceBoundedFallbackButton/i.test(markup),
+    'The removed recorder must have no active UI or fallback control.');
+  ok(!/createVoicePanel|data-voice-(?:start|stop|recording)|voice-panel/.test(views),
+    'Rendered journey views must not recreate the removed recorder.');
+  ok(!/voice\/(?:consent|transcriptions|speech)/.test(router),
+    'The Worker must not route the removed recorder consent, transcription or speech endpoints.');
+  ok(!/voice\/(?:consent|transcriptions|speech)/.test(api),
+    'The active browser API must not expose helpers for the removed recorder endpoints.');
+  ok(/const voiceRequested = false/.test(config)
+    && /const voiceConfigured = false/.test(config)
+    && /const voiceEnabled = false/.test(config),
+  'Stale deployment variables must not be able to reactivate the removed recorder.');
 }
 
 

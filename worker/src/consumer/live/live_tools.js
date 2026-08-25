@@ -1,4 +1,7 @@
 /**
+ * ACTIVE LIVE TOOL SURFACE. Any v1/v2 or controlled-lane comparison in this
+ * file describes archived history, never a selectable runtime alternative.
+ *
  * The live lane's three tools.
  *
  * DESIGN RULE: EVERY EXECUTOR IS PURE JS PLUS AT MOST A FEW D1 WRITES.

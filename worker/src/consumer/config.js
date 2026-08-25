@@ -181,7 +181,10 @@ export function getConsumerConfig(env) {
   const aiRequested = enabled(env.CONSUMER_AI_INTAKE_ENABLED);
   const aiDataPolicyId = policyId(env.CONSUMER_AI_DATA_POLICY_ID);
   const aiConfigured = Boolean(text(env.OPENAI_API_KEY) && aiDataPolicyId && aiNoticeId);
-  const voiceRequested = enabled(env.CONSUMER_VOICE_ENABLED);
+  // REMOVED 45-SECOND ROUTE. These booleans are hard false even if stale
+  // deployment variables still exist. The values below remain parseable only
+  // so archived records/tests can be interpreted; they cannot activate code.
+  const voiceRequested = false;
   const voiceNoticeId = policyId(env.CONSUMER_VOICE_NOTICE_ID);
   const voiceDataPolicyId = policyId(env.CONSUMER_VOICE_DATA_POLICY_ID);
   const voiceTranscriptionModel = modelId(env.CONSUMER_VOICE_TRANSCRIPTION_MODEL, '');
@@ -208,22 +211,8 @@ export function getConsumerConfig(env) {
     1,
     200
   ) || 0;
-  const voiceConfigured = Boolean(
-    text(env.OPENAI_API_KEY)
-    && voiceNoticeId
-    && voiceDataPolicyId
-    && voiceTranscriptionModel
-    && voiceSpeechModel
-    && configuredVoiceName
-    && voicePricingVersion
-    && voiceSessionBudgetCents > 0
-    && voiceDailyBudgetCents >= voiceSessionBudgetCents
-    && voiceTranscriptionReservationCents > 0
-    && voiceSpeechReservationCents > 0
-    && voiceTranscriptionReservationCents <= voiceSessionBudgetCents
-    && voiceSpeechReservationCents <= voiceSessionBudgetCents
-  );
-  const voiceEnabled = journeyEnabled && voiceRequested && voiceConfigured;
+  const voiceConfigured = false;
+  const voiceEnabled = false;
   const realtimeRequested = enabled(env.CONSUMER_REALTIME_VOICE_ENABLED);
   const realtimeNoticeId = policyId(env.CONSUMER_REALTIME_NOTICE_ID);
   const realtimeDataPolicyId = policyId(env.CONSUMER_REALTIME_DATA_POLICY_ID);
@@ -266,7 +255,7 @@ export function getConsumerConfig(env) {
   ) || 0;
   const realtimeConfigured = Boolean(
     text(env.OPENAI_API_KEY)
-    && env.CONSUMER_REALTIME_SESSIONS
+    && env.CONSUMER_LIVE_SESSIONS
     && realtimeNoticeId
     && realtimeDataPolicyId
     && realtimeModel === REALTIME_MODEL
@@ -279,23 +268,19 @@ export function getConsumerConfig(env) {
     && realtimeSessionBudgetCents > 0
     && realtimeDailyBudgetCents >= realtimeSessionBudgetCents
     && (realtimeSessionWarnCents === 0 || realtimeSessionWarnCents < realtimeSessionBudgetCents)
-    && voiceSpeechModel === 'tts-1-hd'
-    && configuredVoiceName === 'nova'
-    && realtimeSpeechRateMicroEurPerMillionCharacters === REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS
     && Object.values(realtimeUsageRates).every((rate) => rate > 0)
   );
   const realtimeEnabled = journeyEnabled && realtimeRequested && realtimeConfigured;
+  // LEGACY CONTROLLED-LANE SETTINGS. Retained so historical records and
+  // archived server tests remain readable; active routing never selects this
+  // conversation implementation or exposes these switches to the browser.
   const realtimeConversationV2Enabled = realtimeEnabled
     && enabled(env.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED);
   const realtimeSpokenCompletionEnabled = realtimeConversationV2Enabled
     && enabled(env.CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED);
-  // The live conversational lane. It shares the realtime lease, consent, cost
-  // ledger and provider configuration — hence `realtimeEnabled` — but it is
-  // deliberately INDEPENDENT of the v1/v2 conversation switch: the two lanes
-  // are alternative conversation layers over the same infrastructure, and
-  // exactly one runs a given meeting. It is never derived from
-  // `realtimeConversationV2Enabled`, so turning one on can never imply the
-  // other.
+  // The only active conversational lane. It shares the realtime lease,
+  // consent, cost ledger and provider configuration, but does not depend on
+  // either legacy controlled-lane switch above.
   const liveVoiceEnabled = realtimeEnabled && enabled(env.CONSUMER_LIVE_VOICE_ENABLED);
   const handoffRequested = enabled(env.CONSUMER_HANDOFF_ENABLED);
   const handoffRetentionDays = optionalBoundedInteger(env.CONSUMER_HANDOFF_RETENTION_DAYS, 1, 365);
@@ -556,9 +541,12 @@ export function publicConsumerConfig(config) {
     flags: {
       consumerJourneyEnabled: config.journeyEnabled,
       consumerAiIntakeEnabled: config.aiEnabled,
-      consumerVoiceEnabled: config.voiceEnabled,
-      consumerRealtimeVoiceEnabled: config.realtimeEnabled,
-      consumerRealtimeConversationV2Enabled: config.realtimeConversationV2Enabled,
+      // The 45-second record/transcribe route has been removed from the
+      // browser and Worker router. Do not advertise it as a client feature.
+      consumerVoiceEnabled: false,
+      // The live lane is the only supported browser call implementation.
+      consumerRealtimeVoiceEnabled: config.liveVoiceEnabled,
+      consumerRealtimeConversationV2Enabled: false,
       consumerModuleRoutingEnabled: config.moduleRoutingEnabled,
       consumerGoalRoutingEnabled: config.goalRoutingEnabled,
       consumerHumanHandoffEnabled: config.handoffEnabled
@@ -591,62 +579,32 @@ export function publicConsumerConfig(config) {
       schemaVersion: config.aiSchemaVersion
     },
     voice: {
-      enabled: config.voiceEnabled,
-      noticeId: config.voiceEnabled ? config.voiceNoticeId : null,
-      dataPolicyId: config.voiceEnabled ? config.voiceDataPolicyId : null,
-      policyVersion: config.voiceEnabled ? config.consentPolicyVersion : null,
-      privacyNoticeUrl: config.voiceEnabled ? config.privacyNoticeUrl : null,
-      transcriptionModel: config.voiceEnabled ? config.voiceTranscriptionModel : null,
-      speechModel: config.voiceEnabled ? config.voiceSpeechModel : null,
-      voice: config.voiceEnabled ? config.voiceName : null,
-      pricingVersion: config.voiceEnabled ? config.voicePricingVersion : null,
-      maxDurationSeconds: config.voiceMaxDurationSeconds,
-      maxRecordingSeconds: config.voiceMaxDurationSeconds,
-      availability: { available: config.voiceEnabled, status: config.voiceEnabled ? 'available' : 'unavailable' },
-      aiGeneratedDisclosure: config.voiceEnabled
-        ? 'The voice you hear is AI-generated. Review each transcript before sending it.'
-        : null
+      enabled: false,
+      availability: { available: false, status: 'removed' }
     },
     realtimeVoice: {
-      enabled: config.realtimeEnabled,
-      // Which conversation lane will drive the next meeting. The browser needs
-      // this BEFORE it starts a call, because each lane has its own controller
-      // and the controller is what creates the call. The identical expression
-      // is echoed on the call response as `X-Realtime-Conversation-Version`
-      // (router.js) so the client can prove the lane it prepared for is the
-      // lane it got.
-      conversationVersion: config.liveVoiceEnabled
-        ? 'live'
-        : config.realtimeConversationV2Enabled ? 'v2' : 'v1',
-      spokenCompletionEnabled: config.realtimeSpokenCompletionEnabled,
-      noticeId: config.realtimeEnabled ? config.realtimeNoticeId : null,
-      dataPolicyId: config.realtimeEnabled ? config.realtimeDataPolicyId : null,
-      policyVersion: config.realtimeEnabled ? config.consentPolicyVersion : null,
-      privacyNoticeUrl: config.realtimeEnabled ? config.privacyNoticeUrl : null,
-      model: config.realtimeEnabled ? config.realtimeModel : null,
-      voice: config.realtimeEnabled ? config.realtimeVoice : null,
-      reasoningEffort: config.realtimeEnabled ? config.realtimeReasoningEffort : null,
-      transcriptionModel: config.realtimeEnabled ? config.realtimeTranscriptionModel : null,
-      promptVersion: config.realtimeEnabled ? config.realtimePromptVersion : null,
-      toolsetVersion: config.realtimeEnabled ? config.realtimeToolsetVersion : null,
-      pricingVersion: config.realtimeEnabled ? config.realtimePricingVersion : null,
-      speechModel: config.realtimeEnabled ? config.realtimeSpeechModel : null,
-      speechVoice: config.realtimeEnabled ? config.realtimeSpeechVoice : null,
-      speechPricingVersion: config.realtimeEnabled ? config.realtimeSpeechPricingVersion : null,
+      enabled: config.liveVoiceEnabled,
+      conversationVersion: 'live',
+      spokenCompletionEnabled: false,
+      noticeId: config.liveVoiceEnabled ? config.realtimeNoticeId : null,
+      dataPolicyId: config.liveVoiceEnabled ? config.realtimeDataPolicyId : null,
+      policyVersion: config.liveVoiceEnabled ? config.consentPolicyVersion : null,
+      privacyNoticeUrl: config.liveVoiceEnabled ? config.privacyNoticeUrl : null,
+      model: config.liveVoiceEnabled ? config.realtimeModel : null,
+      voice: config.liveVoiceEnabled ? config.realtimeVoice : null,
+      reasoningEffort: config.liveVoiceEnabled ? config.realtimeReasoningEffort : null,
+      transcriptionModel: config.liveVoiceEnabled ? config.realtimeTranscriptionModel : null,
+      promptVersion: config.liveVoiceEnabled ? config.realtimePromptVersion : null,
+      toolsetVersion: config.liveVoiceEnabled ? config.realtimeToolsetVersion : null,
+      pricingVersion: config.liveVoiceEnabled ? config.realtimePricingVersion : null,
       maxDurationSeconds: config.realtimeMaxDurationSeconds,
       idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
-      availability: { available: config.realtimeEnabled, status: config.realtimeEnabled ? 'available' : 'unavailable' },
+      availability: { available: config.liveVoiceEnabled, status: config.liveVoiceEnabled ? 'available' : 'unavailable' },
       // The live model records the first draft through its own tools while it
       // speaks. A detached auditor may review those notes later, but it never
       // gates or delays the voice response.
-      aiGeneratedDisclosure: config.realtimeEnabled
-        ? (config.liveVoiceEnabled
-          ? 'Realtime AI speaks with you directly and records what you say as reviewable draft facts as the conversation goes. A background planner may review those draft notes after each turn. Deterministic code controls the analyses, saved profile and calculations.'
-          : config.realtimeConversationV2Enabled
-            ? (config.realtimeSpokenCompletionEnabled
-                ? 'Realtime AI speaks with you directly while a silent planner extracts reviewable draft facts. After Planéir reads the exact prepared plan, a clear spoken confirmation authorizes only that revision. Deterministic code controls the analyses, saved profile and calculations.'
-                : 'Realtime AI speaks with you directly while a silent planner extracts reviewable draft facts. Deterministic code controls the three analyses, saved profile and calculations.')
-            : 'Realtime AI interprets your completed speech and calls protected planning tools. Separate code-owned AI speech reads only Worker-approved copy; the planning service controls all saved facts and calculations.')
+      aiGeneratedDisclosure: config.liveVoiceEnabled
+        ? 'Realtime AI speaks with you directly and records what you say as reviewable draft facts as the conversation goes. A background planner may review those draft notes after each turn. Deterministic code controls the analyses, saved profile and calculations.'
         : null
     },
     handoff: {
@@ -681,12 +639,12 @@ export function deploymentCostEnvelope(config) {
       dailyBudgetMicroEur: config.voiceEnabled ? config.voiceDailyBudgetMicroEur : null
     },
     realtimeVoice: {
-      enabled: config.realtimeEnabled === true,
-      sessionBudgetMicroEur: config.realtimeEnabled ? config.realtimeSessionBudgetMicroEur : null,
-      dailyBudgetMicroEur: config.realtimeEnabled ? config.realtimeDailyBudgetMicroEur : null,
-      dispatchStopMicroEur: config.realtimeEnabled ? config.realtimeDispatchStopMicroEur : null,
-      warnThresholdMicroEur: config.realtimeEnabled ? config.realtimeSessionWarnMicroEur : null,
-      safetyReserveMicroEur: config.realtimeEnabled ? config.realtimeSafetyReserveMicroEur : null
+      enabled: config.liveVoiceEnabled === true,
+      sessionBudgetMicroEur: config.liveVoiceEnabled ? config.realtimeSessionBudgetMicroEur : null,
+      dailyBudgetMicroEur: config.liveVoiceEnabled ? config.realtimeDailyBudgetMicroEur : null,
+      dispatchStopMicroEur: config.liveVoiceEnabled ? config.realtimeDispatchStopMicroEur : null,
+      warnThresholdMicroEur: config.liveVoiceEnabled ? config.realtimeSessionWarnMicroEur : null,
+      safetyReserveMicroEur: config.liveVoiceEnabled ? config.realtimeSafetyReserveMicroEur : null
     }
   };
 }

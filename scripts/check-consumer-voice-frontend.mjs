@@ -43,14 +43,15 @@ const {
   crossedAccessibleCountdownThreshold,
   restoreConversationDraft,
   selectSupportedRecordingMimeType
-} = await import('../js/plan/voice.js');
+} = await import('../js/plan/legacy/bounded_voice_45s.js');
 const {
   classifyRealtimeEvent,
   extractRealtimePlanningContext,
   isLikelyIncompleteVoiceCaption,
   normaliseRealtimeCallResponse,
   RealtimeVoiceController
-} = await import('../js/plan/realtime_voice.js');
+} = await import('../js/plan/legacy/controlled_realtime_voice.js');
+const { LiveVoiceController } = await import('../js/plan/live_voice.js');
 const {
   clearRealtimeVoiceConsent,
   getAnalysisPlanNonce,
@@ -956,7 +957,7 @@ assert.equal(budgetRefreshes, 1, 'Deletion/reset cancellation must not race a se
 const appSource = readFileSync(`${rootPath}/js/plan/app.js`, 'utf8');
 const apiSource = readFileSync(`${rootPath}/js/plan/api.js`, 'utf8');
 const realtimeOrbSource = readFileSync(`${rootPath}/js/plan/realtime_orb.js`, 'utf8');
-const realtimeSource = readFileSync(`${rootPath}/js/plan/realtime_voice.js`, 'utf8');
+const realtimeSource = readFileSync(`${rootPath}/js/plan/legacy/controlled_realtime_voice.js`, 'utf8');
 const storeSource = readFileSync(`${rootPath}/js/plan/store.js`, 'utf8');
 const viewsSource = readFileSync(`${rootPath}/js/plan/views.js`, 'utf8');
 const planCssSource = readFileSync(`${rootPath}/styles/plan.css`, 'utf8');
@@ -986,8 +987,9 @@ assert.match(realtimeSource, /turn\.disabled = !this\.active \|\| this\.welcomeP
 assert.match(realtimeSource, /turn\.setAttribute\('aria-disabled', String\(turn\.disabled\)\)/);
 assert.match(realtimeSource, /commit_empty\|buffer_too_small\|input_audio_buffer_commit/);
 assert.match(appSource, /const draft = captureConversationDraft\(appRoot\)[\s\S]*renderCurrentJourney\(\)[\s\S]*restoreConversationDraft\(appRoot, draft\)/);
-assert.match(appSource, /async function handleDeleteSession\(\) \{\s*await realtimeVoiceController\.end\(\{ reason: 'deletion' \}\);\s*voiceController\.cancelActiveVoice\(\{ reason: 'deletion', refreshBudget: false \}\)/);
-assert.match(appSource, /deleteSessionButton\.addEventListener\('click',[\s\S]*realtimeVoiceController\.end\(\{ reason: 'deletion' \}\)[\s\S]*voiceController\.cancelActiveVoice\(\{ reason: 'deletion', refreshBudget: false \}\)[\s\S]*openDialog\(deleteSessionDialog\)/);
+assert.match(appSource, /async function handleDeleteSession\(\) \{\s*await realtimeVoiceController\.end\(\{ reason: 'deletion' \}\)/);
+assert.match(appSource, /deleteSessionButton\.addEventListener\('click',[\s\S]*realtimeVoiceController\.end\(\{ reason: 'deletion' \}\)[\s\S]*openDialog\(deleteSessionDialog\)/);
+assert.doesNotMatch(appSource, /voiceController|createVoiceController|bounded_fallback/);
 assert.doesNotMatch(viewsSource, /app allowance|fixed conservative reservation/);
 assert.doesNotMatch(privacySource, /€2|€10|token limit|application reservation/);
 assert.match(privacySource, /OpenAI processes audio for transcription, realtime AI conversation and generated speech/);
@@ -1006,21 +1008,21 @@ assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*Talk to Planéir
 assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*aria-controls="realtimeVoiceShell"/);
 assert.match(planIndexSource, /id="realtimeVoiceShell"[\s\S]*role="dialog"[\s\S]*aria-modal="true"/);
 assert.match(planIndexSource, /id="realtimeVoiceCollapseButton"/);
-assert.match(planIndexSource, /id="realtimeVoiceTurnButton"[\s\S]*aria-label="Finish your turn"[\s\S]*disabled/);
+assert.doesNotMatch(planIndexSource, /id="realtimeVoiceTurnButton"/);
 assert.match(planIndexSource, /id="realtimeVoiceOrbCanvas"[\s\S]*aria-hidden="true"/);
 assert.match(planIndexSource, /id="realtimeVoiceOrbLabel"[\s\S]*role="status"[\s\S]*aria-live="polite"/);
 assert.match(planIndexSource, /id="realtimeVoiceStartButton"[\s\S]*Start your Planéir meeting/);
-assert.match(planIndexSource, /id="realtimeVoiceMuteButton"[\s\S]*id="realtimeVoiceEndButton"[\s\S]*id="realtimeVoiceFocusComposerButton"[\s\S]*id="realtimeVoiceReviewButton"/);
-assert.match(planIndexSource, /id="realtimeVoiceBoundedFallbackButton"/);
+assert.match(planIndexSource, /id="realtimeVoiceEndButton"[\s\S]*id="realtimeVoiceTranscriptToggle"/);
+assert.doesNotMatch(planIndexSource, /realtimeVoiceMuteButton|realtimeVoiceFocusComposerButton|realtimeVoiceReviewButton|realtimeVoiceBoundedFallbackButton/);
 assert.equal(
   [...planIndexSource.matchAll(/class="is-empty is-module-slot"/g)].length,
-  1,
-  'The unopened companion must show one goal-listening state without filler slots.'
+  0,
+  'The active live UI must not retain the archived controlled-lane planning slots.'
 );
 assert.match(planIndexSource, /id="realtimeVoiceTranscriptHistory"[\s\S]*aria-live="polite"/);
-assert.match(planIndexSource, /id="realtimeVoiceFactsList"/);
-assert.match(planIndexSource, /id="realtimeVoiceModulesList"/);
+assert.doesNotMatch(planIndexSource, /id="realtimeVoiceFactsList"|id="realtimeVoiceModulesList"/);
 assert.match(planIndexSource, /id="realtimeVoiceConsentDialog"/);
+assert.doesNotMatch(planIndexSource, /voiceConsentDialog|45-second|short voice|bounded voice|voice-fallback/);
 assert.match(
   realtimeSource,
   /Older Safari builds expose <dialog> incompletely[\s\S]*dialog\.setAttribute\('open', ''\)/,
@@ -1052,7 +1054,13 @@ assert.match(planIndexSource, /Let’s talk about what matters to you\./);
 assert.match(planIndexSource, /class="realtime-meeting-sub"/);
 assert.match(planIndexSource, /id="realtimeVoiceCaptionCard"[\s\S]*hidden/);
 assert.match(planIndexSource, /id="realtimeVoiceTranscriptToggle"/);
+assert.match(planIndexSource, /id="realtimeVoiceTranscriptCopyButton"/);
 assert.match(realtimeSource, /toggleTranscript\(\)/);
+assert.match(
+  realtimeSource,
+  /realtimeVoiceTranscriptCopyButton'\)\?\.addEventListener\('click', \(\) => this\.copyTranscript\(\)\)/,
+  'The controlled lane must keep the shared Copy transcript control working.'
+);
 assert.match(
   planCssSource,
   /\.realtime-voice-shell:not\(\.is-live\):not\(\.has-transcript\) #realtimeVoiceTranscriptToggle/,
@@ -1063,6 +1071,122 @@ assert.match(
   /await this\.loadServerTranscript\(sessionId, leaseId\)[\s\S]*this\.revealTranscript\(\)/,
   'Every visible terminal ending must reload and reveal the authoritative saved transcript.'
 );
+
+// The production live lane owns these controls. Exercise the actual bound
+// callbacks so a source-only wiring omission cannot ship again.
+{
+  const handlers = new Map();
+  const transcriptCard = { hidden: true };
+  const transcriptToggle = {
+    addEventListener: (type, callback) => handlers.set(`toggle:${type}`, callback),
+    setAttribute() {},
+    textContent: ''
+  };
+  const transcriptCopy = {
+    addEventListener: (type, callback) => handlers.set(`copy:${type}`, callback),
+    disabled: true
+  };
+  const typedInput = {
+    value: 'I would rather type this part.',
+    disabled: true,
+    focus() {}
+  };
+  const typedSend = { disabled: true };
+  const typedForm = {
+    addEventListener: (type, callback) => handlers.set(`typed:${type}`, callback)
+  };
+  const classList = { toggle() {} };
+  const shell = { classList, setAttribute() {} };
+  const root = {
+    classList,
+    querySelector(selector) {
+      if (selector === '#realtimeVoiceCaptionCard') return transcriptCard;
+      if (selector === '#realtimeVoiceTranscriptToggle') return transcriptToggle;
+      if (selector === '#realtimeVoiceTranscriptCopyButton') return transcriptCopy;
+      if (selector === '#liveVoiceTextForm') return typedForm;
+      if (selector === '#liveVoiceTextInput') return typedInput;
+      if (selector === '#liveVoiceTextSendButton') return typedSend;
+      if (selector === '.realtime-voice-shell') return shell;
+      return null;
+    },
+    setAttribute() {}
+  };
+  let copiedTranscript = '';
+  navigator.clipboard = { writeText: async (value) => { copiedTranscript = value; } };
+  const liveController = new LiveVoiceController({ root });
+  liveController.transcriptHistory = [
+    { role: 'user', text: 'My goal is to retire at 60.' },
+    { role: 'assistant', text: 'Let’s work through that together.' }
+  ];
+  liveController.syncShellFace();
+  handlers.get('toggle:click')();
+  assert.equal(transcriptCard.hidden, false, 'Show transcript must reveal the live lane transcript panel.');
+  await handlers.get('copy:click')();
+  assert.equal(
+    copiedTranscript,
+    'You: My goal is to retire at 60.\n\nPlanéir (AI): Let’s work through that together.',
+    'Copy transcript must put every visible turn and speaker label on the clipboard.'
+  );
+
+  const liveEvents = [];
+  liveController.active = true;
+  liveController.dataChannel = {
+    readyState: 'open',
+    send: (value) => liveEvents.push(JSON.parse(value))
+  };
+  liveController.syncShellFace();
+  assert.equal(typedInput.disabled, false, 'Typing must become available inside the running live call.');
+  handlers.get('typed:submit')({ preventDefault() {} });
+  assert.equal(liveEvents[0].type, 'conversation.item.create');
+  assert.equal(liveEvents[0].item.role, 'user');
+  assert.equal(liveEvents[0].item.content[0].text, 'I would rather type this part.');
+  assert.equal(liveEvents[1].type, 'response.create');
+  assert.equal(typedInput.value, '');
+  assert.equal(
+    liveController.transcriptHistory.at(-1).text,
+    'I would rather type this part.',
+    'A typed live message must appear in the same transcript immediately.'
+  );
+
+  // The post-call transcript is authoritative and paged. Exercise more than
+  // one page so "show transcript" cannot silently mean "show the first 50".
+  const previousFetch = globalThis.fetch;
+  const pagedTurns = [];
+  const receivedCursors = [];
+  storage.set('planeir.consumer.credential.v1', 'cs_frontend_voice_contract.test-secret');
+  liveController.replaceTranscript = (turns) => pagedTurns.push(...turns);
+  try {
+    globalThis.fetch = async (url) => {
+      const requestUrl = new URL(String(url));
+      const cursor = requestUrl.searchParams.get('cursor') || '';
+      receivedCursors.push(cursor);
+      return new Response(JSON.stringify(cursor
+        ? {
+            turns: [{ id: 'turn-3', role: 'assistant', transcript: 'Third and final turn.' }],
+            nextCursor: null
+          }
+        : {
+            turns: [
+              { id: 'turn-1', role: 'user', transcript: 'First turn.' },
+              { id: 'turn-2', role: 'assistant', transcript: 'Second turn.' }
+            ],
+            nextCursor: 'page-two'
+          }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    };
+    const loaded = await liveController.loadServerTranscript(
+      'cs_frontend_voice_contract',
+      'rt_full_transcript_contract'
+    );
+    assert.deepEqual(receivedCursors, ['', 'page-two']);
+    assert.equal(loaded.length, 3, 'The live transcript loader must return every saved page.');
+    assert.deepEqual(pagedTurns, loaded, 'The transcript panel must receive the full paged transcript.');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+}
 // 2. An eligible adviser invitation lands on the meeting screen automatically.
 assert.match(appSource, /function maybeAutoOpenRealtimeMeeting\(\)[\s\S]*openCompanion\(\{ focus: false \}\)/);
 // 3. Accepting the disclosure flows straight into microphone permission and
@@ -1109,7 +1233,7 @@ assert.match(planCssSource, /min-height:\s*44px/);
 assert.match(planCssSource, /@media \(prefers-reduced-motion: reduce\)/);
 assert.match(realtimeSource, /responding: 'Preparing to respond…'/);
 assert.match(realtimeSource, /Reconnect automatic microphone/);
-assert.match(realtimeSource, /import \{ RealtimeOrb \} from '\.\/realtime_orb\.js'/);
+assert.match(realtimeSource, /import \{ RealtimeOrb \} from '\.\.\/realtime_orb\.js'/);
 assert.match(realtimeSource, /this\.orb\?\.attachMicStream\(stream\)/);
 assert.match(realtimeSource, /this\.orb\?\.attachMicStream\(nextStream\)/);
 assert.match(realtimeSource, /this\.orb\?\.attachRemoteStream\(stream\)/);
@@ -1165,14 +1289,11 @@ assert.doesNotMatch(
   /export function setModuleSelected/,
   'The browser store must not expose a user-controlled module-selection mutator.'
 );
-const transcriptionApiSource = apiSource.slice(
-  apiSource.indexOf('export function transcribeVoice'),
-  apiSource.indexOf('export function speakNextQuestion')
+assert.doesNotMatch(
+  apiSource,
+  /voice\/(?:consent|transcriptions|speech)/,
+  'The active browser API must not retain any route for the removed 45-second recorder.'
 );
-assert.doesNotMatch(transcriptionApiSource, /FormData|formData/);
-assert.match(transcriptionApiSource, /rawBody:\s*audio/);
-assert.match(transcriptionApiSource, /'X-Voice-Duration-Ms'/);
-assert.match(transcriptionApiSource, /'X-Voice-Request-Id'/);
 
 const rawRealtimeCall = normaliseRealtimeCallResponse({
   body: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
@@ -1896,49 +2017,19 @@ assert.equal(floatingBackdrop.hidden, true);
 assert.equal(floatingLauncherAttributes.get('aria-expanded'), 'false');
 assert.equal(floatingController.active, true, 'Minimising the companion must keep the active microphone lifecycle intact.');
 
-let fallbackView = '';
-const fallbackController = new RealtimeVoiceController({
+let archivedFallbackView = '';
+const archivedControlledController = new RealtimeVoiceController({
   root: floatingRoot,
-  onNavigate: (view) => { fallbackView = view; }
+  onNavigate: (view) => { archivedFallbackView = view; }
 });
-fallbackController.focusComposer();
-assert.equal(fallbackView, 'conversation', 'Type instead must return to the written conversation from review or results.');
-fallbackView = '';
-fallbackController.focusBoundedVoice();
-assert.equal(fallbackView, 'conversation', 'The bounded voice fallback must return to the conversation before focusing its controls.');
+archivedControlledController.focusComposer();
+assert.equal(archivedFallbackView, 'conversation', 'The archived controlled client historically returned to its written view.');
+archivedFallbackView = '';
+archivedControlledController.focusBoundedVoice();
+assert.equal(archivedFallbackView, 'conversation', 'The archived controller remains readable as historical reference only.');
 
 storage.set('planeir.consumer.credential.v1', 'cs_frontend_voice_contract.test-secret');
-const { transcribeVoice } = await import('../js/plan/api.js');
 const originalFetch = globalThis.fetch;
-let capturedVoiceRequest = null;
-try {
-  globalThis.fetch = async (url, init) => {
-    capturedVoiceRequest = { url: String(url), init };
-    return new Response(JSON.stringify({ transcript: 'Review this transcript.' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  };
-  const rawAudio = new Blob([new Uint8Array([1, 2, 3, 4])], {
-    type: 'audio/ogg;codecs=opus'
-  });
-  await transcribeVoice('cs_frontend_voice_contract', {
-    audio: rawAudio,
-    durationMs: 1_234,
-    idempotencyKey: 'voice-frontend-contract-0001'
-  });
-  assert.equal(capturedVoiceRequest?.url, 'http://127.0.0.1:8787/api/consumer/sessions/cs_frontend_voice_contract/voice/transcriptions');
-  assert.equal(capturedVoiceRequest?.init?.body, rawAudio);
-  const rawHeaders = new Headers(capturedVoiceRequest?.init?.headers);
-  assert.equal(rawHeaders.get('content-type'), 'audio/ogg;codecs=opus');
-  assert.equal(rawHeaders.get('x-voice-duration-ms'), '1234');
-  assert.equal(rawHeaders.get('x-voice-request-id'), 'voice-frontend-contract-0001');
-  assert.equal(rawHeaders.get('content-length'), null, 'Browser code must not try to set the forbidden Content-Length header.');
-  assert.equal(rawHeaders.get('x-consumer-session'), 'cs_frontend_voice_contract.test-secret');
-} finally {
-  globalThis.fetch = originalFetch;
-}
-
 const {
   createRealtimeVoiceCall,
   deleteRealtimeVoiceActivation,
@@ -2521,4 +2612,4 @@ assert.deepEqual(journeyState.voice.realtimeConsent, {
   policyVersion: 'consumer-adviser-test-v1'
 }, 'The Worker realtimeConsent response must immediately unlock the visible Live voice flow.');
 
-console.log('Consumer bounded and controlled-realtime voice lifecycle, SDP, speech authorization, transcript, planning-context, and accessibility checks passed.');
+console.log('Archived voice reference checks and active live-call transcript, typing, failure, SDP, and accessibility checks passed.');

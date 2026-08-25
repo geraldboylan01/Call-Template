@@ -1,4 +1,7 @@
 /**
+ * ACTIVE LIVE PROVIDER POLICY. References to v2 below are historical notes
+ * about the archived controlled implementation, not fallback behavior.
+ *
  * The live lane's provider session policy.
  *
  * TWO SETTINGS ARE THE WHOLE POINT OF THIS FILE.

@@ -59,7 +59,7 @@ function approvedPairs(tableName) {
 
 const declared = declaredEnvLiterals(jobEnv);
 
-for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
+for (const tableName of ['fixedRealtimeValues']) {
   const pairs = approvedPairs(tableName);
   assert.ok(pairs.length > 0, `${tableName} must contain approved value pairs`);
 
@@ -384,83 +384,47 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
 }
 
 {
-  /**
-   * The adviser bridge and the deployed voice notice must agree.
-   *
-   * They did not: the bridge check pinned `voice-adviser-test-v1` while the
-   * deployment moved to the OpenAI-audio notice, so it failed a Worker that was
-   * disclosing correctly. The notice id is the consent key -- a stored
-   * acknowledgement is rejected when it differs from the running config -- so
-   * pinning a superseded id asserts that re-consent never happened.
-   */
+  /** The removed 45-second recorder must stay out of deployment entirely. */
   const bridge = readFileSync(`${root}/scripts/check-consumer-live-advisor-bridge.mjs`, 'utf8');
   assert.doesNotMatch(
     bridge,
-    /noticeId, 'voice-/,
-    'the bridge check must read the expected notice from the protected environment, not restate it'
+    /\/voice\/(?:consent|speech|transcriptions)|RUN_PAID_VOICE_PROVIDER_SMOKE/,
+    'the live deployment bridge must never exercise the removed recorder'
   );
-  assert.match(bridge, /process\.env\.CONSUMER_BETA_VOICE_NOTICE_ID/,
-    'the bridge check must derive the expected voice notice from the deploy environment');
-
-  // The job environment the bridge check reads and the value actually deployed
-  // must be the same string, or it would verify against a notice nobody shipped.
-  const jobValue = (workflow.match(/^\s*CONSUMER_BETA_VOICE_NOTICE_ID: "([^"]*)"$/m) || [])[1];
-  const deployedValue = (workflow.match(
-    /CONSUMER_VOICE_NOTICE_ID: \['CONSUMER_BETA_VOICE_NOTICE_ID', '([^']*)'\]/
-  ) || [])[1];
-  assert.ok(jobValue, 'CONSUMER_BETA_VOICE_NOTICE_ID must be declared for the deploy job');
-  assert.equal(jobValue, deployedValue,
-    'the voice notice the bridge check verifies against is not the one the deploy ships');
-
-  // A notice id may be superseded but never silently dropped: the router's
-  // approved list must still contain whatever is being deployed.
   const routerSource = readFileSync(`${root}/worker/src/consumer/router.js`, 'utf8');
-  const approved = (routerSource.match(/\[([^\]]*)\]\.includes\(config\?\.voiceNoticeId\)/) || [])[1] || '';
-  assert.ok(approved.includes(`'${deployedValue}'`),
-    `the router's approved voice notices do not include the deployed notice ${deployedValue}`);
-  pass(`the adviser bridge verifies the deployed voice notice (${deployedValue})`);
+  assert.doesNotMatch(routerSource, /voice\\\/(consent\|transcriptions\|speech)|isAdvisorVoicePreviewConfig/,
+    'the Worker must not route or authorize the removed recorder');
+  assert.doesNotMatch(workflow, /CONSUMER_BETA_VOICE_|run_paid_voice_provider_smoke/,
+    'the deployment workflow must have no bounded-voice activation or paid-smoke input');
+  assert.match(workflow, /replaceTomlString\(generatedSource, 'CONSUMER_VOICE_ENABLED', 'false'\)/,
+    'the generated deployment must pin the removed recorder off');
+  pass('the removed recorder has no deployment route, mode, credential or smoke path');
 }
 
 /* ------------------------------------------- the live conversational lane */
 
-// The live lane is a SECOND conversation layer over the same lease, consent and
-// cost infrastructure. It ships dormant like everything else, and the two
-// things that differ when it runs -- the prompt it speaks from and the toolset
-// it is given -- are recorded on the lease, so they have to describe the lane
-// that actually ran.
+// Realtime activation always means the live lane. The controlled implementation
+// remains historical code and cannot be selected by configuration.
 {
   const wrangler = readFileSync(`${root}/worker/wrangler.toml`, 'utf8');
   assert.match(wrangler, /^CONSUMER_LIVE_VOICE_ENABLED = "false"$/m,
     'the live lane must ship dormant in the committed config, like every other capability');
-  assert.match(workflow, /CONSUMER_LIVE_VOICE_ENABLED:\s*\$\{\{\s*vars\.CONSUMER_LIVE_VOICE_ENABLED\s*\|\|\s*'false'\s*\}\}/,
-    'the live lane must default to false in the workflow — it has never run against real audio');
-  assert.match(workflow, /const liveVoiceEnabled = realtimeEnabled && liveVoiceToggle === 'true';/,
-    'the live lane must be gated on the realtime canary');
-  assert.doesNotMatch(workflow, /const liveVoiceEnabled = [^\n]*realtimeV2Enabled/,
-    'the live lane must not be derived from v2: they are alternative lanes, not a hierarchy');
+  assert.match(workflow, /CONSUMER_LIVE_VOICE_ENABLED:\s*"true"/,
+    'the protected builder must keep the only active conversation implementation available');
+  assert.match(workflow, /const liveVoiceEnabled = realtimeEnabled;/,
+    'the active conversation lane must exactly follow Realtime activation');
+  assert.match(workflow, /CONSUMER_REALTIME_CONVERSATION_V2_ENABLED:\s*"false"/,
+    'the archived controlled-lane switch must be pinned off');
 
   // The infrastructure proof stands the plumbing up. It must not quietly become
   // the live lane's first real-audio run.
   assert.match(workflow, /must keep the live conversational lane disabled/,
     'the bootstrap config must assert the live lane is off');
 
-  // PROVENANCE. Without the lane-scoped override a live meeting would file
-  // itself under the v2 orchestrator prompt and a seven-tool surface it does
-  // not have.
-  const v2Env = resolveShippedConsumerEnv({ realtime: true });
-  const liveEnv = resolveShippedConsumerEnv({ realtime: true, live: true });
-  assert.equal(v2Env.get('CONSUMER_REALTIME_PROMPT_VERSION'), 'consumer-realtime-orchestrator-v9',
-    'a v2 deployment must still ship the v2 prompt version');
-  assert.notEqual(
-    liveEnv.get('CONSUMER_REALTIME_PROMPT_VERSION'),
-    v2Env.get('CONSUMER_REALTIME_PROMPT_VERSION'),
-    'a live deployment must not record the v2 prompt version'
-  );
-  assert.notEqual(
-    liveEnv.get('CONSUMER_REALTIME_TOOLSET_VERSION'),
-    v2Env.get('CONSUMER_REALTIME_TOOLSET_VERSION'),
-    'a live deployment must not record the v2 toolset version'
-  );
+  const liveEnv = resolveShippedConsumerEnv({ realtime: true });
+  const typedEnv = resolveShippedConsumerEnv({ realtime: false });
+  assert.equal(liveEnv.get('CONSUMER_LIVE_VOICE_ENABLED'), 'true');
+  assert.equal(typedEnv.get('CONSUMER_LIVE_VOICE_ENABLED'), 'false');
 
   // The versions the workflow ships must be the ones the code actually runs.
   const promptSource = readFileSync(`${root}/worker/src/consumer/live/catalogue_prompt.js`, 'utf8');
@@ -476,13 +440,13 @@ for (const tableName of ['fixedVoiceValues', 'fixedRealtimeValues']) {
   // accept a live deployment, and it must still refuse one carrying v2 ids.
   const routerSource = readFileSync(`${root}/worker/src/consumer/router.js`, 'utf8');
   assert.match(routerSource, /config\?\.liveVoiceEnabled === true/,
-    'the preview gate must branch on the lane before pinning prompt and toolset versions');
+    'the preview gate must require the live lane before accepting a call deployment');
   assert.match(routerSource, /config\?\.realtimePromptVersion === LIVE_PROMPT_VERSION/,
     'the gate must pin the live prompt version to the constant the prompt builder exports');
   assert.match(routerSource, /config\?\.realtimeToolsetVersion === LIVE_TOOLSET_VERSION/,
     'the gate must pin the live toolset version to the constant beside the tool definitions');
 
-  pass(`the live lane ships dormant and records its own prompt (${codePrompt}) and toolset (${codeToolset})`);
+  pass(`Realtime activates only the live lane with prompt ${codePrompt} and toolset ${codeToolset}`);
 }
 
 

@@ -1,40 +1,131 @@
 /**
- * Which controller drives the voice companion, behind one surface.
+ * ACTIVE CALL ADAPTER — LIVE LANE ONLY.
  *
- * There are two conversation lanes and they share one companion in the page.
- * The v2 controller already presents everything `app.js` calls; the live
- * controller deliberately does not — it dropped the v2 authority model, the
- * Worker-owned TTS playback and the device picker, and kept only what a lane
- * that lets the provider decide when to speak actually needs. That is the
- * point of it, not an omission to paper over.
- *
- * So this file is an adapter, not a base class: it gives the live controller
- * the handful of app-facing methods it lacks, and hands the v2 controller
- * straight through untouched. Nothing here belongs in `live_voice.js`, whose
- * whole contract is that it does not carry v2's baggage.
- *
- * THE LANE IS CHOSEN BEFORE THE CALL, NOT AFTER. Each controller creates its
- * own provider call, so the lane has to be known first. It comes from the
- * bootstrap; the call response then echoes it back as
- * `X-Realtime-Conversation-Version` for the controller to verify.
+ * There is deliberately no lane selector in production. Every browser call
+ * uses `live_voice.js`, where the realtime model owns turn-taking and speaks
+ * directly over WebRTC. The former controlled client is historical reference
+ * code under `js/plan/legacy/` and must never be imported here.
  */
 
-import { createLiveVoiceController } from './live_voice.js';
+import { updateRealtimeVoiceConsent } from './api.js';
+import { createLiveVoiceController, isLiveVoiceSupported } from './live_voice.js';
 import {
-  createRealtimeVoiceController,
-  realtimeMeetingAvailable,
-  realtimeMeetingUnavailableDetail,
-  realtimeMeetingUnavailableReason,
-  withdrawRealtimeVoiceConsent
-} from './realtime_voice.js';
+  getRealtimeVoiceConsent,
+  getSessionId,
+  hasCurrentRealtimeVoiceConsent,
+  mergeVoicePayload,
+  state
+} from './store.js';
 
-export const LIVE_LANE = 'live';
+const ADVISER_TEST_COHORT = 'adviser_test';
 
-/** The lane this deployment will run, as announced by the bootstrap. */
-export function resolveVoiceLane(bootstrap) {
-  return String(bootstrap?.voiceRealtimeConversationVersion || bootstrap?.conversationVersion || '') === LIVE_LANE
-    ? LIVE_LANE
-    : 'controlled';
+function safePrivacyUrl(value) {
+  try {
+    const url = new URL(String(value || ''), window.location.href);
+    if (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) {
+      return url.href;
+    }
+  } catch (_error) {
+    // An invalid disclosure URL makes the live meeting unavailable.
+  }
+  return '';
+}
+
+function liveMeetingContext() {
+  const bootstrap = state.bootstrap || {};
+  const savedConsent = getRealtimeVoiceConsent() || {};
+  const noticeId = String(bootstrap.voiceRealtimeNoticeId || savedConsent.noticeId || '');
+  const policyVersion = String(bootstrap.voiceRealtimePolicyVersion || savedConsent.policyVersion || '');
+  const privacyNoticeUrl = safePrivacyUrl(
+    bootstrap.voiceRealtimePrivacyNoticeUrl
+    || bootstrap.privacyNoticeUrl
+    || savedConsent.privacyNoticeUrl
+    || ''
+  );
+  const serverSessionConfirmed = Boolean(state.session?.id || state.session?.sessionId);
+  return {
+    eligible: bootstrap.enabled === true
+      && bootstrap.voiceRealtimeEnabled === true
+      && String(bootstrap.cohort || '').toLowerCase() === ADVISER_TEST_COHORT,
+    configured: Boolean(noticeId && policyVersion && privacyNoticeUrl),
+    noticeId,
+    policyVersion,
+    privacyNoticeUrl,
+    consentGranted: hasCurrentRealtimeVoiceConsent(),
+    sessionId: serverSessionConfirmed ? getSessionId() : '',
+    consentRefreshRequired: state.consentRefreshRequired === true
+  };
+}
+
+export function liveMeetingAvailable() {
+  const context = liveMeetingContext();
+  return context.eligible
+    && context.configured
+    && Boolean(context.sessionId)
+    && isLiveVoiceSupported()
+    && !context.consentRefreshRequired;
+}
+
+export function liveMeetingUnavailableReason() {
+  const context = liveMeetingContext();
+  if (!isLiveVoiceSupported()) return 'unsupported-browser';
+  if (!context.eligible || !context.configured) return 'service-off';
+  if (!context.sessionId) return 'no-session';
+  if (context.consentRefreshRequired) return 'consent-refresh';
+  return '';
+}
+
+export function liveMeetingUnavailableDetail() {
+  const context = liveMeetingContext();
+  const bootstrap = state.bootstrap || {};
+  return {
+    reason: liveMeetingUnavailableReason(),
+    journeyEnabled: bootstrap.enabled === true,
+    realtimeFlagEnabled: bootstrap.voiceRealtimeEnabled === true,
+    cohort: String(bootstrap.cohort || ''),
+    cohortMatches: String(bootstrap.cohort || '').toLowerCase() === ADVISER_TEST_COHORT,
+    noticesConfigured: context.configured,
+    browserSupported: isLiveVoiceSupported(),
+    serverSessionConfirmed: Boolean(context.sessionId),
+    consentRefreshRequired: context.consentRefreshRequired === true
+  };
+}
+
+async function withdrawLiveVoiceConsent({
+  endMeeting = async () => {},
+  afterWithdraw = () => {},
+  onVoicePayload = () => {},
+  onToast = () => {},
+  onSessionUnavailable = () => false
+} = {}) {
+  const context = liveMeetingContext();
+  if (!context.sessionId || getRealtimeVoiceConsent()?.granted !== true) return;
+  const button = document.getElementById('withdrawRealtimeVoiceConsentButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Turning off…';
+  }
+  await endMeeting();
+  try {
+    const payload = await updateRealtimeVoiceConsent(context.sessionId, {
+      granted: false,
+      noticeId: context.noticeId,
+      policyVersion: context.policyVersion,
+      privacyNoticeUrl: context.privacyNoticeUrl
+    });
+    mergeVoicePayload(payload);
+    onVoicePayload(payload);
+    afterWithdraw();
+    onToast('Live voice is off for this session.');
+  } catch (error) {
+    if (onSessionUnavailable(error)) return;
+    onToast(error instanceof Error ? error.message : 'Live voice could not be turned off.', { error: true });
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Stop Live voice';
+    }
+  }
 }
 
 /**
@@ -44,16 +135,26 @@ export function resolveVoiceLane(bootstrap) {
  * lane behaviour: opening a panel, dimming the page and restoring focus works
  * the same whoever is talking.
  */
-class LiveVoiceLaneAdapter {
+export class LiveVoiceLaneAdapter {
   constructor(options) {
-    this.controller = createLiveVoiceController(options);
     this.root = options?.root || null;
     this.onVoicePayload = options?.onVoicePayload || (() => {});
     this.onToast = options?.onToast || (() => {});
     this.onSessionUnavailable = options?.onSessionUnavailable || (() => false);
+    this.onFailure = options?.onFailure || (() => {});
+    this.controller = createLiveVoiceController({
+      ...options,
+      onFailure: (failure) => this.handleFailure(failure)
+    });
     this.bound = false;
     this.expanded = false;
     this.lastFocusedElement = null;
+  }
+
+  handleFailure(failure = {}) {
+    this.collapseCompanion({ restoreFocus: false });
+    if (this.root) this.root.hidden = true;
+    this.onFailure(failure);
   }
 
   element(id) {
@@ -113,8 +214,17 @@ class LiveVoiceLaneAdapter {
     }
   }
 
-  sync() {
-    const shouldShow = realtimeMeetingAvailable();
+  sync(currentState) {
+    if (!this.isLive()) {
+      const selectedTurns = currentState?.selectedRealtimeMeeting?.turns;
+      const savedTurns = Array.isArray(selectedTurns) && selectedTurns.length > 0
+        ? selectedTurns
+        : currentState?.realtimeTurns;
+      if (Array.isArray(savedTurns) && savedTurns.length > 0) {
+        this.controller.replaceTranscript(savedTurns);
+      }
+    }
+    const shouldShow = liveMeetingAvailable();
     if (this.root) this.root.hidden = !shouldShow;
     if (!shouldShow && this.isLive()) void this.end({ reason: 'navigation' });
     if (!shouldShow && this.expanded) this.collapseCompanion({ restoreFocus: false });
@@ -124,18 +234,16 @@ class LiveVoiceLaneAdapter {
     return this.controller.active === true;
   }
 
-  // Identical gates for both lanes — see realtime_voice.js. They read session
-  // and bootstrap state only, so there is nothing lane-shaped to fork here.
   isMeetingAvailable() {
-    return realtimeMeetingAvailable();
+    return liveMeetingAvailable();
   }
 
   meetingUnavailableReason() {
-    return realtimeMeetingUnavailableReason();
+    return liveMeetingUnavailableReason();
   }
 
   meetingUnavailableDetail() {
-    return realtimeMeetingUnavailableDetail();
+    return liveMeetingUnavailableDetail();
   }
 
   async end({ reason = 'user' } = {}) {
@@ -166,11 +274,11 @@ class LiveVoiceLaneAdapter {
   }
 
   async withdrawConsent() {
-    return withdrawRealtimeVoiceConsent({
+    return withdrawLiveVoiceConsent({
       endMeeting: () => this.end({ reason: 'consent_withdrawn' }),
       afterWithdraw: () => {
         this.collapseCompanion({ restoreFocus: false });
-        this.controller.setPhase('off', 'Live voice is off. Short voice and typing remain available.');
+        this.controller.setPhase('off', 'Live voice is off. You can continue by typing.');
       },
       onVoicePayload: this.onVoicePayload,
       onToast: this.onToast,
@@ -178,25 +286,12 @@ class LiveVoiceLaneAdapter {
     });
   }
 
-  /**
-   * Worker-composed speech is a v1 concept. In this lane the model speaks
-   * directly over WebRTC, so there is never a payload to play.
-   */
-  playWorkerSpeechFromPayload() {}
-
   acceptSessionPayload(payload) {
     return this.controller.acceptSessionPayload?.(payload);
   }
 }
 
-/**
- * Build the controller for whichever lane this deployment runs.
- *
- * The v2 controller is returned as-is: it already answers every call site, and
- * wrapping it would only add a layer to step through when something breaks.
- */
-export function createVoiceLaneController({ lane, ...options } = {}) {
-  return lane === LIVE_LANE
-    ? new LiveVoiceLaneAdapter(options)
-    : createRealtimeVoiceController(options);
+/** Build the one and only active browser call controller. */
+export function createLiveVoiceLaneController(options = {}) {
+  return new LiveVoiceLaneAdapter(options);
 }

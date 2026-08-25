@@ -1,5 +1,7 @@
 /**
  * ConsumerLiveSession — the live conversational lane's Durable Object.
+ * This is the only active call session. Every v1/v2 or "controlled" reference
+ * below describes archived history; it is never an alternative or fallback.
  *
  * WHAT IS ABSENT IS THE POINT.
  *
@@ -82,6 +84,24 @@ const MAX_ASSISTANT_TRANSCRIPT = 2_400;
 // headroom for cancelled/correction responses while making every transient
 // association structure explicitly bounded.
 const MAX_LIVE_TURN_LEDGER_ENTRIES = 64;
+
+/** A finalized typed message echoed by the provider's sideband. */
+export function typedClientTurnFromEvent(event) {
+  const item = event?.item;
+  if (String(event?.type || '') !== 'conversation.item.created'
+    || String(item?.type || '') !== 'message'
+    || String(item?.role || '') !== 'user') return null;
+  const content = Array.isArray(item.content) ? item.content : [];
+  const transcript = content
+    .filter((part) => ['input_text', 'text'].includes(String(part?.type || '')))
+    .map((part) => String(part?.text || ''))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 4_000);
+  const itemId = String(item.id || '').slice(0, 200);
+  return transcript && itemId ? { itemId, transcript } : null;
+}
 
 /**
  * How many bounded reviews one uncovered occurrence may have before the
@@ -627,6 +647,25 @@ export class ConsumerLiveSession {
       return this.markClientTranscriptionUnavailable(event);
     }
 
+    // Typing is an input method inside this live call, not a second lane. The
+    // provider echoes the browser-created user item to this authenticated
+    // sideband before it creates the response, so the same persistence,
+    // evidence and planning path used by a finalized audio transcript applies.
+    if (type === 'conversation.item.created') {
+      const typedTurn = typedClientTurnFromEvent(event);
+      if (!typedTurn) return;
+      this.turnFinalAt = Date.now();
+      this.firstOutputRecorded = false;
+      const turn = this.registerStoppedClientTurn({ item_id: typedTurn.itemId });
+      this.pendingClientTranscription = turn?.status === 'pending';
+      this.pendingClientTranscriptionUnavailable = !turn;
+      return this.handleClientTurn({
+        item_id: typedTurn.itemId,
+        transcript: typedTurn.transcript,
+        typed: true
+      });
+    }
+
     if (type === 'response.created') {
       this.inResponse = true;
       const context = this.bindResponseContext(String(event.response?.id || ''));
@@ -752,10 +791,10 @@ export class ConsumerLiveSession {
       leaseId: this.meta.leaseId,
       direction: 'server',
       eventType: 'live.client.turn',
-      payload: { itemId }
+      payload: { itemId, inputMode: event.typed === true ? 'text' : 'audio' }
     }).catch(() => {});
 
-    await this.meterTranscription(event);
+    if (event.typed !== true) await this.meterTranscription(event);
     await this.touch();
     await this.drainDeferredEvidenceTools(itemId, transcript);
     this.scheduleReviewsForClientTurn(itemId, transcript);

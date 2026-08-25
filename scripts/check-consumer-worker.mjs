@@ -21,17 +21,14 @@ import {
   createAdvisorConsumerInvite,
   isAdvisorProtectedPreviewConfig,
   isAdvisorRealtimePreviewConfig,
-  isAdvisorRulesOnlyPreviewConfig,
-  isAdvisorVoicePreviewConfig
+  isAdvisorRulesOnlyPreviewConfig
 } from '../worker/src/consumer/router.js';
 import { validateConsumerDeploymentBootstrap } from './check-consumer-live-deployment.mjs';
 import {
   assertBetaBootstrap,
   assertConsumerSeesNoFigures,
-  assertLedgerAccrued,
   buildProposedCredential,
-  paidRealtimeInfrastructureProofEnabled,
-  paidVoiceProviderSmokeEnabled,
+  paidRealtimeInfrastructureProofEnabled
 } from './check-consumer-live-advisor-bridge.mjs';
 import { validatePlanSecurityHeaders } from './check-consumer-static-headers.mjs';
 import {
@@ -129,14 +126,13 @@ assert.match(routerSource, /verifyConsumerInvite\(provided, env, config\)/);
 assert.match(routerSource, /createSessionRecord\(env, credential, consent, config, inviteClaims\)/);
 assert.match(routerSource, /createAdvisorConsumerInvite/);
 assert.match(routerSource, /mode:\s*'rules_only'/);
-assert.match(routerSource, /mode:\s*config\.realtimeEnabled/);
+assert.match(routerSource, /mode:\s*config\.liveVoiceEnabled/);
 assert.match(routerSource, /\? 'realtime_voice_rules_only'/);
-assert.match(routerSource, /config\.voiceEnabled/);
-assert.match(routerSource, /\? 'voice_assisted_rules_only'/);
+assert.doesNotMatch(routerSource, /\? 'voice_assisted_rules_only'/);
 assert.match(routerSource, /parsed\.origin === 'https:\/\/planeir\.ie'/);
 assert.match(routerSource, /\^\\\/plan/);
 assert.match(routerSource, /isAdvisorRulesOnlyPreviewConfig/);
-assert.match(routerSource, /isAdvisorVoicePreviewConfig/);
+assert.doesNotMatch(routerSource, /isAdvisorVoicePreviewConfig/);
 assert.match(routerSource, /isAdvisorProtectedPreviewConfig/);
 assert.match(routerSource, /config\?\.aiRequested !== true/);
 assert.match(routerSource, /config\?\.handoffRequested !== true/);
@@ -144,10 +140,11 @@ assert.match(routerSource, /config\?\.cohort === 'adviser_test'/);
 // The gate must compare against the shared constant, not a literal of its own.
 assert.match(routerSource, /allowedModules === APPROVED_CONSUMER_MODULE_KEY/);
 assert.match(routerSource, /config\.cohort === 'adviser_test' && !isAdvisorProtectedPreviewConfig\(config\)/);
-assert.ok(routerSource.includes('voice\\/(consent|transcriptions|speech)'));
-assert.match(routerSource, /voiceConsentIsCurrent/);
+assert.ok(!routerSource.includes('voice\\/(consent|transcriptions|speech)'),
+  'The removed bounded recorder routes must not be recognized.');
+assert.doesNotMatch(routerSource, /voiceConsentIsCurrent/);
 assert.match(routerSource, /describeConversationState\(profile, config\)/);
-assert.match(routerSource, /speakConsumerQuestion/);
+assert.doesNotMatch(routerSource, /speakConsumerQuestion/);
 assert.match(routerSource, /withdrawAiConsent/);
 assert.match(routerSource, /deleteSessionData/);
 assert.match(routerSource, /request\.method === 'DELETE'/);
@@ -362,7 +359,7 @@ assert.ok(
 );
 const activationEnv = {
   ...approvedRealtimeEnv,
-  CONSUMER_REALTIME_SESSIONS: {},
+  CONSUMER_LIVE_SESSIONS: {},
   CONSUMER_DB: {},
   CONSUMER_DATA_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString('base64url'),
   CONSUMER_RATE_LIMIT_HASH_KEY: Buffer.alloc(32, 23).toString('base64url'),
@@ -380,7 +377,8 @@ const activationEnv = {
   CONSUMER_SESSION_TTL_DAYS: '7',
   // What replaceTomlString writes when a protected dispatch sets
   // activate_realtime_adviser_canary=true with the paid proof.
-  CONSUMER_REALTIME_VOICE_ENABLED: 'true'
+  CONSUMER_REALTIME_VOICE_ENABLED: 'true',
+  CONSUMER_LIVE_VOICE_ENABLED: 'true'
 };
 assert.equal(
   publicConsumerConfig(getConsumerConfig(activationEnv)).flags.consumerRealtimeVoiceEnabled,
@@ -392,7 +390,7 @@ for (const [label, overrides] of [
   ['activation flag absent', { CONSUMER_REALTIME_VOICE_ENABLED: 'false' }],
   ['journey disabled', { CONSUMER_JOURNEY_ENABLED: 'false' }],
   ['provider key missing', { OPENAI_API_KEY: '' }],
-  ['durable object binding missing', { CONSUMER_REALTIME_SESSIONS: undefined }],
+  ['live durable object binding missing', { CONSUMER_LIVE_SESSIONS: undefined }],
   ['unapproved model', { CONSUMER_REALTIME_MODEL: 'gpt-realtime-9.9' }],
   ['notice id missing', { CONSUMER_REALTIME_NOTICE_ID: '' }]
 ]) {
@@ -436,7 +434,8 @@ assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUME
 assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true'\)/);
 assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true'\)/);
 assert.match(deployWorkflowSource, /CONSUMER_AI_INTAKE_ENABLED: 'false'/);
-assert.match(deployWorkflowSource, /CONSUMER_VOICE_ENABLED: betaEnabled \? 'true' : 'false'/);
+assert.match(deployWorkflowSource, /CONSUMER_VOICE_ENABLED: 'false'/);
+assert.doesNotMatch(deployWorkflowSource, /RUN_PAID_VOICE_PROVIDER_SMOKE|run_paid_voice_provider_smoke/);
 assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS: "5000"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_POLICY_VERSION: "consumer-adviser-handoff-v1"/);
@@ -453,14 +452,7 @@ assert.match(deployWorkflowSource, /check-consumer-live-deployment\.mjs/);
 assert.match(deployWorkflowSource, /check-consumer-live-advisor-bridge\.mjs/);
 assert.match(deployWorkflowSource, /check-consumer-static-headers\.mjs/);
 assert.match(deployWorkflowSource, /wrangler secret put OPENAI_API_KEY/);
-assert.match(
-  deployWorkflowSource,
-  /run_paid_voice_provider_smoke:[\s\S]{0,220}default:\s*false[\s\S]{0,80}type:\s*boolean/
-);
-assert.match(
-  deployWorkflowSource,
-  /RUN_PAID_VOICE_PROVIDER_SMOKE:\s*\$\{\{ github\.event_name == 'workflow_dispatch'.*inputs\.run_paid_voice_provider_smoke/
-);
+assert.doesNotMatch(deployWorkflowSource, /run_paid_voice_provider_smoke|RUN_PAID_VOICE_PROVIDER_SMOKE/);
 assert.match(
   deployWorkflowSource,
   /Install Realtime canary browser harness[\s\S]{0,120}if:\s*env\.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'[\s\S]{0,120}playwright-core@1\.61\.1/
@@ -479,16 +471,15 @@ assert.match(
 );
 assert.match(
   deployWorkflowSource,
-  /Roll back Realtime after a failed live canary proof[\s\S]{0,360}wrangler deploy --config wrangler\.bootstrap\.generated\.toml[\s\S]{0,180}CONSUMER_EXPECTED_DEPLOYMENT_MODE=voice_assisted_rules_only/
+  /Roll back Realtime after a failed live canary proof[\s\S]{0,360}wrangler deploy --config wrangler\.bootstrap\.generated\.toml[\s\S]{0,180}CONSUMER_EXPECTED_DEPLOYMENT_MODE=rules_only/
 );
 assert.match(
   deployWorkflowSource,
   /Remove generated deployment config[\s\S]{0,80}if:\s*always\(\)/
 );
 assert.match(deployWorkflowSource, /npm install --global wrangler@4\.110\.0/);
-assert.match(deployWorkflowSource, /CONSUMER_BETA_VOICE_SPEECH_MODEL: "tts-1-hd"/);
-assert.match(deployWorkflowSource, /CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS: "200"/);
-assert.match(deployWorkflowSource, /CONSUMER_EXPECTED_DEPLOYMENT_MODE="voice_assisted_rules_only"/);
+assert.doesNotMatch(deployWorkflowSource, /CONSUMER_BETA_VOICE_/);
+assert.match(deployWorkflowSource, /CONSUMER_EXPECTED_DEPLOYMENT_MODE="rules_only"/);
 assert.doesNotMatch(deployWorkflowSource, /vars\.CONSUMER_(?:AI_INTAKE|HANDOFF|PUBLIC_ACCESS)_ENABLED/);
 
 const releaseOrderMarkers = [
@@ -511,19 +502,14 @@ for (let index = 1; index < releaseOrderPositions.length; index += 1) {
     `The production release step is out of order: ${releaseOrderMarkers[index]}`
   );
 }
-const paidSpeechSmokePosition = liveAdvisorBridgeSource.indexOf('/voice/speech`');
-const paidTranscriptionSmokePosition = liveAdvisorBridgeSource.indexOf('/voice/transcriptions`');
+const liveProofPosition = liveAdvisorBridgeSource.indexOf('runRealtimeInfrastructureProof({');
 const syntheticCleanupPosition = liveAdvisorBridgeSource.indexOf('} finally {');
-assert.ok(paidSpeechSmokePosition >= 0, 'The opt-in paid smoke must call server-selected speech.');
+assert.ok(liveProofPosition >= 0, 'The opt-in paid smoke must prove the active live call.');
+assert.doesNotMatch(liveAdvisorBridgeSource, /\/voice\/(?:consent|speech|transcriptions)|requestRawAudioJsonOnce/,
+  'Deployment verification must never call a removed bounded-voice route.');
 assert.ok(
-  paidTranscriptionSmokePosition > paidSpeechSmokePosition,
-  'The opt-in paid smoke must pass server speech through transcription.'
-);
-assert.match(liveAdvisorBridgeSource, /requestRawAudioJsonOnce/);
-assert.doesNotMatch(liveAdvisorBridgeSource, /requestMultipartJsonOnce|transcriptionForm/);
-assert.ok(
-  syntheticCleanupPosition > paidTranscriptionSmokePosition,
-  'Synthetic-session cleanup must remain in finally after the paid provider round trip.'
+  syntheticCleanupPosition > liveProofPosition,
+  'Synthetic-session cleanup must remain in finally after the live call proof.'
 );
 assert.match(
   liveAdvisorBridgeSource.slice(syntheticCleanupPosition),
@@ -545,7 +531,6 @@ for (const provenBoundary of [
   'sidebandConnected',
   'readOnlyToolSucceeded',
   'directProviderAudioAttached',
-  'initialWelcomeSucceeded',
   // The live lane proves its own activation and transport instead of a
   // scripted welcome: nothing in that lane forces the model to speak first.
   'liveLaneActivated',
@@ -557,11 +542,12 @@ for (const provenBoundary of [
 
 assert.match(realtimeInfrastructureProofSource, /await import\('playwright-core'\)/);
 assert.match(realtimeInfrastructureProofSource, /--use-fake-device-for-media-stream/);
-assert.match(realtimeInfrastructureProofSource, /controlledSpeechPromise/);
-assert.match(realtimeInfrastructureProofSource, /x-realtime-speech-id/);
-assert.match(realtimeInfrastructureProofSource, /audio\.srcObject === null/);
-assert.match(realtimeInfrastructureProofSource, /controlledSpeechPlayed/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /controlledSpeechPromise/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /x-realtime-speech-id/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /audio\.srcObject === null/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /controlledSpeechPlayed/);
 assert.match(realtimeInfrastructureProofSource, /srcObject instanceof MediaStream/);
+assert.match(realtimeInfrastructureProofSource, /directProviderAudioAttached:\s*true/);
 assert.doesNotMatch(realtimeInfrastructureProofSource, /new RTCPeerConnection\(\)/);
 assert.doesNotMatch(realtimeInfrastructureProofSource, /createDataChannel\('oai-events'\)/);
 assert.match(realtimeInfrastructureProofSource, /await launcher\.click\(\)/);
@@ -578,9 +564,9 @@ assert.match(
 assert.match(realtimeInfrastructureProofSource, /The Realtime call route did not converge after bounded propagation retries/);
 assert.match(realtimeInfrastructureProofSource, /errorPayload\?\.error\?\.code/);
 assert.match(realtimeInfrastructureProofSource, /x-realtime-lease-id/);
-assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.sidebandConnected, true/);
-assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.readOnlyToolSucceeded, true/);
-assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.initialWelcomeSucceeded, true/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.liveSidebandConnected, true/);
+assert.match(realtimeInfrastructureProofSource, /assert\.equal\(proof\.readOnlyToolSucceeded, false/);
+assert.doesNotMatch(realtimeInfrastructureProofSource, /proof\.initialWelcomeSucceeded/);
 // The lane is resolved, never inferred. The collapse that folded `live` into
 // `v1` and hung run #295 on a v1-only /speech wait must not come back.
 assert.doesNotMatch(
@@ -715,7 +701,7 @@ const betaDeploymentBootstrap = {
   flags: {
     consumerJourneyEnabled: true,
     consumerAiIntakeEnabled: false,
-    consumerVoiceEnabled: true,
+    consumerVoiceEnabled: false,
     consumerModuleRoutingEnabled: true,
     consumerHumanHandoffEnabled: false
   },
@@ -728,29 +714,15 @@ const betaDeploymentBootstrap = {
   privacyNoticeUrl: betaDeploymentPolicy.privacyNoticeUrl,
   limits: { sessionTtlDays: betaDeploymentPolicy.sessionTtlDays },
   ai: { configured: false, noticeId: betaDeploymentPolicy.aiNoticeId },
-  voice: {
-    enabled: true,
-    noticeId: betaDeploymentPolicy.voiceNoticeId,
-    dataPolicyId: betaDeploymentPolicy.voiceDataPolicyId,
-    policyVersion: betaDeploymentPolicy.consentPolicyVersion,
-    privacyNoticeUrl: betaDeploymentPolicy.privacyNoticeUrl,
-    transcriptionModel: betaDeploymentPolicy.voiceTranscriptionModel,
-    speechModel: betaDeploymentPolicy.voiceSpeechModel,
-    voice: betaDeploymentPolicy.voiceName,
-    pricingVersion: betaDeploymentPolicy.voicePricingVersion
-    // No spend figures: the public bootstrap must not carry them. They are
-    // verified against the protected deployment-envelope route instead, and the
-    // real serialiser is exercised end to end by check-consumer-bootstrap-contract.
-  },
+  voice: { enabled: false, availability: { available: false, status: 'removed' } },
   handoff: { enabled: false },
   modules: [{ id: 'college_funding' }, { id: 'house_purchase' }, { id: 'liquidity_analysis' }, { id: 'loan_analysis' }, { id: 'mortgage_analysis' }, { id: 'pension_projection' }, { id: 'personal_balance_sheet' }]
 };
 assert.equal(validateConsumerDeploymentBootstrap(betaDeploymentBootstrap, {
-  mode: 'voice_assisted_rules_only',
+  mode: 'rules_only',
   expectedPolicy: betaDeploymentPolicy
 }), true);
-assert.doesNotThrow(() => assertBetaBootstrap(betaDeploymentBootstrap,
-  { expectedVoiceNoticeId: betaDeploymentPolicy.voiceNoticeId }));
+assert.doesNotThrow(() => assertBetaBootstrap(betaDeploymentBootstrap));
 
 const realtimeDeploymentPolicy = {
   ...betaDeploymentPolicy,
@@ -760,8 +732,10 @@ const realtimeDeploymentPolicy = {
   realtimeVoice: 'marin',
   realtimeReasoningEffort: 'low',
   realtimeTranscriptionModel: 'gpt-4o-mini-transcribe',
-  realtimePromptVersion: 'consumer-realtime-orchestrator-v9',
-  realtimeToolsetVersion: 'consumer-realtime-tools-v7',
+  realtimePromptVersion: 'planeir-live-conversation-v9',
+  realtimeToolsetVersion: 'planeir-live-tools-v1',
+  livePromptVersion: 'planeir-live-conversation-v9',
+  liveToolsetVersion: 'planeir-live-tools-v1',
   realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   realtimeSessionBudgetMicroEur: 10_000_000,
   realtimeDailyBudgetMicroEur: 50_000_000
@@ -775,6 +749,7 @@ const realtimeDeploymentBootstrap = {
   },
   realtimeVoice: {
     enabled: true,
+    conversationVersion: 'live',
     noticeId: realtimeDeploymentPolicy.realtimeNoticeId,
     dataPolicyId: realtimeDeploymentPolicy.realtimeDataPolicyId,
     policyVersion: realtimeDeploymentPolicy.consentPolicyVersion,
@@ -802,12 +777,8 @@ assert.equal(validateConsumerDeploymentBootstrap(realtimeDeploymentBootstrap, {
   expectedPolicy: realtimeDeploymentPolicy
 }), true);
 assert.doesNotThrow(() => assertBetaBootstrap(realtimeDeploymentBootstrap,
-  { realtimeExpected: true, expectedVoiceNoticeId: betaDeploymentPolicy.voiceNoticeId }));
+  { realtimeExpected: true }));
 assert.match(buildProposedCredential(), /^cs_[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{43}$/);
-assert.equal(paidVoiceProviderSmokeEnabled(undefined), false);
-assert.equal(paidVoiceProviderSmokeEnabled('false'), false);
-assert.equal(paidVoiceProviderSmokeEnabled('true'), true);
-assert.throws(() => paidVoiceProviderSmokeEnabled('yes'));
 assert.equal(paidRealtimeInfrastructureProofEnabled(undefined), false);
 assert.equal(paidRealtimeInfrastructureProofEnabled('false'), false);
 assert.equal(paidRealtimeInfrastructureProofEnabled('true'), true);
@@ -828,16 +799,6 @@ for (const leaked of [
     'a spend figure on a consumer surface must fail the smoke check');
 }
 assert.throws(() => assertConsumerSeesNoFigures(null, 'The voice allowance'));
-
-assert.doesNotThrow(() => assertLedgerAccrued(
-  { providerCostLimitMicroEur: 2_000_000, spentMicroEur: 100_000 }, 100_000, 2_000_000
-));
-assert.throws(() => assertLedgerAccrued(
-  { providerCostLimitMicroEur: 2_000_000, spentMicroEur: 0 }, 100_000, 2_000_000
-), 'a ledger that recorded no spend must fail');
-assert.throws(() => assertLedgerAccrued(
-  { providerCostLimitMicroEur: 500_000, spentMicroEur: 100_000 }, 100_000, 2_000_000
-), 'a session created with the wrong ceiling must fail');
 
 for (const unsafePayload of [
   { ...betaDeploymentBootstrap, access: { publicAccessEnabled: true, inviteRequired: false } },
@@ -1287,10 +1248,11 @@ const voicePreviewEnv = {
   CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS: '10'
 };
 const voicePreviewConfig = getConsumerConfig(voicePreviewEnv);
-assert.equal(isAdvisorRulesOnlyPreviewConfig(voicePreviewConfig), false);
-assert.equal(isAdvisorVoicePreviewConfig(voicePreviewConfig), true);
+assert.equal(isAdvisorRulesOnlyPreviewConfig(voicePreviewConfig), true,
+  'Legacy bounded-voice settings must not activate a call lane; this remains a typed rules-only preview.');
 assert.equal(isAdvisorProtectedPreviewConfig(voicePreviewConfig), true);
-assert.equal(voicePreviewConfig.providerCostLimitEurMicros, 2_000_000);
+assert.equal(voicePreviewConfig.providerCostLimitEurMicros, 0,
+  'Stale bounded-voice variables must not open a provider spend envelope.');
 for (const [field, malformedValue] of [
   ['CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS', '200oops'],
   ['CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS', '200.9'],
@@ -1303,13 +1265,14 @@ for (const [field, malformedValue] of [
 const voicePreviewInvite = await createAdvisorConsumerInvite(voicePreviewEnv, {
   now: Date.UTC(2026, 6, 13, 12, 0, 0)
 });
-assert.equal(voicePreviewInvite.mode, 'voice_assisted_rules_only');
+assert.equal(voicePreviewInvite.mode, 'rules_only');
 
 const realtimeVoicePreviewConfig = {
   ...voicePreviewConfig,
   realtimeRequested: true,
   realtimeConfigured: true,
   realtimeEnabled: true,
+  liveVoiceEnabled: true,
   handoffRequested: false,
   handoffConfigured: false,
   handoffEnabled: false,
@@ -1319,8 +1282,8 @@ const realtimeVoicePreviewConfig = {
   realtimeVoice: 'marin',
   realtimeReasoningEffort: 'low',
   realtimeTranscriptionModel: 'gpt-4o-mini-transcribe',
-  realtimePromptVersion: 'consumer-realtime-orchestrator-v9',
-  realtimeToolsetVersion: 'consumer-realtime-tools-v7',
+  realtimePromptVersion: 'planeir-live-conversation-v9',
+  realtimeToolsetVersion: 'planeir-live-tools-v1',
   realtimePricingVersion: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   realtimeSpeechModel: 'gpt-4o-mini-tts',
   realtimeSpeechVoice: 'marin',
@@ -1347,14 +1310,10 @@ assert.equal(isAdvisorRealtimePreviewConfig({
   realtimeMaxDurationSeconds: 600,
   realtimeIdleTimeoutSeconds: 90
 }), false);
-assert.equal(isAdvisorVoicePreviewConfig(realtimeVoicePreviewConfig), false);
 assert.equal(isAdvisorRealtimePreviewConfig(realtimeVoicePreviewConfig), true);
 assert.equal(isAdvisorProtectedPreviewConfig(realtimeVoicePreviewConfig), true);
-assert.match(
-  routerSource,
-  /isAdvisorVoicePreviewConfig\(config\) \|\| isAdvisorRealtimePreviewConfig\(config\)/,
-  'The retained bounded voice fallback must remain authorized inside the approved Realtime canary.'
-);
+assert.doesNotMatch(routerSource, /bounded voice fallback|isAdvisorVoicePreviewConfig/,
+  'The removed bounded recorder must never be authorized as a canary fallback.');
 await assert.rejects(() => createAdvisorConsumerInvite({
   ...previewEnv,
   CONSUMER_JOURNEY_ENABLED: 'false'

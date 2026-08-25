@@ -53,9 +53,7 @@ const DEPLOY_ENVIRONMENT = Object.freeze({
   CONSUMER_CONSENT_MANIFEST_ID: 'consumer-consent-v1',
   CONSUMER_ANALYSIS_NOTICE_ID: 'analysis-preview-v1',
   CONSUMER_AI_NOTICE_ID: 'ai-preview-v1',
-  CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html',
-  CONSUMER_VOICE_NOTICE_ID: 'voice-openai-audio-adviser-test-v2',
-  CONSUMER_VOICE_DATA_POLICY_ID: 'openai-audio-adviser-test-v1'
+  CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html'
 });
 
 const key = (fill) => Buffer.alloc(32, fill).toString('base64url');
@@ -67,7 +65,7 @@ const RUNTIME_BINDINGS = Object.freeze({
   CONSUMER_INVITE_SIGNING_KEY: key(37),
   CONSUMER_DB: {},
   CONSUMER_SESSIONS: {},
-  CONSUMER_REALTIME_SESSIONS: {}
+  CONSUMER_LIVE_SESSIONS: {}
 });
 
 /** Exactly what the Worker's bootstrap route returns, for a given environment. */
@@ -111,6 +109,8 @@ function expectedPolicyFor(env) {
     realtimeTranscriptionModel: config.realtimeTranscriptionModel,
     realtimePromptVersion: config.realtimePromptVersion,
     realtimeToolsetVersion: config.realtimeToolsetVersion,
+    livePromptVersion: config.realtimePromptVersion,
+    liveToolsetVersion: config.realtimeToolsetVersion,
     realtimePricingVersion: config.realtimePricingVersion,
     realtimeSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur
   };
@@ -130,31 +130,13 @@ check('the realtime canary bootstrap satisfies the live deployment check', () =>
   );
 });
 
-// THE LIVE LANE IS VERIFIED AGAINST ITS OWN PROMPT AND TOOLSET.
-//
-// The deploy deliberately substitutes planeir-live-* into the realtime settings
-// when the live lane is on, so the lease records the prompt and the tool surface
-// that actually ran. The live check compared against the v2 orchestrator pair
-// regardless of lane, so a correct live deployment failed its own canary and was
-// rolled back -- the deployment was right and the proof was stale.
-check('the live lane is verified against its own prompt and toolset, not the v2 pair', () => {
-  const liveEnv = {
-    ...shippedConsumerEnv({ realtime: true }),
-    ...RUNTIME_BINDINGS,
-    CONSUMER_LIVE_VOICE_ENABLED: 'true',
-    CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v9',
-    CONSUMER_REALTIME_TOOLSET_VERSION: 'planeir-live-tools-v1'
-  };
+// The active lane is always verified against its own prompt and toolset.
+check('the live lane is verified against its own prompt and toolset', () => {
+  const liveEnv = { ...shippedConsumerEnv({ realtime: true }), ...RUNTIME_BINDINGS };
   const payload = serveBootstrap(liveEnv);
   assert.equal(payload.realtimeVoice.conversationVersion, 'live',
     'the fixture must actually be running the live lane');
-  const policy = {
-    ...expectedPolicyFor(liveEnv),
-    realtimePromptVersion: 'consumer-realtime-orchestrator-v9',
-    realtimeToolsetVersion: 'consumer-realtime-tools-v7',
-    livePromptVersion: 'planeir-live-conversation-v9',
-    liveToolsetVersion: 'planeir-live-tools-v1'
-  };
+  const policy = expectedPolicyFor(liveEnv);
   assert.equal(
     validateConsumerDeploymentBootstrap(payload, {
       mode: 'realtime_voice_rules_only',
@@ -163,26 +145,26 @@ check('the live lane is verified against its own prompt and toolset, not the v2 
     true,
     'a live deployment carrying the live pair must pass'
   );
-  // And the check still has teeth: the v2 pair on the live lane is wrong.
+  // And the check still has teeth: an archived controlled-lane prompt is wrong.
   assert.throws(
     () => validateConsumerDeploymentBootstrap(
       { ...payload, realtimeVoice: { ...payload.realtimeVoice, promptVersion: 'consumer-realtime-orchestrator-v9' } },
       { mode: 'realtime_voice_rules_only', expectedPolicy: policy }
     ),
     /promptVersion does not match/,
-    'the v2 prompt on the live lane must still fail'
+    'an archived controlled prompt on the live lane must still fail'
   );
 });
 
-/* ---------------------------------------------------- the voice beta */
+/* ----------------------------------------------- typed rules-only beta */
 
-const voiceEnv = { ...shippedConsumerEnv({ realtime: false }), ...RUNTIME_BINDINGS };
+const rulesOnlyEnv = { ...shippedConsumerEnv({ realtime: false }), ...RUNTIME_BINDINGS };
 
-check('the voice-only beta bootstrap satisfies the live deployment check', () => {
+check('the typed rules-only beta bootstrap satisfies the live deployment check', () => {
   assert.equal(
-    validateConsumerDeploymentBootstrap(serveBootstrap(voiceEnv), {
-      mode: 'voice_assisted_rules_only',
-      expectedPolicy: expectedPolicyFor(voiceEnv)
+    validateConsumerDeploymentBootstrap(serveBootstrap(rulesOnlyEnv), {
+      mode: 'rules_only',
+      expectedPolicy: expectedPolicyFor(rulesOnlyEnv)
     }),
     true
   );
@@ -220,7 +202,7 @@ const SPEND_FIELDS = Object.freeze([
 ]);
 
 check('the public bootstrap exposes no spend figure, in any mode', () => {
-  for (const [label, env] of [['realtime canary', realtimeEnv], ['voice beta', voiceEnv], ['dormant', sourceEnv]]) {
+  for (const [label, env] of [['realtime canary', realtimeEnv], ['typed beta', rulesOnlyEnv], ['dormant', sourceEnv]]) {
     const bootstrap = serveBootstrap(env);
     for (const block of ['voice', 'realtimeVoice']) {
       for (const field of SPEND_FIELDS) {
@@ -247,8 +229,7 @@ check('the public bootstrap exposes no spend figure, in any mode', () => {
 check('the live check reads no field the bootstrap leaves undefined', () => {
   const bootstrap = serveBootstrap(realtimeEnv);
   for (const [block, fields] of [
-    ['voice', ['enabled', 'noticeId', 'dataPolicyId', 'transcriptionModel', 'speechModel',
-      'voice', 'pricingVersion']],
+    ['voice', ['enabled', 'availability']],
     ['realtimeVoice', ['enabled', 'noticeId', 'dataPolicyId', 'model', 'voice', 'reasoningEffort',
       'transcriptionModel', 'promptVersion', 'toolsetVersion', 'pricingVersion',
       'maxDurationSeconds', 'idleTimeoutSeconds']]
@@ -295,7 +276,8 @@ await (async () => {
     true
   );
   // The figures the deploy gate exists to verify are genuinely present.
-  assert.equal(body.voice.sessionBudgetMicroEur, 2_000_000);
+  assert.equal(body.voice.enabled, false);
+  assert.equal(body.voice.sessionBudgetMicroEur, null);
   assert.equal(body.realtimeVoice.sessionBudgetMicroEur, 10_000_000);
   console.info('[BootstrapContract] PASS: deploy verification reads the live envelope with the header');
 })();
@@ -347,7 +329,7 @@ const sessionRowEnv = (row) => ({
   }
 });
 const LIVE_ROW = Object.freeze({
-  provider_cost_limit_eur_micros: 2_000_000,
+  provider_cost_limit_eur_micros: 10_000_000,
   spent_eur_micros: 0,
   known_actual_eur_micros: 0,
   reserved_or_unknown_eur_micros: 0,
@@ -378,7 +360,7 @@ await (async () => {
   );
   assert.equal(status, 200, JSON.stringify(body));
   // This is the figure deploy #278 could not find anywhere.
-  assert.equal(body.session.providerCostLimitMicroEur, 2_000_000);
+  assert.equal(body.session.providerCostLimitMicroEur, 10_000_000);
   assert.equal(body.session.spentMicroEur, 0);
   console.info('[BootstrapContract] PASS: the live session ceiling is readable with the credential');
 })();
@@ -422,22 +404,11 @@ check('the consumer never receives a spend figure, only availability', () => {
   for (const field of ['limitMicroEur,', 'spentMicroEur,', 'remainingMicroEur,']) {
     assert.ok(!body.includes(`  ${field}`), `voiceBudgetPayload must not return ${field}`);
   }
-  // The transcription route was the last surface still returning the raw budget.
-  // Scoped to that branch specifically: an identical line exists in the session
-  // state response, so a repo-wide match would pass even with this one broken.
-  const branchStart = routerSource.indexOf("if (route.kind === 'voice_transcriptions') {");
-  assert.ok(branchStart > 0, 'the transcription branch could not be located');
-  const branch = routerSource.slice(branchStart, routerSource.indexOf('const body = validateVoiceSpeechBody', branchStart));
-  assert.match(branch, /voiceAvailability: voiceBudgetPayload\(/,
-    'the transcription route must report availability instead of figures');
-  // Only the response statement itself. Destructuring the budget out is fine --
-  // required, in fact -- so the check is what gets SENT, not what is named.
-  const responded = branch.split('\n').find((line) => line.includes('return respond('));
-  assert.ok(responded, 'the transcription route must respond');
-  assert.doesNotMatch(responded, /[,{]\s*voiceBudget\s*[,}]/,
-    'the transcription route must not respond with the raw provider budget');
-  assert.doesNotMatch(responded, /respond\(result,/,
-    'the transcription route must not respond with the provider result verbatim');
+  assert.doesNotMatch(
+    routerSource,
+    /route\.kind === 'voice_(?:consent|transcriptions|speech)'|voice\\\/(?:consent\|transcriptions\|speech)/,
+    'The removed recorder must expose no consumer route at all.'
+  );
 });
 
 console.info(`\n[BootstrapContract] ${checks} assertions passed: the config that ships, through the `

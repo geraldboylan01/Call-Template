@@ -16,11 +16,6 @@ on:
         required: false
         default: false
         type: boolean
-      run_paid_voice_provider_smoke:
-        description: Run one paid TTS-to-transcription round trip after deployment
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -43,10 +38,9 @@ jobs:
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       WORKER_BASE_URL: "https://api.planeir.ie"
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
-      RUN_PAID_VOICE_PROVIDER_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_voice_provider_smoke == true && 'true' || 'false' }}
       RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_realtime_infrastructure_proof == true && 'true' || 'false' }}
       # Explicit source approval activates only the fixed adviser-test,
-      # signed-invite, voice-assisted rules-only mode. The protected override may disable it
+      # signed-invite, typed rules-only mode. The protected override may disable it
       # immediately; it can never activate a source-unapproved mode.
       CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"
       CONSUMER_ADVISER_TEST_BETA_OVERRIDE: ${{ vars.CONSUMER_ADVISER_TEST_BETA_OVERRIDE }}
@@ -65,23 +59,13 @@ jobs:
       # honors it when the currently deployed Worker already reports Realtime
       # enabled, and the OVERRIDE=false kill switch still wins.
       CONSUMER_REALTIME_KEEP_ACTIVE: ${{ vars.CONSUMER_REALTIME_KEEP_ACTIVE }}
-      # Independent v2 rollout switch. It is effective only while the adviser
-      # Realtime canary itself is active. The reviewed canary now defaults to
-      # direct Marin conversation; setting the protected variable to false is
-      # the immediate rollback to controlled v1 speech.
-      CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: ${{ vars.CONSUMER_REALTIME_CONVERSATION_V2_ENABLED || 'true' }}
-      # Spoken authorization is subordinate to both Realtime and conversational
-      # v2. It remains opt-in so visual confirmation is the immediate rollback.
-      CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: ${{ vars.CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED || 'false' }}
-      # The live conversational lane. Like v2 it is effective only while the
-      # adviser Realtime canary is active, but it is NOT derived from v2: the
-      # two are alternative conversation layers over the same lease, consent and
-      # cost infrastructure, and exactly one drives a given meeting.
-      #
-      # Unlike v2 this defaults to FALSE, not true. v2 has been through a paid
-      # canary; this lane has never run against real audio, so it stays off
-      # until a protected variable turns it on for a reviewed deployment.
-      CONSUMER_LIVE_VOICE_ENABLED: ${{ vars.CONSUMER_LIVE_VOICE_ENABLED || 'false' }}
+      # Legacy controlled-lane switches are pinned off. They remain in the
+      # Worker configuration only so historical deployments remain legible.
+      CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: "false"
+      CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: "false"
+      # Every enabled Realtime canary uses the one active live conversation
+      # lane. The generated config below sets this to the canary state.
+      CONSUMER_LIVE_VOICE_ENABLED: "true"
       # One shared rule across every transport: on means all transports offer
       # optional analyses and the three-analysis capacity decision, off means
       # none does. Canaried separately from the rest of the beta.
@@ -92,16 +76,6 @@ jobs:
       CONSUMER_BETA_CONSENT_MANIFEST_ID: "consumer-adviser-test-manifest-v1"
       CONSUMER_BETA_ANALYSIS_NOTICE_ID: "privacy-ack-adviser-test-v2"
       CONSUMER_BETA_AI_NOTICE_ID: "ai-adviser-test-v1"
-      CONSUMER_BETA_VOICE_NOTICE_ID: "voice-openai-audio-adviser-test-v2"
-      CONSUMER_BETA_VOICE_DATA_POLICY_ID: "openai-audio-adviser-test-v1"
-      CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe"
-      CONSUMER_BETA_VOICE_SPEECH_MODEL: "tts-1-hd"
-      CONSUMER_BETA_VOICE_NAME: "nova"
-      CONSUMER_BETA_VOICE_PRICING_VERSION: "openai-audio-eur-safety-2026-07-13-v2"
-      CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS: "200"
-      CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS: "2000"
-      CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: "10"
-      CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS: "10"
       CONSUMER_BETA_REALTIME_NOTICE_ID: "realtime-voice-openai-audio-adviser-test-v3"
       CONSUMER_BETA_REALTIME_DATA_POLICY_ID: "openai-realtime-audio-adviser-test-v2"
       CONSUMER_BETA_REALTIME_MODEL: "gpt-realtime-2.1"
@@ -119,12 +93,8 @@ jobs:
       # also fails closed to legacy on any value it does not recognise.
       CONSUMER_BETA_PLANNER_RECONCILIATION_MODE: ${{ vars.CONSUMER_PLANNER_RECONCILIATION_MODE || 'legacy' }}
       CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION: "planning-reconciliation-v2"
-      CONSUMER_BETA_REALTIME_PROMPT_VERSION: "consumer-realtime-orchestrator-v9"
-      CONSUMER_BETA_REALTIME_TOOLSET_VERSION: "consumer-realtime-tools-v7"
-      # The live lane runs a different prompt and a different toolset, and the
-      # lease row records whichever pair the deployment is configured with. Left
-      # on the v2 values a live meeting would file itself under a prompt it
-      # never ran and a seven-tool surface it does not have.
+      # The one active live prompt/tool pair. The lease records these exact
+      # versions; there is no controlled-lane alternative in deployment.
       CONSUMER_BETA_LIVE_PROMPT_VERSION: "planeir-live-conversation-v9"
       CONSUMER_BETA_LIVE_TOOLSET_VERSION: "planeir-live-tools-v1"
       CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
@@ -205,10 +175,6 @@ jobs:
           case "$CONSUMER_REALTIME_KEEP_ACTIVE" in
             ""|false|true) ;;
             *) echo "CONSUMER_REALTIME_KEEP_ACTIVE must be empty, true, or false"; exit 1 ;;
-          esac
-          case "$RUN_PAID_VOICE_PROVIDER_SMOKE" in
-            false|true) ;;
-            *) echo "RUN_PAID_VOICE_PROVIDER_SMOKE must be exactly true or false"; exit 1 ;;
           esac
           case "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" in
             false|true) ;;
@@ -309,10 +275,6 @@ jobs:
               exit 1
             fi
           fi
-          if [[ "$RUN_PAID_VOICE_PROVIDER_SMOKE" == "true" && "$effective_beta" != "true" ]]; then
-            echo "The paid voice-provider smoke requires the protected adviser-test voice beta"
-            exit 1
-          fi
           if [[ "$effective_realtime" == "true" && "$realtime_standing_preserved" != "true" && "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" != "true" ]]; then
             echo "Realtime activation requires the paid SDP, sideband-tool, and server-hangup proof in the same manual deployment"
             exit 1
@@ -321,17 +283,13 @@ jobs:
             echo "The paid Realtime infrastructure proof requires explicit canary activation in the same manual deployment"
             exit 1
           fi
-          if [[ "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" == "true" && "$RUN_PAID_VOICE_PROVIDER_SMOKE" == "true" ]]; then
-            echo "Run the Realtime infrastructure proof and the legacy bounded-voice provider smoke in separate disposable sessions"
-            exit 1
-          fi
           echo "CONSUMER_ADVISER_INVITE_BETA_ENABLED=$effective_beta" >> "$GITHUB_ENV"
           echo "CONSUMER_REALTIME_ADVISER_CANARY_ENABLED=$effective_realtime" >> "$GITHUB_ENV"
           echo "CONSUMER_REALTIME_STANDING_PRESERVED=$realtime_standing_preserved" >> "$GITHUB_ENV"
           if [[ "$effective_realtime" == "true" ]]; then
             echo "Effective consumer deployment mode: adviser-test-realtime-orchestrated-rules-only"
           elif [[ "$effective_beta" == "true" ]]; then
-            echo "Effective consumer deployment mode: adviser-test-voice-assisted-rules-only"
+            echo "Effective consumer deployment mode: adviser-test-rules-only"
           else
             echo "Effective consumer deployment mode: dormant"
           fi
@@ -446,18 +404,17 @@ jobs:
           }
           const realtimeEnabled = realtimeToggle === 'true';
           const realtimeV2Toggle = envValue('CONSUMER_REALTIME_CONVERSATION_V2_ENABLED');
-          if (!['false', 'true'].includes(realtimeV2Toggle)) {
-            throw new Error('CONSUMER_REALTIME_CONVERSATION_V2_ENABLED must be exactly true or false.');
+          if (realtimeV2Toggle !== 'false') {
+            throw new Error('CONSUMER_REALTIME_CONVERSATION_V2_ENABLED is legacy and must remain false.');
           }
-          const realtimeV2Enabled = realtimeEnabled && realtimeV2Toggle === 'true';
+          const realtimeV2Enabled = false;
           const spokenCompletionToggle = envValue('CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED');
-          if (!['false', 'true'].includes(spokenCompletionToggle)) {
-            throw new Error('CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED must be exactly true or false.');
+          if (spokenCompletionToggle !== 'false') {
+            throw new Error('CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED is legacy and must remain false.');
           }
-          const spokenCompletionEnabled = realtimeV2Enabled && spokenCompletionToggle === 'true';
-          const liveVoiceToggle = envValue('CONSUMER_LIVE_VOICE_ENABLED');
-          if (!['false', 'true'].includes(liveVoiceToggle)) {
-            throw new Error('CONSUMER_LIVE_VOICE_ENABLED must be exactly true or false.');
+          const spokenCompletionEnabled = false;
+          if (envValue('CONSUMER_LIVE_VOICE_ENABLED') !== 'true') {
+            throw new Error('CONSUMER_LIVE_VOICE_ENABLED must remain true so Realtime cannot fall back to the archived lane.');
           }
           // The background reconciler. Validated here rather than left to the
           // Worker's own fallback so a typo is a failed deployment instead of a
@@ -469,11 +426,8 @@ jobs:
           if (!isPlannerReconciliationMode(reconciliationMode)) {
             throw new Error('CONSUMER_PLANNER_RECONCILIATION_MODE must be legacy, shadow or apply.');
           }
-          // Gated on the Realtime canary, never on v2. This mirrors
-          // worker/src/consumer/config.js, where the live lane depends on
-          // realtime being active but is deliberately independent of the v1/v2
-          // switch, so turning one on can never imply the other.
-          const liveVoiceEnabled = realtimeEnabled && liveVoiceToggle === 'true';
+          // A Realtime deployment has exactly one conversation implementation.
+          const liveVoiceEnabled = realtimeEnabled;
           // The reconciler reads the transcript and the notes a live turn
           // produced, so it cannot be more active than the lane that produces
           // them -- and that is the lane as ACTUALLY RESOLVED, not the requested
@@ -484,7 +438,7 @@ jobs:
           const plannerReconciliationMode = resolvePlannerReconciliationMode({
             requestedMode: reconciliationMode,
             realtimeEnabled,
-            liveVoiceRequested: liveVoiceToggle === 'true'
+            liveVoiceRequested: liveVoiceEnabled
           });
           const moduleOffersToggle = envValue('CONSUMER_MODULE_OFFERS_ENABLED');
           if (!['true', 'false'].includes(moduleOffersToggle)) {
@@ -666,26 +620,6 @@ jobs:
               generatedSource = replaceTomlString(generatedSource, name, value);
             }
 
-            const fixedVoiceValues = {
-              CONSUMER_VOICE_NOTICE_ID: ['CONSUMER_BETA_VOICE_NOTICE_ID', 'voice-openai-audio-adviser-test-v2'],
-              CONSUMER_VOICE_DATA_POLICY_ID: ['CONSUMER_BETA_VOICE_DATA_POLICY_ID', 'openai-audio-adviser-test-v1'],
-              CONSUMER_VOICE_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_VOICE_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
-              CONSUMER_VOICE_SPEECH_MODEL: ['CONSUMER_BETA_VOICE_SPEECH_MODEL', 'tts-1-hd'],
-              CONSUMER_VOICE_NAME: ['CONSUMER_BETA_VOICE_NAME', 'nova'],
-              CONSUMER_VOICE_PRICING_VERSION: ['CONSUMER_BETA_VOICE_PRICING_VERSION', 'openai-audio-eur-safety-2026-07-13-v2'],
-              CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS: ['CONSUMER_BETA_VOICE_SESSION_BUDGET_EUR_CENTS', '200'],
-              CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS: ['CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS', '2000'],
-              CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS: ['CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS', '10'],
-              CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS: ['CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS', '10']
-            };
-            for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedVoiceValues)) {
-              const value = envValue(sourceName);
-              if (value !== approvedValue) {
-                throw new Error(`${sourceName} must remain exactly ${approvedValue} for the protected adviser-test voice beta.`);
-              }
-              generatedSource = replaceTomlString(generatedSource, runtimeName, value);
-            }
-
             const privacyNoticeUrl = envValue('CONSUMER_BETA_PRIVACY_NOTICE_URL');
             let parsedPrivacyUrl;
             try {
@@ -721,7 +655,7 @@ jobs:
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_COHORT', 'adviser_test');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_INVITE_MAX_TTL_HOURS', '24');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true');
-            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_VOICE_ENABLED', 'true');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_VOICE_ENABLED', 'false');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true');
             generatedSource = replaceTomlString(generatedSource, 'CONSUMER_GOAL_ROUTING_ENABLED', 'true');
             generatedSource = replaceTomlString(
@@ -740,8 +674,8 @@ jobs:
                 CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
                 CONSUMER_REALTIME_PLANNER_MODEL: ['CONSUMER_BETA_REALTIME_PLANNER_MODEL', 'gpt-5.6-luna'],
                 CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION: ['CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION', 'planning-reconciliation-v2'],
-                CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_REALTIME_PROMPT_VERSION', 'consumer-realtime-orchestrator-v9'],
-                CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_REALTIME_TOOLSET_VERSION', 'consumer-realtime-tools-v7'],
+                CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v9'],
+                CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1'],
                 CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
                 CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS', '1000'],
                 CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_WARN_EUR_CENTS', '750'],
@@ -770,25 +704,6 @@ jobs:
                 }
                 generatedSource = replaceTomlString(generatedSource, runtimeName, value);
               }
-              // THE LEASE RECORDS WHAT ACTUALLY RAN. Both versions are written
-              // onto the realtime lease at creation from these two settings, so
-              // the pair has to describe the lane this deployment is running.
-              // The live lane's prompt and its three-tool surface are not the
-              // v2 orchestrator's, and provenance that says otherwise is worse
-              // than none: it would be believed.
-              if (liveVoiceEnabled) {
-                const fixedLiveValues = {
-                  CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v9'],
-                  CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1']
-                };
-                for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedLiveValues)) {
-                  const value = envValue(sourceName);
-                  if (value !== approvedValue) {
-                    throw new Error(`${sourceName} must remain exactly ${approvedValue} for the protected live lane.`);
-                  }
-                  generatedSource = replaceTomlString(generatedSource, runtimeName, value);
-                }
-              }
               generatedSource = replaceTomlString(generatedSource, 'CONSUMER_REALTIME_VOICE_ENABLED', 'true');
               generatedSource = replaceTomlString(
                 generatedSource,
@@ -816,7 +731,7 @@ jobs:
 
           const expectedGeneratedFlags = {
             CONSUMER_JOURNEY_ENABLED: betaEnabled ? 'true' : 'false',
-            CONSUMER_VOICE_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_VOICE_ENABLED: 'false',
             CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
             CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: realtimeV2Enabled ? 'true' : 'false',
             CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: spokenCompletionEnabled ? 'true' : 'false',
@@ -1030,7 +945,7 @@ jobs:
           if [[ "$CONSUMER_REALTIME_ADVISER_CANARY_ENABLED" == "true" ]]; then
             export CONSUMER_EXPECTED_DEPLOYMENT_MODE="realtime_voice_rules_only"
           elif [[ "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" ]]; then
-            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="voice_assisted_rules_only"
+            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="rules_only"
           else
             export CONSUMER_EXPECTED_DEPLOYMENT_MODE="dormant"
           fi
@@ -1052,7 +967,7 @@ jobs:
         run: |
           set -euo pipefail
           wrangler deploy --config wrangler.bootstrap.generated.toml
-          CONSUMER_EXPECTED_DEPLOYMENT_MODE=voice_assisted_rules_only \
+          CONSUMER_EXPECTED_DEPLOYMENT_MODE=rules_only \
             node ../scripts/check-consumer-live-deployment.mjs
 
       - name: Remove generated deployment config

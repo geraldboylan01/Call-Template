@@ -1,4 +1,7 @@
 /**
+ * ACTIVE LIVE COMPLIANCE PATH. References to v2 below mean the archived
+ * controlled implementation only; production cannot select it.
+ *
  * Compliance for the live conversational lane.
  *
  * THE INVERSION THIS FILE EXISTS TO IMPLEMENT

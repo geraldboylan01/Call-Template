@@ -1,4 +1,4 @@
-import { getAiConsent, getConsumerInvite, hasCurrentVoiceConsent } from './store.js';
+import { getAiConsent, getConsumerInvite } from './store.js';
 import { isSubscriptionAssistCohort } from './subscription_assist.js';
 import {
   consumerLanguageForModule,
@@ -373,88 +373,6 @@ function normaliseQuestion(question) {
   };
 }
 
-function createVoicePanel(currentState, question) {
-  const voice = currentState.voice || {};
-  const configuredBudget = voice.budget || currentState.bootstrap?.voiceBudget || {};
-  const voiceAvailable = configuredBudget.available !== false;
-  const consentGranted = hasCurrentVoiceConsent();
-  const configured = Boolean(
-    currentState.bootstrap?.voiceNoticeId
-    && currentState.bootstrap?.voicePolicyVersion
-    && currentState.bootstrap?.voicePrivacyNoticeUrl
-  );
-  const panel = element('aside', 'voice-panel');
-  panel.dataset.voicePanel = '';
-  panel.setAttribute('aria-labelledby', 'voicePanelTitle');
-
-  const heading = element('div', 'voice-panel-heading');
-  const headingCopy = element('div');
-  append(
-    headingCopy,
-    element('p', 'section-kicker', 'Adviser test · voice'),
-    element('h3', '', 'Talk, review, then send')
-  );
-  headingCopy.querySelector('h3').id = 'voicePanelTitle';
-  const aiBadge = element('span', 'voice-ai-badge', 'AI-generated voice');
-  append(heading, headingCopy, aiBadge);
-  panel.append(heading);
-  panel.append(element(
-    'p',
-    'voice-intro',
-    'Tap to record up to 45 seconds. Planéir adds the transcript to the same answer box so you can correct every word and figure before choosing Continue.'
-  ));
-
-  const actions = element('div', 'voice-actions');
-  const record = element('button', 'voice-record-button', consentGranted ? 'Tap to talk' : 'Set up voice');
-  record.type = 'button';
-  record.dataset.action = consentGranted ? 'voice-record' : 'voice-consent';
-  record.disabled = currentState.busy || !configured || !voiceAvailable;
-  record.setAttribute('aria-describedby', 'voiceStatus voiceDisclosure');
-  record.setAttribute('aria-pressed', 'false');
-  const speak = element('button', 'secondary-button voice-speak-button', 'Hear this question');
-  speak.type = 'button';
-  speak.dataset.action = consentGranted ? 'voice-speak' : 'voice-consent';
-  speak.disabled = currentState.busy || !configured || !voiceAvailable || !question.prompt;
-  speak.setAttribute('aria-describedby', 'voiceDisclosure');
-  speak.setAttribute('aria-pressed', 'false');
-  append(actions, record, speak);
-  const timer = element('span', 'voice-recording-timer', '0:45 remaining');
-  timer.dataset.voiceTimer = '';
-  timer.hidden = true;
-  timer.setAttribute('aria-hidden', 'true');
-  actions.append(timer);
-  panel.append(actions);
-
-  const status = element(
-    'p',
-    'voice-status',
-    configured
-      ? 'Voice never starts automatically. Your transcript stays in the text box until you choose Continue.'
-      : 'Voice is temporarily unavailable because its disclosure configuration is incomplete. You can continue by typing.'
-  );
-  status.id = 'voiceStatus';
-  status.dataset.voiceStatus = '';
-  status.setAttribute('role', 'status');
-  status.setAttribute('aria-live', 'polite');
-  status.setAttribute('aria-atomic', 'true');
-  panel.append(status);
-
-  const disclosure = element('p', 'voice-disclosure');
-  disclosure.id = 'voiceDisclosure';
-  disclosure.append(
-    `${currentState.bootstrap?.voiceAiGeneratedDisclosure || 'The playback voice is AI-generated.'} It reads the current server-owned Planéir question; it does not create financial calculations or advice. `
-  );
-  const privacy = element('a', '', 'Voice privacy details');
-  privacy.href = /^https:\/\//i.test(String(currentState.bootstrap?.voicePrivacyNoticeUrl || ''))
-    ? currentState.bootstrap.voicePrivacyNoticeUrl
-    : './privacy.html#optional-voice';
-  privacy.target = '_blank';
-  privacy.rel = 'noopener noreferrer';
-  disclosure.append(privacy, '.');
-  panel.append(disclosure);
-  return panel;
-}
-
 function createConversationView(currentState) {
   const section = element('section');
   append(
@@ -518,19 +436,6 @@ function createConversationView(currentState) {
       questionCard.append(choices);
     }
     section.append(questionCard);
-  }
-
-  if (currentState.bootstrap?.voiceEnabled === true
-    && String(currentState.bootstrap?.cohort || '').toLowerCase() === 'adviser_test') {
-    const boundedPanel = createVoicePanel(currentState, question);
-    if (currentState.bootstrap?.voiceRealtimeEnabled === true) {
-      const fallback = element('details', 'voice-fallback');
-      const summary = element('summary', '', 'Prefer a short recording? Use bounded voice');
-      fallback.append(summary, boundedPanel);
-      section.append(fallback);
-    } else {
-      section.append(boundedPanel);
-    }
   }
 
   const composer = element('form', 'composer');
@@ -2035,19 +1940,50 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
   root.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
-export function renderUnavailable(root, { message = '' } = {}) {
+export function renderUnavailable(root, {
+  message = '',
+  liveMeetingFailure = false,
+  transcript = ''
+} = {}) {
   root.replaceChildren();
   const card = element('section', 'unavailable-card');
   append(
     card,
     element('p', 'section-kicker', 'Planéir'),
-    element('h1', '', 'Failed to load'),
+    element('h1', '', liveMeetingFailure ? 'Live call unavailable' : 'Failed to load'),
     element(
       'p',
       '',
       message || 'We couldn’t load your planning meeting. It may be temporarily unavailable. Please try again in a moment, or get in touch if it keeps happening.'
     )
   );
+  if (liveMeetingFailure) {
+    card.append(element(
+      'p',
+      'live-call-failure-note',
+      'The call has not switched to an older call system. Try Live call again when it is available.'
+    ));
+  }
+  const savedTranscript = String(transcript || '').trim();
+  if (liveMeetingFailure && savedTranscript) {
+    const transcriptPanel = element('section', 'failed-live-transcript');
+    const transcriptArea = element('textarea');
+    transcriptArea.id = 'failedLiveCallTranscript';
+    transcriptArea.readOnly = true;
+    transcriptArea.value = savedTranscript;
+    transcriptArea.setAttribute('aria-label', 'Saved live call transcript');
+    const copyButton = element('button', 'secondary-button', 'Copy transcript');
+    copyButton.type = 'button';
+    copyButton.dataset.action = 'copy-failed-live-transcript';
+    append(
+      transcriptPanel,
+      element('h2', '', 'Saved call transcript'),
+      element('p', '', 'Everything saved before the connection failed is available below.'),
+      transcriptArea,
+      copyButton
+    );
+    card.append(transcriptPanel);
+  }
   const actions = element('div', 'unavailable-actions');
   const contact = element('a', 'primary-button', 'Contact us');
   contact.href = 'mailto:hello@planeir.ie';

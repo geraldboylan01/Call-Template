@@ -1,21 +1,20 @@
 /**
- * The Live voice disclosure, for whichever lane is driving.
+ * The Live voice disclosure for the active live call controller.
  *
  * WHY THIS IS SHARED AND NOT LANE BEHAVIOUR. The disclosure is page chrome:
  * one <dialog> in plan/index.html, one Worker endpoint, one receipt. Which
  * conversation lane happens to be running has nothing to do with it.
  *
- * It lives here because it was previously reachable ONLY as methods on the v2
- * controller, and `createVoiceLaneController` never constructs that controller
- * in the live lane. So on the live lane the disclosure could not be opened,
+ * It lives here because it was previously reachable only as methods on the
+ * now-archived controlled controller. When the live controller first replaced
+ * it, the disclosure could not be opened,
  * and its form was never bound — meaning it could not have been submitted even
  * if something had opened it. A client whose receipt went stale got
  * "Review and accept the current live voice disclosure before starting."
  * with no disclosure and no way to accept: the meeting could be neither
  * started nor re-agreed, and every retry repeated it.
  *
- * Both lanes now use this one implementation, so a fix to the disclosure
- * cannot again land on a lane nobody is running.
+ * The active live controller now owns this one implementation.
  */
 
 import { updateRealtimeVoiceConsent } from './api.js';

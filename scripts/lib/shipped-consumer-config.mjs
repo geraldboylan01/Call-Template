@@ -26,22 +26,12 @@ export function readDeploySources() {
 
 /**
  * @param {object} [options]
- * @param {boolean} [options.realtime] resolve the realtime canary rewrite too.
- *   The workflow applies it only inside `if (realtimeEnabled)`, so the default
- *   is the voice-only beta.
- * @param {boolean} [options.live] resolve the live conversational lane's
- *   overrides. The workflow applies them only inside `if (liveVoiceEnabled)`,
- *   and that flag ships false, so the default is the v2 lane.
+ * @param {boolean} [options.realtime] resolve the one active live-call canary
+ *   rewrite too. When false, the deployment is typed rules-only.
  * @returns {Map<string, string>} effective CONSUMER_* variables
  */
-export function resolveShippedConsumerEnv({ realtime = true, live = false } = {}) {
-  const { workflow: fullWorkflow, wrangler } = readDeploySources();
-  // The live lane's pins live in their own block and apply to one lane only.
-  // Split it out before the generic pass below, which would otherwise treat a
-  // live-only override as something every deployment ships -- and, because the
-  // block sits later in the file, let it win.
-  const liveBlock = fullWorkflow.match(/const fixedLiveValues = \{([\s\S]*?)\n\s*\};/)?.[0] || '';
-  const workflow = liveBlock ? fullWorkflow.replace(liveBlock, '') : fullWorkflow;
+export function resolveShippedConsumerEnv({ realtime = true } = {}) {
+  const { workflow, wrangler } = readDeploySources();
   const effective = new Map();
 
   // 1. The committed, dormant-by-default baseline.
@@ -63,21 +53,11 @@ export function resolveShippedConsumerEnv({ realtime = true, live = false } = {}
   )) {
     effective.set(name, value);
   }
-  // 4. The live lane's own pins, for a deployment running that lane. Same
-  //    `[repository variable, approved default]` shape, same protected
-  //    assertion -- but scoped to the lane, because the prompt and toolset
-  //    identities they carry describe the live conversation, not the v2 one.
-  if (live) {
-    for (const [, name, value] of liveBlock.matchAll(
-      /^\s*(CONSUMER_[A-Z0-9_]+): \['CONSUMER_BETA_[A-Z0-9_]+', '([^']*)'\],?$/gm
-    )) {
-      effective.set(name, value);
-    }
-  }
-  // Only the realtime canary turns the paid realtime transport on, and only on
-  // the protected manual path. Everything above is inert without this.
+  // Only the realtime canary turns the paid live transport on, and it always
+  // turns on the live conversation implementation with it. There is no
+  // controlled-lane resolution or fallback.
   effective.set('CONSUMER_REALTIME_VOICE_ENABLED', realtime ? 'true' : 'false');
-  effective.set('CONSUMER_LIVE_VOICE_ENABLED', live ? 'true' : 'false');
+  effective.set('CONSUMER_LIVE_VOICE_ENABLED', realtime ? 'true' : 'false');
   return effective;
 }
 
