@@ -84,6 +84,12 @@ const MAX_ASSISTANT_TRANSCRIPT = 2_400;
 // headroom for cancelled/correction responses while making every transient
 // association structure explicitly bounded.
 const MAX_LIVE_TURN_LEDGER_ENTRIES = 64;
+// A response ends when it emits a function call. The Worker must explicitly
+// ask the provider to continue after returning the tool output, but a faulty
+// model must not be able to turn that protocol continuation into an unbounded
+// tool loop. The third tool result therefore gets one final, tools-disabled
+// response in which to speak.
+const MAX_TOOL_CALLS_PER_ROOT_TURN = 3;
 
 /** A finalized typed message echoed by the provider's sideband. */
 export function typedClientTurnFromEvent(event) {
@@ -268,6 +274,22 @@ export function sourceClientFiguresForActiveResponse(
   return currentResponseSourcedFigures;
 }
 
+/**
+ * A tool call this response emitted whose output has not reached the provider.
+ *
+ * A deferred evidence tool sits here for as long as ASR takes, and the whole
+ * conversation is waiting on it: the response owes a continuation it cannot
+ * request yet, and the tool itself still needs this response to find the
+ * client turn its evidence comes from. Neither survives eviction.
+ */
+function hasUndeliveredToolOutput(response) {
+  if (!response || response.toolCallIds.size === 0) return false;
+  for (const callId of response.toolCallIds) {
+    if (!response.deliveredToolCallIds.has(callId)) return true;
+  }
+  return false;
+}
+
 export class ConsumerLiveSession {
   constructor(state, env) {
     this.state = state;
@@ -325,10 +347,16 @@ export class ConsumerLiveSession {
     this.clientTurnsByItemId = new Map();
     this.unboundAutoResponseTurnIds = [];
     this.responseContextsById = new Map();
+    // Every Worker-created continuation points back to one native Realtime
+    // response. The shared chain object is what preserves the causal client
+    // item and the assistant proposition it answered across tool-only response
+    // boundaries without consuming a later VAD turn.
+    this.continuationChainsByRootResponseId = new Map();
     this.deferredEvidenceToolsByItemId = new Map();
     this.deferredEvidenceToolCallIds = new Set();
     this.processedToolCallIds = new Set();
     this.clientNumericEvidenceIncomplete = false;
+    this.openingRequested = false;
     this.pendingTerminalization = null;
 
     this.state.blockConcurrencyWhile(async () => {
@@ -341,6 +369,7 @@ export class ConsumerLiveSession {
       this.unresolvedIdentities = await this.state.storage.get('unresolvedIdentities') || [];
       this.valueEvidenceReviewAttempts = await this.state.storage.get('valueEvidenceReviewAttempts') || {};
       this.terminallyUnresolvedEvidence = await this.state.storage.get('terminallyUnresolvedEvidence') || [];
+      this.openingRequested = await this.state.storage.get('openingRequested') === true;
       const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
       if (storedReconciliationQueue?.schemaVersion === 1) {
         this.pendingReconciliationTurn = storedReconciliationQueue.current || null;
@@ -428,13 +457,7 @@ export class ConsumerLiveSession {
       eventType: 'live.call.activated',
       payload: { model: lease.model, promptVersion: LIVE_PROMPT_VERSION }
     });
-
-    // NOTHING ELSE HAPPENS HERE. The session policy was set at call creation
-    // and the provider owns the opening turn. The v2 lane composes a brief,
-    // sends a session.update, waits for a byte-equal policy echo and then
-    // authorizes a greeting; every one of those steps is a place to deadlock,
-    // and the field notes record two live canaries dying in exactly that
-    // window.
+    await this.requestOpeningResponse();
   }
 
   async connectSideband(providerCallId) {
@@ -487,6 +510,37 @@ export class ConsumerLiveSession {
     this.webSocket.send(text);
   }
 
+  /** Ask for the one tools-disabled opening turn, durably and at most once. */
+  async requestOpeningResponse() {
+    if (this.openingRequested) return false;
+    this.openingRequested = true;
+    await this.state.storage.put('openingRequested', true);
+    try {
+      this.sendProvider({
+        type: 'response.create',
+        response: {
+          tool_choice: 'none',
+          metadata: { kind: 'opening', continuation_index: '0' }
+        }
+      });
+    } catch (error) {
+      // A synchronous socket failure did not request anything. Let a later
+      // activation retry instead of durably remembering a greeting that never
+      // reached the provider.
+      this.openingRequested = false;
+      await this.state.storage.delete?.('openingRequested');
+      throw error;
+    }
+    this.state.waitUntil(appendRealtimeEvent(this.env, {
+      sessionId: this.meta?.sessionId,
+      leaseId: this.meta?.leaseId,
+      direction: 'server',
+      eventType: 'live.opening.requested',
+      payload: {}
+    }).catch(() => {}));
+    return true;
+  }
+
   registerStoppedClientTurn(event) {
     const itemId = String(event?.item_id || '');
     if (!itemId) {
@@ -512,18 +566,61 @@ export class ConsumerLiveSession {
     return turn;
   }
 
-  bindResponseContext(responseId) {
+  bindResponseContext(responseId, metadata = {}) {
     if (!responseId) return null;
-    const causeItemId = this.unboundAutoResponseTurnIds.shift() || null;
-    const pendingSourceItemIds = new Set(
-      [...this.clientTurnsByItemId.values()]
-        .filter((turn) => turn.status === 'pending')
-        .map((turn) => turn.itemId)
-    );
+    const responseKind = String(metadata?.kind || 'auto');
+    const continuation = responseKind === 'tool_continuation';
+    const opening = responseKind === 'opening';
+    const rootResponseId = continuation
+      ? String(metadata?.root_response_id || '')
+      : responseId;
+    const parentResponseId = continuation
+      ? String(metadata?.parent_response_id || '')
+      : '';
+    const parent = parentResponseId
+      ? this.responseContextsById.get(parentResponseId) || null
+      : null;
+    let chain = continuation
+      ? this.continuationChainsByRootResponseId.get(rootResponseId) || null
+      : null;
+    const causeItemId = continuation
+      ? String(chain?.rootCauseItemId || metadata?.root_item_id || '') || null
+      : opening ? null : this.unboundAutoResponseTurnIds.shift() || null;
+    const pendingSourceItemIds = continuation && parent
+      ? new Set(parent.pendingSourceItemIds)
+      : new Set(
+        [...this.clientTurnsByItemId.values()]
+          .filter((turn) => turn.status === 'pending')
+          .map((turn) => turn.itemId)
+      );
     const cause = causeItemId ? this.clientTurnsByItemId.get(causeItemId) : null;
+    const precedingAssistantTranscript = continuation
+      ? String(chain?.precedingAssistantTranscript || parent?.precedingAssistantTranscript || '')
+      : opening ? '' : this.lastCompletedAssistantTranscript;
+    if (!chain) {
+      chain = {
+        rootResponseId,
+        rootCauseItemId: causeItemId,
+        precedingAssistantTranscript,
+        toolCallCount: 0,
+        invalidated: false,
+        settled: false
+      };
+      this.continuationChainsByRootResponseId.set(rootResponseId, chain);
+    }
     const context = {
       responseId,
       causeItemId,
+      responseKind,
+      rootResponseId,
+      parentResponseId,
+      continuationIndex: continuation
+        ? Math.max(1, Number(metadata?.continuation_index || 1))
+        : 0,
+      continuationChain: chain,
+      continuationRequested: false,
+      toolCallIds: new Set(),
+      deliveredToolCallIds: new Set(),
       pendingSourceItemIds,
       sourcedFigures: { values: [...this.sourcedFigures.values] },
       assistantTranscript: '',
@@ -532,7 +629,7 @@ export class ConsumerLiveSession {
       // running value. A save on this response that carries a figure the client
       // affirmed needs the read-back they were saying yes to — see
       // affirmedReadBackValues in live_tools.js.
-      precedingAssistantTranscript: this.lastCompletedAssistantTranscript,
+      precedingAssistantTranscript,
       assistantDone: false,
       assistantItemId: '',
       reviewScheduled: false,
@@ -585,6 +682,11 @@ export class ConsumerLiveSession {
       const removable = [...this.responseContextsById.entries()].find(([, response]) =>
         response.done
         && response.pendingSourceItemIds.size === 0
+        // A deferred tool is drained AFTER its turn's transcript clears the
+        // pending pin above, so for the length of that drain this response
+        // looks settled while still owing an output. Evicting there strands
+        // the continuation and loses the tool's own causal turn.
+        && !hasUndeliveredToolOutput(response)
         && (response.reviewScheduled || !response.assistantDone)
       );
       if (!removable) break;
@@ -611,6 +713,87 @@ export class ConsumerLiveSession {
     while (this.processedToolCallIds.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
       this.processedToolCallIds.delete(this.processedToolCallIds.values().next().value);
     }
+
+    while (this.continuationChainsByRootResponseId.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
+      const removable = [...this.continuationChainsByRootResponseId.entries()]
+        .find(([, chain]) => chain.settled || chain.invalidated);
+      if (!removable) break;
+      this.continuationChainsByRootResponseId.delete(removable[0]);
+    }
+  }
+
+  /** A new client utterance wins over any tool result that was about to speak. */
+  invalidatePendingContinuations() {
+    for (const chain of this.continuationChainsByRootResponseId.values()) {
+      if (!chain.settled) chain.invalidated = true;
+    }
+  }
+
+  registerResponseToolCall(event) {
+    const callId = String(event?.call_id || '');
+    const response = this.responseContextForEvent(event);
+    if (!callId || !response) return response;
+    if (!response.toolCallIds.has(callId)) {
+      response.toolCallIds.add(callId);
+      response.continuationChain.toolCallCount += 1;
+    }
+    return response;
+  }
+
+  markResponseToolOutputDelivered(response, callId) {
+    if (!response || !callId) return false;
+    response.deliveredToolCallIds.add(String(callId));
+    return this.maybeRequestToolContinuation(response);
+  }
+
+  /**
+   * Continue a function-call response only after BOTH protocol halves settle:
+   * response.done and every function_call_output (plus refreshed state) have
+   * reached the provider. Assistant audio before the call is deliberately not
+   * a predicate; a function call terminates that response regardless.
+   */
+  maybeRequestToolContinuation(response) {
+    if (!response?.done
+      || response.continuationRequested
+      || response.continuationChain?.invalidated
+      || response.toolCallIds.size === 0
+      || hasUndeliveredToolOutput(response)) return false;
+    const chain = response.continuationChain;
+    const continuationIndex = Number(response.continuationIndex || 0) + 1;
+    const toolChoice = chain.toolCallCount >= MAX_TOOL_CALLS_PER_ROOT_TURN
+      ? 'none'
+      : 'auto';
+    response.continuationRequested = true;
+    try {
+      this.sendProvider({
+        type: 'response.create',
+        response: {
+          tool_choice: toolChoice,
+          metadata: {
+            kind: 'tool_continuation',
+            parent_response_id: String(response.responseId),
+            root_response_id: String(chain.rootResponseId),
+            root_item_id: String(chain.rootCauseItemId || ''),
+            continuation_index: String(continuationIndex)
+          }
+        }
+      });
+    } catch (_error) {
+      response.continuationRequested = false;
+      return false;
+    }
+    this.state.waitUntil(appendRealtimeEvent(this.env, {
+      sessionId: this.meta?.sessionId,
+      leaseId: this.meta?.leaseId,
+      direction: 'server',
+      eventType: 'live.response.continuation_requested',
+      payload: {
+        rootItemId: chain.rootCauseItemId || null,
+        continuationIndex,
+        toolChoice
+      }
+    }).catch(() => {}));
+    return true;
   }
 
   /* -------------------------------------------------------- provider events */
@@ -636,6 +819,11 @@ export class ConsumerLiveSession {
       const turn = this.registerStoppedClientTurn(event);
       this.pendingClientTranscription = turn?.status === 'pending';
       this.pendingClientTranscriptionUnavailable = !turn;
+      return;
+    }
+
+    if (type === 'input_audio_buffer.speech_started') {
+      this.invalidatePendingContinuations();
       return;
     }
 
@@ -668,11 +856,20 @@ export class ConsumerLiveSession {
 
     if (type === 'response.created') {
       this.inResponse = true;
-      const context = this.bindResponseContext(String(event.response?.id || ''));
+      const context = this.bindResponseContext(
+        String(event.response?.id || ''),
+        event.response?.metadata || {}
+      );
       if (!context) return;
       this.currentResponseAwaitingClientTranscription = context.pendingSourceItemIds.size > 0;
       this.currentResponseNumericContainmentUnavailable = context.numericUnavailable;
       this.pendingClientTranscriptionUnavailable = false;
+      if (context.responseKind === 'tool_continuation'
+        && context.continuationChain?.invalidated) {
+        try {
+          this.sendProvider({ type: 'response.cancel', response_id: context.responseId });
+        } catch (_error) { /* provider terminalization owns socket loss */ }
+      }
       return;
     }
 
@@ -690,11 +887,17 @@ export class ConsumerLiveSession {
 
     if (type === 'response.done') {
       const context = this.responseContextForEvent(event);
-      if (context) context.done = true;
+      if (context) {
+        context.done = true;
+        context.status = String(event.response?.status || 'completed');
+        if (context.status !== 'completed') context.continuationChain.invalidated = true;
+        if (context.toolCallIds.size === 0) context.continuationChain.settled = true;
+      }
       this.inResponse = [...this.responseContextsById.values()].some((response) => !response.done);
       if (context && getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy') {
         this.maybeScheduleReconciliation(context);
       }
+      if (context) this.maybeRequestToolContinuation(context);
       this.pruneLiveTurnLedger();
       return this.handleUsage(event.response || {});
     }
@@ -1641,8 +1844,9 @@ export class ConsumerLiveSession {
   /**
    * A deterministic detector fired mid-sentence. Cancel the response before the
    * substantive claim lands, then instruct a correction and let the model speak
-   * it. This is the ONE place the server creates a response, and it is a
-   * correction rather than the normal conversational flow.
+   * it. This is the only Worker-created response that changes substantive
+   * speech for safety. The opening and post-tool response.create calls merely
+   * start protocol turns; native VAD still owns ordinary conversational flow.
    */
   async tripCompliance(actId, layer, responseId = null) {
     const targetResponseId = String(responseId || '');
@@ -1716,6 +1920,7 @@ export class ConsumerLiveSession {
     if (!callId
       || this.processedToolCallIds.has(callId)
       || this.deferredEvidenceToolCallIds.has(callId)) return;
+    this.registerResponseToolCall(event);
 
     // Both mutating tools derive authority from what the client just said.
     // Their result may wait for ASR because this path is behind already-started
@@ -1970,12 +2175,17 @@ export class ConsumerLiveSession {
         type: 'conversation.item.create',
         item: { type: 'function_call_output', call_id: callId, output: JSON.stringify(modelSafe).slice(0, 8_000) }
       });
-      // After a save, hand the model a short refreshed state item instead of
-      // rewriting `instructions`. The cached prefix has to survive the call.
-      if (name === 'save_facts' && result?.ok) await this.injectVolatileState();
     } catch (_error) {
       return;
     }
+    // After a save, hand the model a short refreshed state item instead of
+    // rewriting `instructions`. The cached prefix has to survive the call.
+    // The output is the protocol-critical half: once it has landed, a failed
+    // best-effort state refresh must not strand the conversation forever.
+    if (name === 'save_facts' && result?.ok) {
+      await this.injectVolatileState().catch(() => {});
+    }
+    this.markResponseToolOutputDelivered(responseContext, callId);
 
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,

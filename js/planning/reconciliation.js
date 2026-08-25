@@ -16,7 +16,11 @@ import {
   getSemanticFactDefinition,
   listSemanticFactDefinitions
 } from './semantic_facts.js';
-import { extractNumericOccurrences, extractValueEvidence } from './value_evidence.js';
+import {
+  extractNumericOccurrences,
+  extractValueEvidence,
+  numericEvidenceSpans
+} from './value_evidence.js';
 import {
   assertIsoDateTime,
   assertJsonCompatible,
@@ -926,11 +930,70 @@ function evidencedCurrenciesForAmount(amount, evidenceRefs) {
   return currencies;
 }
 
-function assertNumericGrounding(operation, targetNote, evidenceRefs) {
-  const supported = evidenceRefs.flatMap((ref) => groundedNumbers(ref.quote));
+/** The digits that carry information: 180000 and 180 both reduce to "18". */
+function significantDigits(value) {
+  const magnitude = Math.abs(Number(value));
+  if (!Number.isFinite(magnitude) || magnitude === 0) return '0';
+  return String(magnitude).replace('.', '').replace(/0+$/, '') || '0';
+}
+
+/**
+ * A proposed value that EXTENDS an under-read span instead of replacing it.
+ *
+ * Truncation only ever loses the tail of a figure, so a faithful transcription
+ * is strictly larger than the part the scan managed to read and starts with the
+ * same significant digits. "two and a half thousand" scans as 2, so 2500
+ * extends it and 4100 does not. "a hundred and eighty grand" scans as 180, so
+ * 180000 extends it and 270000 — the sum of that pension and the partner's —
+ * does not.
+ *
+ * This is what lets the parser stop being the authority on meaning without
+ * giving up the guard against invention. It never has to understand the words
+ * it could not read; it only has to hold the reviewer to the digits it could.
+ */
+function extendsUnderReadValue(proposed, scanned) {
+  if (!(Math.abs(Number(proposed)) > Math.abs(Number(scanned)))) return false;
+  return significantDigits(proposed).startsWith(significantDigits(scanned));
+}
+
+/**
+ * @param semanticallyReviewed every cited turn was read whole by the planner,
+ *   so number words in it may be transcribed into digits. Arithmetic across
+ *   figures stays refused either way.
+ */
+function assertNumericGrounding(
+  operation,
+  targetNote,
+  evidenceRefs,
+  semanticallyReviewed = false
+) {
+  // Under-read spans exist only for a reviewed turn; elsewhere this list is
+  // empty and everything below is byte-for-byte the previous behaviour.
+  const underRead = semanticallyReviewed
+    ? evidenceRefs.flatMap((ref) => numericEvidenceSpans(ref.quote)
+      .filter((span) => !span.resolved)
+      .map((span) => ({ span, quote: ref.quote })))
+    : [];
+  // AN UNDER-READ VALUE IS NOT A VALUE. The scan reads "two and a half
+  // thousand" as 2 and "a hundred and eighty grand" as 180. Leaving those in
+  // the supported set is what let a €2 monthly spend into a profile while the
+  // correct €2,500 was refused, so they are struck out before anything is
+  // compared against them.
+  const supported = evidenceRefs
+    .flatMap((ref) => groundedNumbers(ref.quote))
+    .filter((value) => !underRead.some((item) => numbersEqual(item.span.value, value)));
   const changed = changedNumericLeaves(operation, targetNote);
-  const unsupported = changed
-    .filter((leaf) => !supported.some((value) => numbersEqual(value, leaf.value)));
+  const transcribed = new Map();
+  const unsupported = changed.filter((leaf) => {
+    if (supported.some((value) => numbersEqual(value, leaf.value))) return false;
+    // Transcription is the reviewer's job, but only where there is one figure
+    // to transcribe. Two under-read spans in one quote is exactly the ambiguity
+    // the narrowest-span rule refuses, and it stays refused here.
+    if (underRead.length !== 1) return true;
+    if (!extendsUnderReadValue(leaf.value, underRead[0].span.value)) return true;
+    transcribed.set(String(leaf.value), underRead[0]);
+    return false;
+  });
   if (unsupported.length > 0) {
     fail(
       'numeric_value_unsupported',
@@ -941,7 +1004,17 @@ function assertNumericGrounding(operation, targetNote, evidenceRefs) {
   const ambiguousCurrencies = [];
   const unsupportedCurrencies = [];
   for (const item of changedMoney) {
-    const evidenced = evidencedCurrenciesForAmount(item.amount, evidenceRefs);
+    const transcription = transcribed.get(String(item.amount));
+    const evidenced = transcription
+      // The digits came from a span the scan could not finish reading, so the
+      // amount itself will never match an occurrence. Read the currency off
+      // that span's own text, and fall back to the same EUR jurisdiction
+      // default an unadorned "900 a month" already receives.
+      ? (() => {
+        const attached = occurrenceCurrencies(transcription.quote, transcription.span);
+        return attached.size > 0 ? attached : new Set(['EUR']);
+      })()
+      : evidencedCurrenciesForAmount(item.amount, evidenceRefs);
     if (evidenced.size > 1) {
       ambiguousCurrencies.push({ ...item, evidenced: [...evidenced].sort() });
     } else if (evidenced.size === 0 || !evidenced.has(item.currency)) {
@@ -960,7 +1033,11 @@ function assertNumericGrounding(operation, targetNote, evidenceRefs) {
       `Operation ${operation.operationId} uses a currency not attached to its cited amount at ${unsupportedCurrencies.map((item) => `${item.path || 'value'}.currency`).join(', ')}.`
     );
   }
-  return { changed, supported };
+  // Downstream binding asks whether the quote mentions figures other than the
+  // ones proposed. A transcribed value IS what its span says, so it belongs in
+  // the supported set; leaving the truncation there instead would read as an
+  // unexplained extra number and cost a needless clarification.
+  return { changed, supported: [...supported, ...[...transcribed.keys()].map(Number)] };
 }
 
 function assertDateGrounding(operation, targetNote, evidenceRefs) {
@@ -1104,10 +1181,22 @@ function candidateEntitiesFor(factId, entities) {
  * This marker closes a module's need for a person's holdings, so it is the one
  * completion whose evidence has to be read rather than merely cited.
  */
-function assertCompletionNoneEvidence(operation, evidenceRefs, turnIndex) {
+/**
+ * @param semanticallyReviewed the planner read the whole turn and the question
+ *   it answered, which is the only place a categorical "no others" can be
+ *   recognised. The deterministic phrase test cannot see the proposition, so
+ *   for a reviewed turn it stops being the authority on what "none" means.
+ */
+function assertCompletionNoneEvidence(
+  operation,
+  evidenceRefs,
+  turnIndex,
+  semanticallyReviewed = false
+) {
   if (operation.noteKind !== 'completion') return;
   if (!completionAssertsNone(operation.value)) return;
   if (!collectionPathForFact(operation.factId)) return;
+  if (semanticallyReviewed) return;
   if (evidenceAssertsNone(operation.factId, evidenceRefs, turnIndex)) return;
   fail(
     'completion_none_unsupported',
@@ -2157,8 +2246,23 @@ function validateOperation(operation, notes, context, group) {
   assertAggregateIsNotAPosition(operation, targetNote);
   assertKnownIdentity(operation, targetNote, context.owners, context.entities, evidenceRefs);
   assertContributionProductEligibility(operation, targetNote, context.entities);
-  assertCompletionNoneEvidence(operation, evidenceRefs, context.turnIndex);
-  const grounding = assertNumericGrounding(operation, targetNote, evidenceRefs);
+  // Reviewed means the planner saw this turn whole, with the assistant
+  // question it answered. A quote that mixes a reviewed turn with an
+  // unreviewed one has no such reading behind it and stays strict.
+  const semanticallyReviewed = evidenceRefs.length > 0
+    && evidenceRefs.every((ref) => context.reviewedTurnIds.has(String(ref.turnId)));
+  assertCompletionNoneEvidence(
+    operation,
+    evidenceRefs,
+    context.turnIndex,
+    semanticallyReviewed
+  );
+  const grounding = assertNumericGrounding(
+    operation,
+    targetNote,
+    evidenceRefs,
+    semanticallyReviewed
+  );
   assertDateGrounding(operation, targetNote, evidenceRefs);
   assertNumericSemanticBinding(
     operation,
@@ -2809,6 +2913,11 @@ export async function applyReconciliationPlan({
   appliedPlanHashes = [],
   owners = [],
   entities = [],
+  // Turns the planner read WHOLE, in conversational context, as part of this
+  // review. Within one of these the reviewer may render number words into
+  // digits; outside them the deterministic scan stays the only authority, so
+  // every existing caller keeps its exact behaviour by passing nothing.
+  reviewedTurnIds = [],
   // The live lane's fact mapper, injected by the worker. Absent, the projection
   // writes raw note values exactly as before, which keeps this module free of
   // any worker import and every existing caller behaving identically.
@@ -2861,7 +2970,8 @@ export async function applyReconciliationPlan({
   const context = {
     owners: ownerRecords(profile, owners),
     entities: entityRecords(profile, entities),
-    turnIndex: new Map(turns.map((turn) => [turn.turnId, turn]))
+    turnIndex: new Map(turns.map((turn) => [turn.turnId, turn])),
+    reviewedTurnIds: new Set((reviewedTurnIds || []).map((turnId) => String(turnId)))
   };
   const verifiedReviewedNoteIds = new Set();
   const reviewOutcomes = [];

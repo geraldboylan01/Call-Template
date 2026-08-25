@@ -1,0 +1,168 @@
+{
+  "schemaVersion": "reconciliation-transcription-eval-v1",
+  "note": "Cases where the RIGHT answer depends on conversational context, so no deterministic validator can grade them. Each case is one finalized client turn, the assistant question it answers, and the agreed goal — because a fact only reaches the reviewer when some selected analysis is waiting on it. Every target fact here is one the routed modules actually need. Run with scripts/run-reconciliation-transcription-evals.mjs (paid).",
+  "cases": [
+    {
+      "id": "terse_sub_threshold_900",
+      "family": "terse_contextual",
+      "goalType": "maintain_liquidity",
+      "assistantQuestion": "About how much does the household spend each month on essentials, excluding rent and housing debt?",
+      "clientTurn": "900 a month.",
+      "expect": {
+        "outcome": "value",
+        "amount": 900,
+        "currency": "EUR",
+        "why": "A bare sub-1000 figure scores financial:false, so it never enters the coverage inventory and the live gate cannot see it. Only the question makes it monthly spending."
+      }
+    },
+    {
+      "id": "terse_bare_figure_400",
+      "family": "terse_contextual",
+      "goalType": "maintain_liquidity",
+      "assistantQuestion": "And roughly how much is sitting in savings and current accounts?",
+      "clientTurn": "400.",
+      "expect": {
+        "outcome": "value",
+        "amount": 400,
+        "currency": "EUR",
+        "why": "No unit, no cadence, no subject in the client own words. Everything that makes 400 meaningful is in the question before it."
+      }
+    },
+    {
+      "id": "spoken_monthly_spend_2500",
+      "family": "transcription",
+      "goalType": "maintain_liquidity",
+      "assistantQuestion": "About how much does the household spend each month on essentials, excluding rent and housing debt?",
+      "clientTurn": "About two and a half thousand.",
+      "expect": {
+        "outcome": "value",
+        "amount": 2500,
+        "currency": "EUR",
+        "forbiddenAmounts": [
+          2
+        ],
+        "why": "Transcription, not arithmetic. The deterministic scan reads this as 2; accepting that would write a EUR 2 monthly spend."
+      }
+    },
+    {
+      "id": "spoken_pension_180k",
+      "family": "transcription",
+      "goalType": "retire",
+      "assistantQuestion": "Roughly what is your pension worth at the moment?",
+      "clientTurn": "Mine is a hundred and eighty grand.",
+      "expect": {
+        "outcome": "value",
+        "amount": 180000,
+        "currency": "EUR",
+        "forbiddenAmounts": [
+          180
+        ],
+        "why": "\"grand\" is a magnitude the value parser never consumed, so the scan reads 180."
+      }
+    },
+    {
+      "id": "dense_two_pensions",
+      "family": "dense_recovery",
+      "goalType": "retire",
+      "partner": true,
+      "assistantQuestion": "Roughly what are the two pensions worth?",
+      "clientTurn": "Mine is a hundred and eighty grand and hers is ninety.",
+      "expect": {
+        "outcome": "multiple_values",
+        "amounts": [
+          180000,
+          90000
+        ],
+        "forbiddenAmounts": [
+          270000,
+          180,
+          90
+        ],
+        "why": "The whole-turn scope exists for this: both pensions recovered even when Realtime proposed only one, each bound to its own owner, and the total never appearing."
+      }
+    },
+    {
+      "id": "dense_savings_and_mortgage",
+      "family": "dense_recovery",
+      "goalType": "understand_position",
+      "assistantQuestion": "Where do things stand with savings and the mortgage?",
+      "clientTurn": "We have about twenty thousand put by and the mortgage is three hundred and forty thousand.",
+      "expect": {
+        "outcome": "multiple_values",
+        "amounts": [
+          20000,
+          340000
+        ],
+        "forbiddenAmounts": [
+          360000,
+          320000
+        ],
+        "why": "Two facts of different kinds from one turn, both spelled out in words, and no combining them."
+      }
+    },
+    {
+      "id": "ambiguous_range",
+      "family": "ambiguity",
+      "goalType": "maintain_liquidity",
+      "assistantQuestion": "About how much does the household spend each month on essentials, excluding rent and housing debt?",
+      "clientTurn": "About three or four.",
+      "expect": {
+        "outcome": "clarification",
+        "forbiddenAmounts": [
+          3500,
+          3,
+          4,
+          3000,
+          4000
+        ],
+        "why": "A genuine range is worth a clarification turn. Picking an end, or splitting the difference, both invent a figure."
+      }
+    },
+    {
+      "id": "ambiguous_scale_missing",
+      "family": "ambiguity",
+      "goalType": "retire",
+      "assistantQuestion": "Roughly what is the pension worth?",
+      "clientTurn": "Around one eighty, I think.",
+      "expect": {
+        "outcome": "clarification",
+        "forbiddenAmounts": [
+          180000,
+          180
+        ],
+        "why": "180 or 180,000 is the ambiguity the reviewer must ask about rather than resolve by assuming the likelier magnitude."
+      }
+    },
+    {
+      "id": "no_invented_total",
+      "family": "ambiguity",
+      "goalType": "retire",
+      "assistantQuestion": "What are the pensions worth in total?",
+      "clientTurn": "Two thousand plus the other three.",
+      "expect": {
+        "outcome": "clarification",
+        "forbiddenAmounts": [
+          5000
+        ],
+        "why": "The total is not stated. Adding the two spoken figures is exactly the arithmetic the prompt prohibits."
+      }
+    },
+    {
+      "id": "correction_supersedes",
+      "family": "transcription",
+      "goalType": "understand_position",
+      "assistantQuestion": "And what is left on the mortgage?",
+      "clientTurn": "Three hundred and twenty thousand - sorry, I mean three hundred and forty thousand.",
+      "expect": {
+        "outcome": "value",
+        "amount": 340000,
+        "currency": "EUR",
+        "forbiddenAmounts": [
+          320000,
+          660000
+        ],
+        "why": "A self-correction inside one turn. The superseded figure must not survive and the two must never be summed."
+      }
+    }
+  ]
+}

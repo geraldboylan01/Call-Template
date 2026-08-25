@@ -52,6 +52,13 @@ const MAX_TRANSCRIPT_ITEMS = 500;
 // appear on screen. Short enough to feel live, long enough not to hammer the
 // Worker while someone is mid-sentence.
 const STATE_REFRESH_DELAY_MS = 400;
+// How long the client will hold a turn open waiting for the Worker to request
+// the continuation a function call ended. This is a stall net, not a schedule:
+// the Worker normally asks within milliseconds of delivering the tool output,
+// but that output can itself be deferred behind the finalized transcript. Long
+// enough not to cut a legitimate continuation short, short enough that a lost
+// one does not leave the orb thinking for the rest of the meeting.
+const CONTINUATION_STALL_TIMEOUT_MS = 15_000;
 
 function cleanText(value, maximum = MAX_CAPTION_LENGTH) {
   const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -196,6 +203,14 @@ export class LiveVoiceController {
     this.refreshTimer = null;
     this.transcriptHistory = [];
     this.assistantCaption = '';
+    // Generation and WebRTC playout are different lifecycles. The provider
+    // may finish generating (`response.done`) while its output buffer is
+    // still playing, so neither event is allowed to stand in for the other.
+    this.responseInProgress = false;
+    this.responseNeedsContinuation = false;
+    this.assistantPlaybackActive = false;
+    this.continuationStallTimer = null;
+    this.phase = 'off';
     this.navigated = false;
 
     this.bindElements();
@@ -234,14 +249,17 @@ export class LiveVoiceController {
   }
 
   setPhase(phase, message) {
-    this.orb?.syncPhase?.(phase);
-    if (this.orb) this.orb.phase = phase;
-    if (this.statusElement && message) this.statusElement.textContent = message;
+    this.phase = phase;
     // `data-realtime-phase`, NOT `data-phase`. plan.css keys every phase style
     // off that exact attribute and RealtimeOrb.syncPhase reads it too, so the
     // shorter name styled nothing and left the orb permanently idle.
     this.root?.setAttribute('data-realtime-phase', phase);
     this.shellElement?.setAttribute('data-realtime-phase', phase);
+    // RealtimeOrb reads the shell attribute, so publish the new phase before
+    // asking it (and its thinking tone) to synchronize.
+    this.orb?.syncPhase?.();
+    if (this.orb) this.orb.phase = phase;
+    if (this.statusElement && message) this.statusElement.textContent = message;
     // The markup ships End disabled. There is nothing to end until this live
     // controller has a meeting running.
     if (this.stopButton) this.stopButton.disabled = !this.active;
@@ -305,7 +323,7 @@ export class LiveVoiceController {
     this.dataChannel.send(JSON.stringify({ type: 'response.create' }));
     this.pushTranscript('user', text);
     this.setCaption('user', text);
-    this.setPhase('responding', 'Thinking…');
+    this.setPhase('thinking', 'Thinking…');
     this.textInput.value = '';
     this.textInput.focus?.();
   }
@@ -440,6 +458,10 @@ export class LiveVoiceController {
     this.navigated = false;
     this.sessionId = context.sessionId;
     this.transcriptHistory = [];
+    this.responseInProgress = false;
+    this.responseNeedsContinuation = false;
+    this.assistantPlaybackActive = false;
+    this.clearContinuationStallTimer();
     this.transcriptElement?.replaceChildren?.();
     if (this.transcriptCard) this.transcriptCard.hidden = true;
     this.setCaption('user', 'Your words will appear here while you speak.');
@@ -528,7 +550,13 @@ export class LiveVoiceController {
       // THE MICROPHONE IS LIVE IMMEDIATELY. The archived controlled client
       // held the outbound track until a scripted welcome finished. Here the
       // model owns turn-taking, so interrupting the greeting is allowed.
-      this.setPhase('listening', 'I’m listening — take your time.');
+      // The Worker can request the opening response as soon as its sideband is
+      // connected. If those provider events have already advanced the UI to
+      // thinking or playback, finishing SDP setup must not rewind the orb to
+      // listening in the middle of Planéir's greeting.
+      if (this.phase === 'connecting') {
+        this.setPhase('listening', 'I’m listening — take your time.');
+      }
     } catch (error) {
       const cancelled = generation !== this.generation || controller.signal.aborted;
       this.active = false;
@@ -662,6 +690,10 @@ export class LiveVoiceController {
     this.dataChannel = null;
     this.peerConnection = null;
     this.localStream = null;
+    this.responseInProgress = false;
+    this.responseNeedsContinuation = false;
+    this.assistantPlaybackActive = false;
+    this.clearContinuationStallTimer();
     this.setTransportState('closed');
     this.orb?.stop?.();
   }
@@ -687,11 +719,15 @@ export class LiveVoiceController {
     const type = String(event?.type || '');
 
     if (type === 'input_audio_buffer.speech_started') {
+      // The client answering is itself a resolution: the Worker will abandon
+      // any pending continuation rather than talk over them.
+      this.responseNeedsContinuation = false;
+      this.clearContinuationStallTimer();
       this.setPhase('user_speaking', 'I can hear you.');
       return;
     }
     if (type === 'input_audio_buffer.speech_stopped') {
-      this.setPhase('responding', 'Thinking…');
+      this.setPhase('thinking', 'Thinking…');
       return;
     }
     if (type === 'conversation.item.input_audio_transcription.completed') {
@@ -704,7 +740,40 @@ export class LiveVoiceController {
     }
     if (type === 'response.created') {
       this.assistantCaption = '';
+      this.responseInProgress = true;
+      this.responseNeedsContinuation = false;
+      this.clearContinuationStallTimer();
+      // A continuation may be created while audio from its parent response is
+      // still draining. Playback remains the user-visible truth until the
+      // provider reports that buffer stopped or was cleared.
+      if (!this.assistantPlaybackActive) this.setPhase('thinking', 'Thinking…');
+      return;
+    }
+    if (type === 'response.function_call_arguments.done') {
+      // A function call ends this provider response. The Worker will deliver
+      // its result and explicitly request the continuation response; until
+      // then the client is still waiting for Planéir, not listening for a
+      // new turn.
+      this.responseNeedsContinuation = true;
+      if (!this.assistantPlaybackActive && !['user_speaking', 'interrupted'].includes(this.phase)) {
+        this.setPhase('thinking', 'Planéir is noting that down…');
+      }
+      return;
+    }
+    if (type === 'output_audio_buffer.started') {
+      this.assistantPlaybackActive = true;
       this.setPhase('assistant_speaking', 'Planéir is speaking.');
+      return;
+    }
+    if (type === 'output_audio_buffer.stopped' || type === 'output_audio_buffer.cleared') {
+      this.assistantPlaybackActive = false;
+      if (this.responseInProgress) {
+        if (!['user_speaking', 'interrupted'].includes(this.phase)) {
+          this.setPhase('thinking', 'Thinking…');
+        }
+      } else {
+        this.settleAssistantTurn();
+      }
       return;
     }
     if (type === 'response.output_audio_transcript.delta' || type === 'response.audio_transcript.delta') {
@@ -723,9 +792,53 @@ export class LiveVoiceController {
       return;
     }
     if (type === 'response.done') {
-      this.setPhase('listening', 'I’m listening — take your time.');
-      this.scheduleStateRefresh();
+      this.responseInProgress = false;
+      const output = Array.isArray(event?.response?.output) ? event.response.output : [];
+      this.responseNeedsContinuation = this.responseNeedsContinuation
+        || output.some((item) => item?.type === 'function_call');
+      // `response.done` is generation completion, not audible completion.
+      // It is only the compatibility/no-audio fallback when no provider
+      // output-buffer playback is active. A tool-only response also remains
+      // in thinking while the Worker requests its continuation.
+      if (!this.assistantPlaybackActive && !this.responseNeedsContinuation) {
+        this.settleAssistantTurn();
+      } else if (this.responseNeedsContinuation) {
+        this.armContinuationStallTimer();
+      }
     }
+  }
+
+  /**
+   * A function call ends its provider response, so nothing more will arrive
+   * until the Worker sends response.create. If that request never lands — a
+   * socket failure on the Worker's side, a dropped continuation — no further
+   * provider event will ever clear responseNeedsContinuation, and the orb sits
+   * in thinking until the client gives up and speaks. Release the turn instead.
+   */
+  armContinuationStallTimer() {
+    this.clearContinuationStallTimer();
+    this.continuationStallTimer = setTimeout(() => {
+      this.continuationStallTimer = null;
+      if (!this.responseNeedsContinuation) return;
+      this.responseNeedsContinuation = false;
+      this.settleAssistantTurn();
+    }, CONTINUATION_STALL_TIMEOUT_MS);
+  }
+
+  clearContinuationStallTimer() {
+    if (!this.continuationStallTimer) return;
+    clearTimeout(this.continuationStallTimer);
+    this.continuationStallTimer = null;
+  }
+
+  settleAssistantTurn() {
+    if (!this.active
+      || this.responseInProgress
+      || this.assistantPlaybackActive
+      || this.responseNeedsContinuation
+      || ['user_speaking', 'interrupted'].includes(this.phase)) return;
+    this.setPhase('listening', 'I’m listening — take your time.');
+    this.scheduleStateRefresh();
   }
 
   /* --------------------------------------------------------- on-screen state */

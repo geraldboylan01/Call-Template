@@ -51,8 +51,9 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // v8: the production proof waits for the planner-backed half of a reflected
 // turn before speaking again. v9 removes incident-shaped extraction examples;
 // goal meanings now come from the central catalogue and finalized-turn value
-// omissions are recovered by deterministic coverage plus reconciliation.
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v9';
+// omissions are recovered by deterministic coverage plus reconciliation. v10
+// gives the one server-triggered opening its own no-client-yet branch.
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v10';
 
 /**
  * Budgets for the per-turn state item.
@@ -349,8 +350,14 @@ function conversationFlowSection() {
     'feels natural, and move BACK whenever something new arrives that changes the picture.',
     '',
     '### Stage 1 — ORIENT (understand the person)',
-    'Open genuinely wide. The first reply must reflect one detail from what this client actually',
-    'said, then invite their story with ONE broad, non-financial follow-up about the goal, person',
+    'Before the client has spoken, open once: introduce yourself briefly as Planéir, an AI',
+    'planning companion, make clear that this is a conversation about what matters to them,',
+    'and ask ONE broad, non-financial',
+    'question about what brought them here. This no-client-yet opening is the only exception to',
+    'reflecting something the client said; do not pretend they already supplied a detail.',
+    'After the client has spoken, open genuinely wide. The first reply must reflect one detail',
+    'from what this client actually said, then invite their story with ONE broad, non-financial',
+    'follow-up about the goal, person',
     'or concern behind it. Do not read a stock opening line, ask a compound question, or offer a',
     'menu such as "work, where you live, and family". Do not supply possible answers or choices',
     'after the question; let the client decide where to take it.',

@@ -10,9 +10,10 @@ const MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS = 10;
 // The live lane's WebRTC negotiation, measured from the SDP answer. Separate
 // from PROOF_TIMEOUT_MS because it is a transport wait, not a provider wait.
 const LIVE_TRANSPORT_TIMEOUT_MS = 30_000;
-// How long the live lane is watched for model speech. This is an observation,
-// not an activation gate.
-const LIVE_SPEECH_OBSERVATION_MS = 6_000;
+// The fake microphone never speaks, so the only valid first turn is the
+// Worker-requested opening. This paid proof now treats that greeting as an
+// infrastructure requirement, not an optional observation.
+const LIVE_GREETING_TIMEOUT_MS = 30_000;
 
 /**
  * THE ONE ACTIVE CALL PROOF.
@@ -26,14 +27,9 @@ export const LANE_PROOFS = Object.freeze({
     lane: 'live',
     promptVersion: LIVE_PROMPT_VERSION,
     toolsetVersion: LIVE_TOOLSET_VERSION,
-    // THE ONE THING THIS LANE CANNOT PROMISE. live_provider.js sets
-    // `create_response: true` and live_session.js deliberately sends no
-    // `response.create` — the provider replies when the CLIENT stops speaking.
-    // The proof drives a fake microphone that says nothing, so requiring model
-    // speech here would be a coin toss dressed up as a gate. What replaces it
-    // is stricter, not looser: the lane's own activation and sideband events,
-    // the negotiated peer connection, and the prompt/toolset pinned on the
-    // lease the meeting actually ran under.
+    // Server activation/sideband remain the control-plane milestones. The
+    // result gate below separately requires a transcribed, non-silent opening
+    // over the negotiated client media path.
     requiredControlPlaneFields: Object.freeze(['liveCallActivated', 'liveSidebandConnected'])
   })
 });
@@ -107,6 +103,8 @@ export function assertLaneProofResult(result) {
   );
   assert.equal(result.liveLaneActivated, true, 'The live activation marker is required.');
   assert.equal(result.liveTransportConnected, true, 'The live transport marker is required.');
+  assert.equal(result.audibleGreetingObserved, true,
+    'The silent-microphone proof heard no transcribed, non-silent opening greeting.');
   assert.equal(result.readOnlyToolSucceeded, false,
     'The live lane must never be certified by an archived controlled-lane tool.');
   assert.equal(result.controlledSpeechObserved, false,
@@ -367,6 +365,84 @@ export async function runRealtimeInfrastructureProof({
         `The Realtime call ran a different conversation lane than the bootstrap announced (${conversationVersion}).`
       );
 
+      // Start listening as soon as the SDP answer exists. The Worker may have
+      // already requested the opening response, but WebRTC playout cannot
+      // begin until the browser installs that answer. Running this observer in
+      // the page while the control-plane poll proceeds avoids missing a short
+      // greeting behind a slow Durable Object status read.
+      await page.evaluate(({ timeoutMs }) => {
+        const state = {
+          complete: false,
+          finished: false,
+          transcriptObserved: false,
+          playbackPhaseObserved: false,
+          nonSilentAudioObserved: false,
+          maxPeakBuckets: 0,
+          error: ''
+        };
+        window.__planeirLiveGreetingProof = state;
+        void (async () => {
+          const deadline = Date.now() + timeoutMs;
+          let audioContext = null;
+          let source = null;
+          let analyser = null;
+          let samples = null;
+          try {
+            while (Date.now() < deadline && !state.complete) {
+              state.transcriptObserved ||= Boolean(
+                document.querySelector('#realtimeVoiceTranscriptHistory .is-assistant')
+              );
+              state.playbackPhaseObserved ||= (
+                document.getElementById('realtimeVoiceShell')?.dataset?.realtimePhase === 'assistant_speaking'
+              );
+
+              const audio = document.getElementById('realtimeVoiceAudio');
+              if (!analyser
+                && audio?.srcObject instanceof MediaStream
+                && audio.srcObject.getAudioTracks().some((track) => track.readyState === 'live')) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) {
+                  audioContext = new AudioContextClass();
+                  await audioContext.resume();
+                  analyser = audioContext.createAnalyser();
+                  analyser.fftSize = 1024;
+                  source = audioContext.createMediaStreamSource(audio.srcObject);
+                  // Web Audio §1.8 explicitly permits an AnalyserNode output
+                  // to remain unconnected. Keep the existing audio element as
+                  // the sole playout path instead of double-playing the call.
+                  source.connect(analyser);
+                  samples = new Uint8Array(analyser.fftSize);
+                }
+              }
+              if (analyser && samples) {
+                analyser.getByteTimeDomainData(samples);
+                let peakBuckets = 0;
+                for (const sample of samples) {
+                  peakBuckets = Math.max(peakBuckets, Math.abs(sample - 128));
+                }
+                state.maxPeakBuckets = Math.max(state.maxPeakBuckets, peakBuckets);
+                // Byte time-domain silence is exactly 128. One bucket is
+                // reserved for analyser quantisation; two or more proves the
+                // received track contains a real waveform without choosing a
+                // product-specific speech-energy threshold.
+                state.nonSilentAudioObserved ||= peakBuckets >= 2;
+              }
+              state.complete = state.transcriptObserved
+                && state.playbackPhaseObserved
+                && state.nonSilentAudioObserved;
+              if (!state.complete) await new Promise((resolve) => window.setTimeout(resolve, 25));
+            }
+          } catch (error) {
+            state.error = String(error?.message || error || 'unknown audio observation error').slice(0, 300);
+          } finally {
+            state.finished = true;
+            try { source?.disconnect(); } catch (_error) { /* proof cleanup */ }
+            try { analyser?.disconnect(); } catch (_error) { /* proof cleanup */ }
+            try { await audioContext?.close(); } catch (_error) { /* proof cleanup */ }
+          }
+        })();
+      }, { timeoutMs: LIVE_GREETING_TIMEOUT_MS });
+
       const observed = await page.evaluate(async ({
         workerOriginValue,
         endpointPathValue,
@@ -455,18 +531,25 @@ export async function runRealtimeInfrastructureProof({
       ), null, { timeout: LIVE_TRANSPORT_TIMEOUT_MS });
       await page.waitForFunction(() => {
         const shell = document.getElementById('realtimeVoiceShell');
-        return ['listening', 'user_speaking', 'responding', 'assistant_speaking']
+        return ['listening', 'user_speaking', 'thinking', 'responding', 'assistant_speaking']
           .includes(String(shell?.dataset?.realtimePhase || ''));
       }, null, { timeout: LIVE_TRANSPORT_TIMEOUT_MS });
 
-      // Observed, never gated: the fake microphone may remain silent.
-      const speechDeadline = Date.now() + LIVE_SPEECH_OBSERVATION_MS;
-      while (Date.now() < speechDeadline && !assistantSpeechObserved) {
-        assistantSpeechObserved = await page.evaluate(() => Boolean(
-          document.querySelector('#realtimeVoiceTranscriptHistory .is-assistant')
-        ));
-        if (!assistantSpeechObserved) await page.waitForTimeout(500);
-      }
+      await page.waitForFunction(() => (
+        window.__planeirLiveGreetingProof?.complete === true
+        || window.__planeirLiveGreetingProof?.finished === true
+      ), null, { timeout: LIVE_GREETING_TIMEOUT_MS + 2_000 });
+      const greetingProof = await page.evaluate(() => ({
+        ...window.__planeirLiveGreetingProof
+      }));
+      assert.equal(
+        greetingProof.complete,
+        true,
+        'The silent-microphone call produced no audible opening greeting '
+          + `(transcript=${greetingProof.transcriptObserved}, playback=${greetingProof.playbackPhaseObserved}, `
+          + `peakBuckets=${greetingProof.maxPeakBuckets}, observerError=${greetingProof.error || 'none'}).`
+      );
+      assistantSpeechObserved = true;
 
       const audioReady = await page.evaluate(() => {
         const audio = document.getElementById('realtimeVoiceAudio');

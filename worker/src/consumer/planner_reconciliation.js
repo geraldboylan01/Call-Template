@@ -174,7 +174,7 @@ The realtime voice model has already written provisional notes. Compare those no
 Evidence rules:
 - Only finalized CLIENT transcript turns are evidence. Assistant text, current notes, requirements and profile state are context, never evidence.
 - Every operation must quote an exact, contiguous client span from the cited turn.
-- Every proposed number must appear in its cited quote. Do not calculate totals, dates, percentages, midpoints or conversions.
+- Every proposed number must be STATED in its cited quote, in digits or in words. Rendering spoken number words into canonical digits is transcription and is expected of you: "two and a half thousand" is 2500, "a hundred and eighty grand" is 180000, "about a hundred and eighty k" is 180000. Transcribe only the one figure the quote states. Do not calculate totals, differences, dates, percentages-of, midpoints or currency conversions, and never combine two spoken figures into a third: "a hundred and eighty grand and hers is ninety" states two pensions, not 270000. Where the client offers a range or a choice rather than a figure — "about three or four" — request_clarification instead of picking one.
 - CITE THE NARROWEST SPAN THAT STILL IDENTIFIES THE NUMBER: the shortest stored client span holding the exact figure AND the words saying what it refers to, excluding unrelated numbers. A quote carrying other figures cannot bind yours to its entity and is refused as ambiguous. From "I'm on 95,000 a year. I put in 6 percent and the company puts in 8 percent." cite "I'm on 95,000 a year". Narrow by trimming, never by rewriting, and never past the describing words — a bare figure has nothing left to bind it.
 - Use only supplied note, entity, owner and fact identities. Never invent an identity or JSON path.
 - An entity is valid for a fact only when the entity's factIds list that fact. Resolve a spoken reference by matching it against entity labels and aliases; where two entities match equally well, request_clarification instead of picking one.
@@ -184,7 +184,7 @@ Evidence rules:
 - To change an existing holding use correct_note with its targetNoteId; an upsert_note on an entity that already holds an active position updates it. Either way your record REPLACES the old one, so restate every field you still want, including the money.
 - A position value IS the canonical record, shaped by that fact's entry in positionContracts: its requiredKeys, its idKey set to the operation's entityId, its owner under its ownerKey. Any other detail goes in one of that entry's valueFields, using that exact name — a figure under a name not listed there is written nowhere. There is no entityId field inside a canonical record.
 - valueContracts gives the canonical shape of every fact you may write. A fact absent from it has no canonical home: keep it as an evidenced note, never invent a slot for it.
-- Money is {"amount": <number from the quote>, "currency": <a listed code>} — both keys, every time, including money nested inside a position record (grossAnnual, netAnnual, currentValue, monthlyPayment). Money without its currency reaches nothing.
+- Money is {"amount": <number from the quote>, "currency": <a listed code>} — both keys, every time, including money nested inside a position record (grossAnnual, netAnnual, currentValue, monthlyPayment). Money without its currency reaches nothing. A SPOKEN FIGURE CARRIES NO CURRENCY WORD, and that is ordinary speech rather than a gap: this jurisdiction is Ireland, so use EUR whenever the client did not name a currency, exactly as the server does. A missing currency word is never a reason to request_clarification; ask only when the client named a currency you cannot reconcile with the amount.
 - The SERVER decides gross versus net from the client's words, not you. Never ask which an ordinary salary is — record it. If you cannot tell which annual key to use, send the figure as "amount" in the income record and the server places it.
 - An entity marked newEntitySlot is a server-issued identity for one omitted position. Use one only when exact client evidence establishes that position.
 - A partner or joint owner is valid only when that owner exists in the supplied household.
@@ -1425,6 +1425,10 @@ async function runPlannerReconciliationAttempt({
       baseProfileRevision: context.profile.revision,
       owners: input.owners,
       entities: input.entities,
+      // The turns this pass actually read whole, in context. Inside them the
+      // reviewer may transcribe number words; everywhere else the deterministic
+      // scan stays the only authority on what was said.
+      reviewedTurnIds: input.reviewTurnIds,
       mapFactValue: mapReconciledFactValue
     });
     const valueEvidenceReview = validateValueEvidenceDispositions({

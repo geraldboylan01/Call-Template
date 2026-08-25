@@ -150,7 +150,7 @@ const proofResult = (overrides = {}) => {
     toolsetVersion: plan.toolsetVersion,
     launcherVisible: true,
     companionStartWired: true,
-    audibleGreetingObserved: false,
+    audibleGreetingObserved: true,
     controlledSpeechObserved: false,
     directProviderAudioAttached: true,
     webRtcConnected: true,
@@ -177,6 +177,11 @@ assert.throws(
   () => assertLaneProofResult(proofResult({ liveTransportConnected: false })),
   /live transport marker is required/i
 );
+assert.throws(
+  () => assertLaneProofResult(proofResult({ audibleGreetingObserved: false })),
+  /no transcribed, non-silent opening greeting/i,
+  'A paid silent-microphone call may not certify a lane that never opened the conversation.'
+);
 // A live result carrying v1 evidence.
 assert.throws(
   () => assertLaneProofResult(proofResult({ readOnlyToolSucceeded: true })),
@@ -195,7 +200,7 @@ assert.throws(() => assertLaneProofResult(proofResult({ conversationVersion: 'v3
 
 /* ------------------------------------------------- the pinned live identities */
 
-assert.equal(live.promptVersion, 'planeir-live-conversation-v9');
+assert.equal(live.promptVersion, 'planeir-live-conversation-v10');
 assert.equal(live.toolsetVersion, 'planeir-live-tools-v1');
 // Pinned against the modules that define them, so a prompt or toolset bump
 // cannot leave the activation proof verifying a version nothing runs.
@@ -205,7 +210,7 @@ assert.equal(live.toolsetVersion, LIVE_TOOLSET_VERSION);
 // meeting, whatever its control plane says.
 assert.throws(
   () => assertLaneProofResult(proofResult({ promptVersion: 'consumer-realtime-orchestrator-v9' })),
-  /did not run the planeir-live-conversation-v9 prompt/
+  /did not run the planeir-live-conversation-v10 prompt/
 );
 assert.throws(
   () => assertLaneProofResult(proofResult({ toolsetVersion: 'consumer-realtime-tools-v7' })),
@@ -213,7 +218,7 @@ assert.throws(
 );
 assert.throws(
   () => assertLaneProofResult(proofResult({ promptVersion: '' })),
-  /did not run the planeir-live-conversation-v9 prompt/
+  /did not run the planeir-live-conversation-v10 prompt/
 );
 
 /* --------------------------------- the live lane's tool surface is its own */
@@ -258,7 +263,7 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
   const bridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
   assert.match(bridgeSource, /proof\.conversationVersion, 'live'/, 'The bridge must assert the live lane on its own terms.');
   assert.match(bridgeSource, /proof\.liveLaneActivated/);
-  assert.match(bridgeSource, /planeir-live-conversation-v9/);
+  assert.match(bridgeSource, /planeir-live-conversation-v10/);
   assert.match(bridgeSource, /planeir-live-tools-v1/);
 
   // The live client has to be startable at all: the session id must come from
@@ -271,6 +276,16 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
     liveClientSource,
     /getElementById\('realtimeVoiceAudio'\)/,
     'The live lane must play the model through the companion audio element.'
+  );
+  assert.match(liveClientSource, /output_audio_buffer\.started/);
+  assert.match(liveClientSource, /output_audio_buffer\.stopped/);
+  assert.doesNotMatch(
+    liveClientSource.slice(
+      liveClientSource.indexOf("if (type === 'response.created')"),
+      liveClientSource.indexOf("if (type === 'response.function_call_arguments.done')")
+    ),
+    /setPhase\('assistant_speaking'/,
+    'Generation start must not claim that remote audio is already playing.'
   );
 }
 
@@ -306,7 +321,9 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
       }
     },
     addEventListener(type, handler) { this.listeners[type] = handler; },
-    setAttribute() {},
+    setAttribute(name, value) {
+      if (name === 'data-realtime-phase') this.dataset.realtimePhase = String(value);
+    },
     append() {},
     replaceChildren() {},
     scrollTop: 0,
@@ -333,6 +350,8 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
   });
 
   const requests = [];
+  let remoteDescriptionGate = null;
+  let markRemoteDescriptionStarted = () => {};
   globalThis.window = {
     location: { hostname: 'localhost', href: 'http://localhost/plan/' },
     isSecureContext: true,
@@ -365,6 +384,8 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
       async setLocalDescription(description) { this.localDescription = description; }
 
       async setRemoteDescription() {
+        markRemoteDescriptionStarted();
+        if (remoteDescriptionGate) await remoteDescriptionGate;
         this.connectionState = 'connected';
         this.handlers.connectionstatechange?.();
       }
@@ -425,6 +446,14 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
     onToast: (message) => toasts.push(message),
     onFailure: (failure) => failures.push(failure)
   });
+  const syncedOrbPhases = [];
+  controller.orb = {
+    phase: 'off',
+    syncPhase() { syncedOrbPhases.push(shell.dataset.realtimePhase); },
+    attachMicStream() {},
+    start() {},
+    stop() {}
+  };
 
   // NO CONFIRMED SESSION: the guard is right to refuse, and refusing must not
   // look like a started meeting.
@@ -448,7 +477,29 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
     { sessionId: 'cs_stubsession000000000001' },
     'The live controller must read the session id the app actually holds.'
   );
-  await controller.start();
+  let releaseRemoteDescription;
+  remoteDescriptionGate = new Promise((resolve) => { releaseRemoteDescription = resolve; });
+  const remoteDescriptionStarted = new Promise((resolve) => { markRemoteDescriptionStarted = resolve; });
+  const starting = controller.start();
+  await remoteDescriptionStarted;
+
+  // The Worker may request the opening response before the async browser
+  // start() continuation resumes after setRemoteDescription(). Those events
+  // own the visible phase; SDP completion must not rewind an audible greeting
+  // to listening.
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.created',
+    response: { id: 'response_live_opening_001' }
+  }));
+  assert.equal(controller.phase, 'thinking');
+  assert.equal(syncedOrbPhases.at(-1), 'thinking');
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.started' }));
+  assert.equal(controller.phase, 'assistant_speaking');
+  assert.equal(syncedOrbPhases.at(-1), 'assistant_speaking');
+  releaseRemoteDescription();
+  await starting;
+  remoteDescriptionGate = null;
+  markRemoteDescriptionStarted = () => {};
   assert.equal(
     requests.filter((entry) => (
       entry.method === 'POST' && entry.pathname.endsWith('/voice/realtime/calls')
@@ -474,6 +525,168 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
     'A running live meeting must switch the shell to its live face, or End is styled away.'
   );
   assert.equal(stopButton.disabled, false, 'End must be actionable while a live meeting runs.');
+
+  // Provider output-buffer events are the playback clock. Generation may
+  // finish while buffered WebRTC audio is still audible, so response.done
+  // cannot invite the client to speak until output_audio_buffer.stopped.
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.done',
+    response: { id: 'response_live_opening_001', status: 'completed' }
+  }));
+  assert.equal(
+    controller.phase,
+    'assistant_speaking',
+    'Generation completion must not end the speaking phase while provider playback is active.'
+  );
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.stopped' }));
+  assert.equal(controller.phase, 'listening');
+  assert.equal(syncedOrbPhases.at(-1), 'listening');
+
+  // Barge-in clears, rather than naturally stops, the provider buffer. That
+  // official event must release playback ownership without overwriting the
+  // user-speaking phase or leaking a stale active flag into the next reply.
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.created',
+    response: { id: 'response_live_interrupted_002' }
+  }));
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.started' }));
+  controller.handleProviderEvent(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.cleared' }));
+  assert.equal(controller.assistantPlaybackActive, false);
+  assert.equal(controller.phase, 'user_speaking');
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.done',
+    response: { id: 'response_live_interrupted_002', status: 'cancelled' }
+  }));
+  assert.equal(controller.phase, 'user_speaking');
+
+  controller.handleProviderEvent(JSON.stringify({ type: 'input_audio_buffer.speech_stopped' }));
+  assert.equal(controller.phase, 'thinking', 'A finished client utterance must expose the thinking phase.');
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.created',
+    response: { id: 'response_live_no_audio_003' }
+  }));
+  assert.equal(controller.phase, 'thinking', 'Response generation is thinking, not speaking.');
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.done',
+    response: { id: 'response_live_no_audio_003', status: 'completed', output: [] }
+  }));
+  assert.equal(
+    controller.phase,
+    'listening',
+    'response.done remains the no-audio compatibility fallback.'
+  );
+
+  // A function call may finish and its continuation may be created while
+  // audio from the parent response is still draining. Neither event may
+  // downgrade an audibly-speaking orb; once that parent buffer stops, the
+  // still-generating continuation becomes thinking until its own audio starts.
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.created',
+    response: { id: 'response_live_tool_004' }
+  }));
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.started' }));
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.function_call_arguments.done',
+    response_id: 'response_live_tool_004',
+    call_id: 'call_live_tool_004'
+  }));
+  assert.equal(controller.phase, 'assistant_speaking');
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.done',
+    response: {
+      id: 'response_live_tool_004',
+      status: 'completed',
+      output: [{ type: 'function_call', call_id: 'call_live_tool_004' }]
+    }
+  }));
+  assert.equal(controller.phase, 'assistant_speaking');
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.created',
+    response: { id: 'response_live_continuation_005' }
+  }));
+  assert.equal(controller.phase, 'assistant_speaking');
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.stopped' }));
+  assert.equal(controller.phase, 'thinking');
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.started' }));
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.done',
+    response: { id: 'response_live_continuation_005', status: 'completed' }
+  }));
+  assert.equal(controller.phase, 'assistant_speaking');
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.stopped' }));
+  assert.equal(controller.phase, 'listening');
+
+  // A LOST CONTINUATION MUST NOT STRAND THE ORB. A function call ends its
+  // provider response, so nothing further arrives until the Worker sends
+  // response.create. If that request never lands, no provider event will ever
+  // clear the wait, and the orb thinks until the client gives up and speaks.
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.created',
+    response: { id: 'response_live_lost_006' }
+  }));
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.function_call_arguments.done',
+    response_id: 'response_live_lost_006',
+    call_id: 'call_live_lost_006'
+  }));
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.done',
+    response: {
+      id: 'response_live_lost_006',
+      status: 'completed',
+      output: [{ type: 'function_call', call_id: 'call_live_lost_006' }]
+    }
+  }));
+  assert.equal(controller.phase, 'thinking',
+    'A tool-only response must keep waiting while the Worker requests its continuation.');
+  assert.ok(controller.continuationStallTimer,
+    'That wait must be bounded rather than open-ended.');
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  controller.continuationStallTimer._onTimeout?.() ?? (() => {
+    // Node exposes the callback on the Timeout object; fall back to firing the
+    // recovery directly if that internal ever changes.
+    controller.responseNeedsContinuation = false;
+    controller.settleAssistantTurn();
+  })();
+  assert.equal(controller.phase, 'listening',
+    'A continuation that never arrives must release the turn back to the client.');
+  assert.equal(controller.responseNeedsContinuation, false);
+
+  // The ordinary case must not be cut short: a continuation that does arrive
+  // cancels the stall net rather than racing it.
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.created',
+    response: { id: 'response_live_tool_007' }
+  }));
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.function_call_arguments.done',
+    response_id: 'response_live_tool_007',
+    call_id: 'call_live_tool_007'
+  }));
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.done',
+    response: {
+      id: 'response_live_tool_007',
+      status: 'completed',
+      output: [{ type: 'function_call', call_id: 'call_live_tool_007' }]
+    }
+  }));
+  assert.ok(controller.continuationStallTimer);
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.created',
+    response: { id: 'response_live_continuation_008' }
+  }));
+  assert.equal(controller.continuationStallTimer, null,
+    'An arriving continuation must disarm the stall net.');
+  assert.equal(controller.phase, 'thinking');
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.started' }));
+  controller.handleProviderEvent(JSON.stringify({
+    type: 'response.done',
+    response: { id: 'response_live_continuation_008', status: 'completed' }
+  }));
+  controller.handleProviderEvent(JSON.stringify({ type: 'output_audio_buffer.stopped' }));
+  assert.equal(controller.phase, 'listening');
 
   // ENDING THE MEETING MUST TELL THE WORKER. Closing the peer connection is
   // invisible to the server, and an unclosed lease keeps a paid provider call

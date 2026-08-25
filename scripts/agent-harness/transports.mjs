@@ -19,10 +19,10 @@
  * Real migrations, real encryption, real revisioned writes, no network.
  */
 
-import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
 import { getConsumerConfig } from '../../worker/src/consumer/config.js';
@@ -76,54 +76,94 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 /* SQLite-backed D1                                                     */
 /* ------------------------------------------------------------------ */
 
-const PYTHON_SQLITE = String.raw`
-import json
-import sqlite3
-import sys
+/**
+ * SQLite for the harness, in process.
+ *
+ * WHY THIS IS NOT `spawnSync('python3', ...)` ANY MORE. It used to be exactly
+ * that: a fresh Python interpreter per SQL statement. One run of
+ * `check:consumer-live-confirmation` spent 3,898 spawns and roughly 133 of its
+ * ~165 seconds inside interpreter startup alone, doing no SQL. That is slow
+ * enough to cross a default two-minute command timeout mid-run, and a check
+ * killed between two of its cases looks exactly like a hung one — this was
+ * filed as a hang twice before anybody timed it.
+ *
+ * `node:sqlite` is already the engine `check-consumer-reconciliation-migration`
+ * runs on, so this adds no dependency and no new runtime floor.
+ *
+ * A CONNECTION PER STATEMENT IS DELIBERATE, NOT AN OVERSIGHT. It is what the
+ * Python shim did, so it preserves the lifecycle every other helper in this
+ * file was written against: no handle outlives a call, the `copyFileSync` in
+ * cloneCallDatabaseForReconciliation can never observe a half-written journal,
+ * and nothing needs invalidating when a database file is replaced underneath
+ * it. Opening costs ~0.4ms, against ~34ms to boot Python.
+ */
 
-database_path, mode = sys.argv[1], sys.argv[2]
-payload = json.load(sys.stdin)
-connection = sqlite3.connect(database_path)
-connection.row_factory = sqlite3.Row
-connection.execute('PRAGMA foreign_keys = ON')
-try:
-    if mode == 'script':
-        connection.executescript(payload['sql'])
-        connection.commit()
-        result = {}
-    elif mode == 'batch':
-        connection.execute('BEGIN IMMEDIATE')
-        result = []
-        for item in payload['statements']:
-            cursor = connection.execute(item['sql'], item['values'])
-            result.append({'meta': {'changes': max(0, cursor.rowcount)}})
-        connection.commit()
-    else:
-        cursor = connection.execute(payload['sql'], payload.get('values', []))
-        if mode == 'first':
-            row = cursor.fetchone()
-            result = dict(row) if row is not None else None
-        elif mode == 'all':
-            result = {'results': [dict(row) for row in cursor.fetchall()]}
-        elif mode == 'run':
-            result = {'meta': {'changes': max(0, cursor.rowcount)}}
-        else:
-            raise ValueError('Unsupported sqlite test mode')
-        connection.commit()
-    print(json.dumps(result, separators=(',', ':')))
-except Exception:
-    connection.rollback()
-    raise
-finally:
-    connection.close()
-`;
+/**
+ * Bind values the way Python's sqlite3 did.
+ *
+ * The old shim reached SQLite through JSON, and that round trip quietly did
+ * three conversions this one has to perform by hand. Integers matter most:
+ * node:sqlite binds EVERY JavaScript number as REAL, so a `7` written into a
+ * TEXT-affinity column would land as `'7.0'` where every harness database
+ * written by the old shim holds `'7'`.
+ *
+ * Integers beyond the safe range are left as doubles rather than forced into
+ * BigInt: the value arriving here has already been through `JSON.parse`, so it
+ * is a rounded double already, and int64 overflow raised in Python too.
+ */
+function bindable(value) {
+  if (value === undefined) return null;
+  // Python's bool is an int subclass and bound as INTEGER 0/1.
+  if (typeof value === 'boolean') return value ? 1n : 0n;
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return BigInt(value);
+  return value;
+}
+
+/** `max(0, cursor.rowcount)`, over a `changes` some Node versions report as BigInt. */
+const changeCount = (result) => Math.max(0, Number(result?.changes ?? 0));
+
+/**
+ * Rows as the JSON round trip produced them.
+ *
+ * node:sqlite returns null-prototype objects and `undefined` for a missing row;
+ * `JSON.parse` produced ordinary objects and `null`. Callers test both.
+ */
+const plainRow = (row) => (row == null ? null : { ...row });
 
 function sqliteCommand(databasePath, mode, payload) {
-  const result = spawnSync('python3', ['-c', PYTHON_SQLITE, databasePath, mode], {
-    input: JSON.stringify(payload), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024
-  });
-  if (result.status !== 0) throw new Error(result.stderr || 'sqlite command failed');
-  return JSON.parse(result.stdout || 'null');
+  const database = new DatabaseSync(databasePath);
+  try {
+    database.exec('PRAGMA foreign_keys = ON');
+    if (mode === 'script') {
+      database.exec(payload.sql);
+      return {};
+    }
+    if (mode === 'batch') {
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        const results = payload.statements.map((item) => ({
+          meta: {
+            changes: changeCount(
+              database.prepare(item.sql).run(...(item.values || []).map(bindable))
+            )
+          }
+        }));
+        database.exec('COMMIT');
+        return results;
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    }
+    const statement = database.prepare(payload.sql);
+    const values = (payload.values || []).map(bindable);
+    if (mode === 'first') return plainRow(statement.get(...values));
+    if (mode === 'all') return { results: statement.all(...values).map(plainRow) };
+    if (mode === 'run') return { meta: { changes: changeCount(statement.run(...values)) } };
+    throw new Error('Unsupported sqlite test mode');
+  } finally {
+    database.close();
+  }
 }
 
 class TestD1Statement {

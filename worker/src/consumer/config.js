@@ -486,7 +486,7 @@ export function getConsumerConfig(env) {
     // production wrangler or deployment configuration change.
     plannerReconciliationMode: plannerReconciliationMode(env.CONSUMER_PLANNER_RECONCILIATION_MODE),
     plannerReconciliationPromptVersion: text(env.CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION)
-      || 'planning-reconciliation-v2',
+      || 'planning-reconciliation-v3',
     // MEASURED, NOT GUESSED. 14s was the median of the real runtime, so it
     // failed about half of all attempts by construction. Five samples against a
     // live call's own payload (26.6 KB in, ~1.0-2.1k tokens out) ran
