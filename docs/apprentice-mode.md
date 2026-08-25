@@ -144,25 +144,71 @@ decisions.
 
 ## What-if analyses
 
-Each scenario-aware module declares its levers in its manifest, under
-`implementation.scenarioLevers`: what may vary, within what range, and what it
-means in a client's terms. [`js/planning/scenario_levers.js`](../js/planning/scenario_levers.js)
-reads them and validates strictly, so a lever out of range is refused with a
-readable message rather than silently ignored — a model told nothing would
-describe base-case results as though the scenario had run.
+**The Master Prompt Pack is the authority on what each module can vary.**
+`js/planning/scenario_catalogue.js` declares only what the pack authorises, with
+the citation beside each entry, and refuses anything else by name. Nothing may
+be added to it without an explicit product decision.
 
-Currently declared:
+| `/run <module>` | Lever | What it varies |
+|---|---|---|
+| `net_retirement_cashflow` | `annualExpenditureToday` | what the household spends each year in retirement |
+| | `availableInvestmentFundToday` | the fund available today to cover the shortfall |
+| | `excludedIncomeSourceIds` | an income source that stops — the pack's preferred way to model lost income |
+| `pension_projection` | `rentalIncomeToday` | gross annual rent in today's money |
+| `college_funding` | `annualCostTodayPerChild` | yearly cost per child — living at home versus away |
+| | `oneOffCostTodayPerChild` | a one-off per child, which the pack uses for car support |
+| `house_purchase` | `supportCase` | `none` / `htb_only` / `fhs_only` / `htb_and_fhs` |
+| | `depositSavingsGrossAer` | the gross rate the deposit savings earn |
+| | `mortgageIllustrationRate` | the rate the repayment is illustrated at |
+| | `mortgageTermYears` | how long the mortgage is taken over |
+| | `emergencyReserveTarget` | cash kept back rather than put into the deposit |
 
-| Module | Levers |
-|---|---|
-| `pension_projection` | `retirement_age`, `annual_contribution`, `growth_rate` |
-| `net_retirement_cashflow` | `retirement_age`, `annual_expenditure`, `present_value_rate` |
-| `house_purchase` | `targetPropertyPrice`, `plannedMonthlySavings`, `mortgageTermYears`, `mortgageIllustrationRate`, `emergencyReserveTarget` |
+Every `/run` executes the **base case alongside the what-if** and prints both,
+because a scenario with nothing to compare against is not a scenario.
 
-`scenarioPromptSection()` generates the prompt text from those manifests, so it
-can never name an assumption the engine would refuse. **It is not yet wired into
-the live prompt** — doing so bumps `LIVE_PROMPT_VERSION` and the deploy pin in
-`.github/workflows/deploy-worker.yml`, which is a deployment decision.
+### Rental income varies in place
+
+`rentalIncomeToday` is a genuine value, not a with/without toggle. The base is
+the client's actual rent; the scenario can be zero, lower, equal or higher:
+
+```
+/run pension_projection rentalIncomeToday=0        # sells the property
+/run pension_projection rentalIncomeToday=30000    # buys another
+/run pension_projection rentalIncomeToday=15000    # has none yet, considering a BTL
+```
+
+It is applied by scaling the rental income sources the client already has,
+**proportionally**, so a household with two rented properties keeps its shape and
+every source keeps its own start year, end year and inflation treatment. Where
+there is no rental income yet, the what-if adds one starting at the client's
+intended retirement age. The pack's top-level `rentalIncomeToday` field is
+deliberately left unset: the engine adds it *on top of* the income sources
+(`pension_math.js:797-803`), so writing both would count the rent twice.
+
+### Net retirement runs on the adviser path
+
+`net_retirement_cashflow` is adviser-routable but `platformConsumerApproved:
+false`, and stays that way. `/run` reaches it through `runPlanningModule`, which
+asks whether a module has an engine rather than whether it is approved for the
+public product — so teaching calls exercise the adviser capability without
+opening a consumer gate. `runConsumerAnalysis` still refuses the module.
+
+### Personal balance sheet
+
+PBS scenario capability **is authorised** by the pack ("Optional PBS
+Alternatives", `10_pbs_playbook.md:85-115`) — the pack assigns it to the AI
+author, which writes fully recalculated sections. What is missing is the
+deterministic transformation layer that would let an engine construct one, so it
+is recorded in `SCENARIO_ARCHITECTURAL_GAPS` as
+`authorised_missing_execution_layer`. **Not unsupported — unbuilt.**
+
+### When a what-if cannot be expressed
+
+Ask for it anyway. A refused lever, or one the engine silently ignores, is
+recorded at the top of the bundle as a **capability gap** and put to you as a
+capability question — never compiled into a lesson, and never closed by widening
+a module's levers. That is how this testing period is meant to discover where the
+existing capability is too narrow.
 
 ## A two-week block
 

@@ -31,7 +31,48 @@ If the case ran `--offline`, say so plainly and stop: the extraction was the
 regex fallback, so the baseline is not the real system's decision and nothing
 in it is evidence about behaviour.
 
-## 2. Work out what each divergence means
+## 2. Capability gaps come first
+
+Before any divergence, read the **"Scenarios the adviser wanted but could not
+express"** section of `context.md`. Those are the highest-value findings in the
+whole bundle, and they are **not lessons**.
+
+A refused lever, or a what-if that computed figures identical to its base case,
+means a real conversation reached for an assumption the existing
+Prompt-Pack-approved capability cannot express. Put each one to the adviser as a
+**capability question**:
+
+    What you wanted to vary:  ...
+    Why the module cannot:    ...
+    What the Prompt Pack says the module can vary: ...
+    What adding it would mean: ...
+
+Then stop. **Never compile a capability gap into a lesson, and never widen a
+module's levers to close one.** The catalogue in
+`js/planning/scenario_catalogue.js` may only contain what the Master Prompt Pack
+authorises; expanding it is a product decision the adviser makes explicitly,
+outside this loop.
+
+## 3. Scenario construction, then everything else
+
+Analyse the scenario turns before anything else — it is the first teaching
+priority. For each one, work out:
+
+- did the adviser introduce a what-if where Planéir did not, or the reverse?
+- when in the conversation, and why does that timing look right?
+- which module, which lever, and why that lever rather than another?
+- which value or alternative, and was it one scenario or several?
+- how did it relate to the client's actual goal and circumstances?
+- what did the adviser establish BEFORE running it?
+- what generalisable planning principle does the behaviour demonstrate?
+- where should that principle NOT generalise?
+
+**Do not assume every difference is a lesson.** Say explicitly, for each one,
+whether it is incidental (a different word, a different order that changed
+nothing) or meaningful expert behaviour. An analysis that finds a lesson in
+everything is not analysing.
+
+## 4. Work out what each divergence means
 
 For every divergence, answer all seven. Guessing at one is worse than saying
 you cannot tell.
@@ -57,20 +98,23 @@ turn of every call and must name what they displace. Layer 5 changes what a
 number means: never propose it from a teaching case; take it to the adviser
 directly.
 
-## 3. Put it to the adviser
+## 5. Put it to the adviser, one at a time
 
 Present each proposal in exactly this shape, in plain financial-planning
 English. No code, no file paths, no layer numbers — those are your problem.
 
 ```
-Existing behaviour:    ...
-Adviser's behaviour:   ...
-Why it appears better: ...
-Proposed lesson:       ...
-Do not apply when:     ...
-Potential risks:       ...
-Recommended tests:     ...
+Planéir baseline:         what the existing system would have done
+My behaviour:             what the adviser actually did
+Interpretation:           why they behaved differently, and why it may be preferable
+Proposed lesson:          the narrowest useful principle Planéir should learn
+Boundaries/exceptions:    where this should not apply
+Likely implementation layer: where the system should change
 ```
+
+**Present them one at a time**, and name the layer yourself — the adviser is a
+financial planning expert, not a developer, and should never be asked to
+diagnose which layer a fix belongs in.
 
 Then stop and ask. **Observing a divergence is not approval. Neither is "that's
 interesting" or "makes sense".** Approval is the adviser accepting specific
@@ -94,7 +138,7 @@ Write your proposal to `teaching/pending/<caseId>/proposal.json`:
 That file changes nothing. `teaching/pending/` is gitignored and no runtime code
 reads it.
 
-## 4. Record their decision
+## 6. Record their decision
 
 They may restate the lesson. **If they do, their words replace yours** and
 become what is compiled.
@@ -109,7 +153,7 @@ node ./scripts/teach-lesson.mjs reject  <caseId> --why="<why not>"
 there is no terminal, that is the gate working — do not route around it.** Ask
 the adviser to run the command themselves.
 
-## 5. Only then, implement
+## 7. Only then, implement
 
 ```bash
 node ./scripts/teach-lesson.mjs compile <lessonId> --artefact=<each file you changed>

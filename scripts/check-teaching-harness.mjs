@@ -138,7 +138,8 @@ const shadow = {
   for (const moduleId of ids) {
     const mechanism = scenarioMechanismFor(moduleId);
     assert.ok(mechanism.source, `${moduleId} must cite the Prompt Pack line that authorises it`);
-    assert.ok(['input_scenarios', 'runtime_overrides'].includes(mechanism.kind));
+    assert.ok(['input_scenarios', 'runtime_overrides', 'income_source_amount'].includes(mechanism.kind),
+        `${moduleId} declares an unknown mechanism kind`);
     for (const lever of scenarioLeversFor(moduleId)) {
       assert.ok(lever.id && lever.type && lever.means,
         `${moduleId}.${lever.id} must say what it means in a client's terms`);
@@ -180,13 +181,56 @@ const shadow = {
   assert.equal(applied.input.scenarios[1].annualExpenditureToday, 38000);
   pass('a net-retirement what-if is added beside the base case, never instead of it');
 
-  // The pension base case must carry rentalIncomeToday or the engine rejects it.
-  const pension = applyScenarioToInput('pension_projection', { rentalIncomeToday: 18000 },
+  // THE RENT MUST NOT BE COUNTED TWICE. The engine adds rentalIncomeToday ON TOP
+  // of otherIncomeSources (pension_math.js:797-803), so a scenario that wrote
+  // the pack's field while the rent still sat in otherIncomeSources would
+  // silently double it. The scenario varies the amount where the rent already
+  // lives, and the pack's top-level field stays untouched.
+  const withRent = {
+    currentYear: 2026,
+    pensions: [{ id: 'primary', currentAge: 52, retirementAge: 65 }],
+    otherIncomeSources: [
+      { id: 'r1', type: 'rental', annualAmountToday: 12000, startYear: 2039, inflationIndexed: true },
+      { id: 'r2', type: 'rental', annualAmountToday: 6000, startYear: 2039, inflationIndexed: true },
+      { id: 'db', type: 'pension', annualAmountToday: 9000, startYear: 2039, inflationIndexed: false }
+    ]
+  };
+  const halved = applyScenarioToInput('pension_projection', withRent,
+    sanitizeScenarioRequest('pension_projection', { rentalIncomeToday: 9000 }));
+  assert.equal(typeof halved.input.rentalIncomeToday, 'undefined',
+    'the pack top-level field must stay unset, or the rent is counted twice');
+  const rentals = halved.input.otherIncomeSources.filter((item) => item.type === 'rental');
+  assert.equal(rentals.reduce((sum, item) => sum + item.annualAmountToday, 0), 9000);
+  // Proportional, so a household with two rented properties keeps its shape.
+  assert.equal(rentals[0].annualAmountToday, 6000);
+  assert.equal(rentals[1].annualAmountToday, 3000);
+  // And everything the client actually told us survives untouched.
+  assert.equal(rentals[0].startYear, 2039);
+  assert.equal(rentals[0].inflationIndexed, true);
+  assert.equal(halved.input.otherIncomeSources.find((item) => item.id === 'db').annualAmountToday, 9000,
+    'a non-rental income must not be touched');
+  pass('rental income is varied in place, proportionally, with its timing intact');
+
+  const soldUp = applyScenarioToInput('pension_projection', withRent,
     sanitizeScenarioRequest('pension_projection', { rentalIncomeToday: 0 }));
-  assert.equal(pension.input.rentalIncomeScenarios[0].rentalIncomeToday, 18000,
-    'the synthesised base case must be seeded from the input, or the engine refuses the list');
-  assert.equal(pension.input.rentalIncomeScenarios[1].rentalIncomeToday, 0);
-  pass('a synthesised pension base case is seeded so the engine accepts the list');
+  assert.equal(soldUp.input.otherIncomeSources.filter((item) => item.type === 'rental').length, 0,
+    'a source scaled to nothing is removed, not left as a zero-amount record');
+  assert.ok(soldUp.input.otherIncomeSources.some((item) => item.id === 'db'));
+  pass('selling up removes the rental sources and leaves the rest alone');
+
+  // A client with no rent yet, considering an investment property.
+  const noRent = { currentYear: 2026, pensions: [{ id: 'primary', currentAge: 52, retirementAge: 65 }], otherIncomeSources: [] };
+  const bought = applyScenarioToInput('pension_projection', noRent,
+    sanitizeScenarioRequest('pension_projection', { rentalIncomeToday: 15000 }));
+  const added = bought.input.otherIncomeSources.find((item) => item.type === 'rental');
+  assert.equal(added.annualAmountToday, 15000);
+  assert.equal(added.startYear, 2039, 'the engine refuses a source with no start year');
+  pass('a client with no rental income can still be shown one');
+
+  assert.equal(applyScenarioToInput('pension_projection', noRent,
+    sanitizeScenarioRequest('pension_projection', { rentalIncomeToday: 0 })).scenarioId, '',
+    'zero rent against no rent is not a scenario');
+  pass('varying nothing to nothing is correctly not a what-if');
 
   // College funding has no base selector -- cases coexist as separate stacks.
   const college = applyScenarioToInput('college_funding',

@@ -69,15 +69,26 @@ export const SCENARIO_CATALOGUE = Object.freeze({
    * "Treat `rentalIncomeToday` as gross annual rent in today's money."
    */
   pension_projection: Object.freeze({
-    kind: 'input_scenarios',
-    inputField: 'rentalIncomeScenarios',
+    // VARIED IN PLACE, NOT MOVED TO THE PACK'S FIELD.
+    //
+    // The pack's pension what-if is rental income (11_retirement_playbook.md:
+    // 159-175) and it expresses that as a top-level `rentalIncomeToday` varied
+    // through `rentalIncomeScenarios`. That is the ADVISER PAYLOAD's shape. On
+    // the consumer path the same fact already exists as an income source, and
+    // the engine adds `rentalIncomeToday` ON TOP of `otherIncomeSources`
+    // (pension_math.js:797-803) -- so writing the pack's field as well would
+    // count the rent twice.
+    //
+    // Moving the source into the pack's field instead would avoid the double
+    // count but silently discard three other things the client actually told
+    // us: a stated sale age, a per-source inflation setting, and whether the
+    // figure was net or gross (the pack's field is gross by instruction, :167).
+    // So the scenario varies the AMOUNT where the rent already lives, and
+    // everything else about it survives.
+    kind: 'income_source_amount',
+    incomeType: 'rental',
+    inputField: 'otherIncomeSources',
     source: '11_retirement_playbook.md:172-175',
-    // Every item in this list must carry rentalIncomeToday -- the engine
-    // rejects one that does not, and the pack's own example gives it on both
-    // cases: {"id":"with-rent",...,"rentalIncomeToday":18000} and
-    // {"id":"rent-lost",...,"rentalIncomeToday":0}. So a synthesised base case
-    // has to be seeded from the input's current value rather than left bare.
-    baseSeedFields: Object.freeze(['rentalIncomeToday']),
     levers: Object.freeze([
       { id: 'rentalIncomeToday', type: 'money', min: 0, max: 1_000_000,
         means: 'gross annual rent in today\'s money -- set 0 for a rent-lost case' }
@@ -152,6 +163,12 @@ export const SCENARIO_CATALOGUE = Object.freeze({
  */
 export const SCENARIO_ARCHITECTURAL_GAPS = Object.freeze({
   personal_balance_sheet: Object.freeze({
+    // NOT "unsupported". The capability is authorised by the Prompt Pack and
+    // the product is expected to have it; what is missing is the deterministic
+    // transformation layer that would let an engine construct it. Describing it
+    // as unsupported would quietly demote an approved capability to a
+    // non-existent one.
+    status: 'authorised_missing_execution_layer',
     packDefines: '10_pbs_playbook.md:85-115 "Optional PBS Alternatives"',
     packMechanism: 'the AI writes fully recalculated sections into generated.outputsBucketed.scenarios[]',
     engineReality: 'computePersonalBalanceSheet(input) takes no options; the engine has no scenario concept',
@@ -205,8 +222,9 @@ export function sanitizeScenarioRequest(moduleId, request, { strict = true } = {
     const gap = SCENARIO_ARCHITECTURAL_GAPS[moduleId];
     throw new ScenarioLeverError(
       gap
-        ? `${moduleId} has scenarios in the Prompt Pack (${gap.packDefines}) but no engine `
-          + `support: ${gap.engineReality}.`
+        ? `${moduleId} scenarios ARE authorised by the Prompt Pack (${gap.packDefines}), but the `
+          + `deterministic execution layer for them does not exist yet: ${gap.engineReality}. `
+          + `This is a known capability gap, not an unsupported module.`
         : `${moduleId} has no scenario defined in the Prompt Pack. `
           + `Modules that do: ${scenarioCapableModuleIds().join(', ')}.`,
       { moduleId }
@@ -293,6 +311,54 @@ export function applyScenarioToInput(moduleId, input, accepted) {
   const field = mechanism.inputField;
   const existing = Array.isArray(next[field]) ? next[field] : [];
 
+  // Vary the amount of the income sources that already carry this money,
+  // scaling them proportionally so a household with two rented properties keeps
+  // its shape, and every source keeps its own start year, end year and
+  // inflation treatment. Where there is none yet -- a client considering buying
+  // an investment property -- the what-if adds one, because "what if I had
+  // rental income" is the same question asked from a base of zero.
+  if (mechanism.kind === 'income_source_amount') {
+    const target = Number(accepted[mechanism.levers[0].id]);
+    if (!Number.isFinite(target)) return { input, scenarioId: '' };
+    const sources = Array.isArray(next[field]) ? next[field] : [];
+    const matching = sources.filter((source) => source?.type === mechanism.incomeType);
+    const currentTotal = matching.reduce((sum, source) => sum + (Number(source.annualAmountToday) || 0), 0);
+    if (currentTotal > 0) {
+      const factor = target / currentTotal;
+      next[field] = sources
+        .map((source) => (source?.type === mechanism.incomeType
+          ? { ...source, annualAmountToday: source.annualAmountToday * factor }
+          : source))
+        // A source scaled to nothing is removed rather than kept at zero: the
+        // engine's own builder drops zero-amount sources, so keeping one here
+        // would put a record through the calculation that a real run never has.
+        .filter((source) => source?.type !== mechanism.incomeType || source.annualAmountToday > 0);
+      return { input: next, scenarioId: APPRENTICE_SCENARIO_ID };
+    }
+    if (target <= 0) return { input, scenarioId: '' };
+    // The engine refuses an income source with no start, and a pension member
+    // carries retirementAge rather than a year -- so derive it, the same way
+    // the adapter derives startYear for the sources it builds itself.
+    const member = (input?.pensions || [])[0];
+    const startYear = Number.isFinite(input?.incomeStartYear)
+      ? input.incomeStartYear
+      : (Number.isFinite(input?.currentYear)
+        && Number.isFinite(member?.retirementAge)
+        && Number.isFinite(member?.currentAge)
+        ? input.currentYear + (member.retirementAge - member.currentAge)
+        : null);
+    next[field] = [...sources, {
+      id: `${APPRENTICE_SCENARIO_ID}-${mechanism.incomeType}`,
+      title: 'What-if rental income',
+      type: mechanism.incomeType,
+      ownerId: member?.id,
+      annualAmountToday: target,
+      ...(Number.isFinite(startYear) ? { startYear } : {}),
+      inflationIndexed: true
+    }];
+    return { input: next, scenarioId: APPRENTICE_SCENARIO_ID };
+  }
+
   if (mechanism.perChild) {
     // College funding has no base selector -- every case coexists -- so the
     // what-if is an additional case, and each child is pointed at it.
@@ -304,12 +370,7 @@ export function applyScenarioToInput(moduleId, input, accepted) {
     return { input: next, scenarioId: APPRENTICE_SCENARIO_ID };
   }
 
-  const seed = {};
-  for (const field of mechanism.baseSeedFields || []) {
-    if (typeof input?.[field] !== 'undefined') seed[field] = input[field];
-    else if (field === 'rentalIncomeToday') seed[field] = 0;
-  }
-  const base = existing.length ? existing : [{ id: 'base', title: 'Current position', ...seed }];
+  const base = existing.length ? existing : [{ id: 'base', title: 'Current position' }];
   next[field] = [...base, { id: APPRENTICE_SCENARIO_ID, title: 'What-if', ...accepted }];
   if (typeof next.baseScenarioId === 'undefined') next.baseScenarioId = base[0].id;
   return { input: next, scenarioId: APPRENTICE_SCENARIO_ID };

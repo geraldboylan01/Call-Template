@@ -120,6 +120,37 @@ function describeDivergence(item) {
   return lines.join('\n');
 }
 
+/**
+ * What the adviser tried to vary and could not.
+ *
+ * A refused lever is not a typo. It means a real conversation reached for an
+ * assumption the module does not offer, which is exactly what this testing
+ * period exists to surface -- and it must reach the coding agent as a
+ * capability question rather than being buried as a failed run.
+ */
+function capabilityGaps(turns) {
+  const gaps = [];
+  for (const turn of turns) {
+    for (const run of turn.expert?.analysisRuns || []) {
+      if (!run.leverError) continue;
+      gaps.push(`- **Turn ${turn.turn}** — wanted \`${run.moduleId}\` varied by `
+        + `\`${Object.entries(run.requestedOverrides || {}).map(([k, v]) => `${k}=${v}`).join(', ')}\`\n`
+        + `  - refused: ${run.leverError}\n`
+        + (turn.expert?.note ? `  - the adviser's reason: ${turn.expert.note}\n` : ''));
+    }
+    // A what-if that ran but changed nothing is the same finding wearing a
+    // disguise: the lever was accepted and the engine ignored it.
+    for (const run of turn.expert?.analysisRuns || []) {
+      if (!run.isScenario || run.leverError || !run.base?.ran || !run.scenario?.ran) continue;
+      if (run.distinctFromBase) continue;
+      gaps.push(`- **Turn ${turn.turn}** — \`${run.moduleId}\` accepted `
+        + `\`${Object.entries(run.acceptedOverrides || {}).map(([k, v]) => `${k}=${v}`).join(', ')}\` `
+        + `but computed the SAME figures as the base case. The lever reached nothing.\n`);
+    }
+  }
+  return gaps.length ? gaps.join('\n') : '_None. Every what-if the adviser reached for could be expressed._';
+}
+
 function contextMarkdown({ record, turns, transcript, execution, executionError, divergences }) {
   const brief = record.fixture?.personaPath
     ? `Loaded from \`${record.fixture.personaPath}\` (not committed — real client detail).`
@@ -139,6 +170,15 @@ ${transcript.map((entry) => (
   `**${entry.role === 'client' ? 'CLIENT' : 'ADVISER'}:** ${entry.text || '_(acted without speaking)_'}`
   + (entry.note ? `\n> note: ${entry.note}` : '')
 )).join('\n\n')}
+
+## Scenarios the adviser wanted but could not express
+
+These are the most valuable findings in the bundle and they are NOT lessons about
+how the app should behave. They are places where the adviser reached for a
+what-if the existing Prompt-Pack capability cannot express. Propose them as
+**capability gaps** for an explicit decision, never as a rule to compile.
+
+${capabilityGaps(turns)}
 
 ## Where the rules and the adviser diverged
 
