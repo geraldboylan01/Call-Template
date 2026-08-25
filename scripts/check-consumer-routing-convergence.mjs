@@ -11,6 +11,7 @@
 // These assertions hold that property, plus the alias and capability rules.
 
 import assert from 'node:assert/strict';
+import { scenarioCapableModuleIds } from '../js/planning/scenario_catalogue.js';
 
 import {
   adviserCatalogueEntry,
@@ -273,7 +274,15 @@ check('scenario handling is carried by scenario-aware modules instead', () => {
   const aware = MODULE_MANIFEST
     .filter((entry) => entry.implementation.scenarioAware)
     .map((entry) => entry.moduleId).sort();
-  assert.deepEqual(aware, ['house_purchase', 'net_retirement_cashflow', 'pension_projection']);
+  // DERIVED, NOT PINNED. This used to hardcode house_purchase, pension
+  // projection and net retirement cash flow, and college funding was missing
+  // from it -- even though the Master Prompt Pack makes college scenarios
+  // REQUIRED (14_college_funding_playbook.md:99-119) and the adapter already
+  // selects an approved cost case per child. The same wrong list had been
+  // copied into docs/modules/scenario_analysis.md. Deriving both from the
+  // pack-backed catalogue is what stops the two drifting apart again.
+  assert.deepEqual(aware, scenarioCapableModuleIds().sort(),
+    'the scenarioAware manifest flags must match the Prompt Pack catalogue');
   for (const moduleId of aware) {
     assert.equal(typeof getPlanningModuleDefinition(moduleId).run, 'function',
       `${moduleId} must be runnable to carry scenario overrides`);

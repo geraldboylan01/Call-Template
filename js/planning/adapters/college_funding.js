@@ -1,3 +1,4 @@
+import { applyScenarioToInput, sanitizeScenarioRequest } from '../scenario_catalogue.js';
 import {
   PLANEIR_ASSUMPTIONS,
   approvedCollegeScenarios,
@@ -103,7 +104,13 @@ export function validateCollegeFundingInput(input) {
 }
 
 export async function runCollegeFundingAnalysis(input, context) {
-  const projection = computeCollegeFundingProjection(input);
+  // College funding is the one module where the pack makes scenarios REQUIRED
+  // (14_college_funding_playbook.md:99-119) and gives no base selector -- every
+  // case coexists as its own stack. A what-if is therefore an extra case that
+  // each child is pointed at, not a replacement for the approved ones.
+  const request = sanitizeScenarioRequest('college_funding', context.scenarioOverrides || {}, { strict: false });
+  const applied = applyScenarioToInput('college_funding', input, request);
+  const projection = computeCollegeFundingProjection(applied.input);
   return createModuleRunResult({
     moduleId: 'college_funding',
     moduleVersion: context.moduleVersion,

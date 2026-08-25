@@ -1,3 +1,4 @@
+import { applyScenarioToInput, sanitizeScenarioRequest } from '../scenario_catalogue.js';
 import { PLANEIR_ASSUMPTIONS, assumptionRecord } from '../planeir_assumptions.js';
 import { computePensionProjection } from '../../pension_math.js';
 import { computeNetRetirementProjection } from '../../net_retirement_math.js';
@@ -484,7 +485,17 @@ export function validatePensionProjectionInput(input) {
 }
 
 export async function runPensionProjection(input, context) {
-  const projection = computePensionProjection(input, { scenarioId: context.scenarioOverrides?.scenarioId || '' });
+  // THE PACK'S PENSION SCENARIO IS RENTAL INCOME, AND ONLY RENTAL INCOME
+  // (11_retirement_playbook.md:172-175). This adapter used to emit a field
+  // called `scenarios`, which pension_math.js never reads -- it reads
+  // `rentalIncomeScenarios` -- so a pension what-if reached the engine as
+  // nothing at all and came back as the base case. applyScenarioToInput puts
+  // the case where resolvePensionScenario actually looks for it.
+  const request = sanitizeScenarioRequest('pension_projection', context.scenarioOverrides || {}, { strict: false });
+  const applied = applyScenarioToInput('pension_projection', input, request);
+  const projection = computePensionProjection(applied.input, {
+    scenarioId: applied.scenarioId || context.scenarioOverrides?.scenarioId || ''
+  });
   return createModuleRunResult({
     moduleId: 'pension_projection',
     moduleVersion: context.moduleVersion,
@@ -599,7 +610,14 @@ export function validateNetRetirementInput(input) {
 }
 
 export async function runNetRetirementCashflow(input, context) {
-  const projection = computeNetRetirementProjection(input, { scenarioId: context.scenarioOverrides?.scenarioId || '' });
+  // The engine already validates and computes the pack's full scenario schema
+  // (15_net_retirement_cashflow_playbook.md:117-139); only the input builder
+  // withheld the definitions, emitting `[{id:'base'}]` and nothing else.
+  const request = sanitizeScenarioRequest('net_retirement_cashflow', context.scenarioOverrides || {}, { strict: false });
+  const applied = applyScenarioToInput('net_retirement_cashflow', input, request);
+  const projection = computeNetRetirementProjection(applied.input, {
+    scenarioId: applied.scenarioId || context.scenarioOverrides?.scenarioId || ''
+  });
   return createModuleRunResult({
     moduleId: 'net_retirement_cashflow',
     moduleVersion: context.moduleVersion,

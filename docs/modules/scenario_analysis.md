@@ -64,4 +64,10 @@ _None recorded._
 
 ## Catalogue note
 
-Scenario handling is threaded through `orchestrator.js` `scenarioFor()` into every adapter and hashed into `scenarioSnapshotHash`. The scenario-aware modules are House purchase, Pension projection and Net retirement cash flow. This entry is a placeholder for that capability and is the only module with `adviserAvailable: false`.
+Scenario handling is threaded through `orchestrator.js` `scenarioFor()` into every adapter and hashed into `scenarioSnapshotHash`. The scenario-capable modules, and the levers each one allows, are declared in `js/planning/scenario_catalogue.js`, which derives them from the Master Prompt Pack: Net retirement cash flow, Pension projection, College funding and House purchase.
+
+This note previously named House purchase, Pension projection and Net retirement cash flow. That was wrong twice. College funding was omitted even though the pack makes its scenarios REQUIRED (`14_college_funding_playbook.md:99-119`) and the adapter already selects them per child, and Pension projection was listed as working when the adapter emitted a field (`scenarios`) that `pension_math.js` never reads -- it reads `rentalIncomeScenarios` -- so a pension what-if silently returned the base case.
+
+Personal balance sheet is deliberately absent. The pack does define PBS alternatives (`10_pbs_playbook.md:85-115`), but assigns them to the AI author, which writes fully recalculated sections into `generated.outputsBucketed.scenarios[]`; `computePersonalBalanceSheet(input)` takes no options and the engine has no scenario concept. That gap is recorded in `SCENARIO_ARCHITECTURAL_GAPS`.
+
+This entry is a placeholder for the capability and is the only module with `adviserAvailable: false`.

@@ -21,9 +21,11 @@ import {
   sha256
 } from './teach-lesson.mjs';
 import {
-  sanitizeScenarioOverrides, ScenarioLeverError, scenarioAwareModuleIds, scenarioLeversFor,
-  scenarioPromptSection
-} from '../js/planning/scenario_levers.js';
+  APPRENTICE_SCENARIO_ID, applyScenarioToInput, sanitizeScenarioRequest, SCENARIO_ARCHITECTURAL_GAPS,
+  SCENARIO_CATALOGUE, ScenarioLeverError, scenarioCapableModuleIds, scenarioLeversFor,
+  scenarioMechanismFor, scenarioPromptSection
+} from '../js/planning/scenario_catalogue.js';
+import { compareFigures, describeFigure, headlineFigures } from './agent-harness/adviser-run.mjs';
 
 const pass = (message) => console.info(`[TeachingHarness] PASS: ${message}`);
 
@@ -124,61 +126,119 @@ const shadow = {
 /* ------------------------------------------------------------ what-if levers */
 
 {
-  const aware = scenarioAwareModuleIds();
-  assert.ok(aware.includes('pension_projection'), 'pension_projection must declare levers');
-  for (const moduleId of aware) {
+  // THE PROMPT PACK IS THE AUTHORITY. Every lever must trace to a pack citation,
+  // because the failure that made this catalogue necessary was declaring levers
+  // (retirement_age, annual_contribution, growth_rate on the pension) that the
+  // pack never authorises and no engine computes -- and watching a call come
+  // back with base-case figures dressed as a what-if.
+  const ids = scenarioCapableModuleIds();
+  assert.deepEqual(ids.sort(), [
+    'college_funding', 'house_purchase', 'net_retirement_cashflow', 'pension_projection'
+  ], 'the scenario-capable set is fixed by the Prompt Pack, not by what is convenient');
+  for (const moduleId of ids) {
+    const mechanism = scenarioMechanismFor(moduleId);
+    assert.ok(mechanism.source, `${moduleId} must cite the Prompt Pack line that authorises it`);
+    assert.ok(['input_scenarios', 'runtime_overrides'].includes(mechanism.kind));
     for (const lever of scenarioLeversFor(moduleId)) {
       assert.ok(lever.id && lever.type && lever.means,
         `${moduleId}.${lever.id} must say what it means in a client's terms`);
-      assert.ok(Number.isFinite(lever.min) && Number.isFinite(lever.max) && lever.min < lever.max,
-        `${moduleId}.${lever.id} must declare a usable range`);
+      if (lever.type === 'enum') assert.ok(lever.values.length > 0);
+      else if (lever.type !== 'idList') {
+        assert.ok(Number.isFinite(lever.min) && Number.isFinite(lever.max) && lever.min < lever.max,
+          `${moduleId}.${lever.id} must declare a usable range`);
+      }
     }
   }
-  pass(`${aware.length} scenario-aware module(s), every lever ranged and explained`);
+  pass(`${ids.length} scenario-capable module(s), every lever cited to the Prompt Pack`);
 
-  assert.deepEqual(sanitizeScenarioOverrides('pension_projection', { retirement_age: 60 }),
-    { retirement_age: 60 });
-  assert.deepEqual(sanitizeScenarioOverrides('pension_projection', { retirement_age: '60' }),
-    { retirement_age: 60 }, 'a numeric string from a tool call must coerce');
+  // The pension's entire authorised surface is ONE field.
+  assert.deepEqual(scenarioLeversFor('pension_projection').map((l) => l.id), ['rentalIncomeToday']);
+  for (const invented of ['retirement_age', 'annual_contribution', 'growth_rate']) {
+    assert.throws(() => sanitizeScenarioRequest('pension_projection', { [invented]: 60 }),
+      /does not give pension_projection/,
+      `${invented} was never in the Prompt Pack and must stay refused`);
+  }
+  pass('the pension what-if is rental income only; the invented levers stay refused');
 
-  // STRICT IS THE POINT. A model told nothing about an out-of-range lever would
-  // describe base-case results as though the scenario had run.
-  assert.throws(() => sanitizeScenarioOverrides('pension_projection', { retirement_age: 95 }),
-    /between 50 and 75/);
-  assert.throws(() => sanitizeScenarioOverrides('pension_projection', { invented: 1 }),
-    /has no "invented" to change/);
-  assert.throws(() => sanitizeScenarioOverrides('liquidity_analysis', { anything: 1 }),
-    /declares no scenario levers/);
-  pass('an unusable lever is refused by name, with its range');
+  // House purchase is runtime-only by pack instruction and must never gain a
+  // persisted selector (17_house_purchase_playbook.md:26).
+  assert.equal(SCENARIO_CATALOGUE.house_purchase.kind, 'runtime_overrides');
+  assert.equal(applyScenarioToInput('house_purchase', { a: 1 }, { mortgageTermYears: 25 }).scenarioId, '',
+    'a house-purchase what-if must not create a persisted scenario id');
+  assert.throws(() => sanitizeScenarioRequest('house_purchase', { supportCase: 'htb_and_more' }),
+    /must be one of/);
+  assert.deepEqual(sanitizeScenarioRequest('house_purchase', { supportCase: 'htb_only' }),
+    { supportCase: 'htb_only' });
+  pass('house purchase stays runtime-only, with the four scheme cases the pack names');
 
-  // The error is a CLASS, not just a message, so a caller can tell a bad lever
-  // apart from a module that blew up — and can tell the client which assumption
-  // it could not use rather than failing the whole turn.
+  // Net retirement carries whole scenario definitions into the input.
+  const applied = applyScenarioToInput('net_retirement_cashflow',
+    { scenarios: [{ id: 'base', title: 'Current position' }] },
+    sanitizeScenarioRequest('net_retirement_cashflow', { annualExpenditureToday: 38000 }));
+  assert.equal(applied.scenarioId, APPRENTICE_SCENARIO_ID);
+  assert.equal(applied.input.scenarios.length, 2, 'the base case must survive alongside the what-if');
+  assert.equal(applied.input.scenarios[1].annualExpenditureToday, 38000);
+  pass('a net-retirement what-if is added beside the base case, never instead of it');
+
+  // The pension base case must carry rentalIncomeToday or the engine rejects it.
+  const pension = applyScenarioToInput('pension_projection', { rentalIncomeToday: 18000 },
+    sanitizeScenarioRequest('pension_projection', { rentalIncomeToday: 0 }));
+  assert.equal(pension.input.rentalIncomeScenarios[0].rentalIncomeToday, 18000,
+    'the synthesised base case must be seeded from the input, or the engine refuses the list');
+  assert.equal(pension.input.rentalIncomeScenarios[1].rentalIncomeToday, 0);
+  pass('a synthesised pension base case is seeded so the engine accepts the list');
+
+  // College funding has no base selector -- cases coexist as separate stacks.
+  const college = applyScenarioToInput('college_funding',
+    { scenarios: [{ id: 'living_at_home' }], children: [{ id: 'c1' }] },
+    sanitizeScenarioRequest('college_funding', { annualCostTodayPerChild: 15000 }));
+  assert.equal(college.input.scenarios.length, 2);
+  assert.equal(college.input.children[0].scenarioId, APPRENTICE_SCENARIO_ID);
+  pass('a college what-if is an extra case each child is pointed at');
+
+  // PBS is recorded as an architectural gap, not silently omitted.
+  assert.ok(SCENARIO_ARCHITECTURAL_GAPS.personal_balance_sheet.packDefines);
+  assert.throws(() => sanitizeScenarioRequest('personal_balance_sheet', { anything: 1 }),
+    /no engine support/);
+  pass('PBS is refused with the reason, not quietly treated as having no scenarios');
+
+  assert.throws(() => sanitizeScenarioRequest('liquidity_analysis', { anything: 1 }),
+    /no scenario defined in the Prompt Pack/);
+  assert.deepEqual(
+    sanitizeScenarioRequest('pension_projection', { retirement_age: 60 }, { strict: false }), {},
+    'lenient mode drops rather than throws, for browser controls');
+  pass('a module with no pack scenario is refused; lenient mode drops silently');
+
   try {
-    sanitizeScenarioOverrides('pension_projection', { retirement_age: 95 });
+    sanitizeScenarioRequest('pension_projection', { rentalIncomeToday: -5 });
     assert.fail('should have thrown');
   } catch (error) {
     assert.ok(error instanceof ScenarioLeverError);
     assert.equal(error.code, 'scenario_lever_invalid');
     assert.equal(error.moduleId, 'pension_projection');
-    assert.equal(error.leverId, 'retirement_age');
+    assert.equal(error.leverId, 'rentalIncomeToday');
   }
   pass('a lever error is catchable by class and names the module and the lever');
 
-  // Lenient mode still exists for browser controls, where a half-typed value
-  // must mean "use the base case" rather than blank the screen.
-  assert.deepEqual(
-    sanitizeScenarioOverrides('pension_projection', { retirement_age: 95 }, { strict: false }), {});
-  pass('lenient mode drops silently, for browser controls');
-
   const section = scenarioPromptSection();
-  for (const moduleId of aware) {
+  for (const moduleId of ids) {
     for (const lever of scenarioLeversFor(moduleId)) {
       assert.ok(section.includes(`${moduleId}.${lever.id}`),
         `the generated prompt section must name ${moduleId}.${lever.id}`);
     }
   }
-  pass('the prompt section is generated from the manifests and names every lever');
+  pass('the prompt section is generated from the catalogue and names every lever');
+}
+
+/* --------------------------------------------------- reading a what-if back */
+
+{
+  assert.deepEqual(headlineFigures({ currency: 'EUR', requiredPot: 780000, scenarioId: 'x', note: 'text' }),
+    { requiredPot: 780000 }, 'only numeric outcomes are figures');
+  const rows = compareFigures({ requiredPot: 780000 }, { requiredPot: 905000 });
+  assert.equal(rows[0].delta, 125000);
+  assert.match(describeFigure(rows[0]), /780,000.*905,000/);
+  pass('base and what-if figures are compared and read back as movement');
 }
 
 /* ------------------------------------------------------- the approval gate */

@@ -21,30 +21,7 @@
     "scenarioAware": true,
     "playbook": "11_retirement_playbook.md",
     "outputKey": "generated.pensionInputs",
-    "hasRunnableEngine": true,
-    "scenarioLevers": [
-      {
-        "id": "retirement_age",
-        "type": "integer",
-        "min": 50,
-        "max": 75,
-        "means": "the age they actually stop or cut back, rather than the one already on file"
-      },
-      {
-        "id": "annual_contribution",
-        "type": "money",
-        "min": 0,
-        "max": 200000,
-        "means": "what goes into the pension each year from here on"
-      },
-      {
-        "id": "growth_rate",
-        "type": "rate",
-        "min": -0.05,
-        "max": 0.12,
-        "means": "the net growth assumed between now and then"
-      }
-    ]
+    "hasRunnableEngine": true
   },
   "routing": {
     "consumerRoutable": true,

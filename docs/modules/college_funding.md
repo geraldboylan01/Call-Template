@@ -18,7 +18,7 @@
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
-    "scenarioAware": false,
+    "scenarioAware": true,
     "playbook": "14_college_funding_playbook.md",
     "outputKey": "generated.collegeFundingInputs",
     "hasRunnableEngine": true

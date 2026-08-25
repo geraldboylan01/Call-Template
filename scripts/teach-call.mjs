@@ -47,7 +47,8 @@ import {
   deterministicShadow, divergencesFor, rendererShadow, summariseDivergences
 } from './agent-harness/shadow.mjs';
 import { writeTeachingBundle } from './agent-harness/bundle.mjs';
-import { sanitizeScenarioOverrides } from '../js/planning/scenario_levers.js';
+import { sanitizeScenarioRequest } from '../js/planning/scenario_catalogue.js';
+import { describeAdviserRun, runAdviserAnalyses } from './agent-harness/adviser-run.mjs';
 import {
   cloneCallDatabaseForReconciliation, makeConfig, makeEnv, newSession, openCallDatabase,
   RELEASED_MODULE_IDS
@@ -283,14 +284,11 @@ if (command === 'say') {
   // and carried into the bundle as evidence.
   for (const run of adviser.runs) {
     try {
-      run.acceptedOverrides = sanitizeScenarioOverrides(run.moduleId, run.scenarioOverrides);
+      run.acceptedOverrides = sanitizeScenarioRequest(run.moduleId, run.scenarioOverrides);
       run.leverError = null;
     } catch (error) {
       run.acceptedOverrides = {};
       run.leverError = String(error?.message || error);
-      console.info(`  note: ${run.leverError}`);
-      console.info('        Recorded anyway — an assumption you need that the engine cannot');
-      console.info('        vary is exactly what this is here to find.');
     }
   }
 
@@ -372,10 +370,16 @@ if (command === 'say') {
   const afterContext = await loadAgentContext(env, config, record.sessionId, record.meetingId);
   const factsAfter = observedCanonicalFacts(afterContext);
 
+  // Run what the adviser asked for, on the profile as it stands after this
+  // turn. Deterministic and free — and the figures are theirs to see, unlike
+  // the shadow, which stays hidden until finish.
+  const analysisRuns = await runAdviserAnalyses({ profile: afterContext.profile, runs: adviser.runs });
+
   const turns = readJson(casePath(record.caseId, 'turns.json'), []);
   const turnNumber = turns.length + 1;
   const expert = {
     ...adviser,
+    analysisRuns,
     extractionOutcomes: result.diagnostics?.candidateOutcomes || []
   };
   const divergences = divergencesFor({
@@ -408,12 +412,8 @@ if (command === 'say') {
 
   // DELIBERATELY SILENT ABOUT THE BASELINE. See the note at the top of the file.
   console.info(`Turn ${turnNumber} recorded.`);
-  if (adviser.runs.length) {
-    console.info(`  analyses you asked for: ${adviser.runs.map((run) => (
-      Object.keys(run.scenarioOverrides).length
-        ? `${run.moduleId} (${Object.entries(run.scenarioOverrides).map(([k, v]) => `${k}=${v}`).join(', ')})`
-        : run.moduleId
-    )).join(', ')}`);
+  for (const analysisRun of analysisRuns) {
+    for (const line of describeAdviserRun(analysisRun)) console.info(line);
   }
   if (adviser.note) console.info(`  your note: ${adviser.note}`);
   console.info(`  facts on the record: ${factsAfter.length}`);
