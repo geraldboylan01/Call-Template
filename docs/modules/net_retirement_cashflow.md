@@ -21,7 +21,30 @@
     "scenarioAware": true,
     "playbook": "15_net_retirement_cashflow_playbook.md",
     "outputKey": "generated.netRetirementInputs",
-    "hasRunnableEngine": true
+    "hasRunnableEngine": true,
+    "scenarioLevers": [
+      {
+        "id": "retirement_age",
+        "type": "integer",
+        "min": 50,
+        "max": 75,
+        "means": "the age the household's earned income stops or drops"
+      },
+      {
+        "id": "annual_expenditure",
+        "type": "money",
+        "min": 0,
+        "max": 500000,
+        "means": "what the household expects to spend each year in retirement"
+      },
+      {
+        "id": "present_value_rate",
+        "type": "rate",
+        "min": 0,
+        "max": 0.12,
+        "means": "the net return assumed on the fund that covers the shortfall"
+      }
+    ]
   },
   "routing": {
     "consumerRoutable": true,

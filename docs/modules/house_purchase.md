@@ -21,7 +21,44 @@
     "scenarioAware": true,
     "playbook": "17_house_purchase_playbook.md",
     "outputKey": "generated.housePurchaseInputs",
-    "hasRunnableEngine": true
+    "hasRunnableEngine": true,
+    "scenarioLevers": [
+      {
+        "id": "targetPropertyPrice",
+        "type": "money",
+        "min": 1,
+        "max": 5000000,
+        "means": "the price of the house they are actually aiming at"
+      },
+      {
+        "id": "plannedMonthlySavings",
+        "type": "money",
+        "min": 0,
+        "max": 50000,
+        "means": "what they can put aside each month towards the deposit"
+      },
+      {
+        "id": "mortgageTermYears",
+        "type": "integer",
+        "min": 1,
+        "max": 50,
+        "means": "how long they take the mortgage over"
+      },
+      {
+        "id": "mortgageIllustrationRate",
+        "type": "rate",
+        "min": 0,
+        "max": 1,
+        "means": "the rate the repayment is illustrated at"
+      },
+      {
+        "id": "emergencyReserveTarget",
+        "type": "money",
+        "min": 0,
+        "max": 500000,
+        "means": "cash they intend to keep back rather than put into the deposit"
+      }
+    ]
   },
   "routing": {
     "consumerRoutable": true,

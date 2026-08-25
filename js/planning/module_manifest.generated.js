@@ -341,7 +341,44 @@ export const MODULE_MANIFEST = Object.freeze([
       "scenarioAware": true,
       "playbook": "17_house_purchase_playbook.md",
       "outputKey": "generated.housePurchaseInputs",
-      "hasRunnableEngine": true
+      "hasRunnableEngine": true,
+      "scenarioLevers": [
+        {
+          "id": "targetPropertyPrice",
+          "type": "money",
+          "min": 1,
+          "max": 5000000,
+          "means": "the price of the house they are actually aiming at"
+        },
+        {
+          "id": "plannedMonthlySavings",
+          "type": "money",
+          "min": 0,
+          "max": 50000,
+          "means": "what they can put aside each month towards the deposit"
+        },
+        {
+          "id": "mortgageTermYears",
+          "type": "integer",
+          "min": 1,
+          "max": 50,
+          "means": "how long they take the mortgage over"
+        },
+        {
+          "id": "mortgageIllustrationRate",
+          "type": "rate",
+          "min": 0,
+          "max": 1,
+          "means": "the rate the repayment is illustrated at"
+        },
+        {
+          "id": "emergencyReserveTarget",
+          "type": "money",
+          "min": 0,
+          "max": 500000,
+          "means": "cash they intend to keep back rather than put into the deposit"
+        }
+      ]
     },
     "routing": {
       "consumerRoutable": true,
@@ -644,7 +681,30 @@ export const MODULE_MANIFEST = Object.freeze([
       "scenarioAware": true,
       "playbook": "15_net_retirement_cashflow_playbook.md",
       "outputKey": "generated.netRetirementInputs",
-      "hasRunnableEngine": true
+      "hasRunnableEngine": true,
+      "scenarioLevers": [
+        {
+          "id": "retirement_age",
+          "type": "integer",
+          "min": 50,
+          "max": 75,
+          "means": "the age the household's earned income stops or drops"
+        },
+        {
+          "id": "annual_expenditure",
+          "type": "money",
+          "min": 0,
+          "max": 500000,
+          "means": "what the household expects to spend each year in retirement"
+        },
+        {
+          "id": "present_value_rate",
+          "type": "rate",
+          "min": 0,
+          "max": 0.12,
+          "means": "the net return assumed on the fund that covers the shortfall"
+        }
+      ]
     },
     "routing": {
       "consumerRoutable": true,
@@ -728,7 +788,30 @@ export const MODULE_MANIFEST = Object.freeze([
       "scenarioAware": true,
       "playbook": "11_retirement_playbook.md",
       "outputKey": "generated.pensionInputs",
-      "hasRunnableEngine": true
+      "hasRunnableEngine": true,
+      "scenarioLevers": [
+        {
+          "id": "retirement_age",
+          "type": "integer",
+          "min": 50,
+          "max": 75,
+          "means": "the age they actually stop or cut back, rather than the one already on file"
+        },
+        {
+          "id": "annual_contribution",
+          "type": "money",
+          "min": 0,
+          "max": 200000,
+          "means": "what goes into the pension each year from here on"
+        },
+        {
+          "id": "growth_rate",
+          "type": "rate",
+          "min": -0.05,
+          "max": 0.12,
+          "means": "the net growth assumed between now and then"
+        }
+      ]
     },
     "routing": {
       "consumerRoutable": true,
