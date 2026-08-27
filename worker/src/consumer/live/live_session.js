@@ -357,6 +357,14 @@ export class ConsumerLiveSession {
     this.processedToolCallIds = new Set();
     this.clientNumericEvidenceIncomplete = false;
     this.openingRequested = false;
+    // Responses the Worker has asked for and the provider has not created yet.
+    // Server-requested responses not yet created. Keyed by the client event_id
+    // the provider echoes back on error, so a failure can be attributed to the
+    // ONE request that caused it — a bare counter could only be decremented by
+    // a creation, and retiring everything on any error was equally wrong in
+    // the other direction.
+    this.pendingServerResponses = new Map();
+    this.serverResponseEventSeq = 0;
     this.pendingTerminalization = null;
 
     this.state.blockConcurrencyWhile(async () => {
@@ -513,11 +521,16 @@ export class ConsumerLiveSession {
   /** Ask for the one tools-disabled opening turn, durably and at most once. */
   async requestOpeningResponse() {
     if (this.openingRequested) return false;
+    const openingEventId = this.nextServerResponseEventId('opening');
     this.openingRequested = true;
     await this.state.storage.put('openingRequested', true);
     try {
       this.sendProvider({
         type: 'response.create',
+        // The provider echoes this on any error it raises for this request,
+        // which is what makes a failure attributable to one request instead of
+        // to "something went wrong somewhere".
+        event_id: openingEventId,
         response: {
           tool_choice: 'none',
           metadata: { kind: 'opening', continuation_index: '0' }
@@ -531,6 +544,7 @@ export class ConsumerLiveSession {
       await this.state.storage.delete?.('openingRequested');
       throw error;
     }
+    this.trackServerResponseRequest(openingEventId, { key: 'opening' });
     this.state.waitUntil(appendRealtimeEvent(this.env, {
       sessionId: this.meta?.sessionId,
       leaseId: this.meta?.leaseId,
@@ -568,7 +582,37 @@ export class ConsumerLiveSession {
 
   bindResponseContext(responseId, metadata = {}) {
     if (!responseId) return null;
-    const responseKind = String(metadata?.kind || 'auto');
+    // A repeated response.created for the same id is the same response, not a
+    // second one. Settling that first means the request check below never has
+    // to treat a duplicate as unsolicited.
+    if (this.responseContextsById.has(responseId)) {
+      return this.responseContextsById.get(responseId);
+    }
+    let responseKind = String(metadata?.kind || 'auto');
+    // RESERVED METADATA IS THE WORKER'S OWN VOCABULARY. `kind` decides which
+    // client turn a response answers, so a response carrying it that the
+    // Worker never asked for can bind itself to any earlier turn and schedule
+    // that turn's review against speech it has nothing to do with. Honour it
+    // only against an outstanding request; otherwise this is an ordinary
+    // provider response and is bound like one.
+    let issuedRequest = null;
+    if (responseKind === 'opening' || responseKind === 'tool_continuation') {
+      const requestKey = responseKind === 'opening'
+        ? 'opening'
+        : `continuation:${String(metadata?.parent_response_id || '')}`;
+      issuedRequest = this.serverResponseRequestFor(requestKey);
+      if (!issuedRequest) {
+        this.state.waitUntil(appendRealtimeEvent(this.env, {
+          sessionId: this.meta?.sessionId,
+          leaseId: this.meta?.leaseId,
+          direction: 'server',
+          eventType: 'live.response.unsolicited_metadata',
+          payload: { responseId, kind: responseKind }
+        }).catch(() => {}));
+        responseKind = 'auto';
+        metadata = {};
+      }
+    }
     const continuation = responseKind === 'tool_continuation';
     const opening = responseKind === 'opening';
     const rootResponseId = continuation
@@ -580,11 +624,21 @@ export class ConsumerLiveSession {
     const parent = parentResponseId
       ? this.responseContextsById.get(parentResponseId) || null
       : null;
+    // THE CHAIN COMES FROM THE REQUEST WE ISSUED, NOT FROM THE RESPONSE.
+    //
+    // Matching an outstanding parent proves only that SOME continuation was
+    // expected. The root_* fields still say which client turn this answers, so
+    // a response with a correct parent and forged roots could adopt a
+    // different turn entirely — and then schedule that turn's review against
+    // speech it never answered. The Worker recorded the chain when it asked;
+    // that record is the authority, and metadata is never a fallback for it.
     let chain = continuation
-      ? this.continuationChainsByRootResponseId.get(rootResponseId) || null
+      ? issuedRequest?.chain
+        || this.continuationChainsByRootResponseId.get(rootResponseId)
+        || null
       : null;
     const causeItemId = continuation
-      ? String(chain?.rootCauseItemId || metadata?.root_item_id || '') || null
+      ? String(chain?.rootCauseItemId || '') || null
       : opening ? null : this.unboundAutoResponseTurnIds.shift() || null;
     const pendingSourceItemIds = continuation && parent
       ? new Set(parent.pendingSourceItemIds)
@@ -604,7 +658,15 @@ export class ConsumerLiveSession {
         precedingAssistantTranscript,
         toolCallCount: 0,
         invalidated: false,
-        settled: false
+        settled: false,
+        // A chain's saves happen on the hops; its review happens at the end.
+        // These carry each hop's outcome forward so the turn is scheduled on
+        // everything it produced rather than on whatever the last hop did.
+        noteAcceptedCount: 0,
+        noteRejectedCount: 0,
+        acceptedValueEvidence: [],
+        reconciliationTrigger: null,
+        reconciliationPriority: false
       };
       this.continuationChainsByRootResponseId.set(rootResponseId, chain);
     }
@@ -722,11 +784,138 @@ export class ConsumerLiveSession {
     }
   }
 
-  /** A new client utterance wins over any tool result that was about to speak. */
+  /**
+   * A server-requested response is no longer outstanding.
+   *
+   * Called on creation AND when the provider errors on that request. Retiring
+   * only on creation left a rejected request outstanding forever, so a later
+   * barge-in marked it superseded and every legitimate continuation after that
+   * was cancelled on arrival.
+   */
+  retireServerResponseRequest(requestKey) {
+    for (const [eventId, record] of this.pendingServerResponses) {
+      if (record.key === requestKey) this.pendingServerResponses.delete(eventId);
+    }
+  }
+
+  nextServerResponseEventId(kind) {
+    this.serverResponseEventSeq += 1;
+    return `planeir_${kind}_${this.serverResponseEventSeq}`;
+  }
+
+  trackServerResponseRequest(eventId, record) {
+    this.pendingServerResponses.set(eventId, { ...record, superseded: false });
+    while (this.pendingServerResponses.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
+      this.pendingServerResponses.delete(this.pendingServerResponses.keys().next().value);
+    }
+  }
+
+  serverResponseRequestFor(requestKey) {
+    for (const record of this.pendingServerResponses.values()) {
+      if (record.key === requestKey) return record;
+    }
+    return null;
+  }
+
+  /**
+   * A response the Worker asked for will never exist.
+   *
+   * Its chain is then waiting for a continuation that is not coming, and
+   * `awaitsContinuationChain` would hold that turn's review shut for the rest
+   * of the meeting — which also holds the confirmation barrier shut. Settle the
+   * chain and review the turn on what it did manage to write.
+   */
+  settleFailedServerResponse(eventId) {
+    const record = this.pendingServerResponses.get(eventId);
+    if (!record) return false;
+    this.pendingServerResponses.delete(eventId);
+    const chain = record.chain;
+    if (!chain || chain.settled) return true;
+    chain.settled = true;
+    if (getConsumerConfig(this.env).plannerReconciliationMode === 'legacy') return true;
+    const stranded = [...this.responseContextsById.values()]
+      .filter((response) => response.continuationChain === chain && response.done)
+      .at(-1);
+    if (stranded) this.maybeScheduleReconciliation(stranded);
+    return true;
+  }
+
+  /**
+   * Carry one hop's review outcome onto the turn it belongs to.
+   *
+   * Folds DELTAS, so it is safe to call repeatedly. It has to be: a tool whose
+   * evidence was deferred behind ASR reports its outcome onto a response that
+   *has finished, long after that response's own response.done. Folding once at
+   * done would lose exactly the saves this lane defers most often.
+   */
+  foldResponseIntoChain(response) {
+    const chain = response?.continuationChain;
+    if (!chain) return;
+    const folded = response.foldedReviewSignals || { accepted: 0, rejected: 0, evidence: 0 };
+    const accepted = Number(response.noteAcceptedCount || 0);
+    const rejected = Number(response.noteRejectedCount || 0);
+    const evidence = Array.isArray(response.acceptedValueEvidence)
+      ? response.acceptedValueEvidence
+      : [];
+    chain.noteAcceptedCount += Math.max(0, accepted - folded.accepted);
+    chain.noteRejectedCount += Math.max(0, rejected - folded.rejected);
+    if (evidence.length > folded.evidence) {
+      chain.acceptedValueEvidence = [
+        ...chain.acceptedValueEvidence,
+        ...evidence.slice(folded.evidence)
+      ];
+    }
+    response.foldedReviewSignals = {
+      accepted, rejected, evidence: evidence.length
+    };
+    // readiness_transition outranks the rest, exactly as it does per-response.
+    if (response.reconciliationTrigger
+      && (!chain.reconciliationTrigger
+        || response.reconciliationTrigger === 'readiness_transition')) {
+      chain.reconciliationTrigger = response.reconciliationTrigger;
+    }
+    if (response.reconciliationPriority === true) chain.reconciliationPriority = true;
+  }
+
+  /**
+   * This response is one hop of a chain that has not finished.
+   *
+   * A THREE-HOP CHAIN IS ONE CONVERSATIONAL TURN. Reviewing at the first
+   * response.done means reviewing the client's answer against a third of the
+   * evidence it produced — and because queueReconciliation deduplicates by
+   * turn id, the saves from hops two and three could never earn another look.
+   * A dense answer would be permanently half-reviewed.
+   *
+   * An invalidated chain is NOT waiting: barge-in means no continuation is
+   * coming, so that turn must be reviewed now rather than never.
+   */
+  awaitsContinuationChain(response) {
+    if (!response || response.toolCallIds.size === 0) return false;
+    const chain = response.continuationChain;
+    if (!chain) return false;
+    // Invalidated: barge-in, no continuation is coming. Settled: the chain
+    // finished, or the request that would have continued it failed outright.
+    // Either way nothing further will write to this turn, so waiting longer
+    // just holds its review — and the confirmation barrier — shut forever.
+    return chain.invalidated !== true && chain.settled !== true;
+  }
+
+  /**
+   * A new client utterance wins over anything the Worker was about to say.
+   *
+   * A requested response does not exist until the provider creates it, so
+   * there is a window — widest for the opening, which is requested before any
+   * response has ever existed — where a chain cannot carry the invalidation.
+   * The counter closes it: speech during that window marks the next
+   * server-requested response for cancellation on arrival.
+   */
   invalidatePendingContinuations() {
     for (const chain of this.continuationChainsByRootResponseId.values()) {
       if (!chain.settled) chain.invalidated = true;
     }
+    // Everything already asked for, and not yet created, is superseded by the
+    // client. Marking the records leaves a later legitimate request alone.
+    for (const record of this.pendingServerResponses.values()) record.superseded = true;
   }
 
   registerResponseToolCall(event) {
@@ -743,6 +932,11 @@ export class ConsumerLiveSession {
   markResponseToolOutputDelivered(response, callId) {
     if (!response || !callId) return false;
     response.deliveredToolCallIds.add(String(callId));
+    // Fold NOW, while this response still exists. A deferred save reports its
+    // outcome long after its own response.done, by which point ledger pressure
+    // in a long meeting may already have retired that response — and the turn
+    // would then be reviewed as though the save had never happened.
+    this.foldResponseIntoChain(response);
     return this.maybeRequestToolContinuation(response);
   }
 
@@ -764,9 +958,11 @@ export class ConsumerLiveSession {
       ? 'none'
       : 'auto';
     response.continuationRequested = true;
+    const continuationEventId = this.nextServerResponseEventId('continuation');
     try {
       this.sendProvider({
         type: 'response.create',
+        event_id: continuationEventId,
         response: {
           tool_choice: toolChoice,
           metadata: {
@@ -782,6 +978,10 @@ export class ConsumerLiveSession {
       response.continuationRequested = false;
       return false;
     }
+    this.trackServerResponseRequest(continuationEventId, {
+      key: `continuation:${response.responseId}`,
+      chain
+    });
     this.state.waitUntil(appendRealtimeEvent(this.env, {
       sessionId: this.meta?.sessionId,
       leaseId: this.meta?.leaseId,
@@ -842,6 +1042,9 @@ export class ConsumerLiveSession {
     if (type === 'conversation.item.created') {
       const typedTurn = typedClientTurnFromEvent(event);
       if (!typedTurn) return;
+      // A typed answer is a barge-in. The client has moved on, and a queued
+      // continuation would answer a question they have already left behind.
+      this.invalidatePendingContinuations();
       this.turnFinalAt = Date.now();
       this.firstOutputRecorded = false;
       const turn = this.registerStoppedClientTurn({ item_id: typedTurn.itemId });
@@ -864,8 +1067,17 @@ export class ConsumerLiveSession {
       this.currentResponseAwaitingClientTranscription = context.pendingSourceItemIds.size > 0;
       this.currentResponseNumericContainmentUnavailable = context.numericUnavailable;
       this.pendingClientTranscriptionUnavailable = false;
-      if (context.responseKind === 'tool_continuation'
-        && context.continuationChain?.invalidated) {
+      const serverRequested = context.responseKind === 'tool_continuation'
+        || context.responseKind === 'opening';
+      const requestKey = context.responseKind === 'opening'
+        ? 'opening'
+        : `continuation:${context.parentResponseId}`;
+      const superseded = serverRequested
+        && this.serverResponseRequestFor(requestKey)?.superseded === true;
+      if (serverRequested) this.retireServerResponseRequest(requestKey);
+      const supersededByClient = serverRequested
+        && (superseded || context.continuationChain?.invalidated === true);
+      if (supersededByClient) {
         try {
           this.sendProvider({ type: 'response.cancel', response_id: context.responseId });
         } catch (_error) { /* provider terminalization owns socket loss */ }
@@ -894,10 +1106,11 @@ export class ConsumerLiveSession {
         if (context.toolCallIds.size === 0) context.continuationChain.settled = true;
       }
       this.inResponse = [...this.responseContextsById.values()].some((response) => !response.done);
+      if (context) this.foldResponseIntoChain(context);
+      if (context) this.maybeRequestToolContinuation(context);
       if (context && getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy') {
         this.maybeScheduleReconciliation(context);
       }
-      if (context) this.maybeRequestToolContinuation(context);
       this.pruneLiveTurnLedger();
       return this.handleUsage(event.response || {});
     }
@@ -905,6 +1118,14 @@ export class ConsumerLiveSession {
 
   async handleProviderError(event) {
     const classified = classifyRealtimeProviderError(event);
+    // Attribute the failure to the ONE request that caused it. Retiring every
+    // outstanding request on any error was wrong twice over: an unrelated
+    // error erased a pending opening's supersession, so a client who had
+    // already started speaking got talked over; and a genuinely failed
+    // continuation left its chain waiting forever, holding that turn's review
+    // — and the confirmation barrier — shut.
+    const failedEventId = String(event?.error?.event_id || event?.event_id || '');
+    if (failedEventId) this.settleFailedServerResponse(failedEventId);
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
@@ -1210,11 +1431,31 @@ export class ConsumerLiveSession {
 
   maybeScheduleReconciliation(response, forcedTrigger = null) {
     if (!response?.done || !response.causeItemId) return;
+    // ONE PLACE, NOT FOUR. Reviewing a turn whose continuation chain is still
+    // writing reviews it against part of its own evidence, and deduplication
+    // by turn id means the rest never earns another look. Repeating that check
+    // at each caller meant every new caller was a chance to forget it — and
+    // one already had.
+    if (this.awaitsContinuationChain(response)) return;
     const turn = this.clientTurnsByItemId.get(response.causeItemId);
     if (!turn || turn.status !== 'completed' || !turn.storedTurnId) return;
-    const hasRejectedNote = Number(response.noteRejectedCount || 0) > 0;
-    const hasNoteActivity = Number(response.noteAcceptedCount || 0) > 0 || hasRejectedNote;
-    const valueCoverage = valueEvidenceCoverage(turn.transcript, response.acceptedValueEvidence || []);
+    // The turn is the unit of review, and a turn can span several responses.
+    // Reading these off the last hop alone lost the saves that happened on the
+    // earlier ones — which is the whole reason the chain accumulates them.
+    const chain = response.continuationChain;
+    // Pick up anything that landed on an earlier hop after its own done.
+    if (chain) {
+      for (const candidate of this.responseContextsById.values()) {
+        if (candidate.continuationChain === chain) this.foldResponseIntoChain(candidate);
+      }
+    }
+    const hasRejectedNote = Number(chain?.noteRejectedCount ?? response.noteRejectedCount ?? 0) > 0;
+    const hasNoteActivity = Number(chain?.noteAcceptedCount ?? response.noteAcceptedCount ?? 0) > 0
+      || hasRejectedNote;
+    const valueCoverage = valueEvidenceCoverage(
+      turn.transcript,
+      chain?.acceptedValueEvidence || response.acceptedValueEvidence || []
+    );
     // An occurrence that has spent its review budget is still uncovered and
     // still absent from the profile — but it is no longer outstanding WORK, so
     // it neither schedules another paid review nor holds the barrier. Whether
@@ -1226,6 +1467,7 @@ export class ConsumerLiveSession {
     const periodic = Number(turn.ordinal || 0) % 3 === 0;
     const requestedTrigger = forcedTrigger
       || response.reconciliationTrigger
+      || chain?.reconciliationTrigger
       || (hasValueCoverageGap ? 'value_coverage_gap' : null);
     // OUTSTANDING WORK IS ITSELF A REASON TO RUN.
     //
@@ -1248,7 +1490,7 @@ export class ConsumerLiveSession {
       throughTurnId: turn.storedTurnId,
       ordinal: turn.ordinal,
       trigger
-    }, { priority: response.reconciliationPriority === true });
+    }, { priority: response.reconciliationPriority === true || chain?.reconciliationPriority === true });
     response.reconciliationTrigger = null;
     response.reconciliationPriority = false;
   }
@@ -2153,6 +2395,9 @@ export class ConsumerLiveSession {
           ? this.clientTurnsByItemId.get(responseContext.causeItemId)
           : null);
       }
+      // A save that lands after its own response.done must NOT review the turn
+      // on its own: the continuation it just earned may still write more. The
+      // chain's final response schedules once, for everything the turn did.
       if (responseContext.done && reconciling) {
         this.maybeScheduleReconciliation(responseContext);
       }

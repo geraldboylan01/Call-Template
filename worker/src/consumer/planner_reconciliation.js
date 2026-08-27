@@ -30,6 +30,7 @@ import {
 } from '../../../js/planning/semantic_facts.js';
 import { getPlanningModuleDefinition } from '../../../js/planning/module_registry.js';
 import { CURRENCY_CODES } from '../../../js/planning/contracts.js';
+import { COLLECTION_TYPE_CHOICES } from '../../../js/planning/profile.js';
 import { classifyGoalPriorityHint } from '../../../js/planning/goal_catalogue.js';
 import {
   boundedUncoveredValueEvidence,
@@ -38,6 +39,7 @@ import {
 import { ConsumerError } from './errors.js';
 import { stableStringify } from './crypto.js';
 import { toConsumerRealtimePlanningLists } from './planning_context.js';
+import { readClientTurnFigures } from './turn_reading.js';
 import {
   buildConfirmedRealtimeFactSummary,
   mapRealtimeFact,
@@ -174,13 +176,18 @@ The realtime voice model has already written provisional notes. Compare those no
 Evidence rules:
 - Only finalized CLIENT transcript turns are evidence. Assistant text, current notes, requirements and profile state are context, never evidence.
 - Every operation must quote an exact, contiguous client span from the cited turn.
-- Every proposed number must be STATED in its cited quote, in digits or in words. Rendering spoken number words into canonical digits is transcription and is expected of you: "two and a half thousand" is 2500, "a hundred and eighty grand" is 180000, "about a hundred and eighty k" is 180000. Transcribe only the one figure the quote states. Do not calculate totals, differences, dates, percentages-of, midpoints or currency conversions, and never combine two spoken figures into a third: "a hundred and eighty grand and hers is ninety" states two pensions, not 270000. Where the client offers a range or a choice rather than a figure — "about three or four" — request_clarification instead of picking one.
+- Every proposed number must appear in its cited quote. Do not calculate totals, dates, percentages, midpoints or conversions.
 - CITE THE NARROWEST SPAN THAT STILL IDENTIFIES THE NUMBER: the shortest stored client span holding the exact figure AND the words saying what it refers to, excluding unrelated numbers. A quote carrying other figures cannot bind yours to its entity and is refused as ambiguous. From "I'm on 95,000 a year. I put in 6 percent and the company puts in 8 percent." cite "I'm on 95,000 a year". Narrow by trimming, never by rewriting, and never past the describing words — a bare figure has nothing left to bind it.
 - Use only supplied note, entity, owner and fact identities. Never invent an identity or JSON path.
-- An entity is valid for a fact only when the entity's factIds list that fact. Resolve a spoken reference by matching it against entity labels and aliases; where two entities match equally well, request_clarification instead of picking one.
+- An entity is valid for a fact only when the entity's factIds list that fact.
+- WHOSE FACT IS THIS? Deciding that is your job, and nothing downstream will do it for you. Read the client's turn, the assistant question it answers, and the recent conversation, then choose the owner and entity from the supplied catalogues. The client speaking about themselves — "mine", "I have", "my pension" — means the primary person, whose catalogue label may simply read "you". Speech about their partner — "hers", "his", "my wife's", or the partner's name — means the partner entity. A scale or subject stated once carries across the sentence: "mine is a hundred and eighty grand and hers is ninety" is TWO pensions, 180000 for the primary and 90000 for the partner, and each operation must name its own owner and entity.
+- Use ONLY owner and entity identifiers that appear in the supplied owners and entities lists, exactly as written. Never invent, guess, abbreviate or construct an identifier, and never reuse one belonging to a different person or holding. A new holding takes the newEntitySlot provided for that collection.
+- Where ownership is genuinely unclear — the client said "the pension" and the household holds two, or "ours" for a fact that has one per-person slot — return request_clarification naming the ambiguity instead of choosing. Guessing an owner writes someone else's money into this person's plan, and a clarification costs one question.
 - A fact in singletonFactIds has ONE household-wide slot. Give it entity householdScopeEntityId or no entity at all. Never attach it to the partner or to a position: there is no per-person slot, and naming one would overwrite the client's own value with somebody else's.
 - Where factContracts gives a fact choices, the value must be exactly one of those terms. Do not describe the answer in your own words or add extra keys. If no term fits the evidence, request_clarification.
-- Use exactly the noteKind valueContracts gives each fact. A value ABOUT a position is not one: pension_current_value is noteKind fact, not position.
+- Use exactly the noteKind valueContracts gives each fact.
+- WRITE ONLY WHERE THERE IS SOMEWHERE TO WRITE. A factId is usable on this turn only when some supplied entity lists it in its factIds. Check that before choosing, because a fact with no entity that accepts it reaches nothing, however well evidenced it is.
+- A figure describing a holding belongs IN that holding's record, not in a scalar fact beside it. Pension worth, income amount, property value and loan balance are fields of the position named in positionContracts — write the position record on that collection's entity or its newEntitySlot. Do not reach for a separate scalar factId to carry a holding's value.
 - To change an existing holding use correct_note with its targetNoteId; an upsert_note on an entity that already holds an active position updates it. Either way your record REPLACES the old one, so restate every field you still want, including the money.
 - A position value IS the canonical record, shaped by that fact's entry in positionContracts: its requiredKeys, its idKey set to the operation's entityId, its owner under its ownerKey. Any other detail goes in one of that entry's valueFields, using that exact name — a figure under a name not listed there is written nowhere. There is no entityId field inside a canonical record.
 - valueContracts gives the canonical shape of every fact you may write. A fact absent from it has no canonical home: keep it as an evidenced note, never invent a slot for it.
@@ -852,7 +859,16 @@ function positionContracts(factIds) {
   for (const factId of [...new Set(factIds.filter(Boolean))].sort()) {
     const projection = POSITION_PROJECTIONS[factId];
     if (!projection) continue;
-    contracts.push({ factId, idKey: projection.idKey, ownerKey: projection.ownerKey });
+    contracts.push({
+      factId,
+      idKey: projection.idKey,
+      ownerKey: projection.ownerKey,
+      // Told a record needs a `type` but not which values are legal, a planner
+      // guesses — and a pension typed "pension" is thrown out by profile
+      // normalization after everything else about it was right. The vocabulary
+      // comes from the same constants that enforce it.
+      typeChoices: COLLECTION_TYPE_CHOICES[projection.collection] || null
+    });
   }
   return contracts;
 }
@@ -1415,6 +1431,14 @@ async function runPlannerReconciliationAttempt({
         requested.metadata
       ).catch(() => {});
     }
+    // A SECOND READER THAT NEVER SAW THE FIRST ONE'S ANSWER.
+    //
+    // Read independently of the reconciler's plan — the reading is requested
+    // from the transcript alone and cannot be influenced by what the reconciler
+    // proposed. In `shadow` the readings are recorded and thrown away; only in
+    // `apply` are they handed to the validator as the authority on which
+    // figures a turn contains.
+    const turnReadings = await readReviewedTurns({ env, config, input });
     const validation = await applyReconciliationPlan({
       profile: context.profile,
       notes,
@@ -1425,12 +1449,21 @@ async function runPlannerReconciliationAttempt({
       baseProfileRevision: context.profile.revision,
       owners: input.owners,
       entities: input.entities,
-      // The turns this pass actually read whole, in context. Inside them the
-      // reviewer may transcribe number words; everywhere else the deterministic
-      // scan stays the only authority on what was said.
-      reviewedTurnIds: input.reviewTurnIds,
+      turnReadings: config.turnReadingMode === 'apply' ? turnReadings : [],
       mapFactValue: mapReconciledFactValue
     });
+    if (config.turnReadingMode !== 'off') {
+      recordTurnReadingAgreement({
+        env,
+        sessionId: context.sessionRow.id,
+        leaseId,
+        turnReadings,
+        plan: requested.plan,
+        mode: config.turnReadingMode,
+        input,
+        validation
+      });
+    }
     const valueEvidenceReview = validateValueEvidenceDispositions({
       raw: requested.raw,
       plan: requested.plan,
@@ -1629,6 +1662,163 @@ const MAX_RECONCILIATION_REBASE_ATTEMPTS = 2;
  * `loadContext` is optional. Without it the behaviour is exactly what it was:
  * one attempt, and a conflict is terminal.
  */
+/**
+ * Read every client turn this pass is reviewing, independently of the plan.
+ *
+ * Returns [] when the feature is off or the provider could not be reached. An
+ * absent reading is not a failure to escalate: the validator falls back to the
+ * deterministic path that shipped before this existed, which is no worse than
+ * the behaviour it replaces.
+ */
+async function readReviewedTurns({ env, config, input }) {
+  if (config.turnReadingMode === 'off') return [];
+  const turns = Array.isArray(input?.transcriptTurns) ? input.transcriptTurns : [];
+  const reviewed = new Set((input?.reviewTurnIds || []).map((turnId) => String(turnId)));
+  const readings = [];
+  for (const [index, turn] of turns.entries()) {
+    if (turn.role === 'assistant' || !reviewed.has(String(turn.turnId))) continue;
+    // The question the client was answering. "hers is ninety" and "400" are
+    // only meaningful next to it, so the reader gets it too — independence is
+    // about not seeing the other reader's ANSWER, not about reading blind.
+    const assistantQuestion = [...turns.slice(0, index)]
+      .reverse()
+      .find((candidate) => candidate.role === 'assistant')?.text || '';
+    const reading = await readClientTurnFigures({
+      env,
+      config,
+      turnId: turn.turnId,
+      transcript: turn.text,
+      assistantQuestion
+    }).catch(() => null);
+    if (reading) readings.push(reading);
+  }
+  return readings;
+}
+
+/**
+ * Record how often the two readers agreed.
+ *
+ * This is the measurement that has to precede `apply`. Disagreement sets the
+ * clarification cost; agreement on a WRONG figure is the failure this design
+ * would not otherwise see, which is why the event carries the figures
+ * themselves and not just a count.
+ */
+function recordTurnReadingAgreement({
+  env, sessionId, leaseId, turnReadings, plan, mode, input, validation
+}) {
+  const proposed = (plan?.operationGroups || [])
+    .flatMap((group) => group.operations || [])
+    .filter((operation) => operation.op !== 'request_clarification')
+    .flatMap((operation) => numericLeafValues(operation.value));
+  const read = turnReadings.flatMap((reading) => reading.figures
+    .filter((figure) => !figure.ambiguous)
+    .map((figure) => figure.digits));
+  const agreed = proposed.filter((value) => read.some((other) => Math.abs(other - value) < 1e-9));
+  const disagreed = proposed.filter((value) => !read.some((other) => Math.abs(other - value) < 1e-9));
+  const turns = Array.isArray(input?.transcriptTurns) ? input.transcriptTurns : [];
+  const reviewed = new Set((input?.reviewTurnIds || []).map((turnId) => String(turnId)));
+  const operations = (plan?.operationGroups || []).flatMap((group) => group.operations || []);
+  const accepted = new Set(validation?.acceptedOperationIds || []);
+
+  void appendRealtimeEvent(env, {
+    sessionId,
+    leaseId,
+    direction: 'server',
+    eventType: 'planner.turn_reading.agreement',
+    payload: {
+      mode,
+      turnsRead: turnReadings.length,
+      proposedCount: proposed.length,
+      agreedCount: agreed.length,
+      // Bounded: enough to spot a pattern in the logs, never a transcript dump.
+      disagreed: disagreed.slice(0, 6),
+      read: read.slice(0, 6)
+    }
+  }).catch(() => {});
+
+  // THE PER-TURN DIAGNOSTIC RECORD.
+  //
+  // Everything needed to answer "why did this turn produce that profile
+  // change" in one place, keyed by the causal turn. Transcripts are the
+  // sensitive part, so they are referenced by turn id rather than copied here;
+  // the finalized turns themselves already live in the transcript store behind
+  // the same access controls, and duplicating them into the event stream would
+  // widen where a client's words can be read from.
+  for (const reading of turnReadings) {
+    if (!reviewed.has(String(reading.turnId))) continue;
+    const index = turns.findIndex((turn) => String(turn.turnId) === String(reading.turnId));
+    const assistantTurn = index > 0
+      ? [...turns.slice(0, index)].reverse().find((turn) => turn.role === 'assistant')
+      : null;
+    const turnOperations = operations.filter((operation) => (
+      (operation.evidence || []).some((ref) => String(ref.turnId) === String(reading.turnId))
+    ));
+    void appendRealtimeEvent(env, {
+      sessionId,
+      leaseId,
+      direction: 'server',
+      eventType: 'planner.turn_review.diagnostic',
+      payload: {
+        mode,
+        clientTurnId: String(reading.turnId),
+        assistantTurnId: assistantTurn ? String(assistantTurn.turnId) : null,
+        // What the independent reader made of the turn. Figures and their
+        // ambiguity flags, not the words around them.
+        reading: reading.figures.slice(0, 8).map((item) => ({
+          digits: item.digits,
+          currency: item.currency,
+          ambiguous: item.ambiguous
+        })),
+        // What Realtime had already proposed for this turn, and how it went.
+        realtimeOutcomes: (input?.voiceWriteOutcomes || [])
+          .filter((outcome) => String(outcome?.sourceTurnId || '') === String(reading.turnId))
+          .slice(0, 8)
+          .map((outcome) => ({ factId: outcome.factId, status: outcome.status })),
+        // What the planner proposed, where it bound it, and whether it landed.
+        operations: turnOperations.slice(0, 12).map((operation) => ({
+          operationId: operation.operationId,
+          op: operation.op,
+          factId: operation.factId,
+          ownerId: operation.ownerId || null,
+          entityId: operation.entityId || null,
+          accepted: accepted.has(operation.operationId)
+        })),
+        clarifications: turnOperations
+          .filter((operation) => operation.op === 'request_clarification')
+          .slice(0, 6)
+          .map((operation) => ({
+            factId: operation.factId,
+            reasonCode: operation.reasonCode
+          })),
+        rejected: (validation?.rejectedGroups || []).slice(0, 6).map((group) => ({
+          groupId: group.groupId,
+          code: group.code
+        })),
+        // What actually changed, and whether an analysis can now run.
+        profileChanged: validation?.profileChanged === true,
+        ledgerChanged: validation?.ledgerChanged === true,
+        status: validation?.status || null,
+        unprojectedFactOperationIds: (validation?.unprojectedFactOperationIds || []).slice(0, 6)
+      }
+    }).catch(() => {});
+  }
+}
+
+/** Every number inside an operation value, wherever it is nested. */
+function numericLeafValues(value, found = []) {
+  if (value === null || typeof value !== 'object') return found;
+  if (Array.isArray(value)) {
+    value.forEach((item) => numericLeafValues(item, found));
+    return found;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (key === 'schemaVersion') continue;
+    if (typeof item === 'number' && Number.isFinite(item)) found.push(item);
+    else numericLeafValues(item, found);
+  }
+  return found;
+}
+
 export async function runPlannerReconciliation({
   env,
   config,

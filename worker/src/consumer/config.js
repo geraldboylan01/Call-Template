@@ -120,6 +120,23 @@ function plannerReconciliationMode(value) {
   return ['shadow', 'apply'].includes(candidate) ? candidate : 'legacy';
 }
 
+/**
+ * Whether a reviewed client turn gets a second, independent reading.
+ *
+ * `off` is the default and costs nothing: no extra call, no behaviour change.
+ * `shadow` runs the reading and records how often the two readers agree,
+ * without letting it change any verdict — that measurement is what has to
+ * happen before `apply`, because two readers can agree on the same wrong
+ * answer and only labelled traffic can show that.
+ * `apply` makes agreement the permission to write a number.
+ *
+ * Fail-closed on anything unrecognised: a typo turns the feature off, never on.
+ */
+function turnReadingMode(value) {
+  const candidate = text(value).toLowerCase();
+  return ['shadow', 'apply'].includes(candidate) ? candidate : 'off';
+}
+
 export const PLANNER_MODEL_ALLOWLIST = Object.freeze([...APPROVED_PLANNER_MODELS]);
 
 /**
@@ -485,6 +502,14 @@ export function getConsumerConfig(env) {
     // current single-turn auditor. Tests may inject shadow/apply without any
     // production wrangler or deployment configuration change.
     plannerReconciliationMode: plannerReconciliationMode(env.CONSUMER_PLANNER_RECONCILIATION_MODE),
+    turnReadingMode: turnReadingMode(env.CONSUMER_TURN_READING_MODE),
+    // Same allowlisted planner model: this reads one short turn and returns a
+    // handful of numbers, so it needs judgement about language, not scale.
+    turnReadingModel: plannerModel(env.CONSUMER_REALTIME_PLANNER_MODEL),
+    // One short turn in, a few figures out. Generous enough that a slow call
+    // still lands, short enough that it cannot hold the background pass open.
+    turnReadingTimeoutMs: 15_000,
+    turnReadingMaxOutputTokens: 800,
     plannerReconciliationPromptVersion: text(env.CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION)
       || 'planning-reconciliation-v3',
     // MEASURED, NOT GUESSED. 14s was the median of the real runtime, so it

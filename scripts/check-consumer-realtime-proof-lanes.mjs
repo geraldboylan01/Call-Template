@@ -151,6 +151,7 @@ const proofResult = (overrides = {}) => {
     launcherVisible: true,
     companionStartWired: true,
     audibleGreetingObserved: true,
+    clientTurnObserved: false,
     controlledSpeechObserved: false,
     directProviderAudioAttached: true,
     webRtcConnected: true,
@@ -181,6 +182,18 @@ assert.throws(
   () => assertLaneProofResult(proofResult({ audibleGreetingObserved: false })),
   /no transcribed, non-silent opening greeting/i,
   'A paid silent-microphone call may not certify a lane that never opened the conversation.'
+);
+// A greeting that ANSWERED the client proves the opposite of an autonomous
+// opening, and an observation that never left the page proves nothing at all.
+assert.throws(
+  () => assertLaneProofResult(proofResult({ clientTurnObserved: true })),
+  /greeting may have been a REPLY/,
+  'A client turn during a silent-microphone proof may not certify an autonomous opening.'
+);
+assert.throws(
+  () => assertLaneProofResult(proofResult({ clientTurnObserved: undefined })),
+  /never propagated/,
+  'An unreported observation must fail rather than pass by default.'
 );
 // A live result carrying v1 evidence.
 assert.throws(
@@ -287,6 +300,62 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
     /setPhase\('assistant_speaking'/,
     'Generation start must not claim that remote audio is already playing.'
   );
+}
+
+/* ------ the tool dispatcher must not review a turn mid-chain --------------- */
+
+// A save whose evidence waited on ASR reports back long after its own
+// response.done, and the dispatcher schedules reconciliation from there. Left
+// ungated it reviews the turn while the chain it just extended is still
+// writing — and deduplication by turn id means the later writes never earn
+// another look. Unit-testing this path needs the database, so the gate itself
+// is pinned here.
+{
+  const sessionSource = source('worker/src/consumer/live/live_session.js');
+  const scheduler = sessionSource.slice(
+    sessionSource.indexOf('maybeScheduleReconciliation(response, forcedTrigger = null) {')
+  );
+  assert.match(scheduler.slice(0, 800), /if \(this\.awaitsContinuationChain\(response\)\) return;/,
+    'The settlement invariant must live INSIDE the scheduler. Repeated at its '
+    + 'callers it is one forgotten call away from reviewing a turn mid-chain, '
+    + 'and one caller had already forgotten it.');
+  // Callers must not re-implement it; a local copy drifts from the real rule.
+  const callerGuards = [...sessionSource.matchAll(/!this\.awaitsContinuationChain\(/g)];
+  assert.equal(callerGuards.length, 0,
+    'No caller should re-check settlement; the scheduler owns that invariant.');
+}
+
+/* ------------- the paid opening proof must actually be run in silence ------ */
+
+// This proof cannot run in CI — it needs a deployment and spends money. So the
+// property that makes it meaningful is asserted on its SOURCE instead, because
+// a proof that quietly stops being silent still passes while proving nothing.
+{
+  const proofSource = source('scripts/run-consumer-realtime-infrastructure-proof.mjs');
+  assert.match(proofSource, /--use-file-for-fake-audio-capture=/,
+    'Chromium\'s fake device emits a tone; without an explicit capture file the '
+    + '"silent microphone" is a 400 Hz beep that can trip VAD.');
+  assert.match(proofSource, /function writeSilentCaptureFile/,
+    'The proof must generate its own silence rather than trust a checked-in asset.');
+  assert.match(proofSource, /clientTurnObserved/,
+    'The proof must record whether any client turn was observed at all.');
+  assert.doesNotMatch(proofSource, /firstAssistant|firstUser/,
+    'Transcript entries are appended when ASR RETURNS, not when the client '
+    + 'spoke, so ordering them cannot answer who went first. Presence of any '
+    + 'client turn is the sound test under a silent microphone.');
+  assert.match(proofSource, /assert\.equal\(result\.clientTurnObserved, false/,
+    'The causality guard must require an explicit false. `notEqual(..., true)` '
+    + 'passes on undefined, so an observation that is never propagated out of '
+    + 'the page reads as proof of silence.');
+  assert.match(proofSource, /clientTurnObserved,\n/,
+    'The observation must be carried into the proof result, not just recorded '
+    + 'in the page where the assertion cannot see it.');
+  assert.doesNotMatch(proofSource, /clientTurnObserved = greetingProof\.[A-Za-z]+ === true/,
+    'Coercing the observation with `=== true` turns a field the observer never '
+    + 'set into false, which is how missing evidence passes an exact-false gate.');
+  assert.match(proofSource, /settled === true/,
+    'The proof must read the page state after its post-greeting grace, or a '
+    + 'client turn racing the greeting is missed by construction.');
 }
 
 /* ------------------------------- the live lane has to be able to start at all */

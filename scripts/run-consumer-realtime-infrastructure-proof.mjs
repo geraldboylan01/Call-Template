@@ -1,7 +1,43 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { LIVE_PROMPT_VERSION } from '../worker/src/consumer/live/catalogue_prompt.js';
 import { LIVE_TOOLSET_VERSION } from '../worker/src/consumer/live/live_tools.js';
+
+/**
+ * A MICROPHONE THAT IS ACTUALLY SILENT.
+ *
+ * `--use-fake-device-for-media-stream` on its own does NOT give silence:
+ * Chromium's built-in fake source emits a repeating tone, which is loud enough
+ * to trip server-side VAD. A greeting observed under that flag alone may be
+ * the model ANSWERING the beep, so it proves the opposite of what this proof
+ * claims — that Planéir opens the conversation on its own.
+ *
+ * Writing real silence and pointing `--use-file-for-fake-audio-capture` at it
+ * is what makes the autonomous-opening claim mean anything.
+ */
+function writeSilentCaptureFile(seconds = 30, sampleRate = 16_000) {
+  const frames = seconds * sampleRate;
+  const dataBytes = frames * 2; // 16-bit mono
+  const buffer = Buffer.alloc(44 + dataBytes); // zero-filled: PCM silence
+  buffer.write('RIFF', 0, 'ascii');
+  buffer.writeUInt32LE(36 + dataBytes, 4);
+  buffer.write('WAVEfmt ', 8, 'ascii');
+  buffer.writeUInt32LE(16, 16); // PCM fmt chunk size
+  buffer.writeUInt16LE(1, 20); // PCM
+  buffer.writeUInt16LE(1, 22); // mono
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28); // byte rate
+  buffer.writeUInt16LE(2, 32); // block align
+  buffer.writeUInt16LE(16, 34); // bits per sample
+  buffer.write('data', 36, 'ascii');
+  buffer.writeUInt32LE(dataBytes, 40);
+  const path = join(mkdtempSync(join(tmpdir(), 'planeir-silent-')), 'silence.wav');
+  writeFileSync(path, buffer);
+  return path;
+}
 
 const PROOF_TIMEOUT_MS = 45_000;
 const PROPAGATION_RETRY_MS = 12_000;
@@ -105,6 +141,13 @@ export function assertLaneProofResult(result) {
   assert.equal(result.liveTransportConnected, true, 'The live transport marker is required.');
   assert.equal(result.audibleGreetingObserved, true,
     'The silent-microphone proof heard no transcribed, non-silent opening greeting.');
+  // EXACTLY false, never merely "not true". An absent field is not evidence of
+  // silence; it is evidence that nobody looked.
+  assert.equal(result.clientTurnObserved, false,
+    'The microphone was supposed to be silent, so a client turn should not exist '
+    + 'at all. One means the greeting may have been a REPLY, which is the opposite '
+    + 'of the autonomous opening being proven; a missing value means the '
+    + 'observation was never propagated out of the page.');
   assert.equal(result.readOnlyToolSucceeded, false,
     'The live lane must never be certified by an archived controlled-lane tool.');
   assert.equal(result.controlledSpeechObserved, false,
@@ -155,7 +198,9 @@ export async function runRealtimeInfrastructureProof({
     args: [
       '--autoplay-policy=no-user-gesture-required',
       '--use-fake-device-for-media-stream',
-      '--use-fake-ui-for-media-stream'
+      '--use-fake-ui-for-media-stream',
+      // Without this the "silent" microphone plays Chromium's test tone.
+      `--use-file-for-fake-audio-capture=${writeSilentCaptureFile()}`
     ]
   });
   try {
@@ -300,6 +345,9 @@ export async function runRealtimeInfrastructureProof({
     let controlPlaneProof = {};
     let leaseIdentity = { promptVersion: '', toolsetVersion: '' };
     let assistantSpeechObserved = false;
+    // Starts null, not false: "nobody looked" and "nothing was heard" are
+    // different answers, and only one of them is proof.
+    let clientTurnObserved = null;
     try {
       let created = null;
       for (let attempt = 1; attempt <= MAX_PROPAGATION_ATTEMPTS; attempt += 1) {
@@ -373,22 +421,43 @@ export async function runRealtimeInfrastructureProof({
       await page.evaluate(({ timeoutMs }) => {
         const state = {
           complete: false,
+          // `complete` means the greeting was heard; `settled` means the
+          // post-greeting grace has also elapsed, so the chronology verdict is
+          // final. Reading the state at `complete` returned it too early.
+          completeAt: 0,
+          settled: false,
           finished: false,
           transcriptObserved: false,
           playbackPhaseObserved: false,
           nonSilentAudioObserved: false,
+          // ORDERING IS THE WRONG QUESTION. The client inserts a user
+          // transcript when ASR RETURNS, not when the client spoke, so a turn
+          // that preceded the greeting can appear after it in the transcript
+          // and any position comparison misses it. With a genuinely silent
+          // microphone the sound answer is simpler and stricter: there must be
+          // NO client turn at all, at any point in the window.
+          clientTurnObserved: false,
           maxPeakBuckets: 0,
           error: ''
         };
         window.__planeirLiveGreetingProof = state;
         void (async () => {
+          const GRACE_MS = 2_000;
           const deadline = Date.now() + timeoutMs;
           let audioContext = null;
           let source = null;
           let analyser = null;
           let samples = null;
           try {
-            while (Date.now() < deadline && !state.complete) {
+            while (Date.now() < deadline && !state.settled) {
+              // Any client turn, at any time, from either signal. Sticky: the
+              // phase passes through user_speaking and leaves again, so a
+              // sampled check that only looked "before the greeting" could
+              // miss it in both directions.
+              state.clientTurnObserved ||= Boolean(
+                document.querySelector('#realtimeVoiceTranscriptHistory .is-user')
+              ) || document.getElementById('realtimeVoiceShell')?.dataset?.realtimePhase
+                === 'user_speaking';
               state.transcriptObserved ||= Boolean(
                 document.querySelector('#realtimeVoiceTranscriptHistory .is-assistant')
               );
@@ -430,7 +499,15 @@ export async function runRealtimeInfrastructureProof({
               state.complete = state.transcriptObserved
                 && state.playbackPhaseObserved
                 && state.nonSilentAudioObserved;
-              if (!state.complete) await new Promise((resolve) => window.setTimeout(resolve, 25));
+              // Keep sampling briefly AFTER the greeting completes. A client
+              // turn that raced it may still be being transcribed, and whether
+              // the greeting was autonomous must not depend on winning that
+              // race. Settling early is what made the chronology unreliable.
+              if (state.complete && !state.completeAt) state.completeAt = Date.now();
+              if (state.completeAt && Date.now() - state.completeAt >= GRACE_MS) {
+                state.settled = true;
+              }
+              if (!state.settled) await new Promise((resolve) => window.setTimeout(resolve, 25));
             }
           } catch (error) {
             state.error = String(error?.message || error || 'unknown audio observation error').slice(0, 300);
@@ -536,9 +613,12 @@ export async function runRealtimeInfrastructureProof({
       }, null, { timeout: LIVE_TRANSPORT_TIMEOUT_MS });
 
       await page.waitForFunction(() => (
-        window.__planeirLiveGreetingProof?.complete === true
+        // `settled`, not `complete`: reading at the first sign of a greeting
+        // returns before the post-greeting grace has run, which is exactly the
+        // window a racing client turn lands in.
+        window.__planeirLiveGreetingProof?.settled === true
         || window.__planeirLiveGreetingProof?.finished === true
-      ), null, { timeout: LIVE_GREETING_TIMEOUT_MS + 2_000 });
+      ), null, { timeout: LIVE_GREETING_TIMEOUT_MS + 6_000 });
       const greetingProof = await page.evaluate(() => ({
         ...window.__planeirLiveGreetingProof
       }));
@@ -549,6 +629,10 @@ export async function runRealtimeInfrastructureProof({
           + `(transcript=${greetingProof.transcriptObserved}, playback=${greetingProof.playbackPhaseObserved}, `
           + `peakBuckets=${greetingProof.maxPeakBuckets}, observerError=${greetingProof.error || 'none'}).`
       );
+      // RAW, not coerced. `=== true` turned a field the observer never set
+      // into `false`, so the exact-false assertion downstream went on
+      // accepting missing evidence — the same defect one layer further in.
+      clientTurnObserved = greetingProof.clientTurnObserved;
       assistantSpeechObserved = true;
 
       const audioReady = await page.evaluate(() => {
@@ -628,6 +712,10 @@ export async function runRealtimeInfrastructureProof({
       launcherVisible: true,
       companionStartWired: true,
       audibleGreetingObserved: assistantSpeechObserved,
+      // Must be propagated, not merely observed in the page. Leaving it off
+      // the result made the guard read `undefined`, which its notEqual(true)
+      // check happily passed — the assertion existed and proved nothing.
+      clientTurnObserved,
       controlledSpeechObserved: false,
       directProviderAudioAttached: true,
       webRtcConnected: true,

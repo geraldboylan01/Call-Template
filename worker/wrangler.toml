@@ -164,6 +164,14 @@ CONSUMER_REALTIME_PLANNER_PROMPT_VERSION = "realtime-planner-v5"
 # An unset or misspelled value falls back to legacy.
 CONSUMER_PLANNER_RECONCILIATION_MODE = "legacy"
 CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION = "planning-reconciliation-v3"
+# A second, independent reading of each reviewed client turn. Two readers that
+# never saw each other's answer are what let "two and a half thousand" become
+# 2500 without also letting it become 2, 25,000 or 2,500,000.
+#   off    no extra call, no behaviour change (the default)
+#   shadow read and record agreement, change nothing
+#   apply  agreement is the permission to write a number
+# Anything unrecognised means off: a typo turns this feature off, never on.
+CONSUMER_TURN_READING_MODE = "off"
 # The silent planner has its own approved model, validated against a
 # server-side allowlist. It previously inherited the AI-intake default model,
 # so retuning intake silently retuned the planner.

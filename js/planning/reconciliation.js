@@ -16,11 +16,7 @@ import {
   getSemanticFactDefinition,
   listSemanticFactDefinitions
 } from './semantic_facts.js';
-import {
-  extractNumericOccurrences,
-  extractValueEvidence,
-  numericEvidenceSpans
-} from './value_evidence.js';
+import { extractNumericOccurrences, extractValueEvidence } from './value_evidence.js';
 import {
   assertIsoDateTime,
   assertJsonCompatible,
@@ -869,6 +865,10 @@ const EVIDENCE_CURRENCY_TOKENS = Object.freeze({
   '$': 'USD', usd: 'USD', dollar: 'USD', dollars: 'USD'
 });
 const EVIDENCE_CURRENCY_PATTERN = /(€|£|\$|\bEUR\b|\bGBP\b|\bUSD\b|\beuros?\b|\bpounds?\b|\bsterling\b|\bdollars?\b)/giu;
+// The same alternation without `g`, for stateless presence tests. A g-flagged
+// regex carries lastIndex between calls; a shared one carries it between
+// callers.
+const EVIDENCE_CURRENCY_PROBE = new RegExp(EVIDENCE_CURRENCY_PATTERN.source, 'iu');
 
 function normalizedEvidenceCurrency(token) {
   return EVIDENCE_CURRENCY_TOKENS[String(token || '').toLowerCase()] || null;
@@ -905,6 +905,31 @@ function occurrenceCurrencies(text, occurrence) {
   return currencies;
 }
 
+/**
+ * THE JURISDICTION DEFAULT IS FOR SILENCE, NOT FOR DISAGREEMENT.
+ *
+ * Defaulting an unadorned figure to EUR is right when the client never named a
+ * currency. It is wrong when they named one and the scanner could not attach
+ * it: "a hundred and eighty grand pounds" parses its figure at "eighty", so
+ * the trailing "pounds" sits past an unconsumed magnitude word and never
+ * reaches the occurrence. Silently defaulting there writes euro over a client
+ * who said pounds — the same error as a wrong number, wearing a right-looking
+ * figure.
+ *
+ * Reading past that magnitude word would need exactly the phrase-specific
+ * currency grammar this layer is supposed to be shedding. So this does not
+ * guess: an unattached currency token means the quote is not safe to default,
+ * and the amount is refused until something can bind the two together.
+ */
+function quoteNamesAnUnattachedCurrency(quote) {
+  // Deliberately its OWN non-global regex. `.test()` on the shared g-flagged
+  // pattern advances its lastIndex, and the next matchAll over the same
+  // pattern then starts mid-string and drops earlier matches — which made this
+  // gate's verdict depend on whatever quote happened to be validated before
+  // it. Detection here must carry no state at all.
+  return EVIDENCE_CURRENCY_PROBE.test(String(quote || ''));
+}
+
 function evidencedCurrenciesForAmount(amount, evidenceRefs) {
   const currencies = new Set();
   let matchedOccurrence = false;
@@ -915,8 +940,10 @@ function evidencedCurrenciesForAmount(amount, evidenceRefs) {
     for (const occurrence of occurrences) {
       matchedOccurrence = true;
       const explicit = occurrenceCurrencies(quote, occurrence);
-      if (explicit.size === 0) currencies.add('EUR');
-      else explicit.forEach((currency) => currencies.add(currency));
+      if (explicit.size === 0) {
+        if (quoteNamesAnUnattachedCurrency(quote)) return new Set();
+        currencies.add('EUR');
+      } else explicit.forEach((currency) => currencies.add(currency));
     }
   }
   // Small unadorned values such as "900 a month" deliberately sit outside the
@@ -925,75 +952,121 @@ function evidencedCurrenciesForAmount(amount, evidenceRefs) {
   if (!matchedOccurrence && evidenceRefs.some((ref) => (
     groundedNumbers(ref.quote).some((value) => numbersEqual(value, amount))
   ))) {
+    if (evidenceRefs.some((ref) => quoteNamesAnUnattachedCurrency(ref.quote))) return new Set();
     currencies.add('EUR');
   }
   return currencies;
 }
 
-/** The digits that carry information: 180000 and 180 both reduce to "18". */
-function significantDigits(value) {
-  const magnitude = Math.abs(Number(value));
-  if (!Number.isFinite(magnitude) || magnitude === 0) return '0';
-  return String(magnitude).replace('.', '').replace(/0+$/, '') || '0';
-}
-
 /**
- * A proposed value that EXTENDS an under-read span instead of replacing it.
+ * Grounding for a turn two readers have both looked at.
  *
- * Truncation only ever loses the tail of a figure, so a faithful transcription
- * is strictly larger than the part the scan managed to read and starts with the
- * same significant digits. "two and a half thousand" scans as 2, so 2500
- * extends it and 4100 does not. "a hundred and eighty grand" scans as 180, so
- * 180000 extends it and 270000 — the sum of that pension and the partner's —
- * does not.
- *
- * This is what lets the parser stop being the authority on meaning without
- * giving up the guard against invention. It never has to understand the words
- * it could not read; it only has to hold the reviewer to the digits it could.
+ * The reconciler proposed these numbers; the independent reading says which
+ * numbers the client actually stated. Agreement is the permission. It is a
+ * deliberately dull rule, and dullness is the point: neither reader can widen
+ * it, and no English is parsed anywhere in it.
  */
-function extendsUnderReadValue(proposed, scanned) {
-  if (!(Math.abs(Number(proposed)) > Math.abs(Number(scanned)))) return false;
-  return significantDigits(proposed).startsWith(significantDigits(scanned));
-}
-
-/**
- * @param semanticallyReviewed every cited turn was read whole by the planner,
- *   so number words in it may be transcribed into digits. Arithmetic across
- *   figures stays refused either way.
- */
-function assertNumericGrounding(
-  operation,
-  targetNote,
-  evidenceRefs,
-  semanticallyReviewed = false
-) {
-  // Under-read spans exist only for a reviewed turn; elsewhere this list is
-  // empty and everything below is byte-for-byte the previous behaviour.
-  const underRead = semanticallyReviewed
-    ? evidenceRefs.flatMap((ref) => numericEvidenceSpans(ref.quote)
-      .filter((span) => !span.resolved)
-      .map((span) => ({ span, quote: ref.quote })))
-    : [];
-  // AN UNDER-READ VALUE IS NOT A VALUE. The scan reads "two and a half
-  // thousand" as 2 and "a hundred and eighty grand" as 180. Leaving those in
-  // the supported set is what let a €2 monthly spend into a profile while the
-  // correct €2,500 was refused, so they are struck out before anything is
-  // compared against them.
-  const supported = evidenceRefs
-    .flatMap((ref) => groundedNumbers(ref.quote))
-    .filter((value) => !underRead.some((item) => numbersEqual(item.span.value, value)));
+function assertNumericGroundingFromReading(operation, targetNote, figures) {
   const changed = changedNumericLeaves(operation, targetNote);
-  const transcribed = new Map();
-  const unsupported = changed.filter((leaf) => {
-    if (supported.some((value) => numbersEqual(value, leaf.value))) return false;
-    // Transcription is the reviewer's job, but only where there is one figure
-    // to transcribe. Two under-read spans in one quote is exactly the ambiguity
-    // the narrowest-span rule refuses, and it stays refused here.
-    if (underRead.length !== 1) return true;
-    if (!extendsUnderReadValue(leaf.value, underRead[0].span.value)) return true;
-    transcribed.set(String(leaf.value), underRead[0]);
-    return false;
-  });
+  const supported = figures.map((figure) => figure.digits);
+  const unsupported = changed
+    .filter((leaf) => !supported.some((value) => numbersEqual(value, leaf.value)));
+  if (unsupported.length > 0) {
+    fail(
+      'numeric_value_unsupported',
+      `Operation ${operation.operationId} proposes values the independent reading of `
+      + `its turn does not contain at ${unsupported.map((item) => item.path).join(', ')}.`
+    );
+  }
+  const changedMoney = changedMoneyLeaves(operation, targetNote);
+  const unsupportedCurrencies = [];
+  for (const item of changedMoney) {
+    const matches = figures.filter((figure) => numbersEqual(figure.digits, item.amount));
+    const named = [...new Set(matches.map((figure) => figure.currency).filter(Boolean))];
+    if (named.length === 0) {
+      // The client named no currency, which is ordinary speech. Ireland is the
+      // jurisdiction, so EUR — the same default the deterministic path applies
+      // to an unadorned "900 a month".
+      if (item.currency !== 'EUR') unsupportedCurrencies.push(item);
+      continue;
+    }
+    if (!named.includes(item.currency)) unsupportedCurrencies.push(item);
+  }
+  if (unsupportedCurrencies.length > 0) {
+    fail(
+      'currency_value_unsupported',
+      `Operation ${operation.operationId} uses a currency the client did not state at `
+      + `${unsupportedCurrencies.map((item) => `${item.path || 'value'}.currency`).join(', ')}.`
+    );
+  }
+  return { changed, supported };
+}
+
+/**
+ * What an independently-read turn says its figures are.
+ *
+ * THIS REPLACES THE SCAN, IT DOES NOT SUPPLEMENT IT. Adding the reading to the
+ * deterministic occurrences would leave "two and a half thousand" supporting
+ * BOTH 2500 and 2 — the correct value and the truncation that has been writing
+ * €2 monthly spends. Where a turn has been read, the reading is the authority
+ * on which figures exist in it, and the scan's opinion is not consulted.
+ *
+ * Returns null when this quote's turns were not all read, which is the signal
+ * to fall back to the deterministic path unchanged.
+ */
+/** Compare quotes the way two readers of the same sentence would differ. */
+function normalizeQuoteForOverlap(quote) {
+  return String(quote || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/** Whether two cited spans of the same turn refer to overlapping words. */
+function quoteSpansOverlap(left, right) {
+  const a = normalizeQuoteForOverlap(left);
+  const b = normalizeQuoteForOverlap(right);
+  if (!a || !b) return false;
+  return a.includes(b) || b.includes(a);
+}
+
+function readingSupportedNumbers(evidenceRefs, turnReadings) {
+  if (!turnReadings || turnReadings.size === 0) return null;
+  const supported = [];
+  for (const ref of evidenceRefs) {
+    const reading = turnReadings.get(String(ref.turnId));
+    if (!reading) return null;
+    for (const figure of reading.figures) {
+      // An ambiguous figure supports nothing. The reader said it could not
+      // resolve the scale or pick an end of a range, and honouring its best
+      // guess anyway would discard exactly the caution being reported.
+      if (figure.ambiguous) continue;
+      // The figure has to come from the span this operation cites, or a turn's
+      // OTHER figures would silently ground this one — which is how a total
+      // gets cited to the wrong sentence.
+      //
+      // The test is OVERLAP, not containment. Two models choose their spans
+      // independently: the reader may quote "twenty thousand put by" where the
+      // operation cites "about twenty thousand", and neither is wrong. Demanding
+      // one sit inside the other refused figures both readers had agreed on.
+      // Quoting a DIFFERENT figure's clause still fails, because those spans do
+      // not overlap at all.
+      if (figure.quote && ref.quote && !quoteSpansOverlap(ref.quote, figure.quote)) continue;
+      supported.push(figure);
+    }
+  }
+  return supported;
+}
+
+function assertNumericGrounding(operation, targetNote, evidenceRefs, turnReadings = null) {
+  const reading = readingSupportedNumbers(evidenceRefs, turnReadings);
+  if (reading) {
+    return assertNumericGroundingFromReading(operation, targetNote, reading);
+  }
+  const supported = evidenceRefs.flatMap((ref) => groundedNumbers(ref.quote));
+  const changed = changedNumericLeaves(operation, targetNote);
+  const unsupported = changed
+    .filter((leaf) => !supported.some((value) => numbersEqual(value, leaf.value)));
   if (unsupported.length > 0) {
     fail(
       'numeric_value_unsupported',
@@ -1004,17 +1077,7 @@ function assertNumericGrounding(
   const ambiguousCurrencies = [];
   const unsupportedCurrencies = [];
   for (const item of changedMoney) {
-    const transcription = transcribed.get(String(item.amount));
-    const evidenced = transcription
-      // The digits came from a span the scan could not finish reading, so the
-      // amount itself will never match an occurrence. Read the currency off
-      // that span's own text, and fall back to the same EUR jurisdiction
-      // default an unadorned "900 a month" already receives.
-      ? (() => {
-        const attached = occurrenceCurrencies(transcription.quote, transcription.span);
-        return attached.size > 0 ? attached : new Set(['EUR']);
-      })()
-      : evidencedCurrenciesForAmount(item.amount, evidenceRefs);
+    const evidenced = evidencedCurrenciesForAmount(item.amount, evidenceRefs);
     if (evidenced.size > 1) {
       ambiguousCurrencies.push({ ...item, evidenced: [...evidenced].sort() });
     } else if (evidenced.size === 0 || !evidenced.has(item.currency)) {
@@ -1033,11 +1096,7 @@ function assertNumericGrounding(
       `Operation ${operation.operationId} uses a currency not attached to its cited amount at ${unsupportedCurrencies.map((item) => `${item.path || 'value'}.currency`).join(', ')}.`
     );
   }
-  // Downstream binding asks whether the quote mentions figures other than the
-  // ones proposed. A transcribed value IS what its span says, so it belongs in
-  // the supported set; leaving the truncation there instead would read as an
-  // unexplained extra number and cost a needless clarification.
-  return { changed, supported: [...supported, ...[...transcribed.keys()].map(Number)] };
+  return { changed, supported };
 }
 
 function assertDateGrounding(operation, targetNote, evidenceRefs) {
@@ -1181,22 +1240,10 @@ function candidateEntitiesFor(factId, entities) {
  * This marker closes a module's need for a person's holdings, so it is the one
  * completion whose evidence has to be read rather than merely cited.
  */
-/**
- * @param semanticallyReviewed the planner read the whole turn and the question
- *   it answered, which is the only place a categorical "no others" can be
- *   recognised. The deterministic phrase test cannot see the proposition, so
- *   for a reviewed turn it stops being the authority on what "none" means.
- */
-function assertCompletionNoneEvidence(
-  operation,
-  evidenceRefs,
-  turnIndex,
-  semanticallyReviewed = false
-) {
+function assertCompletionNoneEvidence(operation, evidenceRefs, turnIndex) {
   if (operation.noteKind !== 'completion') return;
   if (!completionAssertsNone(operation.value)) return;
   if (!collectionPathForFact(operation.factId)) return;
-  if (semanticallyReviewed) return;
   if (evidenceAssertsNone(operation.factId, evidenceRefs, turnIndex)) return;
   fail(
     'completion_none_unsupported',
@@ -1217,8 +1264,32 @@ function assertContributionProductEligibility(operation, targetNote, entities) {
   );
 }
 
-function assertNumericSemanticBinding(operation, targetNote, evidenceRefs, grounding, notes, entities) {
+/**
+ * @param semanticallyRead this turn was read by the planner, in context, with
+ *   the household and entity catalogue in front of it. WHO a figure belongs to
+ *   is then the planner's judgement, not something to re-derive here from cue
+ *   words and pronouns.
+ *
+ *   The checks below are the old arrangement, kept for turns the planner did
+ *   not read: they demand the entity's LABEL appear in the quoted clause, and
+ *   fall back to pronoun grammar when it cannot ("you" is the primary person's
+ *   label, so the label cue is unsatisfiable for them). That is a deterministic
+ *   re-parse of English deciding a semantic question, and where a reading
+ *   exists it is the wrong layer to answer it. Structural identity — that the
+ *   entity exists, and that the fact is legal on it — is asserted separately by
+ *   assertKnownIdentity and is NOT relaxed here.
+ */
+function assertNumericSemanticBinding(
+  operation,
+  targetNote,
+  evidenceRefs,
+  grounding,
+  notes,
+  entities,
+  semanticallyRead = false
+) {
   if (grounding.changed.length === 0) return;
+  if (semanticallyRead) return;
   const quotes = evidenceRefs.map((ref) => ref.quote).join(' ');
   const proposedValues = grounding.changed.map((leaf) => leaf.value);
   const distinctEvidence = [...new Set(grounding.supported.map((value) => String(value)))];
@@ -1868,7 +1939,27 @@ function completionAssertsNone(value) {
     .some((candidate) => COMPLETION_NONE_VALUES.has(asText(candidate)));
 }
 
-function assertKnownIdentity(operation, targetNote, owners, entities, evidenceRefs) {
+/**
+ * @param semanticallyRead the planner read this turn with the household and
+ *   entity catalogue in front of it, so WHOSE holding this is was its call.
+ *   The alias checks below are the older arrangement: they require the owner's
+ *   NAME to appear in the quoted words, which "hers is ninety" never does — so
+ *   a partner's pension was refused however clearly the conversation attributed
+ *   it. That is a deterministic re-parse of English answering a semantic
+ *   question, and it is skipped for a read turn.
+ *
+ *   Everything structural stays for every turn: the owner must exist, a new
+ *   position must have one, the entity must belong to that owner, and the fact
+ *   must be legal on that entity.
+ */
+function assertKnownIdentity(
+  operation,
+  targetNote,
+  owners,
+  entities,
+  evidenceRefs,
+  semanticallyRead = false
+) {
   const effectiveEntityId = operation.entityId || targetNote?.entityId;
   const effectiveOwnerId = operation.ownerId || targetNote?.ownerId;
   const entity = effectiveEntityId ? entities.get(effectiveEntityId) : null;
@@ -1913,15 +2004,17 @@ function assertKnownIdentity(operation, targetNote, owners, entities, evidenceRe
       fail('new_entity_owner_missing', 'A new financial position requires one known owner.');
     }
     const quotes = evidenceRefs.map((ref) => ref.quote).join(' ');
-    if (owner?.role === 'partner' || owner?.role === 'household') {
-      if (!quoteContainsAlias(quotes, owner.aliases)) {
-        fail('new_entity_owner_evidence_missing', `New position owner ${effectiveOwnerId} is not explicit in client evidence.`);
-      }
-    } else if (owner?.role === 'primary') {
-      const partner = [...owners.values()].find((record) => record.role === 'partner');
-      if (partner && quoteContainsAlias(quotes, partner.aliases)
-        && !quoteContainsAlias(quotes, owner.aliases)) {
-        fail('new_entity_owner_mismatch', 'Partner evidence cannot create a primary-client position.');
+    if (!semanticallyRead) {
+      if (owner?.role === 'partner' || owner?.role === 'household') {
+        if (!quoteContainsAlias(quotes, owner.aliases)) {
+          fail('new_entity_owner_evidence_missing', `New position owner ${effectiveOwnerId} is not explicit in client evidence.`);
+        }
+      } else if (owner?.role === 'primary') {
+        const partner = [...owners.values()].find((record) => record.role === 'partner');
+        if (partner && quoteContainsAlias(quotes, partner.aliases)
+          && !quoteContainsAlias(quotes, owner.aliases)) {
+          fail('new_entity_owner_mismatch', 'Partner evidence cannot create a primary-client position.');
+        }
       }
     }
   }
@@ -1935,7 +2028,10 @@ function assertKnownIdentity(operation, targetNote, owners, entities, evidenceRe
       fail('owner_change_reason_required', 'Changing owner requires reasonCode wrong_owner.');
     }
     const quotes = evidenceRefs.map((ref) => ref.quote).join(' ');
-    if (!owner || !quoteContainsAlias(quotes, owner.aliases)) {
+    if (!owner) {
+      fail('owner_change_evidence_missing', `Owner correction to ${effectiveOwnerId} names no known owner.`);
+    }
+    if (!semanticallyRead && !quoteContainsAlias(quotes, owner.aliases)) {
       fail('owner_change_evidence_missing', `Owner correction to ${effectiveOwnerId} lacks an explicit owner cue.`);
     }
   }
@@ -2243,25 +2339,28 @@ function validateOperation(operation, notes, context, group) {
     return { targetNote, evidenceRefs };
   }
 
+  // Every cited turn was read by the planner in context. Meaning — which figure,
+  // and whose it is — is then the planner's responsibility; this layer stays on
+  // structure, identity, cardinality and calculation.
+  const semanticallyRead = evidenceRefs.length > 0
+    && context.turnReadings?.size > 0
+    && evidenceRefs.every((ref) => context.turnReadings.has(String(ref.turnId)));
   assertAggregateIsNotAPosition(operation, targetNote);
-  assertKnownIdentity(operation, targetNote, context.owners, context.entities, evidenceRefs);
-  assertContributionProductEligibility(operation, targetNote, context.entities);
-  // Reviewed means the planner saw this turn whole, with the assistant
-  // question it answered. A quote that mixes a reviewed turn with an
-  // unreviewed one has no such reading behind it and stays strict.
-  const semanticallyReviewed = evidenceRefs.length > 0
-    && evidenceRefs.every((ref) => context.reviewedTurnIds.has(String(ref.turnId)));
-  assertCompletionNoneEvidence(
+  assertKnownIdentity(
     operation,
+    targetNote,
+    context.owners,
+    context.entities,
     evidenceRefs,
-    context.turnIndex,
-    semanticallyReviewed
+    semanticallyRead
   );
+  assertContributionProductEligibility(operation, targetNote, context.entities);
+  assertCompletionNoneEvidence(operation, evidenceRefs, context.turnIndex);
   const grounding = assertNumericGrounding(
     operation,
     targetNote,
     evidenceRefs,
-    semanticallyReviewed
+    context.turnReadings
   );
   assertDateGrounding(operation, targetNote, evidenceRefs);
   assertNumericSemanticBinding(
@@ -2270,7 +2369,8 @@ function validateOperation(operation, notes, context, group) {
     evidenceRefs,
     grounding,
     notes,
-    context.entities
+    context.entities,
+    semanticallyRead
   );
   assertPropertyLiabilityRelationship(
     operation,
@@ -2913,11 +3013,10 @@ export async function applyReconciliationPlan({
   appliedPlanHashes = [],
   owners = [],
   entities = [],
-  // Turns the planner read WHOLE, in conversational context, as part of this
-  // review. Within one of these the reviewer may render number words into
-  // digits; outside them the deterministic scan stays the only authority, so
-  // every existing caller keeps its exact behaviour by passing nothing.
-  reviewedTurnIds = [],
+  // Independent readings of the client turns under review, keyed by turnId.
+  // Where one exists it is the authority on which figures that turn contains;
+  // where none does, every existing caller keeps its exact behaviour.
+  turnReadings = [],
   // The live lane's fact mapper, injected by the worker. Absent, the projection
   // writes raw note values exactly as before, which keeps this module free of
   // any worker import and every existing caller behaving identically.
@@ -2971,7 +3070,9 @@ export async function applyReconciliationPlan({
     owners: ownerRecords(profile, owners),
     entities: entityRecords(profile, entities),
     turnIndex: new Map(turns.map((turn) => [turn.turnId, turn])),
-    reviewedTurnIds: new Set((reviewedTurnIds || []).map((turnId) => String(turnId)))
+    turnReadings: new Map((turnReadings || [])
+      .filter((reading) => reading?.turnId && Array.isArray(reading.figures))
+      .map((reading) => [String(reading.turnId), reading]))
   };
   const verifiedReviewedNoteIds = new Set();
   const reviewOutcomes = [];
