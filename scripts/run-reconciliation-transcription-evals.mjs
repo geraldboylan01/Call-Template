@@ -3,7 +3,7 @@
  *
  * WHY THESE ARE NOT IN A check: SCRIPT
  *
- * check-consumer-live-numeric-transcription pins what the deterministic layer
+ * check-consumer-turn-reading pins what the agreement gate
  * may still refuse. It is fast, free and exact — and it is blind to everything
  * that depends on the conversation. "400" is a car repayment only because of
  * the question before it. "About three or four" is worth a clarification, not
@@ -36,6 +36,7 @@ import {
   buildPlannerReconciliationContext,
   requestPlannerReconciliation
 } from '../worker/src/consumer/planner_reconciliation.js';
+import { readClientTurnFigures } from '../worker/src/consumer/turn_reading.js';
 
 const dataset = JSON.parse(readFileSync(
   fileURLToPath(new URL('./fixtures/reconciliation-transcription-evals.json', import.meta.url)),
@@ -67,8 +68,12 @@ const CONFIG = Object.freeze({
   realtimePlannerModel: process.env.RECONCILIATION_MODEL || 'gpt-5.6-luna',
   plannerReconciliationTimeoutMs: 60_000,
   plannerReconciliationMaxOutputTokens: 4_000,
-  plannerReconciliationPromptVersion: 'planning-reconciliation-v3',
+  plannerReconciliationPromptVersion: 'planning-reconciliation-v2',
   plannerReconciliationMode: 'apply',
+  turnReadingMode: process.env.TURN_READING_MODE || 'apply',
+  turnReadingModel: process.env.RECONCILIATION_MODEL || 'gpt-5.6-luna',
+  turnReadingTimeoutMs: 30_000,
+  turnReadingMaxOutputTokens: 800,
   goalRoutingEnabled: true,
   moduleRoutingEnabled: true,
   allowedModules: Object.values(MODULE_IDS),
@@ -172,14 +177,26 @@ async function runCase(testCase) {
     reviewTurnIds: ['turn_client']
   });
 
-  const requested = await requestPlannerReconciliation({
-    env: { OPENAI_API_KEY: KEY }, config: CONFIG, input
-  });
+  // Two readers, asked independently. The reading request carries only the
+  // turn and the question; it never sees the reconciler's plan, and the
+  // reconciler never sees the reading.
+  const [requested, reading] = await Promise.all([
+    requestPlannerReconciliation({ env: { OPENAI_API_KEY: KEY }, config: CONFIG, input }),
+    readClientTurnFigures({
+      env: { OPENAI_API_KEY: KEY },
+      config: CONFIG,
+      turnId: 'turn_client',
+      transcript: testCase.clientTurn,
+      assistantQuestion: testCase.assistantQuestion
+    })
+  ]);
   const operations = (requested.plan?.operationGroups || []).flatMap((group) => group.operations);
 
-  // The plan still has to survive the deterministic gate, with the reviewed
-  // scope on. An eval that graded the raw model output would pass cases
-  // production would reject.
+  // The plan still has to survive the deterministic gate. An eval that graded
+  // the raw model output would pass cases production would reject. The
+  // reviewed-turn scope was removed with the unsafe grant, so these currently
+  // measure the reviewer against the OLD gate — which is the baseline the
+  // corrected Phase 3 design has to beat.
   const validation = await applyReconciliationPlan({
     profile: context.profile,
     notes: [],
@@ -190,7 +207,7 @@ async function runCase(testCase) {
     baseProfileRevision: context.profile.revision,
     owners: input.owners,
     entities: input.entities,
-    reviewedTurnIds: ['turn_client'],
+    turnReadings: CONFIG.turnReadingMode === 'apply' && reading ? [reading] : [],
     nowIso: NOW
   });
 
@@ -226,9 +243,33 @@ async function runCase(testCase) {
     }
   }
 
+  // FALSE AGREEMENT IS THE FAILURE THIS DESIGN CANNOT OTHERWISE SEE. Agreement
+  // is what buys a write, so two readers landing on the same WRONG figure is
+  // worse than either of them being obviously wrong. Graded against the
+  // fixture's labelled expectation, which is the only thing that can tell them
+  // apart.
+  const readFigures = (reading?.figures || []).filter((item) => !item.ambiguous);
+  const wanted = expect.outcome === 'multiple_values'
+    ? expect.amounts
+    : expect.outcome === 'value' ? [expect.amount] : [];
+  const forbiddenRead = (expect.forbiddenAmounts || [])
+    .filter((bad) => readFigures.some((item) => Math.abs(item.digits - bad) < 1e-6));
+  const falseAgreement = forbiddenRead.filter((bad) => (
+    values.some((item) => Math.abs(item.value - bad) < 1e-6)
+  ));
+  if (falseAgreement.length > 0) {
+    problems.push(`FALSE AGREEMENT: both readers produced ${falseAgreement.join(', ')}`);
+  }
+
   return {
     id: testCase.id,
     family: testCase.family,
+    readFigures: readFigures.map((item) => item.digits),
+    readMissedWanted: wanted.filter((amount) => (
+      !readFigures.some((item) => Math.abs(item.digits - amount) < 1e-6)
+    )),
+    forbiddenRead,
+    falseAgreement,
     ok: problems.length === 0,
     problems,
     rejected: validation.rejectedGroups?.map((group) => group.code) || [],
@@ -279,7 +320,12 @@ for (const testCase of selected) {
         console.log(`         deterministic gate refused: ${outcome.rejected.join(', ')}`);
       }
     }
+    if (outcome.forbiddenRead?.length > 0 && outcome.falseAgreement?.length === 0) {
+      console.log(`         (reader alone produced a forbidden figure: `
+        + `${outcome.forbiddenRead.join(', ')} — caught by disagreement)`);
+    }
     if (VERBOSE) {
+      console.log(`         read:     ${outcome.readFigures?.join(', ') || 'none'}`);
       console.log(`         proposed: ${outcome.proposed?.join(', ') || 'none'}`);
       console.log(`         values: ${outcome.values.join(', ') || 'none'}`);
       console.log(`         clarifications: ${outcome.clarifications}`);
@@ -288,8 +334,21 @@ for (const testCase of selected) {
 }
 
 const failing = [...tally.entries()].filter(([, record]) => record.passes < record.runs);
+const falseAgreements = [...tally.values()]
+  .filter((record) => record.last?.falseAgreement?.length > 0);
+const readMisses = [...tally.values()]
+  .filter((record) => record.last?.readMissedWanted?.length > 0);
 console.log(`\n${tally.size} case(s): `
   + `${tally.size - failing.length} fully passing, ${failing.length} with at least one failure.`);
+console.log(`Independent reader: missed the expected figure in ${readMisses.length}, `
+  + `agreed with the reconciler on a FORBIDDEN figure in ${falseAgreements.length}.`);
+if (falseAgreements.length > 0) {
+  console.error('\nFALSE AGREEMENT OBSERVED. Agreement is what this design treats as '
+    + 'permission to write, so this is the result that says it must not ship in apply:');
+  for (const record of falseAgreements) {
+    console.error(`  ${record.last.id}: both readers produced ${record.last.falseAgreement.join(', ')}`);
+  }
+}
 if (failing.length > 0) {
   for (const [id, record] of failing) {
     console.log(`  ${id}: ${record.passes}/${record.runs}`);

@@ -109,27 +109,18 @@ assert.match(runner, /requestPlannerReconciliation/,
   'The eval runner must call the production reconciliation request.');
 assert.match(runner, /applyReconciliationPlan/,
   'A plan the deterministic gate would reject must not be graded as a pass.');
-assert.match(runner, /reviewedTurnIds: \['turn_client'\]/,
-  'The runner must exercise the reviewed-turn scope; without it the evals test the old gate.');
 assert.doesNotMatch(runner, /RECONCILIATION_SYSTEM_PROMPT\s*=/,
   'The runner must import the production prompt, never restate one that can drift.');
 
-/* ------------- the prompt still says what the corpus is grading against --- */
+/* ------------- what the prompt must never stop saying ---------------------- */
 
-assert.match(RECONCILIATION_SYSTEM_PROMPT, /transcription and is expected of you/,
-  'The reviewed-turn transcription grant has gone from the prompt.');
-assert.match(RECONCILIATION_SYSTEM_PROMPT, /never combine two spoken figures into a third/,
-  'The prompt must keep prohibiting arithmetic across figures.');
-assert.match(RECONCILIATION_SYSTEM_PROMPT, /request_clarification instead of picking one/,
-  'The prompt must keep sending genuine ranges to clarification.');
+// The transcription grant was removed with the unsafe deterministic rule that
+// backed it, so this no longer asserts it. What must survive any Phase 3
+// attempt are the prohibitions: they are the reason the corpus can be trusted.
+assert.match(RECONCILIATION_SYSTEM_PROMPT, /Do not calculate totals/,
+  'The prompt must keep prohibiting arithmetic.');
 assert.match(RECONCILIATION_SYSTEM_PROMPT, /CITE THE NARROWEST SPAN THAT STILL IDENTIFIES THE NUMBER/,
-  'The narrowest-span rule is what makes the wider transcription scope safe.');
-// Speech never carries a currency word. Without the jurisdiction default the
-// transcription grant is unusable: every recovered figure stalls on currency.
-assert.match(RECONCILIATION_SYSTEM_PROMPT, /A SPOKEN FIGURE CARRIES NO CURRENCY WORD/,
-  'The transcription grant needs the EUR jurisdiction default the server already applies.');
-assert.match(RECONCILIATION_SYSTEM_PROMPT, /never a reason to request_clarification/,
-  'A missing currency word must not send a recovered figure to clarification.');
+  'The narrowest-span rule is what any wider semantic scope would rest on.');
 
 console.log(`check-reconciliation-transcription-evals: ${dataset.cases.length} cases across `
   + `${families.size} families, corpus and prompt intact.`);

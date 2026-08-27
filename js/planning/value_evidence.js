@@ -355,53 +355,6 @@ export function extractNumericOccurrences(transcript) {
       .some((other) => other.start === item.start && other.end === item.end));
 }
 
-/**
- * Magnitude words the value parser never consumes, and the shape of a scale
- * continuation it cannot read past.
- *
- * These exist for ONE purpose: letting the scan report that it has under-read a
- * spoken figure, so semantic review can be trusted with the reading instead.
- * They never produce a value and never widen what extractNumericOccurrences
- * returns, so adding a token here cannot change any existing extraction — it
- * can only move a span from "the parser is sure" to "ask the planner".
- *
- * This is deliberately not a repair of the spoken-number grammar. Teaching the
- * parser to read "two and a half thousand" would put it back in charge of
- * meaning, which is the arrangement being retired.
- */
-const UNPARSED_MAGNITUDE_AFTER = /^\s*(?:grand|k)\b/iu;
-const UNREAD_SCALE_CONTINUATION = /^\s+and\s+(?:\p{L}+\s+){0,3}?(?:thousand|million|billion|grand|k)\b/iu;
-
-/** A spoken figure the scan could only read the leading part of. */
-function spanIsUnderRead(text, item) {
-  // Digits are exact by construction; only word-spelled figures under-read.
-  if (!/\p{L}/u.test(text.slice(item.start, item.end))) return false;
-  const rest = text.slice(item.end);
-  return UNPARSED_MAGNITUDE_AFTER.test(rest) || UNREAD_SCALE_CONTINUATION.test(rest);
-}
-
-/**
- * Every numeric span in a transcript, each saying whether the scan actually
- * finished reading it.
- *
- * `resolved: false` does not mean "no number here" and it does not mean the
- * scanned value is wrong to within a rounding error — it means the value is a
- * TRUNCATION. "two and a half thousand" scans as 2 and "a hundred and eighty
- * grand" scans as 180, so treating either as the client's figure is not a near
- * miss, it is three orders of magnitude. A caller must never spend an
- * under-read value as though the client said it.
- */
-export function numericEvidenceSpans(transcript) {
-  const text = String(transcript || '');
-  return extractNumericOccurrences(text).map((item) => Object.freeze({
-    start: item.start,
-    end: item.end,
-    value: item.value,
-    kind: item.kind,
-    resolved: !spanIsUnderRead(text, item)
-  }));
-}
-
 /** Return active, occurrence-addressed FINANCIAL evidence in source order. */
 export function extractValueEvidence(transcript, { includeSuperseded = false } = {}) {
   const text = String(transcript || '');

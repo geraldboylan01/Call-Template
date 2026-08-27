@@ -1,0 +1,338 @@
+#!/usr/bin/env node
+
+/**
+ * TWO READERS, AND WHAT AGREEMENT IS ALLOWED TO BUY.
+ *
+ * The deterministic scan reads "two and a half thousand" as 2. For a long time
+ * that reading was authoritative, so a EUR 2,500 monthly spend was refused
+ * while a EUR 2 monthly spend was written. Every attempt to fix that by
+ * bounding the scan's own output failed, because a broken reading cannot anchor
+ * a correct one.
+ *
+ * What replaced it: a second reading of the same turn that never saw the
+ * reconciler's answer. Where both readers name the same figure, it may be
+ * written. Where they do not, it may not.
+ *
+ * No model runs here. The readings are supplied directly, because the point of
+ * these checks is what the GATE does with a reading — including a wrong one.
+ * Whether the reader reads well is a different question, measured against
+ * labelled turns by the paid evals.
+ */
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { applyReconciliationPlan } from '../js/planning/reconciliation.js';
+import { createHouseholdProfile, normalizeHouseholdProfile } from '../js/planning/profile.js';
+import {
+  TURN_READING_SYSTEM_PROMPT,
+  normalizeTurnReading
+} from '../worker/src/consumer/turn_reading.js';
+import { RECONCILIATION_SYSTEM_PROMPT } from '../worker/src/consumer/planner_reconciliation.js';
+import { getConsumerConfig } from '../worker/src/consumer/config.js';
+
+const NOW = '2026-08-09T10:00:00.000Z';
+const pass = (message) => console.log(`  PASS: ${message}`);
+const source = (relative) => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
+
+function baseProfile() {
+  return normalizeHouseholdProfile(createHouseholdProfile({
+    profileId: 'profile_turn_reading',
+    primaryPersonId: 'primary',
+    nowIso: NOW,
+    calculationDateIso: '2026-08-09'
+  }));
+}
+
+const figure = (digits, quote, { currency = null, ambiguous = false } = {}) => ({
+  digits, quote, currency, ambiguous
+});
+
+async function propose({ text, quote, amount, currency = 'EUR', figures = null }) {
+  const result = await applyReconciliationPlan({
+    profile: baseProfile(),
+    notes: [],
+    plan: {
+      schemaVersion: 1,
+      planId: 'plan_turn_reading',
+      verdict: 'changes_proposed',
+      operationGroups: [{
+        groupId: 'candidate',
+        operations: [{
+          operationId: 'proposed',
+          op: 'upsert_note',
+          factId: 'monthly_spending',
+          noteKind: 'fact',
+          value: { amount, currency },
+          certainty: 'approximate',
+          reasonCode: 'missing_note',
+          evidence: [{ turnId: 'turn_read', quote }]
+        }]
+      }]
+    },
+    transcriptTurns: [{
+      turnId: 'turn_read', role: 'user', finalized: true, sequence: 1, text
+    }],
+    sessionId: 'session_turn_reading',
+    transcriptWatermark: 'turn_read',
+    baseProfileRevision: 0,
+    turnReadings: figures ? [{ turnId: 'turn_read', figures }] : [],
+    nowIso: NOW
+  });
+  return {
+    accepted: result.acceptedGroupIds.includes('candidate'),
+    code: result.rejectedGroups?.[0]?.code || null
+  };
+}
+
+const SPEND = 'We spend about two and a half thousand a month on essentials.';
+const SPEND_QUOTE = 'about two and a half thousand a month';
+const SPEND_READING = [figure(2500, 'two and a half thousand')];
+
+/* ===================== the inversion, closed in both directions =========== */
+
+console.log('\nThe inversion closes both ways at once:');
+{
+  const recovered = await propose({
+    text: SPEND, quote: SPEND_QUOTE, amount: 2500, figures: SPEND_READING
+  });
+  assert.equal(recovered.accepted, true,
+    'a figure both readers name must be writable — this is the whole recovery');
+  pass('"two and a half thousand" supports 2500');
+
+  // The same change that admits 2500 must remove 2, or the fix has only made
+  // the profile wrong in a new way alongside the old one.
+  const truncation = await propose({
+    text: SPEND, quote: SPEND_QUOTE, amount: 2, figures: SPEND_READING
+  });
+  assert.equal(truncation.accepted, false,
+    'the scan\'s truncation must stop being authoritative once the turn is read');
+  pass('"two and a half thousand" no longer supports 2');
+}
+
+/* ============ the reading is a replacement, not an extra source =========== */
+
+console.log('\nA read turn is governed by the reading alone:');
+for (const amount of [2_000, 25_000, 250_000, 2_500_000, 4_100, 20_000_000]) {
+  const outcome = await propose({
+    text: SPEND, quote: SPEND_QUOTE, amount, figures: SPEND_READING
+  });
+  assert.equal(outcome.accepted, false,
+    `${amount} is not what the reading says, so it must be refused`);
+}
+pass('no figure outside the reading survives, at any magnitude');
+
+/* ============================ an honest "I cannot tell" =================== */
+
+console.log('\nAmbiguity is reported, not resolved:');
+{
+  const outcome = await propose({
+    text: 'Around one eighty, I think.',
+    quote: 'Around one eighty',
+    amount: 180_000,
+    figures: [figure(180_000, 'one eighty', { ambiguous: true })]
+  });
+  assert.equal(outcome.accepted, false,
+    'a reader that said it could not resolve the scale must not have its guess used anyway');
+  pass('an ambiguous figure supports nothing, including its own best guess');
+}
+
+/* =============================== no arithmetic =========================== */
+
+console.log('\nTwo figures never become a third:');
+{
+  const outcome = await propose({
+    text: 'That is two thousand plus the other three.',
+    quote: 'two thousand plus the other three',
+    amount: 5_000,
+    figures: [figure(2_000, 'two thousand'), figure(3, 'the other three')]
+  });
+  assert.equal(outcome.accepted, false, 'a total nobody stated must be refused');
+  pass('a sum of two read figures is not a read figure');
+}
+
+/* ====================== currency travels with the figure ================== */
+
+console.log('\nThe client\'s currency wins:');
+{
+  const text = 'Mine is a hundred and eighty grand pounds.';
+  const quote = 'a hundred and eighty grand pounds';
+  const reading = [figure(180_000, 'a hundred and eighty grand pounds', { currency: 'GBP' })];
+  assert.equal((await propose({ text, quote, amount: 180_000, currency: 'GBP', figures: reading })).accepted,
+    true, 'a stated currency must be usable, not merely un-substitutable');
+  assert.equal((await propose({ text, quote, amount: 180_000, currency: 'EUR', figures: reading })).accepted,
+    false, 'euro must not silently replace pounds');
+  pass('GBP is accepted and EUR refused for the same spoken figure');
+
+  // Nothing stated: the jurisdiction default, same as an unadorned "900 a month".
+  const unstated = await propose({
+    text: SPEND, quote: SPEND_QUOTE, amount: 2500, currency: 'EUR', figures: SPEND_READING
+  });
+  assert.equal(unstated.accepted, true, 'an unstated currency still defaults to EUR');
+  pass('a figure spoken without a currency defaults to EUR');
+}
+
+/* ================= a quote the reading does not cover ==================== */
+
+console.log('\nA figure must come from the span that cites it:');
+{
+  const outcome = await propose({
+    text: 'The pension is two hundred thousand and the mortgage is three forty.',
+    quote: 'the mortgage is three forty',
+    amount: 200_000,
+    figures: [figure(200_000, 'two hundred thousand'), figure(340_000, 'three forty')]
+  });
+  assert.equal(outcome.accepted, false,
+    'a turn\'s other figures must not ground an operation citing a different span');
+  pass('the pension figure cannot be written against the mortgage span');
+}
+
+/* ========================== absence changes nothing ====================== */
+
+console.log('\nWithout a reading, behaviour is exactly what shipped before:');
+{
+  assert.equal((await propose({ text: SPEND, quote: SPEND_QUOTE, amount: 2500 })).accepted, false);
+  assert.equal((await propose({ text: SPEND, quote: SPEND_QUOTE, amount: 2 })).accepted, true);
+  pass('an unread turn keeps the legacy deterministic verdicts, for better and worse');
+}
+
+/* ====================== the reading cannot invent its source ============== */
+
+console.log('\nA reading is normalized before it is trusted:');
+{
+  const clean = normalizeTurnReading({
+    figures: [
+      { digits: 2500, quote: 'two and a half thousand', currency: 'unstated', ambiguous: false },
+      // Words that are not in the turn: the reader may be wrong about what a
+      // figure MEANS, but it must not be able to invent where it came from.
+      { digits: 999, quote: 'nine hundred and ninety nine', currency: 'EUR', ambiguous: false },
+      { digits: Number.NaN, quote: 'two and a half thousand', currency: 'EUR', ambiguous: false }
+    ]
+  }, { turnId: 'turn_read', transcript: SPEND });
+  assert.deepEqual(clean.figures.map((item) => item.digits), [2500],
+    'a quote absent from the turn, and a non-numeric figure, must both be dropped');
+  assert.equal(clean.figures[0].currency, null, '"unstated" is not a currency');
+  pass('fabricated quotes and unusable figures are discarded');
+}
+
+/* ============================ shipping posture =========================== */
+
+console.log('\nThe feature ships off:');
+{
+  assert.equal(getConsumerConfig({}).turnReadingMode, 'off',
+    'an unconfigured deployment must behave exactly as it did before this existed');
+  assert.equal(getConsumerConfig({ CONSUMER_TURN_READING_MODE: 'aply' }).turnReadingMode, 'off',
+    'a typo must fail closed — off, never on');
+  assert.equal(getConsumerConfig({ CONSUMER_TURN_READING_MODE: 'shadow' }).turnReadingMode, 'shadow');
+  assert.equal(getConsumerConfig({ CONSUMER_TURN_READING_MODE: 'apply' }).turnReadingMode, 'apply');
+  pass('off by default, shadow and apply available, typos fail closed');
+}
+
+/* ======================= what the reader is told ========================= */
+
+console.log('\nThe reader is asked to read, and nothing else:');
+{
+  assert.match(TURN_READING_SYSTEM_PROMPT, /NEVER do arithmetic/,
+    'the prompt must prohibit arithmetic outright');
+  assert.match(TURN_READING_SYSTEM_PROMPT, /two and a half thousand" is 2500/,
+    'transcription must be stated as the job, not left to inference');
+  assert.match(TURN_READING_SYSTEM_PROMPT, /A scale stated once carries across the sentence/,
+    '"hers is ninety" needs the turn read as a whole, or dense answers lose their scale');
+  assert.match(TURN_READING_SYSTEM_PROMPT, /"ambiguous": true/,
+    'the reader must have a way to decline rather than guess');
+  // Independence is a property of the INPUT, so assert what the prompt tells
+  // the reader it will and will not receive, rather than banning a word the
+  // prompt legitimately uses to deny it.
+  assert.match(TURN_READING_SYSTEM_PROMPT, /You are given nothing else — no records, no proposals/,
+    'the reader must be told plainly that no proposal or record is coming');
+  assert.match(TURN_READING_SYSTEM_PROMPT, /Report only what this client said/,
+    'the reader must be aimed at the transcript, not at what would be useful');
+  const readerSource = source('../worker/src/consumer/turn_reading.js');
+  const request = readerSource.slice(readerSource.indexOf('body: JSON.stringify'));
+  for (const leak of ['notes', 'canonicalFacts', 'factContracts', 'voiceWriteOutcomes', 'plan']) {
+    assert.ok(!request.includes(leak),
+      `the reading request must not carry ${leak}: a reader shown the first `
+      + 'reader\'s answer is not a second opinion, it is an echo');
+  }
+  pass('transcription required, arithmetic forbidden, ambiguity expressible, nothing from the first reader');
+}
+
+/* ============= who a figure belongs to is the planner's question ========== */
+
+console.log('\nOwner and entity binding belongs to the planner:');
+{
+  const gate = source('../js/planning/reconciliation.js');
+  const binding = gate.slice(
+    gate.indexOf('function assertNumericSemanticBinding'),
+    gate.indexOf('const GENERIC_LIABILITY_CUES')
+  );
+  assert.match(binding, /if \(semanticallyRead\) return;/,
+    'a turn the planner read in context must not have its owner re-derived here '
+    + 'from cue words and pronouns');
+
+  // The cue machinery still exists for turns nobody read, and that is fine —
+  // what must not happen is it deciding meaning for a turn that WAS read.
+  assert.match(binding, /quoteHasCue/,
+    'the legacy path is deliberately unchanged for unread turns');
+
+  // Structural identity is a different question and is still answered here.
+  const identity = gate.slice(
+    gate.indexOf('function assertKnownIdentity'),
+    gate.indexOf('function assertAggregateIsNotAPosition')
+  );
+  assert.match(identity, /if \(!semanticallyRead\) \{/,
+    'a read turn must not have its owner decided by whether the owner\'s NAME '
+    + 'appears in the quote — "hers is ninety" never contains it');
+  for (const structural of [
+    'new_entity_owner_missing', 'entity_owner_mismatch', 'entity_fact_mismatch'
+  ]) {
+    assert.ok(identity.includes(structural),
+      `${structural} is structural and must hold for every turn, read or not`);
+  }
+  pass('binding is the planner\'s, existence and legality remain the validator\'s');
+}
+
+console.log('\nThe planner is told to bind, and told not to guess:');
+{
+  const prompt = RECONCILIATION_SYSTEM_PROMPT;
+  assert.match(prompt, /WHOSE FACT IS THIS\? Deciding that is your job/,
+    'the planner must be given the responsibility explicitly, not by implication');
+  assert.match(prompt, /whose catalogue label may simply read "you"/,
+    'the primary person is labelled "you", which is why label-matching could never bind them');
+  assert.match(prompt, /is TWO pensions, 180000 for the primary and 90000 for the partner/,
+    'the dense two-owner case must be shown, since it is the one that fails silently');
+  assert.match(prompt, /Never invent, guess, abbreviate or construct an identifier/,
+    'the model may choose among supplied ids and must never mint one');
+  assert.match(prompt, /return request_clarification naming the ambiguity instead of choosing/,
+    'genuine ambiguity must cost a question, not a guess');
+  pass('context-based binding required, invented ids forbidden, ambiguity routed to clarification');
+}
+
+/* ================= a reviewed turn is diagnosable afterwards ============== */
+
+console.log('\nEach reviewed turn leaves a diagnostic record:');
+{
+  const worker = source('../worker/src/consumer/planner_reconciliation.js');
+  const diagnosticStart = worker.indexOf("eventType: 'planner.turn_review.diagnostic'");
+  const diagnostic = worker.slice(
+    diagnosticStart,
+    worker.indexOf('}).catch(() => {});', diagnosticStart)
+  );
+  for (const field of [
+    'clientTurnId', 'assistantTurnId', 'reading', 'realtimeOutcomes',
+    'operations', 'clarifications', 'rejected', 'profileChanged', 'status'
+  ]) {
+    assert.ok(diagnostic.includes(field), `the diagnostic must carry ${field}`);
+  }
+  assert.ok(diagnostic.includes('ownerId') && diagnostic.includes('entityId'),
+    'the binding the planner chose is the thing most worth seeing when it is wrong');
+  // The transcript is the sensitive part and already lives behind the same
+  // access controls in the transcript store.
+  assert.ok(!/transcript:|clientTurn:|text:/.test(diagnostic),
+    'the record must reference turns by id rather than copying client speech '
+    + 'into the event stream');
+  pass('reading, proposals, binding, clarifications and outcome are all recoverable by turn id');
+}
+
+console.log('\ncheck-consumer-turn-reading: the agreement gate holds.');

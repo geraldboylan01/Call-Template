@@ -82,6 +82,24 @@ const PENSION_CONTRIBUTION_STATUSES = Object.freeze([
 
 /** Pension types that cannot receive contributions, so are never asked about them. */
 export const NON_CONTRIBUTORY_PENSION_TYPES = Object.freeze(['buyout_bond', 'defined_benefit']);
+
+/**
+ * The `type` a record in each collection may carry, from the SAME constants the
+ * normalizer enforces below.
+ *
+ * A planner told a record needs a `type` key, but not which values are legal,
+ * guesses — and a pension written as type "pension" is rejected by profile
+ * normalization after everything else about it was correct. Deriving the
+ * vocabulary here rather than restating it in a prompt is what keeps the two
+ * from drifting: there is one list, and the validator and the planner read it
+ * from the same place.
+ */
+export const COLLECTION_TYPE_CHOICES = Object.freeze({
+  assets: ASSET_TYPES,
+  liabilities: LIABILITY_TYPES,
+  incomeSources: INCOME_TYPES,
+  pensions: PENSION_TYPES
+});
 // 'holiday' is a LIFESTYLE property, not an investment one: it is nice to have
 // and is not there to earn. Without its own use it arrived as 'other' and was
 // bucketed with concentrated assets, which reads as though the family were

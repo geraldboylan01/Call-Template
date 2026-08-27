@@ -1,8 +1,47 @@
 # Live lane conversation recovery plan
 
-**Status:** Phases 1 and 2 approved for implementation. Stop for review before
-Phase 3. This plan preserves native Realtime turn-taking and the existing
+**Status:** Phases 1 and 2 implemented and retained. Phase 3 was authorised and
+attempted, then **removed** — see the history below. Phase 4 and 5 remain
+unimplemented. This plan preserves native Realtime turn-taking and the existing
 trailing planner/reconciliation architecture.
+
+## Instruction history
+
+The "stop for review before Phase 3" wording that stood here was superseded and
+is recorded rather than deleted, because a stale instruction that looks live is
+worse than none.
+
+- **Phases 1–2 approved**, with an explicit stop before Phase 3.
+- **The stop was lifted.** Phase 3 was authorised directly, along with a
+  Finding-3 client fix, with the instruction to continue rather than return for
+  another planning round.
+- **Phase 3 was implemented and then removed.** Review found the deterministic
+  rule backing it admitted invented magnitudes: for the quote "two and a half
+  thousand", the reviewer could write 2,000, 25,000, 250,000 or 2,500,000. The
+  same change also let a reviewed turn bypass completion-none evidence, so a
+  bare "Yes." could empty a collection. Both were removed rather than patched.
+- **Remediation retained all Phase 1–2 protocol work** and fixed four defects
+  found alongside: reconciliation scheduled before its continuation chain
+  settled, typed input not invalidating a pending continuation, an
+  un-invalidatable opening race, and a currency default that overwrote a
+  client's stated currency.
+
+Phase 3 is **not** approved for re-implementation on the old design. The
+corrected design is a separate document.
+
+### What the removed attempt proved
+
+Worth keeping, because it constrains the next design:
+
+- The prompt needs an explicit EUR jurisdiction default. Speech never carries a
+  currency word, so a transcription grant without it sends every recovered
+  figure to `request_clarification` instead.
+- Facts only reach the reviewer when a routed analysis is waiting on one. A
+  context without goal/module routing yields no fact contracts, and the
+  reviewer correctly writes nothing.
+- A prefix rule is not a bound. "Same leading digits and larger" spans four
+  orders of magnitude, and a suite that tests only a non-prefix-sharing
+  counterexample (4,100) stays green while that hole is open.
 
 ## Architectural decision
 
@@ -74,7 +113,12 @@ contract as production.
 - Opening and continuation responses are distinct provider responses.
 - Tool-result delivery alone never implies that the model may continue speaking.
 
-## Phase 3 — turn on semantic recovery (planned, not approved for code)
+## Phase 3 — turn on semantic recovery (ATTEMPTED, REMOVED — superseded)
+
+> The section below is the design that was implemented and removed. It is kept
+> for its reasoning, not as an instruction. Do not re-implement it as written:
+> the numeric grant it describes has no bound, and the completion-none grant it
+> describes fails open.
 
 The numeric transcription grant is scoped to the **finalized client turn under
 review**, not to a rejection obligation. Obligations decide what must be
