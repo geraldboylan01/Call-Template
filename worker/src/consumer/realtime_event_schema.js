@@ -91,6 +91,63 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     applied: NON_CONTENT_FIELD_TYPES.BOOLEAN,
     reason: NON_CONTENT_FIELD_TYPES.STRING
   }),
+  // THE PROTOCOL EVENTS PHASE 1 EMITS. Unregistered, every one of these was
+  // silently discarded by the sanitizer, so the opening and continuation work
+  // was invisible in production exactly when it needed explaining.
+  'live.opening.requested': event({}),
+  'live.response.continuation_requested': event({
+    rootItemId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    continuationIndex: NON_CONTENT_FIELD_TYPES.INTEGER,
+    toolChoice: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  'live.response.unsolicited_metadata': event({
+    responseId: NON_CONTENT_FIELD_TYPES.STRING,
+    kind: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+
+  // SEMANTIC REVIEW, DIAGNOSABLE WITHOUT BEING READABLE.
+  //
+  // Counts, identifiers and outcomes only. The schema permits no arrays or
+  // objects and that is the point: the figures a client spoke are content, and
+  // content belongs in the transcript store behind its own access controls,
+  // not duplicated into an event stream that is read casually. What is here is
+  // enough to say WHICH turn, WHICH reader, how the two readings compared, and
+  // where each fact was bound — and never what the client actually said.
+  'planner.turn_reading.agreement': event({
+    mode: NON_CONTENT_FIELD_TYPES.STRING,
+    turnsRead: NON_CONTENT_FIELD_TYPES.INTEGER,
+    proposedCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    agreedCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    disagreedCount: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  'planner.turn_review.diagnostic': event({
+    mode: NON_CONTENT_FIELD_TYPES.STRING,
+    clientTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    assistantTurnId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    readerPromptVersion: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    figuresRead: NON_CONTENT_FIELD_TYPES.INTEGER,
+    figuresAmbiguous: NON_CONTENT_FIELD_TYPES.INTEGER,
+    realtimeOutcomeCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    operationCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    acceptedCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    clarificationCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    rejectedCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    profileChanged: NON_CONTENT_FIELD_TYPES.BOOLEAN,
+    ledgerChanged: NON_CONTENT_FIELD_TYPES.BOOLEAN,
+    status: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING
+  }),
+  // One per operation, so "which person did this pension get attached to" is
+  // answerable directly. Identifiers, never values.
+  'planner.turn_review.binding': event({
+    clientTurnId: NON_CONTENT_FIELD_TYPES.STRING,
+    operationId: NON_CONTENT_FIELD_TYPES.STRING,
+    op: NON_CONTENT_FIELD_TYPES.STRING,
+    factId: NON_CONTENT_FIELD_TYPES.STRING,
+    ownerId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    entityId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    accepted: NON_CONTENT_FIELD_TYPES.BOOLEAN,
+    rejectionCode: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING
+  }),
   'realtime.planner.completed': event({
     sourceTurnId: NON_CONTENT_FIELD_TYPES.STRING,
     latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER,

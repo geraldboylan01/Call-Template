@@ -522,11 +522,21 @@ assert.equal(writes[0].arguments.sourceTurnId, userTurns[8]);
     .find((entry) => entry.factId === factId);
 
   assert.deepEqual(contractFor('income_sources'), {
-    factId: 'income_sources', idKey: 'incomeId', ownerKey: 'ownerIds'
-  }, 'an income position record is keyed by incomeId, never by entityId');
+    factId: 'income_sources',
+    idKey: 'incomeId',
+    ownerKey: 'ownerIds',
+    // Told a record needs a `type` but not which values are legal, a planner
+    // guesses, and profile normalization then throws the record out after
+    // everything else about it was right. The vocabulary comes from the same
+    // constants that enforce it.
+    typeChoices: ['employment', 'self_employment', 'rental', 'pension', 'state_pension', 'other']
+  }, 'an income position record is keyed by incomeId, never by entityId, and carries its type vocabulary');
   assert.deepEqual(contractFor('pension_positions'), {
-    factId: 'pension_positions', idKey: 'pensionId', ownerKey: 'ownerId'
-  }, 'a pension position record is keyed by pensionId');
+    factId: 'pension_positions',
+    idKey: 'pensionId',
+    ownerKey: 'ownerId',
+    typeChoices: ['occupational', 'prsa', 'personal', 'defined_benefit', 'buyout_bond', 'other']
+  }, 'a pension position record is keyed by pensionId and carries its type vocabulary');
   assert.equal(contractFor('pension_current_value'), undefined,
     'pension_current_value is a value ABOUT a pension, not a pension: it is a scalar fact '
     + 'and must never be offered to the model as something that may be a position');

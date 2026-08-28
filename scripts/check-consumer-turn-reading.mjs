@@ -313,26 +313,77 @@ console.log('\nThe planner is told to bind, and told not to guess:');
 
 console.log('\nEach reviewed turn leaves a diagnostic record:');
 {
-  const worker = source('../worker/src/consumer/planner_reconciliation.js');
-  const diagnosticStart = worker.indexOf("eventType: 'planner.turn_review.diagnostic'");
-  const diagnostic = worker.slice(
-    diagnosticStart,
-    worker.indexOf('}).catch(() => {});', diagnosticStart)
+  const { sanitizeRealtimeEventPayload } = await import(
+    '../worker/src/consumer/realtime_event_schema.js'
   );
-  for (const field of [
-    'clientTurnId', 'assistantTurnId', 'reading', 'realtimeOutcomes',
-    'operations', 'clarifications', 'rejected', 'profileChanged', 'status'
+  // AN UNREGISTERED EVENT TYPE IS SILENTLY DISCARDED. Both of these returned
+  // null from the sanitizer, so the "full diagnostic record" wrote no rows at
+  // all — the observability existed only in the source.
+  for (const eventType of [
+    'planner.turn_reading.agreement',
+    'planner.turn_review.diagnostic',
+    'planner.turn_review.binding',
+    'live.opening.requested',
+    'live.response.continuation_requested',
+    'live.response.unsolicited_metadata'
   ]) {
-    assert.ok(diagnostic.includes(field), `the diagnostic must carry ${field}`);
+    assert.notEqual(sanitizeRealtimeEventPayload(eventType, {}), null,
+      `${eventType} is emitted but unregistered, so nothing is ever written`);
   }
-  assert.ok(diagnostic.includes('ownerId') && diagnostic.includes('entityId'),
-    'the binding the planner chose is the thing most worth seeing when it is wrong');
-  // The transcript is the sensitive part and already lives behind the same
-  // access controls in the transcript store.
-  assert.ok(!/transcript:|clientTurn:|text:/.test(diagnostic),
-    'the record must reference turns by id rather than copying client speech '
-    + 'into the event stream');
-  pass('reading, proposals, binding, clarifications and outcome are all recoverable by turn id');
+  pass('every event the lane emits is registered and survives sanitization');
+
+  const diagnostic = sanitizeRealtimeEventPayload('planner.turn_review.diagnostic', {
+    mode: 'apply',
+    clientTurnId: 'turn_1',
+    assistantTurnId: 'turn_0',
+    readerPromptVersion: 'planeir-turn-reading-v1',
+    figuresRead: 2,
+    figuresAmbiguous: 1,
+    realtimeOutcomeCount: 1,
+    operationCount: 3,
+    acceptedCount: 2,
+    clarificationCount: 1,
+    rejectedCount: 1,
+    profileChanged: true,
+    ledgerChanged: true,
+    status: 'applied'
+  });
+  for (const field of [
+    'clientTurnId', 'assistantTurnId', 'readerPromptVersion', 'figuresRead',
+    'figuresAmbiguous', 'realtimeOutcomeCount', 'operationCount', 'acceptedCount',
+    'clarificationCount', 'rejectedCount', 'profileChanged', 'status'
+  ]) {
+    assert.ok(Object.hasOwn(diagnostic, field),
+      `the diagnostic must survive sanitization carrying ${field}`);
+  }
+
+  const binding = sanitizeRealtimeEventPayload('planner.turn_review.binding', {
+    clientTurnId: 'turn_1',
+    operationId: 'op_1',
+    op: 'upsert_note',
+    factId: 'pension_positions',
+    ownerId: 'partner',
+    entityId: 'recon_slot_pension_positions_1',
+    accepted: true,
+    rejectionCode: null
+  });
+  assert.equal(binding.ownerId, 'partner',
+    'a wrong binding is the thing worth seeing, so the owner chosen must survive');
+  assert.equal(binding.entityId, 'recon_slot_pension_positions_1');
+  pass('the turn, the reader, the comparison and every binding are all recoverable');
+
+  // The schema admits no arrays or objects, which is what keeps client speech
+  // out of the event stream. Assert the emitter respects that rather than
+  // relying on the sanitizer to quietly drop half a payload.
+  const worker = source('../worker/src/consumer/planner_reconciliation.js');
+  const emitter = worker.slice(
+    worker.indexOf('function recordTurnReadingAgreement'),
+    worker.indexOf('/** Every number inside an operation value')
+  );
+  assert.ok(!/payload: \{[\s\S]*?\.slice\(0, \d+\)\.map\(/.test(emitter),
+    'no event payload may carry a list of figures or operations; the transcript '
+    + 'store holds the client\'s words, behind its own access controls');
+  pass('diagnostics carry counts and identifiers, never the client\'s figures');
 }
 
 console.log('\ncheck-consumer-turn-reading: the agreement gate holds.');

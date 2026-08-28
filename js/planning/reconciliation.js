@@ -966,9 +966,26 @@ function evidencedCurrenciesForAmount(amount, evidenceRefs) {
  * deliberately dull rule, and dullness is the point: neither reader can widen
  * it, and no English is parsed anywhere in it.
  */
-function assertNumericGroundingFromReading(operation, targetNote, figures) {
+function assertNumericGroundingFromReading(operation, targetNote, figures, unreadRefs = []) {
   const changed = changedNumericLeaves(operation, targetNote);
-  const supported = figures.map((figure) => figure.digits);
+  // A read turn is governed by its reading; a turn nobody read keeps the
+  // deterministic scan. Each piece of evidence answers for itself.
+  const legacySupported = unreadRefs.flatMap((ref) => groundedNumbers(ref.quote));
+  // A RATE IS STORED AS A FRACTION. The client says "six percent", the reader
+  // reports 6, and the canonical record holds 0.06 — the schema owns that
+  // conversion and always has. Comparing the reader's bare number against the
+  // stored one rejected an otherwise perfect pension position for a
+  // representation difference, which is not an unsupported value. The
+  // deterministic path expands percents the same way; this is the same schema
+  // convention, not a second reading of the words.
+  const supported = [
+    ...figures.flatMap((figure) => (
+      Number.isFinite(figure.digits / 100)
+        ? [figure.digits, figure.digits / 100]
+        : [figure.digits]
+    )),
+    ...legacySupported
+  ];
   const unsupported = changed
     .filter((leaf) => !supported.some((value) => numbersEqual(value, leaf.value)));
   if (unsupported.length > 0) {
@@ -983,6 +1000,13 @@ function assertNumericGroundingFromReading(operation, targetNote, figures) {
   for (const item of changedMoney) {
     const matches = figures.filter((figure) => numbersEqual(figure.digits, item.amount));
     const named = [...new Set(matches.map((figure) => figure.currency).filter(Boolean))];
+    if (matches.length === 0 && unreadRefs.length > 0) {
+      // Grounded only by an unread citation, so its currency is judged the way
+      // it was before any of this existed.
+      const evidenced = evidencedCurrenciesForAmount(item.amount, unreadRefs);
+      if (evidenced.size === 0 || !evidenced.has(item.currency)) unsupportedCurrencies.push(item);
+      continue;
+    }
     if (named.length === 0) {
       // The client named no currency, which is ordinary speech. Ireland is the
       // jurisdiction, so EUR — the same default the deterministic path applies
@@ -1014,54 +1038,104 @@ function assertNumericGroundingFromReading(operation, targetNote, figures) {
  * Returns null when this quote's turns were not all read, which is the signal
  * to fall back to the deterministic path unchanged.
  */
-/** Compare quotes the way two readers of the same sentence would differ. */
-function normalizeQuoteForOverlap(quote) {
-  return String(quote || '')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
+/** Every character range where `quote` occurs in `text`. */
+function quoteRanges(text, quote) {
+  const haystack = String(text || '');
+  const needle = String(quote || '');
+  if (!haystack || !needle) return [];
+  const ranges = [];
+  let from = 0;
+  for (;;) {
+    const start = haystack.indexOf(needle, from);
+    if (start === -1) break;
+    ranges.push([start, start + needle.length]);
+    from = start + 1;
+  }
+  return ranges;
 }
 
-/** Whether two cited spans of the same turn refer to overlapping words. */
-function quoteSpansOverlap(left, right) {
-  const a = normalizeQuoteForOverlap(left);
-  const b = normalizeQuoteForOverlap(right);
-  if (!a || !b) return false;
-  return a.includes(b) || b.includes(a);
+/** Whether two sets of source ranges touch the same characters. */
+function rangesOverlap(left, right) {
+  return left.some(([aStart, aEnd]) => right.some(
+    ([bStart, bEnd]) => aStart < bEnd && bStart < aEnd
+  ));
 }
 
-function readingSupportedNumbers(evidenceRefs, turnReadings) {
+/**
+ * What an independently-read turn says its figures are.
+ *
+ * THIS REPLACES THE SCAN, IT DOES NOT SUPPLEMENT IT. Adding the reading to the
+ * deterministic occurrences would leave "two and a half thousand" supporting
+ * BOTH 2500 and 2 — the correct value and the truncation that has been writing
+ * EUR 2 monthly spends. Where a turn has been read, the reading is the authority
+ * on which figures exist in it, and the scan's opinion is not consulted.
+ *
+ * A figure counts for an operation only when the two spans OVERLAP IN THE
+ * SOURCE TURN. Comparing the quoted strings instead — even normalized — was
+ * quietly wrong in both directions: "25000" contains "2500", so a cash figure
+ * grounded a spending proposal and pooled its currency into it; while "twenty
+ * thousand put by" and "about twenty thousand" genuinely overlap and neither
+ * contains the other. Character ranges answer the question the strings only
+ * resembled. This is provenance, not language.
+ *
+ * Returns null when any cited turn was not read, which is the signal to fall
+ * back to the deterministic path unchanged.
+ */
+function readingSupportedNumbers(evidenceRefs, turnReadings, turnIndex) {
   if (!turnReadings || turnReadings.size === 0) return null;
   const supported = [];
+  // AUTHORITY IS PER PIECE OF EVIDENCE, NOT PER OPERATION. Treating one unread
+  // citation as disqualifying the whole operation handed the turn back to the
+  // parser wholesale: citing the read turn AND an unrelated numeric-free
+  // sentence flipped the verdict, accepting the truncated 2 and refusing the
+  // correct 2500. Adding context must never subtract authority.
+  const unreadRefs = [];
   for (const ref of evidenceRefs) {
-    const reading = turnReadings.get(String(ref.turnId));
-    if (!reading) return null;
+    const turnId = String(ref.turnId);
+    const reading = turnReadings.get(turnId);
+    if (!reading) {
+      unreadRefs.push(ref);
+      continue;
+    }
+    const text = turnIndex?.get(turnId)?.text || '';
+    const citedRanges = quoteRanges(text, ref.quote);
+    // A citation that does not resolve in its own turn has no provenance to
+    // compare against; verifyEvidence already refuses those, so reaching here
+    // with none means the safe answer is to support nothing.
+    if (citedRanges.length === 0) continue;
     for (const figure of reading.figures) {
       // An ambiguous figure supports nothing. The reader said it could not
       // resolve the scale or pick an end of a range, and honouring its best
       // guess anyway would discard exactly the caution being reported.
       if (figure.ambiguous) continue;
-      // The figure has to come from the span this operation cites, or a turn's
-      // OTHER figures would silently ground this one — which is how a total
-      // gets cited to the wrong sentence.
-      //
-      // The test is OVERLAP, not containment. Two models choose their spans
-      // independently: the reader may quote "twenty thousand put by" where the
-      // operation cites "about twenty thousand", and neither is wrong. Demanding
-      // one sit inside the other refused figures both readers had agreed on.
-      // Quoting a DIFFERENT figure's clause still fails, because those spans do
-      // not overlap at all.
-      if (figure.quote && ref.quote && !quoteSpansOverlap(ref.quote, figure.quote)) continue;
+      // An empty quote locates nothing, so it can never be shown to be the
+      // figure this operation cites. Evidence authority requires provenance.
+      const figureRanges = quoteRanges(text, figure.quote);
+      if (figureRanges.length === 0) continue;
+      if (!rangesOverlap(citedRanges, figureRanges)) continue;
       supported.push(figure);
     }
   }
-  return supported;
+  // Nothing was read: the legacy path, entirely unchanged.
+  if (supported.length === 0 && unreadRefs.length === evidenceRefs.length) return null;
+  return { figures: supported, unreadRefs };
 }
 
-function assertNumericGrounding(operation, targetNote, evidenceRefs, turnReadings = null) {
-  const reading = readingSupportedNumbers(evidenceRefs, turnReadings);
+function assertNumericGrounding(
+  operation,
+  targetNote,
+  evidenceRefs,
+  turnReadings = null,
+  turnIndex = null
+) {
+  const reading = readingSupportedNumbers(evidenceRefs, turnReadings, turnIndex);
   if (reading) {
-    return assertNumericGroundingFromReading(operation, targetNote, reading);
+    return assertNumericGroundingFromReading(
+      operation,
+      targetNote,
+      reading.figures,
+      reading.unreadRefs
+    );
   }
   const supported = evidenceRefs.flatMap((ref) => groundedNumbers(ref.quote));
   const changed = changedNumericLeaves(operation, targetNote);
@@ -2360,7 +2434,8 @@ function validateOperation(operation, notes, context, group) {
     operation,
     targetNote,
     evidenceRefs,
-    context.turnReadings
+    context.turnReadings,
+    context.turnIndex
   );
   assertDateGrounding(operation, targetNote, evidenceRefs);
   assertNumericSemanticBinding(

@@ -48,6 +48,7 @@ import {
 } from './realtime_fact_mapper.js';
 import { plannerContextSlice } from './realtime_planner.js';
 import {
+  appendRealtimeEvent,
   completePlannerReconciliation,
   ensureLegacyPlanningNotes,
   listPlanningNotes,
@@ -1714,11 +1715,6 @@ function recordTurnReadingAgreement({
     .filter((figure) => !figure.ambiguous)
     .map((figure) => figure.digits));
   const agreed = proposed.filter((value) => read.some((other) => Math.abs(other - value) < 1e-9));
-  const disagreed = proposed.filter((value) => !read.some((other) => Math.abs(other - value) < 1e-9));
-  const turns = Array.isArray(input?.transcriptTurns) ? input.transcriptTurns : [];
-  const reviewed = new Set((input?.reviewTurnIds || []).map((turnId) => String(turnId)));
-  const operations = (plan?.operationGroups || []).flatMap((group) => group.operations || []);
-  const accepted = new Set(validation?.acceptedOperationIds || []);
 
   void appendRealtimeEvent(env, {
     sessionId,
@@ -1730,28 +1726,38 @@ function recordTurnReadingAgreement({
       turnsRead: turnReadings.length,
       proposedCount: proposed.length,
       agreedCount: agreed.length,
-      // Bounded: enough to spot a pattern in the logs, never a transcript dump.
-      disagreed: disagreed.slice(0, 6),
-      read: read.slice(0, 6)
+      disagreedCount: proposed.length - agreed.length
     }
   }).catch(() => {});
 
   // THE PER-TURN DIAGNOSTIC RECORD.
   //
-  // Everything needed to answer "why did this turn produce that profile
-  // change" in one place, keyed by the causal turn. Transcripts are the
-  // sensitive part, so they are referenced by turn id rather than copied here;
-  // the finalized turns themselves already live in the transcript store behind
-  // the same access controls, and duplicating them into the event stream would
-  // widen where a client's words can be read from.
+  // Enough to answer "why did this turn produce that profile change" — which
+  // turn, which reader, how the two readings compared, where each fact was
+  // bound, and what the pass did about it. COUNTS AND IDENTIFIERS ONLY: the
+  // figures a client spoke are content, and the event schema permits no arrays
+  // or objects precisely so that content cannot drift into a stream that is
+  // read casually. The words themselves stay in the transcript store behind
+  // their own access controls, reachable by the turn ids recorded here.
+  const turns = Array.isArray(input?.transcriptTurns) ? input.transcriptTurns : [];
+  const reviewed = new Set((input?.reviewTurnIds || []).map((turnId) => String(turnId)));
+  const operations = (plan?.operationGroups || []).flatMap((group) => group.operations || []);
+  const accepted = new Set(validation?.acceptedOperationIds || []);
+  const rejectionByGroup = new Map((validation?.rejectedGroups || [])
+    .map((group) => [String(group.groupId), String(group.code || '')]));
+  const groupOf = new Map((plan?.operationGroups || []).flatMap((group) => (
+    (group.operations || []).map((operation) => [operation.operationId, String(group.groupId)])
+  )));
+
   for (const reading of turnReadings) {
-    if (!reviewed.has(String(reading.turnId))) continue;
-    const index = turns.findIndex((turn) => String(turn.turnId) === String(reading.turnId));
+    const turnId = String(reading.turnId);
+    if (!reviewed.has(turnId)) continue;
+    const index = turns.findIndex((turn) => String(turn.turnId) === turnId);
     const assistantTurn = index > 0
       ? [...turns.slice(0, index)].reverse().find((turn) => turn.role === 'assistant')
       : null;
     const turnOperations = operations.filter((operation) => (
-      (operation.evidence || []).some((ref) => String(ref.turnId) === String(reading.turnId))
+      (operation.evidence || []).some((ref) => String(ref.turnId) === turnId)
     ));
     void appendRealtimeEvent(env, {
       sessionId,
@@ -1760,47 +1766,47 @@ function recordTurnReadingAgreement({
       eventType: 'planner.turn_review.diagnostic',
       payload: {
         mode,
-        clientTurnId: String(reading.turnId),
+        clientTurnId: turnId,
         assistantTurnId: assistantTurn ? String(assistantTurn.turnId) : null,
-        // What the independent reader made of the turn. Figures and their
-        // ambiguity flags, not the words around them.
-        reading: reading.figures.slice(0, 8).map((item) => ({
-          digits: item.digits,
-          currency: item.currency,
-          ambiguous: item.ambiguous
-        })),
-        // What Realtime had already proposed for this turn, and how it went.
-        realtimeOutcomes: (input?.voiceWriteOutcomes || [])
-          .filter((outcome) => String(outcome?.sourceTurnId || '') === String(reading.turnId))
-          .slice(0, 8)
-          .map((outcome) => ({ factId: outcome.factId, status: outcome.status })),
-        // What the planner proposed, where it bound it, and whether it landed.
-        operations: turnOperations.slice(0, 12).map((operation) => ({
-          operationId: operation.operationId,
-          op: operation.op,
-          factId: operation.factId,
-          ownerId: operation.ownerId || null,
-          entityId: operation.entityId || null,
-          accepted: accepted.has(operation.operationId)
-        })),
-        clarifications: turnOperations
-          .filter((operation) => operation.op === 'request_clarification')
-          .slice(0, 6)
-          .map((operation) => ({
-            factId: operation.factId,
-            reasonCode: operation.reasonCode
-          })),
-        rejected: (validation?.rejectedGroups || []).slice(0, 6).map((group) => ({
-          groupId: group.groupId,
-          code: group.code
-        })),
-        // What actually changed, and whether an analysis can now run.
+        readerPromptVersion: reading.promptVersion || null,
+        figuresRead: reading.figures.filter((figure) => !figure.ambiguous).length,
+        figuresAmbiguous: reading.figures.filter((figure) => figure.ambiguous).length,
+        realtimeOutcomeCount: (input?.voiceWriteOutcomes || [])
+          .filter((outcome) => String(outcome?.sourceTurnId || '') === turnId).length,
+        operationCount: turnOperations.length,
+        acceptedCount: turnOperations.filter((op) => accepted.has(op.operationId)).length,
+        clarificationCount: turnOperations
+          .filter((op) => op.op === 'request_clarification').length,
+        rejectedCount: turnOperations.filter((op) => !accepted.has(op.operationId)).length,
         profileChanged: validation?.profileChanged === true,
         ledgerChanged: validation?.ledgerChanged === true,
-        status: validation?.status || null,
-        unprojectedFactOperationIds: (validation?.unprojectedFactOperationIds || []).slice(0, 6)
+        status: validation?.status || null
       }
     }).catch(() => {});
+
+    // One per operation: "which person did this pension get attached to" is the
+    // question a wrong binding raises, and it deserves a direct answer.
+    for (const operation of turnOperations.slice(0, 16)) {
+      const landed = accepted.has(operation.operationId);
+      void appendRealtimeEvent(env, {
+        sessionId,
+        leaseId,
+        direction: 'server',
+        eventType: 'planner.turn_review.binding',
+        payload: {
+          clientTurnId: turnId,
+          operationId: String(operation.operationId || ''),
+          op: String(operation.op || ''),
+          factId: String(operation.factId || ''),
+          ownerId: operation.ownerId ? String(operation.ownerId) : null,
+          entityId: operation.entityId ? String(operation.entityId) : null,
+          accepted: landed,
+          rejectionCode: landed
+            ? null
+            : rejectionByGroup.get(groupOf.get(operation.operationId) || '') || null
+        }
+      }).catch(() => {});
+    }
   }
 }
 

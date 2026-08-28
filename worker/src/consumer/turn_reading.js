@@ -34,9 +34,11 @@
  */
 
 import { CURRENCY_CODES } from '../../../js/planning/contracts.js';
-import { ConsumerError } from './errors.js';
 
-export const TURN_READING_PROMPT_VERSION = 'planeir-turn-reading-v1';
+// Travels on every reading rather than being exported: a reading is only
+// comparable with another from the same prompt, so the version belongs to the
+// result, not to whoever happens to import this module.
+const TURN_READING_PROMPT_VERSION = 'planeir-turn-reading-v1';
 
 export const TURN_READING_SYSTEM_PROMPT = `You read ONE thing: the figures a client just stated out loud.
 
@@ -115,7 +117,14 @@ export function normalizeTurnReading(raw, { turnId, transcript = '' } = {}) {
       ambiguous: figure?.ambiguous === true
     }));
   }
-  return Object.freeze({ turnId: String(turnId || ''), figures: Object.freeze(normalized) });
+  return Object.freeze({
+    turnId: String(turnId || ''),
+    // Which reader produced this. A reading is only comparable with another
+    // reading from the same prompt, and a diagnostic that cannot say which
+    // reader spoke cannot explain a disagreement.
+    promptVersion: TURN_READING_PROMPT_VERSION,
+    figures: Object.freeze(normalized)
+  });
 }
 
 /**
@@ -197,14 +206,4 @@ export async function readClientTurnFigures({
     return null;
   }
   return normalizeTurnReading(parsed, { turnId, transcript: text });
-}
-
-/** Reject a misconfigured mode loudly rather than silently reading nothing. */
-export function assertTurnReadingMode(mode) {
-  if (['off', 'shadow', 'apply'].includes(mode)) return mode;
-  throw new ConsumerError(
-    500,
-    'turn_reading_mode_invalid',
-    'CONSUMER_TURN_READING_MODE must be off, shadow or apply.'
-  );
 }
