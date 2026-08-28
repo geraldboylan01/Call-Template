@@ -363,6 +363,8 @@ export class ConsumerLiveSession {
     // ONE request that caused it — a bare counter could only be decremented by
     // a creation, and retiring everything on any error was equally wrong in
     // the other direction.
+    // The assistant turn a new client turn will be answering.
+    this.lastCompletedAssistantTurnId = null;
     this.pendingServerResponses = new Map();
     this.serverResponseEventSeq = 0;
     this.pendingTerminalization = null;
@@ -571,7 +573,11 @@ export class ConsumerLiveSession {
         ordinal: ++this.clientTurnOrdinal,
         status: 'pending',
         transcript: '',
-        stoppedAt: Date.now()
+        stoppedAt: Date.now(),
+        // Bound WHEN THE CLIENT STARTS SPEAKING, not when their words finish
+        // being transcribed. By the time ASR lands the assistant may already
+        // have asked something else.
+        answersTurnId: this.lastCompletedAssistantTurnId || null
       };
       this.clientTurnsByItemId.set(itemId, turn);
       this.unboundAutoResponseTurnIds.push(itemId);
@@ -1206,7 +1212,12 @@ export class ConsumerLiveSession {
       leaseId: this.meta.leaseId,
       providerItemId: itemId,
       role: 'user',
-      transcript
+      transcript,
+      // The response that CAUSED this turn knows which assistant question it
+      // followed. Recording that link is what lets the semantic reader be given
+      // the real conversational context instead of whichever row happened to be
+      // written before this one.
+      answersTurnId: turn.answersTurnId || this.lastCompletedAssistantTurnId || null
     }).catch(() => null);
     if (storedTurn?.id) turn.storedTurnId = storedTurn.id;
 
@@ -1336,13 +1347,17 @@ export class ConsumerLiveSession {
     response.assistantItemId = String(event.item_id || `${response.responseId}_assistant`);
     this.syncCurrentResponseAliases(response);
 
-    await recordRealtimeFinalTurn(this.env, {
+    const storedAssistantTurn = await recordRealtimeFinalTurn(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
       providerItemId: response.assistantItemId,
       role: 'assistant',
       transcript
-    }).catch(() => {});
+    }).catch(() => null);
+    // The proposition a client turn will answer. Held here because only the
+    // live session knows it: stored row order is ASR completion order, and
+    // reconstructing the pairing from it later gets terse answers wrong.
+    if (storedAssistantTurn?.id) this.lastCompletedAssistantTurnId = storedAssistantTurn.id;
 
     // Deterministic, synchronous, no model call: did that turn ask for a figure
     // the state already holds? The response has finished, so nothing is

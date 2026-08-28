@@ -34,6 +34,7 @@ import { describeConversationState } from '../worker/src/consumer/conversation.j
 import { buildPlanningContext } from '../worker/src/consumer/planning_context.js';
 import {
   buildPlannerReconciliationContext,
+  mapReconciledFactValue,
   requestPlannerReconciliation
 } from '../worker/src/consumer/planner_reconciliation.js';
 import { readClientTurnFigures } from '../worker/src/consumer/turn_reading.js';
@@ -167,6 +168,90 @@ function amountsIn(operations) {
   return found;
 }
 
+/** Read a slash path out of a profile. */
+function atPath(profile, path) {
+  return String(path || '').split('/').filter(Boolean)
+    .reduce((node, key) => (node === null || node === undefined ? node : node[key]), profile);
+}
+
+/** Every money value in the resulting profile, with where it landed. */
+function canonicalMoney(profile, node = profile, trail = [], found = []) {
+  if (node === null || typeof node !== 'object') return found;
+  if (Array.isArray(node)) {
+    node.forEach((item, index) => canonicalMoney(profile, item, [...trail, String(index)], found));
+    return found;
+  }
+  if (typeof node.amount === 'number' && typeof node.currency === 'string') {
+    found.push({ trail: trail.join('/'), amount: node.amount, currency: node.currency });
+    return found;
+  }
+  for (const [key, item] of Object.entries(node)) {
+    canonicalMoney(profile, item, [...trail, key], found);
+  }
+  return found;
+}
+
+/**
+ * Does the resulting canonical state say what this case expects?
+ *
+ * FIGURE AGREEMENT IS NOT SEMANTIC AGREEMENT. Two readers can both say 90,000
+ * and the write can still attach it to the wrong person's pension, put a
+ * monthly figure in an annual field, or store it as a summary that no module
+ * reads. Those are correct numbers in the wrong life, and grading numbers
+ * cannot tell them apart from the right answer. So this grades the STATE:
+ * value, field, owner, entity and representation.
+ */
+function canonicalProblems(profile, expectations, forbidden) {
+  const problems = [];
+  const money = canonicalMoney(profile);
+  const has = (want) => {
+    if (want.path !== undefined) {
+      const node = atPath(profile, want.path);
+      return Boolean(node)
+        && Math.abs(Number(node.amount) - want.amount) < 1e-6
+        && (!want.currency || node.currency === want.currency);
+    }
+    if (want.collection !== undefined) {
+      const records = profile?.[want.collection] || [];
+      return records.some((record) => {
+        if (want.ownerId !== undefined) {
+          const owners = record.ownerId !== undefined
+            ? [record.ownerId]
+            : (record.ownerIds || []);
+          if (!owners.includes(want.ownerId)) return false;
+        }
+        const field = want.field ? record[want.field] : null;
+        if (!field) return false;
+        return Math.abs(Number(field.amount) - want.amount) < 1e-6
+          && (!want.currency || field.currency === want.currency);
+      });
+    }
+    return money.some((item) => Math.abs(item.amount - want.anyMoney) < 1e-6
+      && (!want.currency || item.currency === want.currency));
+  };
+
+  for (const want of expectations) {
+    if (!has(want)) {
+      problems.push(`canonical state is missing ${JSON.stringify(want)}`);
+    }
+  }
+  for (const want of forbidden) {
+    if (has(want)) {
+      problems.push(`canonical state contains the FORBIDDEN binding ${JSON.stringify(want)}`);
+    }
+  }
+  // Anything written that no expectation accounts for. An invented figure that
+  // rides along with a correct one is exactly what a numbers-only grader misses.
+  const accounted = expectations
+    .map((want) => (want.amount !== undefined ? want.amount : want.anyMoney))
+    .filter((value) => value !== undefined);
+  for (const item of money) {
+    if (accounted.some((value) => Math.abs(item.amount - value) < 1e-6)) continue;
+    problems.push(`canonical state contains an unexpected ${item.currency} ${item.amount} at ${item.trail}`);
+  }
+  return problems;
+}
+
 async function runCase(testCase) {
   const context = freshContext(testCase.goalType, testCase.partner === true);
   const input = buildPlannerReconciliationContext({
@@ -208,6 +293,9 @@ async function runCase(testCase) {
     owners: input.owners,
     entities: input.entities,
     turnReadings: CONFIG.turnReadingMode === 'apply' && reading ? [reading] : [],
+    // The production mapper, so what is graded is the canonical state a real
+    // meeting would end up with — not an intermediate the projector never saw.
+    mapFactValue: mapReconciledFactValue,
     nowIso: NOW
   });
 
@@ -260,6 +348,13 @@ async function runCase(testCase) {
   if (falseAgreement.length > 0) {
     problems.push(`FALSE AGREEMENT: both readers produced ${falseAgreement.join(', ')}`);
   }
+
+  // The state a real meeting would be left with, graded as state.
+  problems.push(...canonicalProblems(
+    validation.profile || context.profile,
+    expect.canonical || [],
+    expect.forbidCanonical || []
+  ));
 
   return {
     id: testCase.id,

@@ -1081,6 +1081,46 @@ function rangesOverlap(left, right) {
  * Returns null when any cited turn was not read, which is the signal to fall
  * back to the deterministic path unchanged.
  */
+/**
+ * A stored note still says what its own evidence says.
+ *
+ * A REVIEW RECEIPT MUST MEAN SOMETHING. Marking a note planner-verified used to
+ * require only that its evidence spans were structurally valid — so a note
+ * holding EUR 2, written when the parser truncated "two and a half thousand",
+ * was stamped verified by a pass whose independent reader had just read 2500.
+ * The wrong value then carried a verification badge into the confirmation
+ * barrier and out the other side into a real calculation.
+ *
+ * Nothing here reads English. It compares the number already stored against the
+ * independent reading of the very span that note cites, and only where such a
+ * reading exists.
+ */
+function reviewedNoteAgreesWithReading(note, turnReadings, turnIndex) {
+  if (!turnReadings || turnReadings.size === 0) return true;
+  const refs = (note.evidenceRefs || [])
+    .filter((ref) => turnReadings.has(String(ref.turnId)))
+    .map((ref) => {
+      const text = turnIndex?.get(String(ref.turnId))?.text || '';
+      return { turnId: ref.turnId, quote: text.slice(ref.start, ref.end) };
+    })
+    .filter((ref) => ref.quote);
+  if (refs.length === 0) return true;
+  const reading = readingSupportedNumbers(refs, turnReadings, turnIndex);
+  if (!reading) return true;
+  const supported = [
+    ...reading.figures.flatMap((figure) => (
+      Number.isFinite(figure.digits / 100)
+        ? [figure.digits, figure.digits / 100]
+        : [figure.digits]
+    )),
+    ...reading.unreadRefs.flatMap((ref) => groundedNumbers(ref.quote))
+  ];
+  const stored = numericLeaves(note.value).map((leaf) => leaf.value);
+  // A note carrying no figures has nothing for the reader to contradict.
+  if (stored.length === 0) return true;
+  return stored.every((value) => supported.some((other) => numbersEqual(other, value)));
+}
+
 function readingSupportedNumbers(evidenceRefs, turnReadings, turnIndex) {
   if (!turnReadings || turnReadings.size === 0) return null;
   const supported = [];
@@ -3163,6 +3203,16 @@ export async function applyReconciliationPlan({
     }
     try {
       assertStoredNoteEvidence(reviewedNote, context.turnIndex);
+      if (!reviewedNoteAgreesWithReading(reviewedNote, context.turnReadings, context.turnIndex)) {
+        // NOT verified, and deliberately left provisional: the note disagrees
+        // with an independent reading of its own cited words, so the honest
+        // outcome is that this pass could not confirm it. The confirmation
+        // barrier keeps holding, which is what it is for.
+        fail(
+          'review_reading_disagrees',
+          `Provisional note ${reviewedNoteId} does not match the independent reading of its own evidence.`
+        );
+      }
       verifiedReviewedNoteIds.add(reviewedNoteId);
       reviewOutcomes.push({ noteId: reviewedNoteId, status: 'verified' });
     } catch (error) {

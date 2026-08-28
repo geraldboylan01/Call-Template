@@ -108,7 +108,8 @@ const MIGRATIONS = [
   '0013_complete_realtime_voice_meetings', '0014_add_agent_test_meetings',
   '0015_add_privacy_notice_acknowledgement',
   '0016_add_planning_reconciliation',
-  '0017_widen_reconciliation_trigger'
+  '0017_widen_reconciliation_trigger',
+  '0018_add_turn_proposition_link'
 ].map((name) => readFileSync(`${root}/worker/consumer-migrations/${name}.sql`, 'utf8')).join('\n');
 
 /* ---------------------------------------------------------------- */

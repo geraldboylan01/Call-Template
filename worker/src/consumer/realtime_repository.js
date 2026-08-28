@@ -1361,8 +1361,8 @@ export async function recordRealtimeFinalTurn(env, request) {
       INSERT INTO consumer_realtime_final_turns (
         id, realtime_session_id, session_id, provider_item_id_hash_b64u,
         role, transcript_encrypted, transcript_hash_b64u,
-        sensitive_details_removed, created_at, meeting_sequence
-      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        sensitive_details_removed, created_at, answers_turn_id, meeting_sequence
+      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           COALESCE((
             SELECT MAX(meeting_sequence)
             FROM consumer_realtime_final_turns
@@ -1378,6 +1378,10 @@ export async function recordRealtimeFinalTurn(env, request) {
       transcriptHash,
       transcript !== raw ? 1 : 0,
       nowIso(),
+      // The proposition this turn answers, as the LIVE SESSION knew it. Never
+      // inferred later from row order: that order is ASR completion, and a
+      // terse answer paired with the next question is worse than no question.
+      request.answersTurnId ? String(request.answersTurnId) : null,
       request.leaseId
     ).run();
   } catch (error) {
@@ -1406,6 +1410,7 @@ async function decryptRealtimeFinalTurnRows(env, sessionId, rows) {
       transcript: String(payload?.transcript || '').slice(0, 4_000),
       sensitiveDetailsRemoved: Number(row.sensitive_details_removed) === 1,
       sequence: safeInteger(row.meeting_sequence),
+      answersTurnId: row.answers_turn_id || null,
       createdAt: row.created_at
     });
   }
@@ -1415,7 +1420,7 @@ async function decryptRealtimeFinalTurnRows(env, sessionId, rows) {
 export async function listRealtimeFinalTurns(env, sessionId, leaseId, limit = 200) {
   const result = await db(env).prepare(`
     SELECT id, realtime_session_id, role, transcript_encrypted,
-           sensitive_details_removed, created_at, meeting_sequence
+           sensitive_details_removed, created_at, meeting_sequence, answers_turn_id
     FROM consumer_realtime_final_turns
     WHERE session_id = ? AND realtime_session_id = ?
     ORDER BY meeting_sequence ASC, created_at ASC, id ASC
@@ -1429,7 +1434,7 @@ export async function listRecentRealtimeFinalTurns(env, sessionId, leaseId, limi
   // order before handing the context window to a conversational model.
   const result = await db(env).prepare(`
     SELECT id, realtime_session_id, role, transcript_encrypted,
-           sensitive_details_removed, created_at, meeting_sequence
+           sensitive_details_removed, created_at, meeting_sequence, answers_turn_id
     FROM consumer_realtime_final_turns
     WHERE session_id = ? AND realtime_session_id = ?
     ORDER BY meeting_sequence DESC, created_at DESC, id DESC

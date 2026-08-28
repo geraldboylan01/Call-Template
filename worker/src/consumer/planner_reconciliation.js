@@ -1044,7 +1044,10 @@ export function buildPlannerReconciliationContext({
     role: turn.role,
     finalized: turn.finalized !== false,
     text: String(turn.transcript || '').slice(0, 4_000),
-    sequence: Number.isSafeInteger(turn.sequence) ? turn.sequence : sequence
+    sequence: Number.isSafeInteger(turn.sequence) ? turn.sequence : sequence,
+    // The proposition this turn answered, as the live session recorded it.
+    // Null where it was never captured; adjacency is not a substitute.
+    answersTurnId: turn.answersTurnId || null
   }));
   const planning = toConsumerRealtimePlanningLists(context.state, context.profile);
   const requestedReviewTurnIds = [...new Set(
@@ -1629,6 +1632,15 @@ async function runPlannerReconciliationAttempt({
 const MAX_RECONCILIATION_REBASE_ATTEMPTS = 2;
 
 /**
+ * How many client turns one checkpoint reads independently.
+ *
+ * Every turn the pass may cite needs a reading, or a fact Realtime missed has
+ * no second reader and falls back to the parser that missed it too. Bounded so
+ * a long meeting does not pay for its whole transcript at every checkpoint.
+ */
+const MAX_TURNS_READ_PER_PASS = 6;
+
+/**
  * REBASE THE PLANNER'S ANSWER; DO NOT THROW IT AWAY.
  *
  * The completion is a whole-profile write at `baseRevision + 1`, so it MUST
@@ -1674,22 +1686,35 @@ const MAX_RECONCILIATION_REBASE_ATTEMPTS = 2;
 async function readReviewedTurns({ env, config, input }) {
   if (config.turnReadingMode === 'off') return [];
   const turns = Array.isArray(input?.transcriptTurns) ? input.transcriptTurns : [];
-  const reviewed = new Set((input?.reviewTurnIds || []).map((turnId) => String(turnId)));
+  const byId = new Map(turns.map((turn) => [String(turn.turnId), turn]));
+
+  // READ EVERY CLIENT TURN THIS PASS MAY CITE, not only the ones something
+  // already noticed. A turn Realtime proposed nothing for, and whose figures
+  // the parser cannot see, is invisible to the obligation list — and those are
+  // precisely the omissions the reader exists to recover. Scoping the reader to
+  // the obligations would have let the parser decide, by its own blind spots,
+  // which sentences were allowed to be understood.
+  const candidates = turns
+    .filter((turn) => turn.role !== 'assistant' && turn.finalized !== false)
+    .filter((turn) => String(turn.text || '').trim().length > 0);
+  // Bounded, newest first: an unbounded window would grow the cost of every
+  // checkpoint with the length of the meeting.
+  const window = candidates.slice(-MAX_TURNS_READ_PER_PASS);
+
   const readings = [];
-  for (const [index, turn] of turns.entries()) {
-    if (turn.role === 'assistant' || !reviewed.has(String(turn.turnId))) continue;
-    // The question the client was answering. "hers is ninety" and "400" are
-    // only meaningful next to it, so the reader gets it too — independence is
-    // about not seeing the other reader's ANSWER, not about reading blind.
-    const assistantQuestion = [...turns.slice(0, index)]
-      .reverse()
-      .find((candidate) => candidate.role === 'assistant')?.text || '';
+  for (const turn of window) {
+    // The question the client was answering, as the LIVE SESSION recorded it.
+    // Falling back to the preceding stored row is what paired "400." with the
+    // next question instead of the one it answered, because rows are ordered by
+    // transcription completion. Where no link was captured, say nothing rather
+    // than assert something false.
+    const proposition = turn.answersTurnId ? byId.get(String(turn.answersTurnId)) : null;
     const reading = await readClientTurnFigures({
       env,
       config,
       turnId: turn.turnId,
       transcript: turn.text,
-      assistantQuestion
+      assistantQuestion: proposition?.text || ''
     }).catch(() => null);
     if (reading) readings.push(reading);
   }

@@ -194,6 +194,7 @@ check('production rows are a strict subset of what is rebuilt here',
 /* --------------------------------------------------------------- the rebuild */
 
 database.exec(migration('0017_widen_reconciliation_trigger'));
+database.exec(migration('0018_add_turn_proposition_link'));
 
 const after = snapshot();
 const indexesAfter = indexesOf('consumer_planner_reconciliations');
