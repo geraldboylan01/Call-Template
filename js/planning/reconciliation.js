@@ -2475,6 +2475,26 @@ function validateOperation(operation, notes, context, group) {
   const semanticallyRead = evidenceRefs.length > 0
     && context.turnReadings?.size > 0
     && evidenceRefs.every((ref) => context.turnReadings.has(String(ref.turnId)));
+  // A POSITION RECORD ALREADY NAMES ITS OWNER, IN THE FIELD THE SCHEMA DEFINES.
+  //
+  // positionContracts gives each collection an ownerKey — ownerId for pensions,
+  // ownerIds for assets and liabilities — and a well-formed record fills it. A
+  // planner that fills the record but omits the operation-level ownerId was
+  // refused with new_entity_owner_missing, discarding a write whose owner was
+  // never actually in doubt. Reading our own canonical owner field is schema
+  // work, not inference: the id still has to be a supplied owner, and a record
+  // naming two owners stays ambiguous and is left to fail.
+  if (!operation.ownerId && operation.value && typeof operation.value === 'object') {
+    const ownerKey = POSITION_PROJECTIONS[operation.factId]?.ownerKey;
+    const declared = ownerKey ? operation.value[ownerKey] : null;
+    const named = typeof declared === 'string'
+      ? [declared]
+      : Array.isArray(declared) ? declared.filter((value) => typeof value === 'string') : [];
+    if (named.length === 1 && context.owners.has(named[0])) {
+      operation.ownerId = named[0];
+    }
+  }
+
   assertAggregateIsNotAPosition(operation, targetNote);
   assertKnownIdentity(
     operation,

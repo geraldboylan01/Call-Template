@@ -145,7 +145,7 @@
       "family": "dense_recovery",
       "goalType": "understand_position",
       "assistantQuestion": "Where do things stand with savings and the mortgage?",
-      "clientTurn": "We have about twenty thousand put by and the mortgage is three hundred and forty thousand.",
+      "clientTurn": "I have about twenty thousand put by and my mortgage is three hundred and forty thousand.",
       "expect": {
         "outcome": "multiple_values",
         "amounts": [
@@ -156,7 +156,7 @@
           360000,
           320000
         ],
-        "why": "Two facts of different kinds from one turn, both spelled out in words, and no combining them.",
+        "why": "Two facts of different kinds from one turn, both spelled out in words, and no combining them. Deliberately first person: \"we\" in a household with no partner recorded is a genuine owner ambiguity, and mixing that in would make this case fail for a reason the ambiguity cases already cover.",
         "canonical": [
           {
             "anyMoney": 20000,

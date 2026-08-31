@@ -479,4 +479,76 @@ console.log('\nRepeated identical words cannot prove which occurrence:');
   pass('a duplicated quote fails closed rather than resolving to both');
 }
 
+/* ============ a record that names its owner has named its owner ========== */
+
+// positionContracts gives every collection an ownerKey, and a well-formed
+// record fills it. A planner that filled the record but left the
+// operation-level ownerId off had the whole write discarded as "owner
+// missing" — an owner that was never in doubt, thrown away on a technicality.
+console.log('\nAn owner stated in the record is an owner:');
+{
+  const writePension = async (operationOwnerId, recordOwnerId) => {
+    const result = await applyReconciliationPlan({
+      profile: baseProfile(),
+      notes: [],
+      plan: {
+        schemaVersion: 1,
+        planId: 'plan_owner',
+        verdict: 'changes_proposed',
+        operationGroups: [{
+          groupId: 'candidate',
+          operations: [{
+            operationId: 'proposed',
+            op: 'upsert_note',
+            factId: 'pension_positions',
+            noteKind: 'position',
+            entityId: 'slot_1',
+            ...(operationOwnerId ? { ownerId: operationOwnerId } : {}),
+            value: {
+              pensionId: 'slot_1',
+              ownerId: recordOwnerId,
+              type: 'occupational',
+              label: 'Mine',
+              currentValue: { amount: 180_000, currency: 'EUR' }
+            },
+            certainty: 'approximate',
+            reasonCode: 'missing_note',
+            evidence: [{ turnId: 'turn_read', quote: 'a hundred and eighty grand' }]
+          }]
+        }]
+      },
+      transcriptTurns: [{
+        turnId: 'turn_read', role: 'user', finalized: true, sequence: 1,
+        text: 'My pension is a hundred and eighty grand.'
+      }],
+      sessionId: 'session_turn_reading',
+      transcriptWatermark: 'turn_read',
+      baseProfileRevision: 0,
+      owners: [{ ownerId: 'primary', label: 'you', role: 'primary', aliases: ['you'] }],
+      entities: [{
+        entityId: 'slot_1', label: 'new pension 1', newEntitySlot: true,
+        collection: 'pensions', factIds: ['pension_positions'], ownerIds: []
+      }],
+      turnReadings: [{
+        turnId: 'turn_read',
+        figures: [figure(180_000, 'a hundred and eighty grand')]
+      }],
+      nowIso: NOW
+    });
+    return {
+      accepted: result.acceptedOperationIds.length > 0,
+      code: result.rejectedGroups?.[0]?.code || null
+    };
+  };
+
+  assert.equal((await writePension('primary', 'primary')).accepted, true,
+    'the ordinary case must keep working');
+  assert.equal((await writePension(null, 'primary')).accepted, true,
+    'an owner named in the canonical ownerId field the schema defines is not a missing owner');
+  const invented = await writePension(null, 'someone_else');
+  assert.equal(invented.accepted, false,
+    'recovery reads the schema, it does not accept an owner the household does not have');
+  pass('an owner stated in the record is recovered; an invented one still fails');
+}
+
 console.log('\ncheck-consumer-turn-reading: the agreement gate holds.');

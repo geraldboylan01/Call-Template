@@ -38,7 +38,7 @@ import { CURRENCY_CODES } from '../../../js/planning/contracts.js';
 // Travels on every reading rather than being exported: a reading is only
 // comparable with another from the same prompt, so the version belongs to the
 // result, not to whoever happens to import this module.
-const TURN_READING_PROMPT_VERSION = 'planeir-turn-reading-v2';
+const TURN_READING_PROMPT_VERSION = 'planeir-turn-reading-v3';
 
 export const TURN_READING_SYSTEM_PROMPT = `You read ONE thing: the figures a client just stated out loud.
 
@@ -56,7 +56,9 @@ Read the whole turn together. A scale stated once carries across the sentence: i
 Mark "ambiguous": true, and put your best reading in "digits", when:
 - the client gave a range or a choice — "about three or four", "between three and four thousand";
 - the scale is genuinely unclear — "around one eighty" could be 180 or 180000;
-- the client corrected themselves and you cannot tell which figure stands.
+- the client corrected themselves and you genuinely cannot tell which figure stands.
+
+Correcting yourself mid-sentence is ordinary speech, not ambiguity. When the client makes the correction plain — "three hundred and twenty thousand, sorry, I mean three hundred and forty thousand" — report ONLY the figure that stands, 340000, and do not report the one they withdrew. Mark ambiguous only when you truly cannot tell which of the two they settled on.
 
 NEVER do arithmetic. Do not add figures together, subtract them, take a percentage of one, split the difference of a range, or convert a currency. If the client said "two thousand plus the other three", those are two figures, and 5000 is not one of them. A total the client did not say is not a figure they stated.
 
