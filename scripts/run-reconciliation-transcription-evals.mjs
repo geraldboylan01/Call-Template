@@ -408,9 +408,18 @@ for (const testCase of selected) {
         clarifications: 0
       };
     }
-    const record = tally.get(testCase.id) || { passes: 0, runs: 0, last: null };
+    const record = tally.get(testCase.id)
+      || { passes: 0, runs: 0, last: null, falseAgreements: [], readMisses: 0 };
     record.runs += 1;
     if (outcome.ok) record.passes += 1;
+    // EVERY REPETITION COUNTS, not just the last one. A false agreement in run
+    // one that does not recur in run three is still a false agreement, and
+    // reporting only the final attempt hides exactly the intermittent failures
+    // repetition exists to find.
+    if (outcome.falseAgreement?.length > 0) {
+      record.falseAgreements.push(...outcome.falseAgreement);
+    }
+    if (outcome.readMissedWanted?.length > 0) record.readMisses += 1;
     record.last = outcome;
     tally.set(testCase.id, record);
     const mark = outcome.ok ? 'PASS' : 'FAIL';
@@ -436,19 +445,27 @@ for (const testCase of selected) {
 }
 
 const failing = [...tally.entries()].filter(([, record]) => record.passes < record.runs);
-const falseAgreements = [...tally.values()]
-  .filter((record) => record.last?.falseAgreement?.length > 0);
-const readMisses = [...tally.values()]
-  .filter((record) => record.last?.readMissedWanted?.length > 0);
+const falseAgreements = [...tally.values()].filter((record) => record.falseAgreements.length > 0);
+const readMisses = [...tally.values()].filter((record) => record.readMisses > 0);
+const totalRuns = [...tally.values()].reduce((sum, record) => sum + record.runs, 0);
+const totalPasses = [...tally.values()].reduce((sum, record) => sum + record.passes, 0);
 console.log(`\n${tally.size} case(s): `
   + `${tally.size - failing.length} fully passing, ${failing.length} with at least one failure.`);
-console.log(`Independent reader: missed the expected figure in ${readMisses.length}, `
+console.log(`Across ${totalRuns} run(s): ${totalPasses} passed, `
+  + `${totalRuns - totalPasses} failed (${((totalPasses / totalRuns) * 100).toFixed(0)}%).`);
+console.log(`Independent reader: missed the expected figure in ${readMisses.length} case(s), `
   + `agreed with the reconciler on a FORBIDDEN figure in ${falseAgreements.length}.`);
+if (REPEAT > 1) {
+  const unstable = [...tally.entries()]
+    .filter(([, record]) => record.passes > 0 && record.passes < record.runs);
+  console.log(`Unstable (passed some runs, failed others): ${unstable.length}`);
+  for (const [id, record] of unstable) console.log(`  ${id}: ${record.passes}/${record.runs}`);
+}
 if (falseAgreements.length > 0) {
   console.error('\nFALSE AGREEMENT OBSERVED. Agreement is what this design treats as '
     + 'permission to write, so this is the result that says it must not ship in apply:');
   for (const record of falseAgreements) {
-    console.error(`  ${record.last.id}: both readers produced ${record.last.falseAgreement.join(', ')}`);
+    console.error(`  ${record.last.id}: both readers produced ${[...new Set(record.falseAgreements)].join(', ')}`);
   }
 }
 if (failing.length > 0) {
