@@ -966,28 +966,38 @@ function evidencedCurrenciesForAmount(amount, evidenceRefs) {
  * deliberately dull rule, and dullness is the point: neither reader can widen
  * it, and no English is parsed anywhere in it.
  */
+/**
+ * A field the schema stores as a fraction of one.
+ *
+ * Rate leaves are the only place a spoken "six percent" legitimately becomes
+ * 0.06, and knowing which leaves those are is a SCHEMA question, answered from
+ * the canonical path rather than from the client's words.
+ */
+function isFractionalRateLeaf(path) {
+  return /(?:^|\.)\w*(?:[Rr]ate|[Ff]raction|[Ss]hare|[Pp]roportion)$/.test(String(path || ''));
+}
+
 function assertNumericGroundingFromReading(operation, targetNote, figures, unreadRefs = []) {
   const changed = changedNumericLeaves(operation, targetNote);
   // A read turn is governed by its reading; a turn nobody read keeps the
   // deterministic scan. Each piece of evidence answers for itself.
   const legacySupported = unreadRefs.flatMap((ref) => groundedNumbers(ref.quote));
-  // A RATE IS STORED AS A FRACTION. The client says "six percent", the reader
-  // reports 6, and the canonical record holds 0.06 — the schema owns that
-  // conversion and always has. Comparing the reader's bare number against the
-  // stored one rejected an otherwise perfect pension position for a
-  // representation difference, which is not an unsupported value. The
-  // deterministic path expands percents the same way; this is the same schema
-  // convention, not a second reading of the words.
-  const supported = [
-    ...figures.flatMap((figure) => (
-      Number.isFinite(figure.digits / 100)
-        ? [figure.digits, figure.digits / 100]
-        : [figure.digits]
-    )),
-    ...legacySupported
-  ];
-  const unsupported = changed
-    .filter((leaf) => !supported.some((value) => numbersEqual(value, leaf.value)));
+  const supported = [...figures.map((figure) => figure.digits), ...legacySupported];
+  // A RATE IS STORED AS A FRACTION, AND ONLY A RATE.
+  //
+  // "six percent" is 6 to the reader and 0.06 in the record, and reconciling
+  // that by letting EVERY figure also authorise a hundredth of itself was a
+  // hole, not a fix: a read 2500 then authorised a EUR 25 monthly spend, 400
+  // authorised 4, and 180000 authorised 1800. The conversion is permitted only
+  // where BOTH halves agree it applies — the client expressed a proportion, and
+  // the destination field is one the schema stores as a fraction. That is unit
+  // compatibility, which is deterministic code's job, and it reads no English.
+  const percentFigures = figures.filter((figure) => figure.quantity === 'percent');
+  const unsupported = changed.filter((leaf) => {
+    if (supported.some((value) => numbersEqual(value, leaf.value))) return false;
+    if (!isFractionalRateLeaf(leaf.path)) return true;
+    return !percentFigures.some((figure) => numbersEqual(figure.digits / 100, leaf.value));
+  });
   if (unsupported.length > 0) {
     fail(
       'numeric_value_unsupported',
@@ -1152,6 +1162,12 @@ function readingSupportedNumbers(evidenceRefs, turnReadings, turnIndex) {
       // figure this operation cites. Evidence authority requires provenance.
       const figureRanges = quoteRanges(text, figure.quote);
       if (figureRanges.length === 0) continue;
+      // The reader returns the WORDS it read, not offsets — models are poor at
+      // character positions and asking for them trades one unreliability for a
+      // worse one. But identical words appearing twice make provenance
+      // genuinely ambiguous: "€500 ... €500" cannot say which occurrence this
+      // figure came from, so neither can we, and the safe answer is neither.
+      if (figureRanges.length > 1) continue;
       if (!rangesOverlap(citedRanges, figureRanges)) continue;
       supported.push(figure);
     }

@@ -38,7 +38,7 @@ import { CURRENCY_CODES } from '../../../js/planning/contracts.js';
 // Travels on every reading rather than being exported: a reading is only
 // comparable with another from the same prompt, so the version belongs to the
 // result, not to whoever happens to import this module.
-const TURN_READING_PROMPT_VERSION = 'planeir-turn-reading-v1';
+const TURN_READING_PROMPT_VERSION = 'planeir-turn-reading-v2';
 
 export const TURN_READING_SYSTEM_PROMPT = `You read ONE thing: the figures a client just stated out loud.
 
@@ -48,6 +48,7 @@ For each figure the client stated, return:
 - "digits": the figure in plain digits. Spoken numbers ARE figures and transcribing them is your job: "two and a half thousand" is 2500, "a hundred and eighty grand" is 180000, "about a hundred and eighty k" is 180000, "half a million" is 500000. A figure written in digits stays as it is.
 - "quote": the exact, contiguous words from the client's turn that state that figure. Copy them verbatim; never rewrite or paraphrase.
 - "currency": the currency the client named — EUR, GBP or USD. If they named none, use "unstated". A figure with no currency word is completely normal in speech.
+- "quantity": what KIND of quantity this is, in the client's own terms — "money" for an amount of money, "percent" for a percentage or rate, "count" for a number of things, "years" for an age or a duration, "unknown" if you genuinely cannot tell. Say "percent" only when the client actually expressed a proportion: "six percent", "six per cent", "a third". A figure that is simply an amount is "money", never "percent".
 - "ambiguous": true when you cannot honestly resolve the figure, false otherwise.
 
 Read the whole turn together. A scale stated once carries across the sentence: in "mine is a hundred and eighty grand and hers is ninety", the second figure is 90000, not 90. Use the question the client was answering to understand what they are talking about, but never to invent a figure they did not give.
@@ -71,11 +72,12 @@ const TURN_READING_SCHEMA = Object.freeze({
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['digits', 'quote', 'currency', 'ambiguous'],
+        required: ['digits', 'quote', 'currency', 'quantity', 'ambiguous'],
         properties: {
           digits: { type: 'number' },
           quote: { type: 'string' },
           currency: { type: 'string', enum: [...CURRENCY_CODES, 'unstated'] },
+          quantity: { type: 'string', enum: ['money', 'percent', 'count', 'years', 'unknown'] },
           ambiguous: { type: 'boolean' }
         }
       }
@@ -110,10 +112,19 @@ export function normalizeTurnReading(raw, { turnId, transcript = '' } = {}) {
     const currency = CURRENCY_CODES.includes(String(figure?.currency || ''))
       ? String(figure.currency)
       : null;
+    const quantity = ['money', 'percent', 'count', 'years'].includes(String(figure?.quantity || ''))
+      ? String(figure.quantity)
+      : 'unknown';
     normalized.push(Object.freeze({
       digits,
       quote,
       currency,
+      // WHAT KIND OF QUANTITY, so deterministic code can do unit compatibility
+      // instead of guessing. A rate is stored as a fraction and an amount is
+      // not, and without knowing which is which the only way to reconcile "6"
+      // with 0.06 was to let EVERY figure authorise a hundredth of itself —
+      // which let a read 2500 authorise a EUR 25 monthly spend.
+      quantity,
       ambiguous: figure?.ambiguous === true
     }));
   }

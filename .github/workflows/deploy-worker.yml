@@ -93,11 +93,21 @@ jobs:
       # also fails closed to legacy on any value it does not recognise.
       CONSUMER_BETA_PLANNER_RECONCILIATION_MODE: ${{ vars.CONSUMER_PLANNER_RECONCILIATION_MODE || 'legacy' }}
       CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION: "planning-reconciliation-v3"
-      # Phase 3 semantic turn reading. The deployed default is `apply`: a second,
-      # independent reading of each reviewed client turn, and agreement between
-      # the two readers is what authorises writing a figure. Override with the
-      # CONSUMER_TURN_READING_MODE repository variable (off / shadow / apply).
-      CONSUMER_BETA_TURN_READING_MODE: ${{ vars.CONSUMER_TURN_READING_MODE || 'apply' }}
+      # Phase 3 semantic turn reading: a second, independent reading of each
+      # reviewed client turn, where agreement between the two readers is what
+      # authorises writing a figure.
+      #
+      # The deployed default is `shadow` — it reads, records and changes
+      # nothing. Two safety defects were reproduced in the version that
+      # defaulted to `apply` (every figure authorising a hundredth of itself,
+      # and a rejected review still clearing the confirmation barrier), and both
+      # passed the full suite at the time. Recall on the labelled corpus is also
+      # only 6-7/10. Shadow first is how the next one of those gets found in
+      # telemetry rather than in someone's financial plan.
+      #
+      # Move to `apply` with the CONSUMER_TURN_READING_MODE repository variable
+      # once shadow telemetry shows agreement and recall holding.
+      CONSUMER_BETA_TURN_READING_MODE: ${{ vars.CONSUMER_TURN_READING_MODE || 'shadow' }}
       # The one active live prompt/tool pair. The lease records these exact
       # versions; there is no controlled-lane alternative in deployment.
       CONSUMER_BETA_LIVE_PROMPT_VERSION: "planeir-live-conversation-v10"

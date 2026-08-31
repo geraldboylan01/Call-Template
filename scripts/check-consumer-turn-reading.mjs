@@ -45,8 +45,8 @@ function baseProfile() {
   }));
 }
 
-const figure = (digits, quote, { currency = null, ambiguous = false } = {}) => ({
-  digits, quote, currency, ambiguous
+const figure = (digits, quote, { currency = null, ambiguous = false, quantity = 'money' } = {}) => ({
+  digits, quote, currency, quantity, ambiguous
 });
 
 async function propose({ text, quote, amount, currency = 'EUR', figures = null }) {
@@ -384,6 +384,99 @@ console.log('\nEach reviewed turn leaves a diagnostic record:');
     'no event payload may carry a list of figures or operations; the transcript '
     + 'store holds the client\'s words, behind its own access controls');
   pass('diagnostics carry counts and identifiers, never the client\'s figures');
+}
+
+/* ============== a hundredth of a figure is not that figure =============== */
+
+// THE CONVERSION NEEDS BOTH HALVES. Letting every read figure also authorise a
+// hundredth of itself was introduced to reconcile "six percent" with the 0.06 a
+// rate field stores. It reconciled far more than that: a read 2500 authorised a
+// EUR 25 monthly spend, 400 authorised 4, 180000 authorised 1800. The client
+// must have expressed a proportion AND the destination must be a field the
+// schema stores as a fraction.
+console.log('\nA hundredth of a figure is not that figure:');
+for (const amount of [25, 250, 0.25]) {
+  const outcome = await propose({
+    text: SPEND, quote: SPEND_QUOTE, amount, figures: SPEND_READING
+  });
+  assert.equal(outcome.accepted, false,
+    `${amount} is a fraction of the read figure, not the read figure`);
+}
+pass('a money figure never authorises a hundredth of itself');
+
+{
+  // And the case the conversion exists for still works, but only when the
+  // reader actually said the client expressed a proportion.
+  const rateOf = async (quantity) => {
+    const result = await applyReconciliationPlan({
+      profile: baseProfile(),
+      notes: [],
+      plan: {
+        schemaVersion: 1,
+        planId: 'plan_rate',
+        verdict: 'changes_proposed',
+        operationGroups: [{
+          groupId: 'candidate',
+          operations: [{
+            operationId: 'proposed',
+            op: 'upsert_note',
+            factId: 'pension_positions',
+            noteKind: 'position',
+            entityId: 'slot_1',
+            ownerId: 'primary',
+            value: {
+              pensionId: 'slot_1',
+              ownerId: 'primary',
+              type: 'occupational',
+              label: 'Mine',
+              employeeContributionRate: 0.06
+            },
+            certainty: 'approximate',
+            reasonCode: 'missing_note',
+            evidence: [{ turnId: 'turn_read', quote: 'I put in six percent' }]
+          }]
+        }]
+      },
+      transcriptTurns: [{
+        turnId: 'turn_read', role: 'user', finalized: true, sequence: 1,
+        text: 'I put in six percent.'
+      }],
+      sessionId: 'session_turn_reading',
+      transcriptWatermark: 'turn_read',
+      baseProfileRevision: 0,
+      owners: [{ ownerId: 'primary', label: 'you', role: 'primary', aliases: ['you'] }],
+      entities: [{
+        entityId: 'slot_1', label: 'new pension 1', newEntitySlot: true,
+        collection: 'pensions', factIds: ['pension_positions'], ownerIds: []
+      }],
+      turnReadings: [{
+        turnId: 'turn_read',
+        figures: [figure(6, 'six percent', { quantity })]
+      }],
+      nowIso: NOW
+    });
+    return result.acceptedOperationIds.length > 0;
+  };
+  assert.equal(await rateOf('percent'), true,
+    'a proportion the client stated must reach the rate field the schema stores as a fraction');
+  assert.equal(await rateOf('money'), false,
+    'the conversion needs the READER to have said this was a proportion, not just a rate-shaped field');
+  pass('0.06 is accepted for "six percent" only into a rate field, and only when read as a percent');
+}
+
+/* ============== identical words twice is ambiguous provenance ============= */
+
+console.log('\nRepeated identical words cannot prove which occurrence:');
+{
+  const outcome = await propose({
+    text: 'Rent is 500 and the car is 500.',
+    quote: 'Rent is 500',
+    amount: 500,
+    figures: [figure(500, '500')]
+  });
+  assert.equal(outcome.accepted, false,
+    'a quote matching two places in the turn cannot say which one it came from');
+  pass('a duplicated quote fails closed rather than resolving to both');
 }
 
 console.log('\ncheck-consumer-turn-reading: the agreement gate holds.');
