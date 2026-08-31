@@ -1217,7 +1217,11 @@ export class ConsumerLiveSession {
       // followed. Recording that link is what lets the semantic reader be given
       // the real conversational context instead of whichever row happened to be
       // written before this one.
-      answersTurnId: turn.answersTurnId || this.lastCompletedAssistantTurnId || null
+      // ?? not ||: the turn captured its proposition when the client started
+      // speaking, and an explicit null means there genuinely was none. Falling
+      // through on null would attach whichever assistant turn finished while
+      // ASR was still running — the very substitution this link exists to stop.
+      answersTurnId: turn.answersTurnId ?? null
     }).catch(() => null);
     if (storedTurn?.id) turn.storedTurnId = storedTurn.id;
 
@@ -1615,12 +1619,20 @@ export class ConsumerLiveSession {
    * Ordinals, not ids, because the reviewed turn is frequently not itself
    * material (a periodic checkpoint), and an id comparison would leave earlier
    * material turns outstanding for the rest of the meeting.
+   *
+   * EXCEPT the turns the pass says it could not settle. A stored note that
+   * disagrees with an independent reading of its own evidence is a disputed
+   * figure, and clearing its turn by ordinal would let `confirm_and_run` run an
+   * analysis on a value both readers contradict.
    */
-  async clearReviewedMaterialTurns(ordinal) {
+  async clearReviewedMaterialTurns(ordinal, unresolvedTurnIds = []) {
     const reviewedThrough = Number(ordinal || 0);
     if (!reviewedThrough) return;
+    const unresolved = new Set((unresolvedTurnIds || []).map((turnId) => String(turnId)));
     const remaining = this.unreviewedMaterialTurns
-      .filter((entry) => Number(entry.ordinal || 0) > reviewedThrough);
+      .filter((entry) => Number(entry.ordinal || 0) > reviewedThrough
+        // Named as unsettled by the pass itself: keep blocking.
+        || unresolved.has(String(entry.turnId)));
     if (remaining.length === this.unreviewedMaterialTurns.length) return;
     this.unreviewedMaterialTurns = remaining;
     await this.state.storage.put('unreviewedMaterialTurns', remaining).catch(() => {});
@@ -1962,7 +1974,15 @@ export class ConsumerLiveSession {
       ).catch(() => false);
       if ((result?.status === 'shadow' || result?.status === 'applied')
         && !valueEvidenceStillReviewable) {
-        await this.clearReviewedMaterialTurns(job.ordinal).catch(() => {});
+        // A pass can succeed overall and still have failed to settle a specific
+        // turn: a review that found a stored note contradicting the independent
+        // reading of its own evidence has discovered a disputed figure, not
+        // reviewed one. Retiring that turn by ordinal would open the
+        // confirmation barrier over a value both readers say is wrong.
+        await this.clearReviewedMaterialTurns(
+          job.ordinal,
+          result?.unresolvedReviewTurnIds || []
+        ).catch(() => {});
       }
 
       const reconciled = await this.absorbPlannerRequests(result).catch(() => false);

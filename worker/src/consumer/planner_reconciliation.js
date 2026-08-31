@@ -177,7 +177,7 @@ The realtime voice model has already written provisional notes. Compare those no
 Evidence rules:
 - Only finalized CLIENT transcript turns are evidence. Assistant text, current notes, requirements and profile state are context, never evidence.
 - Every operation must quote an exact, contiguous client span from the cited turn.
-- Every proposed number must appear in its cited quote. Do not calculate totals, dates, percentages, midpoints or conversions.
+- Every proposed number must be STATED in the span you cite, in digits or in words. Rendering spoken number words into canonical digits is transcription and is expected of you: "two and a half thousand" is 2500, "a hundred and eighty grand" is 180000, "about a hundred and eighty k" is 180000, "half a million" is 500000. A scale stated once carries across the sentence — "mine is a hundred and eighty grand and hers is ninety" states 180000 AND 90000, so write both. Do not calculate totals, differences, dates, percentages-of, midpoints or currency conversions, and never combine two spoken figures into a third: "two thousand plus the other three" states two figures, and 5000 is not one of them. Where the client gave a range or a choice rather than a figure — "about three or four" — request_clarification instead of picking one.
 - CITE THE NARROWEST SPAN THAT STILL IDENTIFIES THE NUMBER: the shortest stored client span holding the exact figure AND the words saying what it refers to, excluding unrelated numbers. A quote carrying other figures cannot bind yours to its entity and is refused as ambiguous. From "I'm on 95,000 a year. I put in 6 percent and the company puts in 8 percent." cite "I'm on 95,000 a year". Narrow by trimming, never by rewriting, and never past the describing words — a bare figure has nothing left to bind it.
 - Use only supplied note, entity, owner and fact identities. Never invent an identity or JSON path.
 - An entity is valid for a fact only when the entity's factIds list that fact.
@@ -1442,7 +1442,9 @@ async function runPlannerReconciliationAttempt({
     // proposed. In `shadow` the readings are recorded and thrown away; only in
     // `apply` are they handed to the validator as the authority on which
     // figures a turn contains.
-    const turnReadings = await readReviewedTurns({ env, config, input });
+    const { readings: turnReadings, unreadMandatoryTurnIds } = await readReviewedTurns({
+      env, config, input
+    });
     const validation = await applyReconciliationPlan({
       profile: context.profile,
       notes,
@@ -1569,6 +1571,16 @@ async function runPlannerReconciliationAttempt({
       resolvedValueEvidenceIds: valueEvidenceReview.resolvedEvidenceIds,
       unresolvedValueEvidenceIds: valueEvidenceReview.unresolvedEvidenceIds,
       valueEvidenceOverflowCount: input.uncoveredValueEvidenceOverflowCount,
+      // TURNS THIS PASS COULD NOT RESOLVE. A review that found a stored note
+      // disagreeing with the independent reading is not a completed review of
+      // that turn — it is the discovery that the turn still holds a disputed
+      // figure. Naming those turns is what stops the checkpoint retiring them
+      // and opening the confirmation barrier over a value we know is wrong.
+      unresolvedReviewTurnIds: [
+        ...unresolvedReviewTurnIds(validation, notes),
+        // A material turn nobody could read is equally unreviewed.
+        ...(config.turnReadingMode === 'apply' ? unreadMandatoryTurnIds : [])
+      ],
       appliedProfileRevision: completed.appliedProfileRevision ?? null,
       insertedNoteCount: completed.insertedNoteCount ?? 0,
       transitionedNoteCount: completed.transitionedNoteCount ?? 0
@@ -1697,12 +1709,24 @@ async function readReviewedTurns({ env, config, input }) {
   const candidates = turns
     .filter((turn) => turn.role !== 'assistant' && turn.finalized !== false)
     .filter((turn) => String(turn.text || '').trim().length > 0);
-  // Bounded, newest first: an unbounded window would grow the cost of every
-  // checkpoint with the length of the meeting.
-  const window = candidates.slice(-MAX_TURNS_READ_PER_PASS);
+  // MANDATORY TURNS FIRST. Selecting purely by recency meant an outstanding
+  // material turn that had fallen seventh-oldest was silently dropped from the
+  // reader's window and handed back to the parser — the one case where getting
+  // the reading is not optional. Recent turns fill whatever budget is left,
+  // because that is where an unnoticed omission is most likely to be.
+  const mandatoryIds = new Set((input?.reviewTurnIds || []).map((turnId) => String(turnId)));
+  const mandatory = candidates.filter((turn) => mandatoryIds.has(String(turn.turnId)));
+  const opportunistic = candidates.filter((turn) => !mandatoryIds.has(String(turn.turnId)));
+  const window = [
+    ...mandatory.slice(-MAX_TURNS_READ_PER_PASS),
+    ...opportunistic.slice(-Math.max(0, MAX_TURNS_READ_PER_PASS - mandatory.length))
+  ];
 
-  const readings = [];
-  for (const turn of window) {
+  // Concurrent, not sequential. Six readings at a 15s timeout took up to 90
+  // seconds one after another, and every one of those seconds is state the
+  // conversation is planning without — which is how a client gets asked
+  // something they have already answered.
+  const settled = await Promise.all(window.map(async (turn) => {
     // The question the client was answering, as the LIVE SESSION recorded it.
     // Falling back to the preceding stored row is what paired "400." with the
     // next question instead of the one it answered, because rows are ordered by
@@ -1716,9 +1740,22 @@ async function readReviewedTurns({ env, config, input }) {
       transcript: turn.text,
       assistantQuestion: proposition?.text || ''
     }).catch(() => null);
-    if (reading) readings.push(reading);
-  }
-  return readings;
+    return { turn, reading };
+  }));
+
+  const readings = settled.map((item) => item.reading).filter(Boolean);
+  // A MANDATORY TURN WITH NO READING IS NOT REVIEWED.
+  //
+  // Falling back to the deterministic parser here was described as harmless. It
+  // is not: that parser reads "two and a half thousand" as 2, accepts 2 and
+  // refuses 2500, which is the exact hazard this whole mechanism exists to end.
+  // A timeout must not quietly restore it. The conversation carries on — this is
+  // background work — but the turn stays outstanding and the confirmation
+  // barrier keeps holding until a later pass can read it.
+  const unread = settled
+    .filter((item) => !item.reading && mandatoryIds.has(String(item.turn.turnId)))
+    .map((item) => String(item.turn.turnId));
+  return { readings, unreadMandatoryTurnIds: unread };
 }
 
 /**
@@ -1848,6 +1885,30 @@ function numericLeafValues(value, found = []) {
     else numericLeafValues(item, found);
   }
   return found;
+}
+
+/**
+ * Turns a pass looked at and could not settle.
+ *
+ * A `rejected` review outcome means the stored note disagrees with an
+ * independent reading of its own cited words. Recording that and moving on
+ * would leave the wrong figure canonical while its turn stopped blocking
+ * `confirm_and_run` — the disagreement would be logged and then ignored. The
+ * turn stays outstanding until something corrects, retracts or clarifies it.
+ */
+function unresolvedReviewTurnIds(validation, notes) {
+  const rejected = (validation?.reviewOutcomes || [])
+    .filter((outcome) => outcome.status === 'rejected')
+    .map((outcome) => String(outcome.noteId));
+  if (rejected.length === 0) return [];
+  const byNoteId = new Map((notes || []).map((note) => [String(note.noteId), note]));
+  const turnIds = new Set();
+  for (const noteId of rejected) {
+    for (const ref of byNoteId.get(noteId)?.evidenceRefs || []) {
+      if (ref?.turnId) turnIds.add(String(ref.turnId));
+    }
+  }
+  return [...turnIds];
 }
 
 export async function runPlannerReconciliation({

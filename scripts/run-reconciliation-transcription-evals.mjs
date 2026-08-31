@@ -240,13 +240,20 @@ function canonicalProblems(profile, expectations, forbidden) {
       problems.push(`canonical state contains the FORBIDDEN binding ${JSON.stringify(want)}`);
     }
   }
-  // Anything written that no expectation accounts for. An invented figure that
-  // rides along with a correct one is exactly what a numbers-only grader misses.
-  const accounted = expectations
+  // ANYTHING WRITTEN THAT NO EXPECTATION ACCOUNTS FOR — counted per landing
+  // place, not per amount. Matching by amount alone meant a correct EUR 2,500
+  // in the right field plus a second EUR 2,500 on the wrong owner scored clean,
+  // because the number was "expected". Each expectation accounts for exactly
+  // one write.
+  const budget = expectations
     .map((want) => (want.amount !== undefined ? want.amount : want.anyMoney))
     .filter((value) => value !== undefined);
   for (const item of money) {
-    if (accounted.some((value) => Math.abs(item.amount - value) < 1e-6)) continue;
+    const index = budget.findIndex((value) => Math.abs(item.amount - value) < 1e-6);
+    if (index !== -1) {
+      budget.splice(index, 1);
+      continue;
+    }
     problems.push(`canonical state contains an unexpected ${item.currency} ${item.amount} at ${item.trail}`);
   }
   return problems;
