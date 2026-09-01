@@ -256,13 +256,36 @@ const MONEY_VALUES = Object.freeze({
 /* ================================================= 3. no phantom writability */
 
 {
-  const advertised = new Set(contracts.map((entry) => entry.factId));
+  const byFactId = new Map(contracts.map((entry) => [entry.factId, entry]));
+  const writableTargets = new Set(['scalar', 'position']);
   for (const factId of inPlayFactIds) {
     const definition = getSemanticFactDefinition(factId);
     const contract = canonicalFactContract(factId, definition);
-    if (!contract || contract.target === 'none') {
-      assert.equal(advertised.has(factId), false,
-        `${factId} has no canonical target and must not be advertised as writable`);
+    if (contract && contract.target !== 'none') continue;
+    const entry = byFactId.get(factId);
+    // Such a fact MAY appear, and for `cash_savings` it has to: silently
+    // dropping it left the planner to work out on its own that a household's
+    // cash becomes an asset record, which it never did. What it must never do
+    // is claim a slot. The entry says `target: "none"` and points at the
+    // position fact that records it, and both halves are asserted here —
+    // otherwise "we told the planner where it goes" decays into "we told the
+    // planner it could write there".
+    if (!entry) continue;
+    assert.equal(writableTargets.has(entry.target), false,
+      `${factId} has no canonical target and must not be advertised as writable`);
+    for (const key of ['idKey', 'ownerKey', 'requiredKeys', 'valueFields', 'inCollection']) {
+      assert.equal(Object.hasOwn(entry, key), false,
+        `${factId} has no canonical target and must not carry the ${key} of one`);
+    }
+    if (Object.hasOwn(entry, 'recordedAs')) {
+      const target = canonicalFactContract(
+        entry.recordedAs,
+        getSemanticFactDefinition(entry.recordedAs)
+      );
+      assert.equal(target?.target, 'position',
+        `${factId} is recordedAs ${entry.recordedAs}, which is not a writable position`);
+      assert.ok(byFactId.has(entry.recordedAs),
+        `${factId} is recordedAs ${entry.recordedAs}, which the planner was never given`);
     }
   }
   // And the derivation must agree with the projector about which facts those
@@ -284,6 +307,10 @@ const MONEY_VALUES = Object.freeze({
   const unreachable = [];
   const unshaped = [];
   for (const contract of contracts) {
+    // A concept with no slot of its own writes no note of its own; it is
+    // recorded as the position it names, and that position is checked here on
+    // its own account. Its routing entry is asserted in section 3.
+    if (contract.target === 'none') continue;
     const kind = contract.target === 'position' ? 'position' : 'fact';
     assert.equal(contract.noteKind, kind,
       `${contract.factId}: the contract's noteKind must follow its target`);

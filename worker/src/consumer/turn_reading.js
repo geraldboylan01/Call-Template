@@ -24,6 +24,22 @@
  * the same turn. Independence is about not seeing the other reader's answer,
  * not about reading in the dark.
  *
+ * WHAT IT READS
+ *
+ * The figures, and whose the client said they were. Attribution is here rather
+ * than in a separate pass because it is the same act of reading: "hers is
+ * ninety" gets both its scale and its owner from the words beside it. It was
+ * missing for a while, and the cost was precise — a numeric reading was taken
+ * as having certified the turn's meaning, so a plan could put the client's
+ * pension on their partner and their partner's on them with the reader's
+ * agreement attached.
+ *
+ * It reports the PRONOUN, never an owner id. It is shown no household, so it
+ * has nothing to name; turning "hers" into a particular person is identity
+ * work, done downstream against a catalogue this reader never sees. Asking it
+ * for an owner id would be asking it to resolve an identity it was deliberately
+ * not given — and would break the one property it has.
+ *
  * WHAT IT REFUSES TO DO
  *
  * Transcribing number words into digits is its job. Arithmetic is not: it never
@@ -38,7 +54,7 @@ import { CURRENCY_CODES } from '../../../js/planning/contracts.js';
 // Travels on every reading rather than being exported: a reading is only
 // comparable with another from the same prompt, so the version belongs to the
 // result, not to whoever happens to import this module.
-const TURN_READING_PROMPT_VERSION = 'planeir-turn-reading-v3';
+const TURN_READING_PROMPT_VERSION = 'planeir-turn-reading-v4';
 
 export const TURN_READING_SYSTEM_PROMPT = `You read ONE thing: the figures a client just stated out loud.
 
@@ -49,6 +65,7 @@ For each figure the client stated, return:
 - "quote": the exact, contiguous words from the client's turn that state that figure. Copy them verbatim; never rewrite or paraphrase.
 - "currency": the currency the client named — EUR, GBP or USD. If they named none, use "unstated". A figure with no currency word is completely normal in speech.
 - "quantity": what KIND of quantity this is, in the client's own terms — "money" for an amount of money, "percent" for a percentage or rate, "count" for a number of things, "years" for an age or a duration, "unknown" if you genuinely cannot tell. Say "percent" only when the client actually expressed a proportion: "six percent", "six per cent", "a third". A figure that is simply an amount is "money", never "percent".
+- "attribution": WHOSE the client said this figure is, in their own words — "speaker" when they claimed it themselves ("mine", "my pension", "I have"), "other_person" when they gave it to someone else ("hers", "his", "my wife's", "her pension"), "joint" when they shared it ("ours", "we have", "our mortgage"), and "unstated" when they simply did not say. Report the words, not a guess: you do not know who is in this household, and "unstated" is the ordinary, correct answer for a bare figure like "400". Attribution carries across a sentence the same way scale does — in "mine is a hundred and eighty grand and hers is ninety", the first is "speaker" and the second is "other_person".
 - "ambiguous": true when you cannot honestly resolve the figure, false otherwise.
 
 Read the whole turn together. A scale stated once carries across the sentence: in "mine is a hundred and eighty grand and hers is ninety", the second figure is 90000, not 90. Use the question the client was answering to understand what they are talking about, but never to invent a figure they did not give.
@@ -74,12 +91,19 @@ const TURN_READING_SCHEMA = Object.freeze({
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['digits', 'quote', 'currency', 'quantity', 'ambiguous'],
+        required: ['digits', 'quote', 'currency', 'quantity', 'attribution', 'ambiguous'],
         properties: {
           digits: { type: 'number' },
           quote: { type: 'string' },
           currency: { type: 'string', enum: [...CURRENCY_CODES, 'unstated'] },
           quantity: { type: 'string', enum: ['money', 'percent', 'count', 'years', 'unknown'] },
+          // WHOSE, in the client's words — never as an owner id. The reader is
+          // shown no household, so it cannot name one; it reports the pronoun
+          // and deterministic code maps that to a role it can verify. Asking
+          // for an ownerId here would hand identity resolution to a reader that
+          // has no catalogue to resolve against, and would break the one
+          // property this reader has: it agrees with nothing it was shown.
+          attribution: { type: 'string', enum: ['speaker', 'other_person', 'joint', 'unstated'] },
           ambiguous: { type: 'boolean' }
         }
       }
@@ -117,6 +141,9 @@ export function normalizeTurnReading(raw, { turnId, transcript = '' } = {}) {
     const quantity = ['money', 'percent', 'count', 'years'].includes(String(figure?.quantity || ''))
       ? String(figure.quantity)
       : 'unknown';
+    const attribution = ['speaker', 'other_person', 'joint'].includes(String(figure?.attribution || ''))
+      ? String(figure.attribution)
+      : 'unstated';
     normalized.push(Object.freeze({
       digits,
       quote,
@@ -127,6 +154,12 @@ export function normalizeTurnReading(raw, { turnId, transcript = '' } = {}) {
       // with 0.06 was to let EVERY figure authorise a hundredth of itself —
       // which let a read 2500 authorise a EUR 25 monthly spend.
       quantity,
+      // WHOSE THE CLIENT SAID IT WAS. Without this the gate credited a purely
+      // numeric reading with having checked ownership: "mine is a hundred and
+      // eighty grand and hers is ninety" could be written to the wrong two
+      // people and the reading still agreed, because it had only ever been
+      // asked which numbers were spoken.
+      attribution,
       ambiguous: figure?.ambiguous === true
     }));
   }

@@ -599,4 +599,84 @@ assert.equal(writes[0].arguments.sourceTurnId, userTurns[8]);
     'the sentence that told the model to write a field that does not exist must stay gone');
 }
 
+/* ============= no slot is offered without the shape that fills it ======== */
+
+// The catalogue's slots and the position contracts were selected by two
+// different rules, so a pass could offer `recon_slot_asset_position_1` while
+// sending an EMPTY positionContracts list. Handed a slot and no shape for it, a
+// planner invents one: three paid runs of a bare "400" answer about savings
+// wrote an asset with a made-up `type` and were thrown out by profile
+// normalization after everything else about them was right.
+{
+  // Both arrangements: an ordinary pass, and one where a deterministic value
+  // gap widens the slots on offer.
+  const widened = buildPlannerReconciliationContext({
+    context,
+    turns: [{
+      id: 'turn-widened',
+      role: 'user',
+      transcript: 'The credit union has €14,000 and the bakery is worth €120,000.',
+      sequence: 2
+    }],
+    notes: [],
+    throughTurnId: 'turn-widened'
+  });
+  for (const candidate of [built, widened, singleContext]) {
+    const advertised = new Set((candidate.positionContracts || []).map((entry) => entry.factId));
+    const offered = new Set((candidate.entities || [])
+      .filter((entity) => entity.newEntitySlot)
+      .flatMap((entity) => entity.factIds || []));
+    for (const factId of offered) {
+      assert.ok(advertised.has(factId),
+        `a ${factId} slot is offered with no contract saying how to fill it`);
+    }
+  }
+  // And the contract has to carry the closed vocabulary for the field that
+  // needs it, or "which values are legal" is still a guess.
+  const assets = (widened.positionContracts || []).find((entry) => entry.factId === 'asset_position');
+  assert.ok(assets?.typeChoices?.includes('cash'),
+    'an asset contract must name the types the profile will accept');
+  console.info('[ConsumerReconciliationContext] PASS: every offered slot arrives with its shape');
+}
+
+/* ======= the question a turn answered, not the one the meeting is on ===== */
+
+// `currentQuestion` is the meeting's INTENT — what it means to ask next — and
+// by the time this pass runs the conversation has usually moved on. On a bare
+// "400" answering "how much is sitting in savings?", the planner was told the
+// client was answering the monthly-spending question: not an ambiguous signal,
+// a positively contradictory one.
+{
+  const answered = buildPlannerReconciliationContext({
+    context,
+    turns: [
+      { id: 'turn-q', role: 'assistant', transcript: 'And roughly how much is sitting in savings?', sequence: 1 },
+      { id: 'turn-a', role: 'user', transcript: '400.', sequence: 2, answersTurnId: 'turn-q' }
+    ],
+    notes: [],
+    throughTurnId: 'turn-a'
+  });
+  assert.deepEqual(answered.answeredQuestions, [{
+    turnId: 'turn-a',
+    questionTurnId: 'turn-q',
+    prompt: 'And roughly how much is sitting in savings?'
+  }], 'a reviewed turn must carry the question it actually answered');
+
+  // Adjacency is NOT a substitute. Where the live session recorded no link,
+  // saying nothing is right; guessing the previous row is how "400." was paired
+  // with the wrong question in the first place.
+  const unlinked = buildPlannerReconciliationContext({
+    context,
+    turns: [
+      { id: 'turn-q', role: 'assistant', transcript: 'And roughly how much is sitting in savings?', sequence: 1 },
+      { id: 'turn-a', role: 'user', transcript: '400.', sequence: 2 }
+    ],
+    notes: [],
+    throughTurnId: 'turn-a'
+  });
+  assert.deepEqual(unlinked.answeredQuestions, [],
+    'an unrecorded link must stay unstated rather than be inferred from adjacency');
+  console.info('[ConsumerReconciliationContext] PASS: a reviewed turn reports the question it answered');
+}
+
 console.info('[ConsumerReconciliationContext] PASS: needs, signed questions, bounded turns, new identities, position contracts and T1 outcomes');

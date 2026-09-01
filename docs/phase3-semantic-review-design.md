@@ -206,6 +206,72 @@ red in no gate:
 known-open truncation inversion it reports is closed by step 3, and closing it
 is the acceptance criterion for this work.
 
+## Revision 5 — what a reading is allowed to certify
+
+The reader shipped as a NUMERIC witness while the gate treated it as a SEMANTIC
+one. A reading of the figures in a turn set `semanticallyRead`, and that flag
+switched off the owner checks entirely — so this was accepted, with every figure
+correctly grounded in the span it came from:
+
+```
+client   "Mine is a hundred and eighty grand and hers is ninety."
+written  EUR 90,000 to the client, EUR 180,000 to their partner
+```
+
+Agreement about a number was being spent as agreement about meaning.
+
+The fix is the LESS deterministic of the two available: the reader now reports,
+per figure, whose the client said it was — "speaker", "other_person", "joint",
+"unstated" — and the gate compares that to the owner the operation writes to.
+Restoring the old owner-cue regexes was the alternative, and it re-refuses every
+correct terse answer; widening the reader moves the judgement to the layer that
+reads English and leaves deterministic code doing identity resolution against a
+catalogue the reader never sees. The reader reports the PRONOUN, never an owner
+id.
+
+It binds only where the client said whose it was. `unstated` is the ordinary,
+correct answer for "400.", and constraining it would undo the whole point.
+
+### What else this round closed
+
+- **A review receipt earned by a hundredth.** The percent-to-fraction expansion
+  was fixed for new writes and left open on the review path, so a stored EUR 25
+  note was stamped `planner_verified` by a pass whose reader had just read 2,500.
+- **A mandatory turn pushed out of the budget.** The unread list was computed
+  over the six turns actually attempted, so a seventh outstanding turn was
+  neither read nor reported, and the ordinal clear retired an obligation nothing
+  had looked at.
+- **A concept with no writable destination.** `cash_savings` maps onto the root
+  of the assets collection, which is not a scalar slot, so the contract dropped
+  it in silence — the planner was asked for a fact it was given nowhere to put.
+  It now carries `recordedAs: asset_position`, derived from the collection.
+- **Slots offered without shapes.** The catalogue and the contracts were
+  selected by different rules, so a pass could offer an asset slot with an EMPTY
+  `positionContracts`. Handed a slot and no shape, the planner invented a `type`
+  the profile refused.
+- **The wrong question.** `currentQuestion` is what the meeting means to ask
+  NEXT. On a bare "400" answering a savings question, the planner was told the
+  client was answering the spending question — contradictory, not merely
+  ambiguous. `answeredQuestions` now reports the transcript's own link beside it.
+
+Measured on the ten-case corpus at three runs each: **29/30, up from 23/30**,
+with the reader still at 0 missed figures and 0 false agreements. The widened
+reader schema did not degrade the narrow task.
+
+### Still open before `apply`
+
+- **Review obligations are volunteered, not issued.** A plan returning `clean`
+  with an empty `reviewedNoteIds` leaves a provisional note in place and still
+  clears its material turn by ordinal. The barrier proves the checkpoint
+  completed, not that every material proposal reached a terminal disposition.
+- **Parser visibility still gates planner opportunity.** `hasValueCoverageGap`
+  is derived from the deterministic scan before the reader runs, and it decides
+  which facts and how many slots the planner sees.
+- **Terse "none" still needs the client to restate the subject.**
+  `evidenceAssertsNone` reads the client turn alone, so "No, none." answering
+  "any other debts?" is refused. It over-refuses, which is the safe direction,
+  and the right home for it is the reader — which already has the question.
+
 ## Open decisions
 
 - **The cost of the second reading per turn**, and whether it can be batched
