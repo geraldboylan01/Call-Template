@@ -1118,17 +1118,150 @@ function reviewedNoteAgreesWithReading(note, turnReadings, turnIndex) {
   const reading = readingSupportedNumbers(refs, turnReadings, turnIndex);
   if (!reading) return true;
   const supported = [
-    ...reading.figures.flatMap((figure) => (
-      Number.isFinite(figure.digits / 100)
-        ? [figure.digits, figure.digits / 100]
-        : [figure.digits]
-    )),
+    ...reading.figures.map((figure) => figure.digits),
     ...reading.unreadRefs.flatMap((ref) => groundedNumbers(ref.quote))
   ];
-  const stored = numericLeaves(note.value).map((leaf) => leaf.value);
+  // THE SAME UNIT DISCIPLINE THE NEW-OPERATION PATH APPLIES.
+  //
+  // Expanding every read figure to a hundredth of itself was closed for new
+  // writes and left open here, so a stored EUR 25 monthly spend was stamped
+  // planner_verified by a reader that had just read 2,500. A review receipt
+  // that can be earned by a hundredth of the spoken figure certifies nothing.
+  // The conversion is a rate's, and only where both halves agree: the client
+  // expressed a proportion, and the field is one the schema stores as a
+  // fraction.
+  const percentFigures = reading.figures.filter((figure) => figure.quantity === 'percent');
+  const stored = numericLeaves(note.value).map((leaf) => ({
+    value: leaf.value,
+    path: leaf.path.join('.')
+  }));
   // A note carrying no figures has nothing for the reader to contradict.
   if (stored.length === 0) return true;
-  return stored.every((value) => supported.some((other) => numbersEqual(other, value)));
+  return stored.every((leaf) => {
+    if (supported.some((other) => numbersEqual(other, leaf.value))) return true;
+    if (!isFractionalRateLeaf(leaf.path)) return false;
+    return percentFigures.some((figure) => numbersEqual(figure.digits / 100, leaf.value));
+  });
+}
+
+/**
+ * THE ROLE A CLIENT'S OWN WORDS PUT A FIGURE ON.
+ *
+ * The reader is shown no household, so it cannot name an owner — it reports the
+ * pronoun and nothing more. Turning "hers" into a partner is identity work, and
+ * identity work is this layer's, done against a catalogue the reader never saw.
+ */
+const ROLE_FOR_ATTRIBUTION = Object.freeze({
+  speaker: 'primary',
+  other_person: 'partner',
+  joint: 'household'
+});
+
+/**
+ * A NUMERIC READING IS NOT A READING OF WHOSE MONEY IT IS.
+ *
+ * For a while a reading of the figures in a turn was enough to switch off the
+ * owner checks entirely, on the reasoning that the turn had been "semantically
+ * read". It had not: the reader was asked which numbers were spoken and
+ * answered exactly that. So this was accepted —
+ *
+ *   client   "Mine is a hundred and eighty grand and hers is ninety."
+ *   written  EUR 90,000 to the client, EUR 180,000 to their partner
+ *
+ * — with both figures correctly grounded in the spans they came from, both
+ * agreed by the reader, and the household's two pensions on the wrong two
+ * people. Agreement about a number was being spent as agreement about meaning.
+ *
+ * The reader now reports attribution alongside each figure, so the check is a
+ * comparison rather than a re-parse: the figure this operation is WRITING is
+ * matched to the figures the reader read, and the owner it is written to must
+ * hold the role the client's own words put it on.
+ *
+ * It binds only where the client actually said whose it was. "400." attributes
+ * nothing, and a reader that says `unstated` is reporting the absence of a cue,
+ * not a quiet vote for the primary person — inventing a constraint there would
+ * re-refuse every terse answer this design exists to accept.
+ */
+function assertOwnerMatchesReadingAttribution(
+  operation,
+  targetNote,
+  evidenceRefs,
+  turnReadings,
+  turnIndex,
+  owners
+) {
+  const effectiveOwnerId = operation.ownerId || targetNote?.ownerId;
+  if (!effectiveOwnerId) return;
+  const reading = readingSupportedNumbers(evidenceRefs, turnReadings, turnIndex);
+  if (!reading || reading.figures.length === 0) return;
+  const changed = changedNumericLeaves(operation, targetNote);
+  if (changed.length === 0) return;
+
+  // ONLY THE FIGURES THIS OPERATION IS ACTUALLY WRITING. A citation wide enough
+  // to cover the whole sentence overlaps both "mine" and "hers", and asking
+  // that span who it belongs to has no answer. The figure being written does
+  // have one.
+  const attributions = new Set(
+    reading.figures
+      .filter((figure) => changed.some((leaf) => numbersEqual(figure.digits, leaf.value)))
+      .map((figure) => figure.attribution)
+      .filter((attribution) => attribution && attribution !== 'unstated')
+  );
+  if (attributions.size !== 1) return;
+
+  const expectedRole = ROLE_FOR_ATTRIBUTION[[...attributions][0]];
+  if (!expectedRole) return;
+  // A ROLE NOBODY IN THIS HOUSEHOLD HOLDS CONSTRAINS NOTHING. A client living
+  // alone says "we" about their own money, and there is no household owner for
+  // it to mean; refusing there would invent a partner out of a pronoun.
+  const roleExists = [...owners.values()].some((owner) => owner.role === expectedRole);
+  if (!roleExists) return;
+
+  const actualRole = owners.get(effectiveOwnerId)?.role;
+  if (actualRole === expectedRole) return;
+  fail(
+    'owner_contradicts_reading',
+    `Operation ${operation.operationId} writes to ${effectiveOwnerId}, but the independent `
+    + `reading of its turn attributes that figure to the ${expectedRole}.`
+  );
+}
+
+/**
+ * WHERE A CONCEPT LANDS, WHEN IT HAS NO SLOT OF ITS OWN.
+ *
+ * `cash_savings` is the case that exposed this. The analysis asks for it, the
+ * assistant asks the client about it, the client answers "400" — and the
+ * planner is handed no contract at all, because the fact maps onto the ROOT of
+ * the assets collection and a collection root is not a scalar slot. It was
+ * being dropped in silence, so the only way to succeed was to independently
+ * guess that this concept becomes a cash asset record and invent the whole
+ * canonical structure for it. It never did, on any run.
+ *
+ * Knowing that a household's cash is an asset record is schema knowledge, not
+ * language understanding, so it is answered here and derived rather than
+ * listed: the fact's own mapping names a collection, and the collection names
+ * the position fact that writes it. A collection several facts can write —
+ * liabilities takes mortgages and loans as well — is genuinely ambiguous, and
+ * stays unanswered rather than guessed.
+ */
+function nonEmptyStringValue(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+export function conceptRecordedAsPosition(factId) {
+  const definition = getSemanticFactDefinition(factId);
+  if (!definition || POSITION_PROJECTIONS[factId]) return null;
+  const roots = new Set((definition?.mappings || [])
+    .map((mapping) => mapping.pathPattern)
+    .filter((pattern) => typeof pattern === 'string' && pattern.startsWith('/')
+      && !pattern.includes('/*'))
+    .map((pattern) => pattern.split('/')[1]));
+  if (roots.size !== 1) return null;
+  const [root] = [...roots];
+  const owning = Object.entries(POSITION_PROJECTIONS)
+    .filter(([, projection]) => projection.collection === root)
+    .map(([positionFactId]) => positionFactId);
+  return owning.length === 1 ? owning[0] : null;
 }
 
 function readingSupportedNumbers(evidenceRefs, turnReadings, turnIndex) {
@@ -2122,8 +2255,22 @@ function assertKnownIdentity(
   const personScopedCompletion = operation.noteKind === 'completion'
     && entity?.collection === 'people'
     && Boolean(collectionPathForFact(operation.factId));
+  // A BLANK SLOT IS A FREE INDEX, NOT A COMMITMENT ABOUT WHAT GOES IN IT.
+  //
+  // Every liability fact — mortgage, loan, the general position — writes the
+  // same `liabilities` collection, and the catalogue issues a separate blank
+  // slot per fact. A planner that took the mortgage slot and named the write
+  // `liability_position` had a correct EUR 340,000 mortgage thrown out for
+  // choosing the wrong one of two interchangeable blanks. Where a slot is
+  // blank, its collection is the only thing it actually asserts.
+  //
+  // An EXISTING entity is a different matter and keeps the full check: a
+  // pension that exists is not somewhere a liability may be written.
+  const slotAcceptsFact = entity?.newEntitySlot === true
+    && POSITION_PROJECTIONS[operation.factId]?.collection === entity.collection;
   if (entity && operation.factId && entity.factIds.length > 0
-    && !entity.factIds.includes(operation.factId) && !personScopedCompletion) {
+    && !entity.factIds.includes(operation.factId)
+    && !slotAcceptsFact && !personScopedCompletion) {
     fail('entity_fact_mismatch', `Entity ${effectiveEntityId} is not valid for fact ${operation.factId}.`);
   }
   if (entity?.newEntitySlot) {
@@ -2475,6 +2622,57 @@ function validateOperation(operation, notes, context, group) {
   const semanticallyRead = evidenceRefs.length > 0
     && context.turnReadings?.size > 0
     && evidenceRefs.every((ref) => context.turnReadings.has(String(ref.turnId)));
+  // A CONCEPT WRITTEN ONTO THE COLLECTION THAT RECORDS IT IS NOT A MISMATCH.
+  //
+  // `cash_savings` has no slot of its own — a household's cash IS an asset
+  // record — and the planner is told so by name. Told that, it reached for the
+  // asset slot and kept `factId: "cash_savings"` on the operation, and the
+  // entity catalogue refused the pair: the slot is valid for `asset_position`
+  // and nothing else. The write was correct in every part that carries meaning
+  // and was discarded on the label of its destination.
+  //
+  // Rewriting it here is the same derivation the planner was given, applied to
+  // what it sent back. It only ever moves a concept onto the ONE position fact
+  // that records its collection, and only when the operation is already aimed
+  // at that collection — an ambiguous collection resolves to nothing and is
+  // left to fail.
+  const recordedAs = conceptRecordedAsPosition(operation.factId);
+  if (recordedAs && operation.op === 'upsert_note') {
+    const entityId = operation.entityId || targetNote?.entityId;
+    const entity = entityId ? context.entities.get(entityId) : null;
+    if (entity?.collection === POSITION_PROJECTIONS[recordedAs].collection) {
+      // The concept's own label is the readable one — "Available cash" rather
+      // than "Asset position" — so it is carried before the identity changes.
+      const conceptLabel = getSemanticFactDefinition(operation.factId)?.label || null;
+      operation.factId = recordedAs;
+      operation.noteKind = 'position';
+      if (conceptLabel && isPlainObject(operation.value)
+        && !nonEmptyStringValue(operation.value.label)) {
+        operation.value = { ...operation.value, label: conceptLabel };
+      }
+    }
+  }
+
+  // A MISSING DISPLAY LABEL IS NOT A REASON TO LOSE THE FIGURE.
+  //
+  // `label` is a required key on an asset, and a planner that had the amount,
+  // the owner, the type and the currency right still had the whole write thrown
+  // out by profile normalization for an empty one. A label names the record for
+  // a human to read; it decides nothing, computes nothing and means nothing to
+  // any module. Naming it from the entity slot the operation already chose is
+  // bookkeeping — unlike `type`, which is left alone precisely because cash and
+  // investment are different answers and only the client can settle which.
+  if (operation.op === 'upsert_note' && isPlainObject(operation.value)) {
+    const projection = POSITION_PROJECTIONS[operation.factId];
+    if (projection?.requiredKeys?.includes('label')
+      && !nonEmptyStringValue(operation.value.label)) {
+      const entityId = operation.entityId || targetNote?.entityId;
+      const fallback = getSemanticFactDefinition(operation.factId)?.label
+        || (entityId ? context.entities.get(entityId)?.label : null);
+      if (fallback) operation.value = { ...operation.value, label: fallback };
+    }
+  }
+
   // A POSITION RECORD ALREADY NAMES ITS OWNER, IN THE FIELD THE SCHEMA DEFINES.
   //
   // positionContracts gives each collection an ownerKey — ownerId for pensions,
@@ -2503,6 +2701,14 @@ function validateOperation(operation, notes, context, group) {
     context.entities,
     evidenceRefs,
     semanticallyRead
+  );
+  assertOwnerMatchesReadingAttribution(
+    operation,
+    targetNote,
+    evidenceRefs,
+    context.turnReadings,
+    context.turnIndex,
+    context.owners
   );
   assertContributionProductEligibility(operation, targetNote, context.entities);
   assertCompletionNoneEvidence(operation, evidenceRefs, context.turnIndex);

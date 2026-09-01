@@ -19,6 +19,7 @@ import {
   applyReconciliationPlan,
   canonicalFactContract,
   buildReconciliationIdentityCatalogue,
+  conceptRecordedAsPosition,
   normalizeNeedV2,
   normalizePlanningNotesV1,
   normalizeReconciliationPlanV1
@@ -186,6 +187,8 @@ Evidence rules:
 - Where ownership is genuinely unclear — the client said "the pension" and the household holds two, or "ours" for a fact that has one per-person slot — return request_clarification naming the ambiguity instead of choosing. Guessing an owner writes someone else's money into this person's plan, and a clarification costs one question.
 - A fact in singletonFactIds has ONE household-wide slot. Give it entity householdScopeEntityId or no entity at all. Never attach it to the partner or to a position: there is no per-person slot, and naming one would overwrite the client's own value with somebody else's.
 - Where factContracts gives a fact choices, the value must be exactly one of those terms. Do not describe the answer in your own words or add extra keys. If no term fits the evidence, request_clarification.
+- A valueContracts entry with target "none" has no slot of its own. It names recordedAs: write the answer as a position of THAT fact, with the value in the position record. A client answering "400" to a question about savings is a cash_savings answer, and cash_savings is recorded as an asset_position.
+- answeredQuestions gives the question each reviewed turn was actually replying to, taken from the transcript. currentQuestion is only what the meeting intends to ask NEXT, and by now the conversation has usually moved past it. Where the two disagree about a reviewed turn, answeredQuestions is the one that says what the client was talking about.
 - Use exactly the noteKind valueContracts gives each fact.
 - WRITE ONLY WHERE THERE IS SOMEWHERE TO WRITE. A factId is usable on this turn only when some supplied entity lists it in its factIds. Check that before choosing, because a fact with no entity that accepts it reaches nothing, however well evidenced it is.
 - A figure describing a holding belongs IN that holding's record, not in a scalar fact beside it. Pension worth, income amount, property value and loan balance are fields of the position named in positionContracts — write the position record on that collection's entity or its newEntitySlot. Do not reach for a separate scalar factId to carry a holding's value.
@@ -892,8 +895,23 @@ export function plannerFactContracts(factIds) {
     const definition = getSemanticFactDefinition(factId);
     const contract = canonicalFactContract(factId, definition);
     // A fact with no canonical home is kept as evidence and must not be
-    // advertised as somewhere the planner can write.
-    if (!contract || contract.target === 'none') continue;
+    // advertised as somewhere the planner can write. But saying nothing at all
+    // left the planner to discover on its own that a concept like `cash_savings`
+    // becomes a cash asset record — so it is told, by name, which position
+    // fact records it.
+    if (!contract || contract.target === 'none') {
+      const recordedAs = conceptRecordedAsPosition(factId);
+      if (recordedAs) {
+        contracts.push({
+          factId,
+          target: 'none',
+          recordedAs,
+          valueType: definition?.valueType || null,
+          ...(definition?.valueType === 'money' ? { money: MONEY_SHAPE } : {})
+        });
+      }
+      continue;
+    }
     const choices = vocabulary[factId] || realtimeFactValueVocabulary(factId);
     const entry = {
       factId,
@@ -1166,7 +1184,21 @@ export function buildPlannerReconciliationContext({
     singletonFactIds: catalogue.singletonFactIds,
     householdScopeEntityId: catalogue.householdScopeEntityId,
     factContracts: factValueContracts(inPlayFactIds),
-    positionContracts: positionContracts(inPlayFactIds),
+    // EVERY SLOT OFFERED, WITH THE SHAPE THAT FILLS IT.
+    //
+    // The catalogue's slots and the contracts were selected by two different
+    // rules, so a pass could offer `recon_slot_asset_position_1` while sending
+    // an EMPTY positionContracts list. A planner handed a slot and no shape for
+    // it invents one: three runs of a bare "400" answer about savings wrote an
+    // asset typed from imagination and were thrown out by profile
+    // normalization, after everything else about them was right. A slot with no
+    // contract is an invitation to guess.
+    positionContracts: positionContracts([
+      ...inPlayFactIds,
+      ...catalogue.entities
+        .filter((entity) => entity.newEntitySlot && entity.factIds?.length > 0)
+        .flatMap((entity) => entity.factIds)
+    ]),
     // The derived contract, from the constants the projector itself enforces.
     // `factContracts` and `positionContracts` remain because the prompt already
     // names them; this carries what neither of them could say — the value shape.
@@ -1176,6 +1208,23 @@ export function buildPlannerReconciliationContext({
     needs,
     selectedAnalyses,
     currentQuestion: signedQuestionContext(context),
+    // THE QUESTION THE REVIEWED TURN ACTUALLY ANSWERED, from the transcript.
+    //
+    // `currentQuestion` is the meeting's intent — what it means to ask next —
+    // and by the time this pass runs the conversation has usually moved on. On
+    // a bare "400" answering "how much is sitting in savings?", the planner was
+    // told the client was answering the monthly-spending question instead: not
+    // an ambiguous signal, a positively contradictory one. The reviewed turn
+    // carries its own link, so the answered question is reported beside the
+    // intended one rather than inferred from adjacency.
+    answeredQuestions: recent
+      .filter((turn) => requestedReviewTurnIds.includes(turn.turnId) && turn.answersTurnId)
+      .map((turn) => ({
+        turnId: turn.turnId,
+        questionTurnId: turn.answersTurnId,
+        prompt: recent.find((candidate) => candidate.turnId === turn.answersTurnId)?.text || ''
+      }))
+      .filter((entry) => entry.prompt),
     voiceWriteOutcomes,
     reviewTurnIds: requestedReviewTurnIds,
     missingReviewTurnIds,
@@ -1695,8 +1744,15 @@ const MAX_TURNS_READ_PER_PASS = 6;
  * deterministic path that shipped before this existed, which is no worse than
  * the behaviour it replaces.
  */
-async function readReviewedTurns({ env, config, input }) {
-  if (config.turnReadingMode === 'off') return [];
+// Exported for the gate: the invariant that a mandatory turn pushed out of the
+// budget is still REPORTED unread has no other observable surface, and it is
+// precisely the kind of omission that is silent when it breaks.
+export async function readReviewedTurns({ env, config, input }) {
+  // The same shape in every mode. Returning a bare array here was harmless only
+  // because both callers happened to guard on the mode first; a returned shape
+  // that contradicts its own destructuring is a defect waiting for the guard to
+  // move.
+  if (config.turnReadingMode === 'off') return { readings: [], unreadMandatoryTurnIds: [] };
   const turns = Array.isArray(input?.transcriptTurns) ? input.transcriptTurns : [];
   const byId = new Map(turns.map((turn) => [String(turn.turnId), turn]));
 
@@ -1752,9 +1808,19 @@ async function readReviewedTurns({ env, config, input }) {
   // A timeout must not quietly restore it. The conversation carries on — this is
   // background work — but the turn stays outstanding and the confirmation
   // barrier keeps holding until a later pass can read it.
-  const unread = settled
-    .filter((item) => !item.reading && mandatoryIds.has(String(item.turn.turnId)))
-    .map((item) => String(item.turn.turnId));
+  //
+  // AND A MANDATORY TURN THAT NEVER FITTED THE WINDOW IS EQUALLY UNREAD.
+  // Counting only the turns that were attempted meant a seventh outstanding
+  // turn — one the budget pushed out — was neither read nor reported, so the
+  // ordinal clear retired an obligation nothing had ever looked at. Being too
+  // busy to read a turn is not the same as having read it.
+  const attempted = new Set(settled.map((item) => String(item.turn.turnId)));
+  const read = new Set(settled.filter((item) => item.reading).map((item) => String(item.turn.turnId)));
+  const unread = [...mandatoryIds].filter((turnId) => !read.has(turnId)
+    // A mandatory id naming a turn this pass has no transcript for is not an
+    // unread reading; it is a stale obligation, and `missingReviewTurnIds`
+    // already answers for those.
+    && (attempted.has(turnId) || byId.has(turnId)));
   return { readings, unreadMandatoryTurnIds: unread };
 }
 

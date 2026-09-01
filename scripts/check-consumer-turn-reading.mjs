@@ -29,7 +29,10 @@ import {
   TURN_READING_SYSTEM_PROMPT,
   normalizeTurnReading
 } from '../worker/src/consumer/turn_reading.js';
-import { RECONCILIATION_SYSTEM_PROMPT } from '../worker/src/consumer/planner_reconciliation.js';
+import {
+  RECONCILIATION_SYSTEM_PROMPT,
+  readReviewedTurns
+} from '../worker/src/consumer/planner_reconciliation.js';
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
 
 const NOW = '2026-08-09T10:00:00.000Z';
@@ -45,8 +48,10 @@ function baseProfile() {
   }));
 }
 
-const figure = (digits, quote, { currency = null, ambiguous = false, quantity = 'money' } = {}) => ({
-  digits, quote, currency, quantity, ambiguous
+const figure = (digits, quote, {
+  currency = null, ambiguous = false, quantity = 'money', attribution = 'unstated'
+} = {}) => ({
+  digits, quote, currency, quantity, attribution, ambiguous
 });
 
 async function propose({ text, quote, amount, currency = 'EUR', figures = null }) {
@@ -549,6 +554,265 @@ console.log('\nAn owner stated in the record is an owner:');
   assert.equal(invented.accepted, false,
     'recovery reads the schema, it does not accept an owner the household does not have');
   pass('an owner stated in the record is recovered; an invented one still fails');
+}
+
+/* ========= agreement about a number is not agreement about whose ========= */
+
+// A numeric reading was allowed to certify the turn as "semantically read",
+// which switched OFF the owner checks entirely — so this was accepted:
+//
+//   client   "Mine is a hundred and eighty grand and hers is ninety."
+//   written  EUR 90,000 to the client, EUR 180,000 to their partner
+//
+// Both figures were correctly grounded in the spans they came from and both
+// were agreed by the reader, because the reader had only ever been asked which
+// numbers were spoken. The household's two pensions went to the wrong two
+// people carrying a verification the reader never gave.
+console.log('\nA reading of the figures is not a reading of whose they are:');
+{
+  const TEXT = 'Mine is a hundred and eighty grand and hers is ninety.';
+  const MINE = 'Mine is a hundred and eighty grand';
+  const HERS = 'hers is ninety';
+
+  const partneredProfile = () => {
+    const raw = createHouseholdProfile({
+      profileId: 'profile_turn_reading', primaryPersonId: 'primary',
+      nowIso: NOW, calculationDateIso: '2026-08-09'
+    });
+    raw.partner = { personId: 'partner', displayName: 'your partner' };
+    return normalizeHouseholdProfile(raw);
+  };
+
+  const writeBoth = async ({ primaryQuote, primaryAmount, partnerQuote, partnerAmount }) => {
+    const position = (slot, ownerId, label, amount, quote) => ({
+      operationId: `op_${slot}`, op: 'upsert_note', factId: 'pension_positions',
+      noteKind: 'position', entityId: slot, ownerId,
+      value: {
+        pensionId: slot, ownerId, type: 'occupational', label,
+        currentValue: { amount, currency: 'EUR' }
+      },
+      certainty: 'approximate', reasonCode: 'missing_note',
+      evidence: [{ turnId: 'turn_read', quote }]
+    });
+    const result = await applyReconciliationPlan({
+      profile: partneredProfile(),
+      notes: [],
+      plan: {
+        schemaVersion: 1,
+        planId: 'plan_attribution',
+        verdict: 'changes_proposed',
+        operationGroups: [
+          { groupId: 'mine', operations: [position('slot_1', 'primary', 'Mine', primaryAmount, primaryQuote)] },
+          { groupId: 'hers', operations: [position('slot_2', 'partner', 'Hers', partnerAmount, partnerQuote)] }
+        ]
+      },
+      transcriptTurns: [{
+        turnId: 'turn_read', role: 'user', finalized: true, sequence: 1, text: TEXT
+      }],
+      sessionId: 'session_turn_reading',
+      transcriptWatermark: 'turn_read',
+      baseProfileRevision: 0,
+      entities: [
+        { entityId: 'slot_1', label: 'new pension 1', newEntitySlot: true, collection: 'pensions', factIds: ['pension_positions'], ownerIds: [] },
+        { entityId: 'slot_2', label: 'new pension 2', newEntitySlot: true, collection: 'pensions', factIds: ['pension_positions'], ownerIds: [] }
+      ],
+      turnReadings: [{
+        turnId: 'turn_read',
+        figures: [
+          figure(180_000, 'a hundred and eighty grand', { attribution: 'speaker' }),
+          figure(90_000, 'ninety', { attribution: 'other_person' })
+        ]
+      }],
+      nowIso: NOW
+    });
+    const codes = Object.fromEntries((result.rejectedGroups || []).map((group) => [group.groupId, group.code]));
+    return {
+      mine: result.acceptedGroupIds.includes('mine'),
+      hers: result.acceptedGroupIds.includes('hers'),
+      codes
+    };
+  };
+
+  const correct = await writeBoth({
+    primaryQuote: MINE, primaryAmount: 180_000, partnerQuote: HERS, partnerAmount: 90_000
+  });
+  assert.equal(correct.mine && correct.hers, true,
+    `the correct assignment must still be written (${JSON.stringify(correct.codes)})`);
+
+  const swapped = await writeBoth({
+    primaryQuote: HERS, primaryAmount: 90_000, partnerQuote: MINE, partnerAmount: 180_000
+  });
+  assert.equal(swapped.mine || swapped.hers, false,
+    'a figure the client gave to their partner must not be written to the client');
+  assert.equal(swapped.codes.mine, 'owner_contradicts_reading');
+  pass('"mine" and "hers" cannot be exchanged by a reading that agreed about the numbers');
+}
+
+{
+  // AND IT BINDS ONLY WHERE THE CLIENT SAID WHOSE IT WAS. "400." attributes
+  // nothing; a reader reporting `unstated` is reporting the absence of a cue,
+  // not a quiet vote. Constraining that would re-refuse every terse answer the
+  // whole design exists to accept.
+  const outcome = await propose({
+    text: '400.',
+    quote: '400',
+    amount: 400,
+    figures: [figure(400, '400', { attribution: 'unstated' })]
+  });
+  assert.equal(outcome.accepted, true,
+    `an unattributed figure is the planner's to place (refused ${outcome.code})`);
+  pass('an unattributed figure carries no owner constraint');
+}
+
+/* ============ a review receipt is not earned by a hundredth ============== */
+
+// The percentage-to-fraction conversion was closed for new writes and left open
+// on the review path, so a stored EUR 25 monthly spend could be stamped
+// planner_verified by a pass whose reader had just read 2,500. A receipt that a
+// hundredth of the spoken figure can earn certifies nothing.
+console.log('\nA stored note is reviewed against the reading in its own units:');
+{
+  const text = 'We spend about two and a half thousand a month on essentials.';
+  const start = text.indexOf('two and a half thousand');
+  const reviewOf = async (amount) => {
+    const result = await applyReconciliationPlan({
+      profile: baseProfile(),
+      notes: [{
+        noteId: 'note_1', factId: 'monthly_spending', noteKind: 'fact', lifecycle: 'active',
+        value: { amount, currency: 'EUR' }, certainty: 'approximate',
+        source: 'realtime_note', reviewStatus: 'provisional', revision: 1,
+        createdAtIso: NOW, updatedAtIso: NOW,
+        evidenceRefs: [{
+          turnId: 'turn_read', quote: 'two and a half thousand',
+          start, end: start + 'two and a half thousand'.length
+        }]
+      }],
+      plan: {
+        schemaVersion: 1, planId: 'plan_review', verdict: 'clean',
+        reviewedNoteIds: ['note_1'], operationGroups: []
+      },
+      transcriptTurns: [{
+        turnId: 'turn_read', role: 'user', finalized: true, sequence: 1, text
+      }],
+      sessionId: 'session_turn_reading',
+      transcriptWatermark: 'turn_read',
+      baseProfileRevision: 0,
+      turnReadings: [{
+        turnId: 'turn_read',
+        figures: [figure(2_500, 'two and a half thousand')]
+      }],
+      nowIso: NOW
+    });
+    return result.reviewOutcomes?.[0]?.status || null;
+  };
+  assert.equal(await reviewOf(25), 'rejected',
+    'a hundredth of the read figure is not the read figure');
+  assert.equal(await reviewOf(2_500), 'verified',
+    'the figure the reader actually read must still verify');
+  pass('a money note is not verified by a hundredth of the figure the reader read');
+}
+
+/* ============ a turn too far down the queue is still outstanding ========= */
+
+// The reader takes six turns a pass. Mandatory turns are selected first, but
+// the unread list was computed over the SELECTED window only — so a seventh
+// outstanding turn was neither read nor reported, and the ordinal clear retired
+// an obligation nothing had ever looked at. Being too busy to read a turn is
+// not the same as having read it.
+console.log('\nA mandatory turn that never fitted the budget is still unread:');
+{
+  const realFetch = globalThis.fetch;
+  // No reading is obtainable, so every mandatory turn must come back unread —
+  // the ones that were attempted and the ones that never fitted alike.
+  globalThis.fetch = async () => { throw new Error('no provider in this check'); };
+  try {
+    const turnIds = Array.from({ length: 9 }, (_, index) => `turn_${index + 1}`);
+    const { readings, unreadMandatoryTurnIds } = await readReviewedTurns({
+      env: { OPENAI_API_KEY: 'unused' },
+      config: getConsumerConfig({ CONSUMER_TURN_READING_MODE: 'apply' }),
+      input: {
+        transcriptTurns: turnIds.map((turnId, index) => ({
+          turnId, role: 'user', finalized: true, sequence: index + 1,
+          text: `Turn ${index + 1} says about ${(index + 1) * 100} a month.`
+        })),
+        reviewTurnIds: turnIds
+      }
+    });
+    assert.equal(readings.length, 0, 'no reading is obtainable in this check');
+    assert.deepEqual([...unreadMandatoryTurnIds].sort(), [...turnIds].sort(),
+      'every outstanding turn must be reported unread, including those the budget pushed out');
+    pass('nine outstanding turns and a budget of six leaves nine obligations, not six');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+/* ============ a blank slot is a free index, not a commitment ============= */
+
+// Every liability fact — mortgage, loan, the general position — writes the same
+// `liabilities` collection, and the catalogue issues a separate blank slot for
+// each. A planner that took the mortgage slot and named its write
+// `liability_position` had a correct EUR 340,000 mortgage refused for choosing
+// the wrong one of two interchangeable blanks.
+console.log('\nA blank slot accepts any fact that writes its collection:');
+{
+  const writeLiability = async ({ slotFactId, operationFactId, newEntitySlot }) => {
+    const result = await applyReconciliationPlan({
+      profile: baseProfile(),
+      notes: [],
+      plan: {
+        schemaVersion: 1, planId: 'plan_slot', verdict: 'changes_proposed',
+        operationGroups: [{
+          groupId: 'candidate',
+          operations: [{
+            operationId: 'proposed', op: 'upsert_note', factId: operationFactId,
+            noteKind: 'position', entityId: 'slot_1', ownerId: 'primary',
+            value: {
+              liabilityId: 'slot_1', ownerIds: ['primary'], type: 'mortgage',
+              label: 'Home mortgage',
+              currentBalance: { amount: 340_000, currency: 'EUR' }
+            },
+            certainty: 'approximate', reasonCode: 'missing_note',
+            evidence: [{ turnId: 'turn_read', quote: 'three hundred and forty thousand' }]
+          }]
+        }]
+      },
+      transcriptTurns: [{
+        turnId: 'turn_read', role: 'user', finalized: true, sequence: 1,
+        text: 'My mortgage is three hundred and forty thousand.'
+      }],
+      sessionId: 'session_turn_reading',
+      transcriptWatermark: 'turn_read',
+      baseProfileRevision: 0,
+      entities: [{
+        entityId: 'slot_1', label: 'new liability 1', newEntitySlot,
+        collection: 'liabilities', factIds: [slotFactId], ownerIds: []
+      }],
+      turnReadings: [{
+        turnId: 'turn_read',
+        figures: [figure(340_000, 'three hundred and forty thousand', { attribution: 'speaker' })]
+      }],
+      nowIso: NOW
+    });
+    return {
+      accepted: result.acceptedOperationIds.length > 0,
+      code: result.rejectedGroups?.[0]?.code || null
+    };
+  };
+
+  assert.equal((await writeLiability({
+    slotFactId: 'mortgage_position', operationFactId: 'liability_position', newEntitySlot: true
+  })).accepted, true, 'two blanks on one collection are interchangeable');
+
+  // AND AN ENTITY THAT EXISTS IS NOT A BLANK. A pension somebody holds is not
+  // somewhere a liability may be written, and that check is untouched.
+  const existing = await writeLiability({
+    slotFactId: 'mortgage_position', operationFactId: 'liability_position', newEntitySlot: false
+  });
+  assert.equal(existing.accepted, false,
+    'an existing record still refuses a fact it was not created for');
+  assert.equal(existing.code, 'entity_fact_mismatch');
+  pass('a blank liability slot takes any liability fact; a real record still does not');
 }
 
 console.log('\ncheck-consumer-turn-reading: the agreement gate holds.');

@@ -138,7 +138,13 @@ function turnsFor(testCase) {
       role: 'user',
       finalized: true,
       sequence: 2,
-      transcript: testCase.clientTurn
+      transcript: testCase.clientTurn,
+      // THE LINK THE LIVE SESSION RECORDS, which this runner was omitting. The
+      // reader is handed the question directly here, so leaving the reconciler
+      // to infer it from adjacency measured the two on different information —
+      // and flattered the reader on exactly the terse cases where the question
+      // carries the whole meaning.
+      answersTurnId: 'turn_assistant'
     }
   ];
 }
@@ -326,8 +332,19 @@ async function runCase(testCase) {
     }
   }
 
+  // A REFUSAL THAT RAISES A NEED ALSO ASKS THE CLIENT.
+  //
+  // Counting only accepted `request_clarification` operations missed the other
+  // route to the same place: when the gate refuses a write, `rejectedNeed`
+  // raises a NeedV2, `absorbPlannerRequests` hands it to the speaking model and
+  // the client is asked. Scoring that as "did not ask" recorded a working
+  // safety path as a failure. The two are still counted separately, because a
+  // planner-authored question knows what was ambiguous and a refusal-driven one
+  // only knows which fact — the outcome is the same, the wording is not.
+  const refusalNeeds = validation.clarificationNeeds || [];
+  const asked = clarifications.length + refusalNeeds.length;
   if (expect.outcome === 'clarification') {
-    if (clarifications.length === 0) problems.push('did not ask for clarification');
+    if (asked === 0) problems.push('did not ask for clarification');
   } else {
     const wanted = expect.outcome === 'multiple_values' ? expect.amounts : [expect.amount];
     for (const amount of wanted) {
@@ -374,10 +391,16 @@ async function runCase(testCase) {
     falseAgreement,
     ok: problems.length === 0,
     problems,
-    rejected: validation.rejectedGroups?.map((group) => group.code) || [],
+    // The CODE alone was not enough to act on: `profile_invariant_failed` is
+    // raised by every canonical invariant there is, and finding which one meant
+    // paying for another run. The message says which.
+    rejected: validation.rejectedGroups?.map((group) => (
+      group.message ? `${group.code} (${group.message})` : group.code
+    )) || [],
     values: values.map((item) => `${item.key}=${item.value}`),
     proposed: proposed.map((item) => `${item.key}=${item.value}`),
-    clarifications: clarifications.length
+    clarifications: clarifications.length,
+    refusalNeeds: refusalNeeds.length
   };
 }
 
@@ -405,7 +428,8 @@ for (const testCase of selected) {
         rejected: [],
         values: [],
         proposed: [],
-        clarifications: 0
+        clarifications: 0,
+        refusalNeeds: 0
       };
     }
     const record = tally.get(testCase.id)
@@ -439,7 +463,8 @@ for (const testCase of selected) {
       console.log(`         read:     ${outcome.readFigures?.join(', ') || 'none'}`);
       console.log(`         proposed: ${outcome.proposed?.join(', ') || 'none'}`);
       console.log(`         values: ${outcome.values.join(', ') || 'none'}`);
-      console.log(`         clarifications: ${outcome.clarifications}`);
+      console.log(`         clarifications: ${outcome.clarifications}`
+        + ` (+${outcome.refusalNeeds} raised by refusal)`);
     }
   }
 }
