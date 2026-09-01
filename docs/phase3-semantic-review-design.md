@@ -258,12 +258,53 @@ Measured on the ten-case corpus at three runs each: **29/30, up from 23/30**,
 with the reader still at 0 missed figures and 0 false agreements. The widened
 reader schema did not degrade the narrow task.
 
+## Revision 6 — the barrier stops proving the wrong thing
+
+`plannerReconciliationPreflight` asked whether a checkpoint had COMPLETED, and a
+plan returning `clean` with an empty `reviewedNoteIds` completes perfectly well
+while dispositioning nothing. The review receipt was whatever the model
+volunteered, so a fast-lane figure the independent reading contradicts was never
+examined, had its material turn retired by ordinal, and `confirm_and_run` opened
+over it. Nothing was rejected because nothing was looked at.
+
+The server now issues the obligations and checks them itself.
+
+**What this is NOT, and the two attempts that proved it.** The first version
+blocked on every provisional note the reviewer had not mentioned. Run against
+the live harness it held the barrier shut on correct figures until the meeting
+could not finish. The retraction added to release it then deleted a correct
+EUR 319,000 pension and a correct EUR 95,000 income — values the client had
+actually stated, thrown away because the reviewer had not got round to them.
+
+**A reviewer's silence is not evidence that a figure is wrong.** So the rule is
+narrower and the escalation is non-destructive:
+
+- The server blocks only on what it can DEMONSTRATE, using the independent
+  reading of the client's own turns — a note citing a read turn whose stored
+  figure contradicts that reading (this ran only over notes the model
+  VOLUNTEERED, which is precisely the list a clean plan leaves empty), or a
+  span-free realtime note from the stretch the reader covered whose figure
+  appears in no reading of any of it.
+- Obligations are scoped to what the pass can judge: realtime proposals from
+  this conversation, from the bounded transcript in front of it. `legacy_import`
+  snapshots of pre-ledger state are not claims anybody made on this call, and
+  demanding evidence for them crowded the real obligations out of a bounded list.
+- A disputed figure that survives three passes becomes a QUESTION to the client,
+  not a deletion. Nothing is removed; the fact stays outstanding, readiness holds
+  back exactly the analyses that need it, and the rest of the meeting proceeds.
+  That is the bargain `terminallyUnresolvedEvidence` already strikes one layer
+  down.
+
+Proven end to end against the real Durable Object in
+`check-consumer-live-confirmation.mjs`: a reading that contradicts a stored
+figure blocks and stays blocked through the review it schedules; a reading that
+agrees does not block; and a disputed figure escalates rather than deadlocking.
+The independent reader is now scriptable in the harness, which it was not — it
+shares the planner's endpoint, so every reading request had been coming back a
+plan and returning null.
+
 ### Still open before `apply`
 
-- **Review obligations are volunteered, not issued.** A plan returning `clean`
-  with an empty `reviewedNoteIds` leaves a provisional note in place and still
-  clears its material turn by ordinal. The barrier proves the checkpoint
-  completed, not that every material proposal reached a terminal disposition.
 - **Parser visibility still gates planner opportunity.** `hasValueCoverageGap`
   is derived from the deterministic scan before the reader runs, and it decides
   which facts and how many slots the planner sees.

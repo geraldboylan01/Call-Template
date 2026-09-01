@@ -31,13 +31,14 @@ import { scriptedPlanner } from './live-harness/scripted-planner.mjs';
 const pass = (message) => console.info(`[ConsumerLiveConfirmation] PASS: ${message}`);
 
 /** A meeting far enough along that only the barrier can refuse the run. */
-async function meetingReadyToConfirm(label, mode, planFor) {
+async function meetingReadyToConfirm(label, mode, planFor, options = {}) {
   const meeting = await newLiveMeeting(label, {
-    CONSUMER_PLANNER_RECONCILIATION_MODE: mode
+    CONSUMER_PLANNER_RECONCILIATION_MODE: mode,
+    ...(options.turnReadingMode ? { CONSUMER_TURN_READING_MODE: options.turnReadingMode } : {})
   });
   const { session, durable, provider } = await attachLiveSession(meeting);
   const simulator = new LiveProviderSimulator({ session, durable, provider });
-  const planner = scriptedPlanner(planFor);
+  const planner = scriptedPlanner(planFor, { readFor: options.readFor || null });
 
   const say = async (clientText, facts = null) => {
     const turn = await simulator.turn({
@@ -99,6 +100,43 @@ async function meetingReadyToConfirm(label, mode, planFor) {
   ]);
 
   return { meeting, session, durable, provider, simulator, planner, say };
+}
+
+
+/**
+ * An honest reader for these fixtures: it reports the figures the client's turn
+ * actually contains, and nothing else.
+ *
+ * A reader that returned nothing would make EVERY captured figure look
+ * unsupported, so the barrier would block on correct work and the test would
+ * pass for entirely the wrong reason. What is under test is whether a stored
+ * figure the reading CONTRADICTS is caught — which needs a reading that agrees
+ * with everything else.
+ */
+function readTurnHonestly({ clientTurn }) {
+  const figures = [];
+  if (clientTurn.includes('two and a half thousand')) {
+    figures.push({
+      digits: 2500,
+      quote: 'two and a half thousand',
+      currency: 'unstated',
+      quantity: 'money',
+      attribution: 'joint',
+      ambiguous: false
+    });
+  }
+  for (const match of clientTurn.matchAll(/\d[\d,]*/g)) {
+    const quote = match[0];
+    figures.push({
+      digits: Number(quote.replaceAll(',', '')),
+      quote,
+      currency: 'unstated',
+      quantity: /percent/i.test(clientTurn) ? 'percent' : 'money',
+      attribution: 'speaker',
+      ambiguous: false
+    });
+  }
+  return figures;
 }
 
 /** One confirmation attempt, returning what the gate decided. */
@@ -238,6 +276,101 @@ for (const mode of ['shadow', 'apply']) {
   assert.equal(rows.length, 0, 'legacy must run no reconciliation at all');
   rig.planner.restore();
   pass('legacy — unchanged: no barrier, no reconciler, the module runs');
+}
+
+/* ========== a clean plan cannot clear a proposal it never examined ========= */
+
+// THE BARRIER PROVED THE WRONG THING. It asked whether a checkpoint had
+// COMPLETED, and a plan returning `clean` with an empty reviewedNoteIds
+// completes perfectly well while dispositioning nothing. The review receipt was
+// whatever the model volunteered, so a fast-lane figure the independent reading
+// contradicts was never examined, had its material turn retired by ordinal, and
+// `confirm_and_run` opened over it. Nothing was rejected because nothing was
+// looked at.
+//
+// The server now checks the proposals itself instead of waiting to be handed a
+// list. It blocks on what it can DEMONSTRATE — a stored figure the reading of
+// the client's own turn does not contain — and never on the reviewer's silence.
+const SPENDING = 'We spend about 2,500 a month on essentials.';
+
+async function meetingWithSpendingRead(label, digits) {
+  const rig = await meetingReadyToConfirm(label, 'apply', () => null, {
+    turnReadingMode: 'apply',
+    readFor: (request) => (request.clientTurn === SPENDING
+      ? [{
+        digits,
+        quote: '2,500',
+        currency: 'unstated',
+        quantity: 'money',
+        attribution: 'joint',
+        ambiguous: false
+      }]
+      : readTurnHonestly(request))
+  });
+  const said = await rig.say(SPENDING, [
+    { factId: 'monthly_spending', value: { amount: 2500, currency: 'EUR' }, certainty: 'approximate' }
+  ]);
+  // The fast lane must genuinely have written it, or there is no proposal for
+  // the barrier to be tested against and the case proves nothing.
+  const results = (said?.toolCalls || []).map((call) => call.result);
+  assert.ok(results.some((result) => (result?.saved || []).length > 0),
+    `${label}: the fast lane must have accepted the figure`);
+  return rig;
+}
+
+{
+  // The independent reader makes out a different figure from the one the fast
+  // lane wrote. Which of them is right is not this gate's business; that they
+  // disagree is, and a disputed figure must not reach a calculation.
+  const rig = await meetingWithSpendingRead('confirm-reading-disagrees', 3_200);
+  assert.equal(blockedByBarrier(await confirm(rig)), true,
+    'a figure the independent reading contradicts must not reach a calculation, '
+    + 'however clean the plan that ignored it');
+  // Twice, because the first refusal also SCHEDULES the review it is waiting
+  // for — a barrier that merely lagged a turn would open on the retry.
+  assert.equal(blockedByBarrier(await confirm(rig, { clientText: 'Yes, please go ahead.' })), true,
+    'and it must still not, after the review it scheduled has run');
+  assert.ok(rig.planner.readings().some((entry) => entry.figures.length > 0),
+    'the independent reader must actually have run — a test where it returned '
+    + 'nothing would pass for the wrong reason');
+  rig.planner.restore();
+  pass('apply — a clean plan cannot clear a proposal the reading contradicts');
+}
+
+{
+  // AND SILENCE IS NOT EVIDENCE. The first version of this blocked on every
+  // provisional note the reviewer had not mentioned, which held the barrier
+  // shut on correct figures until the meeting could not finish — and the
+  // retraction meant to release it deleted a correct EUR 319,000 pension and a
+  // correct EUR 95,000 income. A reviewer that has not got round to a note has
+  // found nothing wrong with it.
+  const rig = await meetingWithSpendingRead('confirm-reading-agrees', 2_500);
+  await confirm(rig);
+  const result = await confirm(rig, { clientText: 'Yes, please go ahead.' });
+  assert.equal(blockedByBarrier(result), false,
+    'a figure the reading agrees with must not be held back by a silent reviewer');
+  assert.equal(result?.ok, true, 'and the analyses must actually run');
+  rig.planner.restore();
+  pass('apply — an unmentioned proposal the reading agrees with does not block');
+}
+
+{
+  // AND IT MUST CONVERGE. A disputed figure blocks, but not forever: after a
+  // bounded number of passes the question goes to the CLIENT — the one party
+  // who can actually settle it — and the barrier stops holding every other
+  // analysis hostage to it. Without this the first refusal is a dead end and
+  // the meeting simply cannot finish, which is worse than the hole it closes.
+  const rig = await meetingWithSpendingRead('confirm-escalates', 3_200);
+  let opened = false;
+  for (let attempt = 0; attempt < 8 && !opened; attempt += 1) {
+    opened = !blockedByBarrier(await confirm(rig, { clientText: 'Yes, please go ahead.' }));
+  }
+  assert.equal(opened, true,
+    'a disputed figure must end in a question to the client, not a dead end');
+  assert.deepEqual(rig.session.undispositionedNotes, [],
+    'and the obligation must be discharged rather than merely ignored');
+  rig.planner.restore();
+  pass('apply — a disputed figure is escalated to the client, never left blocking forever');
 }
 
 console.info('\n[ConsumerLiveConfirmation] PASS: the confirmation barrier admits reviewed work and only reviewed work');

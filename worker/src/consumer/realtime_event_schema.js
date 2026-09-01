@@ -267,6 +267,19 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
   // A deterministic detector (L2/L3) cancelled a response mid-sentence.
+  // A fast-lane figure no review could settle, now being put back to the
+  // client. UNREGISTERED IS SILENT: an event type with no schema here is
+  // dropped, so a mechanism whose whole claim is "never silently" would have
+  // written nothing at all.
+  'live.note_review.unresolved': event({
+    noteIds: NON_CONTENT_FIELD_TYPES.STRING,
+    attempts: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  // Its sibling one layer down: an uncovered figure nothing could place.
+  'live.value_evidence.unresolved': event({
+    evidenceIds: NON_CONTENT_FIELD_TYPES.STRING,
+    attempts: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
   'live.compliance.tripped': event({
     actId: NON_CONTENT_FIELD_TYPES.STRING,
     layer: NON_CONTENT_FIELD_TYPES.STRING,

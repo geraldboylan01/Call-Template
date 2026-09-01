@@ -119,6 +119,15 @@ export function typedClientTurnFromEvent(event) {
  * model call the client is not waiting on but is paying for.
  */
 const MAX_VALUE_EVIDENCE_REVIEW_ATTEMPTS = 2;
+/**
+ * How many passes an outstanding review gets before the note is retracted.
+ *
+ * Higher than the evidence budget on purpose. An uncovered figure has one
+ * chance to be placed and then stops being asked about; a provisional note is
+ * a value already written into someone's profile, so it is worth more attempts
+ * before deciding nobody can confirm it.
+ */
+const MAX_NOTE_REVIEW_ATTEMPTS = 3;
 const MAX_DEFERRED_EVIDENCE_TOOL_CALLS = 32;
 const MAX_RECONCILIATION_RECOVERY_ATTEMPTS = 1;
 const MIN_RECONCILIATION_STALE_MS = 30_000;
@@ -194,9 +203,25 @@ export function plannerReconciliationPreflight(
   mode,
   lease,
   unreviewedMaterialTurns = [],
-  unresolvedIdentities = []
+  unresolvedIdentities = [],
+  undispositionedNotes = []
 ) {
   if (mode === 'legacy') return { ready: true, reason: 'legacy' };
+  // AN UNREVIEWED PROPOSAL IS OUTSTANDING WORK, AND THE TURN LEDGER CANNOT SEE
+  // IT. A realtime note carries no evidence spans, so it belongs to no turn —
+  // and a plan that returned `clean` while dispositioning nothing still had its
+  // material turn retired by ordinal. That is how a note reading EUR 2 for
+  // "two and a half thousand" stayed canonical with this gate open: the
+  // checkpoint had completed, and completion was all this asked about.
+  const outstandingNotes = (Array.isArray(undispositionedNotes) ? undispositionedNotes : [])
+    .map((entry) => String(entry?.noteId || entry || '')).filter(Boolean);
+  if (outstandingNotes.length > 0) {
+    return {
+      ready: false,
+      reason: 'review_outstanding',
+      outstandingNoteIds: outstandingNotes.slice(0, MAX_LIVE_TURN_LEDGER_ENTRIES)
+    };
+  }
   // AN UNRESOLVED IDENTITY IS OUTSTANDING MATERIAL WORK TOO. A pension the lane
   // could not tell apart from one already recorded may be the same holding or a
   // second, and running the analyses over that guess either double-counts a pot
@@ -323,6 +348,12 @@ export class ConsumerLiveSession {
     // start the review budget again and could never finish.
     this.valueEvidenceReviewAttempts = {};
     this.terminallyUnresolvedEvidence = [];
+    // The same bargain for review obligations: how many passes each outstanding
+    // provisional note has already had, and which have run out. Durable, because
+    // a hibernated meeting that forgot them would restart every budget.
+    this.noteReviewAttempts = {};
+    this.undispositionedNotes = [];
+    this.notesPendingEscalation = [];
     this.activeReconciliationTurn = null;
     this.scheduledReconciliationTurnIds = new Set();
     this.currentResponseId = null;
@@ -379,6 +410,9 @@ export class ConsumerLiveSession {
       this.unresolvedIdentities = await this.state.storage.get('unresolvedIdentities') || [];
       this.valueEvidenceReviewAttempts = await this.state.storage.get('valueEvidenceReviewAttempts') || {};
       this.terminallyUnresolvedEvidence = await this.state.storage.get('terminallyUnresolvedEvidence') || [];
+      this.noteReviewAttempts = await this.state.storage.get('noteReviewAttempts') || {};
+      this.undispositionedNotes = await this.state.storage.get('undispositionedNotes') || [];
+      this.notesPendingEscalation = await this.state.storage.get('notesPendingEscalation') || [];
       this.openingRequested = await this.state.storage.get('openingRequested') === true;
       const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
       if (storedReconciliationQueue?.schemaVersion === 1) {
@@ -1596,11 +1630,114 @@ export class ConsumerLiveSession {
       direction: 'server',
       eventType: 'live.value_evidence.unresolved',
       payload: {
-        evidenceIds: newlyTerminal.slice(0, 12),
+        // Joined, not an array: the event schema is scalars only, and an array
+        // field is dropped by the sanitizer — which is how this diagnostic
+        // could be written and still say nothing.
+        evidenceIds: newlyTerminal.slice(0, 12).join(','),
         attempts: MAX_VALUE_EVIDENCE_REVIEW_ATTEMPTS
       }
     }).catch(() => {});
     return stillReviewable;
+  }
+
+  /**
+   * Spend one bounded attempt on every review obligation this pass left open.
+   *
+   * WHY A BUDGET, AGAIN. Some provisional notes genuinely cannot be settled: a
+   * span-free realtime note whose evidence has scrolled out of the bounded
+   * transcript can be neither verified by id nor replaced with an
+   * evidence-backed correction. Holding `confirm_and_run` shut forever over one
+   * of those ends the meeting, and confirming it by exhaustion is the hole this
+   * whole mechanism exists to close.
+   *
+   * SO IT ENDS IN A QUESTION, NOT A DELETION. The first version retracted the
+   * note. Run against the live harness that deleted a correct EUR 319,000
+   * pension and a correct EUR 95,000 income, because the reviewer had not got
+   * round to mentioning them — and a reviewer's silence is not evidence that a
+   * figure is wrong. Nothing is deleted now: the client is asked to confirm
+   * that specific figure, their answer settles it, and until then readiness
+   * holds back exactly the analyses that need it. What it stops doing is
+   * holding back the analyses that never needed it.
+   */
+  async spendNoteReviewObligations(undispositionedNoteIds, escalatedNoteIds = []) {
+    const outstanding = [...new Set((Array.isArray(undispositionedNoteIds) ? undispositionedNoteIds : [])
+      .map((noteId) => String(noteId || '')).filter(Boolean))];
+    const escalated = new Set((Array.isArray(escalatedNoteIds) ? escalatedNoteIds : [])
+      .map((noteId) => String(noteId || '')).filter(Boolean));
+    // ATTEMPTS CARRY, EVEN WHEN A NOTE IS NOT ISSUED THIS PASS. Rebuilding this
+    // map from the current round dropped the count for every obligation the
+    // bounded list did not reach, so a note that was asked about, skipped, then
+    // asked about again started from one each time and could never be settled.
+    const attempts = { ...this.noteReviewAttempts };
+    const pendingEscalation = [];
+    const blocking = [];
+    for (const noteId of outstanding) {
+      // Already put to the client: no longer this pass's obligation, and no
+      // longer blocking. The fact stays outstanding in readiness until they
+      // answer, which is what keeps its analyses held.
+      if (escalated.has(noteId)) continue;
+      // ALREADY OUT OF ATTEMPTS AND WAITING TO BE ASKED. Re-counting it would
+      // reset its budget to one every pass, so it would cycle forever: always
+      // blocking, never escalated, and the meeting could not finish. Being
+      // spent is a state, not an event.
+      if (this.notesPendingEscalation.includes(noteId)) {
+        pendingEscalation.push(noteId);
+        blocking.push(noteId);
+        continue;
+      }
+      const spent = Number(attempts[noteId] || 0) + 1;
+      if (spent >= MAX_NOTE_REVIEW_ATTEMPTS) {
+        // Out of attempts but NOT yet asked about — the question is raised by
+        // the next pass, which is issued this list. Until it has actually been
+        // asked the note still blocks: dropping it here would open the barrier
+        // over a figure that is nobody's responsibility.
+        delete attempts[noteId];
+        pendingEscalation.push(noteId);
+        blocking.push(noteId);
+        continue;
+      }
+      attempts[noteId] = spent;
+      blocking.push(noteId);
+    }
+    for (const noteId of escalated) delete attempts[noteId];
+    const nextPending = pendingEscalation.filter((noteId) => !escalated.has(noteId));
+    const nextBlocking = blocking
+      .filter((noteId) => !escalated.has(noteId))
+      .map((noteId) => ({ noteId }))
+      .slice(-MAX_LIVE_TURN_LEDGER_ENTRIES);
+
+    // A settled note simply stops appearing, so its count would linger.
+    // Bounded rather than pruned, because "absent this pass" is exactly what
+    // must NOT be read as "settled".
+    for (const noteId of Object.keys(attempts).slice(0, -MAX_LIVE_TURN_LEDGER_ENTRIES)) {
+      delete attempts[noteId];
+    }
+    const changed = JSON.stringify(attempts) !== JSON.stringify(this.noteReviewAttempts)
+      || JSON.stringify(nextPending) !== JSON.stringify(this.notesPendingEscalation)
+      || JSON.stringify(nextBlocking) !== JSON.stringify(this.undispositionedNotes);
+    if (!changed) return;
+    const newlyEscalated = [...escalated].filter((noteId) => (
+      this.notesPendingEscalation.includes(noteId)
+    ));
+    this.noteReviewAttempts = attempts;
+    this.notesPendingEscalation = nextPending;
+    this.undispositionedNotes = nextBlocking;
+    await this.state.storage.put('noteReviewAttempts', attempts).catch(() => {});
+    await this.state.storage.put('notesPendingEscalation', nextPending).catch(() => {});
+    await this.state.storage.put('undispositionedNotes', nextBlocking).catch(() => {});
+    if (newlyEscalated.length === 0) return;
+    // Recorded, never silent: a figure the fast lane wrote and no review could
+    // settle is now being put back to the client.
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta?.sessionId,
+      leaseId: this.meta?.leaseId,
+      direction: 'server',
+      eventType: 'live.note_review.unresolved',
+      payload: {
+        noteIds: newlyEscalated.slice(0, 12).join(','),
+        attempts: MAX_NOTE_REVIEW_ATTEMPTS
+      }
+    }).catch(() => {});
   }
 
   /** Whether an uncovered occurrence still has review budget left. */
@@ -1810,6 +1947,10 @@ export class ConsumerLiveSession {
       throughTurnId: job.throughTurnId,
       reviewTurnIds: job.reviewTurnIds,
       terminallyUnresolvedEvidenceIds: this.terminallyUnresolvedEvidence,
+      // Obligations that have run out of attempts. This pass retracts them, and
+      // only once it has do they stop blocking — so the figure is never out of
+      // the barrier's sight while it is still in the profile.
+      escalateNoteIds: this.notesPendingEscalation,
       trigger: job.trigger,
       retryAttempt: job.retryAttempt,
       // What lets a validated correction survive the client answering the next
@@ -1972,6 +2113,14 @@ export class ConsumerLiveSession {
         result?.reviewedValueEvidenceIds ?? errorReviewedValueEvidenceIds,
         result?.resolvedValueEvidenceIds
       ).catch(() => false);
+      // OBLIGATIONS ARE SPENT ON EVERY OUTCOME, including a failure. A pass that
+      // crashed settled nothing, and the notes it was issued are still
+      // outstanding — reporting them as discharged is how a failed
+      // reconciliation would quietly open the barrier.
+      await this.spendNoteReviewObligations(
+        result?.undispositionedNoteIds,
+        result?.escalatedNoteIds
+      ).catch(() => {});
       if ((result?.status === 'shadow' || result?.status === 'applied')
         && !valueEvidenceStillReviewable) {
         // A pass can succeed overall and still have failed to settle a specific
@@ -2300,7 +2449,8 @@ export class ConsumerLiveSession {
             config.plannerReconciliationMode,
             lease,
             this.unreviewedMaterialTurns,
-            this.unresolvedIdentities
+            this.unresolvedIdentities,
+            this.undispositionedNotes
           );
           if (!preflight.ready) {
             if (causalTurn?.storedTurnId && responseContext) {
