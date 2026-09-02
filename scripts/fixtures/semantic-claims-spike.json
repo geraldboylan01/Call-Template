@@ -1,0 +1,217 @@
+{
+  "note": "Multi-turn transcripts, graded on CANONICAL STATE. Every case names the failure it exists to catch. The adversarial block is the one that decides the experiment: a correct number in the wrong life is the failure no numeric check can see.",
+  "cases": [
+    {
+      "id": "spoken_scale_2500",
+      "family": "transcription",
+      "goalType": "maintain_liquidity",
+      "transcript": [
+        { "role": "assistant", "text": "About how much does the household spend each month on essentials, excluding rent and housing debt?" },
+        { "role": "client", "text": "About two and a half thousand." }
+      ],
+      "expect": {
+        "canonical": [{ "path": "/expenses/monthlyEssential", "amount": 2500, "currency": "EUR" }],
+        "forbidden": [{ "anyMoney": 2 }],
+        "why": "The deterministic scan reads this as 2. Accepting that writes a EUR 2 monthly spend."
+      }
+    },
+    {
+      "id": "terse_bare_figure",
+      "family": "terse_contextual",
+      "goalType": "maintain_liquidity",
+      "transcript": [
+        { "role": "assistant", "text": "And roughly how much is sitting in savings and current accounts?" },
+        { "role": "client", "text": "400." }
+      ],
+      "expect": {
+        "canonical": [{ "anyMoney": 400, "currency": "EUR" }],
+        "why": "No unit, no cadence, no subject in the client's own words. Everything that makes 400 meaningful is in the question before it."
+      }
+    },
+    {
+      "id": "correction_supersedes",
+      "family": "correction",
+      "goalType": "maintain_liquidity",
+      "transcript": [
+        { "role": "assistant", "text": "And what is the balance on the mortgage?" },
+        { "role": "client", "text": "Three hundred and twenty thousand — sorry, I mean three hundred and forty thousand." }
+      ],
+      "expect": {
+        "canonical": [{ "anyMoney": 340000, "currency": "EUR" }],
+        "forbidden": [{ "anyMoney": 320000 }],
+        "why": "Correcting yourself mid-sentence is ordinary speech. Only the figure that stands may be written."
+      }
+    },
+    {
+      "id": "owner_split_two_pensions",
+      "family": "adversarial_owner",
+      "goalType": "improve_pension",
+      "withPartner": true,
+      "transcript": [
+        { "role": "assistant", "text": "Do you each have a pension, and roughly what are they worth?" },
+        { "role": "client", "text": "Mine is a hundred and eighty grand and hers is ninety." }
+      ],
+      "expect": {
+        "canonical": [
+          { "collection": "pensions", "ownerId": "primary", "field": "currentValue", "amount": 180000, "currency": "EUR" },
+          { "collection": "pensions", "ownerId": "partner", "field": "currentValue", "amount": 90000, "currency": "EUR" }
+        ],
+        "forbidden": [
+          { "collection": "pensions", "ownerId": "primary", "field": "currentValue", "amount": 90000, "currency": "EUR" },
+          { "collection": "pensions", "ownerId": "partner", "field": "currentValue", "amount": 180000, "currency": "EUR" }
+        ],
+        "collections": { "pensions": 2 },
+        "why": "Both numbers are real. Swapping them is a correct figure in the wrong person's plan, and no numeric check can see it."
+      }
+    },
+    {
+      "id": "same_pension_mentioned_twice",
+      "family": "adversarial_entity",
+      "goalType": "improve_pension",
+      "transcript": [
+        { "role": "assistant", "text": "Tell me about your pension." },
+        { "role": "client", "text": "My work pension is about a hundred and eighty thousand." },
+        { "role": "assistant", "text": "Thanks. Has that changed recently?" },
+        { "role": "client", "text": "The work pension is up to about a hundred and ninety thousand now." }
+      ],
+      "expect": {
+        "canonical": [{ "collection": "pensions", "field": "currentValue", "amount": 190000, "currency": "EUR" }],
+        "collections": { "pensions": 1 },
+        "why": "ONE pension, updated. Creating a second silently doubles the retirement pot, and every figure in it is one the client really said."
+      }
+    },
+    {
+      "id": "two_distinct_pensions",
+      "family": "adversarial_entity",
+      "goalType": "improve_pension",
+      "transcript": [
+        { "role": "assistant", "text": "Do you have any pensions?" },
+        { "role": "client", "text": "I have an old one from a previous job worth about eighty thousand, and my current work pension is around a hundred and eighty thousand." }
+      ],
+      "expect": {
+        "canonical": [
+          { "collection": "pensions", "field": "currentValue", "amount": 80000, "currency": "EUR" },
+          { "collection": "pensions", "field": "currentValue", "amount": 180000, "currency": "EUR" }
+        ],
+        "collections": { "pensions": 2 },
+        "why": "The mirror of the case above. Collapsing two real pensions into one loses a holding the client has."
+      }
+    },
+    {
+      "id": "no_others_is_not_none",
+      "family": "adversarial_completion",
+      "goalType": "buy_home",
+      "transcript": [
+        { "role": "assistant", "text": "What debts does the household have?" },
+        { "role": "client", "text": "Just the mortgage, three hundred and forty thousand." },
+        { "role": "assistant", "text": "Any other debts apart from the mortgage?" },
+        { "role": "client", "text": "No, none." }
+      ],
+      "expect": {
+        "canonical": [{ "collection": "liabilities", "field": "currentBalance", "amount": 340000, "currency": "EUR" }],
+        "collections": { "liabilities": 1 },
+        "why": "'No others' closes the collection and leaves the mortgage in it. Reading it as 'no debts' erases a real EUR 340,000 liability."
+      }
+    },
+    {
+      "id": "hypothetical_is_not_a_holding",
+      "family": "adversarial_modality",
+      "goalType": "improve_pension",
+      "transcript": [
+        { "role": "assistant", "text": "What is your pension worth now?" },
+        { "role": "client", "text": "About a hundred and eighty thousand. What would it look like if I had three hundred thousand in it by sixty?" }
+      ],
+      "expect": {
+        "canonical": [{ "collection": "pensions", "field": "currentValue", "amount": 180000, "currency": "EUR" }],
+        "forbidden": [{ "anyMoney": 300000 }],
+        "collections": { "pensions": 1 },
+        "why": "A figure inside a what-if is a scenario the client is exploring, not money they hold."
+      }
+    },
+    {
+      "id": "dense_multi_fact_answer",
+      "family": "dense_recovery",
+      "goalType": "maintain_liquidity",
+      "transcript": [
+        { "role": "assistant", "text": "Tell me about your savings and any borrowing." },
+        { "role": "client", "text": "I have about twenty thousand put by and my mortgage is three hundred and forty thousand." }
+      ],
+      "expect": {
+        "canonical": [
+          { "anyMoney": 20000, "currency": "EUR" },
+          { "anyMoney": 340000, "currency": "EUR" }
+        ],
+        "why": "Two facts in one breath. Recovering one and dropping the other means the client is asked again for something they already said."
+      }
+    },
+    {
+      "id": "presence_without_value",
+      "family": "partial",
+      "goalType": "improve_pension",
+      "transcript": [
+        { "role": "assistant", "text": "Do you have any other pensions?" },
+        { "role": "client", "text": "There's another one from an old job but I've no idea what it's worth." }
+      ],
+      "expect": {
+        "canonical": [],
+        "clarificationExpected": true,
+        "why": "A holding that exists with no figure must not become a figure, and must not be silently dropped either. The value stays outstanding."
+      }
+    },
+    {
+      "id": "ambiguous_scale",
+      "family": "ambiguity",
+      "goalType": "improve_pension",
+      "transcript": [
+        { "role": "assistant", "text": "Roughly what is the pension worth?" },
+        { "role": "client", "text": "Around one eighty." }
+      ],
+      "expect": {
+        "canonical": [],
+        "clarificationExpected": true,
+        "why": "180 or 180,000 changes the plan completely. An honest question costs one turn."
+      }
+    },
+    {
+      "id": "no_arithmetic",
+      "family": "ambiguity",
+      "goalType": "maintain_liquidity",
+      "transcript": [
+        { "role": "assistant", "text": "How much do you have saved?" },
+        { "role": "client", "text": "Two thousand in the credit union plus the other three in the current account." }
+      ],
+      "expect": {
+        "forbidden": [{ "anyMoney": 5000 }],
+        "why": "A total the client did not say is not a figure they stated."
+      }
+    },
+    {
+      "id": "owner_correction",
+      "family": "adversarial_owner",
+      "goalType": "improve_pension",
+      "withPartner": true,
+      "transcript": [
+        { "role": "assistant", "text": "Whose pension is the hundred and eighty thousand?" },
+        { "role": "client", "text": "Actually that one is my wife's, not mine." }
+      ],
+      "expect": {
+        "clarificationExpected": false,
+        "why": "An owner correction with no figure restated. The write must move the holding, not create a second one."
+      }
+    },
+    {
+      "id": "currency_stated",
+      "family": "transcription",
+      "goalType": "improve_pension",
+      "transcript": [
+        { "role": "assistant", "text": "And the UK pension?" },
+        { "role": "client", "text": "That one's about ninety thousand pounds." }
+      ],
+      "expect": {
+        "canonical": [{ "anyMoney": 90000, "currency": "GBP" }],
+        "forbidden": [{ "anyMoney": 90000, "currency": "EUR" }],
+        "why": "Writing euro for pounds is the same error as a wrong number, with a nicer failure mode: the figure looks right."
+      }
+    }
+  ]
+}

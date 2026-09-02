@@ -109,6 +109,7 @@
     "verify:langfuse": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/verify-langfuse-trace.mjs",
     "measure:extraction": "node ./scripts/measure-extraction-methods.mjs",
     "probe:langfuse": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/probe-langfuse-attributes.mjs",
-    "check:consumer-spoken-evidence": "node ./scripts/check-consumer-spoken-evidence.mjs"
+    "check:consumer-spoken-evidence": "node ./scripts/check-consumer-spoken-evidence.mjs",
+    "spike:semantic-claims": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-semantic-claims-spike.mjs"
   }
 }
