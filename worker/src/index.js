@@ -244,7 +244,10 @@ function getConsumerRouteMethods(pathname) {
   if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/analysis-plan$/.test(pathname)) {
     return 'PUT,OPTIONS';
   }
-  const voiceMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/(consent|transcriptions|speech)$/.exec(pathname);
+  // The bounded upload transcription route is gone. This table must not keep
+  // advertising it: a preflight that answers 204 with an Allow list for a path
+  // the consumer router then 404s tells a browser the route exists.
+  const voiceMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/(consent|speech)$/.exec(pathname);
   if (voiceMatch) return voiceMatch[1] === 'consent' ? 'PATCH,OPTIONS' : 'POST,OPTIONS';
   const match = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
   if (!match) return null;
@@ -7586,7 +7589,23 @@ export default {
 
     if (request.method === 'OPTIONS') {
       if (!routeConfig) {
-        return jsonResponse({ error: 'Not found.' }, 404, origin, 'OPTIONS', requestHeaders);
+        // A path with no route must advertise NO method. corsHeaders always
+        // emits an Allow-Methods value -- its own default when given none -- so
+        // this 404 builds its header set directly rather than through
+        // jsonResponse: the browser learns the origin is allowed and the route
+        // does not exist, and learns nothing it could retry against.
+        return new Response(JSON.stringify({ error: 'Not found.' }), {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(origin ? {
+              'Access-Control-Allow-Origin': origin,
+              'Access-Control-Allow-Credentials': 'true'
+            } : {}),
+            Vary: requestHeaders ? 'Origin, Access-Control-Request-Headers' : 'Origin',
+            ...securityHeaders(noStoreHeaders())
+          }
+        });
       }
 
       return optionsResponse(request, origin, routeConfig.methods);

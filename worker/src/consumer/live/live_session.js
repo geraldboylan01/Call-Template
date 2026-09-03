@@ -1328,8 +1328,6 @@ export class ConsumerLiveSession {
 
     if (event.typed !== true) await this.meterTranscription(event);
     await this.touch();
-    await this.drainDeferredEvidenceTools(itemId, transcript);
-    this.scheduleReviewsForClientTurn(itemId, transcript);
     const confirmsPublishedDirectSnapshot = Boolean(
       this.directConfirmationOffer
       && turn.answersTurnId
@@ -1338,15 +1336,27 @@ export class ConsumerLiveSession {
         === Number(this.directAwaitingConfirmationSnapshotRevision)
       && classifySpokenPlanConfirmation(transcript) === 'affirmed'
     );
-    // An answer to anything other than the exact armed plan proposition ends
-    // that invitation. This is causal bookkeeping only; the semantic planner,
-    // not this comparison, decides what the new utterance means financially.
-    if (this.directConfirmationOffer && !confirmsPublishedDirectSnapshot) {
-      await this.clearDirectConfirmationOffer();
-    }
+    // THE OBLIGATION IS REGISTERED BEFORE THE DRAIN, NOT AFTER IT.
+    // A deferred get_state resumes inside drainDeferredEvidenceTools below and
+    // waits on the planning chain. If this turn were queued after that drain,
+    // the read would find an empty outstanding list, conclude the background
+    // lane was idle, and answer from the PREVIOUS snapshot -- revision 0 on the
+    // first turn. Scheduling here is what makes "wait for planning" mean "wait
+    // for planning that has seen this turn". Nothing is awaited: the pass still
+    // runs detached, and Realtime is already speaking.
     if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off'
       && !confirmsPublishedDirectSnapshot) {
       this.scheduleDirectModulePlanning(storedTurn.id);
+    }
+    await this.drainDeferredEvidenceTools(itemId, transcript);
+    this.scheduleReviewsForClientTurn(itemId, transcript);
+    // An answer to anything other than the exact armed plan proposition ends
+    // that invitation. This is causal bookkeeping only; the semantic planner,
+    // not this comparison, decides what the new utterance means financially.
+    // scheduleDirectModulePlanning already retires the offer when it queues a
+    // new pass; this covers the turns that queue nothing.
+    if (this.directConfirmationOffer && !confirmsPublishedDirectSnapshot) {
+      await this.clearDirectConfirmationOffer();
     }
     this.pruneLiveTurnLedger();
 
@@ -2570,11 +2580,20 @@ export class ConsumerLiveSession {
       || this.deferredEvidenceToolCallIds.has(callId)) return;
     this.registerResponseToolCall(event);
 
-    // Both mutating tools derive authority from what the client just said.
+    // These tools derive authority from what the client just said.
     // Their result may wait for ASR because this path is behind already-started
     // speech; the provider event chain itself must return immediately so that
     // the future transcription event can be processed.
-    if (name === 'save_facts' || name === 'confirm_and_run') {
+    //
+    // In direct mode get_state joins them. It is a READ, but it is the read the
+    // model steers on: which analyses are in play, what is known, what is still
+    // missing. Answering it from state that predates the sentence that caused
+    // the call is how the live lane re-asks a figure the client just gave, or
+    // reports no analyses at all on the very turn the goal was stated. The
+    // causal turn is the boundary; the answer is owed to the turn that asked.
+    const directStateRead = name === 'get_state'
+      && getConsumerConfig(this.env).modulePlannerMode === 'apply';
+    if (name === 'save_facts' || name === 'confirm_and_run' || directStateRead) {
       const responseId = String(event.response_id || '');
       const response = responseId ? this.responseContextsById.get(responseId) : null;
       const turn = response?.causeItemId
@@ -2590,6 +2609,8 @@ export class ConsumerLiveSession {
         }
         // The bounded queue is full. Empty evidence preserves ordinary
         // conversation while categorical-none and run confirmation fail closed.
+        // A state read degrades the same way: the model is handed the newest
+        // snapshot that does exist rather than nothing at all.
         return this.runToolCallWithTranscript(event, '');
       }
       return this.runToolCallWithTranscript(

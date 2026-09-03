@@ -213,7 +213,7 @@ assert.throws(() => assertLaneProofResult(proofResult({ conversationVersion: 'v3
 
 /* ------------------------------------------------- the pinned live identities */
 
-assert.equal(live.promptVersion, 'planeir-live-conversation-v10');
+assert.equal(live.promptVersion, 'planeir-live-conversation-v11');
 assert.equal(live.toolsetVersion, 'planeir-live-tools-v1');
 // Pinned against the modules that define them, so a prompt or toolset bump
 // cannot leave the activation proof verifying a version nothing runs.
@@ -223,7 +223,7 @@ assert.equal(live.toolsetVersion, LIVE_TOOLSET_VERSION);
 // meeting, whatever its control plane says.
 assert.throws(
   () => assertLaneProofResult(proofResult({ promptVersion: 'consumer-realtime-orchestrator-v9' })),
-  /did not run the planeir-live-conversation-v10 prompt/
+  /did not run the planeir-live-conversation-v11 prompt/
 );
 assert.throws(
   () => assertLaneProofResult(proofResult({ toolsetVersion: 'consumer-realtime-tools-v7' })),
@@ -231,7 +231,7 @@ assert.throws(
 );
 assert.throws(
   () => assertLaneProofResult(proofResult({ promptVersion: '' })),
-  /did not run the planeir-live-conversation-v10 prompt/
+  /did not run the planeir-live-conversation-v11 prompt/
 );
 
 /* --------------------------------- the live lane's tool surface is its own */
@@ -276,7 +276,7 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
   const bridgeSource = source('scripts/check-consumer-live-advisor-bridge.mjs');
   assert.match(bridgeSource, /proof\.conversationVersion, 'live'/, 'The bridge must assert the live lane on its own terms.');
   assert.match(bridgeSource, /proof\.liveLaneActivated/);
-  assert.match(bridgeSource, /planeir-live-conversation-v10/);
+  assert.match(bridgeSource, /planeir-live-conversation-v11/);
   assert.match(bridgeSource, /planeir-live-tools-v1/);
 
   // The live client has to be startable at all: the session id must come from

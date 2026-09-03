@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createDefaultHousePurchaseInputs } from '../js/house_purchase/index.js';
 import { LIQUIDITY_RESERVE_POLICY } from '../js/liquidity_reserve.js';
 import { approvedCollegeScenarios, PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
+import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
 import {
   buildDirectModulePolicyEnvelope,
   directModulePolicyEntries
@@ -48,7 +49,23 @@ const directProviderConfig = buildLiveSessionConfig(getConsumerConfig({
   CONSUMER_MODULE_PLANNER_MODE: 'apply'
 }));
 assert.deepEqual(directProviderConfig.tools.map((tool) => tool.name), ['get_state', 'confirm_and_run']);
-assert.doesNotMatch(directProviderConfig.instructions, /save_facts —/);
+assert.doesNotMatch(directProviderConfig.instructions, /\bsave_facts\b/);
+assert.doesNotMatch(directProviderConfig.instructions, /save primary_goal_focus/i);
+assert.doesNotMatch(directProviderConfig.instructions, /^Needs:/m);
+assert.match(directProviderConfig.instructions, /Before the client has spoken, open once/i);
+assert.match(directProviderConfig.instructions, /background planner owns the structured goal and module interpretation/i);
+assert.match(directProviderConfig.instructions, /call get_state before naming what you will examine/i);
+const directPromptModules = MODULE_MANIFEST.filter((module) => (
+  module?.availability?.consumer === true
+  && module?.implementation?.hasRunnableEngine === true
+));
+assert.equal(directPromptModules.length, 7);
+for (const module of directPromptModules) {
+  assert.match(directProviderConfig.instructions, new RegExp(`### ${module.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  for (const goal of module.routing?.goals || []) {
+    assert.match(directProviderConfig.instructions, new RegExp(`\\b${goal.type}\\b`));
+  }
+}
 assert.deepEqual(
   directProviderConfig.tools.find((tool) => tool.name === 'confirm_and_run')?.parameters?.required,
   ['confirmationToken']
@@ -60,7 +77,7 @@ assert.match(
   }).realtimeVoice.aiGeneratedDisclosure,
   /background AI reads the conversation and prepares the structured inputs/i
 );
-pass('apply mode removes the legacy semantic fact writer from Realtime');
+pass('direct Realtime opens warmly, routes all seven modules by goal, and follows AI-authored state without legacy fact-writing instructions');
 
 const house = createDefaultHousePurchaseInputs(TODAY);
 Object.assign(house, {
