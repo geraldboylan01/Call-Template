@@ -27,6 +27,7 @@ const MORTGAGE_INPUT = Object.freeze({
   currentBalance: 240000,
   annualInterestRate: 0.041,
   startDateIso: TODAY,
+  endDateIso: null,
   remainingTermYears: 22,
   repaymentType: 'repayment',
   fixedPaymentAmount: null,
@@ -50,6 +51,7 @@ function extractionFor(throughTurnId, baseSnapshotRevision = 0, evidenceTurnId =
       missing: [],
       ambiguities: [],
       assumptions: moduleId === 'mortgage_analysis' ? [
+        { path: '/endDateIso', valueJson: 'null', source: 'contract_default' },
         { path: '/fixedPaymentAmount', valueJson: 'null', source: 'contract_default' },
         { path: '/oneOffOverpayment', valueJson: '0', source: 'contract_default' },
         { path: '/annualOverpayment', valueJson: '0', source: 'contract_default' }
@@ -341,6 +343,101 @@ try {
   assert.equal(coalescedBrief?.brief?.snapshotRevision, 2);
   assert.deepEqual(coalescedRig.session.directModulePlanningOutstanding, []);
   pass('rapid client turns coalesce to one active semantic pass plus the latest complete transcript');
+
+  /* ------------------------- the first state read cannot answer from nothing */
+
+  // THE RACE THIS PINS. Realtime is already speaking when it asks what is in
+  // play. On the very first substantive turn Whisper has often not finalized,
+  // so the turn is not stored, no planning pass is queued, and the background
+  // lane looks idle rather than late. A get_state answered there returns
+  // revision 0 and no analyses -- and the model, told to steer on exactly that,
+  // names nothing it can examine and starts asking for figures the client has
+  // just given. The read is owed to the turn that caused it.
+  const delayedMeeting = await newLiveMeeting('direct-module-delayed-asr', {
+    CONSUMER_MODULE_PLANNER_MODE: 'apply',
+    OPENAI_API_KEY: 'synthetic-test-key'
+  });
+  const delayedRig = await attachLiveSession(delayedMeeting);
+  const delayedSimulator = new LiveProviderSimulator(delayedRig);
+  const delayedStateItemId = `item_${++delayedSimulator.itemSeq}`;
+
+  await delayedSimulator.send({
+    type: 'input_audio_buffer.speech_stopped', item_id: delayedStateItemId
+  });
+  const delayedResponse = await delayedSimulator.startResponse(null);
+  assert.equal(
+    delayedRig.session.responseContextsById.get(delayedResponse.responseId)?.causeItemId,
+    delayedStateItemId,
+    'the response must record the client turn it is answering'
+  );
+
+  const sentBeforeDelayedState = delayedRig.provider.sent.length;
+  await delayedSimulator.send({
+    type: 'response.function_call_arguments.done',
+    response_id: delayedResponse.responseId,
+    call_id: 'call_delayed_state',
+    name: 'get_state',
+    arguments: '{}'
+  });
+  const outputFor = (callId) => delayedRig.provider.sent
+    .find((event) => event?.item?.type === 'function_call_output'
+      && event.item.call_id === callId);
+  assert.equal(
+    delayedRig.provider.sent.slice(sentBeforeDelayedState)
+      .some((event) => event?.item?.type === 'function_call_output'),
+    false,
+    'a direct state read must not be answered before its causal transcript finalizes'
+  );
+
+  await delayedSimulator.send({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: delayedStateItemId,
+    transcript: CLIENT_TURN
+  });
+  await settle(delayedRig.durable, delayedRig.session);
+
+  const delayedStateOutput = outputFor('call_delayed_state');
+  assert.ok(delayedStateOutput, 'the deferred state read must still be answered');
+  const delayedState = JSON.parse(delayedStateOutput.item.output);
+  assert.equal(delayedState.schemaVersion, 'DirectModuleToolStateV1');
+  assert.equal(delayedState.snapshotRevision, 1,
+    'the first state read must reflect the turn that caused it, never revision 0');
+  assert.deepEqual(
+    delayedState.modules.map((item) => item.moduleId),
+    ['mortgage_analysis'],
+    'module selection must be populated on the turn the client stated the goal'
+  );
+  assert.match(delayedState.modules[0].knownSummary, /240,000/,
+    'the figures the client just spoke must already be known to the state read');
+  assert.deepEqual(delayedState.modules[0].missing, []);
+
+  // FAIL OPEN WHEN THERE IS NOTHING TO WAIT FOR. An unavailable transcript
+  // queues no planning pass, so a state read deferred behind it would otherwise
+  // wait for a turn that will never arrive and silently strand the response.
+  const unavailableItemId = `item_${++delayedSimulator.itemSeq}`;
+  await delayedSimulator.send({
+    type: 'input_audio_buffer.speech_stopped', item_id: unavailableItemId
+  });
+  const unavailableResponse = await delayedSimulator.startResponse(null);
+  await delayedSimulator.send({
+    type: 'response.function_call_arguments.done',
+    response_id: unavailableResponse.responseId,
+    call_id: 'call_unavailable_state',
+    name: 'get_state',
+    arguments: '{}'
+  });
+  assert.equal(outputFor('call_unavailable_state'), undefined);
+  await delayedSimulator.send({
+    type: 'conversation.item.input_audio_transcription.failed',
+    item_id: unavailableItemId
+  });
+  await settle(delayedRig.durable, delayedRig.session);
+  const unavailableOutput = outputFor('call_unavailable_state');
+  assert.ok(unavailableOutput,
+    'a state read must be released even when its causal transcript never arrives');
+  assert.equal(JSON.parse(unavailableOutput.item.output).snapshotRevision, 1,
+    'it must fall back to the newest snapshot that does exist, not to nothing');
+  pass('a delayed or failed transcript cannot answer the first state read from empty planning state');
 } finally {
   globalThis.fetch = originalFetch;
 }

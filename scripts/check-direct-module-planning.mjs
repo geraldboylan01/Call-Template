@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createDefaultHousePurchaseInputs } from '../js/house_purchase/index.js';
 import { LIQUIDITY_RESERVE_POLICY } from '../js/liquidity_reserve.js';
 import { approvedCollegeScenarios, PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
+import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
 import {
   buildDirectModulePolicyEnvelope,
   directModulePolicyEntries
@@ -48,7 +49,23 @@ const directProviderConfig = buildLiveSessionConfig(getConsumerConfig({
   CONSUMER_MODULE_PLANNER_MODE: 'apply'
 }));
 assert.deepEqual(directProviderConfig.tools.map((tool) => tool.name), ['get_state', 'confirm_and_run']);
-assert.doesNotMatch(directProviderConfig.instructions, /save_facts —/);
+assert.doesNotMatch(directProviderConfig.instructions, /\bsave_facts\b/);
+assert.doesNotMatch(directProviderConfig.instructions, /save primary_goal_focus/i);
+assert.doesNotMatch(directProviderConfig.instructions, /^Needs:/m);
+assert.match(directProviderConfig.instructions, /Before the client has spoken, open once/i);
+assert.match(directProviderConfig.instructions, /background planner owns the structured goal and module interpretation/i);
+assert.match(directProviderConfig.instructions, /call get_state before naming what you will examine/i);
+const directPromptModules = MODULE_MANIFEST.filter((module) => (
+  module?.availability?.consumer === true
+  && module?.implementation?.hasRunnableEngine === true
+));
+assert.equal(directPromptModules.length, 7);
+for (const module of directPromptModules) {
+  assert.match(directProviderConfig.instructions, new RegExp(`### ${module.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  for (const goal of module.routing?.goals || []) {
+    assert.match(directProviderConfig.instructions, new RegExp(`\\b${goal.type}\\b`));
+  }
+}
 assert.deepEqual(
   directProviderConfig.tools.find((tool) => tool.name === 'confirm_and_run')?.parameters?.required,
   ['confirmationToken']
@@ -60,7 +77,7 @@ assert.match(
   }).realtimeVoice.aiGeneratedDisclosure,
   /background AI reads the conversation and prepares the structured inputs/i
 );
-pass('apply mode removes the legacy semantic fact writer from Realtime');
+pass('direct Realtime opens warmly, routes all seven modules by goal, and follows AI-authored state without legacy fact-writing instructions');
 
 const house = createDefaultHousePurchaseInputs(TODAY);
 Object.assign(house, {
@@ -86,6 +103,18 @@ Object.assign(house, {
   targetPurchaseDate: '2028-06-30',
   localAuthorityCode: 'unknown'
 });
+
+const PBS_NONE_TRANSCRIPT = 'The house is worth 450,000, we have 50,000 saved and a pension of 180,000, and we have no debts at all. We spend about 2,500 a month.';
+const PBS_EVIDENCE_PROFILE = { profileId: 'p', revision: 1, primaryPerson: { personId: 'primary', displayName: 'Client' }, partner: null, preferences: { baseCurrency: 'EUR' }, assumptions: { calculationDateIso: TODAY } };
+const PBS_ASSET_EVIDENCE = [
+  { path: '/currency', source: 'conversation', turnId: 'turn-none', quote: '450,000', profilePath: '' },
+  { path: '/assetPositions/0', source: 'conversation', turnId: 'turn-none', quote: 'The house is worth 450,000', profilePath: '' },
+  { path: '/assetPositions/1', source: 'conversation', turnId: 'turn-none', quote: 'we have 50,000 saved', profilePath: '' },
+  { path: '/assetPositions/2', source: 'conversation', turnId: 'turn-none', quote: 'a pension of 180,000', profilePath: '' },
+  { path: '/monthlyExpenditure', source: 'conversation', turnId: 'turn-none', quote: 'We spend about 2,500 a month', profilePath: '' },
+  { path: '/reconciliationWarnings', source: 'conversation', turnId: 'turn-none', quote: 'we have no debts at all', profilePath: '' },
+  { path: '/currencyWarnings', source: 'conversation', turnId: 'turn-none', quote: 'we have no debts at all', profilePath: '' }
+];
 
 const inputs = {
   personal_balance_sheet: {
@@ -126,12 +155,12 @@ const inputs = {
   },
   mortgage_analysis: {
     loanKind: 'mortgage', currentBalance: 240000, annualInterestRate: 0.041,
-    startDateIso: TODAY, remainingTermYears: 22, repaymentType: 'repayment',
+    startDateIso: TODAY, endDateIso: null, remainingTermYears: 22, repaymentType: 'repayment',
     fixedPaymentAmount: null, oneOffOverpayment: 0, annualOverpayment: 0
   },
   loan_analysis: {
     loanKind: 'loan', currentBalance: 18000, annualInterestRate: 0.085,
-    startDateIso: TODAY, remainingTermYears: 4, repaymentType: 'repayment',
+    startDateIso: TODAY, endDateIso: null, remainingTermYears: 4, repaymentType: 'repayment',
     fixedPaymentAmount: null, oneOffOverpayment: 0, annualOverpayment: 500
   },
   college_funding: {
@@ -302,6 +331,7 @@ const moduleRows = DIRECT_MODULE_IDS.map((moduleId) => ({
     ? 'Existing repayment mortgage: €240,000 balance, 4.1% rate and 22 years remaining.'
     : '',
   missing: [], ambiguities: [], assumptions: moduleId === 'mortgage_analysis' ? [
+    { path: '/endDateIso', valueJson: 'null', source: 'contract_default' },
     { path: '/fixedPaymentAmount', valueJson: 'null', source: 'contract_default' },
     { path: '/oneOffOverpayment', valueJson: '0', source: 'contract_default' },
     { path: '/annualOverpayment', valueJson: '0', source: 'contract_default' }
@@ -337,6 +367,177 @@ const snapshot = normalizeDirectSnapshot({
 assert.equal(snapshot.modules.find((item) => item.moduleId === 'mortgage_analysis').input.currentBalance, 240000);
 assert.equal(snapshot.snapshotRevision, 1);
 pass('spoken-word evidence supports the AI-authored native number without deterministic parsing');
+
+/* ------- tolerated bookkeeping never becomes a tolerated financial value --- */
+
+// Three kinds of planner bookkeeping are now dropped rather than fatal: an
+// evidence note pointing at a path the input does not have, a malformed
+// assumption, and an omitted module row. Each was destroying an otherwise
+// correct snapshot -- and with it every other module and the state Realtime
+// steers on -- over a line that carries no client meaning. Dropping is only
+// safe if it stays the STRICT direction, so this pins that: what the dropped
+// line would have supported must still be refused.
+{
+  const withStrayEvidence = moduleRows.map((item) => (
+    item.moduleId === 'mortgage_analysis'
+      ? {
+          ...item,
+          evidence: [
+            ...item.evidence,
+            // The client said something real that this engine has no field for.
+            { path: '/monthlyRepayment', source: 'conversation', turnId: 'turn-1', quote: 'About two and a half thousand a month', profilePath: '' }
+          ]
+        }
+      : item
+  ));
+  const tolerated = normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: withStrayEvidence,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const kept = tolerated.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.equal(kept.status, 'ready');
+  assert.equal(
+    kept.evidence.some((item) => item.path === '/monthlyRepayment'), false,
+    'a note that supports no input value must be dropped, not recorded as provenance'
+  );
+
+  // The same tolerance must NOT rescue a value. Drop the balance's real
+  // evidence and cite an unreachable path instead: the figure is now unsupported
+  // and the ready module has to fail.
+  const strayInsteadOfReal = moduleRows.map((item) => (
+    item.moduleId === 'mortgage_analysis'
+      ? {
+          ...item,
+          evidence: [
+            { path: '/monthlyRepayment', source: 'conversation', turnId: 'turn-1', quote: 'two hundred and forty grand', profilePath: '' },
+            ...item.evidence.filter((entry) => entry.path !== '/currentBalance')
+          ]
+        }
+      : item
+  ));
+  assert.throws(() => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: strayInsteadOfReal,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  }), /neither evidenced nor supplied by server policy/);
+
+  // A malformed assumption is dropped -- and the default it would have
+  // disclosed is then undisclosed, which still fails closed.
+  const malformedAssumption = moduleRows.map((item) => (
+    item.moduleId === 'mortgage_analysis'
+      ? {
+          ...item,
+          assumptions: item.assumptions.map((assumption) => (
+            assumption.path === '/annualOverpayment'
+              ? { ...assumption, valueJson: '{not json' }
+              : assumption
+          ))
+        }
+      : item
+  ));
+  assert.throws(() => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: malformedAssumption,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  }), /neither evidenced nor supplied by server policy/);
+
+  // An omitted row is completed as not_relevant: absence is non-selection, and
+  // a completed row can never carry an input, so nothing can execute from one.
+  const omitted = moduleRows.filter((item) => item.moduleId !== 'college_funding');
+  const completed = normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: omitted,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const filled = completed.modules.find((item) => item.moduleId === 'college_funding');
+  assert.equal(filled.status, 'not_relevant');
+  assert.equal(filled.input, null);
+  assert.deepEqual(filled.evidence, []);
+  assert.equal(completed.modules.length, APPROVED_CONSUMER_MODULE_IDS.length);
+}
+pass('dropped planner bookkeeping never rescues an unsupported value or an undisclosed default');
+
+/* ---------- an empty collection is a claim, and it needs saying out loud ---- */
+
+// FOUND WITH THE REAL MODEL. Asked whether they could cope if they lost their
+// job, the planner also produced a balance sheet and marked it ready with an
+// empty liabilityPositions -- asserting the client has no debts in a
+// conversation where debts were never raised. That is exactly the hidden
+// default that must never become a financial fact, and provenance caught it.
+// Pinned here so the rule cannot be relaxed by a later tolerance: "none" is
+// something the client says, not something a silent empty array may imply.
+{
+  const debtFreeInput = { ...inputs.personal_balance_sheet, liabilityPositions: [] };
+  const rowsFor = (evidence) => DIRECT_MODULE_IDS.map((id) => ({
+    moduleId: id,
+    outputKey: DIRECT_MODULE_CONTRACTS[id].outputKey,
+    status: id === 'personal_balance_sheet' ? 'ready' : 'not_relevant',
+    inputJson: id === 'personal_balance_sheet' ? JSON.stringify(debtFreeInput) : '',
+    steeringSummary: '', missing: [], ambiguities: [], assumptions: [],
+    evidence: id === 'personal_balance_sheet' ? evidence : []
+  }));
+  const run = (evidence) => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-none',
+    modules: rowsFor(evidence),
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-none', role: 'user', transcript: PBS_NONE_TRANSCRIPT }],
+    throughTurnId: 'turn-none', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: PBS_EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+
+  assert.throws(() => run(PBS_ASSET_EVIDENCE), /neither evidenced nor supplied by server policy/,
+    'an empty liability list nobody spoke about must not be ready');
+
+  // The same input IS allowed once the client actually said it.
+  const spoken = run([
+    ...PBS_ASSET_EVIDENCE,
+    { path: '/liabilityPositions', source: 'conversation', turnId: 'turn-none', quote: 'we have no debts at all', profilePath: '' }
+  ]);
+  assert.equal(
+    spoken.modules.find((item) => item.moduleId === 'personal_balance_sheet').status,
+    'ready',
+    'a categorical none the client actually stated must be accepted as evidence'
+  );
+}
+pass('an empty collection is ready only when the client said there are none');
 
 const mortgageWithoutAnnualOverpayment = {
   ...inputs.mortgage_analysis
@@ -430,7 +631,7 @@ const certificateConfig = {
   modulePlannerModel: 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 5000,
-  modulePlannerPromptVersion: 'direct-module-planner-v2',
+  modulePlannerPromptVersion: 'direct-module-planner-v4',
   moduleVerifierPromptVersion: 'direct-module-verifier-v2'
 };
 let providerCalls = 0;
@@ -627,7 +828,7 @@ try {
       modulePlannerModel: 'gpt-5.6-luna',
       modulePlannerReasoningEffort: 'low',
       modulePlannerTimeoutMs: 5000,
-      modulePlannerPromptVersion: 'direct-module-planner-v2',
+      modulePlannerPromptVersion: 'direct-module-planner-v4',
       moduleVerifierPromptVersion: 'direct-module-verifier-v2'
     },
     turns: [{ id: 'turn-2', role: 'user', transcript: 'The balance is all I know right now.' }],

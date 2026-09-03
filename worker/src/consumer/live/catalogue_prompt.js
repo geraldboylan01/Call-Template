@@ -52,8 +52,11 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // turn before speaking again. v9 removes incident-shaped extraction examples;
 // goal meanings now come from the central catalogue and finalized-turn value
 // omissions are recovered by deterministic coverage plus reconciliation. v10
-// gives the one server-triggered opening its own no-client-yet branch.
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v10';
+// gives the one server-triggered opening its own no-client-yet branch. v11
+// separates the direct-module conversation from the legacy fact-writer: the
+// direct prompt no longer tells Realtime to call a tool it does not have, and
+// it waits for background module state before naming analyses or gathering.
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v11';
 
 /**
  * Budgets for the per-turn state item.
@@ -297,7 +300,7 @@ function safeClientBenefit(module) {
   return module.clientBenefit;
 }
 
-function moduleBlock(module) {
+function moduleBlock(module, { includeFactNeeds = true } = {}) {
   const facts = (module.requiredFacts || []).join(', ') || 'none';
   const goals = (module.routing?.goals || []).map((goal) => goal.type).join(', ') || 'none';
   const guidance = (module.conversationGuidance || []).map((line) => `- ${line}`);
@@ -306,7 +309,7 @@ function moduleBlock(module) {
     module.purpose ? `Purpose: ${module.purpose}` : null,
     safeClientBenefit(module) ? `What the client gets: ${safeClientBenefit(module)}` : null,
     `Fits these goals: ${goals}`,
-    `Needs: ${facts}`,
+    includeFactNeeds ? `Needs: ${facts}` : null,
     ...(guidance.length ? ['Approved education and planning guides:', ...guidance] : []),
     ''
   ].filter((line) => line !== null).join('\n');
@@ -379,7 +382,7 @@ function safetySection() {
   ].join('\n');
 }
 
-function conversationFlowSection() {
+function conversationFlowSection({ directModulePlanning = false } = {}) {
   return [
     '## CONVERSATION FLOW',
     '',
@@ -412,15 +415,26 @@ function conversationFlowSection() {
     '### Stage 2 — FOCUS (agree what matters)',
     'Reflect back what you heard, in their words, briefly. Surface EVERY goal they mentioned —',
     'people rarely have one — and then find out which matters most right now.',
-    'IF THEY NAME SEVERAL GOALS AT ONCE, that is good news, not a problem. Acknowledge all of',
-    'them, then ask which they would like to start with. NEVER ask them to repeat themselves',
-    'because they said too much. When they choose, save primary_goal_focus using the exact same',
-    'goal vocabulary as primary_goal. Do not start gathering figures until that focus is saved.',
-    'A comparison can name a concrete goal on each side. Save every concrete underlying goal',
-    'separately. Do not replace concrete goals with assess_decision; use assess_decision only',
-    'while the subject of a decision is genuinely still vague. A goal type is a value inside a',
-    'primary_goal fact, NEVER a factId. Mentioning a balance, product, child, property, business',
-    'or farm without an outcome is context rather than a goal.',
+    ...(directModulePlanning ? [
+      'IF THEY NAME SEVERAL GOALS AT ONCE, that is good news, not a problem. Acknowledge all of',
+      'them, then ask which they would like to start with. NEVER ask them to repeat themselves',
+      'because they said too much. Do not start gathering figures until their focus is explicit',
+      'in the conversation and you have acknowledged it.',
+      'A comparison can contain a concrete goal on each side. Keep every concrete underlying goal',
+      'distinct in the conversation; do not collapse them into a vague decision. Mentioning a',
+      'balance, product, child, property, business or farm without an outcome is context rather',
+      'than a goal. The background planner owns the structured goal and module interpretation.'
+    ] : [
+      'IF THEY NAME SEVERAL GOALS AT ONCE, that is good news, not a problem. Acknowledge all of',
+      'them, then ask which they would like to start with. NEVER ask them to repeat themselves',
+      'because they said too much. When they choose, save primary_goal_focus using the exact same',
+      'goal vocabulary as primary_goal. Do not start gathering figures until that focus is saved.',
+      'A comparison can name a concrete goal on each side. Save every concrete underlying goal',
+      'separately. Do not replace concrete goals with assess_decision; use assess_decision only',
+      'while the subject of a decision is genuinely still vague. A goal type is a value inside a',
+      'primary_goal fact, NEVER a factId. Mentioning a balance, product, child, property, business',
+      'or farm without an outcome is context rather than a goal.'
+    ]),
     'Use only explicit ranking cues for order: main/top/first priority, focus today or start with',
     'may establish one primary goal; later, eventually, after that, less urgent or can wait may',
     'establish a secondary goal. Ordinary desire and mention order establish no relative rank.',
@@ -432,9 +446,17 @@ function conversationFlowSection() {
     'comparison, do NOT add maintain_liquidity or an emergency-reserve analysis merely because',
     'the client wants flexibility; add it only if they explicitly ask to',
     'plan an emergency reserve as a separate outcome.',
-    'If the client later explicitly says to leave one saved goal for another meeting and continue',
-    'with the other, save the chosen goal again with correctionTarget set to the deferred goal,',
-    'then update primary_goal_focus. Never defer a goal merely because one fact is missing.',
+    ...(directModulePlanning ? [
+      'If the client later explicitly leaves one goal for another meeting and continues with a',
+      'different one, acknowledge that change plainly so the background planner can update the',
+      'module state. Never defer a goal merely because one input is missing.',
+      'Once the focus is clear, call get_state before naming what you will examine or asking the',
+      'first financial-detail question. Use only the analyses and open needs in that current state.'
+    ] : [
+      'If the client later explicitly says to leave one saved goal for another meeting and continue',
+      'with the other, save the chosen goal again with correctionTarget set to the deferred goal,',
+      'then update primary_goal_focus. Never defer a goal merely because one fact is missing.'
+    ]),
     'Then say, in plain outcome language, what you will look at with them. Use the client-facing',
     'description of each analysis, never its internal name or id.',
     'That handoff happens ONCE and it is mandatory: before the first financial-detail question,',
@@ -446,13 +468,17 @@ function conversationFlowSection() {
     'financial picture" review unless the client actually asked to understand that wider picture.',
     '',
     '### Stage 3 — GATHER (collect what the analyses need)',
-    'Now, and only now, work through the facts the chosen analyses need. One at a time.',
+    directModulePlanning
+      ? 'Now, and only now, work through the inputs the chosen analyses need. One at a time.'
+      : 'Now, and only now, work through the facts the chosen analyses need. One at a time.',
     'Explain why a fact matters when that adds useful context, but not as a ritual preamble on',
     'every turn. Vary the cadence: sometimes acknowledge briefly and ask; sometimes give the',
     'reason; sometimes let a useful answer breathe.',
     'Skip anything you already have. Skip anything that cannot apply to this person. Take',
     'volunteered facts in any order and never re-ask or reconfirm something they answered clearly.',
-    'Allowed choice values are tool vocabulary, NOT a menu to read aloud. Use the story you already',
+    directModulePlanning
+      ? 'Values and paths in module state are internal vocabulary, NOT a menu to read aloud. Use the story you already'
+      : 'Allowed choice values are tool vocabulary, NOT a menu to read aloud. Use the story you already',
     'have to ask one ordinary question. For a renter buying their first place, ask whether this',
     'would be their first home; do not recite all lending categories.',
     'Likewise ask "What pension do you have?" in ordinary language; do not list occupational,',
@@ -464,29 +490,46 @@ function conversationFlowSection() {
     'have a mortgage, own property, or have a home: their story has already answered that.',
     'For college planning, the living-at-home and living-away cost scenarios are standard',
     'server-supplied assumptions. Never ask the client to choose or invent annual college costs.',
-    'When they give the ages of several children together, save every child and currentAge in',
-    'one dependants batch before moving on.',
+    ...(directModulePlanning ? [
+      'When they give the ages of several children together, acknowledge the whole answer before',
+      'moving on. The background planner keeps each child and age separate in the module input.'
+    ] : [
+      'When they give the ages of several children together, save every child and currentAge in',
+      'one dependants batch before moving on.'
+    ]),
     'When you have enough, say what you are going to run and ask them to confirm.',
     'AN UNAVAILABLE INPUT BLOCKS ONLY THE ANALYSIS THAT NEEDS IT. After one estimate request,',
     'state may mark an analysis as waiting on the client. Explain once that it cannot be run',
     'reliably, why the input matters, and that it can be revisited later. Other analyses that state',
     'marks ready may still be offered and confirmed; name exactly the ready set you will run.',
     '',
-    'EVERY QUESTION MUST BELONG TO AN ANALYSIS THAT IS IN PLAY. After each save you are given a',
-    'short state note listing the analyses in play and, for each one, what it still needs and why.',
-    'That note is the authority on what to ask. The "Needs:" lines in the catalogue below describe',
-    'what each analysis is CAPABLE of using — they are reference, not a checklist, and a fact',
-    'listed there for an analysis that is not in play must not be asked for at all.',
-    'If you cannot name the analysis a question serves, do not ask it.',
-    'If an analysis lists nothing under Needs, it has everything it requires. Do not invent a',
-    'further question for it from the catalogue below.',
-    '',
-    'NEVER ASK FOR SOMETHING THE STATE NOTE ALREADY KNOWS. The note opens with "Already known",',
-    'and every entry there carries the value the client gave you — "your PRSA — Current pension',
-    'value: approximately €28,000". That IS their answer. An approximate figure is an answer:',
-    '"about twenty-eight thousand" is captured, not missing, and asking again for a rounder number',
-    'is the single thing clients find most irritating. Never ask a client to repeat a figure back',
-    'to you, and never ask them to say one "in words".',
+    ...(directModulePlanning ? [
+      'EVERY QUESTION MUST BELONG TO AN ANALYSIS IN THE CURRENT BACKGROUND MODULE STATE. For each',
+      'analysis, that state supplies a plain known summary plus missing and ambiguous items. It is',
+      'the authority on what to collect. If you cannot name the analysis a question serves, do not',
+      'ask it. If it lists no missing or ambiguous item, invent no further question.',
+      '',
+      'NEVER ASK FOR SOMETHING knownSummary ALREADY CONTAINS. A figure, owner, absence or correction',
+      'there is already understood. An approximate figure is an answer: asking for a rounder one is',
+      'the single thing clients find most irritating. Never ask a client to repeat a figure back to',
+      'you, and never ask them to say one "in words".'
+    ] : [
+      'EVERY QUESTION MUST BELONG TO AN ANALYSIS THAT IS IN PLAY. After each save you are given a',
+      'short state note listing the analyses in play and, for each one, what it still needs and why.',
+      'That note is the authority on what to ask. The "Needs:" lines in the catalogue below describe',
+      'what each analysis is CAPABLE of using — they are reference, not a checklist, and a fact',
+      'listed there for an analysis that is not in play must not be asked for at all.',
+      'If you cannot name the analysis a question serves, do not ask it.',
+      'If an analysis lists nothing under Needs, it has everything it requires. Do not invent a',
+      'further question for it from the catalogue below.',
+      '',
+      'NEVER ASK FOR SOMETHING THE STATE NOTE ALREADY KNOWS. The note opens with "Already known",',
+      'and every entry there carries the value the client gave you — "your PRSA — Current pension',
+      'value: approximately €28,000". That IS their answer. An approximate figure is an answer:',
+      '"about twenty-eight thousand" is captured, not missing, and asking again for a rounder number',
+      'is the single thing clients find most irritating. Never ask a client to repeat a figure back',
+      'to you, and never ask them to say one "in words".'
+    ]),
     'Ask a second time ONLY when the note itself gives you a reason to: it marks the value as',
     'conflicting or stale, the figure belongs to a different person or account from the one the',
     'analysis needs, or the client tells you the earlier figure was wrong. Wanting more precision',
@@ -495,11 +538,17 @@ function conversationFlowSection() {
     'accounts: a value known for one is not a value known for the other, and a Needs line that',
     'names an owner should be asked with that owner in it.',
     '',
-    'A HOLDING IS THE SPEAKER’S UNTIL YOU KNOW OTHERWISE. Use owner "primary" unless you have',
-    'already recorded a partner. "We have a €400,000 mortgage" means save it as theirs — marking it',
-    '"joint" or "partner" before a partner exists is refused outright, and the figure is then lost',
-    'rather than merely mis-attributed. Whose it is can be corrected later; a number you never',
-    'saved cannot be.',
+    ...(directModulePlanning ? [
+      'DO NOT GUESS OWNERSHIP OR ENTITY IDENTITY. Receive natural phrases such as mine, hers, ours,',
+      'the other pension and no other debts without translating them aloud. The background planner',
+      'binds their meaning. Ask an ownership question only when module state reports an ambiguity.'
+    ] : [
+      'A HOLDING IS THE SPEAKER’S UNTIL YOU KNOW OTHERWISE. Use owner "primary" unless you have',
+      'already recorded a partner. "We have a €400,000 mortgage" means save it as theirs — marking it',
+      '"joint" or "partner" before a partner exists is refused outright, and the figure is then lost',
+      'rather than merely mis-attributed. Whose it is can be corrected later; a number you never',
+      'saved cannot be.'
+    ]),
     '',
     'ANYTHING LISTED AS A STANDARD ASSUMPTION IS SETTLED. The engine already has an approved value',
     'for it. Never ask for it, and never treat it as outstanding — an analysis that has what it',
@@ -507,10 +556,18 @@ function conversationFlowSection() {
     'raises it themselves, or if what they have told you makes the standard value clearly wrong for',
     'them.',
     '',
-    'YOU DECIDE WHAT TO ASK NEXT. There is no server-supplied question and no fixed order. The',
-    'state note arrives on its own after every save, so you rarely need get_state — reach for it',
-    'when you have lost track or want to check you are not repeating yourself. Then choose what a',
-    'thoughtful person would actually ask this particular client next.'
+    ...(directModulePlanning ? [
+      'YOU DECIDE HOW TO ASK NEXT. There is no fixed questionnaire. The module state arrives after',
+      'each finalized client turn and identifies what is known, missing or ambiguous; choose one',
+      'useful item and ask it in a way that follows naturally from this particular conversation.',
+      'Use get_state when choosing the first detail, after a dense answer, whenever state may have',
+      'caught up, and before confirmation. Do not wait for it merely to acknowledge or converse.'
+    ] : [
+      'YOU DECIDE WHAT TO ASK NEXT. There is no server-supplied question and no fixed order. The',
+      'state note arrives on its own after every save, so you rarely need get_state — reach for it',
+      'when you have lost track or want to check you are not repeating yourself. Then choose what a',
+      'thoughtful person would actually ask this particular client next.'
+    ])
   ].join('\n');
 }
 
@@ -716,7 +773,7 @@ export function buildLiveCataloguePrompt({ directModulePlanning = false } = {}) 
     '',
     toneSection(),
     '',
-    conversationFlowSection(),
+    conversationFlowSection({ directModulePlanning }),
     '',
     tangentSection(),
     '',
@@ -732,7 +789,7 @@ export function buildLiveCataloguePrompt({ directModulePlanning = false } = {}) 
     'here, and never say an internal id out loud — use the plain description.',
     'Between one and three is the right number for a meeting.',
     '',
-    ...modules.map(moduleBlock),
+    ...modules.map((module) => moduleBlock(module, { includeFactNeeds: !directModulePlanning })),
     '',
     ...(directModulePlanning ? [] : [
       '## THE FACTS THOSE ANALYSES NEED',
