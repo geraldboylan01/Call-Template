@@ -32,8 +32,8 @@ const baseConfig = {
   modulePlannerModel: process.env.CONSUMER_MODULE_PLANNER_MODEL || 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 120_000,
-  modulePlannerPromptVersion: 'direct-module-planner-v4',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v2'
+  modulePlannerPromptVersion: 'direct-module-planner-v5',
+  moduleVerifierPromptVersion: 'direct-module-verifier-v3'
 };
 
 function profile({ partner = false } = {}) {
@@ -164,6 +164,9 @@ const wanted = process.argv.slice(2);
 const selected = wanted.length
   ? SCENARIOS.filter((item) => wanted.includes(item.id))
   : SCENARIOS;
+if (!selected.length || wanted.some((id) => !SCENARIOS.some((item) => item.id === id))) {
+  throw new Error('Choose an existing conversation scenario.');
+}
 
 const results = [];
 for (const scenario of selected) {
@@ -217,4 +220,7 @@ for (const row of results) {
   const sel = o.ok ? o.selected.join('+') || '(none)' : 'ERROR ' + o.code;
   const hit = o.ok && o.selected.includes(row.expect) ? 'selected' : 'MISSED';
   console.log(`  ${row.id.padEnd(10)} expect=${row.expect.padEnd(24)} got=${sel.padEnd(34)} ${hit}`);
+}
+if (results.some(({ expect, outcome }) => !outcome.ok || !outcome.selected.includes(expect))) {
+  process.exitCode = 1;
 }

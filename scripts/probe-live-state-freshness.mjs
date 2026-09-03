@@ -106,3 +106,6 @@ console.log('  settled read shows every fact from the dense answer:',
   Object.values(settledFacts).every(Boolean));
 console.log('  delayed read was NOT answered early:', !answeredEarly);
 console.log('  delayed read includes the in-flight turn:', salarySeen);
+if (!Object.values(settledFacts).every(Boolean) || answeredEarly || !salarySeen) {
+  process.exitCode = 1;
+}

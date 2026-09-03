@@ -28,8 +28,8 @@ const result = await interpretDirectModuleConversation({
     modulePlannerModel: process.env.CONSUMER_MODULE_PLANNER_MODEL || 'gpt-5.6-luna',
     modulePlannerReasoningEffort: 'low',
     modulePlannerTimeoutMs: 60_000,
-    modulePlannerPromptVersion: 'direct-module-planner-v4',
-    moduleVerifierPromptVersion: 'direct-module-verifier-v2'
+    modulePlannerPromptVersion: 'direct-module-planner-v5',
+    moduleVerifierPromptVersion: 'direct-module-verifier-v3'
   },
   turns,
   throughTurnId: 'client-3',

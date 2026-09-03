@@ -275,8 +275,17 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     inputTokens: NON_CONTENT_FIELD_TYPES.INTEGER,
     outputTokens: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
+  // WHICH module and WHICH paths, never what the client said. The emitter has
+  // always built these; this schema listed only `code` and silently dropped
+  // them, so every production failure recorded a bare code -- and diagnosing
+  // the first real call meant recovering that code from the LENGTH of its
+  // ciphertext. A module id and a JSON pointer are structural: no transcript
+  // content, no figure. `paths` is a space-joined pointer list because this
+  // allowlist admits no arrays; like every string here it is bounded.
   'live.modules.planning_failed': event({
-    code: NON_CONTENT_FIELD_TYPES.STRING
+    code: NON_CONTENT_FIELD_TYPES.STRING,
+    moduleId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    paths: NON_CONTENT_FIELD_TYPES.STRING
   }),
   // A deterministic detector (L2/L3) cancelled a response mid-sentence.
   // A fast-lane figure no review could settle, now being put back to the
