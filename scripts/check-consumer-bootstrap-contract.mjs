@@ -291,8 +291,8 @@ await (async () => {
   const directEnv = {
     ...keyedEnv,
     CONSUMER_MODULE_PLANNER_MODE: 'apply',
-    CONSUMER_MODULE_PLANNER_PROMPT_VERSION: 'direct-module-planner-v4',
-    CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: 'direct-module-verifier-v2'
+    CONSUMER_MODULE_PLANNER_PROMPT_VERSION: 'direct-module-planner-v5',
+    CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: 'direct-module-verifier-v3'
   };
   const { status, body } = await requestEnvelope(
     directEnv,
@@ -309,8 +309,8 @@ await (async () => {
   assert.deepEqual(body.modulePlanning, {
     mode: 'apply',
     model: getConsumerConfig(directEnv).modulePlannerModel,
-    extractorPromptVersion: 'direct-module-planner-v4',
-    verifierPromptVersion: 'direct-module-verifier-v2'
+    extractorPromptVersion: 'direct-module-planner-v5',
+    verifierPromptVersion: 'direct-module-verifier-v3'
   });
   console.info('[BootstrapContract] PASS: the protected envelope attests direct apply and its certificate identities');
 })();

@@ -389,7 +389,7 @@ async function main() {
         assert.equal(proof.directProviderAudioAttached, true, 'The production direct live audio stream was not proven.');
         assert.equal(
           proof.promptVersion,
-          'planeir-live-conversation-v11',
+          'planeir-live-conversation-v12',
           'The production live meeting did not run the pinned live prompt.'
         );
         assert.equal(

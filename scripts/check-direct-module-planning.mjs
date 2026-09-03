@@ -23,6 +23,7 @@ import {
   interpretDirectModuleConversation,
   MODULE_PLANNING_SNAPSHOT_V1,
   normalizeDirectSnapshot,
+  plannerFacingSnapshot,
   verifyDirectModuleCertificate
 } from '../worker/src/consumer/direct_module_planner.js';
 
@@ -411,8 +412,11 @@ pass('spoken-word evidence supports the AI-authored native number without determ
   );
 
   // The same tolerance must NOT rescue a value. Drop the balance's real
-  // evidence and cite an unreachable path instead: the figure is now unsupported
-  // and the ready module has to fail.
+  // evidence and cite an unreachable path instead: the figure is now
+  // unsupported, so the module leaves this pass NOT ready -- and the path it
+  // could not support becomes something to ask about. The snapshot itself
+  // survives: one module's unsupported value is not a reason to discard the
+  // other six and the state Realtime steers on.
   const strayInsteadOfReal = moduleRows.map((item) => (
     item.moduleId === 'mortgage_analysis'
       ? {
@@ -424,7 +428,7 @@ pass('spoken-word evidence supports the AI-authored native number without determ
         }
       : item
   ));
-  assert.throws(() => normalizeDirectSnapshot({
+  const downgraded = normalizeDirectSnapshot({
     schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
     baseSnapshotRevision: 0,
     throughTurnId: 'turn-1',
@@ -436,7 +440,15 @@ pass('spoken-word evidence supports the AI-authored native number without determ
     throughTurnId: 'turn-1', previousRevision: 0,
     policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
     allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
-  }), /neither evidenced nor supplied by server policy/);
+  });
+  const unsupportedRow = downgraded.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.notEqual(unsupportedRow.status, 'ready');
+  assert.equal(unsupportedRow.authoredInput, undefined);
+  assert.ok(
+    unsupportedRow.missing.some((need) => need.path === '/currentBalance'),
+    'the value nothing supports must become an open item, not a silent default'
+  );
+  assert.equal(downgraded.modules.length, DIRECT_MODULE_IDS.length);
 
   // A malformed assumption is dropped -- and the default it would have
   // disclosed is then undisclosed, which still fails closed.
@@ -452,7 +464,7 @@ pass('spoken-word evidence supports the AI-authored native number without determ
         }
       : item
   ));
-  assert.throws(() => normalizeDirectSnapshot({
+  const undisclosed = normalizeDirectSnapshot({
     schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
     baseSnapshotRevision: 0,
     throughTurnId: 'turn-1',
@@ -464,7 +476,10 @@ pass('spoken-word evidence supports the AI-authored native number without determ
     throughTurnId: 'turn-1', previousRevision: 0,
     policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
     allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
-  }), /neither evidenced nor supplied by server policy/);
+  });
+  const undisclosedRow = undisclosed.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.notEqual(undisclosedRow.status, 'ready');
+  assert.ok(undisclosedRow.missing.some((need) => need.path === '/annualOverpayment'));
 
   // An omitted row is completed as not_relevant: absence is non-selection, and
   // a completed row can never carry an input, so nothing can execute from one.
@@ -523,8 +538,12 @@ pass('dropped planner bookkeeping never rescues an unsupported value or an undis
     allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
   });
 
-  assert.throws(() => run(PBS_ASSET_EVIDENCE), /neither evidenced nor supplied by server policy/,
+  const unspoken = run(PBS_ASSET_EVIDENCE);
+  const unspokenRow = unspoken.modules.find((item) => item.moduleId === 'personal_balance_sheet');
+  assert.notEqual(unspokenRow.status, 'ready',
     'an empty liability list nobody spoke about must not be ready');
+  assert.ok(unspokenRow.missing.some((need) => need.path === '/liabilityPositions'),
+    'and the unspoken claim must become the thing the conversation asks about');
 
   // The same input IS allowed once the client actually said it.
   const spoken = run([
@@ -538,6 +557,215 @@ pass('dropped planner bookkeeping never rescues an unsupported value or an undis
   );
 }
 pass('an empty collection is ready only when the client said there are none');
+
+// Selecting college funding supplies no child facts. Even an inconsistent
+// model label of ready cannot overrule its explicit missing-input list.
+for (const status of ['collecting', 'needs_clarification', 'ready']) {
+  const selected = normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'college-goal-only',
+    modules: DIRECT_MODULE_IDS.map((moduleId) => ({
+      moduleId,
+      outputKey: DIRECT_MODULE_CONTRACTS[moduleId].outputKey,
+      status: moduleId === 'college_funding' ? status : 'not_relevant',
+      inputJson: moduleId === 'college_funding' ? JSON.stringify({
+        currentYear: Number(TODAY.slice(0, 4)),
+        inflationRate: PLANEIR_ASSUMPTIONS.inflation.educationRate,
+        scenarios: approvedCollegeScenarios()
+      }) : '',
+      steeringSummary: moduleId === 'college_funding' ? 'College funding selected; children and ages are unknown.' : '',
+      missing: moduleId === 'college_funding' ? [{
+        path: '/children',
+        reason: 'The children and their current ages are not established.',
+        question: 'Which children would you like to plan for, and how old are they now?'
+      }] : [],
+      ambiguities: [], assumptions: [], evidence: []
+    })),
+    generalAmbiguities: [], confirmationPrompt: ''
+  }, {
+    turns: [{ id: 'college-goal-only', role: 'user', transcript: 'Planning for future college costs.' }],
+    throughTurnId: 'college-goal-only', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: PBS_EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const college = selected.modules.find((item) => item.moduleId === 'college_funding');
+  assert.notEqual(college.status, 'ready');
+  assert.equal(college.missing[0].path, '/children');
+  assert.equal(college.input.children, undefined);
+  assert.equal(college.input.childrenCount, undefined);
+  assert.equal(college.input.fundingYears, undefined);
+  assert.equal(selected.confirmationPrompt, '');
+  assert.equal(selected.modules.length, 7);
+}
+pass('college selection without child facts stays incomplete and preserves the next intake question');
+
+/* ------- the first real production call, 2026-09-03, meeting rt_KUTY_… ------ */
+
+// WHAT HAPPENED. A client said "I'm after having a new baby and I'm 30 years
+// old", chose college funding, and the meeting then died. The planner marked
+// college_funding ready -- correctly: this module's only client-owned input is
+// each child's age, because every cost, the education inflation rate, the start
+// age and the course length are centrally approved Planéir assumptions. The
+// snapshot stored the input the ENGINE derives from that (childrenCount,
+// fundingYears, firstCollegeYear, …) and handed it straight back to the planner
+// next turn as "preserve this". No quote can ever support an engine-derived
+// field, so provenance refused the pass -- and refused it again on every
+// following turn, because each retry was fed the same poisoned previous input.
+// Seven consecutive passes failed, no snapshot advanced, no confirmation could
+// ever be offered, and Planéir ended up telling the client to wait.
+//
+// The rule this pins: the planner is shown only input a planner could author.
+{
+  const COLLEGE_TURN = 'Um, it is mostly just a usual, I guess it is a check-up. I am after having a new baby and I am 30 years old and I just want to make sure I am in a good financial position to get this baby, you know, into college in the future and I am OK.';
+  const babyInput = {
+    currentYear: Number(TODAY.slice(0, 4)),
+    inflationRate: PLANEIR_ASSUMPTIONS.inflation.educationRate,
+    children: [{
+      id: 'child-1',
+      title: 'New baby',
+      currentAge: 0,
+      collegeStartAge: PLANEIR_ASSUMPTIONS.collegeFunding.startAge,
+      collegeDurationYears: PLANEIR_ASSUMPTIONS.collegeFunding.durationYears
+    }],
+    scenarios: approvedCollegeScenarios()
+  };
+  const COLLEGE_PROMPT = 'I will run the college funding projection for one child, currently a newborn, starting college at 18 for four years, against the approved living-at-home and living-away cost scenarios. Would you like me to run exactly that plan now?';
+  const collegeRows = (input, evidence, { baseRevision = 0 } = {}) => DIRECT_MODULE_IDS.map((id) => ({
+    moduleId: id,
+    outputKey: DIRECT_MODULE_CONTRACTS[id].outputKey,
+    status: id === 'college_funding' ? 'ready' : 'not_relevant',
+    inputJson: id === 'college_funding' ? JSON.stringify(input) : '',
+    steeringSummary: id === 'college_funding' ? 'One child, a newborn, with college timing on the approved Planéir assumptions.' : '',
+    missing: [],
+    ambiguities: [],
+    assumptions: id === 'college_funding' ? [
+      { path: '/children/0/collegeStartAge', valueJson: String(PLANEIR_ASSUMPTIONS.collegeFunding.startAge), source: 'contract_default' },
+      { path: '/children/0/collegeDurationYears', valueJson: String(PLANEIR_ASSUMPTIONS.collegeFunding.durationYears), source: 'contract_default' }
+    ] : [],
+    evidence: id === 'college_funding' ? evidence : [],
+    baseRevision
+  })).map(({ baseRevision: _unused, ...row }) => row);
+  const collegeTurns = [{ id: 'turn-college', role: 'user', transcript: COLLEGE_TURN }];
+  const runCollege = (input, evidence, { previousRevision = 0, throughTurnId = 'turn-college' } = {}) => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: previousRevision,
+    throughTurnId,
+    modules: collegeRows(input, evidence),
+    generalAmbiguities: [],
+    confirmationPrompt: COLLEGE_PROMPT
+  }, {
+    turns: throughTurnId === 'turn-college'
+      ? collegeTurns
+      : [...collegeTurns, { id: throughTurnId, role: 'user', transcript: 'Planning for future college costs.' }],
+    throughTurnId,
+    previousRevision,
+    policyEnvelope: POLICY,
+    currentProfileContext: PBS_EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+
+  const babyEvidence = [
+    { path: '/children/0', source: 'conversation', turnId: 'turn-college', quote: 'I am after having a new baby', profilePath: '' }
+  ];
+  const first = runCollege(babyInput, babyEvidence);
+  const firstCollege = first.modules.find((item) => item.moduleId === 'college_funding');
+  assert.equal(firstCollege.status, 'ready',
+    'college funding needs only the child, so one stated newborn genuinely completes it');
+  assert.equal(firstCollege.input.childrenCount, 1);
+  assert.ok(Array.isArray(firstCollege.input.fundingYears) && firstCollege.input.fundingYears.length > 0,
+    'the stored input is what the engine will run, derived fields included');
+
+  // THE POISON, EXACTLY AS PRODUCTION FED IT BACK. What the planner is shown
+  // next turn must be the input a planner could have written.
+  const shown = plannerFacingSnapshot(first);
+  const shownCollege = shown.modules.find((item) => item.moduleId === 'college_funding');
+  assert.deepEqual(Object.keys(shownCollege.input).sort(), Object.keys(babyInput).sort(),
+    'the planner is shown its own authored input, never the engine\'s derived expansion');
+  assert.equal(shownCollege.authoredInput, undefined);
+  for (const derived of ['childrenCount', 'timingMode', 'fundingYears', 'firstCollegeYear', 'currencySymbol']) {
+    assert.equal(shownCollege.input[derived], undefined,
+      `${derived} is the engine's, and no quote can ever support it`);
+  }
+
+  // The production second pass: preserve the previous input verbatim, as the
+  // extractor prompt instructs. This is the pass that failed seven times.
+  const second = runCollege(shownCollege.input, babyEvidence, {
+    previousRevision: first.snapshotRevision,
+    throughTurnId: 'turn-goal'
+  });
+  assert.equal(second.snapshotRevision, first.snapshotRevision + 1,
+    'preserving the previous input must advance the snapshot, not freeze the meeting');
+  assert.equal(second.modules.find((item) => item.moduleId === 'college_funding').status, 'ready');
+
+  // AND SELECTING A MODULE IS STILL NOT THE SAME AS COMPLETING IT. Strip the
+  // quote that establishes the child: the client-owned values become
+  // unsupported, so the module leaves the pass NOT ready and the conversation
+  // gets something to ask about instead of a silent default.
+  const unevidenced = runCollege(babyInput, [
+    { path: '/children/0/title', source: 'conversation', turnId: 'turn-college', quote: 'a new baby', profilePath: '' }
+  ]);
+  const unevidencedCollege = unevidenced.modules.find((item) => item.moduleId === 'college_funding');
+  assert.notEqual(unevidencedCollege.status, 'ready');
+  assert.ok(unevidencedCollege.missing.some((need) => need.path === '/children/0/currentAge'),
+    'a child age nobody stated must be asked for, never defaulted into a projection');
+  assert.equal(unevidencedCollege.input.childrenCount, undefined,
+    'a module that is not ready holds only what the planner wrote');
+}
+pass('the first production call: an engine-derived input never returns to the planner as its own');
+
+/* ---- more goals than one plan can hold is a question, not a lost snapshot -- */
+
+// Seen replaying the production transcript against the real model: the client
+// named college, the mortgage, retirement and living comfortably, and the
+// planner marked four modules relevant. The cap is real -- a consumer plan
+// holds three analyses -- but enforcing it by discarding the pass threw away
+// the whole conversation's state over a prioritisation the CLIENT is the only
+// one who can make.
+{
+  const overCapacityRows = DIRECT_MODULE_IDS.map((id) => ({
+    moduleId: id,
+    outputKey: DIRECT_MODULE_CONTRACTS[id].outputKey,
+    status: ['mortgage_analysis', 'college_funding', 'pension_projection', 'liquidity_analysis'].includes(id)
+      ? (id === 'mortgage_analysis' ? 'ready' : 'collecting')
+      : 'not_relevant',
+    inputJson: id === 'mortgage_analysis' ? JSON.stringify(inputs.mortgage_analysis) : '',
+    steeringSummary: '',
+    missing: [], ambiguities: [],
+    assumptions: id === 'mortgage_analysis' ? [
+      { path: '/endDateIso', valueJson: 'null', source: 'contract_default' },
+      { path: '/fixedPaymentAmount', valueJson: 'null', source: 'contract_default' },
+      { path: '/oneOffOverpayment', valueJson: '0', source: 'contract_default' },
+      { path: '/annualOverpayment', valueJson: '0', source: 'contract_default' }
+    ] : [],
+    evidence: id === 'mortgage_analysis' ? [
+      { path: '/currentBalance', source: 'conversation', turnId: 'turn-1', quote: 'two hundred and forty grand', profilePath: '' },
+      { path: '/annualInterestRate', source: 'profile', turnId: '', quote: '', profilePath: '/knownMortgageRate' },
+      { path: '/remainingTermYears', source: 'profile', turnId: '', quote: '', profilePath: '/knownMortgageTermYears' }
+    ] : []
+  }));
+  const overCapacity = normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: overCapacityRows,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  assert.equal(overCapacity.modules.length, DIRECT_MODULE_IDS.length);
+  assert.equal(overCapacity.modules.some((item) => item.status === 'ready'), false,
+    'nothing may execute while the plan holds more analyses than it is allowed to run');
+  assert.equal(overCapacity.confirmationPrompt, '');
+  const capacityQuestion = overCapacity.generalAmbiguities.find((item) => item.id === 'plan_capacity');
+  assert.ok(capacityQuestion, 'the client is asked which analyses to work through first');
+  assert.equal(capacityQuestion.relatedModuleIds.length, 4);
+}
+pass('more goals than one plan can hold becomes a client question, not a discarded snapshot');
 
 const mortgageWithoutAnnualOverpayment = {
   ...inputs.mortgage_analysis
@@ -588,13 +816,17 @@ const carriedSnapshot = normalizeDirectSnapshot({
   allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
 });
 assert.equal(carriedSnapshot.modules.find((item) => item.moduleId === 'mortgage_analysis').input.currentBalance, 240000);
-assert.throws(() => normalizeDirectSnapshot({
+// The turn the balance was quoted from is no longer in the window, so the
+// citation resolves to nothing. It is dropped -- and the value it was the only
+// support for is then unsupported, so the module cannot stay ready. What must
+// never happen is that the figure survives without its transcript.
+const lostProvenance = normalizeDirectSnapshot({
   schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
   baseSnapshotRevision: 1,
   throughTurnId: 'turn-2',
-    modules: moduleRows,
-    generalAmbiguities: [],
-    confirmationPrompt: CONFIRMATION_PROMPT
+  modules: moduleRows,
+  generalAmbiguities: [],
+  confirmationPrompt: CONFIRMATION_PROMPT
 }, {
   turns: [{ id: 'turn-2', role: 'user', transcript: 'Yes, that is still correct.' }],
   throughTurnId: 'turn-2',
@@ -602,7 +834,12 @@ assert.throws(() => normalizeDirectSnapshot({
   policyEnvelope: POLICY,
   currentProfileContext: EVIDENCE_PROFILE,
   allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
-}), /exact transcript span/);
+});
+const lostRow = lostProvenance.modules.find((item) => item.moduleId === 'mortgage_analysis');
+assert.notEqual(lostRow.status, 'ready');
+assert.ok(lostRow.missing.some((need) => need.path === '/currentBalance'));
+assert.equal(lostRow.evidence.some((item) => item.path === '/currentBalance'), false,
+  'a citation whose transcript span is gone must not be recorded as provenance');
 pass('ready snapshots require their original transcript or revision-bound profile provenance');
 
 assert.throws(() => normalizeDirectSnapshot({
@@ -631,8 +868,8 @@ const certificateConfig = {
   modulePlannerModel: 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 5000,
-  modulePlannerPromptVersion: 'direct-module-planner-v4',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v2'
+  modulePlannerPromptVersion: 'direct-module-planner-v5',
+  moduleVerifierPromptVersion: 'direct-module-verifier-v3'
 };
 let providerCalls = 0;
 let verifierCalls = 0;
@@ -828,8 +1065,8 @@ try {
       modulePlannerModel: 'gpt-5.6-luna',
       modulePlannerReasoningEffort: 'low',
       modulePlannerTimeoutMs: 5000,
-      modulePlannerPromptVersion: 'direct-module-planner-v4',
-      moduleVerifierPromptVersion: 'direct-module-verifier-v2'
+      modulePlannerPromptVersion: 'direct-module-planner-v5',
+      moduleVerifierPromptVersion: 'direct-module-verifier-v3'
     },
     turns: [{ id: 'turn-2', role: 'user', transcript: 'The balance is all I know right now.' }],
     throughTurnId: 'turn-2',

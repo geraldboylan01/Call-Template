@@ -16,6 +16,7 @@ import {
   DIRECT_MODULE_IDS,
   MODULE_PLANNING_SNAPSHOT_V1
 } from '../worker/src/consumer/direct_module_planner.js';
+import { PLANEIR_ASSUMPTIONS, approvedCollegeScenarios } from '../js/planning/planeir_assumptions.js';
 import { getLatestRealtimeMeetingBrief } from '../worker/src/consumer/realtime_repository.js';
 
 const pass = (message) => console.info(`[DirectModuleLivePath] PASS: ${message}`);
@@ -67,7 +68,84 @@ function extractionFor(throughTurnId, baseSnapshotRevision = 0, evidenceTurnId =
   };
 }
 
+/* ---------- the first real production call, 2026-09-03, meeting rt_KUTY_… ---- */
+
+// The client said this, chose college funding, and the meeting then stalled
+// until they hung up. Sanitised: no name, no figure they did not speak.
+const COLLEGE_TURN = 'It is mostly a check-up. I am after having a new baby and I am 30 years old, and I want to be sure I am in a good position to get this baby into college in the future.';
+const COLLEGE_QUOTE = 'I am after having a new baby';
+const COLLEGE_PROMPT = 'I will run the college funding projection for one child, currently a newborn, starting college at 18 for four years, against the approved living-at-home and living-away cost scenarios. Would you like me to run exactly that plan now?';
+const COLLEGE_INPUT = Object.freeze({
+  currentYear: Number(TODAY.slice(0, 4)),
+  inflationRate: PLANEIR_ASSUMPTIONS.inflation.educationRate,
+  children: [{
+    id: 'child-1',
+    title: 'New baby',
+    currentAge: 0,
+    collegeStartAge: PLANEIR_ASSUMPTIONS.collegeFunding.startAge,
+    collegeDurationYears: PLANEIR_ASSUMPTIONS.collegeFunding.durationYears
+  }],
+  scenarios: approvedCollegeScenarios()
+});
+
+/**
+ * The extractor doing exactly what its prompt tells it to: "preserve a previous
+ * input unless the conversation corrects or retracts it". In production that
+ * instruction returned the ENGINE's derived expansion of the input, because
+ * that is what the snapshot handed back -- and the pass was then refused for
+ * fields no quote can support, on every turn, forever.
+ */
+function collegeExtractionFor(throughTurnId, previousSnapshot, evidenceTurnId) {
+  const previousCollege = (previousSnapshot?.modules || [])
+    .find((item) => item.moduleId === 'college_funding');
+  const carried = previousCollege?.status === 'ready' ? previousCollege.input : null;
+  return {
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: Number(previousSnapshot?.snapshotRevision || 0),
+    throughTurnId,
+    modules: DIRECT_MODULE_IDS.map((moduleId) => ({
+      moduleId,
+      outputKey: DIRECT_MODULE_CONTRACTS[moduleId].outputKey,
+      status: moduleId === 'college_funding' ? 'ready' : 'not_relevant',
+      inputJson: moduleId === 'college_funding'
+        ? JSON.stringify(carried || COLLEGE_INPUT)
+        : '',
+      steeringSummary: moduleId === 'college_funding'
+        ? 'One child, a newborn, with college timing on the approved Planéir assumptions.'
+        : '',
+      missing: [],
+      ambiguities: [],
+      assumptions: moduleId === 'college_funding' ? [
+        { path: '/children/0/collegeStartAge', valueJson: String(PLANEIR_ASSUMPTIONS.collegeFunding.startAge), source: 'contract_default' },
+        { path: '/children/0/collegeDurationYears', valueJson: String(PLANEIR_ASSUMPTIONS.collegeFunding.durationYears), source: 'contract_default' }
+      ] : [],
+      evidence: moduleId === 'college_funding' ? [
+        { path: '/children/0', source: 'conversation', turnId: evidenceTurnId, quote: COLLEGE_QUOTE, profilePath: '' }
+      ] : []
+    })),
+    generalAmbiguities: [],
+    confirmationPrompt: COLLEGE_PROMPT
+  };
+}
+
+const COLLEGE_INTAKE_QUESTION = 'Which children would you like to plan for, and how old are they now?';
+function collegeIntakeExtractionFor(throughTurnId, previousSnapshot) {
+  const extraction = collegeExtractionFor(throughTurnId, previousSnapshot, throughTurnId);
+  const college = extraction.modules.find((item) => item.moduleId === 'college_funding');
+  Object.assign(college, {
+    status: 'collecting',
+    inputJson: '{}',
+    steeringSummary: 'College funding selected; the children and their ages are not yet established.',
+    missing: [{ path: '/children', reason: 'The children to include and their current ages are unknown.', question: COLLEGE_INTAKE_QUESTION }],
+    assumptions: [],
+    evidence: []
+  });
+  extraction.confirmationPrompt = '';
+  return extraction;
+}
+
 const originalFetch = globalThis.fetch;
+let collegeReplay = false;
 let extractionCalls = 0;
 let verificationCalls = 0;
 let failNextExtraction = false;
@@ -87,12 +165,23 @@ globalThis.fetch = async (_url, request) => {
       failNextExtraction = false;
       return { ok: false, json: async () => ({ error: { message: 'synthetic failure' } }) };
     }
-    value = extractionFor(
-      requestBody.throughTurnId,
-      Number(requestBody.previousSnapshot?.snapshotRevision || 0),
-      requestBody.conversation?.find((turn) => turn.text === CLIENT_TURN)?.turnId
-        || requestBody.throughTurnId
-    );
+    value = collegeReplay
+      ? collegeExtractionFor(
+          requestBody.throughTurnId,
+          requestBody.previousSnapshot,
+          requestBody.conversation?.find((turn) => turn.text === COLLEGE_TURN)?.turnId
+            || requestBody.throughTurnId
+        )
+      : extractionFor(
+          requestBody.throughTurnId,
+          Number(requestBody.previousSnapshot?.snapshotRevision || 0),
+          requestBody.conversation?.find((turn) => turn.text === CLIENT_TURN)?.turnId
+            || requestBody.throughTurnId
+        );
+    if (collegeReplay === 'intake'
+      && !requestBody.conversation?.some((turn) => turn.text === COLLEGE_TURN)) {
+      value = collegeIntakeExtractionFor(requestBody.throughTurnId, requestBody.previousSnapshot);
+    }
   } else if (body.text?.format?.name === 'module_input_verification_v1') {
     verificationCalls += 1;
     value = {
@@ -103,7 +192,7 @@ globalThis.fetch = async (_url, request) => {
       unresolvedAmbiguities: [],
       clarifications: [],
       confirmationPromptApproved: true,
-      explanation: 'The mortgage input is fully supported by the client turn.'
+      explanation: 'Every ready input is fully supported by the client turn.'
     };
   } else {
     throw new Error(`Unexpected model request ${body.text?.format?.name || 'unknown'}`);
@@ -438,6 +527,161 @@ try {
   assert.equal(JSON.parse(unavailableOutput.item.output).snapshotRevision, 1,
     'it must fall back to the newest snapshot that does exist, not to nothing');
   pass('a delayed or failed transcript cannot answer the first state read from empty planning state');
+
+  // A bare goal has no child facts. The real state/steering path must carry
+  // the planner's open question, and verification must wait for the answer.
+  collegeReplay = 'intake';
+  const intakeMeeting = await newLiveMeeting('direct-module-college-intake', {
+    CONSUMER_MODULE_PLANNER_MODE: 'apply', OPENAI_API_KEY: 'synthetic-test-key'
+  });
+  const intakeRig = await attachLiveSession(intakeMeeting);
+  const intakeSimulator = new LiveProviderSimulator(intakeRig);
+  const verificationsBeforeIntake = verificationCalls;
+  let intakeState;
+  await intakeSimulator.turn({
+    clientText: 'Planning for future college costs.',
+    act: async ({ callTool }) => {
+      intakeState = (await callTool('get_state', {})).result;
+      return { speech: intakeState.modules[0].missing[0].question };
+    }
+  });
+  await settle(intakeRig.durable, intakeRig.session);
+  assert.equal(intakeState.ok, true);
+  assert.equal(intakeState.readyToConfirm, false);
+  assert.equal(intakeState.confirmationToken, null);
+  assert.equal(intakeState.confirmationPrompt, null);
+  assert.equal(intakeState.modules[0].status, 'collecting');
+  assert.equal(intakeState.modules[0].missing[0].question, COLLEGE_INTAKE_QUESTION);
+  assert.equal(verificationCalls, verificationsBeforeIntake);
+  assert.ok(intakeRig.provider.stateItems().some((item) => item.includes(COLLEGE_INTAKE_QUESTION)),
+    'the missing-input question must reach Realtime volatile steering as well as get_state');
+  const intakeBrief = (await getLatestRealtimeMeetingBrief(
+    intakeMeeting.env, intakeMeeting.sessionId, intakeMeeting.meetingId
+  )).brief;
+  assert.equal(intakeBrief.verificationCertificate, null);
+  assert.equal(intakeBrief.directModuleSnapshot.modules
+    .find((item) => item.moduleId === 'college_funding').input.childrenCount, undefined);
+
+  let intakeToken;
+  await intakeSimulator.turn({
+    clientText: COLLEGE_TURN,
+    act: async ({ callTool }) => {
+      const state = (await callTool('get_state', {})).result;
+      assert.equal(state.readyToConfirm, true);
+      assert.equal(state.verificationStatus, 'pass');
+      intakeToken = state.confirmationToken;
+      return { speech: state.confirmationPrompt };
+    }
+  });
+  await settle(intakeRig.durable, intakeRig.session);
+  assert.ok(intakeToken);
+  assert.equal(intakeRig.session.directConfirmationOffer?.token, intakeToken);
+  let intakeRun;
+  await intakeSimulator.turn({
+    clientText: 'Yes, please go ahead.',
+    act: async ({ callTool }) => {
+      intakeRun = (await callTool('confirm_and_run', { confirmationToken: intakeToken })).result;
+      return { speech: intakeRun.speakableText };
+    }
+  });
+  await settle(intakeRig.durable, intakeRig.session);
+  assert.equal(intakeRun.ok, true);
+  assert.equal(intakeRun.status, 'complete');
+  pass('college goal selection delivers missing-input intake; supplied child facts then verify, confirm and run');
+
+  /* ------------- the production stall, over the real Durable Object --------- */
+
+  // Selecting a module is not the same as being able to run one, and the second
+  // turn is where the first production call died: the planner preserved the
+  // input the snapshot had shown it, that input was the engine's derived
+  // expansion, and provenance refused every pass from then on. Nothing
+  // advanced, so `readyForOffer` -- which requires an empty outstanding queue --
+  // could never be true, and Planéir told the client the planner had not given
+  // it a confirmation prompt. Here the same conversation must reach a
+  // confirmation instead.
+  collegeReplay = true;
+  const collegeMeeting = await newLiveMeeting('direct-module-production-college', {
+    CONSUMER_MODULE_PLANNER_MODE: 'apply',
+    OPENAI_API_KEY: 'synthetic-test-key'
+  });
+  const collegeRig = await attachLiveSession(collegeMeeting);
+  const collegeSimulator = new LiveProviderSimulator(collegeRig);
+  await collegeSimulator.turn({
+    clientText: COLLEGE_TURN,
+    act: async () => ({ speech: 'Congratulations. Let us look at what college could cost for them.' })
+  });
+  await settle(collegeRig.durable, collegeRig.session);
+  const firstBrief = await getLatestRealtimeMeetingBrief(
+    collegeMeeting.env,
+    collegeMeeting.sessionId,
+    collegeMeeting.meetingId
+  );
+  assert.equal(firstBrief.brief.snapshotRevision, 1);
+  assert.equal(firstBrief.brief.readyToConfirm, true);
+
+  // The turn that used to poison every pass after it.
+  await collegeSimulator.turn({
+    clientText: 'Planning for future college costs.',
+    act: async () => ({ speech: 'Good, we will keep this on the college side.' })
+  });
+  await settle(collegeRig.durable, collegeRig.session);
+
+  const failures = (await collegeMeeting.env.CONSUMER_DB.prepare(`
+    SELECT event_type FROM consumer_realtime_events
+    WHERE realtime_session_id = ? AND event_type = 'live.modules.planning_failed'
+  `).bind(collegeMeeting.meetingId).all()).results || [];
+  assert.equal(failures.length, 0,
+    'preserving the previous input must not refuse the pass that carries the conversation');
+  assert.deepEqual(collegeRig.session.directModulePlanningOutstanding, [],
+    'an outstanding queue that never drains is what makes confirmation unreachable');
+
+  const secondBrief = await getLatestRealtimeMeetingBrief(
+    collegeMeeting.env,
+    collegeMeeting.sessionId,
+    collegeMeeting.meetingId
+  );
+  assert.equal(secondBrief.brief.snapshotRevision, 2,
+    'the snapshot must advance with the conversation, not freeze at the last good turn');
+  assert.equal(secondBrief.brief.readyToConfirm, true);
+
+  let collegeToken = null;
+  await collegeSimulator.turn({
+    clientText: 'Is it ready now?',
+    act: async ({ callTool }) => {
+      const state = await callTool('get_state', {});
+      assert.equal(state.result?.ok, true,
+        'a state read that answered is a state read that succeeded');
+      assert.equal(state.result?.readyToConfirm, true);
+      collegeToken = state.result?.confirmationToken || null;
+      return { speech: state.result.confirmationPrompt };
+    }
+  });
+  await settle(collegeRig.durable, collegeRig.session);
+  assert.ok(collegeToken, 'ready plus verified must reliably become an offerable confirmation');
+  assert.equal(collegeRig.session.directConfirmationOffer?.token, collegeToken);
+
+  const collegeAttempts = (await collegeMeeting.env.CONSUMER_DB.prepare(`
+    SELECT status, error_code FROM consumer_realtime_tool_attempts
+    WHERE realtime_session_id = ? AND tool_name = 'get_state'
+  `).bind(collegeMeeting.meetingId).all()).results || [];
+  assert.ok(collegeAttempts.length > 0);
+  assert.ok(collegeAttempts.every((row) => row.status === 'succeeded' && !row.error_code),
+    'every production state read was recorded as rejected, which is how the diagnosis started in the wrong place');
+
+  let collegeRun = null;
+  await collegeSimulator.turn({
+    clientText: 'Yes, please go ahead.',
+    act: async ({ callTool }) => {
+      const call = await callTool('confirm_and_run', { confirmationToken: collegeToken });
+      collegeRun = call.result;
+      return { speech: call.result?.speakableText || 'Running that now.' };
+    }
+  });
+  await settle(collegeRig.durable, collegeRig.session);
+  assert.equal(collegeRun?.ok, true);
+  assert.equal(collegeRun?.status, 'complete');
+  collegeReplay = false;
+  pass('the production college call reaches confirmation instead of stalling on its own previous input');
 } finally {
   globalThis.fetch = originalFetch;
 }

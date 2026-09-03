@@ -1676,7 +1676,7 @@ export class ConsumerLiveSession {
             payload: {
               code: String(error?.code || 'module_planner_failed'),
               moduleId: String(error?.moduleId || '') || null,
-              paths: ConsumerLiveSession.pointerPaths(error?.details).slice(0, 40)
+              paths: ConsumerLiveSession.pointerPaths(error?.details).slice(0, 40).join(' ')
             }
           }).catch(() => {});
           // Keep the failed watermark durable. A later client turn, get_state,
@@ -2832,6 +2832,14 @@ export class ConsumerLiveSession {
             };
           }
           result = {
+            // A STATE READ THAT ANSWERED IS A STATE READ THAT SUCCEEDED.
+            // Every tool outcome is recorded by `result.ok === true`, and this
+            // branch returned a perfectly good state object without one, so all
+            // three reads in the first production call were persisted as
+            // `rejected` / `live_tool_rejected` and logged ok:false. The read
+            // had worked; only the bookkeeping said otherwise, and it sent the
+            // investigation looking for a tool failure that never happened.
+            ok: true,
             schemaVersion: 'DirectModuleToolStateV1',
             snapshotRevision,
             readyToConfirm: readyForOffer,
