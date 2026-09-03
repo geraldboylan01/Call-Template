@@ -112,7 +112,11 @@ function expectedPolicyFor(env) {
     livePromptVersion: config.realtimePromptVersion,
     liveToolsetVersion: config.realtimeToolsetVersion,
     realtimePricingVersion: config.realtimePricingVersion,
-    realtimeSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur
+    realtimeSessionBudgetMicroEur: config.realtimeSessionBudgetMicroEur,
+    modulePlannerMode: config.modulePlannerMode,
+    modulePlannerModel: config.modulePlannerModel,
+    modulePlannerPromptVersion: config.modulePlannerPromptVersion,
+    moduleVerifierPromptVersion: config.moduleVerifierPromptVersion
   };
 }
 
@@ -280,6 +284,35 @@ await (async () => {
   assert.equal(body.voice.sessionBudgetMicroEur, null);
   assert.equal(body.realtimeVoice.sessionBudgetMicroEur, 10_000_000);
   console.info('[BootstrapContract] PASS: deploy verification reads the live envelope with the header');
+})();
+
+await (async () => {
+  checks += 1;
+  const directEnv = {
+    ...keyedEnv,
+    CONSUMER_MODULE_PLANNER_MODE: 'apply',
+    CONSUMER_MODULE_PLANNER_PROMPT_VERSION: 'direct-module-planner-v2',
+    CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: 'direct-module-verifier-v2'
+  };
+  const { status, body } = await requestEnvelope(
+    directEnv,
+    { [DEPLOY_VERIFICATION_HEADER]: VERIFICATION_KEY }
+  );
+  assert.equal(status, 200, JSON.stringify(body));
+  assert.equal(
+    validateConsumerDeploymentEnvelope(body, {
+      mode: 'realtime_voice_rules_only',
+      expectedPolicy: expectedPolicyFor(directEnv)
+    }),
+    true
+  );
+  assert.deepEqual(body.modulePlanning, {
+    mode: 'apply',
+    model: getConsumerConfig(directEnv).modulePlannerModel,
+    extractorPromptVersion: 'direct-module-planner-v2',
+    verifierPromptVersion: 'direct-module-verifier-v2'
+  });
+  console.info('[BootstrapContract] PASS: the protected envelope attests direct apply and its certificate identities');
 })();
 
 // Every way of not holding the credential must be indistinguishable from the

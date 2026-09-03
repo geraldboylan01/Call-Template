@@ -3,7 +3,10 @@ import {
   approvedCollegeScenarios,
   assumptionRecord
 } from '../planeir_assumptions.js';
-import { computeCollegeFundingProjection } from '../../college_funding_math.js';
+import {
+  computeCollegeFundingProjection,
+  normalizeCollegeFundingInputs
+} from '../../college_funding_math.js';
 import {
   createModuleRunResult,
   findGoal,
@@ -86,8 +89,11 @@ export function validateCollegeFundingInput(input) {
   }
   const seen = new Set();
   for (const child of input.children) {
-    if (!child?.id || seen.has(child.id)) {
+    if (typeof child?.id !== 'string' || !child.id.trim() || seen.has(child.id)) {
       throw new Error('generated.collegeFundingInputs.children must name each child exactly once.');
+    }
+    if (typeof child.title !== 'string' || !child.title.trim()) {
+      throw new Error(`generated.collegeFundingInputs.children[${child.id}].title must be a non-empty string.`);
     }
     seen.add(child.id);
     if (!Number.isInteger(child.currentAge) || child.currentAge < 0 || child.currentAge > 30) {
@@ -100,6 +106,12 @@ export function validateCollegeFundingInput(input) {
     throw new Error('generated.collegeFundingInputs.inflationRate must be the approved education inflation rate.');
   }
   computeCollegeFundingProjection(input);
+}
+
+/** Canonical input the college-funding engine will actually consume. */
+export function normalizeCollegeFundingInput(input) {
+  validateCollegeFundingInput(input);
+  return normalizeCollegeFundingInputs(input);
 }
 
 export async function runCollegeFundingAnalysis(input, context) {

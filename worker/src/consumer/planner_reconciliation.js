@@ -222,6 +222,7 @@ Grouping rules:
 - Set atomic true only for that second case — operations that must land together but share no identity. Otherwise set atomic false.
 - When exact evidence says a liability is secured on or belongs to a stated property, preserve the edge in the property_position value as associatedLiabilityIds containing the supplied liability entity id. If either endpoint uses a newEntitySlot, create/correct both endpoints in the SAME atomic group; the server rejects a dangling, cross-owner or evidence-free relationship. Do not infer a link from proximity alone.
 - reviewedNoteIds may contain only notes that already carry server-stored client offsets present in this context. A span-free realtime note cannot be verified by ID alone; replace it with an evidence-backed correct_note, even when its value is unchanged.
+- reviewObligations lists every note this pass must settle. Each one ends in exactly one of: listed in reviewedNoteIds (you checked it against the transcript and it is right), replaced by a correct_note, retracted, or named by a request_clarification. Returning a clean plan that leaves an obligation untouched is not an outcome — the note stays unreviewed and blocks the analyses. An obligation with hasStoredEvidence false CANNOT go in reviewedNoteIds; correct it, retract it, or ask about it.
 - Never add confirmation, readiness, selected-module or execution fields.
 - If nothing needs changing or clarification, return verdict clean and no operations.`;
 
@@ -1063,10 +1064,19 @@ export function buildPlannerReconciliationContext({
     finalized: turn.finalized !== false,
     text: String(turn.transcript || '').slice(0, 4_000),
     sequence: Number.isSafeInteger(turn.sequence) ? turn.sequence : sequence,
+    // When it was said, so a provisional note can be matched to the stretch of
+    // conversation the independent reader actually covered.
+    createdAt: turn.created_at || turn.createdAt || null,
     // The proposition this turn answered, as the live session recorded it.
     // Null where it was never captured; adjacency is not a substitute.
     answersTurnId: turn.answersTurnId || null
   }));
+  // The start of the bounded transcript this pass was given, which is the
+  // earliest point any independent reading of it can reach.
+  const earliestTurnAt = recent
+    .map((turn) => turn.createdAt)
+    .filter(Boolean)
+    .sort()[0] || null;
   const planning = toConsumerRealtimePlanningLists(context.state, context.profile);
   const requestedReviewTurnIds = [...new Set(
     (Array.isArray(reviewTurnIds) && reviewTurnIds.length > 0 ? reviewTurnIds : [throughTurnId])
@@ -1179,6 +1189,53 @@ export function buildPlannerReconciliationContext({
     profileRevision: Number(context.profile.revision),
     transcriptTurns: recent,
     notes,
+    // WHAT THIS PASS IS OBLIGED TO SETTLE, issued by the server rather than
+    // chosen by the model.
+    //
+    // Every active provisional note is an outstanding review. Left to volunteer
+    // `reviewedNoteIds`, a plan could return `clean`, disposition nothing, and
+    // still clear its material turn by ordinal — so a realtime note reading
+    // EUR 2 for "two and a half thousand" stayed canonical with the
+    // confirmation barrier open. Nothing was rejected because nothing was
+    // examined. Naming them here is what makes the omission visible.
+    reviewObligations: notes
+      .filter((note) => note.lifecycle === 'active'
+        && note.reviewStatus === 'provisional'
+        // FROM THE STRETCH OF CONVERSATION THIS PASS CAN ACTUALLY JUDGE.
+        //
+        // The server adjudicates an obligation against the independent reading
+        // of the client's turns, and it only has those for the bounded
+        // transcript in front of it. Issuing older notes as well filled a
+        // capped list with the ones nothing could decide — oldest first, so the
+        // note written moments ago, the one most likely to be wrong and the
+        // whole reason the client is being asked to confirm, was pushed out of
+        // every pass and never examined at all.
+        && (!earliestTurnAt || !note.createdAt || note.createdAt >= earliestTurnAt)
+        // ONLY WHAT THIS CONVERSATION PROPOSED. `legacy_import` notes are
+        // evidence-less snapshots of profile facts that predate the ledger —
+        // descriptions of state that already existed, not claims anybody made
+        // on this call. Demanding a reviewer settle them asks it to find
+        // transcript evidence for figures nobody has said, which it cannot do
+        // and should not try; they crowded the real obligations out of a
+        // bounded list and blocked the meeting on their own insolubility.
+        && note.source === 'realtime_note')
+      // OLDEST FIRST, so a bounded list is the same bounded list next pass.
+      // Taking whichever twelve happened to be in front meant the issued set
+      // shuffled as notes accumulated: a note was asked about, dropped, asked
+      // again, and never spent enough attempts to be settled either way.
+      .sort((left, right) => String(left.createdAt || '').localeCompare(String(right.createdAt || ''))
+        || String(left.noteId).localeCompare(String(right.noteId)))
+      .slice(0, MAX_REVIEW_OBLIGATIONS)
+      .map((note) => ({
+        noteId: note.noteId,
+        factId: note.factId,
+        factInstanceId: note.factInstanceId || null,
+        value: note.value,
+        // A span-free note cannot be verified by id — the reviewer has to
+        // replace it with an evidence-backed correction or retract it — and
+        // saying so here saves it discovering that through a refusal.
+        hasStoredEvidence: Array.isArray(note.evidenceRefs) && note.evidenceRefs.length > 0
+      })),
     owners: catalogue.owners,
     entities: catalogue.entities,
     singletonFactIds: catalogue.singletonFactIds,
@@ -1372,6 +1429,7 @@ async function runPlannerReconciliationAttempt({
   throughTurnId,
   reviewTurnIds = null,
   terminallyUnresolvedEvidenceIds = [],
+  escalateNoteIds = [],
   trigger = 'material_turn',
   retryAttempt = 0,
   rebaseAttempt = 0,
@@ -1505,6 +1563,13 @@ async function runPlannerReconciliationAttempt({
       owners: input.owners,
       entities: input.entities,
       turnReadings: config.turnReadingMode === 'apply' ? turnReadings : [],
+      // Exactly the reviews this pass was issued, so a note the reviewer was
+      // never shown cannot be reported as one it failed to review.
+      reviewObligationNoteIds: (input.reviewObligations || []).map((item) => item.noteId),
+      // Obligations that have run out of attempts: asked of the client here, in
+      // the same pass that stops blocking on them, so there is never a moment
+      // where nobody is responsible for the figure.
+      escalateNoteIds,
       mapFactValue: mapReconciledFactValue
     });
     if (config.turnReadingMode !== 'off') {
@@ -1630,6 +1695,11 @@ async function runPlannerReconciliationAttempt({
         // A material turn nobody could read is equally unreviewed.
         ...(config.turnReadingMode === 'apply' ? unreadMandatoryTurnIds : [])
       ],
+      // OBLIGATIONS THIS PASS DID NOT SETTLE. Held separately from turn ids
+      // because a realtime note carries no evidence spans and so belongs to no
+      // turn — which is exactly why the turn ledger alone could never see it.
+      undispositionedNoteIds: validation.undispositionedNoteIds || [],
+      escalatedNoteIds: validation.escalatedNoteIds || [],
       appliedProfileRevision: completed.appliedProfileRevision ?? null,
       insertedNoteCount: completed.insertedNoteCount ?? 0,
       transitionedNoteCount: completed.transitionedNoteCount ?? 0
@@ -1699,6 +1769,9 @@ const MAX_RECONCILIATION_REBASE_ATTEMPTS = 2;
  * no second reader and falls back to the parser that missed it too. Bounded so
  * a long meeting does not pay for its whole transcript at every checkpoint.
  */
+/** How many outstanding reviews one pass is asked to settle. */
+const MAX_REVIEW_OBLIGATIONS = 12;
+
 const MAX_TURNS_READ_PER_PASS = 6;
 
 /**
@@ -1985,6 +2058,7 @@ export async function runPlannerReconciliation({
   throughTurnId,
   reviewTurnIds = null,
   terminallyUnresolvedEvidenceIds = [],
+  escalateNoteIds = [],
   trigger = 'material_turn',
   retryAttempt = 0,
   loadContext = null
@@ -2005,6 +2079,7 @@ export async function runPlannerReconciliation({
         throughTurnId,
         reviewTurnIds,
         terminallyUnresolvedEvidenceIds,
+        escalateNoteIds,
         trigger,
         retryAttempt,
         rebaseAttempt,

@@ -1622,11 +1622,11 @@ export async function findReusableConsumerModuleRun(env, sessionId, identity) {
   return null;
 }
 
-export async function createAnalysisRun(env, sessionRow, profile, moduleIds) {
+export async function createAnalysisRun(env, sessionRow, profile, moduleIds, inputSnapshot = profile) {
   const id = randomId('analysis');
   const timestamp = nowIso();
   const profileRevision = Number(sessionRow.current_profile_revision);
-  const inputSnapshotHashB64u = await sha256Base64Url(stableStringify(profile));
+  const inputSnapshotHashB64u = await sha256Base64Url(stableStringify(inputSnapshot));
   const created = await db(env).prepare(`
     INSERT INTO consumer_analysis_runs (
       id, session_id, profile_revision, input_snapshot_hash_b64u,
@@ -1682,7 +1682,7 @@ export async function completeAnalysisRun(env, run, sessionId, result, moduleIds
       : null;
     const cacheKey = cacheIdentity
       ? await buildConsumerModuleCacheKey(cacheIdentity)
-      : run.inputSnapshotHashB64u;
+      : (execution?.inputSnapshotHash || run.inputSnapshotHashB64u);
     const modulePayload = await encryptJson(
       env,
       moduleResult && cacheIdentity

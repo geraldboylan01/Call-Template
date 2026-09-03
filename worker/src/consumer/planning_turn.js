@@ -658,9 +658,22 @@ export async function composeAndPersistBrief({
  *
  * @returns {{profile, session, confirmedModuleIds}}
  */
-export async function confirmPlanSelection({ env, config, sessionRow, profile, channel = 'voice' }) {
+export async function confirmPlanSelection({
+  env,
+  config,
+  sessionRow,
+  profile,
+  channel = 'voice',
+  confirmedModuleIds: explicitModuleIds = null
+}) {
   const state = describeConversationState(profile, config);
-  const confirmedModuleIds = resolveConfirmationCandidateModuleIds(state, config);
+  const confirmedModuleIds = explicitModuleIds === null
+    ? resolveConfirmationCandidateModuleIds(state, config)
+    : [...new Set(explicitModuleIds.map((moduleId) => String(moduleId)))];
+  if (confirmedModuleIds.length === 0 || confirmedModuleIds.length > 3
+    || confirmedModuleIds.some((moduleId) => !config.allowedModules.includes(moduleId))) {
+    throw new ConsumerError(409, 'analysis_set_confirmation_invalid', 'The analysis set is not available for confirmation.');
+  }
   const planning = profile?.assumptions?.values?.planning || {};
   const confirmedProfile = {
     ...profile,

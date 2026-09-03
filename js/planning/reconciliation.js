@@ -679,7 +679,12 @@ function normalizeTranscriptTurns(raw) {
       text: typeof turn.text === 'string' ? turn.text : '',
       sequence: typeof turn.sequence === 'number' && Number.isFinite(turn.sequence)
         ? turn.sequence
-        : index
+        : index,
+      // WHEN IT WAS SAID, so a note can be matched to the stretch of
+      // conversation the independent reader actually covered. Without it, a
+      // figure captured twenty turns ago looks unsupported simply because
+      // nobody re-read the turn it came from.
+      createdAt: typeof turn.createdAt === 'string' ? turn.createdAt : null
     };
   });
   const ids = turns.map((turn) => turn.turnId);
@@ -3374,6 +3379,15 @@ export async function applyReconciliationPlan({
   // Where one exists it is the authority on which figures that turn contains;
   // where none does, every existing caller keeps its exact behaviour.
   turnReadings = [],
+  // THE REVIEWS THIS PASS WAS ISSUED. Only these can be reported as unsettled:
+  // a note the reviewer was never shown has not failed to review it. Empty
+  // means no obligation was issued, which is how every existing caller keeps
+  // its exact behaviour.
+  reviewObligationNoteIds = [],
+  // Obligations that have run out of attempts. The reviewer could neither
+  // confirm nor correct them, so the question goes to the client instead.
+  // Never model-supplied — the plan has no field for this, deliberately.
+  escalateNoteIds = [],
   // The live lane's fact mapper, injected by the worker. Absent, the projection
   // writes raw note values exactly as before, which keeps this module free of
   // any worker import and every existing caller behaving identically.
@@ -3405,6 +3419,8 @@ export async function applyReconciliationPlan({
     reviewOutcomes: [],
     clarificationNeeds: [],
     unprojectedFactOperationIds: [],
+    undispositionedNoteIds: [],
+    escalatedNoteIds: [],
     fullyProjected: true
   };
 
@@ -3580,6 +3596,112 @@ export async function applyReconciliationPlan({
     }, { nowIso });
   });
 
+  // A REVIEW OBLIGATION THAT RUNS OUT OF ATTEMPTS BECOMES A QUESTION.
+  //
+  // The first version of this retracted the note instead, on the reasoning that
+  // a figure nobody could confirm should not sit in a profile. Run against the
+  // live harness it deleted a correct EUR 319,000 pension and a correct
+  // EUR 95,000 income — values the client had actually stated, thrown away
+  // because the reviewer had not got round to mentioning them. A reviewer's
+  // silence is not evidence that a figure is wrong, and treating it as evidence
+  // is a worse failure than the one being closed.
+  //
+  // So nothing is deleted. The note stays exactly as it is, the client is asked
+  // to confirm that specific figure, and their answer settles it — a
+  // confirmation is a terminal disposition in a way a timeout never was. Until
+  // then the fact stays outstanding, so readiness holds back the analyses that
+  // need it while the rest of the meeting carries on. That is the bargain
+  // `terminallyUnresolvedEvidence` already strikes one layer down.
+  const escalateRequested = new Set((escalateNoteIds || []).map((noteId) => String(noteId)));
+  const escalatedNoteIds = [];
+  if (escalateRequested.size > 0) {
+    for (const note of workingNotes) {
+      if (!escalateRequested.has(note.noteId)
+        || note.lifecycle !== 'active'
+        || note.reviewStatus !== 'provisional') continue;
+      const definition = getSemanticFactDefinition(note.factId);
+      const need = normalizeNeedV2({
+        needId: `review_${note.noteId}`,
+        factId: note.factId,
+        factInstanceId: note.factInstanceId || note.factId,
+        ...(note.entityId ? { entityId: note.entityId } : {}),
+        ...(note.ownerId ? { ownerId: note.ownerId } : {}),
+        reasonCode: 'reconciliation_review_unresolved',
+        prompt: `Can I just check ${definition?.label?.toLowerCase() || note.factId.replaceAll('_', ' ')} with you once more?`,
+        importance: 'required',
+        blockingModuleIds: definition?.moduleIds || [],
+        answerPolicy: 'unknown_allowed',
+        status: 'open'
+      });
+      clarificationNeeds.push(need);
+      escalatedNoteIds.push(note.noteId);
+    }
+  }
+
+  // WHAT THIS PASS WAS ISSUED, AND WHAT THE SERVER CAN SHOW IS STILL WRONG.
+  //
+  // The barrier used to prove only that a checkpoint COMPLETED. A plan could
+  // return `clean` with an empty reviewedNoteIds, disposition nothing, and the
+  // material turn was cleared by ordinal anyway — so a realtime note reading
+  // EUR 2 for "two and a half thousand" stayed canonical, unreviewed, with
+  // `confirm_and_run` open. Nothing was rejected because nothing was examined.
+  //
+  // WHAT THIS IS NOT. The first attempt blocked on every provisional note the
+  // reviewer had not mentioned. Silence is not evidence: run against the live
+  // harness that held the barrier shut on correct figures until the meeting
+  // could not finish, and the retraction that was meant to release it deleted a
+  // correct EUR 319,000 pension and a correct EUR 95,000 income. A reviewer
+  // that has not got round to a note has not found anything wrong with it.
+  //
+  // So the server checks, rather than waiting to be told, and blocks only on
+  // what it can DEMONSTRATE — using the one independent thing it has, the
+  // reading of the client's own turns:
+  //
+  //   - a note citing a turn that was read, whose stored figure contradicts
+  //     that reading. This ran only over notes the model VOLUNTEERED, which is
+  //     precisely the list a clean plan leaves empty;
+  //   - a span-free realtime note, from the stretch the reader covered, whose
+  //     figure appears in no reading of any of it. Realtime notes carry no
+  //     spans, so this is the only handle there is on them.
+  //
+  // A note from before that stretch is not adjudicable here and does not block.
+  const readTurns = [...context.turnReadings.keys()]
+    .map((turnId) => context.turnIndex.get(turnId))
+    .filter((turn) => turn?.createdAt);
+  const readFrom = readTurns.length > 0
+    ? readTurns.map((turn) => turn.createdAt).sort()[0]
+    : null;
+  const readFigures = [...context.turnReadings.values()]
+    .flatMap((reading) => reading.figures || [])
+    .filter((figure) => !figure.ambiguous);
+
+  const issued = new Set((reviewObligationNoteIds || []).map((noteId) => String(noteId)));
+  const clarifiedInstanceIds = new Set(clarificationNeeds
+    .map((need) => String(need?.factInstanceId || ''))
+    .filter(Boolean));
+  const undispositionedNoteIds = workingNotes
+    .filter((note) => issued.has(note.noteId)
+      && note.lifecycle === 'active'
+      && note.reviewStatus === 'provisional'
+      && !clarifiedInstanceIds.has(String(note.factInstanceId || '')))
+    .filter((note) => {
+      if (context.turnReadings.size === 0) return false;
+      if (note.evidenceRefs.length > 0) {
+        return !reviewedNoteAgreesWithReading(note, context.turnReadings, context.turnIndex);
+      }
+      // Span-free, so it can only be judged against the period the reader saw.
+      if (!readFrom || !note.createdAt || note.createdAt < readFrom) return false;
+      const stored = numericLeaves(note.value);
+      if (stored.length === 0) return false;
+      return !stored.every((leaf) => readFigures.some((figure) => (
+        numbersEqual(figure.digits, leaf.value)
+        || (isFractionalRateLeaf(leaf.path.join('.'))
+          && figure.quantity === 'percent'
+          && numbersEqual(figure.digits / 100, leaf.value))
+      )));
+    })
+    .map((note) => note.noteId);
+
   let projected;
   // Reported, never fatal. A quarantined note is a repair target for the next
   // pass, so it has to reach the caller rather than disappearing into a
@@ -3604,7 +3726,14 @@ export async function applyReconciliationPlan({
           : outcome
       )),
       reviewOutcomes,
-      clarificationNeeds
+      clarificationNeeds,
+      // A pass that could not be applied settled nothing, so every obligation
+      // it was issued still stands. Reporting them as discharged here is how
+      // a failed reconciliation would quietly open the barrier.
+      undispositionedNoteIds: notes
+        .filter((note) => (reviewObligationNoteIds || []).includes(note.noteId)
+          && note.lifecycle === 'active' && note.reviewStatus === 'provisional')
+        .map((note) => note.noteId)
     };
   }
 
@@ -3631,7 +3760,14 @@ export async function applyReconciliationPlan({
             : outcome
         )),
         reviewOutcomes,
-        clarificationNeeds
+        clarificationNeeds,
+        // A pass that could not be applied settled nothing, so every obligation
+        // it was issued still stands. Reporting them as discharged here is how
+        // a failed reconciliation would quietly open the barrier.
+        undispositionedNoteIds: notes
+          .filter((note) => (reviewObligationNoteIds || []).includes(note.noteId)
+            && note.lifecycle === 'active' && note.reviewStatus === 'provisional')
+          .map((note) => note.noteId)
       };
     }
   }
@@ -3661,6 +3797,11 @@ export async function applyReconciliationPlan({
     reviewOutcomes,
     clarificationNeeds,
     unprojectedFactOperationIds,
+    // The obligations this pass was issued and did not settle. The confirmation
+    // barrier holds while any of these stand: a plan that dispositioned nothing
+    // must not be able to clear a material turn by returning `clean`.
+    undispositionedNoteIds,
+    escalatedNoteIds,
     fullyProjected
   };
 }

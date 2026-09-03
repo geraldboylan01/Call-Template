@@ -113,7 +113,31 @@ export function buildMortgageInput(profile) {
  * contract.
  */
 export function validateMortgageInput(input) {
-  normalizeMortgageInputs(input, { defaultLoanKind: 'mortgage' });
+  const normalized = normalizeMortgageInput(input);
+  if (normalized.loanKind !== 'mortgage') {
+    throw new Error('generated.mortgageInputs.loanKind must be "mortgage".');
+  }
+}
+
+/** Canonical input the shared amortisation engine will actually consume. */
+export function normalizeMortgageInput(input) {
+  // This discriminator selects the engine contract; it does not infer what the
+  // client meant. Missing must fail rather than letting the shared engine's
+  // convenience default silently turn a loan payload into a mortgage.
+  if (input?.loanKind !== 'mortgage') {
+    throw new Error('generated.mortgageInputs.loanKind must be "mortgage".');
+  }
+  const hasEndDate = typeof input.endDateIso === 'string' && input.endDateIso.trim() !== '';
+  const hasRemainingTerm = input.remainingTermYears !== null
+    && typeof input.remainingTermYears !== 'undefined';
+  if (hasEndDate === hasRemainingTerm) {
+    throw new Error('generated.mortgageInputs must provide exactly one of endDateIso or remainingTermYears.');
+  }
+  const normalized = normalizeMortgageInputs(input, { defaultLoanKind: 'mortgage' });
+  if (normalized.loanKind !== 'mortgage') {
+    throw new Error('generated.mortgageInputs.loanKind must be "mortgage".');
+  }
+  return normalized;
 }
 
 export async function runMortgageAnalysis(input, context) {
@@ -134,4 +158,3 @@ export async function runMortgageAnalysis(input, context) {
     }
   });
 }
-

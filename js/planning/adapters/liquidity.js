@@ -163,6 +163,9 @@ export function buildLiquidityInput(profile) {
  * anyone being told.
  */
 export function validateLiquidityInput(input) {
+  if (!['retired', 'not-retired'].includes(input?.clientStatus)) {
+    throw new Error('liquidity input clientStatus must be "retired" or "not-retired".');
+  }
   const finiteOrNull = (value, field) => {
     if (value === null || typeof value === 'undefined') return;
     if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -173,6 +176,10 @@ export function validateLiquidityInput(input) {
   finiteOrNull(input?.currentCash, 'currentCash');
   finiteOrNull(input?.monthlyExpenditure, 'monthlyExpenditure');
   finiteOrNull(input?.annualExpenditure, 'annualExpenditure');
+  if (Number.isFinite(input?.monthlyExpenditure) && Number.isFinite(input?.annualExpenditure)
+    && Math.abs((input.monthlyExpenditure * 12) - input.annualExpenditure) > 0.01) {
+    throw new Error('liquidity input monthlyExpenditure and annualExpenditure must describe the same spending.');
+  }
   for (const field of ['minimumBufferMonths', 'targetBufferMonths']) {
     const value = input?.[field];
     if (value === null || typeof value === 'undefined') continue;
@@ -180,6 +187,27 @@ export function validateLiquidityInput(input) {
       throw new Error(`liquidity input ${field} must be a positive number of months when present.`);
     }
   }
+}
+
+/**
+ * Canonical cash-reserve input. The engine owns the annual/monthly equivalence
+ * and dated buffer policy; no conversational meaning is inferred here.
+ */
+export function normalizeLiquidityInput(input) {
+  validateLiquidityInput(input);
+  const reserve = computeLiquidityReserve(input);
+  if (reserve.currentCash === null || reserve.monthlyExpenditure === null) {
+    throw new Error('liquidity input requires currentCash and positive monthly or annual expenditure.');
+  }
+  return {
+    currentCash: reserve.currentCash,
+    monthlyExpenditure: reserve.monthlyExpenditure,
+    annualExpenditure: reserve.annualExpenditure,
+    clientStatus: reserve.clientStatus,
+    policyVersion: LIQUIDITY_RESERVE_POLICY.policyVersion,
+    minimumBufferMonths: reserve.minimumBufferMonths,
+    targetBufferMonths: reserve.targetBufferMonths
+  };
 }
 
 export async function runLiquidityAnalysis(input, context) {

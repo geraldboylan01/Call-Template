@@ -21,14 +21,36 @@
  *   Called once per reconciliation, in order. Return null for "no changes".
  * @param {{latencyMs?: number}} options
  */
-export function scriptedPlanner(planFor, { latencyMs = 0 } = {}) {
+export function scriptedPlanner(planFor, { latencyMs = 0, readFor = null } = {}) {
   const original = globalThis.fetch;
   const calls = [];
+  const readings = [];
 
   globalThis.fetch = async (url, init) => {
     if (!String(url).includes('api.openai.com')) return original(url, init);
 
     const request = safeJson(init?.body) || {};
+
+    // THE INDEPENDENT READER SHARES THIS ENDPOINT, and until it was scripted
+    // here it shared this interceptor too: every reading request came back a
+    // plan, failed to parse, and returned null. So the two-reader mechanism —
+    // the thing standing between a fast-lane figure and a calculation — had no
+    // end-to-end coverage at all. It is told apart by the schema it asks for,
+    // which is the request's own statement of what it is.
+    if (request?.text?.format?.name === 'client_turn_figures_v1') {
+      const asked = safeJson(request.input?.at(-1)?.content) || {};
+      const figures = readFor
+        ? readFor({ clientTurn: asked.clientTurn || '', question: asked.questionTheClientWasAnswering || '' })
+        : [];
+      readings.push({ clientTurn: asked.clientTurn || '', figures });
+      return new Response(JSON.stringify({
+        id: `resp_reading_${readings.length}`,
+        status: 'completed',
+        output: [{ content: [{ text: JSON.stringify({ figures }) }] }],
+        usage: { input_tokens: 0, output_tokens: 0, input_tokens_details: { cached_tokens: 0 } }
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+
     const context = reconciliationContextFrom(request);
     const turns = context.transcriptTurns || [];
     // The whole reconciliation context, so a test can aim a repair at the exact
@@ -80,6 +102,7 @@ export function scriptedPlanner(planFor, { latencyMs = 0 } = {}) {
   return {
     restore: () => { globalThis.fetch = original; },
     calls: () => [...calls],
+    readings: () => [...readings],
     modelCalls: () => calls.length
   };
 }

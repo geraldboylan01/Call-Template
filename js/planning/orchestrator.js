@@ -6,7 +6,8 @@ import {
   getPlanningModuleRunIdentity,
   getPlanningModuleDefinition,
   getModuleReadiness,
-  runPlanningModule
+  runPlanningModule,
+  runPlanningModuleWithInput
 } from './module_registry.js';
 import { normalizeHouseholdProfile } from './profile.js';
 import {
@@ -251,6 +252,106 @@ export async function runConsumerAnalysis({
     recommendations,
     results,
     summary,
+    errors
+  };
+}
+
+/**
+ * Execute AI-authored native module inputs without translating them through a
+ * HouseholdProfile. The semantic planner has already chosen the modules and
+ * produced their contracts; this function supplies only deterministic module
+ * validation, calculation and the normal result summary.
+ */
+export async function runConsumerAnalysisWithInputs({
+  profile,
+  moduleInputs,
+  allowedModuleIds,
+  calculationDateIso,
+  analysisPlanId = createOpaqueId('analysis-plan'),
+  calculationVersion = CONSUMER_CALCULATION_VERSION,
+  calculatedAt = new Date().toISOString(),
+  onModuleResult,
+  signal
+} = {}) {
+  if (!moduleInputs || typeof moduleInputs !== 'object' || Array.isArray(moduleInputs)) {
+    throw new Error('moduleInputs must be an object keyed by module id.');
+  }
+  const allowed = new Set(Array.isArray(allowedModuleIds) ? allowedModuleIds : []);
+  const moduleIds = Object.keys(moduleInputs);
+  const selectedModules = [];
+  const results = [];
+  const errors = [];
+  const effectiveDate = assertIsoDate(
+    calculationDateIso || profile?.assumptions?.calculationDateIso,
+    'calculationDateIso'
+  );
+  for (const moduleId of moduleIds) {
+    const definition = getPlanningModuleDefinition(moduleId);
+    if (!definition || !definition.consumerAvailable || (allowed.size && !allowed.has(moduleId))) {
+      errors.push({ moduleId, code: 'module_not_allowed', message: `${moduleId} is not an approved consumer module.` });
+      continue;
+    }
+    const selected = {
+      moduleId,
+      priority: 0,
+      required: true,
+      readiness: { status: 'ready', requiredMissing: [], assumptionsUsed: [], warnings: [] }
+    };
+    selectedModules.push(selected);
+    if (signal?.aborted) {
+      errors.push({ moduleId, code: 'analysis_aborted', message: 'Analysis was aborted.' });
+      break;
+    }
+    try {
+      const result = await runPlanningModuleWithInput(moduleId, cloneJson(moduleInputs[moduleId]), {
+        calculationDateIso: effectiveDate,
+        calculationVersion,
+        calculatedAt,
+        scenarioOverrides: {},
+        baseCurrency: profile?.preferences?.baseCurrency || 'EUR',
+        signal
+      });
+      results.push(result);
+      selected.inputSnapshotHash = result.inputSnapshotHash;
+      selected.runId = result.runId;
+      if (typeof onModuleResult === 'function') {
+        await onModuleResult(Object.freeze({
+          moduleId,
+          cacheIdentity: null,
+          inputSnapshotHash: result.inputSnapshotHash,
+          result,
+          reused: false
+        }));
+      }
+    } catch (error) {
+      errors.push({
+        moduleId,
+        code: classifyModuleFailure(error),
+        message: moduleFailureDetail(error)
+      });
+    }
+  }
+  const analysisPlan = {
+    analysisPlanId,
+    profileId: profile?.profileId || null,
+    profileRevision: Number(profile?.revision || 0),
+    selectedModules,
+    recommendations: [],
+    requiredQuestions: [],
+    assumptions: cloneJson(profile?.assumptions || {}),
+    rulesVersion: CONSUMER_PLANNING_RULES_VERSION,
+    status: errors.length === 0 && results.length === selectedModules.length && results.length > 0
+      ? 'complete'
+      : 'needs_review',
+    createdAt: calculatedAt,
+    updatedAt: calculatedAt
+  };
+  return {
+    analysisPlan,
+    plan: analysisPlan,
+    recommendations: [],
+    results,
+    summary: summarizeAnalysisResults({ results, errors, analysisPlan }),
     errors
   };
 }

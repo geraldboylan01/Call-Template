@@ -1624,7 +1624,10 @@ async function executeConfirmAndRun(_args, deps) {
     config,
     sessionRow: context.sessionRow,
     profile: context.profile,
-    channel: 'live'
+    channel: 'live',
+    confirmedModuleIds: config.modulePlannerMode === 'apply'
+      ? prepared.moduleIds
+      : null
   });
 
   const executed = await confirmAndRunRealtimeAnalysisPlan({

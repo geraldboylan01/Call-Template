@@ -6,12 +6,14 @@ import { pensionConversationGuidance } from '../pension_math.js';
 import {
   buildLiquidityInput,
   getLiquidityReadiness,
+  normalizeLiquidityInput,
   runLiquidityAnalysis,
   validateLiquidityInput
 } from './adapters/liquidity.js';
 import {
   buildHousePurchaseInput,
   getHousePurchaseReadiness,
+  normalizeHousePurchaseInput,
   runHousePurchaseAnalysis,
   validateHousePurchaseInput
 } from './adapters/house_purchase.js';
@@ -20,6 +22,7 @@ import {
   buildPensionProjectionInput,
   getNetRetirementReadiness,
   getPensionProjectionReadiness,
+  normalizePensionProjectionInput,
   runNetRetirementCashflow,
   validateNetRetirementInput,
   runPensionProjection,
@@ -28,28 +31,32 @@ import {
 import {
   buildMortgageInput,
   getMortgageReadiness,
+  normalizeMortgageInput,
   runMortgageAnalysis,
   validateMortgageInput
 } from './adapters/mortgage.js';
 import {
   buildLoanInput,
   getLoanReadiness,
+  normalizeLoanInput,
   runLoanAnalysis,
   validateLoanInput
 } from './adapters/loan.js';
 import {
   buildCollegeFundingInput,
   getCollegeFundingReadiness,
+  normalizeCollegeFundingInput,
   runCollegeFundingAnalysis,
   validateCollegeFundingInput
 } from './adapters/college_funding.js';
 import {
   buildPersonalBalanceSheetInput,
   getPersonalBalanceSheetReadiness,
+  normalizePersonalBalanceSheetInput,
   runPersonalBalanceSheet,
   validatePersonalBalanceSheetInput
 } from './adapters/personal_balance_sheet.js';
-import { readJsonPointer, sha256Json } from './utils.js';
+import { readJsonPointer, sha256Json, stableStringify } from './utils.js';
 import {
   PLANNING_PLAYBOOK_MANIFEST,
   PLANNING_PLAYBOOK_MANIFEST_VERSION
@@ -337,6 +344,7 @@ register({
     ? ['A protected cash reserve should be separated from the home deposit.']
     : ['Cash resilience is relevant to the household goal.'],
   buildInput: buildLiquidityInput,
+  normalizeInput: normalizeLiquidityInput,
   validateInput: validateLiquidityInput,
   run: runLiquidityAnalysis
 });
@@ -372,6 +380,7 @@ register({
   canRun: getHousePurchaseReadiness,
   explainSelection: () => ['The household has an active home-purchase goal.', 'The planner keeps emergency cash separate from deposit capacity.'],
   buildInput: buildHousePurchaseInput,
+  normalizeInput: normalizeHousePurchaseInput,
   validateInput: validateHousePurchaseInput,
   run: runHousePurchaseAnalysis
 });
@@ -404,6 +413,7 @@ register({
   canRun: getPensionProjectionReadiness,
   explainSelection: () => ['A pension projection is relevant to the retirement goal, but remains gated for consumer release.'],
   buildInput: buildPensionProjectionInput,
+  normalizeInput: normalizePensionProjectionInput,
   validateInput: validatePensionProjectionInput,
   run: runPensionProjection
 });
@@ -468,6 +478,7 @@ register({
   canRun: getMortgageReadiness,
   explainSelection: () => ['An existing mortgage or mortgage-optimisation goal makes amortisation analysis relevant.'],
   buildInput: buildMortgageInput,
+  normalizeInput: normalizeMortgageInput,
   validateInput: validateMortgageInput,
   run: runMortgageAnalysis
 });
@@ -492,6 +503,7 @@ register({
   canRun: getLoanReadiness,
   explainSelection: () => ['A non-housing loan goal maps to the deterministic repayment and interest engine.'],
   buildInput: buildLoanInput,
+  normalizeInput: normalizeLoanInput,
   validateInput: validateLoanInput,
   run: runLoanAnalysis
 });
@@ -516,6 +528,7 @@ register({
   canRun: getCollegeFundingReadiness,
   explainSelection: () => ['A stated education-funding question makes child-level timing relevant.'],
   buildInput: buildCollegeFundingInput,
+  normalizeInput: normalizeCollegeFundingInput,
   validateInput: validateCollegeFundingInput,
   run: runCollegeFundingAnalysis
 });
@@ -608,6 +621,7 @@ register({
   canRun: getPersonalBalanceSheetReadiness,
   explainSelection: () => ['A reconciled personal balance sheet provides a useful view of the household’s overall position.'],
   buildInput: buildPersonalBalanceSheetInput,
+  normalizeInput: normalizePersonalBalanceSheetInput,
   validateInput: validatePersonalBalanceSheetInput,
   run: runPersonalBalanceSheet
 });
@@ -951,6 +965,77 @@ export async function runPlanningModule(moduleId, rawProfile, context) {
       ...context,
       moduleVersion: definition.moduleVersion,
       baseCurrency: profile.preferences.baseCurrency
+    });
+  } catch (error) {
+    if (error instanceof ModuleFailureError) throw error;
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.EXECUTION_FAILED,
+      moduleId,
+      error instanceof Error ? error.message : String(error),
+      error
+    );
+  }
+}
+
+/**
+ * Canonicalise a native module payload with the same normaliser its engine
+ * uses. This is structural normalisation (dates, defaults, enum casing and
+ * engine-owned derived fields), never interpretation of conversation text.
+ */
+export function normalizePlanningModuleInput(moduleId, input) {
+  const definition = assertRunnableModule(moduleId);
+  try {
+    const normalized = typeof definition.normalizeInput === 'function'
+      ? definition.normalizeInput(input)
+      : input;
+    if (typeof definition.validateInput === 'function') definition.validateInput(normalized);
+    // Shared object identity is not part of a JSON input contract. Clone before
+    // hashing or repeating so a legacy convenience alias such as
+    // pension.primaryPension cannot masquerade as a circular payload.
+    const canonical = JSON.parse(JSON.stringify(normalized));
+    if (typeof definition.normalizeInput === 'function') {
+      const repeated = JSON.parse(JSON.stringify(definition.normalizeInput(canonical)));
+      if (stableStringify(repeated) !== stableStringify(canonical)) {
+        throw new Error(`${moduleId} input normalization must be idempotent at the calculation boundary.`);
+      }
+    }
+    // Some legacy normalisers intentionally reuse one member object in a
+    // derived convenience field (for example pension.primaryPension). The
+    // payload is still JSON, but shared object identity is not part of its
+    // contract and must not look circular to the stable hasher.
+    return canonical;
+  } catch (error) {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.INPUT_INVALID,
+      moduleId,
+      error instanceof Error ? error.message : String(error),
+      error
+    );
+  }
+}
+
+/**
+ * Run an already-authored native module input without rebuilding financial
+ * meaning from HouseholdProfile. This is the execution boundary used by the
+ * semantic module planner: AI owns the interpretation, while this registry
+ * still owns module availability, structural validation and deterministic
+ * calculation.
+ */
+export async function runPlanningModuleWithInput(moduleId, input, context = {}) {
+  const definition = assertRunnableModule(moduleId);
+  if (!definition.consumerAvailable) {
+    throw new ModuleFailureError(
+      MODULE_FAILURE_CODES.UNSUPPORTED_STATE,
+      moduleId,
+      `${moduleId} is not available through the consumer analysis path.`
+    );
+  }
+  const normalizedInput = normalizePlanningModuleInput(moduleId, input);
+  try {
+    return await definition.run(normalizedInput, {
+      ...context,
+      moduleVersion: definition.moduleVersion,
+      baseCurrency: context.baseCurrency || 'EUR'
     });
   } catch (error) {
     if (error instanceof ModuleFailureError) throw error;

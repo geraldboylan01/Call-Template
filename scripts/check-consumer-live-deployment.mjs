@@ -47,6 +47,10 @@ function expectedPolicyFromEnvironment(env) {
     realtimeTranscriptionModel: String(env.CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL || '').trim(),
     realtimePromptVersion: String(env.CONSUMER_BETA_REALTIME_PROMPT_VERSION || '').trim(),
     realtimeToolsetVersion: String(env.CONSUMER_BETA_REALTIME_TOOLSET_VERSION || '').trim(),
+    modulePlannerMode: String(env.CONSUMER_BETA_MODULE_PLANNER_MODE || 'off').trim(),
+    modulePlannerModel: String(env.CONSUMER_BETA_REALTIME_PLANNER_MODEL || '').trim(),
+    modulePlannerPromptVersion: String(env.CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION || '').trim(),
+    moduleVerifierPromptVersion: String(env.CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION || '').trim(),
     // The live lane runs its own prompt and its own smaller tool surface, and
     // the deploy substitutes them into the realtime settings precisely so the
     // lease records what actually ran. Verification has to expect the same pair
@@ -199,12 +203,14 @@ export function validateConsumerDeploymentEnvelope(payload, {
   assert(payload && typeof payload === 'object', 'The deployment envelope must be a JSON object.');
   const voice = payload.voice || {};
   const realtimeVoice = payload.realtimeVoice || {};
+  const modulePlanning = payload.modulePlanning || {};
 
   if (mode === DORMANT_MODE) {
     assert.equal(voice.enabled, false, 'A dormant deployment must not report a live voice envelope.');
     assert.equal(realtimeVoice.enabled, false, 'A dormant deployment must not report a live realtime envelope.');
     assert.equal(voice.sessionBudgetMicroEur, null, 'A dormant deployment must expose no voice budget.');
     assert.equal(realtimeVoice.sessionBudgetMicroEur, null, 'A dormant deployment must expose no realtime budget.');
+    assert.equal(modulePlanning.mode, 'off', 'A dormant deployment must keep direct module planning off.');
     return true;
   }
 
@@ -226,9 +232,31 @@ export function validateConsumerDeploymentEnvelope(payload, {
     assert.equal(realtimeVoice.dispatchStopMicroEur, 9_700_000, 'Live realtime dispatch stop changed.');
     assert.equal(realtimeVoice.warnThresholdMicroEur, 7_500_000, 'Live realtime warning threshold changed.');
     assert.equal(realtimeVoice.safetyReserveMicroEur, 300_000, 'Live realtime safety reserve changed.');
+    assert.ok(
+      ['off', 'shadow', 'apply'].includes(expectedPolicy.modulePlannerMode),
+      'Expected modulePlannerMode must be off, shadow or apply.'
+    );
+    assert.equal(
+      modulePlanning.mode,
+      expectedPolicy.modulePlannerMode,
+      'The deployed direct module-planning mode differs from the protected rollout selection.'
+    );
+    if (expectedPolicy.modulePlannerMode === 'off') {
+      assert.equal(modulePlanning.model, null, 'An inactive direct planner must expose no model identity.');
+      assert.equal(modulePlanning.extractorPromptVersion, null, 'An inactive direct planner must expose no extractor identity.');
+      assert.equal(modulePlanning.verifierPromptVersion, null, 'An inactive direct planner must expose no verifier identity.');
+    } else {
+      assert.equal(modulePlanning.model, expectedPolicy.modulePlannerModel,
+        'The deployed direct module planner model changed.');
+      assert.equal(modulePlanning.extractorPromptVersion, expectedPolicy.modulePlannerPromptVersion,
+        'The deployed direct extractor prompt identity changed.');
+      assert.equal(modulePlanning.verifierPromptVersion, expectedPolicy.moduleVerifierPromptVersion,
+        'The deployed direct verifier prompt identity changed.');
+    }
   } else {
     assert.equal(realtimeVoice.enabled, false, 'Typed rules-only mode must not expose a call envelope.');
     assert.equal(realtimeVoice.sessionBudgetMicroEur, null, 'Typed rules-only mode must expose no call budget.');
+    assert.equal(modulePlanning.mode, 'off', 'Direct module planning cannot run without Realtime.');
   }
   return true;
 }

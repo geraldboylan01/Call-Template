@@ -137,14 +137,16 @@ export async function settle(durable, session, { timeoutMs = 120_000 } = {}) {
       ...pending,
       session.eventChain,
       session.reconciliationPersistenceChain,
-      session.reconciliationChain
+      session.reconciliationChain,
+      session.directModulePlanningChain
     ]);
     // Let any continuation those settled promises queued actually run before
     // deciding the session is idle.
     await new Promise((resolve) => setImmediate(resolve));
     const quiet = durable.waitUntilPromises.length === 0
       && !session.reconciliationDrainScheduled
-      && !session.activeReconciliationTurn;
+      && !session.activeReconciliationTurn
+      && session.directModulePlanningPending === 0;
     if (quiet) return;
     if (Date.now() > deadline) {
       throw new Error('settle() timed out waiting for detached Durable Object work');
