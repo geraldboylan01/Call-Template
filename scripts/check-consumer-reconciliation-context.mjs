@@ -328,35 +328,45 @@ const env = makeEnv(databasePath);
 const config = makeConfig(env);
 const { sessionId, meetingId } = await newSession(env, config);
 const userTurns = [];
-for (let index = 1; index <= 10; index += 1) {
+const retainedQuestion = await recordRealtimeFinalTurn(env, {
+  sessionId,
+  leaseId: meetingId,
+  providerItemId: 'context-retained-question',
+  role: 'assistant',
+  transcript: 'Any other loans or debts apart from the mortgage?'
+});
+for (let index = 1; index <= 30; index += 1) {
   const recorded = await recordRealtimeFinalTurn(env, {
     sessionId,
     leaseId: meetingId,
     providerItemId: `context-user-${index}`,
     role: 'user',
-    transcript: `Client turn ${index}.`
+    transcript: `Client turn ${index}.`,
+    answersTurnId: index === 1 ? retainedQuestion.id : null
   });
   userTurns.push(recorded.id);
-  const attempt = await beginRealtimeToolAttempt(env, {
-    sessionId,
-    leaseId: meetingId,
-    providerToolCallId: `context-tool-${index}`,
-    toolName: 'silent_planner',
-    toolVersion: 'context-test-v1',
-    expectedProfileRevision: 1,
-    sourceTurnId: recorded.id,
-    arguments: { sourceTurnId: recorded.id, ordinal: index },
-    maxToolCalls: config.realtimeMaxToolCalls
-  });
-  await completeRealtimeToolAttempt(env, {
-    sessionId,
-    leaseId: meetingId,
-    toolAttemptId: attempt.row.id,
-    status: 'succeeded',
-    result: { ok: true, ordinal: index, outcomes: [] },
-    errorCode: null,
-    latencyMs: index
-  });
+  if (index <= 10) {
+    const attempt = await beginRealtimeToolAttempt(env, {
+      sessionId,
+      leaseId: meetingId,
+      providerToolCallId: `context-tool-${index}`,
+      toolName: 'silent_planner',
+      toolVersion: 'context-test-v1',
+      expectedProfileRevision: 1,
+      sourceTurnId: recorded.id,
+      arguments: { sourceTurnId: recorded.id, ordinal: index },
+      maxToolCalls: config.realtimeMaxToolCalls
+    });
+    await completeRealtimeToolAttempt(env, {
+      sessionId,
+      leaseId: meetingId,
+      toolAttemptId: attempt.row.id,
+      status: 'succeeded',
+      result: { ok: true, ordinal: index, outcomes: [] },
+      errorCode: null,
+      latencyMs: index
+    });
+  }
   await recordRealtimeFinalTurn(env, {
     sessionId,
     leaseId: meetingId,
@@ -374,10 +384,27 @@ const window = await listReconciliationTranscriptWindow(
   { maxClientTurns: 8, referencedTurnIds: [userTurns[0]] }
 );
 assert.ok(window.some((turn) => turn.id === userTurns[0]), 'older note evidence is retained explicitly');
+assert.ok(window.some((turn) => turn.id === retainedQuestion.id),
+  'an older cited answer retains the exact assistant proposition that gives it meaning');
 assert.equal(window.filter((turn) => turn.role === 'user' && turn.id !== userTurns[0]).length, 8);
 assert.ok(!window.some((turn) => turn.id === userTurns[9]), 'a turn-N window must never include N+1');
 assert.ok(window.every((turn, index) => index === 0 || turn.sequence > window[index - 1].sequence),
   'transcript sequence must be monotonic');
+
+const directWindow = await listReconciliationTranscriptWindow(
+  env,
+  sessionId,
+  meetingId,
+  userTurns[29],
+  { maxClientTurns: 24 }
+);
+assert.equal(
+  directWindow.filter((turn) => turn.role === 'user').length,
+  24,
+  'direct planning may retain 24 recent client turns without widening the legacy default'
+);
+assert.ok(!directWindow.some((turn) => turn.id === userTurns[5]),
+  'the larger direct window remains bounded');
 
 const writes = await listRealtimeWriteOutcomes(env, sessionId, meetingId, userTurns[8]);
 assert.equal(writes.length, 1, 'T1 outcomes must bind to the exact stored source turn');

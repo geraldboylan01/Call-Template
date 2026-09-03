@@ -1,5 +1,5 @@
 import { PLANEIR_ASSUMPTIONS, assumptionRecord } from '../planeir_assumptions.js';
-import { computePensionProjection } from '../../pension_math.js';
+import { computePensionProjection, normalizePensionInputs } from '../../pension_math.js';
 import { computeNetRetirementProjection } from '../../net_retirement_math.js';
 import {
   IRELAND_RULES_CATALOGUE_VERSION,
@@ -435,8 +435,34 @@ export function validatePensionProjectionInput(input) {
   if (!input || typeof input !== 'object') {
     throw new Error('generated.pensionInputs must be an object.');
   }
+  const requiredHouseholdFields = [
+    'currentYear', 'growthRate', 'inflationRate', 'wageGrowthRate', 'incomeMode',
+    'horizonEndAge', 'pensions', 'otherIncomeSources'
+  ];
+  const missingHouseholdFields = requiredHouseholdFields
+    .filter((field) => !Object.hasOwn(input, field));
+  if (missingHouseholdFields.length > 0) {
+    throw new Error(`generated.pensionInputs must explicitly include: ${missingHouseholdFields.join(', ')}.`);
+  }
   if (!Array.isArray(input.pensions) || input.pensions.length === 0) {
     throw new Error('generated.pensionInputs.pensions must name at least one household member.');
+  }
+  if (!Array.isArray(input.otherIncomeSources)) {
+    throw new Error('generated.pensionInputs.otherIncomeSources must be an explicit array.');
+  }
+  if (!['target', 'affordable'].includes(input.incomeMode)) {
+    throw new Error('generated.pensionInputs.incomeMode must be exactly "target" or "affordable".');
+  }
+  if (input.incomeMode === 'target') {
+    const hasTargetAmount = Object.hasOwn(input, 'targetIncomeToday');
+    const hasTargetRate = Object.hasOwn(input, 'targetIncomePctOfSalary');
+    if (!hasTargetAmount && !hasTargetRate) {
+      throw new Error('target pension input must include targetIncomeToday or targetIncomePctOfSalary.');
+    }
+  } else {
+    if (!Array.isArray(input.affordableEndAges) || input.affordableEndAges.length === 0) {
+      throw new Error('affordable pension input must explicitly include affordableEndAges.');
+    }
   }
   const seen = new Set();
   for (const member of input.pensions) {
@@ -444,6 +470,32 @@ export function validatePensionProjectionInput(input) {
     // household's retirement resources without any position being duplicated.
     if (!member?.id || seen.has(member.id)) {
       throw new Error('generated.pensionInputs.pensions must name each household member exactly once.');
+    }
+    const requiredMemberFields = [
+      'id', 'title', 'currentAge', 'retirementAge', 'currentSalary', 'currentPot',
+      'personalPct', 'employerPct', 'includeStatePension', 'statePensionFraction',
+      'statePensionStartAge', 'statePensionEscalationRate'
+    ];
+    const missingMemberFields = requiredMemberFields
+      .filter((field) => !Object.hasOwn(member, field));
+    if (missingMemberFields.length > 0) {
+      throw new Error(
+        `generated.pensionInputs.pensions[${member.id}].must explicitly include: ${missingMemberFields.join(', ')}.`
+      );
+    }
+    if (typeof member.id !== 'string' || !member.id.trim()
+      || typeof member.title !== 'string' || !member.title.trim()) {
+      throw new Error('generated.pensionInputs.pensions must give every household member a non-empty id and title.');
+    }
+    if (typeof member.includeStatePension !== 'boolean') {
+      throw new Error(`generated.pensionInputs.pensions[${member.id}].includeStatePension must be a boolean.`);
+    }
+    if (typeof member.statePensionFraction !== 'number' || !Number.isFinite(member.statePensionFraction)) {
+      throw new Error(`generated.pensionInputs.pensions[${member.id}].statePensionFraction must be a finite number.`);
+    }
+    if ((member.includeStatePension && member.statePensionFraction <= 0)
+      || (!member.includeStatePension && member.statePensionFraction !== 0)) {
+      throw new Error(`generated.pensionInputs.pensions[${member.id}] has inconsistent State Pension inclusion fields.`);
     }
     seen.add(member.id);
     for (const [field, value] of [
@@ -477,10 +529,28 @@ export function validatePensionProjectionInput(input) {
       throw new Error(`generated.pensionInputs.pensions[${member.id}].retirementAge must not be before currentAge.`);
     }
   }
+  for (const [index, source] of input.otherIncomeSources.entries()) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)
+      || typeof source.id !== 'string' || !source.id.trim()
+      || typeof source.title !== 'string' || !source.title.trim()
+      || typeof source.ownerId !== 'string' || !source.ownerId.trim()) {
+      throw new Error(`generated.pensionInputs.otherIncomeSources[${index}] must explicitly identify the income and its owner.`);
+    }
+    const ownerId = source.ownerId.trim();
+    if (ownerId !== 'household' && !seen.has(ownerId)) {
+      throw new Error(`generated.pensionInputs.otherIncomeSources[${index}].ownerId must match a pension member or be "household".`);
+    }
+  }
   if (typeof input.growthRate !== 'number' || !Number.isFinite(input.growthRate) || input.growthRate <= -1) {
     throw new Error('generated.pensionInputs.growthRate must be a finite rate greater than -1.');
   }
   computePensionProjection(input);
+}
+
+/** Canonical input the pension engine will actually consume. */
+export function normalizePensionProjectionInput(input) {
+  validatePensionProjectionInput(input);
+  return normalizePensionInputs(input);
 }
 
 export async function runPensionProjection(input, context) {

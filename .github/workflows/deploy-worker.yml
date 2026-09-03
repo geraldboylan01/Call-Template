@@ -93,6 +93,13 @@ jobs:
       # also fails closed to legacy on any value it does not recognise.
       CONSUMER_BETA_PLANNER_RECONCILIATION_MODE: ${{ vars.CONSUMER_PLANNER_RECONCILIATION_MODE || 'legacy' }}
       CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION: "planning-reconciliation-v3"
+      # Direct transcript-to-native-module planning is separately selectable
+      # for the protected Realtime canary. The committed Worker config remains
+      # off, and the builder below resolves this back to off whenever Realtime
+      # itself is not active.
+      CONSUMER_BETA_MODULE_PLANNER_MODE: ${{ vars.CONSUMER_MODULE_PLANNER_MODE || 'off' }}
+      CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v2"
+      CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION: "direct-module-verifier-v2"
       # Phase 3 semantic turn reading: a second, independent reading of each
       # reviewed client turn, where agreement between the two readers is what
       # authorises writing a figure.
@@ -454,8 +461,19 @@ jobs:
           // no effect, so it cannot outrun the pass it informs.
           const resolvedTurnReadingMode = reconciliationMode === 'legacy' ? 'off' : turnReadingMode;
 
+          // Direct module planning has its own kill switch. Validate the
+          // requested value here so a typo fails deployment rather than
+          // silently selecting a different source of financial state.
+          const requestedModulePlannerMode = envValue('CONSUMER_BETA_MODULE_PLANNER_MODE') || 'off';
+          if (!['off', 'shadow', 'apply'].includes(requestedModulePlannerMode)) {
+            throw new Error('CONSUMER_MODULE_PLANNER_MODE must be off, shadow or apply.');
+          }
+
           // A Realtime deployment has exactly one conversation implementation.
           const liveVoiceEnabled = realtimeEnabled;
+          const directModulePlannerMode = realtimeEnabled && liveVoiceEnabled
+            ? requestedModulePlannerMode
+            : 'off';
           // The reconciler reads the transcript and the notes a live turn
           // produced, so it cannot be more active than the lane that produces
           // them -- and that is the lane as ACTUALLY RESOLVED, not the requested
@@ -541,6 +559,9 @@ jobs:
           if (!/^CONSUMER_ALLOWED_MODULE_IDS\s*=\s*"college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet"\s*$/m.test(source)) {
             throw new Error('The protected beta module allowlist must remain the manifest-approved set: college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet.');
           }
+          if (!/^CONSUMER_MODULE_PLANNER_MODE\s*=\s*"off"\s*$/m.test(source)) {
+            throw new Error('Direct module planning must remain off in the committed production source.');
+          }
           if (!/^bindings\s*=\s*\[\s*\{\s*name\s*=\s*"CONSUMER_REALTIME_SESSIONS",\s*class_name\s*=\s*"ConsumerRealtimeSession"\s*\}\s*,\s*\{\s*name\s*=\s*"CONSUMER_LIVE_SESSIONS",\s*class_name\s*=\s*"ConsumerLiveSession"\s*\}\s*\]\s*$/m.test(source)) {
             throw new Error('The ConsumerRealtimeSession and ConsumerLiveSession Durable Object bindings must remain explicit.');
           }
@@ -588,6 +609,9 @@ jobs:
             'CONSUMER_REALTIME_PLANNER_PROMPT_VERSION',
             'CONSUMER_PLANNER_RECONCILIATION_MODE',
             'CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION',
+            'CONSUMER_MODULE_PLANNER_MODE',
+            'CONSUMER_MODULE_PLANNER_PROMPT_VERSION',
+            'CONSUMER_MODULE_VERIFIER_PROMPT_VERSION',
             'CONSUMER_REALTIME_DIRECTOR_ENABLED',
             'CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION',
             'CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION',
@@ -702,6 +726,8 @@ jobs:
                 CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
                 CONSUMER_REALTIME_PLANNER_MODEL: ['CONSUMER_BETA_REALTIME_PLANNER_MODEL', 'gpt-5.6-luna'],
                 CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION: ['CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION', 'planning-reconciliation-v3'],
+                CONSUMER_MODULE_PLANNER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION', 'direct-module-planner-v2'],
+                CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION', 'direct-module-verifier-v2'],
                 CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v10'],
                 CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1'],
                 CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
@@ -758,6 +784,11 @@ jobs:
                 'CONSUMER_PLANNER_RECONCILIATION_MODE',
                 plannerReconciliationMode
               );
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_MODULE_PLANNER_MODE',
+                directModulePlannerMode
+              );
               generatedSource = replaceTomlString(generatedSource, 'CONSUMER_HANDOFF_ENABLED', 'false');
             }
           }
@@ -774,6 +805,7 @@ jobs:
             // whether or not the generated file was rewritten. Deriving it from
             // betaEnabled instead let the expectation and the file disagree.
             CONSUMER_PLANNER_RECONCILIATION_MODE: plannerReconciliationMode,
+            CONSUMER_MODULE_PLANNER_MODE: directModulePlannerMode,
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_GOAL_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_MODULE_OFFERS_ENABLED: moduleOffersEnabled ? 'true' : 'false',
@@ -806,13 +838,18 @@ jobs:
           // to stand the infrastructure up and prove SDP, sideband and hang-up
           // -- not to exercise a lane. Written as a list rather than nested
           // calls so adding a lane cannot quietly miss one.
-          const bootstrapSource = [
+          let bootstrapSource = [
             'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
             'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
             'CONSUMER_LIVE_VOICE_ENABLED',
             'CONSUMER_REALTIME_VOICE_ENABLED',
             'CONSUMER_HANDOFF_ENABLED'
           ].reduce((source, flag) => replaceTomlString(source, flag, 'false'), generatedSource);
+          bootstrapSource = replaceTomlString(
+            bootstrapSource,
+            'CONSUMER_MODULE_PLANNER_MODE',
+            'off'
+          );
           if (!/^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep realtime voice disabled.');
           }
@@ -827,6 +864,9 @@ jobs:
           }
           if (!/^CONSUMER_HANDOFF_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep the realtime handoff disabled.');
+          }
+          if (!/^CONSUMER_MODULE_PLANNER_MODE\s*=\s*"off"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep direct module planning disabled.');
           }
           fs.writeFileSync(bootstrapPath, bootstrapSource.trimEnd() + '\n' + binding, { mode: 0o600 });
           NODE
@@ -957,7 +997,13 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CONSUMER_REALTIME_PLANNER_MODEL: ${{ env.CONSUMER_BETA_REALTIME_PLANNER_MODEL }}
-        run: node ./scripts/run-consumer-planner-probe.mjs
+        run: |
+          set -euo pipefail
+          if [[ "$CONSUMER_BETA_MODULE_PLANNER_MODE" == "apply" ]]; then
+            node ./scripts/run-direct-module-planner-eval.mjs
+          else
+            node ./scripts/run-consumer-planner-probe.mjs
+          fi
 
       - name: Deploy final Worker configuration
         working-directory: ./worker

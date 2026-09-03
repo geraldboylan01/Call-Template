@@ -1,4 +1,4 @@
-import { runConsumerAnalysis } from '../../../js/planning/orchestrator.js';
+import { runConsumerAnalysis, runConsumerAnalysisWithInputs } from '../../../js/planning/orchestrator.js';
 import { getConsumerModuleDescriptors } from '../../../js/planning/module_registry.js';
 import {
   MODULE_FAILURE_CODES,
@@ -120,5 +120,51 @@ export async function runStoredConsumerAnalysis({ env, config, sessionRow, profi
     await failAnalysisRun(env, run, sessionRow.id).catch(() => {});
     if (error instanceof ConsumerError) throw error;
     throw new ConsumerError(422, 'analysis_not_ready', error instanceof Error ? error.message : 'Analysis could not be completed.');
+  }
+}
+
+export async function runStoredConsumerAnalysisWithInputs({
+  env,
+  config,
+  sessionRow,
+  profile,
+  moduleInputs
+}) {
+  if (!sessionRow.confirmed_profile_revision
+    || Number(sessionRow.confirmed_profile_revision) !== Number(sessionRow.current_profile_revision)) {
+    throw new ConsumerError(409, 'profile_confirmation_required', 'Confirm the current plan before running an analysis.');
+  }
+  const moduleIds = Object.keys(moduleInputs || {});
+  const run = await createAnalysisRun(env, sessionRow, profile, moduleIds, moduleInputs);
+  try {
+    const moduleExecutions = [];
+    const result = await runConsumerAnalysisWithInputs({
+      profile,
+      moduleInputs,
+      allowedModuleIds: config.allowedModules,
+      analysisPlanId: `plan_${run.id}`,
+      calculationDateIso: profile.assumptions.calculationDateIso,
+      onModuleResult: (execution) => moduleExecutions.push(execution)
+    });
+    if (result.analysisPlan?.status !== 'complete' || result.results.length !== moduleIds.length) {
+      const pending = await saveAnalysisNeedsInformation(env, run, sessionRow.id, result);
+      const primary = primaryModuleFailure(result.errors || []);
+      throw new ConsumerError(422, 'analysis_module_failed', 'A deterministic analysis could not be completed from the verified module inputs.', {
+        analysis: pending,
+        moduleFailures: result.errors,
+        failureCode: primary?.code || MODULE_FAILURE_CODES.UNKNOWN,
+        failedModuleId: primary?.moduleId || null
+      });
+    }
+    const stored = await completeAnalysisRun(env, run, sessionRow.id, result, moduleIds, moduleExecutions);
+    for (const moduleId of moduleIds) {
+      await recordEvent(env, sessionRow.id, 'module_run', { moduleId, status: 'complete', inputSource: 'verified_direct_module_input' }).catch(() => {});
+    }
+    return { session: toConsumerSession(await getSessionRow(env, sessionRow.id)), analysis: stored };
+  } catch (error) {
+    if (error instanceof ConsumerError && error.code === 'analysis_module_failed') throw error;
+    await failAnalysisRun(env, run, sessionRow.id).catch(() => {});
+    if (error instanceof ConsumerError) throw error;
+    throw new ConsumerError(422, 'analysis_not_ready', 'The verified module inputs could not be analysed.');
   }
 }

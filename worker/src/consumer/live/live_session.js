@@ -34,6 +34,7 @@ import {
   closeRealtimeLease,
   completeRealtimeToolAttempt,
   getRealtimeLease,
+  getLatestRealtimeMeetingBrief,
   getRealtimeProviderCallId,
   hasUnsettledRealtimeSpeechUsage,
   recoverStalePlannerReconciliation,
@@ -50,6 +51,7 @@ import { hangupOpenAiRealtimeCall } from '../realtime_provider.js';
 import { applyPlannerCandidates } from '../planning_turn.js';
 import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
+import { runDirectModulePlanning } from '../direct_module_planner.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
 import { classifySpokenPlanConfirmation } from '../realtime_completion.js';
 import {
@@ -58,7 +60,7 @@ import {
   realtimeUsageFromResponse
 } from '../realtime_session.js';
 import { emitSessionSummary } from '../learning_signals.js';
-import { LIVE_PROMPT_VERSION, liveVolatileStateItem } from './catalogue_prompt.js';
+import { LIVE_PROMPT_VERSION, liveDirectModuleStateItem, liveVolatileStateItem } from './catalogue_prompt.js';
 import {
   executeLiveTool,
   LIVE_TOOLSET_VERSION,
@@ -150,6 +152,13 @@ function json(value, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' }
   });
+}
+
+// This is equality, not language interpretation. The semantic planner writes
+// the statement and the independent verifier approves it; the live lane merely
+// proves the client heard that exact certified statement before accepting yes.
+function confirmationReadbackKey(value) {
+  return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -325,6 +334,22 @@ export class ConsumerLiveSession {
     this.inResponse = false;
     this.eventChain = Promise.resolve();
     this.reconciliationChain = Promise.resolve();
+    this.directModulePlanningChain = Promise.resolve();
+    this.directModulePlanningPersistenceChain = Promise.resolve();
+    this.directModulePlanningPending = 0;
+    // Finalized client turns whose direct module snapshot has not yet been
+    // successfully rebuilt. This is distinct from an in-memory request count:
+    // a failed request remains an obligation, including across hibernation.
+    this.directModulePlanningOutstanding = [];
+    this.directModulePlanningSequence = 0;
+    this.directAwaitingConfirmationSnapshotRevision = null;
+    // A final analysis confirmation is valid only when the client is answering
+    // the exact assistant turn that presented a verified direct-module plan.
+    // The opaque token is protocol state, never financial meaning: get_state
+    // issues it, the post-tool continuation presents the plan, and that spoken
+    // assistant turn arms it durably for one subsequent client answer.
+    this.directConfirmationOffer = null;
+    this.lastInjectedDirectSnapshotRevision = 0;
     this.reconciliationPersistenceChain = Promise.resolve();
     this.reconciliationDrainScheduled = false;
     this.pendingReconciliationTurn = null;
@@ -414,6 +439,32 @@ export class ConsumerLiveSession {
       this.undispositionedNotes = await this.state.storage.get('undispositionedNotes') || [];
       this.notesPendingEscalation = await this.state.storage.get('notesPendingEscalation') || [];
       this.openingRequested = await this.state.storage.get('openingRequested') === true;
+      const directOutstanding = await this.state.storage.get('directModulePlanningOutstanding') || [];
+      this.directModulePlanningOutstanding = (Array.isArray(directOutstanding) ? directOutstanding : [])
+        .filter((item) => item?.turnId && Number.isSafeInteger(Number(item?.sequence)))
+        .map((item) => ({ turnId: String(item.turnId), sequence: Number(item.sequence) }));
+      this.directModulePlanningSequence = this.directModulePlanningOutstanding.reduce(
+        (highest, item) => Math.max(highest, item.sequence),
+        0
+      );
+      const awaitingDirectRevision = Number(
+        await this.state.storage.get('directAwaitingConfirmationSnapshotRevision')
+      );
+      this.directAwaitingConfirmationSnapshotRevision = Number.isSafeInteger(awaitingDirectRevision)
+        && awaitingDirectRevision > 0
+        ? awaitingDirectRevision
+        : null;
+      const storedDirectOffer = await this.state.storage.get('directConfirmationOffer') || null;
+      this.directConfirmationOffer = storedDirectOffer?.token
+        && storedDirectOffer?.assistantTurnId
+        && Number.isSafeInteger(Number(storedDirectOffer?.snapshotRevision))
+        ? {
+            token: String(storedDirectOffer.token),
+            assistantTurnId: String(storedDirectOffer.assistantTurnId),
+            snapshotRevision: Number(storedDirectOffer.snapshotRevision),
+            certificateSignature: String(storedDirectOffer.certificateSignature || '')
+          }
+        : null;
       const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
       if (storedReconciliationQueue?.schemaVersion === 1) {
         this.pendingReconciliationTurn = storedReconciliationQueue.current || null;
@@ -1148,6 +1199,7 @@ export class ConsumerLiveSession {
       this.inResponse = [...this.responseContextsById.values()].some((response) => !response.done);
       if (context) this.foldResponseIntoChain(context);
       if (context) this.maybeRequestToolContinuation(context);
+      if (context) await this.maybeArmDirectConfirmation(context);
       if (context && getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy') {
         this.maybeScheduleReconciliation(context);
       }
@@ -1223,7 +1275,14 @@ export class ConsumerLiveSession {
         const verdict = scanAssistantSpeech(
           response.assistantTranscript,
           response.sourcedFigures,
-          { skipLeadInTripwires: true }
+          {
+            skipLeadInTripwires: true,
+            // Direct apply has no deterministic English-number authority in
+            // either half of L2. The first streaming pass already defers this
+            // check; a late ASR event must not reintroduce the legacy parser
+            // and cancel a correct semantic rendering after the fact.
+            skipNumericContainment: getConsumerConfig(this.env).modulePlannerMode === 'apply'
+          }
         );
         if (verdict.tripped) {
           await this.tripCompliance(verdict.actId, verdict.layer, response.responseId);
@@ -1271,6 +1330,24 @@ export class ConsumerLiveSession {
     await this.touch();
     await this.drainDeferredEvidenceTools(itemId, transcript);
     this.scheduleReviewsForClientTurn(itemId, transcript);
+    const confirmsPublishedDirectSnapshot = Boolean(
+      this.directConfirmationOffer
+      && turn.answersTurnId
+      && turn.answersTurnId === this.directConfirmationOffer.assistantTurnId
+      && Number(this.directConfirmationOffer.snapshotRevision)
+        === Number(this.directAwaitingConfirmationSnapshotRevision)
+      && classifySpokenPlanConfirmation(transcript) === 'affirmed'
+    );
+    // An answer to anything other than the exact armed plan proposition ends
+    // that invitation. This is causal bookkeeping only; the semantic planner,
+    // not this comparison, decides what the new utterance means financially.
+    if (this.directConfirmationOffer && !confirmsPublishedDirectSnapshot) {
+      await this.clearDirectConfirmationOffer();
+    }
+    if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off'
+      && !confirmsPublishedDirectSnapshot) {
+      this.scheduleDirectModulePlanning(storedTurn.id);
+    }
     this.pruneLiveTurnLedger();
 
     // NOTE WHAT DOES NOT HAPPEN HERE: no brief, no `response.create`, and
@@ -1281,14 +1358,19 @@ export class ConsumerLiveSession {
     // so the v2 defect -- a model call BETWEEN the client finishing a sentence
     // and the model being allowed to speak -- cannot come back through it. Its
     // corrections land on a later turn, which is the whole point of an auditor.
-    const reconciliationMode = getConsumerConfig(this.env).plannerReconciliationMode;
-    if (reconciliationMode === 'legacy' && storedTurn?.id) {
-      this.state.waitUntil(this.auditTurnFacts(transcript, itemId, storedTurn.id).catch(() => {}));
-    } else {
-      const settledResponse = [...this.responseContextsById.values()].find((response) => (
-        response.causeItemId === itemId && response.done
-      ));
-      if (settledResponse) this.maybeScheduleReconciliation(settledResponse);
+    const turnConfig = getConsumerConfig(this.env);
+    // Shadow is observational: it must not remove or alter the shipped planner
+    // path. Only apply makes the direct snapshot the production authority.
+    if (turnConfig.modulePlannerMode !== 'apply') {
+      const reconciliationMode = turnConfig.plannerReconciliationMode;
+      if (reconciliationMode === 'legacy' && storedTurn?.id) {
+        this.state.waitUntil(this.auditTurnFacts(transcript, itemId, storedTurn.id).catch(() => {}));
+      } else {
+        const settledResponse = [...this.responseContextsById.values()].find((response) => (
+          response.causeItemId === itemId && response.done
+        ));
+        if (settledResponse) this.maybeScheduleReconciliation(settledResponse);
+      }
     }
   }
 
@@ -1363,7 +1445,12 @@ export class ConsumerLiveSession {
       response.assistantTranscript,
       response.sourcedFigures,
       {
-        skipNumericContainment: response.pendingSourceItemIds.size > 0
+        // Direct mode deliberately has no deterministic English reader. The
+        // Realtime model may acknowledge spoken-word figures immediately; the
+        // independently verified certificate, not this regex, guards anything
+        // that can enter a calculation. Recommendation tripwires still run.
+        skipNumericContainment: getConsumerConfig(this.env).modulePlannerMode === 'apply'
+          || response.pendingSourceItemIds.size > 0
           || response.numericUnavailable
       }
     );
@@ -1395,7 +1482,16 @@ export class ConsumerLiveSession {
     // The proposition a client turn will answer. Held here because only the
     // live session knows it: stored row order is ASR completion order, and
     // reconstructing the pairing from it later gets terse answers wrong.
-    if (storedAssistantTurn?.id) this.lastCompletedAssistantTurnId = storedAssistantTurn.id;
+    if (storedAssistantTurn?.id) {
+      this.lastCompletedAssistantTurnId = storedAssistantTurn.id;
+      response.storedAssistantTurnId = storedAssistantTurn.id;
+    }
+
+    // response.done and transcript.done are separate provider events and may
+    // arrive in either order. Whichever arrives second arms the offer, but only
+    // after the final post-get_state response has both completed and produced a
+    // durable assistant proposition for the client's next turn to answer.
+    await this.maybeArmDirectConfirmation(response);
 
     // Deterministic, synchronous, no model call: did that turn ask for a figure
     // the state already holds? The response has finished, so nothing is
@@ -1436,6 +1532,131 @@ export class ConsumerLiveSession {
       }
     }).catch(() => {});
     if (actionable) await this.correctNextTurn(verdict.actId).catch(() => {});
+  }
+
+  async clearDirectConfirmationOffer() {
+    this.directConfirmationOffer = null;
+    await this.state.storage.delete('directConfirmationOffer').catch(() => {});
+  }
+
+  async maybeArmDirectConfirmation(response) {
+    const candidate = response?.continuationChain?.directConfirmationCandidate;
+    if (!candidate
+      || response?.responseId === candidate.sourceResponseId
+      || response?.done !== true
+      || response?.status !== 'completed'
+      || response?.assistantDone !== true
+      || !response?.storedAssistantTurnId
+      || response?.toolCallIds?.size !== 0
+      || response?.continuationChain?.invalidated === true
+      || !candidate.confirmationPrompt
+      || confirmationReadbackKey(response.assistantTranscript)
+        !== confirmationReadbackKey(candidate.confirmationPrompt)
+      || Number(candidate.snapshotRevision) !== Number(this.directAwaitingConfirmationSnapshotRevision)
+      || this.directModulePlanningPending > 0
+      || this.directModulePlanningOutstanding.length > 0) return false;
+    const offer = {
+      token: String(candidate.token),
+      assistantTurnId: String(response.storedAssistantTurnId),
+      snapshotRevision: Number(candidate.snapshotRevision),
+      certificateSignature: String(candidate.certificateSignature || '')
+    };
+    this.directConfirmationOffer = offer;
+    await this.state.storage.put('directConfirmationOffer', offer);
+    return true;
+  }
+
+  persistDirectModulePlanningOutstanding() {
+    const snapshot = this.directModulePlanningOutstanding.map((item) => ({ ...item }));
+    this.directModulePlanningPersistenceChain = this.directModulePlanningPersistenceChain
+      .catch(() => {})
+      .then(() => this.state.storage.put('directModulePlanningOutstanding', snapshot));
+    this.state.waitUntil(this.directModulePlanningPersistenceChain);
+    return this.directModulePlanningPersistenceChain;
+  }
+
+  scheduleDirectModulePlanning(throughTurnId) {
+    // Every finalized client turn becomes a durable review obligation, but a
+    // full snapshot through the newest turn subsumes every earlier queued one.
+    // Keep one active pass plus the newest watermark rather than paying for an
+    // unbounded FIFO backlog while the conversation continues.
+    const normalizedTurnId = String(throughTurnId || '');
+    if (!normalizedTurnId) return;
+    const existing = this.directModulePlanningOutstanding
+      .find((item) => item.turnId === normalizedTurnId);
+    const job = existing || {
+      turnId: normalizedTurnId,
+      sequence: ++this.directModulePlanningSequence
+    };
+    if (!existing) this.directModulePlanningOutstanding.push(job);
+    // Any new semantic turn invalidates the confirmation invitation immediately.
+    // It will be restored only after a fresh verified snapshot is persisted and
+    // published to Realtime.
+    this.directAwaitingConfirmationSnapshotRevision = null;
+    this.directConfirmationOffer = null;
+    this.state.waitUntil(Promise.all([
+      this.state.storage.delete('directAwaitingConfirmationSnapshotRevision'),
+      this.state.storage.delete('directConfirmationOffer'),
+      this.persistDirectModulePlanningOutstanding()
+    ]).catch(() => {}));
+    if (this.directModulePlanningPending > 0) return this.directModulePlanningChain;
+
+    this.directModulePlanningPending = 1;
+    this.directModulePlanningChain = (async () => {
+      for (;;) {
+        const nextJob = [...this.directModulePlanningOutstanding]
+          .sort((left, right) => right.sequence - left.sequence)[0];
+        if (!nextJob) break;
+        const config = getConsumerConfig(this.env);
+        if (config.modulePlannerMode === 'off') break;
+        try {
+          await this.directModulePlanningPersistenceChain.catch(() => {});
+          const context = await loadLiveContext({ env: this.env, config, sessionId: this.meta.sessionId });
+          const planned = await runDirectModulePlanning({
+            env: this.env,
+            config,
+            context,
+            leaseId: this.meta.leaseId,
+            throughTurnId: nextJob.turnId
+          });
+          // This full transcript snapshot settles every obligation at or before
+          // its watermark. A turn arriving during the call remains and is the
+          // only additional pass the drain will run.
+          this.directModulePlanningOutstanding = this.directModulePlanningOutstanding
+            .filter((item) => item.sequence > nextJob.sequence);
+          await this.persistDirectModulePlanningOutstanding();
+          if (config.modulePlannerMode === 'apply'
+            && this.directModulePlanningOutstanding.length === 0) {
+            const published = await this.injectVolatileState();
+            this.directAwaitingConfirmationSnapshotRevision = published === true
+              && planned?.brief?.readyToConfirm === true
+                ? Number(planned.snapshot?.snapshotRevision || 0) || null
+                : null;
+            if (this.directAwaitingConfirmationSnapshotRevision) {
+              await this.state.storage.put(
+                'directAwaitingConfirmationSnapshotRevision',
+                this.directAwaitingConfirmationSnapshotRevision
+              );
+            } else {
+              await this.state.storage.delete('directAwaitingConfirmationSnapshotRevision');
+            }
+          }
+        } catch (error) {
+          await appendRealtimeEvent(this.env, {
+            sessionId: this.meta?.sessionId,
+            leaseId: this.meta?.leaseId,
+            direction: 'server',
+            eventType: 'live.modules.planning_failed',
+            payload: { code: String(error?.code || 'module_planner_failed') }
+          }).catch(() => {});
+          // Keep the failed watermark durable. A later client turn, get_state,
+          // or confirmation attempt may retry it; never spin a paid loop here.
+          break;
+        }
+      }
+    })().finally(() => { this.directModulePlanningPending = 0; });
+    this.state.waitUntil(this.directModulePlanningChain);
+    return this.directModulePlanningChain;
   }
 
   /**
@@ -1483,6 +1704,7 @@ export class ConsumerLiveSession {
   /* ------------------------------------------ transcript/note reconciliation */
 
   maybeScheduleReconciliation(response, forcedTrigger = null) {
+    if (getConsumerConfig(this.env).modulePlannerMode === 'apply') return;
     if (!response?.done || !response.causeItemId) return;
     // ONE PLACE, NOT FOUR. Reviewing a turn whose continuation chain is still
     // writing reviews it against part of its own evidence, and deduplication
@@ -2439,7 +2661,66 @@ export class ConsumerLiveSession {
       } else {
         const affirmedConfirmation = name === 'confirm_and_run'
           && classifySpokenPlanConfirmation(clientTranscript) === 'affirmed';
-        if (affirmedConfirmation && config.plannerReconciliationMode !== 'legacy') {
+        const directOfferMatches = Boolean(
+          affirmedConfirmation
+          && this.directConfirmationOffer
+          && causalTurn?.answersTurnId
+          && causalTurn.answersTurnId === this.directConfirmationOffer.assistantTurnId
+          && String(args?.confirmationToken || '') === this.directConfirmationOffer.token
+          && Number(this.directConfirmationOffer.snapshotRevision)
+            === Number(this.directAwaitingConfirmationSnapshotRevision)
+        );
+        const directPlanningUnsettled = this.directModulePlanningPending > 0
+          || this.directModulePlanningOutstanding.length > 0
+          || !this.directAwaitingConfirmationSnapshotRevision;
+        if (affirmedConfirmation && config.modulePlannerMode === 'apply'
+          && !directOfferMatches) {
+          result = {
+            ok: false,
+            code: 'confirmation_context_invalid',
+            retryable: true,
+            message: 'The verified plan must be read back again before it can run. Call get_state, summarize that current plan, and ask for confirmation.'
+          };
+        } else if (directOfferMatches && directPlanningUnsettled) {
+          if (this.directModulePlanningPending === 0
+            && this.directModulePlanningOutstanding.length > 0) {
+            this.scheduleDirectModulePlanning(
+              this.directModulePlanningOutstanding.at(-1)?.turnId
+            );
+          } else if (this.directModulePlanningPending === 0) {
+            // The semantic pass may have succeeded while its volatile-state
+            // publication failed. Re-publish the stored snapshot; do not pay
+            // for or invent a second interpretation merely to recover transport.
+            const published = await this.injectVolatileState();
+            if (published) {
+              const latestDirect = await getLatestRealtimeMeetingBrief(
+                this.env,
+                this.meta.sessionId,
+                this.meta.leaseId
+              ).catch(() => null);
+              if (latestDirect?.brief?.readyToConfirm === true) {
+                this.directAwaitingConfirmationSnapshotRevision = Number(
+                  latestDirect.brief.snapshotRevision || 0
+                ) || null;
+                if (this.directAwaitingConfirmationSnapshotRevision) {
+                  await this.state.storage.put(
+                    'directAwaitingConfirmationSnapshotRevision',
+                    this.directAwaitingConfirmationSnapshotRevision
+                  );
+                }
+              }
+            }
+          }
+          result = {
+            ok: false,
+            code: 'module_planning_pending',
+            retryable: true,
+            message: 'I am completing the final input check before running the analyses. Please wait a moment and then confirm again.'
+          };
+        }
+        if (affirmedConfirmation
+          && config.modulePlannerMode !== 'apply'
+          && config.plannerReconciliationMode !== 'legacy') {
           const lease = await getRealtimeLease(
             this.env,
             this.meta.sessionId,
@@ -2467,6 +2748,66 @@ export class ConsumerLiveSession {
               message: 'I am completing one final notes check before running the analyses. Please wait for that check and then ask for confirmation again.'
             };
           }
+        }
+        if (!result && name === 'get_state' && config.modulePlannerMode === 'apply') {
+          // A get_state call deliberately crosses the background boundary. It
+          // never delays native turn-taking before the model starts replying;
+          // it may, however, wait here at the explicit pre-confirmation tool
+          // boundary so the following read-back reflects every finalized turn.
+          if (this.directModulePlanningPending === 0
+            && this.directModulePlanningOutstanding.length > 0) {
+            this.scheduleDirectModulePlanning(
+              this.directModulePlanningOutstanding.at(-1)?.turnId
+            );
+          }
+          await this.directModulePlanningChain.catch(() => {});
+          const direct = await getLatestRealtimeMeetingBrief(
+            this.env,
+            this.meta.sessionId,
+            this.meta.leaseId
+          );
+          const brief = direct?.brief?.schemaVersion === 'MeetingBriefV3'
+            ? direct.brief
+            : null;
+          const snapshotRevision = Number(brief?.snapshotRevision || 0);
+          const readyForOffer = brief?.readyToConfirm === true
+            && snapshotRevision > 0
+            && snapshotRevision === Number(this.directAwaitingConfirmationSnapshotRevision)
+            && this.directModulePlanningPending === 0
+            && this.directModulePlanningOutstanding.length === 0
+            && Boolean(brief?.verificationCertificate?.signature)
+            && Boolean(brief?.confirmationPrompt)
+            && Boolean(responseContext?.continuationChain);
+          let confirmationToken = null;
+          if (readyForOffer) {
+            await this.clearDirectConfirmationOffer();
+            confirmationToken = `dmc_${crypto.randomUUID()}`;
+            responseContext.continuationChain.directConfirmationCandidate = {
+              token: confirmationToken,
+              snapshotRevision,
+              certificateSignature: String(brief.verificationCertificate.signature),
+              confirmationPrompt: String(brief.confirmationPrompt),
+              sourceResponseId: responseContext.responseId
+            };
+          }
+          result = {
+            schemaVersion: 'DirectModuleToolStateV1',
+            snapshotRevision,
+            readyToConfirm: readyForOffer,
+            confirmationToken,
+            confirmationPrompt: readyForOffer ? String(brief.confirmationPrompt) : null,
+            verificationStatus: brief?.verification?.verdict || 'pending',
+            modules: (brief?.directModuleSnapshot?.modules || [])
+              .filter((item) => item?.status !== 'not_relevant')
+              .map((item) => ({
+                moduleId: item.moduleId,
+                status: item.status,
+                knownSummary: item.steeringSummary,
+                missing: item.missing || [],
+                ambiguities: item.ambiguities || []
+              })),
+            generalAmbiguities: brief?.ambiguities || brief?.directModuleSnapshot?.generalAmbiguities || []
+          };
         }
         if (!result) {
           result = await executeLiveTool(name, args, {
@@ -2632,6 +2973,9 @@ export class ConsumerLiveSession {
     }).catch(() => {});
 
     if (name === 'confirm_and_run' && result?.ok) {
+      await this.clearDirectConfirmationOffer();
+      this.directAwaitingConfirmationSnapshotRevision = null;
+      await this.state.storage.delete('directAwaitingConfirmationSnapshotRevision').catch(() => {});
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -2693,11 +3037,37 @@ export class ConsumerLiveSession {
   }
 
   async injectVolatileState() {
+    const config = getConsumerConfig(this.env);
+    if (config.modulePlannerMode === 'apply') {
+      const direct = await getLatestRealtimeMeetingBrief(
+        this.env,
+        this.meta.sessionId,
+        this.meta.leaseId
+      ).catch(() => null);
+      if (direct?.brief?.schemaVersion === 'MeetingBriefV3') {
+        const snapshotRevision = Number(direct.brief.snapshotRevision || 0);
+        if (snapshotRevision < this.lastInjectedDirectSnapshotRevision) return false;
+        if (snapshotRevision === this.lastInjectedDirectSnapshotRevision) return true;
+        try {
+          this.sendProvider({
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'system',
+              content: [{ type: 'input_text', text: liveDirectModuleStateItem(direct.brief) }]
+            }
+          });
+          this.lastInjectedDirectSnapshotRevision = snapshotRevision;
+        } catch (_error) { return false; /* the model still has get_state */ }
+        return true;
+      }
+      return false;
+    }
     let projection;
     try {
       projection = liveStateProjection(await loadLiveContext({
         env: this.env,
-        config: getConsumerConfig(this.env),
+        config,
         sessionId: this.meta.sessionId
       }));
     } catch (_error) {

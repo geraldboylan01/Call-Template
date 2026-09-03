@@ -358,7 +358,85 @@ export function buildPersonalBalanceSheetInput(profile) {
  * tells the two apart.
  */
 export function validatePersonalBalanceSheetInput(input) {
-  computePersonalBalanceSheet(input);
+  normalizePersonalBalanceSheetInput(input);
+}
+
+/**
+ * Canonical PBS input. Requiring the collections explicitly prevents an empty
+ * object from silently becoming a zero-net-worth calculation; genuinely empty
+ * collections remain representable when the semantic planner cites that fact.
+ */
+export function normalizePersonalBalanceSheetInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('generated.pbsInputs must be an object.');
+  }
+  if (!Array.isArray(input.assetPositions) || !Array.isArray(input.liabilityPositions)) {
+    throw new Error('generated.pbsInputs must explicitly include assetPositions and liabilityPositions arrays.');
+  }
+  if (typeof input.currency !== 'string' || !input.currency.trim()) {
+    throw new Error('generated.pbsInputs.currency is required.');
+  }
+  if (!Array.isArray(input.reconciliationWarnings) || !Array.isArray(input.currencyWarnings)) {
+    throw new Error('generated.pbsInputs warning collections must be arrays.');
+  }
+  if (!Object.hasOwn(input, 'monthlyExpenditure')
+    || (input.monthlyExpenditure !== null
+      && (typeof input.monthlyExpenditure !== 'number' || !Number.isFinite(input.monthlyExpenditure)))) {
+    throw new Error('generated.pbsInputs.monthlyExpenditure must be an explicit finite number or null.');
+  }
+  if (![...input.reconciliationWarnings, ...input.currencyWarnings]
+    .every((warning) => typeof warning === 'string')) {
+    throw new Error('generated.pbsInputs warnings must be strings.');
+  }
+  input.assetPositions.forEach((position, index) => {
+    const required = ['id', 'label', 'bucket', 'amount', 'source'];
+    if (!position || typeof position !== 'object' || Array.isArray(position)
+      || required.some((field) => !Object.hasOwn(position, field))) {
+      throw new Error(`generated.pbsInputs.assetPositions[${index}] must explicitly include id, label, bucket, amount and source.`);
+    }
+    if ([position.id, position.label, position.source]
+      .some((value) => typeof value !== 'string' || !value.trim())
+      || typeof position.bucket !== 'string'
+      || typeof position.amount !== 'number'
+      || !Number.isFinite(position.amount)) {
+      throw new Error(`generated.pbsInputs.assetPositions[${index}] has an invalid structural field.`);
+    }
+  });
+  input.liabilityPositions.forEach((position, index) => {
+    const required = ['id', 'label', 'amount', 'source'];
+    if (!position || typeof position !== 'object' || Array.isArray(position)
+      || required.some((field) => !Object.hasOwn(position, field))) {
+      throw new Error(`generated.pbsInputs.liabilityPositions[${index}] must explicitly include id, label, amount and source.`);
+    }
+    if ([position.id, position.label, position.source]
+      .some((value) => typeof value !== 'string' || !value.trim())
+      || typeof position.amount !== 'number'
+      || !Number.isFinite(position.amount)) {
+      throw new Error(`generated.pbsInputs.liabilityPositions[${index}] has an invalid structural field.`);
+    }
+  });
+  const balanceSheet = computePersonalBalanceSheet(input);
+  return {
+    currency: input.currency.trim().toUpperCase(),
+    assetPositions: Object.values(balanceSheet.buckets)
+      .flatMap((bucket) => bucket.positions)
+      .map((position) => ({
+        id: position.id,
+        label: position.label,
+        bucket: position.bucket,
+        amount: position.amount,
+        source: position.source
+      })),
+    liabilityPositions: balanceSheet.liabilities.map((position) => ({
+      id: position.id,
+      label: position.label,
+      amount: position.amount,
+      source: position.source
+    })),
+    monthlyExpenditure: balanceSheet.monthlyExpenditure,
+    reconciliationWarnings: input.reconciliationWarnings.map((item) => String(item)),
+    currencyWarnings: input.currencyWarnings.map((item) => String(item))
+  };
 }
 
 export async function runPersonalBalanceSheet(input, context) {
@@ -376,12 +454,6 @@ export async function runPersonalBalanceSheet(input, context) {
     outputsTable: {
       columns: ['Metric', 'Value'],
       // A metric we could not calculate is LEFT OUT, never shown as a blank.
-      // reserveMonths is null whenever monthly spending is unknown, and it was
-      // reaching a client-facing table as the literal word "null" -- an
-      // agent-driven call as a Cork nurse ended with "Reserve months: null" in
-      // her balance sheet. This is the module's own stated accounting policy
-      // two rows above: unknown values are excluded rather than estimated.
-      // A metric we could not calculate is LEFT OUT, never shown as a blank.
       // reserveMonths is null whenever monthly spending is unknown, and it
       // reached a client-facing table as the literal word "null". This is the
       // module's own accounting policy two rows above: unknown values are
@@ -392,7 +464,7 @@ export async function runPersonalBalanceSheet(input, context) {
         ['Net worth', money(balanceSheet.netWorth)],
         ['Spendable reserves', money(balanceSheet.spendableReserves)],
         ['Reserve months', months(balanceSheet.reserveMonths)]
-      ].filter(([, value]) => value !== null && value !== undefined).filter(([, value]) => value !== null && value !== undefined)
+      ].filter(([, value]) => value !== null && value !== undefined)
     },
     tables: [{
       id: 'personal-balance-sheet-buckets',

@@ -110,7 +110,28 @@ export function buildLoanInput(profile) {
  * contract.
  */
 export function validateLoanInput(input) {
-  normalizeMortgageInputs(input, { defaultLoanKind: 'loan' });
+  normalizeLoanInput(input);
+}
+
+/** Canonical input the shared amortisation engine will actually consume. */
+export function normalizeLoanInput(input) {
+  // Contract identity only. The shared amortisation normalizer has a useful UI
+  // default, but accepting an absent discriminator here would let structural
+  // code choose the financial meaning of the payload.
+  if (input?.loanKind !== 'loan') {
+    throw new Error('generated.loanInputs.loanKind must be "loan".');
+  }
+  const hasEndDate = typeof input.endDateIso === 'string' && input.endDateIso.trim() !== '';
+  const hasRemainingTerm = input.remainingTermYears !== null
+    && typeof input.remainingTermYears !== 'undefined';
+  if (hasEndDate === hasRemainingTerm) {
+    throw new Error('generated.loanInputs must provide exactly one of endDateIso or remainingTermYears.');
+  }
+  const normalized = normalizeMortgageInputs(input, { defaultLoanKind: 'loan' });
+  if (normalized.loanKind !== 'loan') {
+    throw new Error('generated.loanInputs.loanKind must be "loan".');
+  }
+  return normalized;
 }
 
 export async function runLoanAnalysis(input, context) {

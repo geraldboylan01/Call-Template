@@ -131,7 +131,8 @@ const migrations = [
   '0015_add_privacy_notice_acknowledgement',
   '0016_add_planning_reconciliation',
   '0017_widen_reconciliation_trigger',
-  '0018_add_turn_proposition_link'
+  '0018_add_turn_proposition_link',
+  '0019_add_direct_module_meeting_briefs'
 ].map((name) => readFileSync(`${root}/worker/consumer-migrations/${name}.sql`, 'utf8')).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrations}` });
 

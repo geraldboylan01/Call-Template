@@ -266,6 +266,18 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     errorCode: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
     latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
+  'live.modules.planned': event({
+    mode: NON_CONTENT_FIELD_TYPES.STRING,
+    snapshotRevision: NON_CONTENT_FIELD_TYPES.INTEGER,
+    readyModuleCount: NON_CONTENT_FIELD_TYPES.INTEGER,
+    verificationVerdict: NON_CONTENT_FIELD_TYPES.STRING,
+    certified: NON_CONTENT_FIELD_TYPES.BOOLEAN,
+    inputTokens: NON_CONTENT_FIELD_TYPES.INTEGER,
+    outputTokens: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
+  'live.modules.planning_failed': event({
+    code: NON_CONTENT_FIELD_TYPES.STRING
+  }),
   // A deterministic detector (L2/L3) cancelled a response mid-sentence.
   // A fast-lane figure no review could settle, now being put back to the
   // client. UNREGISTERED IS SILENT: an event type with no schema here is

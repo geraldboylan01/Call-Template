@@ -120,6 +120,11 @@ function plannerReconciliationMode(value) {
   return ['shadow', 'apply'].includes(candidate) ? candidate : 'legacy';
 }
 
+function modulePlannerMode(value) {
+  const candidate = text(value).toLowerCase();
+  return ['shadow', 'apply'].includes(candidate) ? candidate : 'off';
+}
+
 /**
  * Whether a reviewed client turn gets a second, independent reading.
  *
@@ -498,6 +503,16 @@ export function getConsumerConfig(env) {
     realtimePlannerModel: plannerModel(env.CONSUMER_REALTIME_PLANNER_MODEL),
     realtimePlannerModelConfigured: plannerModelConfigured(env.CONSUMER_REALTIME_PLANNER_MODEL),
     realtimePlannerPromptVersion: text(env.CONSUMER_REALTIME_PLANNER_PROMPT_VERSION) || 'realtime-planner-v5',
+    // Direct transcript-to-native-module planning. Off by default and kept
+    // separate from legacy fact reconciliation so a deployment can shadow or
+    // roll back the complete execution source as one unit.
+    modulePlannerMode: modulePlannerMode(env.CONSUMER_MODULE_PLANNER_MODE),
+    modulePlannerModel: plannerModel(env.CONSUMER_MODULE_PLANNER_MODEL || env.CONSUMER_REALTIME_PLANNER_MODEL),
+    modulePlannerReasoningEffort: reasoningEffort(env.CONSUMER_MODULE_PLANNER_REASONING_EFFORT, 'low'),
+    modulePlannerTimeoutMs: boundedInteger(env.CONSUMER_MODULE_PLANNER_TIMEOUT_MS, 30_000, 5_000, 60_000),
+    modulePlannerMaxOutputTokens: boundedInteger(env.CONSUMER_MODULE_PLANNER_MAX_OUTPUT_TOKENS, 12_000, 2_000, 30_000),
+    modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v2',
+    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v2',
     // Additive and fail-closed: an unset or mistyped value preserves the
     // current single-turn auditor. Tests may inject shadow/apply without any
     // production wrangler or deployment configuration change.
@@ -625,11 +640,10 @@ export function publicConsumerConfig(config) {
       maxDurationSeconds: config.realtimeMaxDurationSeconds,
       idleTimeoutSeconds: config.realtimeIdleTimeoutSeconds,
       availability: { available: config.liveVoiceEnabled, status: config.liveVoiceEnabled ? 'available' : 'unavailable' },
-      // The live model records the first draft through its own tools while it
-      // speaks. A detached auditor may review those notes later, but it never
-      // gates or delays the voice response.
       aiGeneratedDisclosure: config.liveVoiceEnabled
-        ? 'Realtime AI speaks with you directly and records what you say as reviewable draft facts as the conversation goes. A background planner may review those draft notes after each turn. Deterministic code controls the analyses, saved profile and calculations.'
+        ? (config.modulePlannerMode === 'apply'
+            ? 'Realtime AI speaks with you directly while a background AI reads the conversation and prepares the structured inputs for the relevant Planéir analyses. Those inputs are independently checked and read back for your confirmation before deterministic calculations run.'
+            : 'Realtime AI speaks with you directly and records what you say as reviewable draft facts as the conversation goes. A background planner may review those draft notes after each turn. Deterministic code controls the analyses, saved profile and calculations.')
         : null
     },
     handoff: {
@@ -670,6 +684,22 @@ export function deploymentCostEnvelope(config) {
       dispatchStopMicroEur: config.liveVoiceEnabled ? config.realtimeDispatchStopMicroEur : null,
       warnThresholdMicroEur: config.liveVoiceEnabled ? config.realtimeSessionWarnMicroEur : null,
       safetyReserveMicroEur: config.liveVoiceEnabled ? config.realtimeSafetyReserveMicroEur : null
+    },
+    // Protected rollout attestation, not public product configuration. A
+    // generated Wrangler file saying `apply` is not proof that every edge is
+    // serving that version; the post-deploy check must observe the resolved
+    // semantic authority and the prompt identities its certificates bind.
+    modulePlanning: {
+      mode: config.liveVoiceEnabled ? config.modulePlannerMode : 'off',
+      model: config.liveVoiceEnabled && config.modulePlannerMode !== 'off'
+        ? config.modulePlannerModel
+        : null,
+      extractorPromptVersion: config.liveVoiceEnabled && config.modulePlannerMode !== 'off'
+        ? config.modulePlannerPromptVersion
+        : null,
+      verifierPromptVersion: config.liveVoiceEnabled && config.modulePlannerMode !== 'off'
+        ? config.moduleVerifierPromptVersion
+        : null
     }
   };
 }

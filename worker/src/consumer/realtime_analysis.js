@@ -1,4 +1,4 @@
-import { runStoredConsumerAnalysis } from './analysis.js';
+import { runStoredConsumerAnalysis, runStoredConsumerAnalysisWithInputs } from './analysis.js';
 import { ConsumerError } from './errors.js';
 import {
   MODULE_FAILURE_CODES,
@@ -15,11 +15,13 @@ import {
 import {
   completeRealtimeAnalysisPlan,
   confirmRealtimeAnalysisPlan,
+  getLatestRealtimeMeetingBrief,
   markRealtimeAnalysisPlanRunning,
   prepareRealtimeAnalysisPlan,
   recordRealtimeRunProvenance,
   toPublicRealtimeAnalysisPlan
 } from './realtime_repository.js';
+import { verifyDirectModuleCertificate } from './direct_module_planner.js';
 
 export async function prepareRealtimeVoiceAnalysisPlan({
   env,
@@ -29,6 +31,47 @@ export async function prepareRealtimeVoiceAnalysisPlan({
   leaseId,
   idempotencyKey
 }) {
+  if (config.modulePlannerMode === 'apply') {
+    const latest = await getLatestRealtimeMeetingBrief(env, sessionRow.id, leaseId);
+    const brief = latest?.brief;
+    const snapshot = brief?.schemaVersion === 'MeetingBriefV3' ? brief.directModuleSnapshot : null;
+    const certificate = brief?.verificationCertificate || null;
+    if (!snapshot || brief.readyToConfirm !== true
+      || Number(certificate?.profileRevision) !== Number(sessionRow.current_profile_revision)
+      || !(await verifyDirectModuleCertificate(env, certificate, snapshot, null, {
+        config,
+        calculationDateIso: profile.assumptions.calculationDateIso,
+        baseCurrency: profile.preferences.baseCurrency,
+        currentProfileContext: profile
+      }))) {
+      throw new ConsumerError(409, 'module_planning_pending', 'The background module inputs still need review before confirmation.');
+    }
+    const ready = snapshot.modules.filter((item) => item.status === 'ready');
+    const moduleInputs = Object.fromEntries(ready.map((item) => [item.moduleId, item.input]));
+    if (ready.length === 0) throw new ConsumerError(409, 'analysis_plan_empty', 'Clarify a supported goal before preparing this analysis.');
+    const planInput = {
+      moduleIds: ready.map((item) => item.moduleId),
+      scenarioOverrides: {},
+      directModuleSnapshot: snapshot,
+      verificationCertificate: certificate,
+      moduleInputs,
+      inputSource: 'verified_direct_module_input'
+    };
+    const prepared = await prepareRealtimeAnalysisPlan(env, {
+      sessionId: sessionRow.id,
+      leaseId,
+      idempotencyKey: `${idempotencyKey}:module-snapshot-${snapshot.snapshotRevision}`,
+      profileRevision: Number(sessionRow.current_profile_revision),
+      ...planInput
+    });
+    return {
+      row: prepared.row,
+      planNonce: prepared.planNonce,
+      publicPlan: toPublicRealtimeAnalysisPlan(prepared.row, planInput),
+      moduleIds: planInput.moduleIds,
+      idempotentReplay: prepared.idempotentReplay
+    };
+  }
   const planningState = describeConversationState(profile, config);
   if (planningState.requiresDecisionTopicQuestion) {
     throw new ConsumerError(409, 'decision_topic_required', 'Name the specific financial decision before confirming the analysis plan.');
@@ -165,9 +208,24 @@ export async function confirmAndRunRealtimeAnalysisPlan({
     // confirmed_profile_revision), so this can fire only if the confirmed set
     // and the prepared set genuinely disagree — in which case running either
     // one would be running something the client did not authorise.
-    const executionModuleIds = resolveExecutionModuleIds(
-      buildGoalModulePlan(profile, { allowedModuleIds: config.allowedModules })
-    );
+    const directInput = confirmed.input.inputSource === 'verified_direct_module_input';
+    if (directInput) {
+      const latest = await getLatestRealtimeMeetingBrief(
+        env,
+        sessionId,
+        confirmed.row.realtime_session_id
+      );
+      if (latest?.brief?.schemaVersion !== 'MeetingBriefV3'
+        || Number(latest.brief.snapshotRevision) !== Number(confirmed.input.directModuleSnapshot?.snapshotRevision)
+        || latest.brief.verificationCertificate?.signature !== confirmed.input.verificationCertificate?.signature) {
+        throw new ConsumerError(409, 'module_snapshot_revision_conflict', 'The module inputs changed after the plan was prepared. Review and confirm them again.');
+      }
+    }
+    const executionModuleIds = directInput
+      ? Object.keys(confirmed.input.moduleInputs || {})
+      : resolveExecutionModuleIds(
+          buildGoalModulePlan(profile, { allowedModuleIds: config.allowedModules })
+        );
     const preparedModuleIds = Array.isArray(confirmed.input.moduleIds) ? confirmed.input.moduleIds : [];
     if ([...preparedModuleIds].sort().join('|') !== [...executionModuleIds].sort().join('|')) {
       throw new ConsumerError(
@@ -202,14 +260,39 @@ export async function confirmAndRunRealtimeAnalysisPlan({
         idempotentReplay: false
       };
     }
-    const run = await runStoredConsumerAnalysis({
-      env,
-      config,
-      sessionRow,
-      profile,
-      moduleIds: confirmed.input.moduleIds,
-      scenarioOverrides: confirmed.input.scenarioOverrides
-    });
+    if (directInput && (
+      !(await verifyDirectModuleCertificate(
+        env,
+        confirmed.input.verificationCertificate,
+        confirmed.input.directModuleSnapshot,
+        confirmed.input.moduleInputs,
+        {
+          config,
+          calculationDateIso: profile.assumptions.calculationDateIso,
+          baseCurrency: profile.preferences.baseCurrency,
+          currentProfileContext: profile
+        }
+      ))
+      || Number(confirmed.input.verificationCertificate?.profileRevision) !== expectedRevision
+    )) {
+      throw new ConsumerError(409, 'module_verification_invalid', 'The verified module inputs changed before analysis.');
+    }
+    const run = directInput
+      ? await runStoredConsumerAnalysisWithInputs({
+          env,
+          config,
+          sessionRow,
+          profile,
+          moduleInputs: confirmed.input.moduleInputs
+        })
+      : await runStoredConsumerAnalysis({
+          env,
+          config,
+          sessionRow,
+          profile,
+          moduleIds: confirmed.input.moduleIds,
+          scenarioOverrides: confirmed.input.scenarioOverrides
+        });
     const result = boundedSpeakableResult(run.analysis, config, confirmed.input.moduleSlots);
     const completed = await completeRealtimeAnalysisPlan(env, {
       sessionId,

@@ -263,7 +263,7 @@ export function buildHousePurchaseInput(profile) {
     acquisitionType: settings.acquisitionType || 'unknown',
     dwellingType: settings.dwellingType || 'unknown',
     intendedUse: settings.intendedUse || 'principal_private_residence',
-    localAuthorityCode: settings.localAuthorityCode || '',
+    localAuthorityCode: settings.localAuthorityCode || 'unknown',
     tenantNoticeReceived: typeof settings.tenantNoticeReceived === 'boolean' ? settings.tenantNoticeReceived : null,
     lenderCapacity: { ...defaults.lenderCapacity, ...(settings.lenderCapacity || {}) },
     helpToBuy: { ...defaults.helpToBuy, ...(settings.helpToBuy || {}) },
@@ -277,7 +277,216 @@ export function buildHousePurchaseInput(profile) {
  * rather than as an engine crash.
  */
 export function validateHousePurchaseInput(input) {
-  normalizeHousePurchaseInputs(input);
+  normalizeHousePurchaseInput(input);
+}
+
+const HOUSE_PURCHASE_TOP_LEVEL_FIELDS = Object.freeze([
+  'schemaVersion', 'calculationDateIso', 'lendingCategory', 'applicationType', 'applicants',
+  'currentCashSavings', 'cashSavingsContributions', 'amountRingfencedForOtherGoals',
+  'emergencyReserveMode', 'emergencyReserveTarget', 'currentMonthlySavings',
+  'plannedMonthlySavings', 'lumpSums', 'monthlyNetHouseholdIncome',
+  'monthlyEssentialExpensesExcludingHousingDebtAndRent', 'currentMonthlyRent', 'dependants',
+  'otherKnownMonthlyCommitments', 'estimatedMonthlyOwnershipCosts', 'targetPropertyPrice',
+  'targetPurchaseDate', 'acquisitionType', 'dwellingType', 'intendedUse',
+  'localAuthorityCode', 'tenantNoticeReceived', 'lenderCapacity', 'depositSavingsGrossAer',
+  'dirtRate', 'mortgageIllustrationRate', 'mortgageTermYears', 'purchaseCosts',
+  'helpToBuy', 'firstHomeScheme'
+]);
+const HOUSE_PURCHASE_APPLICANT_FIELDS = Object.freeze([
+  'id', 'label', 'age', 'employmentStatus', 'grossAnnualIncome', 'variableAnnualIncome',
+  'lenderRecognisedVariableAnnualIncome', 'incomeReliability', 'existingMonthlyDebtPayments',
+  'schemeBuyerStatus', 'freshStartReason', 'previouslyOwnedPropertyAnywhere',
+  'retainedInterestInPreviousProperty', 'rightToResideInIreland'
+]);
+const HOUSE_PURCHASE_NESTED_FIELDS = Object.freeze({
+  lenderCapacity: ['status', 'amount', 'lenderId', 'isMaximumAvailable', 'macroPrudentialException', 'htbQualifyingLender'],
+  purchaseCosts: ['stampDutyMode', 'customStampDuty', 'legalAndConveyancing', 'valuation', 'surveyOrEngineer', 'movingAndFurnishing', 'contingency'],
+  helpToBuy: ['taxCompliant', 'revenueApprovedDeveloperOrApprover', 'expectedIncomeTaxAndDirtPaidPriorFourYears', 'confirmedClaimAmount'],
+  firstHomeScheme: ['applicationStatus', 'confirmedEquityAmount', 'siteEquity']
+});
+const HOUSE_PURCHASE_ENUMS = Object.freeze({
+  lendingCategory: ['first_time_buyer', 'second_or_subsequent', 'unknown'],
+  applicationType: ['single', 'joint'],
+  emergencyReserveMode: ['suggested', 'custom'],
+  acquisitionType: ['new_build', 'second_hand', 'self_build', 'tenant_purchase', 'unknown'],
+  dwellingType: ['house', 'apartment', 'self_build', 'unknown'],
+  intendedUse: ['principal_private_residence', 'other', 'unknown']
+});
+const HOUSE_PURCHASE_APPLICANT_ENUMS = Object.freeze({
+  employmentStatus: ['employee', 'self_employed', 'contractor', 'student', 'other', 'unknown'],
+  incomeReliability: ['stable', 'variable', 'unknown'],
+  schemeBuyerStatus: ['first_time_buyer', 'fresh_start', 'previous_owner', 'unknown']
+});
+
+function requireFiniteJsonNumber(value, label, { nullable = false } = {}) {
+  if (nullable && value === null) return;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${label} must be ${nullable ? 'a finite number or null' : 'a finite number'}.`);
+  }
+}
+
+function requireCanonicalEnum(value, allowed, label) {
+  if (!allowed.includes(value)) {
+    throw new Error(`${label} must use a canonical module enum value.`);
+  }
+}
+
+function requireNonEmptyJsonString(value, label) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${label} must be a non-empty string.`);
+  }
+}
+
+function requireNullableJsonBoolean(value, label) {
+  if (value !== null && typeof value !== 'boolean') {
+    throw new Error(`${label} must be true, false or null.`);
+  }
+}
+
+function requireOwnFields(value, fields, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  const missingFields = fields.filter((field) => !Object.hasOwn(value, field));
+  if (missingFields.length > 0) {
+    throw new Error(`${label} must explicitly include: ${missingFields.join(', ')}.`);
+  }
+}
+
+/** Canonical input the dated house-purchase engine will actually consume. */
+export function normalizeHousePurchaseInput(input) {
+  // The renderer's normalizer can sensibly display a half-filled form by
+  // supplying zero/unknown defaults. At the calculation boundary those values
+  // carry client meaning (no dependants, no commitments, no scheme claim), so
+  // they must be authored by the semantic planner rather than reconstructed by
+  // deterministic defaults. This check inspects JSON shape only.
+  requireOwnFields(input, HOUSE_PURCHASE_TOP_LEVEL_FIELDS, 'generated.housePurchaseInputs');
+  for (const [field, allowed] of Object.entries(HOUSE_PURCHASE_ENUMS)) {
+    requireCanonicalEnum(input[field], allowed, `generated.housePurchaseInputs.${field}`);
+  }
+  for (const field of [
+    'schemaVersion', 'currentCashSavings', 'amountRingfencedForOtherGoals',
+    'currentMonthlySavings', 'plannedMonthlySavings', 'dependants',
+    'otherKnownMonthlyCommitments', 'estimatedMonthlyOwnershipCosts',
+    'depositSavingsGrossAer', 'dirtRate', 'mortgageIllustrationRate', 'mortgageTermYears'
+  ]) {
+    requireFiniteJsonNumber(input[field], `generated.housePurchaseInputs.${field}`);
+  }
+  for (const field of [
+    'emergencyReserveTarget', 'monthlyNetHouseholdIncome',
+    'monthlyEssentialExpensesExcludingHousingDebtAndRent', 'currentMonthlyRent',
+    'targetPropertyPrice'
+  ]) {
+    requireFiniteJsonNumber(input[field], `generated.housePurchaseInputs.${field}`, { nullable: true });
+  }
+  requireNonEmptyJsonString(input.calculationDateIso, 'generated.housePurchaseInputs.calculationDateIso');
+  requireNonEmptyJsonString(input.localAuthorityCode, 'generated.housePurchaseInputs.localAuthorityCode');
+  if (input.targetPurchaseDate !== null) {
+    requireNonEmptyJsonString(input.targetPurchaseDate, 'generated.housePurchaseInputs.targetPurchaseDate');
+  }
+  requireNullableJsonBoolean(input.tenantNoticeReceived, 'generated.housePurchaseInputs.tenantNoticeReceived');
+  if (!Array.isArray(input.applicants) || input.applicants.length === 0) {
+    throw new Error('generated.housePurchaseInputs.applicants must contain at least one applicant.');
+  }
+  input.applicants.forEach((applicant, index) => {
+    const label = `generated.housePurchaseInputs.applicants[${index}]`;
+    requireOwnFields(applicant, HOUSE_PURCHASE_APPLICANT_FIELDS, label);
+    requireNonEmptyJsonString(applicant.id, `${label}.id`);
+    requireNonEmptyJsonString(applicant.label, `${label}.label`);
+    for (const [field, allowed] of Object.entries(HOUSE_PURCHASE_APPLICANT_ENUMS)) {
+      requireCanonicalEnum(applicant[field], allowed, `${label}.${field}`);
+    }
+    for (const field of [
+      'variableAnnualIncome', 'lenderRecognisedVariableAnnualIncome',
+      'existingMonthlyDebtPayments'
+    ]) {
+      requireFiniteJsonNumber(applicant[field], `${label}.${field}`);
+    }
+    for (const field of ['age', 'grossAnnualIncome']) {
+      requireFiniteJsonNumber(applicant[field], `${label}.${field}`, { nullable: true });
+    }
+    if (applicant.freshStartReason !== null && typeof applicant.freshStartReason !== 'string') {
+      throw new Error(`${label}.freshStartReason must be a string or null.`);
+    }
+    for (const field of [
+      'previouslyOwnedPropertyAnywhere', 'retainedInterestInPreviousProperty',
+      'rightToResideInIreland'
+    ]) {
+      requireNullableJsonBoolean(applicant[field], `${label}.${field}`);
+    }
+  });
+  for (const [field, required] of Object.entries(HOUSE_PURCHASE_NESTED_FIELDS)) {
+    requireOwnFields(input[field], required, `generated.housePurchaseInputs.${field}`);
+  }
+  if (!Array.isArray(input.cashSavingsContributions) || !Array.isArray(input.lumpSums)) {
+    throw new Error('generated.housePurchaseInputs contribution and lump-sum collections must be explicit arrays.');
+  }
+  input.cashSavingsContributions.forEach((entry, index) => {
+    const label = `generated.housePurchaseInputs.cashSavingsContributions[${index}]`;
+    requireOwnFields(entry, ['ownerId', 'amount'], label);
+    requireNonEmptyJsonString(entry.ownerId, `${label}.ownerId`);
+    requireFiniteJsonNumber(entry.amount, `${label}.amount`);
+  });
+  input.lumpSums.forEach((entry, index) => {
+    const label = `generated.housePurchaseInputs.lumpSums[${index}]`;
+    requireOwnFields(entry, ['id', 'amount', 'expectedDate', 'confidence'], label);
+    requireNonEmptyJsonString(entry.id, `${label}.id`);
+    requireFiniteJsonNumber(entry.amount, `${label}.amount`);
+    if (entry.expectedDate !== null) requireNonEmptyJsonString(entry.expectedDate, `${label}.expectedDate`);
+    requireCanonicalEnum(entry.confidence, ['confirmed', 'estimated'], `${label}.confidence`);
+  });
+  requireCanonicalEnum(
+    input.lenderCapacity.status,
+    ['not_obtained', 'estimated', 'confirmed', 'unknown'],
+    'generated.housePurchaseInputs.lenderCapacity.status'
+  );
+  requireFiniteJsonNumber(
+    input.lenderCapacity.amount,
+    'generated.housePurchaseInputs.lenderCapacity.amount',
+    { nullable: true }
+  );
+  requireCanonicalEnum(
+    input.lenderCapacity.lenderId,
+    ['aib', 'ebs', 'haven', 'bank_of_ireland', 'ptsb', 'other', 'unknown'],
+    'generated.housePurchaseInputs.lenderCapacity.lenderId'
+  );
+  for (const field of ['isMaximumAvailable', 'macroPrudentialException', 'htbQualifyingLender']) {
+    requireNullableJsonBoolean(input.lenderCapacity[field], `generated.housePurchaseInputs.lenderCapacity.${field}`);
+  }
+  requireCanonicalEnum(
+    input.purchaseCosts.stampDutyMode,
+    ['rules', 'custom'],
+    'generated.housePurchaseInputs.purchaseCosts.stampDutyMode'
+  );
+  requireFiniteJsonNumber(
+    input.purchaseCosts.customStampDuty,
+    'generated.housePurchaseInputs.purchaseCosts.customStampDuty',
+    { nullable: true }
+  );
+  for (const field of ['legalAndConveyancing', 'valuation', 'surveyOrEngineer', 'movingAndFurnishing', 'contingency']) {
+    requireFiniteJsonNumber(input.purchaseCosts[field], `generated.housePurchaseInputs.purchaseCosts.${field}`);
+  }
+  for (const field of ['taxCompliant', 'revenueApprovedDeveloperOrApprover']) {
+    requireNullableJsonBoolean(input.helpToBuy[field], `generated.housePurchaseInputs.helpToBuy.${field}`);
+  }
+  requireFiniteJsonNumber(
+    input.helpToBuy.expectedIncomeTaxAndDirtPaidPriorFourYears,
+    'generated.housePurchaseInputs.helpToBuy.expectedIncomeTaxAndDirtPaidPriorFourYears',
+    { nullable: true }
+  );
+  requireFiniteJsonNumber(
+    input.helpToBuy.confirmedClaimAmount,
+    'generated.housePurchaseInputs.helpToBuy.confirmedClaimAmount'
+  );
+  requireCanonicalEnum(
+    input.firstHomeScheme.applicationStatus,
+    ['not_applied', 'potential', 'confirmed', 'declined', 'unknown'],
+    'generated.housePurchaseInputs.firstHomeScheme.applicationStatus'
+  );
+  for (const field of ['confirmedEquityAmount', 'siteEquity']) {
+    requireFiniteJsonNumber(input.firstHomeScheme[field], `generated.housePurchaseInputs.firstHomeScheme.${field}`);
+  }
+  return normalizeHousePurchaseInputs(input);
 }
 
 export async function runHousePurchaseAnalysis(input, context) {

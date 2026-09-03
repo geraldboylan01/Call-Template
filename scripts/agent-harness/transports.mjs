@@ -196,7 +196,8 @@ const MIGRATION_FILES = [
   '0015_add_privacy_notice_acknowledgement',
   '0016_add_planning_reconciliation',
   '0017_widen_reconciliation_trigger',
-  '0018_add_turn_proposition_link'
+  '0018_add_turn_proposition_link',
+  '0019_add_direct_module_meeting_briefs'
 ];
 const MIGRATIONS = MIGRATION_FILES
   .map((name) => readFileSync(`${root}/worker/consumer-migrations/${name}.sql`, 'utf8'))
@@ -224,6 +225,8 @@ export function makeEnv(databasePath, overrides = {}) {
     // exactly as the Worker does, so CI never starts making reconciler calls.
     CONSUMER_PLANNER_RECONCILIATION_MODE:
       process.env.CONSUMER_PLANNER_RECONCILIATION_MODE || 'legacy',
+    CONSUMER_MODULE_PLANNER_MODE:
+      process.env.CONSUMER_MODULE_PLANNER_MODE || 'off',
     CONSUMER_DATA_ENCRYPTION_KEY: Buffer.alloc(32, 31).toString('base64url'),
     CONSUMER_RATE_LIMIT_HASH_KEY: Buffer.alloc(32, 47).toString('base64url'),
     CONSUMER_JOURNEY_ENABLED: 'true',

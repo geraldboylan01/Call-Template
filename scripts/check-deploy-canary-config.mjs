@@ -136,6 +136,11 @@ for (const tableName of ['fixedRealtimeValues']) {
     'realtime stays false in the committed source; only the builder may enable it'
   );
   assert.match(
+    wranglerSource,
+    /^CONSUMER_MODULE_PLANNER_MODE = "off"$/m,
+    'direct module planning stays off in the committed source; only the protected builder may enable it'
+  );
+  assert.match(
     workflow,
     /if \(realtimeEnabled\) \{/,
     'realtime values are applied only inside the realtimeEnabled branch'
@@ -172,7 +177,17 @@ for (const tableName of ['fixedRealtimeValues']) {
     /node \.\/scripts\/run-consumer-planner-probe\.mjs/,
     'the deployment uses the current production-shaped planner probe'
   );
-  pass('the exact planner credential and model are proven before realtime activation');
+  assert.match(
+    credentialBlock,
+    /CONSUMER_BETA_MODULE_PLANNER_MODE[\s\S]*node \.\/scripts\/run-direct-module-planner-eval\.mjs/,
+    'an apply-mode direct canary must run the direct transcript-to-module probe'
+  );
+  assert.match(
+    workflow,
+    /bootstrapSource = replaceTomlString\([\s\S]{0,180}'CONSUMER_MODULE_PLANNER_MODE',[\s\S]{0,80}'off'/,
+    'bootstrap and compensating rollback must force direct module planning off'
+  );
+  pass('the exact planner credential, model and selected planning path are proven before realtime activation');
 }
 
 {

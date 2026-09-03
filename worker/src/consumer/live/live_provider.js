@@ -26,11 +26,41 @@
 import { buildLiveCataloguePrompt } from './catalogue_prompt.js';
 import { LIVE_TOOL_DEFINITIONS } from './live_tools.js';
 
+function toolsForDirectModulePlanning() {
+  return LIVE_TOOL_DEFINITIONS
+    .filter((tool) => tool.name !== 'save_facts')
+    .map((tool) => {
+      if (tool.name !== 'confirm_and_run') return tool;
+      return {
+        ...tool,
+        description:
+          'Run the independently verified module inputs. Call this only after get_state returned '
+          + 'readyToConfirm true, a confirmationPrompt and a confirmationToken, you spoke that '
+          + 'confirmationPrompt verbatim, and the client clearly agreed in their own words. Pass back the opaque '
+          + 'confirmationToken unchanged; never invent or read it aloud.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['confirmationToken'],
+          properties: {
+            confirmationToken: {
+              type: 'string',
+              minLength: 20,
+              maxLength: 160,
+              description: 'Opaque token returned by the immediately preceding ready get_state result.'
+            }
+          }
+        }
+      };
+    });
+}
+
 export function buildLiveSessionConfig(config) {
+  const directModulePlanning = config.modulePlannerMode === 'apply';
   return {
     type: 'realtime',
     model: config.realtimeModel,
-    instructions: buildLiveCataloguePrompt(),
+    instructions: buildLiveCataloguePrompt({ directModulePlanning }),
     reasoning: { effort: 'low' },
     output_modalities: ['audio'],
     audio: {
@@ -57,7 +87,9 @@ export function buildLiveSessionConfig(config) {
         voice: 'marin'
       }
     },
-    tools: LIVE_TOOL_DEFINITIONS,
+    tools: directModulePlanning
+      ? toolsForDirectModulePlanning()
+      : LIVE_TOOL_DEFINITIONS,
     tool_choice: 'auto',
     parallel_tool_calls: false,
     max_output_tokens: 1_200,

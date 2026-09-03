@@ -1451,7 +1451,8 @@ export async function listRecentRealtimeFinalTurns(env, sessionId, leaseId, limi
  */
 export async function listReconciliationTranscriptWindow(env, sessionId, leaseId, throughTurnId, {
   maxClientTurns = 8,
-  referencedTurnIds = []
+  referencedTurnIds = [],
+  maxReferencedTurns = 24
 } = {}) {
   const allTurns = await listRealtimeFinalTurns(env, sessionId, leaseId, 200);
   const watermarkIndex = allTurns.findIndex((turn) => turn.id === throughTurnId);
@@ -1462,13 +1463,30 @@ export async function listReconciliationTranscriptWindow(env, sessionId, leaseId
   const clientIndexes = throughWatermark
     .map((turn, index) => turn.role === 'user' ? index : -1)
     .filter((index) => index >= 0)
-    .slice(-Math.max(1, Math.min(8, Number(maxClientTurns) || 8)));
+    // Callers choose their own bounded context size. Legacy reconciliation
+    // retains its default of eight; direct transcript-to-module planning uses
+    // a larger recent window so an as-yet-unclaimed fact is not dropped before
+    // the semantic model can carry it into the snapshot.
+    .slice(-Math.max(1, Math.min(80, Number(maxClientTurns) || 8)));
   let start = clientIndexes[0] ?? watermarkIndex;
   if (start > 0 && throughWatermark[start - 1].role === 'assistant') start -= 1;
   const selectedIds = new Set(throughWatermark.slice(start).map((turn) => turn.id));
-  for (const turnId of [...new Set(referencedTurnIds)].slice(0, 24)) {
+  for (const turnId of [...new Set(referencedTurnIds)].slice(
+    0,
+    Math.max(0, Math.min(80, Number(maxReferencedTurns) || 24))
+  )) {
     const index = throughWatermark.findIndex((turn) => turn.id === turnId);
-    if (index >= 0) selectedIds.add(turnId);
+    if (index >= 0) {
+      selectedIds.add(turnId);
+      // A terse answer is not self-contained evidence. Whenever an older
+      // client turn is retained because the semantic snapshot cites it, retain
+      // the exact assistant proposition that `answersTurnId` says it answered.
+      // This is causal context preservation, not an adjacency guess.
+      const answeredTurnId = throughWatermark[index].answersTurnId;
+      if (answeredTurnId && throughWatermark.some((turn) => (
+        turn.id === answeredTurnId && turn.role === 'assistant'
+      ))) selectedIds.add(answeredTurnId);
+    }
   }
   return throughWatermark.filter((turn) => selectedIds.has(turn.id));
 }
@@ -2625,7 +2643,9 @@ export async function saveRealtimeMeetingBrief(env, request) {
     request.sessionId,
     request.sourceTurnId,
     request.profileRevision,
-    request.brief.schemaVersion === 'MeetingBriefV2' ? 'MeetingBriefV2' : 'MeetingBriefV1',
+    ['MeetingBriefV2', 'MeetingBriefV3'].includes(request.brief.schemaVersion)
+      ? request.brief.schemaVersion
+      : 'MeetingBriefV1',
     request.plannerPromptVersion,
     encrypted,
     hash,
@@ -3340,7 +3360,13 @@ export async function prepareRealtimeAnalysisPlan(env, request) {
     moduleSlots: request.moduleSlots || [],
     overrides: request.overrides || [],
     requiresGoalPriorityQuestion: request.requiresGoalPriorityQuestion === true,
-    deferredGoalTypes: request.deferredGoalTypes || []
+    deferredGoalTypes: request.deferredGoalTypes || [],
+    ...(request.inputSource === 'verified_direct_module_input' ? {
+      inputSource: 'verified_direct_module_input',
+      directModuleSnapshot: request.directModuleSnapshot,
+      verificationCertificate: request.verificationCertificate,
+      moduleInputs: request.moduleInputs
+    } : {})
   };
   const inputHash = await sha256Base64Url(stableStringify(input));
   const inputEncrypted = await encryptJson(
