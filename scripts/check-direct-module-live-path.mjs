@@ -27,6 +27,7 @@ const MORTGAGE_INPUT = Object.freeze({
   currentBalance: 240000,
   annualInterestRate: 0.041,
   startDateIso: TODAY,
+  endDateIso: null,
   remainingTermYears: 22,
   repaymentType: 'repayment',
   fixedPaymentAmount: null,
@@ -50,6 +51,7 @@ function extractionFor(throughTurnId, baseSnapshotRevision = 0, evidenceTurnId =
       missing: [],
       ambiguities: [],
       assumptions: moduleId === 'mortgage_analysis' ? [
+        { path: '/endDateIso', valueJson: 'null', source: 'contract_default' },
         { path: '/fixedPaymentAmount', valueJson: 'null', source: 'contract_default' },
         { path: '/oneOffOverpayment', valueJson: '0', source: 'contract_default' },
         { path: '/annualOverpayment', valueJson: '0', source: 'contract_default' }

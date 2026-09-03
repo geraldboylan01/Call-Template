@@ -266,28 +266,51 @@ function assertDirectPolicy(moduleId, input, assumptions, envelope, { ready = fa
       }
     }
   }
-  const normalizedAssumptions = (assumptions || []).map((item) => {
+  // A MALFORMED DISCLOSURE IS DROPPED, NOT FATAL -- and dropping is the strict
+  // direction. An assumption is the planner saying "I used your value here".
+  // Losing that sentence can only cost it support later: a ready module then
+  // fails provenance, and a default it actually relied on fails the undisclosed
+  // -default check. Neither can be reached by discarding a line of bookkeeping.
+  const normalizedAssumptions = (assumptions || []).filter((item) => {
+    const path = String(item?.path || '');
+    if (!path || path === '/') return false;
+    try { JSON.parse(item.valueJson || 'null'); } catch (_error) { return false; }
+    return true;
+  }).map((item) => {
     const path = String(item.path || '');
-    if (!path || path === '/') {
-      throw new ConsumerError(502, 'module_snapshot_assumption_invalid', `${moduleId} assumption paths must be non-root JSON pointers.`);
-    }
-    let value;
-    try { value = JSON.parse(item.valueJson || 'null'); } catch (_error) {
-      throw new ConsumerError(502, 'module_snapshot_assumption_invalid', `${moduleId} returned an invalid assumption value.`);
-    }
+    const value = JSON.parse(item.valueJson || 'null');
     const entry = policyEntryForPath(entries, path);
     const expected = policyValueAtPath(entry, path);
     const actual = readJsonPointer(input, path);
-    if (!entry || item.source !== entry.source || actual === undefined
-      || stableStringify(actual) !== stableStringify(value)
+    // WHAT THE PLANNER IS ACTUALLY ASSERTING is "I used the server's value
+    // here, and did not invent one". That claim is checked in full: the path
+    // must be a real policy path, and the value in the input must equal the
+    // policy value exactly. The source TAG, though, is server-owned metadata
+    // that follows from the path alone -- the planner has no discretion over
+    // it. Demanding it echo the right label, and failing the entire pass over
+    // a wrong one, was bookkeeping the server already knows the answer to.
+    // Stamp it from the matched entry: the recorded provenance is then
+    // guaranteed correct rather than merely asserted.
+    // `actual === undefined` is legitimate for a default: the planner discloses
+    // that it is leaving the field to the server, the native normalizer fills
+    // it, and assertAppliedDefaultsDisclosed() then checks the CANONICAL value
+    // against this same policy entry. Demanding the value be authored here as
+    // well contradicted that check -- the two rules disagreed about the one
+    // case defaults exist for. The same holds for a fixed entry: the ready
+    // branch above independently verifies every fixed path against the authored
+    // input, so an unauthored disclosure can never smuggle a value past it.
+    const mayBeUnauthored = actual === undefined;
+    if (!entry || (actual === undefined && !mayBeUnauthored)
+      || (!mayBeUnauthored && stableStringify(actual) !== stableStringify(value))
       || stableStringify(value) !== stableStringify(expected)) {
       throw new ConsumerError(
         502,
         'module_snapshot_assumption_invalid',
-        `${moduleId} assumption at ${path} is not a supplied server policy or contract default.`
+        `${moduleId} assumption at ${path} is not a supplied server policy or contract default.`,
+        { path, declaredValue: value, expected, actual }
       );
     }
-    return { path, source: item.source, value };
+    return { path, source: entry.source, value };
   });
   return { entries, assumptions: normalizedAssumptions };
 }
@@ -305,7 +328,8 @@ function assertReadyInputProvenance(moduleId, input, evidence, assumptions, poli
     throw new ConsumerError(
       409,
       'module_snapshot_provenance_incomplete',
-      `${moduleId} has module input values that were neither evidenced nor supplied by server policy.`
+      `${moduleId} has module input values that were neither evidenced nor supplied by server policy.`,
+      uncovered
     );
   }
 }
@@ -372,17 +396,27 @@ export function normalizeDirectSnapshot(raw, {
         throw new ConsumerError(502, 'module_snapshot_input_invalid', `${moduleId} input must be an object.`);
       }
     }
-    const evidence = (candidate.evidence || []).map((item) => {
-      const normalized = {
-        path: String(item.path || ''),
-        source: String(item.source || ''),
-        turnId: String(item.turnId || ''),
-        quote: String(item.quote || ''),
-        profilePath: String(item.profilePath || '')
-      };
-      if (!normalized.path || normalized.path === '/' || readJsonPointer(input, normalized.path) === undefined) {
-        throw new ConsumerError(502, 'module_snapshot_evidence_path_invalid', `${moduleId} evidence must point into its native input.`);
-      }
+    // AN EVIDENCE NOTE THAT SUPPORTS NOTHING IS DROPPED, NOT FATAL.
+    // A path that does not resolve into the authored input puts no value into
+    // the module -- it is a stray annotation, and the commonest cause is the
+    // client saying something real that this engine has no field for ("two and
+    // a half thousand a month" against a module that takes salary and
+    // percentages). Failing the whole pass there discarded a correct snapshot,
+    // and every other module in it, over a note with no effect.
+    // Dropping is the SAFE direction: provenance for a ready module is computed
+    // from the evidence that survives, so removing an entry can only make that
+    // check stricter. A leaf that genuinely needed this note still fails there.
+    const evidence = (candidate.evidence || []).map((item) => ({
+      path: String(item.path || ''),
+      source: String(item.source || ''),
+      turnId: String(item.turnId || ''),
+      quote: String(item.quote || ''),
+      profilePath: String(item.profilePath || '')
+    })).filter((normalized) => (
+      normalized.path
+      && normalized.path !== '/'
+      && readJsonPointer(input, normalized.path) !== undefined
+    )).map((normalized) => {
       if (normalized.source === 'conversation') {
         const text = turnText.get(normalized.turnId);
         if (normalized.profilePath || text === undefined || occurrenceCount(text, normalized.quote) !== 1) {
@@ -445,9 +479,28 @@ export function normalizeDirectSnapshot(raw, {
       evidence
     });
   }
+  // A MODULE THE PLANNER DID NOT MENTION IS NOT A SELECTED MODULE.
+  // The contract asks for all seven rows every pass, six of them usually just
+  // "not_relevant". Treating a missed row as a fault threw away the whole
+  // snapshot -- every module in it, and the state Realtime steers on -- over a
+  // row that carries no client meaning. Completing the list is structural work
+  // the server can do exactly: absence is non-selection, and a not_relevant row
+  // holds no input, so nothing can execute from one.
   const expectedModuleIds = DIRECT_MODULE_IDS.filter((moduleId) => allowed.has(moduleId));
-  if (expectedModuleIds.some((moduleId) => !seen.has(moduleId))) {
-    throw new ConsumerError(502, 'module_snapshot_contract_incomplete', 'The module planner omitted an approved module contract.');
+  for (const moduleId of expectedModuleIds) {
+    if (seen.has(moduleId)) continue;
+    modules.push({
+      moduleId,
+      outputKey: DIRECT_MODULE_CONTRACTS[moduleId].outputKey,
+      status: 'not_relevant',
+      input: null,
+      steeringSummary: '',
+      missing: [],
+      ambiguities: [],
+      assumptions: [],
+      serverPolicyPaths: [],
+      evidence: []
+    });
   }
   if (modules.filter((item) => item.status !== 'not_relevant').length > 3) {
     throw new ConsumerError(409, 'module_capacity_exceeded', 'A consumer plan may contain at most three active analyses.');

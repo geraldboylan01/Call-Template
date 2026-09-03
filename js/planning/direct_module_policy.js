@@ -26,6 +26,50 @@ function policy(path, value, source = 'planning_policy', mode = 'fixed') {
   return Object.freeze({ path, value, source, mode });
 }
 
+/**
+ * Per-element policy, defined once.
+ *
+ * These values apply to an array element whose index only exists once the
+ * planner has authored the array, so they cannot be listed as fixed module
+ * paths. The planner is shown them, and directModulePolicyEntries() expands
+ * the same specs into the indexed paths the disclosure check asserts.
+ *
+ * SOURCE AND MODE TRAVEL WITH THE VALUE. A disclosure is refused unless its
+ * source tag matches exactly, so showing the planner a bare value and asking
+ * it to guess the tag made a correct disclosure impossible -- and one wrong
+ * guess fails the whole pass, not just the field.
+ */
+const PER_ELEMENT_POLICY = Object.freeze({
+  pensionMember: Object.freeze([
+    Object.freeze({ field: 'includeStatePension', value: true, source: 'planning_policy', mode: 'default' }),
+    Object.freeze({ field: 'statePensionFraction', value: 1, source: 'planning_policy', mode: 'default' }),
+    Object.freeze({ field: 'statePensionStartAge', value: IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge, source: 'planning_policy', mode: 'default' }),
+    Object.freeze({ field: 'statePensionEscalationRate', value: IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate, source: 'planning_policy', mode: 'fixed' })
+  ]),
+  collegeChild: Object.freeze([
+    // These are defaults, not facts. A client may name a different start age
+    // or course length and the semantic planner's value must survive.
+    Object.freeze({ field: 'collegeStartAge', value: PLANEIR_ASSUMPTIONS.collegeFunding.startAge, source: 'contract_default', mode: 'default' }),
+    Object.freeze({ field: 'collegeDurationYears', value: PLANEIR_ASSUMPTIONS.collegeFunding.durationYears, source: 'contract_default', mode: 'default' })
+  ])
+});
+
+function expandPerElement(specs, collection, prefix) {
+  return (Array.isArray(collection) ? collection : []).flatMap((_item, index) => (
+    specs.map((spec) => policy(`${prefix}/${index}/${spec.field}`, spec.value, spec.source, spec.mode))
+  ));
+}
+
+/** The same specs, shaped for the planner's serverPolicy envelope. */
+function describePerElement(specs, pathTemplate) {
+  return Object.freeze({
+    pathTemplate,
+    fields: Object.freeze(specs.map((spec) => Object.freeze({
+      field: spec.field, value: spec.value, source: spec.source, mode: spec.mode
+    })))
+  });
+}
+
 function validCalculationDate(value) {
   const date = String(value || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -53,21 +97,13 @@ export function buildDirectModulePolicyEnvelope({ calculationDateIso, baseCurren
         working: LIQUIDITY_RESERVE_POLICY.working,
         retired: LIQUIDITY_RESERVE_POLICY.retired
       }),
-      pensionMemberDefaults: Object.freeze({
-        includeStatePension: true,
-        statePensionFraction: 1,
-        statePensionStartAge: IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge,
-        statePensionEscalationRate: IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate
-      }),
+      pensionMemberDefaults: describePerElement(PER_ELEMENT_POLICY.pensionMember, '/pensions/{index}'),
       pensionModeDefaults: Object.freeze({
-        incomeMode: 'target',
-        targetIncomePctOfSalary: 0.5,
-        affordableEndAges: AFFORDABLE_END_AGE_DEFAULTS
+        incomeMode: Object.freeze({ path: '/incomeMode', value: 'target', source: 'contract_default', mode: 'default' }),
+        targetIncomePctOfSalary: Object.freeze({ path: '/targetIncomePctOfSalary', value: 0.5, source: 'contract_default', mode: 'default', appliesWhen: "incomeMode is 'target'" }),
+        affordableEndAges: Object.freeze({ path: '/affordableEndAges', value: AFFORDABLE_END_AGE_DEFAULTS, source: 'contract_default', mode: 'default', appliesWhen: "incomeMode is 'affordable'" })
       }),
-      collegeChildPolicy: Object.freeze({
-        collegeStartAge: PLANEIR_ASSUMPTIONS.collegeFunding.startAge,
-        collegeDurationYears: PLANEIR_ASSUMPTIONS.collegeFunding.durationYears
-      })
+      collegeChildPolicy: describePerElement(PER_ELEMENT_POLICY.collegeChild, '/children/{index}')
     }),
     modules: Object.freeze({
       personal_balance_sheet: Object.freeze([
@@ -92,6 +128,14 @@ export function buildDirectModulePolicyEnvelope({ calculationDateIso, baseCurren
         policy('/loanKind', 'mortgage'),
         policy('/startDateIso', date),
         policy('/repaymentType', 'repayment'),
+        // The engine takes an end date OR a remaining term. The playbook tells
+        // the planner to null the one the client did not give, so "no end date
+        // was supplied" has to be a declarable default like any other -- with
+        // no entry here the planner does exactly as instructed and the ready
+        // snapshot is then refused for an unevidenced leaf it could not omit.
+        // Declaring it changes nothing a client says: a stated end date is
+        // still authored and still carries its own evidence.
+        policy('/endDateIso', null, 'contract_default', 'default'),
         policy('/fixedPaymentAmount', null, 'contract_default', 'default'),
         policy('/oneOffOverpayment', 0, 'contract_default', 'default'),
         policy('/annualOverpayment', 0, 'contract_default', 'default')
@@ -100,6 +144,7 @@ export function buildDirectModulePolicyEnvelope({ calculationDateIso, baseCurren
         policy('/loanKind', 'loan'),
         policy('/startDateIso', date),
         policy('/repaymentType', 'repayment'),
+        policy('/endDateIso', null, 'contract_default', 'default'),
         policy('/fixedPaymentAmount', null, 'contract_default', 'default'),
         policy('/oneOffOverpayment', 0, 'contract_default', 'default'),
         policy('/annualOverpayment', 0, 'contract_default', 'default')
@@ -150,24 +195,10 @@ export function directModulePolicyEntries(moduleId, input, envelope) {
         policy('/affordableEndAges', AFFORDABLE_END_AGE_DEFAULTS, 'contract_default', 'default')
       );
     }
-    (Array.isArray(input?.pensions) ? input.pensions : []).forEach((_member, index) => {
-      entries.push(
-        policy(`/pensions/${index}/includeStatePension`, true, 'planning_policy', 'default'),
-        policy(`/pensions/${index}/statePensionFraction`, 1, 'planning_policy', 'default'),
-        policy(`/pensions/${index}/statePensionStartAge`, IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge, 'planning_policy', 'default'),
-        policy(`/pensions/${index}/statePensionEscalationRate`, IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate)
-      );
-    });
+    entries.push(...expandPerElement(PER_ELEMENT_POLICY.pensionMember, input?.pensions, '/pensions'));
   }
   if (moduleId === 'college_funding') {
-    (Array.isArray(input?.children) ? input.children : []).forEach((_child, index) => {
-      entries.push(
-        // These are defaults, not facts. A client may name a different start
-        // age or course length and the semantic planner's value must survive.
-        policy(`/children/${index}/collegeStartAge`, PLANEIR_ASSUMPTIONS.collegeFunding.startAge, 'contract_default', 'default'),
-        policy(`/children/${index}/collegeDurationYears`, PLANEIR_ASSUMPTIONS.collegeFunding.durationYears, 'contract_default', 'default')
-      );
-    });
+    entries.push(...expandPerElement(PER_ELEMENT_POLICY.collegeChild, input?.children, '/children'));
   }
   if (moduleId === 'house_purchase') {
     const acquisition = String(input?.acquisitionType || 'unknown');

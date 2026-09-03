@@ -143,12 +143,12 @@ const inputs = {
   },
   mortgage_analysis: {
     loanKind: 'mortgage', currentBalance: 240000, annualInterestRate: 0.041,
-    startDateIso: TODAY, remainingTermYears: 22, repaymentType: 'repayment',
+    startDateIso: TODAY, endDateIso: null, remainingTermYears: 22, repaymentType: 'repayment',
     fixedPaymentAmount: null, oneOffOverpayment: 0, annualOverpayment: 0
   },
   loan_analysis: {
     loanKind: 'loan', currentBalance: 18000, annualInterestRate: 0.085,
-    startDateIso: TODAY, remainingTermYears: 4, repaymentType: 'repayment',
+    startDateIso: TODAY, endDateIso: null, remainingTermYears: 4, repaymentType: 'repayment',
     fixedPaymentAmount: null, oneOffOverpayment: 0, annualOverpayment: 500
   },
   college_funding: {
@@ -319,6 +319,7 @@ const moduleRows = DIRECT_MODULE_IDS.map((moduleId) => ({
     ? 'Existing repayment mortgage: €240,000 balance, 4.1% rate and 22 years remaining.'
     : '',
   missing: [], ambiguities: [], assumptions: moduleId === 'mortgage_analysis' ? [
+    { path: '/endDateIso', valueJson: 'null', source: 'contract_default' },
     { path: '/fixedPaymentAmount', valueJson: 'null', source: 'contract_default' },
     { path: '/oneOffOverpayment', valueJson: '0', source: 'contract_default' },
     { path: '/annualOverpayment', valueJson: '0', source: 'contract_default' }
@@ -354,6 +355,128 @@ const snapshot = normalizeDirectSnapshot({
 assert.equal(snapshot.modules.find((item) => item.moduleId === 'mortgage_analysis').input.currentBalance, 240000);
 assert.equal(snapshot.snapshotRevision, 1);
 pass('spoken-word evidence supports the AI-authored native number without deterministic parsing');
+
+/* ------- tolerated bookkeeping never becomes a tolerated financial value --- */
+
+// Three kinds of planner bookkeeping are now dropped rather than fatal: an
+// evidence note pointing at a path the input does not have, a malformed
+// assumption, and an omitted module row. Each was destroying an otherwise
+// correct snapshot -- and with it every other module and the state Realtime
+// steers on -- over a line that carries no client meaning. Dropping is only
+// safe if it stays the STRICT direction, so this pins that: what the dropped
+// line would have supported must still be refused.
+{
+  const withStrayEvidence = moduleRows.map((item) => (
+    item.moduleId === 'mortgage_analysis'
+      ? {
+          ...item,
+          evidence: [
+            ...item.evidence,
+            // The client said something real that this engine has no field for.
+            { path: '/monthlyRepayment', source: 'conversation', turnId: 'turn-1', quote: 'About two and a half thousand a month', profilePath: '' }
+          ]
+        }
+      : item
+  ));
+  const tolerated = normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: withStrayEvidence,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const kept = tolerated.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.equal(kept.status, 'ready');
+  assert.equal(
+    kept.evidence.some((item) => item.path === '/monthlyRepayment'), false,
+    'a note that supports no input value must be dropped, not recorded as provenance'
+  );
+
+  // The same tolerance must NOT rescue a value. Drop the balance's real
+  // evidence and cite an unreachable path instead: the figure is now unsupported
+  // and the ready module has to fail.
+  const strayInsteadOfReal = moduleRows.map((item) => (
+    item.moduleId === 'mortgage_analysis'
+      ? {
+          ...item,
+          evidence: [
+            { path: '/monthlyRepayment', source: 'conversation', turnId: 'turn-1', quote: 'two hundred and forty grand', profilePath: '' },
+            ...item.evidence.filter((entry) => entry.path !== '/currentBalance')
+          ]
+        }
+      : item
+  ));
+  assert.throws(() => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: strayInsteadOfReal,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  }), /neither evidenced nor supplied by server policy/);
+
+  // A malformed assumption is dropped -- and the default it would have
+  // disclosed is then undisclosed, which still fails closed.
+  const malformedAssumption = moduleRows.map((item) => (
+    item.moduleId === 'mortgage_analysis'
+      ? {
+          ...item,
+          assumptions: item.assumptions.map((assumption) => (
+            assumption.path === '/annualOverpayment'
+              ? { ...assumption, valueJson: '{not json' }
+              : assumption
+          ))
+        }
+      : item
+  ));
+  assert.throws(() => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: malformedAssumption,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  }), /neither evidenced nor supplied by server policy/);
+
+  // An omitted row is completed as not_relevant: absence is non-selection, and
+  // a completed row can never carry an input, so nothing can execute from one.
+  const omitted = moduleRows.filter((item) => item.moduleId !== 'college_funding');
+  const completed = normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: omitted,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-1', role: 'user', transcript }],
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const filled = completed.modules.find((item) => item.moduleId === 'college_funding');
+  assert.equal(filled.status, 'not_relevant');
+  assert.equal(filled.input, null);
+  assert.deepEqual(filled.evidence, []);
+  assert.equal(completed.modules.length, APPROVED_CONSUMER_MODULE_IDS.length);
+}
+pass('dropped planner bookkeeping never rescues an unsupported value or an undisclosed default');
 
 const mortgageWithoutAnnualOverpayment = {
   ...inputs.mortgage_analysis

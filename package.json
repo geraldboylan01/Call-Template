@@ -40,6 +40,7 @@
     "check:reconciliation-transcription-evals": "node ./scripts/check-reconciliation-transcription-evals.mjs",
     "evals:reconciliation-transcription": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-reconciliation-transcription-evals.mjs",
     "evals:direct-module-planning": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-direct-module-planner-eval.mjs",
+    "probe:direct-module-acceptance": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/probe-direct-module-acceptance.mjs",
     "check:consumer-live-scenarios": "node ./scripts/check-consumer-live-scenarios.mjs",
     "probe:live-call": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-live-call.mjs",
     "batch:phase4": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-phase4-batch.mjs",
