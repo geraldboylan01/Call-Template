@@ -104,6 +104,18 @@ Object.assign(house, {
   localAuthorityCode: 'unknown'
 });
 
+const PBS_NONE_TRANSCRIPT = 'The house is worth 450,000, we have 50,000 saved and a pension of 180,000, and we have no debts at all. We spend about 2,500 a month.';
+const PBS_EVIDENCE_PROFILE = { profileId: 'p', revision: 1, primaryPerson: { personId: 'primary', displayName: 'Client' }, partner: null, preferences: { baseCurrency: 'EUR' }, assumptions: { calculationDateIso: TODAY } };
+const PBS_ASSET_EVIDENCE = [
+  { path: '/currency', source: 'conversation', turnId: 'turn-none', quote: '450,000', profilePath: '' },
+  { path: '/assetPositions/0', source: 'conversation', turnId: 'turn-none', quote: 'The house is worth 450,000', profilePath: '' },
+  { path: '/assetPositions/1', source: 'conversation', turnId: 'turn-none', quote: 'we have 50,000 saved', profilePath: '' },
+  { path: '/assetPositions/2', source: 'conversation', turnId: 'turn-none', quote: 'a pension of 180,000', profilePath: '' },
+  { path: '/monthlyExpenditure', source: 'conversation', turnId: 'turn-none', quote: 'We spend about 2,500 a month', profilePath: '' },
+  { path: '/reconciliationWarnings', source: 'conversation', turnId: 'turn-none', quote: 'we have no debts at all', profilePath: '' },
+  { path: '/currencyWarnings', source: 'conversation', turnId: 'turn-none', quote: 'we have no debts at all', profilePath: '' }
+];
+
 const inputs = {
   personal_balance_sheet: {
     currency: 'EUR',
@@ -478,6 +490,55 @@ pass('spoken-word evidence supports the AI-authored native number without determ
 }
 pass('dropped planner bookkeeping never rescues an unsupported value or an undisclosed default');
 
+/* ---------- an empty collection is a claim, and it needs saying out loud ---- */
+
+// FOUND WITH THE REAL MODEL. Asked whether they could cope if they lost their
+// job, the planner also produced a balance sheet and marked it ready with an
+// empty liabilityPositions -- asserting the client has no debts in a
+// conversation where debts were never raised. That is exactly the hidden
+// default that must never become a financial fact, and provenance caught it.
+// Pinned here so the rule cannot be relaxed by a later tolerance: "none" is
+// something the client says, not something a silent empty array may imply.
+{
+  const debtFreeInput = { ...inputs.personal_balance_sheet, liabilityPositions: [] };
+  const rowsFor = (evidence) => DIRECT_MODULE_IDS.map((id) => ({
+    moduleId: id,
+    outputKey: DIRECT_MODULE_CONTRACTS[id].outputKey,
+    status: id === 'personal_balance_sheet' ? 'ready' : 'not_relevant',
+    inputJson: id === 'personal_balance_sheet' ? JSON.stringify(debtFreeInput) : '',
+    steeringSummary: '', missing: [], ambiguities: [], assumptions: [],
+    evidence: id === 'personal_balance_sheet' ? evidence : []
+  }));
+  const run = (evidence) => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-none',
+    modules: rowsFor(evidence),
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-none', role: 'user', transcript: PBS_NONE_TRANSCRIPT }],
+    throughTurnId: 'turn-none', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: PBS_EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+
+  assert.throws(() => run(PBS_ASSET_EVIDENCE), /neither evidenced nor supplied by server policy/,
+    'an empty liability list nobody spoke about must not be ready');
+
+  // The same input IS allowed once the client actually said it.
+  const spoken = run([
+    ...PBS_ASSET_EVIDENCE,
+    { path: '/liabilityPositions', source: 'conversation', turnId: 'turn-none', quote: 'we have no debts at all', profilePath: '' }
+  ]);
+  assert.equal(
+    spoken.modules.find((item) => item.moduleId === 'personal_balance_sheet').status,
+    'ready',
+    'a categorical none the client actually stated must be accepted as evidence'
+  );
+}
+pass('an empty collection is ready only when the client said there are none');
+
 const mortgageWithoutAnnualOverpayment = {
   ...inputs.mortgage_analysis
 };
@@ -570,7 +631,7 @@ const certificateConfig = {
   modulePlannerModel: 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 5000,
-  modulePlannerPromptVersion: 'direct-module-planner-v2',
+  modulePlannerPromptVersion: 'direct-module-planner-v4',
   moduleVerifierPromptVersion: 'direct-module-verifier-v2'
 };
 let providerCalls = 0;
@@ -767,7 +828,7 @@ try {
       modulePlannerModel: 'gpt-5.6-luna',
       modulePlannerReasoningEffort: 'low',
       modulePlannerTimeoutMs: 5000,
-      modulePlannerPromptVersion: 'direct-module-planner-v2',
+      modulePlannerPromptVersion: 'direct-module-planner-v4',
       moduleVerifierPromptVersion: 'direct-module-verifier-v2'
     },
     turns: [{ id: 'turn-2', role: 'user', transcript: 'The balance is all I know right now.' }],

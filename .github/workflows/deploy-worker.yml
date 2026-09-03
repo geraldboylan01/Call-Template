@@ -98,7 +98,7 @@ jobs:
       # off, and the builder below resolves this back to off whenever Realtime
       # itself is not active.
       CONSUMER_BETA_MODULE_PLANNER_MODE: ${{ vars.CONSUMER_MODULE_PLANNER_MODE || 'off' }}
-      CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v2"
+      CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v4"
       CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION: "direct-module-verifier-v2"
       # Phase 3 semantic turn reading: a second, independent reading of each
       # reviewed client turn, where agreement between the two readers is what
@@ -726,7 +726,7 @@ jobs:
                 CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
                 CONSUMER_REALTIME_PLANNER_MODEL: ['CONSUMER_BETA_REALTIME_PLANNER_MODEL', 'gpt-5.6-luna'],
                 CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION: ['CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION', 'planning-reconciliation-v3'],
-                CONSUMER_MODULE_PLANNER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION', 'direct-module-planner-v2'],
+                CONSUMER_MODULE_PLANNER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION', 'direct-module-planner-v4'],
                 CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION', 'direct-module-verifier-v2'],
                 CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v11'],
                 CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1'],

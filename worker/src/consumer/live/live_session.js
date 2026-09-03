@@ -1576,6 +1576,17 @@ export class ConsumerLiveSession {
     return true;
   }
 
+  /* Structural pointers only: a path is safe to record, a value is not. */
+  static pointerPaths(details) {
+    const out = [];
+    const take = (value) => {
+      if (typeof value === 'string' && value.startsWith('/')) out.push(value);
+    };
+    if (Array.isArray(details)) details.forEach(take);
+    else if (details && typeof details === 'object') take(details.path);
+    return [...new Set(out)];
+  }
+
   persistDirectModulePlanningOutstanding() {
     const snapshot = this.directModulePlanningOutstanding.map((item) => ({ ...item }));
     this.directModulePlanningPersistenceChain = this.directModulePlanningPersistenceChain
@@ -1657,7 +1668,16 @@ export class ConsumerLiveSession {
             leaseId: this.meta?.leaseId,
             direction: 'server',
             eventType: 'live.modules.planning_failed',
-            payload: { code: String(error?.code || 'module_planner_failed') }
+            // WHICH module and WHICH paths, never what the client said.
+            // A bare code cannot be turned into an eval: every planning failure
+            // worth fixing is "this module, these paths". JSON pointers and the
+            // module id are structural, so they carry no transcript content and
+            // no figure -- anything that is not a pointer is dropped here.
+            payload: {
+              code: String(error?.code || 'module_planner_failed'),
+              moduleId: String(error?.moduleId || '') || null,
+              paths: ConsumerLiveSession.pointerPaths(error?.details).slice(0, 40)
+            }
           }).catch(() => {});
           // Keep the failed watermark durable. A later client turn, get_state,
           // or confirmation attempt may retry it; never spin a paid loop here.

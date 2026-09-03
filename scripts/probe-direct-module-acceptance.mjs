@@ -27,7 +27,7 @@ const config = {
   modulePlannerModel: process.env.CONSUMER_MODULE_PLANNER_MODEL || 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 90_000,
-  modulePlannerPromptVersion: 'direct-module-planner-v2',
+  modulePlannerPromptVersion: 'direct-module-planner-v4',
   moduleVerifierPromptVersion: 'direct-module-verifier-v2'
 };
 const profile = {
