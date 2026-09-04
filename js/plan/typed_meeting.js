@@ -123,7 +123,7 @@ export class TypedMeetingController {
    * planner reads it the same way -- which is what stops the card and the chat
    * becoming two versions of the same finances.
    */
-  async send(text, { inputMode = 'text' } = {}) {
+  async send(text, { inputMode = 'text', unknownFieldId = '' } = {}) {
     const message = String(text || '').trim().slice(0, MAX_MESSAGE_CHARACTERS);
     if (!message || !this.active || this.sending) return;
     this.sending = true;
@@ -134,6 +134,7 @@ export class TypedMeetingController {
       const result = await sendTypedMessage(getSessionId(), this.leaseId, {
         text: message,
         inputMode,
+        unknownFieldId,
         controlCapability: this.controlCapability
       });
       if (result.assistantText) this.pushTurn('assistant', result.assistantText, { readback: result.readback });
@@ -380,7 +381,13 @@ export class TypedMeetingController {
     // sentence a client would have typed, which is the honest interim.
     const unsure = element('button', 'typed-field-unsure', 'Not sure');
     unsure.type = 'button';
-    unsure.addEventListener('click', () => void this.send(`I don't know ${label.toLowerCase()}.`, { inputMode: 'form' }));
+    unsure.addEventListener('click', () => void this.send(
+      `I don't know ${label.toLowerCase()}.`,
+      // The id tells the server to stop asking. The sentence tells the planner
+      // what happened. Both are needed: one ends the loop, the other keeps the
+      // transcript an honest record of the conversation.
+      { inputMode: 'form', unknownFieldId: field.id }
+    ));
     wrap.append(unsure);
 
     this.cardEntries.set(field.id, { field, input, label: label });

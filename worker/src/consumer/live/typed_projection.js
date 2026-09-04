@@ -206,3 +206,31 @@ export function buildTypedCardState(brief) {
     readyToConfirm: brief.readyToConfirm === true
   };
 }
+
+/**
+ * The server's private key to the card it just drew: field id -> what it means.
+ *
+ * This is the other half of keeping the screen pointer-free. The client sends
+ * back an opaque id it was given; only the side that built the card can say
+ * which module and which native path that id stood for, and it can only ever
+ * resolve an id it actually issued.
+ */
+export function buildTypedCardIndex(brief) {
+  const index = new Map();
+  if (!brief || brief.schemaVersion !== 'MeetingBriefV3') return index;
+  const modules = (Array.isArray(brief.directModuleSnapshot?.modules) ? brief.directModuleSnapshot.modules : [])
+    .filter((item) => item?.status !== 'not_relevant')
+    .slice(0, MAX_MODULES);
+  modules.forEach((item, moduleIndex) => {
+    const moduleId = String(item?.moduleId || '');
+    if (!moduleDisplayTitle(moduleId)) return;
+    let position = 0;
+    for (const need of (Array.isArray(item?.missing) ? item.missing : []).slice(0, MAX_FIELDS_PER_MODULE)) {
+      const path = String(need?.path || '');
+      if (!path || isHiddenModulePath(path)) continue;
+      index.set(fieldId(`f${moduleIndex}_`, position), { moduleId, path });
+      position += 1;
+    }
+  });
+  return index;
+}

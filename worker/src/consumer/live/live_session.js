@@ -54,7 +54,7 @@ import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
 import { runDirectModulePlanning, directModulePlanMeaningKey } from '../direct_module_planner.js';
 import { renderLiveAssistantText } from './live_text_channel.js';
-import { buildTypedCardState } from './typed_projection.js';
+import { buildTypedCardIndex, buildTypedCardState } from './typed_projection.js';
 import { prepareRealtimeVoiceAnalysisPlan } from '../realtime_analysis.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
 import { classifyExecutionApproval } from './execution_approval.js';
@@ -113,6 +113,14 @@ const MAX_TYPED_CONTEXT_TURNS = 16;
  * introduce yourself, then ask one broad non-financial question. A meeting that
  * cannot start is worse than one that starts plainly.
  */
+/**
+ * How many requirements one meeting may declare unanswerable.
+ *
+ * Bounded because it is durable state driven by a button. Twelve is more than
+ * any real plan has open at once; a meeting that hit it is not a meeting that
+ * needed a thirteenth.
+ */
+const MAX_ACKNOWLEDGED_UNKNOWN = 12;
 const TYPED_OPENING_FALLBACK = 'I\'m Planéir, an AI planning companion. '
   + 'Before we look at any numbers — what brought you here today?';
 
@@ -362,6 +370,15 @@ export class ConsumerLiveSession {
     this.textChannel = false;
     this.textToolOutputs = new Map();
     this.textVolatileStateItem = '';
+    // Requirements the client has said, on screen, that they cannot answer.
+    // Durable for the same reason the unreviewed material turns are: a
+    // hibernated meeting that forgot one would start asking again, which is
+    // precisely the loop the control exists to end.
+    this.acknowledgedUnknown = [];
+    // fieldId -> {moduleId, path} for the card most recently drawn. This is
+    // what lets the screen stay pointer-free: the client returns an opaque id
+    // and the server, which built the card, is the only side that resolves it.
+    this.typedCardIndex = new Map();
     this.inResponse = false;
     this.eventChain = Promise.resolve();
     this.reconciliationChain = Promise.resolve();
@@ -461,6 +478,7 @@ export class ConsumerLiveSession {
       // The transport has to survive hibernation. A typed meeting that woke up
       // believing it had a provider socket would try to send on one.
       this.textChannel = this.meta?.channel === 'typed';
+      this.acknowledgedUnknown = await this.state.storage.get('acknowledgedUnknown') || [];
       this.violationCount = Number(await this.state.storage.get('violationCount') || 0);
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
@@ -1568,6 +1586,11 @@ export class ConsumerLiveSession {
     const config = getConsumerConfig(this.env);
     if (this.closing) throw new ConsumerError(409, 'live_meeting_closing', 'This meeting is closing.');
 
+    // A "Not sure" click is recorded BEFORE the planner runs, so the very next
+    // pass already knows not to ask again. Recording it afterwards would let
+    // one more question through, which is the whole complaint.
+    await this.recordAcknowledgedUnknown(body?.unknownFieldId);
+
     const itemId = `msg_${crypto.randomUUID()}`;
     this.registerStoppedClientTurn({ item_id: itemId });
     await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode });
@@ -1627,12 +1650,48 @@ export class ConsumerLiveSession {
       this.env, this.meta.sessionId, this.meta.leaseId
     ).catch(() => null);
     try {
-      return buildTypedCardState(direct?.brief || null);
+      const brief = direct?.brief || null;
+      // Built together, from the same brief, so an id the client returns can
+      // only ever resolve against the card they were actually shown.
+      this.typedCardIndex = buildTypedCardIndex(brief);
+      return buildTypedCardState(brief);
     } catch (_error) {
       // A card is an enhancement. A projection fault must never cost the
       // client their reply, so the conversation simply carries on without it.
       return { modules: [] };
     }
+  }
+
+  /**
+   * Record that the client cannot answer one requirement.
+   *
+   * The id is resolved against the card THIS SERVER drew, which is what keeps
+   * the screen pointer-free: the browser never learns a module id or a native
+   * input path, and cannot name one it was not offered. An id the server does
+   * not recognise is ignored rather than rejected -- a stale card is an
+   * ordinary race, not an attack, and the client's message still goes through.
+   */
+  async recordAcknowledgedUnknown(fieldId) {
+    const entry = this.typedCardIndex.get(String(fieldId || ''));
+    if (!entry) return;
+    const exists = this.acknowledgedUnknown.some(
+      (item) => item.moduleId === entry.moduleId && item.path === entry.path
+    );
+    if (exists) return;
+    this.acknowledgedUnknown = [
+      ...this.acknowledgedUnknown,
+      { moduleId: entry.moduleId, path: entry.path, acknowledgedAt: Date.now() }
+    ].slice(-MAX_ACKNOWLEDGED_UNKNOWN);
+    await this.state.storage.put('acknowledgedUnknown', this.acknowledgedUnknown);
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      direction: 'server',
+      eventType: 'live.requirement.unanswerable',
+      // Structural only: which module and which path, never the question text
+      // and never anything the client typed.
+      payload: { moduleId: entry.moduleId, path: entry.path }
+    }).catch(() => {});
   }
 
   /**
@@ -2179,7 +2238,8 @@ export class ConsumerLiveSession {
             context,
             leaseId: this.meta.leaseId,
             throughTurnId: nextJob.turnId,
-            frozenPlanId: this.directConfirmationOffer?.planId || null
+            frozenPlanId: this.directConfirmationOffer?.planId || null,
+            acknowledgedUnknown: this.acknowledgedUnknown
           });
           // This full transcript snapshot settles every obligation at or before
           // its watermark. A turn arriving during the call remains and is the
@@ -3977,7 +4037,10 @@ export class ConsumerLiveSession {
       status,
       reason,
       activatedAtMs,
-      responseCount: Number(lease?.response_count || 0)
+      responseCount: Number(lease?.response_count || 0),
+      // Without this a typed meeting reports itself as a voice call, and every
+      // voice metric it lands in silently becomes a mixture.
+      channel: this.textChannel ? 'typed' : 'voice'
     });
 
     let row;

@@ -908,12 +908,17 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       const body = await readJson(request);
       if (typeof body.text !== 'string'
         || !['text', 'form', undefined].includes(body.inputMode)
-        || Object.keys(body).some((key) => !['text', 'inputMode'].includes(key))) {
+        || !['string', 'undefined'].includes(typeof body.unknownFieldId)
+        || String(body.unknownFieldId || '').length > 40
+        || Object.keys(body).some((key) => !['text', 'inputMode', 'unknownFieldId'].includes(key))) {
         throw new ConsumerError(400, 'typed_message_invalid', 'That message could not be sent.');
       }
       const result = await durableObjectRequest(env, route.leaseId, '/message', {
         text: body.text,
-        inputMode: body.inputMode === 'form' ? 'form' : 'text'
+        inputMode: body.inputMode === 'form' ? 'form' : 'text',
+        // An opaque id the server issued on the card it drew. It names nothing
+        // by itself; only the Durable Object that built that card can resolve it.
+        unknownFieldId: String(body.unknownFieldId || '')
       });
       return respond(result, 200, methods);
     }

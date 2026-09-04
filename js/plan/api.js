@@ -549,12 +549,20 @@ export function createTypedMeeting(sessionId, { requestId, activationId, control
  * exists so the eval corpus can tell the screen's contribution from the
  * keyboard's, never so anything branches on it.
  */
-export function sendTypedMessage(sessionId, leaseId, { text, inputMode = 'text', controlCapability, signal } = {}) {
+export function sendTypedMessage(sessionId, leaseId, {
+  text, inputMode = 'text', unknownFieldId = '', controlCapability, signal
+} = {}) {
   return request(`${typedMeetingPath(sessionId, leaseId)}/messages`, {
     method: 'POST',
     authenticated: true,
     requestHeaders: realtimeControlHeaders(controlCapability),
-    body: { text: String(text || ''), inputMode: inputMode === 'form' ? 'form' : 'text' },
+    body: {
+      text: String(text || ''),
+      inputMode: inputMode === 'form' ? 'form' : 'text',
+      // Opaque, and issued by the server on the card the client is looking at.
+      // The browser never learns which module or which input it stands for.
+      ...(unknownFieldId ? { unknownFieldId: String(unknownFieldId) } : {})
+    },
     signal,
     // A typed turn awaits the planner before it replies. That is the whole
     // point of the transport, and it is slower than a voice turn on purpose.

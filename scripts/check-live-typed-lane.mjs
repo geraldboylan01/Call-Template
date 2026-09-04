@@ -285,6 +285,85 @@ for (const leak of [
   ok(!serialised.includes(leak), `the card must not carry ${leak}`);
 }
 
+/* ------------------------------------ "I don't know" has to end the asking */
+
+// D-09. The planner's own rule is that an unsure answer "is not an answer ...
+// keep the module collecting", which is right for a hedge and wrong for a
+// client who has told you plainly that they cannot answer. A "Not sure" button
+// with nowhere to land would build that loop into the screen.
+const { normalizeDirectSnapshot } = await import('../worker/src/consumer/direct_module_planner.js');
+const { buildDirectModulePolicyEnvelope } = await import('../js/planning/direct_module_policy.js');
+
+const policyEnvelope = buildDirectModulePolicyEnvelope({ calculationDateIso: '2026-09-04' });
+// The real native input, so the policy assertions this snapshot passes through
+// are the production ones rather than a shape invented for the test.
+const { directModuleTestInputs } = await import('./live-harness/direct-fixtures.mjs');
+const MORTGAGE_INPUT = directModuleTestInputs('2026-09-04').mortgage_analysis;
+function snapshotWith(missing, { status = 'collecting', input = MORTGAGE_INPUT } = {}) {
+  return {
+    schemaVersion: 'ModulePlanningSnapshotV1',
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn_1',
+    generalAmbiguities: [],
+    confirmationPrompt: '',
+    modules: [{
+      moduleId: 'mortgage_analysis',
+      outputKey: 'generated.mortgageInputs',
+      status,
+      selection: { origin: 'client_requested', reason: 'they asked about the mortgage' },
+      inputJson: JSON.stringify(input),
+      steeringSummary: '',
+      missing,
+      ambiguities: [],
+      assumptions: [],
+      evidence: []
+    }]
+  };
+}
+const NEED = [{ path: '/annualInterestRate', reason: 'the projection needs a rate', question: 'What rate are you on?' }];
+const normaliseOptions = {
+  turns: [{ id: 'turn_1', transcript: 'I want to look at the mortgage.' }],
+  throughTurnId: 'turn_1',
+  previousRevision: 0,
+  policyEnvelope,
+  currentProfileContext: {},
+  allowedModuleIds: ['mortgage_analysis']
+};
+
+const stillAsking = normalizeDirectSnapshot(snapshotWith(NEED), normaliseOptions);
+equal(stillAsking.modules[0].missing.length, 1, 'without an acknowledgement the question stands');
+equal(stillAsking.modules[0].blocked.length, 0, 'and nothing is blocked');
+
+const acknowledged = normalizeDirectSnapshot(snapshotWith(NEED), {
+  ...normaliseOptions,
+  acknowledgedUnknown: [{ moduleId: 'mortgage_analysis', path: '/annualInterestRate' }]
+});
+equal(acknowledged.modules[0].missing.length, 0,
+  'once the client says they cannot answer, the requirement leaves the ask list');
+equal(acknowledged.modules[0].blocked[0].path, '/annualInterestRate',
+  'it is recorded as blocked, so the meeting can still say why an analysis is unavailable');
+equal(acknowledged.modules[0].blocked[0].covered, false,
+  'and it is NOT covered, because there is no approved default for a mortgage rate');
+
+// THE MODULE MUST NOT BECOME RUNNABLE. An analysis that needs a figure nobody
+// can supply is unavailable, not ready: offering to run it would be offering a
+// result its own inputs do not support.
+const wouldHaveBeenReady = normalizeDirectSnapshot(
+  snapshotWith(NEED, { status: 'ready' }),
+  { ...normaliseOptions, acknowledgedUnknown: [{ moduleId: 'mortgage_analysis', path: '/annualInterestRate' }] }
+);
+equal(wouldHaveBeenReady.modules[0].status, 'collecting',
+  'a module blocked on an unanswerable requirement can never be ready');
+
+// The acknowledgement is scoped to the module that asked. Saying you do not
+// know one analysis's rate must not silence another analysis's question.
+const otherModule = normalizeDirectSnapshot(snapshotWith(NEED), {
+  ...normaliseOptions,
+  acknowledgedUnknown: [{ moduleId: 'loan_analysis', path: '/annualInterestRate' }]
+});
+equal(otherModule.modules[0].missing.length, 1,
+  'an acknowledgement for one analysis does not silence the same path in another');
+
 /* --------------------------------------------------- no provider traffic */
 
 // A typed meeting must never try to talk to a socket it does not have.
