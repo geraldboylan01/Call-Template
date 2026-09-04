@@ -3760,3 +3760,174 @@ details.realtime-context-card {
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------- TYPE MODE
+ *
+ * The conversation is the page. A module card, when the planner has one, sits
+ * inside the thread rather than beside it -- a fixed panel would turn a
+ * conversation into a dashboard, which is the thing this mode exists to avoid.
+ */
+
+/* plan.css is the only stylesheet this page loads, so the screen-reader helper
+ * has to exist here rather than being borrowed from base.css. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.lane-choice-card {
+  text-align: left;
+}
+
+.lane-choice-title {
+  font-size: clamp(1.25rem, 2.4vw, 1.6rem);
+  margin: 0 0 0.4rem;
+}
+
+.lane-choice-lead {
+  margin: 0 0 1.25rem;
+  opacity: 0.75;
+}
+
+.lane-choice-options {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.lane-choice-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: flex-start;
+  text-align: left;
+  padding: 1rem 1.1rem;
+  min-height: 5.25rem;
+}
+
+.lane-choice-option-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.lane-choice-option-detail {
+  font-weight: 400;
+  font-size: 0.85rem;
+  opacity: 0.8;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.typed-meeting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  /* The thread owns the height so the composer can stay pinned beneath it and
+   * the client never loses the input box while scrolling back. */
+  height: min(78vh, 46rem);
+}
+
+.typed-status {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.typed-status:empty {
+  min-height: 0;
+}
+
+.typed-thread {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  scroll-behavior: smooth;
+}
+
+.typed-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-width: min(46rem, 100%);
+}
+
+.typed-turn.is-user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.typed-who {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  opacity: 0.5;
+}
+
+.typed-bubble {
+  margin: 0;
+  padding: 0.7rem 0.95rem;
+  border-radius: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.typed-turn.is-user .typed-bubble {
+  background: rgba(143, 208, 255, 0.12);
+  border-bottom-right-radius: 0.25rem;
+}
+
+.typed-turn.is-assistant .typed-bubble {
+  border-bottom-left-radius: 0.25rem;
+}
+
+/* The certified plan read-back. Given weight because it is the one message the
+ * client is being asked to check rather than read. */
+.typed-turn.is-readback .typed-bubble {
+  background: rgba(143, 208, 255, 0.08);
+  border: 1px solid rgba(143, 208, 255, 0.35);
+  border-radius: 0.9rem;
+}
+
+.typed-composer {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.typed-input {
+  flex: 1;
+  resize: none;
+  min-height: 2.9rem;
+  max-height: 9rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.75rem;
+  line-height: 1.5;
+  font: inherit;
+}
+
+.typed-send {
+  flex: 0 0 auto;
+  min-height: 2.9rem;
+}
+
+@media (max-width: 40rem) {
+  .typed-meeting { height: min(82vh, 40rem); }
+  .typed-turn { max-width: 100%; }
+}

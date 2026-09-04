@@ -698,16 +698,6 @@ export async function activateTypedLease(env, sessionId, leaseId) {
   return row;
 }
 
-/** The typed equivalent of `getActiveRealtimeLease`, scoped by channel. */
-export async function getActiveTypedLease(env, sessionId) {
-  return db(env).prepare(`
-    SELECT * FROM consumer_realtime_sessions
-    WHERE session_id = ? AND channel = 'typed' AND status IN ('pending', 'active', 'closing')
-    ORDER BY created_at DESC
-    LIMIT 1
-  `).bind(sessionId).first();
-}
-
 export async function activateRealtimeLease(env, sessionId, leaseId, providerCallId) {
   const timestamp = nowIso();
   const [providerCallIdHash, providerCallEncrypted] = await Promise.all([

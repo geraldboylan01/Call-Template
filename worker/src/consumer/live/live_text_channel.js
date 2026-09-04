@@ -74,7 +74,7 @@ export function boundedAssistantText(value) {
  * pricing version convert them; a typed lane that pre-converted would put a
  * second cost model in the same table and one of them would drift.
  */
-export function textUsageTokens(usage) {
+function textUsageTokens(usage) {
   const cached = Number(usage?.input_tokens_details?.cached_tokens || 0);
   return {
     inputTextTokens: Math.max(0, Number(usage?.input_tokens || 0) - cached),

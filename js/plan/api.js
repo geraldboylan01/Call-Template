@@ -507,6 +507,69 @@ export function speakRealtimeAuthorized(sessionId, leaseId, authorization, {
   });
 }
 
+/* ------------------------------------------------------------ typed lane */
+
+function typedMeetingPath(sessionId, leaseId = '') {
+  const base = pathForSession(sessionId, '/text/meetings');
+  if (!leaseId) return base;
+  if (!/^rt_[A-Za-z0-9_-]{20,80}$/.test(String(leaseId))) {
+    throw new ConsumerApiError('That typed meeting could not be found.', {
+      code: 'invalid_typed_meeting_id'
+    });
+  }
+  return `${base}/${leaseId}`;
+}
+
+/**
+ * Open a typed planning meeting.
+ *
+ * No SDP, no microphone, no ephemeral provider credential -- a typed meeting
+ * is created and activated in one request, and Planéir's opening message comes
+ * back with it so the screen is never empty.
+ */
+export function createTypedMeeting(sessionId, { requestId, activationId, controlCapability } = {}) {
+  return request(typedMeetingPath(sessionId), {
+    method: 'POST',
+    authenticated: true,
+    requestHeaders: {
+      'X-Voice-Request-Id': String(requestId || ''),
+      'X-Realtime-Activation-Id': String(activationId || ''),
+      ...realtimeControlHeaders(controlCapability)
+    },
+    body: {},
+    timeoutMs: 30_000
+  });
+}
+
+/**
+ * Send one typed turn.
+ *
+ * `inputMode` distinguishes a message the client typed from a compact input
+ * card they filled in. Both are the same turn on the same pipeline; the label
+ * exists so the eval corpus can tell the screen's contribution from the
+ * keyboard's, never so anything branches on it.
+ */
+export function sendTypedMessage(sessionId, leaseId, { text, inputMode = 'text', controlCapability, signal } = {}) {
+  return request(`${typedMeetingPath(sessionId, leaseId)}/messages`, {
+    method: 'POST',
+    authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability),
+    body: { text: String(text || ''), inputMode: inputMode === 'form' ? 'form' : 'text' },
+    signal,
+    // A typed turn awaits the planner before it replies. That is the whole
+    // point of the transport, and it is slower than a voice turn on purpose.
+    timeoutMs: 60_000
+  });
+}
+
+export function endTypedMeeting(sessionId, leaseId, { controlCapability } = {}) {
+  return request(typedMeetingPath(sessionId, leaseId), {
+    method: 'DELETE',
+    authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability)
+  });
+}
+
 export function deleteSession(sessionId) {
   return request(pathForSession(sessionId), {
     method: 'DELETE',

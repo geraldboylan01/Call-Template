@@ -1900,6 +1900,43 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
   root.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
+/**
+ * The one moment the client chooses how to talk to Planéir.
+ *
+ * Two doors, no default and no "recommended" badge: speaking and typing are
+ * different preferences, not different tiers, and nudging someone towards a
+ * microphone they would rather not use is exactly the friction this change
+ * exists to remove. The choice is made once -- see `chooseLaneAndEnter`.
+ */
+export function renderLaneChoice(root, { onSpeak, onType } = {}) {
+  root.replaceChildren();
+  const card = element('section', 'unavailable-card lane-choice-card');
+  card.append(element('h1', 'lane-choice-title', 'How would you like to talk to Planéir?'));
+  card.append(element('p', 'lane-choice-lead',
+    'Either way it is the same conversation, and the same plan at the end.'));
+
+  const options = element('div', 'lane-choice-options');
+
+  const speak = element('button', 'primary-button lane-choice-option');
+  speak.type = 'button';
+  speak.append(element('span', 'lane-choice-option-title', 'Speak'));
+  speak.append(element('span', 'lane-choice-option-detail',
+    'Talk it through out loud. Needs a microphone.'));
+  speak.addEventListener('click', () => onSpeak?.());
+
+  const type = element('button', 'secondary-button lane-choice-option');
+  type.type = 'button';
+  type.append(element('span', 'lane-choice-option-title', 'Type'));
+  type.append(element('span', 'lane-choice-option-detail',
+    'Chat on screen. No microphone, and you can take your time.'));
+  type.addEventListener('click', () => onType?.());
+
+  append(options, speak, type);
+  card.append(options);
+  root.append(card);
+  return card;
+}
+
 export function renderUnavailable(root, {
   message = '',
   liveMeetingFailure = false,

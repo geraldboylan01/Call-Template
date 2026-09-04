@@ -2390,6 +2390,42 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'app.js must construct the live-only adapter directly.');
   ok(!/resolveVoiceLane|LIVE_LANE|createVoiceLaneController/.test(app),
     'app.js must not choose between live and controlled lanes.');
+
+  // TYPE MODE'S WHOLE PROMISE, ASSERTED ON THE SOURCE.
+  //
+  // "When I choose Type, Planéir chats with me" means the client is never
+  // asked for a microphone, never has audio played at them, and never waits on
+  // a peer connection. Today's typing box fails all three, because it lives
+  // inside the call. These assertions are what stop the typed lane quietly
+  // acquiring any of it back.
+  // Comments are stripped first: that file documents what it must never do by
+  // naming those APIs, and a check that cannot tell prose from code would
+  // punish the documentation.
+  const typedSource = readFileSync(new URL('../js/plan/typed_meeting.js', import.meta.url), 'utf8');
+  const typed = typedSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  for (const forbidden of [
+    /getUserMedia/,
+    /RTCPeerConnection/,
+    /createDataChannel/,
+    /new Audio\(|<audio|HTMLAudioElement/,
+    /RealtimeOrb|data-live-orb/,
+    /acknowledgeRealtimePlayback|playback_delivery/
+  ]) {
+    ok(!forbidden.test(typed), `typed_meeting.js must never reach for ${forbidden}.`);
+  }
+  // The composer is never disabled -- a structured card must not be able to
+  // trap the client in a form, and neither must a slow turn.
+  ok(!/composerNode\.disabled\s*=/.test(typed),
+    'typed_meeting.js must never disable the message box.');
+  // It renders; it never plans. No question text, no module vocabulary.
+  ok(!/moduleId|module_id|readyToConfirm|confirmationToken|snapshotRevision/.test(typed),
+    'typed_meeting.js must not carry planner or module vocabulary.');
+  ok(/textContent/.test(typed) && !/innerHTML/.test(typed),
+    'typed_meeting.js must render model output as text, never as markup.');
+  ok(/describePlanningCompletion/.test(typed),
+    'the typed lane must reuse the shared completion test, not invent its own.');
   ok(app.indexOf('realtimeVoiceController.bind()') > app.indexOf('await getBootstrap()'),
     'The live adapter must bind after bootstrap state has been read.');
 
