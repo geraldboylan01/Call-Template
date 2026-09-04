@@ -22,6 +22,7 @@ import {
   toPublicRealtimeAnalysisPlan
 } from './realtime_repository.js';
 import { verifyDirectModuleCertificate } from './direct_module_planner.js';
+import { directModulePlanMeaningKey } from './direct_module_identity.js';
 
 export async function prepareRealtimeVoiceAnalysisPlan({
   env,
@@ -29,7 +30,8 @@ export async function prepareRealtimeVoiceAnalysisPlan({
   sessionRow,
   profile,
   leaseId,
-  idempotencyKey
+  idempotencyKey,
+  confirmationOfferToken = null
 }) {
   if (config.modulePlannerMode === 'apply') {
     const latest = await getLatestRealtimeMeetingBrief(env, sessionRow.id, leaseId);
@@ -55,12 +57,15 @@ export async function prepareRealtimeVoiceAnalysisPlan({
       directModuleSnapshot: snapshot,
       verificationCertificate: certificate,
       moduleInputs,
+      confirmationOfferToken,
       inputSource: 'verified_direct_module_input'
     };
     const prepared = await prepareRealtimeAnalysisPlan(env, {
       sessionId: sessionRow.id,
       leaseId,
-      idempotencyKey: `${idempotencyKey}:module-snapshot-${snapshot.snapshotRevision}`,
+      // The coordinator supplies the stable approval-offer identity. Planner
+      // pass numbers must not create a second execution for the same offer.
+      idempotencyKey,
       profileRevision: Number(sessionRow.current_profile_revision),
       ...planInput
     });
@@ -69,6 +74,8 @@ export async function prepareRealtimeVoiceAnalysisPlan({
       planNonce: prepared.planNonce,
       publicPlan: toPublicRealtimeAnalysisPlan(prepared.row, planInput),
       moduleIds: planInput.moduleIds,
+      input: planInput,
+      semanticIdentity: directModulePlanMeaningKey(snapshot, certificate),
       idempotentReplay: prepared.idempotentReplay
     };
   }
@@ -215,9 +222,26 @@ export async function confirmAndRunRealtimeAnalysisPlan({
         sessionId,
         confirmed.row.realtime_session_id
       );
+      const latestSnapshot = latest?.brief?.directModuleSnapshot;
+      const latestCertificate = latest?.brief?.verificationCertificate;
+      const frozenMeaning = directModulePlanMeaningKey(
+        confirmed.input.directModuleSnapshot,
+        confirmed.input.verificationCertificate
+      );
       if (latest?.brief?.schemaVersion !== 'MeetingBriefV3'
-        || Number(latest.brief.snapshotRevision) !== Number(confirmed.input.directModuleSnapshot?.snapshotRevision)
-        || latest.brief.verificationCertificate?.signature !== confirmed.input.verificationCertificate?.signature) {
+        || latest.brief.readyToConfirm !== true
+        || !frozenMeaning
+        || directModulePlanMeaningKey(latestSnapshot, latestCertificate) !== frozenMeaning
+        // Equal figures alone do not prove that the delivered wording still
+        // expresses the client's certainty and ownership. The latest audit
+        // must cover that original read-back too.
+        || latestCertificate?.confirmationPromptHash !== confirmed.input.verificationCertificate?.confirmationPromptHash
+        || !(await verifyDirectModuleCertificate(env, latestCertificate, latestSnapshot, null, {
+          config,
+          calculationDateIso: profile.assumptions.calculationDateIso,
+          baseCurrency: profile.preferences.baseCurrency,
+          currentProfileContext: profile
+        }))) {
         throw new ConsumerError(409, 'module_snapshot_revision_conflict', 'The module inputs changed after the plan was prepared. Review and confirm them again.');
       }
     }

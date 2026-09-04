@@ -39,6 +39,7 @@ export function fakeDurableState(initial = {}) {
     async get(key) { return values.get(key); },
     async put(key, value) { values.set(key, structuredClone(value)); },
     async delete(key) { values.delete(key); },
+    async deleteAll() { values.clear(); },
     async setAlarm(deadline) { alarms.push(Number(deadline)); }
   };
   return {

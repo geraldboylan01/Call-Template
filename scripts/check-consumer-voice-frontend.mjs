@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { checkLiveCompletionFrontend } from './check-live-completion-frontend.mjs';
 
 const rootPath = fileURLToPath(new URL('..', import.meta.url));
 const storage = new Map();
@@ -2612,4 +2613,5 @@ assert.deepEqual(journeyState.voice.realtimeConsent, {
   policyVersion: 'consumer-adviser-test-v1'
 }, 'The Worker realtimeConsent response must immediately unlock the visible Live voice flow.');
 
+await checkLiveCompletionFrontend();
 console.log('Archived voice reference checks and active live-call transcript, typing, failure, SDP, and accessibility checks passed.');

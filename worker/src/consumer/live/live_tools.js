@@ -28,7 +28,9 @@ import {
   confirmAndRunRealtimeAnalysisPlan,
   prepareRealtimeVoiceAnalysisPlan
 } from '../realtime_analysis.js';
-import { classifySpokenPlanConfirmation } from '../realtime_completion.js';
+import { getRealtimeAnalysisPlanExecution } from '../realtime_repository.js';
+import { classifyExecutionApproval } from './execution_approval.js';
+import { classifyEvidenceAffirmation } from './evidence_affirmation.js';
 import { getCurrentProfile, getSessionRow } from '../repository.js';
 import { buildConfirmedRealtimeFactSummary, formattedFactValue } from '../realtime_fact_mapper.js';
 import { MODULE_IDS } from '../../../../js/planning/contracts.js';
@@ -284,14 +286,14 @@ function confirmedNoneHasPresenceConflict(factId, transcript) {
  * this lane already carries for exactly this purpose with figures. Two things
  * must both hold, and neither is negotiable: the read-back must itself state
  * the categorical none for THIS fact, and the client's words must be an
- * unambiguous affirmation by the same deterministic classifier that gates
- * running the analyses. A hedged "yes, I think so" is not an answer, and stays
- * refused.
+ * unambiguous affirmation by the isolated evidence-affirmation component.
+ * A hedged "yes, I think so" is not an answer, and stays refused. Execution
+ * approval is a different decision and cannot change this boundary.
  */
 function confirmedNoneAffirmedByReadBack(factId, transcript, assistantReadBack) {
   const readBack = String(assistantReadBack || '');
   if (!readBack) return false;
-  if (classifySpokenPlanConfirmation(String(transcript || '')) !== 'affirmed') return false;
+  if (classifyEvidenceAffirmation(String(transcript || '')) !== 'affirmed') return false;
   const pattern = CONFIRMED_NONE_SUPPORT[factId];
   return Boolean(pattern && pattern.test(readBack));
 }
@@ -1005,7 +1007,7 @@ function affirmedReadBackValues(transcript, assistantReadBack, clientSourcedFigu
   const readBack = String(assistantReadBack || '');
   const sourced = Array.isArray(clientSourcedFigures?.values) ? clientSourcedFigures.values : null;
   if (!readBack || !sourced?.length) return empty;
-  if (classifySpokenPlanConfirmation(transcript) !== 'affirmed') return empty;
+  if (classifyEvidenceAffirmation(transcript) !== 'affirmed') return empty;
   const clientSaid = new Set(sourced.filter((value) => Number.isFinite(value)));
   const readBackValues = numberOccurrences(readBack).map((occurrence) => occurrence.value);
   return new Set(readBackValues.filter((value) => clientSaid.has(value)));
@@ -1216,7 +1218,7 @@ export function pensionIdentityDirective(transcript, assistantReadBack) {
   // a separate one?" answered "yes" means nothing, so it stays unresolved.
   const readBack = String(assistantReadBack || '');
   if (!ASSISTANT_ASKED_IDENTITY.test(readBack)) return null;
-  if (classifySpokenPlanConfirmation(said) !== 'affirmed') return null;
+  if (classifyEvidenceAffirmation(said) !== 'affirmed') return null;
   const askedSame = IDENTITY_SAME.test(readBack) || /\bsame\s+pension\b/i.test(readBack);
   const askedDistinct = IDENTITY_DISTINCT.test(readBack);
   if (askedSame && askedDistinct) return null;
@@ -1590,13 +1592,13 @@ function assertNoUnknownRequirementContradiction(blockedInstanceIds, analyses) {
  *
  * Everything else here is permissive by design; this is not. The model is an
  * untrusted caller: it does not get to assert that the client agreed. The
- * server reads the client's actual last words and classifies them with the
- * existing deterministic classifier, and a plan runs only against the exact
- * profile revision it was prepared for.
+ * server reads the client's actual last words with the execution-only gate.
+ * Direct execution loads the certified plan frozen before its read-back; the
+ * approving turn may never prepare or derive a replacement plan.
  */
 async function executeConfirmAndRun(_args, deps) {
   const transcript = String(deps.latestClientTranscript || '');
-  if (classifySpokenPlanConfirmation(transcript) !== 'affirmed') {
+  if (classifyExecutionApproval(transcript) !== 'affirmed') {
     return {
       ok: false,
       code: 'confirmation_required',
@@ -1606,33 +1608,90 @@ async function executeConfirmAndRun(_args, deps) {
 
   const context = await deps.loadContext();
   const config = livePlanningConfig(deps.config, context.profile);
-  const expectedRevision = Number(context.sessionRow.current_profile_revision);
+  const direct = config.modulePlannerMode === 'apply';
+  let expectedRevision = Number(context.sessionRow.current_profile_revision);
+  let prepared;
+  if (direct) {
+    // These are coordinator-owned fields, never tool arguments. Missing audio
+    // delivery/review evidence keeps the offer alive but cannot authorise it.
+    const offer = deps.directConfirmationOffer;
+    if (!offer?.token || !offer.planId || offer.superseded === true) {
+      return { ok: false, code: 'confirmation_context_invalid', message: 'Read back the current plan before asking for confirmation.' };
+    }
+    if (offer.readbackFullyDelivered !== true) {
+      return { ok: false, code: 'confirmation_readback_incomplete', message: 'The complete plan read-back has not finished. Read it back in full before confirmation.' };
+    }
+    if (offer.reviewStatus !== 'settled' || offer.reviewPending === true || offer.reviewFailed === true) {
+      return { ok: false, code: 'module_planning_pending', message: 'The latest answer is still being reviewed. Keep this offer while that review completes.' };
+    }
+    prepared = await getRealtimeAnalysisPlanExecution(
+      deps.env, context.sessionRow.id, offer.planId, deps.leaseId || null
+    );
+    expectedRevision = Number(offer.profileRevision);
+    if (prepared.input?.inputSource !== 'verified_direct_module_input'
+      || prepared.input.confirmationOfferToken !== offer.token
+      || !offer.certificateSignature
+      || prepared.input.verificationCertificate?.signature !== offer.certificateSignature
+      || Number(prepared.row.profile_revision) !== expectedRevision) {
+      return { ok: false, code: 'confirmation_context_invalid', message: 'The confirmation does not match the offered plan. Read back the current plan before confirmation.' };
+    }
+    prepared.moduleIds = prepared.input.moduleIds;
+    if (prepared.row.status === 'prepared'
+      && Number(context.sessionRow.current_profile_revision) !== expectedRevision) {
+      return { ok: false, code: 'profile_revision_conflict', message: 'The plan changed before confirmation. Read back the current plan before confirmation.' };
+    }
+  } else {
+    // The archived comparison lane keeps its existing preparation behavior.
+    // It does not participate in direct-module offer execution.
+    prepared = await prepareRealtimeVoiceAnalysisPlan({
+      env: deps.env,
+      config,
+      sessionRow: context.sessionRow,
+      profile: context.profile,
+      leaseId: deps.leaseId || null,
+      idempotencyKey: `live-confirm-${context.sessionRow.id}-${expectedRevision}`
+    });
+  }
 
-  const prepared = await prepareRealtimeVoiceAnalysisPlan({
-    env: deps.env,
-    config,
-    sessionRow: context.sessionRow,
-    profile: context.profile,
-    leaseId: deps.leaseId || null,
-    idempotencyKey: `live-confirm-${context.sessionRow.id}-${expectedRevision}`
-  });
+  // THE SET THAT MAY BE SELECTED MUST BE THE SET THAT MAY BE EXECUTED.
+  //
+  // `livePlanningConfig` narrows `allowedModules` so the LEGACY shared planner
+  // cannot pin a balance-sheet review onto a focused request, and so the intake
+  // facts offered to Realtime stay narrow. `runDirectModulePlanning` is handed
+  // the DEPLOYMENT allowlist instead, and owns that judgement itself ("do not
+  // add a wider review of someone's whole position unless they asked to
+  // understand their whole position").
+  //
+  // So the planner may certify a module that the narrowed list then refuses,
+  // twice over: `confirmPlanSelection` rejects the set outright, and
+  // `runConsumerAnalysisWithInputs` silently drops the module and reports a
+  // short result set as a module failure. Either way the client hears the plan
+  // read back, agrees, and is told the analysis did not complete.
+  //
+  // Execution therefore validates against the set the planner was allowed to
+  // choose from. The conversational narrowing above is untouched: widening what
+  // Realtime is invited to ASK about is a separate change.
+  const executionConfig = direct
+    ? { ...config, allowedModules: deps.config.allowedModules }
+    : config;
 
-  // Records the exact set the client just agreed to, then confirms the
-  // revision in place (D-01). Only that set may execute.
-  await confirmPlanSelection({
-    env: deps.env,
-    config,
-    sessionRow: context.sessionRow,
-    profile: context.profile,
-    channel: 'live',
-    confirmedModuleIds: config.modulePlannerMode === 'apply'
-      ? prepared.moduleIds
-      : null
-  });
+  // A duplicate approval joins the existing execution receipt. Confirming the
+  // profile again after completion would regress the persisted results stage.
+  if (prepared.row.status === 'prepared') {
+    await confirmPlanSelection({
+      env: deps.env,
+      config: executionConfig,
+      sessionRow: context.sessionRow,
+      profile: context.profile,
+      channel: 'live',
+      confirmedModuleIds: direct ? prepared.moduleIds : null,
+      preparedPlanId: direct ? prepared.row.id : null
+    });
+  }
 
   const executed = await confirmAndRunRealtimeAnalysisPlan({
     env: deps.env,
-    config,
+    config: executionConfig,
     sessionId: context.sessionRow.id,
     planId: prepared.row.id,
     planNonce: prepared.planNonce,
@@ -1640,6 +1699,16 @@ async function executeConfirmAndRun(_args, deps) {
   });
 
   const status = executed.analysisPlan?.status || 'unknown';
+  if (['confirmed', 'running'].includes(status)) {
+    return {
+      ok: true,
+      status,
+      pending: true,
+      idempotentReplay: true,
+      analysisPlan: executed.analysisPlan,
+      completedCount: 0
+    };
+  }
   if (status !== 'complete') {
     // A run that did not complete used to come back as a bare `ok:false` with
     // no reason at all, so the meeting had nothing to say and nothing to act
@@ -1651,6 +1720,8 @@ async function executeConfirmAndRun(_args, deps) {
       ok: false,
       code,
       status,
+      analysisPlan: executed.analysisPlan || null,
+      idempotentReplay: executed.idempotentReplay === true,
       failedModuleId: executed.failedModuleId || null,
       retryable: code === MODULE_FAILURE_CODES.READINESS_NOT_MET,
       speakableText: executed.result?.speakableText || clientFailureMessage(code),
@@ -1661,6 +1732,8 @@ async function executeConfirmAndRun(_args, deps) {
   return {
     ok: true,
     status,
+    analysisPlan: executed.analysisPlan,
+    idempotentReplay: executed.idempotentReplay === true,
     // Deterministic, server-owned copy. The model must speak it as given and
     // must never recompute or embellish anything in it.
     speakableText: executed.result?.speakableText || '',

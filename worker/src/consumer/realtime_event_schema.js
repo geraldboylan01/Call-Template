@@ -95,6 +95,11 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
   // silently discarded by the sanitizer, so the opening and continuation work
   // was invisible in production exactly when it needed explaining.
   'live.opening.requested': event({}),
+  'live.completion.milestone': event({
+    milestone: NON_CONTENT_FIELD_TYPES.STRING,
+    planId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    recordedAtMs: NON_CONTENT_FIELD_TYPES.INTEGER
+  }),
   'live.response.continuation_requested': event({
     rootItemId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
     continuationIndex: NON_CONTENT_FIELD_TYPES.INTEGER,

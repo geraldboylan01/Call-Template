@@ -723,7 +723,7 @@ export async function saveProfileRevision(env, sessionRow, profile, stage) {
   };
 }
 
-export async function confirmProfileRevision(env, sessionRow, profile) {
+export async function confirmProfileRevision(env, sessionRow, profile, { preparedPlanId = null } = {}) {
   const revision = Number(sessionRow.current_profile_revision || 1);
   const timestamp = nowIso();
   const confirmedProfile = confirmHouseholdProfile(profile, { confirmedAt: timestamp });
@@ -733,12 +733,22 @@ export async function confirmProfileRevision(env, sessionRow, profile) {
       UPDATE consumer_profile_revisions
       SET payload_encrypted = ?, confirmed_at = ?
       WHERE session_id = ? AND revision = ?
-    `).bind(encrypted, timestamp, sessionRow.id, revision),
+        AND (? IS NULL OR EXISTS (
+          SELECT 1 FROM consumer_realtime_analysis_plans
+          WHERE id = ? AND session_id = ? AND profile_revision = ? AND status = 'prepared'
+        ))
+    `).bind(encrypted, timestamp, sessionRow.id, revision,
+      preparedPlanId, preparedPlanId, sessionRow.id, revision),
     db(env).prepare(`
       UPDATE consumer_sessions
       SET confirmed_profile_revision = ?, stage = 'module_recommendation', last_active_at = ?
       WHERE id = ? AND deleted_at IS NULL AND current_profile_revision = ?
-    `).bind(revision, timestamp, sessionRow.id, revision)
+        AND (? IS NULL OR EXISTS (
+          SELECT 1 FROM consumer_realtime_analysis_plans
+          WHERE id = ? AND session_id = ? AND profile_revision = ? AND status = 'prepared'
+        ))
+    `).bind(revision, timestamp, sessionRow.id, revision,
+      preparedPlanId, preparedPlanId, sessionRow.id, revision)
   ]);
   const persistedRow = await getSessionRow(env, sessionRow.id);
   if (Number(persistedRow?.confirmed_profile_revision) !== revision
@@ -747,7 +757,10 @@ export async function confirmProfileRevision(env, sessionRow, profile) {
   }
   await recordEvent(env, sessionRow.id, 'profile_confirmed', { revision }).catch(() => {});
   return {
-    profile: confirmedProfile,
+    // A concurrent approval can finish between the caller's prepared-plan
+    // read and this batch. The offer guard then leaves its completed profile
+    // and results stage intact; return the authoritative stored profile.
+    profile: preparedPlanId ? await getCurrentProfile(env, persistedRow) : confirmedProfile,
     session: toConsumerSession(persistedRow)
   };
 }

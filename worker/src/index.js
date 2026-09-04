@@ -236,7 +236,7 @@ function getConsumerRouteMethods(pathname) {
   if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/calls\/rt_[A-Za-z0-9_-]{20,80}$/.test(pathname)) {
     return 'GET,DELETE,OPTIONS';
   }
-  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/calls\/rt_[A-Za-z0-9_-]{20,80}\/speech$/.test(pathname)) {
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/calls\/rt_[A-Za-z0-9_-]{20,80}\/(speech|delivery)$/.test(pathname)) {
     return 'POST,OPTIONS';
   }
   const realtimeMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/realtime\/(consent|calls)$/.exec(pathname);

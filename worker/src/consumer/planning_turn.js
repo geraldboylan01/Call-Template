@@ -664,7 +664,8 @@ export async function confirmPlanSelection({
   sessionRow,
   profile,
   channel = 'voice',
-  confirmedModuleIds: explicitModuleIds = null
+  confirmedModuleIds: explicitModuleIds = null,
+  preparedPlanId = null
 }) {
   const state = describeConversationState(profile, config);
   const confirmedModuleIds = explicitModuleIds === null
@@ -685,7 +686,7 @@ export async function confirmPlanSelection({
       }
     }
   };
-  const confirmed = await confirmProfileRevision(env, sessionRow, confirmedProfile);
+  const confirmed = await confirmProfileRevision(env, sessionRow, confirmedProfile, { preparedPlanId });
   await recordEvent(env, sessionRow.id, 'analysis_set_confirmed', {
     moduleIds: confirmedModuleIds,
     profileRevision: Number(sessionRow.current_profile_revision),

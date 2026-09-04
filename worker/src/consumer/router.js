@@ -309,6 +309,10 @@ function routeMatch(pathname) {
       methods: ['POST']
     };
   }
+  const deliveryMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/calls\/(rt_[A-Za-z0-9_-]{20,80})\/delivery$/.exec(pathname);
+  if (deliveryMatch) {
+    return { kind: 'realtime_delivery', sessionId: deliveryMatch[1], leaseId: deliveryMatch[2], methods: ['POST'] };
+  }
   const realtimeLeaseMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/calls\/(rt_[A-Za-z0-9_-]{20,80})$/.exec(pathname);
   if (realtimeLeaseMatch) {
     return {
@@ -797,6 +801,27 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       return respondBinary(result.audio, 200, methods, speechHeaders);
     }
 
+    if (route.kind === 'realtime_delivery') {
+      await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId);
+      const body = await readJson(request);
+      if (typeof body.responseId !== 'string' || !body.responseId || body.responseId.length > 200
+        || typeof body.eventId !== 'string' || body.eventId.length > 200
+        || !['completed', 'interrupted'].includes(body.playback)
+        || Object.keys(body).some((key) => !['responseId', 'eventId', 'playback'].includes(key))) {
+        throw new ConsumerError(400, 'readback_delivery_invalid', 'The playback acknowledgement is invalid.');
+      }
+      const stub = conversationLaneStub(env, route.leaseId);
+      if (!stub) throw unavailable('The live meeting controls are unavailable.', 'live_sideband_unavailable');
+      const response = await stub.fetch(new Request('https://consumer-live/delivery', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      }));
+      const result = await response.json();
+      if (!response.ok || result.ok !== true) {
+        throw new ConsumerError(response.status || 503, result.code || 'readback_delivery_failed', 'The playback acknowledgement could not be saved.');
+      }
+      return respond(result, 200, methods);
+    }
+
     if (route.kind === 'realtime_lease') {
       let realtimeLease = await requireRealtimeControlCapability(
         request,
@@ -897,6 +922,9 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           currentPendingProposal: pendingFacts[0] || null
         },
         analysisPlan: await getPublicRealtimeAnalysisPlan(env, analysisPlan),
+        realtimeExecution: analysisPlan?.realtime_session_id === route.leaseId
+          && ['confirmed', 'running', 'complete', 'failed', 'rejected', 'expired'].includes(analysisPlan.status)
+          ? await getPublicRealtimeAnalysisPlan(env, analysisPlan) : null,
         conversationGuide: toConversationGuide(latestMeetingBrief?.brief),
         realtimeTurns,
         ...(realtimeControl ? { realtimeControl } : {})

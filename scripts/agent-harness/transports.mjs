@@ -719,3 +719,53 @@ export async function runBothTransports(scenario, { makeClient, envOverrides = {
 }
 
 export { comparableTurn };
+
+/**
+ * The realtime policy block a live lease actually needs.
+ *
+ * `realtimeConfigured` in config.js is all-or-nothing: notice ids, the pinned
+ * model/voice/effort/transcription constants, prompt and toolset versions, a
+ * pricing version, budgets and every usage rate must all be present, or
+ * `realtimeEnabled` is false and the session is created with a zero provider
+ * cost limit. A reservation against that session is then denied and
+ * `createRealtimeLease` fails on a null entry — which reads like a lease bug
+ * rather than missing test configuration. Any harness that creates a real
+ * lease should spread this.
+ *
+ * The API key and the Durable Object binding are part of that gate, so both
+ * must be present BEFORE `makeConfig` runs.
+ */
+export function realtimeTestEnv(overrides = {}) {
+  return {
+    OPENAI_API_KEY: 'synthetic-test-key',
+    CONSUMER_REALTIME_VOICE_ENABLED: 'true',
+    CONSUMER_REALTIME_NOTICE_ID: 'realtime-voice-adviser-test-v2',
+    CONSUMER_REALTIME_DATA_POLICY_ID: 'openai-realtime-audio-adviser-test-v2',
+    CONSUMER_REALTIME_MODEL: 'gpt-realtime-2.1',
+    CONSUMER_REALTIME_VOICE: 'marin',
+    CONSUMER_REALTIME_REASONING_EFFORT: 'low',
+    CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
+    CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v12',
+    CONSUMER_REALTIME_TOOLSET_VERSION: 'planeir-live-tools-v1',
+    CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
+    CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
+    CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '750',
+    CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: '5000',
+    CONSUMER_REALTIME_MAX_DURATION_SECONDS: '900',
+    CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: '180',
+    CONSUMER_REALTIME_SILENCE_PROMPT_SECONDS: '45',
+    CONSUMER_REALTIME_MAX_SDP_BYTES: '32768',
+    CONSUMER_REALTIME_MAX_RESPONSES: '100',
+    CONSUMER_REALTIME_MAX_TOOL_CALLS: '60',
+    CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION: '4000000',
+    CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION: '400000',
+    CONSUMER_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION: '24000000',
+    CONSUMER_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION: '32000000',
+    CONSUMER_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION: '400000',
+    CONSUMER_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION: '64000000',
+    CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION: '1250000',
+    CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: '5000000',
+    CONSUMER_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS: '30000000',
+    ...overrides
+  };
+}

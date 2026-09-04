@@ -3363,6 +3363,7 @@ export async function prepareRealtimeAnalysisPlan(env, request) {
     deferredGoalTypes: request.deferredGoalTypes || [],
     ...(request.inputSource === 'verified_direct_module_input' ? {
       inputSource: 'verified_direct_module_input',
+      confirmationOfferToken: request.confirmationOfferToken || null,
       directModuleSnapshot: request.directModuleSnapshot,
       verificationCertificate: request.verificationCertificate,
       moduleInputs: request.moduleInputs
@@ -3447,6 +3448,25 @@ export async function confirmRealtimeAnalysisPlan(env, request) {
   const confirmedRevision = row.confirmed_profile_revision === null
     ? null
     : Number(row.confirmed_profile_revision);
+  const originalInput = await decryptJson(env, row.input_encrypted, `consumer/realtime/analysis-plan/${request.sessionId}/${row.id}/input`);
+  const frozenOffer = originalInput.inputSource === 'verified_direct_module_input'
+    && typeof originalInput.confirmationOfferToken === 'string'
+    && originalInput.confirmationOfferToken.length > 0;
+  const replay = async (existing) => ({
+    row: existing,
+    input: await decryptJson(env, existing.input_encrypted, `consumer/realtime/analysis-plan/${request.sessionId}/${existing.id}/input`),
+    result: existing.result_encrypted
+      ? await decryptJson(env, existing.result_encrypted, `consumer/realtime/analysis-plan/${request.sessionId}/${existing.id}/result`)
+      : null,
+    idempotentReplay: true
+  });
+  const receiptStates = ['confirmed', 'running', 'complete', 'needs_information', 'failed'];
+  // Repeated approval returns this offer's durable receipt, including while
+  // the first caller is running or after a later profile edit. It never claims
+  // the prepared -> confirmed transition again and never starts another run.
+  if (frozenOffer && Number(row.profile_revision) === expectedRevision && receiptStates.includes(row.status)) {
+    return replay(row);
+  }
   if (Number(row.profile_revision) !== expectedRevision
     || currentRevision !== expectedRevision
     || confirmedRevision !== expectedRevision) {
@@ -3457,17 +3477,7 @@ export async function confirmRealtimeAnalysisPlan(env, request) {
     `).bind(nowIso(), request.planId, request.sessionId).run();
     throw new ConsumerError(409, 'profile_revision_conflict', 'The profile changed before this analysis plan was confirmed. Prepare and review it again.');
   }
-  if (['complete', 'needs_information'].includes(row.status)) {
-    const result = row.result_encrypted
-      ? await decryptJson(env, row.result_encrypted, `consumer/realtime/analysis-plan/${request.sessionId}/${row.id}/result`)
-      : null;
-    const input = await decryptJson(
-      env,
-      row.input_encrypted,
-      `consumer/realtime/analysis-plan/${request.sessionId}/${row.id}/input`
-    );
-    return { row, input, result, idempotentReplay: true };
-  }
+  if (['complete', 'needs_information'].includes(row.status)) return replay(row);
   if (row.status !== 'prepared') {
     throw new ConsumerError(409, 'analysis_plan_state_conflict', 'The analysis plan is already being processed or is no longer current.');
   }
@@ -3479,7 +3489,17 @@ export async function confirmRealtimeAnalysisPlan(env, request) {
       AND nonce_hash_b64u = ? AND profile_revision = ?
     RETURNING *
   `).bind(confirmedAt, request.planId, request.sessionId, nonceHash, expectedRevision).first();
-  if (!row) throw new ConsumerError(409, 'analysis_plan_state_conflict', 'The analysis plan changed before confirmation.');
+  if (!row) {
+    // Another approval may have won the compare-and-set after our initial
+    // read. Join its receipt; a lost response cannot create a new execution.
+    const existing = await db(env).prepare(`
+      SELECT * FROM consumer_realtime_analysis_plans
+      WHERE id = ? AND session_id = ? AND nonce_hash_b64u = ? AND profile_revision = ?
+      LIMIT 1
+    `).bind(request.planId, request.sessionId, nonceHash, expectedRevision).first();
+    if (frozenOffer && existing && receiptStates.includes(existing.status)) return replay(existing);
+    throw new ConsumerError(409, 'analysis_plan_state_conflict', 'The analysis plan changed before confirmation.');
+  }
   const input = await decryptJson(
     env,
     row.input_encrypted,
