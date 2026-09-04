@@ -9,8 +9,9 @@ transport is built against.
 **Register at a glance.** D-01 resolved · **D-02 code-complete and validated in
 test; production activation BLOCKED pending re-canary after D-05** · D-03
 resolved · D-04 open by design · **D-05 and D-06 live incidents, root-caused and fixed** ·
-D-07 comment corrected, two planning authorities remain · D-08 consumer typed lane
-registered before build · D-09 open, affects live voice.
+D-07 comment corrected, two planning authorities remain by design · **D-08 consumer
+typed lane delivered behind `CONSUMER_TYPED_LANE_ENABLED`, off in source** ·
+**D-09 code-complete; it changes live voice and needs its own canary.**
 
 **Companion documents.** [agent-testing-environment-plan.md](agent-testing-environment-plan.md)
 (the phased plan), [realtime-intelligence-implementation-plan.md](realtime-intelligence-implementation-plan.md)
@@ -306,12 +307,12 @@ Two facts made it a safe, well-scoped follow-up:
 
 | | |
 |---|---|
-| **Status** | Open. Registered ahead of the consumer typed lane, per §9 rule 6. |
+| **Status** | **Comment corrected. Two planning authorities remain, by design for now.** |
 | **Class** | divergent |
 | **Evidence** | [`agent_text_channel.js:1-20`](../worker/src/consumer/agent_text_channel.js) states its instructions are *"the exact string the live voice meeting is given"*. It imports [`realtime_provider.js`](../worker/src/consumer/realtime_provider.js) — `buildRealtimeConversationV2Instructions` and `realtimeToolsForState` — and dispatches to `planning_turn.js`, producing `MeetingBriefV2`. The live lane imports [`live/catalogue_prompt.js`](../worker/src/consumer/live/catalogue_prompt.js) and [`live/live_tools.js`](../worker/src/consumer/live/live_tools.js), and produces `MeetingBriefV3` via the direct-module planner and its independent verifier. In `apply` mode the live lane's `get_state` returns `DirectModuleToolStateV1`, not `liveStateProjection`, and `save_facts` is not even in the toolset ([`live_provider.js:29-31`](../worker/src/consumer/live/live_provider.js)). |
 | **Impact** | The comment is false and the test that guards it (`check-consumer-agent-api.mjs`) asserts the structural sharing against the V2 source, so it passes while the claim is untrue. Both lanes write to `consumer_realtime_meeting_briefs` under different `schema_version` values. Anyone reading that header will reasonably conclude a consumer typed lane can be built on the agent transport for free; it cannot, because that would put typed users on a different planner, brief and readiness definition from spoken users. |
-| **Resolution** | The comment is corrected in place. The agent transport stays on the V2 core and remains an adviser test harness. The consumer typed lane (**D-08**) is built on the live lane instead. Retiring the V2 core is a separate decision, not taken here. |
-| **Phase** | T0 (this registration). |
+| **Resolution** | The header now states plainly that this file speaks for the archived v2 lane, names the two artefacts that diverged, and points at D-07/D-08. The agent transport stays on the V2 core and remains an adviser test harness. The consumer typed lane (**D-08**) is built on the live lane instead. Retiring the V2 core is a separate decision, not taken here. |
+| **Phase** | T0. Delivered. |
 
 ### D-08 — consumer typed lane: a second transport on the live lane
 
@@ -325,8 +326,9 @@ Two facts made it a safe, well-scoped follow-up:
 | **`readbackFullyDelivered`** | Text does not port the playback machinery. `transcriptMatched` holds by construction because the server writes the certified `confirmationPrompt` verbatim as the assistant turn; `responseCompleted` is the persisted turn plus a 200; `playbackCompleted` is replaced by **reply-binding** — the approving turn's `answersTurnId` must equal the offer's `assistantTurnId`. That is strictly stronger: an audio ack proves sound was emitted, reply-binding proves the approval was made against the exact plan on screen. Everything else in the barrier is unchanged. |
 | **Prompt** | `buildLiveCataloguePrompt({ directModulePlanning, channel })`. Only delivery-shape sections vary. Every rules section is byte-identical across channels, asserted by `check-live-typed-lane.mjs`. There is no second prompt pack. |
 | **Structured input** | A card submission compiles to exactly ONE client turn (`inputMode: 'form'`) and enters the same ingest. There is no second fact write path, so chat answers and field answers cannot drift into two versions of the client's finances. |
-| **Parity obligation** | `check-live-transport-parity.mjs` asserts identical `modules[].status`, `missing[].path` sets, `selection.origin`, `assumptions[]`, `readyToConfirm`, `confirmationPromptHash` and executed module ids for mirrored fixtures. Wording parity is not claimed. |
-| **Phase** | T1–T4. |
+| **Parity obligation** | [`check-live-transport-parity.mjs`](../scripts/check-live-transport-parity.mjs) drives the same utterances through both transports on a real Durable Object and a real migrated database, with the planner's opinion scripted identically, then asserts identical stored client transcript, `modules[].status`, `missing[].path` sets, `blocked[].path` sets, `selection.origin`, `readyToConfirm` and `provisional`. Wording parity is not claimed. Verified to have teeth by mutation: a typed lane that reshapes the transcript fails it. |
+| **Other gates** | [`check-live-typed-lane.mjs`](../scripts/check-live-typed-lane.mjs) (one prompt pack, one toolset, planner-before-reply ordering, the card cannot invent a field or leak internal vocabulary), [`check-live-typed-confirmation.mjs`](../scripts/check-live-typed-confirmation.mjs) (the read-back and reply binding), [`check-module-input-display.mjs`](../scripts/check-module-input-display.mjs) (the display contract against the engines' own inputs), and the typed assertions added to `check-consumer-live.mjs` (no microphone, no audio, no orb, no disabled composer). |
+| **Phase** | T1–T4. Delivered. |
 
 ### D-09 — the direct-module planner has no acknowledged-unknown state
 
@@ -337,8 +339,9 @@ Two facts made it a safe, well-scoped follow-up:
 | **Evidence** | `EXTRACTOR_PROMPT` ([`direct_module_planner.js:181`](../worker/src/consumer/direct_module_planner.js)): *"AN ANSWER THAT IS STILL UNSURE IS NOT AN ANSWER … keep the module collecting and record what is still missing, so the conversation asks once more."* There is no path by which a client's "I don't know" stops the question recurring. The V2 fact layer models exactly this — `estimate_requested` → `blocked_unknown`, `answerPolicy ∈ value \| value_or_none \| unknown_allowed` ([`question_plan.js:157-163`](../js/planning/question_plan.js)) — but that projection is not what `apply` mode returns. |
 | **Impact** | In live voice a client who cannot answer is asked again. In typed mode a "Not sure" control would have nowhere to land and would build the loop into the UI. |
 | **Resolution** | A server-owned `acknowledgedUnknown` set in the planner envelope; a `blocked[]` array on the module item; both bound into the certificate so an unknown cannot be retracted between certification and execution. The extractor either covers the path with an approved `direct_module_policy.js` default and discloses it in `assumptions[]`, or leaves the module collecting with the path blocked and stops generating a question for it. |
-| **Live voice change?** | **Yes.** Staged separately with its own canary, as D-01/D-02/D-03 were. |
-| **Phase** | T5. |
+| **What was implemented** | A server-owned acknowledged set in the planner envelope, and a server-DERIVED `blocked[]` on each module item -- derived rather than authored so there is no new field for the model to get wrong. `partitionAcknowledgedUnknown` runs BEFORE the readiness rules, because those rules reason about what is still outstanding and a requirement the client has closed is not outstanding; running it after left a module marked `needs_clarification` with no clarification left to ask. A blocked path with an approved default is covered and disclosed as an assumption; one without makes the module unrunnable, and it is forced out of `ready`. The set is bound into the certificate as `acknowledgedUnknownHash`, so an unknown cannot be retracted between certification and execution. |
+| **Live voice change?** | **Yes.** Voice has the same gap today and gains the same fix. Staged separately with its own canary, as D-01/D-02/D-03 were: the flag is `CONSUMER_TYPED_LANE_ENABLED` for the typed half, but the planner change applies to every apply-mode meeting and needs a voice canary before production. |
+| **Phase** | T5. Code-complete; **production activation pending a controlled voice canary.** |
 
 ---
 
@@ -430,8 +433,16 @@ planning state, never on prose.
 | Event schema | [`check-consumer-realtime-events.mjs`](../scripts/check-consumer-realtime-events.mjs) | Realtime emitter types stay in the voice transport and carry no content |
 
 Still to be added (A4): `check-consumer-transport-parity.mjs`, asserting the
-eleven fields of §3 across both transports for mirrored fixtures, with the
-planner stubbed by a recorded extraction so parity is deterministic and offline.
+eleven fields of §3 across the V2 core's two transports.
+
+Delivered for the LIVE lane's two transports (D-08):
+
+| Gate | Script | Enforces |
+|---|---|---|
+| Transport parity | [`check-live-transport-parity.mjs`](../scripts/check-live-transport-parity.mjs) | Same utterances, both transports, real DO and real database, planner scripted identically: identical stored transcript, module readiness, outstanding and blocked requirements, attribution and confirmation readiness |
+| Typed lane | [`check-live-typed-lane.mjs`](../scripts/check-live-typed-lane.mjs) | One prompt pack with only delivery-shape sections differing; one toolset; the planner completes before the reply; the card cannot invent a field or leak a module id, pointer or revision; an acknowledged unknown stops the question and cannot make a module ready |
+| Typed confirmation | [`check-live-typed-confirmation.mjs`](../scripts/check-live-typed-confirmation.mjs) | The certified prompt is persisted byte-identical; delivery needs no playback evidence; reply binding refuses an unbound, mismatched or superseded approval |
+| Display contract | [`check-module-input-display.mjs`](../scripts/check-module-input-display.mjs) | Every field the engines accept is described or explicitly hidden with a reason; every enum is imported from its validator; no descriptor names a path no engine produces |
 
 ---
 
