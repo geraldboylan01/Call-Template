@@ -2426,6 +2426,12 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     'typed_meeting.js must render model output as text, never as markup.');
   ok(/describePlanningCompletion/.test(typed),
     'the typed lane must reuse the shared completion test, not invent its own.');
+  // A STRUCTURED INPUT MUST NOT TRAP THE CLIENT, and the trap is subtler than a
+  // disabled text box: the card is rebuilt from the planner every turn, so
+  // asking "why do you need that?" mid-card would silently wipe the figures
+  // already typed unless they are carried across.
+  ok(/carriedCardValues/.test(typed),
+    'typed_meeting.js must carry unsaved card values across a re-render.');
   ok(app.indexOf('realtimeVoiceController.bind()') > app.indexOf('await getBootstrap()'),
     'The live adapter must bind after bootstrap state has been read.');
 

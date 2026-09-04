@@ -56,6 +56,7 @@ export class TypedMeetingController {
     this.root = null;
     this.cardNode = null;
     this.cardEntries = new Map();
+    this.carriedCardValues = new Map();
   }
 
   /* ------------------------------------------------------------- lifecycle */
@@ -254,9 +255,23 @@ export class TypedMeetingController {
    * attached, which is the shape this mode exists to avoid.
    */
   renderCard(card) {
+    // WHAT THE CLIENT HAD ALREADY TYPED SURVIVES THE RE-RENDER.
+    //
+    // The card is rebuilt from the planner on every turn, and a client is
+    // explicitly invited to ask a question mid-card ("why do you need that?").
+    // Without this, asking would silently wipe the two figures they had just
+    // entered -- which is precisely the trap a structured input must not be.
+    // Values are carried by field id, so anything the planner has since
+    // answered or dropped simply does not come back.
+    const carried = new Map();
+    for (const [id, entry] of this.cardEntries) {
+      const value = String(entry.input?.value || '').trim();
+      if (value) carried.set(id, value);
+    }
     this.cardNode?.remove();
     this.cardNode = null;
     this.cardEntries = new Map();
+    this.carriedCardValues = carried;
     const modules = Array.isArray(card?.modules) ? card.modules : [];
     const active = modules.find((module) => module.expanded && module.fields.length > 0);
     if (!modules.length) return;
@@ -390,7 +405,9 @@ export class TypedMeetingController {
     ));
     wrap.append(unsure);
 
-    this.cardEntries.set(field.id, { field, input, label: label });
+    const carried = this.carriedCardValues?.get(field.id);
+    if (carried) input.value = carried;
+    this.cardEntries.set(field.id, { field, input, label });
     return wrap;
   }
 
