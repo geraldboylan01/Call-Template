@@ -10,7 +10,11 @@ import {
   buildDirectModulePolicyEnvelope,
   directModulePolicyEntries
 } from '../js/planning/direct_module_policy.js';
-import { runPlanningModuleWithInput } from '../js/planning/module_registry.js';
+import {
+  normalizePlanningModuleInput,
+  runPlanningModuleWithInput
+} from '../js/planning/module_registry.js';
+import { PLANNING_PLAYBOOK_GUIDANCE } from '../js/planning/playbook_manifest.generated.js';
 import {
   APPROVED_CONSUMER_MODULE_IDS,
   getConsumerConfig,
@@ -891,13 +895,17 @@ let extractionValue = {
   generalAmbiguities: [],
   confirmationPrompt: CONFIRMATION_PROMPT
 };
+let lastExtractorEnvelope = null;
+let lastVerifierEnvelope = null;
 globalThis.fetch = async (_url, request) => {
   providerCalls += 1;
   const body = JSON.parse(request.body);
   assert.equal(body.text.format.type, 'json_schema');
+  const envelope = JSON.parse(body.input[1].content);
   const value = body.text.format.name === 'module_planning_snapshot_v1'
-    ? extractionValue
+    ? ((lastExtractorEnvelope = envelope), extractionValue)
     : (() => {
+        lastVerifierEnvelope = envelope;
         verifierCalls += 1;
         return verifierValue;
       })();
@@ -917,6 +925,120 @@ try {
   assert.equal(providerCalls, 2, 'extraction and verification are independent calls');
   assert.equal(verifierCalls, 1);
   assert.equal(interpreted.brief.readyToConfirm, true);
+
+  /* ------------- the planner is told what each module can actually do ------ */
+
+  // WHY THIS IS PINNED. The whole architecture rests on the AI making semantic
+  // judgments about a SPECIFIC Planéir calculation -- what it needs, what it
+  // assumes, what it cannot do -- rather than about financial planning in
+  // general. That only holds while the Master Prompt Pack actually reaches the
+  // model. Nothing else in this suite would notice if the playbook wiring were
+  // dropped: every structural rule would still pass, and the planner would
+  // quietly fall back to generic knowledge and invent plausible fields.
+  const sentContracts = lastExtractorEnvelope?.contracts || [];
+  assert.deepEqual(
+    sentContracts.map((item) => item.moduleId).sort(),
+    [...APPROVED_CONSUMER_MODULE_IDS].sort(),
+    'every approved module is described to the planner, so non-selection is a judgment and not an absence'
+  );
+  for (const contract of sentContracts) {
+    assert.equal(
+      contract.masterPromptPackPlaybook,
+      PLANNING_PLAYBOOK_GUIDANCE[contract.moduleId],
+      `${contract.moduleId} must carry its real Master Prompt Pack playbook, not a summary of one`
+    );
+    assert.ok(
+      String(contract.masterPromptPackPlaybook || '').length > 1_000,
+      `${contract.moduleId} playbook must be substantial enough to describe the module's capabilities`
+    );
+    assert.equal(contract.outputKey, DIRECT_MODULE_CONTRACTS[contract.moduleId].outputKey);
+    assert.ok(Array.isArray(contract.serverInputPolicy),
+      `${contract.moduleId} must be told which values the server owns, or it will ask the client for them`);
+  }
+  // Capability grounding is not just "a document was attached": the playbook has
+  // to name the fields the engine will actually receive. Mortgage overpayments
+  // are the case that prompted this -- an engine-owned default of zero that
+  // genuinely changes the amortisation, and that the module's own assumptions
+  // table shows the client.
+  const mortgagePlaybook = PLANNING_PLAYBOOK_GUIDANCE.mortgage_analysis;
+  for (const field of ['currentBalance', 'annualInterestRate', 'oneOffOverpayment', 'annualOverpayment']) {
+    assert.ok(mortgagePlaybook.includes(field),
+      `the mortgage playbook must describe ${field}, which the engine reads`);
+  }
+  assert.deepEqual(
+    (lastExtractorEnvelope?.serverPolicy?.modules?.mortgage_analysis || [])
+      .filter((entry) => ['/oneOffOverpayment', '/annualOverpayment'].includes(entry.path))
+      .map((entry) => `${entry.path}=${JSON.stringify(entry.value)}:${entry.mode}`)
+      .sort(),
+    ['/annualOverpayment=0:default', '/oneOffOverpayment=0:default'],
+    'a zero overpayment is an engine-owned default the planner may disclose, never a client fact it must invent'
+  );
+  assert.deepEqual(
+    (lastVerifierEnvelope?.contracts || []).map((item) => item.moduleId).sort(),
+    [...APPROVED_CONSUMER_MODULE_IDS].sort(),
+    'the verifier audits against the same capability contracts the planner was given'
+  );
+  pass('the planner and verifier are grounded in the real module capability contracts');
+
+  /* --------- a capability the module does not have cannot be invented ------ */
+
+  // The category that has no field, no default and no policy path. An invented
+  // input must not reach the maths, must not become provenance, and must not be
+  // able to hold a module ready -- whatever the planner writes about it.
+  {
+    const invented = {
+      ...inputs.mortgage_analysis,
+      interestOnlyPeriodYears: 5,
+      paymentHolidayMonths: 3
+    };
+    const canonical = normalizePlanningModuleInput('mortgage_analysis', structuredClone(invented));
+    assert.equal(canonical.interestOnlyPeriodYears, undefined);
+    assert.equal(canonical.paymentHolidayMonths, undefined,
+      'the native contract is the capability boundary: a field the engine has no use for never reaches it');
+    assert.equal(
+      directModulePolicyEntries('mortgage_analysis', invented, POLICY)
+        .some((entry) => entry.path === '/interestOnlyPeriodYears'),
+      false,
+      'an invented field can never become a server-owned assumption'
+    );
+    const inventedRows = moduleRows.map((item) => (
+      item.moduleId === 'mortgage_analysis'
+        ? {
+            ...item,
+            inputJson: JSON.stringify(invented),
+            assumptions: [
+              ...item.assumptions,
+              // The planner claiming Planéir models something it does not.
+              { path: '/interestOnlyPeriodYears', valueJson: '5', source: 'planning_policy' }
+            ]
+          }
+        : item
+    ));
+    const contained = normalizeDirectSnapshot({
+      schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+      baseSnapshotRevision: 0,
+      throughTurnId: 'turn-1',
+      modules: inventedRows,
+      generalAmbiguities: [],
+      confirmationPrompt: CONFIRMATION_PROMPT
+    }, {
+      turns: [{ id: 'turn-1', role: 'user', transcript }],
+      throughTurnId: 'turn-1', previousRevision: 0,
+      policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+      allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+    });
+    const containedRow = contained.modules.find((item) => item.moduleId === 'mortgage_analysis');
+    assert.equal(containedRow.input.interestOnlyPeriodYears, undefined,
+      'nothing the module cannot calculate reaches the input that will run');
+    assert.equal(
+      containedRow.assumptions.some((item) => item.path === '/interestOnlyPeriodYears'),
+      false,
+      'and an invented capability is never recorded as a disclosed assumption'
+    );
+    assert.ok(containedRow.assumptions.some((item) => item.path === '/annualOverpayment'),
+      'while a real engine-owned default is still disclosed alongside it');
+  }
+  pass('an unsupported capability cannot reach the maths, the provenance record or the certificate');
   assert.equal(await verifyDirectModuleCertificate(
     certificateEnv,
     interpreted.certificate,
