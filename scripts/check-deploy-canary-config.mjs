@@ -161,7 +161,31 @@ for (const tableName of ['fixedRealtimeValues']) {
     credentialStep < activationStep,
     'the planner credential probe must pass before the final configuration can activate realtime'
   );
-  const credentialBlock = workflow.slice(credentialStep, activationStep);
+  // AND IT MUST PASS BEFORE ANYTHING IS DEPLOYED, NOT MERELY BEFORE ACTIVATION.
+  //
+  // This probe used to sit between the bootstrap deploy and the final one, and
+  // "before activation" was all this file asked of it. That was not enough. The
+  // bootstrap deploy is fail-closed by design -- Realtime off, live lane off,
+  // planner off -- so a probe failure after it left the adviser canary DARK,
+  // and the compensating rollback could not help because it only arms once the
+  // final deploy has been attempted. Deploy Worker #329 and #331 both ended
+  // exactly there on 2026-09-03, each on a single flaky sample of a real-model
+  // semantic verdict. The probe needs nothing Cloudflare holds, so its failure
+  // must cost a red run and nothing more.
+  const bootstrapDeployStep = workflow.indexOf('- name: Deploy Worker code and Durable Object bootstrap');
+  assert.ok(bootstrapDeployStep > 0, 'the bootstrap deploy step must exist');
+  assert.ok(
+    credentialStep < bootstrapDeployStep,
+    'the planner credential probe must run before the first production deploy, so a failed probe cannot leave the canary on the fail-closed bootstrap config'
+  );
+  // A REAL-MODEL VERDICT IS A RATE, NOT A BOOLEAN. One sample must not be able
+  // to condemn a working credential, and an unusable one must still fail fast.
+  const credentialBlock = workflow.slice(credentialStep, bootstrapDeployStep);
+  assert.match(
+    credentialBlock,
+    /for attempt in 1 2 3; do/,
+    'the semantic planner probe is sampled with a bounded retry rather than asserted once'
+  );
   assert.match(
     credentialBlock,
     /if: env\.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'/,

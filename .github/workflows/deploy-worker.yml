@@ -98,7 +98,7 @@ jobs:
       # off, and the builder below resolves this back to off whenever Realtime
       # itself is not active.
       CONSUMER_BETA_MODULE_PLANNER_MODE: ${{ vars.CONSUMER_MODULE_PLANNER_MODE || 'off' }}
-      CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v5"
+      CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v6"
       CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION: "direct-module-verifier-v3"
       # Phase 3 semantic turn reading: a second, independent reading of each
       # reviewed client turn, where agreement between the two readers is what
@@ -333,6 +333,57 @@ jobs:
           npm run build
         env:
           ASSET_VERSION: ${{ github.sha }}
+
+      # A valid Realtime credential can still be unable to call the separate
+      # Responses planner because of model or endpoint permissions. Prove the
+      # exact production model, schema and candidate-application path before
+      # the final configuration is allowed to activate Realtime.
+      #
+      # IT RUNS BEFORE ANYTHING IS DEPLOYED, AND THAT ORDERING IS THE POINT.
+      # It used to sit between the bootstrap deploy and the final one. A failure
+      # there left production on the fail-closed bootstrap config -- Realtime
+      # off, live lane off, planner off -- because the compensating rollback only
+      # arms once the FINAL deploy has been attempted. Two manual deployments in
+      # a row ended that way on 2026-09-03, each taking the adviser canary dark
+      # over a check that touches nothing Cloudflare holds. This step needs only
+      # Node and the provider credential, so it belongs before the first deploy,
+      # where a failure costs a red run and nothing else.
+      #
+      # AND IT IS SAMPLED, NOT ASSERTED ONCE. What it proves is that the
+      # credential can reach the production planner model and drive a
+      # conversation to a certified plan. That path ends in a semantic verdict
+      # from a real model, and one sample of a real model is a coin with a bias,
+      # not a boolean: the local pass rate is high but not one. A single flake
+      # must not be read as a broken credential, so allow a bounded retry --
+      # while a genuinely unusable credential still fails all three, fast.
+      - name: Verify protected Realtime planner credential
+        if: env.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # The step exists to prove the EXACT production model. The eval reads
+          # CONSUMER_MODULE_PLANNER_MODEL; passing only the realtime name meant
+          # it silently fell back to its own default and proved a model the
+          # deployment might not be configured to use.
+          CONSUMER_MODULE_PLANNER_MODEL: ${{ env.CONSUMER_BETA_REALTIME_PLANNER_MODEL }}
+          CONSUMER_REALTIME_PLANNER_MODEL: ${{ env.CONSUMER_BETA_REALTIME_PLANNER_MODEL }}
+        run: |
+          set -euo pipefail
+          run_planner_probe() {
+            if [[ "$CONSUMER_BETA_MODULE_PLANNER_MODE" == "apply" ]]; then
+              node ./scripts/run-direct-module-planner-eval.mjs
+            else
+              node ./scripts/run-consumer-planner-probe.mjs
+            fi
+          }
+          for attempt in 1 2 3; do
+            if run_planner_probe; then
+              echo "Planner credential proved on attempt $attempt."
+              exit 0
+            fi
+            echo "Planner credential probe attempt $attempt did not pass."
+          done
+          echo "The production planner model could not be driven to a certified plan in three attempts."
+          exit 1
 
       - name: Install Wrangler
         run: npm install --global wrangler@4.110.0
@@ -726,7 +777,7 @@ jobs:
                 CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
                 CONSUMER_REALTIME_PLANNER_MODEL: ['CONSUMER_BETA_REALTIME_PLANNER_MODEL', 'gpt-5.6-luna'],
                 CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION: ['CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION', 'planning-reconciliation-v3'],
-                CONSUMER_MODULE_PLANNER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION', 'direct-module-planner-v5'],
+                CONSUMER_MODULE_PLANNER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION', 'direct-module-planner-v6'],
                 CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION', 'direct-module-verifier-v3'],
                 CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v12'],
                 CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1'],
@@ -987,23 +1038,6 @@ jobs:
             if (missing.length) throw new Error(`Protected beta Worker secrets are missing: ${missing.join(", ")}`);
             console.log("Verified required protected-beta Worker secret names without rotating existing values.");
           '
-
-      # A valid Realtime credential can still be unable to call the separate
-      # Responses planner because of model or endpoint permissions. Prove the
-      # exact production model, schema and candidate-application path before
-      # the final configuration is allowed to activate Realtime.
-      - name: Verify protected Realtime planner credential
-        if: env.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CONSUMER_REALTIME_PLANNER_MODEL: ${{ env.CONSUMER_BETA_REALTIME_PLANNER_MODEL }}
-        run: |
-          set -euo pipefail
-          if [[ "$CONSUMER_BETA_MODULE_PLANNER_MODE" == "apply" ]]; then
-            node ./scripts/run-direct-module-planner-eval.mjs
-          else
-            node ./scripts/run-consumer-planner-probe.mjs
-          fi
 
       - name: Deploy final Worker configuration
         working-directory: ./worker
