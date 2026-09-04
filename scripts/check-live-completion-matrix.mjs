@@ -67,6 +67,13 @@ function extraction(envelope) {
       return {
         moduleId, outputKey: DIRECT_MODULE_CONTRACTS[moduleId].outputKey,
         status: relevant ? 'ready' : 'not_relevant',
+        // A general check-up is Planeir's own suggestion; a named request is the
+        // client's. The fixture emits what a real planner must emit.
+        selection: relevant
+          ? scenario.id === 'general_checkup'
+            ? { origin: 'planeir_suggested', reason: `a ${NAMES[moduleId]} would show where you stand` }
+            : { origin: 'client_requested', reason: `you asked about your ${NAMES[moduleId]}` }
+          : { origin: 'not_selected', reason: '' },
         inputJson: relevant ? JSON.stringify(input) : '',
         steeringSummary: relevant ? DETAILS[moduleId] : '',
         missing: [], ambiguities: [],

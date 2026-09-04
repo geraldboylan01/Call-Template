@@ -3024,6 +3024,11 @@ export class ConsumerLiveSession {
               .map((item) => ({
                 moduleId: item.moduleId,
                 status: item.status,
+                // Whose idea this analysis was, so the meeting can say "I think
+                // this would help" instead of telling someone they requested
+                // something they never asked for.
+                selectionOrigin: item.selection?.origin || 'planeir_suggested',
+                selectionReason: item.selection?.reason || '',
                 knownSummary: item.steeringSummary,
                 missing: item.missing || [],
                 ambiguities: item.ambiguities || []

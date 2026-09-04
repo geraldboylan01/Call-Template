@@ -4,6 +4,12 @@ import { stableStringify } from './crypto.js';
 // or decides whether a financial correction is true. Evidence references,
 // generated steering prose and planner pass numbers are review bookkeeping;
 // the semantic verifier remains responsible for the meaning of the transcript.
+//
+// `selection` is DELIBERATELY absent. Attribution says whose idea an analysis
+// was, not what will run: if the planner later decides an analysis it suggested
+// was in fact requested, the frozen inputs, owners and figures are unchanged and
+// the client has nothing new to approve. Including it would supersede a live
+// offer over a wording judgement, which is exactly the churn Phase 1 removed.
 export function directModuleCandidateMeaningKey(snapshot) {
   if (!snapshot || !Array.isArray(snapshot.modules)) return null;
   return stableStringify({

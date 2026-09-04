@@ -290,11 +290,30 @@ const CONTEXTUAL_RECOMMENDATION = [
 ];
 
 // Financial actions/objects that make a recommendation verb a real recommendation.
+//
+// THE STEMS ARE INFLECTED DELIBERATELY. Several entries were written as bare
+// stems inside a `\b...\b` alternation, which made them unmatchable: `\bconsolidat\b`
+// cannot match "consolidating", "consolidate" or "consolidation", and `\bcontribut\b`
+// matches none of "contribute", "contributing" or "contributions". So
+// "I recommend consolidating your loans" and "you should be contributing more"
+// were recommendation verbs with -- as far as this detector could tell -- no
+// financial object, and passed as ordinary speech. `\bloan\b` likewise missed
+// "loans", and `switch`/`overpay` missed their own participles, while the
+// author's `fund|funds` and `share[s]?` show plurals were meant to be covered.
+//
+// Each entry now carries its real inflections. This can only make the detector
+// STRICTER, never more permissive: it widens the object set that turns an
+// already-matched recommendation verb into a violation.
 const FINANCIAL_OBJECT = new RegExp(
-  String.raw`\b(?:pension|prsa|avc|mortgage|remortgage|loan|fund|funds|invest|investing|investment|`
-  + String.raw`product|provider|policy|premium|annuity|arf|equit(?:y|ies)|share[s]?|stock[s]?|bond[s]?|`
-  + String.raw`etf|crypto|bitcoin|deposit|savings account|switch|consolidat|overpay|top up|top-up|`
-  + String.raw`lump sum|contribut|cover|protection|life insurance|income protection)\b`,
+  String.raw`\b(?:pension[s]?|prsa|avc|mortgage[s]?|remortgage|loan[s]?|fund[s]?|`
+  + String.raw`invest|invests|invested|investing|investment[s]?|`
+  + String.raw`product[s]?|provider[s]?|policy|policies|premium[s]?|annuit(?:y|ies)|arf|`
+  + String.raw`equit(?:y|ies)|share[s]?|stock[s]?|bond[s]?|`
+  + String.raw`etf[s]?|crypto|bitcoin|deposit[s]?|savings account|`
+  + String.raw`switch(?:es|ed|ing)?|consolidat(?:e|es|ed|ing|ion|ions)|`
+  + String.raw`overpay(?:s|ing|ment|ments)?|top up|top-up|topping up|`
+  + String.raw`lump sum[s]?|contribut(?:e|es|ed|ing|ion|ions|ory)|`
+  + String.raw`cover|protection|life insurance|income protection)\b`,
   'i'
 );
 

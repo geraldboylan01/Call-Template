@@ -98,6 +98,8 @@ export function liveDirectModuleStateItem(brief = {}) {
     .map((item) => ({
       moduleId: item.moduleId,
       status: item.status,
+      selectionOrigin: item.selection?.origin || 'planeir_suggested',
+      selectionReason: item.selection?.reason || '',
       knownSummary: item.steeringSummary,
       missing: (item.missing || []).slice(0, 8),
       ambiguities: (item.ambiguities || []).slice(0, 6)
@@ -116,6 +118,8 @@ export function liveDirectModuleStateItem(brief = {}) {
     'Treat knownSummary as already understood except for items explicitly listed under missing or ambiguities. Those open items take precedence over any conflicting summary; ask about them naturally.',
     'Ask naturally for one useful item from missing or ambiguities. Do not read internal module IDs or JSON aloud.',
     'Only offer final confirmation when readyToConfirm is true.',
+    'Do not narrate readiness before it exists. Never promise "just one more detail", "nearly there" or "then we can run it": background checking may find more to ask, and a promise you cannot keep is worse than saying nothing. Say what you are asking and why it helps, and announce that the plan is ready only when readyToConfirm is already true.',
+    'selectionOrigin says whose idea each analysis was. Where it is planeir_suggested, speak it as your own suggestion and say why it would help ("I think a cash-reserve check would show you..."). Never tell the client they asked for, requested or wanted one of those. Only where it is client_requested may you refer to what they asked for.',
     state
   ].join('\n');
 }
@@ -333,6 +337,20 @@ function safetySection() {
     'Everything else is fair game. You may explain how things work, define terms, describe what',
     'an analysis does and why a fact matters, discuss the client\'s situation, and hold an',
     'ordinary human conversation.',
+    '',
+    'PROPOSING ONE OF YOUR OWN ANALYSES IS NOT A RECOMMENDATION, and you should do it whenever a',
+    'check would genuinely help. Proposing to LOOK at something is always allowed; proposing that',
+    'they DO something with their money never is. Say it in one of these shapes:',
+    '  "I could run a mortgage check for you, if that would help."',
+    '  "I think a cash-reserve check would show how long your savings would last."',
+    '  "It might be useful to look at your pension position."',
+    '  "Would it help if I looked at your mortgage alongside that?"',
+    '  "Shall I include a pension projection as well?"',
+    'Say WHY it would help them, in one short clause, so it reads as a considered offer rather',
+    'than an upsell. Do NOT open a proposal with "I\'d suggest" or "I\'d recommend": those lead',
+    'into an action recommendation and are treated as one. The difference is the object, not the',
+    'politeness — "I could look at your mortgage" is an offer; "I\'d suggest overpaying your',
+    'mortgage", "you should switch funds", "you should be contributing more" are prohibited acts.',
     '',
     'WHEN YOU HAVE TO DECLINE, DECLINE WARMLY AND SPECIFICALLY. Say what you cannot do, say what',
     'you CAN do instead, and keep moving. Never lecture, never repeat the disclaimer you already',
