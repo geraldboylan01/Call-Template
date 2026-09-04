@@ -3849,7 +3849,8 @@ details.realtime-context-card {
 .typed-thread {
   list-style: none;
   margin: 0;
-  padding: 0.25rem 0;
+  /* Right padding keeps a bubble clear of the scrollbar the thread owns. */
+  padding: 0.25rem 0.6rem 0.25rem 0;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -3922,12 +3923,164 @@ details.realtime-context-card {
   font: inherit;
 }
 
+/* .primary-button is width:100% by design elsewhere on this page, which in a
+ * flex row collapses the message box to nothing. The composer is the one place
+ * the button must yield to the input. */
 .typed-send {
   flex: 0 0 auto;
+  width: auto;
+  min-width: 5.5rem;
   min-height: 2.9rem;
 }
 
 @media (max-width: 40rem) {
   .typed-meeting { height: min(82vh, 40rem); }
   .typed-turn { max-width: 100%; }
+}
+
+/* The compact module card. It lives inside the thread and scrolls with it. */
+
+.typed-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: min(46rem, 100%);
+}
+
+.typed-card-summary {
+  margin: 0;
+  font-size: 0.82rem;
+  opacity: 0.6;
+  padding-left: 0.2rem;
+}
+
+.typed-card {
+  border: 1px solid rgba(143, 208, 255, 0.28);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.95rem 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.typed-card-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.typed-card-reason {
+  margin: -0.35rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
+  line-height: 1.45;
+}
+
+.typed-card-known {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.88rem;
+}
+
+.typed-card-known-row {
+  display: grid;
+  grid-template-columns: 1rem 1fr auto;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.typed-card-tick { opacity: 0.6; }
+.typed-card-known-label { opacity: 0.75; }
+.typed-card-known-value { font-variant-numeric: tabular-nums; }
+
+.typed-card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.typed-field {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-areas: 'label label label' 'input ask unsure';
+  gap: 0.3rem 0.4rem;
+  align-items: center;
+}
+
+.typed-field-label {
+  grid-area: label;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.typed-field-input {
+  grid-area: input;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.55rem;
+  font: inherit;
+}
+
+.typed-field-ask { grid-area: ask; }
+.typed-field-unsure { grid-area: unsure; }
+
+.typed-field-ask,
+.typed-field-unsure,
+.typed-card-add,
+.typed-card-none {
+  background: none;
+  border: 1px solid rgba(143, 208, 255, 0.28);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  color: inherit;
+  opacity: 0.8;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.typed-field-ask:hover,
+.typed-field-unsure:hover,
+.typed-card-add:hover,
+.typed-card-none:hover { opacity: 1; }
+
+.typed-card-collection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.typed-card-assumptions {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.65;
+  line-height: 1.45;
+}
+
+.typed-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.typed-card-save {
+  align-self: flex-start;
+  width: auto;
+}
+
+.typed-card-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  opacity: 0.6;
+}
+
+@media (max-width: 32rem) {
+  .typed-field {
+    grid-template-columns: 1fr auto auto;
+    grid-template-areas: 'label label label' 'input input input' 'ask unsure .';
+  }
 }

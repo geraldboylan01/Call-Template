@@ -196,6 +196,95 @@ ok(/6% of salary/.test(formTurn.transcript),
 equal(afterCard.filter((turn) => turn.role === 'user').length, 2,
   'a card submission is exactly one client turn, never a batch of writes');
 
+/* ------------------------------------------------------------- the card */
+
+// The card is built from the planner's own snapshot and nothing else. These
+// assertions are written so that the two ways of getting this wrong -- drawing
+// a field nobody asked for, and leaking internal vocabulary onto the screen --
+// both fail.
+const { buildTypedCardState } = await import('../worker/src/consumer/live/typed_projection.js');
+
+equal(JSON.stringify(buildTypedCardState(null)), '{"modules":[]}',
+  'no brief means no card: the screen stays a conversation');
+equal(JSON.stringify(buildTypedCardState({ schemaVersion: 'MeetingBriefV2' })), '{"modules":[]}',
+  'a brief from the archived planner draws nothing');
+
+const brief = {
+  schemaVersion: 'MeetingBriefV3',
+  readyToConfirm: false,
+  directModuleSnapshot: {
+    modules: [
+      { moduleId: 'house_purchase', status: 'collecting', missing: [], evidence: [], input: {} },
+      {
+        moduleId: 'pension_projection',
+        status: 'collecting',
+        selection: { origin: 'planeir_suggested', reason: 'it shows whether you are on track' },
+        input: {
+          growthRate: 0.05,
+          pensions: [{ title: 'John', currentPot: 185000, personalPct: 0.06, currentAge: 43 }]
+        },
+        evidence: [
+          { path: '/pensions/0/currentPot' },
+          { path: '/pensions/0/currentAge' },
+          { path: '/growthRate' }
+        ],
+        assumptions: [{ path: '/growthRate' }, { path: '/pensions/0/statePensionStartAge' }],
+        missing: [
+          { path: '/pensions/0/retirementAge', reason: 'the projection needs an end point', question: 'What age would you like to retire at?' },
+          { path: '/pensions/0/personalPct', reason: 'contributions drive the projection', question: 'What do you pay in each month?' }
+        ],
+        ambiguities: []
+      },
+      { moduleId: 'liquidity_analysis', status: 'ready', missing: [], evidence: [], input: {} }
+    ]
+  }
+};
+const card = buildTypedCardState(brief);
+const pension = card.modules.find((module) => module.title === 'Retirement projection');
+ok(pension, 'the module in play is on the card');
+
+// EVERY FIELD TRACES TO A PLANNER-NAMED PATH. This is the assertion that stops
+// the UI ever becoming a fact-find of its own.
+equal(pension.fields.length, 2, 'exactly the two things the planner said it still needs');
+assert.deepEqual(pension.fields.map((field) => field.label).sort(),
+  ['Retirement age', 'Your contribution'], 'labelled in English, from the display contract');
+checks += 1;
+ok(pension.fields.every((field) => field.question),
+  'each field carries the planner\'s own client-safe question');
+
+// KNOWN VALUES ARE SHOWN BACK, so nobody is asked twice for something they gave.
+assert.deepEqual(pension.known.map((item) => `${item.label}=${item.value}`).sort(),
+  ['Current age=43', 'Pension value today=€185,000'], 'established values are reflected');
+checks += 1;
+
+// A rate is shown the way the client said it, not the way the engine stores it.
+ok(!JSON.stringify(pension.known).includes('0.06'),
+  'a contribution rate is never shown back as a fraction');
+
+// An approved assumption is DISCLOSED, never asked.
+ok(pension.assumptions.includes('investment growth'),
+  'approved planning figures are disclosed on the card');
+ok(!pension.fields.some((field) => /growth/i.test(field.label)),
+  'and never presented as a question');
+
+// Only one card is open. The rest collapse.
+equal(card.modules.filter((module) => module.expanded).length, 1,
+  'exactly one module card is expanded: a screen showing three at once is a form');
+
+// House purchase has no display contract, so it draws nothing rather than
+// drawing something wrong.
+ok(!card.modules.some((module) => module.title === ''), 'no untitled module reaches the screen');
+equal(card.modules.length, 2, 'a module with no display contract falls back to plain chat');
+
+// NOTHING INTERNAL CROSSES THE BOUNDARY.
+const serialised = JSON.stringify(card);
+for (const leak of [
+  'pension_projection', 'liquidity_analysis', 'moduleId', 'outputKey',
+  '/pensions/', 'snapshotRevision', 'signature', 'nonce', 'inputJson', 'evidence'
+]) {
+  ok(!serialised.includes(leak), `the card must not carry ${leak}`);
+}
+
 /* --------------------------------------------------- no provider traffic */
 
 // A typed meeting must never try to talk to a socket it does not have.

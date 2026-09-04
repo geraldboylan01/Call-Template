@@ -19,6 +19,7 @@ import {
   getSession,
   sendTypedMessage
 } from './api.js';
+import { composeCardTurn } from '../planning/module_input_display.js';
 import { describePlanningCompletion } from './completion.js';
 import { getSessionId, mergePayload, state } from './store.js';
 
@@ -32,6 +33,7 @@ function newPrivateId(prefix) {
   return `${prefix}_${btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')}`;
 }
 
+/** The whole component layer, matching views.js. Text only, never markup. */
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -52,6 +54,8 @@ export class TypedMeetingController {
     this.navigated = false;
     this.awaitingExecution = false;
     this.root = null;
+    this.cardNode = null;
+    this.cardEntries = new Map();
   }
 
   /* ------------------------------------------------------------- lifecycle */
@@ -138,6 +142,7 @@ export class TypedMeetingController {
       // turn would be a request per sentence for an event that happens once.
       if (result.readback === true) this.awaitingExecution = true;
       else if (this.awaitingExecution) await this.checkCompletion();
+      this.renderCard(result.card);
     } catch (error) {
       // The turn is already durable on the server whatever happened here, so
       // the client is told the reply failed -- never that their answer was lost.
@@ -236,6 +241,172 @@ export class TypedMeetingController {
     row.append(element('p', 'typed-bubble', value));
     this.threadNode.append(row);
     row.scrollIntoView({ block: 'nearest' });
+  }
+
+  /* ------------------------------------------------------------------ card */
+
+  /**
+   * Draw the compact module card, if the planner has one.
+   *
+   * It lives INSIDE the conversation, at the bottom, and scrolls with it. A
+   * fixed panel beside the thread would make this a dashboard with a chat box
+   * attached, which is the shape this mode exists to avoid.
+   */
+  renderCard(card) {
+    this.cardNode?.remove();
+    this.cardNode = null;
+    this.cardEntries = new Map();
+    const modules = Array.isArray(card?.modules) ? card.modules : [];
+    const active = modules.find((module) => module.expanded && module.fields.length > 0);
+    if (!modules.length) return;
+
+    const wrap = element('div', 'typed-card-stack');
+
+    // Everything not being collected for right now collapses to one line.
+    // Only one card is ever open: a screen showing three at once is a form.
+    for (const module of modules) {
+      if (module === active) continue;
+      const line = element('p', 'typed-card-summary',
+        `${module.title} — ${module.status === 'ready' ? 'ready' : 'in progress'}`);
+      wrap.append(line);
+    }
+
+    if (active) wrap.append(this.renderModuleCard(active));
+    if (!wrap.childNodes.length) return;
+    this.cardNode = wrap;
+    this.threadNode?.append(wrap);
+    wrap.scrollIntoView({ block: 'nearest' });
+  }
+
+  renderModuleCard(module) {
+    const card = element('section', 'typed-card');
+    card.setAttribute('aria-label', module.title);
+    card.append(element('h3', 'typed-card-title', module.title));
+
+    // Say whose idea this was, honestly. Telling someone they asked for an
+    // analysis they never mentioned is a small lie about their own conversation.
+    if (module.reason) {
+      card.append(element('p', 'typed-card-reason',
+        module.origin === 'client_requested' ? module.reason : `I think this would help: ${module.reason}`));
+    }
+
+    // What Planéir already has. Shown so the client sees their own answers
+    // reflected instead of wondering whether they landed.
+    if (module.known.length) {
+      const known = element('ul', 'typed-card-known');
+      for (const item of module.known.slice(0, 8)) {
+        const row = element('li', 'typed-card-known-row');
+        row.append(element('span', 'typed-card-tick', '✓'));
+        row.append(element('span', 'typed-card-known-label', item.label));
+        row.append(element('span', 'typed-card-known-value', item.value));
+        known.append(row);
+      }
+      card.append(known);
+    }
+
+    const fieldList = element('div', 'typed-card-fields');
+    for (const field of module.fields) fieldList.append(this.renderField(field));
+    card.append(fieldList);
+
+    // "+ Add" adds ONE row. A grid of empty rows is the thing that makes a
+    // fact-find feel like paperwork.
+    for (const group of module.collections || []) {
+      const actions = element('div', 'typed-card-collection');
+      const add = element('button', 'typed-card-add', group.addLabel);
+      add.type = 'button';
+      add.addEventListener('click', () => {
+        void this.send(`${group.addLabel}.`, { inputMode: 'form' });
+      });
+      const none = element('button', 'typed-card-none', group.noneLabel);
+      none.type = 'button';
+      none.addEventListener('click', () => {
+        void this.send(`${group.noneLabel}.`, { inputMode: 'form' });
+      });
+      actions.append(add, none);
+      card.append(actions);
+    }
+
+    if (module.assumptions?.length) {
+      card.append(element('p', 'typed-card-assumptions',
+        `Planéir will use its standard planning figures for ${module.assumptions.join(', ')}.`));
+    }
+
+    const save = element('button', 'primary-button typed-card-save', 'Save these');
+    save.type = 'button';
+    save.addEventListener('click', () => void this.submitCard());
+    const actions = element('div', 'typed-card-actions');
+    actions.append(save);
+    actions.append(element('p', 'typed-card-hint',
+      'Leave anything you are not sure about — you can also just ask me about it below.'));
+    card.append(actions);
+    return card;
+  }
+
+  renderField(field) {
+    const wrap = element('div', 'typed-field');
+    const label = field.label || field.question;
+    const input = field.kind === 'choice'
+      ? element('select', 'typed-field-input')
+      : element('input', 'typed-field-input');
+    input.id = `typed-field-${field.id}`;
+    if (field.kind === 'choice') {
+      input.append(element('option', '', 'Choose…'));
+      for (const option of field.options || []) {
+        const node = element('option', '', option.label);
+        node.value = option.value;
+        input.append(node);
+      }
+    } else {
+      input.type = ['money', 'number', 'age', 'year'].includes(field.kind) ? 'number' : 'text';
+      input.inputMode = input.type === 'number' ? 'decimal' : 'text';
+      if (field.kind === 'money') input.placeholder = '€';
+      if (field.kind === 'rate') input.placeholder = '%';
+    }
+    const labelNode = element('label', 'typed-field-label', label);
+    labelNode.htmlFor = input.id;
+
+    wrap.append(labelNode, input);
+    // WHY DO YOU NEED THAT? Asking is a first-class action, not an escape
+    // hatch: the client stays in the conversation and the field stays put.
+    if (field.why || field.question) {
+      const ask = element('button', 'typed-field-ask', 'Why?');
+      ask.type = 'button';
+      ask.setAttribute('aria-label', `Why does Planéir need ${label}?`);
+      ask.addEventListener('click', () => void this.send(`Why do you need ${label.toLowerCase()}?`));
+      wrap.append(ask);
+    }
+    // NOT SURE is an answer, and it has to leave as one. Until the planner
+    // carries an acknowledged-unknown state (D-09) it reaches the model as the
+    // sentence a client would have typed, which is the honest interim.
+    const unsure = element('button', 'typed-field-unsure', 'Not sure');
+    unsure.type = 'button';
+    unsure.addEventListener('click', () => void this.send(`I don't know ${label.toLowerCase()}.`, { inputMode: 'form' }));
+    wrap.append(unsure);
+
+    this.cardEntries.set(field.id, { field, input, label: label });
+    return wrap;
+  }
+
+  /**
+   * Send everything the client filled in, as one turn.
+   *
+   * Unanswered fields are simply absent -- there is no validation here and no
+   * "required" anywhere, because whether an analysis can run is the planner's
+   * judgement and not this file's.
+   */
+  async submitCard() {
+    const entries = [];
+    for (const { field, input, label } of this.cardEntries.values()) {
+      const raw = String(input.value || '').trim();
+      if (!raw) continue;
+      entries.push({ label, value: field.kind === 'rate' && !raw.includes('%') ? `${raw}%` : raw });
+    }
+    const text = composeCardTurn(entries);
+    if (!text) {
+      this.onToast('Fill in anything you know, or just ask me about it below.');
+      return;
+    }
+    await this.send(text, { inputMode: 'form' });
   }
 
   setThinking(active) {

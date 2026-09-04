@@ -54,6 +54,7 @@ import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
 import { runDirectModulePlanning, directModulePlanMeaningKey } from '../direct_module_planner.js';
 import { renderLiveAssistantText } from './live_text_channel.js';
+import { buildTypedCardState } from './typed_projection.js';
 import { prepareRealtimeVoiceAnalysisPlan } from '../realtime_analysis.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
 import { classifyExecutionApproval } from './execution_approval.js';
@@ -1605,8 +1606,33 @@ export class ConsumerLiveSession {
       assistantText,
       readback: Boolean(delivered),
       fallback: rendered.fallback === true && !delivered,
-      ...(await this.publicState())
+      // The card. Built from the snapshot this turn's own planner pass
+      // produced, which is why it can never show a field the client just
+      // filled in -- see the awaited pass at the top of this method.
+      card: await this.typedCardState()
     };
+  }
+
+  /**
+   * The compact module card, or nothing.
+   *
+   * Nothing is the right answer for most of a conversation: a card appears
+   * when the planner has identified an analysis and knows what it still needs,
+   * and not before. Type mode is a conversation that can show a card, never a
+   * form with a chat box attached.
+   */
+  async typedCardState() {
+    if (getConsumerConfig(this.env).modulePlannerMode !== 'apply') return { modules: [] };
+    const direct = await getLatestRealtimeMeetingBrief(
+      this.env, this.meta.sessionId, this.meta.leaseId
+    ).catch(() => null);
+    try {
+      return buildTypedCardState(direct?.brief || null);
+    } catch (_error) {
+      // A card is an enhancement. A projection fault must never cost the
+      // client their reply, so the conversation simply carries on without it.
+      return { modules: [] };
+    }
   }
 
   /**
