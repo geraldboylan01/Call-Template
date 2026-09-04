@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "identity": "Planeir Newgrange alignment mark",
+  "renderer": "@resvg/resvg-js@2.6.2",
+  "sourceOfTruth": "The six canonical SVGs. Logo path data and tittle placement remain verbatim.",
+  "fonts": "Fixed copy is stored as licensed font outlines; no system fonts are loaded.",
+  "editingOnly": {
+    "files": [
+      "assets/brand/youtube/planeir-youtube-bg-mirror-edit-wordmark-bottom-right-reversed.svg",
+      "assets/brand/youtube/planeir-youtube-bg-mirror-edit-wordmark-bottom-right-reversed.png"
+    ],
+    "warning": "Editing-only; flip back before publication. Final text must read normally and the mark must open upper-right."
+  },
+  "inputs": [
+    {
+      "path": "assets/brand/planeir-lockup.svg",
+      "sha256": "a51889c9a0b3815a737869ccb9b903af34d6bf4bd4584f8debabcdae8d31a51d"
+    },
+    {
+      "path": "assets/brand/planeir-lockup-light.svg",
+      "sha256": "7b7835ee2e1f78e8f78f8a3b709dc5642fd7d19f20bd43c5a91c7306d50c95d4"
+    },
+    {
+      "path": "assets/brand/planeir-lockup-dark.svg",
+      "sha256": "d63c8756ddd0737da3ef12ab46287b33a772fd5c771a516b386e7ef99f567600"
+    },
+    {
+      "path": "assets/brand/planeir-mark.svg",
+      "sha256": "e638c6b7853b2fae0b4b5d358fad00442eb535ac3de90ba4a13b7c8024ea3bd2"
+    },
+    {
+      "path": "assets/brand/planeir-mark-light.svg",
+      "sha256": "4b8b645e4b2d87218eb0c6105322be9999f7af2aab430da4209095c0f8c8a41e"
+    },
+    {
+      "path": "assets/brand/planeir-wordmark-dotless.svg",
+      "sha256": "004e6d24c9eaa0350b37c7e55431dc1b84e953a786610e7ca4ede8dadb6bd672"
+    },
+    {
+      "path": "scripts/brand/planeir-text-outlines.json",
+      "sha256": "028ae0c8f3a9910a7d2aef397cad219c45b18a7e284c51c366a2dcf8219c540e"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "js/planeir_brand_artwork.js",
+      "bytes": 8595,
+      "sha256": "39810fbad0a645c40baedf5d831e4c9896c373a8fb899260f83e069a439af831"
+    },
+    {
+      "path": "favicon.svg",
+      "bytes": 529,
+      "sha256": "9deff2407bdf3542e69d361271cd5953fe896323fbb32aadd372546c02db9b52",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "path": "favicon.png",
+      "bytes": 13466,
+      "sha256": "1676ac8c6566e61294e42db60a30f63022ec3125a776e461b36cc8184bd6ecbd",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "path": "favicon-32.png",
+      "bytes": 854,
+      "sha256": "3303dc7b465132e2b7ed5ad704dd2e9e5388d5ec7869845810e46d0f2a3f8323",
+      "width": 32,
+      "height": 32
+    },
+    {
+      "path": "apple-touch-icon.png",
+      "bytes": 4308,
+      "sha256": "b50d18a599947235092401a1497cd2c3b1f9a4b4517b5c7a9f8480b55960ec0c",
+      "width": 180,
+      "height": 180
+    },
+    {
+      "path": "assets/brand/planeir-app-icon-192.png",
+      "bytes": 4710,
+      "sha256": "f3f9fb3c144dc72d3182a69eaf896d0a59d128be6c2539611b1b9b6a6f043a59",
+      "width": 192,
+      "height": 192
+    },
+    {
+      "path": "assets/brand/planeir-app-icon-512.png",
+      "bytes": 13466,
+      "sha256": "1676ac8c6566e61294e42db60a30f63022ec3125a776e461b36cc8184bd6ecbd",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "path": "favicon.ico",
+      "bytes": 2661,
+      "sha256": "64b032e61cbe1818a894fe32934c9498e278fe775ad04489b751f325fbaf7394",
+      "frames": [
+        16,
+        32,
+        48
+      ]
+    },
+    {
+      "path": "assets/brand/planeir-lockup-light.png",
+      "bytes": 27704,
+      "sha256": "740b8ea80311e78191d970db841c1c184c22dab09a4ad24fcfbbdb6c2c44bd10",
+      "width": 1330,
+      "height": 384
+    },
+    {
+      "path": "assets/brand/planeir-wordmark-light.svg",
+      "bytes": 8490,
+      "sha256": "7b7835ee2e1f78e8f78f8a3b709dc5642fd7d19f20bd43c5a91c7306d50c95d4",
+      "width": 1330,
+      "height": 384
+    },
+    {
+      "path": "assets/brand/planeir-wordmark-light.png",
+      "bytes": 27704,
+      "sha256": "740b8ea80311e78191d970db841c1c184c22dab09a4ad24fcfbbdb6c2c44bd10",
+      "width": 1330,
+      "height": 384
+    },
+    {
+      "path": "assets/brand/planeir-lockup-dark.png",
+      "bytes": 27037,
+      "sha256": "d1518fd6acaeaa9c1d7762cd99c594e7694c3793a9b5214c9644b07d672d9c31",
+      "width": 1330,
+      "height": 384
+    },
+    {
+      "path": "assets/brand/planeir-wordmark-dark.svg",
+      "bytes": 8490,
+      "sha256": "d63c8756ddd0737da3ef12ab46287b33a772fd5c771a516b386e7ef99f567600",
+      "width": 1330,
+      "height": 384
+    },
+    {
+      "path": "assets/brand/planeir-wordmark-dark.png",
+      "bytes": 27037,
+      "sha256": "d1518fd6acaeaa9c1d7762cd99c594e7694c3793a9b5214c9644b07d672d9c31",
+      "width": 1330,
+      "height": 384
+    },
+    {
+      "path": "assets/brand/planeir-social-card-newgrange.svg",
+      "bytes": 111175,
+      "sha256": "900f993c9d39848a130a1fe3eca3a067110e5ceb89493f687586768e129318bb",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "path": "assets/brand/planeir-social-card-newgrange.png",
+      "bytes": 147293,
+      "sha256": "1ccc92eab89b170b9bc9bdfe5c6cf74c63c72eb7cd9599ea56ea5fffc7694fce",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "path": "assets/brand/planeir-social-card.png",
+      "bytes": 147293,
+      "sha256": "1ccc92eab89b170b9bc9bdfe5c6cf74c63c72eb7cd9599ea56ea5fffc7694fce",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "path": "assets/brand/youtube/planeir-youtube-bg-wordmark-top-left-url-bottom-left.svg",
+      "bytes": 18437,
+      "sha256": "6ea2065ba6ccc532bac01a565ba88f80b8e8d72171af33c0edb655cf0352f978",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "path": "assets/brand/youtube/planeir-youtube-bg-wordmark-top-left-url-bottom-left.png",
+      "bytes": 212631,
+      "sha256": "b85a660c28a9f65f589be620761130776ce3562527dd93845fb0fcb11880b556",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "path": "assets/brand/youtube/planeir-youtube-bg-wordmark-bottom-left.svg",
+      "bytes": 9569,
+      "sha256": "2f6cb0079fc1f22144bc0d087d859a3fb7c574c583d772a475b68129de14a6fa",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "path": "assets/brand/youtube/planeir-youtube-bg-wordmark-bottom-left.png",
+      "bytes": 209554,
+      "sha256": "6ae680040e54a99dc510443b3257dced7e99604e64edbfca2caa15cc758ccbcc",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "path": "assets/brand/youtube/planeir-youtube-bg-mirror-edit-wordmark-bottom-right-reversed.svg",
+      "bytes": 9638,
+      "sha256": "05e5b1300b6b4fbecd7ecba564e6e688b92d14f985cf27b55fb80e30ccff5703",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "path": "assets/brand/youtube/planeir-youtube-bg-mirror-edit-wordmark-bottom-right-reversed.png",
+      "bytes": 209309,
+      "sha256": "70abf1b34e33e2122433c3598bf2eefcd354f1ad21bd3fc9521816a350383827",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "path": "assets/brand/zoom/planeir-wordmark-dark-square-300.png",
+      "bytes": 5068,
+      "sha256": "d035aaf81a40434a7129ee458a2d9556f16cd9c29838e5ffb770049b12f9140f",
+      "width": 300,
+      "height": 300
+    },
+    {
+      "path": "assets/brand/zoom/planeir-wordmark-dark-square-400.png",
+      "bytes": 6895,
+      "sha256": "abe417848aa4137fc57c680e6737369a3690e0e703a380a5c1a45564ff177ce3",
+      "width": 400,
+      "height": 400
+    },
+    {
+      "path": "assets/brand/zoom/planeir-wordmark-dark-square-512.png",
+      "bytes": 9471,
+      "sha256": "45f33dd0fea8c4fa6409c118b3fcbd941be531f358569220edfe88dd72849b73",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "path": "assets/brand/zoom/planeir-wordmark-dark-square-1024.png",
+      "bytes": 21780,
+      "sha256": "28d0edb24935df5bee5aaa16a166db3c0fdee53069aa181069cceb24cd2e84d3",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "path": "Planeir_logo_transparent.png",
+      "bytes": 45498,
+      "sha256": "a96c10beef6965ad1a8ae8fc9ce72926e90c2e730c8e4022713e68fa6d6d5743",
+      "width": 2000,
+      "height": 2000
+    }
+  ],
+  "compatibilityAliases": {
+    "assets/brand/planeir-wordmark-light.svg": "assets/brand/planeir-lockup-light.svg",
+    "assets/brand/planeir-wordmark-dark.svg": "assets/brand/planeir-lockup-dark.svg",
+    "assets/brand/planeir-wordmark-light.png": "assets/brand/planeir-lockup-light.png",
+    "assets/brand/planeir-wordmark-dark.png": "assets/brand/planeir-lockup-dark.png",
+    "assets/brand/planeir-social-card.png": "assets/brand/planeir-social-card-newgrange.png"
+  }
+}

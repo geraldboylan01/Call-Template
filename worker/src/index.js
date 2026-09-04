@@ -76,7 +76,7 @@ const DEFAULT_ALLOWED_REQUEST_HEADERS = [
 ].join(', ');
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
 const PLANEIR_SITE_URL = 'https://planeir.ie';
-const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-card.png`;
+const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-card-newgrange.png`;
 const PLANEIR_EMAIL_CARD_ALT = 'Planeir - Irish financial education calls. Educational only, not financial advice.';
 const LEAD_SOURCE_LABEL = 'Planeir landing page';
 const DEFAULT_LEAD_SCHEDULE_TIMEZONE = 'Europe/Dublin';

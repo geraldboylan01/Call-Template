@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Planeir brand review</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #071021; color: #f4f8fc; font: 14px system-ui; }
+      .controls { padding: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      select { max-width: 100%; padding: 8px; }
+      iframe { width: 100%; height: calc(100vh - 110px); border: 0; display: block; }
+      p { margin: 0 10px 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label>Surface <select id="surface">
+        <option value="index.html">Marketing</option>
+        <option value="app/index.html">Adviser session</option>
+        <option value="app/session.html">Client session</option>
+        <option value="app/clients.html">Client pipeline</option>
+        <option value="app/analytics.html">Analytics</option>
+        <option value="app/modules.html">Modules</option>
+        <option value="app/access.html">Published links</option>
+        <option value="plan/index.html">Planner</option>
+        <option value="plan/privacy.html">Privacy</option>
+      </select></label>
+      <label>Text <select id="text-size"><option value="100">100%</option><option value="200">200%</option></select></label>
+    </div>
+    <p>Static copies of the real pages and styles. Business scripts, forms, and embedded videos are disabled.</p>
+    <details><summary>Header measurements</summary><pre id="measurements" style="white-space:pre-wrap"></pre></details>
+    <iframe id="surface-frame" title="Brand surface preview" sandbox="allow-same-origin allow-scripts"></iframe>
+    <script type="module" src="./brand_review.js?v=newgrange-5"></script>
+  </body>
+</html>

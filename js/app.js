@@ -97,7 +97,6 @@ function getMetaContent(name) {
 const ui = getUiElements();
 const appShell = document.getElementById('app');
 const publishSuccessOverlay = document.getElementById('publishSuccessOverlay');
-const publishSuccessGhost = document.getElementById('publishSuccessGhost');
 const publishSuccessTarget = document.getElementById('publishSuccessTarget');
 const publishSuccessTitle = document.getElementById('publishSuccessTitle');
 const publishSuccessBody = document.getElementById('publishSuccessBody');
@@ -117,11 +116,10 @@ const advisorLogoutButton = document.getElementById('advisorLogoutBtn');
 const publishSuccessTakeover = createSuccessTakeover({
   overlay: publishSuccessOverlay,
   origin: publishSuccessOrigin,
-  ghost: publishSuccessGhost,
   target: publishSuccessTarget,
   title: publishSuccessTitle,
   body: publishSuccessBody,
-  holdMs: 10000,
+  holdMs: 3800,
   lockTargets: [appShell, advisorAuthLayer, publishedRecoveryLayer].filter(Boolean)
 });
 const runtimeConfig = {
@@ -5928,12 +5926,12 @@ function setPublishModalOpen(open) {
   ui.publishModal.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
 
-async function playPublishSuccessTakeover() {
+async function playPublishSuccessTakeover(restoreFocus = Boolean(ui.publishModal?.contains(document.activeElement))) {
   setPublishModalOpen(false);
   await publishSuccessTakeover.play({
     titleText: 'Congratulations',
     bodyText: 'Thanks for using Planeir, your future self will thank you!',
-    restoreFocusIfContainedIn: ui.publishModal,
+    restoreFocus,
     restoreFocusTo: ui.publishSessionButton
   });
 }
@@ -6382,6 +6380,8 @@ async function handlePublishGenerate() {
 
   setPublishError('');
   const shouldAutoSendEmail = getPublishMode() === 'email';
+  // Disabling the focused submit button can blur it before either request resolves.
+  const restoreFocus = Boolean(ui.publishModal?.contains(document.activeElement));
 
   if (ui.publishGenerateButton) {
     ui.publishGenerateButton.disabled = true;
@@ -6406,7 +6406,7 @@ async function handlePublishGenerate() {
         const payload = await sendPublishedSessionEmail(access);
         appState.publishedAccess = mergePublishedEmailDelivery(access, payload);
         renderPublishedAccess(appState.publishedAccess);
-        await playPublishSuccessTakeover();
+        await playPublishSuccessTakeover(restoreFocus);
       } catch (error) {
         setPublishError(`Secure links published, but the client email could not be sent. ${error?.message || 'Use Send Final Email to try again.'}`);
         showToast('Secure links published, but email was not sent.', 'error');

@@ -10,9 +10,9 @@ if [[ -z "$EXPECTED_VERSION" ]]; then
   exit 1
 fi
 
-SITE_ORIGIN=""
+SITE_ORIGIN="${PLANEIR_SMOKE_ORIGIN:-}"
 
-if [[ -f "CNAME" ]]; then
+if [[ -z "$SITE_ORIGIN" && -f "CNAME" ]]; then
   SITE_ORIGIN="$(tr -d '[:space:]' < CNAME)"
 fi
 
@@ -75,6 +75,7 @@ robots_txt="$(fetch_html "$ROBOTS_URL")"
 sitemap_xml="$(fetch_html "$SITEMAP_URL")"
 app_entry_js="$(fetch_html "${SITE_ORIGIN}/js/app_entry.js?v=${EXPECTED_VERSION}")"
 app_js="$(fetch_html "${SITE_ORIGIN}/js/app.js?v=${EXPECTED_VERSION}")"
+landing_js="$(fetch_html "${SITE_ORIGIN}/js/landing.js?v=${EXPECTED_VERSION}")"
 render_js="$(fetch_html "${SITE_ORIGIN}/js/render.js?v=${EXPECTED_VERSION}")"
 session_viewer_js="$(fetch_html "${SITE_ORIGIN}/js/session_viewer.js?v=${EXPECTED_VERSION}")"
 plan_entry_js="$(fetch_html "${SITE_ORIGIN}/js/plan/app.js?v=${EXPECTED_VERSION}")"
@@ -85,7 +86,7 @@ assert_contains "$landing_html" 'application/ld+json' "landing structured data"
 assert_contains "$landing_html" 'og:image' "landing Open Graph image"
 assert_contains "$landing_html" "./styles/landing.css?v=${EXPECTED_VERSION}" "landing stylesheet"
 assert_contains "$landing_html" "./js/landing.js?v=${EXPECTED_VERSION}" "landing script"
-assert_contains "$landing_html" "./assets/brand/planeir-wordmark-light.svg?v=${EXPECTED_VERSION}" "landing wordmark"
+assert_contains "$landing_html" "./assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "landing wordmark"
 
 assert_contains "$robots_txt" "Sitemap: https://planeir.ie/sitemap.xml" "robots sitemap declaration"
 assert_contains "$sitemap_xml" "<loc>https://planeir.ie/</loc>" "sitemap canonical URL"
@@ -93,7 +94,7 @@ assert_contains "$sitemap_xml" "<loc>https://planeir.ie/</loc>" "sitemap canonic
 assert_contains "$app_html" '<meta name="robots" content="noindex, nofollow"' "app noindex"
 assert_contains "$app_html" "../styles/base.css?v=${EXPECTED_VERSION}" "app stylesheet"
 assert_contains "$app_html" "../js/app_entry.js?v=${EXPECTED_VERSION}" "app gated entry script"
-assert_contains "$app_html" "../assets/brand/planeir-wordmark-light.svg?v=${EXPECTED_VERSION}" "app wordmark"
+assert_contains "$app_html" "../assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "app wordmark"
 
 assert_contains "$app_entry_js" "./app.js?v=${EXPECTED_VERSION}" "app entry -> app dynamic import"
 assert_contains "$app_js" "./state.js?v=${EXPECTED_VERSION}" "app -> state module import"
@@ -104,15 +105,44 @@ assert_contains "$session_viewer_js" "./app.js?v=${EXPECTED_VERSION}" "session v
 assert_contains "$plan_html" '<meta name="robots" content="noindex, nofollow"' "consumer plan noindex"
 assert_contains "$plan_html" "../styles/plan.css?v=${EXPECTED_VERSION}" "consumer plan stylesheet"
 assert_contains "$plan_html" "../js/plan/app.js?v=${EXPECTED_VERSION}" "consumer plan entry script"
-assert_contains "$plan_html" "../assets/brand/planeir-wordmark-light.svg?v=${EXPECTED_VERSION}" "consumer plan wordmark"
+assert_contains "$plan_html" "../assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "consumer plan wordmark"
 assert_contains "$plan_html" './privacy.html' "consumer plan privacy link"
 assert_not_contains "$plan_html" 'http://127.0.0.1:8787' "consumer plan local API origin"
 assert_not_contains "$plan_html" 'http://localhost:8787' "consumer plan localhost API origin"
 assert_contains "$plan_privacy_html" '<meta name="robots" content="noindex, nofollow"' "consumer privacy noindex"
 assert_contains "$plan_privacy_html" "../styles/plan.css?v=${EXPECTED_VERSION}" "consumer privacy stylesheet"
-assert_contains "$plan_privacy_html" "../assets/brand/planeir-wordmark-light.svg?v=${EXPECTED_VERSION}" "consumer privacy wordmark"
+assert_contains "$plan_privacy_html" "../assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "consumer privacy wordmark"
 assert_contains "$plan_entry_js" "./api.js?v=${EXPECTED_VERSION}" "consumer plan -> API module import"
 assert_contains "$plan_entry_js" "./store.js?v=${EXPECTED_VERSION}" "consumer plan -> store module import"
 assert_contains "$plan_entry_js" "./views.js?v=${EXPECTED_VERSION}" "consumer plan -> views module import"
+
+
+# Include every deployed document, including legacy redirect entry points.
+for page in index.html session.html app/index.html app/session.html app/clients.html app/analytics.html app/modules.html app/access.html app/leads.html app/video.html plan/index.html plan/privacy.html; do
+  page_html="$(fetch_html "${SITE_ORIGIN}/${page}")"
+  for icon in favicon.svg favicon-32.png favicon.ico apple-touch-icon.png; do
+    assert_contains "$page_html" "${icon}?v=${EXPECTED_VERSION}" "${page} ${icon}"
+  done
+  assert_not_contains "$page_html" "planeir-wordmark-light.svg" "${page} legacy internal logo URL"
+  case "$page" in
+    index.html|app/index.html|app/session.html|app/clients.html|app/analytics.html|app/modules.html|app/access.html|plan/index.html|plan/privacy.html)
+      assert_contains "$page_html" "assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "${page} canonical logo" ;;
+  esac
+  case "$page" in
+    app/index.html|app/session.html|app/clients.html|app/analytics.html|app/modules.html|app/access.html)
+      assert_contains "$page_html" "js/brand_header.js?v=${EXPECTED_VERSION}" "${page} responsive header sizing" ;;
+  esac
+done
+
+assert_contains "$landing_html" 'https://planeir.ie/assets/brand/planeir-social-card-newgrange.png' "new social image URL"
+assert_contains "$landing_js" "./success_takeover.js?v=${EXPECTED_VERSION}" "landing -> takeover"
+assert_contains "$app_js" "./success_takeover.js?v=${EXPECTED_VERSION}" "adviser -> takeover"
+takeover_js="$(fetch_html "${SITE_ORIGIN}/js/success_takeover.js?v=${EXPECTED_VERSION}")"
+alignment_js="$(fetch_html "${SITE_ORIGIN}/js/success_alignment.js?v=${EXPECTED_VERSION}")"
+assert_contains "$takeover_js" "./success_alignment.js?v=${EXPECTED_VERSION}" "takeover -> Newgrange animation"
+assert_contains "$alignment_js" "./planeir_brand_artwork.js?v=${EXPECTED_VERSION}" "animation -> canonical artwork"
+for icon in favicon.svg favicon-32.png favicon.ico apple-touch-icon.png assets/brand/planeir-social-card-newgrange.png assets/brand/planeir-lockup-light.svg js/brand_header.js; do
+  curl --fail --silent --show-error --output /dev/null "${SITE_ORIGIN}/${icon}?v=${EXPECTED_VERSION}"
+done
 
 echo "Verified versioned Pages asset URLs for ${SITE_ORIGIN} (${EXPECTED_VERSION})"

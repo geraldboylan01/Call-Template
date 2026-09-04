@@ -8,7 +8,9 @@ transport is built against.
 
 **Register at a glance.** D-01 resolved · **D-02 code-complete and validated in
 test; production activation BLOCKED pending re-canary after D-05** · D-03
-resolved · D-04 open by design · **D-05 and D-06 live incidents, root-caused and fixed**.
+resolved · D-04 open by design · **D-05 and D-06 live incidents, root-caused and fixed** ·
+D-07 comment corrected, two planning authorities remain · D-08 consumer typed lane
+registered before build · D-09 open, affects live voice.
 
 **Companion documents.** [agent-testing-environment-plan.md](agent-testing-environment-plan.md)
 (the phased plan), [realtime-intelligence-implementation-plan.md](realtime-intelligence-implementation-plan.md)
@@ -62,6 +64,13 @@ audio, WebRTC, leases or the provider.
 | Analysis preparation and execution | [`realtime_analysis.js`](../worker/src/consumer/realtime_analysis.js) |
 | Final confirmation of the analysis set | [`confirmPlanSelection`](../worker/src/consumer/planning_turn.js) |
 | Text/agent transport (A2) — session, turns, projections | [`agent_session.js`](../worker/src/consumer/agent_session.js), [`agent_text_channel.js`](../worker/src/consumer/agent_text_channel.js) |
+
+**This table describes the V2 core, and the V2 core is no longer what production
+voice runs.** Since `CONSUMER_MODULE_PLANNER_MODE=apply` went live (deploy #333,
+2026-09-04) the live lane plans through
+[`direct_module_planner.js`](../worker/src/consumer/direct_module_planner.js) and
+`MeetingBriefV3`, not `composeAndPersistBrief` and `MeetingBriefV2`. The agent
+transport still runs the V2 core. See **D-07**.
 
 The silent planner ([`extractRealtimePlannerTurn`](../worker/src/consumer/realtime_planner.js:482))
 was already transport-independent: it takes a plain string. A typed message is a
@@ -293,6 +302,44 @@ Two facts made it a safe, well-scoped follow-up:
 | **Resolution** | The agent transport must NOT extend it. Reuse its idempotency, rate-limit and turn-persistence shell only, and route extraction through the shared core. |
 | **Phase** | A2. |
 
+### D-07 — two live planning authorities; the agent transport is on the archived one
+
+| | |
+|---|---|
+| **Status** | Open. Registered ahead of the consumer typed lane, per §9 rule 6. |
+| **Class** | divergent |
+| **Evidence** | [`agent_text_channel.js:1-20`](../worker/src/consumer/agent_text_channel.js) states its instructions are *"the exact string the live voice meeting is given"*. It imports [`realtime_provider.js`](../worker/src/consumer/realtime_provider.js) — `buildRealtimeConversationV2Instructions` and `realtimeToolsForState` — and dispatches to `planning_turn.js`, producing `MeetingBriefV2`. The live lane imports [`live/catalogue_prompt.js`](../worker/src/consumer/live/catalogue_prompt.js) and [`live/live_tools.js`](../worker/src/consumer/live/live_tools.js), and produces `MeetingBriefV3` via the direct-module planner and its independent verifier. In `apply` mode the live lane's `get_state` returns `DirectModuleToolStateV1`, not `liveStateProjection`, and `save_facts` is not even in the toolset ([`live_provider.js:29-31`](../worker/src/consumer/live/live_provider.js)). |
+| **Impact** | The comment is false and the test that guards it (`check-consumer-agent-api.mjs`) asserts the structural sharing against the V2 source, so it passes while the claim is untrue. Both lanes write to `consumer_realtime_meeting_briefs` under different `schema_version` values. Anyone reading that header will reasonably conclude a consumer typed lane can be built on the agent transport for free; it cannot, because that would put typed users on a different planner, brief and readiness definition from spoken users. |
+| **Resolution** | The comment is corrected in place. The agent transport stays on the V2 core and remains an adviser test harness. The consumer typed lane (**D-08**) is built on the live lane instead. Retiring the V2 core is a separate decision, not taken here. |
+| **Phase** | T0 (this registration). |
+
+### D-08 — consumer typed lane: a second transport on the live lane
+
+| | |
+|---|---|
+| **Status** | Registered before build, per §9 rule 6. |
+| **Class** | transport (see §6), with the exceptions listed below |
+| **What it is** | A text-native consumer journey. Planéir does not speak; messages render on screen; the screen may present a compact module card built from planner state. It runs inside the same `ConsumerLiveSession` Durable Object as voice, over the Responses API, with **no** Realtime connection, microphone, audio element or lease timer semantics. |
+| **Shared, and asserted** | Direct-module planner, verifier and certificate; module contracts; `handleClientTurn` ingest and turn persistence; tool definitions and handlers (`get_state`, `confirm_and_run`); every rules section of the catalogue prompt; the whole confirmation barrier. |
+| **Deliberately different** | Turn boundary (a message arrives whole); no barge-in; no ASR; no audio metering; no compliance L2 numeric containment (nothing is spoken); **planner timing** — a typed turn awaits the planner before replying, where voice schedules it in the background; **delivery evidence** — see below. |
+| **`readbackFullyDelivered`** | Text does not port the playback machinery. `transcriptMatched` holds by construction because the server writes the certified `confirmationPrompt` verbatim as the assistant turn; `responseCompleted` is the persisted turn plus a 200; `playbackCompleted` is replaced by **reply-binding** — the approving turn's `answersTurnId` must equal the offer's `assistantTurnId`. That is strictly stronger: an audio ack proves sound was emitted, reply-binding proves the approval was made against the exact plan on screen. Everything else in the barrier is unchanged. |
+| **Prompt** | `buildLiveCataloguePrompt({ directModulePlanning, channel })`. Only delivery-shape sections vary. Every rules section is byte-identical across channels, asserted by `check-live-typed-lane.mjs`. There is no second prompt pack. |
+| **Structured input** | A card submission compiles to exactly ONE client turn (`inputMode: 'form'`) and enters the same ingest. There is no second fact write path, so chat answers and field answers cannot drift into two versions of the client's finances. |
+| **Parity obligation** | `check-live-transport-parity.mjs` asserts identical `modules[].status`, `missing[].path` sets, `selection.origin`, `assumptions[]`, `readyToConfirm`, `confirmationPromptHash` and executed module ids for mirrored fixtures. Wording parity is not claimed. |
+| **Phase** | T1–T4. |
+
+### D-09 — the direct-module planner has no acknowledged-unknown state
+
+| | |
+|---|---|
+| **Status** | Open. Affects live voice today. |
+| **Class** | divergent (against the V2 fact layer, which does model this) |
+| **Evidence** | `EXTRACTOR_PROMPT` ([`direct_module_planner.js:181`](../worker/src/consumer/direct_module_planner.js)): *"AN ANSWER THAT IS STILL UNSURE IS NOT AN ANSWER … keep the module collecting and record what is still missing, so the conversation asks once more."* There is no path by which a client's "I don't know" stops the question recurring. The V2 fact layer models exactly this — `estimate_requested` → `blocked_unknown`, `answerPolicy ∈ value \| value_or_none \| unknown_allowed` ([`question_plan.js:157-163`](../js/planning/question_plan.js)) — but that projection is not what `apply` mode returns. |
+| **Impact** | In live voice a client who cannot answer is asked again. In typed mode a "Not sure" control would have nowhere to land and would build the loop into the UI. |
+| **Resolution** | A server-owned `acknowledgedUnknown` set in the planner envelope; a `blocked[]` array on the module item; both bound into the certificate so an unknown cannot be retracted between certification and execution. The extractor either covers the path with an approved `direct_module_policy.js` default and discloses it in `assumptions[]`, or leaves the module collecting with the path blocked and stops generating a question for it. |
+| **Live voice change?** | **Yes.** Staged separately with its own canary, as D-01/D-02/D-03 were. |
+| **Phase** | T5. |
+
 ---
 
 ## 6. Transport-specific behaviour
@@ -312,6 +359,27 @@ Legitimately different. Tested per transport; excluded from parity assertions.
 | Turn serialisation | Durable Object single-threading + planner ordinal guard | optimistic `expectedRevision` concurrency |
 | Evidence binding | opaque provider item id | server-issued turn id |
 | Termination | provider hang-up, lease closure, outro speech | HTTP response |
+
+### 6.1 Consumer typed lane (D-08) vs live voice
+
+The table above compares live voice with the **adviser agent test** transport.
+The consumer typed lane is a different transport again, on the live lane.
+
+| Behaviour | Live voice | Consumer typed |
+|---|---|---|
+| Provider API | Realtime (WebRTC audio + server sideband socket) | Responses, one call per turn |
+| Microphone, audio element, orb | required | **absent** |
+| Turn boundary | semantic VAD | the message arrives whole |
+| Interruption / barge-in | real | none |
+| Planner timing | background; the reply goes first | **awaited before the reply**, so the card and the reply cannot be stale |
+| Read-back delivery evidence | audio playback ack + transcript equality | persisted assistant turn + reply-binding on `answersTurnId` |
+| Compliance L2 numeric containment | scans spoken figures against `sourcedFigures` | not applicable; nothing is spoken |
+| Session lifetime | hard and idle lease expiry, priced per audio minute | session TTL only |
+| Structured input | none | a card compiles to one client turn, `inputMode: 'form'` |
+| Delivery-shape prompt sections | one question per breath-group | may present a grouped card |
+
+Everything not in this table is shared and parity-asserted, including the whole
+confirmation barrier apart from the delivery-evidence row.
 
 **Wording parity is not achievable and is not claimed.** Parity is asserted on
 planning state, never on prose.

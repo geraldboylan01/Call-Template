@@ -4,14 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run generate:planning-playbooks && npm run generate:module-manifest && node ./scripts/build-pages.mjs",
+    "build": "npm run check:brand && npm run generate:planning-playbooks && npm run generate:module-manifest && node ./scripts/build-pages.mjs && node ./scripts/check-brand.mjs --dist",
     "generate:planning-playbooks": "node ./scripts/generate-planning-playbook-manifest.mjs",
     "check:planning-playbooks": "node ./scripts/generate-planning-playbook-manifest.mjs --check",
     "generate:module-manifest": "node ./scripts/generate-module-manifest.mjs",
     "check:module-manifest": "node ./scripts/generate-module-manifest.mjs --check",
     "check:module-catalogue-authoring": "node ./scripts/check-module-catalogue-authoring.mjs",
     "check:advisor-browser-auth": "node ./scripts/check-advisor-browser-auth.mjs",
-    "generate:brand-harp": "node ./scripts/generate-planeir-harp-assets.mjs --png",
+    "generate:brand": "node ./scripts/generate-planeir-brand-assets.mjs",
+    "check:brand": "node ./scripts/check-brand.mjs",
     "generate:advisor-auth": "node ./scripts/generate-advisor-auth.mjs",
     "generate:consumer-key": "node ./scripts/generate-consumer-data-key.mjs",
     "generate:consumer-invite": "node ./scripts/generate-consumer-invite.mjs",
@@ -104,7 +105,7 @@
     "check:video-summary": "node ./scripts/check-video-summary-module.mjs",
     "check:video-scene": "node ./scripts/check-video-scene.mjs",
     "check:codex-video-brief": "node ./scripts/check-codex-video-brief.mjs",
-    "check:success-animation": "node ./scripts/check-success-harp-resonance.mjs",
+    "check:success-animation": "node ./scripts/check-success-alignment.mjs",
     "check:consumer-bootstrap-contract": "node ./scripts/check-consumer-bootstrap-contract.mjs",
     "check:consumer-planner-repair": "node ./scripts/check-consumer-planner-repair.mjs",
     "check:consumer-value-evidence-coverage": "node ./scripts/check-consumer-value-evidence-coverage.mjs",
@@ -117,5 +118,8 @@
     "probe:langfuse": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/probe-langfuse-attributes.mjs",
     "check:consumer-spoken-evidence": "node ./scripts/check-consumer-spoken-evidence.mjs",
     "spike:semantic-claims": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-semantic-claims-spike.mjs"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "2.6.2"
   }
 }

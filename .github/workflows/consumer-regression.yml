@@ -42,6 +42,7 @@ jobs:
           npm run check:video-scene
           npm run check:codex-video-brief
           npm run check:success-animation
+          npm run check:brand
 
       - name: Replay adviser and consumer migrations in separate fresh databases
         run: |

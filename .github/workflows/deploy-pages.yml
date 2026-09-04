@@ -36,6 +36,9 @@ jobs:
         env:
           ASSET_VERSION: ${{ github.sha }}
 
+      - name: Check success takeover lifecycle
+        run: npm run check:success-animation
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

@@ -11,6 +11,8 @@ Planeir now ships as two connected experiences:
 
 ## Local Development
 
+Brand assets, local animation previews, verification commands, and the separate release/external-upload checklist are documented in [Newgrange brand rollout](docs/newgrange-brand-rollout.md).
+
 ### Privacy-first learning signals (M4)
 
 The PostgreSQL-only learning-signal service is isolated under
@@ -291,7 +293,7 @@ The public homepage is positioned as Irish financial education, not regulated fi
 - `sitemap.xml` containing only `https://planeir.ie/`
 - canonical, Open Graph, Twitter, and JSON-LD metadata on `/`
 - `noindex, nofollow` metadata on `/app/`, `/app/session.html`, `/app/clients.html`, `/app/access.html`, and `/session.html`
-- `assets/brand/planeir-social-card.png` for social previews
+- `assets/brand/planeir-social-card-newgrange.png` for new social previews; the former neutral URL remains a compatibility alias
 
 The public contact address is `hello@planeir.ie`. Configure inbound delivery through Cloudflare Email Routing and forward it to Gerry's real inbox. This is separate from the existing outbound Worker/Resend email setup; see [docs/email-architecture.md](/Users/geraldboylan/Documents/GitHub/Call-Template/docs/email-architecture.md).
 

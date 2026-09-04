@@ -1,476 +1,246 @@
-import { createSuccessHarpResonance } from './success_harp_resonance.js';
-import { createPlaneirWordmarkLettersMarkup } from './planeir_harp_artwork.js';
+import { alignmentFrame, arrival, emphasis, standard, mix, span, createAlignmentArtwork, SUCCESS_TIMING } from './success_alignment.js';
 
-const SUCCESS_CLASSES = ['is-measuring', 'is-active', 'is-entering', 'is-settling', 'is-showing-copy', 'is-exiting', 'is-reduced-motion'];
-const DEFAULT_WORDMARK_RATIO = 1330 / 384;
-const DEFAULT_FLIGHT_MS = 960;
-const DEFAULT_SETTLE_LEAD_MS = 120;
-const DEFAULT_REDUCED_HOLD_MS = 3000;
-const DEFAULT_EXIT_MS = 400;
-const DEFAULT_REDUCED_EXIT_MS = 220;
+const RATIO = 1330 / 384;
+const STYLE_PROPERTIES = ['opacity', 'transform', 'transform-origin', 'will-change'];
+const defaultClock = {
+  now: () => window.performance.now(),
+  request: callback => window.requestAnimationFrame(callback),
+  cancel: handle => window.cancelAnimationFrame(handle)
+};
 
-function waitForNextFrame() {
-  return new Promise((resolve) => {
-    window.requestAnimationFrame(() => resolve());
-  });
-}
-
-function delay(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-function waitForViewportStability(options = {}) {
-  const {
-    maxWaitMs = 520,
-    stableFrameCount = 4
-  } = options;
-  const viewport = window.visualViewport;
-  const readViewport = () => ({
-    width: viewport?.width ?? window.innerWidth,
-    height: viewport?.height ?? window.innerHeight,
-    offsetLeft: viewport?.offsetLeft ?? 0,
-    offsetTop: viewport?.offsetTop ?? 0
-  });
-
-  return new Promise((resolve) => {
-    const startedAt = window.performance.now();
-    let previous = readViewport();
-    let stableFrames = 0;
-
-    const check = (now) => {
-      const current = readViewport();
-      const isStable = Math.abs(current.width - previous.width) < 0.5
-        && Math.abs(current.height - previous.height) < 0.5
-        && Math.abs(current.offsetLeft - previous.offsetLeft) < 0.5
-        && Math.abs(current.offsetTop - previous.offsetTop) < 0.5;
-
-      stableFrames = isStable ? stableFrames + 1 : 0;
-      previous = current;
-
-      if (stableFrames >= stableFrameCount || now - startedAt >= maxWaitMs) {
-        resolve();
-        return;
-      }
-
-      window.requestAnimationFrame(check);
-    };
-
-    window.requestAnimationFrame(check);
-  });
-}
-
-function toPlainRect(rect) {
-  return {
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height
-  };
-}
-
-function getFallbackOriginRect(wordmarkRatio) {
-  const width = Math.min(164, window.innerWidth * 0.42);
-  const height = width / wordmarkRatio;
-
-  return {
-    left: 24,
-    top: 20,
-    width,
-    height
-  };
-}
-
-function getFallbackTargetRect(wordmarkRatio) {
-  const width = Math.min(window.innerWidth * 0.82, 780);
-  const height = width / wordmarkRatio;
-
-  return {
-    left: (window.innerWidth - width) / 2,
-    top: Math.max(42, (window.innerHeight - height) / 2 - 48),
-    width,
-    height
-  };
-}
-
-function getValidRect(element, fallbackRect) {
-  if (!element) {
-    return fallbackRect;
-  }
-
+function visibleRect(element) {
+  if (!element?.isConnected) return null;
   const rect = element.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) {
-    return fallbackRect;
-  }
-
-  return toPlainRect(rect);
+  if (!(rect.width > 0 && rect.height > 0)) return null;
+  const width = Math.min(rect.width, rect.height * RATIO);
+  const height = width / RATIO;
+  return { left: rect.left + (rect.width - width) / 2, top: rect.top + (rect.height - height) / 2, width, height };
 }
 
-function getContainedArtworkRect(rect, artworkRatio) {
-  if (!rect || rect.width <= 0 || rect.height <= 0 || artworkRatio <= 0) {
-    return rect;
-  }
-
-  const boxRatio = rect.width / rect.height;
-  if (boxRatio > artworkRatio) {
-    const width = rect.height * artworkRatio;
-    return {
-      left: rect.left + ((rect.width - width) / 2),
-      top: rect.top,
-      width,
-      height: rect.height
-    };
-  }
-
-  const height = rect.width / artworkRatio;
-  return {
-    left: rect.left,
-    top: rect.top + ((rect.height - height) / 2),
-    width: rect.width,
-    height
-  };
+function inverse(origin, stage) {
+  return { x: origin.left - stage.left, y: origin.top - stage.top, scale: origin.width / stage.width };
 }
+const transform = pose => `translate3d(${pose.x}px, ${pose.y}px, 0) scale(${pose.scale})`;
 
-function buildInverseTransform(originRect, targetBoxRect, targetArtworkRect) {
-  const scale = originRect.width / targetArtworkRect.width;
-  const artworkOffsetX = targetArtworkRect.left - targetBoxRect.left;
-  const artworkOffsetY = targetArtworkRect.top - targetBoxRect.top;
-  const translateX = originRect.left - targetBoxRect.left - (artworkOffsetX * scale);
-  const translateY = originRect.top - targetBoxRect.top - (artworkOffsetY * scale);
-
-  return `translate3d(${translateX}px, ${translateY}px, 0) scale(${scale})`;
-}
-
-function waitForTransition(element, propertyName, fallbackMs) {
-  if (!element) {
-    return delay(fallbackMs);
-  }
-
-  return new Promise((resolve) => {
-    let completed = false;
-    const finish = () => {
-      if (completed) {
-        return;
-      }
-      completed = true;
-      element.removeEventListener('transitionend', handleTransitionEnd);
-      element.removeEventListener('transitioncancel', handleTransitionCancel);
-      window.clearTimeout(timeoutId);
-      resolve();
-    };
-    const handleTransitionEnd = (event) => {
-      if (event.target === element && event.propertyName === propertyName && !event.pseudoElement) {
-        finish();
-      }
-    };
-    const handleTransitionCancel = (event) => {
-      if (event.target === element && event.propertyName === propertyName && !event.pseudoElement) {
-        finish();
-      }
-    };
-    const timeoutId = window.setTimeout(finish, fallbackMs);
-
-    element.addEventListener('transitionend', handleTransitionEnd);
-    element.addEventListener('transitioncancel', handleTransitionCancel);
-  });
-}
-
+/** One cancellable clock owns flight, light, message, countdown, and return. */
 export function createSuccessTakeover(options = {}) {
   const {
-    overlay,
-    origin,
-    target,
-    title,
-    body,
+    overlay, origin, target, title, body, lockTargets = [],
     motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)'),
-    holdMs = 10000,
-    flightMs = DEFAULT_FLIGHT_MS,
-    settleLeadMs = DEFAULT_SETTLE_LEAD_MS,
-    reducedHoldMs = DEFAULT_REDUCED_HOLD_MS,
-    exitMs = DEFAULT_EXIT_MS,
-    reducedExitMs = DEFAULT_REDUCED_EXIT_MS,
-    wordmarkRatio = DEFAULT_WORDMARK_RATIO,
-    activeBodyClass = 'is-lead-success-active',
-    lockTargets = []
+    holdMs = 3800, reducedHoldMs = 3800,
+    activeBodyClass = 'is-lead-success-active', clock = defaultClock
   } = options;
+  if (!overlay || !target) return { play: async () => false, reset() {} };
+  const shell = target.querySelector('.lead-success-wordmark-shell') || target;
+  const artwork = createAlignmentArtwork(shell);
+  const copy = overlay.querySelector('.lead-success-copy');
+  const timer = overlay.querySelector('.lead-success-timer');
+  const timerBar = overlay.querySelector('.lead-success-timer-bar');
+  const dismissButton = document.createElement('button');
+  dismissButton.type = 'button';
+  dismissButton.className = 'lead-success-dismiss';
+  dismissButton.textContent = 'Close';
+  dismissButton.setAttribute('aria-label', 'Dismiss success message');
+  overlay.appendChild(dismissButton);
+  let run = null;
 
-  let runId = 0;
-  let activeFlight = null;
-  let imageReadyPromise = null;
-  let originInlineVisibility = null;
-  const inlineWordmark = target?.querySelector?.('.lead-success-stage-wordmark') || null;
-  if (inlineWordmark) {
-    inlineWordmark.innerHTML = createPlaneirWordmarkLettersMarkup({
-      className: 'lead-success-stage-wordmark-svg'
-    });
-  }
-  const harpResonance = createSuccessHarpResonance({
-    root: target?.querySelector?.('.lead-success-harp-resonance') || null,
-    motionQuery
-  });
-
-  function setInteractionLock(isLocked) {
-    document.body.classList.toggle(activeBodyClass, isLocked);
-
-    lockTargets.forEach((node) => {
-      if (!node) {
-        return;
-      }
-
-      if ('inert' in node) {
-        node.inert = isLocked;
-      }
-    });
-  }
-
-  function ensureImagesReady() {
-    if (imageReadyPromise) {
-      return imageReadyPromise;
-    }
-
-    const images = new Set([
-      origin instanceof HTMLImageElement ? origin : origin?.querySelector?.('img'),
-      ...Array.from(target?.querySelectorAll?.('img') || [])
-    ].filter(Boolean));
-
-    imageReadyPromise = Promise.allSettled(Array.from(images).map((image) => {
-      if (typeof image.decode === 'function') {
-        return image.decode();
-      }
-      return Promise.resolve();
-    }));
-
-    return imageReadyPromise;
-  }
-
-  function hideOrigin() {
-    if (!origin?.style || originInlineVisibility !== null) {
-      return;
-    }
-
-    originInlineVisibility = origin.style.visibility;
-    origin.style.visibility = 'hidden';
-  }
-
-  function restoreOrigin() {
-    if (!origin?.style || originInlineVisibility === null) {
-      return;
-    }
-
-    if (originInlineVisibility) {
-      origin.style.visibility = originInlineVisibility;
-    } else {
-      origin.style.removeProperty('visibility');
-    }
-    originInlineVisibility = null;
-  }
-
-  function clear() {
-    if (!overlay) {
-      return;
-    }
-
-    if (activeFlight) {
-      activeFlight.cancel();
-      activeFlight = null;
-    }
-    harpResonance.reset();
-
-    overlay.classList.remove(...SUCCESS_CLASSES);
+  function finish(completed = false, restoreFocus = true) {
+    const current = run;
+    if (!current) return;
+    run = null;
+    clock.cancel(current.raf);
+    current.cleanups.forEach(cleanup => cleanup());
+    current.inert.forEach(([node, value]) => { node.inert = value; });
+    document.body.classList.toggle(activeBodyClass, current.bodyWasActive);
+    if (origin?.style) origin.style.visibility = current.originVisibility;
+    overlay.classList.remove('is-active', 'is-measuring', 'is-exiting', 'is-reduced-motion');
     overlay.setAttribute('aria-hidden', 'true');
-    overlay.style.removeProperty('--lead-success-hold-ms');
-    overlay.style.removeProperty('--lead-success-exit-ms');
-    overlay.style.removeProperty('--lead-success-reduced-exit-ms');
-
-    if (target) {
-      target.style.removeProperty('opacity');
-      target.style.removeProperty('transform');
-      target.style.removeProperty('transform-origin');
-      target.style.removeProperty('transition');
-      target.style.removeProperty('will-change');
+    overlay.style.removeProperty('--lead-success-backdrop-opacity');
+    for (const element of [target, copy, timer, timerBar]) {
+      STYLE_PROPERTIES.forEach(property => element?.style.removeProperty(property));
     }
-
-    restoreOrigin();
-    setInteractionLock(false);
+    current.savedStyles.forEach(([node, cssText]) => { node.style.cssText = cssText; });
+    copy?.setAttribute('aria-hidden', 'true');
+    artwork.reset();
+    const focus = current.restoreFocusTo;
+    if (restoreFocus && focus?.isConnected && !focus.disabled && focus.getClientRects().length && !focus.closest('[inert], [hidden], [aria-hidden="true"]')) {
+      focus.focus({ preventScroll: true });
+    }
+    current.resolve(completed && !current.reduced);
   }
 
-  function reset() {
-    runId += 1;
-    clear();
-  }
-
-  window.addEventListener('pagehide', reset);
-  window.addEventListener('popstate', reset);
-
-  async function runFlight(fromTransform, duration) {
-    target.style.opacity = '1';
-    target.style.transformOrigin = 'top left';
-    target.style.transform = fromTransform;
-    target.style.willChange = 'transform';
-
-    if (typeof target.animate !== 'function') {
-      target.getBoundingClientRect();
-      target.style.transition = `transform ${duration}ms cubic-bezier(0.16, 1, 0.3, 1)`;
-      await waitForNextFrame();
-      target.style.transform = 'none';
-      await waitForTransition(target, 'transform', duration + 80);
-      target.style.removeProperty('transition');
-      target.style.removeProperty('will-change');
-      return;
-    }
-
-    activeFlight = target.animate([
-      {
-        transform: fromTransform
-      },
-      {
-        transform: 'translate3d(0, 0, 0) scale(1)'
-      }
-    ], {
-      duration,
-      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-      fill: 'both'
-    });
-
-    try {
-      await activeFlight.finished;
-    } catch (_error) {
-      return;
-    }
-
+  function returnDestination() {
+    const destination = visibleRect(origin);
+    if (!destination) return null;
+    // The shell inherits the flight transform: measure its neutral box briefly.
+    const saved = target.style.transform;
     target.style.transform = 'none';
-    activeFlight.cancel();
-    activeFlight = null;
-    target.style.removeProperty('will-change');
+    const stage = visibleRect(shell);
+    target.style.transform = saved;
+    return stage ? inverse(destination, stage) : null;
   }
 
-  async function play(playOptions = {}) {
-    if (!overlay || !target) {
-      return;
-    }
-
-    const currentRunId = ++runId;
-    const {
-      titleText = '',
-      bodyText = '',
-      restoreFocusIfContainedIn = null,
-      restoreFocusTo = null
-    } = playOptions;
-
-    const restoreContainer = restoreFocusIfContainedIn && typeof restoreFocusIfContainedIn.contains === 'function'
-      ? restoreFocusIfContainedIn
-      : null;
-    const activeElement = document.activeElement;
-    const shouldRestoreFocus = Boolean(restoreContainer?.contains(activeElement));
-    const prefersReducedMotion = motionQuery.matches;
-    const effectiveHoldMs = prefersReducedMotion ? Math.min(holdMs, reducedHoldMs) : holdMs;
-
-    clear();
-    await ensureImagesReady();
-    if (currentRunId !== runId) {
-      return;
-    }
-
-    if (activeElement instanceof HTMLElement && !overlay.contains(activeElement) && typeof activeElement.blur === 'function') {
-      activeElement.blur();
-    }
-
-    setInteractionLock(true);
-    overlay.classList.toggle('is-reduced-motion', prefersReducedMotion);
-    overlay.classList.add('is-measuring');
-    overlay.setAttribute('aria-hidden', 'false');
-    overlay.style.setProperty('--lead-success-hold-ms', `${effectiveHoldMs}ms`);
-    overlay.style.setProperty('--lead-success-exit-ms', `${exitMs}ms`);
-    overlay.style.setProperty('--lead-success-reduced-exit-ms', `${reducedExitMs}ms`);
-
-    if (title && typeof titleText === 'string' && titleText) {
-      title.textContent = titleText;
-    }
-    if (body && typeof bodyText === 'string' && bodyText) {
-      body.textContent = bodyText;
-    }
-
-    await waitForViewportStability();
-    if (currentRunId !== runId) {
-      return;
-    }
-
-    const fallbackOriginRect = getFallbackOriginRect(wordmarkRatio);
-    const fallbackTargetRect = getFallbackTargetRect(wordmarkRatio);
-    const originRect = getContainedArtworkRect(getValidRect(origin, fallbackOriginRect), wordmarkRatio);
-    const targetBoxRect = getValidRect(target, fallbackTargetRect);
-    const targetArtwork = target.querySelector('.lead-success-wordmark-shell') || target;
-    const targetArtworkRect = getContainedArtworkRect(getValidRect(targetArtwork, fallbackTargetRect), wordmarkRatio);
-    const fromTransform = buildInverseTransform(originRect, targetBoxRect, targetArtworkRect);
-
-    if (prefersReducedMotion) {
-      target.style.opacity = '1';
-      target.style.transform = 'none';
-    } else {
-      target.style.opacity = '1';
-      target.style.transformOrigin = 'top left';
-      target.style.transform = fromTransform;
-    }
-
-    overlay.classList.remove('is-measuring');
-    overlay.classList.add('is-active');
-    hideOrigin();
-
-    await waitForNextFrame();
-    if (currentRunId !== runId) {
-      return;
-    }
-
-    if (!prefersReducedMotion) {
-      overlay.classList.add('is-entering');
-      await runFlight(fromTransform, flightMs);
-      if (currentRunId !== runId) {
-        return;
-      }
-
-      await waitForNextFrame();
-      await waitForNextFrame();
-      if (currentRunId !== runId) {
-        return;
-      }
-    }
-
-    overlay.classList.add('is-settling');
-    const playedHarpResonance = await harpResonance.play();
-    if (currentRunId !== runId) {
-      return null;
-    }
-    harpResonance.reset();
-
-    await delay(prefersReducedMotion ? 80 : settleLeadMs);
-    if (currentRunId !== runId) {
-      return;
-    }
-
-    overlay.classList.add('is-showing-copy');
-    await delay(effectiveHoldMs);
-    if (currentRunId !== runId) {
-      return;
-    }
-
+  function dismiss(rebase = false) {
+    const current = run;
+    if (!current || (current.exit && !rebase)) return;
+    if (!current.started) { finish(false); return; }
+    current.exit = {
+      at: current.time, pose: { ...current.pose }, frame: { ...current.frame },
+      copyOpacity: current.copyOpacity, backdrop: current.backdrop,
+      opacity: current.opacity, neutral: current.neutral || 0,
+      destination: current.reduced ? null : returnDestination()
+    };
     overlay.classList.add('is-exiting');
-    await waitForTransition(overlay, 'opacity', (prefersReducedMotion ? reducedExitMs : exitMs) + 80);
-    if (currentRunId !== runId) {
-      return;
-    }
-
-    clear();
-
-    if (shouldRestoreFocus && restoreFocusTo && typeof restoreFocusTo.focus === 'function') {
-      restoreFocusTo.focus({ preventScroll: true });
-    }
-
-    return playedHarpResonance;
   }
 
-  return {
-    play,
-    reset
-  };
+  function render(current) {
+    const t = current.time;
+    const copyAt = current.reduced ? 0 : SUCCESS_TIMING.copyAt;
+    const hold = current.reduced ? Math.min(holdMs, reducedHoldMs) : holdMs;
+    const copyProgress = span(t, copyAt, copyAt + (current.reduced ? 200 : 420));
+    current.copyOpacity = copyProgress;
+    current.backdrop = span(t, 0, current.reduced ? 200 : 420);
+    current.opacity = current.reduced ? copyProgress : 1;
+    if (current.reduced) {
+      current.frame = { ...alignmentFrame(2270), beam: 0, focus: 1, discBloom: 0, outerBloom: 0 };
+      current.pose = { x: 0, y: 0, scale: 1 };
+    } else if (!current.exit) {
+      const p = arrival(span(t, 80, 830));
+      current.pose = { x: current.from.x * (1 - p), y: current.from.y * (1 - p) - 70 * Math.sin(Math.PI * p), scale: mix(current.from.scale, 1, p) };
+      current.frame = alignmentFrame(t);
+    }
+    if (t >= copyAt && !current.announced) {
+      current.announced = true;
+      copy?.removeAttribute('aria-hidden');
+      if (title) title.textContent = current.titleText;
+      if (body) body.textContent = current.bodyText;
+    }
+    if (t >= copyAt + hold && !current.exit) {
+      dismiss();
+      current.exit.at = copyAt + hold;
+    }
+    let neutral = 0;
+    if (current.exit) {
+      const exit = current.exit;
+      const e = Math.max(0, t - exit.at);
+      const fly = !current.reduced && exit.destination;
+      const p = standard(span(e, 0, 560));
+      current.pose = fly ? {
+        x: mix(exit.pose.x, exit.destination.x, p),
+        y: mix(exit.pose.y, exit.destination.y, p) - 38.5 * Math.sin(Math.PI * p),
+        scale: mix(exit.pose.scale, exit.destination.scale, p)
+      } : exit.pose;
+      current.frame = exit.frame;
+      neutral = fly ? mix(exit.neutral, 1, span(e, 0, 560)) : exit.neutral;
+      current.copyOpacity = exit.copyOpacity * (1 - span(e, 0, current.reduced ? 200 : 320));
+      current.backdrop = exit.backdrop * (1 - span(e, fly ? 440 : 0, fly ? 840 : current.reduced ? 200 : 400));
+      current.opacity = fly ? exit.opacity : exit.opacity * (1 - span(e, 0, current.reduced ? 200 : 400));
+      if (e >= (fly ? 840 : current.reduced ? 200 : 400)) { finish(true); return; }
+    }
+    target.style.transform = transform(current.pose);
+    current.neutral = neutral;
+    target.style.opacity = String(current.opacity);
+    artwork.render(current.frame, neutral);
+    overlay.style.setProperty('--lead-success-backdrop-opacity', String(current.backdrop));
+    if (copy) {
+      copy.style.opacity = String(current.copyOpacity);
+      copy.style.transform = current.reduced ? 'none' : `translateY(${16 * (1 - emphasis(copyProgress))}px)`;
+    }
+    if (timer) timer.style.opacity = String(current.copyOpacity);
+    if (timerBar) timerBar.style.transform = `scaleX(${span(t, copyAt, copyAt + hold)})`;
+  }
+
+  function play(playOptions = {}) {
+    const replayFocus = overlay.contains(document.activeElement) ? run?.restoreFocusTo : null;
+    finish(false, false);
+    return new Promise(resolve => {
+      const active = document.activeElement;
+      const shouldRestore = playOptions.restoreFocus ?? Boolean(replayFocus || !playOptions.restoreFocusIfContainedIn || playOptions.restoreFocusIfContainedIn.contains(active));
+      const current = {
+        resolve, raf: null, cleanups: [], time: 0, started: false, announced: false,
+        last: clock.now(), preparationStart: clock.now(), stableFrames: 0, viewport: null,
+        imagesReady: false, hidden: document.hidden, reduced: motionQuery.matches,
+        restoreFocusTo: shouldRestore ? (playOptions.restoreFocusTo || replayFocus || active) : null,
+        titleText: playOptions.titleText || title?.textContent || 'Congratulations',
+        bodyText: playOptions.bodyText || body?.textContent || '',
+        originVisibility: origin?.style.visibility || '',
+        bodyWasActive: document.body.classList.contains(activeBodyClass),
+        inert: lockTargets.filter(Boolean).map(node => [node, node.inert]),
+        savedStyles: [target, copy, timer, timerBar].filter(Boolean).map(node => [node, node.style.cssText])
+      };
+      run = current;
+      const listen = (node, event, handler, capture = false) => {
+        node?.addEventListener?.(event, handler, capture);
+        current.cleanups.push(() => node?.removeEventListener?.(event, handler, capture));
+      };
+      listen(overlay, 'click', event => { event.stopPropagation(); dismiss(); });
+      listen(window, 'keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); dismiss(); }
+        if (event.key === 'Tab') { event.preventDefault(); dismissButton.focus({ preventScroll: true }); }
+      }, true);
+      listen(window, 'pagehide', () => finish(false));
+      listen(window, 'popstate', () => finish(false));
+      listen(document, 'visibilitychange', () => {
+        current.hidden = document.hidden;
+        current.last = clock.now();
+        clock.cancel(current.raf);
+        if (!current.hidden) current.raf = clock.request(tick);
+      });
+      listen(window, 'resize', () => {
+        if (current.exit) dismiss(true);
+      });
+      listen(motionQuery, 'change', event => {
+        if (event.matches) {
+          current.reduced = true;
+          current.time = 0;
+          current.exit = null;
+          overlay.classList.add('is-reduced-motion');
+        }
+      });
+      const image = origin?.tagName === 'IMG' ? origin : origin?.querySelector('img');
+      Promise.resolve().then(() => image?.decode?.()).catch(() => {}).then(() => { current.imagesReady = true; });
+      active?.blur?.();
+      document.body.classList.add(activeBodyClass);
+      current.inert.forEach(([node]) => { node.inert = true; });
+      copy?.setAttribute('aria-hidden', 'true');
+      // Reserve the final message's layout before measuring the flight target.
+      if (title) title.textContent = current.titleText;
+      if (body) body.textContent = current.bodyText;
+      overlay.classList.add('is-measuring');
+      target.style.transform = 'none';
+      target.style.transformOrigin = 'top left';
+      target.style.willChange = 'transform';
+
+      function tick(now) {
+        if (run !== current || current.hidden) return;
+        if (!current.started) {
+          const vv = window.visualViewport;
+          const viewport = [vv?.width ?? window.innerWidth, vv?.height ?? window.innerHeight, vv?.offsetTop ?? 0, vv?.offsetLeft ?? 0].join(',');
+          current.stableFrames = viewport === current.viewport ? current.stableFrames + 1 : 0;
+          current.viewport = viewport;
+          if ((current.imagesReady && current.stableFrames >= 4) || now - current.preparationStart >= 520) {
+            const stage = visibleRect(shell);
+            const originBox = visibleRect(origin);
+            if (!stage) { finish(false); return; }
+            current.from = originBox ? inverse(originBox, stage) : { x: 0, y: 0, scale: 1 };
+            current.started = true;
+            current.last = now;
+            if (origin?.style) origin.style.visibility = 'hidden';
+            overlay.classList.remove('is-measuring');
+            overlay.classList.add('is-active');
+            overlay.classList.toggle('is-reduced-motion', current.reduced);
+            overlay.setAttribute('aria-hidden', 'false');
+            dismissButton.focus({ preventScroll: true });
+          }
+        } else {
+          current.time += Math.max(0, now - current.last);
+          current.last = now;
+        }
+        if (current.started) render(current);
+        if (run === current) current.raf = clock.request(tick);
+      }
+      if (!current.hidden) current.raf = clock.request(tick);
+    });
+  }
+  return { play, reset: () => finish(false) };
 }
