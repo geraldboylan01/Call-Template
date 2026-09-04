@@ -42,6 +42,7 @@ import {
 } from './repository.js';
 import {
   activateRealtimeLease,
+  activateTypedLease,
   closeRealtimeLease,
   completeRealtimeAnalysisPlan,
   confirmRealtimeAnalysisPlan,
@@ -287,6 +288,28 @@ function routeMatch(pathname) {
       methods: ['GET']
     };
   }
+  const typedMessagesMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/text\/meetings\/(rt_[A-Za-z0-9_-]{20,80})\/messages$/.exec(pathname);
+  if (typedMessagesMatch) {
+    return {
+      kind: 'typed_messages',
+      sessionId: typedMessagesMatch[1],
+      leaseId: typedMessagesMatch[2],
+      methods: ['POST']
+    };
+  }
+  const typedMeetingMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/text\/meetings\/(rt_[A-Za-z0-9_-]{20,80})$/.exec(pathname);
+  if (typedMeetingMatch) {
+    return {
+      kind: 'typed_meeting',
+      sessionId: typedMeetingMatch[1],
+      leaseId: typedMeetingMatch[2],
+      methods: ['GET', 'DELETE']
+    };
+  }
+  const typedMeetingsMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/text\/meetings$/.exec(pathname);
+  if (typedMeetingsMatch) {
+    return { kind: 'typed_meetings', sessionId: typedMeetingsMatch[1], methods: ['POST'] };
+  }
   const realtimeMeetingsMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/meetings$/.exec(pathname);
   if (realtimeMeetingsMatch) {
     return { kind: 'realtime_meetings', sessionId: realtimeMeetingsMatch[1], methods: ['GET'] };
@@ -369,6 +392,22 @@ async function assertAudienceAccess(request, env, config) {
 function assertRealtimeAvailability(config) {
   if (!config.realtimeEnabled || !isAdvisorRealtimePreviewConfig(config)) {
     throw new ConsumerError(503, 'consumer_realtime_unavailable', 'Live voice is not available right now. You can continue by typing.');
+  }
+}
+
+/**
+ * The typed lane's gate.
+ *
+ * Same cohort as voice, deliberately (§16 decision 3): typed mode is a second
+ * transport on an invite-only canary, not a new access surface. It does NOT
+ * require the realtime preview config, because it opens no Realtime call and
+ * has no audio policy to pin -- but it does require the direct-module planner,
+ * because a typed meeting with no planner has no card to draw and no certified
+ * plan to confirm.
+ */
+function assertTypedLaneAvailability(config) {
+  if (!config.typedLaneEnabled || !hasApprovedAdvisorPlanningAccess(config)) {
+    throw new ConsumerError(503, 'consumer_typed_unavailable', 'Typed planning is not available right now.');
   }
 }
 
@@ -799,6 +838,96 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         speechHeaders['Content-Length'] = String(result.contentLength);
       }
       return respondBinary(result.audio, 200, methods, speechHeaders);
+    }
+
+    if (route.kind === 'typed_meetings') {
+      assertTypedLaneAvailability(config);
+      const realtimeConsent = await getRealtimeConsent(env, sessionRow.id);
+      if (!realtimeConsentIsCurrent(realtimeConsent, config)) {
+        throw new ConsumerError(403, 'realtime_consent_required', 'Review and accept the current disclosure before starting.');
+      }
+      await rateLimit(env, 'consumer-typed-meeting-session', sessionRow.id, 60 * 60 * 1000, 6);
+      const requestId = realtimeRequestId(request);
+      const { activationId, controlCapability } = realtimeActivationCredentials(request, {
+        allowServerFallback: true
+      });
+      const [activationIdHash, controlCapabilityHash] = await Promise.all([
+        sha256Base64Url(activationId),
+        sha256Base64Url(controlCapability)
+      ]);
+      const providerBudget = await getConsumerProviderBudget(env, sessionRow.id);
+      const reservationAmount = Number(providerBudget.remainingEurMicros || 0);
+      if (reservationAmount <= config.realtimeSafetyReserveMicroEur) {
+        throw new ConsumerError(402, 'typed_budget_exceeded', 'This planning session has reached its limit.');
+      }
+      const reservation = await reserveConsumerProviderCost(env, {
+        sessionId: sessionRow.id,
+        operation: 'typed_planning_session',
+        idempotencyKey: requestId,
+        provider: 'openai',
+        model: config.defaultModel,
+        pricingVersion: config.realtimePricingVersion,
+        reservedCostEurMicros: reservationAmount,
+        dailyCostLimitEurMicros: config.realtimeDailyBudgetMicroEur
+      });
+      if (reservation.existing) {
+        throw new ConsumerError(409, 'typed_request_already_used', 'That request id was already used.');
+      }
+      if (reservation.denied || !reservation.entry) {
+        throw new ConsumerError(402, 'typed_budget_exceeded', 'This planning session has reached its limit.');
+      }
+      // No provider call to place and no SDP to broker: a typed meeting is
+      // activated the moment its budget is reserved. The rollback surface is
+      // correspondingly smaller -- there is no remote call to hang up.
+      const lease = await createRealtimeLease(
+        env, sessionRow, config, reservation.entry, controlCapabilityHash, activationIdHash,
+        { channel: 'typed' }
+      );
+      await markRealtimeProviderCostInFlight(env, reservation.entry.id, sessionRow.id, config);
+      await activateTypedLease(env, sessionRow.id, lease.id);
+      const activated = await durableObjectRequest(env, lease.id, '/activate', {
+        sessionId: sessionRow.id,
+        leaseId: lease.id,
+        costEntryId: reservation.entry.id,
+        channel: 'typed'
+      });
+      return respond({
+        ok: true,
+        leaseId: lease.id,
+        hardExpiresAt: lease.hard_expires_at,
+        activationId,
+        controlCapability,
+        assistantText: typeof activated?.assistantText === 'string' ? activated.assistantText : ''
+      }, 201, methods);
+    }
+
+    if (route.kind === 'typed_messages') {
+      assertTypedLaneAvailability(config);
+      await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId);
+      await rateLimit(env, 'consumer-typed-message', sessionRow.id, 60 * 1000, 20);
+      const body = await readJson(request);
+      if (typeof body.text !== 'string'
+        || !['text', 'form', undefined].includes(body.inputMode)
+        || Object.keys(body).some((key) => !['text', 'inputMode'].includes(key))) {
+        throw new ConsumerError(400, 'typed_message_invalid', 'That message could not be sent.');
+      }
+      const result = await durableObjectRequest(env, route.leaseId, '/message', {
+        text: body.text,
+        inputMode: body.inputMode === 'form' ? 'form' : 'text'
+      });
+      return respond(result, 200, methods);
+    }
+
+    if (route.kind === 'typed_meeting') {
+      const lease = await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId);
+      if (request.method === 'DELETE') {
+        await durableObjectRequest(env, route.leaseId, '/close', {
+          status: 'complete', reason: 'consumer_closed', usageKnown: false
+        }).catch(() => null);
+        return respond({ ok: true }, 200, methods);
+      }
+      const state = await durableObjectRequest(env, route.leaseId, '/state', undefined, 'GET');
+      return respond({ ok: true, status: lease.status, ...state }, 200, methods);
     }
 
     if (route.kind === 'realtime_delivery') {

@@ -457,7 +457,7 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v12',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v13',
   CONSUMER_REALTIME_TOOLSET_VERSION: 'planeir-live-tools-v1',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',

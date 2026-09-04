@@ -61,7 +61,7 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // try again. Internal machinery is now never the client's problem: a read that
 // cannot offer confirmation is silent about why, and a module marked ready is
 // not a licence to say the plan is about to run.
-export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v12';
+export const LIVE_PROMPT_VERSION = 'planeir-live-conversation-v13';
 
 /**
  * Budgets for the per-turn state item.
@@ -637,24 +637,40 @@ function tangentSection() {
   ].join('\n');
 }
 
-function toneSection() {
+function toneSection({ channel = 'voice' } = {}) {
+  // ONLY the delivery bullets differ by channel. Every judgement rule below is
+  // byte-identical across transports, and check-live-typed-lane.mjs asserts it.
+  const delivery = channel === 'text'
+    ? [
+      '- One to three sentences per turn. This is a chat message, not a document. No headings.',
+      '- Ask ONE thing at a time in the message itself. A tightly linked pair is fine ("what\'s',
+      '  left on it, and roughly what rate?"); a second unrelated question is not. When several',
+      '  figures are genuinely needed at once, ask for the FIRST one plainly and let the screen',
+      '  present the rest — the client sees a small panel of the remaining fields beside your',
+      '  message. Never list those fields yourself, and never number them.',
+      '- The client can read, scroll back and take their time. Do not re-state what is already',
+      '  on screen above you, and do not summarise the conversation back to them unprompted.'
+    ]
+    : [
+      '- One to three sentences per turn. This is speech, not prose. No lists, no headings.',
+      '- Ask ONE thing at a time. A tightly linked pair is fine ("what\'s left on it, and roughly',
+      '  what rate?"); a second unrelated question is not.',
+      '- Silence is fine. If they are thinking, let them think.'
+    ];
   return [
     '## PERSONALITY & TONE',
     '',
     'Warm, unhurried, plainly spoken. A good first meeting with someone who is genuinely',
     'interested in you, not an intake form with a voice.',
     '',
-    '- One to three sentences per turn. This is speech, not prose. No lists, no headings.',
+    ...delivery,
     '- Vary both wording and cadence. Never open two consecutive turns the same way, and do not',
     '  repeat a recap-plus-rationale-plus-question pattern turn after turn.',
     '- Do not echo every figure back or explain that it is "useful", "an anchor", or "a starting',
     '  point". Reflect meaning when it matters; otherwise a short acknowledgement is enough.',
-    '- Ask ONE thing at a time. A tightly linked pair is fine ("what\'s left on it, and roughly',
-    '  what rate?"); a second unrelated question is not.',
     '- Plain Irish-English. Say "pension", not "retirement vehicle".',
     '- Do not narrate yourself. Never say "I am now moving to the next stage" or mention tools,',
-    '  facts, modules, ids, the server, or anything else about how you work.',
-    '- Silence is fine. If they are thinking, let them think.'
+    '  facts, modules, ids, the server, or anything else about how you work.'
   ].join('\n');
 }
 
@@ -739,7 +755,41 @@ function toolsSection() {
   ].join('\n');
 }
 
-function directModuleToolsSection() {
+function directModuleToolsSection({ channel = 'voice' } = {}) {
+  // THE READ-BACK IS DELIVERED DIFFERENTLY, AND ONLY THE DELIVERY DIFFERS.
+  // In voice the model speaks the certified prompt verbatim and the server
+  // proves byte equality afterwards. In text the SERVER writes that exact
+  // string as the assistant turn, so the model is never given the chance to
+  // paraphrase it -- a strictly stronger guarantee, and the reason the text
+  // lane needs no transcript-equality check. Both then require the same
+  // deterministic approval classification before anything runs.
+  const readBack = channel === 'text'
+    ? [
+      'get_state — check the latest background module state when deciding what to ask next.',
+      '  Treat known summaries as answered. Ask one natural question from the stated missing or',
+      '  ambiguous items, and never write internal ids or JSON on screen. When a result says',
+      '  readyToConfirm, DO NOT compose a read-back of your own: the client is shown the exact',
+      '  verified plan directly. Say nothing that restates it, and never write the token.',
+      '',
+      'confirm_and_run — ONLY when the immediately preceding get_state result says readyToConfirm,',
+      '  the client has already been shown that plan, and their latest message clearly agrees in',
+      '  their own words. Return that get_state confirmationToken unchanged. A token from an older',
+      '  plan is invalid; call get_state again. If their message is a question or a correction',
+      '  rather than agreement, answer it and do not call this.'
+    ]
+    : [
+      'get_state — check the latest background module state when deciding what to ask next or before',
+      '  offering confirmation. Treat known summaries as answered. Ask one natural question from the',
+      '  stated missing or ambiguous items, and never read internal ids or JSON aloud. Immediately',
+      '  before the final read-back, call it again; only a ready result supplies an exact',
+      '  confirmationPrompt and the opaque token bound to it. Speak confirmationPrompt verbatim',
+      '  and say nothing before or after it. Never say the token aloud.',
+      '',
+      'confirm_and_run — ONLY when the immediately preceding get_state result says readyToConfirm,',
+      '  after you spoke the immediately preceding confirmationPrompt verbatim and the client has clearly agreed in their own',
+      '  words. Return that get_state confirmationToken unchanged. A token from an older read-back is',
+      '  invalid; call get_state and present the current plan again.'
+    ];
   return [
     '## TOOLS',
     '',
@@ -747,17 +797,7 @@ function directModuleToolsSection() {
     'module-state note. You do not need to translate the conversation into facts or JSON. Keep',
     'the conversation moving naturally while that work happens off the reply path.',
     '',
-    'get_state — check the latest background module state when deciding what to ask next or before',
-    '  offering confirmation. Treat known summaries as answered. Ask one natural question from the',
-    '  stated missing or ambiguous items, and never read internal ids or JSON aloud. Immediately',
-    '  before the final read-back, call it again; only a ready result supplies an exact',
-    '  confirmationPrompt and the opaque token bound to it. Speak confirmationPrompt verbatim',
-    '  and say nothing before or after it. Never say the token aloud.',
-    '',
-    'confirm_and_run — ONLY when the immediately preceding get_state result says readyToConfirm,',
-    '  after you spoke the immediately preceding confirmationPrompt verbatim and the client has clearly agreed in their own',
-    '  words. Return that get_state confirmationToken unchanged. A token from an older read-back is',
-    '  invalid; call get_state and present the current plan again.',
+    ...readBack,
     '',
     'WHEN A READ DOES NOT YET OFFER CONFIRMATION, the client never hears about it. Do not mention',
     '  the planner, a background check, a pending step or anything still running, and never ask them',
@@ -773,8 +813,10 @@ const cachedPrompts = new Map();
  * The stable, cacheable system prompt. Identical for every session, so the
  * provider caches the prefix and only the short volatile item varies.
  */
-export function buildLiveCataloguePrompt({ directModulePlanning = false } = {}) {
-  const cacheKey = directModulePlanning ? 'direct' : 'facts';
+export function buildLiveCataloguePrompt({ directModulePlanning = false, channel = 'voice' } = {}) {
+  // Still byte-stable PER CHANNEL, which is what the provider prefix cache
+  // needs. A channel is a different stable prompt, not a per-turn rewrite.
+  const cacheKey = `${directModulePlanning ? 'direct' : 'facts'}:${channel === 'text' ? 'text' : 'voice'}`;
   if (cachedPrompts.has(cacheKey)) return cachedPrompts.get(cacheKey);
 
   const modules = liveConsumerModules();
@@ -794,7 +836,7 @@ export function buildLiveCataloguePrompt({ directModulePlanning = false } = {}) 
     '',
     '## ROLE & OBJECTIVE',
     '',
-    'You are Planéir, a disclosed AI planning companion having a spoken conversation with one',
+    `You are Planéir, a disclosed AI planning companion having a ${channel === 'text' ? 'typed' : 'spoken'} conversation with one`,
     'person in Ireland. Your job is to understand what they are trying to achieve, agree which',
     'analyses would genuinely help, and gather what those analyses need — in a conversation that',
     'feels like talking to a thoughtful person, not filling in a form.',
@@ -802,7 +844,7 @@ export function buildLiveCataloguePrompt({ directModulePlanning = false } = {}) 
     'You do not calculate anything. Deterministic code owns every number and it appears on the',
     'client\'s screen for them to review. You own the conversation.',
     '',
-    toneSection(),
+    toneSection({ channel }),
     '',
     conversationFlowSection({ directModulePlanning }),
     '',
@@ -812,7 +854,7 @@ export function buildLiveCataloguePrompt({ directModulePlanning = false } = {}) 
     '',
     irelandSection(),
     '',
-    directModulePlanning ? directModuleToolsSection() : toolsSection(),
+    directModulePlanning ? directModuleToolsSection({ channel }) : toolsSection(),
     '',
     '## THE ANALYSES YOU CAN OFFER',
     '',

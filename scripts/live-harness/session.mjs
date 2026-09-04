@@ -121,6 +121,30 @@ export async function attachLiveSession(meeting, { initial = {} } = {}) {
 }
 
 /**
+ * Bind a TYPED Durable Object to that meeting.
+ *
+ * The only differences from `attachLiveSession` are the two that define the
+ * transport: there is no provider socket, and `textChannel` is on so
+ * `sendProvider` captures instead of transmitting. Everything else -- the real
+ * D1, the real encryption, the real barrier -- is identical, which is the
+ * point: a typed meeting is the same object with a different mouth.
+ */
+export async function attachTypedSession(meeting, { initial = {} } = {}) {
+  const durable = fakeDurableState(initial);
+  const session = new ConsumerLiveSession(durable.state, meeting.env);
+  await durable.initialized();
+  session.textChannel = true;
+  session.meta = {
+    sessionId: meeting.sessionId,
+    leaseId: meeting.meetingId,
+    channel: 'typed',
+    hardExpiresAt: FUTURE,
+    idleExpiresAt: FUTURE
+  };
+  return { session, durable };
+}
+
+/**
  * Wait for everything the Durable Object detached.
  *
  * THE RESPONSE PATH IS NOT ALLOWED TO WAIT FOR ANY OF THIS — that is the

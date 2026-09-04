@@ -358,17 +358,45 @@ export async function setRealtimeConsentPurposes(env, sessionRow, config, decisi
   return getRealtimeConsentPurposes(env, sessionRow.id);
 }
 
+/**
+ * How long a typed meeting may stay open.
+ *
+ * Two hours, not because a planning conversation takes two hours, but because
+ * the only job left for this number is reclaiming a meeting someone abandoned
+ * with the tab open. Ninety minutes of real use plus a wide margin.
+ */
+const TYPED_MEETING_MAX_DURATION_SECONDS = 2 * 60 * 60;
+
 export async function createRealtimeLease(
   env,
   sessionRow,
   config,
   providerCostEntry,
   controlTokenHashB64u = null,
-  activationIdHashB64u = null
+  activationIdHashB64u = null,
+  { channel = 'voice' } = {}
 ) {
   const timestamp = nowIso();
-  const hardExpiresAt = new Date(Date.now() + config.realtimeMaxDurationSeconds * 1_000).toISOString();
-  const idleExpiresAt = new Date(Date.now() + config.realtimeIdleTimeoutSeconds * 1_000).toISOString();
+  // A TYPED MEETING IS NOT ON A CLOCK THE WAY A CALL IS.
+  //
+  // Voice bills per minute and holds an open provider connection, so a hard cap
+  // and an idle timeout are protecting real money and a real socket. A typed
+  // meeting bills per turn and holds nothing between turns, and its client may
+  // reasonably spend four minutes filling in a panel of fields. Applying the
+  // call's idle timeout there would end the meeting for thinking.
+  //
+  // The hard cap is kept, and deliberately: it is what makes the expiry sweep
+  // able to reclaim an abandoned typed meeting at all. Idle is set to the hard
+  // expiry rather than removed, so one sweep query still governs both
+  // transports and nothing can leak by being unreachable to it.
+  const typed = channel === 'typed';
+  const hardSeconds = typed
+    ? Math.max(config.realtimeMaxDurationSeconds, TYPED_MEETING_MAX_DURATION_SECONDS)
+    : config.realtimeMaxDurationSeconds;
+  const hardExpiresAt = new Date(Date.now() + hardSeconds * 1_000).toISOString();
+  const idleExpiresAt = typed
+    ? hardExpiresAt
+    : new Date(Date.now() + config.realtimeIdleTimeoutSeconds * 1_000).toISOString();
   const id = randomId('rt');
   const invite = await db(env).prepare(`
     SELECT uses.jti_hash_b64u
@@ -642,6 +670,42 @@ export async function markRealtimeProviderCostInFlight(env, entryId, sessionId, 
   `).bind(entryId, sessionId).first();
   if (existing?.status === 'reserved' && existing.dispatched_at) return existing;
   throw new ConsumerError(403, 'realtime_consent_required', 'Live voice consent changed before provider dispatch.');
+}
+
+/**
+ * Activate a typed meeting.
+ *
+ * Deliberately a sibling of `activateRealtimeLease` rather than a flag on it:
+ * that function's whole body is about binding and hashing a provider call id,
+ * and a typed meeting does not have one. The parts that matter -- the pending
+ * status transition and the reserved-and-dispatched cost precondition -- are
+ * identical, and are what stop a meeting activating without a budget behind it.
+ */
+export async function activateTypedLease(env, sessionId, leaseId) {
+  const timestamp = nowIso();
+  const row = await db(env).prepare(`
+    UPDATE consumer_realtime_sessions
+    SET status = 'active', channel = 'typed', activated_at = ?, last_active_at = ?
+    WHERE id = ? AND session_id = ? AND status = 'pending'
+      AND EXISTS (
+        SELECT 1 FROM consumer_provider_costs
+        WHERE id = consumer_realtime_sessions.provider_cost_id
+          AND status = 'reserved' AND dispatched_at IS NOT NULL
+      )
+    RETURNING *
+  `).bind(timestamp, timestamp, leaseId, sessionId).first();
+  if (!row) throw new ConsumerError(409, 'typed_lease_conflict', 'The typed meeting is no longer available.');
+  return row;
+}
+
+/** The typed equivalent of `getActiveRealtimeLease`, scoped by channel. */
+export async function getActiveTypedLease(env, sessionId) {
+  return db(env).prepare(`
+    SELECT * FROM consumer_realtime_sessions
+    WHERE session_id = ? AND channel = 'typed' AND status IN ('pending', 'active', 'closing')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).bind(sessionId).first();
 }
 
 export async function activateRealtimeLease(env, sessionId, leaseId, providerCallId) {
@@ -3731,7 +3795,7 @@ export async function recordRealtimeRunProvenance(env, request) {
 export async function listExpiredRealtimeLeases(env, limit = 50) {
   const result = await db(env).prepare(`
     SELECT * FROM consumer_realtime_sessions
-    WHERE channel = 'voice'
+    WHERE channel IN ('voice', 'typed')
       AND status IN ('pending', 'active', 'closing')
       AND (hard_expires_at <= ? OR idle_expires_at <= ?)
     ORDER BY hard_expires_at ASC

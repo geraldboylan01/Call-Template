@@ -26,6 +26,19 @@
 import { buildLiveCataloguePrompt } from './catalogue_prompt.js';
 import { LIVE_TOOL_DEFINITIONS } from './live_tools.js';
 
+/**
+ * The tools this lane offers, for EITHER transport.
+ *
+ * Exported so the typed lane cannot assemble its own list. `save_facts` is
+ * absent under direct planning because the background planner reads the
+ * transcript itself; that is a planning-mode decision, never a channel one.
+ */
+export function liveToolsForConfig(config) {
+  return config.modulePlannerMode === 'apply'
+    ? toolsForDirectModulePlanning()
+    : LIVE_TOOL_DEFINITIONS;
+}
+
 function toolsForDirectModulePlanning() {
   return LIVE_TOOL_DEFINITIONS
     .filter((tool) => tool.name !== 'save_facts')
@@ -87,9 +100,7 @@ export function buildLiveSessionConfig(config) {
         voice: 'marin'
       }
     },
-    tools: directModulePlanning
-      ? toolsForDirectModulePlanning()
-      : LIVE_TOOL_DEFINITIONS,
+    tools: liveToolsForConfig(config),
     tool_choice: 'auto',
     parallel_tool_calls: false,
     max_output_tokens: 1_200,

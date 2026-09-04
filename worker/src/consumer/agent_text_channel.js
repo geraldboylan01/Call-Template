@@ -1,19 +1,29 @@
 /**
- * The text transport's mouth.
+ * The ADVISER AGENT-TEST transport's mouth. Not the consumer typed lane.
  *
- * This is the ONLY genuinely new prompt-facing component in the agent journey,
- * and it is deliberately not a new prompt pack:
+ * READ THIS BEFORE REUSING THIS FILE. It shares its engine with the ARCHIVED v2
+ * lane, not with the live voice meeting:
  *
- *   - instructions come from `buildRealtimeConversationV2Instructions` — the
- *     exact string the live voice meeting is given;
- *   - tools come from `realtimeToolsForState` — the exact list, with the exact
- *     state gating, so `record_module_decision` appears only while an offer is
- *     live and `resolve_capacity_decision` only while a capacity decision is;
- *   - tool calls are dispatched to the SAME shared handlers voice uses.
+ *   - instructions come from `buildRealtimeConversationV2Instructions`;
+ *   - tools come from `realtimeToolsForState`, with the exact state gating, so
+ *     `record_module_decision` appears only while an offer is live and
+ *     `resolve_capacity_decision` only while a capacity decision is;
+ *   - tool calls are dispatched to the SAME handlers the v2 lane uses.
+ *
+ * This header used to claim the instructions were "the exact string the live
+ * voice meeting is given". That stopped being true when the live lane moved to
+ * the direct-module planner (`CONSUMER_MODULE_PLANNER_MODE=apply`, deploy #333,
+ * 2026-09-04). Production voice now runs `live/catalogue_prompt.js` +
+ * `live/live_tools.js` and produces `MeetingBriefV3`; this file produces
+ * `MeetingBriefV2`. `check-consumer-agent-api.mjs` asserts the sharing against
+ * the v2 source, so it passed while the claim was false.
+ *
+ * The consumer typed lane is therefore NOT built here — it is a second
+ * transport on the live lane (`live/live_text_channel.js`). See D-07 and D-08
+ * in docs/agent-testing-parity-contract.md.
  *
  * If this file ever grows its own instruction text or its own tool definitions,
- * the one-engine guarantee is gone. `check-consumer-agent-api.mjs` asserts it
- * does not.
+ * the one-engine guarantee for the agent transport is gone too.
  *
  * Everything voice-specific is absent: no audio, no VAD, no barge-in, and
  * `wait_for_user` is filtered out because a text turn always needs a reply.
